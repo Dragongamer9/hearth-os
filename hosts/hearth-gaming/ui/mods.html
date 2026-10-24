@@ -20,6 +20,23 @@
 .beacon { display:grid; place-items:center; text-align:center; gap:.8em; padding:2.4em 1em; }
 .tops { display:flex; flex-wrap:wrap; gap:.35em; margin:.3em 0; }
 .tops span { font-family:ui-monospace, monospace; font-size:.78em; background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:.15em .5em; }
+.one { display:grid; grid-template-rows:auto 1fr; gap:.8em; min-height:0; grid-column:1/-1; }
+.dl { display:grid; grid-template-columns:1fr auto; gap:.15em .8em; align-items:center; width:100%; padding:.65em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); text-align:left; }
+.dl .n { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dl .m { grid-column:1/-1; color:var(--muted); font-size:.8em; display:flex; gap:.6em; flex-wrap:wrap; }
+.dl .prog { grid-column:1/-1; margin:.3em 0 0; }
+.cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(15em, 1fr)); gap:.8em; }
+.card { display:grid; grid-template-rows:auto auto 1fr; text-align:left; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); overflow:hidden; padding:0; }
+.card .art { aspect-ratio:16/9; background:var(--panel3) center/cover no-repeat; }
+.card .t { padding:.55em .8em 0; font-weight:650; }
+.card .m { padding:.15em .8em .7em; color:var(--muted); font-size:.8em; display:flex; gap:.5em; flex-wrap:wrap; align-content:start; }
+.card.down { opacity:.5; }
+.job { padding:.8em 1em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); display:grid; gap:.35em; }
+.job .acts { display:flex; gap:.5em; flex-wrap:wrap; }
+.status { font-family:ui-monospace, monospace; font-size:.75em; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.need { display:grid; grid-template-columns:1fr auto; gap:.1em .6em; align-items:center; padding:.4em 0; border-top:1px solid var(--line); }
+.need .m { grid-column:1; color:var(--muted); font-size:.78em; }
+input.inp.mono { font-family:ui-monospace, monospace; }
 </style>
 </head>
 <body>
@@ -27,6 +44,7 @@
   <header>
     <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7l8-4 8 4-8 4z"/><path d="M4 12l8 4 8-4M4 17l8 4 8-4"/></svg>Mods</h1>
     <span class="sub" id="sub"></span>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="games">Games</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="modlists">Modlists</button><button class="tab f" data-tab="nexus">Nexus account</button><span class="lbrb">RB</span></div>
   </header>
   <main id="main" class="split"></main>
   <footer id="foot"></footer>
@@ -35,7 +53,8 @@
 <script>
 'use strict';
 const { $, esc, human, when } = KIT;
-const S = { games: [], sel: null, sum: null, loading: true, info: {} };
+const S = { games: [], sel: null, sum: null, loading: true, info: {}, tab: 'games', acct: undefined, dls: { items: [], active: 0, quota: {} }, engine: null, gallery: null, galleryErr: '', jobs: [], filter: 'all', nsfw: false };
+const TABS = ['games', 'downloads', 'modlists', 'nexus'];
 const SRC = { steam: 'Steam', epic: 'Epic', gog: 'GOG', manual: 'Your game', beacon: 'Beacon', 'heroic-epic': 'Heroic (Epic)', 'heroic-gog': 'Heroic (GOG)' };
 const game = id => S.games.find(g => g.id === id);
 
@@ -63,6 +82,17 @@ function applyResult(r) {
 // ---------------------------------------------------------------- drawing
 function render() {
   const focusKey = document.activeElement?.dataset?.key;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
+  if (S.tab !== 'games') {
+    $('#sub').textContent = S.tab === 'downloads' ? (S.dls.active ? `${S.dls.active} downloading` : '') : S.tab === 'nexus' ? (S.acct ? S.acct.name : '') : '';
+    $('#main').className = '';
+    $('#main').innerHTML = S.tab === 'downloads' ? downloadsView() : S.tab === 'modlists' ? modlistsView() : nexusView();
+    footer();
+    const back = focusKey && document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+    if (back) back.focus({ preventScroll: true });
+    return;
+  }
+  $('#main').className = 'split';
   $('#sub').textContent = S.loading ? '' : `${S.games.length} games`;
   if (S.loading) { $('#main').innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="prog spin" style="max-width:20em;margin:0 auto 1em"><i></i></div>Reading your library…</div>`; footer(); return; }
   const rows = S.games.map(g => `<button class="item f ${g.id === S.sel ? 'sel' : ''}" data-key="g:${esc(g.id)}" data-game="${esc(g.id)}">
@@ -76,7 +106,9 @@ function render() {
 }
 function footer() {
   const onMod = document.activeElement?.dataset?.mod;
-  const h = [['A', 'Choose'], ['B', 'Back'], ['X', onMod ? 'On / off' : ''], ['Y', 'Add a mod']].filter(x => x[1]);
+  const h = S.tab === 'games' ? [['A', 'Choose'], ['B', 'Back'], ['X', onMod ? 'On / off' : ''], ['Y', 'Add a mod'], ['LB RB', 'Tabs']]
+    : S.tab === 'downloads' ? [['A', 'Choose'], ['X', 'Pause / resume'], ['Y', 'Add a Nexus link'], ['LB RB', 'Tabs']]
+    : [['A', 'Choose'], ['B', 'Back'], ['LB RB', 'Tabs']];
   $('#foot').innerHTML = h.map(x => `<span><b>${x[0]}</b>${x[1]}</span>`).join('');
 }
 function detail() {
@@ -91,7 +123,8 @@ function detail() {
   return `<div class="panel">
       <h2>${esc(g.title)}</h2>
       <div class="path">${esc(g.install || '')}</div>
-      <div class="acts" style="margin-top:.7em"><button class="btn primary f" data-key="add" data-act="add">Add a mod…</button><button class="btn f" data-key="og" data-act="openGame">Open game folder</button>${s.mods.length ? '<button class="btn f" data-key="om" data-act="openStore">Open mod files</button>' : ''}</div>
+      <div class="acts" style="margin-top:.7em"><button class="btn primary f" data-key="add" data-act="add">Add a mod…</button><button class="btn f" data-key="nx" data-act="nexusGet">From Nexus Mods…</button><button class="btn f" data-key="og" data-act="openGame">Open game folder</button>${s.mods.length ? '<button class="btn f" data-key="om" data-act="openStore">Open mod files</button>' : ''}<button class="btn f" data-key="dm" data-act="deployMode">${esc(deployLabel(s))} ›</button></div>
+      ${s.overlay ? `<p class="msg small" style="margin:.5em 0 0"><span class="badge sky">Overlay ${s.overlay.mounted ? 'on' : 'off'}</span> The game folder isn't changed; what the game writes there is kept apart (${esc(human(s.overlay.changed))}).</p>` : ''}
       <p class="msg small" style="margin:.6em 0 0">${s.mods.length > 1 ? 'Mods lower in the list win when two have the same file. ' : ''}Turning a mod off puts the game's own files back. Download mods from the mod's page (Nexus Mods' "Manual download", ModDB, GitHub…), then add the file here.</p>
     </div>
     <div class="scroll"><div class="list">${mods || '<div class="empty">No mods yet. Add one from a .zip, .7z or .rar file, or a folder.</div>'}</div></div>`;
@@ -107,11 +140,25 @@ document.addEventListener('click', e => {
   if (a === 'beacon') return KIT.invoke('open_beacon').then(() => KIT.toast('Opening Beacon…')).catch(e => KIT.alert('Beacon', esc(KIT.err(e)), false));
   if (a === 'add') return addMod();
   if (a === 'openGame') return KIT.invoke('open_folder', { path: game(S.sel).install }).catch(e => KIT.toast(KIT.err(e)));
+  if (a === 'nexusGet') return nexusGet();
+  if (a === 'deployMode') return deployMode();
+  if (a) return act(a, b);
+  if (b.dataset.tab) return setTab(b.dataset.tab);
   if (a === 'openStore') return KIT.invoke('open_folder', { path: S.sum.folder + '/files' }).catch(e => KIT.toast(KIT.err(e)));
 });
-KIT.onBack = () => { if (!document.activeElement?.dataset?.game) KIT.focusFirst('.item.sel'); };
-KIT.onX = () => { const id = document.activeElement?.dataset?.mod; if (id) { const m = S.sum.mods.find(x => x.id === id); toggle(m, !m.enabled); } };
-KIT.onY = () => { if (game(S.sel) && !game(S.sel).beacon) addMod(); };
+KIT.onBack = () => { if (S.tab !== 'games') return KIT.focusFirst(`.tab[data-tab="${S.tab}"]`); if (!document.activeElement?.dataset?.game) KIT.focusFirst('.item.sel'); };
+KIT.onX = () => {
+  if (S.tab === 'downloads') { const id = document.activeElement?.dataset?.dl; const d = id && S.dls.items.find(x => x.id === id); if (d) act(['downloading', 'queued'].includes(d.state) ? 'dlPause' : 'dlResume', document.activeElement); return; }
+  if (S.tab !== 'games') return;
+  const id = document.activeElement?.dataset?.mod; if (id) { const m = S.sum.mods.find(x => x.id === id); toggle(m, !m.enabled); } };
+KIT.onY = () => { if (S.tab === 'downloads') return pasteLink(); if (S.tab === 'games' && game(S.sel) && !game(S.sel).beacon) addMod(); };
+KIT.onTab = d => setTab(TABS[(TABS.indexOf(S.tab) + d + TABS.length) % TABS.length]);
+function setTab(t) {
+  S.tab = t; render(); KIT.focusFirst(`.tab[data-tab="${t}"]`);
+  if (t === 'downloads') refreshDownloads();
+  if (t === 'nexus' && S.acct === undefined) loadAccount();
+  if (t === 'modlists') loadModlists();
+}
 
 async function toggle(m, on) {
   try { applyResult(await KIT.invoke('toggle', { id: S.sel, m: m.id, on })); KIT.toast(`${m.name}: ${on ? 'on' : 'off'}`); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
@@ -184,6 +231,285 @@ async function addMod() {
   KIT.close();
   setTimeout(draw, 0);
 }
+
+// ---------------------------------------------------------------- how mods go in
+function deployLabel(s) { return ({ hardlink: 'Links', copy: 'Copies', overlay: 'Overlay' })[s.deploy] || 'Links'; }
+async function deployMode() {
+  const s = S.sum; if (!s) return;
+  const sub = { hardlink: 'No extra space and instant. Across drives, copies.', copy: 'Real copies in the game folder: takes the mods\' space twice.', overlay: 'Beta Experimental. The game folder itself is never changed: the mods are laid over it while you play.' };
+  const m = await KIT.choose('How mods are put in place', s.modes.map(x => ({ id: x.id, label: x.label, sub: sub[x.id], end: x.id === s.deploy ? 'Now' : '' })),
+    'Every mod comes out the old way and goes back in the new way. Close the game first.');
+  if (!m || m === s.deploy) return;
+  KIT.progress('Switching', 'Taking the mods out and putting them back');
+  try { const r = await KIT.invoke('set_deploy', { id: S.sel, mode: m }); KIT.close(); applyResult(r); KIT.toast(`Mods now go in as ${deployLabel(r.summary).toLowerCase()}`); }
+  catch (e) { KIT.close(); KIT.alert('Couldn\'t switch', esc(KIT.err(e)), false); }
+}
+
+// ---------------------------------------------------------------- Nexus Mods: getting a mod for this game
+async function nexusGet() {
+  const g = game(S.sel); if (!g) return;
+  if (S.acct === undefined) await loadAccount();
+  const domain = S.sum?.nexus || '';
+  const items = [];
+  if (domain) items.push({ id: 'site', label: 'Browse its mods on Nexus Mods', sub: 'Opens the site. Press "Mod Manager Download" on a file and it comes to Downloads here.' });
+  else items.push({ id: 'pick', label: 'Which game is it on Nexus Mods?', sub: 'Type the part of its Nexus address after nexusmods.com/ (skyrimspecialedition, stardewvalley…)' });
+  if (S.acct?.premium) items.push({ id: 'url', label: 'Download a mod by its address (Premium)', sub: 'Paste a mod page\'s address and pick the file, without the site.' });
+  if (!S.acct) items.push({ id: 'signin', label: 'Sign in to Nexus Mods', sub: 'Needed for downloads through Hearth.' });
+  if (domain) items.push({ id: 'pick', label: `Nexus game: ${domain}`, sub: 'Change which Nexus game this is' });
+  const a = await KIT.choose(`${g.title} on Nexus Mods`, items);
+  if (a === 'site') return openUrl(`https://www.nexusmods.com/${domain}/mods/`);
+  if (a === 'signin') return setTab('nexus');
+  if (a === 'url') return premiumPick(g);
+  if (a === 'pick') {
+    const v = await ask('Nexus game', 'The name in its Nexus address: nexusmods.com/<b>this part</b>/mods', domain);
+    if (v == null) return;
+    try { S.sum = await KIT.invoke('set_nexus_game', { id: S.sel, domain: v.trim().toLowerCase() }); render(); KIT.toast('Saved'); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+  }
+}
+/** A one-line text question (with the on-screen keyboard from a controller). */
+function ask(title, note, value = '', mono = false) {
+  return new Promise(res => {
+    KIT.dialog(`<h2>${esc(title)}</h2>${note ? `<p class="msg small">${note}</p>` : ''}<div class="field"><input class="inp f ${mono ? 'mono' : ''}" id="askv" data-osk maxlength="400" value="${esc(value)}" spellcheck="false" autocomplete="off" data-autofocus></div>
+      <div class="row"><button class="btn f" data-k="no">Cancel</button><button class="btn primary f" data-k="ok">OK</button></div>`, { wide: true, onBack: () => { $('#kit-layer').onclick = null; KIT.close(); res(null); } });
+    $('#kit-layer').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; const v = $('#askv').value; $('#kit-layer').onclick = null; KIT.close(); res(b.dataset.k === 'ok' ? v : null); };
+  });
+}
+function openUrl(url) { return KIT.invoke('open_url', { url }).then(() => KIT.toast('Opening the page…')).catch(e => KIT.alert('Couldn\'t open it', esc(KIT.err(e)), false)); }
+async function premiumPick(g) {
+  const url = await ask('Download from Nexus Mods', 'Paste the mod page\'s address.', '', true);
+  if (!url) return;
+  KIT.progress('Looking it up');
+  let m;
+  try { m = await KIT.invoke('nexus_files', { url }); } catch (e) { KIT.close(); return KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+  KIT.close();
+  const f = await KIT.choose(m.name || 'Mod', m.files.map(x => ({ id: x.fileId, label: x.name + (x.version ? ` ${x.version}` : ''), sub: `${x.category || ''} · ${x.fileName || ''}`, end: human(x.size) })), esc(m.summary || ''));
+  if (f == null) return;
+  try { await KIT.invoke('download_file', { domain: m.domain, modId: m.modId, fileId: f, game: g?.id || '' }); KIT.toast('Downloading — see Downloads'); refreshDownloads(); }
+  catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+
+// ---------------------------------------------------------------- Downloads
+let dlTimer = 0;
+async function refreshDownloads() {
+  clearTimeout(dlTimer);
+  try {
+    S.dls = await KIT.invoke('downloads_list');
+    for (const n of S.dls.notices || []) { if (n.ok) KIT.toast(n.text); else KIT.alert('A Nexus download didn\'t start', esc(n.text), false); }
+  } catch (e) {}
+  if (S.tab === 'downloads' && !KIT.dialogOpen()) render();
+  dlTimer = setTimeout(refreshDownloads, S.tab === 'downloads' || S.dls.active ? 1000 : 4000);
+}
+const DL_STATE = { queued: 'Waiting', downloading: 'Downloading', paused: 'Paused', done: 'Downloaded', failed: 'Failed', 'needs-link': 'Needs “Mod Manager Download”' };
+function downloadsView() {
+  const d = S.dls, q = d.quota || {};
+  const rows = d.items.map(x => {
+    const pct = x.size ? Math.min(100, x.done / x.size * 100) : 0;
+    const badge = x.state === 'done' ? 'good' : x.state === 'failed' || x.state === 'needs-link' ? '' : x.state === 'paused' ? 'muted' : 'sky';
+    return `<button class="dl f" data-key="d:${esc(x.id)}" data-dl="${esc(x.id)}"><span class="n">${esc(x.name)}</span><span><span class="badge ${badge}">${esc(DL_STATE[x.state] || x.state)}</span></span>
+      ${['downloading', 'queued', 'paused'].includes(x.state) ? `<div class="prog"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}
+      <span class="m"><span>${esc(x.fileName)}</span><span>${x.state === 'downloading' ? `${human(x.done)} of ${human(x.size)} · ${human(x.speed)}/s` : esc(human(x.size))}</span>${x.job ? '<span class="badge muted">For a modlist</span>' : ''}${x.error ? `<span class="warn">${esc(x.error)}</span>` : ''}</span></button>`;
+  }).join('');
+  const signed = S.acct === undefined ? '' : S.acct ? `Signed in as ${esc(S.acct.name)}${S.acct.premium ? ' · Premium' : ''}` : '<span class="warn">Not signed in to Nexus Mods</span>';
+  return `<section class="one"><div class="panel"><h2>Downloads</h2>
+      <p class="msg small" style="margin:.2em 0 .6em">On a mod's page on Nexus Mods, press <b>Mod Manager Download</b>: the file comes here${S.acct?.premium ? ', or download straight from a game\'s “From Nexus Mods…”' : ''}. ${signed}${q.hourly != null ? ` · ${q.hourly} Nexus requests left this hour` : ''}</p>
+      <div class="acts"><button class="btn primary f" data-key="pl" data-act="pasteLink">Add an nxm:// link…</button>${d.items.some(x => x.state === 'done') ? '<button class="btn f" data-key="cf" data-act="dlClear">Clear finished</button>' : ''}</div></div>
+    <div class="scroll"><div class="list">${rows || '<div class="empty">Nothing downloaded yet.</div>'}</div></div></section>`;
+}
+async function pasteLink() {
+  const v = await ask('A Nexus Mods download link', 'The site\'s "Mod Manager Download" opens Hearth Mods by itself. If it didn\'t, copy the nxm:// link here.', '', true);
+  if (!v) return;
+  try { await KIT.invoke('download_nxm', { link: v.trim() }); KIT.toast('Downloading'); refreshDownloads(); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+async function downloadActions(id) {
+  const x = S.dls.items.find(i => i.id === id); if (!x) return;
+  const items = [];
+  if (x.state === 'done' && !x.job) items.push({ id: 'install', label: 'Install into a game…', sub: 'Unpacks it and asks where it goes' });
+  if (['downloading', 'queued'].includes(x.state)) items.push({ id: 'pause', label: 'Pause' });
+  if (['paused', 'failed'].includes(x.state)) items.push({ id: 'resume', label: 'Resume' });
+  if (x.state === 'needs-link' || x.state === 'failed') items.push({ id: 'site', label: 'Open on Nexus Mods', sub: 'Press "Mod Manager Download" there' });
+  if (x.state === 'done') items.push({ id: 'folder', label: 'Open its folder' });
+  items.push({ id: 'remove', label: 'Take out of the list' });
+  if (x.state === 'done') items.push({ id: 'delete', label: 'Delete the file…' });
+  const a = await KIT.choose(x.name, items, `<span class="path">${esc(x.path)}</span>`);
+  try {
+    if (a === 'install') return installDownload(x);
+    if (a === 'pause') await KIT.invoke('download_pause', { id });
+    if (a === 'resume') await KIT.invoke('download_resume', { id });
+    if (a === 'site') return openUrl(x.page);
+    if (a === 'folder') return KIT.invoke('open_folder', { path: x.path.replace(/\/[^/]*$/, '') });
+    if (a === 'remove') await KIT.invoke('download_remove', { id, deleteFile: false });
+    if (a === 'delete' && await KIT.confirm({ title: 'Delete the file?', text: `<p class="path">${esc(x.path)}</p>`, ok: 'Delete', danger: true })) await KIT.invoke('download_remove', { id, deleteFile: true });
+  } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+  refreshDownloads();
+}
+async function installDownload(x) {
+  KIT.progress('Unpacking the mod');
+  let st;
+  try { st = await KIT.invoke('stage_download', { id: x.id, gameId: '' }); }
+  catch (e) {
+    KIT.close();
+    if (!String(KIT.err(e)).includes('Choose which game')) return KIT.alert('That didn\'t work', esc(KIT.err(e)), false);
+    const gid = await KIT.choose('Which game is it for?', S.games.filter(g => !g.beacon).map(g => ({ id: g.id, label: g.title })));
+    if (!gid) return;
+    KIT.progress('Unpacking the mod');
+    try { st = await KIT.invoke('stage_download', { id: x.id, gameId: gid }); } catch (e2) { KIT.close(); return KIT.alert('That didn\'t work', esc(KIT.err(e2)), false); }
+  }
+  KIT.close();
+  S.sel = st.game; S.tab = 'games'; await loadMods();
+  installDialog(st);
+}
+
+// ---------------------------------------------------------------- Nexus account
+async function loadAccount() { try { S.acct = await KIT.invoke('nexus_account'); } catch (e) { S.acct = null; } if (S.tab === 'nexus') render(); }
+function nexusView() {
+  const a = S.acct;
+  if (a === undefined) return '<div class="empty" style="grid-column:1/-1">Reading…</div>';
+  if (!a) return `<section class="one"><div class="panel"><h2>Sign in to Nexus Mods</h2>
+      <p class="msg">Hearth Mods signs in with your own Nexus Mods API key. It stays on this PC (only you can read it) and is only sent to Nexus Mods.</p>
+      <ol class="msg small"><li>Open your API key page (sign in to Nexus Mods there).</li><li>At the bottom, under <b>Personal API Key</b>, press Request (or copy the key you have).</li><li>Paste it here.</li></ol>
+      <div class="acts"><button class="btn f" data-key="kp" data-act="keyPage">Open my API key page</button><button class="btn primary f" data-key="ki" data-act="keyIn" data-autofocus>Paste my key…</button></div>
+      <p class="msg small" style="margin-top:.8em">With a <b>free</b> account, each file is downloaded by pressing <b>Mod Manager Download</b> on the site (Nexus' rule). With <b>Premium</b>, Hearth can download files by itself, which also makes Wabbajack modlists install without clicking.</p></div></section>`;
+  const q = S.dls.quota || {};
+  return `<section class="one"><div class="panel"><h2>${esc(a.name)}</h2>
+      <p class="msg">${a.premium ? '<span class="badge good">Premium</span> Hearth downloads files by itself, and Wabbajack modlists install without clicking.' : '<span class="badge muted">Free account</span> Files come by pressing “Mod Manager Download” on the site; a Wabbajack modlist lists each file to press it for.'}</p>
+      <p class="msg small">Checked ${esc(when(a.checked))}${q.hourly != null ? ` · ${q.hourly} requests left this hour, ${q.daily} today` : ''}</p>
+      <div class="acts"><button class="btn f" data-key="nr" data-act="nexusRefresh">Check again</button><button class="btn f" data-key="ns" data-act="nexusSite">Open Nexus Mods</button><button class="btn danger f" data-key="no" data-act="nexusOut">Sign out</button></div></div></section>`;
+}
+
+// ---------------------------------------------------------------- Modlists (Wabbajack)
+let jobTimer = 0;
+async function loadModlists(refresh = false) {
+  try { S.engine = await KIT.invoke('wj_engine'); } catch (e) { S.engine = null; }
+  await refreshJobs();
+  if (S.engine?.path && (S.gallery == null || refresh)) {
+    S.galleryErr = ''; render();
+    try { S.gallery = await KIT.invoke('wj_gallery', { refresh }); } catch (e) { S.gallery = []; S.galleryErr = KIT.err(e); }
+  }
+  if (S.tab === 'modlists') render();
+}
+async function refreshJobs() {
+  clearTimeout(jobTimer);
+  try { S.jobs = await KIT.invoke('wj_jobs'); } catch (e) {}
+  const live = S.jobs.some(j => j.running);
+  if (S.tab === 'modlists' && !KIT.dialogOpen()) render();
+  if (live || S.tab === 'modlists') jobTimer = setTimeout(refreshJobs, live ? 1000 : 5000);
+}
+const JOB_STATE = { installing: 'Installing', manual: 'Needs files', 'setting-up': 'Setting up', done: 'Installed', failed: 'Failed', cancelled: 'Stopped', stopped: 'Stopped' };
+function jobView(j) {
+  const pct = j.count ? j.count[0] / j.count[1] * 100 : null;
+  const needs = (j.manual || []).filter(m => !m.here);
+  const live = j.running;
+  return `<div class="job"><div style="display:flex;gap:.6em;align-items:center;flex-wrap:wrap"><b>${esc(j.title)}</b><span class="badge ${j.state === 'done' ? 'good' : j.state === 'failed' ? '' : 'sky'}">${esc(JOB_STATE[j.state] || j.state)}</span>${j.step ? `<span class="msg small">Step ${j.step[0]} of ${j.step[1]}</span>` : ''}</div>
+    ${live ? `<div class="msg small">${esc(j.phase)}${j.count ? ` · ${j.count[0]} of ${j.count[1]}` : ''}</div><div class="prog ${pct == null ? 'spin' : ''}"><i ${pct != null ? `style="width:${pct.toFixed(1)}%"` : ''}></i></div><div class="status">${esc(j.status)}</div>` : ''}
+    ${j.error ? `<p class="warn small" style="margin:0">${esc(j.error)}</p>` : ''}${j.premiumNeeded && !S.acct?.premium ? '<p class="msg small" style="margin:0">Free Nexus account: the files below need “Mod Manager Download” pressed for each.</p>' : ''}
+    ${(j.notes || []).map(n => `<p class="msg small" style="margin:0">${esc(n)}</p>`).join('')}
+    ${j.state === 'manual' && needs.length ? `<div><p class="msg small" style="margin:.2em 0">${needs.length} file${needs.length === 1 ? '' : 's'} to fetch. ${needs.some(m => m.nexus) ? 'For Nexus files press <b>Mod Manager Download</b> on the page that opens.' : ''} ${needs.some(m => !m.nexus) ? 'Files from other sites: download them in the browser; Hearth picks them up from your Downloads folder.' : ''}</p>
+      ${needs.slice(0, 40).map((m, i) => `<div class="need"><span>${esc(m.modName || m.fileName)}</span><button class="btn f" data-key="mn:${esc(j.id)}:${i}" data-act="needOpen" data-job="${esc(j.id)}" data-url="${esc(m.url)}">Open ›</button><span class="m">${esc(m.fileName)} · ${esc(human(m.size))}${m.nexus ? '' : ' · from another site'}</span></div>`).join('')}${needs.length > 40 ? `<p class="msg small">and ${needs.length - 40} more</p>` : ''}</div>` : ''}
+    <div class="acts">${live ? `<button class="btn f" data-key="jc:${esc(j.id)}" data-act="jobCancel" data-job="${esc(j.id)}">Stop</button>` : ''}${!live && j.state !== 'done' ? `<button class="btn primary f" data-key="jr:${esc(j.id)}" data-act="jobResume" data-job="${esc(j.id)}">Resume</button>` : ''}${j.state === 'done' ? `<button class="btn f" data-key="jp:${esc(j.id)}" data-act="jobRepair" data-job="${esc(j.id)}">Repair its Proton folder</button><button class="btn f" data-key="jf:${esc(j.id)}" data-act="jobFolder" data-job="${esc(j.id)}">Open its folder</button>` : ''}<button class="btn f" data-key="jl:${esc(j.id)}" data-act="jobLog" data-job="${esc(j.id)}">Log</button>${!live ? `<button class="btn danger f" data-key="jx:${esc(j.id)}" data-act="jobForget" data-job="${esc(j.id)}">Remove…</button>` : ''}</div></div>`;
+}
+function modlistsView() {
+  const e = S.engine;
+  const head = `<div class="panel"><h2>Wabbajack modlists</h2><p class="msg small" style="margin:.2em 0 .6em">A modlist is a whole modded game put together by its author: Hearth downloads every mod it needs, builds it with Mod Organizer 2 and puts it in your library. Big lists need hundreds of GB. Most aren't made for Linux, so some may need fixes.</p>
+    <div class="acts">${e?.path ? `<button class="btn f" data-key="wf" data-act="wjFile">Install from a .wabbajack file…</button><button class="btn f" data-key="wr" data-act="wjRefresh">Refresh the list</button><div class="chips">${['all', 'SkyrimSpecialEdition', 'Fallout4', 'FalloutNewVegas'].map(f => `<button class="chip f ${S.filter === f ? 'on' : ''}" data-key="ff:${f}" data-act="wjFilter" data-f="${f}">${({ all: 'All games', SkyrimSpecialEdition: 'Skyrim SE', Fallout4: 'Fallout 4', FalloutNewVegas: 'New Vegas' })[f]}</button>`).join('')}<button class="chip f ${S.nsfw ? 'on' : ''}" data-key="fn" data-act="wjNsfw">Adult lists</button></div>` : `<button class="btn primary f" data-key="we" data-act="wjEngine" data-autofocus>Get the Wabbajack engine</button>`}</div>
+    ${e?.path ? '' : '<p class="msg small">Hearth OS normally comes with it. The engine is jackify-engine (GPL-3.0), downloaded from its GitHub releases.</p>'}</div>`;
+  const jobs = S.jobs.length ? `<div class="list">${S.jobs.map(jobView).join('')}</div>` : '';
+  let gal = '';
+  if (e?.path) {
+    if (S.gallery == null) gal = `<div class="empty"><div class="prog spin" style="max-width:20em;margin:0 auto 1em"><i></i></div>Getting the list of modlists…</div>`;
+    else if (S.galleryErr) gal = `<div class="empty">${esc(S.galleryErr)}</div>`;
+    else {
+      const list = S.gallery.filter(m => (S.nsfw || !m.nsfw) && (S.filter === 'all' || m.game === S.filter));
+      gal = `<div class="cards">${list.map((m, i) => `<button class="card f ${m.down ? 'down' : ''}" data-key="ml:${esc(m.id)}" data-ml="${esc(m.id)}"><span class="art" style="${m.image ? `background-image:url('${esc(m.image)}')` : ''}"></span><span class="t">${esc(m.title)}</span>
+        <span class="m"><span>${esc(m.gameName || m.game)}</span><span>${esc(human(m.download))} download</span><span>${esc(human(m.install))} installed</span>${m.down ? '<span class="warn">Down for now</span>' : ''}${m.nsfw ? '<span class="badge">Adult</span>' : ''}</span></button>`).join('') || '<div class="empty">No modlists for that.</div>'}</div>`;
+    }
+  }
+  return `<section class="one" style="grid-template-rows:auto 1fr"><div style="display:grid;gap:.8em">${head}${jobs}</div><div class="scroll">${gal}</div></section>`;
+}
+async function wjInstall(m) {
+  const d = await KIT.invoke('wj_defaults', { title: m.title, game: m.game });
+  const pick = { install: d.installDir, downloads: d.downloadsDir, gameDir: d.gameDir || '' };
+  const draw = () => {
+    KIT.dialog(`<h2>Install ${esc(m.title)}</h2>
+      <p class="msg small">${esc(m.author ? 'By ' + m.author + ' · ' : '')}${esc(m.gameName || m.game)} · ${esc(human(m.download))} to download, ${esc(human(m.install))} installed${m.archives ? ` · ${m.archives} files` : ''}${d.free != null ? ` · ${esc(human(d.free))} free there` : ''}</p>
+      ${m.description ? `<p class="msg small">${esc(m.description).slice(0, 400)}</p>` : ''}
+      ${!d.known ? '<p class="warn small">Hearth doesn\'t know this game yet: the list installs, but its Proton folder may need setting up by hand.</p>' : ''}
+      ${S.acct ? (S.acct.premium ? '' : '<p class="msg small"><b>Free Nexus account:</b> after the list is read, you\'ll press “Mod Manager Download” once for each Nexus file. Premium does it all by itself.</p>') : '<p class="warn small">Sign in to Nexus Mods first (Nexus account tab): nearly every list downloads from it.</p>'}
+      <div class="field"><label>The game</label><button class="btn f" data-k="game">${pick.gameDir ? esc(pick.gameDir) : 'Choose its folder…'}</button>${d.gameTitle ? `<div class="msg small">${esc(d.gameTitle)} from your library</div>` : ''}</div>
+      <div class="field"><label>The modlist goes in</label><button class="btn f" data-k="inst">${esc(pick.install)} ›</button></div>
+      <div class="field"><label>Its downloads go in</label><button class="btn f" data-k="dls">${esc(pick.downloads)} ›</button></div>
+      <div class="row">${m.readme ? '<button class="btn f" data-k="readme">Read me</button>' : ''}<button class="btn f" data-k="no">Cancel</button><button class="btn primary f" data-k="go" ${pick.gameDir ? '' : 'disabled'} data-autofocus>Install</button></div>`, { wide: true });
+    $('#kit-layer').onclick = async e => {
+      const b = e.target.closest('[data-k]'); if (!b) return;
+      const k = b.dataset.k;
+      if (k === 'no') { $('#kit-layer').onclick = null; return KIT.close(); }
+      if (k === 'readme') return openUrl(m.readme);
+      if (['game', 'inst', 'dls'].includes(k)) {
+        $('#kit-layer').onclick = null;
+        const cur = k === 'game' ? pick.gameDir : k === 'inst' ? pick.install : pick.downloads;
+        const p = await KIT.pickPath({ title: k === 'game' ? 'The game\'s folder' : k === 'inst' ? 'Where the modlist goes (an empty folder)' : 'Where its downloads go', start: cur ? cur.replace(/\/[^/]*$/, '') : undefined });
+        if (p) { if (k === 'game') pick.gameDir = p; else if (k === 'inst') pick.install = p + '/' + (m.title || 'Modlist').replace(/[\/:*?"<>|]/g, ' ').trim(); else pick.downloads = p; }
+        return draw();
+      }
+      if (k === 'go') {
+        $('#kit-layer').onclick = null; KIT.close();
+        try { await KIT.invoke('wj_start', { title: m.title, list: m.id, game: m.game, gameDir: pick.gameDir, installDir: pick.install, downloadsDir: pick.downloads }); KIT.toast(`Installing ${m.title}`); refreshJobs(); }
+        catch (err) { KIT.alert('Couldn\'t start', esc(KIT.err(err)), false); }
+      }
+    };
+  };
+  draw();
+}
+
+async function act(a, b) {
+  const job = b?.dataset?.job;
+  try {
+    if (a === 'pasteLink') return pasteLink();
+    if (a === 'dlClear') { await KIT.invoke('downloads_clear'); return refreshDownloads(); }
+    if (a === 'dlPause') { await KIT.invoke('download_pause', { id: b.dataset.dl }); return refreshDownloads(); }
+    if (a === 'dlResume') { await KIT.invoke('download_resume', { id: b.dataset.dl }); return refreshDownloads(); }
+    if (a === 'keyPage') { const p = await KIT.invoke('nexus_pages'); return openUrl(p.keys); }
+    if (a === 'keyIn') {
+      const k = await ask('Your Nexus Mods API key', 'Paste the whole key.', '', true); if (!k) return;
+      KIT.progress('Checking the key');
+      try { S.acct = await KIT.invoke('nexus_sign_in', { key: k }); KIT.close(); render(); KIT.toast(`Signed in as ${S.acct.name}`); } catch (e) { KIT.close(); KIT.alert('Couldn\'t sign in', esc(KIT.err(e)), false); }
+      return;
+    }
+    if (a === 'nexusRefresh') { S.acct = await KIT.invoke('nexus_refresh'); render(); return KIT.toast('Checked'); }
+    if (a === 'nexusSite') return openUrl('https://www.nexusmods.com/');
+    if (a === 'nexusOut') { if (!await KIT.confirm({ title: 'Sign out of Nexus Mods?', text: '<p>Hearth forgets the key. Downloads waiting in the queue stop until you sign in again.</p>', ok: 'Sign out', danger: true })) return; await KIT.invoke('nexus_sign_out'); S.acct = null; return render(); }
+    if (a === 'wjEngine') { KIT.progress('Getting the Wabbajack engine', 'Downloading jackify-engine'); try { S.engine = await KIT.invoke('wj_fetch_engine'); KIT.close(); } catch (e) { KIT.close(); return KIT.alert('Couldn\'t get it', esc(KIT.err(e)), false); } return loadModlists(true); }
+    if (a === 'wjRefresh') { S.gallery = null; return loadModlists(true); }
+    if (a === 'wjFilter') { S.filter = b.dataset.f; return render(); }
+    if (a === 'wjNsfw') { S.nsfw = !S.nsfw; return render(); }
+    if (a === 'wjFile') {
+      const f = await KIT.pickPath({ title: 'Choose a .wabbajack file', files: true, folder: false }); if (!f) return;
+      if (!f.endsWith('.wabbajack')) return KIT.alert('That isn\'t a .wabbajack file', '', false);
+      const name = f.replace(/^.*\//, '').replace(/\.wabbajack$/, '');
+      const game = await KIT.choose('Which game is it for?', [['SkyrimSpecialEdition', 'Skyrim Special Edition'], ['Fallout4', 'Fallout 4'], ['FalloutNewVegas', 'Fallout: New Vegas'], ['Fallout3', 'Fallout 3'], ['Oblivion', 'Oblivion'], ['Starfield', 'Starfield'], ['Cyberpunk2077', 'Cyberpunk 2077'], ['BaldursGate3', "Baldur's Gate 3"]].map(([id, label]) => ({ id, label })));
+      if (!game) return;
+      return wjInstall({ id: f, title: name, game, gameName: game });
+    }
+    if (a === 'needOpen') return openUrl(b.dataset.url);
+    if (a === 'jobCancel') { await KIT.invoke('wj_cancel', { id: job }); return refreshJobs(); }
+    if (a === 'jobResume') { await KIT.invoke('wj_resume', { id: job }); return refreshJobs(); }
+    if (a === 'jobFolder') { const j = S.jobs.find(x => x.id === job); return KIT.invoke('open_folder', { path: j.installDir }); }
+    if (a === 'jobRepair') { KIT.progress('Setting up its Proton folder', 'Installing the Windows parts it needs'); const n = await KIT.invoke('wj_repair', { id: job }); KIT.close(); return KIT.alert('Done', n.length ? n.map(esc).join('<br>') : 'Its Proton folder is set up.'); }
+    if (a === 'jobLog') { const t = await KIT.invoke('wj_log', { id: job }); return KIT.alert('Log', `<pre class="status" style="white-space:pre-wrap;max-height:55vh;overflow:auto">${esc(t || 'Nothing yet.')}</pre>`); }
+    if (a === 'jobForget') {
+      const c = await KIT.choose('Remove this modlist?', [{ id: 'keep', label: 'Take it out of Hearth only', sub: 'Its folder and downloads stay' }, { id: 'files', label: 'Delete the modlist\'s folder', sub: 'The downloads stay, for installing it again' }, { id: 'all', label: 'Delete its folder and its downloads' }]);
+      if (!c) return;
+      await KIT.invoke('wj_forget', { id: job, deleteFiles: c !== 'keep', deleteDownloads: c === 'all' });
+      return refreshJobs();
+    }
+  } catch (e) { KIT.close(); KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled || b.closest('#kit-layer') || KIT.dialogOpen()) return;
+  if (b.dataset.tab) return setTab(b.dataset.tab);
+  if (b.dataset.dl && S.tab === 'downloads' && !b.dataset.act) return downloadActions(b.dataset.dl);
+  if (b.dataset.ml) { const m = S.gallery.find(x => x.id === b.dataset.ml); if (m) return m.down ? KIT.alert('This list is down for now', 'Its author or Wabbajack marked it as broken. Try again later.', false) : wjInstall(m); }
+  if (S.tab !== 'games' && b.dataset.act) return act(b.dataset.act, b);
+});
 
 // ---------------------------------------------------------------- without the app (opening the page in a browser): sample games
 KIT.demo = (cmd, a) => {
