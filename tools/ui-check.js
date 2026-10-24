@@ -1007,6 +1007,83 @@ const path = require('path');
   } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
   await gp.close();
 
+  // Hearth Friends on Matrix (the preview's made-up account): the Friends screen's two halves (Hearth Friends and the
+  // stores' friends), friends with "Playing" and Joinable, a chat with a game invite card (Play, Join server, Join via
+  // Steam), a Play together request (let them join / not now), a picture, the emoji grid, Requests, Settings (privacy,
+  // Steam friends, Discord), signed out (Sign in, Create an account), the friend's sheet with the controller, and
+  // Quick Access › Friends with a chat in it. Pictures of the screens go to tools/qa-shots (friends.yml posts them).
+  {
+    const fp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    fp.on('pageerror', e => errors.push(`friends: ${e.message}`));
+    const shotsDir = path.resolve(__dirname, 'qa-shots');
+    try { require('fs').mkdirSync(shotsDir, { recursive: true }); } catch {}
+    const shoot = async name => { for (const q of [60, 45, 30, 20]) { const buf = await fp.screenshot({ type: 'jpeg', quality: q }); if (buf.toString('base64').length <= 9 * 3800 || q === 20) { require('fs').writeFileSync(path.join(shotsDir, `friends-${name}.jpg`), buf); break; } } };
+    try {
+      await fp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await fp.waitForTimeout(1200);
+      const run = fn => fp.evaluate(fn);
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        closeAll(); S.layers = []; S.history = []; MF.top = 'mx'; MF.tab = 'friends'; MF.room = null; navigate('friends', {}, false); await wait(300);
+        if (!has('mft-mx') || !has('mft-stores')) throw new Error('no Hearth Friends / Steam & other stores switch');
+        const sarah = has('mff-@sarah:matrix.org');
+        if (!sarah || !/Playing Starfall Drift/.test(sarah.textContent) || !/Joinable/.test(sarah.textContent)) throw new Error('Sarah isn\'t shown playing and joinable');
+        if (!/Request sent/.test((has('mff-@jo:matrix.org') || {}).textContent || '')) throw new Error('a sent request isn\'t shown');
+        if (!has('mf-add') || !has('mf-code')) throw new Error('no Add friend / My code');
+        setFocus(sarah, true); input('a'); await wait(150);
+        const sh = document.querySelector('#sheetBox').textContent;
+        if (!S.layers.includes('sheet') || !/Message Sarah/.test(sh) || !/Ask to join/.test(sh) || !/Block/.test(sh) || !/Report/.test(sh)) throw new Error('the friend\'s sheet is missing things: ' + sh.slice(0, 200));
+        closeAll();
+      });
+      await shoot('list');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        mfOpenChat('!s:matrix.org'); await wait(400);
+        for (const k of ['mfx-type', 'mfx-emoji', 'mfx-shot', 'mfx-game', 'mfg-p-$3', 'mfg-j-$3', 'mfg-v-$3', 'mfp-a-$4', 'mfp-k-$4', 'mfp-d-$4', 'mfi-$5'])
+          if (!has(k)) throw new Error('the chat has no ' + k);
+        if (!/End-to-end encrypted/.test(document.querySelector('#view .mfchathead').textContent)) throw new Error('the chat doesn\'t say it\'s encrypted');
+        await mfAct('mfEmoji', {}); await wait(150);
+        if (!has('mfe-0')) throw new Error('no emoji grid');
+        await mfAct('mfImg', { id: '$5' }); await wait(200);
+        if (!document.querySelector('#view .mfimg')) throw new Error('the picture didn\'t show');
+      });
+      await shoot('chat');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        await mfAct('mfClose', {}); MF.emojiOpen = false;
+        await mfAct('mfTab', { v: 'requests' }); await wait(150);
+        if (!has('mfr-a-req0') || !has('mfr-b-req0')) throw new Error('Requests has no Accept / Block');
+        await mfAct('mfTab', { v: 'settings' }); await wait(250);
+        for (const k of ['mfs-friendsOnly', 'mfs-sharePlaying', 'mfs-presence', 'mfs-blocked', 'mfs-askToJoin', 'mfs-steam', 'mfs-discord', 'mfs-out'])
+          if (!has(k)) throw new Error('Friends › Settings has no ' + k);
+        if (!/end-to-end encrypted/.test(document.querySelector('#view').textContent)) throw new Error('no end-to-end note');
+      });
+      await shoot('settings');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        await mfAct('mfTop', { v: 'stores' }); await wait(200);
+        if (!document.querySelector('#view .frow') && !/Loading/.test(document.querySelector('#view').textContent)) throw new Error('Steam & other stores shows nothing');
+        await mfAct('mfTop', { v: 'mx' });
+        const was = MF.st; MF.st = { signedIn: false, settings: { homeserver: 'matrix.org' } }; render(null, true); await wait(100);
+        if (!has('mf-signin') || !has('mf-create') || !has('mf-hs')) throw new Error('signed out: no Sign in / Create an account / server');
+        if (!/matrix\.org/.test(document.querySelector('#view').textContent)) throw new Error('signed out: doesn\'t say where the account lives');
+        MF.st = was;
+        // Quick Access › Friends, then a chat in it.
+        closeAll(); openLayer('qam'); S.qtab = 'friends'; MF.room = null; renderQam(); await wait(300); renderQam();
+        if (!document.querySelector('#qam [data-k="mfq-f-@sarah:matrix.org"]') || !document.querySelector('#qam [data-k="mfq-all"]')) throw new Error('Quick Access › Friends has no friends');
+        await mfAct('mfQOpen', { room: '!s:matrix.org' }); await wait(300); renderQam();
+        if (!document.querySelector('#qam [data-k="mfx-type"]') || !document.querySelector('#qam [data-k="mfx-game"]')) throw new Error('Quick Access › Friends chat has no Reply / Invite');
+      });
+      await shoot('qam');
+      await run(() => { closeAll(); MF.room = null; });
+    } catch (e) { errors.push('friends: ' + e.message.split('\n')[0]); }
+    await fp.close();
+  }
+
   // Quick Access is one panel: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT) and the
   // overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same size, tabs,
   // sections and buttons in the same order, with the same actions and the same controller navigation. Screenshots of
