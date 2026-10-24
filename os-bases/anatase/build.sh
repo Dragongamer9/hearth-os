@@ -387,8 +387,9 @@ fi
 # hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
 # Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
-# zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
-for p in orca speech-dispatcher espeak-ng fontconfig wtype wl-clipboard xprop; do dnf5 -y install "$p" || echo "warning: $p isn't available"; done
+# zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries. Colour
+# emoji (Noto) for the picker and the on-screen keyboard's emoji (Desktop Mode draws them with the system's fonts).
+for p in orca speech-dispatcher espeak-ng fontconfig wtype wl-clipboard xprop google-noto-color-emoji-fonts; do dnf5 -y install "$p" || echo "warning: $p isn't available"; done
 for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"

@@ -211,7 +211,8 @@ class Keyboard {
         onHide: () => this.close(),
       });
       this.view = H.mount(box, this.engine, { doc });
-      this.engine.setHints(GAME);
+      // The controller reaches it as keys (Hearth Input: arrows, Enter, Alt+Left, Esc), so no button hints on the keys.
+      this.engine.setHints(false);
       if (BIG) H.setSetting("size", "l");
     } catch (e) { report("keyboard", e); }
 
