@@ -1,0 +1,251 @@
+{
+ "specials": {
+  "id": "cat_specials",
+  "name": "Specials",
+  "items": [
+   {
+    "id": 1091500,
+    "type": 0,
+    "name": "Cyberpunk 2077",
+    "discounted": true,
+    "discount_percent": 70,
+    "original_price": 5999,
+    "final_price": 1799,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/f5283a1d1a2a44b9b67a861cc2e047859557a872/capsule_616x353_alt_assets_9.jpg?t=1792682505",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/e104809f1370b37190ab346ff28f2dbf5037fed6/capsule_184x69_alt_assets_9.jpg?t=1792682505",
+    "windows_available": true,
+    "mac_available": true,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "discount_expiration": 1793037600,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1091500/48a93d6445a67520ea49833c93dae8f2e68fc540/header_alt_assets_9.jpg?t=1792682505",
+    "controller_support": "full"
+   },
+   {
+    "id": 2138330,
+    "type": 0,
+    "name": "Cyberpunk 2077: Phantom Liberty",
+    "discounted": true,
+    "discount_percent": 40,
+    "original_price": 2999,
+    "final_price": 1799,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2138330/4fc31975413513de4f1ca313b8459f7606b0112f/capsule_616x353.jpg?t=1784713876",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2138330/3d2b6a051a7e2fc4ff654d95d6876c24d6dda13d/capsule_184x69.jpg?t=1784713876",
+    "windows_available": true,
+    "mac_available": true,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "discount_expiration": 1793037600,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2138330/bdbeea292270b8cd9dde1f2044a411624db58657/header.jpg?t=1784713876",
+    "controller_support": "full"
+   },
+   {
+    "id": 1203620,
+    "type": 0,
+    "name": "Enshrouded",
+    "discounted": true,
+    "discount_percent": 10,
+    "original_price": 3999,
+    "final_price": 3599,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1203620/a8f53c82cb8ee725aeba714d65dce4b81f6ff2a6/capsule_616x353_alt_assets_2.jpg?t=1792078032",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1203620/8af4416eb10538ba60047c325789ded4c7f02681/capsule_184x69_alt_assets_2.jpg?t=1792078032",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "discount_expiration": 1793293203,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1203620/98ca939f51b39bdd41e0e9198a9ccf8421148770/header_alt_assets_2.jpg?t=1792078032",
+    "controller_support": "full"
+   }
+  ]
+ },
+ "coming_soon": {
+  "id": "cat_comingsoon",
+  "name": "Coming Soon",
+  "items": [
+   {
+    "id": 5272490,
+    "type": 0,
+    "name": "Catch The Ducks",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": null,
+    "final_price": 0,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5272490/10ff222e4c8ee13a636812b69f89044a8805fb50/capsule_616x353.jpg?t=1792456846",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5272490/13b158a76fb56eed4a7bef751bcb1de0031f79ec/capsule_184x69.jpg?t=1792456846",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5272490/0793ca637dce271e2166ba89d86c931783cb91ff/header.jpg?t=1792456846"
+   },
+   {
+    "id": 5385830,
+    "type": 0,
+    "name": "Lily or Horse",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": null,
+    "final_price": 0,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5385830/a321e4e0ad50afb585387d4cefd939fc7b8db050/capsule_616x353.jpg?t=1792122537",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5385830/aacf6d638ffde9426723cdd35174611232cfa4dd/capsule_184x69.jpg?t=1792122537",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5385830/920ed26d1fef714a3dbad95210df9e36bdfa4ff3/header.jpg?t=1792122537"
+   },
+   {
+    "id": 4709550,
+    "type": 0,
+    "name": "Behind the Corner",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": null,
+    "final_price": 0,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4709550/a086977d6150d320df6cdbb066a0d6086fb1ae22/capsule_616x353.jpg?t=1792764634",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4709550/e87f5d23cc9bc271660786d8351d943ea7ab35b5/capsule_184x69.jpg?t=1792764634",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4709550/ff067adc322fe8522b8775b0a55f8f5a8dd01fcb/header.jpg?t=1792764634"
+   }
+  ]
+ },
+ "top_sellers": {
+  "id": "cat_topsellers",
+  "name": "Top Sellers",
+  "items": [
+   {
+    "id": 4435490,
+    "type": 0,
+    "name": "Call of Duty®: Modern Warfare® 4",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": 6999,
+    "final_price": 6999,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/be8aded41f612f9c6c59581351adfa65b0461042/capsule_616x353_alt_assets_1.jpg?t=1792806931",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/50d218e79ead2650bc6b7360995cc8dd3fbe2c29/capsule_184x69.jpg?t=1792806931",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/0c492be3204835d71e8b454b6eb1817f8ff68c0d/header.jpg?t=1792806931",
+    "controller_support": "full"
+   },
+   {
+    "id": 4435490,
+    "type": 0,
+    "name": "Call of Duty®: Modern Warfare® 4",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": 6999,
+    "final_price": 6999,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/be8aded41f612f9c6c59581351adfa65b0461042/capsule_616x353_alt_assets_1.jpg?t=1792806931",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/50d218e79ead2650bc6b7360995cc8dd3fbe2c29/capsule_184x69.jpg?t=1792806931",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/0c492be3204835d71e8b454b6eb1817f8ff68c0d/header.jpg?t=1792806931",
+    "controller_support": "full"
+   },
+   {
+    "id": 4165910,
+    "type": 0,
+    "name": "Steam Machine",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": 104900,
+    "final_price": 104900,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4165910/63912f6b25ab1403d7eed3eb49484c71a8520501/capsule_616x353.jpg?t=1789424191",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4165910/078827d20191ceda1d7e205f34510095fb1b1fda/capsule_184x69.jpg?t=1789424191",
+    "windows_available": true,
+    "mac_available": true,
+    "linux_available": true,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4165910/6e3f2fedcd1e7faa80fe3b5c349a62a73dde5d10/header.jpg?t=1789424191"
+   }
+  ]
+ },
+ "new_releases": {
+  "id": "cat_newreleases",
+  "name": "New Releases",
+  "items": [
+   {
+    "id": 4522380,
+    "type": 0,
+    "name": "Realize in Peace",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": null,
+    "final_price": 0,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4522380/f3db4ac2d9a56473b59a6841eb5c8b186b0b8593/capsule_616x353.jpg?t=1792811413",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4522380/a1373bea02f6a4866a8f77ee0e66e744ea3d0ea7/capsule_184x69.jpg?t=1792811413",
+    "windows_available": true,
+    "mac_available": true,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4522380/8b8c9b86951e4c9292c83f887658a5567ff0095d/header.jpg?t=1792811413"
+   },
+   {
+    "id": 5365450,
+    "type": 0,
+    "name": "BRASS: Hard Contact",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": null,
+    "final_price": 0,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5365450/7dfdf1ea4628366ebd879d0f03a67f5e290cdd29/capsule_616x353.jpg?t=1792810987",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5365450/cdcdd74a538348337ea498f7f8505b75e2749b2a/capsule_184x69.jpg?t=1792810987",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5365450/5980fdb380f6ef344bae08b8e688e797f957fac4/header.jpg?t=1792810987"
+   },
+   {
+    "id": 5372620,
+    "type": 0,
+    "name": "Pikabuu: Home",
+    "discounted": false,
+    "discount_percent": 0,
+    "original_price": 199,
+    "final_price": 199,
+    "currency": "USD",
+    "large_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5372620/1abd66505bfa588eae6c22e3b9451c481265ebfe/capsule_616x353.jpg?t=1792810948",
+    "small_capsule_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5372620/8bfd862ef1a86f11464b0cf65de8bb6dc329ebef/capsule_184x69.jpg?t=1792810948",
+    "windows_available": true,
+    "mac_available": false,
+    "linux_available": false,
+    "streamingvideo_available": false,
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/5372620/341cf07bc97f26bd7abbe9e5c719d4e0903b022e/header.jpg?t=1792810948"
+   }
+  ]
+ },
+ "status": 1,
+ "0": {
+  "id": "cat_spotlight",
+  "name": "Spotlights",
+  "items": [
+   {
+    "name": "WEEKEND DEAL",
+    "header_image": "https://shared.akamai.steamstatic.com/store_item_assets/steam/spotlights/d91b922e635a68b8dc0f4489/287aa187aeb0425fdd226f8d795c6c6c68bdc23d/vertical_capsule_english.jpg?t=1792689343",
+    "body": "Offer ends %1$s.",
+    "url": "https://store.steampowered.com/app/1091500"
+   }
+  ]
+ }
+}

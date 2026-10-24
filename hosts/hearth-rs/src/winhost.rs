@@ -13,7 +13,11 @@
 //!     {"t":"do","op":"exit","code":n} | {"t":"do","op":"restart"} | {"t":"do","op":"zoom","pct":n}
 //!     {"t":"do","op":"overlay.create"} | {"t":"do","op":"hotkey"} (Ctrl+Alt+Q, sent back as {"t":"hotkey"})
 //!     {"t":"do","op":"stream.open","url","title","windowed"} | {"t":"do","op":"stream.close"}
-//!     {"t":"do","op":"signin.open","url","title","script","pad"} | {"t":"do","op":"signin.close"}
+//!     {"t":"do","op":"signin.open","url","title","script","pad","profile"} | {"t":"do","op":"signin.close"}
+//!     {"t":"do","op":"storeweb.open","url","title","store","pad","fullscreen","profile"} | {"t":"do","op":"storeweb.close"}
+//!                                                               Game Mode › Store's store window (GOG, Epic, Xbox pages);
+//!                                                               "profile": the browser profile folder it shares with
+//!                                                               that store's sign-in window (storefront::web_profile)
 //!     {"t":"ask","id":n,"op":"pickFile","title"} | {"t":"ask","id":n,"op":"pickFolder","title","start"}
 //!     {"t":"art","id":n,"path":"…"|null,"mime":"…"}           answer to an art request
 //!   window app → core (stdin)
@@ -22,6 +26,7 @@
 //!     {"t":"answer","id":n,"value":…}                           a picked file or folder (null: cancelled)
 //!     {"t":"signin.nav","url":"…"} | {"t":"signin.closed"}       the sign-in window went somewhere, or was closed
 //!     {"t":"stream.exit"} (its page's Exit) | {"t":"stream.closed"} (core_ipc.rs) | {"t":"hotkey"}
+//!     {"t":"storeweb.closed","store":"gog"}                      the store window was closed (B, or its close button)
 //!     {"t":"art","id":n,"uri":"nimbus-art://…"}                  which file a picture is (the window app reads it)
 //! Lines that aren't JSON objects with "t" are ignored on both sides (a stray print can't break the channel).
 
@@ -59,6 +64,9 @@ pub trait WindowHost: Send + Sync {
     fn sign_in(&self, page: &hearth_core::stores::SignIn) -> Option<String>;
     /// Xbox Cloud Gaming's window: open (url, title) or close (None).
     fn stream(&self, open: Option<(&str, &str)>, windowed: bool);
+    /// Game Mode › Store's store window: a store's own page (GOG, Epic, Xbox), signed in with the browser profile
+    /// that store's sign-in window uses; None closes it. Closing it tells the core ("storeWebClosed").
+    fn store_web(&self, page: Option<&hearth_core::storefront::WebPage>);
     fn zoom(&self, pct: u32);
     /// Quick Access's own see-through window over games (not on the Handheld Daemon editions).
     fn create_overlay(&self) -> bool;
@@ -145,6 +153,10 @@ impl IpcHost {
             "signin.closed" => { if let Some(w) = self.signin.lock().unwrap().take() { let _ = w.tx.send(None); } }
             "hotkey" => { if let Some(h) = self.hotkey.lock().unwrap().clone() { std::thread::spawn(move || h()); } }
             "stream.exit" => self.stream(None, false),
+            "storeweb.closed" => {
+                hearth_core::stores::notify(json!({"type": "internal", "what": "storeWebClosed", "store": v["store"]}));
+                if let Some(gm) = crate::GM.get() { gm.come_back(); }
+            }
             _ => return false,
         }
         true
@@ -180,8 +192,10 @@ impl WindowHost for IpcHost {
         let (tx, rx) = channel();
         { let mut s = self.signin.lock().unwrap(); if let Some(old) = s.take() { let _ = old.tx.send(None); } *s = Some(SignInWait { done: page.done, tx }); }
         let pad = crate::signin_pad_wanted();
+        // The store's own browser profile (shared with Game Mode › Store's store window): one sign-in covers both.
+        let profile = hearth_core::storefront::web_profile(page.store, "chromium");
         self.send(json!({"t": "do", "op": "signin.open", "url": page.url, "title": page.title, "script": page.script.unwrap_or(""),
-                         "pad": pad, "fullscreen": crate::in_session() && !hearth_core::signin_handoff::windowed()}));
+                         "pad": pad, "fullscreen": crate::in_session() && !hearth_core::signin_handoff::windowed(), "profile": profile}));
         if let Some(gm) = crate::GM.get() { gm.to_front(page.title); }
         let answer = rx.recv().ok().flatten();
         self.send(json!({"t": "do", "op": "signin.close"}));
@@ -193,6 +207,12 @@ impl WindowHost for IpcHost {
             Some((url, title)) => self.send(json!({"t": "do", "op": "stream.open", "url": url, "title": title, "windowed": windowed})),
             None => self.send(json!({"t": "do", "op": "stream.close"})),
         }
+    }
+    fn store_web(&self, page: Option<&hearth_core::storefront::WebPage>) {
+        let Some(p) = page else { return self.send(json!({"t": "do", "op": "storeweb.close"})) };
+        self.send(json!({"t": "do", "op": "storeweb.open", "url": p.url, "title": p.title, "store": p.store, "pad": crate::signin_pad_wanted(),
+                         "fullscreen": crate::in_session() && !hearth_core::signin_handoff::windowed(), "profile": p.profile_for("chromium")}));
+        if let Some(gm) = crate::GM.get() { gm.to_front(&p.title); }
     }
     fn zoom(&self, pct: u32) { self.send(json!({"t": "do", "op": "zoom", "pct": pct})); }
     fn create_overlay(&self) -> bool { self.send(json!({"t": "do", "op": "overlay.create"})); true }
@@ -235,6 +255,22 @@ mod tests {
         assert_eq!(out[1], json!({"t": "msg", "to": "overlay", "msg": {"type": "event"}}));
         assert_eq!(out[2]["to"], "*");
         assert!(!h.incoming(&json!({"t": "page"})), "page messages are core_ipc's");
+    }
+
+    #[test]
+    fn store_window_over_the_channel() {
+        let b = Buf::default();
+        let h = IpcHost::new(Box::new(b.clone()));
+        let p = hearth_core::storefront::WebPage { store: "gog".into(), url: "https://www.gog.com/en/game/x".into(), title: "GOG".into(), profile: "/tmp/p/gog-1".into() };
+        h.store_web(Some(&p));
+        h.store_web(None);
+        let out = lines(&b);
+        assert_eq!(out[0]["op"], "storeweb.open");
+        assert_eq!(out[0]["store"], "gog");
+        assert_eq!(out[0]["url"], "https://www.gog.com/en/game/x");
+        assert_eq!(out[0]["profile"], "/tmp/p/gog-1/chromium");
+        assert_eq!(out[1], json!({"t": "do", "op": "storeweb.close"}));
+        assert!(h.incoming(&json!({"t": "storeweb.closed", "store": "gog"})));
     }
 
     #[test]

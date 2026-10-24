@@ -154,6 +154,13 @@ impl Bridge {
                 out.push(Bridge::event("library.changed", json!({})));
             }
             "streamClosed" => if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) { out.push(self.library.exited()); },
+            // Game Mode › Store's store window closed: that store's games fetched again (a purchase shows up).
+            "storeWebClosed" => {
+                if let Some(st) = crate::stores::STORES.into_iter().find(|x| v["store"] == *x) {
+                    if crate::stores::signed_in(st) { crate::stores::refresh(st, self.library.accounts.clone(), Value::Null); }
+                    out.push(Bridge::event("store.webClosed", json!({"store": st})));
+                }
+            }
             _ => {}
         }
         out
@@ -507,6 +514,26 @@ impl Bridge {
                 crate::stores::refresh(s, self.library.accounts.clone(), json!({"id": self.cur_id, "to": self.cur_label}));
                 Ok(json!(DEFERRED))
             }
+            // ---- Game Mode › Store (storefront.rs): browsing the stores' public pages; buying happens on their own
+            // pages (Steam's client, or the store window signed in with Library › Stores' sign-in), never in Hearth.
+            "store.status" => {
+                let (steam_name, _, _) = self.steam_account();
+                Ok(crate::storefront::status(steam_name.is_some(), crate::steam::client_installed(&self.library.home)))
+            }
+            "store.home" => { let s = req("store")?; self.later(move || crate::storefront::home(&s)) }
+            "store.search" => { let (s, q) = (req("store")?, a["q"].as_str().unwrap_or("").to_string()); self.later(move || crate::storefront::search(&s, &q)) }
+            "store.details" => { let (s, id) = (req("store")?, req("id")?); self.later(move || crate::storefront::details(&s, &id)) }
+            // Steam's own store or install dialog, in Steam's window (signed in already): steam://store/<appid>.
+            "store.steam" => {
+                let id: u64 = req("id")?.parse().map_err(|_| "That isn't a Steam game.".to_string())?;
+                if !crate::steam::client_installed(&self.library.home) { return Err("Steam isn't installed on this device.".into()); }
+                self.open_steam(&format!("steam://{}/{id}", if a["what"] == "install" { "install" } else { "store" }));
+                Ok(json!({"ok": true}))
+            }
+            // GOG, Epic, Xbox: the store's page in the store window.
+            "store.web" => crate::storefront::open_web(&req("store")?, &req("url")?, a["title"].as_str().unwrap_or("")).map(|_| json!({"ok": true})),
+            "store.webClose" => { crate::storefront::close_web(); Ok(json!({"ok": true})) }
+            // ---- end of Game Mode › Store
             "accounts.pickFolder" => {
                 let cur = self.library.install_root().to_string_lossy().to_string();
                 if let Some(dir) = (self.pick_folder)("Where should Hearth install games?", &cur) { io(self.library.store.update(|d| { d.insert("installRoot".into(), json!(dir)); }))?; }
