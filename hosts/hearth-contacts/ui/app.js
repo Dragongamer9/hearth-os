@@ -239,7 +239,7 @@ function showDialog(html) {
   setTimeout(() => ($('#layer [data-autofocus]') || $('#layer .f'))?.focus(), 0);
 }
 function closeDialog() {
-  $('#layer').innerHTML = ''; oskTarget = null;
+  $('#layer').innerHTML = ''; oskTarget = null; if (window.HearthOSK) HearthOSK.close(true);
   const k = lastFocus;
   setTimeout(() => (k && document.querySelector(`[data-key="${CSS.escape(k)}"]`) || document.querySelector('.row.sel') || $('#q'))?.focus(), 0);
 }
@@ -546,16 +546,22 @@ function choose() {
   if (el.tagName === 'BUTTON') el.click();
 }
 
-// The on-screen keyboard, for typing with a controller.
+// The on-screen keyboard, for typing with a controller: Hearth's shared keyboard (osk/, docs/OSK.md); the small one
+// below only if its files are missing.
 let oskTarget = null, shift = false;
 const OSK = ['1234567890', 'qwertyuiop', 'asdfghjkl\'', 'zxcvbnm,.@', '+-_/:#&()!'];
 function openOsk(input) {
   oskTarget = input;
+  if (window.HearthOSK) {
+    const enter = () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); HearthOSK.close(); };
+    HearthOSK.open({ target: input, mode: input.dataset.osk === 'search' ? 'search' : undefined, enterLabel: input.tagName === 'TEXTAREA' ? '' : 'Done', onEnter: enter, onClose: () => { oskTarget = null; } });
+    return;
+  }
   const rows = OSK.map(r => [...r].map(c => `<button class="f" data-key="${esc(c)}">${esc(c)}</button>`).join('')).join('');
   input.insertAdjacentHTML('afterend', `<div class="osk" id="osk">${rows}<button class="f wide" data-key="shift">Shift</button><button class="f wide" data-key="space">Space</button><button class="f wide" data-key="back">⌫</button><button class="f wide" data-key="clear">Clear</button><button class="f wide" data-key="done">Done</button></div>`);
   $('#osk [data-key="q"]').focus();
 }
-function closeOsk() { const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
+function closeOsk() { if (window.HearthOSK && HearthOSK.isOpen()) { HearthOSK.close(); return; } const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
 function oskPress(k) {
   const t = oskTarget; if (!t) return;
   if (k === 'done') return closeOsk();
@@ -578,6 +584,8 @@ function pad() {
     st.up ||= bt(12) || ay < -.6; st.down ||= bt(13) || ay > .6; st.left ||= bt(14) || ax < -.6; st.right ||= bt(15) || ax > .6;
     st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.menu ||= bt(9);
   }
+  // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after).
+  if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(st)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(pad); return; }
   for (const [k, on] of Object.entries(st)) {
     if (!on) { held[k] = 0; continue; }
     const first = !held[k];
