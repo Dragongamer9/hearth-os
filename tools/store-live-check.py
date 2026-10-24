@@ -59,7 +59,7 @@ CHECKS = [
     ("xbox_gamepass_products", "https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0", ["Products"], "POST", json.dumps({"Products": ["9NBLGGH4R315"]})),
 ]
 
-EPIC_OFFER = ('{Catalog{catalogOffer(namespace:"36a21c249987423a93f8442cc40a0e33",id:"adbc94588a184ce3a6122a19aae940ae",locale:"en-US",country:"US"){'
+EPIC_OFFER = ('{Catalog{catalogOffer(namespace:"36a21c249987423a93f8442cc40a0e33",id:"adbc94588a184ce3a6122a19aae940ae",locale:"en-US"){'
               'title id namespace description longDescription developerDisplayName publisherDisplayName releaseDate effectiveDate '
               'keyImages{type url} productSlug urlSlug catalogNs{mappings(pageType:"productHome"){pageSlug}} tags{id name groupName} '
               'price(country:"US"){totalPrice{discountPrice originalPrice currencyCode fmtPrice(locale:"en-US"){originalPrice discountPrice}}}}}}')
@@ -67,7 +67,7 @@ EPIC_SALE = ('{Catalog{searchStore(category:"games/edition/base|bundles/games",c
              'elements{title id namespace keyImages{type url} productSlug urlSlug catalogNs{mappings(pageType:"productHome"){pageSlug}} '
              'price(country:"US"){totalPrice{discountPrice originalPrice currencyCode fmtPrice(locale:"en-US"){originalPrice discountPrice}}}} paging{total}}}}')
 EPIC_NEW = EPIC_SALE.replace('onSale:true,sortBy:"relevancy"', 'sortBy:"releaseDate",releaseDate:"[,2026-10-24T00:00:00.000Z]"')
-EPIC_TOP = ('{Storefront{collectionLayout(slug:"top-sellers",locale:"en-US",country:"US"){collectionOffers{title id namespace keyImages{type url} productSlug urlSlug '
+EPIC_TOP = ('{Storefront{collectionLayout(slug:"top-sellers",locale:"en-US"){collectionOffers{title id namespace keyImages{type url} productSlug urlSlug '
             'catalogNs{mappings(pageType:"productHome"){pageSlug}} price(country:"US"){totalPrice{discountPrice originalPrice currencyCode fmtPrice(locale:"en-US"){originalPrice discountPrice}}}}}}}')
 EPIC_TOP2 = EPIC_TOP.replace('Storefront', 'Collection')
 EPIC_RATING = '{RatingsPolls{getProductResult(sandboxId:"36a21c249987423a93f8442cc40a0e33",locale:"en-US"){averageRating}}}'
@@ -92,6 +92,8 @@ CHECKS += [
     ("xbox_storeedge_pdp", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/products/9NWQMVSB63N4?market=US&locale=en-US&deviceFamily=Windows.Desktop", []),
     ("xbox_emerald_search_v", "https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US", [], "POST", json.dumps({"Query": "halo", "Filters": "", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "", "ChannelId": ""}), EMERALD),
     ("xbox_emerald_browse", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", [], "POST", json.dumps({"Filters": "e30=", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
+    ("xbox_emerald_filters", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", [], "POST", json.dumps({"Filters": "e30=", "ReturnFilters": True, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
+    ("xbox_emerald_search_k", "https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US", [], "POST", json.dumps({"Query": "halo", "Filters": "e30=", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "SEARCH_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
     ("protondb", "https://www.protondb.com/api/v1/reports/summaries/1145360.json", ["tier"]),
 ] + [("xbox_sigl_" + k, f"https://catalog.gamepass.com/sigls/v2?id={v}&language=en-us&market=US", ["0.title", "1.id"]) for k, v in SIGLS.items()]
 
