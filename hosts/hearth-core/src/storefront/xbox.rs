@@ -68,7 +68,9 @@ pub fn parse_browse(v: &Value) -> Vec<Value> {
 fn browse(order: &str, on_sale: bool) -> Result<Vec<Value>, String> {
     let f = browse_filter(order, on_sale);
     let body = json!({"Filters": f, "ReturnFilters": false, "ChannelKeyToBeUsedInResponse": format!("BROWSE_CHANNELID=_FILTERS={f}"), "EncodedFilters": f, "ChannelId": ""});
-    let v = fetch("xbox", "home", "POST", &format!("{EMERALD}?locale={}", lang_region()), Some(&body.to_string()), &[("x-ms-api-version", "1.1")])?;
+    let v = fetch("xbox", "home", "POST", &format!("{EMERALD}?locale={}", lang_region()), Some(&body.to_string()),
+        // xbox.com's service wants these two (a correlation id, its API version), as its own page sends them.
+        &[("x-ms-api-version", "1.1"), ("ms-cv", "cv"), ("calling-app-name", "Hearth"), ("calling-app-version", "1")])?;
     Ok(parse_browse(&v))
 }
 

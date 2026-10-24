@@ -129,13 +129,17 @@ def curl_variants():
     f = base64.b64encode(json.dumps({"orderby": {"id": "orderby", "choices": [{"id": "MostPopular desc"}]}, "PlayWith": {"id": "PlayWith", "choices": [{"id": "PC"}]}}, separators=(",", ":")).encode()).decode()
     em = json.dumps({"Filters": f, "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=" + f, "EncodedFilters": f, "ChannelId": ""})
     tries = []
-    for ua in ["Hearth", UA, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"]:
+    for ua in ["Hearth", UA]:
         tries.append(("epic ua=" + ua[:20], "https://store.epicgames.com/graphql", q, ["Content-Type: application/json", "Accept: application/json"], ua))
+    for extra in (["--http1.1"], ["--http1.1", "--tlsv1.2", "--tls-max", "1.2"], ["--http1.1", "-H", "Accept-Encoding: identity", "-H", "Connection: close"], ["--http2"]):
+        tries.append(("epic " + " ".join(extra), "https://store.epicgames.com/graphql", q, ["Content-Type: application/json", "Accept: application/json"], UA, extra))
     tries.append(("emerald plain", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", em, ["Content-Type: application/json", "Accept: application/json", "x-ms-api-version: 1.1"], "Hearth"))
     tries.append(("emerald ms-cv", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", em, ["Content-Type: application/json", "Accept: application/json", "x-ms-api-version: 1.1", "ms-cv: cv", "calling-app-name: Hearth", "calling-app-version: 1"], "Hearth"))
     tries.append(("emerald long ua", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", em, ["Content-Type: application/json", "Accept: application/json", "x-ms-api-version: 1.1"], UA))
-    for name, url, body, hdrs, ua in tries:
+    for t in tries:
+        name, url, body, hdrs, ua = t[:5]
         args = ["curl", "-sS", "-L", "-m", "25", "-X", "POST", "-A", ua, "-w", "\n%{http_code}", "--data-binary", body, url]
+        if len(t) > 5: args[1:1] = t[5]
         for h in hdrs: args[1:1] = ["-H", h]
         try: out = subprocess.run(args, capture_output=True, text=True, timeout=40).stdout
         except Exception as e: out = f"{e}\n0"
