@@ -132,6 +132,51 @@ def chained():
             ("xbox_gamepass_products_gp", "https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0", ["Products"], "POST", json.dumps({"Products": ids}))]
 
 
+# Library › Steam's owned games (hosts/hearth-core/src/steam_owned.rs): a public profile's games list (Robin Walker's,
+# a Valve developer's, with public game details). Since October 2026 Steam answers a visitor who isn't signed in with
+# its sign-in page (a redirect to /login/); the answers are kept to refresh hosts/hearth-core/src/fixtures/steam_community.
+COMMUNITY_PROFILE = "76561197960435530"
+COMMUNITY = [
+    ("steam_community_games_xml", f"https://steamcommunity.com/profiles/{COMMUNITY_PROFILE}/games?tab=all&xml=1"),
+    ("steam_community_games_page", f"https://steamcommunity.com/profiles/{COMMUNITY_PROFILE}/games/?tab=all"),
+    ("steam_community_profile_xml", f"https://steamcommunity.com/profiles/{COMMUNITY_PROFILE}/?xml=1"),
+]
+
+
+def community_kind(text, final_url):
+    """What a Steam Community answer is: the game list (old XML or page), Steam's sign-in page, a profile, or unknown."""
+    if "/login/" in final_url or 'data-featuretarget="login"' in text:
+        return "sign-in page"
+    if "<gamesList" in text:
+        return "games XML"
+    if "data-profile-gameslist=" in text or "var rgGames" in text:
+        return "games page with its list"
+    if "<profile>" in text and "<privacyState>" in text:
+        return "profile XML"
+    return "unknown"
+
+
+def community():
+    for name, url in COMMUNITY:
+        status, text, final = 0, "", url
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Hearth"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                status, text, final = r.status, r.read().decode("utf-8", "replace"), r.geturl()
+        except urllib.error.HTTPError as e:
+            status, text = e.code, e.read().decode("utf-8", "replace")[:4000]
+        except Exception as e:  # noqa: BLE001
+            text = f"{type(e).__name__}: {e}"
+        with open(os.path.join(OUT, name + ".html"), "w", encoding="utf-8") as f:
+            f.write(text)
+        kind = community_kind(text, final)
+        with open(os.path.join(OUT, "status.txt"), "a", encoding="utf-8") as f:
+            f.write(f"{name}\t{status}\t{len(text)}\t{kind}\t{url}\n")
+        level = "notice" if kind in ("games XML", "games page with its list", "profile XML") else "warning"
+        print(f"::{level} title=Steam Community {name}::HTTP {status}, {kind} ({len(text)} bytes)")
+        time.sleep(0.5)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     open(os.path.join(OUT, "status.txt"), "w").close()
@@ -170,6 +215,7 @@ def main():
             print(f"::warning title=Store endpoint {name}::{why}: {text[:300]!r}")
         time.sleep(0.5)   # gently: one request at a time
     print(f"::notice title=Store endpoints::{good} of {len(checks)} answered as expected")
+    community()
 
 
 if __name__ == "__main__":

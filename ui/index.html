@@ -9052,6 +9052,7 @@ function onSysEvent(name, data){
   if(name==='game.slow') return gameSlow(data);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad'){
+    if(HOSTSCREEN.picker && !OVERLAY) return;           // a file picker is open: its own controller helper has it
     if(deskActive()) return deskPadEvent(data);         // the Linux desktop's view takes the controller
     if(data.down===false) return;                        // raw mode (the desktop under a prompt): presses only
     return hostPad(data.b);
@@ -9059,6 +9060,7 @@ function onSysEvent(name, data){
   if(name==='padAxes'){ if(DESK.open) deskAxes(data); return; }
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='hostScreen'){ HOSTSCREEN.pads = !data || data.pads!==false; return; }
+  if(name==='picker'){ HOSTSCREEN.picker = !!data.open; return; }   // one of Hearth's file pickers opened or closed
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
@@ -9474,8 +9476,10 @@ function pollPads(t){
 // a Guide press over a game opened this window's old panel behind the game, and the next one sent "back to the game"
 // over the new Quick Access. Held buttons are still followed, so one held when the page gets the controller back
 // isn't taken for a new press.
-const HOSTSCREEN = {pads:true};
-function padsQuiet(){ return !OVERLAY && HOSTSCREEN.pads===false; }
+// While one of Hearth's file pickers is open (picker.rs: Hearth keeps answering meanwhile), the presses are the
+// picker's too: Hearth Files reads the controller itself.
+const HOSTSCREEN = {pads:true, picker:false};
+function padsQuiet(){ return !OVERLAY && (HOSTSCREEN.pads===false || HOSTSCREEN.picker); }
 function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
