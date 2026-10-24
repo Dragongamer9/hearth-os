@@ -2040,7 +2040,7 @@ function coopPoll(){
   call('coop.status',{},10000).then(r=>{
     const was=CO.status&&CO.status.running; CO.status=r;
     if(r.running && !CO.timer) CO.timer=setInterval(coopPoll,5000);
-    if(!r.running){ clearInterval(CO.timer); CO.timer=null; if(was){ toast('Couch Co-op ended'); call('coop.stop').catch(()=>{}); } }
+    if(!r.running){ clearInterval(CO.timer); CO.timer=null; if(was){ toast(r.lastError||r.error ? 'Couch Co-op ended: '+(r.lastError||r.error) : 'Couch Co-op ended'); call('coop.stop').catch(()=>{}); } }
     if(S.view==='coop' && !S.layers.length) render(null,true);
   }).catch(()=>{});
 }
@@ -2103,7 +2103,7 @@ function coopEvent(name, data){
     if(host && CO.players.length && !CO.players.some(x=>x.name)) call('coop.profiles').then(r=>{ (r.players||[]).forEach(pp=>{ const x=CO.players[pp.seat-1]; if(x&&!x.name) x.name=pp.name; }); if(S.view==='coop') render(null,true); }).catch(()=>{});
   } else if(name==='coop.pad.error'){ CO.waiting=false; toast(data.text); }
   else if(name==='coop.start.progress'){ CO.busy=data.text||'Starting…'; }
-  else if(name==='coop.start.done'){ CO.busy=null; coopPoll(); }
+  else if(name==='coop.start.done'){ CO.busy=null; coopPoll(); if(data&&data.warning) openSheet({title:'Not every player started', sub:data.warning, items:[{label:'OK', icon:'check', run:()=>{}}]}); }
   else if(name==='coop.start.error'){ CO.busy=null; openSheet({title:'Couch Co-op couldn\'t start', sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]}); }
   if(S.view==='coop' && !S.layers.length) render(null,true);
 }
