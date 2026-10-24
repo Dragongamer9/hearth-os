@@ -48,6 +48,14 @@ CHECKS = [
     ("xbox_sigl_pc", "https://catalog.gamepass.com/sigls/v2?id=fdd9e2a7-0fee-49f6-ad69-4354098401ff&language=en-us&market=US", ["1.id"]),
     ("xbox_displaycatalog", "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9NBLGGH4R315,9P0J5C1LQ3SH&market=US&languages=en-us", ["Products.0.LocalizedProperties.0.ProductTitle"]),
     ("xbox_autosuggest", "https://displaycatalog.mp.microsoft.com/v7.0/productFamilies/autosuggest?market=US&languages=en-us&query=halo&productFamilyNames=Games", ["Results"]),
+    ("xbox_storeedge_search", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/search?market=US&locale=en-US&deviceFamily=Windows.Desktop&query=halo&mediaType=games", []),
+    ("xbox_storeedge_searchpage", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/pages/searchResults?market=US&locale=en-US&deviceFamily=Windows.Desktop&query=halo&mediaType=games", []),
+    ("xbox_storeedge_toppaid", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/collections/TopPaid?market=US&locale=en-US&deviceFamily=Windows.Desktop&mediaType=games", []),
+    ("xbox_emerald_search", "https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US", [], "POST", json.dumps({"Query": "halo", "Filters": "", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "", "ChannelId": ""})),
+    ("gog_catalog_ids", "https://catalog.gog.com/v1/catalog?limit=4&productId=in:1207664663&countryCode=US&locale=en-US&currencyCode=USD", ["products.0.price"]),
+    ("gog_catalog_slug", "https://catalog.gog.com/v1/catalog?limit=4&slug=eq:the_witcher_3_wild_hunt&countryCode=US&locale=en-US&currencyCode=USD", ["products.0.price"]),
+    ("gog_new", "https://catalog.gog.com/v1/catalog?limit=4&order=desc:storeReleaseDate&productType=in:game,pack&countryCode=US&locale=en-US&currencyCode=USD", ["products.0.price"]),
+    ("gog_bestselling", "https://catalog.gog.com/v1/catalog?limit=4&order=desc:bestselling&productType=in:game,pack&countryCode=US&locale=en-US&currencyCode=USD", ["products.0.price"]),
     ("xbox_gamepass_products", "https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0", ["Products"], "POST", json.dumps({"Products": ["9NBLGGH4R315"]})),
 ]
 
@@ -65,10 +73,25 @@ def dig(v, path):
     return v
 
 
+def chained():
+    """Requests that need an id from an earlier answer (Xbox: ids from the PC Game Pass list)."""
+    try: sigl = json.load(open(os.path.join(OUT, "xbox_sigl_pc.json"), encoding="utf-8"))
+    except (OSError, ValueError): return []
+    ids = [x["id"] for x in sigl if isinstance(x, dict) and "id" in x][:3]
+    if not ids: return []
+    return [("xbox_displaycatalog_gp", "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=" + ",".join(ids) + "&market=US&languages=en-us", ["Products.0.LocalizedProperties.0.ProductTitle"]),
+            ("xbox_gamepass_products_gp", "https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0", ["Products"], "POST", json.dumps({"Products": ids}))]
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
+    open(os.path.join(OUT, "status.txt"), "w").close()
     good = 0
-    for c in CHECKS:
+    checks = list(CHECKS)
+    i = 0
+    while i < len(checks):
+        c = checks[i]; i += 1
+        if c[0] == "xbox_gamepass_products": checks[i:i] = chained()
         name, url, need = c[0], c[1], c[2]
         method = c[3] if len(c) > 3 else "GET"
         body = c[4].encode() if len(c) > 4 else None
@@ -87,6 +110,8 @@ def main():
         try: data = json.loads(text)
         except ValueError: data = None
         missing = [k for k in need if dig(data, k) is None]
+        with open(os.path.join(OUT, "status.txt"), "a", encoding="utf-8") as f:
+            f.write(f"{name}\t{status}\t{len(text)}\t{'missing ' + ','.join(missing) if missing else 'ok' if data is not None else 'not json'}\t{url}\n")
         if status == 200 and data is not None and not missing:
             good += 1
             print(f"::notice title=Store endpoint {name}::OK ({len(text)} bytes)")
@@ -94,7 +119,7 @@ def main():
             why = f"HTTP {status}" + (f", missing {', '.join(missing)}" if missing else "") + ("" if data is not None else ", not JSON")
             print(f"::warning title=Store endpoint {name}::{why}: {text[:300]!r}")
         time.sleep(0.5)   # gently: one request at a time
-    print(f"::notice title=Store endpoints::{good} of {len(CHECKS)} answered as expected")
+    print(f"::notice title=Store endpoints::{good} of {len(checks)} answered as expected")
 
 
 if __name__ == "__main__":
