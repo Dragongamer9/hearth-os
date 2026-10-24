@@ -1,6 +1,6 @@
 #!/bin/sh
 # Opens the user's terminal, file manager, or takes a screenshot, using whatever is installed.
-# The terminal: $TERMINAL if you set one, then Hearth Terminal (hosts/hearth-terminal), then foot and the others.
+# The terminal: $TERMINAL if you set one, then the one picked in Settings › Default apps, then Hearth Terminal (hosts/hearth-terminal), then foot and the others.
 # Paths go to the commands through the environment ("$HOME", "$SHOT"), never pasted into them, so a folder or
 # name with a quote or a space in it (O'Brien, "Mes images") works.
 #   open.sh terminal | files
@@ -40,7 +40,10 @@ done_shot() {
 fail_shot() { rm -f "$SHOT"; [ -n "$1" ] && notify-send -a Screenshot "Screenshot" "$1" 2>/dev/null; exit 1; }
 
 case "$1" in
-  terminal)   first "$TERMINAL" hearth-terminal foot alacritty kitty wezterm konsole gnome-terminal xfce4-terminal xterm ;;
+  terminal)   # The one picked in Settings › Default apps › Terminal (~/.config/nimbus-xdg-terminals.list), if any.
+              if [ -z "$TERMINAL" ] && [ -s "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus-xdg-terminals.list" ] \
+                 && python3 "$(dirname "$0")/shell/hearth-system" terminal-open >/dev/null 2>&1; then exit 0; fi
+              first "$TERMINAL" hearth-terminal foot alacritty kitty wezterm konsole gnome-terminal xfce4-terminal xterm ;;
   files)      first "/usr/bin/hearth-filemanager" 'xdg-open "$HOME"' dolphin nautilus thunar pcmanfm-qt pcmanfm nemo ;;
   # A file's folder in the file manager (the screenshot notification's "Show in folder").
   files-at)   export FILE="$2"; DIR=$(dirname "$2"); export DIR

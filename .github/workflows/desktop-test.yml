@@ -116,10 +116,15 @@ jobs:
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
           # Hearth Settings, every page
           n=6
-          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse signin browser claude updates about install apps; do
+          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps; do
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
           done
           ipc settings close
+          # ---- Settings › Default apps: what hearth-system lists, and a choice made, read back and reset.
+          { python3 hosts/linux/desktop/shell/hearth-system defaults; python3 hosts/linux/desktop/shell/hearth-system default-set terminal foot.desktop;
+            python3 hosts/linux/desktop/shell/hearth-system defaults | python3 -c 'import json, sys; k = {x["kind"]: x for x in json.load(sys.stdin)["kinds"]}; print("terminal now:", k["terminal"]["current"], k["terminal"]["yours"])';
+            python3 hosts/linux/desktop/shell/hearth-system default-reset terminal; cat "$HOME/.config/mimeapps.list"; } > shots/default-apps.txt 2>&1 || true
+          grep -q "terminal now: foot.desktop True" shots/default-apps.txt || { command -v foot >/dev/null && { echo "::error title=Default apps::picking foot as the terminal didn't stick: $(tr '\n' '|' < shots/default-apps.txt | cut -c1-600)"; touch shots/FAILED; }; }
           # ---- Settings › Accessibility (hearth-access), and labwc's magnifier on Super+= (zoomed in, then out again)
           ipc settings page accessibility; grim "shots/$n-settings-accessibility.png" || true; n=$((n+1))
           python3 hosts/linux/desktop/shell/hearth-access status > shots/accessibility-status.json 2>&1 || true

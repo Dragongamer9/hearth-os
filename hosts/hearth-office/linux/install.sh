@@ -5,7 +5,7 @@
 #   office/install.sh           this script
 # The icons (hearth-write, hearth-sheets, hearth-slides) come with Hearth's icon set (branding/icons).
 # Puts the program in /usr/bin with a name per app, their menu entries (with the file types they open), the
-# .hslides file type, and makes them the default apps for office files in Hearth's desktop (nimbus-mimeapps.list).
+# .hslides file type. build.sh then makes them the default apps for office files (hearth-system defaults-system).
 # DESTDIR installs somewhere else (for checking this script).
 set -eu
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -91,13 +91,9 @@ cat > "$D/usr/share/mime/packages/hearth-office.xml" <<MIME
 </mime-info>
 MIME
 
-# Office files open in Hearth Office in Hearth's desktop (XDG_CURRENT_DESKTOP=Nimbus), unless you pick other apps.
-L="$D/etc/xdg/nimbus-mimeapps.list"
-install -d "$D/etc/xdg"
-[ -f "$L" ] || printf '[Default Applications]\n' > "$L"
-for t in $(echo "$W" | tr ';' ' '); do printf '%s=hearth-write.desktop\n' "$t" >> "$L"; done
-for t in $(echo "$S" | tr ';' ' '); do printf '%s=hearth-sheets.desktop\n' "$t" >> "$L"; done
-for t in $(echo "$P" | tr ';' ' '); do printf '%s=hearth-slides.desktop\n' "$t" >> "$L"; done
+# Office files open in Hearth Office in Hearth's desktop (XDG_CURRENT_DESKTOP=Nimbus), unless you pick other apps:
+# build.sh makes every Hearth app the default for the types in its MimeType once they're all in (hearth-system
+# defaults-system).
 
 if [ -z "$D" ]; then
   command -v update-mime-database >/dev/null && update-mime-database /usr/share/mime || true
