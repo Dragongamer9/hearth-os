@@ -582,8 +582,20 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
                 .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else { return };
             let Some(out) = child.stdout.take() else { return };
             let mut locked = false;
+            // How each sleep went, in Hearth's log: how long, how much of it was real deep sleep (s0i3: fans off,
+            // battery barely dropping), the battery, and what woke it (hearth_core::power::woke_report).
+            let mut before: Option<hearth_core::power::SleepSnap> = None;
             for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
                 if !line.contains("PrepareForSleep") { continue; }
+                if line.contains("(true") {
+                    let s = hearth_core::power::sleep_snapshot();
+                    hearth_core::bridge::log(&format!("sleep: the system is going to sleep (battery {})", s.battery.map(|b| format!("{b}%")).unwrap_or_else(|| "unknown".into())));
+                    before = Some(s);
+                } else if let Some(b) = before.take() {
+                    let after = hearth_core::power::sleep_snapshot();
+                    let wake = hearth_core::power::wake_source_in(std::path::Path::new("/"));
+                    hearth_core::bridge::log(&hearth_core::power::woke_report(&b, &after, wake.as_deref()));
+                }
                 if !line.contains("(true") {
                     // Awake: the power limit you chose, set again (the handheld's own one is back after sleep on
                     // many, ryzenadj's on the ROG Ally). A few seconds first, for the firmware to settle.
