@@ -170,7 +170,11 @@ impl Job {
               stop: AtomicBool::new(false), cancel: AtomicBool::new(false), running: AtomicBool::new(false), created: crate::now_ms(), data_ms: AtomicU64::new(0),
               samples: Mutex::new(VecDeque::new()) }
     }
-    pub fn set_state(&self, s: &str) { *crate::lock(&self.state) = s.to_string(); let _ = self.save(); }
+    pub fn set_state(&self, s: &str) {
+        eprintln!("hearth-link: copy of {}: {s}", self.title);
+        *crate::lock(&self.state) = s.to_string();
+        let _ = self.save();
+    }
     pub fn state(&self) -> String { crate::lock(&self.state).clone() }
     pub fn save(&self) -> Result<(), String> {
         let st = self.state();
@@ -445,6 +449,8 @@ pub async fn run(job: Arc<Job>, conn: iroh::endpoint::Connection, home: PathBuf,
         Err(_) if job.cancel.load(Ordering::SeqCst) => { cleanup(&job); job.set_state("cancelled"); }
         // "stopped": paused by the person (or the service stopping); anything else went wrong.
         Err(e) if e == "stopped" => job.set_state("paused"),
+        // The connection went: node.rs waits for the device and carries on.
+        Err(e) if e.starts_with("The connection broke") || e.starts_with("connection:") => job.set_state("waiting"),
         Err(e) => { *crate::lock(&job.error) = Some(e.clone()); job.set_state("error"); }
     }
     r
@@ -581,6 +587,8 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
         failed: Mutex::new(None),
     });
     let queue = Arc::new(Mutex::new(units(&files, &plan.need)));
+    eprintln!("hearth-link: copy of {}: {} files, {} need data ({} bytes) in {} requests over {} streams; {} bytes already here",
+              job.title, files.len(), plan.need.len(), plan.needed_bytes, crate::lock(&queue).len(), streams, job.skipped.load(Ordering::Relaxed));
     job.set_state("copying");
     let started = Instant::now();
 
@@ -593,7 +601,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
         let (c, j) = (ctx.clone(), job.clone());
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 let c2 = c.clone();
                 let _ = tokio::task::spawn_blocking(move || Journal::flush(&c2.journal)).await;
                 let _ = &j;
@@ -617,7 +625,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     let mut first_err: Option<String> = None;
     while let Some(r) = workers.join_next().await {
         let r = r.map_err(|e| e.to_string()).and_then(|x| x);
-        if let Err(e) = r { if first_err.is_none() && e != "stopped" { first_err = Some(e); } }
+        if let Err(e) = r { eprintln!("hearth-link: copy of {}: a stream ended: {e}", job.title); if first_err.is_none() && e != "stopped" { first_err = Some(e); } }
         job.relay.store(relayed(conn), Ordering::Relaxed);
     }
     // Every chunk handed over is written before the copy stops.

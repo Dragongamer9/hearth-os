@@ -3766,6 +3766,12 @@ async function lkGetFrom(peer){
   list.sort((a,b)=>a.title.localeCompare(b.title));
   openSheet({title:`Games on ${name}`, sub:'Copied with its saves and settings', items:list.slice(0,80).map(g=>({label:`${g.title} · ${LK_STORE[g.store]||g.store}${g.size?' · '+lkBytes(g.size):''}`, icon:'dl', run:()=>lkPlace(g.store, place=>call('link.get',{peer, game:g.id, title:g.title, place, prefix:true},20000).then(()=>{ toast(`Copying ${g.title} from ${name}`); S.settingsTab='link'; navigate('settings'); loadLink(); }).catch(e=>toast(e.message)))}))});
 }
+function lkSend(g, peer){
+  const peers=(LK.s&&LK.s.peers)||[];
+  if(!peer && peers.length>1) return openSheet({title:`Send ${g.title} to`, items:peers.map(p=>({label:p.name+(p.online?'':' (not on right now)'), icon:'display', run:()=>lkSend(g, p.id)}))});
+  const p=peers.find(x=>x.id===(peer||(peers[0]||{}).id)); if(!p) return;
+  call('link.send',{peer:p.id, game:g.id},70000).then(r=>toast(r&&r.accepted?`${p.name} is copying ${g.title}`:`Sent to ${p.name}: accept it there (Settings › Hearth Link)`)).catch(e=>toast(e.message));
+}
 function lkPlace(store, go){
   return call('link.places',{store},15000).then(r=>{ const ps=r.places||[];
     if(!ps.length) return toast(store==='steam'?'Install Steam on this device and open it once first':'No place to put it');
@@ -7203,6 +7209,7 @@ function gameOptionItems(g){
   if(ANDROID && g.src!=='emu') items.push({label:'App info',icon:'info',run:()=>andOpen('app', g.id)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
+  if(lkOn() && g.inst && ['steam','epic','gog','beacon'].includes(g.src) && LK.s && (LK.s.peers||[]).length) items.push({label:'Send to another Hearth…',icon:'dl',run:()=>lkSend(g)});   // Hearth Link
   if(g.src==='beacon'){
     const added=!!(g.beacon&&g.beacon.custom);   // added by hand in Beacon: set up in Beacon's window
     if(g.inst && beaconMods(g).length) items.unshift({label:'Play with…',icon:'play',run:()=>beaconPlayWith(g)});

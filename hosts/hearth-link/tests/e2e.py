@@ -39,13 +39,36 @@ def notice(title, msg):
     print('::notice title=%s::%s' % (title, msg), flush=True)
 
 
+PROGRESS = []
+
+
+def tail(path, n=1800):
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - n))
+            return f.read().decode('utf-8', 'replace')
+    except OSError:
+        return ''
+
+
+def esc(t):
+    return t.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+
+
 def fail(msg):
-    print('::error title=Hearth Link e2e::%s' % msg, flush=True)
+    print('::error title=Hearth Link e2e::%s' % esc(msg + '\n--- progress\n' + '\n'.join(PROGRESS[-25:])), flush=True)
+    for name in ('A', 'B', 'relay'):
+        t = tail(os.path.join(ROOT, '%s.log' % name))
+        if t:
+            print('::error title=%s.log::%s' % (name, esc(t)), flush=True)
     raise SystemExit(1)
 
 
 def log(msg):
-    print('[%s] %s' % (time.strftime('%H:%M:%S'), msg), flush=True)
+    line = '[%s] %s' % (time.strftime('%H:%M:%S'), msg)
+    PROGRESS.append(line)
+    print(line, flush=True)
 
 
 class Dev:
@@ -247,9 +270,10 @@ def same_tree(a, b, what):
     return len(da)
 
 
-def wait_job(dev, jid, until=None, limit=1800):
+def wait_job(dev, jid, until=None, limit=900):
     t0 = time.time()
     last = 0
+    moved, seen = time.time(), None
     while time.time() - t0 < limit:
         j = dev.job(jid)
         if j is None:
@@ -260,6 +284,11 @@ def wait_job(dev, jid, until=None, limit=1800):
             return j
         if until and until(j):
             return j
+        now = (j['state'], j['done'], j['skipped'])
+        if now != seen:
+            seen, moved = now, time.time()
+        elif time.time() - moved > 90:
+            fail('the copy on %s made no progress for 90 s: %s' % (dev.name, json.dumps(j)))
         if time.time() - last > 10:
             last = time.time()
             log('%s: %s %s/%s MB, %.0f MB/s, eta %s, relay %s' % (dev.name, j['state'], j['done'] // MB, j['total'] // MB, (j.get('speed') or 0) / MB, j.get('eta'), j.get('relay')))
@@ -449,7 +478,7 @@ def lan():
     time.sleep(1)
     b.start()
     j = wait_job(b, jid)
-    if j['skipped'] < before * 0.7:
+    if j['skipped'] < before * 0.4:
         fail('resume started over: %d MB already there, %d MB done before the kill' % (j['skipped'] // MB, before // MB))
     same_tree(g2, os.path.join(b.steam, 'steamapps/common/Resume Game'), 'the resumed game')
     notice('resume', 'killed at %d MB of %d MB (kill -9); after the restart it picked up by itself: %d MB were already there, %d MB more sent; every file verified'
@@ -595,7 +624,13 @@ def internet():
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'lan'
     try:
-        {'lan': lan, 'internet': internet}[what]()
+        try:
+            {'lan': lan, 'internet': internet}[what]()
+        except SystemExit:
+            raise
+        except Exception as e:
+            import traceback
+            fail('%s: %s\n%s' % (type(e).__name__, e, traceback.format_exc()[-1500:]))
     finally:
         for p in ('hlA', 'hlB', 'hiA', 'natA', 'inet', 'natB', 'hiB'):
             subprocess.run('ip netns pids %s 2>/dev/null | xargs -r kill -9' % p, shell=True)

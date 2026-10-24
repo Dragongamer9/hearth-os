@@ -46,11 +46,12 @@ pub async fn read_msg(r: &mut iroh::endpoint::RecvStream) -> Result<Value, Strin
 }
 
 /// One request and its answer on a new stream of `conn`.
+/// Errors of the connection itself (not an answer from the other device) start with "connection: ".
 pub async fn request(conn: &iroh::endpoint::Connection, req: &Value) -> Result<Value, String> {
-    let (mut s, mut r) = conn.open_bi().await.map_err(|e| e.to_string())?;
-    write_msg(&mut s, req).await?;
+    let (mut s, mut r) = conn.open_bi().await.map_err(|e| format!("connection: {e}"))?;
+    write_msg(&mut s, req).await.map_err(|e| format!("connection: {e}"))?;
     let _ = s.finish();
-    let v = read_msg(&mut r).await?;
+    let v = read_msg(&mut r).await.map_err(|e| format!("connection: {e}"))?;
     if let Some(e) = v.get("error").and_then(Value::as_str) { return Err(e.to_string()); }
     Ok(v)
 }
