@@ -207,6 +207,14 @@ class Settings(unittest.TestCase):
         self.assertEqual(k['browser']['current'], 'hearth-browser.desktop')
         self.assertFalse(any(x['yours'] for x in k.values()))
 
+    def test_file_manager_writes_both_folder_types(self):
+        write(os.path.join(self.data, 'applications', 'org.kde.dolphin.desktop'), entry('Dolphin', 'inode/directory;'))
+        r = self.s.default_set('files', 'org.kde.dolphin.desktop', self.hf)
+        self.assertEqual(r['types'], ['inode/directory', 'x-directory/normal'])   # the same two the image's lists have
+        self.assertIn('x-directory/normal=org.kde.dolphin.desktop;', self.user_list())
+        self.s.default_reset('files', self.hf)
+        self.assertEqual(self.kinds()['files']['current'], 'hearth-files.desktop')
+
     def test_terminal(self):
         self.s.default_set('terminal', 'foot.desktop', self.hf)
         mine = os.path.join(self.home, '.config', 'nimbus-xdg-terminals.list')

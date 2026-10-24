@@ -1,0 +1,5 @@
+# Hearth's xdg-desktop-portal FileChooser backend: every app's Open / Save dialog is Hearth Files
+# (/usr/share/nimbus/desktop/shell/hearth-portal and picker.qml; picked in nimbus-portals.conf).
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.hearth
+Exec=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-portal filechooser

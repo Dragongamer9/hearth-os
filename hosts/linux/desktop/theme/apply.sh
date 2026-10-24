@@ -3,6 +3,7 @@
 # Qt/KDE apps (Dolphin, Konsole, System Settings): qt6ct/qt5ct with the Hearth palette and the Breeze style.
 #   QT_QPA_PLATFORMTHEME=qt6ct is set only in Desktop Mode (labwc/environment), so Plasma keeps its own look.
 #   Your own qt6ct settings are kept: the files are only written while they still carry Hearth's mark.
+#   Their Open / Save dialogs go through the desktop portal (standard_dialogs=xdgdesktopportal), which is Hearth Files.
 # GTK apps (Bazaar, Firefox, GNOME apps): dark style, Hearth's colours (~/.config/gtk-4.0 and gtk-3.0/gtk.css,
 #   also only while they carry Hearth's mark), and Flatpak apps allowed to read them.
 # Also run at the start of the Hearth session (both modes), so Bazaar looks right from Game Mode too.
@@ -20,7 +21,7 @@ $MARK
 color_scheme_path=$SHARE/desktop/theme/hearth-qt.conf
 custom_palette=true
 icon_theme=breeze-dark
-standard_dialogs=default
+standard_dialogs=xdgdesktopportal
 style=Breeze
 
 [Interface]
