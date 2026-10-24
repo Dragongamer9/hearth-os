@@ -560,13 +560,13 @@ Exec=/usr/bin/hearth-filemanager %U
 Icon=hearth-files
 Type=Application
 Categories=System;FileManager;Utility;
-MimeType=inode/directory;
+MimeType=inode/directory;x-directory/normal;
 Keywords=files;folder;explorer;browse;usb;sd;card;copy;move;
 OnlyShowIn=Nimbus;
 DESKTOP
 # Folders open in Hearth Files in Desktop Mode (XDG_CURRENT_DESKTOP=Nimbus); Plasma keeps Dolphin.
 mkdir -p /etc/xdg
-printf '[Default Applications]\ninode/directory=hearth-files.desktop\n' > /etc/xdg/nimbus-mimeapps.list
+printf '[Default Applications]\ninode/directory=hearth-files.desktop;\nx-directory/normal=hearth-files.desktop;\n' > /etc/xdg/nimbus-mimeapps.list
 # ---- Hearth Text (hosts/hearth-text): Hearth OS's text editor, built by CI next to the Hearth app (base-*.yml) and
 # carried in os/nimbus-app. Its menu entry (hearth-text.desktop, icon hearth-text from the Hearth icon set) comes from
 # os/system_files. In Desktop
@@ -822,8 +822,27 @@ cat > /usr/share/xdg-desktop-portal/nimbus-portals.conf <<PORTALS
 default=gtk
 org.freedesktop.impl.portal.ScreenCast=wlr
 org.freedesktop.impl.portal.Screenshot=wlr
-org.freedesktop.impl.portal.FileChooser=kde
+org.freedesktop.impl.portal.FileChooser=hearth
 PORTALS
+# ---- Hearth Files: every app's file chooser, and the file manager apps open (desktop/shell/hearth-portal, picker.qml)
+# Open / Save dialogs: xdg-desktop-portal's FileChooser is Hearth's in Hearth's session (above; XDG_CURRENT_DESKTOP is
+# Nimbus in both modes), the rest stays on the backends it had. hearth.portal and the D-Bus service files come from
+# os/system_files. nimbus-session asks GTK and Qt apps to use the portal; Hearth Browser's prefs ask Firefox.
+# Folders: Hearth Files is the default in every desktop's list as well as Desktop Mode's (hearth-filemanager hands
+# them to Dolphin outside Hearth's session), and "Show in folder" (org.freedesktop.FileManager1) is
+# held by Hearth's session, so no other file manager in this image takes over.
+for list in /usr/share/applications/mimeapps.list /etc/xdg/nimbus-mimeapps.list; do
+  hearth_default "$list" hearth-files.desktop "inode/directory;x-directory/normal"
+done
+# The backend is Python with GLib's D-Bus (python3-gobject); Qt apps' portal dialogs come with qt6-qtbase-gui.
+dnf5 -y install python3-gobject xdg-desktop-portal || true
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-portal
+# Firefox from the distribution, if there is one, also uses the portal (Hearth Browser has it in its own prefs).
+for d in /usr/lib64/firefox /usr/lib/firefox /usr/lib/firefox-esr; do
+  if [ -d "$d" ]; then install -Dm644 /usr/share/hearth-browser/firefox/defaults/pref/hearth-portal.js "$d/defaults/pref/hearth-portal.js"; fi
+done
+command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+# ---- end of Hearth Files as the file chooser
 
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
 # Built with the app (base-anatase.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
