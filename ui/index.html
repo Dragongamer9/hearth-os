@@ -1196,7 +1196,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1582,7 +1582,7 @@ function applyLook(){
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
 }
-function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); }
+function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); if(typeof lkUiSync==='function') lkUiSync(); }
 function renderTopNav(){
   const n=$('#topnav'); if(!n) return;
   const items=[['home','Home'],['library','Library'],...(ANDROID?[]:[['downloads','Downloads']]),['settings','Settings']];
@@ -2738,6 +2738,7 @@ function viewLibrary(){
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
     <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
     ${(HOSTINFO.features||[]).includes('screenshots')?`<button class="pill" data-f data-k="lib-shots" data-act="shots">${I.display}Screenshots</button>`:''}
+    ${lkOn()?`<button class="pill" data-f data-k="lib-link" data-act="lkGet">${I.dl}Get from another Hearth</button>`:''}
     ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
     <button class="pill ${S.lfilter?'on':''}" data-f data-k="lfilter" data-act="lfilter">Show: ${LFILTERS.find(f=>f[0]===(S.lfilter||''))[1]}</button>
     <button class="pill" data-f data-k="sort" data-act="sort">Sort: ${SORTS.find(s=>s[0]===S.sort)[1]}</button></div></div>
@@ -3595,6 +3596,9 @@ if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='liblook')+1, 0, ['access','te
 // ---- Default apps: its page (pageDefaults) in System, on Hearth OS only
 if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='system'), 0, ['defaults','lib','Default apps']); STAB_GROUP.defaults='system'; }
 // ---- end Default apps
+// ---- Hearth Link: its page (pageLink) in Connections, on Hearth OS
+if(LINUX&&!ANDROID){ STABS.splice(STABS.findIndex(x=>x[0]==='remote')+1, 0, ['link','refresh','Hearth Link']); STAB_GROUP.link='connect'; }
+// ---- end Hearth Link
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -3680,6 +3684,151 @@ function pageLinkApps(){
     + row('connect','connect','Hearth Connect','Link your phone: notifications, files, clipboard, phone as touchpad (works with KDE Connect)'));
 }
 // ---- end of Nearby Share and Hearth Connect
+// ---- Hearth Link (hosts/hearth-link, bridge "link.*"): Settings › Connections › Hearth Link (pair your Hearth devices,
+// keep Hearth data in sync, copies coming in), and Library › Get from another Hearth. The page asks the service for
+// its state every second while it's open or a copy is running (lkPoll).
+const LK = {s:null, timer:null, busy:''};
+const LK_STATE = {waiting:'Waiting for the other device', interrupted:'Interrupted', preparing:'Getting ready', comparing:'Comparing with what\'s here', copying:'Copying', finishing:'Finishing', paused:'Paused', done:'Done', error:'Didn\'t work', cancelled:'Cancelled'};
+const LK_STORE = {steam:'Steam', epic:'Epic', gog:'GOG', beacon:'Beacon', xodus:'Xbox (Xodus Nexus)'};
+function lkOn(){ return LINUX && !ANDROID && hasFeat('hearthLink'); }
+function lkBytes(n){ n=n||0; return n>=1e9?(n/1e9).toFixed(1)+' GB':n>=1e6?Math.round(n/1e6)+' MB':Math.max(1,Math.round(n/1e3))+' KB'; }
+function lkLeft(s){ return s==null?'':s<90?'about a minute left':s<5400?`about ${Math.round(s/60)} minutes left`:`about ${(s/3600).toFixed(1)} hours left`; }
+function lkActive(){ return !!(LK.s && (LK.s.transfers||[]).some(t=>!['done','error','cancelled','paused'].includes(t.state))); }
+function loadLink(){
+  if(!lkOn()) return Promise.resolve();
+  return call('link.status',{},15000).then(r=>{ const had=LK.s; LK.s=r;
+    if(r.libraryChanged) loadLibrary(false);
+    // A copy that just finished: the game is in the library now.
+    if(had && (had.transfers||[]).some(t=>t.state!=='done' && (r.transfers||[]).some(u=>u.id===t.id && u.state==='done'))){ const t=(r.transfers||[]).find(u=>u.state==='done'); if(t) toast(`${t.title} is here. ${t.note||''}`); loadLibrary(true); }
+    if(S.view==='settings'&&S.settingsTab==='link'&&!S.layers.length) render(null,true);
+    lkPoll(); }).catch(e=>{ LK.s={running:false, error:e.message}; if(S.view==='settings'&&S.settingsTab==='link') render(null,true); });
+}
+function lkPoll(){
+  const want = (S.view==='settings'&&S.settingsTab==='link') || lkActive();
+  if(want && !LK.timer) LK.timer=setInterval(()=>{ if(!((S.view==='settings'&&S.settingsTab==='link')||lkActive())){ clearInterval(LK.timer); LK.timer=null; return; } loadLink(); }, 1000);
+}
+function lkRow(k, act, icon, title, sub, rv, extra){ return `<button class="row" data-f data-k="lk-${k}" data-act="${act}"${extra||''}><span class="ricon">${I[icon]||''}</span><div class="rt"><b>${title}</b>${sub?`<small>${sub}</small>`:''}</div>${rv==null?'<div class="rv">›</div>':rv}</button>`; }
+function lkJobLine(t){
+  const pct = t.total ? Math.floor(100*t.done/t.total) : 0;
+  let s = LK_STATE[t.state]||t.state;
+  if(t.state==='copying') s += ` · ${pct}% of ${lkBytes(t.total)} · ${t.speed?lkBytes(t.speed)+'/s':'starting'}${t.eta!=null?' · '+lkLeft(t.eta):''}`;
+  if(t.state==='done') s += t.note ? ' · '+t.note : '';
+  if(t.state==='error' && t.error) s += ': '+t.error;
+  if(t.state==='waiting' && t.note) s += ' · '+t.note;
+  if(t.skipped) s += ` · ${lkBytes(t.skipped)} already here`;
+  if(t.relay && t.state!=='done') s += ' · through a relay (slower: the devices couldn\'t connect directly)';
+  return esc(s);
+}
+function pageLink(){
+  const s=LK.s;
+  if(!s) return note('Loading…');
+  if(!s.running) return note(s.installed ? 'Hearth Link isn\'t running. It starts with your session: sign out and in again, or restart.' : 'Hearth Link comes with the next Hearth OS update.');
+  let h = shead('This device');
+  h += lkRow('name','lkName','display', esc(s.me.name), 'Its name on your other Hearth devices. Select to rename.');
+  if(s.pairing) h += `<div class="row" data-f data-k="lk-code"><span class="ricon">${I.lock}</span><div class="rt"><b style="font-size:28px;letter-spacing:6px">${esc(s.pairing.code.slice(0,3))} ${esc(s.pairing.code.slice(3))}</b><small>On your other Hearth device: Settings › Hearth Link, pick ${esc(s.me.name)} and enter this code. ${Math.max(0,Math.round((s.pairing.until-Date.now())/60000))} min left.</small></div></div>`
+    + lkRow('pclose','lkPairClose','x','Stop pairing','', '');
+  else h += lkRow('pair','lkPairOpen','lock','Pair a device','Shows a code to enter on your other Hearth device');
+  const near = s.nearby||[];
+  if(near.length) h += shead('Hearth devices on this network') + near.map((n,i)=>lkRow('n'+i,'lkJoin','display', esc(n.name), n.pairing?'Showing a pairing code: select to enter it':'Open Settings › Hearth Link › Pair a device on it first', undefined, ` data-id="${esc(n.id)}" data-name="${esc(n.name)}"`)).join('');
+  h += lkRow('far','lkJoinFar','globe','Pair a device somewhere else','Over the internet: type its link (on it: Settings › Hearth Link › This device\'s link)');
+  h += lkRow('ticket','lkTicket','info','This device\'s link','For pairing from somewhere else');
+  const peers = s.peers||[];
+  h += shead('Your devices');
+  if(!peers.length) h += note('No devices paired yet. Pair once, and your favorites, collections, play time, appearance and controller layouts stay the same on both, and you can copy games between them.');
+  else h += peers.map((p,i)=>lkRow('p'+i,'lkPeer','display', esc(p.name), (p.online?'Online':'Not on right now') + (p.sync&&p.sync.at?` · synced ${new Date(p.sync.at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`:''), undefined, ` data-id="${esc(p.id)}"`)).join('');
+  const offers = s.offers||[];
+  if(offers.length) h += shead('Games offered to you') + offers.map((o,i)=>lkRow('o'+i,'lkOffer','dl', `${esc(o.game.title)} from ${esc(o.from)}`, `${LK_STORE[o.game.store]||''}${o.game.size?' · '+lkBytes(o.game.size):''} · select to accept or decline`, undefined, ` data-id="${esc(o.id)}"`)).join('');
+  const jobs = s.transfers||[];
+  if(jobs.length) h += shead('Copies') + jobs.map((t,i)=>lkRow('t'+i,'lkJob', t.state==='done'?'check':'dl', `${esc(t.title)} from ${esc(t.from||'another device')}`, lkJobLine(t), t.state==='copying'&&t.total?`<div class="rv">${Math.floor(100*t.done/t.total)}%</div>`:undefined, ` data-id="${esc(t.id)}"`)).join('')
+    + (jobs.some(t=>t.state==='done'||t.state==='cancelled') ? lkRow('clear','lkClear','trash','Clear finished copies','', '') : '');
+  if((s.sending||[]).length) h += shead('Sending') + s.sending.map((x,i)=>lkRow('s'+i,'lkNone','dl', `${esc(x.title)} to ${esc(x.to)}`, lkBytes(x.bytes)+' sent', '')).join('');
+  if(peers.length) h += lkRow('get','lkGet','dl','Get a game from another Hearth','Copies it here with its saves and settings: fast on the same network, works over the internet too');
+  (s.signInHints||[]).forEach(x=>{ h += note(esc(x.text)); });
+  const st=s.settings||{};
+  h += shead('Settings')
+    + `<button class="row" data-f data-k="lk-sync" data-act="lkSet" data-key="sync"><div class="rt"><b>Keep Hearth data in sync</b><small>Favorites, hidden games, collections, play time, per-game settings, profile, appearance, controller layouts, Beacon's games. Never sign-ins. Waits while you play.</small></div><div class="sw ${st.sync?'on':''}"></div></button>`
+    + `<button class="row" data-f data-k="lk-acc" data-act="lkSet" data-key="alwaysAccept"><div class="rt"><b>Accept games from my devices without asking</b><small>A game one of your devices sends starts copying here straight away</small></div><div class="sw ${st.alwaysAccept?'on':''}"></div></button>`
+    + lkRow('relay','lkRelay','globe','Relay', st.relay==='off'?'Off: same network only':st.relay==='custom'?'Your own: '+esc(st.relayUrl):'n0\'s public relays (when two devices can\'t connect directly over the internet; the data stays encrypted)');
+  h += note('Everything between your devices is encrypted end to end, and only paired devices can connect. On the same network copies go straight between them; over the internet they connect directly when the networks allow it, otherwise through a relay.');
+  return h;
+}
+async function lkGetFrom(peer){
+  const s=LK.s; const peers=(s&&s.peers)||[];
+  if(!peer){
+    if(!peers.length) return toast('Pair another Hearth first: Settings › Hearth Link');
+    if(peers.length>1) return openSheet({title:'Get a game from', items:peers.map(p=>({label:p.name+(p.online?'':' (not on right now)'), icon:'display', run:()=>lkGetFrom(p.id)}))});
+    peer=peers[0].id;
+  }
+  const name=(peers.find(p=>p.id===peer)||{}).name||'the other device';
+  toast(`Asking ${name} for its games…`);
+  let list; try{ list=(await call('link.games',{peer, refresh:true},70000)).games||[]; }catch(e){ return toast(e.message); }
+  if(!list.length) return toast(`${name} has no games to copy`);
+  list.sort((a,b)=>a.title.localeCompare(b.title));
+  openSheet({title:`Games on ${name}`, sub:'Copied with its saves and settings', items:list.slice(0,80).map(g=>({label:`${g.title} · ${LK_STORE[g.store]||g.store}${g.size?' · '+lkBytes(g.size):''}`, icon:'dl', run:()=>lkPlace(g.store, place=>call('link.get',{peer, game:g.id, title:g.title, place, prefix:true},20000).then(()=>{ toast(`Copying ${g.title} from ${name}`); S.settingsTab='link'; navigate('settings'); loadLink(); }).catch(e=>toast(e.message)))}))});
+}
+function lkSend(g, peer){
+  const peers=(LK.s&&LK.s.peers)||[];
+  if(!peer && peers.length>1) return openSheet({title:`Send ${g.title} to`, items:peers.map(p=>({label:p.name+(p.online?'':' (not on right now)'), icon:'display', run:()=>lkSend(g, p.id)}))});
+  const p=peers.find(x=>x.id===(peer||(peers[0]||{}).id)); if(!p) return;
+  call('link.send',{peer:p.id, game:g.id},70000).then(r=>toast(r&&r.accepted?`${p.name} is copying ${g.title}`:`Sent to ${p.name}: accept it there (Settings › Hearth Link)`)).catch(e=>toast(e.message));
+}
+function lkPlace(store, go){
+  return call('link.places',{store},15000).then(r=>{ const ps=r.places||[];
+    if(!ps.length) return toast(store==='steam'?'Install Steam on this device and open it once first':'No place to put it');
+    if(ps.length===1) return go(ps[0].id);
+    openSheet({title:'Where should it go?', items:ps.map(p=>({label:`${p.label} · ${lkBytes(p.free)} free`, icon:'disk', run:()=>go(p.id)}))});
+  }).catch(e=>toast(e.message));
+}
+function lkCall(m, a, t, ok){ return call(m, a||{}, t||15000).then(r=>{ if(ok) toast(ok); loadLink(); return r; }).catch(e=>{ toast(e.message); loadLink(); }); }
+function lkAct(a, d){
+  const s=LK.s||{};
+  switch(a){
+    case 'lkPairOpen': return lkCall('link.pair.open');
+    case 'lkPairClose': return lkCall('link.pair.close');
+    case 'lkJoin': return (async()=>{ const code=await openPrompt({title:`The code ${d.name} shows`, min:6}); if(code==null) return; toast('Pairing…'); lkCall('link.pair.join',{id:d.id, code}, 70000, `Paired with ${d.name}`); })();
+    case 'lkJoinFar': return (async()=>{ const id=await openPrompt({title:'The other device\'s link', osk:true}); if(id==null||!id.trim()) return; const code=await openPrompt({title:'The code it shows', min:6}); if(code==null) return; toast('Pairing…'); lkCall('link.pair.join',{id:id.trim(), code}, 70000, 'Paired'); })();
+    case 'lkTicket': return openSheet({title:'This device\'s link', sub:(s.me&&s.me.ticket)||'', items:[]});
+    case 'lkName': return (async()=>{ const n=await openPrompt({title:'Name for this device', value:(s.settings&&s.settings.customName)||''}); if(n==null) return; lkCall('link.settings.set',{name:n}); })();
+    case 'lkSet': { const st=s.settings||{}; return lkCall('link.settings.set',{[d.key]:!st[d.key]}); }
+    case 'lkRelay': return openSheet({title:'Relay', sub:'Only used when two devices can\'t connect directly over the internet. The data stays encrypted end to end.', items:[
+      {label:'n0\'s public relays (recommended)', icon:'globe', run:()=>lkCall('link.settings.set',{relay:'default'},15000,'Hearth Link restarts with the new relay')},
+      {label:'My own relay…', icon:'globe', run:async()=>{ const u=await openPrompt({title:'Your relay\'s address (https://…)', value:(s.settings&&s.settings.relayUrl)||'', osk:true}); if(u==null) return; lkCall('link.settings.set',{relay:'custom', relayUrl:u.trim()},15000,'Hearth Link restarts with your relay'); }},
+      {label:'Off (same network only)', icon:'x', run:()=>lkCall('link.settings.set',{relay:'off'},15000,'Hearth Link works on this network only now')}]});
+    case 'lkPeer': { const p=(s.peers||[]).find(x=>x.id===d.id); if(!p) return;
+      return openSheet({title:p.name, sub:p.online?'Online':'Not on right now', items:[
+        {label:'Get a game from it', icon:'dl', run:()=>lkGetFrom(p.id)},
+        {label:'Sync now', icon:'refresh', run:()=>lkCall('link.sync.now',{peer:p.id},70000,'Synced')},
+        {label:p.alwaysAccept?'Ask before accepting its games':'Accept its games without asking', icon:'check', run:()=>lkCall('link.peer.set',{id:p.id, alwaysAccept:!p.alwaysAccept})},
+        {label:'Unpair', icon:'trash', run:()=>openSheet({title:`Unpair ${p.name}?`, sub:'Nothing is synced or copied between them anymore, until you pair again.', items:[{label:'Unpair', icon:'trash', run:()=>lkCall('link.unpair',{id:p.id},70000,`Unpaired ${p.name}`)}]})}]}); }
+    case 'lkOffer': { const o=(s.offers||[]).find(x=>x.id===d.id); if(!o) return;
+      return openSheet({title:`${o.game.title} from ${o.from}`, sub:o.game.size?lkBytes(o.game.size):'', items:[
+        {label:'Accept', icon:'check', run:()=>lkPlace(o.game.store, place=>lkCall('link.offer.accept',{id:o.id, place},20000,`Copying ${o.game.title}`))},
+        {label:'Decline', icon:'x', run:()=>lkCall('link.offer.decline',{id:o.id})}]}); }
+    case 'lkJob': { const t=(s.transfers||[]).find(x=>x.id===d.id); if(!t) return;
+      const items=[];
+      if(['copying','preparing','comparing','waiting'].includes(t.state)) items.push({label:'Pause', icon:'stop', run:()=>lkCall('link.transfer.pause',{id:t.id})});
+      if(['paused','error','interrupted'].includes(t.state)) items.push({label:'Resume', icon:'play', run:()=>lkCall('link.transfer.resume',{id:t.id})});
+      if(!['done','cancelled'].includes(t.state)) items.push({label:'Cancel copy', icon:'trash', run:()=>lkCall('link.transfer.cancel',{id:t.id},15000,'Cancelled')});
+      return openSheet({title:t.title, sub:lkJobLine(t).replace(/&[a-z#0-9]+;/g,"'"), items}); }
+    case 'lkClear': return lkCall('link.transfer.clear');
+    case 'lkGet': return lkGetFrom();
+    case 'lkNone': return;
+  }
+}
+// The UI's own settings (appearance, Made for, layouts: kept in this page's localStorage) go to the other devices
+// through Hearth Link (link.ui.sync); newer ones from them are taken here.
+function lkUiSync(){
+  if(!lkOn()) return;
+  let seen={}; try{ seen=JSON.parse(localStorage.getItem('hearth.linkSeen')||'{}')||{}; }catch(e){}
+  call('link.ui.sync',{values:{'nimbus.look':LOOK}, seen},8000).then(r=>{
+    const n=(r&&r.newer)||{}; let changed=false;
+    if(n['nimbus.look'] && n['nimbus.look'].v && typeof n['nimbus.look'].v==='object'){ Object.assign(LOOK, n['nimbus.look'].v); try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); changed=true; }
+    Object.keys(n).forEach(k=>{ seen[k]=n[k].t; });
+    try{ localStorage.setItem('hearth.linkSeen', JSON.stringify(seen)); }catch(e){}
+    if(changed){ refreshUI(); call('link.ui.sync',{values:{'nimbus.look':LOOK}, seen},8000).catch(()=>{}); }
+  }).catch(()=>{});
+}
+// ---- end of Hearth Link
 const NVD = {s:null};
 const RND = {s:null};
 function pageDisplay(){
@@ -5392,6 +5541,7 @@ function viewSettings(){
   if(t==='appearance') body = pageAppearance();
   if(t==='access') body = pageAccess();   // Accessibility
   if(t==='defaults') body = pageDefaults();   // Default apps
+  if(t==='link') body = pageLink();   // Hearth Link
   if(t==='liblook') body = pageLibLook();
   if(t==='controller') body = pageControls();
   if(t==='sources'){
@@ -6082,6 +6232,7 @@ function act(el){
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
+  if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
   switch(a){
     case 'unlock': return lockUnlock();
@@ -7058,6 +7209,7 @@ function gameOptionItems(g){
   if(ANDROID && g.src!=='emu') items.push({label:'App info',icon:'info',run:()=>andOpen('app', g.id)});
   if(isActive(g) && g.installKind==='nimbus') items.unshift({label:'Cancel download',icon:'x',run:()=>cancelInstall(g)});
   if(g.inst && canDelete(g) && !isActive(g)) items.push({label:'Uninstall…',icon:'trash',run:()=>uninstallGame(g)});
+  if(lkOn() && g.inst && ['steam','epic','gog','beacon'].includes(g.src) && LK.s && (LK.s.peers||[]).length) items.push({label:'Send to another Hearth…',icon:'dl',run:()=>lkSend(g)});   // Hearth Link
   if(g.src==='beacon'){
     const added=!!(g.beacon&&g.beacon.custom);   // added by hand in Beacon: set up in Beacon's window
     if(g.inst && beaconMods(g).length) items.unshift({label:'Play with…',icon:'play',run:()=>beaconPlayWith(g)});
@@ -8600,6 +8752,7 @@ function onSettingsTab(t){
   if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
+  if(t==='link') loadLink();   // Hearth Link
   if(t==='sources'){ loadEmu(); loadXodus(); }
   if(t==='appearance'){ loadDeskWall(); watchVotes(true); }
   if(t==='liblook') watchVotes(true);
