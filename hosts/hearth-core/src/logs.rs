@@ -234,6 +234,11 @@ pub fn report(version: &str) -> String {
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
+    // Which engine draws Hearth's screens (docs/RENDERERS.md), and the Qt renderer's own log (Experimental).
+    {
+        let qt = std::fs::read_to_string(data.join("hearth-qml.log")).map(|t| tail(&t, 300)).unwrap_or_else(|_| "(no hearth-qml.log: the Qt renderer hasn't run)".into());
+        section("Renderer", format!("{}\n\nQt renderer log (hearth-qml.log):\n{}", serde_json::to_string_pretty(&crate::renderer::status()).unwrap_or_default(), qt));
+    }
     // Hearth Input (controller layouts for keyboard-and-mouse games): what the mapper did, and what it's doing now
     // (its controllers, whether it holds them, the layout running, its last error).
     {
