@@ -515,6 +515,40 @@ Scope {
         const x = extOf(e).toUpperCase();
         return x && x.length <= 4 ? x : ({ image: "IMG", video: "VID", audio: "AUD", disc: "ISO", archive: "ZIP", app: "APP", doc: "DOC", text: "TXT", file: "" })[kindOf(e)];
     }
+    function isAppImage(e) { return !!e && !e.dir && /\.appimage$/i.test(e.name); }
+    function isDeb(e) { return !!e && !e.dir && /\.deb$/i.test(e.name); }
+    // An AppImage: runs (made runnable first, after "Run this app?" the first time). hearth-files falls back to
+    // running it unpacked when FUSE can't mount it.
+    function runAppImage(e) {
+        const go = trust => {
+            say("Starting “" + e.name + "”…");
+            call(["appimage-run", e.path].concat(trust ? ["--trust"] : []), (r, err) => {
+                if (err) return say(err, true);
+                say("Started “" + e.name + "”" + (r && r.fallback ? " (unpacked first: FUSE isn't available)" : ""));
+                if (trust) reload();
+            });
+        };
+        if (e.exec) return go(false);
+        ask("Run this app?", "“" + e.name + "” comes from " + parentOf(e.path).replace(home, "~")
+            + ". Only run apps you trust: an app can do anything you can. Hearth marks it as runnable, so it won't ask again.", "Run", () => go(true));
+    }
+    function addAppImage(e) {
+        const go = trust => {
+            say("Adding “" + e.name + "” to the app menu…");
+            call(["appimage-menu-add", e.path].concat(trust ? ["--trust"] : []), (r, err) => {
+                if (err) return say(err, true);
+                say((r.name || e.name) + " is in your app menu" + (r.moved ? " (the AppImage is now in Applications in your home folder)" : ""));
+                reload();
+            });
+        };
+        if (e.exec) return go(false);
+        ask("Add this app to your menu?", "“" + e.name + "” comes from " + parentOf(e.path).replace(home, "~")
+            + ". Only add apps you trust. It's moved to the Applications folder in your home folder and marked as runnable.", "Add", () => go(true));
+    }
+    function installDeb(e) {
+        if (SettingsNav.debs) SettingsNav.debs.open(e.path);
+        else Quickshell.execDetached(["hearth-install-package", e.path]);
+    }
     function isArchive(e) {
         return !!e && !e.dir && /\.(zip|tar|tgz|txz|tbz2?|tzst|gz|xz|bz2|zst|7z|rar|cbz|cbr|jar|apk)$/i.test(e.name);
     }
@@ -565,6 +599,8 @@ Scope {
             if (found !== null) clearSearch();
             return navigate(e.path, "");
         }
+        if (isAppImage(e)) return runAppImage(e);
+        if (isDeb(e)) return installDeb(e);
         openFile(e);
     }
     function openPlace(i) {
@@ -725,6 +761,8 @@ Scope {
             if (e && !e.dir) items.push({ id: "openwith", label: "Open with…" });
             if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(it);
             if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
+            if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
+            if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
             if (e && found !== null) items.push({ id: "showin", label: "Show in its folder" });
             if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
             items.push(sep());
@@ -821,6 +859,12 @@ Scope {
         switch (id) {
         case "stop": cancelJob(); break;
         case "open": activate(e); break;
+        case "airun": if (e) runAppImage(e); break;
+        case "aimenu": if (e) addAppImage(e); break;
+        case "aimenurm":
+            if (e) call(["appimage-menu-remove", e.path], (r, err) => { if (err) return say(err, true); say("“" + e.name + "” is out of the app menu (the AppImage is still here)"); reload(); });
+            break;
+        case "debinstall": if (e) installDeb(e); break;
         case "openwith": showApps(e, false); break;
         case "newtab": newTab(e && e.dir ? e.path : (listing ? listing.path : home)); break;
         case "closetab": closeTab(tabIndex); break;
@@ -1219,6 +1263,11 @@ Scope {
         overlay = "input";
         if (ui) ui.startField(initial, selectTo);
         if (viaPad) openKeyboard();
+    }
+    // The same question without the red "this deletes something" look (Run this app?, Add to app menu?).
+    function ask(title, text, ok, action) {
+        confirm(title, text, ok, action);
+        dlgDanger = false;
     }
     function confirm(title, text, ok, action) {
         dlgAlt = "";
