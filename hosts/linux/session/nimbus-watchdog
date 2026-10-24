@@ -31,6 +31,34 @@ if [ -n "$DISPLAY" ] && command -v dbus-update-activation-environment >/dev/null
   systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service >/dev/null 2>&1
 fi
 
+# Password prompts in Game Mode (pkexec: Hearth Text's Edit as administrator, Bazaar's system installs...): the same
+# polkit agent Desktop Mode starts (labwc/autostart; keep the two lists the same), on gamescope's display. Without
+# one, pkexec fails with "No authentication agent found". Not for an extra multi-seat player (their prompts would
+# belong to player 1's sign-in), and stopped when Game Mode ends.
+AGENT_PID=""
+if [ -z "$HEARTH_SEAT" ] && [ -n "$DISPLAY" ]; then
+  for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
+               /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 \
+               /usr/libexec/polkit-gnome-authentication-agent-1 \
+               /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
+               /usr/libexec/polkit-kde-authentication-agent-1 \
+               /usr/lib/polkit-kde-authentication-agent-1 \
+               /usr/libexec/polkit-mate-authentication-agent-1 \
+               /usr/lib/x86_64-linux-gnu/mate-polkit/polkit-mate-authentication-agent-1 \
+               lxpolkit \
+               lxqt-policykit-agent; do
+    if command -v "$agent" >/dev/null 2>&1; then
+      WAYLAND_DISPLAY="" GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb "$agent" >/dev/null 2>&1 &
+      AGENT_PID=$!
+      break
+    fi
+  done
+fi
+if [ -n "$AGENT_PID" ]; then
+  trap 'kill $AGENT_PID 2>/dev/null' EXIT
+  trap 'exit 143' INT TERM HUP
+fi
+
 while :; do
   # Hearth's output goes here for the whole sign-in: a long one (or a chatty crash loop) would grow it without end.
   [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 8000000 ] && mv -f "$LOG" "$LOG.old"

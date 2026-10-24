@@ -86,6 +86,9 @@ for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
              /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 \
              /usr/libexec/polkit-kde-authentication-agent-1 \
              /usr/lib/polkit-kde-authentication-agent-1 \
+             /usr/libexec/polkit-mate-authentication-agent-1 \
+             /usr/lib/x86_64-linux-gnu/mate-polkit/polkit-mate-authentication-agent-1 \
+             lxpolkit \
              lxqt-policykit-agent; do
   if command -v "$agent" >/dev/null 2>&1; then "$agent" >/dev/null 2>&1 & break; fi
 done

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Install Package
+GenericName=Package Installer
+Comment=Install a .deb package into Hearth's Debian box
+Exec=/usr/bin/hearth-install-package %f
+Icon=hearth-debbox
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;
+NoDisplay=true
+Categories=System;PackageManager;
+Keywords=deb;debian;package;install;apt;

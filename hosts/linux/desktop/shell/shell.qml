@@ -65,6 +65,11 @@ ShellRoot {
             list.push({ label: pinned ? "Unpin from taskbar" : "Pin to taskbar", icon: pinned ? "unpin" : "pin", run: () => DeskState.togglePin(entry.id) });
             list.push({ label: "Add to desktop", icon: "plus", run: () => DeskState.call(["desktop-shortcut", entry.id], (r, err) => SettingsNav.toast(err || entry.name + " is on the desktop")) });
             // Apps installed from Flathub can be removed in Apps (their page has Remove).
+            if (/\bdistrobox\b/.test(entry.execString || "") && /hearth-debian/.test(entry.execString || "")) {
+                // An app from Hearth's Debian box (a .deb): removed in Settings › Apps.
+                list.push({ separator: true });
+                list.push({ label: "Uninstall…", icon: "trash", danger: true, run: () => { launcher.shown = false; settings.open("apps"); } });
+            }
             if (/\bflatpak\b/.test(entry.execString || "")) {
                 list.push({ separator: true });
                 list.push({ label: "Uninstall…", icon: "trash", danger: true, run: () => { launcher.shown = false; appStore.open(entry.id); } });
@@ -93,6 +98,7 @@ ShellRoot {
     SettingsApp { id: settings }
     // ---- Apps (Flathub store) and clipboard history (Super+V); their IPC targets "apps" and "clipboard" are inside.
     AppStore { id: appStore }
+    DebInstaller { id: debInstaller }
     Clipboard { id: clipboardHistory }
     // ---- end Apps / clipboard
     TaskManager { id: tasks }

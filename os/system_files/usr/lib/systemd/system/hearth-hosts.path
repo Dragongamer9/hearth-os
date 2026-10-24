@@ -1,0 +1,11 @@
+# Renaming the device (Settings › About, hostnamectl) rewrites /etc/hostname: hearth-hosts.service then updates
+# /etc/hosts for the new name.
+[Unit]
+Description=Hearth: update /etc/hosts when the device is renamed
+
+[Path]
+PathChanged=/etc/hostname
+Unit=hearth-hosts.service
+
+[Install]
+WantedBy=multi-user.target
