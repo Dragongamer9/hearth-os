@@ -72,6 +72,20 @@ pub struct Node {
     pub announce_now: tokio::sync::Notify,
 }
 
+/// Says no to a pairing connection, in words the other device shows (a close reason doesn't reach it): pairing
+/// isn't open, another device is pairing, the code ran out.
+async fn refuse(conn: Connection, why: String) {
+    let r = tokio::time::timeout(Duration::from_secs(5), async {
+        let (mut s, mut r) = conn.accept_bi().await.map_err(|e| e.to_string())?;
+        let _ = wire::read_msg(&mut r).await;
+        wire::write_msg(&mut s, &json!({"error": why})).await?;
+        let _ = s.finish();
+        Ok::<(), String>(())
+    }).await;
+    if matches!(r, Ok(Ok(()))) { let _ = tokio::time::timeout(Duration::from_secs(2), conn.closed()).await; }
+    conn.close(VarInt::from_u32(403), b"pairing refused");
+}
+
 fn transport() -> QuicTransportConfig {
     // HEARTH_LINK_TUNING=default: iroh's own settings (to compare).
     if std::env::var("HEARTH_LINK_TUNING").as_deref() == Ok("default") { return QuicTransportConfig::builder().max_concurrent_bidi_streams(VarInt::from_u32(256)).build(); }
@@ -313,18 +327,19 @@ impl Node {
     async fn host_pair(self: Arc<Self>, conn: Connection) {
         let remote = conn.remote_id().to_string();
         let short = remote.get(..8).unwrap_or("").to_string();
-        if crate::lock(&self.pairing).is_none() { conn.close(VarInt::from_u32(403), b"pairing isn't open"); return; }
+        if crate::lock(&self.pairing).is_none() {
+            eprintln!("hearth-link: pairing: {short} tried, but pairing isn't open here");
+            return refuse(conn, format!("Pairing isn't open on {}: select Pair a device on it first", self.name())).await;
+        }
         if self.pair_busy.swap(true, Ordering::SeqCst) {
             eprintln!("hearth-link: pairing: {short} tried while another device was pairing: asked to wait");
-            conn.close(VarInt::from_u32(429), b"busy with another device: try again in a moment");
-            return;
+            return refuse(conn, format!("{} is pairing with another device right now. Try again in a moment", self.name())).await;
         }
         let pairing = crate::lock(&self.pairing).clone().filter(|x| x.open());
         let Some(pairing) = pairing else {
             self.pair_busy.store(false, Ordering::SeqCst);
             eprintln!("hearth-link: pairing: {short} tried, but the code expired");
-            conn.close(VarInt::from_u32(403), b"pairing isn't open: the code expired");
-            return;
+            return refuse(conn, format!("That code expired. Get a new one on {}", self.name())).await;
         };
         eprintln!("hearth-link: pairing: {short} connected");
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
@@ -363,7 +378,7 @@ impl Node {
                     self.end_pairing();
                     self.set_event(json!({"state": "locked", "name": j.name}));
                 } else {
-                    eprintln!("hearth-link: pairing: wrong code from {} ({left_if_wrong} tries left)", j.name);
+                    eprintln!("hearth-link: pairing: wrong code from {} ({left_if_wrong} {} left)", j.name, if left_if_wrong == 1 { "try" } else { "tries" });
                     self.set_event(json!({"state": "wrong", "name": j.name, "triesLeft": left_if_wrong}));
                 }
             }
@@ -792,11 +807,10 @@ impl Node {
         let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code, with)).await
             .map_err(|_| format!("{name} didn't answer"))?;
         conn.close(VarInt::from_u32(0), b"done");
+        // The other device's own words (wrong code, not open, busy, expired) pass through; a connection that just
+        // ended (Hearth Link as in 0.6.5 closes it when pairing isn't open there) is said plainly.
         let (host_name, their_relay) = r.map_err(|e| {
-            if e.starts_with("Wrong code") { e }
-            else if e.contains("busy") { format!("{name} is pairing with another device right now. Try again in a moment") }
-            else if e.contains("expired") { "That code expired. Get a new one on the other device".to_string() }
-            else if e.contains("pairing isn't open") || e.contains("closed") { format!("Pairing isn't open on {name} (or the code expired): select Pair a device on it") }
+            if e.starts_with("reading") || e.contains("connection lost") || e.contains("closed") { format!("{name} ended the pairing: pairing may not be open on it (or the code expired). Select Pair a device on it and try again") }
             else { e }
         })?;
         self.add_peer(&id, &host_name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))));

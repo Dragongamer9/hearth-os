@@ -17,6 +17,8 @@
 //!
 //! - state.rs: this device's key, name and settings; the paired devices
 //! - wire.rs: frames on the QUIC streams (JSON messages and the chunks of a copy)
+//! Pairing is described for people in docs/HEARTH-LINK.md.
+//!
 //! - pair.rs: pairing with a code (SPAKE2, bound to both devices' keys): 6 digits on the same network, a
 //!   10-character short code from somewhere else
 //! - shortcode.rs: the short code (typo-proof alphabet, check character, the keys derived from it)
