@@ -1,0 +1,154 @@
+{
+ "pages": 2084,
+ "currentlyShownProductCount": 8335,
+ "productCount": 8335,
+ "products": [
+  {
+   "id": "1274966284",
+   "slug": "cyberpunk_2077_ultimate_edition",
+   "screenshots": [
+    "https://images.gog-statics.com/459b8cac440be3b3f8cb5a19af7f11d03cca6de40cc2cafb017e9d186f85ca6c_{formatter}.jpg",
+    "https://images.gog-statics.com/5dbab7de0eedc99eb56bf6b8955d1210e02f9cb8185536ca8c4c89027ed89a1c_{formatter}.jpg"
+   ],
+   "userPreferredLanguage": {
+    "code": "en",
+    "inAudio": true,
+    "inText": true
+   },
+   "releaseDate": "2023.09.26",
+   "storeReleaseDate": "2023.09.26",
+   "productType": "pack",
+   "title": "Cyberpunk 2077: Ultimate Edition",
+   "coverHorizontal": "https://images.gog-statics.com/257b1513b1de9146a3e003b3766f14b0073f0152c4eddc01223dc3585ba50320.png",
+   "coverVertical": "https://images.gog-statics.com/499f5ff7f05b67c5d0cdcf94ac60915b4ac7c4bd8b5ad3b94585c5f4945cbf38.jpg",
+   "logo": "https://images.gog-statics.com/3e9fd0728cf8903162b52842f55f9ed01aef9ea0de6f7dadf48d92e61bd5d67a.png",
+   "galaxyBackgroundImage": "https://images.gog-statics.com/262d408c0d0a5edc2bf69ca026e00261c574ac250d5c3cb19d4c21beee420e54.jpg",
+   "developers": [
+    "CD PROJEKT RED"
+   ],
+   "publishers": [
+    "CD PROJEKT RED"
+   ],
+   "operatingSystems": [
+    "windows",
+    "osx"
+   ],
+   "price": {
+    "final": "$31.99",
+    "base": "$79.99",
+    "discount": "-60%",
+    "finalMoney": {
+     "amount": "31.99",
+     "currency": "USD",
+     "discount": "48.00"
+    },
+    "baseMoney": {
+     "amount": "79.99",
+     "currency": "USD"
+    }
+   },
+   "productState": "default",
+   "genres": [
+    {
+     "name": "Role-playing",
+     "slug": "rpg"
+    },
+    {
+     "name": "Action",
+     "slug": "action"
+    },
+    {
+     "name": "Sci-fi",
+     "slug": "scifi"
+    }
+   ],
+   "tags": [
+    {
+     "name": "Action",
+     "slug": "action"
+    },
+    {
+     "name": "Story Rich",
+     "slug": "story-rich"
+    }
+   ],
+   "reviewsRating": 43,
+   "reviewsCount": 768,
+   "storeLink": "https://www.gog.com/en/game/cyberpunk_2077_ultimate_edition"
+  },
+  {
+   "id": "1998527297",
+   "slug": "fallout_4_game_of_the_year_edition",
+   "screenshots": [
+    "https://images.gog-statics.com/7d890f4fd6cae24928c39263d6cc1be1d98f033d97a2bcbbabd8a27257a1a1cc_{formatter}.jpg",
+    "https://images.gog-statics.com/fb681f9ec219169674a65f1d59e2e95323840dec14bafb791b1802565b21ce2e_{formatter}.jpg"
+   ],
+   "userPreferredLanguage": {
+    "code": "en",
+    "inAudio": true,
+    "inText": true
+   },
+   "releaseDate": "2015.11.10",
+   "storeReleaseDate": "2023.08.17",
+   "productType": "game",
+   "title": "Fallout 4: Game of the Year Edition",
+   "coverHorizontal": "https://images.gog-statics.com/8b074a51347f0377d0a60ac241e8c5535d829540fe9c2e7ddf9277e4cc6d53d1.png",
+   "coverVertical": "https://images.gog-statics.com/634bb301339d0a687a034801434197f88ded87326fcbe66338e8a798ffc64ad4.jpg",
+   "logo": "https://images.gog-statics.com/83b0412cca5c0652035aa500314a126bfa2e4611bba5a380cf753297a1ab1802.png",
+   "galaxyBackgroundImage": "https://images.gog-statics.com/a617fe8e9f37d4f66f2fe34d00efae0d44646e2ad8696c84012e498756310ce4.jpg",
+   "developers": [
+    "Bethesda Game Studios"
+   ],
+   "publishers": [
+    "Bethesda Softworks LLC"
+   ],
+   "operatingSystems": [
+    "windows"
+   ],
+   "price": {
+    "final": "$9.99",
+    "base": "$39.99",
+    "discount": "-75%",
+    "finalMoney": {
+     "amount": "9.99",
+     "currency": "USD",
+     "discount": "30.00"
+    },
+    "baseMoney": {
+     "amount": "39.99",
+     "currency": "USD"
+    }
+   },
+   "productState": "default",
+   "genres": [
+    {
+     "name": "Role-playing",
+     "slug": "rpg"
+    },
+    {
+     "name": "Action",
+     "slug": "action"
+    },
+    {
+     "name": "Open World",
+     "slug": "open-world"
+    }
+   ],
+   "tags": [
+    {
+     "name": "Action",
+     "slug": "action"
+    },
+    {
+     "name": "Story Rich",
+     "slug": "story-rich"
+    }
+   ],
+   "reviewsRating": 40,
+   "reviewsCount": 1799,
+   "storeLink": "https://www.gog.com/en/game/fallout_4_game_of_the_year_edition"
+  }
+ ],
+ "dreamlistGames": [],
+ "searchAlgo": "default"
+}
