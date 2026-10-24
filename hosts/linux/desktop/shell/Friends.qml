@@ -129,9 +129,10 @@ Scope {
     // The server's own sign-in page (OAuth 2.0): a QR code for a phone, or the browser on this computer.
     function loadWays() {
         const hs = signServer.trim() || "matrix.org";
-        if (waysFor === hs) return;
+        if (!st || st.signedIn || waysFor === hs) return;
         waysFor = hs; ways = null;
-        svc("authMethods", { homeserver: hs }, r => { if (fr.waysFor === hs) fr.ways = r || { password: true }; });
+        // No answer (the server can't be reached right now): the password fields, and asked again next time.
+        svc("authMethods", { homeserver: hs }, r => { if (fr.waysFor !== hs) return; if (r) fr.ways = r; else { fr.ways = { password: true }; fr.waysFor = ""; } });
     }
     function startAuth(mode, create) {
         SettingsNav.toast(mode === "qr" ? "Getting a code…" : "Opening the sign-in page…");
