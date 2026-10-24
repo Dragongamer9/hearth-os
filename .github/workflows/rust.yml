@@ -25,6 +25,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Ask the stores' public endpoints
         run: python3 tools/store-live-check.py store-live
+      # The same stores through Hearth's own code (hosts/hearth-core/src/storefront): what each store page would show.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-core
+      - name: Hearth's store pages, from the real stores
+        working-directory: hosts/hearth-core
+        run: XDG_DATA_HOME="$RUNNER_TEMP/xdg" cargo test --lib storefront::live -- --ignored --nocapture 2>&1 | grep -E '^::(notice|warning)' || echo "::warning title=Store live::the live check didn't run"
       # Also on the ci/store-live branch, to refresh the test samples from (hosts/hearth-core/src/storefront/fixtures).
       - name: Keep the answers (ci/store-live)
         if: always()

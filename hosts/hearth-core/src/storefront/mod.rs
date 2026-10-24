@@ -66,8 +66,9 @@ pub fn html_text(html: &str, max: usize) -> Vec<String> {
     let b = html.as_bytes();
     while i < b.len() {
         if b[i] == b'<' {
-            let end = html[i..].find('>').map(|e| i + e + 1).unwrap_or(b.len());
-            let tag = html[i + 1..end.saturating_sub(1).max(i + 1)].trim_start_matches('/').to_ascii_lowercase();
+            let close = html[i..].find('>').map(|e| i + e);
+            let end = close.map(|c| c + 1).unwrap_or(b.len());
+            let tag = html[i + 1..close.unwrap_or(b.len())].trim_start_matches('/').to_ascii_lowercase();
             let name: String = tag.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
             // Scripts and styles: their insides aren't text.
             if (name == "script" || name == "style") && !html[i + 1..].starts_with('/') {
@@ -314,6 +315,52 @@ pub fn open_web(store: &str, url: &str, title: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Closes the store window (if it's open).
+pub fn close_web() { if let Some(open) = OPENER.get() { open(None); } }
+
+/// What the Store's buttons need: per store, signed in (and expired), the store window, Steam, Xodus Nexus.
+/// Sign-in state only: no names, tokens or anything else from the accounts.
+pub fn status(steam_signed_in: bool, steam_installed: bool) -> Value {
+    let mut stores = serde_json::Map::new();
+    for s in crate::stores::STORES {
+        let expired = crate::stores::expiry::is_expired(s);
+        stores.insert(s.to_string(), json!({"signedIn": crate::stores::signed_in(s) && !expired, "expired": expired}));
+    }
+    stores.insert("steam".into(), json!({"signedIn": steam_signed_in, "installed": steam_installed}));
+    json!({"stores": stores, "webWindow": OPENER.get().is_some(), "xodus": crate::xodus::installed(),
+           "gameMode": crate::signin_handoff::game_mode(), "market": locale().0})
+}
+
+/// The real stores, through the same code the page uses (CI's store-live job, warn-only):
+/// `cargo test --lib storefront::live -- --ignored --nocapture`. Says what each store sent, never fails.
+#[cfg(test)]
+mod live {
+    #[test]
+    #[ignore]
+    fn live_endpoints() {
+        let say = |what: &str, r: Result<String, String>| match r {
+            Ok(m) => println!("::notice title=Store {what}::{m}"),
+            Err(e) => println!("::warning title=Store {what}::{e}"),
+        };
+        let count = |v: &serde_json::Value| v["sections"].as_array().map(|s| s.iter().map(|x| format!("{} {}", x["title"].as_str().unwrap_or("?"), x["items"].as_array().map(|i| i.len()).unwrap_or(0))).collect::<Vec<_>>().join(", ")).unwrap_or_default();
+        for (store, q) in [("steam", "hades"), ("gog", "witcher"), ("epic", "hades"), ("xbox", "halo")] {
+            let home = super::home(store);
+            say(&format!("{store} home"), home.as_ref().map(count).map_err(|e| e.clone()));
+            let first = home.ok().and_then(|h| h["sections"].as_array().and_then(|s| s.iter().find_map(|x| x["items"][0]["id"].as_str().map(str::to_string))));
+            let found = super::search(store, q);
+            say(&format!("{store} search"), found.as_ref().map(|r| format!("{} results for {q}: {}", r["items"].as_array().map(|a| a.len()).unwrap_or(0),
+                r["items"].as_array().into_iter().flatten().take(3).filter_map(|i| i["title"].as_str()).collect::<Vec<_>>().join(", "))).map_err(|e| e.clone()));
+            let id = found.ok().and_then(|r| r["items"][0]["id"].as_str().map(str::to_string)).or(first);
+            match id {
+                Some(id) => say(&format!("{store} game page"), super::details(store, &id).map(|d| format!("{} · {} · {} paragraphs, {} screenshots · {}",
+                    d["title"].as_str().unwrap_or("?"), d["price"]["final"].as_str().unwrap_or("no price"), d["description"].as_array().map(|a| a.len()).unwrap_or(0),
+                    d["screenshots"].as_array().map(|a| a.len()).unwrap_or(0), d["rating"]["label"].as_str().unwrap_or("no rating")))),
+                None => say(&format!("{store} game page"), Err("no game to open".into())),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,6 +385,7 @@ mod tests {
         assert_eq!(html_text("a<br>b<br>c", 2), vec!["a", "b"]);
         assert_eq!(html_text("<style>p{}</style>Only", 5), vec!["Only"]);
         assert_eq!(html_text("broken <b", 5), vec!["broken"]);
+        assert_eq!(html_text("ünïcode <bé", 5), vec!["ünïcode"]);   // a tag cut off after a letter that isn't ASCII
         assert_eq!(html_text("&#x2019;quoted&rsquo; &", 5), vec!["’quoted’ &"]);
     }
 
