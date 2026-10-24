@@ -56,6 +56,22 @@ jobs:
       - name: Quick Access picture (overlay)
         if: always()
         run: f=tools/qa-shots/overlay.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT qa-overlay $i::$part"; done || true
+      # Hearth's on-screen keyboard (ui/osk): pictures as notices, the same way (title "SHOT osk-<which> <n>"), one step each.
+      - name: On-screen keyboard picture (1-search)
+        if: always()
+        run: f=tools/osk-shots/1-search.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-1-search $i::$part"; done || true
+      - name: On-screen keyboard picture (2-suggestions)
+        if: always()
+        run: f=tools/osk-shots/2-suggestions.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-2-suggestions $i::$part"; done || true
+      - name: On-screen keyboard picture (3-emoji)
+        if: always()
+        run: f=tools/osk-shots/3-emoji.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-3-emoji $i::$part"; done || true
+      - name: On-screen keyboard picture (4-ember-wheel)
+        if: always()
+        run: f=tools/osk-shots/4-ember-wheel.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-4-ember-wheel $i::$part"; done || true
+      - name: On-screen keyboard picture (5-split-daylight)
+        if: always()
+        run: f=tools/osk-shots/5-split-daylight.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT osk-5-split-daylight $i::$part"; done || true
       # Mantel on Windows (Ember): the taskbar, launcher, menus, clock panel, clipboard history, desktop icons,
       # Hearth Settings and Apps pages, driven through a stand-in for Ember's host.
       - name: Check Mantel's pages
