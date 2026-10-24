@@ -122,34 +122,6 @@ def dig(v, path):
     return v
 
 
-def curl_variants():
-    """The same requests through curl (as Hearth sends them), with a few headers on or off: which ones the stores want."""
-    import subprocess
-    q = json.dumps({"query": EPIC_SALE})
-    f = base64.b64encode(json.dumps({"orderby": {"id": "orderby", "choices": [{"id": "MostPopular desc"}]}, "PlayWith": {"id": "PlayWith", "choices": [{"id": "PC"}]}}, separators=(",", ":")).encode()).decode()
-    em = json.dumps({"Filters": f, "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=" + f, "EncodedFilters": f, "ChannelId": ""})
-    tries = []
-    for ua in ["Hearth", UA]:
-        tries.append(("epic ua=" + ua[:20], "https://store.epicgames.com/graphql", q, ["Content-Type: application/json", "Accept: application/json"], ua))
-    for extra in (["--http1.1"], ["--http1.1", "--tlsv1.2", "--tls-max", "1.2"], ["--http1.1", "-H", "Accept-Encoding: identity", "-H", "Connection: close"], ["--http2"]):
-        tries.append(("epic " + " ".join(extra), "https://store.epicgames.com/graphql", q, ["Content-Type: application/json", "Accept: application/json"], UA, extra))
-    tries.append(("emerald plain", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", em, ["Content-Type: application/json", "Accept: application/json", "x-ms-api-version: 1.1"], "Hearth"))
-    tries.append(("emerald ms-cv", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", em, ["Content-Type: application/json", "Accept: application/json", "x-ms-api-version: 1.1", "ms-cv: cv", "calling-app-name: Hearth", "calling-app-version: 1"], "Hearth"))
-    tries.append(("emerald long ua", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", em, ["Content-Type: application/json", "Accept: application/json", "x-ms-api-version: 1.1"], UA))
-    for t in tries:
-        name, url, body, hdrs, ua = t[:5]
-        args = ["curl", "-sS", "-L", "-m", "25", "-X", "POST", "-A", ua, "-w", "\n%{http_code}", "--data-binary", body, url]
-        if len(t) > 5: args[1:1] = t[5]
-        for h in hdrs: args[1:1] = ["-H", h]
-        try: out = subprocess.run(args, capture_output=True, text=True, timeout=40).stdout
-        except Exception as e: out = f"{e}\n0"
-        text, _, code = out.rpartition("\n")
-        line = f"curl {name}: HTTP {code} {len(text)} bytes {text[:160]!r}"
-        print("::notice title=" + line.replace(":", " ", 1).replace(" ", "::", 1) if False else line)
-        with open(os.path.join(OUT, "curl.txt"), "a", encoding="utf-8") as f: f.write(line + "\n")
-        time.sleep(0.5)
-
-
 def chained():
     """Requests that need an id from an earlier answer (Xbox: ids from the PC Game Pass list)."""
     try: sigl = json.load(open(os.path.join(OUT, "xbox_sigl_pc.json"), encoding="utf-8"))
@@ -198,7 +170,6 @@ def main():
             print(f"::warning title=Store endpoint {name}::{why}: {text[:300]!r}")
         time.sleep(0.5)   # gently: one request at a time
     print(f"::notice title=Store endpoints::{good} of {len(checks)} answered as expected")
-    curl_variants()
 
 
 if __name__ == "__main__":

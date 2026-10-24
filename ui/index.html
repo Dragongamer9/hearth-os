@@ -1783,11 +1783,12 @@ function viewShop(){
   const st=SHOP.store, h=SHOP.home[st], q=SHOP.q[st]||'';
   let out = `<div class="shop-top"><div class="chips">${SHOP_STORES.map(([k,l])=>`<button class="chip ${k===st?'on':''}" data-f data-k="sf-t-${k}" data-act="shopTab" data-v="${k}">${l}</button>`).join('')}</div>
     <button class="pill" data-f data-k="sf-search" data-act="shopSearch">${I.search}${q?esc(q):'Search '+esc(shopName(st))}</button>
-    ${q?`<button class="pill ghost" data-f data-k="sf-clear" data-act="shopClear">${I.x}Clear</button>`:''}${shopAcctHtml(st)}</div>`;
+    ${q?`<button class="pill ghost" data-f data-k="sf-clear" data-act="shopClear">${I.x}Clear</button>`:''}
+    ${st!=='steam'?`<button class="pill ghost" data-f data-k="sf-site" data-act="shopSite">${I.shop}${esc(SHOP_SITES[st].name)}</button>`:''}${shopAcctHtml(st)}</div>`;
   if(q){
     const r=SHOP.res[st];
     out += shead(`Results for “${esc(q)}”`, SHOP.rbusy[st]);
-    out += SHOP.rerr[st] ? `<div class="shop-err"><b>Couldn't search ${esc(shopName(st))}.</b><div class="muted">${esc(SHOP.rerr[st])}</div></div>`
+    out += SHOP.rerr[st] ? `<div class="shop-err"><b>Couldn't search ${esc(shopName(st))}.</b><div class="muted" style="margin:4px 0 10px">${esc(SHOP.rerr[st])}</div>${st!=='steam'?`<button class="pill" data-f data-k="sf-sitesearch" data-act="shopSite" data-v="search">${I.search}Search on ${esc(SHOP_SITES[st].name)}</button>`:''}</div>`
       : !r ? '' : r.length ? `<div class="shop-grid">${r.map((it,i)=>shopCard(it,'sf-r-'+i)).join('')}</div>` : note(`No games on ${esc(shopName(st))} match “${esc(q)}”.`);
   }
   if(!h){
@@ -1850,7 +1851,7 @@ function shopDetails(){
     <div class="gbody">
       <div>
         <div class="card"><h3>About</h3>${tags?`<div style="margin-bottom:8px">${tags}</div>`:''}
-          ${err?`<div class="muted">Couldn't load this game's page: ${esc(err)}</div>` : !d ? shead('Loading…',true)
+          ${err?`<div class="muted">${p.item&&p.item.short?esc(p.item.short)+'<br><br>':''}Couldn't load this game's page: ${esc(err)}</div>${it.url&&p.store!=='steam'?`<button class="pill" style="margin-top:10px" data-f data-k="sf-seeit" data-act="shopWeb" data-s="${esc(p.store)}" data-id="${esc(it.id)}" data-v="page">${I.shop}See it on ${esc(SHOP_SITES[p.store].name)}</button>`:''}` : !d ? shead('Loading…',true)
             : `<div class="shop-desc">${(text.length?text:[d.short||'']).slice(0, SHOP.more?60:6).map(t=>`<p>${esc(t)}</p>`).join('')}</div>
                ${text.length>6?`<button class="pill ghost" data-f data-k="sf-more" data-act="shopMore">${SHOP.more?'Show less':'Read more'}</button>`:''}`}
         </div>
@@ -1878,6 +1879,7 @@ function shopAct(a, d, el){
     case 'shopXodus': closeAll(); return navigate('stores');
     case 'shopSteam': return shopSteam(d.id, d.v);
     case 'shopWeb': return shopWeb(d.s, d.id, d.v);
+    case 'shopSite': { const st=SHOP.store, site=SHOP_SITES[st]; if(!site) return; return shopOpenUrl(st, d.v==='search'&&SHOP.q[st] ? site.search(SHOP.q[st]) : site.home, site.name); }
     case 'shopSteamRefresh': return call('accounts.refresh',{store:'steam'},10*60e3).then(()=>{ toast('Steam games refreshed'); if(host) loadLibrary(true); }).catch(e=>toast(e.message));
   }
 }
@@ -1897,13 +1899,23 @@ function shopSteam(id, what){
     .then(()=>{ toast(`Steam's store is opening. Press the Guide button to come back to ${APP}.`); render(null,true); }).catch(e=>toast(e.message));
 }
 function shopWeb(store, id, which){
-  const k=store+':'+id, it=Object.assign({}, shopFind(store,id)||{}, SHOP.det[k]||{});
+  const k=store+':'+id, it=Object.assign({}, shopFind(store,id)||{}, (SHOP.page&&SHOP.page.item)||{}, SHOP.det[k]||{});
   const url = which==='buy' && it.checkout ? it.checkout : it.url;
   if(!url) return toast(`${shopName(store)} has no page for this game`);
+  shopOpenUrl(store, url, `${shopName(store)} · ${it.title||'Store'}`);
+}
+// A store's own site in the store window (signed in with its Library › Stores sign-in).
+function shopOpenUrl(store, url, title){
   if(!host) return toast(`${shopName(store)}'s page would open in the store window (preview)`);
-  call('store.web',{store, url, title: `${shopName(store)} · ${it.title||'Store'}`},20000)
+  call('store.web',{store, url, title},20000)
     .then(()=>toast(HOSTINFO.gameMode ? `Opening ${shopName(store)}… press B to come back` : `${shopName(store)} opened in a new window`)).catch(e=>toast(e.message));
 }
+// The stores' own sites: their front page and search, for the store window.
+const SHOP_SITES = {
+  gog: {name:'GOG.com', home:'https://www.gog.com/en/games', search:q=>'https://www.gog.com/en/games?query='+encodeURIComponent(q)},
+  epic: {name:'Epic Games Store', home:'https://store.epicgames.com/en-US/', search:q=>'https://store.epicgames.com/en-US/browse?q='+encodeURIComponent(q)},
+  xbox: {name:'Xbox.com', home:'https://www.xbox.com/en-US/games/browse', search:q=>'https://www.xbox.com/en-US/search/results/games?q='+encodeURIComponent(q)},
+};
 // Back from the store window: the store's games are being fetched again (hearth-core), so a purchase shows up.
 function shopWebClosed(d){
   const s=d&&d.store; if(!s) return;
