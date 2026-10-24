@@ -264,7 +264,7 @@ var HearthOSK = (function () {
   var SYM1 = ['!@#$%^&*()', '-_=+[]{};', "'\"/\\|~`:?"];
   var SYM2 = ['€£¥¢§°•¶©®', '±×÷≠≈<>«»', '¡¿…“”‘’№™'];
   var LABELS = { bksp: '⌫', enter: '↵', shift: '⇧', sym: '&123', abc: 'ABC', sym2: '=\\<', sym1: '?123', emoji: '☺', clip: '📋', layout: '🌐',
-    space: '', left: '‹', right: '›', up: '⌃', down: '⌄', hide: '⌨︎', tab: 'Tab', esc: 'Esc', ctrl: 'Ctrl', alt: 'Alt', home: 'Home', end: 'End', paste: 'Paste' };
+    space: '', left: '‹', right: '›', up: '⌃', down: '⌄', hide: '⌨', tab: 'Tab', esc: 'Esc', ctrl: 'Ctrl', alt: 'Alt', home: 'Home', end: 'End', paste: 'Paste' };
   // Controller shortcuts, shown on the keys while a controller is used.
   var GLYPH = { bksp: 'X', space: 'Y', shift: 'LT', sym: 'RT', abc: 'RT', enter: '☰', hide: 'B', left: 'LB', right: 'RB', emoji: 'L3', layout: 'R3' };
 
@@ -991,7 +991,7 @@ var HearthOSK = (function () {
       pop.style.width = w + 'px';
     }
     function glow(v) {
-      if (!v.active || v.sel.r === -1) { ember.style.opacity = '0'; lastRect = null; return; }
+      if (!v.active || v.sel.r === -1 || (v.wheel && v.wheel.active)) { ember.style.opacity = '0'; lastRect = null; return; }
       var k = keyEl(v.sel.r, v.sel.c);
       if (!k) { ember.style.opacity = '0'; return; }
       var p = rel(k);

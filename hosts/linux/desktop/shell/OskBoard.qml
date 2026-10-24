@@ -23,12 +23,17 @@ Item {
     readonly property var th: themes[s.theme] || themes.hearth
     readonly property int rowCount: vm && vm.rows ? vm.rows.length : 5
     readonly property real gap: s.size === "s" ? 5 : s.size === "l" ? 8 : 7
-    readonly property real keyH: Math.round(Math.max(30, Math.min(s.size === "s" ? 46 : s.size === "l" ? 72 : 58, (height - 26 - topH - gap * rowCount) / rowCount)))
+    readonly property real keyH: Math.round(Math.max(30, Math.min(s.size === "s" ? 54 : s.size === "l" ? 86 : 72, (height - 26 - topH - gap * rowCount) / rowCount)))
     readonly property real topH: Math.round((s.size === "s" ? 46 : s.size === "l" ? 72 : 58) * 0.66)
     readonly property real fontPx: Math.round(keyH * 0.36)
     readonly property bool split: s.shape === "split" && vm && vm.panel !== "num"
     readonly property var modKeys: ["bksp", "enter", "shift", "sym", "abc", "sym2", "emoji", "clip", "layout", "left", "right", "up", "down", "hide", "tab", "esc", "ctrl", "alt", "home", "end", "paste", "prev", "next", "page", "cat"]
     property Item selItem: null
+    // Where the picked key is in the keys' area (its row's place in the column, its place in the row): bound to their
+    // positions, so the ember follows when the keys are laid out again.
+    readonly property bool selPlaced: !!(selItem && selItem.parent && selItem.parent.parent)
+    readonly property real selX: selPlaced ? selItem.x + selItem.parent.x + selItem.parent.parent.x : 0
+    readonly property real selY: selPlaced ? selItem.y + selItem.parent.y + selItem.parent.parent.y : 0
 
     function label(k) {
         if (!vm) return "";
@@ -174,9 +179,8 @@ Item {
             // Hearth's ember: a warm glow that glides to the picked key
             Rectangle {
                 id: ember
-                readonly property point at: board.selItem ? board.selItem.mapToItem(keysArea, 0, 0) : Qt.point(0, 0)
-                visible: !!board.selItem && board.vm && board.vm.active && board.vm.sel.r >= 0
-                x: at.x - 3; y: at.y - 3
+                visible: board.selPlaced && board.vm && board.vm.active && board.vm.sel.r >= 0 && !(board.vm.wheel && board.vm.wheel.active)
+                x: board.selX - 3; y: board.selY - 3
                 width: board.selItem ? board.selItem.width + 6 : 0
                 height: board.selItem ? board.selItem.height + 6 : 0
                 radius: 13
@@ -239,8 +243,8 @@ Item {
                 radius: 14
                 color: board.th.bg2
                 border.color: Qt.rgba(1, 1, 1, 0.08)
-                x: board.selItem ? Math.max(0, Math.min(keysArea.width - width, board.selItem.mapToItem(keysArea, board.selItem.width / 2, 0).x - width / 2)) : 0
-                y: board.selItem ? Math.max(-height / 2, board.selItem.mapToItem(keysArea, 0, 0).y - height - 6) : 0
+                x: board.selPlaced ? Math.max(0, Math.min(keysArea.width - width, board.selX + board.selItem.width / 2 - width / 2)) : 0
+                y: board.selPlaced ? Math.max(-height / 2, board.selY - height - 6) : 0
                 Row {
                     anchors.centerIn: parent
                     spacing: 6
