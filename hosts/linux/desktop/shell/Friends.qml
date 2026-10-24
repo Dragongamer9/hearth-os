@@ -51,30 +51,36 @@ Scope {
         if (!caller.running) next();
     }
     function next() {
-        if (!queue.length) return;
+        if (!queue.length || caller.running) return;
         const q = queue[0];
         caller.done = q.done;
         caller.command = ["hearth-friends", "call", q.method, JSON.stringify(q.args)];
         queue = queue.slice(1);
         caller.running = true;
     }
+    // One call at a time: the answer is handled once the output is read AND the program has exited (starting the
+    // next call before the exit was ignored, and answers went to the wrong callers).
     Process {
         id: caller
         property var done: null
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const t = text.trim();
-                let r = null, err = null;
-                if (t.startsWith("error: ")) err = t.slice(7);
-                else { try { r = JSON.parse(t); } catch (e) { err = t ? "A garbled answer" : "Hearth Friends isn't installed"; } }
-                if (err && err.indexOf("isn't running") < 0 && err !== "Hearth Friends isn't installed") SettingsNav.toast(err);
-                if (err === "Hearth Friends isn't installed") fr.available = false;
-                const d = caller.done; caller.done = null;
-                if (d) d(r, err);
-                fr.next();
-            }
+        property string out: ""
+        property bool read: false
+        property bool exited: false
+        function finish() {
+            if (!read || !exited) return;
+            read = false; exited = false;
+            const t = out.trim();
+            let r = null, err = null;
+            if (t.startsWith("error: ")) err = t.slice(7);
+            else { try { r = JSON.parse(t); } catch (e) { err = t ? "A garbled answer" : "Hearth Friends isn't installed"; } }
+            if (err && err.indexOf("isn't running") < 0 && err !== "Hearth Friends isn't installed") SettingsNav.toast(err);
+            if (err === "Hearth Friends isn't installed") fr.available = false;
+            const d = done; done = null;
+            if (d) d(r, err);
+            Qt.callLater(fr.next);
         }
-        onExited: (code, status) => { if (code === 127) fr.available = false; }
+        stdout: StdioCollector { onStreamFinished: { caller.out = text; caller.read = true; caller.finish(); } }
+        onExited: (code, status) => { if (code === 127) fr.available = false; caller.exited = true; caller.finish(); }
     }
     // Events: new messages, presence, requests. Restarted if the service restarts.
     Process {
