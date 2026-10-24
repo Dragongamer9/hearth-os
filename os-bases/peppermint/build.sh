@@ -270,6 +270,14 @@ if [ -x /ctx/nimbus-app/hearth ]; then
     mkdir -p /usr/lib/hearth-electron && cp -a /ctx/nimbus-app/electron/. /usr/lib/hearth-electron/
     if [ -f /usr/lib/hearth-electron/chrome-sandbox ]; then chown root:root /usr/lib/hearth-electron/chrome-sandbox && chmod 4755 /usr/lib/hearth-electron/chrome-sandbox; fi
   fi
+  # Hearth drawn by Qt Quick (hosts/hearth-qml, Experimental): only when chosen in Settings › Display › Renderer
+  # (docs/RENDERERS.md). Built by CI inside this image's base (.github/scripts/hearth-qml-build.sh), so it links this Qt.
+  # Its packages: the same list as hearth-qml-build.sh runtime_pkgs.
+  if [ -x /ctx/nimbus-app/qml/hearth-qml ]; then
+    "${APT[@]}" qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes qml6-module-qtqml-workerscript qml6-module-qtqml-models qt6-qpa-plugins qt6-image-formats-plugins libsdl2-2.0-0 || echo "warning: some of the Qt renderer's packages didn't install"
+    mkdir -p /usr/lib/hearth-qml && cp -a /ctx/nimbus-app/qml/. /usr/lib/hearth-qml/
+    chmod 755 /usr/lib/hearth-qml/hearth-qml
+  fi
 else
   cp -a /ctx/nimbus-app/. /usr/lib/nimbus/
 fi
