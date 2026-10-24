@@ -345,7 +345,11 @@ impl Bridge {
                 "features": features(), "setupDone": self.setup_done(),
                 "openInstaller": std::path::Path::new("/etc/hearth-live").exists() && crate::osinstall::handoff(false),
             })),
-            "library.get" => Ok(self.library.get(a["rescan"].as_bool().unwrap_or(false))),
+            "library.get" => {
+                // Hearth Link: favorites, collections, play time... synced from your other devices.
+                let (_, gog) = crate::link::apply_inbox(&mut self.library.store, &self.profiles.active());
+                Ok(self.library.get(gog || a["rescan"].as_bool().unwrap_or(false)))
+            }
             "library.setFav" => io(self.library.store.set_in("favorites", &req("id")?, a["on"].as_bool().unwrap_or(false))),
             "library.setHidden" => io(self.library.store.set_in("hidden", &req("id")?, a["on"].as_bool().unwrap_or(false))),
             "library.setSources" => {
@@ -1079,6 +1083,9 @@ impl Bridge {
             "setup.done" => io(self.library.store.update(|d| { d.insert("setupDone".into(), json!(now_ms())); })).map(|_| json!({"ok": true})),
             // Hearth Input: controller layouts for games without controller support (input_map.rs)
             m if m.starts_with("input.") => crate::input_map::call(m, a, self.library.running_id()),
+            // ---- Hearth Link (Settings › Hearth Link, Library › Get from another Hearth)
+            m if m.starts_with("link.") => crate::link::bridge_call(self, m, a),
+            // ---- end of Hearth Link
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
     }
@@ -1173,6 +1180,7 @@ impl Bridge {
                 // Steam's window is needed (its install window after a silent install didn't start): in front.
                 "steam.window" => (self.host)("showSteam", &json!({"wait": 30})),
                 "game.started" => {
+                    crate::link::set_playing(true);   // Hearth Link stays quiet while you play
                     self.parental_since = now_ms(); self.parental_warned = false;
                     out.extend(self.parental_tick());
                     let id = e["data"]["id"].as_str().unwrap_or("").to_string();
@@ -1186,6 +1194,7 @@ impl Bridge {
                     }
                 }
                 "game.exited" => {
+                    crate::link::set_playing(false);
                     if self.parental_since > 0 {
                         let mins = now_ms().saturating_sub(self.parental_since) as f64 / 60000.0;   // the clock set back (time sync) wrapped to years
                         let active = self.profiles.active();
@@ -1581,6 +1590,7 @@ fn features() -> Vec<&'static str> {
     // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
     if crate::gaming_apps::available() { f.push("gamingApps"); }
     // ---- end of Hearth's gaming apps
+    if crate::link::available() { f.push("hearthLink"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
