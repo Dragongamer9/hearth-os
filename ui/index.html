@@ -1922,7 +1922,7 @@ const SHOP_MOCK = (()=>{
   const item = (s, n, i, sec) => {
     const disc = sec==='deals' ? [50,75,30,90,20][i%5] : 0, base = 9.99+((i*7)%5)*10;
     const fin = sec==='free' ? 0 : disc ? base*(1-disc/100) : base, $ = v => '$'+v.toFixed(2);
-    return {store:s, id:s==='epic'?`ns${i}:${hk(n)}`:s==='xbox'?'9N'+hk(n).toUpperCase().slice(0,8):String(1000010+i*10), title:n,
+    return {store:s, id:s==='epic'?`ns${i}:${hk(n)}`:s==='xbox'?'9N'+hk(n).toUpperCase().slice(0,8):String(2000010+i*10), title:n,
       price:{final:fin===0?'Free':$(fin), base:disc||fin===0?$(base):null, discount:fin===0?100:disc, free:fin===0}, wide:null, linux:i%3===0, gamePass:s==='xbox'&&i%2===0,
       rating:{label:(3.5+(i%3)*.5).toFixed(1)+' / 5'}, url:`https://example.com/${s}/${i}`, checkout:s==='epic'?`https://example.com/epic/buy/${i}`:undefined, until:sec==='free'?'2026-11-01T15:00:00.000Z':undefined};
   };
