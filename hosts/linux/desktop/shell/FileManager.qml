@@ -104,6 +104,7 @@ Scope {
     property string dlgAlt: ""                 // a confirm's third button (Open in Hearth Text), "" for none
     property var dlgAltAction: null
     property var foPlan: null                  // opening a script, program or .desktop file: {e, plan, remember}
+    property string pendingArchive: ""         // opened with this archive (hearth-filemanager): asked about once it's listed
 
     // ------------------------------------------------ picker mode (picker.qml, for hearth-portal)
     // pick: {kind: open|save|savefiles, title, accept, multiple, directory, filters: [{name, globs, mimes}], filter,
@@ -151,6 +152,8 @@ Scope {
         if (target.startsWith("file://")) target = decodeURIComponent(target.slice(7));
         if (target.startsWith("~")) target = home + target.slice(1);
         shown = true;
+        // Opened with an archive (it's the default app for them): pick it and ask what to do with it.
+        pendingArchive = target && /\.(zip|tar|tgz|txz|tbz2?|tzst|gz|xz|bz2|zst|7z|rar)$/i.test(target) ? base(target) : "";
         const go = () => {
             if (target) navigate(target, "");
             else if (!listing) navigate(home, "");
@@ -406,6 +409,12 @@ Scope {
             cur = Math.max(0, i >= 0 ? i : (r.path === prev ? Math.min(cur, entries.length - 1) : 0));
             if (r.select) zone = "main";
             makeThumbs();
+            if (pendingArchive) {
+                const a = entries[cur];
+                const want = pendingArchive;
+                pendingArchive = "";
+                if (a && a.name === want && !a.dir) openFile(a);
+            }
         });
     }
     // The child of `to` that `from` is inside: picked when going back or up.
@@ -1305,6 +1314,7 @@ Scope {
                 return askRunOrOpen(e, r);
             }
             if (r.kind === "desktop") return askDesktop(e, r);
+            if (r.kind === "archive") return askArchive(e);
             if (r.kind === "text") return openInText(e, false);
             if (r.kind === "binary") {
                 foPlan = { e: e, plan: r, remember: false };
@@ -1318,6 +1328,19 @@ Scope {
             say("Opening “" + e.name + "”…");
             call(["open", e.path], (r2, err2) => { if (err2) say(err2, true); });
         });
+    }
+    // An archive opens in Hearth Files (its default app on Hearth OS): unpack it here or somewhere else, or
+    // another app (Settings › Default apps › Archives picks one for good).
+    function askArchive(e) {
+        foPlan = { e: e, plan: { kind: "archive" }, remember: false };
+        showMenu("“" + e.name + "”", [
+            listing && listing.writable ? { id: "extracthere", label: "Extract here" } : sep(),
+            { id: "extractto", label: "Extract to…" },
+            sep(),
+            { id: "fo-openwith", label: "Open with…" },
+            sep(),
+            { id: "fo-cancel", label: "Cancel" }
+        ]);
     }
     function askRunOrOpen(e, r) {
         foPlan = { e: e, plan: r, remember: true };

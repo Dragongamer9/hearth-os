@@ -600,6 +600,43 @@ jobs:
           warn "Hearth Maps may ask GeoClue for Where am I" "test -f /etc/geoclue/conf.d/90-hearth-maps.conf"
           warn "the Contacts and Maps icons are installed" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-contacts.svg && test -f /usr/share/icons/hicolor/scalable/apps/hearth-maps.svg"
           # ---- end of Hearth Contacts and Hearth Maps
+          echo "--- default apps (Hearth's apps open everything, Settings › Default apps changes it)"
+          check "Hearth's default apps were written (hearth-system defaults-system)" "grep -q \"^# Hearth's default apps\" /etc/xdg/nimbus-mimeapps.list && grep -q \"^# Hearth's default apps\" /usr/share/applications/mimeapps.list"
+          check "xdg-mime is installed" "command -v xdg-mime"
+          # As a new account in Hearth's session (XDG_CURRENT_DESKTOP=Nimbus, nothing of its own yet): xdg-mime and
+          # GLib's gio say Hearth's app for each kind, never the base's (Firefox, Loupe, Totem, Evince, LibreOffice...).
+          mkdir -p /tmp/du && chown 65534:65534 /tmp/du
+          asu() { setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=Nimbus XDG_DATA_DIRS=/usr/local/share:/usr/share XDG_CONFIG_DIRS=/etc/xdg "$@"; }
+          dbad=""; dgio=""; dn=0
+          for pair in text/plain=hearth-text text/x-python=hearth-text application/json=hearth-text text/markdown=hearth-text \
+                      image/jpeg=hearth-photos image/png=hearth-photos video/mp4=hearth-player video/x-matroska=hearth-player \
+                      audio/mpeg=hearth-player audio/flac=hearth-player application/pdf=hearth-documents application/epub+zip=hearth-documents \
+                      x-scheme-handler/https=hearth-browser x-scheme-handler/http=hearth-browser text/html=hearth-browser \
+                      inode/directory=hearth-files application/zip=hearth-files application/x-compressed-tar=hearth-files \
+                      application/vnd.openxmlformats-officedocument.wordprocessingml.document=hearth-write application/vnd.oasis.opendocument.text=hearth-write \
+                      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=hearth-sheets text/csv=hearth-sheets \
+                      application/vnd.openxmlformats-officedocument.presentationml.presentation=hearth-slides \
+                      font/ttf=hearth-fonts text/vcard=hearth-contacts text/calendar=hearth-calendar x-scheme-handler/webcal=hearth-calendar \
+                      x-scheme-handler/geo=hearth-maps x-scheme-handler/terminal=hearth-terminal; do
+            m=${pair%%=*}; want=${pair#*=}.desktop
+            [ -f "/usr/share/applications/$want" ] || { echo "skip: $want isn't in this image ($m)"; continue; }
+            got=$(asu xdg-mime query default "$m" 2>/dev/null | tail -1); dn=$((dn+1))
+            [ "$got" = "$want" ] || dbad="$dbad $m=${got:-nothing}(want $want)"
+            if command -v gio >/dev/null; then g=$(asu gio mime "$m" 2>/dev/null | sed -n 's/^Default application for .*: *//p'); [ -z "$g" ] || [ "$g" = "$want" ] || dgio="$dgio $m=$g"; fi
+          done
+          if [ -z "$dbad" ]; then echo "ok: xdg-mime says Hearth's app for all $dn kinds of file and link"; else echo "::error title=default apps::xdg-mime as a new user:$dbad"; fail=1; fi
+          [ -z "$dgio" ] || echo "::warning title=default apps (gio)::GLib picks another app for:$dgio"
+          check "Settings › Default apps lists Hearth's apps as in use (hearth-system defaults, as a new user)" "setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=Nimbus python3 /usr/share/nimbus/desktop/shell/hearth-system defaults | python3 -c 'import json, sys; k = {x[\"kind\"]: x for x in json.load(sys.stdin)[\"kinds\"]}; sys.exit(0 if k[\"text\"][\"current\"] == \"hearth-text.desktop\" and k[\"browser\"][\"isHearth\"] and not any(x[\"yours\"] for x in k.values()) else 1)'"
+          # Picking another app writes ~/.config/mimeapps.list and wins; Reset to Hearth's defaults brings Hearth's back.
+          if [ -f /usr/share/applications/hearth-write.desktop ] && [ -f /usr/share/applications/hearth-text.desktop ]; then
+            asu python3 /usr/share/nimbus/desktop/shell/hearth-system default-set text hearth-write.desktop >/dev/null 2>&1
+            d1=$(asu xdg-mime query default text/plain 2>/dev/null)
+            asu python3 /usr/share/nimbus/desktop/shell/hearth-system default-reset >/dev/null 2>&1
+            d2=$(asu xdg-mime query default text/plain 2>/dev/null)
+            if [ "$d1" = hearth-write.desktop ] && [ "$d2" = hearth-text.desktop ]; then echo "ok: a choice in Settings › Default apps wins, and Reset brings Hearth's back"
+            else echo "::error title=default apps::picking Hearth Write for text gave '$d1', resetting gave '$d2'"; fail=1; fi
+          fi
+          echo "::notice title=Default app lists in the image::$(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
           exit $fail
           EOF
           sudo podman run --rm -v /tmp/check.sh:/check.sh:ro -v "$PWD/.github/scripts/hearth-store-check.sh:/store-check.sh:ro" hearth-peppermint:latest sh /check.sh
