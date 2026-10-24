@@ -29,15 +29,22 @@ note "fontconfig in the image" "$sysfc"
 fc-match sans-serif >/dev/null 2>&1 || err "fonts" "fc-match sans-serif fails in the image"
 
 # A virtual screen.
-if ! command -v Xvfb >/dev/null 2>&1; then
-  { dnf5 -y install xorg-x11-server-Xvfb || dnf -y install xorg-x11-server-Xvfb || { apt-get update && apt-get install -y --no-install-recommends xvfb; }; } >/tmp/xvfb-install.log 2>&1
+# (Xvfb also needs xkbcomp and the keyboard data to start.)
+if ! command -v Xvfb >/dev/null 2>&1 || ! command -v xkbcomp >/dev/null 2>&1; then
+  { dnf5 -y install xorg-x11-server-Xvfb xorg-x11-xkb-utils xkeyboard-config || dnf -y install xorg-x11-server-Xvfb xorg-x11-xkb-utils xkeyboard-config || \
+    { apt-get update && apt-get install -y --no-install-recommends xvfb x11-xkb-utils xkb-data; }; } >/tmp/xvfb-install.log 2>&1
 fi
 if ! command -v Xvfb >/dev/null 2>&1; then
   warn "overlay text" "couldn't install Xvfb in the image to run the check: $(tail -3 /tmp/xvfb-install.log)"
   exit "$fail"
 fi
+mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 Xvfb :7 -screen 0 1280x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
-for _ in $(seq 1 50); do [ -e /tmp/.X11-unix/X7 ] && break; sleep 0.2; done
+for _ in $(seq 1 75); do [ -e /tmp/.X11-unix/X7 ] && break; sleep 0.2; done
+if [ ! -e /tmp/.X11-unix/X7 ]; then
+  err "overlay text" "the virtual screen (Xvfb :7) didn't start, so the check couldn't run: $(tail -15 /tmp/xvfb.log; tail -3 /tmp/xvfb-install.log 2>/dev/null)"
+  exit 1
+fi
 
 # A user like the owner's: a home folder, /run/user/<uid>, nothing else from a session.
 mkdir -p /var/home 2>/dev/null
