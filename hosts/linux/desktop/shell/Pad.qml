@@ -27,6 +27,7 @@ Scope {
     // and in Hearth Settings when it's the window in front.
     readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && active.title === "Task Manager") || (files.shown && active !== null && active.title === "Files")
         || SettingsNav.clipShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
+        || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
 

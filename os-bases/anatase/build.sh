@@ -371,7 +371,9 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
-chmod 755 /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper /usr/bin/hearth-browser /usr/bin/hearth-send-logs
+chmod 755 /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper /usr/bin/hearth-browser /usr/bin/hearth-send-logs /usr/bin/hearth-install-package
+# hearth-debbox (.deb files through Hearth's Debian box) for terminal users too.
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the other editions
@@ -429,6 +431,29 @@ for p in cups cups-filters ipp-usb avahi nss-mdns wl-clipboard cliphist wtype fl
 done
 systemctl enable cups.socket || true
 systemctl enable avahi-daemon.socket 2>/dev/null || true
+# .deb files (Hearth's Debian box: hearth-debbox and the Install Package window put them in a Debian 13 container
+# made with Distrobox; podman is in Anatase) and AppImages (FUSE 2's library, which most AppImages' runtime loads,
+# and fusermount).
+dnf5 -y install distrobox
+dnf5 -y install fuse-libs || dnf5 -y install fuse2-libs || echo "warning: FUSE 2's library isn't available; AppImages run unpacked instead (slower)"
+dnf5 -y install fuse || true
+if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
+touch /etc/subuid /etc/subgid
+command -v distrobox
+# Flathub for the system installation (hearth-flatpak-setup adds it from here; Bazaar and Apps' system fallback use it),
+# unless Anatase already brings a Flathub remote file.
+if ! grep -qls 'dl.flathub.org' /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo 2>/dev/null; then
+  mkdir -p /etc/flatpak/remotes.d
+  curl -fsSL --retry 3 -o /etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo || echo "warning: couldn't fetch Flathub's remote file"
+fi
+# Bazaar, the Flathub store (io.github.kolunmi.Bazaar): Fedora's package when this release has it (only kept if it
+# really is that app: its .desktop id); otherwise hearth-flatpak-setup installs Flathub's at the first online boot.
+if dnf5 -y install bazaar >/tmp/bazaar.log 2>&1 && [ -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop ]; then
+  echo "Bazaar installed from Fedora"
+else
+  rpm -q bazaar >/dev/null 2>&1 && dnf5 -y remove bazaar || true
+  echo "Bazaar isn't packaged for Fedora $FEDORA here ($(tail -n 1 /tmp/bazaar.log | cut -c1-160)): Flathub's is installed at first boot"
+fi
 # The move's first start (hearth-clean-install) reads Lutris' database with Python's sqlite3, and the controller
 # on the login screen needs evdev (above).
 python3 -c 'import sqlite3, json'
@@ -637,6 +662,8 @@ for l in $(ff_missing); do dnf5 -y install --setopt=install_weak_deps=False "$l(
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+# .deb files open in Install Package (Hearth's Debian box).
+printf 'application/vnd.debian.binary-package=hearth-install-package.desktop\napplication/x-deb=hearth-install-package.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 
 # ------------------------------------------------------------------ Hearth Player and Hearth Calculator
 # ---- hosts/hearth-player and hosts/hearth-calculator, built by CI with the app (base-anatase.yml) and carried in
@@ -866,6 +893,9 @@ systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service   # the controller on the login screen
 systemctl enable hearth-boot-first.service    # Hearth stays first in the boot order
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)
+systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache folders yours, container id ranges
+systemctl enable hearth-flatpak-setup.service # Flatpak's system installation, Flathub, Bazaar (when not a package)
+systemctl enable hearth-hosts.service hearth-hosts.path  # /etc/hosts maps the device's name (sudo warns otherwise)
 systemctl enable hearth-bluetooth-labels.service  # Bluetooth pairings readable under SELinux before bluetoothd
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
