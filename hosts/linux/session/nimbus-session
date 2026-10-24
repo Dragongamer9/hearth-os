@@ -64,6 +64,10 @@ unset GAMESCOPE_MODE_SAVE_FILE
 if [ -d /sys/module/nvidia ] && [ -z "${WEBKIT_DISABLE_DMABUF_RENDERER+x}" ]; then
   export WEBKIT_DISABLE_DMABUF_RENDERER=1
 fi
+# Apps that open web pages through $BROWSER (sign-in pages of launchers, Python's webbrowser, Rust's open crate...)
+# use your default browser: Hearth Browser unless you picked another in Settings › Default apps, not the first
+# browser they find (Chrome). A value you set yourself is kept.
+[ -z "${BROWSER+x}" ] && command -v xdg-open >/dev/null 2>&1 && export BROWSER=xdg-open
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
