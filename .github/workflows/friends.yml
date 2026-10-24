@@ -189,7 +189,8 @@ jobs:
         run: |
           set -o pipefail
           dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-oauth-e2e.py --bin hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8018 --user dave' 2>&1 | tee oauth.log \
-            || { echo "::error title=Friends OAuth end to end::$(grep -E 'FAIL|Traceback|Error' -A8 oauth.log | head -60 | tr '\n' '|' | cut -c1-3900) || mas: $(docker logs --tail 30 mas 2>&1 | tr '\n' '|' | cut -c1-1500)"; exit 1; }
+            || { grep '^PASS' oauth.log | while read -r l; do echo "::notice title=Friends OAuth::$l"; done; grep '^AUTHLOG' oauth.log | cut -c1-3900 | while read -r l; do echo "::notice title=Friends OAuth log::$l"; done
+                 echo "::error title=Friends OAuth end to end::$(grep -E 'FAIL|Traceback|Error' -A8 oauth.log | head -60 | tr '\n' '|' | cut -c1-3900) || mas: $(docker logs --tail 30 mas 2>&1 | tr '\n' '|' | cut -c1-1500)"; exit 1; }
           echo "::notice title=Friends OAuth summary::$(grep -c '^PASS' oauth.log) checks passed (Synapse with the Matrix Authentication Service)"
           grep '^PASS' oauth.log | while read -r l; do echo "::notice title=Friends OAuth::$l"; done
       # Read-only look at matrix.org's public sign-in settings (no account, no registration): what Hearth will offer there.
