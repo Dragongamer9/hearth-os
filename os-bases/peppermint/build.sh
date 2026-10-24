@@ -706,7 +706,7 @@ cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
 # launcher (the .deb handler).
-chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-apps /usr/bin/hearth-install-package
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
@@ -792,18 +792,8 @@ Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
-cat > /usr/share/applications/hearth-apps.desktop <<DESKTOP
-[Desktop Entry]
-Name=Apps
-GenericName=App Store
-Comment=Find, install and update apps from Flathub
-Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
-Icon=hearth-apps
-Type=Application
-Categories=System;PackageManager;
-Keywords=store;software;install;update;flathub;flatpak;
-OnlyShowIn=Nimbus;
-DESKTOP
+# (Hearth's own app store, Apps / hearth-apps.desktop, is archived: Bazaar is the app store, installed for everyone by
+# hearth-flatpak-setup. docs/ARCHIVED.md)
 cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Browser
