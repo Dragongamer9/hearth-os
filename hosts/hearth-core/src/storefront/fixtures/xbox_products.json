@@ -1,0 +1,457 @@
+{
+ "Products": {
+  "9NPDN9R45JX4": {
+   "ProductTitle": "1000xRESIST",
+   "ProductDescription": "The three-time IGF award-nominated 1000xRESIST is a thrilling sci-fi adventure. 1,000 years in the future, humanity is all but extinguished and a disease spread by an alien occupation keeps the survivors underground. You are Watcher. You dutifully fulfil your purpose in service of the ALLMOTHER, unt",
+   "ProductDescriptionShort": "1000xRESIST is a thrilling sci-fi adventure. The year is unknown, and a disease spread by an alien invasion keeps you underground. You are Watcher. You dutifully fulfil your purpose in serving the ALLMOTHER, until the day you discover a shocking secret that changes everything. ",
+   "PublisherName": "Fellow Traveller",
+   "DeveloperName": "sunset visitor 斜陽過客",
+   "XCloudTitleId": "1000XRESIST",
+   "RequiresXboxLiveGold": false,
+   "Image_Tile": {
+    "URL": "//store-images.s-microsoft.com/image/apps.26170.13724740810259939.b66dd818-9d75-4097-b510-7e4f8f43131a.ae40357e-1af2-40ef-8179-06b7546b3e9e",
+    "Caption": ""
+   },
+   "Image_Poster": {
+    "URL": "//store-images.s-microsoft.com/image/apps.42712.13724740810259939.b66dd818-9d75-4097-b510-7e4f8f43131a.ac32cda4-2fd9-4049-a090-966d3ace3e22",
+    "Caption": ""
+   },
+   "Image_Hero": {
+    "URL": "//store-images.s-microsoft.com/image/apps.38663.13724740810259939.b66dd818-9d75-4097-b510-7e4f8f43131a.17207052-a7ae-4ad3-afaa-030774844c4d",
+    "Caption": ""
+   },
+   "Image_TitledHero": {
+    "URL": "//store-images.s-microsoft.com/image/apps.63905.13724740810259939.b66dd818-9d75-4097-b510-7e4f8f43131a.7a304175-8b49-46f4-aa42-c2391059a29d",
+    "Caption": ""
+   },
+   "Screenshots": [
+    {
+     "URL": "//store-images.s-microsoft.com/image/apps.65229.13724740810259939.b66dd818-9d75-4097-b510-7e4f8f43131a.110cc837-4226-4730-8d4c-e36a920cda42",
+     "Caption": ""
+    },
+    {
+     "URL": "//store-images.s-microsoft.com/image/apps.10765.13724740810259939.b66dd818-9d75-4097-b510-7e4f8f43131a.e996b78c-ced3-43d6-bef8-bd23af4ca86a",
+     "Caption": ""
+    }
+   ],
+   "Categories": [
+    "Action & adventure"
+   ],
+   "LocalizedCategories": [
+    "Action & adventure"
+   ],
+   "Streamability": {
+    "WithGPU": true
+   },
+   "ContentRating": {
+    "LongName": "MATURE 17+",
+    "Description": "For ages 17 and up",
+    "Age": 17,
+    "LogoUrl": "https://store-images.microsoft.com/image/global.53975.image.32437939-2f27-4e79-8431-5f5866f32908.3dc74b18-4153-423c-b367-bdcfd34ac658",
+    "RatingSystemUrl": "https://www.esrb.org/ratings-guide/",
+    "RatingSystem": "ESRB",
+    "LocalizedDescriptors": [
+     "Violence",
+     "Blood",
+     "Strong Language"
+    ],
+    "LocalizedDisclaimers": [],
+    "LocalizedInteractiveElements": []
+   },
+   "XCloudOfferings": {
+    "XGPU": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUBETA": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUWEB": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUPCAPP": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUCONSOLE": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "TAKEHOMECONSOLE": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "TAKEHOME": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "TAKEHOMEWEB": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "CLOUDGAMING": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    }
+   },
+   "OriginalReleaseDate": "2025-11-04T16:00:00Z",
+   "AnonymousPrice": {
+    "MSRP": {
+     "formattedValue": "$19.99",
+     "value": 19.99,
+     "currencyCode": "USD"
+    },
+    "SalePrice": null
+   },
+   "XboxTitleId": "1615431074",
+   "PassMetadataByPassProductId": {
+    "CFQ7TTC0K6L8": {
+     "EntryDateUTC": "2025-11-04T16:00:00Z"
+    },
+    "CFQ7TTC0KGQ8": {
+     "EntryDateUTC": "2025-11-04T16:00:00Z"
+    },
+    "CFQ7TTC0P85B": {
+     "EntryDateUTC": "2025-11-04T16:00:00Z"
+    }
+   },
+   "Actions": [
+    "Details",
+    "Fulfill",
+    "Purchase",
+    "Browse",
+    "Curate",
+    "Redeem",
+    "Gift",
+    "License"
+   ],
+   "AvailablePlatforms": [
+    "PC",
+    "XboxSeriesX",
+    "XCloud",
+    "Handheld"
+   ],
+   "StoreId": "9NPDN9R45JX4"
+  },
+  "9P8LR42PTRGJ": {
+   "ProductTitle": "33 Immortals",
+   "ProductDescription": "33 Immortals is a co-op action-roguelike for 33 players. Jump straight into runs, solo or with friends. Battle hordes of monsters, defeat massive bosses, and grow stronger each run. Use in-game emotes to coordinate and combine powers with your fellow rebels, and face the Wrath of God, together.\n\nPIC",
+   "ProductDescriptionShort": "33 Immortals is a co-op action-roguelike for 33 players. Jump straight into runs, solo or with friends. Battle hordes of monsters, defeat massive bosses, and grow stronger each run. Use in-game emotes to coordinate and combine powers with your fellow rebels, and face the Wrath of God, together.",
+   "PublisherName": "Thunder Lotus",
+   "DeveloperName": "Thunder Lotus",
+   "XCloudTitleId": "33IMMORTALSGAMEPREVIEW",
+   "RequiresXboxLiveGold": false,
+   "Image_Tile": {
+    "URL": "//store-images.s-microsoft.com/image/apps.2377.14090162823233215.5f027b60-c9ed-4eea-ad07-8091580faccc.a49b63e1-962f-4afc-ba9a-6385aba2159d",
+    "Caption": ""
+   },
+   "Image_Poster": {
+    "URL": "//store-images.s-microsoft.com/image/apps.51551.14090162823233215.5f027b60-c9ed-4eea-ad07-8091580faccc.1129aa1a-4841-4079-b300-e9051e479ea3",
+    "Caption": ""
+   },
+   "Image_Hero": {
+    "URL": "//store-images.s-microsoft.com/image/apps.3461.14090162823233215.2d39e9bd-f341-4d5f-9638-b1a6c75a4e3a.72ec0057-de44-41e8-8f55-3697194006ad",
+    "Caption": ""
+   },
+   "Image_TitledHero": {
+    "URL": "//store-images.s-microsoft.com/image/apps.31149.14090162823233215.5f027b60-c9ed-4eea-ad07-8091580faccc.8396a274-309e-44e1-9824-48f7246bf3f0",
+    "Caption": ""
+   },
+   "Screenshots": [
+    {
+     "URL": "//store-images.s-microsoft.com/image/apps.9732.14090162823233215.13794def-6f5d-4292-86b7-5b23a5e557e5.f6082d65-cd83-42b2-bbf2-2873ea04cc3e",
+     "Caption": ""
+    },
+    {
+     "URL": "//store-images.s-microsoft.com/image/apps.11350.14090162823233215.13794def-6f5d-4292-86b7-5b23a5e557e5.ae970392-3f4c-453c-9dd8-5ddca02a715f",
+     "Caption": ""
+    }
+   ],
+   "Categories": [
+    "Action & adventure"
+   ],
+   "LocalizedCategories": [
+    "Action & adventure"
+   ],
+   "Streamability": {
+    "WithGPU": true
+   },
+   "ContentRating": {
+    "LongName": "TEEN",
+    "Description": "For ages 13 and up",
+    "Age": 13,
+    "LogoUrl": "https://store-images.microsoft.com/image/global.17268.image.4cc004ee-a56d-4f11-ae99-67a89379b743.13d51d69-d3ba-4760-8fdf-f996abafa50a",
+    "RatingSystemUrl": "https://www.esrb.org/ratings-guide/",
+    "RatingSystem": "ESRB",
+    "LocalizedDescriptors": [
+     "Violence",
+     "Blood"
+    ],
+    "LocalizedDisclaimers": [],
+    "LocalizedInteractiveElements": [
+     "In-Game Purchases"
+    ]
+   },
+   "XCloudOfferings": {
+    "XGPU": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUBETA": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUWEB": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUPCAPP": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "XGPUCONSOLE": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "TAKEHOMECONSOLE": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "TAKEHOME": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "TAKEHOMEWEB": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    },
+    "CLOUDGAMING": {
+     "Programs": [
+      "GPULTIMATE",
+      "CALLISTO",
+      "DIA",
+      "EUROPA",
+      "TRITON",
+      "FERDINAND"
+     ],
+     "IsAdditionalProduct": false,
+     "SupportedInputTypes": [
+      "controller"
+     ]
+    }
+   },
+   "OriginalReleaseDate": "2026-06-11T15:00:00Z",
+   "AnonymousPrice": {
+    "MSRP": {
+     "formattedValue": "$14.99",
+     "value": 14.99,
+     "currencyCode": "USD"
+    },
+    "SalePrice": null
+   },
+   "XboxTitleId": "2141212892",
+   "PassMetadataByPassProductId": {
+    "CFQ7TTC0K6L8": {
+     "EntryDateUTC": "2025-03-18T16:00:00Z"
+    },
+    "CFQ7TTC0KGQ8": {
+     "EntryDateUTC": "2025-03-18T16:00:00Z"
+    },
+    "CFQ7TTC0P85B": {
+     "EntryDateUTC": "2025-12-04T00:00:00Z"
+    }
+   },
+   "Actions": [
+    "Details",
+    "Fulfill",
+    "Purchase",
+    "Browse",
+    "Curate",
+    "Redeem",
+    "Gift",
+    "License"
+   ],
+   "AvailablePlatforms": [
+    "PC",
+    "XboxOne",
+    "XboxSeriesX",
+    "XCloud",
+    "Handheld"
+   ],
+   "StoreId": "9P8LR42PTRGJ"
+  }
+ },
+ "InvalidIds": []
+}

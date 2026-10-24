@@ -1,0 +1,150 @@
+{
+ "channels": {
+  "BROWSE_CHANNELID=_FILTERS=eyJvcmRlcmJ5Ijp7ImlkIjoib3JkZXJieSIsImNob2ljZXMiOlt7ImlkIjoiTW9zdFBvcHVsYXIgZGVzYyJ9XX0sIlBsYXlXaXRoIjp7ImlkIjoiUGxheVdpdGgiLCJjaG9pY2VzIjpbeyJpZCI6IlBDIn1dfX0=": {
+   "channelKey": "BROWSE_CHANNELID=_FILTERS=eyJvcmRlcmJ5Ijp7ImlkIjoib3JkZXJieSIsImNob2ljZXMiOlt7ImlkIjoiTW9zdFBvcHVsYXIgZGVzYyJ9XX0sIlBsYXlXaXRoIjp7ImlkIjoiUGxheVdpdGgiLCJjaG9pY2VzIjpbeyJpZCI6IlBDIn1dfX0=",
+   "products": [
+    {
+     "productId": "9PMF91N3LZ3M"
+    },
+    {
+     "productId": "9PGW18NPBZV5"
+    }
+   ],
+   "totalItems": 5708
+  }
+ },
+ "productSummaries": [
+  {
+   "title": "Roblox - Windows",
+   "productId": "9PMF91N3LZ3M",
+   "images": {
+    "boxArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.15542.14294982842551334.bc68eb2f-01f8-451f-85fc-6428e4bd5d81.e499e81b-867d-4917-93a4-72af69489370",
+     "width": 1080,
+     "height": 1080
+    },
+    "poster": {
+     "url": "https://store-images.s-microsoft.com/image/apps.3683.14294982842551334.bc68eb2f-01f8-451f-85fc-6428e4bd5d81.35b3b7f9-a58e-461b-9b11-2e1c4b3c7af2",
+     "width": 1440,
+     "height": 2160
+    },
+    "superHeroArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.11554.14294982842551334.bc68eb2f-01f8-451f-85fc-6428e4bd5d81.a486c63a-5620-4b2c-9090-914175529870",
+     "width": 1920,
+     "height": 1080
+    }
+   },
+   "specificPrices": {
+    "purchaseable": [
+     {
+      "skuId": "0010",
+      "availabilityId": "B1P7JXWC4FBH",
+      "discountPercentage": 0.0,
+      "eligibilityInfo": {
+       "eligibility": "None",
+       "type": "Unknown"
+      },
+      "availabilityActions": [
+       "Details",
+       "Fulfill",
+       "Purchase",
+       "Browse",
+       "Curate",
+       "Redeem"
+      ],
+      "endDateUtc": "12/30/9998 00:00:00",
+      "hasXPriceOffer": false,
+      "listPrice": 0.0,
+      "msrp": 0.0,
+      "currency": "USD"
+     }
+    ]
+   },
+   "averageRating": 4.0,
+   "ratingCount": 24339,
+   "includedWithPassesProductIds": [],
+   "availableOn": [
+    "PC",
+    "Handheld"
+   ],
+   "releaseDate": "2025-09-11T17:00:00.0000000Z",
+   "publisherName": "Roblox Corporation",
+   "categories": [
+    "Action & adventure",
+    "Family & kids",
+    "Other",
+    "Racing & flying",
+    "Simulation",
+    "Strategy"
+   ],
+   "productKind": "Game",
+   "shortDescription": ""
+  },
+  {
+   "title": "Minecraft Launcher",
+   "productId": "9PGW18NPBZV5",
+   "images": {
+    "boxArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.52476.14247769038588514.a7fa20d7-bc1c-464b-bf78-16dfcd742fe5.d7a8f421-8edd-41e0-925b-4c7dfea0483b",
+     "width": 2160,
+     "height": 2160
+    },
+    "poster": {
+     "url": "https://store-images.s-microsoft.com/image/apps.19881.14247769038588514.16fb8346-aeb3-4939-8ef6-f5fefab5177f.9e8fc093-2e52-4c04-86cb-a94e29ccede5",
+     "width": 1440,
+     "height": 2160
+    },
+    "superHeroArt": {
+     "url": "https://store-images.s-microsoft.com/image/apps.43152.14247769038588514.3ce72ba0-ff44-4b91-b1ca-eef499b58987.a75b6a42-9c31-452f-b8ec-e955d3ab3d00",
+     "width": 3840,
+     "height": 2160
+    }
+   },
+   "specificPrices": {
+    "purchaseable": [
+     {
+      "skuId": "0010",
+      "availabilityId": "9WKCFQMLJD8H",
+      "discountPercentage": 0.0,
+      "eligibilityInfo": {
+       "eligibility": "None",
+       "type": "Unknown"
+      },
+      "availabilityActions": [
+       "Details",
+       "Fulfill",
+       "Purchase",
+       "Browse",
+       "Curate",
+       "Redeem"
+      ],
+      "endDateUtc": "11/03/2799 23:59:59",
+      "hasXPriceOffer": false,
+      "listPrice": 0.0,
+      "msrp": 0.0,
+      "currency": "USD"
+     }
+    ]
+   },
+   "averageRating": 3.9,
+   "ratingCount": 162229,
+   "includedWithPassesProductIds": [
+    "CFQ7TTC0K6L8",
+    "CFQ7TTC0KGQ8",
+    "CFQ7TTC0P85B",
+    "CFQ7TTC10QFD"
+   ],
+   "availableOn": [
+    "PC"
+   ],
+   "releaseDate": "2021-11-02T16:00:00.0000000Z",
+   "publisherName": "Microsoft Studios",
+   "developerName": "Mojang/Microsoft Studios",
+   "categories": [
+    "Action & adventure"
+   ],
+   "shortDescription": "It’s not just the Minecraft Launcher – it’s your basecamp into all things Minecraft on PC!\r\n\r\nThis is the Minecraft Laun",
+   "productKind": "Game"
+  }
+ ]
+}
