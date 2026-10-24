@@ -196,6 +196,14 @@ pub mod play_together {
         }
     }
 
+    impl Transport for Link {
+        fn id(&self) -> &'static str { "link" }
+        fn ready(&self) -> bool { Self::ask().map(|v| v["ready"] == true).unwrap_or(false) }
+        fn host_addresses(&self) -> Vec<String> {
+            Self::ask().and_then(|v| v["addresses"].as_array().cloned()).unwrap_or_default().iter().filter_map(|a| a.as_str().map(str::to_string)).take(4).collect()
+        }
+    }
+
     pub fn transports() -> Vec<Box<dyn Transport>> { vec![Box::new(Lan), Box::new(Link)] }
 
     fn sunshine_installed() -> bool { crate::system::has("sunshine") || Path::new("/usr/bin/sunshine").exists() }
