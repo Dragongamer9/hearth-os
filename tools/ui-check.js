@@ -1351,6 +1351,74 @@ const path = require('path');
     await kp.close();
   }
 
+  // Hearth Link pairing (Settings › Hearth Link): the code here and what's happening with it, the devices on this
+  // network with their kind and edition, picking one and typing its code with the number pad, a wrong code asked
+  // again with the tries left (nothing to start over), and short codes checked and formatted as they're typed (the
+  // same check character as the service, hosts/hearth-link shortcode.rs).
+  {
+    const lp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const lerr = m => errors.push('Hearth Link pairing: ' + m);
+    lp.on('pageerror', e => lerr(e.message));
+    try {
+      await lp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await lp.waitForTimeout(1200);
+      const r = await lp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const out = {};
+        const st = { running: true, me: { id: 'a'.repeat(64), name: 'Deck', ticket: 'a'.repeat(64) }, settings: { sync: true }, peers: [], transfers: [], offers: [], sending: [], signInHints: [], shortCodes: true,
+          pairing: { code: '482913', until: Date.now() + 290000, triesLeft: 4, netCode: null },
+          pairEvent: { state: 'wrong', name: 'Nvidia-PC', triesLeft: 4, at: Date.now() },
+          nearby: [{ id: 'b'.repeat(64), name: 'Nvidia-PC', pairing: true, kind: 'desktop', edition: 'Anatase' }, { id: 'c'.repeat(64), name: 'Office', pairing: false, kind: 'laptop', edition: 'Peppermint' }] };
+        const calls = [];
+        let joins = 0;
+        call = async (m, a) => {
+          calls.push([m, a]);
+          if (m === 'link.status') return st;
+          if (m === 'link.pair.join') { joins++; if (joins === 1) throw new Error('Wrong code. 3 tries left'); return { id: 'b'.repeat(64), name: 'Nvidia-PC' }; }
+          return {};
+        };
+        LK.s = st; closeAll(); S.settingsTab = 'link'; navigate('settings', {}, false); render(null, true); await wait(150);
+        const v = () => document.querySelector('#view').textContent;
+        out.code = /482 913/.test(v()); out.wrongHere = /Nvidia-PC typed a wrong code \(4 tries left\)/.test(v());
+        out.kind = /Desktop · Anatase · Ready to pair/.test(v()); out.notReady = /Laptop · Peppermint · To pair, select Pair a device on it first/.test(v());
+        out.netBtn = !!document.querySelector('#view [data-k="lk-pnet"]');
+        const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
+        out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
+        act(document.querySelector('#view [data-k="lk-n0"]')); await wait(200);
+        out.prompt1 = prompt && prompt.title; out.mode = prompt && prompt.mode;
+        prompt.text = '482914'; promptSubmit(); await wait(400);
+        out.prompt2 = prompt && prompt.title;
+        if (prompt) { prompt.text = '482 913'; promptSubmit(); }
+        await wait(400);
+        out.joined = calls.filter(c => c[0] === 'link.pair.join').map(c => c[1].code + '@' + c[1].id.slice(0, 2));
+        out.done = /Paired ✓ with Nvidia-PC/.test(v());
+        // The internet code showing here.
+        st.pairing.netCode = '234-567-89A9'; st.pairing.netUntil = Date.now() + 590000; st.pairEvent = null;
+        render(null, true); await wait(100);
+        out.net = /234-567-89A9/.test(v()) && /Works once/.test(v());
+        // Short codes: the page's check is the service's.
+        out.fmt = lkShortFmt('k7m4q'); out.ok = lkShortCheck('234-567-89a9'); out.typo = lkShortCheck('234-567-89AA'); out.amb = lkShortCheck('234-567-89A0'); out.short = lkShortCheck('234-567');
+        act(document.querySelector('#view [data-k="lk-entercode"]')); await wait(200);
+        for (const ch of '23456789a9') promptKey(ch);
+        out.typed = prompt && prompt.text; out.typedTitle = prompt && prompt.title;
+        promptKey('bksp'); promptKey('b');
+        out.typoTitle = prompt && prompt.title;
+        closeAll();
+        return out;
+      });
+      const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair' };
+      for (const k of Object.keys(want)) if (r[k] !== want[k]) lerr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
+      if (r.dupKeys.length) lerr('two rows with the same key: ' + r.dupKeys.join(', '));
+      if (!/The 6-digit code Nvidia-PC shows/.test(r.prompt1 || '')) lerr('picking a device asked: ' + r.prompt1);
+      if (!/^Wrong code\. 3 tries left\. Type the code Nvidia-PC shows/.test(r.prompt2 || '')) lerr('a wrong code asked again: ' + r.prompt2);
+      if (r.joined.join(' ') !== '482914@bb 482913@bb') lerr('codes sent: ' + r.joined.join(' '));
+      if (!/one of the characters is off/.test(r.typo) || !/never have 0/.test(r.amb) || !/10 characters/.test(r.short)) lerr('short code checks: ' + JSON.stringify([r.typo, r.amb, r.short]));
+      if (!/doesn't look right/.test(r.typoTitle || '')) lerr('a typo while typing: ' + r.typoTitle);
+      if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, number pad, wrong code asked again, short codes checked and formatted ok');
+    } catch (e) { lerr(e.message.split('\n')[0]); }
+    await lp.close();
+  }
+
   // The Store's pictures (Steam's page, and a game's page), half size so each fits in the notices release.yml posts.
   {
     const shots = path.resolve(__dirname, 'store-shots');

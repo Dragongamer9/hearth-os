@@ -138,6 +138,8 @@ body.pad-mode, body.pad-mode *{cursor:none!important}
 .row{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--panel);border-radius:var(--r)}
 .row .rt{flex:1;min-width:0}
 .row .rt b{display:block;font-weight:600}
+.lk-pair .lk-big{font-size:30px;letter-spacing:.14em;color:var(--accent);font-variant-numeric:tabular-nums;margin:2px 0}.lk-pair .lk-in{display:inline;color:var(--text)}
+.lk-scan{display:flex;align-items:center;gap:10px;padding:10px 16px}
 .row .rt small{color:var(--dim);font-size:12px}
 .row .rv{color:var(--dim);font-size:13px}
 .row .thumb{width:84px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;position:relative;flex:none}
@@ -4480,7 +4482,7 @@ function pageLinkApps(){
 // ---- Hearth Link (hosts/hearth-link, bridge "link.*"): Settings › Connections › Hearth Link (pair your Hearth devices,
 // keep Hearth data in sync, copies coming in), and Library › Get from another Hearth. The page asks the service for
 // its state every second while it's open or a copy is running (lkPoll).
-const LK = {s:null, timer:null, busy:''};
+const LK = {s:null, timer:null, busy:'', join:null};
 const LK_STATE = {waiting:'Waiting for the other device', interrupted:'Interrupted', preparing:'Getting ready', comparing:'Comparing with what\'s here', copying:'Copying', finishing:'Finishing', paused:'Paused', done:'Done', error:'Didn\'t work', cancelled:'Cancelled'};
 const LK_STORE = {steam:'Steam', epic:'Epic', gog:'GOG', beacon:'Beacon', xodus:'Xbox (Xodus Nexus)'};
 function lkOn(){ return LINUX && !ANDROID && hasFeat('hearthLink'); }
@@ -4512,19 +4514,112 @@ function lkJobLine(t){
   if(t.relay && t.state!=='done') s += ' · through a relay (slower: the devices couldn\'t connect directly)';
   return esc(s);
 }
+// Pairing (hosts/hearth-link pair.rs). Here: "Pair a device" shows a 6-digit code for the devices on this network
+// (they list this one by itself) and, when asked, a 10-character code for one somewhere else. There: pick a device
+// from the list and type its code with the number pad, or type a code from somewhere else; a wrong code asks again.
+const LK_KIND = {handheld:'Handheld', laptop:'Laptop', desktop:'Desktop', tablet:'Tablet', tv:'TV'};
+const LK_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';   // shortcode.rs: no 0/O, 1/I/L
+function lkMins(until){ const m=Math.max(0,Math.ceil((until-Date.now())/60000)); return m<=1?'less than a minute left':`${m} min left`; }
+function lkWhat(n){ return [LK_KIND[n.kind], n.edition].filter(Boolean).map(esc).join(' · '); }
+function lkShortSquash(t){ return String(t||'').replace(/[\s\-._·]/g,'').toUpperCase(); }
+// As it's typed: K7M-4QX-92HC.
+function lkShortFmt(t){ const c=lkShortSquash(t).slice(0,10); return [c.slice(0,3),c.slice(3,6),c.slice(6)].filter(Boolean).join('-'); }
+// '' when the code checks out, else why not (the same check character as the service: a typo shows at once).
+function lkShortCheck(t){
+  const c=lkShortSquash(t);
+  if(!c) return 'Type the code the other device shows';
+  const amb=c.match(/[01OIL]/); if(amb) return `That code doesn't look right: codes never have ${amb[0]} in them (no 0, O, 1, I or L)`;
+  const bad=[...c].find(ch=>!LK_ABC.includes(ch)); if(bad) return `That code doesn't look right: "${bad}" isn't in codes`;
+  if(c.length!==10) return `That code doesn't look right: it's 10 characters, and this is ${c.length}`;
+  const sum=[...c].reduce((a,ch,i)=>a+(i+1)*LK_ABC.indexOf(ch),0);
+  return sum%31 ? 'That code doesn\'t look right: one of the characters is off. Check it on the other device' : '';
+}
+function lkPairHere(s){
+  const p=s.pairing, ev=s.pairEvent||null;
+  let h='';
+  if(p){
+    const what = ev&&ev.state==='checking' ? `Found ${esc(ev.name)}: checking the code…`
+      : ev&&ev.state==='wrong' ? `${esc(ev.name)} typed a wrong code (${ev.triesLeft} ${ev.triesLeft===1?'try':'tries'} left)`
+      : ev&&ev.state==='expired' ? `${esc(ev.name||'The other device')} typed a code that ran out`
+      : 'Waiting for the other device…';
+    if(p.code) h += `<div class="row lk-pair" data-f data-k="lk-code"><span class="ricon">${I.lock}</span><div class="rt"><small>${what}</small><b class="lk-big">${esc(p.code.slice(0,3))} ${esc(p.code.slice(3))}</b><small>On the other Hearth device: Settings › Hearth Link, pick <b class="lk-in">${esc(s.me.name)}</b> and type this code. ${lkMins(p.until)}.</small></div></div>`;
+    if(p.netCode) h += `<div class="row lk-pair" data-f data-k="lk-netcode"><span class="ricon">${I.globe}</span><div class="rt"><small>${p.code?'For a device somewhere else':what}</small><b class="lk-big">${esc(p.netCode)}</b><small>On the other device: Settings › Hearth Link › Enter a code, and type this. Works once, ${lkMins(p.netUntil)}.</small></div></div>`;
+    else if(s.shortCodes!==false) h += lkRow('pnet','lkPairNet','globe','Not on the same network?','Get a code to type on a device somewhere else (over the internet)', LK.busy==='net'?'<div class="rv"><span class="mini-spin"></span></div>':undefined);
+    h += lkRow('pclose','lkPairClose','x','Stop pairing','', '');
+  } else {
+    if(ev&&ev.state==='paired') h += lkRow('pdone','lkNone','check',`Paired ✓ with ${esc(ev.name)}`,'Your Hearth data syncs between them now', '');
+    if(ev&&ev.state==='locked') h += note('Too many wrong codes, so pairing stopped. Select Pair a device for a new code.');
+    if(ev&&ev.state==='expired') h += note('The code ran out. Select Pair a device for a new one.');
+    h += lkRow('pair','lkPairOpen','lock','Pair a device','Shows a code to type on your other Hearth device');
+  }
+  return h;
+}
+function lkPairThere(s){
+  let h = shead('Pair with a device');
+  const j=LK.join, jn=s.joining||{};
+  if(j){
+    const name=esc(jn.name||j.name||'the other device');
+    const line = j.state==='busy' ? ({looking:'Looking up the code…', found:`Found ${name}`, connecting:`Found ${name}: connecting…`, checking:`Checking the code with ${name}…`}[jn.state]||`Waiting for ${name}…`)
+      : j.state==='wrong' ? esc(j.msg) : j.state==='done' ? `Paired ✓ with ${name}` : esc(j.msg||'That didn\'t work');
+    h += `<div class="row lk-pair" data-f data-k="lk-join"><span class="ricon">${j.state==='done'?I.check:j.state==='busy'?'<span class="mini-spin"></span>':I.info}</span><div class="rt"><b>${line}</b>${j.state==='done'?'<small>Your Hearth data syncs between them now</small>':''}</div></div>`;
+  }
+  const near=s.nearby||[];
+  near.forEach((n,i)=>{
+    const icon = n.kind==='handheld'||n.kind==='tablet' ? 'pad' : 'display';
+    const what = lkWhat(n);
+    h += lkRow('n'+i,'lkJoin',icon, esc(n.name), (what?what+' · ':'') + (n.pairing?'Ready to pair: select, then type the code it shows':'To pair, select Pair a device on it first'), n.pairing?undefined:'', ` data-id="${esc(n.id)}" data-name="${esc(n.name)}" data-ready="${n.pairing?1:0}"`);
+  });
+  if(!near.some(n=>n.pairing)) h += `<div class="muted lk-scan"><span class="mini-spin"></span>Looking for Hearth devices on this network. On the other device, select Settings › Hearth Link › Pair a device.</div>`;
+  if(s.shortCodes!==false) h += lkRow('entercode','lkJoinCode','globe','Enter a code','From a device somewhere else: type the code it shows (like K7M-4QX-92HC)');
+  h += lkRow('other','lkOther','info','Other ways to pair','The other device\'s long link');
+  return h;
+}
+function lkRedraw(){ if(S.view==='settings'&&S.settingsTab==='link'&&!S.layers.length) render(null,true); }
+// Runs a pairing and says how it goes; a wrong code asks for it again (`again`), with the tries left.
+async function lkJoinRun(args, name, again){
+  LK.join={name, state:'busy'}; lkRedraw();
+  try{
+    const r=await call('link.pair.join', args, 100000);
+    LK.join={name:(r&&r.name)||name, state:'done'};
+    toast(`Paired with ${LK.join.name}`);
+  }catch(e){
+    const m=(e&&e.message)||String(e);
+    if(/^Wrong code/.test(m) && !/last try/.test(m)){ LK.join={name, state:'wrong', msg:m}; lkRedraw(); loadLink(); return again(m.replace(/\.$/,'')); }
+    LK.join={name, state:'error', msg:m}; toast(m);
+  }
+  loadLink(); lkRedraw();
+  const was=LK.join; setTimeout(()=>{ if(LK.join===was){ LK.join=null; lkRedraw(); } }, 20000);
+}
+async function lkJoinLan(id, name, retry){
+  const code=await openPrompt({title: retry?`${retry}. Type the code ${name} shows`:`The 6-digit code ${name} shows`, mode:'number', enterLabel:'Pair', placeholder:'6 digits'});
+  if(code==null){ if(LK.join&&LK.join.state==='wrong') LK.join=null; return lkRedraw(); }
+  const c=code.replace(/\D/g,'');
+  if(c.length!==6) return lkJoinLan(id, name, 'The code is 6 digits');
+  return lkJoinRun({id, code:c}, name, m=>lkJoinLan(id, name, m));
+}
+// Typing a short code: formatted as it's typed, and the title says at once when it doesn't check out.
+function lkShortInput(t, p){
+  const f=lkShortFmt(t), c=lkShortSquash(f);
+  const msg = c.length===10 ? (lkShortCheck(c)||'Looks right: press Pair') : p.baseTitle;
+  if(p.title!==msg){ p.title=msg; const el=$('#prompt .ptitle'); if(el) el.textContent=msg; }
+  return f;
+}
+async function lkJoinShort(prev, why){
+  const base='The code the other device shows (like K7M-4QX-92HC)';
+  const code=await openPrompt({title: why||base, baseTitle: base, value: prev||'', mode:'url', enterLabel:'Pair', placeholder:'XXX-XXX-XXXX', format: lkShortInput});
+  if(code==null) return;
+  const bad=lkShortCheck(code);
+  if(bad) return lkJoinShort(lkShortFmt(code), bad);
+  return lkJoinRun({code: lkShortFmt(code)}, 'the other device', m=>lkJoinShort('', m));
+}
 function pageLink(){
   const s=LK.s;
   if(!s) return note('Loading…');
   if(!s.running) return note(s.installed ? 'Hearth Link isn\'t running. It starts with your session: sign out and in again, or restart.' : 'Hearth Link comes with the next Hearth OS update.');
   let h = shead('This device');
   h += lkRow('name','lkName','display', esc(s.me.name), 'Its name on your other Hearth devices. Select to rename.');
-  if(s.pairing) h += `<div class="row" data-f data-k="lk-code"><span class="ricon">${I.lock}</span><div class="rt"><b style="font-size:28px;letter-spacing:6px">${esc(s.pairing.code.slice(0,3))} ${esc(s.pairing.code.slice(3))}</b><small>On your other Hearth device: Settings › Hearth Link, pick ${esc(s.me.name)} and enter this code. ${Math.max(0,Math.round((s.pairing.until-Date.now())/60000))} min left.</small></div></div>`
-    + lkRow('pclose','lkPairClose','x','Stop pairing','', '');
-  else h += lkRow('pair','lkPairOpen','lock','Pair a device','Shows a code to enter on your other Hearth device');
-  const near = s.nearby||[];
-  if(near.length) h += shead('Hearth devices on this network') + near.map((n,i)=>lkRow('n'+i,'lkJoin','display', esc(n.name), n.pairing?'Showing a pairing code: select to enter it':'Open Settings › Hearth Link › Pair a device on it first', undefined, ` data-id="${esc(n.id)}" data-name="${esc(n.name)}"`)).join('');
-  h += lkRow('far','lkJoinFar','globe','Pair a device somewhere else','Over the internet: type its link (on it: Settings › Hearth Link › This device\'s link)');
-  h += lkRow('ticket','lkTicket','info','This device\'s link','For pairing from somewhere else');
+  h += lkPairHere(s);
+  h += lkPairThere(s);
   const peers = s.peers||[];
   h += shead('Your devices');
   if(!peers.length) h += note('No devices paired yet. Pair once, and your favorites, collections, play time, appearance and controller layouts stay the same on both, and you can copy games between them.');
@@ -4576,11 +4671,17 @@ function lkCall(m, a, t, ok){ return call(m, a||{}, t||15000).then(r=>{ if(ok) t
 function lkAct(a, d){
   const s=LK.s||{};
   switch(a){
-    case 'lkPairOpen': return lkCall('link.pair.open');
+    case 'lkPairOpen': return lkCall('link.pair.open', {}, 30000);
+    case 'lkPairNet': LK.busy='net'; lkRedraw(); return lkCall('link.pair.open', {internet:true}, 60000).then(()=>{ LK.busy=''; lkRedraw(); });
     case 'lkPairClose': return lkCall('link.pair.close');
-    case 'lkJoin': return (async()=>{ const code=await openPrompt({title:`The code ${d.name} shows`, min:6}); if(code==null) return; toast('Pairing…'); lkCall('link.pair.join',{id:d.id, code}, 70000, `Paired with ${d.name}`); })();
-    case 'lkJoinFar': return (async()=>{ const id=await openPrompt({title:'The other device\'s link', osk:true}); if(id==null||!id.trim()) return; const code=await openPrompt({title:'The code it shows', min:6}); if(code==null) return; toast('Pairing…'); lkCall('link.pair.join',{id:id.trim(), code}, 70000, 'Paired'); })();
-    case 'lkTicket': return openSheet({title:'This device\'s link', sub:(s.me&&s.me.ticket)||'', items:[]});
+    case 'lkJoin': if(d.ready!=='1') return toast(`On ${d.name}, select Settings › Hearth Link › Pair a device first. It shows up here as ready.`);
+      return lkJoinLan(d.id, d.name);
+    case 'lkJoinCode': return lkJoinShort();
+    case 'lkOther': return openSheet({title:'Other ways to pair', sub:'When the other device isn\'t listed and a code doesn\'t work: its long link (Settings › Hearth Link › Other ways › Show this device\'s link on it), then its 6-digit code.', items:[
+      {label:'Type the other device\'s long link', icon:'kbd', run:()=>lkAct('lkJoinFar', {})},
+      {label:'Show this device\'s long link', icon:'info', run:()=>lkAct('lkTicket', {})}]});
+    case 'lkJoinFar': return (async()=>{ const id=await openPrompt({title:'The other device\'s long link', osk:true, mode:'url'}); if(id==null||!id.trim()) return; lkJoinLan(id.trim(), 'the other device'); })();
+    case 'lkTicket': return openSheet({title:'This device\'s long link', sub:(s.me&&s.me.ticket)||'', items:[]});
     case 'lkName': return (async()=>{ const n=await openPrompt({title:'Name for this device', value:(s.settings&&s.settings.customName)||''}); if(n==null) return; lkCall('link.settings.set',{name:n}); })();
     case 'lkSet': { const st=s.settings||{}; return lkCall('link.settings.set',{[d.key]:!st[d.key]}); }
     case 'lkRelay': return openSheet({title:'Relay', sub:'Only used when two devices can\'t connect directly over the internet. The data stays encrypted end to end.', items:[
@@ -6955,6 +7056,8 @@ function renderPrompt(keepK){
 }
 function promptFieldUpdate(){
   const p=prompt, f=$('#prompt .sfield .kbv'); if(!p) return;
+  // o.format(text, prompt): the text as it should read while it's typed (Hearth Link's codes: K7M-4QX-92HC).
+  if(p.format && (p.caret==null||p.caret>=p.text.length)){ const t=p.format(p.text, p); if(t!==p.text){ p.text=t; p.caret=null; } }
   if(!f) return renderPrompt(focused?.dataset.k);
   f.outerHTML=kbField(p,'',p.secret?'Password':(p.placeholder||'Type here'),p.secret,p.show);
 }

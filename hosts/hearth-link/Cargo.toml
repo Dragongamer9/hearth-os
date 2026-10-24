@@ -28,6 +28,9 @@ blake3 = "1"
 zstd = "0.13"
 # Pairing: a password-authenticated key exchange, so the short code can't be guessed offline.
 spake2 = "0.4"
+# Pairing from somewhere else with a short code: the signed pkarr record it's found by (iroh's own types for it).
+iroh-dns = "1"
+url = "2"
 getrandom = "0.2"
 libc = "0.2"
 if-addrs = "0.13"

@@ -11,6 +11,8 @@
 //!   offer {game}                      "I'd like to send you this game" (accepted here, then pulled)
 //!   unpair                            the other device unpaired: forget it here too
 //! A connection from a device that isn't paired is closed at once (except pairing, while a code is showing).
+//!
+//! Pairing (pair.rs) logs every step to the journal ("hearth-link: pairing: ..."), never a code.
 
 use crate::state::{Config, Peers, Relay};
 use crate::sync::{Sources, SyncState};
@@ -22,12 +24,12 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
-pub struct Found { pub id: String, pub name: String, pub addr: SocketAddr, pub pairing: bool, pub at: u64 }
+pub struct Found { pub id: String, pub name: String, pub addr: SocketAddr, pub pairing: bool, pub at: u64, pub kind: String, pub edition: String }
 
 #[derive(Debug, Clone)]
 pub struct Offer { pub id: String, pub peer: String, pub game: Value, pub at: u64 }
@@ -45,8 +47,18 @@ pub struct Node {
     pub cfg: Mutex<Config>,
     pub peers: Mutex<Peers>,
     pub found: Mutex<HashMap<String, Found>>,
-    /// The code on screen: (code, until, wrong tries).
-    pub pairing: Mutex<Option<(String, u64, u32)>>,
+    /// The codes on screen (pair.rs).
+    pub pairing: Mutex<Option<crate::pair::Pairing>>,
+    /// A pairing attempt is running here (they're taken one at a time, so wrong tries can't pile up in parallel).
+    pub pair_busy: AtomicBool,
+    /// What just happened with pairing, for this device's screen: {state: checking|wrong|paired|locked|expired, name, ...}.
+    pub pair_event: Mutex<Option<Value>>,
+    /// This device pairing with another (pair.join running): {state: looking|found|connecting|checking, name}.
+    pub joining: Mutex<Option<Value>>,
+    /// Bumped whenever the short code changes: its publisher stops when it no longer matches.
+    pub net_gen: AtomicU64,
+    pub kind: String,
+    pub edition: String,
     pub jobs: Mutex<Vec<Arc<Job>>>,
     pub offers: Mutex<Vec<Offer>>,
     pub conns: tokio::sync::Mutex<HashMap<String, Connection>>,
@@ -58,6 +70,20 @@ pub struct Node {
     pub sending: Mutex<HashMap<String, Sending>>,
     pub sent_bytes: AtomicU64,
     pub announce_now: tokio::sync::Notify,
+}
+
+/// Says no to a pairing connection, in words the other device shows (a close reason doesn't reach it): pairing
+/// isn't open, another device is pairing, the code ran out.
+async fn refuse(conn: Connection, why: String) {
+    let r = tokio::time::timeout(Duration::from_secs(5), async {
+        let (mut s, mut r) = conn.accept_bi().await.map_err(|e| e.to_string())?;
+        let _ = wire::read_msg(&mut r).await;
+        wire::write_msg(&mut s, &json!({"error": why})).await?;
+        let _ = s.finish();
+        Ok::<(), String>(())
+    }).await;
+    if matches!(r, Ok(Ok(()))) { let _ = tokio::time::timeout(Duration::from_secs(2), conn.closed()).await; }
+    conn.close(VarInt::from_u32(403), b"pairing refused");
 }
 
 fn transport() -> QuicTransportConfig {
@@ -121,12 +147,14 @@ impl Node {
         }
         let node = Arc::new(Node {
             ep, me, port, home: hearth_core::paths::home(), cfg: Mutex::new(cfg), peers: Mutex::new(Peers::load(&dir)),
-            found: Mutex::new(HashMap::new()), pairing: Mutex::new(None), jobs: Mutex::new(jobs), offers: Mutex::new(Vec::new()),
+            found: Mutex::new(HashMap::new()), pairing: Mutex::new(None), pair_busy: AtomicBool::new(false), pair_event: Mutex::new(None),
+            joining: Mutex::new(None), net_gen: AtomicU64::new(0), kind: crate::discovery::device_kind(), edition: crate::discovery::edition(),
+            jobs: Mutex::new(jobs), offers: Mutex::new(Vec::new()),
             conns: tokio::sync::Mutex::new(HashMap::new()), remote_games: Mutex::new(HashMap::new()), game_cache: Mutex::new(HashMap::new()),
             sync: Mutex::new(SyncState::load(&dir)), sync_info: Mutex::new(HashMap::new()), src: Sources::here(),
             sending: Mutex::new(HashMap::new()), sent_bytes: AtomicU64::new(0), announce_now: tokio::sync::Notify::new(), dir,
         });
-        eprintln!("hearth-link: {} ({}) on UDP {}", node.name(), node.me, node.port);
+        eprintln!("hearth-link: {} ({}, {} {}) on UDP {}", node.name(), node.me, node.kind, node.edition, node.port);
         Ok(node)
     }
 
@@ -272,27 +300,96 @@ impl Node {
         }
     }
 
+    fn set_event(&self, v: Value) {
+        let mut v = v;
+        v["at"] = json!(crate::now_ms());
+        *crate::lock(&self.pair_event) = Some(v);
+    }
+
+    /// Pairing ended (paired, stopped, too many tries): the short code's record says so, so a device that looks it
+    /// up is told at once.
+    fn end_pairing(self: &Arc<Self>) {
+        let was = crate::lock(&self.pairing).take();
+        self.announce_now.notify_one();
+        if let Some((code, until)) = was.and_then(|p| p.net) {
+            self.net_gen.fetch_add(1, Ordering::SeqCst);
+            if until <= crate::now_ms() { return; }
+            let n = self.clone();
+            tokio::spawn(async move {
+                match crate::lookup::publish(&n.ep, &code, &json!({"v": 1, "gone": true})).await {
+                    Ok(_) => eprintln!("hearth-link: pairing: short code withdrawn"),
+                    Err(e) => eprintln!("hearth-link: pairing: couldn't withdraw the short code ({e}); it runs out by itself"),
+                }
+            });
+        }
+    }
+
     async fn host_pair(self: Arc<Self>, conn: Connection) {
-        let code = {
-            let p = crate::lock(&self.pairing);
-            match &*p { Some((c, until, tries)) if *until > crate::now_ms() && *tries < crate::pair::MAX_TRIES => c.clone(), _ => { conn.close(VarInt::from_u32(403), b"pairing isn't open"); return; } }
-        };
         let remote = conn.remote_id().to_string();
+        let short = remote.get(..8).unwrap_or("").to_string();
+        if crate::lock(&self.pairing).is_none() {
+            eprintln!("hearth-link: pairing: {short} tried, but pairing isn't open here");
+            return refuse(conn, format!("Pairing isn't open on {}: select Pair a device on it first", self.name())).await;
+        }
+        if self.pair_busy.swap(true, Ordering::SeqCst) {
+            eprintln!("hearth-link: pairing: {short} tried while another device was pairing: asked to wait");
+            return refuse(conn, format!("{} is pairing with another device right now. Try again in a moment", self.name())).await;
+        }
+        let pairing = crate::lock(&self.pairing).clone().filter(|x| x.open());
+        let Some(pairing) = pairing else {
+            self.pair_busy.store(false, Ordering::SeqCst);
+            eprintln!("hearth-link: pairing: {short} tried, but the code expired");
+            return refuse(conn, format!("That code expired. Get a new one on {}", self.name())).await;
+        };
+        eprintln!("hearth-link: pairing: {short} connected");
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
-        match tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), relay, &code)).await {
-            Ok(Ok((name, their_relay))) => {
-                self.add_peer(&remote, &name, their_relay);
-                *crate::lock(&self.pairing) = None;
-                self.announce_now.notify_one();
-                eprintln!("hearth-link: paired with {name} ({remote})");
+        let left_if_wrong = crate::pair::MAX_TRIES.saturating_sub(pairing.tries + 1);
+        let me = self.clone();
+        let short2 = short.clone();
+        let seen = move |j: &crate::pair::Joiner| {
+            eprintln!("hearth-link: pairing: found {} ({short2}), checking the code", j.name);
+            me.set_event(json!({"state": "checking", "name": j.name, "kind": j.kind}));
+        };
+        let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), relay, &pairing, left_if_wrong, seen)).await;
+        self.after_pair_attempt(remote, short, r);
+        // The next attempt is taken only now, with the tries counted.
+        self.pair_busy.store(false, Ordering::SeqCst);
+    }
+
+    fn after_pair_attempt(self: &Arc<Self>, remote: String, short: String, r: Result<Result<crate::pair::Joiner, (crate::pair::HostFail, crate::pair::Joiner)>, tokio::time::error::Elapsed>) {
+        let left_if_wrong = crate::lock(&self.pairing).as_ref().map(|p| crate::pair::MAX_TRIES.saturating_sub(p.tries + 1)).unwrap_or(0);
+        use crate::pair::HostFail;
+        match r {
+            Ok(Ok(j)) => {
+                self.add_peer(&remote, &j.name, j.relay.clone());
+                self.end_pairing();
+                self.set_event(json!({"state": "paired", "name": j.name, "id": remote}));
+                eprintln!("hearth-link: pairing: paired with {} ({remote})", j.name);
                 let n = self.clone();
                 tokio::spawn(async move { tokio::time::sleep(Duration::from_secs(1)).await; let _ = n.sync_with(&remote).await; });
             }
-            Ok(Err(true)) => {
-                let mut p = crate::lock(&self.pairing);
-                if let Some(x) = p.as_mut() { x.2 += 1; if x.2 >= crate::pair::MAX_TRIES { *p = None; } }
+            Ok(Err((HostFail::Wrong, j))) => {
+                let locked = {
+                    let mut p = crate::lock(&self.pairing);
+                    match p.as_mut() { Some(x) => { x.tries += 1; x.tries >= crate::pair::MAX_TRIES } None => false }
+                };
+                if locked {
+                    eprintln!("hearth-link: pairing: wrong code from {}: {} wrong codes, pairing stopped", j.name, crate::pair::MAX_TRIES);
+                    self.end_pairing();
+                    self.set_event(json!({"state": "locked", "name": j.name}));
+                } else {
+                    eprintln!("hearth-link: pairing: wrong code from {} ({left_if_wrong} {} left)", j.name, if left_if_wrong == 1 { "try" } else { "tries" });
+                    self.set_event(json!({"state": "wrong", "name": j.name, "triesLeft": left_if_wrong}));
+                }
             }
-            _ => {}
+            Ok(Err((HostFail::Expired, j))) => {
+                eprintln!("hearth-link: pairing: {} typed a code that expired", j.name);
+                self.set_event(json!({"state": "expired", "name": j.name}));
+            }
+            Ok(Err((HostFail::Other, j))) => {
+                eprintln!("hearth-link: pairing: {} went away before it finished", if j.name.is_empty() { short.as_str() } else { j.name.as_str() });
+            }
+            Err(_) => eprintln!("hearth-link: pairing: {short} took too long"),
         }
     }
 
@@ -467,9 +564,10 @@ impl Node {
         let sock = match crate::discovery::socket(port) { Ok(s) => s, Err(e) => { eprintln!("hearth-link: no network announcements: {e}"); return; } };
         let mut next = Instant::now();
         loop {
-            let pairing = crate::pair::status_json(&crate::lock(&self.pairing)).is_object();
+            // Only the 6-digit code is for this network; a short code alone (pairing from elsewhere) isn't announced.
+            let pairing = crate::lock(&self.pairing).as_ref().map(|p| p.open() && p.lan_code().is_some()).unwrap_or(false);
             if Instant::now() >= next {
-                let a = crate::discovery::Announce { id: self.me.clone(), name: self.name(), port: self.port, pairing };
+                let a = crate::discovery::Announce { id: self.me.clone(), name: self.name(), port: self.port, pairing, kind: self.kind.clone(), edition: self.edition.clone() };
                 let bytes = crate::discovery::encode(&a);
                 for t in crate::discovery::targets() { let _ = sock.send_to(&bytes, SocketAddr::from((t, port))).await; }
                 next = Instant::now() + if pairing { Duration::from_secs(2) } else { Duration::from_secs(15) };
@@ -482,7 +580,8 @@ impl Node {
                     let Some(a) = crate::discovery::decode(&data) else { continue };
                     if a.id == self.me { continue; }
                     let addr = SocketAddr::new(from.ip(), a.port);
-                    let was = crate::lock(&self.found).insert(a.id.clone(), Found { id: a.id.clone(), name: a.name.clone(), addr, pairing: a.pairing, at: crate::now_ms() });
+                    let was = crate::lock(&self.found).insert(a.id.clone(), Found { id: a.id.clone(), name: a.name.clone(), addr, pairing: a.pairing, at: crate::now_ms(), kind: a.kind.clone(), edition: a.edition.clone() });
+                    if a.pairing && !was.as_ref().map(|w| w.pairing).unwrap_or(false) { eprintln!("hearth-link: pairing: {} on this network is showing a code", a.name); }
                     let paired = crate::lock(&self.peers).is_paired(&a.id);
                     if paired {
                         crate::lock(&self.peers).seen(&a.id, Some(addr));
@@ -552,8 +651,12 @@ impl Node {
                    "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id)})
         }).collect();
         let paired: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();
-        let nearby: Vec<Value> = found.values().filter(|f| !paired.contains(&f.id) && now - f.at < 60_000)
-            .map(|f| json!({"id": f.id, "name": f.name, "pairing": f.pairing, "addr": f.addr.to_string()})).collect();
+        // Devices showing a code first (the ones to pick), then by name. A device that stopped announcing a code is
+        // only taken as stopped after two missed announcements (they come every 2 s while pairing).
+        let mut nearby: Vec<Value> = found.values().filter(|f| !paired.contains(&f.id) && now - f.at < 60_000)
+            .map(|f| json!({"id": f.id, "name": f.name, "pairing": f.pairing && now - f.at < 7_000, "addr": f.addr.to_string(), "kind": f.kind, "edition": f.edition})).collect();
+        nearby.sort_by(|a, b| (b["pairing"] == true).cmp(&(a["pairing"] == true)).then_with(|| a["name"].as_str().cmp(&b["name"].as_str())));
+        let event = crate::lock(&self.pair_event).clone().filter(|e| now.saturating_sub(e["at"].as_u64().unwrap_or(0)) < 60_000);
         let here = signed_in_here(&self.home);
         let mut hints = Vec::new();
         for st in ["steam", "epic", "gog", "xbox"] {
@@ -578,9 +681,10 @@ impl Node {
             v
         }).collect();
         json!({
-            "me": {"id": self.me, "name": self.name(), "port": self.port, "relay": relay, "ticket": self.ticket()},
+            "me": {"id": self.me, "name": self.name(), "port": self.port, "relay": relay, "ticket": self.ticket(), "kind": self.kind, "edition": self.edition},
             "settings": crate::lock(&self.cfg).to_json(),
             "pairing": crate::pair::status_json(&crate::lock(&self.pairing)),
+            "pairEvent": event, "joining": crate::lock(&self.joining).clone(), "shortCodes": !crate::lookup::relays().is_empty(),
             "peers": peers, "nearby": nearby, "transfers": jobs, "offers": offers, "sending": sending,
             "signInHints": hints, "sync": crate::lock(&self.sync).summary(), "playing": crate::game_running(),
         })
@@ -591,38 +695,174 @@ impl Node {
         match self.ep.addr().relay_urls().next() { Some(u) => format!("{}@{}", self.me, u), None => self.me.clone() }
     }
 
+    fn set_joining(&self, state: &str, name: &str) { *crate::lock(&self.joining) = Some(json!({"state": state, "name": name, "at": crate::now_ms()})); }
+
+    /// This device's addresses on its networks (for the short code's record: the other device may be on one of them).
+    fn local_addrs(&self) -> Vec<String> {
+        let mut v: Vec<String> = if_addrs::get_if_addrs().unwrap_or_default().into_iter()
+            .filter(|i| !i.is_loopback() && matches!(i.addr, if_addrs::IfAddr::V4(_)))
+            .map(|i| SocketAddr::new(i.ip(), self.port).to_string()).collect();
+        v.truncate(4);
+        v
+    }
+
+    /// Makes a short code, publishes where to find this device under it (lookup.rs) and keeps it there while it
+    /// shows; withdrawn when it's used, stopped or runs out.
+    async fn open_short_code(self: &Arc<Self>, lifetime: u64) -> Result<(), String> {
+        let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
+        if relay.is_none() && crate::lock(&self.cfg).relay == Relay::Off && std::env::var_os("HEARTH_LINK_PKARR").is_none() {
+            return Err("The relay is off on this device, so it can only pair on this network: use the 6-digit code, or turn the relay on (Settings › Hearth Link › Relay)".into());
+        }
+        let code = crate::shortcode::new_code();
+        let until = crate::now_ms() + lifetime;
+        let content = crate::lookup::content(&self.me, &self.name(), &self.kind, relay, self.local_addrs());
+        eprintln!("hearth-link: pairing: publishing a short code ({} s)", lifetime / 1000);
+        let n = crate::lookup::publish(&self.ep, &code, &content).await.map_err(|e| {
+            eprintln!("hearth-link: pairing: couldn't publish the short code: {e}");
+            "Couldn't reach the internet to make a code. Check this device's connection (on the same network, the 6-digit code works without it)".to_string()
+        })?;
+        eprintln!("hearth-link: pairing: short code published on {n} of {} lookup services", crate::lookup::relays().len());
+        let gen = self.net_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let old = {
+            let mut p = crate::lock(&self.pairing);
+            let x = p.get_or_insert_with(|| crate::pair::Pairing::new(crate::pair::CODE_LIFETIME_MS));
+            x.net.replace((code.clone(), until))
+        };
+        // A short code asked for again: the one before stops working.
+        if let Some((old, _)) = old { let n = self.clone(); tokio::spawn(async move { let _ = crate::lookup::publish(&n.ep, &old, &json!({"v": 1, "gone": true})).await; }); }
+        let n = self.clone();
+        tokio::spawn(async move {
+            let mut last = Instant::now();
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                if n.net_gen.load(Ordering::SeqCst) != gen { return; }
+                if crate::now_ms() >= until {
+                    eprintln!("hearth-link: pairing: the short code ran out");
+                    let still_lan = {
+                        let mut p = crate::lock(&n.pairing);
+                        let lan = p.as_ref().map(|x| x.lan_code().is_some()).unwrap_or(false);
+                        if lan { if let Some(x) = p.as_mut() { x.net = None; } }
+                        lan
+                    };
+                    n.net_gen.fetch_add(1, Ordering::SeqCst);
+                    if !still_lan { crate::lock(&n.pairing).take(); n.announce_now.notify_one(); n.set_event(json!({"state": "expired"})); }
+                    let _ = crate::lookup::publish(&n.ep, &code, &json!({"v": 1, "gone": true})).await;
+                    return;
+                }
+                // Published again every 2 minutes (a relay may drop a record sooner than the code runs out).
+                if last.elapsed() > Duration::from_secs(120) {
+                    last = Instant::now();
+                    if let Err(e) = crate::lookup::publish(&n.ep, &code, &content).await { eprintln!("hearth-link: pairing: publishing the short code again: {e}"); }
+                }
+            }
+        });
+        self.announce_now.notify_one();
+        Ok(())
+    }
+
+    /// Pairs with another device: {id, code} (picked on this network, or its long link, and its 6-digit code) or
+    /// {code} alone (a short code: the device is looked up from it).
+    async fn join(self: &Arc<Self>, a: &Value) -> Result<Value, String> {
+        let typed = a["code"].as_str().unwrap_or("").to_string();
+        let target = a["id"].as_str().map(str::trim).unwrap_or("").to_string();
+        let (id, relay, code, with, addrs, name) = if target.is_empty() {
+            let code = crate::shortcode::parse(&typed)?;
+            eprintln!("hearth-link: pairing: looking up a short code");
+            self.set_joining("looking", "");
+            let rec = crate::lookup::resolve(&self.ep, &code).await?;
+            if rec["gone"] == true { return Err("That code was used, stopped or ran out. Get a new one on the other device".into()); }
+            let id = rec["id"].as_str().ok_or("No device is showing that code")?.to_string();
+            let name: String = rec["name"].as_str().unwrap_or("the other device").chars().filter(|c| !c.is_control()).take(40).collect();
+            eprintln!("hearth-link: pairing: the code is {name}'s ({})", id.get(..8).unwrap_or(""));
+            self.set_joining("found", &name);
+            let addrs: Vec<SocketAddr> = rec["addrs"].as_array().into_iter().flatten().filter_map(|x| x.as_str()?.parse().ok()).collect();
+            (id, rec["relay"].as_str().filter(|r| crate::state::valid_relay_url(r)).map(str::to_string), code, "net", addrs, name)
+        } else {
+            let code = crate::pair::clean_code(&typed).ok_or_else(|| {
+                if crate::shortcode::looks_like(&typed) { "That's a code for pairing from somewhere else: use Enter a code instead".to_string() } else { "The code is 6 digits".to_string() }
+            })?;
+            let (id, relay) = match target.split_once('@') { Some((i, r)) => (i.trim().to_string(), Some(r.trim().to_string())), None => (target.clone(), None) };
+            let name = crate::lock(&self.found).get(&id).map(|f| f.name.clone()).unwrap_or_else(|| "the other device".into());
+            (id, relay, code, "lan", Vec::new(), name)
+        };
+        if id == self.me { return Err("That's this device".into()); }
+        let mut addr = self.addr_of(&id, relay.as_deref())?;
+        for x in addrs { if !x.ip().is_unspecified() && !x.ip().is_loopback() { addr = addr.with_ip_addr(x); } }
+        self.set_joining("connecting", &name);
+        eprintln!("hearth-link: pairing: connecting to {name} ({})", id.get(..8).unwrap_or(""));
+        let conn = match tokio::time::timeout(Duration::from_secs(25), self.ep.connect(addr, crate::ALPN_PAIR)).await {
+            Ok(Ok(c)) => c,
+            Ok(Err(e)) => {
+                let e = e.to_string();
+                if e.contains("busy") { return Err(format!("{name} is pairing with another device right now. Try again in a moment")); }
+                if e.contains("expired") { return Err("That code expired. Get a new one on the other device".into()); }
+                if e.contains("pairing isn't open") { return Err(format!("Pairing isn't open on {name}: select Pair a device on it first")); }
+                return Err(format!("Couldn't reach {name}: {e}"));
+            }
+            Err(_) => return Err(format!("Couldn't reach {name} (it's off, asleep, or its network blocks it)")),
+        };
+        self.set_joining("checking", &name);
+        eprintln!("hearth-link: pairing: connected, checking the code");
+        let mine = self.ep.addr().relay_urls().next().map(|u| u.to_string());
+        let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code, with)).await
+            .map_err(|_| format!("{name} didn't answer"))?;
+        conn.close(VarInt::from_u32(0), b"done");
+        // The other device's own words (wrong code, not open, busy, expired) pass through; a connection that just
+        // ended (Hearth Link as in 0.6.5 closes it when pairing isn't open there) is said plainly.
+        let (host_name, their_relay) = r.map_err(|e| {
+            if e.starts_with("reading") || e.contains("connection lost") || e.contains("closed") { format!("{name} ended the pairing: pairing may not be open on it (or the code expired). Select Pair a device on it and try again") }
+            else { e }
+        })?;
+        self.add_peer(&id, &host_name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))));
+        let n = self.clone(); let id2 = id.clone();
+        tokio::spawn(async move { let _ = n.sync_with(&id2).await; });
+        Ok(json!({"id": id, "name": host_name}))
+    }
+
     pub async fn command(self: &Arc<Self>, cmd: &str, a: &Value) -> Result<Value, String> {
         let s = |k: &str| a[k].as_str().filter(|x| !x.is_empty()).map(str::to_string).ok_or(format!("Missing '{k}'"));
         match cmd {
             "status" => Ok(self.status()),
             "pair.open" => {
-                let code = crate::pair::new_code();
-                let until = crate::now_ms() + crate::pair::CODE_LIFETIME_MS;
-                *crate::lock(&self.pairing) = Some((code.clone(), until, 0));
-                self.announce_now.notify_one();
-                Ok(json!({"code": code, "until": until}))
-            }
-            "pair.close" => { *crate::lock(&self.pairing) = None; self.announce_now.notify_one(); Ok(Value::Null) }
-            "pair.join" => {
-                let code = crate::pair::clean_code(&s("code")?).ok_or("The code is 6 digits")?;
-                let target = s("id")?;
-                let (id, relay) = match target.split_once('@') { Some((i, r)) => (i.trim().to_string(), Some(r.trim().to_string())), None => (target.trim().to_string(), None) };
-                if id == self.me { return Err("That's this device".into()); }
-                let addr = self.addr_of(&id, relay.as_deref())?;
-                let conn = match tokio::time::timeout(Duration::from_secs(25), self.ep.connect(addr, crate::ALPN_PAIR)).await {
-                    Ok(Ok(c)) => c,
-                    Ok(Err(e)) => return Err(format!("Couldn't reach that device: {e}")),
-                    Err(_) => return Err("Couldn't reach that device".into()),
+                // {internet: true}: also a short code for a device somewhere else. {seconds}: a shorter time (tests).
+                let secs = a["seconds"].as_u64().map(|x| x.clamp(2, 600) * 1000);
+                let fresh = {
+                    let mut p = crate::lock(&self.pairing);
+                    let keep = p.as_ref().map(|x| x.open() && x.lan_code().is_some()).unwrap_or(false);
+                    if !keep { *p = Some(crate::pair::Pairing::new(secs.unwrap_or(crate::pair::CODE_LIFETIME_MS).min(crate::pair::CODE_LIFETIME_MS))); }
+                    !keep
                 };
-                let mine = self.ep.addr().relay_urls().next().map(|u| u.to_string());
-                let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code)).await
-                    .map_err(|_| "The other device didn't answer".to_string())?;
-                conn.close(VarInt::from_u32(0), b"done");
-                let (name, their_relay) = r.map_err(|e| if e.contains("closed") || e.contains("pairing isn't open") { "Pairing isn't open on that device (or the code expired)".to_string() } else { e })?;
-                self.add_peer(&id, &name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))));
-                let n = self.clone(); let id2 = id.clone();
-                tokio::spawn(async move { let _ = n.sync_with(&id2).await; });
-                Ok(json!({"id": id, "name": name}))
+                if fresh {
+                    *crate::lock(&self.pair_event) = None;
+                    eprintln!("hearth-link: pairing: open (6-digit code, {} s), announced on this network", secs.unwrap_or(crate::pair::CODE_LIFETIME_MS).min(crate::pair::CODE_LIFETIME_MS) / 1000);
+                }
+                self.announce_now.notify_one();
+                if a["internet"] == true {
+                    self.open_short_code(secs.unwrap_or(crate::pair::NET_CODE_LIFETIME_MS).min(crate::pair::NET_CODE_LIFETIME_MS)).await?;
+                }
+                Ok(crate::pair::status_json(&crate::lock(&self.pairing)))
+            }
+            "pair.close" => {
+                if crate::lock(&self.pairing).is_some() { eprintln!("hearth-link: pairing: stopped on this device"); }
+                self.end_pairing();
+                *crate::lock(&self.pair_event) = None;
+                Ok(Value::Null)
+            }
+            "pair.check" => {
+                // A short code as typed: Ok({code: formatted}) or why it can't be one (nothing goes over the network).
+                let c = crate::shortcode::parse(a["code"].as_str().unwrap_or(""))?;
+                Ok(json!({"code": crate::shortcode::format(&c)}))
+            }
+            "pair.join" => {
+                let r = self.join(a).await;
+                *crate::lock(&self.joining) = None;
+                match &r {
+                    Ok(v) => eprintln!("hearth-link: pairing: paired with {} ({})", v["name"].as_str().unwrap_or(""), v["id"].as_str().unwrap_or("")),
+                    // Never the code itself: a mistyped one is only said to be mistyped.
+                    Err(e) if e.starts_with("That code doesn't look right") => eprintln!("hearth-link: pairing: didn't pair: the short code was mistyped"),
+                    Err(e) => eprintln!("hearth-link: pairing: didn't pair: {e}"),
+                }
+                r
             }
             "unpair" => {
                 let id = s("id")?;
