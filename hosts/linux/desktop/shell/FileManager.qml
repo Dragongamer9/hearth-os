@@ -17,6 +17,9 @@
 // Opened from the app launcher, the taskbar, "Open folder" in other apps (xdg-open), or:
 //   quickshell ipc -p <shell folder> call files open <path>     (or: home, toggle, close)
 //   quickshell ipc -p <shell folder> call filemanager view <grid|compact|details> (menu, search <text>, tab <path>)
+// Picker mode (startPick, used by picker.qml): every app's Open / Save dialog, through hearth-portal. The same window
+// with a bar at the bottom (the name to save as, which files to show, the app's options, Cancel and Open/Save); A /
+// Enter on a file picks it, Down from the last row reaches the bar, and the answer goes out through picked().
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -102,6 +105,21 @@ Scope {
     property var dlgAltAction: null
     property var foPlan: null                  // opening a script, program or .desktop file: {e, plan, remember}
 
+    // ------------------------------------------------ picker mode (picker.qml, for hearth-portal)
+    // pick: {kind: open|save|savefiles, title, accept, multiple, directory, filters: [{name, globs, mimes}], filter,
+    //        folder, name, files, choices: [{id, label, options: [[id, label]], value}]}; null: the file manager.
+    property var pick: null
+    readonly property bool picking: pick !== null
+    property bool pickDone: false
+    property int pickFilter: -1
+    property var pickChoice: ({})
+    property string pickName: ""
+    property int pickIndex: 0                  // the bar's control the keyboard / controller is on (zone "pick")
+    property var osk: null                     // the on-screen keyboard drawn inside the window (picker.qml in Game Mode)
+    signal picked(var result)                  // {paths, filter, choices} or {cancel: true}
+    signal oskKey(string key)
+    property alias propsShown: propsWin.shown
+
     // ------------------------------------------------ long copy / move / compress / extract
     property var job: null                     // {verb, count, name, destName, done, total, speed, file, cancelling}
     property var jobQueue: []
@@ -123,6 +141,8 @@ Scope {
         function select(name: string): void { const i = app.entries.findIndex(e => e.name === name); if (i >= 0) app.cur = i; }
         function activate(name: string): void { if (app.found !== null) app.clearSearch(); const i = app.entries.findIndex(e => e.name === name); if (i >= 0) { app.cur = i; app.activate(app.entries[i]); } }
         function close(): void { app.closeOverlay(); }
+        // For checks: the folder shown and the item under the cursor ("" while the window is closed).
+        function where(): string { return app.shown ? app.path + "|" + (app.current ? app.current.name : "") : ""; }
     }
 
     // ================================================ open / close
@@ -142,12 +162,151 @@ Scope {
         loadTemplates();
     }
     function close() {
+        if (picking && !pickDone) { pickDone = true; picked({ cancel: true }); }
         shown = false;
         overlay = "";
         stopSearch();
         if (oskOpened) closeKeyboard();
     }
     function toggle() { shown ? close() : open(""); }
+
+    // ================================================ picker mode
+    function startPick(req) {
+        pick = req;
+        pickDone = false;
+        const nf = (req.filters || []).length;
+        pickFilter = nf ? Math.max(0, Math.min(nf - 1, req.filter >= 0 ? req.filter : 0)) : -1;
+        const ch = {};
+        for (const c of req.choices || []) ch[c.id] = c.value;
+        pickChoice = ch;
+        pickName = req.name || "";
+        zone = "main";
+        open(req.folder || home);
+        if (req.kind === "save") { zone = "pick"; pickIndex = 0; Qt.callLater(() => { if (ui) ui.focusName(); }); }
+    }
+    // A glob ("*.tar.gz", "*.[jJ][pP][gG]", "Makefile") as a RegExp; patterns compare ignoring case.
+    function globRe(g) {
+        let s = "";
+        for (let i = 0; i < g.length; i++) {
+            const c = g[i];
+            if (c === "*") s += ".*";
+            else if (c === "?") s += ".";
+            else if (c === "[") { const j = g.indexOf("]", i + 1); if (j > i) { s += "[" + g.slice(i + 1, j).replace(/^!/, "^").replace(/\\/g, "\\\\") + "]"; i = j; } else s += "\\["; }
+            else s += c.replace(/[.+^${}()|\\\/\]]/g, "\\$&");
+        }
+        return new RegExp("^" + s + "$", "i");
+    }
+    readonly property var pickRes: {
+        const f = picking && pickFilter >= 0 ? (pick.filters || [])[pickFilter] : null;
+        if (!f) return null;
+        return { res: (f.globs || []).map(globRe), mimes: f.mimes || [], any: (f.globs || []).indexOf("*") >= 0 || (f.mimes || []).indexOf("*/*") >= 0 || (f.mimes || []).indexOf("application/octet-stream") >= 0 };
+    }
+    // What the picker lists: folders always; files only when they pass the filter (none in folder mode).
+    function pickShows(e) {
+        if (e.dir) return true;
+        if (pick.directory) return false;
+        const r = pickRes;
+        if (!r || r.any) return true;
+        if (r.res.some(re => re.test(e.name))) return true;
+        const m = e.mime || "";
+        return r.mimes.some(x => x === m || (x.endsWith("/*") && m.startsWith(x.slice(0, -1))));
+    }
+    // What Open / Choose returns now: the picked items, else the one under the cursor (folder mode: this folder).
+    function pickTargets() {
+        if (!picking) return [];
+        const sel = entries.filter(e => marked[e.path] && (pick.directory ? e.dir : !e.dir)).map(e => e.path);
+        if (pick.directory) {
+            if (sel.length) return pick.multiple ? sel : sel.slice(0, 1);
+            return listing && !listing.error && found === null ? [listing.path] : [];
+        }
+        if (sel.length) return pick.multiple ? sel : sel.slice(0, 1);
+        return current && !current.dir ? [current.path] : [];
+    }
+    readonly property string pickAcceptLabel: {
+        if (!picking) return "";
+        if (pick.kind !== "open") return pick.accept;
+        const t = pickTargets();
+        if (pick.directory) return pick.accept + (t.length === 1 ? " “" + base(t[0]) + "”" : t.length > 1 ? " (" + t.length + ")" : "");
+        return pick.accept + (t.length > 1 ? " (" + t.length + ")" : "");
+    }
+    // The bar's controls in order, for the keyboard and the controller.
+    readonly property var pickItems: {
+        if (!picking) return [];
+        const out = [];
+        if (pick.kind === "save") out.push({ t: "name" });
+        if ((pick.filters || []).length > 1) out.push({ t: "filter" });
+        (pick.choices || []).forEach((c, i) => out.push({ t: "choice", i: i }));
+        out.push({ t: "cancel" }, { t: "accept" });
+        return out;
+    }
+    function pickLit(t, i) { const it = pickItems[pickIndex]; return zone === "pick" && !!it && it.t === t && (i === undefined || it.i === i); }
+    function pickRun(it) {
+        if (!it) return;
+        if (it.t === "name") { if (ui) ui.focusName(); }
+        else if (it.t === "filter") filterMenu();
+        else if (it.t === "choice") choiceRun(it.i);
+        else if (it.t === "cancel") close();
+        else if (it.t === "accept") pickAccept(null);
+    }
+    function filterMenu() {
+        const ck = on => on ? "✓  " : "     ";
+        showMenu("Show", (pick.filters || []).map((f, i) => ({ id: "pf:" + i, label: ck(i === pickFilter) + f.name })));
+    }
+    function choiceLabel(c) {
+        const v = pickChoice[c.id];
+        if (!c.options.length) return (v === "true" ? "☑  " : "☐  ") + c.label;
+        const o = c.options.find(x => x[0] === v);
+        return c.label + ": " + (o ? o[1] : v) + "  ▾";
+    }
+    function choiceRun(i) {
+        const c = (pick.choices || [])[i];
+        if (!c) return;
+        if (!c.options.length) return setChoice(c.id, pickChoice[c.id] === "true" ? "false" : "true");
+        const ck = on => on ? "✓  " : "     ";
+        showMenu(c.label, c.options.map((o, j) => ({ id: "pc:" + i + ":" + j, label: ck(o[0] === pickChoice[c.id]) + o[1] })));
+    }
+    function setChoice(id, v) { const ch = Object.assign({}, pickChoice); ch[id] = v; pickChoice = ch; }
+    function pickFinish(paths) {
+        if (pickDone) return;
+        pickDone = true;
+        picked({ paths: paths, filter: pickFilter, choices: pickChoice });
+        shown = false;
+    }
+    function pickAccept(given) {
+        if (!picking || pickDone) return;
+        if (pick.kind === "save") return pickSave();
+        if (pick.kind === "savefiles") {
+            if (!listing || listing.error || found !== null) return say("Open the folder to save in first", true);
+            const there = (listing.entries || []).filter(e => (pick.files || []).indexOf(e.name) >= 0).map(e => e.name);
+            const dir = listing.path;
+            if (!there.length) return pickFinish([dir]);
+            return confirm(there.length === 1 ? "Replace “" + there[0] + "”?" : "Replace " + there.length + " files?",
+                (there.length === 1 ? "A file with this name is" : "Files with these names are") + " already in “" + (listing.name || base(dir)) + "”. Replacing overwrites what's there.",
+                "Replace", () => app.pickFinish([dir]));
+        }
+        const t = given || pickTargets();
+        if (!t.length) return say(pick.directory ? "Pick a folder first" : "Pick a file first", true);
+        pickFinish(t);
+    }
+    function pickSave() {
+        let n = pickName.trim();
+        if (!n) { if (ui) ui.focusName(); return say("Type a name first", true); }
+        if (n.startsWith("~")) n = home + n.slice(1);
+        const full = n.startsWith("/") ? n : (path === "/" ? "" : path) + "/" + n;
+        const dir = parentOf(full), name = base(full);
+        const decide = (list) => {
+            const hit = list.find(e => e.name === name);
+            if (hit && hit.dir) { pickName = ""; navigate(hit.path, ""); return; }
+            if (hit) return confirm("Replace “" + name + "”?", "A file with this name is already in “" + base(dir) + "”. Replacing it overwrites what's there.",
+                "Replace", () => app.pickFinish([full]));
+            pickFinish([full]);
+        };
+        if (listing && dir === listing.path && (hidden || !name.startsWith("."))) return decide(listing.entries || []);
+        call(["list", dir, "--hidden"], (r, err) => {
+            if (err || !r || r.path !== dir) return say("There's no folder “" + dir + "”", true);
+            decide(r.entries || []);
+        });
+    }
 
     // ================================================ talking to hearth-files
     Component {
@@ -348,7 +507,8 @@ Scope {
     readonly property var entries: {
         const all = found !== null ? found : (listing ? listing.entries : []);
         const q = found !== null ? "" : query.trim().toLowerCase();
-        const out = q ? all.filter(e => e.name.toLowerCase().indexOf(q) >= 0) : all.slice();
+        let out = q ? all.filter(e => e.name.toLowerCase().indexOf(q) >= 0) : all.slice();
+        if (picking) out = out.filter(e => pickShows(e));
         const by = sort, d = desc ? -1 : 1, g = group;
         out.sort((a, b) => {
             if (g !== "none") {
@@ -506,6 +666,40 @@ Scope {
         const x = extOf(e).toUpperCase();
         return x && x.length <= 4 ? x : ({ image: "IMG", video: "VID", audio: "AUD", disc: "ISO", archive: "ZIP", app: "APP", doc: "DOC", text: "TXT", file: "" })[kindOf(e)];
     }
+    function isAppImage(e) { return !!e && !e.dir && /\.appimage$/i.test(e.name); }
+    function isDeb(e) { return !!e && !e.dir && /\.deb$/i.test(e.name); }
+    // An AppImage: runs (made runnable first, after "Run this app?" the first time). hearth-files falls back to
+    // running it unpacked when FUSE can't mount it.
+    function runAppImage(e) {
+        const go = trust => {
+            say("Starting “" + e.name + "”…");
+            call(["appimage-run", e.path].concat(trust ? ["--trust"] : []), (r, err) => {
+                if (err) return say(err, true);
+                say("Started “" + e.name + "”" + (r && r.fallback ? " (unpacked first: FUSE isn't available)" : ""));
+                if (trust) reload();
+            });
+        };
+        if (e.exec) return go(false);
+        ask("Run this app?", "“" + e.name + "” comes from " + parentOf(e.path).replace(home, "~")
+            + ". Only run apps you trust: an app can do anything you can. Hearth marks it as runnable, so it won't ask again.", "Run", () => go(true));
+    }
+    function addAppImage(e) {
+        const go = trust => {
+            say("Adding “" + e.name + "” to the app menu…");
+            call(["appimage-menu-add", e.path].concat(trust ? ["--trust"] : []), (r, err) => {
+                if (err) return say(err, true);
+                say((r.name || e.name) + " is in your app menu" + (r.moved ? " (the AppImage is now in Applications in your home folder)" : ""));
+                reload();
+            });
+        };
+        if (e.exec) return go(false);
+        ask("Add this app to your menu?", "“" + e.name + "” comes from " + parentOf(e.path).replace(home, "~")
+            + ". Only add apps you trust. It's moved to the Applications folder in your home folder and marked as runnable.", "Add", () => go(true));
+    }
+    function installDeb(e) {
+        if (SettingsNav.debs) SettingsNav.debs.open(e.path);
+        else Quickshell.execDetached(["hearth-install-package", e.path]);
+    }
     function isArchive(e) {
         return !!e && !e.dir && /\.(zip|tar|tgz|txz|tbz2?|tzst|gz|xz|bz2|zst|7z|rar|cbz|cbr|jar|apk)$/i.test(e.name);
     }
@@ -551,11 +745,20 @@ Scope {
     // ================================================ picking things
     function activate(e) {
         if (!e) return;
-        if (inTrash) return openMenu(false, -1, -1);
+        // Picking: folders go in; a file is the answer (opening), or the name to save as.
+        if (picking && !e.dir) {
+            if (pick.directory) return;
+            if (pick.kind === "open") return pickAccept(marked[e.path] && pick.multiple ? null : [e.path]);
+            if (pick.kind === "save") { pickName = e.name; zone = "pick"; pickIndex = 0; if (ui) ui.focusName(); }
+            return;
+        }
+        if (inTrash && !picking) return openMenu(false, -1, -1);
         if (e.dir) {
             if (found !== null) clearSearch();
             return navigate(e.path, "");
         }
+        if (isAppImage(e)) return runAppImage(e);
+        if (isDeb(e)) return installDeb(e);
         openFile(e);
     }
     function openPlace(i) {
@@ -706,6 +909,12 @@ Scope {
         const what = n === 1 ? "" : " (" + n + ")";
         const items = [];
         if (job) items.push({ id: "stop", label: "Stop " + jobVerbing(job.verb).toLowerCase(), danger: true }, sep());
+        if (picking) {
+            items.push({ id: "pick-accept", label: pickAcceptLabel, off: pick.kind === "open" && !pickTargets().length });
+            if (pick.multiple && e) items.push({ id: "mark", label: marked[e.path] ? "Unselect" : "Select", key: "Ctrl+Space" });
+            if ((pick.filters || []).length > 1) items.push({ id: "pick-filter", label: "Show: " + pick.filters[pickFilter].name + "  ›" });
+            items.push({ id: "pick-cancel", label: "Cancel", key: "Esc" }, sep());
+        }
         if (inTrash) {
             if (n) items.push({ id: "restore", label: "Put back" + what });
             if (n) items.push({ id: "delete", label: "Delete permanently" + what, danger: true, key: "Del" });
@@ -716,6 +925,8 @@ Scope {
             if (e && !e.dir) items.push({ id: "openwith", label: "Open with…" });
             if (e && !e.dir && n === 1) for (const it of fileOpenMenuItems(e)) items.push(it);
             if (e && e.dir && n === 1) items.push({ id: "newtab", label: "Open in new tab" });
+            if (n === 1 && isAppImage(e)) items.push({ id: "airun", label: "Run" }, e.inMenu ? { id: "aimenurm", label: "Remove from app menu" } : { id: "aimenu", label: "Add to app menu" });
+            if (n === 1 && isDeb(e)) items.push({ id: "debinstall", label: "Install" });
             if (e && found !== null) items.push({ id: "showin", label: "Show in its folder" });
             if (e && n === 1 && kindOf(e) !== "folder") items.push({ id: "preview", label: "Preview", key: "Space" });
             items.push(sep());
@@ -809,9 +1020,25 @@ Scope {
         if (id.startsWith("view:")) return setView(id.slice(5));
         if (id.startsWith("tpl:")) return newFromTemplate(templates[parseInt(id.slice(4), 10)]);
         if (id.startsWith("fo-")) return fileOpenChoice(id.slice(3), e);
+        if (id.startsWith("pf:")) { pickFilter = parseInt(id.slice(3), 10); return; }
+        if (id.startsWith("pc:")) {
+            const ij = id.slice(3).split(":").map(x => parseInt(x, 10));
+            const c = (pick.choices || [])[ij[0]];
+            if (c && c.options[ij[1]]) setChoice(c.id, c.options[ij[1]][0]);
+            return;
+        }
+        if (id === "pick-accept") return pickAccept(null);
+        if (id === "pick-cancel") return close();
+        if (id === "pick-filter") return filterMenu();
         switch (id) {
         case "stop": cancelJob(); break;
         case "open": activate(e); break;
+        case "airun": if (e) runAppImage(e); break;
+        case "aimenu": if (e) addAppImage(e); break;
+        case "aimenurm":
+            if (e) call(["appimage-menu-remove", e.path], (r, err) => { if (err) return say(err, true); say("“" + e.name + "” is out of the app menu (the AppImage is still here)"); reload(); });
+            break;
+        case "debinstall": if (e) installDeb(e); break;
         case "openwith": showApps(e, false); break;
         case "newtab": newTab(e && e.dir ? e.path : (listing ? listing.path : home)); break;
         case "closetab": closeTab(tabIndex); break;
@@ -1197,6 +1424,11 @@ Scope {
         if (ui) ui.startField(initial, selectTo);
         if (viaPad) openKeyboard();
     }
+    // The same question without the red "this deletes something" look (Run this app?, Add to app menu?).
+    function ask(title, text, ok, action) {
+        confirm(title, text, ok, action);
+        dlgDanger = false;
+    }
     function confirm(title, text, ok, action) {
         dlgAlt = "";
         dlgAltAction = null;
@@ -1372,7 +1604,7 @@ Scope {
         active: app.shown
         FloatingWindow {
             id: win
-            title: app.path ? app.base(app.path) + " – Files" : "Files"
+            title: app.picking ? (app.pick.title || "Choose") + " – Files" : app.path ? app.base(app.path) + " – Files" : "Files"
             implicitWidth: 1180
             implicitHeight: 740
             color: Theme.bg
@@ -1381,10 +1613,20 @@ Scope {
             Component.onCompleted: {
                 app.ui = win;
                 keys.forceActiveFocus();
+                if (app.picking && app.pick.kind === "save") Qt.callLater(win.focusName);
             }
             Component.onDestruction: if (app.ui === win) app.ui = null
 
-            function refocus() { keys.forceActiveFocus(); }
+            function refocus() { if (app.zone === "pick" && app.pickLit("name")) pickField.forceActiveFocus(); else keys.forceActiveFocus(); }
+            // The picker's "Name" box (saving), with the name up to its extension selected.
+            function focusName() {
+                if (!app.picking || app.pick.kind !== "save") return;
+                app.zone = "pick";
+                app.pickIndex = 0;
+                pickField.forceActiveFocus();
+                const n = pickField.text, dot = n.lastIndexOf(".");
+                pickField.select(0, dot > 0 ? dot : n.length);
+            }
             function startField(text, selectTo) {
                 field.text = text;
                 field.forceActiveFocus();
@@ -1524,6 +1766,7 @@ Scope {
                     if (app.zone === "places") return win.placesKey(e);
                     if (app.zone === "toolbar") return win.toolbarKey(e);
                     if (app.zone === "tabs") return win.tabsKey(e);
+                    if (app.zone === "pick") return win.pickKey(e);
                     return win.mainKey(e, shift);
                 }
             }
@@ -1605,6 +1848,7 @@ Scope {
                 case Qt.Key_Down:
                     if (i + c < count) go(i + c);
                     else if (Math.floor(i / c) < Math.floor((count - 1) / c)) go(count - 1);
+                    else if (app.picking && !shift) win.toPick();
                     break;
                 case Qt.Key_Tab: app.cur = Math.min(count - 1, i + 1); break;
                 case Qt.Key_Backtab: app.cur = Math.max(0, i - 1); break;
@@ -1639,6 +1883,21 @@ Scope {
                         break;
                     }
                     return;
+                }
+                e.accepted = true;
+            }
+            // The picker's bar: Left / Right between its controls, Up back to the files, A / Enter uses one.
+            function toPick() {
+                app.zone = "pick";
+                app.pickIndex = Math.max(0, app.pickItems.length - 1);
+            }
+            function pickKey(e) {
+                switch (e.key) {
+                case Qt.Key_Left: case Qt.Key_Backtab: app.pickIndex = Math.max(0, app.pickIndex - 1); break;
+                case Qt.Key_Right: case Qt.Key_Tab: app.pickIndex = Math.min(app.pickItems.length - 1, app.pickIndex + 1); break;
+                case Qt.Key_Up: case Qt.Key_Escape: app.zone = "main"; break;
+                case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: app.pickRun(app.pickItems[app.pickIndex]); break;
+                default: return;
                 }
                 e.accepted = true;
             }
@@ -2481,6 +2740,100 @@ Scope {
                         }
                     }
 
+                    // ------------------------------------------------ picker bar: name, which files, the app's options, Cancel, Open/Save
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line; visible: app.picking }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.max(40, pickFlow.height) + 24
+                        visible: app.picking
+                        color: Theme.bg2
+                        Flow {
+                            id: pickFlow
+                            anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; topMargin: 12; rightMargin: pickButtons.width + 28 }
+                            spacing: 10
+                            // Saving: the file's name.
+                            Rectangle {
+                                visible: !!app.pick && app.pick.kind === "save"
+                                width: Math.max(200, Math.min(460, pickFlow.width - 200))
+                                height: 40
+                                radius: 10
+                                color: Theme.panel3
+                                border.width: 2
+                                border.color: pickField.activeFocus || app.pickLit("name") ? Theme.accent : "transparent"
+                                Text {
+                                    id: nameLabel
+                                    anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                                    text: "Name"
+                                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                                }
+                                TextInput {
+                                    id: pickField
+                                    anchors { left: nameLabel.right; leftMargin: 12; right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                                    text: app.pickName
+                                    onTextEdited: app.pickName = text
+                                    color: Theme.text
+                                    selectionColor: Theme.accent
+                                    selectedTextColor: Theme.accentInk
+                                    font.family: Theme.font
+                                    font.pixelSize: 15
+                                    selectByMouse: true
+                                    clip: true
+                                    onActiveFocusChanged: if (activeFocus) { app.zone = "pick"; app.pickIndex = 0; }
+                                    Keys.onPressed: e => {
+                                        switch (e.key) {
+                                        case Qt.Key_Return: case Qt.Key_Enter: app.pickAccept(null); break;
+                                        case Qt.Key_Escape: app.close(); break;
+                                        case Qt.Key_Up: app.zone = "main"; keys.forceActiveFocus(); break;
+                                        case Qt.Key_Down: case Qt.Key_Tab: app.pickIndex = Math.min(1, app.pickItems.length - 1); keys.forceActiveFocus(); break;
+                                        default: return;
+                                        }
+                                        e.accepted = true;
+                                    }
+                                }
+                            }
+                            Chip {
+                                visible: !!app.pick && (app.pick.filters || []).length > 0
+                                label: app.pickFilter >= 0 && app.pick ? app.pick.filters[app.pickFilter].name + ((app.pick.filters || []).length > 1 ? "  ▾" : "") : ""
+                                focused: app.pickLit("filter")
+                                onClicked: { keys.forceActiveFocus(); if ((app.pick.filters || []).length > 1) app.filterMenu(); }
+                            }
+                            Repeater {
+                                model: app.pick ? app.pick.choices || [] : []
+                                delegate: Chip {
+                                    required property var modelData
+                                    required property int index
+                                    label: app.choiceLabel(modelData)
+                                    focused: app.pickLit("choice", index)
+                                    onClicked: { keys.forceActiveFocus(); app.choiceRun(index); }
+                                }
+                            }
+                            Text {
+                                visible: !!app.pick && app.pick.kind === "savefiles"
+                                height: 40
+                                verticalAlignment: Text.AlignVCenter
+                                text: app.pick ? app.plural((app.pick.files || []).length, "file") + " go into “" + (app.listing ? app.listing.name || app.base(app.path) : "") + "”" : ""
+                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                            }
+                        }
+                        Row {
+                            id: pickButtons
+                            anchors { right: parent.right; rightMargin: 14; bottom: parent.bottom; bottomMargin: 12 }
+                            spacing: 10
+                            Chip {
+                                label: "Cancel"
+                                focused: app.pickLit("cancel")
+                                onClicked: app.close()
+                            }
+                            Chip {
+                                primary: true
+                                label: app.pickAcceptLabel
+                                focused: app.pickLit("accept")
+                                dim: !!app.pick && app.pick.kind === "open" && !app.pickTargets().length
+                                onClicked: { keys.forceActiveFocus(); app.pickAccept(null); }
+                            }
+                        }
+                    }
+
                     // ------------------------------------------------ bottom bar: status, search, or progress
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
                     Rectangle {
@@ -2580,6 +2933,55 @@ Scope {
                             }
                         }
                     }
+
+                    // ------------------------------------------------ on-screen keyboard inside the window (picker.qml in Game
+                    // Mode, where gamescope shows one window): hearth-pad sends the layout and the lit key, and types.
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: visible ? Math.min(300, Math.max(220, win.height * 0.36)) : 0
+                        visible: !!app.osk && !!app.osk.open
+                        color: Theme.panel
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 10 }
+                            spacing: 6
+                            Repeater {
+                                model: app.osk && app.osk.rows ? app.osk.rows : []
+                                delegate: RowLayout {
+                                    id: oskLine
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    spacing: 6
+                                    Repeater {
+                                        model: oskLine.modelData
+                                        delegate: Rectangle {
+                                            id: oskCap
+                                            required property string modelData
+                                            required property int index
+                                            readonly property var wide: ({ shift: 1.6, space: 4.5, bksp: 1.5, tab: 1.4, enter: 1.8, caps: 1.6, ctrl: 1.3, alt: 1.2, esc: 1.2 })
+                                            readonly property bool lit: app.osk.row === oskLine.index && app.osk.col === index
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            Layout.preferredWidth: 100 * (wide[modelData] || 1)
+                                            radius: 8
+                                            color: lit ? Theme.panel3 : Theme.panel2
+                                            border.width: 2
+                                            border.color: lit ? Theme.accent : "transparent"
+                                            Text {
+                                                anchors.centerIn: parent
+                                                readonly property var names: ({ shift: "⇧", space: "Space", bksp: "⌫", tab: "Tab", enter: "Enter", caps: "Caps", ctrl: "Ctrl", alt: "Alt", esc: "Esc", up: "↑", down: "↓", left: "←", right: "→" })
+                                                text: names[oskCap.modelData] || ((app.osk.shift !== !!app.osk.caps) && /^[a-z]$/.test(oskCap.modelData) ? oskCap.modelData.toUpperCase()
+                                                    : app.osk.shift && app.osk.shifted ? (app.osk.shifted[oskCap.modelData] || oskCap.modelData) : oskCap.modelData)
+                                                color: Theme.text; font.family: Theme.font; font.pixelSize: 15
+                                            }
+                                            MouseArea { anchors.fill: parent; onClicked: app.oskKey(oskCap.modelData) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2609,6 +3011,13 @@ Scope {
                 app.marked = ({});
                 app.anchor = index;
                 app.cur = index;
+                // Picking: a click picks it (a folder too, for "Choose a folder"); a file's name goes in the Name box.
+                if (app.picking && e) {
+                    const m = {};
+                    m[e.path] = true;
+                    app.marked = m;
+                    if (app.pick.kind === "save" && !e.dir) app.pickName = e.name;
+                }
             }
             function itemMenu(index, mouse, area) {
                 keys.forceActiveFocus();
