@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mods</title>
 <link rel="stylesheet" href="kit.css">
+<link rel="stylesheet" href="osk/hearth-osk.css">
 <style>
 .split { grid-template-columns:minmax(16em, 26em) 1fr; }
 .detail { display:grid; grid-template-rows:auto 1fr; gap:.8em; min-height:0; }
@@ -49,6 +50,7 @@ input.inp.mono { font-family:ui-monospace, monospace; }
   <main id="main" class="split"></main>
   <footer id="foot"></footer>
 </div>
+<script src="osk/hearth-osk.js"></script>
 <script src="kit.js"></script>
 <script>
 'use strict';
@@ -140,10 +142,9 @@ document.addEventListener('click', e => {
   if (a === 'beacon') return KIT.invoke('open_beacon').then(() => KIT.toast('Opening Beacon…')).catch(e => KIT.alert('Beacon', esc(KIT.err(e)), false));
   if (a === 'add') return addMod();
   if (a === 'openGame') return KIT.invoke('open_folder', { path: game(S.sel).install }).catch(e => KIT.toast(KIT.err(e)));
+  if (S.tab !== 'games') return;
   if (a === 'nexusGet') return nexusGet();
   if (a === 'deployMode') return deployMode();
-  if (a) return act(a, b);
-  if (b.dataset.tab) return setTab(b.dataset.tab);
   if (a === 'openStore') return KIT.invoke('open_folder', { path: S.sum.folder + '/files' }).catch(e => KIT.toast(KIT.err(e)));
 });
 KIT.onBack = () => { if (S.tab !== 'games') return KIT.focusFirst(`.tab[data-tab="${S.tab}"]`); if (!document.activeElement?.dataset?.game) KIT.focusFirst('.item.sel'); };
@@ -187,11 +188,22 @@ async function modActions(id) {
 async function addMod() {
   const g = game(S.sel); if (!g || g.beacon) return;
   const start = (await KIT.invoke('places').catch(() => [])).find(p => p.label === 'Downloads')?.path;
-  const src = await KIT.pickPath({ title: 'Choose a mod', note: 'A .zip, .7z or .rar file, or a folder with the mod in it.', files: true, archives: true, folder: true, start });
+  let src;
+  if (KIT.live) {
+    const how = await KIT.choose('Add a mod', [{ id: 'file', label: 'From a file', sub: 'A .zip, .7z or .rar file' }, { id: 'folder', label: 'From a folder', sub: 'A folder with the mod in it' }]);
+    if (!how) return;
+    src = await pick({ folder: how === 'folder', title: how === 'folder' ? 'Choose the mod\'s folder' : 'Choose a mod', start, filters: ['zip', '7z', 'rar', 'tar', 'gz', 'xz', 'zst', 'tgz'] });
+  } else src = await KIT.pickPath({ title: 'Choose a mod', note: 'A .zip, .7z or .rar file, or a folder with the mod in it.', files: true, archives: true, folder: true, start });
   if (!src) return;
   KIT.progress('Unpacking the mod');
   let st;
   try { st = await KIT.invoke('stage', { id: g.id, path: src }); } catch (e) { KIT.close(); return KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+  KIT.close();
+  setTimeout(() => installDialog(st), 0);
+}
+/** The "Install a mod" dialog for an unpacked mod (from a file, a folder or a Nexus download), for the chosen game. */
+function installDialog(st) {
+  const g = game(S.sel); if (!g) return;
   const pick = { name: st.name, target: st.suggestTarget || 'game', sub: st.suggestSub || '', enable: true };
   const targets = S.sum?.targets || [{ id: 'game', label: 'Game folder', path: g.install }];
   const draw = () => {
@@ -228,8 +240,13 @@ async function addMod() {
     $('#mname').addEventListener('input', e => { pick.name = e.target.value; });
   };
   const cancel = () => { $('#kit-layer').onclick = null; KIT.invoke('cancel_stage', { token: st.token }).catch(() => {}); KIT.close(); };
-  KIT.close();
-  setTimeout(draw, 0);
+  draw();
+}
+
+// ---------------------------------------------------------------- choosing files: the standard file chooser (Hearth Files), Hearth's own browser as a fallback
+async function pick({ folder = false, title = '', start, filters, fallback = {} }) {
+  if (KIT.live) { try { return await KIT.invoke('pick_path', { folder, title, start: start || null, filters: filters || null }); } catch (e) { console.warn(e); } }
+  return KIT.pickPath(Object.assign({ title, start, folder, files: !folder }, fallback));
 }
 
 // ---------------------------------------------------------------- how mods go in
@@ -237,7 +254,8 @@ function deployLabel(s) { return ({ hardlink: 'Links', copy: 'Copies', overlay: 
 async function deployMode() {
   const s = S.sum; if (!s) return;
   const sub = { hardlink: 'No extra space and instant. Across drives, copies.', copy: 'Real copies in the game folder: takes the mods\' space twice.', overlay: 'Beta Experimental. The game folder itself is never changed: the mods are laid over it while you play.' };
-  const m = await KIT.choose('How mods are put in place', s.modes.map(x => ({ id: x.id, label: x.label, sub: sub[x.id], end: x.id === s.deploy ? 'Now' : '' })),
+  const modes = s.modes || [{ id: 'hardlink', label: 'Links' }, { id: 'copy', label: 'Copies' }, { id: 'overlay', label: 'Overlay (Beta Experimental)' }];
+  const m = await KIT.choose('How mods are put in place', modes.map(x => ({ id: x.id, label: x.label, sub: sub[x.id], end: x.id === s.deploy ? 'Now' : '' })),
     'Every mod comes out the old way and goes back in the new way. Close the game first.');
   if (!m || m === s.deploy) return;
   KIT.progress('Switching', 'Taking the mods out and putting them back');
@@ -446,7 +464,7 @@ async function wjInstall(m) {
       if (['game', 'inst', 'dls'].includes(k)) {
         $('#kit-layer').onclick = null;
         const cur = k === 'game' ? pick.gameDir : k === 'inst' ? pick.install : pick.downloads;
-        const p = await KIT.pickPath({ title: k === 'game' ? 'The game\'s folder' : k === 'inst' ? 'Where the modlist goes (an empty folder)' : 'Where its downloads go', start: cur ? cur.replace(/\/[^/]*$/, '') : undefined });
+        const p = await pick({ folder: true, title: k === 'game' ? 'The game\'s folder' : k === 'inst' ? 'Where the modlist goes (an empty folder)' : 'Where its downloads go', start: cur ? cur.replace(/\/[^/]*$/, '') : undefined });
         if (p) { if (k === 'game') pick.gameDir = p; else if (k === 'inst') pick.install = p + '/' + (m.title || 'Modlist').replace(/[\/:*?"<>|]/g, ' ').trim(); else pick.downloads = p; }
         return draw();
       }
@@ -482,7 +500,7 @@ async function act(a, b) {
     if (a === 'wjFilter') { S.filter = b.dataset.f; return render(); }
     if (a === 'wjNsfw') { S.nsfw = !S.nsfw; return render(); }
     if (a === 'wjFile') {
-      const f = await KIT.pickPath({ title: 'Choose a .wabbajack file', files: true, folder: false }); if (!f) return;
+      const f = await pick({ title: 'Choose a .wabbajack file', filters: ['wabbajack'] }); if (!f) return;
       if (!f.endsWith('.wabbajack')) return KIT.alert('That isn\'t a .wabbajack file', '', false);
       const name = f.replace(/^.*\//, '').replace(/\.wabbajack$/, '');
       const game = await KIT.choose('Which game is it for?', [['SkyrimSpecialEdition', 'Skyrim Special Edition'], ['Fallout4', 'Fallout 4'], ['FalloutNewVegas', 'Fallout: New Vegas'], ['Fallout3', 'Fallout 3'], ['Oblivion', 'Oblivion'], ['Starfield', 'Starfield'], ['Cyberpunk2077', 'Cyberpunk 2077'], ['BaldursGate3', "Baldur's Gate 3"]].map(([id, label]) => ({ id, label })));
@@ -518,12 +536,25 @@ KIT.demo = (cmd, a) => {
     { id: 'beacon:bfme2', title: 'The Battle for Middle-earth II', source: 'beacon', beacon: true, install: '/home/you/Games/BFME2' },
     { id: 'steam:413150', title: 'Stardew Valley', source: 'steam', install: '/home/you/.local/share/Steam/steamapps/common/Stardew Valley', mods: 0, modsOn: 0 },
   ];
-  const sum = { game: 'steam:489830', title: games[0].title, folder: '/home/you/.local/share/nimbus/mods/steam%3A489830', targets: [{ id: 'game', label: 'Game folder', path: games[0].install }, { id: 'prefix-documents', label: 'Documents (in the game\'s Proton folder)', path: '/pfx/drive_c/users/steamuser/Documents' }],
+  const sum = { game: 'steam:489830', title: games[0].title, deploy: 'hardlink', nexus: 'skyrimspecialedition', folder: '/home/you/.local/share/nimbus/mods/steam%3A489830', targets: [{ id: 'game', label: 'Game folder', path: games[0].install }, { id: 'prefix-documents', label: 'Documents (in the game\'s Proton folder)', path: '/pfx/drive_c/users/steamuser/Documents' }],
     mods: [
       { id: 'm0', name: 'SkyUI', enabled: true, order: 0, target: 'game', sub: 'Data', targetLabel: 'Game folder', files: 4, size: 5_300_000, added: Date.now() - 5e8, overriddenBy: [], winning: 4, root: games[0].install + '/Data' },
       { id: 'm1', name: 'Unofficial Patch', enabled: true, order: 1, target: 'game', sub: 'Data', targetLabel: 'Game folder', files: 2, size: 81_000_000, added: Date.now() - 4e8, overriddenBy: ['Texture Pack'], winning: 1, root: games[0].install + '/Data' },
       { id: 'm2', name: 'Texture Pack', enabled: false, order: 2, target: 'game', sub: 'Data', targetLabel: 'Game folder', files: 812, size: 2_100_000_000, added: Date.now() - 1e8, overriddenBy: [], winning: 0, root: games[0].install + '/Data' }] };
   if (cmd === 'info') return { version: 'preview' };
+  if (cmd === 'nexus_account') return { name: 'Dragongamer9', premium: false, checked: Date.now() - 6e5 };
+  if (cmd === 'downloads_list') return { active: 1, quota: { hourly: 97, daily: 19890 }, notices: [], items: [
+    { id: 'd1', name: 'SkyUI · SkyUI 5.2 SE', fileName: 'SkyUI_5_2_SE-12604-5-2SE.7z', size: 5_300_000, done: 2_100_000, speed: 1_800_000, state: 'downloading', path: '/home/you/.local/share/nimbus/mods/downloads/skyrimspecialedition/SkyUI_5_2_SE.7z', page: 'https://www.nexusmods.com/skyrimspecialedition/mods/12604?tab=files' },
+    { id: 'd2', name: 'SKSE64', fileName: 'skse64_2_02_06.7z', size: 700_000, done: 0, state: 'needs-link', job: 'w1', error: '', path: '/home/you/Modlists/Downloads/Tuxborn/skse64_2_02_06.7z', page: 'https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files' },
+    { id: 'd3', name: 'Unofficial Skyrim SE Patch', fileName: 'USSEP.7z', size: 81_000_000, done: 81_000_000, state: 'done', path: '/home/you/.local/share/nimbus/mods/downloads/skyrimspecialedition/USSEP.7z' }] };
+  if (cmd === 'wj_engine') return { path: '/usr/lib/hearth/jackify-engine/jackify-engine', version: 'v0.5.2', system: true };
+  if (cmd === 'wj_jobs') return [{ id: 'w1', title: 'Tuxborn', state: 'manual', running: true, phase: 'Files to fetch', status: '[00:01:10] Downloading Mod Archives (17/214) - 6.8MB/s', step: [3, 14], count: [17, 214], installDir: '/home/you/Modlists/Tuxborn',
+    manual: [{ fileName: 'skse64_2_02_06.7z', modName: 'SKSE64', size: 700_000, nexus: true, here: false, url: 'https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files&file_id=1' }, { fileName: 'ENB.zip', modName: 'ENB binaries', size: 4_000_000, nexus: false, here: false, url: 'https://enbdev.com/' }] }];
+  if (cmd === 'wj_gallery') return [
+    { id: 'Tuxborn/Tuxborn', title: 'Tuxborn', author: 'Omni', game: 'SkyrimSpecialEdition', gameName: 'Skyrim Special Edition', download: 38e9, install: 61e9, archives: 214, description: 'A Steam Deck friendly Skyrim list.' },
+    { id: 'wj/Magnum', title: 'Magnum Opus', author: 'Tuxborn', game: 'Fallout4', gameName: 'Fallout 4', download: 140e9, install: 220e9 },
+    { id: 'wj/VNV', title: 'Viva New Vegas', author: 'Vivanewvegas', game: 'FalloutNewVegas', gameName: 'Fallout New Vegas', download: 15e9, install: 30e9, down: false }];
+  if (cmd === 'wj_defaults') return { gameDir: games[0].install, gameTitle: games[0].title, known: true, installDir: '/home/you/Modlists/' + a.title, downloadsDir: '/home/you/Modlists/Downloads/' + a.title, free: 480e9 };
   if (cmd === 'list') return games;
   if (cmd === 'mods_of') return a.id === 'steam:489830' ? sum : { game: a.id, title: game(a.id).title, folder: '/x', targets: [{ id: 'game', label: 'Game folder', path: game(a.id).install }], mods: [] };
   if (cmd === 'places') return [{ label: 'Home', path: '/home/you' }, { label: 'Downloads', path: '/home/you/Downloads' }];
@@ -534,8 +565,10 @@ KIT.demo = (cmd, a) => {
 
 (async () => {
   try { S.info = await KIT.invoke('info'); } catch (e) {}
+  loadAccount();
   await load();
-  KIT.focusFirst('.item.sel');
+  // nxm:// links that opened Hearth Mods land on Downloads; the queue is watched from the start for their notices.
+  if (TABS.includes(S.info.page)) setTab(S.info.page); else { KIT.focusFirst('.item.sel'); refreshDownloads(); }
 })();
 </script>
 </body>

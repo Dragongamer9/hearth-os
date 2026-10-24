@@ -300,6 +300,21 @@ fn open_url(url: String) -> Result<(), String> {
         .spawn().map(|mut c| { std::thread::spawn(move || { let _ = c.wait(); }); }).map_err(|e| format!("Couldn't open the page ({e})"))
 }
 
+/// The standard Linux file chooser (Hearth Files through the portal in Hearth OS): a file (with `filters`, extensions
+/// without dots) or a folder. None: closed without a choice. Runs off the window's thread, so the window stays live.
+#[tauri::command(async)]
+fn pick_path(app: tauri::AppHandle, folder: bool, title: String, start: Option<String>, filters: Option<Vec<String>>) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut d = app.dialog().file().set_title(if title.is_empty() { if folder { "Choose a folder" } else { "Choose a file" } } else { title.as_str() });
+    if let Some(dir) = start.map(PathBuf::from).map(|p| if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) }).filter(|p| p.is_dir()) { d = d.set_directory(dir); }
+    if let Some(f) = filters.filter(|f| !f.is_empty() && !folder) {
+        let exts: Vec<&str> = f.iter().map(|s| s.as_str()).collect();
+        d = d.add_filter("Mods", &exts);
+    }
+    let picked = if folder { d.blocking_pick_folder() } else { d.blocking_pick_file() };
+    picked.and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn open_folder(path: String) -> Result<(), String> { util::open_folder(Path::new(&path)) }
 #[tauri::command]
@@ -380,10 +395,11 @@ fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![info, list, mods_of, stage, install, cancel_stage, toggle, move_mod, remove_mod, open_folder, open_beacon, places, browse, target_root,
             set_deploy, set_nexus_game, nexus_account, nexus_sign_in, nexus_refresh, nexus_sign_out, nexus_pages, nexus_files,
             downloads_list, download_nxm, download_file, download_pause, download_resume, download_remove, downloads_clear, stage_download,
-            wj_engine, wj_fetch_engine, wj_gallery, wj_jobs, wj_defaults, wj_start, wj_resume, wj_cancel, wj_forget, wj_repair, wj_log, free_space, open_url])
+            wj_engine, wj_fetch_engine, wj_gallery, wj_jobs, wj_defaults, wj_start, wj_resume, wj_cancel, wj_forget, wj_repair, wj_log, free_space, open_url, pick_path])
         .setup(move |app| {
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("mods.html".into()))
                 .title("Mods")
