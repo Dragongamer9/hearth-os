@@ -159,9 +159,13 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
                 Err(e) => Ok(json!({"running": false, "installed": Path::new(PROGRAM).exists(), "error": e, "libraryChanged": changed})),
             }
         }
-        // Asking another device can take a while (it lists its games, or a pairing waits for the code check).
-        "games" | "local.games" | "pair.join" | "send" | "sync.now" | "unpair" => call(cmd, a, 60),
-        "pair.open" | "pair.close" | "peer.set" | "settings.set" | "places" | "get" | "offer.accept" | "offer.decline"
+        // Pairing waits for the other device (looking a short code up, connecting, the code check) or, for a short
+        // code, for the lookup services: answered from another thread, so the page keeps polling "status" meanwhile
+        // and can say what's happening ("Found Nvidia-PC…").
+        "pair.join" | "pair.open" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 90)) }
+        // Asking another device can take a while (it lists its games).
+        "games" | "local.games" | "send" | "sync.now" | "unpair" => call(cmd, a, 60),
+        "pair.close" | "pair.check" | "peer.set" | "settings.set" | "places" | "get" | "offer.accept" | "offer.decline"
         | "transfer.pause" | "transfer.resume" | "transfer.cancel" | "transfer.clear" | "ticket" => call(cmd, a, 15),
         _ => Err(format!("{method} isn't a Hearth Link call")),
     }
