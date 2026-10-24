@@ -1,0 +1,18 @@
+# Once per boot, before anyone signs in: the folders in each person's home folder that Flatpak, Apps and the Debian
+# box write to belong to that person, and each person has a container id range (rootless podman). Only fixes what's
+# owned by root or by an id no account has any more, never follows symlinks (see hearth-home-repair). Logs to the
+# journal (journalctl -u hearth-home-repair).
+[Unit]
+Description=Hearth: home folder ownership and container ids
+After=local-fs.target hearth-clean-install.service hearth-groups.service systemd-sysusers.service
+Before=nimbus-autologin.service display-manager.service systemd-user-sessions.service
+RequiresMountsFor=/var/home /etc
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-home-repair --all-users
+SyslogIdentifier=hearth-home-repair
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=multi-user.target
