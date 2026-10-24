@@ -31,8 +31,8 @@ impl Problem {
     /// For Hearth's log.
     pub fn describe(&self) -> String {
         match self {
-            Problem::Private => "the profile's game details are private".into(),
-            Problem::SignIn => "Steam's games page asks to sign in".into(),
+            Problem::Private => format!("Steam says the profile or its game details aren't public. {STEAM_PRIVACY}"),
+            Problem::SignIn => "Steam's games pages need a signed-in visitor now (the profile itself is public)".into(),
             Problem::Unknown(s) => format!("Steam's games page is in a form Hearth doesn't know: {s}"),
             Problem::Other(e) => e.clone(),
         }
@@ -40,11 +40,13 @@ impl Problem {
     fn passing(&self) -> bool { matches!(self, Problem::Other(_)) }
 }
 
-pub const PRIVATE_NOTE: &str = "Only installed games show: your Steam profile's game details are private. In Steam, set Privacy › Game details to Public to see all your games here.";
+/// The exact Steam settings that decide whether a games list is public.
+const STEAM_PRIVACY: &str = "In Steam: your profile › Edit Profile › Privacy Settings: My profile: Public, and Game details: Public (Friends only isn't enough).";
+pub const PRIVATE_NOTE: &str = "Only installed games show: Steam says your profile or its game details aren't public. In Steam: your profile › Edit Profile › Privacy Settings: My profile: Public, and Game details: Public (Friends only isn't enough).";
 /// With the community page out of reach, the games Steam remembers on this device show instead (device_games).
-pub const PRIVATE_DEVICE_NOTE: &str = "Your Steam profile's game details are private, so Hearth shows the games Steam remembers on this device: ones you've played, opened in Steam's library or put in a collection. In Steam, set Privacy › Game details to Public to see all of them.";
-pub const SIGNIN_NOTE: &str = "Steam's website now asks to sign in before it shows a games list, and Hearth never signs in to it. Hearth shows the games Steam remembers on this device instead: ones you've played, opened in Steam's library or put in a collection.";
-pub const SIGNIN_EMPTY_NOTE: &str = "Steam's website now asks to sign in before it shows a games list, and Hearth never signs in to it, so only installed games show. Games you play or open in Steam's library show here too from then on.";
+pub const PRIVATE_DEVICE_NOTE: &str = "Steam says your profile or its game details aren't public, so Hearth shows the games Steam remembers on this device: ones you've played, opened or seen in Steam's library, or put in a collection. In Steam: your profile › Edit Profile › Privacy Settings: My profile: Public, and Game details: Public (Friends only isn't enough).";
+pub const SIGNIN_NOTE: &str = "Your Steam profile is public, but Steam's website no longer shows anyone's games list to a visitor who isn't signed in, and Hearth never signs in to it. So Hearth shows the games Steam remembers on this device: ones you've played, opened or seen in Steam's library, or put in a collection. Scroll through Steam's own library once to fill it in.";
+pub const SIGNIN_EMPTY_NOTE: &str = "Your Steam profile is public, but Steam's website no longer shows anyone's games list to a visitor who isn't signed in, and Hearth never signs in to it, so only installed games show. Open Steam's library once (Library › Stores › Steam) so Steam's own files on this device list your games, then press Refresh.";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct OwnedGame { pub app_id: u32, pub title: String, pub minutes: u64, pub last_played: u64 }
@@ -173,13 +175,28 @@ pub fn fetch(id64: u64) -> Result<Vec<OwnedGame>, Problem> {
     };
     let first = match answer(format!("https://steamcommunity.com/profiles/{id64}/games?tab=all&xml=1"), parse_xml) { Ok(l) => return Ok(l), Err(e) => e };
     let second = match answer(format!("https://steamcommunity.com/profiles/{id64}/games/?tab=all"), parse_html) { Ok(l) => return Ok(l), Err(e) => e };
-    let p = better(first, second);
-    if p == Problem::SignIn {
-        if let Ok(r) = crate::http::get(&format!("https://steamcommunity.com/profiles/{id64}/?xml=1"), &[]) {
-            if r.ok() && profile_private(&r.text) == Some(true) { return Err(Problem::Private); }
-        }
+    Err(verdict(first, second, || {
+        let r = crate::http::get(&format!("https://steamcommunity.com/profiles/{id64}/?xml=1"), &[]).ok()?;
+        if r.ok() { profile_private(&r.text) } else { None }
+    }))
+}
+
+/// Which case it was, from the XML answer, the page's answer and (asked only when it decides) whether the profile's
+/// own public XML says the profile isn't public. The games XML answers a visitor who isn't signed in with Steam's
+/// "This profile is private" error even when Game details is Public (the owner's device, October 2026), and the
+/// games page with the sign-in page: so "private" is only said when the page itself says so or the profile is
+/// private / friends only; a public profile whose list Steam won't show a visitor is the sign-in case.
+pub fn verdict(xml: Problem, page: Problem, profile_private: impl FnOnce() -> Option<bool>) -> Problem {
+    if page == Problem::Private { return Problem::Private; }
+    let walled = xml == Problem::SignIn || page == Problem::SignIn;
+    if walled || xml == Problem::Private {
+        return match profile_private() {
+            Some(true) => Problem::Private,
+            Some(false) => Problem::SignIn,
+            None => if walled { Problem::SignIn } else { Problem::Private },
+        };
     }
-    Err(p)
+    better(xml, page)
 }
 
 // ------------------------------------------------------------------ the games Steam remembers on this device
@@ -189,7 +206,12 @@ pub fn fetch(id64: u64) -> Result<Vec<OwnedGame>, Problem> {
 /// games whose page was opened in Steam's library) and in its collections (cloud-storage-namespace-1.json,
 /// sharedconfig.vdf). Only that account's folder; nothing shared between accounts, nothing from the network.
 /// Names (and whether an app is a game) come from appinfo.vdf afterwards: an app Steam has no name for is left out.
-pub fn device_apps(account: &Path) -> HashMap<u32, (u64, u64)> {
+pub fn device_apps(account: &Path) -> HashMap<u32, (u64, u64)> { device_apps_with(account, None) }
+
+/// device_apps, plus Steam's own library art cache (appcache/librarycache: a folder, or older <appid>_*.jpg files,
+/// for each game Steam's library has shown) when `cache` is given: only with one account in this Steam folder, as
+/// that cache is shared by every account on it. Steam's licensecache isn't read: the client keeps it encrypted.
+pub fn device_apps_with(account: &Path, cache: Option<&Path>) -> HashMap<u32, (u64, u64)> {
     let mut out: HashMap<u32, (u64, u64)> = HashMap::new();
     let mut add = |id: &str, minutes: u64, last: u64| {
         if let Ok(n) = id.trim().parse::<u32>() { if n > 0 { let e = out.entry(n).or_insert((0, 0)); e.0 = e.0.max(minutes); e.1 = e.1.max(last); } }
@@ -197,6 +219,14 @@ pub fn device_apps(account: &Path) -> HashMap<u32, (u64, u64)> {
     if let Some(local) = crate::vdf::load(&account.join("config/localconfig.vdf")) {
         for (id, a) in local.obj(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"]).into_iter().flatten() {
             add(id, a.num(&["Playtime"]).max(0) as u64, a.num(&["LastPlayed"]).max(0) as u64 * 1000);
+        }
+    }
+    if let Some(Ok(d)) = cache.map(std::fs::read_dir) {
+        for e in d.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            let id: String = n.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let rest = &n[id.len()..];
+            if !id.is_empty() && (rest.is_empty() || rest.starts_with('_')) { add(&id, 0, 0); }
         }
     }
     if let Ok(d) = std::fs::read_dir(account.join("config/librarycache")) {
@@ -383,7 +413,11 @@ fn start(home: &Path, force: bool) -> Result<bool, String> {
         let result = fetch(id64);
         // The community page out of reach: the games Steam remembers on this device (that account's folder only).
         let apps = match &result {
-            Err(_) => crate::steam::account_folder(&steam, id64).map(|a| device_apps(&a)).unwrap_or_default(),
+            Err(_) => {
+                let accounts = std::fs::read_dir(steam.join("userdata")).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().parse::<u64>().map(|n| n > 0).unwrap_or(false)).count()).unwrap_or(0);
+                let cache = steam.join("appcache/librarycache");
+                crate::steam::account_folder(&steam, id64).map(|a| device_apps_with(&a, if accounts == 1 { Some(cache.as_path()) } else { None })).unwrap_or_default()
+            }
             Ok(_) => HashMap::new(),
         };
         let ids: HashSet<u32> = match &result { Ok(l) => l.iter().map(|g| g.app_id).collect(), Err(_) => apps.keys().copied().collect() };
@@ -475,6 +509,28 @@ mod tests {
     }
 
     #[test]
+    fn private_only_when_steam_really_says_so() {
+        let asked = std::cell::Cell::new(false);
+        let public = || { asked.set(true); Some(false) };
+        // The owner's case: XML says "private" to a visitor, the page is the sign-in page, the profile is public.
+        assert_eq!(verdict(Problem::Private, Problem::SignIn, public), Problem::SignIn);
+        assert!(asked.get());
+        assert_eq!(verdict(Problem::Private, Problem::Unknown("x".into()), || Some(false)), Problem::SignIn);
+        assert_eq!(verdict(Problem::SignIn, Problem::SignIn, || Some(false)), Problem::SignIn);
+        // Profile private or friends only: private, with the settings to change.
+        assert_eq!(verdict(Problem::Private, Problem::SignIn, || Some(true)), Problem::Private);
+        assert_eq!(verdict(Problem::SignIn, Problem::SignIn, || Some(true)), Problem::Private);
+        assert_eq!(profile_private(&PROFILE_PUBLIC.replace(">public<", ">friendsonly<")), Some(true));
+        // The page itself saying private wins; the profile XML out of reach keeps what the answers said.
+        assert_eq!(verdict(Problem::SignIn, Problem::Private, || panic!("not needed")), Problem::Private);
+        assert_eq!(verdict(Problem::Private, Problem::Other("busy".into()), || None), Problem::Private);
+        assert_eq!(verdict(Problem::Private, Problem::SignIn, || None), Problem::SignIn);
+        assert_eq!(verdict(Problem::Other("a".into()), Problem::Other("b".into()), || panic!("not needed")), Problem::Other("a".into()));
+        assert!(Problem::Private.describe().contains("Game details: Public"));
+        assert!(PRIVATE_NOTE.contains("Friends only"));
+    }
+
+    #[test]
     fn an_unknown_page_says_its_shape_not_its_text() {
         let page = r#"<!DOCTYPE html><html><head><title>Steam Community :: Sam Smith :: Games</title></head><body><div id="app"></div></body></html>"#;
         let Err(Problem::Unknown(s)) = parse_html(page) else { panic!("{:?}", parse_html(page)) };
@@ -515,6 +571,14 @@ mod tests {
         assert_eq!(g.iter().map(|x| x.app_id).collect::<Vec<_>>(), vec![70, 440, 620]);
         assert_eq!(g[2].minutes, 90);
         assert!(device_apps(&dir.path().join("nobody")).is_empty());
+        // Steam's library art cache (one account only): a folder per app, or the older loose files.
+        let cache = dir.path().join("appcache/librarycache");
+        std::fs::create_dir_all(cache.join("1145360")).unwrap();
+        std::fs::write(cache.join("292030_library_600x900.jpg"), "").unwrap();
+        std::fs::write(cache.join("assets.vdf"), "").unwrap();
+        let with = device_apps_with(&acc, Some(&cache));
+        assert!(with.contains_key(&1145360) && with.contains_key(&292030) && with.contains_key(&620), "{with:?}");
+        assert_eq!(with.len(), apps.len() + 2);
     }
 
     #[test]
