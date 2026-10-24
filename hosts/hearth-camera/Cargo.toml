@@ -1,0 +1,29 @@
+[package]
+name = "hearth-camera"
+version = "0.1.0"
+edition = "2021"
+description = "Hearth Camera: Hearth OS's webcam app (photos and videos with sound, timer, mirror, more than one camera)"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "hearth_camera"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-camera"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hearth-media = { path = "../hearth-media" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

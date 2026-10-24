@@ -581,6 +581,24 @@ def clean_home(plan, state):
     if not DRY:
         write_json(man_file, man, mode=0o600)
         os.chown(man_file, uid, gid)
+        repair_home(user)
+
+
+HOME_REPAIR = 'usr/libexec/nimbus/hearth-home-repair'
+
+
+def repair_home(user):
+    """The folders Flatpak, Apps and the Debian box write to (~/.local/share/flatpak, ~/.cache, ~/.config...) given
+    back to the account when root or an id from the old system owns them, and a container id range for it
+    (hearth-home-repair; it also runs at every boot). Only on the real system."""
+    if ROOT != '/' or not os.path.exists(p(HOME_REPAIR)):
+        return
+    try:
+        r = subprocess.run([sys.executable, p(HOME_REPAIR), '--user', user], capture_output=True, text=True, timeout=1800)
+        for line in (r.stdout + r.stderr).splitlines()[-40:]:
+            log('home: repair: ' + line)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log('home: couldn\'t check the home folder\'s ownership (%s)' % e)
 
 
 # ---------------------------------------------------------------------- the whole thing

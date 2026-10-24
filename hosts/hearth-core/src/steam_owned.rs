@@ -168,17 +168,17 @@ pub fn not_a_game(kind: &str) -> bool { matches!(kind, "tool" | "config" | "dlc"
 fn cache_name(id64: u64) -> String { format!("steam-owned-{id64}.json") }
 fn cache_file(id64: u64) -> PathBuf { crate::paths::data_dir().join("cache").join(cache_name(id64)) }
 
-/// The signed-in account's SteamID64: the most recent user in loginusers.vdf.
-pub fn current_id64(steam: &Path) -> Option<u64> {
-    let login = crate::vdf::load(&steam.join("config/loginusers.vdf"))?;
-    login.obj(&["users"])?.iter().find(|(_, u)| u.str(&["MostRecent"]) == Some("1")).and_then(|(id, _)| id.parse::<u64>().ok()).filter(|n| *n > crate::steam::ID64_BASE)
+/// The signed-in account's SteamID64 (steam::find_account: MostRecent, AutoLoginUser, and with one Hearth profile
+/// the only or last account).
+pub fn current_id64(home: &Path, steam: &Path) -> Option<u64> {
+    crate::steam::find_account(home, steam, !crate::steam::several_profiles()).ok().map(|(id, _)| id)
 }
 
 /// What's cached for an account: {fetched, games: [{id, title, minutes, lastPlayed}], problem: "private"|text|null}
 pub fn load(id64: u64) -> Value {
     std::fs::read(cache_file(id64)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(json!({"fetched": 0, "games": [], "problem": null}))
 }
-pub fn load_current(home: &Path) -> Option<Value> { let steam = crate::steam::steam_path(home)?; current_id64(&steam).map(load) }
+pub fn load_current(home: &Path) -> Option<Value> { crate::steam::current_account(home).ok().map(load) }
 
 /// The cache entry for a fetch: the games that are games (by appinfo.vdf, when Steam knows the app), or the
 /// problem with the old list kept (a passing problem shouldn't empty your library).
@@ -201,26 +201,38 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 pub fn busy() -> bool { BUSY.load(Ordering::SeqCst) }
 
 /// Fetches the signed-in account's list in the background (once at a time); the host hears {what:'rescan'} and
-/// {name:'accounts.changed'} when it's in. `force`: even when the list is fresh.
-pub fn refresh(home: &Path, force: bool) {
-    let Some(steam) = crate::steam::steam_path(home) else { return };
-    let Some(id64) = current_id64(&steam) else { return };
+/// {name:'accounts.changed'} when it's in. `force`: even when the list is fresh. Err: why it can't (no Steam
+/// folder, no signed-in account), also said in Hearth's log; Ok(false): the list is fresh or being fetched.
+pub fn refresh(home: &Path, force: bool) -> Result<bool, String> {
+    let r = start(home, force);
+    match &r {
+        Err(e) => crate::steam::note("owned", &format!("owned games list skipped: {e}")),
+        Ok(false) => {}
+        Ok(true) => crate::steam::note("owned", "owned games list: fetching"),
+    }
+    r
+}
+
+fn start(home: &Path, force: bool) -> Result<bool, String> {
+    let steam = crate::steam::steam_path(home).ok_or_else(|| crate::steam::no_folder_reason(home))?;
+    let (id64, _) = crate::steam::find_account(home, &steam, !crate::steam::several_profiles())?;
     let old = load(id64);
-    if !force && crate::library::now_ms().saturating_sub(old["fetched"].as_u64().unwrap_or(0)) < 12 * 3600 * 1000 { return; }
-    if BUSY.swap(true, Ordering::SeqCst) { return; }
+    if !force && crate::library::now_ms().saturating_sub(old["fetched"].as_u64().unwrap_or(0)) < 12 * 3600 * 1000 { return Ok(false); }
+    if BUSY.swap(true, Ordering::SeqCst) { return Ok(false); }
     crate::stores::notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
     std::thread::spawn(move || {
         let result = fetch(id64);
         let ids: HashSet<u32> = match &result { Ok(l) => l.iter().map(|g| g.app_id).collect(), Err(_) => HashSet::new() };
         let info = appinfo(&steam.join("appcache/appinfo.vdf"), &ids);
         let e = entry(&old, result, &info, crate::library::now_ms());
-        crate::bridge::log(&format!("steam: owned games list: {} games{}", e["games"].as_array().map(|a| a.len()).unwrap_or(0),
+        crate::steam::note("owned", &format!("owned games list: {} games{}", e["games"].as_array().map(|a| a.len()).unwrap_or(0),
             e["problem"].as_str().map(|p| format!(" ({p})")).unwrap_or_default()));
         let _ = crate::paths::write_atomic(&cache_file(id64), e.to_string().as_bytes());
         BUSY.store(false, Ordering::SeqCst);
         crate::stores::notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
         crate::stores::notify(json!({"type": "internal", "what": "rescan", "reply": null}));
     });
+    Ok(true)
 }
 
 #[cfg(test)]

@@ -73,6 +73,9 @@ here="$(dirname "$(readlink -f "$0")")"
 if ! command -v fusermount >/dev/null 2>&1 && ! command -v fusermount3 >/dev/null 2>&1; then export APPIMAGE_EXTRACT_AND_RUN=1; fi
 # WebKit's newer GPU path draws a black window on some Nvidia drivers.
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+# Sign-in pages open in your default browser (Hearth Browser unless you picked another in Settings › Default apps),
+# not whichever browser the app finds first.
+export BROWSER="${BROWSER:-xdg-open}"
 exec "$here/Xodus-Nexus.AppImage" "$@"
 "#;
 

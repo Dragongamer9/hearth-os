@@ -494,6 +494,12 @@ class SystemHelper(unittest.TestCase):
         self.assertEqual(by['W-S-Left']['action'], 'Move the window to the screen on the left')
         self.assertEqual(by['XF86AudioPlay']['keys'], 'Play key')
 
+    def test_recorder_shortcuts_in_plain_words(self):
+        by = {b['key']: b for b in self.s.parse_keybinds((LABWC / 'rc.xml').read_text())}
+        self.assertEqual(by['W-A-r']['action'], 'Record the screen, or stop and save')
+        self.assertEqual(by['W-A-S-r']['action'], 'Record an area of the screen, or stop')
+        self.assertEqual(by['W-A-g']['keys'], 'Super+Alt+G')
+
     def test_keybinds_in_plain_words(self):
         binds = self.s.parse_keybinds((LABWC / 'rc.xml').read_text())
         by = {b['key']: b for b in binds}

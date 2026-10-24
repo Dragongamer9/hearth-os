@@ -98,6 +98,21 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.4 (released)
+
+- [x] Photos, Documents, Calculator, Player, Write, Sheets, Slides, Terminal and Beacon no longer close as they open on Nvidia PCs
+- [x] The in-game Quick Access overlay comes back right away after Game Mode restarts or a trip to Desktop Mode (handhelds with Handheld Daemon) and opens faster; Hearth's own Quick Access panel is now the same as the overlay one
+- [x] Steam games show again: Hearth finds Steam in ~/.steam/debian-installation and other layouts and finds the signed-in account reliably; Library › Stores says why when it can't
+- [x] Hearth Files is the default file manager and the Open/Save window in other apps (Flatpaks, Firefox, Chromium/Electron, GTK, Qt, Hearth's apps)
+- [x] Hearth's apps are the defaults for everything they open; Settings › Default apps changes them, in Game Mode and Desktop Mode
+- [x] No on-screen keyboard after typing on a keyboard or using a mouse; Settings › Appearance › Made for (Automatic, Mouse & keyboard, Controller)
+- [x] Three keyboard & mouse layouts (Desk grid, Table, Launcher) for Home and the Library; the 24 experimental layouts fixed and each set in its own drop-down
+- [x] New apps: Hearth Recorder (screen, sound, instant replay), Camera and Share (your screen in any browser on the network)
+- [x] Peppermint: .deb files install through a Debian box, AppImages run and go in the menu, the app store and Bazaar work, a broken system Flatpak setup is repaired at start-up, no hostname warning, and password prompts appear in both modes
+- [x] Sign-in pages open in your default browser (Hearth Browser) instead of Chrome
+- [x] Games added in Beacon 0.0.18 (Faugus-style, with ProtonPlus-style compatibility tools) show under Beacon › Other Games
+- [x] Settings › Display explains HDMI 2.1 / 144 Hz problems, and Send logs includes the screen's modes and the Nvidia driver's HDMI link
+
 ## 0.6.3 (released)
 
 - [x] Send logs includes the screen's full list of modes, what it says it can do (EDID) and the Nvidia driver's HDMI link messages, to find out why a 120/144 Hz TV only shows 60 Hz at 4K
