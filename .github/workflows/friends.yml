@@ -76,6 +76,7 @@ jobs:
           rc_presence: {per_user: {per_second: 1000, burst_count: 1000}}
           EOF
           "$RUNNER_TEMP/syn/bin/python" -m synapse.app.homeserver --config-path hs.yaml > synapse.log 2>&1 &
+          grep -nE '^(enable_registration|presence|server_name)' hs.yaml || true
           for i in $(seq 60); do curl -sf http://127.0.0.1:8008/_matrix/client/versions >/dev/null && break; sleep 1; done
           curl -sf http://127.0.0.1:8008/_matrix/client/versions | head -c 300; echo
           echo "::notice title=Synapse::$("$RUNNER_TEMP/syn/bin/pip" show matrix-synapse | grep -i ^version)"

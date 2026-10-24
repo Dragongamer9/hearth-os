@@ -302,6 +302,11 @@ impl Bridge {
             log(&format!("{method}: panicked: {why}"));
             Err("Something went wrong in Hearth. Try again; if it keeps happening, send the logs (Settings › System).".to_string())
         });
+        // Hearth Friends: "Playing <game>" follows what's running (told to the service only when it changes).
+        if crate::matrix_friends::available() {
+            let g = self.library.running_id().and_then(|id| self.library.games.get(&id).map(|g| (id.clone(), g.title.clone(), g.source.to_string(), id.split_once(':').map(|(_, x)| x.to_string()))));
+            crate::matrix_friends::note_playing(g);
+        }
         Some(match r {
             Ok(Value::String(s)) if s == DEFERRED => return None,
             Ok(value) => json!({"type": "result", "id": id, "ok": true, "value": value}),
@@ -1079,6 +1084,45 @@ impl Bridge {
             "setup.done" => io(self.library.store.update(|d| { d.insert("setupDone".into(), json!(now_ms())); })).map(|_| json!({"ok": true})),
             // Hearth Input: controller layouts for games without controller support (input_map.rs)
             m if m.starts_with("input.") => crate::input_map::call(m, a, self.library.running_id()),
+            // ==== Hearth Friends on Matrix (matrix_friends.rs, hosts/hearth-friends): friends, chats, game invites,
+            // Play together. The service answers from its own thread; Steam's own windows open with steam:// links.
+            "mfriends.openSteam" => {
+                let u = req("url")?;
+                if !crate::matrix_friends::steam_link_ok(&u) { return Err("Hearth doesn't open that link.".into()); }
+                self.open_steam(&u);
+                Ok(Value::Null)
+            }
+            "mfriends.discord" => Ok(json!({"installed": crate::matrix_friends::discord_installed(), "flathub": format!("https://flathub.org/apps/{}", crate::matrix_friends::DISCORD)})),
+            "mfriends.installDiscord" => self.later(|| {
+                if !crate::system::has("flatpak") { return Err("Flatpak is needed to install Discord.".into()); }
+                crate::system::run_timeout("flatpak", &["install", "--user", "-y", "--noninteractive", "flathub", crate::matrix_friends::DISCORD], std::time::Duration::from_secs(900))?;
+                Ok(json!({"installed": true}))
+            }),
+            "mfriends.openDiscord" => std::process::Command::new("flatpak").args(["run", crate::matrix_friends::DISCORD]).spawn().map(|c| { crate::procs::detach(c); Value::Null }).map_err(|e| e.to_string()),
+            "mfriends.ptInfo" => self.later(|| Ok(crate::matrix_friends::play_together::host_info())),
+            "mfriends.ptAskToJoin" => { let on = a["on"] != false; self.later(move || crate::matrix_friends::play_together::set_ask_to_join(on)) }
+            "mfriends.ptAccept" => crate::matrix_friends::play_together::host_accept(&req("session")?, &req("pin")?, a["friend"].as_str().unwrap_or("friend"), a["device"].as_str().unwrap_or(""), a["controllerOnly"] != false),
+            "mfriends.ptEnd" => { let name = a["name"].as_str().map(str::to_string); self.later(move || crate::matrix_friends::play_together::host_end(name.as_deref())) }
+            "mfriends.ptJoin" => crate::matrix_friends::play_together::guest_join(&req("session")?, &req("address")?, &req("pin")?),
+            "mfriends.ptPin" => Ok(json!(format!("{:04}", { let mut b = [0u8; 2]; let _ = getrandom::getrandom(&mut b); u16::from_le_bytes(b) % 10000 }))),
+            // Pictures go only from Hearth's screenshots folder or Pictures (the chat's Screenshot button).
+            "mfriends.sendImage" => {
+                let path = std::path::PathBuf::from(req("path")?);
+                let roots: Vec<std::path::PathBuf> = [crate::gamescope::screenshot_dir(), paths::home().join("Pictures")].into_iter().filter_map(|r| std::fs::canonicalize(r).ok()).collect();
+                let ok = std::fs::canonicalize(&path).ok().map_or(false, |p| roots.iter().any(|r| p.starts_with(r)));
+                if !ok { return Err("Only screenshots and pictures from Pictures can be sent.".into()); }
+                let a = a.clone();
+                crate::matrix_friends::watch();
+                self.later(move || crate::matrix_friends::call("sendImage", &a))
+            }
+            // The emoji picker's data (Emoji & symbols, hosts/hearth-emoji), installed beside Hearth's page.
+            "mfriends.emoji" => self.later(|| Ok(crate::matrix_friends::emoji())),
+            m if m.starts_with("mfriends.") => {
+                let (m, a) = (m["mfriends.".len()..].to_string(), a.clone());
+                crate::matrix_friends::watch();
+                self.later(move || crate::matrix_friends::call(&m, &a))
+            }
+            // ==== end of Hearth Friends on Matrix
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
     }
@@ -1580,6 +1624,8 @@ fn features() -> Vec<&'static str> {
     if std::path::Path::new(crate::renderer::ELECTRON_APP).is_file() { f.push("renderer"); }
     // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
     if crate::gaming_apps::available() { f.push("gamingApps"); }
+    // ---- Hearth Friends on Matrix (the service is installed)
+    if crate::matrix_friends::available() { f.push("mfriends"); }
     // ---- end of Hearth's gaming apps
     f
 }

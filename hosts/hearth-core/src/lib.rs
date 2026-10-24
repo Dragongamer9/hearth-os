@@ -38,6 +38,7 @@ pub mod multiplay;
 pub mod owned;
 pub mod padmouse;
 pub mod manual;
+pub mod matrix_friends;   // Hearth Friends on Matrix (hosts/hearth-friends)
 pub mod newos;
 pub mod osinstall;
 pub mod overlay_link;
