@@ -632,7 +632,7 @@ Exec=/usr/bin/hearth-filemanager %U
 Icon=hearth-files
 Type=Application
 Categories=System;FileManager;Utility;
-MimeType=inode/directory;application/zip;application/x-tar;application/x-compressed-tar;application/x-xz-compressed-tar;application/x-bzip2-compressed-tar;application/x-zstd-compressed-tar;application/gzip;application/x-gzip;application/x-xz;application/x-bzip2;application/zstd;application/x-7z-compressed;application/vnd.rar;application/x-rar;
+MimeType=inode/directory;x-directory/normal;application/zip;application/x-tar;application/x-compressed-tar;application/x-xz-compressed-tar;application/x-bzip2-compressed-tar;application/x-zstd-compressed-tar;application/gzip;application/x-gzip;application/x-xz;application/x-bzip2;application/zstd;application/x-7z-compressed;application/vnd.rar;application/x-rar;
 Keywords=files;folder;explorer;browse;usb;sd;card;copy;move;
 OnlyShowIn=Nimbus;
 DESKTOP
