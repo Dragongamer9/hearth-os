@@ -307,6 +307,19 @@ footer .brand{margin-right:auto}
 footer a{color:var(--soft);text-decoration:none}
 footer a:hover{color:var(--text);text-decoration:underline}
 .legal{flex-basis:100%;font-size:13.5px;color:var(--muted);margin-top:10px;max-width:70em}
+#game-art{padding-top:0}
+#game-art .lede{max-width:52em}
+details.art{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+details.art summary{cursor:pointer;color:var(--text);font-weight:650;list-style:none;display:flex;gap:10px;align-items:center}
+details.art summary::-webkit-details-marker{display:none}
+details.art summary::before{content:"+";color:var(--ember);font-weight:800;width:14px}
+details.art[open] summary::before{content:"\2013"}
+.artnote{max-width:60em;font-size:15px;color:var(--soft);padding-top:12px}
+.credits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:22px 36px;padding-top:16px}
+.credits h3{font-size:17px;margin:0 0 6px}
+.credits h3 a{color:var(--text);text-decoration:none}
+.credits ul{display:grid;gap:7px;font-size:14px;color:var(--soft);overflow-wrap:anywhere}
+.credits a{color:var(--soft)}
 
 @media (max-width:1060px){
   .top .links .mid{display:none}
@@ -408,7 +421,7 @@ footer a:hover{color:var(--text);text-decoration:underline}
       <div class="floor" aria-hidden="true"></div>
       <figure class="screen">
         <img src="img/gm-home.webp" width="1600" height="1000" fetchpriority="high" alt="Hearth's Game Mode home screen: recent games in a row, news from your games below, and the Library, Store and Downloads tabs at the top">
-        <figcaption>Game Mode's home screen, with sample games.</figcaption>
+        <figcaption>Game Mode's home screen, with open-source games (<a href="#game-art">art credits</a>).</figcaption>
       </figure>
     </div>
   </div>
@@ -466,7 +479,7 @@ footer a:hover{color:var(--text);text-decoration:underline}
       </div>
 
       <div class="panel" role="tabpanel" id="p-store" aria-labelledby="t-store" tabindex="0" hidden>
-        <div class="shot"><img src="img/gm-store.webp" width="1600" height="1000" loading="lazy" alt="The Store in Game Mode on its GOG section: a featured game, trending and bestselling games with prices, some marked Installed or In your library, and tabs for Steam, GOG, Epic Games and Xbox"></div>
+        <div class="shot"><img src="img/gm-store.webp" width="1600" height="1000" loading="lazy" alt="A game's page in the Store: Battle for Wesnoth from Steam, with its art, Play (it's installed), Linux version, its developer, a description and a screenshot"></div>
         <h3>Browse and buy from the stores with a controller</h3>
         <div class="prose">
           <p>The Store tab has a section for Steam, GOG, Epic and Xbox: featured games, deals, new releases and search. It uses the same sign-in as your Library, so you sign in to a store once and it shows what you already own.</p>
@@ -543,15 +556,15 @@ footer a:hover{color:var(--text);text-decoration:underline}
     </div>
     <div class="tabs" role="tablist" aria-label="Game Mode screenshots" id="tabs"></div>
     <div class="track" id="track">
-      <figure class="slide" data-tab="Library"><img src="img/gm-library.webp" width="1600" height="1000" loading="lazy" alt="The Library: tabs for Installed, All games, Favorites and each store, and a grid of covers marked Steam, GOG, Epic, Xbox and Beacon">
+      <figure class="slide" data-tab="Library"><img src="img/gm-library.webp" width="1600" height="1000" loading="lazy" alt="The Library on All games: tabs for Installed, Favorites and each store, and covers of SuperTuxKart, 0 A.D., Battle for Wesnoth, OpenTTD, Endless Sky and Veloren, marked Flathub, Steam or GOG">
         <figcaption><b>One library for every store.</b>Steam, Epic, GOG, Xbox, Beacon, emulators and your own games, with filters and sorting.</figcaption></figure>
       <figure class="slide" data-tab="Layouts"><img src="img/lib-flow.webp" width="1600" height="900" loading="lazy" alt="The Library in the Cover Flow layout: covers tilted in a row with the selected game in front">
         <figcaption><b>Library layouts.</b>Covers, List, Shelves and Wall, plus experimental ones like this Cover Flow that players vote on.</figcaption></figure>
       <figure class="slide" data-tab="Downloads"><img src="img/gm-downloads.webp" width="1150" height="700" loading="lazy" alt="Downloads: the game downloading with its progress and a live speed graph, and two games queued below">
         <figcaption><b>Downloads.</b>A live speed graph, pause and resume, and a queue you can reorder.</figcaption></figure>
-      <figure class="slide" data-tab="Game page"><img src="img/game-page.webp" width="1280" height="800" loading="lazy" alt="A game's page with Play, play time and achievements">
+      <figure class="slide" data-tab="Game page"><img src="img/gm-game.webp" width="1600" height="1000" loading="lazy" alt="Battle for Wesnoth's page: its art and logo, Play, last played, play time, source and size, and a description">
         <figcaption><b>Game pages.</b>Play, play time, achievements, and per-game power and controller layouts.</figcaption></figure>
-      <figure class="slide" data-tab="Quick Access"><img src="img/game-qa.webp" width="1280" height="800" loading="lazy" alt="Quick Access panel with brightness, volume and toggles">
+      <figure class="slide" data-tab="Quick Access"><img src="img/gm-qa.webp" width="1600" height="1000" loading="lazy" alt="Quick Access open while 0 A.D. is running: brightness, volume, Wi-Fi, Bluetooth, airplane mode and interface sounds, over the game's page">
         <figcaption><b>Quick Access over any game.</b>Volume, brightness, power limit, frame-rate limit and screenshots, with the game still running underneath.</figcaption></figure>
       <figure class="slide" data-tab="Beacon"><img src="img/game-beacon.webp" width="1280" height="800" loading="lazy" alt="The Beacon tab in the library">
         <figcaption><b>Beacon.</b>Battle for Middle-earth, Age of the Ring and other classics with their mods, and any Windows game you add.</figcaption></figure>
@@ -576,8 +589,8 @@ footer a:hover{color:var(--text);text-decoration:underline}
         <li>Steam</li><li>Epic Games</li><li>GOG</li><li>Xbox PC games</li><li>Xbox Cloud Gaming</li><li>Beacon</li><li>Emulators</li><li>Your own games</li>
       </ul>
     </div>
-    <figure style="margin:0"><div class="pic"><img src="img/gm-store-steam.webp" width="1600" height="1000" loading="lazy" alt="The Store's Steam section: a featured game with its price, then rows of featured games and deals with discounts"></div>
-      <figcaption class="cap">The Store's Steam section. Prices and games are sample data.</figcaption></figure>
+    <figure style="margin:0"><div class="pic"><img src="img/gm-store-steam.webp" width="1600" height="1000" loading="lazy" alt="The Store's Steam section: Battle for Wesnoth featured, then rows of free games (Battle for Wesnoth, OpenTTD and Endless Sky), marked Installed or In your library"></div>
+      <figcaption class="cap">The Store's Steam section, with open-source games that are on Steam for free.</figcaption></figure>
   </div>
 </section>
 
@@ -686,7 +699,7 @@ footer a:hover{color:var(--text);text-decoration:underline}
         <li>Tested on the ROG Ally and Xbox Ally</li>
       </ul>
     </div>
-    <div class="pic"><img src="img/game-qa.webp" width="1280" height="800" loading="lazy" alt="Quick Access open over a game, with volume, brightness, power limit and frame-rate controls"></div>
+    <div class="pic"><img src="img/gm-qa.webp" width="1600" height="1000" loading="lazy" alt="Quick Access open while 0 A.D. is running, with brightness, volume and quick toggles, and tabs for performance and open apps"></div>
   </div>
 </section>
 
@@ -836,6 +849,52 @@ footer a:hover{color:var(--text);text-decoration:underline}
   </div>
 </section>
 
+<section id="game-art">
+  <div class="wrap">
+    <div class="head"><h2 class="d">Game art credits</h2>
+      <p class="lede">The games in the Game Mode screenshots are real open-source games with their own art, used under CC BY-SA and the GPL. Each is shown only on the stores it's really on, and all are free.</p></div>
+    <details class="art"><summary>Every picture, its author, licence and source</summary>
+    <p class="artnote">Art from SuperTuxKart, 0 A.D., The Battle for Wesnoth, Veloren, OpenTTD and Endless Sky. It is only cropped, resized and converted to WebP, as noted for each picture, and each keeps its own licence; the screenshots on this page that show it are shared under the same terms. The names belong to their projects, and Hearth OS isn't affiliated with them.</p>
+    <div class="credits">
+      <div class="cr"><h3><a href="https://supertuxkart.net">SuperTuxKart</a></h3><ul>
+        <li><a href="img/games/stk-cover.webp">stk-cover.webp</a>: Menu background of the Cartoon skin, by LCP and QwertyChouskie. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/skins/cartoon/background.jpg">background.jpg</a>; cropped to 720×1080 (from x 780), resized to 600×900.</li>
+        <li><a href="img/games/stk-hero.webp">stk-hero.webp</a>: Menu background of the Cartoon Forest skin, by LCP and QwertyChouskie. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/skins/cartoon-forest/background.jpg">background.jpg</a>; resized to 1600×900.</li>
+        <li><a href="img/games/stk-wide.webp">stk-wide.webp</a>: Menu background of the Cartoon Desert skin, by LCP and QwertyChouskie. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/skins/cartoon-desert/background.jpg">background.jpg</a>; resized to 640×349.</li>
+        <li><a href="img/games/stk-logo.webp">stk-logo.webp</a>: SuperTuxKart logo, by rastapax. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0 or later</a>. From <a href="https://github.com/supertuxkart/stk-code/blob/2997f192e6876047909d909498dbb4810e5dbb8d/data/gui/icons/logo.png">logo.png</a>; converted to WebP only.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://play0ad.com">0 A.D.</a></h3><ul>
+        <li><a href="img/games/0ad-cover.webp">0ad-cover.webp</a>: Main menu background (Hellenes), by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/backgrounds/hellenes1-1.png">hellenes1-1.png</a>; cropped to 683×1024 (from x 500), resized to 600×900.</li>
+        <li><a href="img/games/0ad-hero.webp">0ad-hero.webp</a>: Main menu background (Hellenes), by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/backgrounds/hellenes1-1.png">hellenes1-1.png</a>; resized to 1600×800.</li>
+        <li><a href="img/games/0ad-wide.webp">0ad-wide.webp</a>: Main menu background (Hellenes), by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/backgrounds/hellenes1-1.png">hellenes1-1.png</a>; resized to 640×320.</li>
+        <li><a href="img/games/0ad-logo.webp">0ad-logo.webp</a>: 0 A.D. Empires Ascendant logo, by Wildfire Games. <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>. From <a href="https://github.com/0ad/0ad/blob/61a3b9507d974084e6badb88a0826bd89a6d5b8b/binaries/data/mods/public/art/textures/ui/pregame/shell/logo/0ad_logo.png">0ad_logo.png</a>; converted to WebP only.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://www.wesnoth.org">The Battle for Wesnoth</a></h3><ul>
+        <li><a href="img/games/wesnoth-cover.webp">wesnoth-cover.webp</a>: Story art from The Rise of Wesnoth campaign, by Emilien Rotival (LordBob), credited for the campaign&#x27;s story art; The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_intro_04.webp">trow_intro_04.webp</a>; cropped to 720×1080 (from x 200), resized to 600×900.</li>
+        <li><a href="img/games/wesnoth-hero.webp">wesnoth-hero.webp</a>: Story art from The Rise of Wesnoth campaign (&quot;A Harrowing Escape&quot;), by Emilien Rotival (LordBob), credited for the campaign&#x27;s story art; The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_03-A_Harrowing_Escape.webp">trow_story_03-A_Harrowing_Escape.webp</a>; resized to 1600×900.</li>
+        <li><a href="img/games/wesnoth-wide.webp">wesnoth-wide.webp</a>: Story art from The Rise of Wesnoth campaign (&quot;A New Land&quot;), by Emilien Rotival (LordBob), credited for the campaign&#x27;s story art; The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/data/campaigns/The_Rise_Of_Wesnoth/images/story/trow_story_15-A_New_Land.webp">trow_story_15-A_New_Land.webp</a>; resized to 640×360.</li>
+        <li><a href="img/games/wesnoth-logo.webp">wesnoth-logo.webp</a>: The Battle for Wesnoth logo, by The Battle for Wesnoth Project. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0-or-later</a>. From <a href="https://github.com/wesnoth/wesnoth/blob/700df650eacad399a84e903d1560db154bd63abd/images/misc/logo.png">logo.png</a>; converted to WebP only.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://veloren.net">Veloren</a></h3><ul>
+        <li><a href="img/games/veloren-cover.webp">veloren-cover.webp</a>: Loading screen background, by Veloren contributors. <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a>. From <a href="https://gitlab.com/veloren/veloren/-/blob/c5024ebfde27b983b497d8400b99d084ee28d809/assets/voxygen/background/bg_5.jpg">bg_5.jpg</a>; cropped to 720×1080 (from x 240), resized to 600×900.</li>
+        <li><a href="img/games/veloren-hero.webp">veloren-hero.webp</a>: Loading screen background, by Veloren contributors. <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a>. From <a href="https://gitlab.com/veloren/veloren/-/blob/c5024ebfde27b983b497d8400b99d084ee28d809/assets/voxygen/background/bg_12.jpg">bg_12.jpg</a>; resized to 1600×900.</li>
+        <li><a href="img/games/veloren-wide.webp">veloren-wide.webp</a>: Loading screen background, by Veloren contributors. <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a>. From <a href="https://gitlab.com/veloren/veloren/-/blob/c5024ebfde27b983b497d8400b99d084ee28d809/assets/voxygen/background/bg_20.jpg">bg_20.jpg</a>; resized to 640×360.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://www.openttd.org">OpenTTD</a></h3><ul>
+        <li><a href="img/games/openttd-cover.webp">openttd-cover.webp</a>: Screenshot of the OpenTTD 1.4 title screen, with OpenGFX graphics, from openttd.org, by The OpenTTD team and the OpenGFX authors. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0</a>. From <a href="https://github.com/OpenTTD/website/blob/91b26ac86c09842c9e115b4949107d8240141c13/_screenshots/1.4-02-opengfx-1920x1200.png">1.4-02-opengfx-1920x1200.png</a>; cropped to 760×1140 (from x 0, y 60), resized to 600×900.</li>
+        <li><a href="img/games/openttd-hero.webp">openttd-hero.webp</a>: Screenshot of the OpenTTD 1.4 title screen, with OpenGFX graphics, from openttd.org, by The OpenTTD team and the OpenGFX authors. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0</a>. From <a href="https://github.com/OpenTTD/website/blob/91b26ac86c09842c9e115b4949107d8240141c13/_screenshots/1.4-02-opengfx-1920x1200.png">1.4-02-opengfx-1920x1200.png</a>; cropped to the top 1920×480, resized to 1600×400.</li>
+        <li><a href="img/games/openttd-wide.webp">openttd-wide.webp</a>: Screenshot of the OpenTTD 1.4 title screen, with OpenGFX graphics, from openttd.org, by The OpenTTD team and the OpenGFX authors. <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL-2.0</a>. From <a href="https://github.com/OpenTTD/website/blob/91b26ac86c09842c9e115b4949107d8240141c13/_screenshots/1.4-02-opengfx-1920x1200.png">1.4-02-opengfx-1920x1200.png</a>; cropped to 790×444 (from x 1130, y 720), resized to 640×360.</li>
+      </ul></div>
+      <div class="cr"><h3><a href="https://endless-sky.github.io">Endless Sky</a></h3><ul>
+        <li><a href="img/games/es-cover.webp">es-cover.webp</a>: Screenshot from the Endless Sky website, by Michael Zahniser and Endless Sky contributors (game graphics). <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky.github.io/blob/22dd15b37af679546b32903563f803b50d0cf5fc/screenshots/fight.jpg">fight.jpg</a>; cropped to 400×600 (from x 130).</li>
+        <li><a href="img/games/es-hero.webp">es-hero.webp</a>: Screenshot from the Endless Sky website, by Michael Zahniser and Endless Sky contributors (game graphics). <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky.github.io/blob/22dd15b37af679546b32903563f803b50d0cf5fc/screenshots/beams.jpg">beams.jpg</a>; converted to WebP only.</li>
+        <li><a href="img/games/es-wide.webp">es-wide.webp</a>: Screenshot from the Endless Sky website, by Michael Zahniser and Endless Sky contributors (game graphics). <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky.github.io/blob/22dd15b37af679546b32903563f803b50d0cf5fc/screenshots/fight.jpg">fight.jpg</a>; cropped to 800×450 (from y 75), resized to 640×360.</li>
+        <li><a href="img/games/es-logo.webp">es-logo.webp</a>: Endless Sky title, by Michael Zahniser. <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. From <a href="https://github.com/endless-sky/endless-sky/blob/c3c7908862cb18fef88459fd970c208ca06cba20/images/_menu/title@1x.png">title@1x.png</a>; converted to WebP only.</li>
+      </ul></div>
+    </div>
+    </details>
+  </div>
+</section>
+
 </main>
 
 <footer>
@@ -849,7 +908,7 @@ footer a:hover{color:var(--text);text-decoration:underline}
     <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     <a href="https://anatase.org">Built on Anatase</a>
     <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft, the Matrix.org Foundation or Universal Blue.
-      Steam, Epic Games, GOG and Xbox are trademarks of their owners. Screenshots are of Hearth itself; the games, prices, people and chats in them are sample data. The Anybody typeface is under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
+      Steam, Epic Games, GOG and Xbox are trademarks of their owners. Screenshots are of Hearth itself; the people, chats and play times in them are sample data. Game art: SuperTuxKart, 0 A.D., The Battle for Wesnoth, Veloren, OpenTTD and Endless Sky, used under CC BY-SA / GPL; see <a href="#game-art">the credits</a>. The Anybody typeface is under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
   </div>
 </footer>
 
