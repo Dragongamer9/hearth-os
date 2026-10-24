@@ -382,18 +382,20 @@ pub const LOGO_URI: &str = "https://hearthos.fun/img/logo.svg";
 /// RFC 8628's grant type: sign in on another device (a phone) with a code or a QR code.
 pub const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 
-/// Hearth's client metadata for the server. With a redirect address (the browser on this device comes back to
-/// Hearth's loopback address, RFC 8252) the authorization code grant is asked for too.
+/// Hearth's client metadata for the server: for a phone, the device authorization grant; with a redirect address
+/// (the browser on this device comes back to Hearth's loopback address, RFC 8252), the authorization code grant.
+/// Each registration asks only for the grant it uses (a server may have the device grant turned off).
 pub fn client_metadata(redirect_uri: Option<&str>) -> Value {
-    let mut grants = vec!["refresh_token", DEVICE_GRANT];
     let mut m = json!({"application_type": "native", "client_name": CLIENT_NAME, "client_uri": CLIENT_URI, "logo_uri": LOGO_URI,
                        "token_endpoint_auth_method": "none"});
-    if let Some(r) = redirect_uri {
-        grants.insert(0, "authorization_code");
-        m["redirect_uris"] = json!([r]);
-        m["response_types"] = json!(["code"]);
+    match redirect_uri {
+        Some(r) => {
+            m["grant_types"] = json!(["authorization_code", "refresh_token"]);
+            m["redirect_uris"] = json!([r]);
+            m["response_types"] = json!(["code"]);
+        }
+        None => { m["grant_types"] = json!([DEVICE_GRANT, "refresh_token"]); }
     }
-    m["grant_types"] = json!(grants);
     m
 }
 
@@ -649,6 +651,7 @@ mod tests {
         let m = client_metadata(Some("http://127.0.0.1:4711/callback"));
         assert_eq!(m["redirect_uris"][0], "http://127.0.0.1:4711/callback");
         assert_eq!(m["grant_types"][0], "authorization_code");
+        assert!(!m["grant_types"].as_array().unwrap().iter().any(|g| g == DEVICE_GRANT));
         assert_eq!(m["response_types"][0], "code");
         assert!(oauth_scope("ABCDEF").ends_with("client:device:ABCDEF"));
         assert_eq!(form_body(&[("scope", "a:* b"), ("x", "é&=")]), "scope=a%3A%2A%20b&x=%C3%A9%26%3D");

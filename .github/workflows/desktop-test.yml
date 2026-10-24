@@ -74,6 +74,17 @@ jobs:
           # Hearth Friends (Friends.qml): a stand-in for the service with a signed-in account, a friend playing, a chat.
           cat > /tmp/fakebin/hearth-friends <<'FAKE'
           #!/bin/sh
+          # Signed out (with /tmp/friends-out): matrix.org's own sign-in page, by phone (a QR code) or in the browser.
+          if [ -f /tmp/friends-out ]; then
+            case "$1:$2" in
+              watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":false}}'; sleep 3600 ;;
+              call:status) echo '{"signedIn":false,"settings":{"homeserver":"matrix.org"}}' ;;
+              call:authMethods) echo '{"homeserver":"matrix.org","oauth":true,"qr":true,"browser":true,"create":true,"password":true,"register":"oauth"}' ;;
+              call:authStart) echo '{"mode":"qr","homeserver":"matrix.org","create":false,"url":"https://account.matrix.org/link?code=WDJB-MJHT","shortUrl":"account.matrix.org/link","userCode":"WDJB-MJHT","expiresIn":600,"qrRows":["1111111011010110101111111", "1000001011110110001000001", "1011101001010111101011101", "1011101001001011101011101", "1011101001101100101011101", "1000001000001011001000001", "1111111011100001001111111", "0000000000100101000000000", "0001101111101110110000111", "0011111011110000001000011", "1011111111111001111100111", "1110110010100001110001100", "0000101111100100011111000", "1001000011010011001110010", "0010110000100111101110110", "0100001111011001000101100", "0001000010100001000111111", "0000000000010010010110011", "1111111001110101110010001", "1000001011011100110001101", "1011101010001010110011011", "1011101011111010111110011", "1011101001011010001000111", "1000001011011100011111110", "1111111000101111101011111"]}' ;;
+              *) echo 'null' ;;
+            esac
+            exit 0
+          fi
           case "$1:$2" in
             watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":true}}'; sleep 3600 ;;
             call:status) echo '{"signedIn":true,"userId":"@dragon:matrix.org","homeserver":"matrix.org","lives":"matrix.org (run by the Matrix.org Foundation)","synced":true}' ;;
@@ -176,6 +187,9 @@ jobs:
           # Hearth Friends: the bar's Friends panel, then a chat in it.
           ipc friends open; sleep 2; grim shots/friends-1-panel.png || true
           wtype -k Down -k Down -k Return 2>/dev/null || true; sleep 2; grim shots/friends-2-chat.png || true; ipc friends close
+          # Signed out: the ways to sign in, then A: a QR code to sign in with a phone.
+          touch /tmp/friends-out; sleep 6; ipc friends open; sleep 3; grim shots/friends-3-signin.png || true
+          wtype -k Return 2>/dev/null || true; sleep 3; grim shots/friends-4-signin-qr.png || true; ipc friends close; rm -f /tmp/friends-out
           ipc files open "$HOME/Downloads"; ipc filemanager select hearth-hello.deb; ipc filemanager menu; grim shots/deb-2-files-menu.png || true
           ipc filemanager close; ipc files close
           n=$((n+3))
