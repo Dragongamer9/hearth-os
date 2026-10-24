@@ -186,6 +186,24 @@ impl Node {
         Ok(c)
     }
 
+    /// One request to a paired device; a connection that turns out to be dead (the other device restarted) is
+    /// made again once.
+    pub async fn request(self: &Arc<Self>, id: &str, req: &Value) -> Result<Value, String> {
+        let c = self.connect(id).await?;
+        match wire::request(&c, req).await {
+            Err(e) if e.starts_with("connection:") && !e.contains("not paired") => {
+                self.drop_conn(id).await;
+                let c = self.connect(id).await?;
+                wire::request(&c, req).await
+            }
+            r => r,
+        }
+    }
+
+    pub async fn drop_conn(&self, id: &str) {
+        if let Some(c) = self.conns.lock().await.remove(id) { c.close(VarInt::from_u32(0), b"again"); }
+    }
+
     async fn hello(self: &Arc<Self>, id: &str, c: &Connection) -> Result<(), String> {
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
         let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": signed_in_here(&self.home), "relay": relay})).await;
@@ -279,6 +297,7 @@ impl Node {
         let op = req["op"].as_str().unwrap_or("").to_string();
         if op == "chunks" {
             if let Err(e) = self.serve_chunks(&peer, &req, &mut s).await {
+                eprintln!("hearth-link: sending chunks: {e}");
                 let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
             }
             let _ = s.finish();
@@ -400,7 +419,6 @@ impl Node {
 
     pub async fn sync_with(self: &Arc<Self>, peer: &str) -> Result<Value, String> {
         if !crate::lock(&self.cfg).sync { return Err("Sync is off".into()); }
-        let conn = self.connect(peer).await?;
         let n = self.clone(); let p = peer.to_string();
         let mut req = tokio::task::spawn_blocking(move || {
             let mut s = crate::lock(&n.sync);
@@ -410,7 +428,7 @@ impl Node {
             out
         }).await.map_err(|e| e.to_string())?;
         req["op"] = json!("sync");
-        let resp = match wire::request(&conn, &req).await { Ok(v) => v, Err(e) => { self.check_unpaired(peer, &e); return Err(e); } };
+        let resp = match self.request(peer, &req).await { Ok(v) => v, Err(e) => { self.check_unpaired(peer, &e); return Err(e.trim_start_matches("connection: ").to_string()); } };
         let n = self.clone(); let p = peer.to_string();
         tokio::task::spawn_blocking(move || {
             let mut s = crate::lock(&n.sync);
@@ -504,8 +522,9 @@ impl Node {
                         let r = crate::xfer::run(job.clone(), conn, self.home.clone(), streams, compress).await;
                         if let Err(e) = &r { eprintln!("hearth-link: copy of {}: {e}", job.title); }
                         // The connection dropped in the middle: wait for it and carry on.
-                        let lost = matches!(&r, Err(e) if e.starts_with("The connection broke"));
+                        let lost = matches!(&r, Err(e) if e.starts_with("The connection broke") || e.starts_with("connection:"));
                         if !lost { break; }
+                        self.drop_conn(&job.peer).await;
                         *crate::lock(&job.error) = None;
                         job.set_state("waiting");
                     }
@@ -603,9 +622,8 @@ impl Node {
             }
             "unpair" => {
                 let id = s("id")?;
-                let notify = self.connect(&id).await.ok();
-                if let Some(c) = notify { let _ = tokio::time::timeout(Duration::from_secs(5), wire::request(&c, &json!({"op": "unpair"}))).await; c.close(VarInt::from_u32(0), b"unpaired"); }
-                self.conns.lock().await.remove(&id);
+                let _ = tokio::time::timeout(Duration::from_secs(15), self.request(&id, &json!({"op": "unpair"}))).await;
+                self.drop_conn(&id).await;
                 crate::lock(&self.peers).remove(&id);
                 Ok(Value::Null)
             }
@@ -637,8 +655,7 @@ impl Node {
                 if a["refresh"] != true {
                     if let Some((t, v)) = crate::lock(&self.remote_games).get(&peer) { if crate::now_ms() - t < 30_000 { return Ok(v.clone()); } }
                 }
-                let conn = self.connect(&peer).await?;
-                let v = match tokio::time::timeout(Duration::from_secs(40), wire::request(&conn, &json!({"op": "games"}))).await {
+                let v = match tokio::time::timeout(Duration::from_secs(40), self.request(&peer, &json!({"op": "games"}))).await {
                     Ok(Ok(v)) => v, Ok(Err(e)) => { self.check_unpaired(&peer, &e); return Err(e); } Err(_) => return Err("The other device took too long to answer".into()),
                 };
                 crate::lock(&self.remote_games).insert(peer, (crate::now_ms(), v.clone()));
@@ -669,8 +686,7 @@ impl Node {
                 let peer = s("peer")?;
                 if !crate::lock(&self.peers).is_paired(&peer) { return Err("Not a paired device".into()); }
                 let game = self.local_game(&s("game")?).await?;
-                let conn = self.connect(&peer).await?;
-                wire::request(&conn, &json!({"op": "offer", "game": game.to_json()})).await
+                self.request(&peer, &json!({"op": "offer", "game": game.to_json()})).await
             }
             "offer.accept" => {
                 let id = s("id")?;
