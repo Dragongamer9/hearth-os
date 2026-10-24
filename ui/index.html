@@ -580,6 +580,7 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .su-speed svg{width:100%;height:70px;display:block}
 .dl-q{display:flex;align-items:center;gap:14px;padding:10px 12px;border-radius:12px;background:var(--panel);margin-bottom:8px}
 .dl-q .thumb{width:120px;height:56px;flex:none;border-radius:8px;overflow:hidden;position:relative}
+.dl-q .thumb .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .dl-q .rt{flex:1;min-width:0}
 .dl-q .rt b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dl-q .rt small{color:var(--dim);font-size:12px}
@@ -2392,6 +2393,59 @@ const SHOP_MOCK = (()=>{
   };
 })();
 
+// ---------- Open sample set (browser preview only): ?preview=linux&samples=open ----------
+// Real open-source games whose art may be shared (CC BY-SA / GPL), for the website's screenshots (tools/site-shots.py).
+// Their pictures are in site/img/games (made by tools/site-shots/open-art.py; who made each one and its licence:
+// site/img/games/CREDITS.md and the website's Game art credits). Stores are only the ones each game is really on, and
+// they're all free. The invented library above stays the default, for the tests.
+if(!host && /[?&]samples=open/.test(location.search)) (()=>{
+  const A = '../site/img/games/', art = (n, logo=true) => ({cover:A+n+'-cover.webp', hero:A+n+'-hero.webp', wide:A+n+'-wide.webp', ...(logo?{logo:A+n+'-logo.webp'}:{})});
+  SOURCES.flathub = 'Flathub';
+  GAMES.length = 0;
+  GAMES.push(
+    {id:'o-stk',title:'SuperTuxKart',src:'flathub',inst:true,fav:true,hrs:64.3,last:now-5*H,size:'0.9 GB',ach:null,added:now-200*D,genre:'Kart racing',art:art('stk'),
+     about:'A 3D kart racer with Tux and friends: story mode, Grand Prix, battle arenas, soccer, and online races. Free and open source.'},
+    {id:'o-0ad',title:'0 A.D.',src:'flathub',inst:true,fav:true,hrs:118.6,last:now-1*D,size:'3.6 GB',ach:null,added:now-320*D,genre:'Historical real-time strategy',art:art('0ad'),
+     about:'A real-time strategy game of ancient warfare by Wildfire Games: build a city, gather resources and lead the armies of ancient civilisations. Free and open source.'},
+    {id:'o-wesnoth',title:'Battle for Wesnoth',src:'steam',appId:'599390',inst:true,fav:false,hrs:211.4,last:now-2*D,size:'1.1 GB',ach:null,added:now-700*D,genre:'Turn-based fantasy strategy',art:art('wesnoth'),
+     about:'A turn-based strategy game on a hex map, with a high-fantasy story told across many campaigns, and multiplayer. Free and open source.'},
+    {id:'o-openttd',title:'OpenTTD',src:'gog',inst:true,fav:true,hrs:342.0,last:now-4*D,size:'96 MB',ach:null,added:now-500*D,genre:'Transport tycoon',art:art('openttd',false),
+     about:'A business simulation game: build road, rail, sea and air routes between towns and industries and grow your transport company. Free and open source.'},
+    {id:'o-veloren',title:'Veloren',src:'flathub',inst:false,fav:false,hrs:0,last:0,size:'2.4 GB',ach:null,added:now-1*D,genre:'Voxel RPG',art:art('veloren',false),
+     about:'A multiplayer voxel RPG in a large procedurally generated world: explore, fight, craft and build with friends. Free and open source.'},
+    {id:'o-es',title:'Endless Sky',src:'steam',appId:'404410',inst:false,fav:false,hrs:12.7,last:now-60*D,size:'0.5 GB',ach:null,added:now-400*D,genre:'Space trading and combat',art:art('es'),
+     about:'A space trading and combat game: start with a small ship, trade, take on missions and explore a galaxy. Free and open source.'},
+  );
+  NEWS.length = 0;
+  NEWS.push(
+    {g:'o-0ad',k:'Release',t:'Release notes',d:'What\'s new in the latest version.'},
+    {g:'o-wesnoth',k:'Add-ons',t:'New on the add-on server',d:'Campaigns, eras and maps made by players.'},
+    {g:'o-stk',k:'Online',t:'Race online',d:'Find a server and race players around the world.'},
+    {g:'o-openttd',k:'Multiplayer',t:'Public servers',d:'Join a company game with other players.'},
+  );
+  NOTIFS = [
+    {i:'dl',t:'Veloren is ready to install',s:'Flathub · 2.4 GB'},
+    {i:'dl',t:'Battle for Wesnoth has an update',s:'Steam · 41 MB'},
+    {i:'pad',t:'Controller connected',s:'Battery 74%'},
+  ];
+  DOWNLOADS.length = 0;
+  DOWNLOADS.push({g:'o-es',p:0.42,speed:'38.4 MB/s',state:'Downloading'}, {g:'o-veloren',p:0,speed:'',state:'Queued'}, {g:'o-wesnoth',p:1,speed:'',state:'Update ready'});
+  // The stores: each game only where it's sold, at its real price (free). Steam: Wesnoth, OpenTTD, Endless Sky; GOG: OpenTTD.
+  const free = {final:'Free', base:null, discount:0, free:true};
+  const it = (store, id, n, title, url, dev) => ({store, id, title, dev, price:free, wide:A+n+'-hero.webp', hero:A+n+'-hero.webp', tall:A+n+'-cover.webp', linux:true, gamePass:false, url,
+    short:(GAMES.find(g=>g.title===title)||{}).about||''});
+  const ITEMS = {steam:[it('steam','599390','wesnoth','Battle for Wesnoth','https://store.steampowered.com/app/599390/Battle_for_Wesnoth/', 'The Battle for Wesnoth Project'),
+      it('steam','1536610','openttd','OpenTTD','https://store.steampowered.com/app/1536610/OpenTTD/', 'OpenTTD Team'),
+      it('steam','404410','es','Endless Sky','https://store.steampowered.com/app/404410/Endless_Sky/', 'Michael Zahniser')],
+    gog:[it('gog','openttd','openttd','OpenTTD','https://www.gog.com/en/game/openttd', 'OpenTTD Team')], epic:[], xbox:[]};
+  const SECTIONS = {steam:[['free','Free to play'],['strategy','Strategy'],['linux','Runs on Linux']], gog:[['free','Free games']], epic:[], xbox:[]};
+  const pick = (s, sec) => sec==='strategy' ? ITEMS[s].filter(x=>x.id!=='404410') : ITEMS[s];
+  SHOP_MOCK.home = s => new Promise(r=>setTimeout(()=>r({store:s, sections:(SECTIONS[s]||[]).map(([id,title])=>({id, title, items:pick(s,id)}))}), 120));
+  SHOP_MOCK.search = (s, q) => Promise.resolve({items:(ITEMS[s]||[]).filter(x=>x.title.toLowerCase().includes(q.toLowerCase()))});
+  SHOP_MOCK.details = (s, id) => new Promise(r=>setTimeout(()=>{ const x=(ITEMS[s]||[]).find(y=>y.id===id)||ITEMS.steam[0];
+    r(Object.assign({}, x, {description:[x.short], screenshots:[x.hero], developers:[x.dev], publishers:[], genres:[], released:null, protondb:null})); }, 120));
+})();
+
 // ---------- Screenshots: the ones taken from Quick Access, to look through and delete ----------
 const SH = {list:null, open:-1};
 function loadShots(){ if(!host){ SH.list=[]; return render(null,true); }
@@ -4190,7 +4244,8 @@ function viewGame(){
     : g.ach
     ? `<div class="card"><h3>Achievements</h3><div class="muted" style="margin-bottom:10px">${g.ach[0]} of ${g.ach[1]} unlocked</div><div class="bar"><i style="width:${(g.ach[0]/g.ach[1]*100).toFixed(0)}%"></i></div></div>`
     : `<div class="card"><h3>Details</h3><div class="muted">${g.added?`Added ${new Date(g.added).toLocaleDateString()}`:g.inst?'Installed':'Not installed'}${g.hidden?'<br>Hidden from your library':''}</div></div>`;
-  const about = g.genre
+  const about = g.about ? esc(g.about)   // the browser preview's open sample set (?samples=open)
+    : g.genre
     ? `${esc(g.genre)}. Placeholder description from the browser preview.`
     : g.cloud ? `Streams with Xbox Cloud Gaming. Needs Game Pass Ultimate; sign in with your Xbox account the first time. Hold View + Menu to leave the stream.`
     : g.system ? `A ${esc(g.system)} game from your ROMs folder, played with RetroArch.`
