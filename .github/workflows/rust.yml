@@ -15,6 +15,21 @@ env:
   CARGO_TERM_COLOR: never
 
 jobs:
+  # Game Mode › Store: the stores' real public endpoints, asked once each (warn-only: a store changing or
+  # rate-limiting an endpoint is a warning, not a failed build). Their answers are kept as a download on the run.
+  store-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ask the stores' public endpoints
+        run: python3 tools/store-live-check.py store-live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-live
+          path: store-live
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
