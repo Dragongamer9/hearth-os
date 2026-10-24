@@ -117,7 +117,7 @@ impl Service {
             None => (false, false, None),
         };
         let browser = meta.as_ref().map_or(false, |m| m.registration_endpoint.is_some());
-        log(&format!("auth: {hs}: page sign-in {}, phone (QR) {}, make an account on the page {}, password {password}, sign-up from Hearth {register}",
+        log(&format!("auth: {hs}: page sign-in {}, phone (QR) {}, make an account on the page {}, sign-up from Hearth {register}, passwords {password}",
                      meta.is_some(), qr, create));
         Ok(json!({"homeserver": hs, "oauth": meta.is_some(), "qr": qr, "browser": browser, "create": create, "password": password,
                   "register": register, "accountUrl": account, "issuer": meta.as_ref().map(|m| hf::short_url(m.issuer.as_str()))}))
@@ -231,7 +231,7 @@ impl Service {
         let session = OAuthSession { client_id: ClientId::new(client_id.to_string()), user: UserSession { meta: SessionMeta { user_id, device_id }, tokens } };
         c.oauth().restore_session(session, RoomLoadSettings::default()).await.map_err(e2s)?;
         self.auth.lock().unwrap().take();
-        self.keep_oauth(c, hs, keyring_ok, "a phone (device authorization grant)").await;
+        self.keep_oauth(c, hs, keyring_ok, "a phone (RFC 8628 device grant)").await;
         Ok(())
     }
 
@@ -292,7 +292,7 @@ impl Service {
                 Ok(()) => {
                     self.auth.lock().unwrap().take();
                     self.busy.store(true, Ordering::SeqCst);
-                    self.keep_oauth(c, &hs, keyring_ok, "the browser on this device (authorization code with PKCE)").await;
+                    self.keep_oauth(c, &hs, keyring_ok, "the browser on this device (auth code with PKCE)").await;
                     self.busy.store(false, Ordering::SeqCst);
                 }
                 Err(e) => {
@@ -324,10 +324,10 @@ impl Service {
         let reload = Box::new(|_c: Client| -> Result<SessionTokens, Box<dyn std::error::Error + Send + Sync>> { Err("not used (one Hearth Friends per user)".into()) });
         let save = Box::new(move |c: Client| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let ok = save_session(&paths, &c, &hs);
-            log(if ok { "auth: the access token was renewed; the new one is in the keyring" } else { "auth: the access token was renewed (couldn't keep it in the keyring)" });
+            log(if ok { "auth: renewed the access and refresh tokens; the new ones are in the keyring" } else { "auth: renewed the access and refresh tokens (couldn't keep them in the keyring)" });
             Ok(())
         });
-        if let Err(e) = c.set_session_callbacks(reload, save) { log(&format!("auth: can't follow token renewals ({})", e2s(e))); }
+        if let Err(e) = c.set_session_callbacks(reload, save) { log(&format!("auth: can't follow renewals of the tokens ({})", e2s(e))); }
     }
 
     pub(super) async fn restore_oauth(self: &Arc<Self>, v: &Value, hs: &str, key: &str) {
