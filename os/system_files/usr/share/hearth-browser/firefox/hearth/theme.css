@@ -71,52 +71,18 @@
     fill: var(--hearth-ink) !important;
   }
 
-  /* The on-screen keyboard, under the page. */
+  /* Hearth's on-screen keyboard (osk/hearth-osk.css draws it), under the page, in your accent colour. */
   #hearth-osk {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px 12px 12px;
-    background: var(--hearth-bg2);
-    border-top: 1px solid var(--hearth-line);
-    color: var(--hearth-text);
-    font: message-box;
-    font-size: 17px;
-    user-select: none;
+    display: block;
     -moz-user-focus: ignore;
+    --accent: var(--hearth-accent);
+    --accentInk: var(--hearth-ink);
   }
   #hearth-osk[hidden] {
     display: none;
   }
-  #hearth-osk .hearth-row {
-    display: flex;
-    gap: 6px;
-  }
-  #hearth-osk .hearth-key {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 42px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-    background: var(--hearth-panel2);
-    border: 2px solid transparent;
-  }
-  #hearth-osk .hearth-key-wide {
-    background: var(--hearth-panel3);
-    color: var(--hearth-muted);
-  }
-  #hearth-osk .hearth-key:hover {
-    background: var(--hearth-panel3);
-  }
-  #hearth-osk .hearth-key:active,
-  #hearth-osk .hearth-key.hearth-on {
-    background: var(--hearth-accent);
-    color: var(--hearth-ink);
-  }
-  #hearth-osk .hearth-key.hearth-picked {
-    border-color: var(--hearth-accent);
-    color: var(--hearth-text);
+  #hearth-osk > .hosk {
+    border-radius: 0;
+    font-family: message-box;
   }
 }

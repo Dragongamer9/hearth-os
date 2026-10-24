@@ -237,6 +237,8 @@ pub fn stop_steam() {
 /// Steam signs in as `account` the next time it starts ('' shows Steam's own sign-in). Steam must be closed.
 pub fn set_steam_account(account: &str) {
     let Some((reg, users)) = steam_files() else { return };
+    // Copied first (privately, on this device: signins.rs), so Hearth changing them can always be undone.
+    crate::signins::backup_with_steam("before Hearth set the Steam account", reg.clone(), users.clone());
     // Steam's own files, written all at once: cut short, Steam forgets every saved sign-in on this PC.
     if let Some(reg) = reg { if let Ok(t) = std::fs::read_to_string(&reg) { let _ = crate::paths::write_atomic(&reg, steam_registry_text(&t, account).as_bytes()); } }
     // Empty: no account marked either, so Hearth doesn't show the last person's Steam games (steam::signed_in_id64).

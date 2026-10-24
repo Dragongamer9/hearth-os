@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<gamesList>
+	<steamID64>76561197960265729</steamID64>
+	<steamID><![CDATA[]]></steamID>
+	<games>
+		<game>
+			<appID>620</appID>
+			<name><![CDATA[Portal 2]]></name>
+			<logo><![CDATA[https://cdn.cloudflare.steamstatic.com/steam/apps/620/capsule_184x69.jpg]]></logo>
+			<storeLink><![CDATA[https://steamcommunity.com/app/620]]></storeLink>
+			<hoursLast2Weeks>0.5</hoursLast2Weeks>
+			<hoursOnRecord>1,204.5</hoursOnRecord>
+			<statsLink><![CDATA[https://steamcommunity.com/profiles/76561197960265729/stats/Portal2]]></statsLink>
+			<globalStatsLink><![CDATA[https://steamcommunity.com/stats/Portal2/achievements/]]></globalStatsLink>
+		</game>
+		<game>
+			<appID>70</appID>
+			<name><![CDATA[Half-Life]]></name>
+			<logo><![CDATA[https://cdn.cloudflare.steamstatic.com/steam/apps/70/capsule_184x69.jpg]]></logo>
+		</game>
+	</games>
+</gamesList>
