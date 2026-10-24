@@ -480,7 +480,7 @@ def lan():
     j = wait_job(b, jid)
     # The journal only lists chunks known to be on the drive (flushed first), so the last moments before a crash
     # are sent again; the rest isn't.
-    if j['skipped'] < before * 0.2 or j['total'] >= size2 * 0.95:
+    if j['skipped'] < before * 0.6 or j['total'] >= size2 * 0.95:
         fail('resume started over: %d MB already there, %d MB done before the kill' % (j['skipped'] // MB, before // MB))
     same_tree(g2, os.path.join(b.steam, 'steamapps/common/Resume Game'), 'the resumed game')
     notice('resume', 'killed at %d MB of %d MB (kill -9); after the restart it picked up by itself: %d MB were already there, %d MB more sent; every file verified'

@@ -220,12 +220,33 @@ impl Job {
     }
 }
 
-/// Written chunks: (file, chunk) as 8 bytes each, appended; MADE marks a file this copy created.
-struct Journal { file: std::fs::File, pending: Vec<u8>, roots: Vec<PathBuf> }
+/// Written chunks, appended as 40 bytes each: file, chunk, the chunk's BLAKE3. MADE marks a file this copy created.
+/// Entries go to the journal every second; every few seconds the file systems are flushed and a checkpoint entry
+/// follows, meaning everything before it is on the drive. After a crash, entries after the last checkpoint are
+/// checked against their hashes (a quick local read) before they're believed: a killed process loses nothing,
+/// a power cut loses only what really didn't reach the drive.
+struct Journal { file: std::fs::File, pending: Vec<u8>, roots: Vec<PathBuf>, last_sync: Instant }
 
-fn load_journal(path: &Path) -> HashSet<(u32, u32)> {
+const JE: usize = 40;
+const CHECKPOINT: (u32, u32) = (u32::MAX, u32::MAX);
+
+fn jentry(out: &mut Vec<u8>, f: u32, c: u32, hash: &[u8; 32]) {
+    out.extend_from_slice(&f.to_le_bytes()); out.extend_from_slice(&c.to_le_bytes()); out.extend_from_slice(hash);
+}
+
+/// (believed, to check): entries up to the last checkpoint (and MADE marks), then the ones after it with hashes.
+fn load_journal(path: &Path) -> (HashSet<(u32, u32)>, Vec<(u32, u32, [u8; 32])>) {
     let b = std::fs::read(path).unwrap_or_default();
-    b.chunks_exact(8).map(|c| (u32::from_le_bytes(c[0..4].try_into().unwrap()), u32::from_le_bytes(c[4..8].try_into().unwrap()))).collect()
+    let mut trusted = HashSet::new();
+    let mut after: Vec<(u32, u32, [u8; 32])> = Vec::new();
+    for e in b.chunks_exact(JE) {
+        let f = u32::from_le_bytes(e[0..4].try_into().unwrap());
+        let c = u32::from_le_bytes(e[4..8].try_into().unwrap());
+        if (f, c) == CHECKPOINT { trusted.extend(after.drain(..).map(|(f, c, _)| (f, c))); continue; }
+        if c == MADE { trusted.insert((f, c)); continue; }
+        after.push((f, c, e[8..40].try_into().unwrap()));
+    }
+    (trusted, after)
 }
 
 fn syncfs(dir: &Path) {
@@ -234,17 +255,35 @@ fn syncfs(dir: &Path) {
 }
 
 impl Journal {
-    /// Flushes the file systems the copy writes to, then the journal: what it says is on the drive.
-    fn flush(j: &Mutex<Journal>) {
-        let (pending, roots) = { let mut g = crate::lock(j); (std::mem::take(&mut g.pending), g.roots.clone()) };
-        if pending.is_empty() { return; }
-        for r in &roots { syncfs(r); }
-        let g = crate::lock(j);
+    /// Writes what's new to the journal; with `checkpoint` (or every 8 seconds) first flushes the file systems the
+    /// copy writes to and then marks a checkpoint.
+    fn flush(j: &Mutex<Journal>, checkpoint: bool) {
         use std::io::Write;
-        let mut f = &g.file;
-        let _ = f.write_all(&pending);
+        let (pending, roots, due) = { let mut g = crate::lock(j); (std::mem::take(&mut g.pending), g.roots.clone(), checkpoint || g.last_sync.elapsed().as_secs() >= 8) };
+        if !pending.is_empty() { let g = crate::lock(j); let mut f = &g.file; let _ = f.write_all(&pending); }
+        if !due { return; }
+        for r in &roots { syncfs(r); }
+        let mut g = crate::lock(j);
+        let mut mark = Vec::new();
+        jentry(&mut mark, CHECKPOINT.0, CHECKPOINT.1, &[0; 32]);
+        { let mut f = &g.file; let _ = f.write_all(&mark); }
         let _ = g.file.sync_data();
+        g.last_sync = Instant::now();
     }
+}
+
+/// Journal entries after the last checkpoint, checked against the files: the ones whose data is there.
+fn verify_unconfirmed(files: &[Entry], paths: &[Option<PathBuf>], list: &[(u32, u32, [u8; 32])]) -> HashSet<(u32, u32)> {
+    let mut ok = HashSet::new();
+    let mut buf = vec![0u8; CHUNK as usize];
+    for (f, c, h) in list {
+        let (Some(e), Some(Some(p))) = (files.get(*f as usize), paths.get(*f as usize)) else { continue };
+        let len = chunk_len(e, *c) as usize;
+        if len == 0 { continue; }
+        let Ok(file) = std::fs::File::open(p) else { continue };
+        if file.read_exact_at(&mut buf[..len], *c as u64 * CHUNK).is_ok() && blake3::hash(&buf[..len]).as_bytes() == h { ok.insert((*f, *c)); }
+    }
+    ok
 }
 
 struct Ctx {
@@ -301,7 +340,7 @@ fn writer(ctx: Arc<Ctx>, job: Arc<Job>, rx: Arc<Mutex<tokio::sync::mpsc::Receive
             f.write_all_at(&data, off).map_err(|er| format!("Writing {}: {er}", e.p))?;
             // A request asked again (a stream broke) can bring a chunk twice: counted once.
             if !crate::lock(&ctx.written).insert((w.fidx, w.chunk)) { return Ok(()); }
-            { let mut j = crate::lock(&ctx.journal); j.pending.extend_from_slice(&w.fidx.to_le_bytes()); j.pending.extend_from_slice(&w.chunk.to_le_bytes()); }
+            { let mut j = crate::lock(&ctx.journal); jentry(&mut j.pending, w.fidx, w.chunk, &w.h.hash); }
             job.done.fetch_add(data.len() as u64, Ordering::Relaxed);
             if ctx.remaining[w.fidx as usize].fetch_sub(1, Ordering::AcqRel) == 1 {
                 crate::lock(&ctx.handles).remove(&w.fidx);
@@ -384,7 +423,7 @@ fn prepare(files: &[Entry], paths: &[Option<PathBuf>], dests: &[Option<PathBuf>]
                 let f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(&real).map_err(|er| format!("{}: {er}", real.display()))?;
                 fallocate(&f, e.s);
                 if f.metadata().map(|m| m.len()).unwrap_or(0) != e.s { f.set_len(e.s).map_err(|er| er.to_string())?; }
-                made.extend_from_slice(&fidx.to_le_bytes()); made.extend_from_slice(&MADE.to_le_bytes());
+                jentry(&mut made, fidx, MADE, &[0; 32]);
                 plan.needed_bytes += e.s;
                 plan.need.push((fidx, (0..n).collect()));
             }
@@ -529,7 +568,13 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     for d in dests.iter().flatten() { std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?; }
 
     let jpath = job.dir.join("journal");
-    let done_set = load_journal(&jpath);
+    let (mut done_set, unconfirmed) = load_journal(&jpath);
+    if !unconfirmed.is_empty() {
+        let (f2, p2) = (files.clone(), paths.clone());
+        let ok = tokio::task::spawn_blocking(move || verify_unconfirmed(&f2, &p2, &unconfirmed)).await.map_err(|e| e.to_string())?;
+        eprintln!("hearth-link: copy of {}: {} chunks written before it stopped are there", job.title, ok.len());
+        done_set.extend(ok);
+    }
     let mut jfile = std::fs::OpenOptions::new().create(true).append(true).open(&jpath).map_err(|e| e.to_string())?;
     job.skipped.store(0, Ordering::Relaxed);
     job.done.store(0, Ordering::Relaxed);
@@ -571,12 +616,14 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
             for c in 0..n {
                 if mine.get(c as usize).map(|h| !h.is_empty() && *h == theirs[c as usize]).unwrap_or(false) {
                     job.skipped.fetch_add(chunk_len(e, c), Ordering::Relaxed);
-                    extra_journal.extend_from_slice(&f.to_le_bytes()); extra_journal.extend_from_slice(&c.to_le_bytes());
+                    let mut h = [0u8; 32];
+                    if let Some(b) = crate::unhex(&theirs[c as usize]) { if b.len() == 32 { h.copy_from_slice(&b); } }
+                    jentry(&mut extra_journal, f, c, &h);
                 } else { need.push(c); }
             }
             let fh = std::fs::OpenOptions::new().write(true).open(&p).map_err(|er| er.to_string())?;
             fh.set_len(e.s).map_err(|er| er.to_string())?;
-            extra_journal.extend_from_slice(&f.to_le_bytes()); extra_journal.extend_from_slice(&MADE.to_le_bytes());
+            jentry(&mut extra_journal, f, MADE, &[0; 32]);
             if need.is_empty() { set_times_and_mode(&p, e); } else { plan.needed_bytes += need.iter().map(|c| chunk_len(e, *c)).sum::<u64>(); plan.need.push((f, need)); }
             if job.stop.load(Ordering::Relaxed) { return Err("stopped".into()); }
         }
@@ -589,7 +636,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     for (f, need) in &plan.need { remaining[*f as usize].store(need.len() as u32, Ordering::Relaxed); }
     let ctx = Arc::new(Ctx {
         files: files.clone(), paths: paths.clone(), handles: Mutex::new(HashMap::new()), remaining,
-        journal: Mutex::new(Journal { file: jfile, pending: Vec::new(), roots: dests.iter().flatten().cloned().collect() }),
+        journal: Mutex::new(Journal { file: jfile, pending: Vec::new(), roots: dests.iter().flatten().cloned().collect(), last_sync: Instant::now() }),
         failed: Mutex::new(None), halt: AtomicBool::new(false), written: Mutex::new(HashSet::new()),
     });
     let queue = Arc::new(Mutex::new(units(&files, &plan.need)));
@@ -609,7 +656,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 let c2 = c.clone();
-                let _ = tokio::task::spawn_blocking(move || Journal::flush(&c2.journal)).await;
+                let _ = tokio::task::spawn_blocking(move || Journal::flush(&c2.journal, false)).await;
                 let _ = &j;
             }
         })
@@ -650,7 +697,7 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     // Every chunk handed over is written before the copy stops.
     let _ = tokio::task::spawn_blocking(move || { for w in writers { let _ = w.join(); } }).await;
     flusher.abort();
-    { let c2 = ctx.clone(); let _ = tokio::task::spawn_blocking(move || Journal::flush(&c2.journal)).await; }
+    { let c2 = ctx.clone(); let _ = tokio::task::spawn_blocking(move || Journal::flush(&c2.journal, true)).await; }
     job.data_ms.store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
     if let Some(e) = crate::lock(&ctx.failed).clone() { return Err(e); }
     if let Some(e) = first_err { return Err(e); }
@@ -683,6 +730,29 @@ mod tests {
         assert!(all.contains(&(3, 0, 1)) && all.contains(&(3, 2, 3)), "gaps split runs: {all:?}");
         let small = u.iter().find(|x| x.iter().any(|(f, _, _)| *f == 1)).unwrap();
         assert!(small.iter().any(|(f, _, _)| *f == 2), "small files share a request");
+    }
+
+    #[test]
+    fn journal_believes_checkpointed_entries_and_checks_the_rest() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("j");
+        let mut b = Vec::new();
+        jentry(&mut b, 0, MADE, &[0; 32]);
+        jentry(&mut b, 0, 0, &[1; 32]);
+        jentry(&mut b, CHECKPOINT.0, CHECKPOINT.1, &[0; 32]);
+        jentry(&mut b, 0, 1, &[2; 32]);
+        std::fs::write(&p, &b).unwrap();
+        let (t, u) = load_journal(&p);
+        assert!(t.contains(&(0, MADE)) && t.contains(&(0, 0)) && !t.contains(&(0, 1)));
+        assert_eq!(u, vec![(0, 1, [2; 32])]);
+        // Checked against the file: right data is believed, wrong isn't.
+        let f = d.path().join("f");
+        let data = vec![5u8; (2 * CHUNK) as usize];
+        std::fs::write(&f, &data).unwrap();
+        let e = entry("f", 2 * CHUNK);
+        let good = *blake3::hash(&data[..CHUNK as usize]).as_bytes();
+        let ok = verify_unconfirmed(&[e], &[Some(f)], &[(0, 1, good), (0, 0, [9; 32])]);
+        assert_eq!(ok, [(0u32, 1u32)].into_iter().collect::<HashSet<_>>());
     }
 
     #[test]
@@ -750,7 +820,7 @@ mod tests {
         assert_eq!(std::fs::read_link(root.join("sub/link")).unwrap(), PathBuf::from("new.bin"));
         assert!(std::fs::symlink_metadata(root.join("bad")).is_err(), "a link out of the game isn't made");
         // Resuming with chunk 1 in the journal: only 0 and 2 are asked for.
-        let mut j = load_journal(&jp);
+        let (mut j, _) = load_journal(&jp);
         assert!(j.contains(&(2, MADE)));
         j.insert((2, 1));
         let plan = prepare(&files, &paths, &dests, &j, &mut jf, &job).unwrap();
