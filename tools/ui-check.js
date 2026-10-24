@@ -1071,6 +1071,162 @@ const path = require('path');
     await dp.close();
   }
 
+  // Hearth's on-screen keyboard (ui/osk/hearth-osk.js, docs/OSK.md) in Game Mode: typing with the controller (moving
+  // to each key with the D-pad), word suggestions, autocapitals and double-space period, accents (A held), emoji,
+  // layouts (AZERTY), shift on LT, B hiding it, the Ember Wheel, split sticks, touch, and Settings › Keyboard.
+  // Pictures go to tools/osk-shots (release.yml posts them as notices).
+  {
+    const oskShots = path.resolve(__dirname, 'osk-shots');
+    try { require('fs').mkdirSync(oskShots, { recursive: true }); } catch {}
+    const kp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    kp.on('pageerror', e => errors.push(`on-screen keyboard: ${e.message}`));
+    const kerr = m => errors.push('on-screen keyboard: ' + m);
+    const shot = async (name) => { try { await kp.waitForTimeout(260); await kp.screenshot({ path: path.join(oskShots, name + '.jpg'), type: 'jpeg', quality: 42, clip: { x: 0, y: 380, width: 1280, height: 420 } }); } catch (e) { kerr('picture ' + name + ': ' + e.message); } };
+    try {
+      await kp.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+      await kp.waitForTimeout(1500);
+      await kp.evaluate(() => {
+        try { localStorage.removeItem('hearth.osk'); localStorage.removeItem('hearth.osk.learned'); } catch (e) {}
+        HearthOSK.configure({ settings: {}, learned: { learned: {}, next: {} } });
+        // Walks the selection to each character with the D-pad (as a controller does) and presses A.
+        window.__padType = (word) => {
+          const e = GOSK.engine;
+          for (const ch of word) {
+            const R = e.view().rows; let to = null;
+            for (let r = 0; r < R.length && !to; r++) for (let c = 0; c < R[r].length; c++) { const k = R[r][c]; if ((k.t === 'ch' && k.v === ch.toLowerCase()) || (ch === ' ' && k.t === 'space')) { to = [r, c]; break; } }
+            if (!to) throw new Error('no key for ' + ch);
+            for (let i = 0; i < 40; i++) {
+              const s = e.view().sel; if (s.r === to[0] && s.c === to[1]) break;
+              input(s.r < to[0] ? 'down' : s.r > to[0] ? 'up' : s.c < to[1] ? 'right' : 'left');
+            }
+            const s = e.view().sel; if (s.r !== to[0] || s.c !== to[1]) throw new Error("the D-pad didn't reach " + ch + ' (at ' + s.r + ',' + s.c + ')');
+            input('a');
+          }
+        };
+      });
+      // Y with the controller opens search with the keyboard, the keyboard has the selection.
+      let st = await kp.evaluate(() => { closeAll(); S.history = []; navigate('home', {}, false); padPressed('y'); return { kb: !!document.querySelector('#search .kb .hosk'), f: focused && focused.dataset.k, active: GOSK.engine.isActive() }; });
+      if (!st.kb || st.f !== 'sk-kb' || !st.active) kerr('Y did not open search with the keyboard selected: ' + JSON.stringify(st));
+      await kp.evaluate(() => __padType('mo'));
+      st = await kp.evaluate(() => ({ q: query, sugg: GOSK.engine.view().suggestions, res: document.querySelectorAll('#search .sres [data-f]').length }));
+      if (st.q !== 'mo') kerr('typing with the D-pad and A gave ' + JSON.stringify(st.q));
+      if (!st.res) kerr('search found nothing for "mo"');
+      await shot('1-search');
+      // A text prompt: autocapital, suggestions (up into the strip, A picks), double space period, X backspace.
+      await kp.evaluate(() => { closeAll(); window.__pr = openPrompt({ title: 'Message' }); });
+      await kp.waitForTimeout(500);
+      st = await kp.evaluate(() => ({ f: focused && focused.dataset.k, shift: GOSK.engine.view().shift, words: HearthOSK.hasWords('en') }));
+      if (st.f !== 'pk-kb') kerr('a prompt opened with the controller did not select its keyboard: ' + st.f);
+      if (!st.shift) kerr('no capital at the start of a sentence');
+      if (!st.words) kerr("the English word list didn't load (ui/osk/words/en.js)");
+      await kp.evaluate(() => __padType('hel'));
+      st = await kp.evaluate(() => ({ t: prompt.text, sugg: GOSK.engine.view().suggestions }));
+      if (st.t !== 'Hel') kerr('typed ' + JSON.stringify(st.t) + ' (wanted "Hel": a capital first)');
+      if (!st.sugg.includes('Hello')) kerr('no "Hello" in the suggestions: ' + JSON.stringify(st.sugg));
+      await shot('2-suggestions');
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine, i = e.view().suggestions.indexOf('Hello');
+        for (let n = 0; n < 8 && e.view().sel.r !== -1; n++) input('up');
+        if (e.view().sel.r !== -1) return 'the D-pad never reached the suggestions';
+        while (e.view().sel.c > i) input('left'); while (e.view().sel.c < i) input('right');
+        input('a'); input('y');
+        return prompt.text;
+      });
+      if (st !== 'Hello. ') kerr('picking a suggestion then Y gave ' + JSON.stringify(st) + ' (wanted "Hello. ")');
+      st = await kp.evaluate(() => { input('x'); input('x'); return prompt.text; });
+      if (st !== 'Hello') kerr('X twice gave ' + JSON.stringify(st));
+      // Accents: A held on "e" opens them, A picks one (it replaces the e).
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine; input('y');
+        const R = e.view().rows; let to; R.forEach((row, r) => row.forEach((k, c) => { if (k.t === 'ch' && k.v === 'e') to = { r, c }; }));
+        e.state.sel = to; const t = Date.now();
+        e.handle('a', true, t); e.tick(t + 520);
+        const pop = e.view().popup; if (!pop) return 'no accents after holding A';
+        e.handle('a', false, t + 560);
+        const want = pop.alts.indexOf('é'); for (let i = 0; i < want; i++) input('right');
+        input('a');
+        return prompt.text;
+      });
+      if (st !== 'Hello é') kerr('accents gave ' + JSON.stringify(st));
+      // LT is shift (one letter), L3 the emoji, B hides the keyboard and A on the field brings it back.
+      st = await kp.evaluate(() => {
+        const out = {};
+        input('lt'); __padType('a'); out.shift = prompt.text.endsWith('A');
+        input('l3'); out.panel = GOSK.engine.view().panel; GOSK.engine.state.sel = { r: 1, c: 0 }; input('a'); out.emoji = /\p{Extended_Pictographic}/u.test(prompt.text.slice(-2));
+        input('l3'); out.back = GOSK.engine.view().panel;
+        input('b'); out.hidden = !document.querySelector('#prompt .kb') && focused && focused.dataset.k;
+        input('a'); out.again = !!document.querySelector('#prompt .kb') && focused && focused.dataset.k;
+        return out;
+      });
+      if (!st.shift) kerr('LT did not make the next letter a capital');
+      if (st.panel !== 'emoji' || !st.emoji || st.back !== 'letters') kerr('emoji (L3): ' + JSON.stringify(st));
+      if (st.hidden !== 'pk-field' || st.again !== 'pk-kb') kerr('B / A on the field: ' + JSON.stringify(st));
+      await kp.evaluate(() => { GOSK.engine.handle('l3'); });
+      await shot('3-emoji');
+      await kp.evaluate(() => { GOSK.engine.handle('l3'); });
+      // Layouts: with English and French, R3 switches to AZERTY.
+      st = await kp.evaluate(() => {
+        HearthOSK.setSetting('layouts', ['en-us', 'fr']); input('r3');
+        const v = GOSK.engine.view(), row = v.rows[1].map(k => k.v).join('');
+        input('r3'); HearthOSK.setSetting('layouts', ['auto']);
+        return { lay: v.layout, row };
+      });
+      if (st.lay !== 'fr' || !st.row.startsWith('azerty')) kerr('R3 did not switch to AZERTY: ' + JSON.stringify(st));
+      // The Ember Wheel: the left stick tilted up is "abcd", Y types its top letter.
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine, before = prompt.text;
+        e.axes(0, -1, 0, 0); const w = e.view().wheel; e.handle('y'); const typed = prompt.text.slice(before.length);
+        return { petal: w && w.petal, active: w && w.active, typed };
+      });
+      if (st.petal !== 0 || !st.active || st.typed.toLowerCase() !== 'a') kerr('Ember Wheel: ' + JSON.stringify(st));
+      await kp.evaluate(() => { HearthOSK.setSetting('theme', 'ember'); GOSK.engine.axes(0.7, -0.7, 0, 0); });
+      await shot('4-ember-wheel');
+      await kp.evaluate(() => { GOSK.engine.axes(0, 0, 0, 0); HearthOSK.setSetting('theme', 'hearth'); });
+      // Split sticks: each stick points into its half, LT / RT type.
+      st = await kp.evaluate(() => {
+        const e = GOSK.engine, before = prompt.text; HearthOSK.setSetting('fast', 'split');
+        e.axes(-1, -0.2, 1, -0.2); const v = e.view(); e.handle('lt', true); e.handle('lt', false); e.handle('rt', true); e.handle('rt', false);
+        e.axes(0, 0, 0, 0); HearthOSK.setSetting('fast', 'wheel');
+        return { l: v.split && v.split.l, r: v.split && v.split.r, typed: prompt.text.slice(before.length) };
+      });
+      if (!st.l || !st.r || st.typed.length !== 2) kerr('split sticks: ' + JSON.stringify(st));
+      // Touch: a tap on a key types it.
+      const key = await kp.evaluate(() => { const b = [...document.querySelectorAll('#prompt .hosk-key.k-ch')].find(x => x.textContent.trim().toLowerCase() === 'k'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await kp.mouse.click(key.x, key.y); await kp.waitForTimeout(100);
+      st = await kp.evaluate(() => prompt.text.slice(-1).toLowerCase());
+      if (st !== 'k') kerr('a click on k typed ' + JSON.stringify(st));
+      // ☰ finishes the prompt.
+      st = await kp.evaluate(async () => { input('start'); return await Promise.race([window.__pr, new Promise(r => setTimeout(() => r('still open'), 400))]); });
+      if (typeof st !== 'string' || !st.startsWith('Hello é')) kerr('☰ did not finish the prompt: ' + JSON.stringify(st));
+      // Split shape and Daylight, for the picture; then a real keyboard sends it away again.
+      await kp.evaluate(() => { HearthOSK.setSetting('shape', 'split'); HearthOSK.setSetting('theme', 'daylight'); closeAll(); window.__pr = openPrompt({ title: 'Name', osk: true }); });
+      await shot('5-split-daylight');
+      await kp.evaluate(() => { HearthOSK.setSetting('shape', 'full'); HearthOSK.setSetting('theme', 'hearth'); });
+      await kp.keyboard.type('Zo'); await kp.waitForTimeout(150);
+      st = await kp.evaluate(() => ({ kb: !!document.querySelector('#prompt .kb'), t: prompt && prompt.text }));
+      if (st.kb) kerr('typing on a real keyboard left the on-screen keyboard up');
+      if (st.t !== 'Zo') kerr('a real keyboard typed ' + JSON.stringify(st.t));
+      // Learned words: "hel" typed often enough comes back; Clear forgets.
+      st = await kp.evaluate(() => { const n = HearthOSK.learnedCount(); HearthOSK.clearLearned(); return { n, after: HearthOSK.learnedCount() }; });
+      if (!st.n || st.after) kerr('learned words: ' + JSON.stringify(st));
+      // Settings › Keyboard: every choice is there and saved.
+      st = await kp.evaluate(() => {
+        closeAll(); S.settingsTab = 'keyboard'; navigate('settings', {}, false);
+        const need = ['kb-lay-auto', 'kb-lay-fr', 'kb-suggestions', 'kb-learn', 'kb-autocap', 'kb-doubleSpace', 'kb-fast-wheel', 'kb-fast-split', 'kb-fast-off', 'kb-theme-ember', 'kb-size-l', 'kb-shape-split', 'kb-position-top', 'kb-haptics-strong', 'kb-trail', 'kb-clear', 'kb-try'];
+        const missing = need.filter(k => !document.querySelector(`#view [data-k="${k}"]`));
+        act(document.querySelector('#view [data-k="kb-theme-ember"]'));
+        act(document.querySelector('#view [data-k="kb-lay-de"]'));
+        let saved = {}; try { saved = JSON.parse(localStorage.getItem('hearth.osk') || '{}'); } catch (e) {}
+        act(document.querySelector('#view [data-k="kb-theme-hearth"]')); act(document.querySelector('#view [data-k="kb-lay-de"]'));
+        return { missing, theme: saved.theme, layouts: saved.layouts };
+      });
+      if (st.missing.length) kerr('Settings › Keyboard is missing ' + st.missing.join(', '));
+      if (st.theme !== 'ember' || !(st.layouts || []).includes('de')) kerr("Settings › Keyboard didn't save: " + JSON.stringify(st));
+      console.log('on-screen keyboard: controller, suggestions, accents, emoji, layouts, wheel, split sticks, touch and settings ok');
+    } catch (e) { kerr(e.message.split('\n')[0]); }
+    await kp.close();
+  }
+
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);

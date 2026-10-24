@@ -16,19 +16,4 @@
   #nav-bar {
     padding-block: 4px !important;
   }
-  #hearth-osk {
-    font-size: 22px;
-    gap: 8px;
-    padding: 12px 16px 16px;
-  }
-  #hearth-osk .hearth-row {
-    gap: 8px;
-  }
-  #hearth-osk .hearth-key {
-    min-height: 58px;
-    border-radius: 12px;
-  }
-  #hearth-osk .hearth-key.hearth-picked {
-    border-width: 3px;
-  }
 }

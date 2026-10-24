@@ -4,10 +4,11 @@
  *
  *  - Hearth's look: theme.css (the ember palette), big.css (bigger buttons and text, for Game Mode and handhelds).
  *  - The start page (start.html) as the home page and on new tabs.
- *  - An on-screen keyboard that works with a controller: the Keyboard button in the toolbar, or Ctrl+Alt+K. While
- *    it's open the arrow keys (and Tab / Shift+Tab) move between its keys, Enter types the one picked, Alt+Left
- *    deletes a letter and Esc closes it; a click or a tap types a key too. Keys are typed with Firefox's own text
- *    input interface (nsITextInputProcessor), so they reach web pages like a real keyboard's.
+ *  - Hearth's on-screen keyboard (hearth/osk, the same one as Game Mode's and Desktop Mode's: docs/OSK.md), for a
+ *    controller: the Keyboard button in the toolbar, or Ctrl+Alt+K. While it's open the arrow keys (and Tab /
+ *    Shift+Tab) move between its keys, Enter types the one picked, Alt+Left deletes a letter and Esc closes it; a
+ *    click or a tap types a key too, and it suggests words. Keys are typed with Firefox's own text input interface
+ *    (nsITextInputProcessor), so they reach web pages like a real keyboard's.
  *  - In Game Mode (HEARTH_BROWSER_GAME=1): the window fills the screen, new windows open as tabs, and the keyboard
  *    opens by itself when the address bar is picked.
  *
@@ -134,43 +135,48 @@ function styles() {
 }
 
 // ------------------------------------------------------------------ the on-screen keyboard
+// Hearth's shared keyboard (osk/hearth-osk.js, the same as Game Mode's and Desktop Mode's: docs/OSK.md), loaded into
+// the window and drawn under the page. Keys reach the page through Firefox's own text input interface.
 
-const K = (v, label, w) => ({ t: "key", v, label, w: w || 1 });
-const T = (v, w) => ({ t: "text", v, label: v, w: w || 1 });
-const C = (v, label, w) => ({ t: "cmd", v, label, w: w || 1 });
-const chars = s => [...s].map(ch => ({ t: "char", v: ch, label: ch, w: 1 }));
-const BOTTOM = other => [C("symbols", other, 1.5), T(".com", 1.5), K(" ", "Space", 4), K("ArrowLeft", "◀"), K("ArrowRight", "▶"), C("close", "Close", 1.5)];
-const LAYOUTS = {
-  abc: [
-    [...chars("1234567890"), K("Backspace", "⌫", 1.5)],
-    chars("qwertyuiop@"),
-    [...chars("asdfghjkl-"), K("Enter", "Enter", 1.5)],
-    [C("shift", "⇧", 1.5), ...chars("zxcvbnm,./")],
-    BOTTOM("&123"),
-  ],
-  sym: [
-    [...chars("!@#$%^&*()"), K("Backspace", "⌫", 1.5)],
-    chars("~`_=+[]{}\\|"),
-    [...chars(";:'\"<>?€£¥"), K("Enter", "Enter", 1.5)],
-    [C("shift", "⇧", 1.5), ...chars("§°•¡¿«»©±÷")],
-    BOTTOM("ABC"),
-  ],
-};
-const KEYCODES = { Backspace: 8, Enter: 13, " ": 32, ArrowLeft: 37, ArrowRight: 39 };
-const CODES = { Backspace: "Backspace", Enter: "Enter", " ": "Space", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight" };
+const KEYCODES = { Backspace: 8, Tab: 9, Enter: 13, Escape: 27, " ": 32, Home: 36, End: 35, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
+const CODES = { Backspace: "Backspace", Tab: "Tab", Enter: "Enter", Escape: "Escape", " ": "Space", Home: "Home", End: "End",
+                ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", ArrowUp: "ArrowUp", ArrowDown: "ArrowDown" };
+const KEYNAMES = { enter: "Enter", tab: "Tab", esc: "Escape", left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", home: "Home", end: "End" };
 
+/** The shared keyboard's code, in this window (once). */
+function oskIn(win) {
+  if (!win.HearthOSK) {
+    const load = url => Services.scriptloader.loadSubScriptWithOptions(url, { target: win, charset: "UTF-8", ignoreCache: true });
+    load("resource://hearth/osk/hearth-osk.js");
+    const H = win.HearthOSK;
+    let learned = null;
+    try { learned = JSON.parse(Services.prefs.getStringPref("hearth.osk.learned", "") || "null"); } catch (e) {}
+    H.configure({
+      loadWords: lang => { try { load("resource://hearth/osk/words/" + lang + ".js"); } catch (e) { report("words " + lang, e); } },
+      save: d => { try { const t = JSON.stringify(d); if (t.length < 400000) Services.prefs.setStringPref("hearth.osk.learned", t); } catch (e) {} },
+      learned: learned || undefined,
+    });
+    // Settings › Keyboard (Hearth OS saves it in ~/.config/nimbus/osk.json).
+    try {
+      const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+      IOUtils.readUTF8(PathUtils.join(home, ".config", "nimbus", "osk.json")).then(t => H.configure({ settings: JSON.parse(t) })).catch(() => {});
+    } catch (e) {}
+    const link = win.document.createElementNS(XHTML, "link");
+    link.setAttribute("rel", "stylesheet");
+    link.setAttribute("href", "resource://hearth/osk/hearth-osk.css");
+    (win.document.head || win.document.documentElement).appendChild(link);
+  }
+  return win.HearthOSK;
+}
 
 class Keyboard {
   constructor(win) {
     this.win = win;
     this.doc = win.document;
-    this.layout = "abc";
-    this.shift = false;
-    this.r = 1;
-    this.c = 0;
     this.tip = null;
     this.heard = [];   // the last keys it acted on (for the CI test)
     this.typing = false;
+    this.shift = false;
     this.build();
   }
 
@@ -183,86 +189,47 @@ class Keyboard {
     box.setAttribute("aria-label", "On-screen keyboard");
     // Clicking a key mustn't take the focus from the text field it types into.
     box.addEventListener("mousedown", e => e.preventDefault());
-    box.addEventListener("click", e => {
-      const key = e.target.closest(".hearth-key");
-      if (!key) return;
-      this.r = +key.dataset.r; this.c = +key.dataset.c;
-      this.press();
-    });
     const anchor = doc.getElementById("browser");
     if (anchor) anchor.after(box); else doc.documentElement.appendChild(box);
     this.box = box;
+    try {
+      const H = oskIn(this.win);
+      this.engine = H.createEngine({
+        host: "browser",
+        adapter: {
+          context: () => this.addressBarFocused() ? (() => { try { const f = this.win.gURLBar.inputField; return f.value.slice(0, f.selectionStart); } catch (e) { return undefined; } })() : undefined,
+          insert: text => this.typeText(text),
+          deleteBack: n => { for (let i = 0; i < n; i++) this.typeKey("Backspace"); },
+          key: name => {
+            if (name === "paste") return this.win.goDoCommand && this.win.goDoCommand("cmd_paste");
+            const k = KEYNAMES[name]; if (!k) return;
+            const inAddressBar = this.addressBarFocused();
+            this.typeKey(k);
+            if (k === "Enter" && inAddressBar) this.close();
+          },
+        },
+        onHide: () => this.close(),
+      });
+      this.view = H.mount(box, this.engine, { doc });
+      this.engine.setHints(GAME);
+      if (BIG) H.setSetting("size", "l");
+    } catch (e) { report("keyboard", e); }
 
     // Keys: always Ctrl+Alt+K (open/close); the rest only while the keyboard is open. Caught on the window first
     // (capturing, in Firefox's system group), so they never reach the web page or Firefox's own shortcuts.
     this.onKey = e => this.key(e);
     this.win.addEventListener("keydown", this.onKey, { capture: true, mozSystemGroup: true });
-    this.render();
   }
 
-  get rows() { return LAYOUTS[this.layout]; }
   get isOpen() { return !this.box.hidden; }
-
-  render() {
-    const doc = this.doc;
-    this.box.replaceChildren();
-    this.rows.forEach((row, r) => {
-      const line = doc.createElementNS(XHTML, "div");
-      line.className = "hearth-row";
-      row.forEach((k, c) => {
-        const el = doc.createElementNS(XHTML, "div");
-        el.className = "hearth-key" + (k.t === "char" ? "" : " hearth-key-wide") + (r === this.r && c === this.c ? " hearth-picked" : "")
-          + (k.t === "cmd" && k.v === "shift" && this.shift ? " hearth-on" : "");
-        el.style.flexGrow = String(k.w);
-        el.dataset.r = r; el.dataset.c = c;
-        el.setAttribute("role", "button");
-        el.textContent = k.t === "char" && this.shift ? k.label.toUpperCase() : k.label;
-        line.appendChild(el);
-      });
-      this.box.appendChild(line);
-    });
-  }
-
-  /** Moves the pick; up and down go to the key nearest the middle of the one picked now. */
-  move(dr, dc) {
-    const rows = this.rows;
-    if (dc) {
-      const n = rows[this.r].length;
-      this.c = (this.c + dc + n) % n;
-    } else {
-      const mid = (row, c) => { let x = 0; for (let i = 0; i < c; i++) x += row[i].w; const all = row.reduce((s, k) => s + k.w, 0); return (x + row[c].w / 2) / all; };
-      const at = mid(rows[this.r], this.c);
-      this.r = (this.r + dr + rows.length) % rows.length;
-      let best = 0, bestD = 9;
-      rows[this.r].forEach((_, c) => { const d = Math.abs(mid(rows[this.r], c) - at); if (d < bestD) { bestD = d; best = c; } });
-      this.c = best;
-    }
-    this.render();
-  }
-
-  press() {
-    const k = this.rows[this.r] && this.rows[this.r][this.c];
-    if (!k) return;
-    if (k.t === "char") {
-      this.typeChar(this.shift ? k.v.toUpperCase() : k.v);
-      if (this.shift) { this.shift = false; this.render(); }
-    } else if (k.t === "text") {
-      for (const ch of k.v) this.typeChar(ch);
-    } else if (k.t === "key") {
-      const inAddressBar = this.addressBarFocused();
-      this.typeKey(k.v);
-      if (k.v === "Enter" && inAddressBar) this.close();
-    } else if (k.v === "shift") {
-      this.shift = !this.shift; this.render();
-    } else if (k.v === "symbols") {
-      this.layout = this.layout === "abc" ? "sym" : "abc";
-      this.r = Math.min(this.r, this.rows.length - 1);
-      this.c = Math.min(this.c, this.rows[this.r].length - 1);
-      this.render();
-    } else if (k.v === "close") {
-      this.close();
-    }
-  }
+  // The picked key (rows from the top: 0 is the number row) and the letters or symbols (for the CI test).
+  get r() { return this.engine ? this.engine.state.sel.r : 0; }
+  set r(v) { if (this.engine) this.engine.state.sel.r = v; }
+  get c() { return this.engine ? this.engine.state.sel.c : 0; }
+  set c(v) { if (this.engine) this.engine.state.sel.c = v; }
+  get layout() { return this.engine && this.engine.state.panel === "sym" ? "sym" : "abc"; }
+  set layout(v) { if (this.engine && (v === "sym") !== (this.engine.state.panel === "sym")) this.engine.setPanel(v === "sym" ? "sym" : "letters"); }
+  render() { if (this.view) this.view.render(); }
 
   addressBarFocused() {
     try { const u = this.win.gURLBar; return !!u && (u.focused || this.doc.activeElement === u.inputField); } catch (e) { return false; }
@@ -291,6 +258,14 @@ class Keyboard {
   }
   typeChar(ch) { this.dispatch({ key: ch }); }
   typeKey(name) { this.dispatch({ key: name, code: CODES[name] || "", keyCode: KEYCODES[name] || 0 }); }
+  /** Text: one plain character as a key press; anything else (emoji, a picked word, ".com") committed at once. */
+  typeText(text) {
+    if (text.length === 1) return this.typeChar(text);
+    const tip = this.textInput();
+    if (!tip) return;
+    this.typing = true;
+    try { tip.commitCompositionWith(text); } catch (e) { report("typing", e); for (const ch of text) this.typeChar(ch); } finally { this.typing = false; }
+  }
 
   /** A key pressed on a keyboard (or sent by the controller through Hearth Input). Acted on once the key press is
    *  over: typing from inside it would find Firefox's text input busy. */
@@ -311,21 +286,22 @@ class Keyboard {
     e.stopPropagation();
     this.heard.push(act);
     this.heard.splice(0, this.heard.length - 20);
-    const acts = { toggle: () => this.toggle(), up: () => this.move(-1, 0), down: () => this.move(1, 0), left: () => this.move(0, -1),
-                   right: () => this.move(0, 1), press: () => this.press(), backspace: () => this.typeKey("Backspace"), close: () => this.close() };
+    const pad = b => () => { if (this.engine) this.engine.handle(b, "press"); };
+    const acts = { toggle: () => this.toggle(), up: pad("up"), down: pad("down"), left: pad("left"), right: pad("right"),
+                   press: pad("a"), backspace: pad("x"), close: () => this.close() };
     this.win.setTimeout(acts[act], 0);
   }
 
   open() {
     if (this.isOpen) return;
     this.box.hidden = false;
+    if (this.engine) { const sel = this.engine.state.sel; this.engine.reset(this.addressBarFocused() ? "url" : "text", this.addressBarFocused() ? "Go" : ""); this.engine.state.sel = sel; }
     this.render();
     this.button(true);
   }
   close() {
     if (!this.isOpen) return;
     this.box.hidden = true;
-    this.shift = false;
     this.button(false);
   }
   toggle() { if (this.isOpen) this.close(); else this.open(); }
