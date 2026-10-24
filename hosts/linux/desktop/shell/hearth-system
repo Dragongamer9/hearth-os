@@ -18,7 +18,7 @@ change as you (no root). The parts that need root go through /usr/libexec/nimbus
   hearth-system shortcuts            JSON: Desktop Mode's keyboard shortcuts, from labwc's rc.xml
   hearth-system defaults             JSON: Settings › Default apps: for each kind (browser, files, text, image, video,
                                      music, ebooks, documents, sheets, slides, terminal, email, calendar, contacts,
-                                     maps, archives) the app it opens in, Hearth's own, and the installed apps that can
+                                     maps, archives, store) the app it opens in, Hearth's own, and the installed apps that can
   hearth-system default-set KIND APP_ID
                                      make APP_ID (a .desktop id) the default for KIND (~/.config/mimeapps.list)
   hearth-system default-reset [KIND] back to Hearth's default for KIND (every kind without one): your choice comes out
@@ -525,7 +525,7 @@ COMMAND_WORDS = [
     (r'set-mute @DEFAULT_AUDIO_SOURCE@', 'Microphone on or off'), (r'systemctl suspend', 'Sleep'),
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
     (r'call clipboard toggle', 'Clipboard history'), (r'call settings', 'Open Settings'),
-    (r'call apps', 'Open Apps'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
+    (r'call apps', 'Open Bazaar (app store)'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
     (r'nimbus-mode game', 'Go to Game Mode'), (r'nimbus-mode logout', 'Sign out'),
     (r'buttons up|volume.*\+', 'Volume up'), (r'buttons down|volume.*-', 'Volume down'), (r'buttons mute|set-mute', 'Mute'),
     (r'buttons power', 'Power button'), (r'brightnessctl set \d+%\+', 'Brightness up'), (r'brightnessctl set \d+%-', 'Brightness down'),
@@ -671,6 +671,8 @@ ARCHIVE_TYPES = ['application/zip', 'application/x-tar', 'application/x-compress
                  'application/x-bzip2-compressed-tar', 'application/x-zstd-compressed-tar', 'application/gzip',
                  'application/x-gzip', 'application/x-xz', 'application/x-bzip2', 'application/zstd',
                  'application/x-7z-compressed', 'application/vnd.rar', 'application/x-rar']
+STORE_TYPES = ['x-scheme-handler/appstream', 'application/vnd.flatpak.ref', 'application/vnd.flatpak.repo']
+BAZAAR_DESKTOP = 'io.github.kolunmi.Bazaar.desktop'
 BROWSER_TYPES = ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']
 
 # Settings › Default apps, in order. hearth: Hearth's own app for it (None: Hearth has none). primary: the type whose
@@ -707,6 +709,10 @@ CATEGORIES = [
      'mimes': ['x-scheme-handler/geo']},
     {'kind': 'archives', 'label': 'Archives', 'hearth': 'hearth-files.desktop', 'primary': 'application/zip',
      'mimes': ARCHIVE_TYPES},
+    # The app store: Bazaar (Flathub), which Hearth OS installs for everyone (hearth-flatpak-setup); Hearth's own store
+    # is archived (docs/ARCHIVED.md). Store apps are the ones in the PackageManager category or that open these.
+    {'kind': 'store', 'label': 'App store', 'hearth': BAZAAR_DESKTOP, 'primary': 'x-scheme-handler/appstream',
+     'mimes': STORE_TYPES, 'every': True, 'store': True},
 ]
 # Which Hearth app is the system default when two of them open a type: the first here (then any other Hearth app,
 # by name). Photos before Paint for pictures, Text before Write for plain text and Markdown, Sheets before Text
@@ -1015,7 +1021,10 @@ def category_current(c, hf, entries):
             if did:
                 return did, True
     dflt, _, _ = hf.mimeapps(c['primary'])
-    return next((d for d in dflt if ok(d)), None), False
+    found = next((d for d in dflt if ok(d)), None)
+    if not found and c.get('store') and ok(c['hearth']):
+        found = c['hearth']        # nothing set for store links yet: Bazaar is Hearth OS's store
+    return found, False
 
 
 def category_options(c, hf, entries, current):
@@ -1027,6 +1036,9 @@ def category_options(c, hf, entries, current):
         cats = [x for x in fields.get('Categories', '').split(';') if x]
         if c.get('terminal'):
             hit = 'TerminalEmulator' in cats
+        elif c.get('store'):
+            types = [t for t in fields.get('MimeType', '').split(';') if t]
+            hit = did == c['hearth'] or 'PackageManager' in cats or any(m in types for m in c['mimes'])
         else:
             types = [t for t in fields.get('MimeType', '').split(';') if t]
             hit = any(m in types for m in c['mimes']) or any(m in types for m in majors)

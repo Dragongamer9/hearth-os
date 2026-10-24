@@ -20,7 +20,7 @@ SetPage {
     property bool messageBad: false
     readonly property var kindIcons: ({ browser: "globe", files: "folder", text: "edit", image: "palette", video: "display", music: "vol",
         ebooks: "file", documents: "file", sheets: "grid", slides: "display", terminal: "kbd", email: "bell", calendar: "calendar",
-        contacts: "user", maps: "globe", archives: "folder" })
+        contacts: "user", maps: "globe", archives: "folder", store: "store" })
     // Email only once an app can do it (Hearth has no mail app).
     readonly property var shown: kinds.filter(k => k.options.length > 0 || !!k.current || !!k.hearth)
     readonly property bool anyYours: kinds.some(k => k.yours)

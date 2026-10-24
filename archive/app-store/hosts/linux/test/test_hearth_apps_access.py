@@ -1,4 +1,4 @@
-"""Tests for desktop/shell/hearth-apps when your own Flatpak installation can't be used (~/.local/share/flatpak owned
+"""ARCHIVED (docs/ARCHIVED.md). Tests for desktop/shell/hearth-apps when your own Flatpak installation can't be used (~/.local/share/flatpak owned
 by root or an old account): the problem said plainly, the system's Flathub used for the catalog and installs, the
 real reason kept when a refresh fails, and the catalog found in flatpak's appstream folders. A stand-in `flatpak`
 records what it was asked."""

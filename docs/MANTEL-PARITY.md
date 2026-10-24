@@ -234,6 +234,9 @@ US-layout keyboard below; moving it to ui/osk (KeyTyper already types any charac
 
 ## Apps (AppStore.qml)
 
+On Hearth OS this store is archived (docs/ARCHIVED.md): Bazaar is Hearth OS's app store. Mantel on Windows keeps its winget
+store (`ui/mantel-apps.html`); the Hearth OS column below is what AppStore.qml did.
+
 | Item | Hearth OS | Windows before | Now |
 |---|---|---|---|
 | Window and pages | "Apps", 1100×720, page list: Discover, Search, Installed, Updates (n), Games, Music & video, Graphics & photos, Internet, Office, Programming, Learning, Science, System, Tools | — | **same** (`ui/mantel-apps.html`, Hearth's settings look, same keys and controller) |

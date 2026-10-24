@@ -1362,6 +1362,7 @@ const MOCK = (()=>{
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
     'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
+    'bazaar.open':async()=>({ok:true, mouse:true}),   // Bazaar, Hearth OS's app store (hearth-core bazaar.rs)
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle',hearth:{available:true,installed:true,own:true,default:false,version:'150.0'}}),
     'browser.hearth':async()=>clone(st.br||{available:true,installed:false,state:'idle',hearth:{available:true,installed:true,own:true,default:true,version:'150.0'}}),
     'browser.act':async({action})=>{ st.br=Object.assign({available:true,installed:true,default:true,version:'4.9.1.0',state:'idle'},st.br||{}); if(action==='remove') st.br.installed=false; if(action==='install'||action==='default'){ st.br.installed=true; st.br.default=true; } return clone(st.br); },
@@ -2100,6 +2101,8 @@ const SHOP_STORES = [['steam','Steam'],['gog','GOG'],['epic','Epic Games'],['xbo
 const SHOP = {store:'steam', shot:null, back:null, home:{}, err:{}, busy:{}, q:{}, res:{}, rerr:{}, rbusy:{}, page:null, det:{}, derr:{}, more:false, status:null, steamVisit:0};
 try{ const s=localStorage.getItem('hearth.shopStore'); if(SHOP_STORES.some(x=>x[0]===s)) SHOP.store=s; }catch(e){}
 I.shop='<svg viewBox="0 0 24 24"><path d="M3.5 4.5h2.2l2.1 10.2h10.4l1.9-7.2H6.6"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="16.5" cy="19" r="1.4"/></svg>';
+// Apps (Bazaar, Hearth OS's app store for Flathub apps): a bag with a plus.
+I.apps='<svg viewBox="0 0 24 24"><path d="M5 8.5h14l-1 11.5H6z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/><path d="M12 11.5v5M9.5 14h5"/></svg>';
 // In the menus on Hearth (Linux) and in the browser preview; Ember's host and Android don't have the store calls.
 const shopOn = () => !ANDROID && (LINUX || !host);
 const shopName = s => (SHOP_STORES.find(x=>x[0]===s)||[s,s])[1];
@@ -3084,7 +3087,7 @@ if(LINUX && host && !OVERLAY) setTimeout(()=>call('access.apply',{},20000).catch
 // ~/.config/mimeapps.list, and "Reset to Hearth's defaults" takes them out so Hearth's own apps open them again.
 const DF = {s:null, busy:''};
 const DF_ICONS = {browser:'globe', files:'lib', text:'text', image:'display', video:'play', music:'vol', ebooks:'note', documents:'note',
-  sheets:'sliders', slides:'display', terminal:'shell', email:'bell', calendar:'clock', contacts:'user', maps:'globe', archives:'dl'};
+  sheets:'sliders', slides:'display', terminal:'shell', email:'bell', calendar:'clock', contacts:'user', maps:'globe', archives:'dl', store:'shop'};
 // The browser preview (no app): made-up apps, changed in place like the real thing.
 const DF_DEMO = (() => {
   const k = (kind, label, hearth, hearthName, others) => ({kind, label, current:hearth, currentName:hearthName, yours:false, hearth, hearthName, isHearth:!!hearth,
@@ -3141,7 +3144,7 @@ function dfAct(a, d){
   const kinds=(DF.s&&DF.s.kinds)||[];
   if(a==='dfPick'){
     const k=kinds.find(x=>x.kind===d.kind); if(!k) return;
-    if(!k.options.length) return toast('No installed app can open these yet. Install one from Apps.');
+    if(!k.options.length) return toast('No installed app can open these yet. Install one from Bazaar.');
     const items = k.options.map(o=>({label:o.name+(o.hearth?' · Hearth\'s default':''), icon:o.id===k.current?'check':'', run:()=>{ if(o.id!==k.current) dfDo('defaults.set', {kind:k.kind, app:o.id}, 'df-'+k.kind, o.name+' opens '+k.label.toLowerCase()+' now'); }}));
     if(k.yours && k.hearth) items.push({label:'Reset to Hearth\'s default ('+k.hearthName+')', icon:'refresh', run:()=>dfDo('defaults.reset', {kind:k.kind}, 'df-'+k.kind, k.hearthName+' opens '+k.label.toLowerCase()+' again')});
     return openSheet({title:k.label, sub:'Which app opens these, in Game Mode and Desktop Mode', items});
@@ -6432,10 +6435,18 @@ function goBack(){
 // =====================================================================
 // Overlays
 // =====================================================================
+// Apps in the menu opens Bazaar, Hearth OS's app store for Flathub apps (host.info feature "bazaar"; hearth-core
+// bazaar.rs): full screen in Game Mode, with the controller mouse on. Hearth's own store is archived.
+function bazaarOn(){ return LINUX && !OVERLAY && (hasFeat('bazaar') || !host); }
+function bazaarOpen(){
+  closeAll(); toast('Opening Bazaar…');
+  return call('bazaar.open',{},15000).then(r=>{ if(r && r.mouse) toast('Bazaar: the controller mouse is on (right stick moves, A clicks, View + Menu turns it off)'); }).catch(e=>toast(e.message));
+}
 function renderMenu(){
   const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
+    ${bazaarOn()?`<button class="mitem" data-f data-k="m-bazaar" data-act="bazaar">${I.apps}Apps</button>`:''}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
     ${hasProfiles()&&PROF.s&&PROF.s.list.length>1?`<button class="mitem" data-f data-k="m-switch" data-act="nav" data-view="profiles">${I.user}Switch profile</button>`:''}
@@ -7083,6 +7094,7 @@ function act(el){
   if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
+  if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
   switch(a){
@@ -9495,6 +9507,7 @@ function onSysEvent(name, data){
   if(name==='game.slow') return gameSlow(data);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad'){
+    if(HOSTSCREEN.picker && !OVERLAY) return;           // a file picker is open: its own controller helper has it
     if(deskActive()) return deskPadEvent(data);         // the Linux desktop's view takes the controller
     if(data.down===false) return;                        // raw mode (the desktop under a prompt): presses only
     return hostPad(data.b);
@@ -9502,6 +9515,7 @@ function onSysEvent(name, data){
   if(name==='padAxes'){ if(DESK.open) deskAxes(data); return; }
   if(name==='padMouse'){ PAD.mouseOn=!!data.on; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='hostScreen'){ HOSTSCREEN.pads = !data || data.pads!==false; return; }
+  if(name==='picker'){ HOSTSCREEN.picker = !!data.open; return; }   // one of Hearth's file pickers opened or closed
   if(name==='padHost'){ PAD.host = data.connected>0; if(S.view==='settings' && S.settingsTab==='controller') render(null,true); return; }
   if(name==='game.exited') return gameEnded(data);
   if(name==='friends'){ if(S.view==='friends' && !S.layers.length) loadFriends(); return; }
@@ -9918,8 +9932,10 @@ function pollPads(t){
 // a Guide press over a game opened this window's old panel behind the game, and the next one sent "back to the game"
 // over the new Quick Access. Held buttons are still followed, so one held when the page gets the controller back
 // isn't taken for a new press.
-const HOSTSCREEN = {pads:true};
-function padsQuiet(){ return !OVERLAY && HOSTSCREEN.pads===false; }
+// While one of Hearth's file pickers is open (picker.rs: Hearth keeps answering meanwhile), the presses are the
+// picker's too: Hearth Files reads the controller itself.
+const HOSTSCREEN = {pads:true, picker:false};
+function padsQuiet(){ return !OVERLAY && (HOSTSCREEN.pads===false || HOSTSCREEN.picker); }
 function pollPadsNow(t){
   // The host reads Xbox-style controllers itself; don't also read them here (that would double every press).
   const pads = PAD.host || ACC.signing ? [] : (navigator.getGamepads ? navigator.getGamepads() : []);
