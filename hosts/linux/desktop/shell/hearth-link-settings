@@ -3,8 +3,10 @@
 through `hearth-link call` (its socket, only this user's).
 
   hearth-link-settings status                 JSON: this device, pairing code, paired and nearby devices, copies
-  hearth-link-settings pair-open | pair-close
-  hearth-link-settings join ID                the code comes on stdin (HEARTH_INPUT), never on the command line
+  hearth-link-settings pair-open | pair-open-internet | pair-close
+                                              (pair-open-internet: also a short code for a device somewhere else)
+  hearth-link-settings join ID                the 6-digit code comes on stdin (HEARTH_INPUT), never on the command line
+  hearth-link-settings join-code              a short code (K7M-4QX-92HC) on stdin: the device is looked up from it
   hearth-link-settings unpair ID
   hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
   hearth-link-settings sync
@@ -20,6 +22,20 @@ import sys
 BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
 ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
 KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
+# Short codes (hosts/hearth-link shortcode.rs): no 0/O, 1/I/L; the weighted sum of the 10 (weights 1..10) is 0 mod 31.
+ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+
+
+def short_code(text):
+    """A typed short code, checked: K7M-4QX-92HC, or Fail with why not (a typo is caught here, before the network)."""
+    c = re.sub(r'[\s\-._]', '', text or '').upper()
+    if re.search(r'[01OIL]', c):
+        raise Fail("That code doesn't look right: codes never have 0, O, 1, I or L in them")
+    if any(ch not in ABC for ch in c) or len(c) != 10:
+        raise Fail("That code doesn't look right: it's 10 characters like K7M-4QX-92HC")
+    if sum((i + 1) * ABC.index(ch) for i, ch in enumerate(c)) % 31:
+        raise Fail("That code doesn't look right: one of the characters is off. Check it on the other device")
+    return '%s-%s-%s' % (c[:3], c[3:6], c[6:])
 
 
 class Fail(Exception):
@@ -29,11 +45,15 @@ class Fail(Exception):
 def request(argv, stdin=''):
     """The service call for these arguments: (command, args)."""
     if not argv:
-        raise Fail('usage: hearth-link-settings status|pair-open|pair-close|join ID|unpair ID|set KEY VALUE|sync|pause|resume|cancel ID')
+        raise Fail('usage: hearth-link-settings status|pair-open|pair-open-internet|pair-close|join ID|join-code|unpair ID|set KEY VALUE|sync|pause|resume|cancel ID')
     cmd, rest = argv[0], argv[1:]
     simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now'}
     if cmd in simple and not rest:
         return simple[cmd], {}
+    if cmd == 'pair-open-internet' and not rest:
+        return 'pair.open', {'internet': True}
+    if cmd == 'join-code' and not rest:
+        return 'pair.join', {'code': short_code(stdin)}
     if cmd in ('join', 'unpair', 'pause', 'resume', 'cancel') and len(rest) == 1:
         target = rest[0].strip()
         if not ID_RE.match(target):
@@ -61,7 +81,8 @@ def main(argv):
         cmd, args = request(argv[1:], os.environ.get('HEARTH_INPUT', ''))
         if not os.path.exists(BIN):
             raise Fail('Hearth Link comes with the next Hearth OS update')
-        r = subprocess.run([BIN, 'call', cmd, json.dumps(args)], capture_output=True, text=True, timeout=90)
+        # Pairing from a short code looks it up, connects and checks the code: up to about 70 seconds.
+        r = subprocess.run([BIN, 'call', cmd, json.dumps(args)], capture_output=True, text=True, timeout=120)
         lines = (r.stdout or '').strip().splitlines()
         v = json.loads(lines[-1]) if lines else {'error': 'Hearth Link didn\'t answer'}
         if r.returncode != 0 or (isinstance(v, dict) and set(v) == {'error'}):
