@@ -4,10 +4,14 @@ name: Download site check
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Probe
         run: |
           mkdir -p out && cd out
@@ -33,9 +37,9 @@ jobs:
           probe "idh-robin" Hearth "https://steamcommunity.com/id/robinwalker/games/?tab=all"
           probe "api-$id" Hearth "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?steamid=$id&include_appinfo=1"
           ls -la
-      - name: Save raw answers
+      - name: Save raw answers to the probe branch
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: steam-probe
-          path: out
+        run: |
+          rm -rf probe-out && mv out probe-out
+          git config user.name Dragongamer9; git config user.email Dragongamer9@users.noreply.github.com
+          git add probe-out && git commit -qm "probe answers" && git push origin HEAD:steam-owned-probe
