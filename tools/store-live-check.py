@@ -59,6 +59,42 @@ CHECKS = [
     ("xbox_gamepass_products", "https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0", ["Products"], "POST", json.dumps({"Products": ["9NBLGGH4R315"]})),
 ]
 
+EPIC_OFFER = ('{Catalog{catalogOffer(namespace:"36a21c249987423a93f8442cc40a0e33",id:"adbc94588a184ce3a6122a19aae940ae",locale:"en-US",country:"US"){'
+              'title id namespace description longDescription developerDisplayName publisherDisplayName releaseDate effectiveDate '
+              'keyImages{type url} productSlug urlSlug catalogNs{mappings(pageType:"productHome"){pageSlug}} tags{id name groupName} '
+              'price(country:"US"){totalPrice{discountPrice originalPrice currencyCode fmtPrice(locale:"en-US"){originalPrice discountPrice}}}}}}')
+EPIC_SALE = ('{Catalog{searchStore(category:"games/edition/base|bundles/games",count:4,country:"US",locale:"en-US",onSale:true,sortBy:"relevancy",sortDir:"DESC"){'
+             'elements{title id namespace keyImages{type url} productSlug urlSlug catalogNs{mappings(pageType:"productHome"){pageSlug}} '
+             'price(country:"US"){totalPrice{discountPrice originalPrice currencyCode fmtPrice(locale:"en-US"){originalPrice discountPrice}}}} paging{total}}}}')
+EPIC_NEW = EPIC_SALE.replace('onSale:true,sortBy:"relevancy"', 'sortBy:"releaseDate",releaseDate:"[,2026-10-24T00:00:00.000Z]"')
+EPIC_TOP = ('{Storefront{collectionLayout(slug:"top-sellers",locale:"en-US",country:"US"){collectionOffers{title id namespace keyImages{type url} productSlug urlSlug '
+            'catalogNs{mappings(pageType:"productHome"){pageSlug}} price(country:"US"){totalPrice{discountPrice originalPrice currencyCode fmtPrice(locale:"en-US"){originalPrice discountPrice}}}}}}}')
+EPIC_TOP2 = EPIC_TOP.replace('Storefront', 'Collection')
+EPIC_RATING = '{RatingsPolls{getProductResult(sandboxId:"36a21c249987423a93f8442cc40a0e33",locale:"en-US"){averageRating}}}'
+SIGLS = {"pc_popular": "a884932a-f02b-40c8-a903-a008c23b1df1", "pc_recent": "163cdff5-442e-4957-97f5-1050a3546511",
+         "pc_coming": "4165f752-d702-49c8-886b-fb57936f6bae", "pc_leaving": "cc7fc951-d00f-410e-9e02-5e4628e04163",
+         "popular": "eab7757c-ff70-45af-bfa6-79d3cfb2bf81", "recent": "f13cf6b4-57e6-4459-89df-6aec18cf0538",
+         "coming": "095bda36-f5cd-43f2-9ee1-0a72f371fb96", "leaving": "393f05bf-e596-4ef6-9487-6d4fa0eab987", "eaplay": "b8900d09-a491-44cc-916e-32b5acae621b"}
+EMERALD = {"x-ms-api-version": "1.1"}
+CHECKS += [
+    ("epic_offer", "https://store.epicgames.com/graphql", ["data.Catalog.catalogOffer.title"], "POST", json.dumps({"query": EPIC_OFFER})),
+    ("epic_sale", "https://store.epicgames.com/graphql", ["data.Catalog.searchStore.elements.0"], "POST", json.dumps({"query": EPIC_SALE})),
+    ("epic_new", "https://store.epicgames.com/graphql", ["data.Catalog.searchStore.elements.0"], "POST", json.dumps({"query": EPIC_NEW})),
+    ("epic_top", "https://store.epicgames.com/graphql", ["data"], "POST", json.dumps({"query": EPIC_TOP})),
+    ("epic_top2", "https://store.epicgames.com/graphql", ["data"], "POST", json.dumps({"query": EPIC_TOP2})),
+    ("epic_rating", "https://store.epicgames.com/graphql", ["data.RatingsPolls.getProductResult.averageRating"], "POST", json.dumps({"query": EPIC_RATING})),
+    ("epic_discover_windows", "https://egs-platform-service.store.epicgames.com/api/v2/public/discover/home?count=10&country=US&locale=en&platform=windows&start=0&store=EGS", ["data.0"]),
+    ("xbox_apps_toppaid", "https://apps.microsoft.com/api/Reco/GetComputedProductsList?listName=TopPaid&pgNo=1&noItems=5&filteredCategories=PCGames&mediaType=games&market=US&hl=en-us&gl=US", []),
+    ("xbox_apps_deals", "https://apps.microsoft.com/api/Reco/GetComputedProductsList?listName=Deal&pgNo=1&noItems=5&filteredCategories=PCGames&mediaType=games&market=US&hl=en-us&gl=US", []),
+    ("xbox_apps_new", "https://apps.microsoft.com/api/Reco/GetComputedProductsList?listName=NewAndRising&pgNo=1&noItems=5&filteredCategories=PCGames&mediaType=games&market=US&hl=en-us&gl=US", []),
+    ("xbox_storeedge_gaming", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/pages/gaming?market=US&locale=en-US&deviceFamily=Windows.Desktop", []),
+    ("xbox_storeedge_home", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/pages/home?market=US&locale=en-US&deviceFamily=Windows.Desktop&mediaType=games", []),
+    ("xbox_storeedge_pdp", "https://storeedgefd.dsx.mp.microsoft.com/v9.0/products/9NWQMVSB63N4?market=US&locale=en-US&deviceFamily=Windows.Desktop", []),
+    ("xbox_emerald_search_v", "https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US", [], "POST", json.dumps({"Query": "halo", "Filters": "", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "", "ChannelId": ""}), EMERALD),
+    ("xbox_emerald_browse", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", [], "POST", json.dumps({"Filters": "e30=", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
+    ("protondb", "https://www.protondb.com/api/v1/reports/summaries/1145360.json", ["tier"]),
+] + [("xbox_sigl_" + k, f"https://catalog.gamepass.com/sigls/v2?id={v}&language=en-us&market=US", ["0.title", "1.id"]) for k, v in SIGLS.items()]
+
 
 def dig(v, path):
     for k in path.split("."):
@@ -95,7 +131,8 @@ def main():
         name, url, need = c[0], c[1], c[2]
         method = c[3] if len(c) > 3 else "GET"
         body = c[4].encode() if len(c) > 4 else None
-        req = urllib.request.Request(url, data=body, method=method, headers={"User-Agent": UA, "Accept": "application/json",
+        more = c[5] if len(c) > 5 else {}
+        req = urllib.request.Request(url, data=body, method=method, headers={**more, "User-Agent": UA, "Accept": "application/json",
             **({"Content-Type": "application/json"} if body else {}), "ms-cv": "cv", "calling-app-name": "Hearth", "calling-app-version": "1"})
         status, text = 0, ""
         try:
