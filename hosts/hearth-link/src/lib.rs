@@ -17,8 +17,11 @@
 //!
 //! - state.rs: this device's key, name and settings; the paired devices
 //! - wire.rs: frames on the QUIC streams (JSON messages and the chunks of a copy)
-//! - pair.rs: pairing with a short code (SPAKE2, bound to both devices' keys)
-//! - discovery.rs: finding Hearth devices on the same network
+//! - pair.rs: pairing with a code (SPAKE2, bound to both devices' keys): 6 digits on the same network, a
+//!   10-character short code from somewhere else
+//! - shortcode.rs: the short code (typo-proof alphabet, check character, the keys derived from it)
+//! - lookup.rs: finding a device from its short code (a sealed, signed record on public pkarr relays)
+//! - discovery.rs: finding Hearth devices on the same network (with their kind and edition)
 //! - manifest.rs: a game's files, and checking every path that comes over the network
 //! - games.rs: the games this device has (every store), and where a copied one goes
 //! - xfer.rs: copying a game: chunked, content-addressed (BLAKE3), parallel streams, compression where it helps,
@@ -30,9 +33,11 @@
 pub mod discovery;
 pub mod games;
 pub mod ipc;
+pub mod lookup;
 pub mod manifest;
 pub mod node;
 pub mod pair;
+pub mod shortcode;
 pub mod state;
 pub mod sync;
 pub mod wire;
