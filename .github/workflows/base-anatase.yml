@@ -633,6 +633,13 @@ jobs:
           sudo podman run --rm hearth-os:build bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
 
+      # REQUIRED: Quick Access over games shows text when Handheld Daemon starts it (its environment exactly, on a
+      # virtual screen, as a plain user): .github/scripts/overlay-text-check.sh. 0.6.5 showed none on an Nvidia PC.
+      - name: Quick Access over games shows text (as Handheld Daemon starts it)
+        timeout-minutes: 15
+        run: |
+          sudo podman run --rm -v "$PWD/.github/scripts/overlay-text-check.sh:/ovtext.sh:ro" hearth-os:build bash /ovtext.sh
+
       # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
       # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
       # nested containers, which a runner may not give, so it never fails the build.

@@ -7,7 +7,8 @@
 #   Desktop Mode (HHD_MANAGED=1): no window of its own: HHD's QAM button opens Mantel's Quick Access. It ends by
 #     itself when Desktop Mode does (see below), so HHD goes back to the Game Mode way.
 #   --version: the version HHD shows for its overlay (HHD runs this as root when it starts: nothing else happens).
-# HHD starts it with only HOME, DISPLAY, PATH and STEAM_OVERLAY or HHD_MANAGED (and XAUTHORITY).
+# HHD starts it with only HOME, DISPLAY, PATH and STEAM_OVERLAY or HHD_MANAGED (and XAUTHORITY): Game Mode fills in
+# the session's language, runtime folder and bus, and gives Chromium a fontconfig setup it can read (fonts_setup).
 APP="${HEARTH_OVERLAY_ELECTRON:-/usr/lib/hearth-browser/nimbus}"
 SHARE="${NIMBUS_SHARE:-/usr/share/nimbus}"
 
@@ -115,5 +116,92 @@ if [ -z "${DISPLAY:-}" ]; then
   echo "hearth-overlay: no DISPLAY from Handheld Daemon (gamescope's); not starting" >&2
   exit 1
 fi
+
+# ---- What HHD leaves out (it starts us with only HOME, DISPLAY, PATH and STEAM_OVERLAY): the session's language and
+# data folders, from the user's systemd environment (what Hearth's own window gets), else /etc/locale.conf. Only these
+# few: WAYLAND_DISPLAY and the like would send Chromium off gamescope's X display.
+LOG="${XDG_RUNTIME_DIR:-/tmp}/hearth-overlay.log"
+note() { echo "hearth-overlay: $*" >&2; echo "hearth-overlay: $*" >> "$LOG" 2>/dev/null || true; }
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 262144 ]; then tail -c 131072 "$LOG" > "$LOG.new" 2>/dev/null && mv "$LOG.new" "$LOG"; fi
+echo "--- $(date '+%Y-%m-%d %H:%M:%S') Quick Access started by Handheld Daemon in Game Mode (DISPLAY=$DISPLAY)" >> "$LOG" 2>/dev/null || true
+if [ -z "${HEARTH_OVERLAY_NO_SESSION_ENV:-}" ]; then
+  senv=$(timeout 3 systemctl --user show-environment 2>/dev/null || true)
+  for v in LANG LANGUAGE LC_ALL LC_CTYPE LC_MESSAGES XDG_DATA_DIRS XDG_CONFIG_DIRS XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME; do
+    eval "cur=\${$v:-}"
+    [ -z "$cur" ] || continue
+    line=$(printf '%s\n' "$senv" | grep -E "^$v=[A-Za-z0-9_.:@/,+-]+\$" | head -1)
+    [ -n "$line" ] && export "$line"
+  done
+  if [ -z "${LANG:-}" ] && [ -r /etc/locale.conf ]; then
+    line=$(grep -E '^LANG=[A-Za-z0-9_.@-]+$' /etc/locale.conf | head -1)
+    [ -n "$line" ] && export "$line"
+  fi
+fi
+
+# ---- Fonts. Chromium (Electron) has its own copy of fontconfig, older than the system's. On Anatase (Fedora 45,
+# fontconfig 2.17) the system's /etc/fonts/conf.d has files that copy can't read (48-guessfamily.conf, 48-spacing.conf,
+# 49-sansserif.conf: "invalid constant used : sans-serif", "invalid attribute 'xsi:nil'"), and Quick Access over games
+# came up with no text at all on the Nvidia PC ("Could not find any font: Sans, sans" in HHD's log). So the overlay
+# gets a fonts.conf of its own: the system's font folders and every conf.d file its fontconfig can read, the plain
+# generic-family rules those three files replaced, and a font cache of its own that's made again whenever the image's
+# fonts change (ostree keeps every folder's time the same across updates, so fontconfig can't tell by itself; an old
+# cache names font files that are gone, and Chromium then finds none). HEARTH_OVERLAY_SYSTEM_FONTS=1 turns it off.
+fonts_setup() {
+  [ -z "${HEARTH_OVERLAY_SYSTEM_FONTS:-}" ] || { note "fonts: the system's fontconfig setup (HEARTH_OVERLAY_SYSTEM_FONTS)"; return 0; }
+  [ -z "${FONTCONFIG_FILE:-}" ] || { note "fonts: FONTCONFIG_FILE=$FONTCONFIG_FILE is already set"; return 0; }
+  etc="${HEARTH_FONTS_ETC:-/etc/fonts}"
+  [ -f "$etc/fonts.conf" ] || { note "fonts: no $etc/fonts.conf; Chromium's defaults"; return 0; }
+  dir="${XDG_RUNTIME_DIR:-/tmp}/hearth-overlay-fonts"
+  [ -n "${XDG_RUNTIME_DIR:-}" ] || dir="/tmp/hearth-overlay-fonts-$uid"
+  mkdir -p "$dir" 2>/dev/null || { note "fonts: can't make $dir; the system's setup"; return 0; }
+  fontdirs="${HEARTH_FONT_DIRS:-/usr/share/fonts /usr/local/share/fonts}"
+  # shellcheck disable=SC2086
+  key=$(find $fontdirs -type f -printf '%p %s\n' 2>/dev/null | sort | cksum | cut -d' ' -f1)
+  croot="${XDG_CACHE_HOME:-$HOME/.cache}/hearth-overlay"
+  cache="$croot/fontconfig-$key"
+  if mkdir -p "$cache" 2>/dev/null; then
+    for old in "$croot"/fontconfig-*; do [ "$old" = "$cache" ] || rm -rf "$old" 2>/dev/null; done
+  else
+    cache="$dir/cache"
+  fi
+  newsyntax='xsi:nil|<const>[[:space:]]*(sans-serif|serif|monospace|emoji|math|system-ui|cursive|fantasy|fangsong|ui-[a-z-]+)[[:space:]]*</const>'
+  left=""; n=0
+  {
+    echo '<?xml version="1.0"?>'
+    echo '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">'
+    echo "<!-- Made by hearth-overlay for Quick Access over games (Chromium's own fontconfig); remade each start. -->"
+    echo '<fontconfig>'
+    grep -o '<dir[^>]*>[^<]*</dir>' "$etc/fonts.conf"
+    echo '  <dir>/usr/share/fonts</dir>'
+    echo '  <dir prefix="xdg">fonts</dir>'
+    echo "  <cachedir>$cache</cachedir>"
+    for f in "$etc"/conf.d/*.conf; do
+      [ -f "$f" ] || continue
+      if grep -Eq "$newsyntax" "$f" 2>/dev/null; then left="$left ${f##*/}"; continue; fi
+      echo "  <include ignore_missing=\"yes\">$f</include>"; n=$((n + 1))
+    done
+    cat <<'XML'
+  <!-- What 49-sansserif.conf did before fontconfig 2.17: a font asked for by name gets sans-serif behind it. -->
+  <match target="pattern">
+    <test qual="all" name="family" compare="not_eq"><string>sans-serif</string></test>
+    <test qual="all" name="family" compare="not_eq"><string>serif</string></test>
+    <test qual="all" name="family" compare="not_eq"><string>monospace</string></test>
+    <edit name="family" mode="append_last"><string>sans-serif</string></edit>
+  </match>
+  <alias><family>Sans</family><prefer><family>sans-serif</family></prefer></alias>
+  <alias><family>system-ui</family><prefer><family>sans-serif</family></prefer></alias>
+  <alias><family>sans-serif</family><prefer><family>Noto Sans</family><family>Adwaita Sans</family><family>Cantarell</family><family>DejaVu Sans</family><family>Liberation Sans</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>Noto Serif</family><family>DejaVu Serif</family><family>Liberation Serif</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>Noto Sans Mono</family><family>Adwaita Mono</family><family>DejaVu Sans Mono</family><family>Liberation Mono</family></prefer></alias>
+  <alias><family>emoji</family><prefer><family>Noto Color Emoji</family></prefer></alias>
+</fontconfig>
+XML
+  } > "$dir/fonts.conf.new" 2>/dev/null && mv -f "$dir/fonts.conf.new" "$dir/fonts.conf" || { note "fonts: couldn't write $dir/fonts.conf; the system's setup"; return 0; }
+  FONTCONFIG_FILE="$dir/fonts.conf"
+  export FONTCONFIG_FILE
+  note "fonts: Hearth's setup for Chromium's fontconfig ($FONTCONFIG_FILE: $n of the system's conf.d files, cache $cache)${left:+; left out (fontconfig 2.17 only):$left}"
+}
+fonts_setup
+note "LANG=${LANG:-unset}; system fontconfig: $(fc-match sans-serif 2>/dev/null | head -1 || echo 'fc-match missing'), $(fc-list 2>/dev/null | wc -l) fonts"
 
 exec "$APP" --hhd-overlay "$@"
