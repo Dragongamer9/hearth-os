@@ -134,6 +134,16 @@ impl Node {
         let n = self.clone(); tokio::spawn(async move { n.accept_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.discovery_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.sync_loop().await });
+        // The firewall (Anatase has firewalld): our two UDP ports, to the local network only (hearth-link-firewall;
+        // Hearth's polkit rule lets it run without a prompt). Over the internet nothing needs opening: hole
+        // punching starts from both sides.
+        const FW: &str = "/usr/libexec/nimbus/hearth-link-firewall";
+        if std::path::Path::new(FW).exists() && std::env::var_os("HEARTH_LINK_NO_FIREWALL").is_none() {
+            std::thread::spawn(|| {
+                let r = std::process::Command::new("pkexec").args([FW, "open", "hearth"]).stdin(std::process::Stdio::null()).output();
+                if let Ok(o) = r { eprintln!("hearth-link: firewall: {}", String::from_utf8_lossy(&o.stdout).trim()); }
+            });
+        }
         // Copies that were running when the service stopped carry on.
         let n = self.clone();
         tokio::spawn(async move {
@@ -198,6 +208,13 @@ impl Node {
         let _ = ps.save();
     }
 
+    fn add_peer(&self, id: &str, name: &str, relay: Option<String>) {
+        let mut ps = crate::lock(&self.peers);
+        ps.add(id, name);
+        if let (Some(r), Some(p)) = (relay, ps.get_mut(id)) { if !p.signed_in.is_object() { p.signed_in = json!({}); } p.signed_in["relay"] = json!(r); }
+        let _ = ps.save();
+    }
+
     /// The other device said it isn't paired with this one anymore (it unpaired while this one was away).
     fn check_unpaired(&self, id: &str, err: &str) {
         if err.contains("not paired") {
@@ -239,9 +256,10 @@ impl Node {
             match &*p { Some((c, until, tries)) if *until > crate::now_ms() && *tries < crate::pair::MAX_TRIES => c.clone(), _ => { conn.close(VarInt::from_u32(403), b"pairing isn't open"); return; } }
         };
         let remote = conn.remote_id().to_string();
-        match tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), &code)).await {
-            Ok(Ok(name)) => {
-                crate::lock(&self.peers).add(&remote, &name);
+        let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
+        match tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), relay, &code)).await {
+            Ok(Ok((name, their_relay))) => {
+                self.add_peer(&remote, &name, their_relay);
                 *crate::lock(&self.pairing) = None;
                 self.announce_now.notify_one();
                 eprintln!("hearth-link: paired with {name} ({remote})");
@@ -573,16 +591,12 @@ impl Node {
                     Ok(Err(e)) => return Err(format!("Couldn't reach that device: {e}")),
                     Err(_) => return Err("Couldn't reach that device".into()),
                 };
-                let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), &code)).await
+                let mine = self.ep.addr().relay_urls().next().map(|u| u.to_string());
+                let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code)).await
                     .map_err(|_| "The other device didn't answer".to_string())?;
                 conn.close(VarInt::from_u32(0), b"done");
-                let name = r.map_err(|e| if e.contains("closed") || e.contains("pairing isn't open") { "Pairing isn't open on that device (or the code expired)".to_string() } else { e })?;
-                {
-                    let mut ps = crate::lock(&self.peers);
-                    ps.add(&id, &name);
-                    if let (Some(r), Some(p)) = (relay.filter(|r| crate::state::valid_relay_url(r)), ps.get_mut(&id)) { p.signed_in = json!({"relay": r}); }
-                    let _ = ps.save();
-                }
+                let (name, their_relay) = r.map_err(|e| if e.contains("closed") || e.contains("pairing isn't open") { "Pairing isn't open on that device (or the code expired)".to_string() } else { e })?;
+                self.add_peer(&id, &name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))));
                 let n = self.clone(); let id2 = id.clone();
                 tokio::spawn(async move { let _ = n.sync_with(&id2).await; });
                 Ok(json!({"id": id, "name": name}))
