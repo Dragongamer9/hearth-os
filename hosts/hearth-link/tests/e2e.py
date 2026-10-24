@@ -571,7 +571,7 @@ def short_codes(a, b):
         fail('a short code that ran out: %s' % r3)
     if b.status()['pairing'] is not None:
         fail('pairing still open after the short code ran out')
-    notice('short code', 'paired from a %d-character code alone (%s, found through a pkarr relay, SPAKE2 with it) in %.1f s; '
+    notice('short code', 'paired from a %d-character code alone (%s, found through a pkarr relay, SPAKE2 with it) in %.2f s; '
            'a typo was caught at once ("%s..."), a code nobody shows said so, the used code was refused ("%s"), one that ran out too ("%s")'
            % (len(net.replace('-', '')), re.sub(r'[A-Z2-9]', 'X', net), took, "That code doesn't look right", r['error'], r3['error']))
 
@@ -797,7 +797,7 @@ def internet():
     if r.get('id') != b.id:
         fail('pairing with the short code over the internet: %s' % r)
     wait_for('B to list A', lambda: any(p['id'] == a.id for p in b.status()['peers']), 20)
-    notice('internet pairing', 'paired across two NATs from the short code alone in %.1f s (record on a pkarr relay, connection through the iroh relay)' % (time.time() - t0))
+    notice('internet pairing', 'paired across two NATs from the short code alone in %.2f s (record on a pkarr relay, connection through the iroh relay)' % (time.time() - t0))
     j, _, t0 = copy(b, a, 'steam:1000003', 'Net Game')
     j = wait_job(b, j['id'])
     if not j.get('relay'):
