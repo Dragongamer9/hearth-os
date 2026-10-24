@@ -45,7 +45,7 @@ const path = require('path');
     if (SHOP.store !== 'gog' || !document.querySelector('#view [data-k="sf-t-gog"].on')) throw new Error('RB did not go to GOG: ' + SHOP.store);
     input('lb'); if (SHOP.store !== 'steam') throw new Error('LB did not go back to Steam');
   });
-  {
+  try {
     const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
     if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));
     const back = await page.evaluate(() => { back(); return { page: !!SHOP.page, focus: focused && focused.dataset.k }; });
@@ -67,7 +67,7 @@ const path = require('path');
       shopDoSearch('steam', '');
       if (document.querySelector('#view [data-k="sf-r-0"]')) throw new Error("Clear left the results");
     });
-  }
+  } catch (e) { errors.push('store: ' + e.message.split('\n')[0]); }
   // A game's settings, and its controller layout editor (Hearth Input).
   await step('screen gameset', () => { S.layers = []; navigate('gameset', {game: (GAMES.find(g => !g.cloud) || GAMES[0]).id}, false); });
   await step('screen inputmap', async () => {
