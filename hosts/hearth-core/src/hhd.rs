@@ -81,6 +81,8 @@ pub fn available() -> bool {
 /// shortcut sends ({type:special, event:overlay}), which (re)starts the app when it has stopped and tells it to open.
 /// HHD otherwise only starts it again on its next settings pass, which can take many seconds (it stops the app when
 /// its window handling hits an error, e.g. while windows it watches come and go).
+/// It can't help while HHD still runs the overlay app it started for Desktop Mode: HHD sends this to that one (it only
+/// starts the app in gamescope once that one has ended), so Hearth ends it first (overlay_link::end_desktop_mode_overlays).
 pub fn start_overlay_app() -> Result<(), String> {
     request_text("POST", "/api/v1/event", Some(&json!({"type": "special", "event": "overlay"})), Duration::from_secs(3)).map(|_| ())
 }
