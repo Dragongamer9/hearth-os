@@ -8,6 +8,8 @@ signed in at the device (local, active session, in the wheel group) run it witho
   hearth-link-firewall close nearby [PORT]
   hearth-link-firewall open connect           Hearth Connect (KDE Connect's protocol): 1714-1764 over TCP and UDP
   hearth-link-firewall close connect
+  hearth-link-firewall open hearth            Hearth Link (your Hearth devices): 47740 (QUIC) and 47741 (finding
+  hearth-link-firewall close hearth           each other) over UDP; over the internet it needs nothing opened
   hearth-link-firewall status                 which firewall runs here (JSON)
 
 Only from local addresses (10/8, 172.16/12, 192.168/16, 169.254/16; IPv6 fe80::/10 and fc00::/7): the ports are
@@ -57,6 +59,8 @@ def ports_for(app, port):
         return [(str(port), 'tcp'), (str(port), 'udp')]
     if app == 'connect':
         return [('1714-1764', 'tcp'), ('1714-1764', 'udp')]
+    if app == 'hearth':
+        return [('47740-47741', 'udp')]
     raise ValueError(app)
 
 
@@ -117,8 +121,8 @@ def main(argv):
     if len(argv) == 2 and argv[1] == 'status':
         print(json.dumps({'ok': True, 'firewall': detect()}))
         return 0
-    if len(argv) not in (3, 4) or argv[1] not in ('open', 'close') or argv[2] not in ('nearby', 'connect'):
-        print(json.dumps({'ok': False, 'error': 'usage: hearth-link-firewall open|close nearby [PORT] | open|close connect | status'}))
+    if len(argv) not in (3, 4) or argv[1] not in ('open', 'close') or argv[2] not in ('nearby', 'connect', 'hearth'):
+        print(json.dumps({'ok': False, 'error': 'usage: hearth-link-firewall open|close nearby [PORT] | open|close connect | open|close hearth | status'}))
         return 2
     port = 53317
     if len(argv) == 4:

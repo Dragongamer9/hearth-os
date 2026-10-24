@@ -60,6 +60,14 @@ class LinkFirewall(unittest.TestCase):
         rules = [c[1] for c in f.calls if c[1].startswith('--add-rich-rule=')]
         self.assertTrue(all('port="1714-1764"' in r for r in rules))
 
+    def test_hearth_link_ports(self):
+        f = self.use('firewalld')
+        self.assertTrue(hlf.apply('open', 'hearth', 53317)['ok'])
+        rules = [c[1] for c in f.calls if c[1].startswith('--add-rich-rule=')]
+        self.assertEqual(len(rules), 6)  # UDP only, 4 IPv4 + 2 IPv6 local ranges
+        self.assertTrue(all('port port="47740-47741" protocol="udp"' in r for r in rules), rules)
+        self.assertEqual(hlf.main(['x', 'open', 'hearth', '53317']), 2)
+
     def test_ufw_rules_are_tagged_and_removed(self):
         f = self.use('ufw')
         hlf.apply('open', 'nearby', 53318)
