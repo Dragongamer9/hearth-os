@@ -100,6 +100,7 @@ ShellRoot {
     AppStore { id: appStore }
     DebInstaller { id: debInstaller }
     Clipboard { id: clipboardHistory }
+    Friends { id: friendsPanel }   // Hearth Friends on Matrix; IPC target "friends"
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
     FileManager { id: files }

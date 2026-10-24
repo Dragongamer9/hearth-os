@@ -26,6 +26,7 @@ fn main() {
             let Some(method) = args.get(2) else { eprintln!("usage: hearth-friends call METHOD [JSON]"); std::process::exit(2) };
             let a: Value = args.get(3).map(|s| serde_json::from_str(s).unwrap_or(json!({}))).unwrap_or(json!({}));
             let timeout = std::time::Duration::from_secs(if method == "login" || method == "register" { 90 } else { 45 });
+            ensure_running();
             match proto::call(&hearth_friends::socket_path(), method, &a, timeout) {
                 Ok(v) => println!("{v}"),
                 Err(e) => { println!("error: {e}"); std::process::exit(1) }
@@ -41,8 +42,32 @@ fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("tokio")
 }
 
+/// `call` and `watch` start the service when it isn't running (Mantel uses them; Hearth's session also starts it).
+fn ensure_running() {
+    let sock = hearth_friends::socket_path();
+    if std::os::unix::net::UnixStream::connect(&sock).is_ok() { return; }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let paths = Paths::from_env();
+    let _ = std::fs::create_dir_all(&paths.data);
+    let log = std::fs::OpenOptions::new().create(true).append(true).open(paths.data.join("service.log")).ok();
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("serve").stdin(std::process::Stdio::null());
+    match log.and_then(|l| l.try_clone().ok().map(|c| (l, c))) {
+        Some((a, b)) => { cmd.stdout(a).stderr(b); }
+        None => { cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()); }
+    }
+    if let Ok(mut child) = cmd.spawn() {
+        std::thread::spawn(move || { let _ = child.wait(); });
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if std::os::unix::net::UnixStream::connect(&sock).is_ok() { return; }
+        }
+    }
+}
+
 fn watch(client: String) {
     use std::io::{BufRead, Write};
+    ensure_running();
     let sock = hearth_friends::socket_path();
     let Ok(mut s) = std::os::unix::net::UnixStream::connect(&sock) else { println!("error: Hearth Friends isn't running"); std::process::exit(1) };
     let _ = s.write_all(proto::request(1, "watch", &json!({"client": client})).as_bytes());

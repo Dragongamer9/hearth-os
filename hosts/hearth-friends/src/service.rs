@@ -69,6 +69,10 @@ pub struct Service {
     pub events: broadcast::Sender<(String, Value)>,
     pub gamemode_watchers: AtomicUsize,
     wake: Notify,
+    /// When the session was last looked for in the keyring (it may not be unlocked yet when the service starts).
+    last_restore: AtomicU64,
+    /// Signing in, up or out right now: no looking for the old session meanwhile.
+    busy: std::sync::atomic::AtomicBool,
 }
 
 fn e2s<E: std::fmt::Display>(e: E) -> String { hf::redact(&e.to_string()) }
@@ -89,7 +93,7 @@ impl Service {
         let settings = Settings::load(&paths.config);
         let (tx, _) = broadcast::channel(512);
         Arc::new(Service { paths, client: RwLock::new(None), generation: AtomicU64::new(0), st: Mutex::new(State::default()), settings: Mutex::new(settings),
-                           events: tx, gamemode_watchers: AtomicUsize::new(0), wake: Notify::new() })
+                           events: tx, gamemode_watchers: AtomicUsize::new(0), wake: Notify::new(), last_restore: AtomicU64::new(0), busy: std::sync::atomic::AtomicBool::new(false) })
     }
 
     fn emit(&self, name: &str, data: Value) { let _ = self.events.send((name.to_string(), data)); }
@@ -126,6 +130,7 @@ impl Service {
 
     /// At start: the session from the keyring, if there is one.
     pub async fn restore(self: &Arc<Self>) {
+        self.last_restore.store(now_ms(), Ordering::SeqCst);
         let (Some(sess), Some(key)) = (secrets::get(&self.paths, "session"), secrets::get(&self.paths, "store-key")) else { return };
         let Ok(v) = serde_json::from_str::<Value>(&sess) else { return };
         let hs = v["homeserver"].as_str().unwrap_or("").to_string();
@@ -374,7 +379,8 @@ impl Service {
             let direct = room.is_direct().await.unwrap_or(false);
             let text = if direct { format!("{name} wants to be friends") } else { format!("{name} invited you to a group chat") };
             self.emit("request", json!({"roomId": rid, "from": from, "name": name, "direct": direct, "bucket": if bucket == hf::Bucket::Requests { "requests" } else { "chats" }, "text": text}));
-            if bucket == hf::Bucket::Chats || direct { self.pop_up("Hearth Friends", &text); }
+            // Only invites that aren't requests pop up (friends, or anyone when "friends only" is off); requests wait quietly.
+            if bucket == hf::Bucket::Chats { self.pop_up("Hearth Friends", &text); }
         }
         if rooms_changed { self.emit("rooms", json!({})); }
     }
@@ -788,10 +794,17 @@ impl Service {
 
     pub async fn handle(self: &Arc<Self>, method: &str, a: &Value) -> Result<Value, String> {
         match method {
-            "status" => Ok(self.status_value().await),
-            "login" => self.login(a).await,
-            "register" => self.register(a).await,
-            "logout" => self.logout().await,
+            "status" => {
+                // Not signed in: maybe the keyring wasn't unlocked yet when the service started. Look again now and then.
+                if !self.busy.load(Ordering::SeqCst) && self.client.read().await.is_none() && now_ms().saturating_sub(self.last_restore.load(Ordering::SeqCst)) > 10_000 { self.restore().await; }
+                Ok(self.status_value().await)
+            }
+            "login" | "register" | "logout" => {
+                if self.busy.swap(true, Ordering::SeqCst) { return Err("Hold on: still signing in or out.".into()); }
+                let r = match method { "login" => self.login(a).await, "register" => self.register(a).await, _ => self.logout().await };
+                self.busy.store(false, Ordering::SeqCst);
+                r
+            }
             "friends" => self.friends().await,
             "requests" => self.requests().await,
             "chats" => self.chats().await,
