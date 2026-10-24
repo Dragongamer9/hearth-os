@@ -886,6 +886,11 @@ pub fn finish_sign_in(s: &str, code: &str) -> Result<(), String> {
     match s { "epic" => epic::finish_sign_in(code), "gog" => gog::finish_sign_in(code), "xbox" => xbox::finish_sign_in(code), _ => Err("Unknown store".into()) }
 }
 pub fn sign_out(s: &str) -> Result<(), String> {
+    if !STORES.contains(&s) { return Err("Unknown store".into()); }
+    // Kept in the private sign-in backups first, and remembered as your choice: Hearth never puts back a sign-in
+    // you signed out of (signins.rs).
+    crate::signins::backup(&format!("before signing out of {s}"));
+    crate::signins::mark_signed_out(s);
     match s { "epic" => epic::sign_out(), "gog" => gog::sign_out(), "xbox" => xbox::sign_out(), _ => return Err("Unknown store".into()) }
     // The store's web sign-in (its sign-in window and Game Mode › Store's store window share it) goes too.
     crate::storefront::reset_web_profile(s);

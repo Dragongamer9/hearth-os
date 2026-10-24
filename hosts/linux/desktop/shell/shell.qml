@@ -5,7 +5,7 @@
 // on-screen keyboard, controller support and touch gestures, on top of labwc.
 // Started by labwc's autostart: quickshell -p <share>/desktop/shell
 // From a terminal or a key binding: quickshell ipc -p <this folder> call <target> <function>
-//   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close   menu open   settings open|page <name>|close
+//   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <apps|perf|startup>|close|toggle   files open <path>|home|toggle|close
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
@@ -264,6 +264,15 @@ ShellRoot {
         target: "keyboard"
         function open(): void { pad.openKeyboard(); }
         function close(): void { pad.closeKeyboard(); }
+        // For checks (desktop-test.yml): a controller button pressed and let go (or held), a key tapped by what it
+        // types ("a", "space", "bksp", "enter"...), the left stick, a setting (not saved), and what it shows.
+        function press(b: string): void { keyboard.padButton(b, true); keyboard.padButton(b, false); }
+        function hold(b: string, ms: int): void { keyboard.holdButton(b, ms); }
+        function tap(key: string): void { keyboard.tapKey(key); }
+        function select(key: string): void { keyboard.tapKey(key, true); }
+        function stick(x: real, y: real): void { keyboard.padAxes(x, y, 0, 0); }
+        function setting(key: string, value: string): void { keyboard.setSetting(key, value); }
+        function state(): string { return keyboard.stateJson(); }
     }
     IpcHandler {
         target: "help"
