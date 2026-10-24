@@ -110,26 +110,27 @@ h3{font-size:19px;letter-spacing:-.01em}
 @media (prefers-color-scheme:light){ :root:not([data-theme="dark"]) .theme .sun{display:block} :root:not([data-theme="dark"]) .theme .moon{display:none} }
 
 /* hero: the screen above the hearth */
-.hero{position:relative;overflow:hidden;isolation:isolate;background:var(--bg);padding:64px 0 0}
-.hero .wrap{position:relative}
+.hero{position:relative;overflow:hidden;isolation:isolate;background:var(--bg);padding:56px 0 0}
+.hero .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:48px;align-items:center}
 .status{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14.5px;color:var(--muted);margin-bottom:22px}
 .status span{display:inline-flex;align-items:center;gap:8px}
 .status .ver::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ember);box-shadow:0 0 10px var(--ember)}
 .status .live[hidden]{display:none}
 .status .live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--focus)}
-h1.d{font-size:clamp(38px,6.3vw,90px);line-height:.95;letter-spacing:-.02em;max-width:13ch;font-stretch:130%;
-  background:linear-gradient(180deg,var(--text) 55%,color-mix(in srgb,var(--glow) 70%,var(--text)) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero .lede{margin-top:22px;max-width:34em}
+h1.d{font-size:clamp(36px,4vw,62px);line-height:1;letter-spacing:-.015em;font-stretch:120%;
+  background:linear-gradient(180deg,var(--text) 50%,color-mix(in srgb,var(--glow) 75%,var(--text)) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lede{margin-top:22px;max-width:30em}
 .hero .ctas{margin-top:28px}
-.hearth{position:relative;margin-top:56px;padding-bottom:clamp(90px,12vw,160px)}
-.screen{position:relative;z-index:1;width:min(100%,1040px);margin:0 auto;border-radius:14px;padding:10px;background:linear-gradient(180deg,#2a201a,#130e0b);
-  box-shadow:0 0 0 1px #3d2f26,0 30px 80px -30px #000,0 calc(40px * var(--f,1)) calc(120px * var(--f,1)) -40px rgba(255,122,47,.55)}
+.hero .ctas .btn{padding:12px 18px}
+.hearth{position:relative;padding:10px 0 clamp(110px,10vw,150px)}
+.screen{position:relative;z-index:1;margin:0;border-radius:14px;padding:9px;background:linear-gradient(180deg,#2a201a,#130e0b);
+  box-shadow:0 0 0 1px #3d2f26,0 30px 80px -30px #000,0 calc(40px * var(--f,1)) calc(110px * var(--f,1)) -34px rgba(255,122,47,.6)}
 .screen img{border-radius:6px;aspect-ratio:16/10;object-fit:cover;width:100%;background:var(--shot)}
-.screen figcaption{position:absolute;left:0;right:0;top:100%;margin-top:14px;text-align:center;font-size:13.5px;color:var(--muted)}
-#fire{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(1400px,140%);height:clamp(260px,34vw,460px);z-index:0;pointer-events:none}
-.floor{position:absolute;left:0;right:0;bottom:0;height:46%;z-index:0;pointer-events:none;
-  background:radial-gradient(60% 90% at 50% 100%,rgba(255,130,50,calc(.32 * var(--f,1))),rgba(229,72,59,.08) 55%,transparent 75%)}
-.runs{position:relative;z-index:2;display:flex;flex-wrap:wrap;justify-content:center;gap:6px 22px;list-style:none;margin:0;padding:0 0 26px;font-size:14px;color:var(--soft)}
+.screen figcaption{position:absolute;left:0;right:0;top:100%;margin-top:12px;text-align:center;font-size:13.5px;color:var(--muted)}
+#fire{position:absolute;left:50%;bottom:-10px;transform:translateX(-50%);width:150%;height:clamp(240px,26vw,380px);z-index:0;pointer-events:none}
+.floor{position:absolute;left:-30%;right:-30%;bottom:0;height:60%;z-index:0;pointer-events:none;
+  background:radial-gradient(50% 80% at 50% 100%,rgba(255,130,50,calc(.34 * var(--f,1))),rgba(229,72,59,.08) 55%,transparent 75%)}
+.runs{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:6px 22px;list-style:none;margin:0;padding:18px 0 28px;font-size:14px;color:var(--soft);border-top:1px solid rgba(79,60,49,.6)}
 
 /* sections */
 section{padding:clamp(64px,9vw,120px) 0;border-top:1px solid var(--line)}
@@ -309,6 +310,9 @@ footer a:hover{color:var(--text);text-decoration:underline}
 
 @media (max-width:1060px){
   .top .links .mid{display:none}
+  .hero .grid{grid-template-columns:minmax(0,1fr);gap:36px}
+  h1.d{font-size:clamp(38px,8vw,72px)}
+  .hearth{max-width:820px}
   .head{grid-template-columns:minmax(0,1fr)}
   .next{grid-template-columns:minmax(0,1fr)}
   .picks{position:static;flex-direction:row;overflow-x:auto;scrollbar-width:none;padding:4px;margin:0 -4px}
@@ -327,7 +331,6 @@ footer a:hover{color:var(--text);text-decoration:underline}
   :root{--gut:16px}
   body{font-size:15.5px}
   .hero{padding-top:36px}
-  .hearth{margin-top:40px}
   .screen{padding:6px;border-radius:10px}
   .screen figcaption{position:static;margin-top:10px}
   .top .links a.gh span{display:none}
@@ -390,28 +393,30 @@ footer a:hover{color:var(--text);text-decoration:underline}
 </nav>
 
 <header class="hero night" id="top">
-  <div class="wrap">
-    <p class="status"><span class="ver">Version 0.6.4, in beta</span><span>Free and open source</span><span class="live" id="live" hidden></span></p>
-    <h1 class="d">The console OS for your PC and handheld</h1>
-    <p class="lede">Hearth OS starts in Game Mode: Steam, Epic, GOG and Xbox games in one library you drive with a controller. A full desktop is one button away, and every update can be rolled back.</p>
-    <div class="ctas">
-      <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
-      <a class="btn line" href="#new">See what's coming in 0.6.5</a>
+  <div class="wrap grid">
+    <div>
+      <p class="status"><span class="ver">Version 0.6.4, in beta</span><span>Free and open source</span><span class="live" id="live" hidden></span></p>
+      <h1 class="d">The console OS for your PC and handheld</h1>
+      <p class="lede">Hearth OS starts in Game Mode: Steam, Epic, GOG and Xbox games in one library you drive with a controller. A full desktop is one button away, and every update can be rolled back.</p>
+      <div class="ctas">
+        <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
+        <a class="btn line" href="#new">See what's coming in 0.6.5</a>
+      </div>
     </div>
-  </div>
-  <div class="hearth">
-    <canvas id="fire" aria-hidden="true"></canvas>
-    <div class="floor" aria-hidden="true"></div>
-    <div class="wrap">
-      <figure class="screen" style="margin-top:0;margin-bottom:0">
+    <div class="hearth">
+      <canvas id="fire" aria-hidden="true"></canvas>
+      <div class="floor" aria-hidden="true"></div>
+      <figure class="screen">
         <img src="img/gm-home.webp" width="1600" height="1000" fetchpriority="high" alt="Hearth's Game Mode home screen: recent games in a row, news from your games below, and the Library, Store and Downloads tabs at the top">
-        <figcaption>Game Mode's home screen. Game names and art here are sample data.</figcaption>
+        <figcaption>Game Mode's home screen, with sample games.</figcaption>
       </figure>
     </div>
   </div>
-  <ul class="runs" aria-label="Runs on">
-    <li>Steam Deck</li><li>ROG Ally and Xbox Ally</li><li>Legion Go</li><li>Most desktops and laptops</li><li>Windows 11, as Ember</li>
-  </ul>
+  <div class="wrap">
+    <ul class="runs" aria-label="Runs on">
+      <li>Steam Deck</li><li>ROG Ally and Xbox Ally</li><li>Legion Go</li><li>Most desktops and laptops</li><li>Windows 11, as Ember</li>
+    </ul>
+  </div>
 </header>
 
 <main id="main">
