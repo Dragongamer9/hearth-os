@@ -694,6 +694,54 @@ WantedBy=timers.target
 UNIT
   ln -sf ../hearth-saves-auto.timer /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer
 fi
+# Hearth Mods and Nexus Mods: the site's "Mod Manager Download" button opens nxm:// links, which go to Hearth Mods'
+# download queue (hearth-mods --nxm; hearth-system makes it the default for them with Hearth's other apps). Mods put in
+# with the overlay (fuse-overlayfs) are laid over their games again at each sign-in (hearth-mods --remount).
+if [ -x /usr/bin/hearth-mods ]; then
+  cat > /usr/share/applications/hearth-mods-nxm.desktop <<'DESKTOP'
+[Desktop Entry]
+Name=Mods (Nexus Mods downloads)
+Comment=Downloads a mod from Nexus Mods' "Mod Manager Download" button
+Exec=/usr/bin/hearth-mods --nxm %u
+Icon=hearth-mods
+Type=Application
+NoDisplay=true
+MimeType=x-scheme-handler/nxm;
+DESKTOP
+  install -d /usr/lib/systemd/user/default.target.wants
+  cat > /usr/lib/systemd/user/hearth-mods-remount.service <<'UNIT'
+[Unit]
+Description=Hearth Mods: lay overlay mods over their games again
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-mods --remount
+
+[Install]
+WantedBy=default.target
+UNIT
+  ln -sf ../hearth-mods-remount.service /usr/lib/systemd/user/default.target.wants/hearth-mods-remount.service
+fi
+# Wabbajack modlists: jackify-engine (Jackify's native Linux build of wabbajack-cli; GPL-3.0, source:
+# https://github.com/Omni-guides/dev-jackify-engine), the newest Linux release, in /usr/lib/hearth/jackify-engine
+# (hearth-gaming wabbajack.rs). Without it, Hearth Mods downloads it on first use.
+if [ "$(uname -m)" = x86_64 ]; then
+  jurl="$(curl -fsSL --retry 3 https://api.github.com/repos/Omni-guides/dev-jackify-engine/releases/latest \
+    | grep -oE '"browser_download_url": *"[^"]*linux[^"]*x64[^"]*\.tar\.gz"' | head -n1 | sed -E 's/.*"(https[^"]+)"/\1/')" || true
+  jtag="$(curl -fsSL --retry 3 https://api.github.com/repos/Omni-guides/dev-jackify-engine/releases/latest | grep -oE '"tag_name": *"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')" || true
+  if [ -n "$jurl" ] && curl -fsSL --retry 3 -o /tmp/jackify-engine.tar.gz "$jurl"; then
+    rm -rf /tmp/jackify-engine && mkdir -p /tmp/jackify-engine && tar -xzf /tmp/jackify-engine.tar.gz -C /tmp/jackify-engine
+    jbin="$(find /tmp/jackify-engine -type f -name jackify-engine | head -n1)"
+    if [ -n "$jbin" ]; then
+      rm -rf /usr/lib/hearth/jackify-engine && mkdir -p /usr/lib/hearth
+      cp -a "$(dirname "$jbin")" /usr/lib/hearth/jackify-engine
+      chmod 755 /usr/lib/hearth/jackify-engine/jackify-engine
+      printf '%s\n' "$jtag" > /usr/lib/hearth/jackify-engine/hearth-version.txt
+      printf 'jackify-engine %s, GPL-3.0 (based on Wabbajack, GPL-3.0).\nSource: https://github.com/Omni-guides/dev-jackify-engine\n' "$jtag" > /usr/lib/hearth/jackify-engine/SOURCE.txt
+    else echo "warning: the jackify-engine download has no jackify-engine in it; Hearth Mods downloads it on first use"; fi
+    rm -rf /tmp/jackify-engine /tmp/jackify-engine.tar.gz
+  else echo "warning: couldn't download jackify-engine; Hearth Mods downloads it on first use"; fi
+fi
 # ---- end of Hearth's gaming apps
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
