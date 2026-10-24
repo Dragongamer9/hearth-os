@@ -1,0 +1,1284 @@
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ mkdir -p /tmp/xdg /tmp/home
++ chmod 700 /tmp/xdg
++ mkdir -p /tmp/home/.cache/hearth
++ printf %s '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]'
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
++ mkdir -p /usr/share/xdg-desktop-portal/portals /usr/share/dbus-1/services
++ cp os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal /usr/share/xdg-desktop-portal/portals/
++ printf '[preferred]\ndefault=none\norg.freedesktop.impl.portal.FileChooser=hearth\n'
++ sed s#/usr/share/nimbus/desktop/shell#/__w/hearth-os/hearth-os/hosts/linux/desktop/shell# os/system_files/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service
++ command -v dbus-daemon
++ dbus-daemon --session --fork --address=unix:path=/tmp/xdg/bus
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ mkdir -p /tmp/home/.config/autostart /tmp/fakebin
++ printf '#!/bin/sh\ntouch "$HOME/steam-started"\n'
++ chmod +x /tmp/fakebin/steam
++ printf '%s\n' '#!/bin/sh' 'case "$1" in' '  --events) d=$(date +%F); printf "{\"events\":[{\"title\":\"Dentist\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":false,\"start\":%s000,\"end\":%s000,\"location\":\"Smile Clinic\",\"color\":\"\"}]}\n" "$d" "$d" "$(date -d "+2 hours" +%s)" "$(date -d "+3 hours" +%s)" ;;' $'  --weather-summary) echo "{\\"place\\":\\"Lisbon\\",\\"line\\":\\"18\302\260 Partly cloudy\\",\\"day\\":true}" ;;' esac
++ chmod +x /tmp/fakebin/hearth-time
++ cat
++ sed -i 's/^          //' /tmp/fakebin/hearth-friends
++ chmod +x /tmp/fakebin/hearth-friends
++ export PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' /tmp/home
++ printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n'
++ ICONS=/tmp/home/.local/share/icons/hicolor
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/128x128
++ mkdir -p /tmp/home/.local/share/icons/hicolor/128x128/apps
+++ basename branding/icons/png/128x128
++ cp branding/icons/png/128x128/hearth-accessibility.png branding/icons/png/128x128/hearth-apps.png branding/icons/png/128x128/hearth-browser.png branding/icons/png/128x128/hearth-calculator.png branding/icons/png/128x128/hearth-calendar.png branding/icons/png/128x128/hearth-camera.png branding/icons/png/128x128/hearth-claude-get.png branding/icons/png/128x128/hearth-clock.png branding/icons/png/128x128/hearth-connect.png branding/icons/png/128x128/hearth-contacts.png branding/icons/png/128x128/hearth-controller-lab.png branding/icons/png/128x128/hearth-debbox.png branding/icons/png/128x128/hearth-disk-usage.png branding/icons/png/128x128/hearth-disks.png branding/icons/png/128x128/hearth-documents.png branding/icons/png/128x128/hearth-emoji.png branding/icons/png/128x128/hearth-files.png branding/icons/png/128x128/hearth-fonts.png branding/icons/png/128x128/hearth-generic-app.png branding/icons/png/128x128/hearth-get-claude.png branding/icons/png/128x128/hearth-install.png branding/icons/png/128x128/hearth-installer.png branding/icons/png/128x128/hearth-logs.png branding/icons/png/128x128/hearth-maps.png branding/icons/png/128x128/hearth-mods.png branding/icons/png/128x128/hearth-nearby.png branding/icons/png/128x128/hearth-network.png branding/icons/png/128x128/hearth-notes.png branding/icons/png/128x128/hearth-paint.png branding/icons/png/128x128/hearth-passwords.png branding/icons/png/128x128/hearth-photos.png branding/icons/png/128x128/hearth-player.png branding/icons/png/128x128/hearth-printers.png branding/icons/png/128x128/hearth-recorder.png branding/icons/png/128x128/hearth-saves.png branding/icons/png/128x128/hearth-settings.png branding/icons/png/128x128/hearth-share.png branding/icons/png/128x128/hearth-sheets.png branding/icons/png/128x128/hearth-slides.png branding/icons/png/128x128/hearth-system-info.png branding/icons/png/128x128/hearth-task-manager.png branding/icons/png/128x128/hearth-tasks.png branding/icons/png/128x128/hearth-terminal.png branding/icons/png/128x128/hearth-text.png branding/icons/png/128x128/hearth-weather.png branding/icons/png/128x128/hearth-welcome.png branding/icons/png/128x128/hearth-write.png branding/icons/png/128x128/hearth.png /tmp/home/.local/share/icons/hicolor/128x128/apps/
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/16x16
++ mkdir -p /tmp/home/.local/share/icons/hicolor/16x16/apps
+++ basename branding/icons/png/16x16
++ cp branding/icons/png/16x16/hearth-accessibility.png branding/icons/png/16x16/hearth-apps.png branding/icons/png/16x16/hearth-browser.png branding/icons/png/16x16/hearth-calculator.png branding/icons/png/16x16/hearth-calendar.png branding/icons/png/16x16/hearth-camera.png branding/icons/png/16x16/hearth-claude-get.png branding/icons/png/16x16/hearth-clock.png branding/icons/png/16x16/hearth-connect.png branding/icons/png/16x16/hearth-contacts.png branding/icons/png/16x16/hearth-controller-lab.png branding/icons/png/16x16/hearth-debbox.png branding/icons/png/16x16/hearth-disk-usage.png branding/icons/png/16x16/hearth-disks.png branding/icons/png/16x16/hearth-documents.png branding/icons/png/16x16/hearth-emoji.png branding/icons/png/16x16/hearth-files.png branding/icons/png/16x16/hearth-fonts.png branding/icons/png/16x16/hearth-generic-app.png branding/icons/png/16x16/hearth-get-claude.png branding/icons/png/16x16/hearth-install.png branding/icons/png/16x16/hearth-installer.png branding/icons/png/16x16/hearth-logs.png branding/icons/png/16x16/hearth-maps.png branding/icons/png/16x16/hearth-mods.png branding/icons/png/16x16/hearth-nearby.png branding/icons/png/16x16/hearth-network.png branding/icons/png/16x16/hearth-notes.png branding/icons/png/16x16/hearth-paint.png branding/icons/png/16x16/hearth-passwords.png branding/icons/png/16x16/hearth-photos.png branding/icons/png/16x16/hearth-player.png branding/icons/png/16x16/hearth-printers.png branding/icons/png/16x16/hearth-recorder.png branding/icons/png/16x16/hearth-saves.png branding/icons/png/16x16/hearth-settings.png branding/icons/png/16x16/hearth-share.png branding/icons/png/16x16/hearth-sheets.png branding/icons/png/16x16/hearth-slides.png branding/icons/png/16x16/hearth-system-info.png branding/icons/png/16x16/hearth-task-manager.png branding/icons/png/16x16/hearth-tasks.png branding/icons/png/16x16/hearth-terminal.png branding/icons/png/16x16/hearth-text.png branding/icons/png/16x16/hearth-weather.png branding/icons/png/16x16/hearth-welcome.png branding/icons/png/16x16/hearth-write.png branding/icons/png/16x16/hearth.png /tmp/home/.local/share/icons/hicolor/16x16/apps/
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/24x24
++ mkdir -p /tmp/home/.local/share/icons/hicolor/24x24/apps
+++ basename branding/icons/png/24x24
++ cp branding/icons/png/24x24/hearth-accessibility.png branding/icons/png/24x24/hearth-apps.png branding/icons/png/24x24/hearth-browser.png branding/icons/png/24x24/hearth-calculator.png branding/icons/png/24x24/hearth-calendar.png branding/icons/png/24x24/hearth-camera.png branding/icons/png/24x24/hearth-claude-get.png branding/icons/png/24x24/hearth-clock.png branding/icons/png/24x24/hearth-connect.png branding/icons/png/24x24/hearth-contacts.png branding/icons/png/24x24/hearth-controller-lab.png branding/icons/png/24x24/hearth-debbox.png branding/icons/png/24x24/hearth-disk-usage.png branding/icons/png/24x24/hearth-disks.png branding/icons/png/24x24/hearth-documents.png branding/icons/png/24x24/hearth-emoji.png branding/icons/png/24x24/hearth-files.png branding/icons/png/24x24/hearth-fonts.png branding/icons/png/24x24/hearth-generic-app.png branding/icons/png/24x24/hearth-get-claude.png branding/icons/png/24x24/hearth-install.png branding/icons/png/24x24/hearth-installer.png branding/icons/png/24x24/hearth-logs.png branding/icons/png/24x24/hearth-maps.png branding/icons/png/24x24/hearth-mods.png branding/icons/png/24x24/hearth-nearby.png branding/icons/png/24x24/hearth-network.png branding/icons/png/24x24/hearth-notes.png branding/icons/png/24x24/hearth-paint.png branding/icons/png/24x24/hearth-passwords.png branding/icons/png/24x24/hearth-photos.png branding/icons/png/24x24/hearth-player.png branding/icons/png/24x24/hearth-printers.png branding/icons/png/24x24/hearth-recorder.png branding/icons/png/24x24/hearth-saves.png branding/icons/png/24x24/hearth-settings.png branding/icons/png/24x24/hearth-share.png branding/icons/png/24x24/hearth-sheets.png branding/icons/png/24x24/hearth-slides.png branding/icons/png/24x24/hearth-system-info.png branding/icons/png/24x24/hearth-task-manager.png branding/icons/png/24x24/hearth-tasks.png branding/icons/png/24x24/hearth-terminal.png branding/icons/png/24x24/hearth-text.png branding/icons/png/24x24/hearth-weather.png branding/icons/png/24x24/hearth-welcome.png branding/icons/png/24x24/hearth-write.png branding/icons/png/24x24/hearth.png /tmp/home/.local/share/icons/hicolor/24x24/apps/
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/256x256
++ mkdir -p /tmp/home/.local/share/icons/hicolor/256x256/apps
+++ basename branding/icons/png/256x256
++ cp branding/icons/png/256x256/hearth-accessibility.png branding/icons/png/256x256/hearth-apps.png branding/icons/png/256x256/hearth-browser.png branding/icons/png/256x256/hearth-calculator.png branding/icons/png/256x256/hearth-calendar.png branding/icons/png/256x256/hearth-camera.png branding/icons/png/256x256/hearth-claude-get.png branding/icons/png/256x256/hearth-clock.png branding/icons/png/256x256/hearth-connect.png branding/icons/png/256x256/hearth-contacts.png branding/icons/png/256x256/hearth-controller-lab.png branding/icons/png/256x256/hearth-debbox.png branding/icons/png/256x256/hearth-disk-usage.png branding/icons/png/256x256/hearth-disks.png branding/icons/png/256x256/hearth-documents.png branding/icons/png/256x256/hearth-emoji.png branding/icons/png/256x256/hearth-files.png branding/icons/png/256x256/hearth-fonts.png branding/icons/png/256x256/hearth-generic-app.png branding/icons/png/256x256/hearth-get-claude.png branding/icons/png/256x256/hearth-install.png branding/icons/png/256x256/hearth-installer.png branding/icons/png/256x256/hearth-logs.png branding/icons/png/256x256/hearth-maps.png branding/icons/png/256x256/hearth-mods.png branding/icons/png/256x256/hearth-nearby.png branding/icons/png/256x256/hearth-network.png branding/icons/png/256x256/hearth-notes.png branding/icons/png/256x256/hearth-paint.png branding/icons/png/256x256/hearth-passwords.png branding/icons/png/256x256/hearth-photos.png branding/icons/png/256x256/hearth-player.png branding/icons/png/256x256/hearth-printers.png branding/icons/png/256x256/hearth-recorder.png branding/icons/png/256x256/hearth-saves.png branding/icons/png/256x256/hearth-settings.png branding/icons/png/256x256/hearth-share.png branding/icons/png/256x256/hearth-sheets.png branding/icons/png/256x256/hearth-slides.png branding/icons/png/256x256/hearth-system-info.png branding/icons/png/256x256/hearth-task-manager.png branding/icons/png/256x256/hearth-tasks.png branding/icons/png/256x256/hearth-terminal.png branding/icons/png/256x256/hearth-text.png branding/icons/png/256x256/hearth-weather.png branding/icons/png/256x256/hearth-welcome.png branding/icons/png/256x256/hearth-write.png branding/icons/png/256x256/hearth.png /tmp/home/.local/share/icons/hicolor/256x256/apps/
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/32x32
++ mkdir -p /tmp/home/.local/share/icons/hicolor/32x32/apps
+++ basename branding/icons/png/32x32
++ cp branding/icons/png/32x32/hearth-accessibility.png branding/icons/png/32x32/hearth-apps.png branding/icons/png/32x32/hearth-browser.png branding/icons/png/32x32/hearth-calculator.png branding/icons/png/32x32/hearth-calendar.png branding/icons/png/32x32/hearth-camera.png branding/icons/png/32x32/hearth-claude-get.png branding/icons/png/32x32/hearth-clock.png branding/icons/png/32x32/hearth-connect.png branding/icons/png/32x32/hearth-contacts.png branding/icons/png/32x32/hearth-controller-lab.png branding/icons/png/32x32/hearth-debbox.png branding/icons/png/32x32/hearth-disk-usage.png branding/icons/png/32x32/hearth-disks.png branding/icons/png/32x32/hearth-documents.png branding/icons/png/32x32/hearth-emoji.png branding/icons/png/32x32/hearth-files.png branding/icons/png/32x32/hearth-fonts.png branding/icons/png/32x32/hearth-generic-app.png branding/icons/png/32x32/hearth-get-claude.png branding/icons/png/32x32/hearth-install.png branding/icons/png/32x32/hearth-installer.png branding/icons/png/32x32/hearth-logs.png branding/icons/png/32x32/hearth-maps.png branding/icons/png/32x32/hearth-mods.png branding/icons/png/32x32/hearth-nearby.png branding/icons/png/32x32/hearth-network.png branding/icons/png/32x32/hearth-notes.png branding/icons/png/32x32/hearth-paint.png branding/icons/png/32x32/hearth-passwords.png branding/icons/png/32x32/hearth-photos.png branding/icons/png/32x32/hearth-player.png branding/icons/png/32x32/hearth-printers.png branding/icons/png/32x32/hearth-recorder.png branding/icons/png/32x32/hearth-saves.png branding/icons/png/32x32/hearth-settings.png branding/icons/png/32x32/hearth-share.png branding/icons/png/32x32/hearth-sheets.png branding/icons/png/32x32/hearth-slides.png branding/icons/png/32x32/hearth-system-info.png branding/icons/png/32x32/hearth-task-manager.png branding/icons/png/32x32/hearth-tasks.png branding/icons/png/32x32/hearth-terminal.png branding/icons/png/32x32/hearth-text.png branding/icons/png/32x32/hearth-weather.png branding/icons/png/32x32/hearth-welcome.png branding/icons/png/32x32/hearth-write.png branding/icons/png/32x32/hearth.png /tmp/home/.local/share/icons/hicolor/32x32/apps/
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/48x48
++ mkdir -p /tmp/home/.local/share/icons/hicolor/48x48/apps
+++ basename branding/icons/png/48x48
++ cp branding/icons/png/48x48/hearth-accessibility.png branding/icons/png/48x48/hearth-apps.png branding/icons/png/48x48/hearth-browser.png branding/icons/png/48x48/hearth-calculator.png branding/icons/png/48x48/hearth-calendar.png branding/icons/png/48x48/hearth-camera.png branding/icons/png/48x48/hearth-claude-get.png branding/icons/png/48x48/hearth-clock.png branding/icons/png/48x48/hearth-connect.png branding/icons/png/48x48/hearth-contacts.png branding/icons/png/48x48/hearth-controller-lab.png branding/icons/png/48x48/hearth-debbox.png branding/icons/png/48x48/hearth-disk-usage.png branding/icons/png/48x48/hearth-disks.png branding/icons/png/48x48/hearth-documents.png branding/icons/png/48x48/hearth-emoji.png branding/icons/png/48x48/hearth-files.png branding/icons/png/48x48/hearth-fonts.png branding/icons/png/48x48/hearth-generic-app.png branding/icons/png/48x48/hearth-get-claude.png branding/icons/png/48x48/hearth-install.png branding/icons/png/48x48/hearth-installer.png branding/icons/png/48x48/hearth-logs.png branding/icons/png/48x48/hearth-maps.png branding/icons/png/48x48/hearth-mods.png branding/icons/png/48x48/hearth-nearby.png branding/icons/png/48x48/hearth-network.png branding/icons/png/48x48/hearth-notes.png branding/icons/png/48x48/hearth-paint.png branding/icons/png/48x48/hearth-passwords.png branding/icons/png/48x48/hearth-photos.png branding/icons/png/48x48/hearth-player.png branding/icons/png/48x48/hearth-printers.png branding/icons/png/48x48/hearth-recorder.png branding/icons/png/48x48/hearth-saves.png branding/icons/png/48x48/hearth-settings.png branding/icons/png/48x48/hearth-share.png branding/icons/png/48x48/hearth-sheets.png branding/icons/png/48x48/hearth-slides.png branding/icons/png/48x48/hearth-system-info.png branding/icons/png/48x48/hearth-task-manager.png branding/icons/png/48x48/hearth-tasks.png branding/icons/png/48x48/hearth-terminal.png branding/icons/png/48x48/hearth-text.png branding/icons/png/48x48/hearth-weather.png branding/icons/png/48x48/hearth-welcome.png branding/icons/png/48x48/hearth-write.png branding/icons/png/48x48/hearth.png /tmp/home/.local/share/icons/hicolor/48x48/apps/
++ for d in branding/icons/png/*x*
+++ basename branding/icons/png/64x64
++ mkdir -p /tmp/home/.local/share/icons/hicolor/64x64/apps
+++ basename branding/icons/png/64x64
++ cp branding/icons/png/64x64/hearth-accessibility.png branding/icons/png/64x64/hearth-apps.png branding/icons/png/64x64/hearth-browser.png branding/icons/png/64x64/hearth-calculator.png branding/icons/png/64x64/hearth-calendar.png branding/icons/png/64x64/hearth-camera.png branding/icons/png/64x64/hearth-claude-get.png branding/icons/png/64x64/hearth-clock.png branding/icons/png/64x64/hearth-connect.png branding/icons/png/64x64/hearth-contacts.png branding/icons/png/64x64/hearth-controller-lab.png branding/icons/png/64x64/hearth-debbox.png branding/icons/png/64x64/hearth-disk-usage.png branding/icons/png/64x64/hearth-disks.png branding/icons/png/64x64/hearth-documents.png branding/icons/png/64x64/hearth-emoji.png branding/icons/png/64x64/hearth-files.png branding/icons/png/64x64/hearth-fonts.png branding/icons/png/64x64/hearth-generic-app.png branding/icons/png/64x64/hearth-get-claude.png branding/icons/png/64x64/hearth-install.png branding/icons/png/64x64/hearth-installer.png branding/icons/png/64x64/hearth-logs.png branding/icons/png/64x64/hearth-maps.png branding/icons/png/64x64/hearth-mods.png branding/icons/png/64x64/hearth-nearby.png branding/icons/png/64x64/hearth-network.png branding/icons/png/64x64/hearth-notes.png branding/icons/png/64x64/hearth-paint.png branding/icons/png/64x64/hearth-passwords.png branding/icons/png/64x64/hearth-photos.png branding/icons/png/64x64/hearth-player.png branding/icons/png/64x64/hearth-printers.png branding/icons/png/64x64/hearth-recorder.png branding/icons/png/64x64/hearth-saves.png branding/icons/png/64x64/hearth-settings.png branding/icons/png/64x64/hearth-share.png branding/icons/png/64x64/hearth-sheets.png branding/icons/png/64x64/hearth-slides.png branding/icons/png/64x64/hearth-system-info.png branding/icons/png/64x64/hearth-task-manager.png branding/icons/png/64x64/hearth-tasks.png branding/icons/png/64x64/hearth-terminal.png branding/icons/png/64x64/hearth-text.png branding/icons/png/64x64/hearth-weather.png branding/icons/png/64x64/hearth-welcome.png branding/icons/png/64x64/hearth-write.png branding/icons/png/64x64/hearth.png /tmp/home/.local/share/icons/hicolor/64x64/apps/
++ mkdir -p /tmp/home/.local/share/icons/hicolor/scalable/apps
++ cp branding/icons/apps/hearth-accessibility.svg branding/icons/apps/hearth-apps.svg branding/icons/apps/hearth-browser.svg branding/icons/apps/hearth-calculator.svg branding/icons/apps/hearth-calendar.svg branding/icons/apps/hearth-camera.svg branding/icons/apps/hearth-claude-get.svg branding/icons/apps/hearth-clock.svg branding/icons/apps/hearth-connect.svg branding/icons/apps/hearth-contacts.svg branding/icons/apps/hearth-controller-lab.svg branding/icons/apps/hearth-debbox.svg branding/icons/apps/hearth-disk-usage.svg branding/icons/apps/hearth-disks.svg branding/icons/apps/hearth-documents.svg branding/icons/apps/hearth-emoji.svg branding/icons/apps/hearth-files.svg branding/icons/apps/hearth-fonts.svg branding/icons/apps/hearth-generic-app.svg branding/icons/apps/hearth-get-claude.svg branding/icons/apps/hearth-install.svg branding/icons/apps/hearth-installer.svg branding/icons/apps/hearth-logs.svg branding/icons/apps/hearth-maps.svg branding/icons/apps/hearth-mods.svg branding/icons/apps/hearth-nearby.svg branding/icons/apps/hearth-network.svg branding/icons/apps/hearth-notes.svg branding/icons/apps/hearth-paint.svg branding/icons/apps/hearth-passwords.svg branding/icons/apps/hearth-photos.svg branding/icons/apps/hearth-player.svg branding/icons/apps/hearth-printers.svg branding/icons/apps/hearth-recorder.svg branding/icons/apps/hearth-saves.svg branding/icons/apps/hearth-settings.svg branding/icons/apps/hearth-share.svg branding/icons/apps/hearth-sheets.svg branding/icons/apps/hearth-slides.svg branding/icons/apps/hearth-system-info.svg branding/icons/apps/hearth-task-manager.svg branding/icons/apps/hearth-tasks.svg branding/icons/apps/hearth-terminal.svg branding/icons/apps/hearth-text.svg branding/icons/apps/hearth-weather.svg branding/icons/apps/hearth-welcome.svg branding/icons/apps/hearth-write.svg branding/icons/apps/hearth.svg /tmp/home/.local/share/icons/hicolor/scalable/apps/
++ UF=/tmp/home/.local/share/flatpak/exports/share
++ SF=/var/lib/flatpak/exports/share
++ mkdir -p /tmp/home/.local/share/flatpak/exports/share/applications /tmp/home/.local/share/flatpak/exports/share/icons/hicolor/scalable/apps /var/lib/flatpak/exports/share/applications /var/lib/flatpak/exports/share/icons/hicolor/scalable/apps /tmp/home/.local/share/applications /tmp/home/.local/share/icons/hicolor/48x48/apps /usr/share/pixmaps /opt/icontest
++ entry 'Aa Flatpak (yours)' '/usr/bin/flatpak run --branch=stable --arch=x86_64 org.hearth.IconTest' org.hearth.IconTest 'StartupWMClass=icontest-window\n'
++ printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' 'Aa Flatpak (yours)' '/usr/bin/flatpak run --branch=stable --arch=x86_64 org.hearth.IconTest' org.hearth.IconTest 'StartupWMClass=icontest-window\n'
++ testicon '#2f9e44'
++ printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="4" width="56" height="56" rx="14" fill="%s"/><circle cx="32" cy="32" r="14" fill="#fff"/></svg>' '#2f9e44'
++ entry 'Aa Flatpak (system)' '/usr/bin/flatpak run org.hearth.SystemTest' org.hearth.SystemTest ''
++ printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' 'Aa Flatpak (system)' '/usr/bin/flatpak run org.hearth.SystemTest' org.hearth.SystemTest ''
++ testicon '#1971c2'
++ printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="4" width="56" height="56" rx="14" fill="%s"/><circle cx="32" cy="32" r="14" fill="#fff"/></svg>' '#1971c2'
++ entry 'Aa AppImage' /opt/icontest/app.AppImage appimagekit_icontest ''
++ printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' 'Aa AppImage' /opt/icontest/app.AppImage appimagekit_icontest ''
++ cp branding/icons/png/48x48/hearth-paint.png /tmp/home/.local/share/icons/hicolor/48x48/apps/appimagekit_icontest.png
++ entry 'Aa Pixmaps only' /opt/icontest/pix icontest-pixmap.png ''
++ printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' 'Aa Pixmaps only' /opt/icontest/pix icontest-pixmap.png ''
++ cp branding/icons/png/64x64/hearth-maps.png /usr/share/pixmaps/icontest-pixmap.png
++ entry 'Aa Absolute path' /opt/icontest/abs /opt/icontest/abs-icon.png ''
++ printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' 'Aa Absolute path' /opt/icontest/abs /opt/icontest/abs-icon.png ''
++ cp branding/icons/png/128x128/hearth-emoji.png /opt/icontest/abs-icon.png
++ entry 'Aa No icon' /opt/icontest/none icontest-missing ''
++ printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\n%b' 'Aa No icon' /opt/icontest/none icontest-missing ''
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d
++ echo XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
++ case ":$XDG_DATA_DIRS:" in
++ case ":$XDG_DATA_DIRS:" in
++ labwc -C hosts/linux/desktop/labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ grim shots/1-desktop.png
++ ipc quick toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call quick toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/2-quick-access.png
++ ipc quick toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call quick toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc menu open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call menu open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/3-hearth-menu.png
++ ipc menu close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call menu close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc launcher toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/4-launcher.png
++ ipc launcher toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc launcher section games
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher section games
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/4b-launcher-games.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc help toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call help toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/5-controls.png
++ ipc help toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call help toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ n=6
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page wifi
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page wifi
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/6-settings-wifi.png
++ n=7
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page bluetooth
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page bluetooth
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/7-settings-bluetooth.png
++ n=8
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page sound
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page sound
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/8-settings-sound.png
++ n=9
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page notifications
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page notifications
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/9-settings-notifications.png
++ n=10
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page display
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page display
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/10-settings-display.png
++ n=11
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page appearance
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page appearance
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/11-settings-appearance.png
++ n=12
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page power
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page power
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/12-settings-power.png
++ n=13
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page controller
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page controller
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/13-settings-controller.png
++ n=14
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page keyboard
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page keyboard
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/14-settings-keyboard.png
++ n=15
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page mouse
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page mouse
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/15-settings-mouse.png
++ n=16
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page defaults
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page defaults
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/16-settings-defaults.png
++ n=17
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page signin
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page signin
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/17-settings-signin.png
++ n=18
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page browser
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page browser
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/18-settings-browser.png
++ n=19
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page claude
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page claude
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/19-settings-claude.png
++ n=20
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page updates
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page updates
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/20-settings-updates.png
++ n=21
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page about
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page about
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/21-settings-about.png
++ n=22
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page install
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page install
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/22-settings-install.png
++ n=23
++ for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps
++ ipc settings page apps
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page apps
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/23-settings-apps.png
++ n=24
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grep -q 'terminal now: foot.desktop True' shots/default-apps.txt
++ ipc settings page accessibility
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page accessibility
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/24-settings-accessibility.png
++ n=25
++ python3 hosts/linux/desktop/shell/hearth-access status
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ command -v wtype
++ wtype -M logo -k equal -m logo
++ sleep 1
++ wtype -M logo -k equal -m logo
++ sleep 2
++ grim shots/25-magnifier.png
++ n=26
++ wtype -M logo -k minus -m logo
++ sleep 1
++ wtype -M logo -k minus -m logo
++ sleep 1
++ labwc --version
++ ipc power menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call power menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/26-power-menu.png
++ ipc power close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call power close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ mkdir -p /tmp/home/Desktop/Projects
++ echo hi
++ sleep 4
++ ipc desktop menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call desktop menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/27-desktop-menu.png
++ ipc desktop close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call desktop close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc calendar open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call calendar open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/28-calendar.png
++ ipc calendar close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call calendar close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ mkdir -p /tmp/home/Documents/Reports /tmp/home/Templates
++ printf 'a,b\n1,2\n'
++ head -c 300000 /dev/urandom
++ echo letter
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-1-icons.png
++ ipc filemanager view details
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view details
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager select data.csv
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager select data.csv
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-2-details.png
++ ipc filemanager menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-3-menu.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager view compact
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view compact
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-4-compact.png
++ ipc filemanager search data
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager search data
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-5-search.png
++ ipc filemanager view grid
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view grid
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc fileprops open /tmp/home/Desktop/notes.txt
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops open /tmp/home/Desktop/notes.txt
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-6-properties.png
++ ipc fileprops tab permissions
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops tab permissions
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-7-permissions.png
++ ipc fileprops tab checksums
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops tab checksums
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-8-checksums.png
++ ipc fileprops open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops open /tmp/home/Documents
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-9-folder-properties.png
++ ipc fileprops close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call fileprops close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ mkdir -p /tmp/home/Downloads
++ python3 hosts/linux/test/make_test_deb.py /tmp/home/Downloads/hearth-hello.deb
++ ipc debs open /tmp/home/Downloads/hearth-hello.deb
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call debs open /tmp/home/Downloads/hearth-hello.deb
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 2
++ grim shots/deb-1-installer.png
++ ipc debs close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call debs close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc friends open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call friends open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 2
++ grim shots/friends-1-panel.png
++ wtype -k Down -k Down -k Return
++ sleep 2
++ grim shots/friends-2-chat.png
++ ipc friends close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call friends close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc files open /tmp/home/Downloads
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Downloads
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager select hearth-hello.deb
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager select hearth-hello.deb
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/deb-2-files-menu.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ n=29
++ printf '#!/bin/sh\necho hello\n'
++ printf '[Desktop Entry]\nType=Application\nName=Steam\nComment=Games\nExec=steam -silent %%U\n'
++ printf 'volume = 3\n'
++ printf 'plain words\n'
++ printf '#!/bin/sh\necho "$@" > "$HOME/hearth-text-args"\n'
++ chmod +x /tmp/fakebin/hearth-text
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager view details
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager view details
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager activate run-me.sh
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager activate run-me.sh
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-10-open-script.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager select run-me.sh
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager select run-me.sh
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager menu
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-11-script-menu.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager activate Steam.desktop
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager activate Steam.desktop
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/files-12-open-desktop-file.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc filemanager activate NOTES
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager activate NOTES
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ sleep 2
++ grep -q NOTES /tmp/home/hearth-text-args
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ ipc desktop itemMenu notes.txt
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call desktop itemMenu notes.txt
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/29-desktop-item-menu.png
++ ipc desktop close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call desktop close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ n=30
++ sleep 3
++ timeout 20 notify-send -a 'Test App' -A default=Open -A 'later=Remind me' 'Hello from a test' 'Notifications pop up in the corner'
++ grim shots/30-notification.png
++ n=31
++ notify-send -a 'Other App' 'Second one' 'For the count on the bell'
++ sleep 8
++ grim shots/31-taskbar-bell.png
++ n=32
++ ipc calendar open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call calendar open
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/32-notification-list.png
++ ipc calendar close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call calendar close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ n=33
++ sh /__w/hearth-os/hearth-os/hosts/linux/desktop/open.sh screenshot
++ sleep 3
++ grim shots/33-screenshot-notification.png
++ n=34
++ ls -la /tmp/home/Pictures/Screenshots
++ wl-paste --list-types
++ command -v wtype
++ wtype -M logo -k i -m logo
++ sleep 3
++ grim shots/34-super-i-settings.png
++ n=35
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ wtype -M logo -k a -m logo
++ sleep 3
++ grim shots/35-super-a-quick.png
++ n=36
++ ipc quick toggle
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call quick toggle
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ command -v foot
++ command -v wtype
++ rm -f /tmp/home/osk-typed.txt
++ OSKFOOT=1498
++ sleep 4
++ foot --app-id osk-test --title 'Typing test' sh -c 'stty -echo; cat > /tmp/home/osk-typed.txt'
++ kb open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard open
++ tail -n1
+for more information.
++ sleep 2
++ kb tap h
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard tap h
++ tail -n1
+for more information.
++ kb tap e
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard tap e
++ tail -n1
+for more information.
++ kb tap l
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard tap l
++ tail -n1
+for more information.
++ sleep 1
++ kb state
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
++ grim shots/osk-1-suggestions.png
++ kb press up
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press up
++ tail -n1
+for more information.
++ kb press up
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press up
++ tail -n1
+for more information.
++ kb press up
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press up
++ tail -n1
+for more information.
++ kb press left
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press left
++ tail -n1
+for more information.
++ kb press a
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press a
++ tail -n1
+for more information.
++ sleep 0.5
++ kb press x
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press x
+for more information.
++ kb press y
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press y
++ tail -n1
+for more information.
++ kb select e
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard select e
+for more information.
++ sleep 0.3
++ kb state
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
++ kb hold a 750
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard hold a 750
++ tail -n1
+for more information.
++ sleep 1.2
++ grim shots/osk-2-accents.png
++ kb press right
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press right
+for more information.
++ kb press a
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press a
+for more information.
++ sleep 0.5
++ kb press l3
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press l3
+for more information.
++ sleep 0.5
++ grim shots/osk-3-emoji.png
++ kb press a
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press a
++ tail -n1
+for more information.
++ kb press l3
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press l3
+for more information.
++ kb stick 0 -1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard stick 0 -1
++ tail -n1
+for more information.
++ sleep 0.5
++ grim shots/osk-4-ember-wheel.png
++ kb press y
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press y
++ tail -n1
+for more information.
++ kb stick 0 0
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard stick 0 0
++ tail -n1
+for more information.
++ kb press menu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press menu
++ tail -n1
+for more information.
++ sleep 2
++ kb state
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
++ tail -n1
++ kb setting theme daylight
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard setting theme daylight
++ tail -n1
+for more information.
++ kb setting shape split
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard setting shape split
+for more information.
++ sleep 1
++ grim shots/osk-5-split-daylight.png
++ kb setting theme hearth
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard setting theme hearth
++ tail -n1
+for more information.
++ kb setting shape full
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard setting shape full
++ tail -n1
+for more information.
++ kb press b
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press b
++ tail -n1
+for more information.
++ sleep 1
++ kill 1498
++ sleep 1
+++ cat /tmp/home/osk-typed.txt
++ got=$'hello \303\250\360\237\230\204a'
++ printf %s $'hello \303\250\360\237\230\204a'
++ want=$'hello \303\250\360\237\230\204a'
++ '[' $'hello \303\250\360\237\230\204a' '!=' $'hello \303\250\360\237\230\204a' ']'
++ echo $'on-screen keyboard: typed \'hello \303\250\360\237\230\204a\' into foot'
+on-screen keyboard: typed 'hello è😄a' into foot
++ grep -q '"open":false'
+++ kb state
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
+++ tail -n1
++ icons_ok=1
++ :
++ check 'Flatpak (yours), by Icon=' resolve org.hearth.IconTest ''
++ what='Flatpak (yours), by Icon='
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve org.hearth.IconTest ''
+++ tail -n1
++ out=image://icon/org.hearth.IconTest
++ echo 'Flatpak (yours), by Icon=: image://icon/org.hearth.IconTest'
++ '[' -z image://icon/org.hearth.IconTest ']'
++ printf %s image://icon/org.hearth.IconTest
++ grep -qiE 'error|not found|no such'
++ check 'Flatpak (system), by Icon=' resolve org.hearth.SystemTest ''
++ what='Flatpak (system), by Icon='
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve org.hearth.SystemTest ''
+++ tail -n1
++ out=image://icon/org.hearth.SystemTest
++ echo 'Flatpak (system), by Icon=: image://icon/org.hearth.SystemTest'
++ '[' -z image://icon/org.hearth.SystemTest ']'
++ printf %s image://icon/org.hearth.SystemTest
++ grep -qiE 'error|not found|no such'
++ check 'Flatpak window, by app id only' resolve '' org.hearth.IconTest
++ what='Flatpak window, by app id only'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve '' org.hearth.IconTest
+++ tail -n1
++ out=image://icon/org.hearth.IconTest
++ echo 'Flatpak window, by app id only: image://icon/org.hearth.IconTest'
++ '[' -z image://icon/org.hearth.IconTest ']'
++ printf %s image://icon/org.hearth.IconTest
++ grep -qiE 'error|not found|no such'
++ check 'Flatpak window, by StartupWMClass' entry icontest-window
++ what='Flatpak window, by StartupWMClass'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons entry icontest-window
+++ tail -n1
++ out='org.hearth.IconTest org.hearth.IconTest'
++ echo 'Flatpak window, by StartupWMClass: org.hearth.IconTest org.hearth.IconTest'
++ '[' -z 'org.hearth.IconTest org.hearth.IconTest' ']'
++ printf %s 'org.hearth.IconTest org.hearth.IconTest'
++ grep -qiE 'error|not found|no such'
++ check 'Flatpak window, entry by app id' entry org.hearth.IconTest
++ what='Flatpak window, entry by app id'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons entry org.hearth.IconTest
+++ tail -n1
++ out='org.hearth.IconTest org.hearth.IconTest'
++ echo 'Flatpak window, entry by app id: org.hearth.IconTest org.hearth.IconTest'
++ '[' -z 'org.hearth.IconTest org.hearth.IconTest' ']'
++ printf %s 'org.hearth.IconTest org.hearth.IconTest'
++ grep -qiE 'error|not found|no such'
++ check 'AppImage (~/.local/share/icons)' resolve appimagekit_icontest ''
++ what='AppImage (~/.local/share/icons)'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve appimagekit_icontest ''
+++ tail -n1
++ out=image://icon/appimagekit_icontest
++ echo 'AppImage (~/.local/share/icons): image://icon/appimagekit_icontest'
++ '[' -z image://icon/appimagekit_icontest ']'
++ printf %s image://icon/appimagekit_icontest
++ grep -qiE 'error|not found|no such'
++ check 'Pixmaps only (Icon=name.png)' resolve icontest-pixmap.png ''
++ what='Pixmaps only (Icon=name.png)'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve icontest-pixmap.png ''
+++ tail -n1
++ out=image://icon/icontest-pixmap.png
++ echo 'Pixmaps only (Icon=name.png): image://icon/icontest-pixmap.png'
++ '[' -z image://icon/icontest-pixmap.png ']'
++ grep -qiE 'error|not found|no such'
++ printf %s image://icon/icontest-pixmap.png
++ check 'Absolute path' resolve /opt/icontest/abs-icon.png ''
++ what='Absolute path'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve /opt/icontest/abs-icon.png ''
+++ tail -n1
++ out=file:///opt/icontest/abs-icon.png
++ echo 'Absolute path: file:///opt/icontest/abs-icon.png'
++ '[' -z file:///opt/icontest/abs-icon.png ']'
++ printf %s file:///opt/icontest/abs-icon.png
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth' resolve hearth ''
++ what='Hearth icon set: hearth'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth ''
+++ tail -n1
++ out=image://icon/hearth
++ echo 'Hearth icon set: hearth: image://icon/hearth'
++ '[' -z image://icon/hearth ']'
++ printf %s image://icon/hearth
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-settings' resolve hearth-settings ''
++ what='Hearth icon set: hearth-settings'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-settings ''
+++ tail -n1
++ out=image://icon/hearth-settings
++ echo 'Hearth icon set: hearth-settings: image://icon/hearth-settings'
++ '[' -z image://icon/hearth-settings ']'
++ printf %s image://icon/hearth-settings
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-files' resolve hearth-files ''
++ what='Hearth icon set: hearth-files'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-files ''
+++ tail -n1
++ out=image://icon/hearth-files
++ echo 'Hearth icon set: hearth-files: image://icon/hearth-files'
++ '[' -z image://icon/hearth-files ']'
++ printf %s image://icon/hearth-files
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-terminal' resolve hearth-terminal ''
++ what='Hearth icon set: hearth-terminal'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-terminal ''
+++ tail -n1
++ out=image://icon/hearth-terminal
++ echo 'Hearth icon set: hearth-terminal: image://icon/hearth-terminal'
++ '[' -z image://icon/hearth-terminal ']'
++ printf %s image://icon/hearth-terminal
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-disks' resolve hearth-disks ''
++ what='Hearth icon set: hearth-disks'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-disks ''
+++ tail -n1
++ out=image://icon/hearth-disks
++ echo 'Hearth icon set: hearth-disks: image://icon/hearth-disks'
++ '[' -z image://icon/hearth-disks ']'
++ printf %s image://icon/hearth-disks
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-browser' resolve hearth-browser ''
++ what='Hearth icon set: hearth-browser'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-browser ''
+++ tail -n1
++ out=image://icon/hearth-browser
++ echo 'Hearth icon set: hearth-browser: image://icon/hearth-browser'
++ '[' -z image://icon/hearth-browser ']'
++ printf %s image://icon/hearth-browser
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-tasks' resolve hearth-tasks ''
++ what='Hearth icon set: hearth-tasks'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-tasks ''
+++ tail -n1
++ out=image://icon/hearth-tasks
++ echo 'Hearth icon set: hearth-tasks: image://icon/hearth-tasks'
++ '[' -z image://icon/hearth-tasks ']'
++ printf %s image://icon/hearth-tasks
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-apps' resolve hearth-apps ''
++ what='Hearth icon set: hearth-apps'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-apps ''
+++ tail -n1
++ out=image://icon/hearth-apps
++ echo 'Hearth icon set: hearth-apps: image://icon/hearth-apps'
++ '[' -z image://icon/hearth-apps ']'
++ printf %s image://icon/hearth-apps
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-installer' resolve hearth-installer ''
++ what='Hearth icon set: hearth-installer'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-installer ''
+++ tail -n1
++ out=image://icon/hearth-installer
++ echo 'Hearth icon set: hearth-installer: image://icon/hearth-installer'
++ '[' -z image://icon/hearth-installer ']'
++ printf %s image://icon/hearth-installer
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-text' resolve hearth-text ''
++ what='Hearth icon set: hearth-text'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-text ''
+++ tail -n1
++ out=image://icon/hearth-text
++ echo 'Hearth icon set: hearth-text: image://icon/hearth-text'
++ '[' -z image://icon/hearth-text ']'
++ grep -qiE 'error|not found|no such'
++ printf %s image://icon/hearth-text
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-photos' resolve hearth-photos ''
++ what='Hearth icon set: hearth-photos'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-photos ''
+++ tail -n1
++ out=image://icon/hearth-photos
++ echo 'Hearth icon set: hearth-photos: image://icon/hearth-photos'
++ '[' -z image://icon/hearth-photos ']'
++ printf %s image://icon/hearth-photos
++ grep -qiE 'error|not found|no such'
++ for n in hearth hearth-settings hearth-files hearth-terminal hearth-disks hearth-browser hearth-tasks hearth-apps hearth-installer hearth-text hearth-photos hearth-generic-app
++ check 'Hearth icon set: hearth-generic-app' resolve hearth-generic-app ''
++ what='Hearth icon set: hearth-generic-app'
++ shift
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call icons resolve hearth-generic-app ''
+++ tail -n1
++ out=image://icon/hearth-generic-app
++ echo 'Hearth icon set: hearth-generic-app: image://icon/hearth-generic-app'
++ '[' -z image://icon/hearth-generic-app ']'
++ printf %s image://icon/hearth-generic-app
++ grep -qiE 'error|not found|no such'
++ ipc launcher section apps
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher section apps
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ grim shots/icons-1-launcher.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 3
++ command -v foot
++ foot --app-id org.hearth.IconTest --title 'Flatpak window' sh -c 'sleep 60'
++ foot --app-id icontest-window --title 'StartupWMClass window' sh -c 'sleep 60'
++ sleep 5
++ foot --app-id hearth-terminal --title 'Hearth Terminal' sh -c 'sleep 60'
++ grim shots/icons-2-taskbar.png
++ grim -g '0,1010 1920x70' shots/icons-3-taskbar-closeup.png
++ sleep 3
++ timeout 15 notify-send -a 'Flatpak test' -h string:desktop-entry:org.hearth.IconTest 'From a Flatpak app' 'Its icon comes from its desktop entry'
++ grim shots/icons-4-notification.png
++ '[' 1 = 1 ']'
++ '[' '!' -e /tmp/home/autostarted ']'
++ '[' -e /tmp/home/steam-started ']'
++ export XDG_CURRENT_DESKTOP=Nimbus
++ XDG_CURRENT_DESKTOP=Nimbus
+++ sed -n '/^# >>> portal dialogs/,/^# <<< portal dialogs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> portal dialogs\n[ -z "${GTK_USE_PORTAL+x}" ] && export GTK_USE_PORTAL=1\ncase ",${GDK_DEBUG:-}," in *,portals,*) ;; *) export GDK_DEBUG="${GDK_DEBUG:+$GDK_DEBUG,}portals" ;; esac\nif [ -z "${QT_QPA_PLATFORMTHEME+x}" ]; then\n  for d in /usr/lib64/qt6/plugins /usr/lib/qt6/plugins /usr/lib/*-linux-gnu*/qt6/plugins; do\n    if [ -e "$d/platformthemes/libqxdgdesktopportal.so" ]; then export QT_QPA_PLATFORMTHEME=xdgdesktopportal; break; fi\n  done\nfi\n# <<< portal dialogs'
+++ '[' -z '' ']'
+++ export GTK_USE_PORTAL=1
+++ GTK_USE_PORTAL=1
+++ case ",${GDK_DEBUG:-}," in
+++ export GDK_DEBUG=portals
+++ GDK_DEBUG=portals
+++ '[' -z '' ']'
+++ for d in /usr/lib64/qt6/plugins /usr/lib/qt6/plugins /usr/lib/*-linux-gnu*/qt6/plugins
+++ '[' -e /usr/lib64/qt6/plugins/platformthemes/libqxdgdesktopportal.so ']'
+++ export QT_QPA_PLATFORMTHEME=xdgdesktopportal
+++ QT_QPA_PLATFORMTHEME=xdgdesktopportal
+++ break
++ echo 'GTK_USE_PORTAL=1 GDK_DEBUG=portals QT_QPA_PLATFORMTHEME=xdgdesktopportal'
+GTK_USE_PORTAL=1 GDK_DEBUG=portals QT_QPA_PLATFORMTHEME=xdgdesktopportal
++ '[' 1 = 1 ']'
++ '[' portals = portals ']'
++ unset QT_QPA_PLATFORMTHEME
++ dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_RUNTIME_DIR HOME PATH QT_QUICK_BACKEND NIMBUS_SHARE XDG_DATA_DIRS
++ XDP=
++ for x in /usr/libexec/xdg-desktop-portal /usr/lib/xdg-desktop-portal
++ '[' -x /usr/libexec/xdg-desktop-portal ']'
++ XDP=/usr/libexec/xdg-desktop-portal
++ break
++ '[' -n /usr/libexec/xdg-desktop-portal ']'
++ python3 -c 'import gi'
++ /usr/libexec/xdg-desktop-portal -r -v
++ sleep 4
++ python3 hosts/linux/desktop/shell/hearth-portal filemanager1 --replace
++ mkdir -p /tmp/home/Documents/Reports
++ printf 'a,b\n1,2\n'
++ head -c 3000 /dev/urandom
++ timeout 600 python3 hosts/linux/test/portal_e2e.py /tmp/home/Documents shots
++ cat shots/file-chooser.txt
+ok    the picker opened for OpenFile, in the folder the app asked for: {"picking": true, "path": "/tmp/home/Documents", "entries": ["Reports", "data.csv"], "name": "", "filter": 0, "overlay": "", "title": "Open a spreadsheet"}
+ok    the picker shows the app's title: Open a spreadsheet
+ok    the filter shows folders and .csv files only: ["Reports", "data.csv"]
+ok    OpenFile returns the picked file: [0, {"current_filter": ["Spreadsheets", [[0, "*.csv"], [1, "text/csv"]]], "uris": ["file:///tmp/home/Documents/data.csv"]}]
+ok    OpenFile says which filter was on: [0, {"current_filter": ["Spreadsheets", [[0, "*.csv"], [1, "text/csv"]]], "uris": ["file:///tmp/home/Documents/data.csv"]}]
+ok    the picker opened for SaveFile with the suggested name: {"picking": true, "path": "/tmp/home/Documents", "entries": ["Reports", "backup.bin", "data.csv", "game.conf", "NOTES", "run-me.sh", "Steam.desktop"], "name": "Untitled.txt", "filter": -1, "overlay": "", "title": "Save the report"}
+ok    SaveFile returns the new file: [0, {"uris": ["file:///tmp/home/Documents/saved%20report.txt"]}]
+ok    saving over a file asks before replacing it: {"picking": true, "path": "/tmp/home/Documents", "entries": ["Reports", "backup.bin", "data.csv", "game.conf", "NOTES", "run-me.sh", "Steam.desktop"], "name": "data.csv", "filter": -1, "overlay": "confirm", "title": "Test"}
+ok    …and returns it once you say Replace: [0, {"uris": ["file:///tmp/home/Documents/data.csv"]}]
+ok    OpenFile in folder mode returns the folder: [0, {"uris": ["file:///tmp/home/Documents"]}]
+ok    Cancel tells the app it was cancelled: [1, {"uris": []}]
+ok    a GTK 3 app (GTK_USE_PORTAL=1) gets Hearth Files as its Open dialog: 
+(-c:1957): Gdk-WARNING **: 21:32:04.684: Failed to read portal settings: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop
+WARNING: Glycin running without sandbox.
+
+ok    …and the file picked in it: /tmp/home/Documents/data.csv
+
+(-c:1957): Gdk-WARNING **: 21:32:04.684: Failed to read portal settings: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop
+WARNING: Glycin running without sandbox.
+
+ok    "Show in folder" (FileManager1.ShowItems) opens Hearth Files at the file: /tmp/home/Documents|data.csv
+0 failed
++ grep '^::error' shots/file-chooser.txt
++ true
++ cp /tmp/home/.local/share/nimbus/picker.log shots/picker.log
+++ grep -E 'TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load' shots/picker.log
+++ head -8
+++ cut -c1-200
+++ tr '\n' '|'
+++ true
++ pbad=
++ '[' -z '' ']'
++ cp /tmp/xdg/nimbus-shell.log shots/nimbus-shell.log
++ ls /tmp/xdg
++ pgrep -af 'quickshell|/qs( |$)'
++ set +x

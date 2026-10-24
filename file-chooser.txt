@@ -1,0 +1,22 @@
+ok    the picker opened for OpenFile, in the folder the app asked for: {"picking": true, "path": "/tmp/home/Documents", "entries": ["Reports", "data.csv"], "name": "", "filter": 0, "overlay": "", "title": "Open a spreadsheet"}
+ok    the picker shows the app's title: Open a spreadsheet
+ok    the filter shows folders and .csv files only: ["Reports", "data.csv"]
+ok    OpenFile returns the picked file: [0, {"current_filter": ["Spreadsheets", [[0, "*.csv"], [1, "text/csv"]]], "uris": ["file:///tmp/home/Documents/data.csv"]}]
+ok    OpenFile says which filter was on: [0, {"current_filter": ["Spreadsheets", [[0, "*.csv"], [1, "text/csv"]]], "uris": ["file:///tmp/home/Documents/data.csv"]}]
+ok    the picker opened for SaveFile with the suggested name: {"picking": true, "path": "/tmp/home/Documents", "entries": ["Reports", "backup.bin", "data.csv", "game.conf", "NOTES", "run-me.sh", "Steam.desktop"], "name": "Untitled.txt", "filter": -1, "overlay": "", "title": "Save the report"}
+ok    SaveFile returns the new file: [0, {"uris": ["file:///tmp/home/Documents/saved%20report.txt"]}]
+ok    saving over a file asks before replacing it: {"picking": true, "path": "/tmp/home/Documents", "entries": ["Reports", "backup.bin", "data.csv", "game.conf", "NOTES", "run-me.sh", "Steam.desktop"], "name": "data.csv", "filter": -1, "overlay": "confirm", "title": "Test"}
+ok    …and returns it once you say Replace: [0, {"uris": ["file:///tmp/home/Documents/data.csv"]}]
+ok    OpenFile in folder mode returns the folder: [0, {"uris": ["file:///tmp/home/Documents"]}]
+ok    Cancel tells the app it was cancelled: [1, {"uris": []}]
+ok    a GTK 3 app (GTK_USE_PORTAL=1) gets Hearth Files as its Open dialog: 
+(-c:1957): Gdk-WARNING **: 21:32:04.684: Failed to read portal settings: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop
+WARNING: Glycin running without sandbox.
+
+ok    …and the file picked in it: /tmp/home/Documents/data.csv
+
+(-c:1957): Gdk-WARNING **: 21:32:04.684: Failed to read portal settings: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop
+WARNING: Glycin running without sandbox.
+
+ok    "Show in folder" (FileManager1.ShowItems) opens Hearth Files at the file: /tmp/home/Documents|data.csv
+0 failed
