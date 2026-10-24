@@ -184,7 +184,7 @@ pub fn install(home: &Path, app_id: u32, title: &str, library: &Path) -> Result<
         if flags & FULLY_INSTALLED != 0 { return Err(format!("{title} is already installed.")); }
         return Ok(json!({"silent": true, "waiting": false, "already": true}));
     }
-    let owner = crate::steam_owned::current_id64(&steam).ok_or("Sign in to Steam first (Library › Stores).")?;
+    let owner = crate::steam_owned::current_id64(home, &steam).ok_or("Sign in to Steam first (Library › Stores).")?;
     if !crate::steam::libraries(&steam).iter().any(|l| l == library) { return Err("That folder isn't a Steam library anymore. Pick another one in Library › Stores.".into()); }
     let wanted = [app_id].into_iter().collect();
     let info = crate::steam_owned::appinfo(&steam.join("appcache/appinfo.vdf"), &wanted).remove(&app_id).unwrap_or_default();
@@ -509,7 +509,7 @@ pub fn sign_state(home: &Path) -> SignState {
     let reg = [crate::paths::home().join(".steam/registry.vdf"), home.join(".var/app/com.valvesoftware.Steam/.steam/registry.vdf")]
         .into_iter().find_map(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
     let auto = crate::vdf::parse(&reg).str(&["Registry", "HKCU", "Software", "Valve", "Steam", "AutoLoginUser"]).map(str::to_string).filter(|s| !s.is_empty());
-    SignState { recent: crate::steam_owned::current_id64(&steam), users_changed: changed, auto }
+    SignState { recent: crate::steam::find_account(home, &steam, false).ok().map(|(id, _)| id), users_changed: changed, auto }
 }
 
 /// Signed in since `before`: an account is marked most recent and Steam wrote its account list (or switched the

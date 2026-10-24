@@ -1,12 +1,13 @@
 #!/bin/sh
 # Opens the user's terminal, file manager, or takes a screenshot, using whatever is installed.
-# The terminal: $TERMINAL if you set one, then Hearth Terminal (hosts/hearth-terminal), then foot and the others.
+# The terminal: $TERMINAL if you set one, then the one picked in Settings › Default apps, then Hearth Terminal (hosts/hearth-terminal), then foot and the others.
 # Paths go to the commands through the environment ("$HOME", "$SHOT"), never pasted into them, so a folder or
 # name with a quote or a space in it (O'Brien, "Mes images") works.
 #   open.sh terminal | files
 #   open.sh screenshot             the whole screen (every screen)
 #   open.sh screenshot-region      drag a box around what you want (slurp); Esc cancels
 #   open.sh screenshot-clipboard   the whole screen, to the clipboard only (no file)
+#   open.sh record | record-area | replay-save   Hearth Recorder's shortcuts (see the end)
 # Screenshots are saved in Pictures/Screenshots, copied to the clipboard (wl-copy), and a notification says so
 # (click it to open the picture).
 first() { for c in "$@"; do command -v "${c%% *}" >/dev/null 2>&1 && { exec sh -c "$c"; }; done; }
@@ -40,7 +41,10 @@ done_shot() {
 fail_shot() { rm -f "$SHOT"; [ -n "$1" ] && notify-send -a Screenshot "Screenshot" "$1" 2>/dev/null; exit 1; }
 
 case "$1" in
-  terminal)   first "$TERMINAL" hearth-terminal foot alacritty kitty wezterm konsole gnome-terminal xfce4-terminal xterm ;;
+  terminal)   # The one picked in Settings › Default apps › Terminal (~/.config/nimbus-xdg-terminals.list), if any.
+              if [ -z "$TERMINAL" ] && [ -s "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus-xdg-terminals.list" ] \
+                 && python3 "$(dirname "$0")/shell/hearth-system" terminal-open >/dev/null 2>&1; then exit 0; fi
+              first "$TERMINAL" hearth-terminal foot alacritty kitty wezterm konsole gnome-terminal xfce4-terminal xterm ;;
   files)      first "/usr/bin/hearth-filemanager" 'xdg-open "$HOME"' dolphin nautilus thunar pcmanfm-qt pcmanfm nemo ;;
   # A file's folder in the file manager (the screenshot notification's "Show in folder").
   files-at)   export FILE="$2"; DIR=$(dirname "$2"); export DIR
@@ -65,4 +69,14 @@ case "$1" in
               have grim && have wl-copy || exit 1
               grim - | wl-copy --type image/png
               notify-send -a Screenshot -t 2500 "Screenshot copied" "Paste it into any app" 2>/dev/null ;;
+  # ---- Hearth Recorder (hosts/hearth-recorder), from rc.xml's Super+Alt+R / Super+Alt+Shift+R / Super+Alt+G: it says
+  # what happened with its own notifications (Recording, Recording saved with Open and Show in folder, Replay saved).
+  record|record-area|replay-save)
+              if ! have hearth-recorder; then notify-send -a Recorder "Recorder" "Hearth Recorder isn't installed" 2>/dev/null; exit 1; fi
+              case "$1" in
+                record)      exec hearth-recorder --toggle ;;
+                record-area) exec hearth-recorder --toggle --area ;;
+                replay-save) exec hearth-recorder --save-replay ;;
+              esac ;;
+  # ---- end of Hearth Recorder
 esac

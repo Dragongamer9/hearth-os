@@ -63,6 +63,19 @@ pub type SignInFn = std::sync::Arc<dyn Fn(&crate::stores::SignIn) -> Option<Stri
 pub const DEFERRED: &str = "__deferred";
 const WIFI_BUSY_TEXT: &str = "Wi-Fi is already busy (looking for networks or connecting). Try again in a moment.";
 
+// ==== Hearth Recorder (hosts/hearth-recorder): Quick Access records the game and saves instant replays through
+// Recorder's own command line, which answers in JSON ({"ok": false, "error": ...} when it can't).
+fn recorder_cli(args: &[&str]) -> Result<Value, String> {
+    if !crate::system::has("hearth-recorder") { return Err("Hearth Recorder isn't installed".into()); }
+    let mut a = args.to_vec();
+    a.push("--json");
+    let text = match crate::system::run_timeout("hearth-recorder", &a, std::time::Duration::from_secs(70)) { Ok(t) => t, Err(e) => e };
+    let v: Value = serde_json::from_str(text.trim()).map_err(|_| text.trim().to_string())?;
+    if v["ok"] == false { return Err(v["error"].as_str().unwrap_or("Recorder couldn't do that").to_string()); }
+    Ok(v)
+}
+// ==== end of Hearth Recorder
+
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         let store = Store::open(paths::data_dir().join("library.json"));
@@ -78,8 +91,8 @@ impl Bridge {
         // The Steam games on your account (steam_owned.rs), fetched again when older than 12 hours.
         if b.library.store.source_on("steam") {
             let home = b.library.home.clone();
-            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(20)); crate::steam_owned::refresh(&home, false); });
-        }
+            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(20)); let _ = crate::steam_owned::refresh(&home, false); });
+        } else { crate::steam::note("source", "Steam games are turned off (Settings › Library): Hearth doesn't look for them"); }
         b
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
@@ -134,7 +147,7 @@ impl Bridge {
             "steamSignedIn" => {
                 (self.host)("comeBack", &Value::Null);
                 let (name, _, _) = self.steam_account();
-                crate::steam_owned::refresh(&self.library.home, true);
+                let _ = crate::steam_owned::refresh(&self.library.home, true);
                 self.library.scan();
                 out.push(Bridge::event("steam.signedIn", json!({"name": name})));
                 out.push(Bridge::event("accounts.changed", json!({})));
@@ -198,6 +211,12 @@ impl Bridge {
             Some(p) => (None, Some(format!("Couldn't get your Steam games list: {p}"))),
             None => (None, None),
         };
+        // Why Hearth can't read the Steam games (shown on the card, with Refresh): Steam games turned off, no Steam
+        // folder, or no signed-in account in it (steam::find_account says which file and how many accounts).
+        let s_on = self.library.store.source_on("steam");
+        let s_dir = crate::steam::steam_path(&self.library.home);
+        let s_reason: Option<String> = if !sinstalled { None } else if !s_on { Some("Steam games are turned off in Settings › Library.".into()) }
+            else { crate::steam::current_account(&self.library.home).err() };
         let (eo, ef) = owned("epic"); let (go, gf) = owned("gog"); let (xo, xf) = owned("xbox");
         let (gname, gavatar) = crate::stores::gog::profile();
         let gname = named("gog", gname);
@@ -208,6 +227,7 @@ impl Bridge {
             with(base("steam"), json!({"signedIn": sname.is_some(), "name": sname, "avatar": savatar, "owned": steam_owned, "fetched": so["fetched"].as_u64().unwrap_or(0), "toolReady": true,
                 "busy": crate::steam_owned::busy(), "signing": crate::steam_ctl::signing_in(), "hint": s_hint, "error": s_error,
                 "library": self.library.steam_library().map(|l| l.to_string_lossy().to_string()),
+                "reason": s_reason, "sourceOn": s_on, "folder": s_dir.as_deref().map(|d| crate::steam::tilde(&self.library.home, d)),
                 "note": if !sinstalled { Some("Steam isn't installed on this device.") } else if sname.is_none() { Some("Not signed in") } else { None }})),
             with(base("epic"), json!({"signedIn": crate::stores::epic::signed_in(), "name": ename, "avatar": null, "owned": eo, "fetched": ef,
                 "toolReady": crate::tools::is_ready(&crate::tools::LEGENDARY), "note": null})),
@@ -466,7 +486,14 @@ impl Bridge {
             "accounts.signOut" => { crate::stores::sign_out(&req("store")?)?; self.library.scan(); (self.emit)(Bridge::event("accounts.changed", json!({}))); Ok(Value::Null) }
             "accounts.refresh" => {
                 let store = req("store")?;
-                if store == "steam" { crate::steam_owned::refresh(&self.library.home, true); return Ok(json!({"ok": true})); }
+                if store == "steam" {
+                    // Library › Stores' Refresh: the installed games read again, and the owned list fetched even when
+                    // it's fresh. Why it can't be fetched comes back as the error (the page shows it).
+                    if !self.library.store.source_on("steam") { return Err("Steam games are turned off in Settings › Library.".into()); }
+                    crate::stores::notify(json!({"type": "internal", "what": "rescan", "reply": null}));
+                    crate::steam_owned::refresh(&self.library.home, true).map_err(|e| format!("Couldn't get your Steam games list: {e}"))?;
+                    return Ok(json!({"ok": true}));
+                }
                 let s = crate::stores::STORES.into_iter().find(|x| *x == store).ok_or("Unknown store")?;
                 crate::stores::refresh(s, self.library.accounts.clone(), json!({"id": self.cur_id, "to": self.cur_label}));
                 Ok(json!(DEFERRED))
@@ -523,6 +550,12 @@ impl Bridge {
                 (self.host)("screenshot", &json!({"before": false}));
                 r
             }
+            // ==== Hearth Recorder (hosts/hearth-recorder) from Quick Access › Now playing (ui/index.html recQam)
+            "recorder.status" => recorder_cli(&["--status"]),
+            "recorder.toggle" => self.later(|| recorder_cli(&["--toggle"])),
+            "recorder.replay" => self.later(|| recorder_cli(&["--replay"])),
+            "recorder.saveReplay" => self.later(|| recorder_cli(&["--save-replay"])),
+            // ==== end of Hearth Recorder
             "screenshots.list" => Ok(json!({"dir": crate::gamescope::screenshot_dir().to_string_lossy(), "list": crate::gamescope::screenshots()})),
             "screenshots.delete" => { crate::gamescope::delete_screenshot(a["file"].as_str().unwrap_or(""))?; Ok(json!({"list": crate::gamescope::screenshots()})) }
             "apps.list" => Ok(if crate::gamescope::inside() { self.apps_list() } else { json!([]) }),
@@ -553,6 +586,8 @@ impl Bridge {
             "access.set" => { let j = crate::access::set_args(a)?; crate::access::run(&["set", &j]) }
             "access.apply" => crate::access::run(&["apply", "game"]),
             // ---- end Accessibility
+            // Settings › Default apps (desktop/shell/hearth-system, shared with Desktop Mode's page)
+            "defaults.list" | "defaults.set" | "defaults.reset" => { let (m, a) = (method.to_string(), a.clone()); self.later(move || crate::defaults::call(&m, &a)) }
             // Is Handheld Daemon running, its controllers and power limit (Settings › Controls shows the way in).
             "hhd.status" => Ok(crate::hhd::status()),
             // Settings › Controls › Handheld Daemon: HHD's whole settings tree with its state, the state alone (the

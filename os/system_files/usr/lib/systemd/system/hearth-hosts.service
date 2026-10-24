@@ -1,0 +1,15 @@
+# Every boot, and whenever the device is renamed (hearth-hosts.path watches /etc/hostname): /etc/hosts maps the
+# device's name to 127.0.1.1, so sudo doesn't say "unable to resolve host <name>". See /usr/libexec/nimbus/hearth-hosts.
+[Unit]
+Description=Hearth: /etc/hosts knows the device's name
+After=local-fs.target hearth-clean-install.service
+Before=nimbus-autologin.service display-manager.service systemd-user-sessions.service
+RequiresMountsFor=/etc
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-hosts
+SyslogIdentifier=hearth-hosts
+
+[Install]
+WantedBy=multi-user.target

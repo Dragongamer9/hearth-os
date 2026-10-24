@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera</title>
+<link rel="stylesheet" href="hearth.css">
+<style>
+main { display:grid; grid-template-columns:1fr minmax(17em, 21em); gap:var(--gut); }
+.stage { position:relative; min-height:0; border-radius:18px; overflow:hidden; background:#000; border:1px solid var(--line); display:grid; place-items:center; }
+#preview { width:100%; height:100%; object-fit:contain; display:block; }
+.over { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
+.count { font-size:7em; font-weight:700; color:#fff; text-shadow:0 6px 40px rgba(0,0,0,.7); }
+.flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
+.flash.go { animation:flash .45s ease-out; }
+@keyframes flash { 0% { opacity:.85; } 100% { opacity:0; } }
+.badge { position:absolute; top:.8em; left:.8em; display:flex; gap:.5em; align-items:center; background:rgba(15,11,9,.75); padding:.35em .8em; border-radius:99px; font-variant-numeric:tabular-nums; }
+.nocam { text-align:center; color:var(--muted); padding:2em; }
+.nocam h2 { color:var(--text); }
+.side { display:flex; flex-direction:column; gap:.8em; min-height:0; }
+.shoot { display:flex; align-items:center; gap:1em; }
+.shutter { width:5em; height:5em; border-radius:50%; border:3px solid #f4ece3; display:grid; place-items:center; background:transparent; flex:none; }
+.shutter i { width:3.9em; height:3.9em; border-radius:50%; background:#f4ece3; display:block; transition:.2s var(--ease); }
+.shutter.video i { background:var(--rec); }
+.shutter.on i { width:1.9em; height:1.9em; border-radius:.4em; }
+.shutter[disabled] { opacity:.4; }
+.recent { display:grid; grid-template-columns:repeat(auto-fill, minmax(5.2em, 1fr)); gap:.45em; }
+.thumb { position:relative; aspect-ratio:4/3; border-radius:10px; overflow:hidden; background:var(--panel3); border:1px solid var(--line); display:grid; place-items:center; color:var(--ember); }
+.thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.thumb svg { width:1.6em; height:1.6em; }
+.thumb small { position:absolute; left:.3em; bottom:.2em; font-size:.62em; color:#fff; text-shadow:0 1px 4px #000; }
+.sel { margin-top:.6em; display:flex; gap:.4em; flex-wrap:wrap; }
+.cam { color:var(--muted); font-size:.82em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width: 760px) { main { grid-template-columns:1fr; grid-template-rows:minmax(14em, 1fr) auto; overflow:auto; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Camera</h1>
+    <div class="tabs" role="tablist">
+      <button class="tab f" data-k="m-photo" data-act="mode" data-v="photo">Photo</button>
+      <button class="tab f" data-k="m-video" data-act="mode" data-v="video">Video</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="sub" id="where"></span>
+  </header>
+  <main>
+    <section class="stage" id="stage">
+      <img id="preview" alt="">
+      <div class="over"><div class="count" id="count"></div></div>
+      <div class="flash" id="flash"></div>
+      <div class="badge" id="badge" hidden><span class="dot rec"></span><span id="timer">00:00</span></div>
+      <div class="over" id="nocam" hidden></div>
+    </section>
+    <section class="side scroll" id="side"></section>
+  </main>
+  <footer><span><b>A</b>Choose</span><span><b>Y</b>Take photo / Record</span><span><b>X</b>Switch camera</span><span><b>LB</b><b>RB</b>Photo / Video</span></footer>
+</div>
+<div id="layer"></div>
+<div id="toast"></div>
+<script src="nav.js"></script>
+<script>
+'use strict';
+const T = window.__TAURI__;
+const invoke = T ? T.core.invoke : demoInvoke;
+const $ = (s, el = document) => el.querySelector(s);
+const { esc, toast, clock } = Nav;
+const I = {
+  mirror: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3v18M8 7l-5 5 5 5V7zM16 7l5 5-5 5V7z"/></svg>',
+  switch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  timer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>',
+  video: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+};
+const prefs = (() => { try { return JSON.parse(localStorage.getItem('hearth-camera') || '{}'); } catch (e) { return {}; } })();
+const S = { mode: prefs.mode === 'video' ? 'video' : 'photo', timer: prefs.timer || 0, sound: prefs.sound !== false, st: null, files: [], busy: false, counting: 0, error: '', drawn: '', n: 0 };
+function savePrefs() { try { localStorage.setItem('hearth-camera', JSON.stringify({ mode: S.mode, timer: S.timer, sound: S.sound })); } catch (e) {} }
+
+function liveUrl() { return S.st && S.st.camera ? `http://127.0.0.1:${S.st.port}/live.mjpg?k=${S.st.token}&n=${S.n}` : ''; }
+function fileUrl(p) { return S.st ? `http://127.0.0.1:${S.st.port}/file?k=${S.st.token}&p=${encodeURIComponent(p)}` : ''; }
+const recording = () => !!(S.st && S.st.recording);
+
+function camName() { const c = S.st && (S.st.cameras || []).find(x => x.id === S.st.camera); return c ? c.name + (S.st.mode ? ` · ${S.st.mode.w}×${S.st.mode.h}` : '') : ''; }
+
+function renderSide() {
+  const st = S.st || {}, cams = st.cameras || [], rec = recording(), video = S.mode === 'video';
+  const none = !st.camera;
+  const shutterLabel = video ? (rec ? 'Stop recording' : 'Record video') : 'Take photo';
+  const html = `<div class="panel">
+      <div class="shoot"><button class="shutter f ${video ? 'video' : ''} ${rec ? 'on' : ''}" data-k="shoot" data-act="shoot" aria-label="${shutterLabel}" ${none || S.busy || (S.counting && !rec) ? 'disabled' : ''}><i></i></button>
+      <div><b>${shutterLabel}</b><div class="muted small">${video ? (rec ? 'Saved to Videos › Camera when you stop' : (S.sound ? 'With sound from the microphone' : 'Without sound')) : (S.timer ? `After ${S.timer} seconds` : 'Saved to Pictures › Camera')}</div></div></div>
+      <div class="field"><label>${I.timer.replace('<svg', '<svg style="width:1em;height:1em;vertical-align:-.15em"')} Timer</label><div class="chips">${[0, 3, 10].map(t => `<button class="chip f ${S.timer === t ? 'on' : ''}" data-k="t-${t}" data-act="timer" data-v="${t}">${t ? t + ' s' : 'Off'}</button>`).join('')}</div></div>
+      <div class="sel">
+        <button class="chip f ${st.mirror ? 'on' : ''}" data-k="mirror" data-act="mirror" ${rec ? 'disabled' : ''}>${I.mirror.replace('<svg', '<svg style="width:1em;height:1em;vertical-align:-.15em"')} Mirror</button>
+        ${video ? `<button class="chip f ${S.sound ? 'on' : ''}" data-k="sound" data-act="sound" ${rec ? 'disabled' : ''}>${I.mic.replace('<svg', '<svg style="width:1em;height:1em;vertical-align:-.15em"')} Sound</button>` : ''}
+        ${cams.length > 1 ? `<button class="chip f" data-k="switch" data-act="switch" ${rec ? 'disabled' : ''}>${I.switch.replace('<svg', '<svg style="width:1em;height:1em;vertical-align:-.15em"')} Switch camera</button>` : ''}
+      </div>
+      <div class="cam" style="margin-top:.6em" title="${esc(camName())}">${esc(camName())}</div>
+    </div>
+    <div class="panel"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Recent</h3>${S.files.length ? `<button class="btn sm f" data-k="folder" data-act="show" data-p="${esc(S.files[0].path)}">${I.folder}Folder</button>` : ''}</div>
+      ${S.files.length ? `<div class="recent" style="margin-top:.6em">${S.files.slice(0, 12).map((f, i) => `<button class="thumb f" data-k="f-${i}" data-act="file" data-i="${i}" title="${esc(f.name)}">${f.kind === 'photo' ? `<img src="${esc(fileUrl(f.path))}" alt="" loading="lazy">` : I.video}<small>${esc(Nav.when(f.time))}</small></button>`).join('')}</div>`
+        : '<div class="muted small" style="margin-top:.4em">Photos and videos you take show up here.</div>'}</div>`;
+  if (html === S.drawn) return;
+  const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.k : null;
+  $('#side').innerHTML = html; S.drawn = html;
+  const again = focused && document.querySelector(`[data-k="${CSS.escape(focused)}"]`);
+  if (again && !again.disabled) again.focus({ preventScroll: true });
+  else if (focused && !$('#layer').firstChild) ($('#side .f:not([disabled])') || $('.tab.on')).focus({ preventScroll: true });
+}
+
+function renderStage() {
+  const st = S.st || {};
+  const nocam = $('#nocam');
+  if (!st.camera || S.error) {
+    nocam.hidden = false; nocam.style.pointerEvents = 'auto';
+    nocam.innerHTML = `<div class="nocam"><h2>${st.camera ? 'The camera stopped' : (st.cameras && !st.cameras.length ? 'No camera found' : 'Starting the camera…')}</h2>
+      <p>${esc(S.error || (st.cameras && !st.cameras.length ? 'Plug in a webcam, then look again.' : ''))}</p>${st.cameras ? '<button class="btn f" data-k="again" data-act="again">Look again</button>' : ''}</div>`;
+    $('#preview').removeAttribute('src');
+  } else {
+    nocam.hidden = true; nocam.innerHTML = '';
+    const u = liveUrl();
+    if ($('#preview').getAttribute('src') !== u) $('#preview').src = u;
+  }
+  $('#badge').hidden = !recording();
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.v === S.mode));
+  $('#where').textContent = recording() ? 'Recording' : '';
+}
+function render() { renderStage(); renderSide(); }
+setInterval(() => { if (recording()) $('#timer').textContent = clock(Date.now() - S.st.recording.started); }, 250);
+
+async function loadFiles() { try { const r = await invoke('files'); S.files = r.files || []; } catch (e) {} }
+
+async function take() {
+  if (!S.st || !S.st.camera || S.busy) return;
+  if (S.mode === 'video' && recording()) {
+    S.busy = true; render();
+    try { const f = await invoke('record', { on: false, sound: S.sound }); toast('Video saved: ' + f.split('/').pop()); } catch (e) { toast(String(e), true); }
+    S.busy = false; await refresh(); await loadFiles(); render(); return;
+  }
+  if (S.counting) { S.counting = 0; $('#count').textContent = ''; render(); return; }   // pressing again cancels the timer
+  if (S.timer) {
+    S.counting = S.timer; render();
+    while (S.counting > 0) {
+      $('#count').textContent = S.counting;
+      await new Promise(r => setTimeout(r, 1000));
+      if (!S.counting) return;
+      S.counting--;
+    }
+    $('#count').textContent = '';
+  }
+  S.busy = true; render();
+  try {
+    if (S.mode === 'photo') {
+      const f = await invoke('photo');
+      const fl = $('#flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+      toast('Photo saved: ' + f.split('/').pop());
+    } else {
+      await invoke('record', { on: true, sound: S.sound });
+      S.n++;
+    }
+  } catch (e) { toast(String(e), true); }
+  S.busy = false; await refresh(); await loadFiles(); render();
+}
+
+async function refresh() {
+  try {
+    const st = await invoke('status');
+    if (S.st && S.st.camera && st.camera && !st.alive && !S.busy) S.error = 'It may have been unplugged, or another app took it.';
+    S.st = Object.assign(S.st || {}, st);
+  } catch (e) {}
+}
+async function start() {
+  S.error = ''; render();
+  try { S.st = await invoke('init'); if (S.st.error) S.error = S.st.error; S.n++; } catch (e) { S.error = String(e); }
+  render();
+}
+
+async function act(el) {
+  const a = el.dataset.act;
+  if (a === 'mode') { if (recording()) return toast('Stop recording first'); S.mode = el.dataset.v; savePrefs(); render(); return; }
+  if (a === 'shoot') return take();
+  if (a === 'timer') { S.timer = +el.dataset.v; savePrefs(); render(); return; }
+  if (a === 'sound') { S.sound = !S.sound; savePrefs(); render(); return; }
+  if (a === 'again') return start();
+  if (a === 'show') { try { await invoke('show', { path: el.dataset.p }); } catch (e) { toast(String(e), true); } return; }
+  if (a === 'mirror' || a === 'switch') {
+    if (S.busy || recording()) return;
+    S.busy = true; render();
+    try {
+      if (a === 'mirror') S.st = await invoke('mirror', { on: !S.st.mirror });
+      else { const c = S.st.cameras, i = c.findIndex(x => x.id === S.st.camera); S.st = await invoke('select', { id: c[(i + 1) % c.length].id }); toast(camName()); }
+      S.error = ''; S.n++;
+    } catch (e) { toast(String(e), true); }
+    S.busy = false; render(); return;
+  }
+  if (a === 'file') {
+    const f = S.files[+el.dataset.i]; if (!f) return;
+    const prev = document.activeElement;
+    $('#layer').innerHTML = `<div class="veil"><div class="dlg"><h2>${esc(f.name)}</h2><p class="muted">${esc(Nav.when(f.time))} · ${esc(Nav.human(f.size))}</p>
+      <div class="row end"><button class="btn f" data-cancel>Close</button><button class="btn danger f" data-x="delete">Delete</button><button class="btn f" data-x="show">Show in folder</button><button class="btn primary f" data-x="open">Open</button></div></div></div>`;
+    const done = () => { $('#layer').replaceChildren(); (prev && prev.isConnected ? prev : $('#side .f')).focus(); };
+    $('#layer [data-cancel]').onclick = done;
+    $('#layer').querySelectorAll('[data-x]').forEach(b => b.onclick = async () => {
+      const x = b.dataset.x; done();
+      if (x === 'delete' && !await Nav.ask('Delete this?', f.name, 'Delete', true)) return;
+      try { await invoke(x, { path: f.path }); if (x === 'delete') { await loadFiles(); render(); toast('Deleted'); } } catch (e) { toast(String(e), true); }
+    });
+    $('#layer [data-x="open"]').focus();
+  }
+}
+document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el && !el.disabled && !e.target.closest('#layer')) act(el); });
+Nav.init({
+  y: () => take(),
+  x: () => { if ((S.st && S.st.cameras || []).length > 1) act({ dataset: { act: 'switch' } }); },
+  lb: () => act({ dataset: { act: 'mode', v: 'photo' } }), rb: () => act({ dataset: { act: 'mode', v: 'video' } }),
+  back: () => { if (S.counting) { S.counting = 0; $('#count').textContent = ''; render(); } },
+});
+$('#preview').addEventListener('error', () => { if (S.st && S.st.camera) setTimeout(() => { S.n++; renderStage(); }, 1500); });
+
+(async () => {
+  await start();
+  await loadFiles();
+  render();
+  ($('#side .shutter:not([disabled])') || $('.tab.on')).focus();
+  setInterval(async () => { await refresh(); render(); }, 1000);
+  window.addEventListener('focus', () => loadFiles().then(render));
+})();
+
+// ---------------------------------------------------------------- opened in a browser (no app): a preview with samples
+function demoInvoke(cmd, args) {
+  const D = demoInvoke.d || (demoInvoke.d = { mirror: true, recording: null, files: [] });
+  const pic = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><defs><radialGradient id="g" cx=".5" cy=".4"><stop offset="0" stop-color="#6b4a33"/><stop offset="1" stop-color="#1a120d"/></radialGradient></defs><rect width="1280" height="720" fill="url(#g)"/><circle cx="640" cy="330" r="120" fill="#c89a78"/><rect x="470" y="470" width="340" height="260" rx="140" fill="#3a5a7a"/></svg>');
+  const st = () => ({ cameras: [{ id: '/dev/video0', name: 'Integrated Camera', modes: [] }, { id: '/dev/video2', name: 'USB Webcam', modes: [] }], camera: '/dev/video0', mode: { fmt: 'mjpeg', w: 1280, h: 720 }, mirror: D.mirror, alive: true, recording: D.recording, port: 0, token: '' });
+  if (!demoInvoke.hooked) { demoInvoke.hooked = true; liveUrl = () => pic; fileUrl = () => pic; }
+  switch (cmd) {
+    case 'init': case 'status': case 'select': return Promise.resolve(st());
+    case 'mirror': D.mirror = args.on; return Promise.resolve(st());
+    case 'photo': D.files.unshift({ name: 'Photo.jpg', path: '/home/you/Pictures/Camera/Photo.jpg', size: 230e3, time: Date.now(), kind: 'photo' }); return Promise.resolve('/home/you/Pictures/Camera/Photo.jpg');
+    case 'record': if (args.on) { D.recording = { file: 'Video.mp4', started: Date.now() }; return Promise.resolve('Video.mp4'); }
+      D.recording = null; D.files.unshift({ name: 'Video.mp4', path: '/home/you/Videos/Camera/Video.mp4', size: 9e6, time: Date.now(), kind: 'video' }); return Promise.resolve('/home/you/Videos/Camera/Video.mp4');
+    case 'files': return Promise.resolve({ files: D.files });
+    default: return Promise.reject('This is a preview: open Camera to do that.');
+  }
+}
+</script>
+</body>
+</html>

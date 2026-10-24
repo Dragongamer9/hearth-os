@@ -186,12 +186,29 @@ optional cups cups-filters ipp-usb avahi-daemon libnss-mdns wl-clipboard cliphis
 optional libnotify-bin wlopm
 # A polkit agent for Desktop Mode's password prompts. Debian keeps polkit-gnome's in a folder labwc's autostart
 # doesn't look in: link it where it does.
-optional policykit-1-gnome
-if [ -x /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 ]; then
+# Debian 13 has no policykit-1-gnome any more: MATE's agent (GTK, small) first, then LXDE's, then LXQt's. Without
+# one, pkexec prompts (Apps' system installs, Hearth Text saving system files) fail.
+if have_pkg policykit-1-gnome && "${APT[@]}" policykit-1-gnome 2>/dev/null && [ -x /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 ]; then
   ln -sf /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1
 else
-  optional lxqt-policykit
+  optional mate-polkit
+  if ! ls /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 >/dev/null 2>&1; then optional lxpolkit lxqt-policykit; fi
 fi
+for a in /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 /usr/bin/lxpolkit /usr/bin/lxqt-policykit-agent; do
+  if [ -x "$a" ]; then echo "polkit agent: $a"; break; fi
+done
+
+# ------------------------------------------------------------------ .deb files (Hearth's Debian box) and AppImages
+# The system is an image (/usr is read-only), so a .deb is installed into a Debian 13 container made with Distrobox
+# (hearth-debbox, the Install Package window): rootless podman needs newuidmap/newgidmap (uidmap) and a network
+# helper (passt, or slirp4netns). Each account's id range in /etc/subuid and /etc/subgid comes from useradd, the
+# installer and hearth-home-repair (every boot). AppImages: FUSE 2 (most AppImages' runtime loads libfuse.so.2) and
+# a `fusermount` (fuse3 only has fusermount3, which does the same job: linked).
+"${APT[@]}" distrobox uidmap libfuse2t64 fuse3
+optional passt slirp4netns
+if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
+touch /etc/subuid /etc/subgid
+command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
@@ -307,12 +324,12 @@ if [ -x /ctx/nimbus-app/hearth-time/hearth-time ]; then
   install -d /usr/share/applications /usr/lib/systemd/user
   # Their icons (hearth-clock, hearth-calendar, hearth-notes, hearth-weather) come with Hearth's icon set.
   for a in clock calendar notes weather; do ln -sf hearth-time "/usr/bin/hearth-$a"; done
-  hearth_time_entry() {  # id, name, comment, categories, keywords
+  hearth_time_entry() {  # id, name, comment, categories, keywords[, file types it opens]
     cat > "/usr/share/applications/hearth-$1.desktop" <<DESKTOP
 [Desktop Entry]
 Name=$2
 Comment=$3
-Exec=/usr/bin/hearth-$1
+Exec=/usr/bin/hearth-$1${6:+ %u}
 TryExec=/usr/bin/hearth-time
 Icon=hearth-$1
 Type=Application
@@ -320,10 +337,11 @@ Categories=$4
 Keywords=$5
 StartupNotify=true
 StartupWMClass=io.github.dragongamer9.hearth.$1
+${6:+MimeType=$6}
 DESKTOP
   }
   hearth_time_entry clock Clock "Alarms, timers, a stopwatch and world clocks" "Utility;Clock;" "alarm;timer;stopwatch;world;clock;time;"
-  hearth_time_entry calendar Calendar "Your events and reminders, and .ics calendars" "Office;Calendar;" "calendar;event;reminder;ics;schedule;agenda;"
+  hearth_time_entry calendar Calendar "Your events and reminders, and .ics calendars" "Office;Calendar;" "calendar;event;reminder;ics;schedule;agenda;" "text/calendar;x-scheme-handler/webcal;x-scheme-handler/webcals;"
   hearth_time_entry notes Notes "Quick notes and checklists, kept as plain files in Documents/Notes" "Office;Utility;" "note;notes;checklist;todo;markdown;memo;"
   hearth_time_entry weather Weather "The forecast for a place you choose (Open-Meteo)" "Utility;" "weather;forecast;temperature;rain;"
   cat > /usr/lib/systemd/user/hearth-time.service <<'UNIT'
@@ -467,13 +485,7 @@ MimeType=font/ttf;font/otf;font/collection;font/sfnt;application/x-font-ttf;appl
 Keywords=font;fonts;typeface;ttf;otf;install;
 StartupWMClass=hearth-fonts
 DESKTOP
-  # Hearth Files opens font files in it.
-  if ! grep -q 'hearth-fonts.desktop' /usr/share/applications/mimeapps.list 2>/dev/null; then
-    printf '\n[Default Applications]\n' >> /usr/share/applications/mimeapps.list
-    for m in font/ttf font/otf font/collection font/sfnt application/x-font-ttf application/x-font-otf application/vnd.ms-opentype; do
-      echo "$m=hearth-fonts.desktop" >> /usr/share/applications/mimeapps.list
-    done
-  fi
+  # Font files open in it (Hearth Files too): its MimeType, made the default with the others (Hearth's default apps, below).
 fi
 cat > /usr/share/applications/hearth-accessibility.desktop <<DESKTOP
 [Desktop Entry]
@@ -505,6 +517,92 @@ if [ -x /ctx/nimbus-app/hearth-terminal ]; then
 fi
 # ---- end of Hearth Terminal
 
+# ==================================================================== Hearth Recorder, Camera and Share
+# (hosts/hearth-recorder, hosts/hearth-camera, hosts/hearth-share; built with the app by base-peppermint.yml, tested
+# by capture-apps.yml.) Hearth's screen recorder (instant replay and a sound recorder too), webcam app and screen
+# sharing. What they run:
+#  - ffmpeg (Debian's has every encoder: VA-API, NVENC, libx264, Opus, MP3)
+#  - wf-recorder and slurp: capturing Mantel's desktop, an area too
+#  - gpu-screen-recorder: capture and encoding on the graphics card in Game Mode and Desktop Mode, and its own
+#    instant replay. Debian 13 doesn't package it, so CI builds it in trixie (gsr/ in the app's folder);
+#    gsr-kms-server needs CAP_SYS_ADMIN to read the screen.
+#  - GStreamer with PipeWire's plugin: Game Mode (gamescope's own stream) without gpu-screen-recorder, and Share there
+#  - pactl and pw-dump (sound sources, gamescope's stream), v4l-utils (cameras), qrencode (Share's QR code)
+optional ffmpeg wf-recorder slurp pulseaudio-utils pipewire-bin gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils libnotify-bin qrencode libcap2-bin
+if [ -x /ctx/nimbus-app/gsr/gpu-screen-recorder ] && ! command -v gpu-screen-recorder >/dev/null; then
+  # Its libraries (most come with ffmpeg and PipeWire already).
+  optional libpulse0 libva2 libva-drm2 libdrm2 libwayland-client0 libwayland-egl1 libcap2 libxdamage1 libxcomposite1 libxrandr2 libvulkan1 libegl1 libgl1
+  install -Dm755 /ctx/nimbus-app/gsr/gpu-screen-recorder /usr/bin/gpu-screen-recorder
+  [ -x /ctx/nimbus-app/gsr/gsr-kms-server ] && install -Dm755 /ctx/nimbus-app/gsr/gsr-kms-server /usr/bin/gsr-kms-server
+  if ldd /usr/bin/gpu-screen-recorder | grep 'not found'; then
+    echo "warning: gpu-screen-recorder needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/gpu-screen-recorder /usr/bin/gsr-kms-server
+  fi
+fi
+# Without its capability gpu-screen-recorder asks for the password every time it records.
+if [ -x /usr/bin/gsr-kms-server ]; then setcap cap_sys_admin+ep /usr/bin/gsr-kms-server || echo "warning: couldn't give gsr-kms-server its capability"; fi
+for app in hearth-recorder hearth-camera hearth-share; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    # One that can't start is left out (its menu entry too).
+    if ldd "/usr/bin/$app" | grep 'not found'; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+  fi
+done
+if [ -x /usr/bin/hearth-recorder ] || [ -x /usr/bin/hearth-camera ] || [ -x /usr/bin/hearth-share ]; then
+  # Their menu entries (ids starting with "hearth": Mantel's app menu lists them as Hearth's own apps).
+  install -d /usr/share/applications
+  if [ -x /usr/bin/hearth-recorder ]; then
+    cat > /usr/share/applications/hearth-recorder.desktop <<DESKTOP
+[Desktop Entry]
+Name=Recorder
+GenericName=Screen Recorder
+Comment=Record the screen, a game or your voice, and keep instant replays of games
+Exec=/usr/bin/hearth-recorder
+Icon=hearth-recorder
+Type=Application
+Categories=AudioVideo;Video;Recorder;
+Keywords=record;screen;recording;video;capture;replay;clip;game;microphone;voice;sound;
+StartupNotify=true
+StartupWMClass=hearth-recorder
+Actions=sound;
+
+[Desktop Action sound]
+Name=Sound recorder
+Exec=/usr/bin/hearth-recorder --sound
+DESKTOP
+  fi
+  if [ -x /usr/bin/hearth-camera ]; then
+    cat > /usr/share/applications/hearth-camera.desktop <<DESKTOP
+[Desktop Entry]
+Name=Camera
+GenericName=Webcam
+Comment=Take photos and videos with your webcam
+Exec=/usr/bin/hearth-camera
+Icon=hearth-camera
+Type=Application
+Categories=AudioVideo;Video;Graphics;Photography;
+Keywords=camera;webcam;photo;selfie;video;picture;
+StartupNotify=true
+StartupWMClass=hearth-camera
+DESKTOP
+  fi
+  if [ -x /usr/bin/hearth-share ]; then
+    cat > /usr/share/applications/hearth-share.desktop <<DESKTOP
+[Desktop Entry]
+Name=Share Screen
+GenericName=Screen Sharing
+Comment=Show this screen on a TV, phone or another computer (web browser or Moonlight)
+Exec=/usr/bin/hearth-share
+Icon=hearth-share
+Type=Application
+Categories=Network;AudioVideo;
+Keywords=share;screen;cast;mirror;tv;stream;moonlight;miracast;chromecast;browser;
+StartupNotify=true
+StartupWMClass=hearth-share
+DESKTOP
+  fi
+fi
+# ==================================================================== end of Hearth Recorder, Camera and Share
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
 # Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
 # with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
@@ -573,6 +671,10 @@ mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+# hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
+# launcher (the .deb handler).
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-apps /usr/bin/hearth-install-package
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*
@@ -616,16 +718,16 @@ Exec=/usr/bin/hearth-filemanager %U
 Icon=hearth-files
 Type=Application
 Categories=System;FileManager;Utility;
-MimeType=inode/directory;
+MimeType=inode/directory;x-directory/normal;application/zip;application/x-tar;application/x-compressed-tar;application/x-xz-compressed-tar;application/x-bzip2-compressed-tar;application/x-zstd-compressed-tar;application/gzip;application/x-gzip;application/x-xz;application/x-bzip2;application/zstd;application/x-7z-compressed;application/vnd.rar;application/x-rar;
 Keywords=files;folder;explorer;browse;usb;sd;card;copy;move;
 OnlyShowIn=Nimbus;
 DESKTOP
-mkdir -p /etc/xdg
-printf '[Default Applications]\ninode/directory=hearth-files.desktop\n' > /etc/xdg/nimbus-mimeapps.list
+# Folders open in Hearth Files in Desktop Mode (XDG_CURRENT_DESKTOP=Nimbus), and archives (it unpacks them): Hearth's
+# default apps, below.
 # ---- Hearth Text (hosts/hearth-text): Hearth OS's text editor, built by CI next to the Hearth app (base-*.yml) and
 # carried in os/nimbus-app. Its menu entry (hearth-text.desktop, icon hearth-text from the Hearth icon set) comes from
 # os/system_files. In Desktop
-# Mode it opens text files, scripts, settings files and logs (nimbus-mimeapps.list, written just above), and Hearth
+# Mode it opens text files, scripts, settings files and logs (its MimeType: Hearth's default apps, below), and Hearth
 # Files opens text-like files without an app in it.
 if [ -x /ctx/nimbus-app/hearth-text ]; then
   install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
@@ -633,14 +735,6 @@ if [ -x /ctx/nimbus-app/hearth-text ]; then
   if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
 fi
 if [ -x /usr/bin/hearth-text ]; then
-  for m in text/plain text/x-log text/markdown text/x-markdown text/x-python text/x-python3 application/x-shellscript text/x-shellscript \
-           application/json application/x-yaml text/x-yaml application/yaml application/toml text/x-toml text/x-ini text/x-csrc text/x-chdr \
-           text/x-c++src text/x-c++hdr text/x-csharp text/x-rust text/rust text/javascript application/javascript text/x-typescript \
-           application/typescript text/css text/xml application/xml text/x-makefile text/x-cmake text/x-diff text/x-patch text/x-java \
-           text/x-go text/x-lua text/x-sql application/sql text/x-readme text/x-changelog application/x-zerosize text/x-systemd-unit \
-           application/x-ruby text/x-perl application/x-perl application/x-powershell text/x-dockerfile; do
-    echo "$m=hearth-text.desktop;" >> /etc/xdg/nimbus-mimeapps.list
-  done
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 fi
 # ---- end of Hearth Text
@@ -714,8 +808,8 @@ ff_missing() { LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hear
 "${APT[@]}" libgtk-3-0t64 libdbus-glib-1-2 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxt6t64 libasound2t64 || "${APT[@]}" libgtk-3-0 libdbus-glib-1-2 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxt6 libasound2 || true
 [ -z "$(ff_missing)" ] || echo "warning: Hearth Browser's Firefox is still missing: $(ff_missing | tr '\n' ' ')"
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
-# Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
-printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+# Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser
+# (Hearth's default apps, below). .deb files open in Install Package (Hearth's Debian box) the same way: its MimeType.
 
 # ------------------------------------------------------------------ Hearth Player and Hearth Calculator
 # ---- hosts/hearth-player and hosts/hearth-calculator, built by CI with the app (base-peppermint.yml) and carried in
@@ -733,18 +827,8 @@ for app in hearth-player hearth-calculator; do
     echo "warning: $app wasn't built for this image"
   fi
 done
-# Videos, music and playlists open in Hearth Player: in every desktop (/usr/share/applications/mimeapps.list) and in
-# Desktop Mode's own list, so Hearth Files' Open uses it; every type it lists in hearth-player.desktop (os/system_files).
-if [ -x /usr/bin/hearth-player ]; then
-  player_lines=$(sed -n 's/^MimeType=//p' /usr/share/applications/hearth-player.desktop | tr ';' '\n' | grep . | sed 's/$/=hearth-player.desktop;/')
-  for list in /usr/share/applications/mimeapps.list /etc/xdg/nimbus-mimeapps.list; do
-    [ -f "$list" ] || printf '[Default Applications]\n' > "$list"
-    grep -q '^\[Default Applications\]' "$list" || printf '\n[Default Applications]\n' >> "$list"
-    for l in $player_lines; do sed -i "\#^${l%%=*}=#d" "$list"; done
-    # Right under the [Default Applications] heading.
-    awk -v add="$player_lines" '{ print } /^\[Default Applications\]$/ && !done { print add; done = 1 }' "$list" > "$list.new" && mv "$list.new" "$list"
-  done
-fi
+# Videos, music and playlists open in Hearth Player: every type in hearth-player.desktop (os/system_files) is made
+# its default with the other Hearth apps' (Hearth's default apps, below).
 update-desktop-database /usr/share/applications 2>/dev/null || true
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 # What plays and what edits: in the build log and in the image.
@@ -770,8 +854,8 @@ echo "::notice title=Hearth Player codecs::$(tr '\n' ' ' < /usr/share/nimbus/med
 # (hosts/hearth-photos, hosts/hearth-documents) Hearth's picture viewer/editor and its reader for PDFs, e-books (EPUB)
 # and comic books (CBZ), built by CI with the app (base-peppermint.yml) and carried in os/nimbus-app (their icons,
 # hearth-photos and hearth-documents, come with the Hearth icon set above).
-# Their menu entries and file types are set here, and they're the default apps for pictures and documents: in every
-# desktop (/usr/share/applications/mimeapps.list, which Hearth Files' Open reads too) and in Desktop Mode's own list.
+# Their menu entries and file types are set here, and they're the default apps for pictures and documents (Hearth's
+# default apps, after the last app).
 # libheif's tools let Photos open HEIC pictures from phones; wl-clipboard is how it copies a picture.
 "${APT[@]}" libheif-examples libheif-plugin-libde265 wl-clipboard || true
 for app in hearth-photos hearth-documents; do
@@ -821,19 +905,7 @@ StartupNotify=true
 StartupWMClass=hearth-documents
 DESKTOP
 fi
-# The defaults: added to both lists (made when they don't exist yet; other apps' lines are kept).
-hearth_default() { # FILE APP TYPES
-  [ -f "$1" ] || printf '[Default Applications]\n' > "$1"
-  grep -q '^\[Default Applications\]' "$1" || printf '\n[Default Applications]\n' >> "$1"
-  local t lines=""
-  for t in $(echo "$3" | tr ';' ' '); do sed -i "\#^$t=#d" "$1"; lines="$lines$t=$2;\n"; done
-  # Right under the [Default Applications] heading.
-  awk -v add="$lines" '{ print } /^\[Default Applications\]$/ && !done { printf "%s", add; done = 1 }' "$1" > "$1.new" && mv "$1.new" "$1"
-}
-for list in /usr/share/applications/mimeapps.list /etc/xdg/nimbus-mimeapps.list; do
-  if [ -x /usr/bin/hearth-photos ]; then hearth_default "$list" hearth-photos.desktop "$HEARTH_PICTURE_TYPES"; fi
-  if [ -x /usr/bin/hearth-documents ]; then hearth_default "$list" hearth-documents.desktop "$HEARTH_DOCUMENT_TYPES"; fi
-done
+# They're the defaults for those types with the other Hearth apps (Hearth's default apps, below).
 gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Photos and Hearth Documents
@@ -850,8 +922,26 @@ cat > /usr/share/xdg-desktop-portal/nimbus-portals.conf <<PORTALS
 default=gtk
 org.freedesktop.impl.portal.ScreenCast=wlr
 org.freedesktop.impl.portal.Screenshot=wlr
-org.freedesktop.impl.portal.FileChooser=gtk
+org.freedesktop.impl.portal.FileChooser=hearth
 PORTALS
+# ---- Hearth Files: every app's file chooser, and the file manager apps open (desktop/shell/hearth-portal, picker.qml)
+# Open / Save dialogs: xdg-desktop-portal's FileChooser is Hearth's in Hearth's session (above; XDG_CURRENT_DESKTOP is
+# Nimbus in both modes), the rest stays on the backends it had. hearth.portal and the D-Bus service files come from
+# os/system_files. nimbus-session asks GTK and Qt apps to use the portal; Hearth Browser's prefs ask Firefox.
+# Folders: Hearth Files is the default in every desktop's list as well as Desktop Mode's (hearth-filemanager hands
+# them to Thunar outside Hearth's session), and "Show in folder" (org.freedesktop.FileManager1) is
+# held by Hearth's session, so no other file manager in this image takes over.
+# (hearth-system defaults-system writes them with Hearth's other default apps, after the last app: EVERY_DESKTOP_TOO.)
+# The backend is Python with GLib's D-Bus (python3-gi, above); Qt apps' portal dialogs need the xdgdesktopportal
+# platform theme, and the picker in Game Mode (gamescope) Qt's X11 platform plugin.
+optional qt6-qpa-plugins qt6-xdgdesktopportal-platformtheme qt5-xdgdesktopportal-platformtheme
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-portal
+# Firefox from the distribution, if there is one, also uses the portal (Hearth Browser has it in its own prefs).
+for d in /usr/lib64/firefox /usr/lib/firefox /usr/lib/firefox-esr; do
+  if [ -d "$d" ]; then install -Dm644 /usr/share/hearth-browser/firefox/defaults/pref/hearth-portal.js "$d/defaults/pref/hearth-portal.js"; fi
+done
+command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+# ---- end of Hearth Files as the file chooser
 
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
 # Built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
@@ -879,8 +969,7 @@ MimeType=text/vcard;text/x-vcard;text/directory;
 Keywords=contacts;address;book;people;phone;email;vcard;vcf;carddav;
 StartupWMClass=hearth-contacts
 DESKTOP
-  # .vcf files open in it (Desktop Mode and Game Mode: XDG_CURRENT_DESKTOP=Nimbus).
-  printf 'text/vcard=hearth-contacts.desktop\ntext/x-vcard=hearth-contacts.desktop\ntext/directory=hearth-contacts.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+  # .vcf files open in it (Hearth's default apps, below).
 fi
 if [ -x /usr/bin/hearth-maps ]; then
   cat > /usr/share/applications/hearth-maps.desktop <<DESKTOP
@@ -896,7 +985,6 @@ MimeType=x-scheme-handler/geo;
 Keywords=map;maps;openstreetmap;osm;directions;route;navigation;places;geo;location;
 StartupWMClass=hearth-maps
 DESKTOP
-  printf 'x-scheme-handler/geo=hearth-maps.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
   # GeoClue may tell Hearth Maps the location without asking an agent (Hearth's session has none). Maps only asks
   # when the person presses Where am I, and GeoClue still decides where the location comes from.
   install -d /etc/geoclue/conf.d
@@ -906,13 +994,28 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
 # ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-peppermint.yml) and
 # carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
-# hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set), and makes them the default
-# apps for office files in Hearth's desktop (nimbus-mimeapps.list, so after the file manager's line above). Fonts with
+# hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set); they're
+# the default apps for office files with the others (Hearth's default apps, below). Fonts with
 # the same sizes as Office's (Calibri, Cambria, Arial, Times New Roman), so documents keep their layout.
 "${APT[@]}" fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation2 || true
 if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/install.sh
 else echo "Hearth Office wasn't built; this image goes without it"; fi
 # ---- end of Hearth Office
+
+# ------------------------------------------------------------------ Hearth's default apps
+# Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
+# Desktop Mode's and Game Mode's list (/etc/xdg/nimbus-mimeapps.list, XDG_CURRENT_DESKTOP=Nimbus: it comes before
+# every list the base's own apps bring) and in every desktop's (/usr/share/applications/mimeapps.list). One place,
+# written once every app is in: hearth-system defaults-system (desktop/shell), which also picks between two Hearth
+# apps for the same type (Photos before Paint, Text before Write, Sheets for CSV). Settings › Default apps saves
+# your own choices in ~/.config/mimeapps.list, which comes first; nimbus-session takes Hearth apps that aren't
+# installed any more out of it at each sign-in.
+mkdir -p /etc/xdg
+python3 /usr/share/nimbus/desktop/shell/hearth-system defaults-system / | tee /tmp/hearth-defaults.json
+echo "::notice title=Hearth's default apps::$(cat /tmp/hearth-defaults.json)" || true
+# Lists the base brings that Hearth's session would read after its own (shown, not changed).
+echo "Other default-app lists in the image: $(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
 
 # ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
 # Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
@@ -992,6 +1095,18 @@ systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service
 systemctl enable hearth-boot-first.service
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)
+systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache folders yours, container id ranges
+# Flatpak's system installation set up (and repaired), Flathub in it, Bazaar (the Flathub store) for everyone. Debian
+# 13 has no Bazaar package, so it's Flathub's, installed at the first boot that's online (existing installs too).
+systemctl enable hearth-flatpak-setup.service
+# /etc/hosts maps the device's name (sudo: "unable to resolve host <name>"), at boot and after a rename; glibc's
+# myhostname module answers for the name too, whatever /etc/hosts says.
+systemctl enable hearth-hosts.service hearth-hosts.path
+optional libnss-myhostname
+if [ -f /etc/nsswitch.conf ] && ! grep -Eq '^hosts:.*myhostname' /etc/nsswitch.conf && [ -e /usr/lib/x86_64-linux-gnu/libnss_myhostname.so.2 ]; then
+  sed -i -E 's/^(hosts:[[:space:]]+files)/\1 myhostname/' /etc/nsswitch.conf
+fi
+grep '^hosts:' /etc/nsswitch.conf || true
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
@@ -1078,10 +1193,13 @@ mkdir -p /usr/lib/sysimage
 mv /var/lib/dpkg /usr/lib/sysimage/dpkg
 VARCONF=/usr/lib/tmpfiles.d/hearth-var.conf
 : > "$VARCONF"
+# Not /var/lib/flatpak: flatpak makes its system installation itself; an empty repo folder made at boot (as up to
+# 0.6.0) is one it can't open ("opening repo: openat(config): No such file or directory").
 find /var -mindepth 1 -type d \
   ! -path '/var/cache*' ! -path '/var/log*' ! -path '/var/tmp*' ! -path '/var/run*' ! -path '/var/lock*' \
   ! -path '/var/home*' ! -path '/var/roothome*' ! -path '/var/opt*' ! -path '/var/srv*' \
   ! -path '/var/mnt*' ! -path '/var/usrlocal*' ! -path '/var/lib/apt/lists*' ! -path '/var/lib/dkms*' \
+  ! -path '/var/lib/flatpak*' \
   -printf 'd /var/%P %m %u %g -\n' | sort >> "$VARCONF"
 echo 'L+ /var/lib/dpkg - - - - /usr/lib/sysimage/dpkg' >> "$VARCONF"
 if [ -d /opt ] && [ -n "$(ls -A /opt 2>/dev/null)" ]; then

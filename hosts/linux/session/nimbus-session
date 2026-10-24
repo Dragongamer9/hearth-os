@@ -58,8 +58,37 @@ export XDG_CURRENT_DESKTOP=Nimbus XDG_SESSION_DESKTOP=nimbus
 # absent or don't match, so a switch back to "the screen's own mode" could land on an old saved 144 Hz instead.
 # Hearth keeps its mode in session.conf, so gamescope's own save is turned off.
 unset GAMESCOPE_MODE_SAVE_FILE
+# Nvidia: WebKitGTK's DMA-BUF drawing crashes or blanks windows on Nvidia's driver (615 included), so every WebKit app
+# started from this session (Hearth's own apps, Beacon, anything else on WebKitGTK/Tauri) uses the older path.
+# A value someone set themselves is kept.
+if [ -d /sys/module/nvidia ] && [ -z "${WEBKIT_DISABLE_DMABUF_RENDERER+x}" ]; then
+  export WEBKIT_DISABLE_DMABUF_RENDERER=1
+fi
+# Apps that open web pages through $BROWSER (sign-in pages of launchers, Python's webbrowser, Rust's open crate...)
+# use your default browser: Hearth Browser unless you picked another in Settings › Default apps, not the first
+# browser they find (Chrome). A value you set yourself is kept.
+[ -z "${BROWSER+x}" ] && command -v xdg-open >/dev/null 2>&1 && export BROWSER=xdg-open
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# ---- Every app's Open / Save dialog is Hearth Files: xdg-desktop-portal's FileChooser goes to Hearth's backend
+# (desktop/shell/hearth-portal, named in /usr/share/xdg-desktop-portal/nimbus-portals.conf), and apps that only use
+# the portal when asked are asked here, in both modes. A value you set yourself is kept.
+#   Flatpak apps, Chromium and newer Electron apps, Hearth's own apps: the portal already
+#   GTK 3 apps, older Electron apps, WebKitGTK's file buttons, Firefox: GTK_USE_PORTAL=1
+#   GTK 4 apps: GDK_DEBUG=portals (added to what's there)
+#   Qt apps: the xdgdesktopportal platform theme in Game Mode, when it's installed (Desktop Mode's qt6ct look asks
+#   for portal dialogs itself: standard_dialogs=xdgdesktopportal, desktop/theme/apply.sh)
+# (desktop-test.yml runs these lines, between the >>> and <<< marks.)
+# >>> portal dialogs
+[ -z "${GTK_USE_PORTAL+x}" ] && export GTK_USE_PORTAL=1
+case ",${GDK_DEBUG:-}," in *,portals,*) ;; *) export GDK_DEBUG="${GDK_DEBUG:+$GDK_DEBUG,}portals" ;; esac
+if [ -z "${QT_QPA_PLATFORMTHEME+x}" ]; then
+  for d in /usr/lib64/qt6/plugins /usr/lib/qt6/plugins /usr/lib/*-linux-gnu*/qt6/plugins; do
+    if [ -e "$d/platformthemes/libqxdgdesktopportal.so" ]; then export QT_QPA_PLATFORMTHEME=xdgdesktopportal; break; fi
+  done
+fi
+# <<< portal dialogs
 
 # Steam's own Game Mode was an option in 0.2.8 and 0.2.9 and has been taken out: Game Mode is always Hearth's.
 # The old choice (~/.config/nimbus/game-mode) is removed so nothing reads it again.
@@ -82,6 +111,12 @@ password_store() {
   eval "$(gnome-keyring-daemon --start --components=secrets 2>/dev/null)" && export GNOME_KEYRING_CONTROL 2>/dev/null
 }
 password_store
+
+# Default apps: your own choices (Settings › Default apps, ~/.config/mimeapps.list) stay, but a Hearth app an older
+# Hearth put there that isn't installed any more comes out, so its files open in Hearth's default again.
+if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
+  python3 "$SHARE/desktop/shell/hearth-system" defaults-tidy >/dev/null 2>&1 || log "defaults-tidy failed"
+fi
 
 SESSION_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf"
 # gamescope's screen mode options with their values (-W 1920, --nested-refresh=60, -r 59.94...), for sed -E.
@@ -219,6 +254,13 @@ if [ -z "$HEARTH_SEAT" ] && have systemd-inhibit; then
     --why="Hearth handles the power button (Settings › Power button)" --mode=block sleep infinity >/dev/null 2>&1 &
   BG_PIDS="$BG_PIDS $!"
 fi
+# "Show in folder" / "Open containing folder" in any app opens Hearth Files: org.freedesktop.FileManager1 is
+# hearth-portal's for the whole session (both modes), so Dolphin, Nautilus or Thunar, which D-Bus would start for
+# that name otherwise, never take over.
+if [ -f "$SHARE/desktop/shell/hearth-portal" ] && have python3; then
+  python3 "$SHARE/desktop/shell/hearth-portal" filemanager1 --replace >>"$(dirname "$LOG")/portal.log" 2>&1 &
+  BG_PIDS="$BG_PIDS $!"
+fi
 if [ -n "$BG_PIDS" ]; then
   trap 'kill $BG_PIDS 2>/dev/null' EXIT
   trap 'exit 143' INT TERM HUP   # a signal at logout ends the script through EXIT (so the helpers stop too)
@@ -298,12 +340,16 @@ while :; do
   if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
   if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc missing)"; can_game && mode=game || exit 1; fi
 
+  # The mode this session is in, for programs started outside it: Handheld Daemon's overlay app
+  # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick
+  # Access the Game Mode way (in gamescope) instead of sending every press to a Desktop Mode that's gone.
+  echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null
   if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop; else run_desktop; code=$?; fi
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   case "$next" in
     game|desktop) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
-    *) log "$mode mode ended (code $code), leaving the session"; exit 0 ;;
+    *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;
   esac
 done

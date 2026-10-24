@@ -204,7 +204,25 @@ pub fn report(version: &str) -> String {
         [ -e /proc/driver/nvidia/version ] && command -v nvidia-smi >/dev/null && { echo; nvidia-smi --query-gpu=name,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,power.draw --format=csv; echo; nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv; } || true"));
     section("Memory", sh("free -m; echo; ps -eo rss=,comm= --sort=-rss | head -25 | awk '{printf \"%7.0f MB  %s\\n\", $1/1024, $2}'"));
     section("Games and processes", sh("ps -eo pid,ppid,stat,etime,comm --sort=start_time | tail -60"));
+    // Steam: the folders Hearth looks in, the one it uses, its account file's counts (no names or ids), the games'
+    // records per library, the owned-games list and Steam's processes (steam::report).
+    let steam_on = std::fs::read(data.join("library.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
+    section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
+    // Apps (Desktop Mode's app store for Flathub): what it sees (can your own Flatpak folder be used, the catalog, the
+    // last refresh error), the Flathub remotes (yours and the system's) and who owns the folders it writes to (a
+    // folder owned by root or an old account makes `flatpak --user` fail with "permission denied").
+    section("App store (Flatpak)", sh(&format!("{{ python3 '{}' status; echo; echo '--- flatpak'; flatpak --version; \
+        echo '--- remotes (yours)'; flatpak remotes --user --show-details; echo '--- remotes (system)'; flatpak remotes --system --show-details; \
+        echo '--- who owns the folders'; for d in \"$HOME\" \"$HOME/.local\" \"$HOME/.local/share\" \"$HOME/.local/share/flatpak\" \"$HOME/.local/share/flatpak/repo\" \"$HOME/.local/share/flatpak/appstream\" \"$HOME/.cache\" \"$HOME/.config\"; do stat -c '%U (%u):%G %a %F %n' \"$d\"; done; \
+        echo '--- not yours inside ~/.local/share/flatpak (first 20)'; find \"$HOME/.local/share/flatpak\" -maxdepth 4 ! -user \"$(id -u)\" 2>/dev/null | head -20; \
+        echo '--- the system catalog'; ls -la /var/lib/flatpak/appstream/flathub/*/ 2>&1 | head -8; \
+        echo '--- the boot-time repair'; journalctl -b --no-pager -n 15 -u hearth-home-repair; }} 2>&1",
+        crate::paths::desktop_dir().join("shell/hearth-apps").display())));
+    // Hearth's Debian box (.deb files through Distrobox): whether it's made, what's installed through Hearth.
+    section("Debian box (.deb packages)", sh(&format!("{{ python3 '{0}' status --quick; python3 '{0}' list; distrobox --version; podman --version; grep \"^$(id -un):\" /etc/subuid /etc/subgid; }} 2>&1",
+        crate::paths::desktop_dir().join("shell/hearth-debbox").display())));
     // Keeping Quick Resume games through turning off and restarting (hibernation): whether it's available and why
     // not (power.hibernateStatus, with what it looked at), Nvidia's sleep helpers, and the last hibernations.
     section("Quick Resume through turning off (hibernation)", format!("{}\n\n{}",

@@ -191,7 +191,7 @@ fn games() -> Option<usize> {
     let h = home();
     let mut n = 0usize;
     let mut found = false;
-    for root in [h.join(".local/share/Steam"), h.join(".steam/steam"), h.join(".var/app/com.valvesoftware.Steam/.local/share/Steam")] {
+    for root in [h.join(".local/share/Steam"), h.join(".steam/steam"), h.join(".steam/debian-installation"), h.join(".var/app/com.valvesoftware.Steam/.local/share/Steam")] {
         let Some(vdf) = read(root.join("steamapps/libraryfolders.vdf")) else { continue };
         found = true;
         let mut libs = parse::steam_libraries(&vdf);
