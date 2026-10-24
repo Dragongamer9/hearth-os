@@ -8,6 +8,7 @@ test samples in hosts/hearth-core/src/storefront/fixtures/ are trimmed from when
 
     python3 tools/store-live-check.py [out-dir]
 """
+import base64
 import json
 import os
 import sys
@@ -94,6 +95,14 @@ CHECKS += [
     ("xbox_emerald_browse", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", [], "POST", json.dumps({"Filters": "e30=", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
     ("xbox_emerald_filters", "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", [], "POST", json.dumps({"Filters": "e30=", "ReturnFilters": True, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
     ("xbox_emerald_search_k", "https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US", [], "POST", json.dumps({"Query": "halo", "Filters": "e30=", "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "SEARCH_CHANNELID=_FILTERS=e30=", "EncodedFilters": "e30=", "ChannelId": ""}), EMERALD),
+] + [("xbox_emerald_" + n, "https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US", ["productSummaries.0.productId"], "POST",
+       json.dumps({"Filters": f, "ReturnFilters": False, "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=" + f, "EncodedFilters": f, "ChannelId": ""}), EMERALD)
+      for n, f in [(n, base64.b64encode(json.dumps(v, separators=(",", ":")).encode()).decode()) for n, v in [
+          ("popular_a", {"orderby": {"id": "orderby", "choices": [{"id": "MostPopular desc"}]}, "PlayWith": {"id": "PlayWith", "choices": [{"id": "PC"}]}}),
+          ("popular_b", {"orderby": ["MostPopular desc"], "PlayWith": ["PC"]}),
+          ("deals_a", {"orderby": {"id": "orderby", "choices": [{"id": "DiscountPercentage desc"}]}, "PlayWith": {"id": "PlayWith", "choices": [{"id": "PC"}]}, "Price": {"id": "Price", "choices": [{"id": "OnSale"}]}}),
+          ("new_a", {"orderby": {"id": "orderby", "choices": [{"id": "ReleaseDate desc"}]}, "PlayWith": {"id": "PlayWith", "choices": [{"id": "PC"}]}}),
+      ]]] + [
     ("protondb", "https://www.protondb.com/api/v1/reports/summaries/1145360.json", ["tier"]),
 ] + [("xbox_sigl_" + k, f"https://catalog.gamepass.com/sigls/v2?id={v}&language=en-us&market=US", ["0.title", "1.id"]) for k, v in SIGLS.items()]
 
