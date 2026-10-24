@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**']
+    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -453,6 +453,24 @@ jobs:
           check "the overlay app's Electron, page and code are installed (Hearth Browser's Electron)" "test -x /usr/lib/hearth-browser/nimbus && test -f /usr/lib/hearth-browser/resources/ui/index.html && { test -f /usr/lib/hearth-browser/resources/app/src/overlay/main.js || grep -aq HEARTH_HHD_OVERLAY /usr/lib/hearth-browser/resources/app.asar; }"
           # bughunt: GLib programs (the desktop portal, WebKit, the accessibility bus) abort without compiled GSettings schemas.
           check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
+          echo "--- .deb files (Hearth's Debian box), AppImages, the app store"
+          check "Distrobox, podman and newuidmap/newgidmap are installed (rootless containers)" "command -v distrobox && command -v podman && command -v newuidmap && command -v newgidmap"
+          check "hearth-debbox is installed (also as /usr/bin/hearth-debbox) and its Python is valid" "test -x /usr/share/nimbus/desktop/shell/hearth-debbox && test -x /usr/bin/hearth-debbox && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-debbox\").read())'"
+          check ".deb files open in Install Package (desktop file and MIME default)" "test -x /usr/bin/hearth-install-package && grep -q 'application/vnd.debian.binary-package' /usr/share/applications/hearth-install-package.desktop && grep -q '^application/vnd.debian.binary-package=hearth-install-package.desktop' /etc/xdg/nimbus-mimeapps.list && test -f /usr/share/nimbus/desktop/shell/DebInstaller.qml"
+          check "FUSE 2 for AppImages (libfuse.so.2 and fusermount)" "ldconfig -p | grep -q 'libfuse.so.2 ' && command -v fusermount"
+          check "home folder repair is installed and runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-home-repair && test -L /etc/systemd/system/multi-user.target.wants/hearth-home-repair.service"
+          check "/etc/hosts maps the device's name at boot and after a rename (hearth-hosts)" "python3 -m py_compile /usr/libexec/nimbus/hearth-hosts && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.service && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.path && printf '127.0.0.1 localhost\n127.0.1.1 old-name\n' > /tmp/hosts.t && /usr/libexec/nimbus/hearth-hosts --file /tmp/hosts.t --hostname chris-hearth && grep -q '^127.0.1.1.*chris-hearth' /tmp/hosts.t && ! grep -q old-name /tmp/hosts.t && grep -q '^127.0.0.1.*localhost' /tmp/hosts.t"
+          check "Flatpak's system installation set up / Bazaar installer runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-flatpak-setup && test -L /etc/systemd/system/multi-user.target.wants/hearth-flatpak-setup.service"
+          check "nothing makes an empty /var/lib/flatpak/repo at boot (flatpak can't open one: openat(config))" "! grep -rqs 'var/lib/flatpak/repo' /usr/lib/tmpfiles.d /etc/tmpfiles.d"
+          check "Bazaar: the image's package, or installed at boot (hearth-flatpak-setup)" "test -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop || grep -q io.github.kolunmi.Bazaar /usr/libexec/nimbus/hearth-flatpak-setup"
+          if [ -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop ]; then echo "::notice title=Bazaar::the image has it as a package"; else echo "::notice title=Bazaar::installed from Flathub at the first online boot (hearth-flatpak-setup.service)"; fi
+          check "a Flathub remote file for the system installation" "grep -qls dl.flathub.org /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo"
+          # A new account gets a container id range from hearth-home-repair (rootless podman needs one).
+          mkdir -p /var/home && useradd -m -d /var/home/subtest subtest >/dev/null 2>&1; sed -i '/^subtest:/d' /etc/subuid /etc/subgid
+          check "hearth-home-repair gives an account its subuid/subgid range" "/usr/libexec/nimbus/hearth-home-repair --user subtest && grep -q '^subtest:[0-9]*:65536' /etc/subuid && grep -q '^subtest:[0-9]*:65536' /etc/subgid"
+          check "hearth-apps and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-apps\", \"hearth-files\")]'"
+          check "Hearth's app store lists apps from a Flathub catalog (status, popular, a category, search, an app's page; offline)" "sh /store-check.sh"
+          sh /store-check.sh || true   # its own lines, for the log
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
           # ---- Hearth Contacts and Hearth Maps
@@ -464,10 +482,32 @@ jobs:
           # ---- end of Hearth Contacts and Hearth Maps
           exit $fail
           EOF
-          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh
+          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro -v "$PWD/.github/scripts/hearth-store-check.sh:/store-check.sh:ro" hearth-os:build sh /check.sh
           echo "--- bootc container lint"
           sudo podman run --rm hearth-os:build bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
+      # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
+      # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
+      # nested containers, which a runner may not give, so it never fails the build.
+      - name: Debian box, a .deb through Distrobox (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh box || echo "::warning title=box check::the box check didn't finish"
+      - name: AppImages through FUSE (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh appimage || echo "::warning title=box check::the appimage check didn't finish"
+      - name: Flatpak repair, Bazaar and the app store (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
       # Only :testing (and a dated testing tag). Never :latest.
       - name: Publish to GitHub Container Registry

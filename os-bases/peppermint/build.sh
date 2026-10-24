@@ -186,12 +186,29 @@ optional cups cups-filters ipp-usb avahi-daemon libnss-mdns wl-clipboard cliphis
 optional libnotify-bin wlopm
 # A polkit agent for Desktop Mode's password prompts. Debian keeps polkit-gnome's in a folder labwc's autostart
 # doesn't look in: link it where it does.
-optional policykit-1-gnome
-if [ -x /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 ]; then
+# Debian 13 has no policykit-1-gnome any more: MATE's agent (GTK, small) first, then LXDE's, then LXQt's. Without
+# one, pkexec prompts (Apps' system installs, Hearth Text saving system files) fail.
+if have_pkg policykit-1-gnome && "${APT[@]}" policykit-1-gnome 2>/dev/null && [ -x /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 ]; then
   ln -sf /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1
 else
-  optional lxqt-policykit
+  optional mate-polkit
+  if ! ls /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 >/dev/null 2>&1; then optional lxpolkit lxqt-policykit; fi
 fi
+for a in /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 /usr/libexec/polkit-gnome-authentication-agent-1 /usr/bin/lxpolkit /usr/bin/lxqt-policykit-agent; do
+  if [ -x "$a" ]; then echo "polkit agent: $a"; break; fi
+done
+
+# ------------------------------------------------------------------ .deb files (Hearth's Debian box) and AppImages
+# The system is an image (/usr is read-only), so a .deb is installed into a Debian 13 container made with Distrobox
+# (hearth-debbox, the Install Package window): rootless podman needs newuidmap/newgidmap (uidmap) and a network
+# helper (passt, or slirp4netns). Each account's id range in /etc/subuid and /etc/subgid comes from useradd, the
+# installer and hearth-home-repair (every boot). AppImages: FUSE 2 (most AppImages' runtime loads libfuse.so.2) and
+# a `fusermount` (fuse3 only has fusermount3, which does the same job: linked).
+"${APT[@]}" distrobox uidmap libfuse2t64 fuse3
+optional passt slirp4netns
+if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
+touch /etc/subuid /etc/subgid
+command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
@@ -573,6 +590,10 @@ mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+# hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
+# launcher (the .deb handler).
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-apps /usr/bin/hearth-install-package
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*
@@ -716,6 +737,8 @@ ff_missing() { LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hear
 chmod 755 /usr/bin/hearth-browser /usr/share/hearth-browser/install-firefox
 # Links open in it in Desktop Mode and Game Mode (XDG_CURRENT_DESKTOP=Nimbus), unless you pick another browser.
 printf 'x-scheme-handler/http=hearth-browser.desktop\nx-scheme-handler/https=hearth-browser.desktop\ntext/html=hearth-browser.desktop\napplication/xhtml+xml=hearth-browser.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
+# .deb files open in Install Package (Hearth's Debian box).
+printf 'application/vnd.debian.binary-package=hearth-install-package.desktop\napplication/x-deb=hearth-install-package.desktop\n' >> /etc/xdg/nimbus-mimeapps.list
 
 # ------------------------------------------------------------------ Hearth Player and Hearth Calculator
 # ---- hosts/hearth-player and hosts/hearth-calculator, built by CI with the app (base-peppermint.yml) and carried in
@@ -1012,6 +1035,18 @@ systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service
 systemctl enable hearth-boot-first.service
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)
+systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache folders yours, container id ranges
+# Flatpak's system installation set up (and repaired), Flathub in it, Bazaar (the Flathub store) for everyone. Debian
+# 13 has no Bazaar package, so it's Flathub's, installed at the first boot that's online (existing installs too).
+systemctl enable hearth-flatpak-setup.service
+# /etc/hosts maps the device's name (sudo: "unable to resolve host <name>"), at boot and after a rename; glibc's
+# myhostname module answers for the name too, whatever /etc/hosts says.
+systemctl enable hearth-hosts.service hearth-hosts.path
+optional libnss-myhostname
+if [ -f /etc/nsswitch.conf ] && ! grep -Eq '^hosts:.*myhostname' /etc/nsswitch.conf && [ -e /usr/lib/x86_64-linux-gnu/libnss_myhostname.so.2 ]; then
+  sed -i -E 's/^(hosts:[[:space:]]+files)/\1 myhostname/' /etc/nsswitch.conf
+fi
+grep '^hosts:' /etc/nsswitch.conf || true
 # The first start after moving here from the Bazzite-based Hearth OS: a clean install that keeps your games
 # (os/system_files; does nothing without the plan the old system leaves).
 systemctl enable hearth-clean-install.service
@@ -1098,10 +1133,13 @@ mkdir -p /usr/lib/sysimage
 mv /var/lib/dpkg /usr/lib/sysimage/dpkg
 VARCONF=/usr/lib/tmpfiles.d/hearth-var.conf
 : > "$VARCONF"
+# Not /var/lib/flatpak: flatpak makes its system installation itself; an empty repo folder made at boot (as up to
+# 0.6.0) is one it can't open ("opening repo: openat(config): No such file or directory").
 find /var -mindepth 1 -type d \
   ! -path '/var/cache*' ! -path '/var/log*' ! -path '/var/tmp*' ! -path '/var/run*' ! -path '/var/lock*' \
   ! -path '/var/home*' ! -path '/var/roothome*' ! -path '/var/opt*' ! -path '/var/srv*' \
   ! -path '/var/mnt*' ! -path '/var/usrlocal*' ! -path '/var/lib/apt/lists*' ! -path '/var/lib/dkms*' \
+  ! -path '/var/lib/flatpak*' \
   -printf 'd /var/%P %m %u %g -\n' | sort >> "$VARCONF"
 echo 'L+ /var/lib/dpkg - - - - /usr/lib/sysimage/dpkg' >> "$VARCONF"
 if [ -d /opt ] && [ -n "$(ls -A /opt 2>/dev/null)" ]; then
