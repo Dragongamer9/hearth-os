@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weather</title>
 <link rel="stylesheet" href="hearth.css">
+<link rel="stylesheet" href="osk/hearth-osk.css">
 <style>
 main { overflow:auto; display:flex; flex-direction:column; gap:var(--gut); padding-bottom:1em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
 .now { display:grid; grid-template-columns:auto 1fr auto; gap:.4em 1.6em; align-items:center; padding:1.1em 1.4em; border-radius:20px;
@@ -57,6 +58,7 @@ h2 { font-size:1em; color:var(--muted); font-weight:600; margin:0 0 .5em; }
   <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Change place</span><span><b>Y</b>Refresh</span><span>Forecasts from Open-Meteo</span></footer>
 </div>
 <div id="layer"></div>
+<script src="osk/hearth-osk.js"></script>
 <script src="hearth.js"></script>
 <script>
 'use strict';
