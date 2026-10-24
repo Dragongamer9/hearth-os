@@ -34,11 +34,26 @@ CONF
 done
 
 GTK_MARK="/* Written by Hearth; delete this line to keep your own settings."
+# Your profile's accent colour (Hearth's library.json, the same one Mantel's Theme.qml uses) for GTK apps too: Bazaar
+# (Hearth OS's app store) and GNOME apps get it in place of the ember default. Mantel runs this again when it changes;
+# an open app picks it up when it's opened again.
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+ACCENT=$(python3 -c 'import json, re, sys
+try:
+    a = (json.load(open(sys.argv[1])).get("profile") or {}).get("accent") or ""
+except Exception:
+    a = ""
+print(a if re.fullmatch(r"#[0-9a-fA-F]{6}", a) else "")' "$DATA/nimbus/library.json" 2>/dev/null)
 for v in 4 3; do
   f="$CONF/gtk-$v.0/gtk.css"
   if [ ! -e "$f" ] || head -n 1 "$f" | grep -qF "$GTK_MARK"; then
     mkdir -p "$CONF/gtk-$v.0"
     cp "$SHARE/desktop/theme/gtk/gtk$v.css" "$f" 2>/dev/null
+    if [ -n "$ACCENT" ]; then
+      # Text on the accent: dark on light accents, white on dark ones (as Theme.qml's accentInk).
+      INK=$(python3 -c 'import sys; h = sys.argv[1].lstrip("#"); r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)); print("#2a1206" if r * 0.2126 + g * 0.7152 + b * 0.0722 > 0.45 else "#ffffff")' "$ACCENT" 2>/dev/null)
+      sed -i -e "s/#ff8a3d/$ACCENT/g" -e "s/#ff9a52/$ACCENT/g" -e "s/#2a1206/${INK:-#2a1206}/g" "$f" 2>/dev/null
+    fi
   fi
 done
 if command -v flatpak >/dev/null 2>&1; then

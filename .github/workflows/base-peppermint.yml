@@ -588,8 +588,8 @@ jobs:
           else
             echo "::warning title=Claude Desktop install::$(printf '%s' "$cout" | grep -v '^progress' | tail -3 | tr '\n' ' ' | cut -c1-600)"
           fi
-          echo "--- .deb files (Hearth's Debian box), AppImages, the app store"
-          check "a polkit agent Desktop Mode starts (pkexec prompts: Apps' system installs, Hearth Text)" "for a in \$(sed -n '/^for agent in/,/; do/p' /usr/share/nimbus/desktop/labwc/autostart | tr -d '\\\\' | sed 's/for agent in//; s/; do//'); do command -v \"\$a\" && exit 0; done; exit 1"
+          echo "--- .deb files (Hearth's Debian box), AppImages, Bazaar (the app store)"
+          check "a polkit agent Desktop Mode starts (pkexec prompts: Bazaar's system installs, Hearth Text)" "for a in \$(sed -n '/^for agent in/,/; do/p' /usr/share/nimbus/desktop/labwc/autostart | tr -d '\\\\' | sed 's/for agent in//; s/; do//'); do command -v \"\$a\" && exit 0; done; exit 1"
           check "Distrobox, podman and newuidmap/newgidmap are installed (rootless containers)" "command -v distrobox && command -v podman && command -v newuidmap && command -v newgidmap"
           check "hearth-debbox is installed (also as /usr/bin/hearth-debbox) and its Python is valid" "test -x /usr/share/nimbus/desktop/shell/hearth-debbox && test -x /usr/bin/hearth-debbox && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-debbox\").read())'"
           check ".deb files open in Install Package (desktop file and MIME default)" "test -x /usr/bin/hearth-install-package && grep -q 'application/vnd.debian.binary-package' /usr/share/applications/hearth-install-package.desktop && grep -q '^application/vnd.debian.binary-package=hearth-install-package.desktop' /etc/xdg/nimbus-mimeapps.list && test -f /usr/share/nimbus/desktop/shell/DebInstaller.qml"
@@ -605,9 +605,14 @@ jobs:
           # A new account gets a container id range from hearth-home-repair (rootless podman needs one).
           mkdir -p /var/home && useradd -m -d /var/home/subtest subtest >/dev/null 2>&1; sed -i '/^subtest:/d' /etc/subuid /etc/subgid
           check "hearth-home-repair gives an account its subuid/subgid range" "/usr/libexec/nimbus/hearth-home-repair --user subtest && grep -q '^subtest:[0-9]*:65536' /etc/subuid && grep -q '^subtest:[0-9]*:65536' /etc/subgid"
-          check "hearth-apps and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-apps\", \"hearth-files\")]'"
-          check "Hearth's app store lists apps from a Flathub catalog (status, popular, a category, search, an app's page; offline)" "sh /store-check.sh"
-          sh /store-check.sh || true   # its own lines, for the log
+          check "hearth-flatpak and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-flatpak\", \"hearth-files\")]'"
+          # Bazaar is the app store (Hearth's own store, Apps / hearth-apps, is archived: docs/ARCHIVED.md). Its real install
+          # needs the network: the warn-only "Flatpak repair and Bazaar" step below tries it.
+          check "Hearth's archived app store isn't installed or in any menu (Bazaar is the app store)" "test ! -e /usr/share/nimbus/desktop/shell/hearth-apps && test ! -e /usr/share/nimbus/desktop/shell/AppStore.qml && test ! -e /usr/share/applications/hearth-apps.desktop && ! grep -rqs 'call apps open' /usr/share/applications"
+          check "Bazaar's install is scheduled: every boot, retried every 15 minutes while offline" "grep -qx 'Restart=on-failure' /usr/lib/systemd/system/hearth-flatpak-setup.service && grep -qx 'RestartSec=15min' /usr/lib/systemd/system/hearth-flatpak-setup.service && grep -q \"BAZAAR = 'io.github.kolunmi.Bazaar'\" /usr/libexec/nimbus/hearth-flatpak-setup"
+          check "Bazaar gets Hearth's look (GTK 4 colours, and Flatpak apps may read them)" "test -f /usr/share/nimbus/desktop/theme/gtk/gtk4.css && grep -q 'xdg-config/gtk-4.0:ro' /usr/libexec/nimbus/hearth-flatpak-setup && grep -q 'xdg-config/gtk-4.0:ro' /usr/share/nimbus/desktop/theme/apply.sh"
+          check "Bazaar is where the store was: Mantel's taskbar pin, Settings › Default apps › App store, the apps IPC target" "grep -q io.github.kolunmi.Bazaar /usr/share/nimbus/desktop/shell/hearth-desk && grep -q io.github.kolunmi.Bazaar.desktop /usr/share/nimbus/desktop/shell/hearth-system && grep -q 'target: \"apps\"' /usr/share/nimbus/desktop/shell/shell.qml && grep -q hearth-flatpak /usr/share/nimbus/desktop/shell/shell.qml"
+          check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
           echo "--- nice to have"
           warn "Peppermint's desktop (Xfce) is on the login screen" "grep -q 'Peppermint desktop' /usr/share/xsessions/xfce.desktop"
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
@@ -677,7 +682,7 @@ jobs:
           echo "::notice title=Default app lists in the image::$(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
           exit $fail
           EOF
-          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro -v "$PWD/.github/scripts/hearth-store-check.sh:/store-check.sh:ro" hearth-peppermint:latest sh /check.sh
+          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-peppermint:latest sh /check.sh
           echo "--- bootc container lint"
           sudo podman run --rm hearth-peppermint:latest bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
@@ -697,7 +702,7 @@ jobs:
         run: |
           sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh appimage || echo "::warning title=box check::the appimage check didn't finish"
-      - name: Flatpak repair, Bazaar and the app store (warn-only)
+      - name: Flatpak repair and Bazaar (warn-only)
         continue-on-error: true
         timeout-minutes: 40
         run: |

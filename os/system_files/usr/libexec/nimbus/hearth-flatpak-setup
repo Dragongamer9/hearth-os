@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 """hearth-flatpak-setup: the system's Flatpak installation made usable, Flathub in it, and Bazaar (the Flathub app
-store, io.github.kolunmi.Bazaar) installed for everyone. Runs as root at every boot (hearth-flatpak-setup.service,
-after the network is up; retried until it works), so existing installs get it after an update too. Logs to the
-journal (journalctl -u hearth-flatpak-setup).
+store, io.github.kolunmi.Bazaar) installed for everyone. Bazaar is Hearth OS's app store on every edition (Hearth's
+own store is archived, docs/ARCHIVED.md). Runs as root at every boot (hearth-flatpak-setup.service, after the network
+is up; retried every 15 minutes until it works, e.g. while offline), so existing installs get it after an update too.
+Logs to the journal (journalctl -u hearth-flatpak-setup) and keeps what it did last in /var/lib/hearth/flatpak-setup.json
+(Settings › Apps and the bug report show it: hearth-flatpak status).
 
   1. repo     /var/lib/flatpak/repo there but never initialised (no `config`): flatpak then fails every system
               operation with "opening repo: openat(config): No such file or directory". Peppermint images up to
@@ -14,8 +16,8 @@ journal (journalctl -u hearth-flatpak-setup).
               reads when it makes a new installation).
   3. bazaar   Bazaar from Flathub, system-wide, unless the image has it as a package already, or it was installed
               by this once and removed since (/var/lib/hearth/bazaar.done; delete it to get Bazaar back). Then a
-              system override lets Bazaar read ~/.config/gtk-4.0 (Hearth's theme script puts Mantel's colours there
-              unless you have your own gtk.css).
+              system override lets Bazaar read ~/.config/gtk-4.0 and gtk-3.0 (Hearth's theme script puts Mantel's
+              colours there unless you have your own gtk.css), so it has Hearth's look without changing Bazaar.
 
   hearth-flatpak-setup [--no-bazaar] [--root DIR]   (--root: a fake system for tests; nothing is run there)
 """
@@ -33,6 +35,7 @@ REMOTE_FILE = 'etc/flatpak/remotes.d/flathub.flatpakrepo'
 REMOTE_URL = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
 REPO = 'var/lib/flatpak/repo'
 DONE = 'var/lib/hearth/bazaar.done'
+STATE = 'var/lib/hearth/flatpak-setup.json'
 # What flatpak writes when it makes a system repo (flatpak_dir_ensure_repo: bare-user-only for every installation).
 REPO_CONFIG = '[core]\nrepo_version=1\nmode=bare-user-only\nmin-free-space-size=500MB\n'
 
@@ -125,8 +128,21 @@ def bazaar_plan(packaged, installed, done):
 
 
 def override():
-    code, out = flatpak(['override', '--system', BAZAAR, '--filesystem=xdg-config/gtk-4.0:ro'], timeout=60)
-    log('bazaar: %s' % ('can read ~/.config/gtk-4.0 (Mantel\'s colours)' if code == 0 else 'override failed: ' + out))
+    code, out = flatpak(['override', '--system', BAZAAR, '--filesystem=xdg-config/gtk-4.0:ro',
+                         '--filesystem=xdg-config/gtk-3.0:ro'], timeout=60)
+    log('bazaar: %s' % ('can read ~/.config/gtk-4.0 and gtk-3.0 (Hearth\'s colours)' if code == 0 else 'override failed: ' + out))
+
+
+def save_state(ok, step, message):
+    """What this run did, for Settings › Apps (hearth-flatpak status): {time, ok, step, message}. Never fails the run."""
+    try:
+        os.makedirs(os.path.dirname(p(STATE)), exist_ok=True)
+        with open(p(STATE) + '.tmp', 'w') as f:
+            json.dump({'time': int(time.time()), 'ok': bool(ok), 'step': step, 'message': message[:500]}, f)
+        os.chmod(p(STATE) + '.tmp', 0o644)
+        os.replace(p(STATE) + '.tmp', p(STATE))
+    except OSError as e:
+        log('state: couldn\'t save %s (%s)' % (p(STATE), e))
 
 
 def mark_done():
@@ -140,7 +156,11 @@ def bazaar():
     log('bazaar: ' + {'skip-packaged': 'installed with the system image', 'override': 'installed',
                       'skip-removed': 'was installed by Hearth and removed since: left out (delete %s to get it back)' % p(DONE),
                       'install': 'installing from Flathub for everyone'}[plan])
-    if plan in ('skip-packaged', 'skip-removed'):
+    if plan == 'skip-packaged':
+        save_state(True, 'bazaar', 'Bazaar came with the system image')
+        return True
+    if plan == 'skip-removed':
+        save_state(True, 'bazaar', 'Bazaar was removed after Hearth installed it: left out')
         return True
     if plan == 'install':
         last = ''
@@ -149,12 +169,17 @@ def bazaar():
             if code == 0 or bazaar_installed():
                 break
             log('bazaar: attempt %d failed (%s)' % (attempt, last.splitlines()[-1] if last else '?'))
-            time.sleep(30 * attempt)
+            if attempt < 3:
+                time.sleep(30 * attempt)
         else:
+            why = last.splitlines()[-1] if last else 'flatpak install failed'
+            log('bazaar: not installed this time (%s); trying again in 15 minutes (systemd restarts this)' % why)
+            save_state(False, 'bazaar', 'Bazaar couldn\'t be installed yet (%s); Hearth tries again every 15 minutes' % why)
             return False
         mark_done()
         log('bazaar: installed')
     override()
+    save_state(True, 'bazaar', 'Bazaar is installed for everyone')
     return True
 
 
@@ -173,7 +198,9 @@ def main(argv):
         return 0
     log('repo: ' + fix_repo(p(REPO)))
     ok = ensure_remote()
-    if ok and '--no-bazaar' not in args:
+    if not ok:
+        save_state(False, 'flathub', 'Flathub couldn\'t be added to the system yet (offline?); Hearth tries again every 15 minutes')
+    elif '--no-bazaar' not in args:
         ok = bazaar()
     return 0 if ok else 1
 

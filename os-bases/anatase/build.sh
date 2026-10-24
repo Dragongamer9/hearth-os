@@ -577,7 +577,7 @@ dnf5 -y install fuse || true
 if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then ln -s "$(command -v fusermount3)" /usr/bin/fusermount; fi
 touch /etc/subuid /etc/subgid
 command -v distrobox
-# Flathub for the system installation (hearth-flatpak-setup adds it from here; Bazaar and Apps' system fallback use it),
+# Flathub for the system installation (hearth-flatpak-setup adds it from here; Bazaar, the app store, installs from it),
 # unless Anatase already brings a Flathub remote file.
 if ! grep -qls 'dl.flathub.org' /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo 2>/dev/null; then
   mkdir -p /etc/flatpak/remotes.d
@@ -738,18 +738,8 @@ Type=Application
 Categories=Settings;
 Keywords=wifi;bluetooth;sound;display;controller;update;
 DESKTOP
-cat > /usr/share/applications/hearth-apps.desktop <<DESKTOP
-[Desktop Entry]
-Name=Apps
-GenericName=App Store
-Comment=Find, install and update apps from Flathub
-Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call apps open
-Icon=hearth-apps
-Type=Application
-Categories=System;PackageManager;
-Keywords=store;software;install;update;flathub;flatpak;
-OnlyShowIn=Nimbus;
-DESKTOP
+# (Hearth's own app store, Apps / hearth-apps.desktop, is archived: Bazaar is the app store, installed for everyone by
+# hearth-flatpak-setup. docs/ARCHIVED.md)
 cat > /usr/share/applications/hearth-browser.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Browser
