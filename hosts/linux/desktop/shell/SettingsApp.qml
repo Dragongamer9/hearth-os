@@ -18,6 +18,7 @@ Scope {
     readonly property var pages: (live ? [{ id: "install", icon: "update", label: "Install Hearth" }] : []).concat([
         { id: "wifi", icon: "wifi", label: "Wi-Fi" },
         { id: "bluetooth", icon: "bt", label: "Bluetooth" },
+        { id: "link", icon: "desktops", label: "Hearth Link" },   // SetLink.qml: your Hearth devices
         { id: "sound", icon: "vol", label: "Sound" },
         { id: "notifications", icon: "bell", label: "Notifications" },
         { id: "display", icon: "display", label: "Display" },
@@ -46,7 +47,7 @@ Scope {
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", apps: "SetApps.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
-        accessibility: "SetAccessibility.qml" /* Accessibility */ })
+        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */ })
 
     function open(p) {
         if (p && files[p]) page = p;

@@ -1,0 +1,80 @@
+#!/usr/bin/python3
+"""hearth-link-settings: Mantel's Settings › Hearth Link talking to the Hearth Link service (hosts/hearth-link),
+through `hearth-link call` (its socket, only this user's).
+
+  hearth-link-settings status                 JSON: this device, pairing code, paired and nearby devices, copies
+  hearth-link-settings pair-open | pair-close
+  hearth-link-settings join ID                the code comes on stdin (HEARTH_INPUT), never on the command line
+  hearth-link-settings unpair ID
+  hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
+  hearth-link-settings sync
+  hearth-link-settings pause|resume|cancel ID   a copy
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
+ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
+KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
+
+
+class Fail(Exception):
+    pass
+
+
+def request(argv, stdin=''):
+    """The service call for these arguments: (command, args)."""
+    if not argv:
+        raise Fail('usage: hearth-link-settings status|pair-open|pair-close|join ID|unpair ID|set KEY VALUE|sync|pause|resume|cancel ID')
+    cmd, rest = argv[0], argv[1:]
+    simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now'}
+    if cmd in simple and not rest:
+        return simple[cmd], {}
+    if cmd in ('join', 'unpair', 'pause', 'resume', 'cancel') and len(rest) == 1:
+        target = rest[0].strip()
+        if not ID_RE.match(target):
+            raise Fail("That isn't a Hearth device or copy")
+        if cmd == 'join':
+            code = re.sub(r'[\s-]', '', stdin or '')
+            if not re.fullmatch(r'\d{6}', code):
+                raise Fail('The code is 6 digits')
+            return 'pair.join', {'id': target, 'code': code}
+        if cmd == 'unpair':
+            return 'unpair', {'id': target}
+        return 'transfer.' + cmd, {'id': target}
+    if cmd == 'set' and len(rest) == 2 and rest[0] in KEYS:
+        k, v = rest
+        if KEYS[k] is bool:
+            if v not in ('on', 'off'):
+                raise Fail('on or off')
+            return 'settings.set', {k: v == 'on'}
+        return 'settings.set', {k: v[:300]}
+    raise Fail('Unknown command')
+
+
+def main(argv):
+    try:
+        cmd, args = request(argv[1:], os.environ.get('HEARTH_INPUT', ''))
+        if not os.path.exists(BIN):
+            raise Fail('Hearth Link comes with the next Hearth OS update')
+        r = subprocess.run([BIN, 'call', cmd, json.dumps(args)], capture_output=True, text=True, timeout=90)
+        lines = (r.stdout or '').strip().splitlines()
+        v = json.loads(lines[-1]) if lines else {'error': 'Hearth Link didn\'t answer'}
+        if r.returncode != 0 or (isinstance(v, dict) and set(v) == {'error'}):
+            raise Fail(v.get('error') if isinstance(v, dict) else 'That didn\'t work')
+        print(json.dumps(v if isinstance(v, dict) else {'value': v}))
+        return 0
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        print('error: %s' % e)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
