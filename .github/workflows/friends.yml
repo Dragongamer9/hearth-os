@@ -104,6 +104,7 @@ jobs:
           set -o pipefail
           dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-e2e.py --bin hosts/hearth-friends/target/release/hearth-friends --homeserver http://127.0.0.1:8008' 2>&1 | tee e2e.log \
             || { echo "::error title=Friends end to end::$(grep -E 'FAIL|Traceback|Error' -A6 e2e.log | head -60 | tr '\n' '|' | cut -c1-3900) || synapse: $(tail -c 600 "$RUNNER_TEMP/synapse/synapse.log" | tr '\n' '|')"; exit 1; }
+          echo "::notice title=Friends e2e summary::$(grep -c '^PASS' e2e.log) checks passed (two services, Synapse)"
           grep '^PASS' e2e.log | while read -r l; do echo "::notice title=Friends e2e::$l"; done
       - name: WebKit and GTK for the Hearth app
         if: github.event_name != 'workflow_dispatch' || inputs.cores
@@ -120,6 +121,7 @@ jobs:
           set -o pipefail
           dbus-run-session -- sh -c 'printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null; python3 tools/friends-e2e.py --cores --bin hosts/hearth-friends/target/release/hearth-friends --hearth hosts/hearth-rs/target/release/hearth --homeserver http://127.0.0.1:8008' 2>&1 | tee cores.log \
             || { echo "::error title=Friends through Hearth cores::$(grep -E 'FAIL|Traceback|Error' -A6 cores.log | head -60 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
+          echo "::notice title=Friends via cores summary::$(grep -c '^PASS' cores.log) checks passed (two Hearth cores, Synapse)"
           grep '^PASS' cores.log | while read -r l; do echo "::notice title=Friends via cores::$l"; done
       - name: No tokens in any log
         if: always()

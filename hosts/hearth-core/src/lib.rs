@@ -31,6 +31,9 @@ pub mod inputplumber;
 pub mod logs;
 pub mod xodus;
 pub mod library;
+// ---- Hearth Link: paired Hearth devices, data sync and game copies (hosts/hearth-link)
+pub mod link;
+// ---- end of Hearth Link
 // ---- Nearby Share and Hearth Connect, opened from Game Mode
 pub mod link_apps;
 // ---- end of Nearby Share and Hearth Connect

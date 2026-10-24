@@ -431,6 +431,39 @@ UNIT
 fi
 # ---- end of Nearby Share and Hearth Connect
 
+# ---- Hearth Link (hosts/hearth-link): your Hearth devices paired, Hearth data kept in sync, games copied between them.
+# Built with the app (base-peppermint.yml) and carried in os/nimbus-app. A small user service, started with every session
+# (default.target): it answers only paired devices (and pairing while a code is showing), stays quiet while a game
+# runs (Hearth's hearth-playing file), and gives way to anything else under load (low CPU/IO weight). Its UDP ports
+# open to the local network only, through hearth-link-firewall.
+if [ -x "/ctx/nimbus-app/hearth-link" ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-link /usr/bin/hearth-link
+  if ldd /usr/bin/hearth-link | grep "not found"; then echo "warning: hearth-link is missing the libraries above"; rm -f /usr/bin/hearth-link; fi
+fi
+if [ -x /usr/bin/hearth-link ]; then
+  install -d /usr/lib/systemd/user/default.target.wants
+  cat > /usr/lib/systemd/user/hearth-link.service <<UNIT
+[Unit]
+Description=Hearth Link (your Hearth devices: sync and game copies)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/hearth-link serve
+Restart=on-failure
+RestartSec=3
+Nice=10
+CPUWeight=20
+IOWeight=20
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=default.target
+UNIT
+  ln -sf ../hearth-link.service /usr/lib/systemd/user/default.target.wants/hearth-link.service
+fi
+# ---- end of Hearth Link
+
 # ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
 # hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;

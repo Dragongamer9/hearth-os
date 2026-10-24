@@ -156,8 +156,8 @@ pub fn discord_installed() -> bool { crate::system::has("flatpak") && crate::sys
 /// friend → request (with a one-time 4-digit PIN), host accepts (Sunshine pairs that PIN only), friend's Moonlight
 /// pairs and streams. The host can end it or remove the friend at any time, and can make the friend's input
 /// controller only (no keyboard or mouse on the host's PC).
-/// How the friend reaches the host is a Transport: the local network now; Hearth Link (peer-to-peer with a relay,
-/// (hosts/hearth-link) plugs in through `hearth-link call play.address`, so this code doesn't change when it lands.
+/// How the friend reaches the host is a Transport: the local network now; Hearth Link (hosts/hearth-link,
+/// peer-to-peer with relays) plugs in through `hearth-link call play.address`, so this code doesn't change when it does.
 pub mod play_together {
     use serde_json::{json, Value};
     use std::path::Path;
