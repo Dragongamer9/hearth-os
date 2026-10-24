@@ -210,6 +210,19 @@ pub fn report(version: &str) -> String {
         .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
+    // Apps (Desktop Mode's app store for Flathub): what it sees (can your own Flatpak folder be used, the catalog, the
+    // last refresh error), the Flathub remotes (yours and the system's) and who owns the folders it writes to (a
+    // folder owned by root or an old account makes `flatpak --user` fail with "permission denied").
+    section("App store (Flatpak)", sh(&format!("{{ python3 '{}' status; echo; echo '--- flatpak'; flatpak --version; \
+        echo '--- remotes (yours)'; flatpak remotes --user --show-details; echo '--- remotes (system)'; flatpak remotes --system --show-details; \
+        echo '--- who owns the folders'; for d in \"$HOME\" \"$HOME/.local\" \"$HOME/.local/share\" \"$HOME/.local/share/flatpak\" \"$HOME/.local/share/flatpak/repo\" \"$HOME/.local/share/flatpak/appstream\" \"$HOME/.cache\" \"$HOME/.config\"; do stat -c '%U (%u):%G %a %F %n' \"$d\"; done; \
+        echo '--- not yours inside ~/.local/share/flatpak (first 20)'; find \"$HOME/.local/share/flatpak\" -maxdepth 4 ! -user \"$(id -u)\" 2>/dev/null | head -20; \
+        echo '--- the system catalog'; ls -la /var/lib/flatpak/appstream/flathub/*/ 2>&1 | head -8; \
+        echo '--- the boot-time repair'; journalctl -b --no-pager -n 15 -u hearth-home-repair; }} 2>&1",
+        crate::paths::desktop_dir().join("shell/hearth-apps").display())));
+    // Hearth's Debian box (.deb files through Distrobox): whether it's made, what's installed through Hearth.
+    section("Debian box (.deb packages)", sh(&format!("{{ python3 '{0}' status --quick; python3 '{0}' list; distrobox --version; podman --version; grep \"^$(id -un):\" /etc/subuid /etc/subgid; }} 2>&1",
+        crate::paths::desktop_dir().join("shell/hearth-debbox").display())));
     // Keeping Quick Resume games through turning off and restarting (hibernation): whether it's available and why
     // not (power.hibernateStatus, with what it looked at), Nvidia's sleep helpers, and the last hibernations.
     section("Quick Resume through turning off (hibernation)", format!("{}\n\n{}",

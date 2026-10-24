@@ -37,6 +37,18 @@
   hearth-files peek PATH                the start of a text file (quick preview)
   hearth-files thumbs PATH...           make missing video thumbnails (ffmpegthumbnailer or ffmpeg)
   hearth-files terminal PATH            open Hearth Terminal there
+  hearth-files appimage-info PATH       is it an AppImage, can it run, is it in the app menu
+  hearth-files appimage-run PATH [--trust]
+                                        run an AppImage; --trust (after "Run this app?") makes it executable first.
+                                        Without FUSE 2 (or when the AppImage can't mount itself) it runs with
+                                        APPIMAGE_EXTRACT_AND_RUN=1
+  hearth-files appimage-menu-add PATH [--trust]
+                                        put an AppImage in the app menu: it's MOVED to ~/Applications (copied from
+                                        a USB drive or a folder you can't change) so a Downloads clean-up can't
+                                        break the menu entry, its .desktop file and icon are taken out of it
+                                        (--appimage-extract) into ~/.local/share/applications and
+                                        ~/.local/share/icons/hearth-appimages, and Exec points at it there
+  hearth-files appimage-menu-remove PATH   take it out of the app menu (the AppImage itself stays)
   hearth-files open-plan PATH           what opening it should do: script | program | desktop | text | binary | default
                                         (with the choice remembered for this file, if any)
   hearth-files run PATH [--terminal]    run a script or program (in Hearth Terminal, which stays open at the end)
@@ -75,7 +87,7 @@ EXTRA_TYPES = {
     '.desktop': 'application/x-desktop', '.exe': 'application/x-ms-dos-executable', '.msi': 'application/x-msi',
     '.sh': 'application/x-shellscript', '.md': 'text/markdown', '.json': 'application/json', '.log': 'text/plain',
     '.nsp': 'application/octet-stream', '.xci': 'application/octet-stream', '.rpm': 'application/x-rpm',
-    '.flatpakref': 'application/vnd.flatpak.ref', '.txt': 'text/plain', '.png': 'image/png', '.jpg': 'image/jpeg',
+    '.flatpakref': 'application/vnd.flatpak.ref', '.deb': 'application/vnd.debian.binary-package', '.txt': 'text/plain', '.png': 'image/png', '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip',
 }
 
@@ -407,6 +419,12 @@ def list_dir(path, hidden=False):
             e['origPath'] = orig
             e['deleted'] = when
         entries.append(e)
+    if any(APPIMAGE_NAME.search(e['name']) and not e['dir'] for e in entries):
+        in_menu = appimage_menu_entries()
+        for e in entries:
+            if APPIMAGE_NAME.search(e['name']) and not e['dir']:
+                e['appimage'] = True
+                e['inMenu'] = os.path.realpath(e['path']) in in_menu
     free, total = free_space(p)
     out = {'path': p, 'name': os.path.basename(p) or '/', 'parent': os.path.dirname(p) if p != '/' else None,
            'writable': allowed(p) and os.access(p, os.W_OK), 'trash': trash_view, 'entries': entries,
@@ -1180,6 +1198,15 @@ def open_path(path, app_id=None):
         full, fields = entries[app_id]
         spawn(expand_exec(fields['Exec'], p, fields, full), cwd=cwd)
         return {'ok': True, 'app': app_id}
+    # An AppImage that's runnable runs (one that isn't asks first: Files does that); a .deb opens the Install
+    # Package window.
+    if os.path.isfile(p) and appimage_type(p):
+        if os.access(p, os.X_OK):
+            return appimage_run(p)
+        raise Fail('Open it in Files to run it: Hearth asks once before running a new app')
+    if os.path.isfile(p) and p.lower().endswith('.deb') and shutil.which('hearth-install-package'):
+        spawn(['hearth-install-package', p], cwd=cwd)
+        return {'ok': True, 'app': 'hearth-install-package.desktop'}
     if shutil.which('gio'):
         try:
             r = subprocess.run(['gio', 'open', p], capture_output=True, text=True, timeout=20,
@@ -2552,6 +2579,318 @@ def desktop_launch(path):
     return {'ok': True, 'name': d['name']}
 
 
+# ---------------------------------------------------------------------- AppImages
+APPIMAGE_NAME = re.compile(r'\.appimage$', re.I)
+MENU_KEY = 'X-Hearth-AppImage'
+# Copied from the AppImage's own .desktop file into the menu entry (never its Exec, TryExec or Actions).
+COPY_KEYS = ('Name', 'GenericName', 'Comment', 'Categories', 'Keywords', 'MimeType', 'StartupWMClass', 'Terminal',
+             'StartupNotify')
+
+
+def applications_dir():
+    return os.path.join(home(), 'Applications')
+
+
+def menu_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'applications')
+
+
+def appimage_icons_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'icons', 'hearth-appimages')
+
+
+def appimage_type(path):
+    """2 for a type-2 AppImage (ELF with "AI\x02" at byte 8), 1 for type 1, 0 if it isn't one (by its bytes; the
+    name alone isn't trusted)."""
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(11)
+    except OSError:
+        return 0
+    if len(head) < 11 or head[:4] != b'\x7fELF' or head[8:10] != b'AI':
+        return 0
+    return head[10] if head[10] in (1, 2) else 0
+
+
+def fuse2_available():
+    """libfuse.so.2 (classic AppImage runtimes load it) and a fusermount to mount with."""
+    lib = any(os.path.exists(os.path.join(d, 'libfuse.so.2')) for d in
+              ('/usr/lib64', '/usr/lib/x86_64-linux-gnu', '/usr/lib', '/lib/x86_64-linux-gnu', '/usr/lib/aarch64-linux-gnu'))
+    return lib and bool(shutil.which('fusermount') or shutil.which('fusermount3')) and os.path.exists('/dev/fuse')
+
+
+def appimage_menu_entries():
+    """{AppImage's real path: menu entry file} for the menu entries Hearth made."""
+    out = {}
+    d = menu_dir()
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return out
+    for n in names:
+        if not n.startswith('appimage-') or not n.endswith('.desktop'):
+            continue
+        f = parse_desktop(os.path.join(d, n)) or {}
+        target = f.get(MENU_KEY)
+        if target:
+            out[os.path.realpath(target)] = os.path.join(d, n)
+    return out
+
+
+def appimage_id(path):
+    """A menu entry id for an AppImage: its name without the extension (and a version-looking tail), plus a short
+    hash of where it is (two AppImages with the same name in different folders get their own entries)."""
+    import hashlib
+    stem = APPIMAGE_NAME.sub('', os.path.basename(path))
+    stem = re.sub(r'[-_. ]?(x86_64|amd64|aarch64|arm64|x64)$', '', stem, flags=re.I)
+    stem = re.sub(r'[^A-Za-z0-9._-]+', '-', stem).strip('-.') or 'app'
+    return 'appimage-%s-%s' % (stem[:60], hashlib.sha1(os.path.realpath(path).encode('utf-8', 'surrogateescape')).hexdigest()[:8])
+
+
+def exec_quote(arg):
+    """One argument for a .desktop Exec line (the Desktop Entry spec: quoted when it has reserved characters, with
+    " ` $ \\ escaped inside the quotes, then the value's own escaping of backslashes; % doubled)."""
+    if re.search(r'[\s"\'\\><~|&;$*?#()`=%]', arg):
+        arg = '"' + re.sub(r'(["`$\\])', r'\\\1', arg) + '"'
+    return arg.replace('\\', '\\\\').replace('%', '%%')
+
+
+def desktop_value(v):
+    """A value written on one line of a .desktop file."""
+    return re.sub(r'[\r\n]+', ' ', v or '').strip()
+
+
+def build_appimage_entry(app_path, fields=None, icon='', fuse_ok=True):
+    """The text of the menu entry for an AppImage at app_path. fields: its own .desktop file's [Desktop Entry]."""
+    fields = fields or {}
+    name = desktop_value(fields.get('Name')) or APPIMAGE_NAME.sub('', os.path.basename(app_path))
+    code = ''
+    m = re.search(r'%[fFuU]', fields.get('Exec', ''))
+    if m:
+        code = ' ' + m.group(0)
+    cmd = exec_quote(app_path) + code
+    if not fuse_ok:
+        cmd = 'env APPIMAGE_EXTRACT_AND_RUN=1 ' + cmd
+    lines = ['[Desktop Entry]', 'Type=Application', 'Name=' + name]
+    for k in COPY_KEYS[1:]:
+        v = desktop_value(fields.get(k))
+        if v:
+            lines.append('%s=%s' % (k, v))
+    lines += ['Exec=' + cmd, 'TryExec=' + app_path.replace('\\', '\\\\'), 'Icon=' + (icon or 'application-x-executable'),
+              MENU_KEY + '=' + app_path, 'X-Hearth-Note=Added by Hearth Files; remove it with right-click › Remove from app menu']
+    return '\n'.join(lines) + '\n'
+
+
+def make_executable(p):
+    st = os.stat(p)
+    if st.st_mode & stat.S_IXUSR:
+        return False
+    try:
+        if os.statvfs(p).f_flag & getattr(os, 'ST_NOEXEC', 8):
+            raise Fail('Apps can\'t run from this drive. Copy the AppImage to your home folder first.')
+    except OSError:
+        pass
+    mode = st.st_mode | stat.S_IXUSR | (stat.S_IXGRP if st.st_mode & stat.S_IRGRP else 0) | (stat.S_IXOTH if st.st_mode & stat.S_IROTH else 0)
+    try:
+        os.chmod(p, stat.S_IMODE(mode))
+    except OSError as e:
+        raise Fail("Couldn't make it runnable: " + friendly(e, p))
+    if not os.stat(p).st_mode & stat.S_IXUSR:
+        raise Fail('This drive can\'t mark files as runnable. Copy the AppImage to your home folder first.')
+    return True
+
+
+def appimage_check(path, trust):
+    p = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isfile(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't there any more")
+    if not appimage_type(p):
+        raise Fail('“' + os.path.basename(p) + "” isn't an AppImage")
+    if not os.access(p, os.X_OK):
+        if not trust:
+            raise Fail('confirm: “' + os.path.basename(p) + '” isn\'t marked as runnable yet')
+        make_executable(p)
+    return p
+
+
+def appimage_info(path):
+    p = os.path.abspath(os.path.expanduser(path))
+    t = appimage_type(p)
+    return {'path': p, 'appimage': bool(t), 'type': t, 'executable': os.access(p, os.X_OK),
+            'inMenu': os.path.realpath(p) in appimage_menu_entries(), 'fuse': fuse2_available(),
+            'folder': os.path.dirname(p)}
+
+
+def appimage_run(path, trust=False, wait=3.0):
+    """Starts it; if it stops at once because it can't mount itself (no FUSE), starts it again unpacked
+    (APPIMAGE_EXTRACT_AND_RUN=1). {ok, fallback}."""
+    import tempfile
+    p = appimage_check(path, trust)
+    env = dict(os.environ)
+    fallback = not fuse2_available()
+    if fallback:
+        env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+
+    def start(e):
+        err = tempfile.TemporaryFile()
+        proc = subprocess.Popen([p], cwd=os.path.dirname(p), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=err, start_new_session=True, env=e)
+        return proc, err
+    try:
+        proc, err = start(env)
+    except OSError as e:
+        raise Fail("Couldn't start it: " + (e.strerror or str(e)))
+    end = time.time() + wait
+    while time.time() < end and proc.poll() is None:
+        time.sleep(0.1)
+    if proc.poll() not in (None, 0) and not fallback:
+        err.seek(0)
+        text = err.read(65536).decode('utf-8', 'replace')
+        if re.search(r'(?i)fuse|dlopen|fusermount|squashfs|mount', text):
+            env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+            fallback = True
+            proc, err = start(env)
+            end = time.time() + wait
+            while time.time() < end and proc.poll() is None:
+                time.sleep(0.1)
+    code = proc.poll()
+    if code not in (None, 0):
+        err.seek(0)
+        lines = [l for l in err.read(65536).decode('utf-8', 'replace').splitlines() if l.strip()]
+        raise Fail('It stopped straight away' + (': ' + lines[-1][:200] if lines else ' (exit code %d)' % code))
+    return {'ok': True, 'fallback': fallback}
+
+
+def inside(path, root):
+    r = os.path.realpath(root)
+    rp = os.path.realpath(path)
+    return rp == r or rp.startswith(r.rstrip('/') + '/')
+
+
+def extract_from(app, tmp, pattern):
+    try:
+        subprocess.run([app, '--appimage-extract', pattern], cwd=tmp, stdin=subprocess.DEVNULL, capture_output=True,
+                       timeout=120, env=dict({k: v for k, v in os.environ.items() if k != 'APPIMAGE_EXTRACT_AND_RUN'}, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def icon_kind(path):
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(512)
+    except OSError:
+        return ''
+    if head.startswith(b'\x89PNG'):
+        return 'png'
+    if b'<svg' in head or head.lstrip().startswith(b'<?xml'):
+        return 'svg'
+    return ''
+
+
+def appimage_parts(app):
+    """(fields of its .desktop file, path of its icon in a temporary folder, the folder) taken out of the AppImage
+    with its own --appimage-extract (type 2). Only files inside the temporary folder are used (never a symlink
+    pointing out of it)."""
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix='hearth-appimage-')
+    root = os.path.join(tmp, 'squashfs-root')
+    fields, icon = {}, ''
+    if appimage_type(app) != 2:
+        return fields, icon, tmp
+    extract_from(app, tmp, '*.desktop')
+    desk = sorted(f for f in (os.listdir(root) if os.path.isdir(root) else []) if f.endswith('.desktop'))
+    for f in desk:
+        full = os.path.join(root, f)
+        if os.path.isfile(full) and inside(full, tmp):
+            fields = parse_desktop(full) or {}
+            break
+    name = re.sub(r'[^A-Za-z0-9._-]', '', fields.get('Icon', ''))[:120]
+    candidates = []
+    if name:
+        candidates += [name + '.png', name + '.svg', 'usr/share/icons/hicolor/256x256/apps/' + name + '.png',
+                       'usr/share/icons/hicolor/scalable/apps/' + name + '.svg']
+    candidates.append('.DirIcon')
+    for c in candidates:
+        extract_from(app, tmp, c)
+        full = os.path.join(root, c)
+        if os.path.islink(full):
+            target = os.readlink(full)
+            if not os.path.isabs(target) and '..' not in target.split('/'):
+                extract_from(app, tmp, os.path.normpath(os.path.join(os.path.dirname(c), target)))
+        if os.path.isfile(full) and inside(full, tmp) and icon_kind(full):
+            icon = os.path.realpath(full)
+            break
+    return fields, icon, tmp
+
+
+def appimage_menu_add(path, trust=False):
+    p = appimage_check(path, trust)
+    # Moved into ~/Applications (copied when it can't be moved: a USB drive, somewhere you can't change).
+    apps = applications_dir()
+    moved, dest = False, p
+    if not inside(p, apps):
+        os.makedirs(apps, exist_ok=True)
+        dest = unique(os.path.join(apps, os.path.basename(p)))
+        removable = any(inside(p, b) for b in media_bases())
+        if allowed(p) and not removable and os.access(os.path.dirname(p), os.W_OK):
+            shutil.move(p, dest)
+        else:
+            shutil.copy2(p, dest)
+        moved = True
+        make_executable(dest)
+    dest = os.path.realpath(dest)
+    # An entry already there for it (or for where it was): replaced.
+    entries = appimage_menu_entries()
+    for old in {entries.get(os.path.realpath(p)), entries.get(dest)} - {None}:
+        try:
+            os.remove(old)
+        except OSError:
+            pass
+    fields, icon_src, tmp = appimage_parts(dest)
+    try:
+        ident = appimage_id(dest)
+        icon = ''
+        if icon_src:
+            d = appimage_icons_dir()
+            os.makedirs(d, exist_ok=True)
+            icon = os.path.join(d, ident + '.' + icon_kind(icon_src))
+            shutil.copyfile(icon_src, icon)
+        md = menu_dir()
+        os.makedirs(md, exist_ok=True)
+        entry_file = os.path.join(md, ident + '.desktop')
+        with open(entry_file + '.tmp', 'w', encoding='utf-8') as f:
+            f.write(build_appimage_entry(dest, fields, icon, fuse2_available()))
+        os.replace(entry_file + '.tmp', entry_file)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    name = desktop_value(fields.get('Name')) or APPIMAGE_NAME.sub('', os.path.basename(dest))
+    return {'ok': True, 'path': dest, 'moved': moved, 'from': p if moved else '', 'desktop': entry_file, 'name': name,
+            'icon': icon}
+
+
+def appimage_menu_remove(path):
+    p = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+    md, removed = menu_dir(), 0
+    for target, f in appimage_menu_entries().items():
+        if target != p:
+            continue
+        icon = (parse_desktop(f) or {}).get('Icon', '')
+        try:
+            os.remove(f)
+            removed += 1
+        except OSError as e:
+            raise Fail("Couldn't take it out of the menu: " + friendly(e, f))
+        if icon and inside(icon, appimage_icons_dir()):
+            try:
+                os.remove(icon)
+            except OSError:
+                pass
+    if not removed:
+        raise Fail("It isn't in the app menu")
+    return {'ok': True, 'removed': removed}
+
+
 # ---------------------------------------------------------------------- command line
 USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
          'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
@@ -2561,7 +2900,8 @@ USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | renam
          'compress FORMAT ARCHIVE SRC... | extract ARCHIVE DEST|--here | search PATH QUERY [--hidden] | bookmarks | '
          'bookmark-add PATH [LABEL] | bookmark-remove PATH | prefs | prefs-set JSON | clip-set MODE PATH... | '
          'clip-get | peek PATH | thumbs PATH... | terminal PATH | open-plan PATH | run PATH [--terminal] | '
-         'make-runnable PATH | open-text PATH [--readonly] | desktop-launch PATH | open-choice PATH [CHOICE]')
+         'make-runnable PATH | open-text PATH [--readonly] | desktop-launch PATH | open-choice PATH [CHOICE] | appimage-info PATH | appimage-run PATH [--trust] | '
+         'appimage-menu-add PATH [--trust] | appimage-menu-remove PATH')
 
 
 def cmd(argv):
@@ -2667,6 +3007,14 @@ def cmd(argv):
         out = thumbs(rest)
     elif c == 'terminal' and len(rest) == 1:
         out = terminal(rest[0])
+    elif c == 'appimage-info' and len(rest) == 1:
+        out = appimage_info(rest[0])
+    elif c == 'appimage-run' and len(rest) in (1, 2) and rest[1:] in ([], ['--trust']):
+        out = appimage_run(rest[0], rest[1:] == ['--trust'])
+    elif c == 'appimage-menu-add' and len(rest) in (1, 2) and rest[1:] in ([], ['--trust']):
+        out = appimage_menu_add(rest[0], rest[1:] == ['--trust'])
+    elif c == 'appimage-menu-remove' and len(rest) == 1:
+        out = appimage_menu_remove(rest[0])
     elif c == 'open-plan' and len(rest) == 1:
         out = open_plan(rest[0])
     elif c == 'run' and len(rest) in (1, 2) and rest[1:] in ([], ['--terminal']):

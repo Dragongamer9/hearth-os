@@ -1,0 +1,20 @@
+# Every boot: the system's Flatpak installation usable (an empty, never-initialised /var/lib/flatpak/repo moved
+# aside), Flathub in it, and Bazaar (the Flathub app store) installed for everyone when it's missing. Retried every
+# 15 minutes until it works (no network at boot, Flathub down). See /usr/libexec/nimbus/hearth-flatpak-setup.
+[Unit]
+Description=Hearth: Flatpak's system installation, Flathub and Bazaar
+Wants=network-online.target
+After=network-online.target local-fs.target hearth-clean-install.service
+RequiresMountsFor=/var
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-flatpak-setup
+Restart=on-failure
+RestartSec=15min
+SyslogIdentifier=hearth-flatpak-setup
+TimeoutStartSec=1h
+
+[Install]
+WantedBy=multi-user.target
