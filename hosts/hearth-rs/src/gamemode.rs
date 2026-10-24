@@ -45,10 +45,18 @@ use crate::winhost::WindowHost;
 pub const MAIN_TITLE: &str = "Hearth";
 pub const OVERLAY_TITLE: &str = "Hearth Overlay";
 const OPAQUE: u64 = 4294967295;
-/// How long a Quick Access press waits for Handheld Daemon's overlay app to connect again: by itself (it reconnects
-/// within a second when it's running), and after asking HHD to start it (Chromium starting up, HHD finding it).
+/// How long a Quick Access press waits for Handheld Daemon's overlay app to connect again: by itself, when HHD can't
+/// be asked (it reconnects within a second when it's running); when HHD is asked to start it (after APP_ASK_AFTER_MS:
+/// HHD's next pass, then Chromium starting, about a second on the ROG Ally); and when HHD has already been asked
+/// during this time away and the app still isn't back (app_known_dead: waiting the whole time again on every press
+/// was the "takes forever to open").
 const APP_WAIT_MS: u64 = 3000;
-const APP_RESTART_WAIT_MS: u64 = 9000;
+const APP_ASK_AFTER_MS: u64 = 300;
+const APP_RESTART_WAIT_MS: u64 = 6000;
+const APP_DEAD_WAIT_MS: u64 = 2000;
+/// After ending HHD's overlay app left from Desktop Mode: HHD notices it ended (it checks every half second), then is
+/// asked to start it in gamescope.
+const APP_AFTER_END_MS: u64 = 700;
 
 pub struct GameMode {
     /// Hearth's windows: Tauri's (WebKit), or the Electron window's (Chromium) through the core channel (winhost.rs).
@@ -97,6 +105,10 @@ pub struct GameMode {
     opened_after_wait: AtomicU64,
     /// When Hearth last asked HHD to start the app on its own (not for a press): the open HHD sends it along is ignored.
     keeper_poked_at: AtomicU64,
+    /// While HHD's overlay app is away: how many times HHD was asked to start it, and when first (app_known_dead).
+    /// Both 0 again once it connects.
+    app_asks: AtomicU64,
+    app_first_ask: AtomicU64,
     /// Hearth set its own window aside for something else (a game, an app, a Steam window): its page isn't on screen.
     main_aside: AtomicBool,
     /// What Hearth's page was last told about reading the controller (hostScreen): 0 nothing yet, 1 it may, 2 it may not.
@@ -128,6 +140,17 @@ pub fn front_decision(ask: FrontAsk, quick_access_open: bool) -> FrontAnswer {
         _ => FrontAnswer::Go,
     }
 }
+/// HHD has been asked to start its overlay app during this time away, and it still isn't back well after it should
+/// be: a press then waits only briefly (APP_DEAD_WAIT_MS) before Hearth's own Quick Access, instead of the whole time.
+pub fn app_known_dead(asks: u64, since_first_ask_ms: u64) -> bool { asks > 0 && since_first_ask_ms >= APP_RESTART_WAIT_MS }
+/// How a Quick Access press waits for HHD's overlay app: (when HHD is asked to start it, how long in all before the
+/// last resort), in ms from the press. `ended_desktop_app`: Hearth just ended HHD's overlay app left from Desktop Mode,
+/// so HHD will start it in gamescope now (worth the normal wait even if it was given up on before).
+pub fn app_wait_plan(known_dead: bool, ended_desktop_app: bool) -> (u64, u64) {
+    if ended_desktop_app { return (APP_AFTER_END_MS, APP_AFTER_END_MS + APP_RESTART_WAIT_MS); }
+    if known_dead { return (0, APP_DEAD_WAIT_MS); }
+    (APP_ASK_AFTER_MS, APP_RESTART_WAIT_MS)
+}
 /// Whether Hearth's own page may act on the controller it reads itself (the browser's gamepad API): only while its
 /// window is what's on screen and Quick Access (the overlay) isn't open over it.
 pub fn main_page_reads_pad(main_aside: bool, quick_access_open: bool) -> bool { !main_aside && !quick_access_open }
@@ -150,7 +173,7 @@ impl GameMode {
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
             hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false),
             over_launch: AtomicBool::new(false), waiting: AtomicU64::new(0), wait_gen: AtomicU64::new(0), opened_after_wait: AtomicU64::new(0),
-            keeper_poked_at: AtomicU64::new(0), main_aside: AtomicBool::new(false), pads_told: AtomicU64::new(0) });
+            keeper_poked_at: AtomicU64::new(0), app_asks: AtomicU64::new(0), app_first_ask: AtomicU64::new(0), main_aside: AtomicBool::new(false), pads_told: AtomicU64::new(0) });
         let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
         gm.hhd_overlay.store(hhd, Ordering::SeqCst);
         gm
@@ -844,10 +867,13 @@ impl GameMode {
     }
 
     /// Quick Access over what's on screen. With Handheld Daemon's overlay app not connected (HHD stopped it and is
-    /// starting it again, or Hearth just restarted), the press waits for it, up to APP_WAIT_MS, and HHD is asked to
-    /// start it (then up to APP_RESTART_WAIT_MS): the main window's Quick Access, which isn't the overlay and doesn't
-    /// behave like it over a game, is not shown for a moment's disconnection. `fallback` runs only when the overlay
-    /// really couldn't be shown, and that's logged loudly.
+    /// starting it again, or Hearth just restarted), the press waits for it and HHD is asked to start it
+    /// (app_wait_plan: up to APP_RESTART_WAIT_MS; only APP_DEAD_WAIT_MS when HHD was already asked and it never came
+    /// back), after ending the one HHD may still run for Desktop Mode: the main window's Quick Access, which isn't the
+    /// overlay and doesn't behave like it over a game, is not shown for a moment's disconnection. `fallback` runs only
+    /// when the overlay really couldn't be shown, and that's logged loudly; it opens Hearth's own Quick Access, and
+    /// closing that goes back to the game (the page sends "resume" when its Quick Access closes with a game running:
+    /// ui/index.html resumeIfGame, resume_from_main).
     fn open_or_wait(self: &Arc<Self>, what: &str, fallback: impl FnOnce(&Arc<GameMode>) + Send + 'static) {
         if self.show_overlay() { return; }
         if !self.hhd() {
@@ -863,11 +889,19 @@ impl GameMode {
         let what = what.to_string();
         std::thread::spawn(move || {
             let start = now();
-            let mut limit = APP_WAIT_MS;
+            // HHD sends every press to the overlay app it started for Desktop Mode for as long as that one runs: it
+            // has to end before HHD starts the app in gamescope.
+            let ended = me.end_desktop_app("Quick Access was asked for");
+            let dead = app_known_dead(me.app_asks.load(Ordering::SeqCst), start.saturating_sub(me.app_first_ask.load(Ordering::SeqCst)));
+            let (ask_at, wait) = app_wait_plan(dead, ended);
+            if dead && !ended {
+                log(&format!("overlay: Handheld Daemon was already asked {} time(s) to start its overlay app and it hasn't come back; asking once more, waiting {} s at most", me.app_asks.load(Ordering::SeqCst), wait / 1000));
+            }
+            let mut limit = wait.min(APP_WAIT_MS.max(ask_at));
             let mut asked = false;
+            let mut hhd_answered = false;
             let mut seen = 0u64;
             loop {
-                std::thread::sleep(Duration::from_millis(100));
                 if me.waiting.load(Ordering::SeqCst) != g { return; }   // pressed again, or a newer press waits
                 // Opened meanwhile (HHD's own press reached Hearth through the app once it was back).
                 if me.overlay_on.load(Ordering::SeqCst) { let _ = me.waiting.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst); return; }
@@ -882,21 +916,42 @@ impl GameMode {
                         break;
                     }
                 } else { seen = 0; }
-                if !asked && t >= 500 {
+                if !asked && t >= ask_at {
                     asked = true;
+                    me.note_app_ask();
                     match hearth_core::hhd::start_overlay_app() {
-                        Ok(()) => { limit = APP_RESTART_WAIT_MS; log("overlay: asked Handheld Daemon to start its overlay app"); }
+                        Ok(()) => { hhd_answered = true; limit = wait; log("overlay: asked Handheld Daemon to start its overlay app"); }
                         Err(e) => log(&format!("overlay: couldn't ask Handheld Daemon to start its overlay app: {e}")),
                     }
                 }
-                if now().saturating_sub(start) >= limit {
+                if t >= limit {
                     if me.waiting.compare_exchange(g, 0, Ordering::SeqCst, Ordering::SeqCst).is_err() { return; }
                     break;
                 }
+                std::thread::sleep(Duration::from_millis(100));
             }
-            log(&format!("overlay: LAST RESORT ({what}): Handheld Daemon's overlay app didn't come back in {} s; showing Hearth's own Quick Access instead. Why it isn't running is in HHD's log (journalctl -u 'hhd@*')", now().saturating_sub(start) / 1000));
+            let secs = now().saturating_sub(start) as f64 / 1000.0;
+            let why = if !hhd_answered { "Handheld Daemon couldn't be asked to start it".to_string() }
+                else if !hearth_core::overlay_link::desktop_mode_overlays().is_empty() { "HHD's overlay app is still running for Desktop Mode and didn't end".to_string() }
+                else { "HHD was asked to start it and it didn't connect".to_string() };
+            log(&format!("overlay: LAST RESORT ({what}): Handheld Daemon's overlay app didn't come back in {secs:.1} s ({why}); showing Hearth's own Quick Access instead, which goes back to the game when it closes. Why it isn't running is in HHD's log (journalctl -u 'hhd*')"));
             fallback(&me);
         });
+    }
+
+    /// HHD was asked to start its overlay app (by a press or the keeper): counted for app_known_dead.
+    fn note_app_ask(&self) {
+        if self.app_asks.fetch_add(1, Ordering::SeqCst) == 0 { self.app_first_ask.store(now(), Ordering::SeqCst); }
+    }
+    /// Ends HHD's overlay app left running for Desktop Mode (overlay_link::end_desktop_mode_overlays), logged with
+    /// why; answers whether there was one. The app ends itself when it sees Game Mode; this is for when it doesn't.
+    fn end_desktop_app(&self, why: &str) -> bool {
+        let pids = hearth_core::overlay_link::end_desktop_mode_overlays();
+        if pids.is_empty() { return false; }
+        log(&format!("overlay: {why}, but Handheld Daemon's overlay app is still running for Desktop Mode (process {pids:?}), so HHD sends Quick Access there and not over the game; ended it so HHD starts it in gamescope"));
+        // A fresh start in gamescope: earlier requests that went to the Desktop Mode one don't count against it.
+        self.app_asks.store(0, Ordering::SeqCst);
+        true
     }
 
     /// Hearth's own screen asked for Quick Access (Guide or the Quick Access button on the starting screen, while a
@@ -916,22 +971,60 @@ impl GameMode {
     /// Handheld Daemon's overlay app away for a while (HHD stopped it after an error in its window handling and only
     /// starts it again on its next settings pass): HHD is asked to start it now, so Quick Access is ready before the
     /// next press. At most every 30 s and 3 times in 10 minutes, so an app that can't start isn't asked for forever.
+    /// Away because HHD still runs the one it started for Desktop Mode (back from Desktop Mode, or Game Mode
+    /// restarted): HHD keeps sending everything to that one (hhd/plugins/overlay/base.py OverlayService: `started`
+    /// stays set until it ends) and none of the requests above could help, so it's ended first (end_desktop_app).
     pub fn start_overlay_keeper(self: &Arc<Self>) {
         let me = self.clone();
         std::thread::spawn(move || {
             let mut away_since = 0u64;
             let mut asked: Vec<u64> = Vec::new();
+            let mut told_dead = false;
+            let mut tick = 0u64;
             loop {
-                std::thread::sleep(Duration::from_secs(1));
                 if !me.hhd() { return; }
-                if hearth_core::overlay_link::connected() { away_since = 0; continue; }
+                if hearth_core::overlay_link::connected() {
+                    away_since = 0; told_dead = false;
+                    me.app_asks.store(0, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
                 let t = now();
-                if away_since == 0 { away_since = t; continue; }
+                // Game Mode (re)started with HHD's overlay app still running for the Desktop Mode before it (HHD sends
+                // it every press until it ends): ended right away, at start and every 2 s while away, so HHD starts
+                // the app in gamescope on its own (within a few seconds) and the first press opens at once.
+                // HHD is asked right after (once it has seen that app end) instead of waiting for its own next pass;
+                // the open it sends along is ignored (hhd_open).
+                if tick % 2 == 0 && me.waiting.load(Ordering::SeqCst) == 0 && me.end_desktop_app("Game Mode is running") {
+                    away_since = t; asked.clear(); told_dead = false;
+                    std::thread::sleep(Duration::from_millis(APP_AFTER_END_MS));
+                    if !hearth_core::overlay_link::connected() && me.waiting.load(Ordering::SeqCst) == 0 {
+                        let t = now();
+                        asked.push(t);
+                        me.keeper_poked_at.store(t, Ordering::SeqCst);
+                        me.note_app_ask();
+                        match hearth_core::hhd::start_overlay_app() {
+                            Ok(()) => log("overlay: asked Handheld Daemon to start its overlay app in gamescope"),
+                            Err(e) => log(&format!("overlay: couldn't ask Handheld Daemon to start its overlay app: {e}")),
+                        }
+                    }
+                }
+                tick += 1;
+                if away_since == 0 { away_since = t; }
+                std::thread::sleep(Duration::from_secs(1));
+                let t = now();
                 if t.saturating_sub(away_since) < 6000 || me.waiting.load(Ordering::SeqCst) != 0 { continue; }
                 asked.retain(|a| t.saturating_sub(*a) < 600_000);
-                if asked.len() >= 3 || asked.last().map(|a| t.saturating_sub(*a) < 30_000).unwrap_or(false) { continue; }
+                if asked.len() >= 3 || asked.last().map(|a| t.saturating_sub(*a) < 30_000).unwrap_or(false) {
+                    if asked.len() >= 3 && !told_dead {
+                        told_dead = true;
+                        log("overlay: Handheld Daemon was asked 3 times to start its overlay app and it hasn't connected; not asking again for 10 minutes (a Quick Access press still asks). HHD's log says why (journalctl -u 'hhd*')");
+                    }
+                    continue;
+                }
                 asked.push(t);
                 me.keeper_poked_at.store(t, Ordering::SeqCst);
+                me.note_app_ask();
                 match hearth_core::hhd::start_overlay_app() {
                     Ok(()) => log(&format!("overlay: Handheld Daemon's overlay app has been away for {} s; asked HHD to start it again", t.saturating_sub(away_since) / 1000)),
                     Err(e) => log(&format!("overlay: Handheld Daemon's overlay app is away and HHD couldn't be asked to start it: {e}")),
@@ -1121,6 +1214,40 @@ impl GameMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_press_waits_less_for_an_overlay_app_known_to_be_gone() {
+        // Not asked yet this time away, or asked only a moment ago: the normal wait (HHD asked almost at once).
+        assert!(!app_known_dead(0, 0));
+        assert!(!app_known_dead(0, 3_600_000));
+        assert!(!app_known_dead(2, APP_RESTART_WAIT_MS - 1));
+        // Asked, and well past the time it takes to start: known to be gone.
+        assert!(app_known_dead(1, APP_RESTART_WAIT_MS));
+        assert!(app_known_dead(3, 10_206_000));
+        let (ask, wait) = app_wait_plan(false, false);
+        assert_eq!((ask, wait), (APP_ASK_AFTER_MS, APP_RESTART_WAIT_MS));
+        assert!(wait < 9000, "the 9 s wait per press was the slow open");
+        let (ask, wait) = app_wait_plan(true, false);
+        assert_eq!(ask, 0);
+        assert!(wait <= 2000);
+        // HHD's overlay app left from Desktop Mode was just ended: HHD starts it in gamescope now, worth waiting for,
+        // and asked only once HHD has seen it end.
+        for dead in [false, true] {
+            let (ask, wait) = app_wait_plan(dead, true);
+            assert!(ask >= 500 && ask < 1000);
+            assert!(wait >= ask + APP_RESTART_WAIT_MS);
+        }
+    }
+
+    #[test]
+    fn the_report_from_the_ally_waits_less() {
+        // 2026-10-24: the app had been away for 10206 s with the keeper asking every 10 minutes; every Guide press
+        // still waited 9 s before Hearth's own Quick Access covered the game.
+        let first_ask = 0u64;
+        let press_at = 10_206_000u64;
+        let (_, wait) = app_wait_plan(app_known_dead(30, press_at - first_ask), false);
+        assert!(wait <= 2000);
+    }
 
     #[test]
     fn the_game_stays_behind_open_quick_access() {

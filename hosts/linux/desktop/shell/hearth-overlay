@@ -4,7 +4,8 @@
 # starts its own hhd-ui (hhd/plugins/overlay/overlay.py). The Bazzite build doesn't: it keeps Hearth's own overlay.
 #   Game Mode (gamescope, STEAM_OVERLAY=1): Hearth's Quick Access page in Chromium (Hearth Browser's Electron,
 #     `nimbus --hhd-overlay`, hosts/linux/src/overlay), talking to the running Hearth app.
-#   Desktop Mode (HHD_MANAGED=1): no window of its own: HHD's QAM button opens Mantel's Quick Access.
+#   Desktop Mode (HHD_MANAGED=1): no window of its own: HHD's QAM button opens Mantel's Quick Access. It ends by
+#     itself when Desktop Mode does (see below), so HHD goes back to the Game Mode way.
 #   --version: the version HHD shows for its overlay (HHD runs this as root when it starts: nothing else happens).
 # HHD starts it with only HOME, DISPLAY, PATH and STEAM_OVERLAY or HHD_MANAGED (and XAUTHORITY).
 APP="${HEARTH_OVERLAY_ELECTRON:-/usr/lib/hearth-browser/nimbus}"
@@ -35,16 +36,72 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ 
   export DBUS_SESSION_BUS_ADDRESS
 fi
 
+# Which mode Hearth's session is in: nimbus-session writes it to $XDG_RUNTIME_DIR/nimbus-mode-now (game or desktop).
+# Game Mode is that file saying game (or, outside Hearth's session, no file) with gamescope running for this user:
+# a game run in gamescope inside Desktop Mode isn't Game Mode, and a file left over from a crash isn't either.
+X11_DIR="${HEARTH_X11_DIR:-/tmp/.X11-unix}"
+gamescope_up() { pgrep -u "$uid" -x gamescope-wl >/dev/null 2>&1 || pgrep -u "$uid" -x gamescope >/dev/null 2>&1; }
+in_game_mode() {
+  case "$(cat "${XDG_RUNTIME_DIR:-/run/user/$uid}/nimbus-mode-now" 2>/dev/null)" in
+    desktop) return 1 ;;
+    *) gamescope_up ;;
+  esac
+}
+# The X display HHD gave us (DISPLAY=:0) is gone: Desktop Mode (labwc and its Xwayland) has ended.
+display_gone() {
+  d="${DISPLAY#*:}"; d="${d%%.*}"
+  [ -n "$d" ] && [ ! -e "$X11_DIR/X$d" ]
+}
+
 if [ -z "${STEAM_OVERLAY:-}" ] && [ -n "${HHD_MANAGED:-}" ]; then
   # Desktop Mode. HHD writes "cmd:..." lines; the first press of a double press (open_qam_if_closed) is left out so
   # a double press doesn't open and close it again.
+  #
+  # HHD keeps using the overlay app it started for Desktop Mode until that app ends (hhd/plugins/overlay/base.py:
+  # OverlayService.update and launch_overlay return early while `started` is set, and only loop_manage_desktop
+  # seeing the process end clears it). So once Desktop Mode is over (back in Game Mode, or signed out), this has to
+  # end by itself: otherwise every QAM press and every request of Hearth's to start the overlay lands here, Mantel
+  # isn't running to answer, and Quick Access never opens over a game again until HHD restarts. Ending (code 1)
+  # makes HHD start the overlay app again the Game Mode way, in gamescope, within a few seconds.
+  if in_game_mode; then
+    echo "hearth-overlay: Handheld Daemon started me for Desktop Mode (DISPLAY=${DISPLAY:-none}), but Hearth's Game Mode (gamescope) is running; ending so HHD starts me in gamescope" >&2
+    exit 1
+  fi
+  left_desktop() {
+    if in_game_mode; then why="Game Mode (gamescope) is running again"; return 0; fi
+    if display_gone; then why="Desktop Mode's display ($DISPLAY) is gone"; return 0; fi
+    return 1
+  }
+  # Watches for Desktop Mode ending while HHD has nothing to say (no press for hours is normal).
+  me=$$
+  (
+    while sleep "${HEARTH_OVERLAY_POLL:-2}"; do
+      kill -0 "$me" 2>/dev/null || exit 0
+      if left_desktop; then
+        echo "hearth-overlay: $why; ending so Handheld Daemon starts Quick Access in gamescope" >&2
+        kill -TERM "$me" 2>/dev/null
+        exit 0
+      fi
+    done
+  ) </dev/null >/dev/null &
+  watcher=$!
+  # Ending by itself, the watcher goes too (it can't tell by itself: an ended process HHD hasn't reaped yet still
+  # answers kill -0).
   while IFS= read -r line; do
     case "$line" in
       cmd:open_qam|cmd:open_expanded|cmd:open_overlay)
-        quickshell ipc -p "$SHARE/desktop/shell" call quick toggle >/dev/null 2>&1 \
-          || echo "hearth-overlay: Mantel's Quick Access didn't answer" >&2 ;;
+        if left_desktop; then
+          echo "hearth-overlay: $why; ending so Handheld Daemon starts Quick Access in gamescope" >&2
+          kill "$watcher" 2>/dev/null
+          exit 1
+        fi
+        if ! err=$(quickshell ipc -p "$SHARE/desktop/shell" call quick toggle 2>&1 >/dev/null); then
+          err=$(printf '%s' "$err" | tr '\n' ' ' | cut -c1-200)
+          echo "hearth-overlay: Mantel's Quick Access didn't answer${err:+ ($err)}" >&2
+        fi ;;
     esac
   done
+  kill "$watcher" 2>/dev/null
   exit 0
 fi
 
@@ -52,4 +109,11 @@ if [ ! -x "$APP" ]; then
   echo "hearth-overlay: $APP is missing (Hearth Browser's Electron)" >&2
   exit 1
 fi
+# Game Mode: HHD found gamescope's display and passes it as DISPLAY. Without one there's nothing to draw on: end
+# with a clear message (HHD logs it and tries again) rather than start a window that can't show.
+if [ -z "${DISPLAY:-}" ]; then
+  echo "hearth-overlay: no DISPLAY from Handheld Daemon (gamescope's); not starting" >&2
+  exit 1
+fi
+
 exec "$APP" --hhd-overlay "$@"
