@@ -10,7 +10,7 @@ name: Hearth Link
 on:
   push:
     branches: [hearth-link]
-    paths: ['hosts/hearth-link/**', 'hosts/hearth-core/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', '.github/workflows/hearth-link.yml']
+    paths: ['hosts/hearth-link/**', 'hosts/hearth-core/**', 'ui/**', 'hosts/linux/desktop/shell/SetLink.qml', 'hosts/linux/desktop/shell/hearth-link-settings', 'hosts/linux/test/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', '.github/workflows/hearth-link.yml']
   workflow_dispatch:
 
 concurrency:
@@ -70,7 +70,20 @@ jobs:
           export RELAY_BIN="$HOME/.cargo/bin/iroh-relay"
           sudo -E python3 hosts/hearth-link/tests/e2e.py internet
       - name: Logs
-        if: always()
+        if: failure()
         run: |
           for f in /tmp/hl-e2e/*.log; do [ -f "$f" ] || continue; echo "==== $f"; tail -c 4000 "$f"; done
           for f in /tmp/hl-e2e/*.log; do [ -f "$f" ] || continue; echo "::warning title=$(basename $f)::$(tail -c 1500 "$f" | tr '\n' '|')"; done
+
+  ui:
+    name: Hearth's page still draws every screen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js

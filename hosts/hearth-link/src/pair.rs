@@ -57,12 +57,15 @@ fn tag_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// The joining side (B), on a connection to the host. Returns the host's name.
-pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, code: &str) -> Result<String, String> {
+fn relay_of(v: &Value) -> Option<String> { v["relay"].as_str().filter(|r| crate::state::valid_relay_url(r)).map(str::to_string) }
+
+/// The joining side (B), on a connection to the host. Returns the host's name and relay (where it can be reached
+/// from elsewhere).
+pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, my_relay: Option<String>, code: &str) -> Result<(String, Option<String>), String> {
     let host_key = *conn.remote_id().as_bytes();
     let (mut s, mut r) = conn.open_bi().await.map_err(|e| e.to_string())?;
     let (state, msg) = start(code, &host_key, me);
-    write_msg(&mut s, &json!({"v": 1, "name": my_name, "msg": crate::hex(&msg)})).await?;
+    write_msg(&mut s, &json!({"v": 1, "name": my_name, "relay": my_relay, "msg": crate::hex(&msg)})).await?;
     let a = read_msg(&mut r).await?;
     if let Some(e) = a["error"].as_str() { return Err(e.to_string()); }
     let their = a["msg"].as_str().and_then(crate::unhex).ok_or("The other device didn't answer the pairing")?;
@@ -74,19 +77,19 @@ pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     let theirs = c["confirm"].as_str().and_then(crate::unhex).unwrap_or_default();
     if !tag_eq(&theirs, &confirm_tag(&key, b"host", &host_key, me)) { return Err("That code isn't right".into()); }
     let _ = s.finish();
-    Ok(host_name)
+    Ok((host_name, relay_of(&a)))
 }
 
 /// The host side (A), for one incoming pairing connection: `code` is the code on screen. Ok(joiner's name) when the
 /// joiner proved it has the code; Err(true) for a wrong code (counts as a try), Err(false) for anything else.
-pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, code: &str) -> Result<String, bool> {
+pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, my_relay: Option<String>, code: &str) -> Result<(String, Option<String>), bool> {
     let joiner = *conn.remote_id().as_bytes();
     let (mut s, mut r) = conn.accept_bi().await.map_err(|_| false)?;
     let b = read_msg(&mut r).await.map_err(|_| false)?;
     let their = b["msg"].as_str().and_then(crate::unhex).ok_or(false)?;
     let name: String = b["name"].as_str().unwrap_or("Hearth").chars().filter(|c| !c.is_control()).take(40).collect();
     let (state, msg) = start(code, me, &joiner);
-    write_msg(&mut s, &json!({"v": 1, "name": my_name, "msg": crate::hex(&msg)})).await.map_err(|_| false)?;
+    write_msg(&mut s, &json!({"v": 1, "name": my_name, "relay": my_relay, "msg": crate::hex(&msg)})).await.map_err(|_| false)?;
     let key = match state.finish(&their) { Ok(k) => k, Err(_) => return Err(true) };
     let c = read_msg(&mut r).await.map_err(|_| false)?;
     let theirs = c["confirm"].as_str().and_then(crate::unhex).unwrap_or_default();
@@ -100,7 +103,7 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     let _ = s.finish();
     // Wait for the joiner to read it (it closes the connection when it has).
     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), conn.closed()).await;
-    Ok(name)
+    Ok((name, relay_of(&b)))
 }
 
 /// What the joiner sends the host first; used by tests of the message exchange without a network.
