@@ -91,6 +91,8 @@ jobs:
           echo "$out" | grep -q '"t":"msg"' || { echo "::error title=core-stdio::no reply on the channel: $(echo "$out" | head -c 1500 | tr '\n' '|')"; exit 1; }
           echo "$out" | grep -q '"renderer":"chromium"' || { echo "::error title=core-stdio::host.info didn't say Chromium draws: $(echo "$out" | head -c 1500 | tr '\n' '|')"; exit 1; }
           echo "::notice title=core-stdio::the windowless core answered host.info over the channel"
+          # A folder picker left open: the core keeps answering other calls, then answers the first with the choice.
+          python3 ../../tools/picker-e2e.py target/release/hearth
       - name: Run it once and take screenshots
         working-directory: hosts/hearth-rs
         run: |
