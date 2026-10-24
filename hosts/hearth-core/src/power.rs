@@ -104,7 +104,7 @@ pub fn restore() -> Result<Option<Value>, String> {
 pub fn action(what: &str, in_session: bool) -> Result<bool, String> {
     let sys = |verb: &str| crate::system::run("systemctl", &[verb]).map(|_| false);
     match what {
-        "sleep" => sys("suspend"),
+        "sleep" => sleep_now("the power menu").map(|_| false),
         "restart" => sys("reboot"),
         "shutdown" => sys("poweroff"),
         "hibernate" => sys("hibernate"),
@@ -117,6 +117,124 @@ pub fn action(what: &str, in_session: bool) -> Result<bool, String> {
         }
         _ => Ok(false),
     }
+}
+
+// ------------------------------------------------------------------ sleep
+
+/// One of logind's inhibitors (who holds off sleep, the power button...).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Inhibitor { pub what: String, pub who: String, pub why: String, pub mode: String, pub pid: u64 }
+
+/// busctl --json=short's answer to logind's ListInhibitors: {"type":"a(ssssuu)","data":[[[what, who, why, mode, uid, pid], ...]]}.
+pub fn parse_inhibitors(json: &str) -> Vec<Inhibitor> {
+    let v: Value = serde_json::from_str(json.trim()).unwrap_or(Value::Null);
+    let s = |x: &Value| x.as_str().unwrap_or("").to_string();
+    v["data"][0].as_array().map(|a| a.iter().filter_map(|i| {
+        let i = i.as_array()?;
+        Some(Inhibitor { what: s(i.first()?), who: s(i.get(1)?), why: s(i.get(2)?), mode: s(i.get(3)?), pid: i.get(5).and_then(|p| p.as_u64()).unwrap_or(0) })
+    }).collect()).unwrap_or_default()
+}
+/// The ones that stop "sleep" outright (mode block, sleep among what they hold): with one of them, `systemctl
+/// suspend` is refused. Delay ones only hold sleep off a few seconds (Steam's, logind's own), so they're fine.
+pub fn sleep_blockers(list: &[Inhibitor]) -> Vec<&Inhibitor> {
+    list.iter().filter(|i| i.mode == "block" && i.what.split(':').any(|w| w == "sleep")).collect()
+}
+/// "Hearth (handle-power-key:handle-suspend-key, block); Steam (sleep, delay)", for the log.
+pub fn describe_inhibitors(list: &[&Inhibitor]) -> String {
+    if list.is_empty() { return "none".into(); }
+    list.iter().map(|i| format!("{} ({}, {}{})", i.who, i.what, i.mode, if i.why.is_empty() { String::new() } else { format!(": {}", i.why) })).collect::<Vec<_>>().join("; ")
+}
+/// logind's inhibitors now (empty when it can't be asked).
+pub fn inhibitors() -> Vec<Inhibitor> {
+    crate::system::run("busctl", &["--json=short", "call", "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "ListInhibitors"])
+        .map(|o| parse_inhibitors(&o)).unwrap_or_default()
+}
+
+/// Sleep, as the power button (or the power menu) asks: real suspend through logind, like SteamOS. A running game
+/// is kept as it is (the kernel freezes everything during sleep and it carries on after waking). Who holds sleep
+/// off is logged, and a refusal comes back as an error in plain words instead of nothing happening.
+pub fn sleep_now(why: &str) -> Result<(), String> {
+    let all = inhibitors();
+    let blockers = sleep_blockers(&all);
+    let delays: Vec<&Inhibitor> = all.iter().filter(|i| i.mode == "delay" && i.what.split(':').any(|w| w == "sleep")).collect();
+    crate::bridge::log(&format!("sleep: {why}: going to sleep; blocking it: {}; delaying it: {}", describe_inhibitors(&blockers), describe_inhibitors(&delays)));
+    match crate::system::run("systemctl", &["suspend"]) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            crate::bridge::log(&format!("sleep: systemctl suspend refused: {}", e.trim()));
+            Err(match blockers.first() {
+                Some(b) => format!("Can't sleep right now: {} is keeping the device awake{}.", b.who, if b.why.is_empty() { String::new() } else { format!(" ({})", b.why) }),
+                None => "Couldn't go to sleep. Send the logs (Settings › System) so it can be fixed.".into(),
+            })
+        }
+    }
+}
+
+/// What the device's sleep looked like at one moment: the kernel's suspend counters (/sys/power/suspend_stats) and
+/// the battery. total_hw_sleep is the time the processor spent in its deepest sleep (s0i3 on AMD, from amd_pmc):
+/// the part of sleep where the fans stop and the battery barely drops.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SleepSnap { pub at_ms: u64, pub battery: Option<u32>, pub hw_sleep_us: Option<u64>, pub success: Option<u64>, pub fail: Option<u64> }
+
+fn read_num(p: &std::path::Path) -> Option<u64> { std::fs::read_to_string(p).ok()?.trim().parse().ok() }
+
+/// The snapshot, read under `root` ("/" on a real system).
+pub fn sleep_snapshot_in(root: &std::path::Path, at_ms: u64) -> SleepSnap {
+    let stats = root.join("sys/power/suspend_stats");
+    let battery = std::fs::read_dir(root.join("sys/class/power_supply")).ok().and_then(|d| {
+        let mut ps: Vec<PathBuf> = d.flatten().map(|e| e.path()).collect();
+        ps.sort();
+        ps.into_iter().find(|p| std::fs::read_to_string(p.join("type")).map(|t| t.trim() == "Battery").unwrap_or(false))
+            .and_then(|p| read_num(&p.join("capacity"))).map(|c| c as u32)
+    });
+    SleepSnap { at_ms, battery, hw_sleep_us: read_num(&stats.join("total_hw_sleep")), success: read_num(&stats.join("success")), fail: read_num(&stats.join("fail")) }
+}
+pub fn sleep_snapshot() -> SleepSnap {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    sleep_snapshot_in(std::path::Path::new("/"), now)
+}
+
+fn span(ms: u64) -> String {
+    let s = ms / 1000;
+    if s >= 3600 { format!("{} h {} min", s / 3600, (s % 3600) / 60) } else if s >= 60 { format!("{} min {} s", s / 60, s % 60) } else { format!("{s} s") }
+}
+
+/// What woke the device: /sys/power/pm_wakeup_irq, named from /proc/interrupts ("IRQ 9 (acpi)").
+pub fn wake_source_in(root: &std::path::Path) -> Option<String> {
+    let irq = std::fs::read_to_string(root.join("sys/power/pm_wakeup_irq")).ok()?.trim().to_string();
+    if irq.is_empty() { return None; }
+    let name = std::fs::read_to_string(root.join("proc/interrupts")).ok().and_then(|t| t.lines()
+        .find(|l| l.trim_start().strip_prefix(&format!("{irq}:")).is_some())
+        .and_then(|l| l.split_whitespace().last().map(str::to_string)));
+    Some(match name { Some(n) => format!("IRQ {irq} ({n})"), None => format!("IRQ {irq}") })
+}
+
+/// The line logged on waking up: how long it slept, how much of that was real deep sleep, the battery, and what
+/// woke it. "Never reached deep sleep" is the case where the screen is off but the fans keep running.
+pub fn woke_report(before: &SleepSnap, after: &SleepSnap, wake: Option<&str>) -> String {
+    let slept = after.at_ms.saturating_sub(before.at_ms);
+    let mut parts = vec![format!("sleep: awake after {}", span(slept))];
+    let failed = matches!((before.fail, after.fail), (Some(a), Some(b)) if b > a);
+    let entered = matches!((before.success, after.success), (Some(a), Some(b)) if b > a);
+    if failed && !entered {
+        parts.push("the system refused to sleep (suspend failed: see the Sleep section of the logs)".into());
+    } else {
+        match (before.hw_sleep_us, after.hw_sleep_us) {
+            (Some(a), Some(b)) => {
+                let hw = b.saturating_sub(a) / 1000;
+                let pct = if slept > 0 { (hw.min(slept) * 100 / slept) as u32 } else { 0 };
+                if hw == 0 && slept >= 20_000 {
+                    parts.push("never reached deep sleep (s0i3): the processor stayed partly awake, so the fans and the battery kept going".into());
+                } else {
+                    parts.push(format!("deep sleep (s0i3) {} of it ({pct}%)", span(hw)));
+                }
+            }
+            _ => parts.push("the kernel doesn't say how long it was in deep sleep".into()),
+        }
+    }
+    if let (Some(a), Some(b)) = (before.battery, after.battery) { parts.push(format!("battery {a}% → {b}%")); }
+    if let Some(w) = wake { parts.push(format!("woken by {w}")); }
+    parts.join("; ")
 }
 
 /// The power button set to "Turn off" (Settings › Power button): with Quick Resume games to keep and keeping them
@@ -387,5 +505,68 @@ mod tests {
         assert_eq!(disk_swap(swaps), (17825788 + 1048572, 17825788));
         assert_eq!(df_free_kb("Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/nvme0n1p3 976762584 400000000 576762584 41% /var\n"), Some(576762584));
         assert_eq!(df_free_kb(""), None);
+    }
+
+    #[test]
+    fn finds_who_blocks_sleep() {
+        let j = r#"{"type":"a(ssssuu)","data":[[["handle-power-key:handle-suspend-key","Hearth","Hearth handles the power button","block",1000,2100],["sleep","Steam","Steam wants to know","delay",1000,3300],["idle:sleep","Hearth Player","Playing music","block",1000,4400],["shutdown:sleep","NetworkManager","","delay",0,800]]]}"#;
+        let all = parse_inhibitors(j);
+        assert_eq!(all.len(), 4);
+        assert_eq!(all[0].who, "Hearth");
+        assert_eq!(all[2].pid, 4400);
+        let b = sleep_blockers(&all);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b[0].who, "Hearth Player");
+        assert_eq!(describe_inhibitors(&b), "Hearth Player (idle:sleep, block: Playing music)");
+        assert_eq!(describe_inhibitors(&[]), "none");
+        // The power button inhibitor (Hearth's own) never counts as holding off sleep.
+        assert!(sleep_blockers(&all[..1]).is_empty());
+        assert!(parse_inhibitors("").is_empty());
+        assert!(parse_inhibitors("not json").is_empty());
+    }
+
+    fn put(root: &std::path::Path, rel: &str, text: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+
+    #[test]
+    fn reads_sleep_counters_and_battery() {
+        let t = tempfile::tempdir().unwrap();
+        put(t.path(), "sys/power/suspend_stats/total_hw_sleep", "5000000\n");
+        put(t.path(), "sys/power/suspend_stats/success", "3\n");
+        put(t.path(), "sys/power/suspend_stats/fail", "0\n");
+        put(t.path(), "sys/class/power_supply/ACAD/type", "Mains\n");
+        put(t.path(), "sys/class/power_supply/BAT0/type", "Battery\n");
+        put(t.path(), "sys/class/power_supply/BAT0/capacity", "87\n");
+        let s = sleep_snapshot_in(t.path(), 42);
+        assert_eq!(s, SleepSnap { at_ms: 42, battery: Some(87), hw_sleep_us: Some(5_000_000), success: Some(3), fail: Some(0) });
+        // Nothing there (a desktop PC, an older kernel): nothing made up.
+        let e = tempfile::tempdir().unwrap();
+        assert_eq!(sleep_snapshot_in(e.path(), 1), SleepSnap { at_ms: 1, ..Default::default() });
+        put(t.path(), "sys/power/pm_wakeup_irq", "9\n");
+        put(t.path(), "proc/interrupts", "           CPU0       CPU1\n  1:          0          0  IR-IO-APIC    1-edge      i8042\n  9:         12          0  IR-IO-APIC    9-fasteoi   acpi\n");
+        assert_eq!(wake_source_in(t.path()).as_deref(), Some("IRQ 9 (acpi)"));
+        assert_eq!(wake_source_in(e.path()), None);
+    }
+
+    #[test]
+    fn says_whether_sleep_was_real() {
+        let before = SleepSnap { at_ms: 0, battery: Some(90), hw_sleep_us: Some(1_000_000), success: Some(1), fail: Some(0) };
+        // 10 minutes asleep, 9 min 30 s of it in s0i3.
+        let good = SleepSnap { at_ms: 600_000, battery: Some(89), hw_sleep_us: Some(1_000_000 + 570_000_000), success: Some(2), fail: Some(0) };
+        assert_eq!(woke_report(&before, &good, Some("IRQ 9 (acpi)")), "sleep: awake after 10 min 0 s; deep sleep (s0i3) 9 min 30 s of it (95%); battery 90% → 89%; woken by IRQ 9 (acpi)");
+        // The screen went off but the processor never got to s0i3: the fans kept running.
+        let shallow = SleepSnap { at_ms: 3_600_000, battery: Some(70), hw_sleep_us: Some(1_000_000), success: Some(2), fail: Some(0) };
+        let r = woke_report(&before, &shallow, None);
+        assert!(r.starts_with("sleep: awake after 1 h 0 min; never reached deep sleep (s0i3)"), "{r}");
+        assert!(r.ends_with("battery 90% → 70%"), "{r}");
+        // A suspend the kernel gave up on.
+        let failed = SleepSnap { at_ms: 3_000, battery: None, hw_sleep_us: Some(1_000_000), success: Some(1), fail: Some(1) };
+        assert!(woke_report(&before, &failed, None).contains("the system refused to sleep"));
+        // No counters (older kernel, not AMD): said, not guessed.
+        let none = SleepSnap { at_ms: 30_000, ..Default::default() };
+        assert_eq!(woke_report(&SleepSnap::default(), &none, None), "sleep: awake after 30 s; the kernel doesn't say how long it was in deep sleep");
     }
 }

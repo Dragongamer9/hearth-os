@@ -122,6 +122,68 @@ journalctl -k -b --no-pager 2>/dev/null | grep -iE 'frl|hdmi|nvidia-modeset|nvkm
 true
 "##;
 
+/// Sleep: whether the device really sleeps (and reaches the processor's deepest state, s0i3 on AMD, where the fans
+/// stop and the battery barely drops) or only turns the screen off; who handles the power button (logind, Hearth,
+/// Handheld Daemon's powerbuttond, Steam's); who holds sleep off; what can wake it and what did; the last sleeps
+/// with how long they lasted; and how the previous boot ended (asleep, or stuck waking up).
+const SLEEP_SH: &str = r##"
+echo "sleep states: $(cat /sys/power/state 2>/dev/null) | mem_sleep: $(cat /sys/power/mem_sleep 2>/dev/null) | disk: $(cat /sys/power/disk 2>/dev/null)"
+printf 'suspend counters: '
+for f in success fail failed_freeze failed_prepare failed_suspend failed_suspend_late failed_suspend_noirq failed_resume last_failed_dev last_failed_errno last_failed_step last_hw_sleep total_hw_sleep max_hw_sleep; do
+  [ -r "/sys/power/suspend_stats/$f" ] && printf '%s=%s ' "$f" "$(cat "/sys/power/suspend_stats/$f" 2>/dev/null)"
+done
+echo
+echo "(hw_sleep: microseconds in the deepest sleep, s0i3; a sleep that leaves total_hw_sleep unchanged never got there: the fans keep running and the battery drains)"
+echo "last wake IRQ: $(cat /sys/power/pm_wakeup_irq 2>/dev/null || echo none)"
+printf 'modules: '; for m in amd_pmc amdgpu asus_wmi asus_nb_wmi asus_armoury hid_asus hid_asus_ally; do [ -d "/sys/module/$m" ] && printf '%s ' "$m"; done; echo
+for f in /sys/devices/platform/asus-nb-wmi/mcu_powersave /sys/class/firmware-attributes/asus-armoury/attributes/mcu_powersave/current_value; do
+  [ -r "$f" ] && echo "ASUS MCU powersave ($f): $(cat "$f" 2>/dev/null)"
+done
+cat /sys/kernel/debug/amd_pmc/s0ix_stats 2>/dev/null || echo "amd_pmc s0ix_stats: needs root (total_hw_sleep above is the same time)"
+echo "--- who handles the power button"
+for p in HandlePowerKey HandlePowerKeyLongPress HandleSuspendKey HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked IdleAction; do
+  printf '%s=%s ' "$p" "$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager "$p" 2>/dev/null | cut -d' ' -f2-)"
+done
+echo
+grep -rsE '^[[:space:]]*(Handle|Idle|Inhibit|Suspend|Allow|HibernateDelay|MemorySleepMode)' /etc/systemd/logind.conf /etc/systemd/logind.conf.d /usr/lib/systemd/logind.conf.d /run/systemd/logind.conf.d /etc/systemd/sleep.conf /etc/systemd/sleep.conf.d /usr/lib/systemd/sleep.conf.d /run/systemd/sleep.conf.d
+echo "power button helpers running: $(pgrep -af 'hearth-buttons|steamos-powerbuttond|powerbuttond' | grep -v pgrep | sed 's/^[0-9]* //' | paste -sd';' -)"
+echo "Steam's gamepad UI (Handheld Daemon's powerbuttond only acts while it runs): $(pgrep -f -- '-gamepadui' >/dev/null && echo running || echo 'not running')"
+journalctl -b --no-pager -u hhd 2>/dev/null | grep -iE 'PBTN|powerbutton|power button|inhibit' | tail -12
+echo "--- inhibitors (block = sleep refused while held; delay = held off a few seconds)"
+systemd-inhibit --list --no-pager 2>&1
+echo "--- what can wake the device"
+awk 'NR>1 && $3 ~ /enabled/ {printf "%s(%s) ", $1, $4} END {print ""}' /proc/acpi/wakeup 2>/dev/null | sed 's/^/ACPI: /'
+for d in /sys/bus/usb/devices/*; do
+  [ "$(cat "$d/power/wakeup" 2>/dev/null)" = enabled ] && [ -r "$d/idVendor" ] && echo "USB ${d##*/}: $(cat "$d/idVendor"):$(cat "$d/idProduct") $(cat "$d/product" 2>/dev/null)"
+done
+for d in /sys/bus/serio/devices/*; do [ -r "$d/power/wakeup" ] && echo "serio ${d##*/} ($(cat "$d/description" 2>/dev/null)): wakeup $(cat "$d/power/wakeup")"; done
+echo "wake sources that fired (count, name, device):"
+for w in /sys/class/wakeup/wakeup*; do
+  [ -r "$w/event_count" ] && echo "$(cat "$w/event_count") $(cat "$w/name") $(readlink -f "$w/device" 2>/dev/null | sed 's|^/sys/devices/||')"
+done | sort -rn | awk '$1 > 0' | head -12
+echo "--- fans and battery now"
+for h in /sys/class/hwmon/hwmon*; do for f in "$h"/fan*_input; do [ -r "$f" ] && echo "$(cat "$h/name") ${f##*/}: $(cat "$f") RPM"; done; done
+for b in /sys/class/power_supply/*; do
+  [ "$(cat "$b/type" 2>/dev/null)" = Battery ] && echo "${b##*/}: $(cat "$b/capacity" 2>/dev/null)% $(cat "$b/status" 2>/dev/null), power_now=$(cat "$b/power_now" 2>/dev/null) energy_now=$(cat "$b/energy_now" 2>/dev/null)"
+done
+echo "--- sleeps this boot: when, and how long"
+journalctl -b -k -o short-unix --no-pager 2>/dev/null | grep -E 'PM: suspend (entry|exit)' | while read -r t rest; do
+  case "$rest" in
+    *entry*) s=${t%.*}; echo "$(date -d "@$s" '+%F %T') went to sleep (${rest##*entry })";;
+    *exit*) [ -n "$s" ] && echo "$(date -d "@${t%.*}" '+%F %T') woke up after $(( ${t%.*} - s )) s"; s="";;
+  esac
+done
+echo "--- kernel and logind around sleep (this boot)"
+journalctl -b --no-pager -o short-precise -k -u systemd-logind -u systemd-suspend.service 2>/dev/null | grep -iE 'PM: |s2idle|ACPI: PM|Low-level resume|amd_pmc|deepest|power key|suspend|wakeup|freez|restarting tasks|hardware sleep|resume' | tail -80
+echo "--- how the previous boot ended (asleep and never woke, or stuck waking up?)"
+journalctl --list-boots --no-pager 2>/dev/null | tail -5
+journalctl -b -1 -k --no-pager -o short-precise 2>/dev/null | grep -iE 'PM: |s2idle|ACPI: PM|amd_pmc|amdgpu|deepest|wakeup|resume' | tail -20
+echo "(its last kernel lines)"
+journalctl -b -1 -k --no-pager -o short-precise 2>/dev/null | tail -12
+journalctl -b -1 --no-pager -o short-precise -u systemd-logind -u systemd-suspend.service 2>/dev/null | tail -10
+true
+"##;
+
 /// Personal details out: the user name and home folder, sign-in tokens, e-mail addresses, Steam account ids,
 /// Wi-Fi passwords.
 pub fn redact(text: &str, user: &str, home: &str) -> String {
@@ -210,6 +272,9 @@ pub fn report(version: &str) -> String {
         .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
+    // "Pressing power turns the screen off but the fans keep running": whether it really slept, how deeply, who
+    // handles the power button and who holds sleep off (SLEEP_SH).
+    section("Sleep", sh(&format!("{{ {SLEEP_SH} }}")));
     // Apps (Desktop Mode's app store for Flathub): what it sees (can your own Flatpak folder be used, the catalog, the
     // last refresh error), the Flathub remotes (yours and the system's) and who owns the folders it writes to (a
     // folder owned by root or an old account makes `flatpak --user` fail with "permission denied").
@@ -374,7 +439,12 @@ mod tests {
     #[test]
     fn screen_sections_keep_their_output() {
         // sh() gives only an error line when the script's last command fails (grep finding nothing): both end in true.
-        for s in [SCREEN_SH, DRIVER_SH] { assert!(s.trim_end().ends_with("\ntrue"), "{s}"); }
+        for s in [SCREEN_SH, DRIVER_SH, SLEEP_SH] { assert!(s.trim_end().ends_with("\ntrue"), "{s}"); }
+        // The Sleep section: the states, the deep-sleep counters, who handles the power button, the inhibitors, the
+        // wake sources, and the last sleeps with their lengths.
+        for k in ["/sys/power/mem_sleep", "total_hw_sleep", "HandlePowerKey", "systemd-inhibit --list", "/proc/acpi/wakeup", "PM: suspend (entry|exit)", "journalctl -b -1 -k", "amd_pmc"] {
+            assert!(SLEEP_SH.contains(k), "{k}");
+        }
         assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));
         assert!(DRIVER_SH.contains("/proc/cmdline") && DRIVER_SH.contains("modinfo -F version nvidia") && DRIVER_SH.contains("driver_version"));
     }
