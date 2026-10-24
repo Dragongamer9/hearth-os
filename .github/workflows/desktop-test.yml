@@ -27,6 +27,8 @@ jobs:
           dnf -y install dbus-daemon libnotify wl-clipboard wtype slurp >/dev/null || true
           # A Wayland app whose app id can be set (a stand-in Flatpak window for the taskbar's icon check).
           dnf -y install foot hicolor-icon-theme >/dev/null || true
+          # Hearth Files as the file chooser: xdg-desktop-portal, GLib's D-Bus for Python (hearth-portal), a GTK 3 app.
+          dnf -y install xdg-desktop-portal python3-gobject gtk3 dbus-tools shared-mime-info >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -47,6 +49,14 @@ jobs:
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          # ---- Hearth Files as every app's file chooser: the portal backend and FileChooser=hearth for Nimbus, the way
+          # the images install them (os/system_files, base-*.yml), with the backend run from this checkout.
+          mkdir -p /usr/share/xdg-desktop-portal/portals /usr/share/dbus-1/services
+          cp os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal /usr/share/xdg-desktop-portal/portals/
+          printf '[preferred]\ndefault=none\norg.freedesktop.impl.portal.FileChooser=hearth\n' > /usr/share/xdg-desktop-portal/nimbus-portals.conf
+          sed "s#/usr/share/nimbus/desktop/shell#$PWD/hosts/linux/desktop/shell#" os/system_files/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service \
+            > /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service
+          # ---- end of the file chooser's setup
           # A session bus, so the shell's notification server, tray and media keys start as on a real desktop.
           if command -v dbus-daemon >/dev/null; then
             dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
@@ -216,6 +226,32 @@ jobs:
           { python3 hosts/linux/desktop/shell/hearth-tasks autostart-plan; echo; ls "$HOME"; } > shots/autostart.txt 2>&1
           if [ ! -e "$HOME/autostarted" ]; then echo "::error title=autostart::The autostart app didn't start"; touch shots/FAILED; fi
           if [ -e "$HOME/steam-started" ]; then echo "::error title=autostart::Steam's autostart entry was started"; touch shots/FAILED; fi
+          # ---- Hearth Files as every app's file chooser (xdg-desktop-portal → hearth-portal → picker.qml) and as the file
+          # manager "Show in folder" opens (org.freedesktop.FileManager1): hosts/linux/test/portal_e2e.py calls them like
+          # apps do, drives the picker over quickshell ipc and checks what the app gets back.
+          export XDG_CURRENT_DESKTOP=Nimbus
+          # The portal session's environment (nimbus-session's own lines for GTK and Qt apps, too).
+          eval "$(sed -n '/^# >>> portal dialogs/,/^# <<< portal dialogs/p' hosts/linux/session/nimbus-session)"
+          echo "GTK_USE_PORTAL=$GTK_USE_PORTAL GDK_DEBUG=$GDK_DEBUG QT_QPA_PLATFORMTHEME=${QT_QPA_PLATFORMTHEME:-}"
+          [ "$GTK_USE_PORTAL" = 1 ] && [ "$GDK_DEBUG" = portals ] || { echo "::error title=file chooser::nimbus-session doesn't ask GTK apps to use the portal"; touch shots/FAILED; }
+          unset QT_QPA_PLATFORMTHEME
+          dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_RUNTIME_DIR HOME PATH QT_QUICK_BACKEND NIMBUS_SHARE XDG_DATA_DIRS || echo "dbus-update-activation-environment failed"
+          XDP=""; for x in /usr/libexec/xdg-desktop-portal /usr/lib/xdg-desktop-portal; do [ -x "$x" ] && { XDP="$x"; break; }; done
+          if [ -n "$XDP" ] && python3 -c 'import gi' 2>/dev/null; then
+            "$XDP" -r -v > shots/xdg-desktop-portal.log 2>&1 &
+            python3 hosts/linux/desktop/shell/hearth-portal filemanager1 --replace > shots/filemanager1.log 2>&1 &
+            sleep 4
+            mkdir -p "$HOME/Documents/Reports"; printf 'a,b\n1,2\n' > "$HOME/Documents/data.csv"; head -c 3000 /dev/urandom > "$HOME/Documents/backup.bin"
+            timeout 600 python3 hosts/linux/test/portal_e2e.py "$HOME/Documents" shots > shots/file-chooser.txt 2>&1 || touch shots/FAILED
+            cat shots/file-chooser.txt
+            grep '^::error' shots/file-chooser.txt || true
+            cp "$HOME/.local/share/nimbus/picker.log" shots/picker.log 2>/dev/null || true
+            pbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load" shots/picker.log 2>/dev/null | head -8 | cut -c1-200 | tr '\n' '|' || true)
+            [ -z "$pbad" ] || { echo "::error title=picker::$pbad"; touch shots/FAILED; }
+          else
+            echo "::error title=file chooser::xdg-desktop-portal or python3-gobject is missing here"; touch shots/FAILED
+          fi
+          # ---- end of the file chooser
           cp "$LOG" shots/nimbus-shell.log 2>/dev/null || true
           ls "$XDG_RUNTIME_DIR" > shots/runtime-dir.txt
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
