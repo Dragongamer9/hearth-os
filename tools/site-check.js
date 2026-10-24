@@ -57,7 +57,7 @@ function inspect() {
   // Contrast: each element with its own text against the first solid background behind it.
   const rgb = c => { const m = c.match(/[\d.]+/g); return m ? m.map(Number) : [0, 0, 0, 0]; };
   const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
-  const bgOf = el => { for (let p = el; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.backgroundImage !== 'none' && p !== document.body && p !== document.documentElement) return null; const c = rgb(s.backgroundColor); if (c.length < 4 || c[3] > .9) return c; } return [255, 255, 255]; };
+  const bgOf = el => { for (let p = el; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.backgroundImage !== 'none' && p !== document.body && p !== document.documentElement) return null; const c = rgb(s.backgroundColor); if (c.length < 4 || c[3] > .8) return c; } return [255, 255, 255]; };
   const low = [];
   for (const el of document.querySelectorAll('body *')) {
     if (low.length > 8) break;
