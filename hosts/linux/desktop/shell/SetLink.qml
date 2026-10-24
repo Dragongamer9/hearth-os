@@ -1,6 +1,9 @@
 // Hearth Settings › Hearth Link: your Hearth devices (hosts/hearth-link). Pair with a code, see your devices, the
 // games being copied here, and turn sync on or off. Games are picked in Hearth itself (Library › Get from another
 // Hearth). Everything goes through hearth-link-settings (the service's socket).
+// Pairing: "Pair a device" shows a 6-digit code (the devices on this network list this one as ready) and, when
+// asked, a short code for a device somewhere else. Pairing with another: pick it from the list and type its code,
+// or type a short code; a wrong code keeps the field open with the tries left.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -13,7 +16,43 @@ SetPage {
     property string message: ""
     property bool messageBad: false
     property string joining: ""
+    property string joiningName: ""
+    property bool pairingBusy: false
+    readonly property var kinds: ({ handheld: "Handheld", laptop: "Laptop", desktop: "Desktop", tablet: "Tablet", tv: "TV" })
+    readonly property string abc: "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
     function say(t, bad) { message = t; messageBad = !!bad; }
+    function minsLeft(until) { const m = Math.max(0, Math.ceil((until - Date.now()) / 60000)); return m <= 1 ? "less than a minute left" : m + " min left"; }
+    function what(n) { return [kinds[n.kind] || "", n.edition || ""].filter(x => x).join(" · "); }
+    // Short codes (hosts/hearth-link shortcode.rs): K7M-4QX-92HC, no 0/O/1/I/L, a check character.
+    function squash(t) { return (t || "").replace(/[\s\-._·]/g, "").toUpperCase(); }
+    function shortFmt(t) { const c = squash(t).slice(0, 10); return [c.slice(0, 3), c.slice(3, 6), c.slice(6)].filter(x => x).join("-"); }
+    function shortCheck(t) {
+        const c = squash(t);
+        if (/[01OIL]/.test(c)) return "That code doesn't look right: codes never have 0, O, 1, I or L in them";
+        for (let i = 0; i < c.length; i++) if (abc.indexOf(c[i]) < 0) return "That code doesn't look right: \"" + c[i] + "\" isn't in codes";
+        if (c.length !== 10) return "That code doesn't look right: it's 10 characters, and this is " + c.length;
+        let sum = 0;
+        for (let i = 0; i < 10; i++) sum += (i + 1) * abc.indexOf(c[i]);
+        return sum % 31 ? "That code doesn't look right: one of the characters is off. Check it on the other device" : "";
+    }
+    function eventLine(ev) {
+        if (!ev) return "Waiting for the other device…";
+        if (ev.state === "checking") return "Found " + ev.name + ": checking the code…";
+        if (ev.state === "wrong") return ev.name + " typed a wrong code (" + ev.triesLeft + (ev.triesLeft === 1 ? " try" : " tries") + " left)";
+        return "Waiting for the other device…";
+    }
+    function joiningLine() {
+        const j = page.st && page.st.joining;
+        if (!j) return "Pairing…";
+        return ({ looking: "Looking up the code…", found: "Found " + j.name, connecting: "Found " + j.name + ": connecting…", checking: "Checking the code with " + j.name + "…" })[j.state] || "Pairing…";
+    }
+    // A pairing: a wrong code keeps the field open (with the tries left), anything else closes it.
+    function join(args, input, okText) {
+        page.pairingBusy = true;
+        page.say("");
+        act.run(args, r => { page.pairingBusy = false; page.joining = ""; page.say("Paired ✓ with " + ((r && r.name) || page.joiningName)); page.refresh(); },
+                e => { page.pairingBusy = false; const wrong = /^Wrong code/.test(e) && !/last try/.test(e); if (!wrong) page.joining = ""; page.say(e, true); if (wrong) code.focusInput(); page.refresh(); }, input || "");
+    }
     function refresh() { job.run(["status"], r => page.st = r, e => { page.st = { error: e }; }); }
     function bytes(n) { return n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round((n || 0) / 1e6) + " MB"; }
     function jobLine(t) {
@@ -41,42 +80,91 @@ SetPage {
     SetRow {
         visible: !!page.st && !!page.st.me
         icon: "display"; chevron: false; title: page.st && page.st.me ? page.st.me.name : ""
-        sub: page.st && page.st.me ? "Its link, for pairing from somewhere else: " + page.st.me.ticket : ""
+        sub: page.st && page.st.me ? [page.what(page.st.me), "Its name on your other Hearth devices"].filter(x => x).join(" · ") : ""
     }
     SetField { id: newName; visible: !!page.st && !!page.st.me; placeholder: "Rename this device"; onSubmitted: t => { if (t.trim()) page.run(["set", "name", t.trim()], "Renamed"); newName.text = ""; } }
     SetRow {
         visible: !!page.st && !!page.st.me && !page.st.pairing
-        icon: "lock"; title: "Pair a device"; sub: "Shows a code to enter on your other Hearth device"
+        icon: "lock"; title: "Pair a device"
+        sub: page.st && page.st.pairEvent && page.st.pairEvent.state === "paired" ? "Paired ✓ with " + page.st.pairEvent.name + ". Select to pair another"
+           : page.st && page.st.pairEvent && page.st.pairEvent.state === "locked" ? "Too many wrong codes, so pairing stopped. Select for a new code"
+           : "Shows a code to type on your other Hearth device"
         onActivated: page.run(["pair-open"])
     }
     SetRow {
-        visible: !!page.st && !!page.st.pairing
+        visible: !!page.st && !!page.st.pairing && !!page.st.pairing.code
         icon: "lock"; chevron: false
-        title: page.st && page.st.pairing ? "Code: " + page.st.pairing.code.slice(0, 3) + " " + page.st.pairing.code.slice(3) : ""
-        sub: "Enter it on the other device: Settings › Hearth Link. Select to stop pairing."
+        title: page.st && page.st.pairing && page.st.pairing.code ? "Code: " + page.st.pairing.code.slice(0, 3) + " " + page.st.pairing.code.slice(3) : ""
+        sub: page.st && page.st.pairing ? page.eventLine(page.st.pairEvent) + " On the other device: Settings › Hearth Link, pick " + page.st.me.name + " and type this code. " + page.minsLeft(page.st.pairing.until) + "." : ""
+    }
+    SetRow {
+        visible: !!page.st && !!page.st.pairing && !!page.st.pairing.netCode
+        icon: "globe"; chevron: false
+        title: page.st && page.st.pairing && page.st.pairing.netCode ? "Code for somewhere else: " + page.st.pairing.netCode : ""
+        sub: page.st && page.st.pairing && page.st.pairing.netCode ? "On the other device: Settings › Hearth Link › Enter a code. Works once, " + page.minsLeft(page.st.pairing.netUntil) + "." : ""
+    }
+    SetRow {
+        visible: !!page.st && !!page.st.pairing && !page.st.pairing.netCode && page.st.shortCodes !== false
+        icon: "globe"; title: "Not on the same network?"; sub: "Get a code to type on a device somewhere else (over the internet)"
+        onActivated: page.run(["pair-open-internet"])
+    }
+    SetRow {
+        visible: !!page.st && !!page.st.pairing
+        icon: "close"; title: "Stop pairing"; chevron: false
         onActivated: page.run(["pair-close"])
     }
-    SetHeader { text: "Hearth devices on this network"; visible: !!page.st && (page.st.nearby || []).length > 0 }
+    SetHeader { text: "Pair with a device"; visible: !!page.st && !!page.st.me }
+    SetRow {
+        visible: page.pairingBusy
+        icon: "update"; chevron: false; title: page.joiningLine()
+    }
     Repeater {
         model: page.st ? (page.st.nearby || []) : []
         delegate: SetRow {
             required property var modelData
-            icon: "display"; title: modelData.name
-            sub: page.joining === modelData.id ? "Type the code it shows below, then Enter" : modelData.pairing ? "Showing a pairing code: select to enter it" : "Open Pair a device on it first"
-            onActivated: { page.joining = modelData.id; code.focusInput(); }
+            icon: modelData.kind === "handheld" || modelData.kind === "tablet" ? "pad" : "display"; title: modelData.name
+            chevron: modelData.pairing
+            sub: (page.what(modelData) ? page.what(modelData) + " · " : "")
+                 + (page.joining === modelData.id ? "Type the 6-digit code it shows below, then Enter" : modelData.pairing ? "Ready to pair: select, then type the code it shows" : "To pair, select Pair a device on it first")
+            onActivated: {
+                if (!modelData.pairing) { page.say("On " + modelData.name + ", select Settings › Hearth Link › Pair a device first", true); return; }
+                page.joining = modelData.id; page.joiningName = modelData.name; page.say(""); code.focusInput();
+            }
         }
+    }
+    Text {
+        visible: !!page.st && !!page.st.me && !(page.st.nearby || []).some(n => n.pairing)
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "Looking for Hearth devices on this network. On the other device, select Settings › Hearth Link › Pair a device."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     SetField {
         id: code
         visible: page.joining !== ""
-        placeholder: "The 6-digit code"
-        onSubmitted: t => { page.run(["join", page.joining], "Paired", t); page.joining = ""; code.text = ""; }
+        placeholder: "The 6-digit code " + (page.joiningName || "it") + " shows"
+        onSubmitted: t => { const c = t.replace(/\D/g, ""); if (c.length !== 6) { page.say("The code is 6 digits", true); return; } page.join(["join", page.joining], c); code.text = ""; }
+    }
+    SetField {
+        id: shortField
+        visible: !!page.st && !!page.st.me && page.st.shortCodes !== false
+        placeholder: "Enter a code from a device somewhere else (like K7M-4QX-92HC), then Enter"
+        onTextChanged: { const f = page.shortFmt(text); if (f !== text && page.squash(text).length <= 10) text = f; }
+        onSubmitted: t => {
+            const bad = page.shortCheck(t);
+            if (bad) { page.say(bad, true); return; }
+            page.joiningName = "the other device"; page.join(["join-code"], page.shortFmt(t)); shortField.text = "";
+        }
+    }
+    SetRow {
+        visible: !!page.st && !!page.st.me
+        icon: "info"; chevron: false; title: "Other ways: this device's long link"
+        sub: page.st && page.st.me ? page.st.me.ticket : ""
     }
     SetField {
         id: far
         visible: !!page.st && !!page.st.me
-        placeholder: "Pair with a device somewhere else: paste its link, then Enter"
-        onSubmitted: t => { if (t.trim()) { page.joining = t.trim(); far.text = ""; code.focusInput(); } }
+        placeholder: "Other ways: paste the other device's long link, then Enter"
+        onSubmitted: t => { if (t.trim()) { page.joining = t.trim(); page.joiningName = "the other device"; far.text = ""; code.focusInput(); } }
     }
     SetHeader { text: "Your devices"; visible: !!page.st && !!page.st.peers }
     Repeater {

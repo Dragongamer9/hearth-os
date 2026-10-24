@@ -141,7 +141,7 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
         Err(_) => {
             let _ = write_msg(&mut s, &json!({"error": "That code expired. Get a new one on the other device"})).await;
             let _ = s.finish();
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), conn.closed()).await;
             return Err(fail(HostFail::Expired));
         }
     };
@@ -151,9 +151,11 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     let c = read_msg(&mut r).await.map_err(|_| fail(HostFail::Other))?;
     let theirs = c["confirm"].as_str().and_then(crate::unhex).unwrap_or_default();
     if !tag_eq(&theirs, &confirm_tag(&key, b"join", me, &joiner)) {
+        // A moment before the answer (guessing stays slow), then until the joiner has read it (it closes).
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         let _ = write_msg(&mut s, &json!({"error": "Wrong code", "wrong": true, "triesLeft": left_if_wrong})).await;
         let _ = s.finish();
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), conn.closed()).await;
         return Err(fail(HostFail::Wrong));
     }
     write_msg(&mut s, &json!({"confirm": crate::hex(&confirm_tag(&key, b"host", me, &joiner))})).await.map_err(|_| fail(HostFail::Other))?;

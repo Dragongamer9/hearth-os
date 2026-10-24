@@ -2,11 +2,15 @@
 """Hearth Link end to end: two real `hearth-link serve` instances, each in its own network namespace with its own
 home folder, driven over their sockets the way Hearth's UI does (`hearth-link call ...`). Run as root (namespaces).
 
-  e2e.py lan        one network: discovery, pairing with a code (a wrong code first), a multi-GB synthetic Steam
+  e2e.py lan        one network: pairing first: too many wrong codes stop it, a code that ran out, a short code
+                    (looked up on a local pkarr relay: a typo caught at once, a code nobody shows, then pairing,
+                    then the code used up), the long link; then discovery (kind and edition shown) and pairing by
+                    picking the device and its 6-digit code (a wrong code first, then retried), a multi-GB synthetic Steam
                     game copied (speed posted), a copy killed halfway and resumed, an update copied as only its
                     changed chunks, every file's hash compared, Hearth data synced both ways, quiet while playing,
                     unpairing
-  e2e.py internet   both devices behind their own NAT, a local iroh relay in between: pairing with a ticket, a copy
+  e2e.py internet   both devices behind their own NAT, a local iroh relay in between: pairing with a short code
+                    (found through a pkarr relay on the "internet" too, nothing else typed), a copy
                     through the relay with direct UDP blocked (speed posted, the copy says it's relayed), then with
                     UDP allowed (hole punching; posted as information)
 
@@ -16,6 +20,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import shutil
 import signal
 import subprocess
@@ -58,7 +63,7 @@ def esc(t):
 
 def fail(msg):
     print('::error title=Hearth Link e2e::%s' % esc(msg + '\n--- progress\n' + '\n'.join(PROGRESS[-25:])), flush=True)
-    for name in ('A', 'B', 'relay'):
+    for name in ('A', 'B', 'relay', 'pkarr'):
         t = tail(os.path.join(ROOT, '%s.log' % name))
         if t:
             print('::error title=%s.log::%s' % (name, esc(t)), flush=True)
@@ -142,6 +147,57 @@ class Dev:
             if j['id'] == jid:
                 return j
         return None
+
+
+# ------------------------------------------------------------------ a pkarr relay (lookup.rs), as n0's and pkarr's
+
+PKARR_PORT = 8099
+PKARR = r'''
+import http.server, sys
+store = {}
+class H(http.server.BaseHTTPRequestHandler):
+    def do_PUT(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        store[self.path] = body
+        self.send_response(204)
+        self.end_headers()
+    def do_GET(self):
+        b = store.get(self.path)
+        if b is None:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pkarr.org/relays#payload")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+    def log_message(self, *a):
+        sys.stderr.write("pkarr: %s %s\n" % (self.command, self.path[:24]))
+http.server.ThreadingHTTPServer((sys.argv[1], int(sys.argv[2])), H).serve_forever()
+'''
+
+
+def pkarr_relay(ns, ip):
+    path = os.path.join(ROOT, 'pkarr.py')
+    with open(path, 'w') as f:
+        f.write(PKARR)
+    lf = open(os.path.join(ROOT, 'pkarr.log'), 'w')
+    p = subprocess.Popen(['ip', 'netns', 'exec', ns, sys.executable, '-I', path, ip, str(PKARR_PORT)], stdout=lf, stderr=subprocess.STDOUT)
+    time.sleep(1)
+    return p, 'http://%s:%d/pkarr' % (ip, PKARR_PORT)
+
+
+ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+CODE_RE = re.compile(r'^[%s]{3}-[%s]{3}-[%s]{4}$' % ((ALPHABET,) * 3))
+
+
+def short_code(data):
+    """A valid short code for 9 characters (shortcode.rs: weights 1..10, sum ≡ 0 mod 31)."""
+    v = [ALPHABET.index(c) for c in data]
+    s = sum((i + 1) * x for i, x in enumerate(v)) % 31
+    return data + ALPHABET[((31 - s) % 31) * 28 % 31]
 
 
 # ------------------------------------------------------------------ synthetic games
@@ -397,20 +453,123 @@ def internet_network():
 # ------------------------------------------------------------------ the tests
 
 def pair(a, b, ticket=None):
+    """B opens pairing; A picks it from the devices it sees on the network (or uses B's long link) and types the
+    6-digit code: a wrong one first (told how many tries are left, nothing to start over), then the right one."""
     code = b.call('pair.open')['code']
-    target = ticket or b.id
+    if ticket:
+        target = ticket
+    else:
+        n = wait_for('A to list B as ready to pair', lambda: next((n for n in a.status()['nearby'] if n['id'] == b.id and n['pairing']), None), 20)
+        if n.get('kind') != 'handheld' or n.get('edition') != 'Peppermint' or n.get('name') != 'B':
+            fail('B as A lists it: %s' % n)
+        target = n['id']
     bad = '%06d' % ((int(code) + 1) % 1000000)
     r = a.call('pair.join', {'id': target, 'code': bad}, ok=False)
-    if 'error' not in r:
-        fail('a wrong code paired: %s' % r)
-    log('wrong code refused: %s' % r['error'])
-    r = a.call('pair.join', {'id': target, 'code': code}, timeout=90)
+    if not r.get('error', '').startswith('Wrong code') or '4 tries left' not in r['error']:
+        fail('a wrong code: %s' % r)
+    ev = b.status().get('pairEvent') or {}
+    if ev.get('state') != 'wrong' or ev.get('triesLeft') != 4 or ev.get('name') != 'A':
+        fail('B after a wrong code: %s' % ev)
+    if not b.status()['pairing']:
+        fail('a wrong code stopped pairing on B')
+    log('wrong code refused, pairing still open: %s' % r['error'])
+    time.sleep(0.5)
+    r = a.call('pair.join', {'id': target, 'code': code[:3] + ' ' + code[3:]}, timeout=90)
     if r.get('id') != b.id:
         fail('pairing: %s' % r)
     wait_for('both sides to list each other', lambda: any(p['id'] == a.id for p in b.status()['peers']) and any(p['id'] == b.id for p in a.status()['peers']), 20)
-    if b.status()['pairing'] is not None:
+    st = b.status()
+    if st['pairing'] is not None:
         fail('the code still showed after pairing')
-    notice('pairing', 'paired %s and %s with a 6-digit code (SPAKE2); a wrong code was refused' % (a.name, b.name))
+    if (st.get('pairEvent') or {}).get('state') != 'paired':
+        fail('B doesn\'t say it paired: %s' % st.get('pairEvent'))
+    notice('pairing', 'paired %s and %s %s and its 6-digit code (SPAKE2); a wrong code first said "%s" and the right one then paired, nothing started over'
+           % (a.name, b.name, 'with B\'s long link' if ticket else 'by picking B from the devices on the network (shown as %s, %s)' % (n['kind'], n['edition']), r.get('error') or 'Wrong code. 4 tries left'))
+
+
+def unpair(a, b):
+    a.call('unpair', {'id': b.id})
+    wait_for('B to forget A', lambda: not any(p['id'] == a.id for p in b.status()['peers']), 20)
+    wait_for('A to forget B', lambda: not any(p['id'] == b.id for p in a.status()['peers']), 20)
+
+
+def lockout(a, b):
+    """Five wrong codes stop pairing on B; the right code doesn't work after that."""
+    code = b.call('pair.open')['code']
+    for i in range(5):
+        bad = '%06d' % ((int(code) + 1 + i) % 1000000)
+        r = a.call('pair.join', {'id': b.id, 'code': bad}, ok=False)
+        want = ['4 tries left', '3 tries left', '2 tries left', '1 try left', 'last try'][i]
+        if not r.get('error', '').startswith('Wrong code') or want not in r['error']:
+            fail('wrong code %d: %s (wanted "%s")' % (i + 1, r, want))
+        time.sleep(0.4)
+    st = b.status()
+    if st['pairing'] is not None or (st.get('pairEvent') or {}).get('state') != 'locked':
+        fail('pairing still open on B after 5 wrong codes: %s %s' % (st['pairing'], st.get('pairEvent')))
+    r = a.call('pair.join', {'id': b.id, 'code': code}, ok=False)
+    if 'error' not in r or any(p['id'] == a.id for p in b.status()['peers']):
+        fail('the right code paired after the lockout: %s' % r)
+    notice('lockout', '5 wrong codes told A the tries left each time (4, 3, 2, 1, last); then pairing stopped on B and the right code no longer worked ("%s")' % r['error'])
+
+
+def expiry(a, b):
+    code = b.call('pair.open', {'seconds': 3})['code']
+    time.sleep(4.5)
+    if b.status()['pairing'] is not None:
+        fail('the code still showed after it ran out')
+    r = a.call('pair.join', {'id': b.id, 'code': code}, ok=False)
+    if 'expired' not in r.get('error', '').lower():
+        fail('a code that ran out: %s' % r)
+    b.call('pair.close')
+    notice('expiry', 'a 6-digit code that ran out: "%s"' % r['error'])
+
+
+def short_codes(a, b):
+    """Pairing from a short code alone: looked up (pkarr), checked as typed, SPAKE2 with it, single use, runs out."""
+    r = b.call('pair.open', {'internet': True}, timeout=60)
+    net = r.get('netCode') or ''
+    if not CODE_RE.match(net):
+        fail('the short code: %r' % r)
+    # One character off: caught before anything goes over the network.
+    i = 5
+    typo = net[:i] + (ALPHABET[(ALPHABET.index(net[i]) + 1) % 31]) + net[i + 1:]
+    t0 = time.time()
+    r = a.call('pair.join', {'code': typo}, ok=False)
+    if not r.get('error', '').startswith("That code doesn't look right") or time.time() - t0 > 3:
+        fail('a typo in the short code: %s (%.1f s)' % (r, time.time() - t0))
+    for bad in (net.replace('-', '')[:9] + '0', net[:-1]):
+        r = a.call('pair.join', {'code': bad}, ok=False)
+        if not r.get('error', '').startswith("That code doesn't look right"):
+            fail('%r: %s' % (bad, r))
+    # A code that checks out but nobody shows.
+    other = short_code(''.join(random.choice(ALPHABET) for _ in range(9)))
+    r = a.call('pair.join', {'code': other}, ok=False, timeout=60)
+    if 'No device is showing that code' not in r.get('error', ''):
+        fail('a code nobody shows: %s' % r)
+    # The right one, typed in small letters with spaces.
+    t0 = time.time()
+    r = a.call('pair.join', {'code': net.lower().replace('-', ' ')}, timeout=90)
+    if r.get('id') != b.id or r.get('name') != 'B':
+        fail('pairing with the short code: %s' % r)
+    took = time.time() - t0
+    wait_for('B to list A', lambda: any(p['id'] == a.id for p in b.status()['peers']), 20)
+    st = b.status()
+    if st['pairing'] is not None or (st.get('pairEvent') or {}).get('state') != 'paired':
+        fail('B after pairing with the short code: %s %s' % (st['pairing'], st.get('pairEvent')))
+    # Used: the record says so a moment later.
+    r = wait_for('the used code to be refused', lambda: (lambda x: x if 'error' in x else None)(a.call('pair.join', {'code': net}, ok=False, timeout=60)), 30)
+    unpair(a, b)
+    # Runs out by itself.
+    r2 = b.call('pair.open', {'internet': True, 'seconds': 3}, timeout=60)
+    time.sleep(7)
+    r3 = a.call('pair.join', {'code': r2['netCode']}, ok=False, timeout=60)
+    if 'ran out' not in r3.get('error', '') and 'expired' not in r3.get('error', '').lower():
+        fail('a short code that ran out: %s' % r3)
+    if b.status()['pairing'] is not None:
+        fail('pairing still open after the short code ran out')
+    notice('short code', 'paired from a %d-character code alone (%s, found through a pkarr relay, SPAKE2 with it) in %.1f s; '
+           'a typo was caught at once ("%s..."), a code nobody shows said so, the used code was refused ("%s"), one that ran out too ("%s")'
+           % (len(net.replace('-', '')), re.sub(r'[A-Z2-9]', 'X', net), took, "That code doesn't look right", r['error'], r3['error']))
 
 
 def copy(receiver, sender, game, what, prefix=True):
@@ -437,8 +596,10 @@ def lan():
     shutil.rmtree(ROOT, ignore_errors=True)
     os.makedirs(ROOT)
     lan_network()
-    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1'}
-    a, b = Dev('A', 'hlA', env), Dev('B', 'hlB', env)
+    pk, pk_url = pkarr_relay('hlA', '10.77.0.1')
+    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url}
+    a = Dev('A', 'hlA', dict(env, HEARTH_LINK_KIND='desktop', HEARTH_LINK_EDITION='Anatase'))
+    b = Dev('B', 'hlB', dict(env, HEARTH_LINK_KIND='handheld', HEARTH_LINK_EDITION='Peppermint'))
     sa = steam_library(a.home)
     steam_library(b.home)
     log('making the synthetic games')
@@ -449,6 +610,12 @@ def lan():
     a.start()
     b.start()
     wait_for('the devices to hear each other', lambda: any(n['id'] == b.id for n in a.status()['nearby']), 40)
+    lockout(a, b)
+    expiry(a, b)
+    short_codes(a, b)
+    # The long link (Other ways), with the 6-digit code.
+    pair(a, b, ticket=b.status()['me']['ticket'])
+    unpair(a, b)
     pair(a, b)
 
     # 1. A multi-GB game over the LAN path.
@@ -573,8 +740,17 @@ def lan():
     notice('unpair', 'unpaired on A; B forgot A too')
     a.kill(signal.SIGTERM)
     b.kill(signal.SIGTERM)
+    pk.terminate()
     for name in ('A', 'B'):
         t = tail(os.path.join(ROOT, '%s.log' % name), 200000)
+        steps = [l for l in t.splitlines() if 'pairing:' in l]
+        # Every step is logged, never a code.
+        if name == 'B' and (not any('wrong code from' in l for l in steps) or not any('paired with' in l for l in steps)):
+            fail('pairing steps missing from %s.log: %s' % (name, steps[-10:]))
+        if re.search(r'\b\d{6}\b', '\n'.join(steps)) or re.search(r'[%s]{3}-[%s]{3}-[%s]{4}' % ((ALPHABET,) * 3), '\n'.join(steps)):
+            fail('a code in %s.log: %s' % (name, steps))
+        if name == 'B':
+            notice('pairing log on B', ' | '.join(l.split('pairing: ', 1)[1] for l in steps[-12:])[:1800])
         broke = [l for l in t.splitlines() if 'broke' in l or 'ended:' in l]
         if broke:
             notice('connection events on %s' % name, ' | '.join(broke[-6:])[:1800])
@@ -593,7 +769,8 @@ def internet():
     relay = subprocess.Popen(['ip', 'netns', 'exec', 'inet', relay_bin, '--dev'], stdout=rl, stderr=subprocess.STDOUT)
     time.sleep(2)
     url = 'http://198.18.1.1:3340'
-    env = {'HEARTH_LINK_RELAY': url, 'HEARTH_LINK_NO_DNS': '1'}
+    pk, pk_url = pkarr_relay('inet', '198.18.1.1')
+    env = {'HEARTH_LINK_RELAY': url, 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url}
     a, b = Dev('A', 'hiA', env), Dev('B', 'hiB', env)
     sa = steam_library(a.home)
     steam_library(b.home)
@@ -607,7 +784,16 @@ def internet():
     ticket = b.status()['me']['ticket']
     if '@' not in ticket:
         fail('no relay in the ticket: %s' % ticket)
-    pair(a, b, ticket=ticket)
+    # Only the short code: B's id and relay come from the record (the NATs keep A from hearing B on a network).
+    net = b.call('pair.open', {'internet': True}, timeout=60).get('netCode') or ''
+    if not CODE_RE.match(net):
+        fail('the short code: %r' % net)
+    t0 = time.time()
+    r = a.call('pair.join', {'code': net}, timeout=90)
+    if r.get('id') != b.id:
+        fail('pairing with the short code over the internet: %s' % r)
+    wait_for('B to list A', lambda: any(p['id'] == a.id for p in b.status()['peers']), 20)
+    notice('internet pairing', 'paired across two NATs from the short code alone in %.1f s (record on a pkarr relay, connection through the iroh relay)' % (time.time() - t0))
     j, _, t0 = copy(b, a, 'steam:1000003', 'Net Game')
     j = wait_job(b, j['id'])
     if not j.get('relay'):
@@ -631,6 +817,7 @@ def internet():
     a.kill(signal.SIGTERM)
     b.kill(signal.SIGTERM)
     relay.terminate()
+    pk.terminate()
 
 
 if __name__ == '__main__':
