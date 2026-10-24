@@ -157,7 +157,7 @@ pub fn discord_installed() -> bool { crate::system::has("flatpak") && crate::sys
 /// pairs and streams. The host can end it or remove the friend at any time, and can make the friend's input
 /// controller only (no keyboard or mouse on the host's PC).
 /// How the friend reaches the host is a Transport: the local network now; Hearth Link (peer-to-peer with a relay,
-/// being built separately) plugs in through `hearth-link play-address`, so this code doesn't change when it lands.
+/// (hosts/hearth-link) plugs in through `hearth-link call play.address`, so this code doesn't change when it lands.
 pub mod play_together {
     use serde_json::{json, Value};
     use std::path::Path;
@@ -178,23 +178,21 @@ pub mod play_together {
         fn host_addresses(&self) -> Vec<String> { crate::remote::addresses() }
     }
 
-    /// Over the internet through Hearth Link: `hearth-link play-address` prints {"ready": bool, "addresses": [...]}
-    /// (an address its peer-to-peer or relay layer forwards to this device's Sunshine). Not there yet: not ready.
+    /// Over the internet through Hearth Link (hosts/hearth-link: iroh QUIC, peer-to-peer with relays): asked with
+    /// `hearth-link call play.address {}`, which is to answer {"ready": bool, "addresses": [...]} — addresses a friend's
+    /// Moonlight can reach this device's Sunshine at through Link's tunnel. Hearth Link doesn't have that call yet (it
+    /// links your own paired devices; a tunnel for a friend's device is still to come), so until it does this
+    /// transport says it isn't ready and Play together uses the local network.
     pub struct Link;
     impl Link {
         fn program() -> Option<&'static str> {
-            ["/usr/libexec/nimbus/hearth-link", "/usr/bin/hearth-link"].into_iter().find(|p| Path::new(p).is_file())
+            ["/usr/bin/hearth-link", "/usr/libexec/nimbus/hearth-link"].into_iter().find(|p| Path::new(p).is_file())
         }
         fn ask() -> Option<Value> {
             let p = Self::program()?;
-            crate::system::run_timeout(p, &["play-address"], Duration::from_secs(8)).ok().and_then(|o| serde_json::from_str(o.trim()).ok())
-        }
-    }
-    impl Transport for Link {
-        fn id(&self) -> &'static str { "link" }
-        fn ready(&self) -> bool { Self::ask().map(|v| v["ready"] == true).unwrap_or(false) }
-        fn host_addresses(&self) -> Vec<String> {
-            Self::ask().and_then(|v| v["addresses"].as_array().cloned()).unwrap_or_default().iter().filter_map(|a| a.as_str().map(str::to_string)).take(4).collect()
+            let out = crate::system::run_timeout(p, &["call", "play.address", "{}"], Duration::from_secs(8)).ok()?;
+            let v: Value = serde_json::from_str(out.trim()).ok()?;
+            if v.get("error").is_some() { None } else { Some(v) }
         }
     }
 
