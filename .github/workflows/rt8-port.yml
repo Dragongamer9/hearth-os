@@ -65,8 +65,11 @@ jobs:
           done
 
       - uses: actions/upload-artifact@v4
+        # Keep the boot images even if a later packaging step failed.
+        if: always()
         with:
           name: hearth-rt8-boot
           path: |
             devices/rt8/out/*.img
-          if-no-files-found: error
+            devices/rt8/out/*.tar.*
+          if-no-files-found: warn
