@@ -1,10 +1,14 @@
 //! Steam games you own but haven't installed, so the library can show them with an Install button (like Epic's
 //! and GOG's). The list comes from the signed-in account's public Steam Community games page
 //! (steamcommunity.com/profiles/<id64>/games?tab=all&xml=1, or the page's own game list when the XML answer isn't
-//! there): no Steam Web API key, no password, nothing from Steam's network protocol. It only works when the
-//! profile's "Game details" are public; otherwise Hearth shows installed games only and says why.
-//! Names, types and install folders of apps Steam already knows come from Steam's own appinfo.vdf (read only).
-//! Kept in Hearth's cache folder per Steam account, refreshed when older than 12 hours (like owned.rs).
+//! there): no Steam Web API key, no password, nothing from Steam's network protocol. Since autumn 2026 Steam sends
+//! every visitor who isn't signed in from those pages to its sign-in page (seen from CI for public profiles, and on
+//! the owner's device); Hearth never signs in to Steam's website, so it then shows the games Steam itself remembers
+//! on this device for that account (device_apps: played, opened in Steam's library, or put in a collection), and
+//! Library › Stores says so. The log says which case it was: private, sign-in page, or a page Hearth doesn't know
+//! (its shape only). Names, types and install folders of apps Steam already knows come from Steam's own appinfo.vdf
+//! (read only). Kept in Hearth's cache folder per Steam account, refreshed when older than 12 hours (1 hour for a
+//! list from this device), like owned.rs.
 
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -12,11 +16,35 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Why the list couldn't be read: the profile (or its game details) is private, or something passing.
+/// Why the list couldn't be read from the community site: the profile (or its game details) is private; Steam asked
+/// to sign in before showing it (since autumn 2026 every games page, the XML one too, sends a visitor who isn't
+/// signed in to steamcommunity.com/login); Steam answered with something Hearth doesn't know (its shape, no personal
+/// data: tag names and size); or something passing (no connection, Steam busy).
 #[derive(Debug, Clone, PartialEq)]
-pub enum Problem { Private, Other(String) }
+pub enum Problem { Private, SignIn, Unknown(String), Other(String) }
+
+impl Problem {
+    /// What the cache keeps: "private", "signin", "format: <shape>", or the passing problem's text.
+    pub fn code(&self) -> String {
+        match self { Problem::Private => "private".into(), Problem::SignIn => "signin".into(), Problem::Unknown(s) => format!("format: {s}"), Problem::Other(e) => e.clone() }
+    }
+    /// For Hearth's log.
+    pub fn describe(&self) -> String {
+        match self {
+            Problem::Private => "the profile's game details are private".into(),
+            Problem::SignIn => "Steam's games page asks to sign in".into(),
+            Problem::Unknown(s) => format!("Steam's games page is in a form Hearth doesn't know: {s}"),
+            Problem::Other(e) => e.clone(),
+        }
+    }
+    fn passing(&self) -> bool { matches!(self, Problem::Other(_)) }
+}
 
 pub const PRIVATE_NOTE: &str = "Only installed games show: your Steam profile's game details are private. In Steam, set Privacy › Game details to Public to see all your games here.";
+/// With the community page out of reach, the games Steam remembers on this device show instead (device_games).
+pub const PRIVATE_DEVICE_NOTE: &str = "Your Steam profile's game details are private, so Hearth shows the games Steam remembers on this device: ones you've played, opened in Steam's library or put in a collection. In Steam, set Privacy › Game details to Public to see all of them.";
+pub const SIGNIN_NOTE: &str = "Steam's website now asks to sign in before it shows a games list, and Hearth never signs in to it. Hearth shows the games Steam remembers on this device instead: ones you've played, opened in Steam's library or put in a collection.";
+pub const SIGNIN_EMPTY_NOTE: &str = "Steam's website now asks to sign in before it shows a games list, and Hearth never signs in to it, so only installed games show. Games you play or open in Steam's library show here too from then on.";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct OwnedGame { pub app_id: u32, pub title: String, pub minutes: u64, pub last_played: u64 }
@@ -24,14 +52,41 @@ pub struct OwnedGame { pub app_id: u32, pub title: String, pub minutes: u64, pub
 // ------------------------------------------------------------------ reading the community page
 
 fn unescape(s: &str) -> String {
-    s.replace("&quot;", "\"").replace("&#39;", "'").replace("&#039;", "'").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    s.replace("&quot;", "\"").replace("&#34;", "\"").replace("&#39;", "'").replace("&#039;", "'").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+}
+
+/// Steam's sign-in page, which every games page (XML or not) answers with for a visitor who isn't signed in
+/// (a 302 to /login/?redir=..., which curl follows). Its marks: the page's login feature, its title, or the sign-in
+/// links with the games page as where to go back.
+pub fn is_sign_in_page(page: &str) -> bool {
+    page.contains("data-featuretarget=\"login\"")
+        || (page.contains("/login/home/") && (page.contains("<title>Sign In</title>") || page.contains("login_modal")))
+        || (page.contains("g_sessionID") && page.contains("/login/?redir=") && !page.contains("rgGames") && !page.contains("gameslist"))
+}
+
+/// What an answer looks like, for the log when Hearth doesn't know it: its first tag names and size, never its text
+/// (a profile's page has the person's name in it).
+pub fn shape(page: &str) -> String {
+    let re = regex::Regex::new(r"<\s*([!?/]?[A-Za-z][A-Za-z0-9:_-]{0,30})").unwrap();
+    let tags: Vec<String> = re.captures_iter(&page[..page.len().min(4096)]).take(8).map(|c| format!("<{}", &c[1])).collect();
+    let kb = (page.len() + 512) / 1024;
+    if tags.is_empty() { format!("{} bytes, no tags", page.len()) } else { format!("{} … ({} KB)", tags.join(" "), kb) }
+}
+
+/// The profile's own XML (profiles/<id64>/?xml=1, still public): its privacyState ("public", "friendsonly",
+/// "private"). Says whether a games page behind a sign-in would have been readable at all.
+pub fn profile_private(xml: &str) -> Option<bool> {
+    if !xml.contains("<profile") { return None; }
+    crate::friends::tag(xml, "privacyState").map(|s| s != "public")
 }
 
 /// The games XML (games?tab=all&xml=1): <gamesList><games><game><appID>..</appID><name><![CDATA[..]]></name>
 /// <hoursOnRecord>1,234.5</hoursOnRecord>..</game>..</games></gamesList>. A private profile answers <error>.
 pub fn parse_xml(xml: &str) -> Result<Vec<OwnedGame>, Problem> {
     if !xml.contains("<gamesList") {
-        return Err(if xml.contains("<error>") { Problem::Private } else { Problem::Other("Steam's answer wasn't a game list".into()) });
+        if xml.contains("<error>") { return Err(Problem::Private); }
+        if is_sign_in_page(xml) { return Err(Problem::SignIn); }
+        return Err(Problem::Unknown(shape(xml)));
     }
     if xml.contains("<error>") && !xml.contains("<game>") { return Err(Problem::Private); }
     let mut out = Vec::new();
@@ -51,49 +106,130 @@ pub fn parse_xml(xml: &str) -> Result<Vec<OwnedGame>, Problem> {
     Ok(out)
 }
 
-/// The games page itself (games/?tab=all): its list is in data-profile-gameslist="{..rgGames:[..]..}" (the
-/// current page) or `var rgGames = [..];` (the older one). A private profile says so in the page.
-pub fn parse_html(html: &str) -> Result<Vec<OwnedGame>, Problem> {
-    let list: Option<Value> = if let Some(i) = html.find("data-profile-gameslist=\"") {
-        let start = i + "data-profile-gameslist=\"".len();
-        html[start..].find('"').and_then(|end| serde_json::from_str::<Value>(&unescape(&html[start..start + end])).ok()).map(|v| v["rgGames"].clone())
-    } else if let Some(i) = html.find("var rgGames") {
-        html[i..].find('[').and_then(|b| crate::owned::json_in(&html[i + b..], '['))
-    } else { None };
-    let Some(Value::Array(games)) = list else {
-        return Err(if html.contains("profile_private_info") || html.contains("This profile is private") { Problem::Private } else { Problem::Other("Steam's games page didn't have a game list".into()) });
-    };
-    let out: Vec<OwnedGame> = games.iter().filter_map(|g| {
-        let id = g["appid"].as_u64().or_else(|| g["appid"].as_str().and_then(|s| s.parse().ok()))? as u32;
-        let title = g["name"].as_str().map(unescape).filter(|t| !t.is_empty())?;
-        let minutes = g["playtime_forever"].as_u64().unwrap_or(0);
-        let last = g["rtime_last_played"].as_u64().unwrap_or(0) * 1000;
-        Some(OwnedGame { app_id: id, title, minutes, last_played: last })
-    }).collect();
-    // A public profile with private game details shows the page with no games.
-    if out.is_empty() { return Err(Problem::Private); }
-    Ok(out)
+/// One game from a page's list: {appid (number or text), name, playtime_forever (minutes) or hours_forever ("1,024"),
+/// rtime_last_played or last_played (seconds)}.
+fn page_game(g: &Value) -> Option<OwnedGame> {
+    let id = g["appid"].as_u64().or_else(|| g["appid"].as_str().and_then(|s| s.parse().ok())).filter(|n| *n > 0 && *n <= u32::MAX as u64)? as u32;
+    let title = g["name"].as_str().map(unescape).filter(|t| !t.trim().is_empty())?;
+    let minutes = g["playtime_forever"].as_u64().or_else(|| g["hours_forever"].as_str().and_then(|h| h.replace(',', "").parse::<f64>().ok()).map(|h| (h * 60.0).round() as u64)).unwrap_or(0);
+    let last = g["rtime_last_played"].as_u64().or(g["last_played"].as_u64()).unwrap_or(0) * 1000;
+    Some(OwnedGame { app_id: id, title, minutes, last_played: last })
 }
 
-/// Asks the community site (XML first, then the page). Blocking: call it off the UI thread.
-pub fn fetch(id64: u64) -> Result<Vec<OwnedGame>, Problem> {
-    let xml = crate::http::get(&format!("https://steamcommunity.com/profiles/{id64}/games?tab=all&xml=1"), &[]);
-    let first = match &xml {
-        Ok(r) if r.ok() => parse_xml(&r.text),
-        Ok(r) => Err(Problem::Other(format!("Steam Community answered {}", r.status))),
-        Err(e) => Err(Problem::Other(e.clone())),
+/// The games page itself (games/?tab=all): its list is in data-profile-gameslist="{..rgGames:[..]..}" (2023's
+/// page) or `var rgGames = [..];` (the older one); failing both, any list of {"appid":..,"name":..} objects in the
+/// page (a newer page that keeps the same fields elsewhere). A private profile says so in the page; Steam's sign-in
+/// page and anything else say which they are.
+pub fn parse_html(html: &str) -> Result<Vec<OwnedGame>, Problem> {
+    let attr = |name: &str| -> Option<Value> {
+        let key = format!("{name}=\"");
+        let i = html.find(&key)?;
+        let start = i + key.len();
+        let end = html[start..].find('"')?;
+        serde_json::from_str::<Value>(&unescape(&html[start..start + end])).ok()
     };
-    if let Ok(list) = first { return Ok(list); }
-    let page = crate::http::get(&format!("https://steamcommunity.com/profiles/{id64}/games/?tab=all"), &[]);
-    match page {
-        Ok(r) if r.ok() => match parse_html(&r.text) {
-            Ok(list) => Ok(list),
-            // Either answer saying "private" wins over a vaguer problem with the other.
-            Err(e) => Err(if first == Err(Problem::Private) { Problem::Private } else { e }),
-        },
-        Ok(r) => Err(if first == Err(Problem::Private) { Problem::Private } else { Problem::Other(format!("Steam Community answered {}", r.status)) }),
-        Err(e) => Err(if first == Err(Problem::Private) { Problem::Private } else { Problem::Other(e) }),
+    let list: Option<Value> = if let Some(v) = attr("data-profile-gameslist") { Some(v["rgGames"].clone()) }
+        else if let Some(i) = html.find("var rgGames") { html[i..].find('[').and_then(|b| crate::owned::json_in(&html[i + b..], '[')) }
+        else { None };
+    if let Some(Value::Array(games)) = list {
+        let out: Vec<OwnedGame> = games.iter().filter_map(page_game).collect();
+        // A public profile with private game details shows the page with no games.
+        return if out.is_empty() { Err(Problem::Private) } else { Ok(out) };
     }
+    if html.contains("profile_private_info") || html.contains("This profile is private") { return Err(Problem::Private); }
+    if is_sign_in_page(html) { return Err(Problem::SignIn); }
+    let loose = loose_games(html);
+    if !loose.is_empty() { return Ok(loose); }
+    Err(Problem::Unknown(shape(html)))
+}
+
+/// Last resort: every {"appid": N, "name": "..."} object in the page (quotes escaped or not), first of each app.
+fn loose_games(html: &str) -> Vec<OwnedGame> {
+    let text = unescape(html);
+    let re = regex::Regex::new(r#"\{\s*"appid"\s*:\s*"?(\d{1,10})"?\s*,\s*"name"\s*:\s*"((?:[^"\\]|\\.){1,300})""#).unwrap();
+    let mut seen = HashSet::new();
+    re.captures_iter(&text).filter_map(|c| {
+        let id: u32 = c[1].parse().ok().filter(|n| *n > 0)?;
+        let title: String = serde_json::from_str::<String>(&format!("\"{}\"", &c[2])).ok()?;
+        if title.trim().is_empty() || !seen.insert(id) { return None; }
+        Some(OwnedGame { app_id: id, title, minutes: 0, last_played: 0 })
+    }).collect()
+}
+
+/// Which problem says more: private or a sign-in wall over a vaguer one, a known page over a passing failure.
+fn better(a: Problem, b: Problem) -> Problem {
+    let rank = |p: &Problem| match p { Problem::Private => 3, Problem::SignIn => 2, Problem::Unknown(_) => 1, Problem::Other(_) => 0 };
+    if rank(&b) > rank(&a) { b } else { a }
+}
+
+/// Asks the community site (XML first, then the page). Blocking: call it off the UI thread. When both are behind
+/// Steam's sign-in, the profile's own XML (public) tells a private profile apart.
+pub fn fetch(id64: u64) -> Result<Vec<OwnedGame>, Problem> {
+    let answer = |url: String, parse: fn(&str) -> Result<Vec<OwnedGame>, Problem>| match crate::http::get(&url, &[]) {
+        Ok(r) if r.ok() => parse(&r.text),
+        Ok(r) if r.status == 401 || r.status == 403 => Err(Problem::SignIn),
+        Ok(r) => Err(Problem::Other(format!("Steam Community answered {}", r.status))),
+        Err(e) => Err(Problem::Other(e)),
+    };
+    let first = match answer(format!("https://steamcommunity.com/profiles/{id64}/games?tab=all&xml=1"), parse_xml) { Ok(l) => return Ok(l), Err(e) => e };
+    let second = match answer(format!("https://steamcommunity.com/profiles/{id64}/games/?tab=all"), parse_html) { Ok(l) => return Ok(l), Err(e) => e };
+    let p = better(first, second);
+    if p == Problem::SignIn {
+        if let Ok(r) = crate::http::get(&format!("https://steamcommunity.com/profiles/{id64}/?xml=1"), &[]) {
+            if r.ok() && profile_private(&r.text) == Some(true) { return Err(Problem::Private); }
+        }
+    }
+    Err(p)
+}
+
+// ------------------------------------------------------------------ the games Steam remembers on this device
+
+/// The account's games from Steam's own files on this device, for when the community page can't be read: apps in
+/// its localconfig.vdf (played or started), in its library cache (userdata/<id>/config/librarycache/<appid>.json:
+/// games whose page was opened in Steam's library) and in its collections (cloud-storage-namespace-1.json,
+/// sharedconfig.vdf). Only that account's folder; nothing shared between accounts, nothing from the network.
+/// Names (and whether an app is a game) come from appinfo.vdf afterwards: an app Steam has no name for is left out.
+pub fn device_apps(account: &Path) -> HashMap<u32, (u64, u64)> {
+    let mut out: HashMap<u32, (u64, u64)> = HashMap::new();
+    let mut add = |id: &str, minutes: u64, last: u64| {
+        if let Ok(n) = id.trim().parse::<u32>() { if n > 0 { let e = out.entry(n).or_insert((0, 0)); e.0 = e.0.max(minutes); e.1 = e.1.max(last); } }
+    };
+    if let Some(local) = crate::vdf::load(&account.join("config/localconfig.vdf")) {
+        for (id, a) in local.obj(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"]).into_iter().flatten() {
+            add(id, a.num(&["Playtime"]).max(0) as u64, a.num(&["LastPlayed"]).max(0) as u64 * 1000);
+        }
+    }
+    if let Ok(d) = std::fs::read_dir(account.join("config/librarycache")) {
+        for e in d.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if let Some(id) = n.strip_suffix(".json") { add(id, 0, 0); }
+        }
+    }
+    if let Some(shared) = crate::vdf::load(&account.join("7/remote/sharedconfig.vdf")) {
+        for (id, _) in shared.obj(&["UserRoamingConfigStore", "Software", "Valve", "Steam", "apps"]).into_iter().flatten() { add(id, 0, 0); }
+    }
+    if let Some(v) = std::fs::read(account.join("config/cloudstorage/cloud-storage-namespace-1.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+        for entry in v.as_array().into_iter().flatten() {
+            let (key, item) = (entry[0].as_str().unwrap_or(""), &entry[1]);
+            if !key.starts_with("user-collections.") || item["is_deleted"] == true { continue; }
+            let Some(c) = item["value"].as_str().and_then(|t| serde_json::from_str::<Value>(t).ok()) else { continue };
+            for id in c["added"].as_array().into_iter().flatten() {
+                if let Some(n) = id.as_u64() { add(&n.to_string(), 0, 0); } else if let Some(s) = id.as_str() { add(s, 0, 0); }
+            }
+        }
+    }
+    out
+}
+
+/// device_apps with names from appinfo.vdf: games only (not tools, soundtracks, DLC), ones Steam has a name for.
+pub fn device_games(info: &HashMap<u32, AppInfo>, apps: &HashMap<u32, (u64, u64)>) -> Vec<OwnedGame> {
+    let mut out: Vec<OwnedGame> = apps.iter().filter_map(|(id, (minutes, last))| {
+        let i = info.get(id)?;
+        if i.name.trim().is_empty() || i.kind != "game" { return None; }
+        Some(OwnedGame { app_id: *id, title: i.name.clone(), minutes: *minutes, last_played: *last })
+    }).collect();
+    out.sort_by_key(|g| g.app_id);
+    out
 }
 
 // ------------------------------------------------------------------ Steam's appinfo.vdf (names, types, folders)
@@ -180,20 +316,41 @@ pub fn load(id64: u64) -> Value {
 }
 pub fn load_current(home: &Path) -> Option<Value> { crate::steam::current_account(home).ok().map(load) }
 
-/// The cache entry for a fetch: the games that are games (by appinfo.vdf, when Steam knows the app), or the
-/// problem with the old list kept (a passing problem shouldn't empty your library).
-pub fn entry(old: &Value, result: Result<Vec<OwnedGame>, Problem>, info: &HashMap<u32, AppInfo>, now: u64) -> Value {
+/// The cache entry for a fetch: {fetched, games, problem, source: "community"|"device"}. The community list when
+/// it came; otherwise the games Steam remembers on this device (`device`, already named and filtered), with the
+/// problem kept so the card says why. A passing problem keeps an earlier community list (it shouldn't empty your
+/// library); a private profile with nothing on the device shows installed games only.
+pub fn entry(old: &Value, result: Result<Vec<OwnedGame>, Problem>, device: Vec<OwnedGame>, info: &HashMap<u32, AppInfo>, now: u64) -> Value {
+    let games_of = |list: Vec<OwnedGame>| -> Vec<Value> {
+        list.into_iter().filter(|g| {
+            let kind = info.get(&g.app_id).map(|i| i.kind.as_str()).unwrap_or("");
+            !not_a_game(kind) && !crate::steam::skip(&g.app_id.to_string(), &g.title)
+        }).map(|g| json!({"id": g.app_id.to_string(), "title": g.title, "minutes": g.minutes, "lastPlayed": g.last_played})).collect()
+    };
     match result {
-        Ok(list) => {
-            let games: Vec<Value> = list.into_iter().filter(|g| {
-                let kind = info.get(&g.app_id).map(|i| i.kind.as_str()).unwrap_or("");
-                !not_a_game(kind) && !crate::steam::skip(&g.app_id.to_string(), &g.title)
-            }).map(|g| json!({"id": g.app_id.to_string(), "title": g.title, "minutes": g.minutes, "lastPlayed": g.last_played})).collect();
-            json!({"fetched": now, "games": games, "problem": null})
+        Ok(list) => json!({"fetched": now, "games": games_of(list), "problem": null, "source": "community"}),
+        Err(p) => {
+            let old_community = old["source"].as_str().unwrap_or("community") == "community" && old["games"].as_array().map(|a| !a.is_empty()).unwrap_or(false);
+            if p.passing() && old_community { return json!({"fetched": old["fetched"], "games": old["games"], "problem": p.code(), "source": "community"}); }
+            if !device.is_empty() { return json!({"fetched": now, "games": games_of(device), "problem": p.code(), "source": "device"}); }
+            match p {
+                Problem::Other(_) => json!({"fetched": old["fetched"], "games": old["games"], "problem": p.code(), "source": old["source"]}),
+                _ => json!({"fetched": now, "games": [], "problem": p.code(), "source": "device"}),
+            }
         }
-        // Private: there's nothing to show beyond the installed games.
-        Err(Problem::Private) => json!({"fetched": now, "games": [], "problem": "private"}),
-        Err(Problem::Other(e)) => json!({"fetched": old["fetched"], "games": old["games"], "problem": e}),
+    }
+}
+
+/// What Library › Stores' Steam card says about the list: (hint, error).
+pub fn card_text(problem: Option<&str>, source: Option<&str>, games: usize) -> (Option<String>, Option<String>) {
+    let device = source == Some("device") && games > 0;
+    match problem {
+        None => (None, None),
+        Some("private") => (Some(if device { PRIVATE_DEVICE_NOTE } else { PRIVATE_NOTE }.to_string()), None),
+        Some("signin") => (Some(if device { SIGNIN_NOTE } else { SIGNIN_EMPTY_NOTE }.to_string()), None),
+        Some(p) if p.starts_with("format: ") => (None, Some(format!("Steam's games page changed and Hearth can't read it yet{}. Send the logs (Settings › System) so it can be fixed.",
+            if device { "; the games Steam remembers on this device show meanwhile" } else { "" }))),
+        Some(p) => (None, Some(format!("Couldn't get your Steam games list: {p}"))),
     }
 }
 
@@ -217,16 +374,29 @@ fn start(home: &Path, force: bool) -> Result<bool, String> {
     let steam = crate::steam::steam_path(home).ok_or_else(|| crate::steam::no_folder_reason(home))?;
     let (id64, _) = crate::steam::find_account(home, &steam, !crate::steam::several_profiles())?;
     let old = load(id64);
-    if !force && crate::library::now_ms().saturating_sub(old["fetched"].as_u64().unwrap_or(0)) < 12 * 3600 * 1000 { return Ok(false); }
+    // A list from this device's files is read again sooner: it grows as games are played or opened in Steam.
+    let fresh_for: u64 = if old["source"] == "device" { 3600 * 1000 } else { 12 * 3600 * 1000 };
+    if !force && crate::library::now_ms().saturating_sub(old["fetched"].as_u64().unwrap_or(0)) < fresh_for { return Ok(false); }
     if BUSY.swap(true, Ordering::SeqCst) { return Ok(false); }
     crate::stores::notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
     std::thread::spawn(move || {
         let result = fetch(id64);
-        let ids: HashSet<u32> = match &result { Ok(l) => l.iter().map(|g| g.app_id).collect(), Err(_) => HashSet::new() };
+        // The community page out of reach: the games Steam remembers on this device (that account's folder only).
+        let apps = match &result {
+            Err(_) => crate::steam::account_folder(&steam, id64).map(|a| device_apps(&a)).unwrap_or_default(),
+            Ok(_) => HashMap::new(),
+        };
+        let ids: HashSet<u32> = match &result { Ok(l) => l.iter().map(|g| g.app_id).collect(), Err(_) => apps.keys().copied().collect() };
         let info = appinfo(&steam.join("appcache/appinfo.vdf"), &ids);
-        let e = entry(&old, result, &info, crate::library::now_ms());
-        crate::steam::note("owned", &format!("owned games list: {} games{}", e["games"].as_array().map(|a| a.len()).unwrap_or(0),
-            e["problem"].as_str().map(|p| format!(" ({p})")).unwrap_or_default()));
+        let device = device_games(&info, &apps);
+        let why = result.as_ref().err().map(|p| p.describe());
+        let e = entry(&old, result, device, &info, crate::library::now_ms());
+        let n = e["games"].as_array().map(|a| a.len()).unwrap_or(0);
+        crate::steam::note("owned", &match why {
+            None => format!("owned games list: {n} games (steamcommunity.com)"),
+            Some(w) if e["source"] == "device" => format!("owned games list: {n} games from this device's Steam files ({w}; {} apps Steam remembers, {} with a name)", apps.len(), info.len()),
+            Some(w) => format!("owned games list: {n} games ({w})"),
+        });
         let _ = crate::paths::write_atomic(&cache_file(id64), e.to_string().as_bytes());
         BUSY.store(false, Ordering::SeqCst);
         crate::stores::notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
@@ -250,7 +420,7 @@ mod tests {
         assert_eq!(g[1].title, "Portal & Friends");
         assert_eq!(parse_xml("<?xml?><response><error><![CDATA[This profile is private.]]></error></response>"), Err(Problem::Private));
         assert_eq!(parse_xml("<gamesList><steamID64>1</steamID64><error>private</error></gamesList>"), Err(Problem::Private));
-        assert!(matches!(parse_xml("<html>busy</html>"), Err(Problem::Other(_))));
+        assert!(matches!(parse_xml("<html>busy</html>"), Err(Problem::Unknown(_))));
         assert_eq!(parse_xml("<gamesList><games></games></gamesList>"), Ok(vec![]));
     }
 
@@ -266,6 +436,87 @@ mod tests {
         assert_eq!(parse_html(r#"<template data-profile-gameslist="{&quot;rgGames&quot;:[]}"></template>"#), Err(Problem::Private));
     }
 
+    // ---- what steamcommunity.com answers (fixtures/steam_community: real answers saved from CI in October 2026,
+    // with session ids and profile ids replaced; the synthetic_* ones are the list formats Steam used before)
+
+    const XML_WALL: &str = include_str!("fixtures/steam_community/games_xml_signin_wall.html");
+    const PAGE_WALL: &str = include_str!("fixtures/steam_community/games_page_signin_wall.html");
+    const PROFILE_PUBLIC: &str = include_str!("fixtures/steam_community/profile_public.xml");
+    const PROFILE_PRIVATE: &str = include_str!("fixtures/steam_community/profile_private.xml");
+    const OLD_XML: &str = include_str!("fixtures/steam_community/synthetic_games_list.xml");
+    const OLD_TEMPLATE: &str = include_str!("fixtures/steam_community/synthetic_games_page_template.html");
+    const OLD_RGGAMES: &str = include_str!("fixtures/steam_community/synthetic_games_page_rggames.html");
+
+    #[test]
+    fn steams_sign_in_wall_is_named() {
+        // Every games page, XML or not, public profile or not, now ends on Steam's sign-in page for a visitor.
+        assert!(is_sign_in_page(XML_WALL) && is_sign_in_page(PAGE_WALL));
+        assert_eq!(parse_xml(XML_WALL), Err(Problem::SignIn));
+        assert_eq!(parse_html(PAGE_WALL), Err(Problem::SignIn));
+        assert_eq!(parse_html(XML_WALL), Err(Problem::SignIn));
+        assert_eq!(Problem::SignIn.code(), "signin");
+        for page in [OLD_XML, OLD_TEMPLATE, OLD_RGGAMES, PROFILE_PUBLIC] { assert!(!is_sign_in_page(page)); }
+        // The profile's own XML is still public: it tells a private profile apart.
+        assert_eq!(profile_private(PROFILE_PUBLIC), Some(false));
+        assert_eq!(profile_private(PROFILE_PRIVATE), Some(true));
+        assert_eq!(profile_private(PAGE_WALL), None);
+    }
+
+    #[test]
+    fn earlier_list_formats_still_read() {
+        let g = parse_xml(OLD_XML).unwrap();
+        assert_eq!(g, vec![OwnedGame { app_id: 620, title: "Portal 2".into(), minutes: 72270, last_played: 0 }, OwnedGame { app_id: 70, title: "Half-Life".into(), ..Default::default() }]);
+        let g = parse_html(OLD_TEMPLATE).unwrap();
+        assert_eq!(g[0], OwnedGame { app_id: 620, title: "Portal 2".into(), minutes: 72270, last_played: 1_700_000_000_000 });
+        assert_eq!(g[1].title, "Half-Life & Friends");
+        let g = parse_html(OLD_RGGAMES).unwrap();
+        assert_eq!(g[0], OwnedGame { app_id: 440, title: "Team Fortress 2".into(), minutes: 180, last_played: 1_600_000_000_000 });
+        assert_eq!((g[1].app_id, g[1].minutes), (570, 61440));
+    }
+
+    #[test]
+    fn an_unknown_page_says_its_shape_not_its_text() {
+        let page = r#"<!DOCTYPE html><html><head><title>Steam Community :: Sam Smith :: Games</title></head><body><div id="app"></div></body></html>"#;
+        let Err(Problem::Unknown(s)) = parse_html(page) else { panic!("{:?}", parse_html(page)) };
+        assert!(s.starts_with("<!DOCTYPE <html <head <title </title"), "{s}");
+        assert!(!s.contains("Sam"), "no personal data in the log: {s}");
+        assert_eq!(Problem::Unknown(s.clone()).code(), format!("format: {s}"));
+        // A newer page with the same fields somewhere else still gives its games.
+        let newer = r#"<html><script>window.SSR={"loaderData":[{"games":[{"appid":620,"name":"Portal 2","playtime":3},{"appid":"70","name":"Half-Life \u0026 more"}]}]}</script></html>"#;
+        let g = parse_html(newer).unwrap();
+        assert_eq!(g.iter().map(|x| (x.app_id, x.title.as_str())).collect::<Vec<_>>(), vec![(620, "Portal 2"), (70, "Half-Life & more")]);
+        assert_eq!(shape(""), "0 bytes, no tags");
+    }
+
+    #[test]
+    fn the_games_steam_remembers_on_this_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let acc = dir.path().join("userdata/123");
+        let put = |rel: &str, text: &str| { let p = acc.join(rel); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, text).unwrap(); };
+        put("config/localconfig.vdf", r#""UserLocalConfigStore" { "Software" { "Valve" { "Steam" { "apps" { "620" { "Playtime" "90" "LastPlayed" "1700000000" } "1628350" { "LastPlayed" "1" } } } } } }"#);
+        put("config/librarycache/70.json", "[]");
+        put("config/librarycache/notanapp.txt", "");
+        put("7/remote/sharedconfig.vdf", r#""UserRoamingConfigStore" { "Software" { "Valve" { "Steam" { "apps" { "440" { "tags" { "0" "favorite" } } } } } } }"#);
+        let coll = json!([["user-collections.uc-1", {"key": "user-collections.uc-1", "value": "{\"id\":\"uc-1\",\"name\":\"RTS\",\"added\":[2330, 3]}"}],
+                          ["user-collections.uc-2", {"key": "user-collections.uc-2", "is_deleted": true, "value": "{\"added\":[999]}"}],
+                          ["showcases.1", {"value": "{\"added\":[888]}"}]]);
+        put("config/cloudstorage/cloud-storage-namespace-1.json", &coll.to_string());
+        let apps = device_apps(&acc);
+        let mut ids: Vec<u32> = apps.keys().copied().collect();
+        ids.sort();
+        assert_eq!(ids, vec![3, 70, 440, 620, 2330, 1628350]);
+        assert_eq!(apps[&620], (90, 1_700_000_000_000));
+        let mut info = HashMap::new();
+        for (id, name, kind) in [(620u32, "Portal 2", "game"), (70, "Half-Life", "game"), (440, "Team Fortress 2", "game"), (3, "OST", "music"), (1628350, "Steam Linux Runtime 3.0 (sniper)", "tool")] {
+            info.insert(id, AppInfo { name: name.into(), kind: kind.into(), installdir: String::new() });
+        }
+        // 2330: Steam has no name for it here, so it's left out.
+        let g = device_games(&info, &apps);
+        assert_eq!(g.iter().map(|x| x.app_id).collect::<Vec<_>>(), vec![70, 440, 620]);
+        assert_eq!(g[2].minutes, 90);
+        assert!(device_apps(&dir.path().join("nobody")).is_empty());
+    }
+
     #[test]
     fn cache_entries() {
         let old = json!({"fetched": 5, "games": [{"id": "1", "title": "Old"}], "problem": null});
@@ -273,12 +524,27 @@ mod tests {
         info.insert(3u32, AppInfo { name: "OST".into(), kind: "music".into(), installdir: String::new() });
         let list = vec![OwnedGame { app_id: 620, title: "Portal 2".into(), ..Default::default() }, OwnedGame { app_id: 3, title: "Soundtrack".into(), ..Default::default() },
                         OwnedGame { app_id: 1628350, title: "Steam Linux Runtime 3.0 (sniper)".into(), ..Default::default() }];
-        let e = entry(&old, Ok(list), &info, 9);
+        let e = entry(&old, Ok(list), vec![], &info, 9);
         assert_eq!(e["games"].as_array().unwrap().len(), 1, "{e}");
-        assert_eq!(e["games"][0]["id"], "620");
-        assert_eq!(entry(&old, Err(Problem::Private), &info, 9)["problem"], "private");
-        let kept = entry(&old, Err(Problem::Other("No connection".into())), &info, 9);
+        assert_eq!((e["games"][0]["id"].as_str(), e["source"].as_str()), (Some("620"), Some("community")));
+        assert_eq!(entry(&old, Err(Problem::Private), vec![], &info, 9)["problem"], "private");
+        let kept = entry(&old, Err(Problem::Other("No connection".into())), vec![], &info, 9);
         assert_eq!((kept["fetched"].as_u64(), kept["games"][0]["title"].as_str()), (Some(5), Some("Old")), "a passing problem keeps the old list");
+        // Behind the sign-in: the games Steam remembers on this device, and why.
+        let device = vec![OwnedGame { app_id: 70, title: "Half-Life".into(), ..Default::default() }];
+        let e = entry(&old, Err(Problem::SignIn), device.clone(), &info, 9);
+        assert_eq!((e["games"][0]["id"].as_str(), e["source"].as_str(), e["problem"].as_str(), e["fetched"].as_u64()), (Some("70"), Some("device"), Some("signin"), Some(9)));
+        // A passing problem after a device list: the device list again (fresh), not the old one.
+        let e2 = entry(&e, Err(Problem::Other("No connection".into())), device, &info, 10);
+        assert_eq!((e2["source"].as_str(), e2["fetched"].as_u64()), (Some("device"), Some(10)));
+        let none = entry(&old, Err(Problem::SignIn), vec![], &info, 9);
+        assert_eq!((none["games"].as_array().unwrap().len(), none["problem"].as_str()), (0, Some("signin")));
+        // What the Steam card says.
+        assert_eq!(card_text(Some("signin"), Some("device"), 3).0.as_deref(), Some(SIGNIN_NOTE));
+        assert_eq!(card_text(Some("signin"), Some("device"), 0).0.as_deref(), Some(SIGNIN_EMPTY_NOTE));
+        assert_eq!(card_text(Some("private"), None, 0).0.as_deref(), Some(PRIVATE_NOTE));
+        assert!(card_text(Some("format: <html … (5 KB)"), Some("device"), 2).1.unwrap().contains("changed"));
+        assert_eq!(card_text(None, Some("community"), 9), (None, None));
     }
 
     /// A small appinfo.vdf in version 29's layout (keys in a table at the end) and in version 27's.

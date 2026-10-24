@@ -885,6 +885,7 @@ fn change(cli: &Exe, home: &Path, slot: &std::sync::Arc<std::sync::Mutex<Option<
 /// that runs Beacon answers later, from a thread (`reply_to`: the call being answered); file and folder pickers open
 /// here first, as elsewhere in Hearth.
 pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, reply_to: Value) -> Result<Value, String> {
+    use crate::picker::Ask;
     use std::sync::Arc;
     let later = crate::bridge::DEFERRED;
     // Answers go back to the window that asked only (each window numbers its own requests).
@@ -936,29 +937,38 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, key.as_deref()));
             Ok(json!(later))
         }
+        // The pickers open off the bridge (picker.rs): Hearth keeps answering while they're open, and the call is
+        // answered when the picker closes (null: closed without a choice).
         "beacon.locate" => {
             let g = page_game(&a["id"])?;
-            crate::watchdog::long_task();   // a folder picker waits for the person
-            let start = home.to_string_lossy().to_string();
-            let Some(dir) = (br.pick_folder)(&format!("Where is {} installed?", title(&g)), &start) else { return Ok(Value::Null) };
-            let dir = existing_path(&dir, true)?;
-            crate::bridge::log(&format!("beacon: set-path {g}"));
-            let args = vec!["set-path".to_string(), g.clone(), dir];
-            crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, None));
+            let ask = Ask::Folder(format!("Where is {} installed?", title(&g)), home.to_string_lossy().to_string());
+            crate::picker::open(&br.pick_file, &br.pick_folder, ask, method, move |picked| {
+                crate::space::answer_later_to(reply_to, to, move || {
+                    let Some(dir) = picked else { return Ok(Value::Null) };
+                    let dir = existing_path(&dir, true)?;
+                    crate::bridge::log(&format!("beacon: set-path {g}"));
+                    let args = vec!["set-path".to_string(), g.clone(), dir];
+                    change(&cli, &home, &slot, &g, &args, None)
+                });
+            })?;
             Ok(json!(later))
         }
         "beacon.addMod" => {
             let g = page_game(&a["id"])?;
-            crate::watchdog::long_task();
             let folder = a["folder"] == true;
-            let picked = if folder { (br.pick_folder)("Choose the mod's folder", &home.to_string_lossy()) }
-                         else { (br.pick_file)("Choose the mod you downloaded: a .big file or its launcher (.exe)") };
-            let Some(p) = picked else { return Ok(Value::Null) };
-            let p = existing_path(&p, folder)?;
-            let mut args = vec!["add-mod".to_string(), g.clone(), p];
-            if a["select"] == true { args.push("--select".into()); }
-            crate::bridge::log(&format!("beacon: add-mod {g}"));
-            crate::space::answer_later_to(reply_to, to, move || change(&cli, &home, &slot, &g, &args, None));
+            let select = a["select"] == true;
+            let ask = if folder { Ask::Folder("Choose the mod's folder".into(), home.to_string_lossy().to_string()) }
+                      else { Ask::File("Choose the mod you downloaded: a .big file or its launcher (.exe)".into()) };
+            crate::picker::open(&br.pick_file, &br.pick_folder, ask, method, move |picked| {
+                crate::space::answer_later_to(reply_to, to, move || {
+                    let Some(p) = picked else { return Ok(Value::Null) };
+                    let p = existing_path(&p, folder)?;
+                    let mut args = vec!["add-mod".to_string(), g.clone(), p];
+                    if select { args.push("--select".into()); }
+                    crate::bridge::log(&format!("beacon: add-mod {g}"));
+                    change(&cli, &home, &slot, &g, &args, None)
+                });
+            })?;
             Ok(json!(later))
         }
         "beacon.removeMod" => {
@@ -973,56 +983,66 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value, repl
             let job = a["job"].as_str().unwrap_or("").to_string();
             let game = if a["id"].is_null() || a["id"] == "" { None } else { Some(page_game(&a["id"])?) };
             if let Some(w) = busy_with() { return Err(format!("Beacon is still busy ({w}). Try again when it's done.")); }
-            let file = match job.as_str() {
-                "install" | "patch" | "addFiles" => {
-                    crate::watchdog::long_task();
-                    let g = game.clone().unwrap_or_default();
-                    let folder = job == "addFiles" && a["folder"] == true;
-                    let prompt = match job.as_str() {
-                        "install" => format!("Choose {}'s installer (setup.exe, or the .exe on the disc)", title(&g)),
-                        "patch" => "Choose the patch or installer (.exe) to run".to_string(),
-                        _ => "Choose what you downloaded (an archive, a file or a folder)".to_string(),
-                    };
-                    let picked = if folder { (br.pick_folder)(&prompt, &home.to_string_lossy()) } else { (br.pick_file)(&prompt) };
-                    let Some(p) = picked else { return Ok(Value::Null) };
-                    Some(existing_path(&p, folder)?)
-                }
-                _ => None,
-            };
-            let (args, limit) = job_args(&job, game.as_deref(), file.as_deref(), a["step"].as_str())?;
-            let busy = Busy::take(job_label(&job))?;
-            crate::bridge::log(&format!("beacon: {job} {}", game.as_deref().unwrap_or("")));
-            let ev = |name: &str, data: Value| json!({"type": "event", "name": name, "data": data});
-            crate::stores::notify(ev("beacon.progress", json!({"game": game, "job": job, "pct": 0, "text": "Starting"})));
-            let (g2, job2) = (game.clone(), job.clone());
-            let stop_showing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-            if job_has_window(&job) { show_job_windows(stop_showing.clone()); }
-            std::thread::spawn(move || {
-                let r = run_json(&cli, &args, None, limit, true, &mut |pct: Option<u64>, t: &str| {
-                    crate::stores::notify(ev("beacon.progress", json!({"game": g2, "job": job2, "pct": pct, "text": t})));
-                });
-                stop_showing.store(true, std::sync::atomic::Ordering::SeqCst);
-                drop(busy);
-                crate::stores::notify(ev("beacon.progress", json!({"game": g2, "job": job2, "pct": 98, "text": "Reading Beacon's games again"})));
-                refresh(&home, &slot);
-                let done = match r {
-                    Ok(v) => {
-                        crate::bridge::log(&format!("beacon: {job2}: done"));
-                        json!({"game": g2, "job": job2, "ok": true, "message": text(&v["message"], 200),
-                               "found": v["found"].as_array().map(|f| f.len()), "added": v["added"].as_array().map(|f| f.len()), "installed": v["installed"].as_bool(),
-                               "ready": v["ready"].as_bool()})
-                    }
-                    Err(e) => {
-                        crate::bridge::log(&format!("beacon: {job2}: {e}"));
-                        json!({"game": g2, "job": job2, "ok": false, "error": e})
-                    }
+            let step = a["step"].as_str().map(str::to_string);
+            if matches!(job.as_str(), "install" | "patch" | "addFiles") {
+                // The file first, in a picker off the bridge; the job starts (and the call is answered) when it closes.
+                let g = game.clone().unwrap_or_default();
+                let folder = job == "addFiles" && a["folder"] == true;
+                let prompt = match job.as_str() {
+                    "install" => format!("Choose {}'s installer (setup.exe, or the .exe on the disc)", title(&g)),
+                    "patch" => "Choose the patch or installer (.exe) to run".to_string(),
+                    _ => "Choose what you downloaded (an archive, a file or a folder)".to_string(),
                 };
-                crate::stores::notify(ev("beacon.done", done));
-            });
-            Ok(json!({"started": true, "job": job, "label": job_label(&job)}))
+                let ask = if folder { Ask::Folder(prompt, home.to_string_lossy().to_string()) } else { Ask::File(prompt) };
+                crate::picker::open(&br.pick_file, &br.pick_folder, ask, method, move |picked| {
+                    crate::space::answer_later_to(reply_to, to, move || {
+                        let Some(p) = picked else { return Ok(Value::Null) };
+                        let file = existing_path(&p, folder)?;
+                        start_job(cli, home, slot, job, game, Some(file), step)
+                    });
+                })?;
+                return Ok(json!(later));
+            }
+            start_job(cli, home, slot, job, game, None, step)
         }
         _ => Err(format!("Unknown Beacon call: {method}")),
     }
+}
+
+/// Starts one of Beacon's jobs (install, patch, add files, tools...) on its own thread; its progress and end go to
+/// the page as beacon.progress and beacon.done.
+fn start_job(cli: Exe, home: PathBuf, slot: std::sync::Arc<std::sync::Mutex<Option<Snapshot>>>, job: String, game: Option<String>, file: Option<String>, step: Option<String>) -> Result<Value, String> {
+    let (args, limit) = job_args(&job, game.as_deref(), file.as_deref(), step.as_deref())?;
+    let busy = Busy::take(job_label(&job))?;
+    crate::bridge::log(&format!("beacon: {job} {}", game.as_deref().unwrap_or("")));
+    let ev = |name: &str, data: Value| json!({"type": "event", "name": name, "data": data});
+    crate::stores::notify(ev("beacon.progress", json!({"game": game, "job": job, "pct": 0, "text": "Starting"})));
+    let (g2, job2) = (game.clone(), job.clone());
+    let stop_showing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    if job_has_window(&job) { show_job_windows(stop_showing.clone()); }
+    std::thread::spawn(move || {
+        let r = run_json(&cli, &args, None, limit, true, &mut |pct: Option<u64>, t: &str| {
+            crate::stores::notify(ev("beacon.progress", json!({"game": g2, "job": job2, "pct": pct, "text": t})));
+        });
+        stop_showing.store(true, std::sync::atomic::Ordering::SeqCst);
+        drop(busy);
+        crate::stores::notify(ev("beacon.progress", json!({"game": g2, "job": job2, "pct": 98, "text": "Reading Beacon's games again"})));
+        refresh(&home, &slot);
+        let done = match r {
+            Ok(v) => {
+                crate::bridge::log(&format!("beacon: {job2}: done"));
+                json!({"game": g2, "job": job2, "ok": true, "message": text(&v["message"], 200),
+                       "found": v["found"].as_array().map(|f| f.len()), "added": v["added"].as_array().map(|f| f.len()), "installed": v["installed"].as_bool(),
+                       "ready": v["ready"].as_bool()})
+            }
+            Err(e) => {
+                crate::bridge::log(&format!("beacon: {job2}: {e}"));
+                json!({"game": g2, "job": job2, "ok": false, "error": e})
+            }
+        };
+        crate::stores::notify(ev("beacon.done", done));
+    });
+    Ok(json!({"started": true, "job": job, "label": job_label(&job)}))
 }
 
 #[cfg(test)]
