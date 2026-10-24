@@ -29,7 +29,32 @@ jobs:
           sudo ln -sf python2 /usr/bin/python
 
       - name: Build kernel and boot images
-        run: ./build.sh
+        run: |
+          set -o pipefail
+          ./build.sh 2>&1 | tee build.log
+
+      - name: Surface build errors
+        if: failure()
+        run: |
+          # Job logs are not always readable; annotations are. Put the error
+          # lines and the log tail into a few annotations.
+          {
+            echo "== error lines =="
+            grep -nE '(error|Error|ERROR|fatal|No such file|not found|undefined reference)' build.log | grep -v -- '-Werror' | tail -40
+            echo "== last 40 lines =="
+            tail -40 build.log
+          } > errors.txt || true
+          split -l 25 errors.txt part_
+          for f in part_*; do
+            msg=$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' "$f" | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=rt8 build ($f)::$msg"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: hearth-rt8-build-log
+          path: devices/rt8/build.log
 
       - name: Check image sizes against the RT8 partitions
         run: |
