@@ -24,7 +24,8 @@ How a session runs (see docs/COUCH-COOP.md):
   * each player's copy runs in its own nested gamescope (-W/-H = the player's part of the screen), placed by
     labwc window rules matched on a per-player app id, with a per-launch fallback rule;
   * each copy runs in bubblewrap with a fresh /dev holding only that player's controller (evdev, js, hidraw),
-    an empty /run/udev, SDL_JOYSTICK_DISABLE_UDEV=1, its own HOME (and Wine prefix), and the real game folder
+    an empty /run/udev, a /tmp of its own (the nested gamescope's X server makes its socket folder there),
+    SDL_JOYSTICK_DISABLE_UDEV=1, its own HOME (and Wine prefix), and the real game folder
     read-only; the game sees a per-player copy-on-write view of its folder (fuse-overlayfs, or a symlink view);
   * Steam games get the Goldberg Steam emulator (gbe_fork) in that per-player view only, set to LAN.
 Never writes into the real game install or the real Steam folder.
@@ -192,6 +193,26 @@ class Ctx:
     @property
     def session_file(self):
         return os.path.join(self.runtime_dir, 'hearth-coop.json')
+
+    @property
+    def last_file(self):
+        """How the last session ended when it failed (the session file itself is gone by then)."""
+        return os.path.join(self.runtime_dir, 'hearth-coop-last.json')
+
+    @property
+    def pads_log(self):
+        """What the "press A" listener saw and why it left each controller out (in bug reports)."""
+        return os.path.join(self.data_dir, 'multiplay.log')
+
+    def note(self, what):
+        try:
+            os.makedirs(os.path.dirname(self.pads_log), exist_ok=True)
+            if os.path.exists(self.pads_log) and os.path.getsize(self.pads_log) > 256 * 1024:
+                os.replace(self.pads_log, self.pads_log + '.old')
+            with open(self.pads_log, 'a') as f:
+                f.write('%s coop: %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), what))
+        except OSError:
+            pass
 
     def progress(self, n, text):
         print('progress: %d %s' % (max(0, min(100, int(n))), text), file=self.out, flush=True)
@@ -456,6 +477,7 @@ def list_pads(ctx):
             managed = kind == 'physical' and ip and (event in ip_sources or not _usable_node(ctx, event))
             if managed:
                 pad['managedBy'] = 'inputplumber'
+                pad['why'] = 'InputPlumber manages it (its own virtual controller is used instead).'
                 hidden.append(pad)
             elif not _usable_node(ctx, event):
                 pad['why'] = "Hearth can't read this controller (no permission)."
@@ -472,15 +494,36 @@ def list_pads(ctx):
 
 
 def wait_button(ctx, timeout=10.0, exclude=()):
-    """The first controller (from list_pads) on which a face button / trigger button goes down."""
-    pads = [p for p in list_pads(ctx)['pads'] if p['id'] not in exclude]
-    fds = {}
-    for p in pads:
+    """The first controller (from list_pads) on which a face button / trigger button goes down. What it saw, and
+    why it left each controller out, goes to multiplay.log (in bug reports)."""
+    found = list_pads(ctx)
+    fds, seen, taken, refused = {}, [], 0, 0
+    for p in found['pads']:
+        label = '%s (%s, %s)' % (p['name'], p['id'], p['kind'])
+        if p['id'] in exclude:
+            taken += 1
+            seen.append(label + ': left out, already joined')
+            continue
         try:
             fds[os.open(os.path.join(ctx.dev_root, 'input', p['id']), os.O_RDONLY | os.O_NONBLOCK)] = p
-        except OSError:
-            pass
+            seen.append(label + ': listening')
+        except OSError as e:
+            refused += 1
+            seen.append(label + ': left out, can\'t open it (%s)' % (e.strerror or e))
+    for p in found['hidden']:
+        seen.append('%s (%s): left out, %s' % (p['name'], p['id'], p.get('why') or 'hidden'))
+    ctx.note('wait-button: ' + ('; '.join(seen) if seen else 'no input device looks like a controller'))
     if not fds:
+        # Controllers InputPlumber manages are fine (their input reaches its virtual pad); the others in "hidden"
+        # can't be read.
+        unusable = [p for p in found['hidden'] if not p.get('managedBy')]
+        if taken and not refused and not unusable:
+            raise Fail('Every connected controller has already joined. Connect another controller for the next '
+                       'player and try again.')
+        if refused or unusable:
+            why = next((p.get('why') for p in unusable if p.get('why')), None)
+            raise Fail('Hearth can\'t use the connected controllers%s. Reconnect them and try again.'
+                       % (' (%s)' % why.rstrip('.') if why else ''))
         raise Fail('No controllers to listen to. Connect a controller and try again.')
     bufs = {fd: b'' for fd in fds}
     end = ctx.now() + timeout
@@ -488,6 +531,7 @@ def wait_button(ctx, timeout=10.0, exclude=()):
         while True:
             left = end - ctx.now()
             if left <= 0:
+                ctx.note('wait-button: no button pressed in %g s' % timeout)
                 return None
             ready, _, _ = select.select(list(fds), [], [], min(left, 0.5))
             for fd in ready:
@@ -504,6 +548,7 @@ def wait_button(ctx, timeout=10.0, exclude=()):
                     _, _, typ, code, value = EVENT.unpack_from(bufs[fd])
                     bufs[fd] = bufs[fd][EVENT.size:]
                     if typ == EV_KEY and value == 1 and (BTN_TRIGGER <= code <= 0x13e):
+                        ctx.note('wait-button: %s (%s) pressed a button' % (fds[fd]['name'], fds[fd]['id']))
                         return fds[fd]
     finally:
         for fd in fds:
@@ -1221,6 +1266,12 @@ def bwrap_args(ctx, nodes, protect, cwd):
         a += ['--dev-bind', n, n]
     if os.path.isdir(ctx.run_udev):
         a += ['--tmpfs', '/run/udev']       # libudev then lists no devices: nothing to find the other pads by
+    # A /tmp of its own. The nested gamescope's X server (Xwayland, through wlroots) refuses a /tmp/.X11-unix that
+    # isn't owned by root or the user, and inside bwrap's user namespace the real one (root's) shows up as owned by
+    # "nobody": gamescope then crashed at once (gamescope_xwayland_server_t, a null X server) and the player's
+    # window closed. Its lock files (/tmp/.X<n>-lock) would also look stale from inside the new pid namespace and get
+    # deleted from under the real X servers. Here, gamescope makes its own /tmp/.X11-unix.
+    a += ['--perms', '1777', '--tmpfs', '/tmp']
     for p in protect:
         a += ['--ro-bind', p, p]
     a += ['--unshare-pid', '--die-with-parent', '--chdir', cwd, '--']
@@ -1372,7 +1423,8 @@ def stop_session(ctx, s, grace=5.0):
 def status(ctx):
     s = load_session(ctx)
     if not s:
-        return {'running': False}
+        last = last_failure(ctx)
+        return {'running': False, 'lastError': last.get('error'), 'lastErrorAt': last.get('at')} if last else {'running': False}
     alive = session_alive(ctx, s)
     if not alive:
         cleanup(ctx, s)
@@ -1380,7 +1432,7 @@ def status(ctx):
             os.unlink(ctx.session_file)
         except OSError:
             pass
-        return {'running': False, 'ended': True, 'game': s.get('game')}
+        return {'running': False, 'ended': True, 'game': s.get('game'), 'error': last_failure(ctx).get('error')}
     return {'running': True, 'state': s.get('state'), 'game': s.get('game'), 'startedAt': s.get('startedAt'),
             'layout': s.get('layout'), 'screen': s.get('screen'), 'containerPid': s.get('containerPid'),
             'labwcPid': s.get('labwcPid'), 'error': s.get('error'),
@@ -1483,6 +1535,10 @@ def start(ctx, a):
     with open(os.path.join(run_dir, 'autostart'), 'w') as f:
         f.write('exec %s %s _container --session %s\n' % (shlex.quote(sys.executable or '/usr/bin/python3'),
                                                           shlex.quote(ctx.self_path), shlex.quote(ctx.session_file)))
+    try:
+        os.unlink(ctx.last_file)
+    except OSError:
+        pass
     save_session(ctx, session)
     ctx.progress(80, 'Opening the split screen')
     # From here on only the container writes the session file (it adds labwc's pid and the players' pids).
@@ -1498,13 +1554,14 @@ def start(ctx, a):
             break
         if s.get('state') == 'failed' or not r.alive(labwc):
             stop_session(ctx, s, grace=2)
-            raise Fail(s.get('error') or "The split screen didn't open (labwc stopped). See %s/labwc.log." % run_dir)
+            raise Fail(s.get('error') or last_failure(ctx).get('error') or
+                       "The split screen didn't open (labwc stopped). See %s/labwc.log." % run_dir)
         ctx.sleep(0.5)
     else:
         stop_session(ctx, load_session(ctx) or session, grace=2)
         raise Fail("The players didn't start in time.")
     ctx.progress(100, 'Playing')
-    return {'started': True, 'game': session['game'], 'screen': session['screen'], 'layout': session['layout'],
+    return {'started': True, 'warning': session.get('error'), 'game': session['game'], 'screen': session['screen'], 'layout': session['layout'],
             'labwcPid': session['labwcPid'], 'containerPid': session.get('containerPid'),
             'players': [public_player(p) for p in session['players']]}
 
@@ -1514,6 +1571,34 @@ def set_output_size(ctx, w, h):
     names = [l.split()[0] for l in (out or '').splitlines() if l and not l[0].isspace()]
     if names:
         ctx.runner.run(['wlr-randr', '--output', names[0], '--custom-mode', '%dx%d' % (w, h)], timeout=5)
+
+
+ERROR_LINE = re.compile(r'error|fail|not owned|cannot|can\'t|denied|no such|segmentation|abort|core dumped', re.I)
+
+
+def log_lines(path, n=3):
+    """The lines of a player's log that say what went wrong (else its last lines)."""
+    lines = [l.strip() for l in read(path).splitlines()[-200:] if l.strip()]
+    bad = [l for l in lines if ERROR_LINE.search(l)]
+    return [l[:300] for l in (bad or lines)[-n:]]
+
+
+def early_exit_text(dead):
+    parts = []
+    for p in dead:
+        lines = log_lines(p.get('log') or '')
+        parts.append('Player %d\'s game closed right after starting%s' % (p['seat'], (': ' + lines[-1]) if lines else ''))
+    return '. '.join(parts) + '. (Its log: %s)' % (dead[0].get('log') or '')
+
+
+def remember_failure(ctx, s, why, dead):
+    write_json(ctx.last_file, {'error': why, 'at': int(ctx.now() * 1000), 'game': s.get('game'),
+                               'players': [{'seat': p['seat'], 'log': p.get('log'), 'lines': log_lines(p.get('log') or '', 12)}
+                                           for p in dead]})
+
+
+def last_failure(ctx):
+    return read_json(ctx.last_file) or {}
 
 
 def container(ctx, session_path, poll=1.0):
@@ -1552,13 +1637,32 @@ def container(ctx, session_path, poll=1.0):
                 if ctx.env.get(k):
                     env[k] = ctx.env[k]
             p['pid'] = r.spawn(p['argv'], env=env, cwd=p['cwd'], log=p['log'])
+            p['spawnedAt'] = ctx.now()
             write_json(session_path, s)
             if i < len(s['order']) - 1:
                 ctx.sleep(s.get('stagger', 4.0))
-        s['state'] = 'running'
-        write_json(session_path, s)
+        # A player whose copy closed straight away (gamescope or the game crashed at start): tell why, with the
+        # last lines of that player's log, instead of the split screen just closing.
+        settle_end = ctx.now() + s.get('settle', 3.0)
+        while ctx.now() < settle_end and not stopping['now'] and all(r.alive(p.get('pid')) for p in s['players']):
+            r.reap()
+            ctx.sleep(min(poll, 0.5))
+        r.reap()
+        dead = [p for p in s['players'] if p.get('pid') and not r.alive(p['pid'])]
+        if dead and not stopping['now']:
+            why = early_exit_text(dead)
+            if len(dead) == len(s['players']):
+                s['state'], s['error'] = 'failed', why
+                remember_failure(ctx, s, why, dead)
+            else:
+                s['state'], s['error'] = 'running', why
+            write_json(session_path, s)
+        else:
+            s['state'] = 'running'
+            write_json(session_path, s)
     except Exception as e:  # noqa: BLE001
         s['state'], s['error'] = 'failed', "A player's game couldn't start: %s" % e
+        remember_failure(ctx, s, s['error'], [])
         write_json(session_path, s)
     while not stopping['now'] and any(r.alive(p.get('pid')) for p in s['players']):
         r.reap()

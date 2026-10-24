@@ -1331,6 +1331,21 @@ class SeatsJournal:
         seats_run(['systemctl', 'daemon-reload'])
 
 
+def seats_bluetooth_uhid(real, cls):
+    """A Bluetooth LE controller's node (an Xbox Wireless Controller on current firmware, a DualSense...): bluez
+    makes it through uhid, so it sits under /devices/virtual/misc/uhid/<bus 0005:...> like virtual controllers, but
+    it is a real controller with its own address (Uniq) and the adapter's (Phys); same test as hearth-seats."""
+    m = re.search(r'/devices/virtual/misc/uhid/0005:[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}\.[0-9A-Fa-f]+/', real)
+    if not m:
+        return False
+    mac = r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}'
+    if cls == 'input':
+        return bool(re.match(mac, seats_read(os.path.join(real, '..', 'phys')))) and \
+            bool(re.match(mac, seats_read(os.path.join(real, '..', 'uniq'))))
+    ue = seats_read(os.path.join(real, '..', '..', 'uevent')).splitlines()
+    return any(re.match(r'^HID_UNIQ=' + mac[1:], l) for l in ue)
+
+
 def seats_pad_nodes(pad):
     """(sysfs path, /dev node) of a controller's input and hidraw devices, found right now."""
     import glob
@@ -1339,7 +1354,7 @@ def seats_pad_nodes(pad):
     for cls, pattern in (('input', 'event[0-9]*'), ('input', 'js[0-9]*'), ('hidraw', 'hidraw[0-9]*')):
         for p in sorted(glob.glob(os.path.join(SEATS_SYS, 'class', cls, pattern))):
             real = os.path.realpath(p)
-            if '/devices/virtual/' in real:
+            if '/devices/virtual/' in real and not seats_bluetooth_uhid(real, cls):
                 continue
             if kind == 'usb':
                 hit = re.search(r'/%s(\.[0-9]+)*/' % re.escape(val), real) is not None

@@ -261,6 +261,34 @@ pub fn report(version: &str) -> String {
         section("Multi-seat", format!("{}\n\nSplit-screen host log:\n{}\n\nHost window rules:\n{}",
             cap(&sh(&format!("{} status", crate::multiplay::SEATS)), 8000), host_log, cap(&rules, 6000)));
     }
+    // Couch Co-op and Multi-seat's "Player N, press A": the controllers each helper can see (and why it leaves the
+    // others out), and the listener's own log (multiplay.log: what it saw at each try, which controller pressed).
+    let pads_log = data.join("multiplay.log");
+    if pads_log.exists() || data.join("coop").exists() || Path::new("/etc/hearth/seats.json").exists() {
+        let log = std::fs::read_to_string(&pads_log).map(|t| tail(&t, 150)).unwrap_or_else(|_| "(none yet)".into());
+        let mut seen = String::new();
+        if Path::new(crate::multiplay::COOP).exists() {
+            seen.push_str(&format!("Couch Co-op sees: {}\n\n", cap(&sh(&format!("python3 {} pads", crate::multiplay::COOP)), 6000).trim()));
+        }
+        if Path::new(crate::multiplay::SEATS).exists() {
+            seen.push_str(&format!("Multi-seat sees: {}\n\n", cap(&sh(&format!("python3 {} pads", crate::multiplay::SEATS)), 6000).trim()));
+        }
+        section("Player controllers (press A to join)", format!("{seen}Listener log:\n{log}"));
+    }
+    // Couch Co-op: the session (or how the last one failed), the split screen's labwc log and each player's log (their
+    // nested gamescope and game: a player whose window closed at once says why here).
+    if Path::new(crate::multiplay::COOP).exists() && (data.join("coop").exists() || run.join("hearth-coop").exists() || run.join("hearth-coop-last.json").exists()) {
+        let labwc = std::fs::read_to_string(run.join("hearth-coop/labwc.log")).map(|t| tail(&t, 80)).unwrap_or_else(|_| "(none)".into());
+        let last = std::fs::read_to_string(run.join("hearth-coop-last.json")).unwrap_or_else(|_| "(none)".into());
+        let mut players = String::new();
+        for n in 1..=4 {
+            let f = data.join("coop/players").join(n.to_string()).join("last-run.log");
+            if let Ok(t) = std::fs::read_to_string(&f) { players.push_str(&format!("--- player {n}\n{}\n", tail(&t, 80))); }
+        }
+        section("Couch Co-op", format!("Now: {}\n\nLast failed start: {}\n\nSplit screen (labwc) log:\n{}\n\nPlayers' logs (gamescope and the game):\n{}",
+            cap(&sh(&format!("python3 {} status", crate::multiplay::COOP)), 4000).trim(), cap(&last, 6000), labwc,
+            if players.is_empty() { "(none yet)".to_string() } else { cap(&players, 24000) }));
+    }
     // What's busy: the processor (top processes) and, on Nvidia, the graphics card (for "it feels sluggish").
     section("Processor and graphics load", sh("top -b -n 1 -w 160 2>/dev/null | head -24 || ps -eo pcpu=,comm= --sort=-pcpu | head -15; \
         [ -e /proc/driver/nvidia/version ] && command -v nvidia-smi >/dev/null && { echo; nvidia-smi --query-gpu=name,utilization.gpu,utilization.memory,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,power.draw --format=csv; echo; nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv; } || true"));

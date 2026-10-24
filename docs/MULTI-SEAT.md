@@ -54,6 +54,13 @@ opens the card itself.
 * Steam Input's virtual controllers (uinput) are created under `/devices/virtual` and always land on `seat0`
   anyway, so real seats don't fix that either (see Limitations).
 
+Bluetooth LE controllers (an Xbox Wireless Controller on current firmware, a DualSense) also sit under
+`/devices/virtual`: bluez makes them through uhid (`/devices/virtual/misc/uhid/0005:…`). They are real controllers,
+told apart from virtual ones by the Bluetooth bus (`0005`), the adapter's address as `phys` and their own address
+as `uniq`, and are offered and assigned like any other wireless controller (`uniq:<address>`). Earlier builds
+skipped them as virtual, so "press A" found no controllers on a PC with only Bluetooth LE pads. The listener writes
+what it saw and why it left each device out to `~/.local/share/nimbus/multiplay.log` (in bug reports).
+
 Instead, Hearth takes each extra player's devices **out of logind entirely** with one udev rules file, and
 grants them to the player's account with an ACL (next section). Logind still starts a proper session for the
 player, a session with no seat. That gives them `/run/user/UID`, their user services and D-Bus, but no
