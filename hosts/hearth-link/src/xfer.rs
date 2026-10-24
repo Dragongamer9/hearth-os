@@ -8,7 +8,7 @@
 //!    fallocate, so the drive doesn't fragment it), or only the chunks that differ for a file that's there but
 //!    different (an older version of the game: both sides hash their copy, BLAKE3 per 1 MiB chunk, and only the
 //!    chunks whose hashes differ are sent). A copy that was interrupted picks up from its journal.
-//! 3. The chunks come over several QUIC streams at once (8 by default), each asking for a run of chunks; the
+//! 3. The chunks come over several QUIC streams at once (16 by default), each asking for a run of chunks; the
 //!    sending side reads, hashes and (only where it helps) compresses them in their own threads, so the link stays
 //!    full. Small files go many to a request.
 //! 4. Each chunk is decompressed and checked against its hash before it's written (with pwrite, by a few writer
