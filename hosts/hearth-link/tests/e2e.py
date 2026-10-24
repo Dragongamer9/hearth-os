@@ -471,8 +471,9 @@ def lan():
     # 2. Killed halfway, resumed.
     j, _, t0 = copy(b, a, 'steam:1000002', 'Resume Game')
     jid = j['id']
-    j = wait_job(b, jid, until=lambda x: x['state'] == 'copying' and x['total'] > 0 and x['done'] > x['total'] * 0.35)
-    before = j['done']
+    j = wait_job(b, jid, until=lambda x: x['state'] == 'copying' and x['total'] > 0 and x['done'] > x['total'] * 0.25)
+    time.sleep(1.5)   # the journal is written every second: a crash loses at most the last second
+    before = b.job(jid)['done']
     log('killing B at %d of %d MB' % (before // MB, j['total'] // MB))
     b.kill()
     time.sleep(1)

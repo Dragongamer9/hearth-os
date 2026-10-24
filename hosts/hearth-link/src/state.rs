@@ -57,7 +57,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { name: String::new(), relay: Relay::Default, relay_url: String::new(), always_accept: false, sync: true, compress: "auto".into(), streams: 8 }
+        Config { name: String::new(), relay: Relay::Default, relay_url: String::new(), always_accept: false, sync: true, compress: "auto".into(), streams: 16 }
     }
 }
 
