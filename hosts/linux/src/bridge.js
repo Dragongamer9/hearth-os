@@ -33,6 +33,18 @@ const { Browser } = require('./browser');
 const sysinfo = require('./sysinfo');
 const { log } = require('./util');
 
+// ==== Hearth Recorder (hosts/hearth-recorder): its command line answers in JSON ({ok: false, error} when it can't).
+function recorderCli(args) {
+  return new Promise((resolve, reject) => require('node:child_process').execFile('hearth-recorder', [...args, '--json'], { timeout: 70000 }, (e, out) => {
+    let v = null;
+    try { v = JSON.parse(String(out || '').trim()); } catch (x) { /* not JSON: said below */ }
+    if (!v) return reject(new Error(e && e.code === 'ENOENT' ? "Hearth Recorder isn't installed" : "Recorder couldn't do that"));
+    if (v.ok === false) return reject(new Error(v.error || "Recorder couldn't do that"));
+    resolve(v);
+  }));
+}
+// ==== end of Hearth Recorder
+
 class Bridge {
   /**
    * @param {object} o
@@ -309,6 +321,12 @@ class Bridge {
       case 'overlay.setHoldView': this.platform.overlay.setHoldView(!!a.on); return this.platform.overlay.settings();
       case 'overlay.setGameBarButton': return this.platform.overlay.settings(); // Windows only
       case 'overlay.screenshot': return this.platform.screenshot();
+      // ==== Hearth Recorder (hosts/hearth-recorder) from Quick Access › Now playing (ui/index.html recQam)
+      case 'recorder.status': return recorderCli(['--status']);
+      case 'recorder.toggle': return recorderCli(['--toggle']);
+      case 'recorder.replay': return recorderCli(['--replay']);
+      case 'recorder.saveReplay': return recorderCli(['--save-replay']);
+      // ==== end of Hearth Recorder
 
       case 'profile.get': return this.profile.get();
       case 'profile.set': return this.profile.set(a);

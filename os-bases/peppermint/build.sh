@@ -517,6 +517,92 @@ if [ -x /ctx/nimbus-app/hearth-terminal ]; then
 fi
 # ---- end of Hearth Terminal
 
+# ==================================================================== Hearth Recorder, Camera and Share
+# (hosts/hearth-recorder, hosts/hearth-camera, hosts/hearth-share; built with the app by base-peppermint.yml, tested
+# by capture-apps.yml.) Hearth's screen recorder (instant replay and a sound recorder too), webcam app and screen
+# sharing. What they run:
+#  - ffmpeg (Debian's has every encoder: VA-API, NVENC, libx264, Opus, MP3)
+#  - wf-recorder and slurp: capturing Mantel's desktop, an area too
+#  - gpu-screen-recorder: capture and encoding on the graphics card in Game Mode and Desktop Mode, and its own
+#    instant replay. Debian 13 doesn't package it, so CI builds it in trixie (gsr/ in the app's folder);
+#    gsr-kms-server needs CAP_SYS_ADMIN to read the screen.
+#  - GStreamer with PipeWire's plugin: Game Mode (gamescope's own stream) without gpu-screen-recorder, and Share there
+#  - pactl and pw-dump (sound sources, gamescope's stream), v4l-utils (cameras), qrencode (Share's QR code)
+optional ffmpeg wf-recorder slurp pulseaudio-utils pipewire-bin gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils libnotify-bin qrencode libcap2-bin
+if [ -x /ctx/nimbus-app/gsr/gpu-screen-recorder ] && ! command -v gpu-screen-recorder >/dev/null; then
+  # Its libraries (most come with ffmpeg and PipeWire already).
+  optional libpulse0 libva2 libva-drm2 libdrm2 libwayland-client0 libwayland-egl1 libcap2 libxdamage1 libxcomposite1 libxrandr2 libvulkan1 libegl1 libgl1
+  install -Dm755 /ctx/nimbus-app/gsr/gpu-screen-recorder /usr/bin/gpu-screen-recorder
+  [ -x /ctx/nimbus-app/gsr/gsr-kms-server ] && install -Dm755 /ctx/nimbus-app/gsr/gsr-kms-server /usr/bin/gsr-kms-server
+  if ldd /usr/bin/gpu-screen-recorder | grep 'not found'; then
+    echo "warning: gpu-screen-recorder needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/gpu-screen-recorder /usr/bin/gsr-kms-server
+  fi
+fi
+# Without its capability gpu-screen-recorder asks for the password every time it records.
+if [ -x /usr/bin/gsr-kms-server ]; then setcap cap_sys_admin+ep /usr/bin/gsr-kms-server || echo "warning: couldn't give gsr-kms-server its capability"; fi
+for app in hearth-recorder hearth-camera hearth-share; do
+  if [ -x "/ctx/nimbus-app/$app" ]; then
+    install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
+    # One that can't start is left out (its menu entry too).
+    if ldd "/usr/bin/$app" | grep 'not found'; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
+  fi
+done
+if [ -x /usr/bin/hearth-recorder ] || [ -x /usr/bin/hearth-camera ] || [ -x /usr/bin/hearth-share ]; then
+  # Their menu entries (ids starting with "hearth": Mantel's app menu lists them as Hearth's own apps).
+  install -d /usr/share/applications
+  if [ -x /usr/bin/hearth-recorder ]; then
+    cat > /usr/share/applications/hearth-recorder.desktop <<DESKTOP
+[Desktop Entry]
+Name=Recorder
+GenericName=Screen Recorder
+Comment=Record the screen, a game or your voice, and keep instant replays of games
+Exec=/usr/bin/hearth-recorder
+Icon=hearth-recorder
+Type=Application
+Categories=AudioVideo;Video;Recorder;
+Keywords=record;screen;recording;video;capture;replay;clip;game;microphone;voice;sound;
+StartupNotify=true
+StartupWMClass=hearth-recorder
+Actions=sound;
+
+[Desktop Action sound]
+Name=Sound recorder
+Exec=/usr/bin/hearth-recorder --sound
+DESKTOP
+  fi
+  if [ -x /usr/bin/hearth-camera ]; then
+    cat > /usr/share/applications/hearth-camera.desktop <<DESKTOP
+[Desktop Entry]
+Name=Camera
+GenericName=Webcam
+Comment=Take photos and videos with your webcam
+Exec=/usr/bin/hearth-camera
+Icon=hearth-camera
+Type=Application
+Categories=AudioVideo;Video;Graphics;Photography;
+Keywords=camera;webcam;photo;selfie;video;picture;
+StartupNotify=true
+StartupWMClass=hearth-camera
+DESKTOP
+  fi
+  if [ -x /usr/bin/hearth-share ]; then
+    cat > /usr/share/applications/hearth-share.desktop <<DESKTOP
+[Desktop Entry]
+Name=Share Screen
+GenericName=Screen Sharing
+Comment=Show this screen on a TV, phone or another computer (web browser or Moonlight)
+Exec=/usr/bin/hearth-share
+Icon=hearth-share
+Type=Application
+Categories=Network;AudioVideo;
+Keywords=share;screen;cast;mirror;tv;stream;moonlight;miracast;chromecast;browser;
+StartupNotify=true
+StartupWMClass=hearth-share
+DESKTOP
+  fi
+fi
+# ==================================================================== end of Hearth Recorder, Camera and Share
 # ------------------------------------------------------------------ Hearth's gaming apps (hosts/hearth-gaming)
 # Controller Lab, Saves and Mods: built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons come
 # with Hearth's icon set (branding/icons, above: Icon=hearth-controller-lab ...). Desktop Mode lists them
