@@ -1137,7 +1137,7 @@ const path = require('path');
       };
       await sp.evaluate(() => { closeAll(); S.history = []; SHOP.store = 'steam'; navigate('shop', {}, false); });
       await sp.waitForTimeout(700);
-      await sp.evaluate(() => setFocus(document.querySelector('#view [data-k="sf-deals-1"]'), true));
+      await sp.evaluate(() => { setFocus(document.querySelector('#view [data-k="sf-hero"]'), true); $('#view').scrollTop = 0; });
       await sp.waitForTimeout(300); await shot('home');
       await sp.evaluate(() => act(document.querySelector('#view [data-k="sf-deals-1"]')));
       await sp.waitForTimeout(700); await shot('game');
