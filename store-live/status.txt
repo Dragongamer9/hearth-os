@@ -1,0 +1,68 @@
+steam_featured	200	51061	ok	https://store.steampowered.com/api/featuredcategories?cc=US&l=english
+steam_featured_win	200	24592	ok	https://store.steampowered.com/api/featured/?cc=US&l=english
+steam_popularnew	200	4816	ok	https://store.steampowered.com/search/results/?query&start=0&count=12&filter=popularnew&json=1&cc=US&l=english
+steam_search	200	3476	ok	https://store.steampowered.com/api/storesearch/?term=hades&l=english&cc=US
+steam_details	200	21932	ok	https://store.steampowered.com/api/appdetails?appids=1145360&cc=US&l=english
+steam_reviews	200	984394	missing query_summary.review_score_desc	https://store.steampowered.com/appreviews/1145360?json=1&language=all&purchase_type=all&num_per_page=0
+gog_catalog	200	31880	ok	https://catalog.gog.com/v1/catalog?limit=4&order=desc:trending&productType=in:game,pack&page=1&countryCode=US&locale=en-US&currencyCode=USD
+gog_deals	200	26713	ok	https://catalog.gog.com/v1/catalog?limit=4&order=desc:discount&discounted=eq:true&productType=in:game,pack&page=1&countryCode=US&locale=en-US&currencyCode=USD
+gog_search	200	27229	ok	https://catalog.gog.com/v1/catalog?limit=4&query=like:witcher&order=desc:score&productType=in:game,pack&countryCode=US&locale=en-US&currencyCode=USD
+gog_product	200	49935	ok	https://api.gog.com/products/1207664663?expand=description,screenshots,videos
+gog_v2	200	29551	ok	https://api.gog.com/v2/games/1207664663?locale=en-US
+gog_prices	400	150	missing _embedded.prices.0.finalPrice	https://api.gog.com/products/1207664663/prices?countryCode=US
+epic_free	200	50899	ok	https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=US&allowCountries=US
+epic_graphql	404	4	missing data.Catalog.searchStore.elements	https://graphql.epicgames.com/graphql
+epic_store_graphql	200	5557	ok	https://store.epicgames.com/graphql
+epic_discover	200	521188	ok	https://egs-platform-service.store.epicgames.com/api/v2/public/discover/home?count=10&country=US&locale=en&platform=android&start=0&store=EGS
+epic_content	200	15155	ok	https://store-content-ipv4.ak.epicgames.com/api/en-US/content/products/hades
+xbox_reco_toppaid	0	56	missing Items.0.Id	https://reco-public.rec.mp.microsoft.com/channels/Reco/V8.0/Lists/Computed/TopPaid?Market=us&Language=en&ItemTypes=Game&deviceFamily=Windows.Desktop&count=5
+xbox_reco_deal	0	56	missing Items.0.Id	https://reco-public.rec.mp.microsoft.com/channels/Reco/V8.0/Lists/Computed/Deal?Market=us&Language=en&ItemTypes=Game&deviceFamily=Windows.Desktop&count=5
+xbox_reco_new	0	56	missing Items.0.Id	https://reco-public.rec.mp.microsoft.com/channels/Reco/V8.0/Lists/Computed/New?Market=us&Language=en&ItemTypes=Game&deviceFamily=Windows.Desktop&count=5
+xbox_sigl_pc	200	11619	ok	https://catalog.gamepass.com/sigls/v2?id=fdd9e2a7-0fee-49f6-ad69-4354098401ff&language=en-us&market=US
+xbox_displaycatalog	200	15	missing Products.0.LocalizedProperties.0.ProductTitle	https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9NBLGGH4R315,9P0J5C1LQ3SH&market=US&languages=en-us
+xbox_autosuggest	200	3633	ok	https://displaycatalog.mp.microsoft.com/v7.0/productFamilies/autosuggest?market=US&languages=en-us&query=halo&productFamilyNames=Games
+xbox_storeedge_search	200	151468	ok	https://storeedgefd.dsx.mp.microsoft.com/v9.0/search?market=US&locale=en-US&deviceFamily=Windows.Desktop&query=halo&mediaType=games
+xbox_storeedge_searchpage	200	154425	ok	https://storeedgefd.dsx.mp.microsoft.com/v9.0/pages/searchResults?market=US&locale=en-US&deviceFamily=Windows.Desktop&query=halo&mediaType=games
+xbox_storeedge_toppaid	404	276	ok	https://storeedgefd.dsx.mp.microsoft.com/v9.0/collections/TopPaid?market=US&locale=en-US&deviceFamily=Windows.Desktop&mediaType=games
+xbox_emerald_search	400	208	ok	https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US
+gog_catalog_ids	200	31887	ok	https://catalog.gog.com/v1/catalog?limit=4&productId=in:1207664663&countryCode=US&locale=en-US&currencyCode=USD
+gog_catalog_slug	200	31887	ok	https://catalog.gog.com/v1/catalog?limit=4&slug=eq:the_witcher_3_wild_hunt&countryCode=US&locale=en-US&currencyCode=USD
+gog_new	200	26634	ok	https://catalog.gog.com/v1/catalog?limit=4&order=desc:storeReleaseDate&productType=in:game,pack&countryCode=US&locale=en-US&currencyCode=USD
+gog_bestselling	200	34381	ok	https://catalog.gog.com/v1/catalog?limit=4&order=desc:bestselling&productType=in:game,pack&countryCode=US&locale=en-US&currencyCode=USD
+xbox_gamepass_products	200	45	ok	https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0
+xbox_displaycatalog_gp	200	184078	ok	https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9NPDN9R45JX4,9P8LR42PTRGJ,9NNM7PKZN3JF&market=US&languages=en-us
+xbox_gamepass_products_gp	200	34033	ok	https://catalog.gamepass.com/v3/products?market=US&language=en-us&hydration=RemoteHighSapphire0
+epic_offer	200	6573	ok	https://store.epicgames.com/graphql
+epic_sale	200	11812	ok	https://store.epicgames.com/graphql
+epic_new	200	10850	ok	https://store.epicgames.com/graphql
+epic_top	200	71	ok	https://store.epicgames.com/graphql
+epic_top2	400	197	missing data	https://store.epicgames.com/graphql
+epic_rating	200	70	ok	https://store.epicgames.com/graphql
+epic_discover_windows	404	28	missing data.0	https://egs-platform-service.store.epicgames.com/api/v2/public/discover/home?count=10&country=US&locale=en&platform=windows&start=0&store=EGS
+xbox_apps_toppaid	200	145	ok	https://apps.microsoft.com/api/Reco/GetComputedProductsList?listName=TopPaid&pgNo=1&noItems=5&filteredCategories=PCGames&mediaType=games&market=US&hl=en-us&gl=US
+xbox_apps_deals	200	145	ok	https://apps.microsoft.com/api/Reco/GetComputedProductsList?listName=Deal&pgNo=1&noItems=5&filteredCategories=PCGames&mediaType=games&market=US&hl=en-us&gl=US
+xbox_apps_new	200	145	ok	https://apps.microsoft.com/api/Reco/GetComputedProductsList?listName=NewAndRising&pgNo=1&noItems=5&filteredCategories=PCGames&mediaType=games&market=US&hl=en-us&gl=US
+xbox_storeedge_gaming	200	2106	ok	https://storeedgefd.dsx.mp.microsoft.com/v9.0/pages/gaming?market=US&locale=en-US&deviceFamily=Windows.Desktop
+xbox_storeedge_home	200	45640	ok	https://storeedgefd.dsx.mp.microsoft.com/v9.0/pages/home?market=US&locale=en-US&deviceFamily=Windows.Desktop&mediaType=games
+xbox_storeedge_pdp	200	28478	ok	https://storeedgefd.dsx.mp.microsoft.com/v9.0/products/9NWQMVSB63N4?market=US&locale=en-US&deviceFamily=Windows.Desktop
+xbox_emerald_search_v	400	290	ok	https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US
+xbox_emerald_browse	200	249799	ok	https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US
+xbox_emerald_filters	200	257630	ok	https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US
+xbox_emerald_search_k	200	203476	ok	https://emerald.xboxservices.com/xboxcomfd/search/games?locale=en-US
+xbox_emerald_popular_a	200	211027	ok	https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US
+xbox_emerald_popular_b	500	0	missing productSummaries.0.productId	https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US
+xbox_emerald_deals_a	200	190651	ok	https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US
+xbox_emerald_new_a	200	218095	ok	https://emerald.xboxservices.com/xboxcomfd/browse?locale=en-US
+protondb	200	147	ok	https://www.protondb.com/api/v1/reports/summaries/1145360.json
+xbox_sigl_pc_popular	200	698	ok	https://catalog.gamepass.com/sigls/v2?id=a884932a-f02b-40c8-a903-a008c23b1df1&language=en-us&market=US
+xbox_sigl_pc_recent	200	911	ok	https://catalog.gamepass.com/sigls/v2?id=163cdff5-442e-4957-97f5-1050a3546511&language=en-us&market=US
+xbox_sigl_pc_coming	200	525	ok	https://catalog.gamepass.com/sigls/v2?id=4165f752-d702-49c8-886b-fb57936f6bae&language=en-us&market=US
+xbox_sigl_pc_leaving	200	449	ok	https://catalog.gamepass.com/sigls/v2?id=cc7fc951-d00f-410e-9e02-5e4628e04163&language=en-us&market=US
+xbox_sigl_popular	200	698	ok	https://catalog.gamepass.com/sigls/v2?id=eab7757c-ff70-45af-bfa6-79d3cfb2bf81&language=en-us&market=US
+xbox_sigl_recent	200	933	ok	https://catalog.gamepass.com/sigls/v2?id=f13cf6b4-57e6-4459-89df-6aec18cf0538&language=en-us&market=US
+xbox_sigl_coming	200	547	ok	https://catalog.gamepass.com/sigls/v2?id=095bda36-f5cd-43f2-9ee1-0a72f371fb96&language=en-us&market=US
+xbox_sigl_leaving	200	449	ok	https://catalog.gamepass.com/sigls/v2?id=393f05bf-e596-4ef6-9487-6d4fa0eab987&language=en-us&market=US
+xbox_sigl_eaplay	200	2470	ok	https://catalog.gamepass.com/sigls/v2?id=b8900d09-a491-44cc-916e-32b5acae621b&language=en-us&market=US
+steam_community_games_xml	200	52707	sign-in page	https://steamcommunity.com/profiles/76561197960435530/games?tab=all&xml=1
+steam_community_games_page	200	52473	sign-in page	https://steamcommunity.com/profiles/76561197960435530/games/?tab=all
+steam_community_profile_xml	200	7561	profile XML	https://steamcommunity.com/profiles/76561197960435530/?xml=1
