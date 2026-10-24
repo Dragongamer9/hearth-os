@@ -2342,6 +2342,79 @@ function a11yAct(a, d){
 // Each start of Game Mode: the zoom, colour filter and screen reader as they were set (gamescope forgets them).
 if(LINUX && host && !OVERLAY) setTimeout(()=>call('access.apply',{},20000).catch(()=>{}), 2500);
 // ---------- end Settings › Accessibility
+// ---------- Settings › Default apps (Hearth OS) ----------
+// Which app opens web links, folders, text, pictures, videos, music, PDFs, office files, calendars, contacts, maps and
+// archives, and which terminal starts: in Game Mode and Desktop Mode alike. desktop/shell/hearth-system does it
+// (hearth-core's defaults.* calls), the same as Desktop Mode's Settings › Default apps: your choices go in
+// ~/.config/mimeapps.list, and "Reset to Hearth's defaults" takes them out so Hearth's own apps open them again.
+const DF = {s:null, busy:''};
+const DF_ICONS = {browser:'globe', files:'lib', text:'text', image:'display', video:'play', music:'vol', ebooks:'note', documents:'note',
+  sheets:'sliders', slides:'display', terminal:'shell', email:'bell', calendar:'clock', contacts:'user', maps:'globe', archives:'dl'};
+// The browser preview (no app): made-up apps, changed in place like the real thing.
+const DF_DEMO = (() => {
+  const k = (kind, label, hearth, hearthName, others) => ({kind, label, current:hearth, currentName:hearthName, yours:false, hearth, hearthName, isHearth:!!hearth,
+    options:[...(hearth?[{id:hearth, name:hearthName, icon:'', hearth:true}]:[]), ...others.map(([id,name])=>({id, name, icon:'', hearth:false}))]});
+  return {kinds:[k('browser','Web browser','hearth-browser.desktop','Hearth Browser',[['org.mozilla.firefox.desktop','Firefox']]),
+    k('files','File manager','hearth-files.desktop','Files',[['org.kde.dolphin.desktop','Dolphin']]),
+    k('text','Text editor','hearth-text.desktop','Text Editor',[['org.kde.kate.desktop','Kate'],['hearth-write.desktop','Hearth Write']]),
+    k('image','Images','hearth-photos.desktop','Photos',[['hearth-paint.desktop','Paint'],['org.gnome.Loupe.desktop','Image Viewer']]),
+    k('video','Video','hearth-player.desktop','Hearth Player',[['org.videolan.VLC.desktop','VLC media player']]),
+    k('music','Music','hearth-player.desktop','Hearth Player',[]),
+    k('ebooks','PDF & e-books','hearth-documents.desktop','Documents',[]),
+    k('documents','Documents','hearth-write.desktop','Hearth Write',[['libreoffice-writer.desktop','LibreOffice Writer']]),
+    k('sheets','Spreadsheets','hearth-sheets.desktop','Hearth Sheets',[]),
+    k('slides','Presentations','hearth-slides.desktop','Hearth Slides',[]),
+    k('terminal','Terminal','hearth-terminal.desktop','Terminal',[['foot.desktop','Foot']]),
+    k('email','Email',null,'',[]),
+    k('calendar','Calendar','hearth-calendar.desktop','Calendar',[]),
+    k('contacts','Contacts','hearth-contacts.desktop','Contacts',[]),
+    k('maps','Maps','hearth-maps.desktop','Maps',[]),
+    k('archives','Archives','hearth-files.desktop','Files',[['org.kde.ark.desktop','Ark']])]};
+})();
+function dfCall(m, args){
+  if(host) return call(m, args||{}, 30000);
+  const d=DF_DEMO;
+  for(const k of d.kinds){
+    if(m==='defaults.set' && k.kind===args.kind){ const o=k.options.find(o=>o.id===args.app); if(!o) return Promise.reject(new Error("that app isn't installed")); Object.assign(k, {current:o.id, currentName:o.name, yours:true, isHearth:o.id===k.hearth}); }
+    if(m==='defaults.reset' && (!args.kind || k.kind===args.kind)) Object.assign(k, {current:k.hearth, currentName:k.hearthName, yours:false, isHearth:!!k.hearth});
+  }
+  return Promise.resolve(JSON.parse(JSON.stringify(d)));
+}
+function dfLoad(){ dfCall('defaults.list').then(r=>{ DF.s=r; refreshUI(); }).catch(e=>{ DF.s={error:e.message||String(e)}; refreshUI(); }); }
+function dfShown(k){ return k.options.length || k.current || k.hearth; }   // Email shows once an app can do it
+function pageDefaults(){
+  const st=DF.s, kinds=((st&&st.kinds)||[]).filter(dfShown);
+  let h = shead('Default apps', !st || !!DF.busy);
+  if(st && st.error) return h + note('Couldn\'t read the installed apps: '+esc(st.error));
+  if(!st) return h + note('Looking at your apps…');
+  h += sgrid(kinds.map(k=>{
+    const sub = !k.current ? (k.options.length ? 'None chosen' : 'No installed app can do this yet')
+      : esc(k.currentName) + (k.isHearth ? ' · Hearth\'s own' : k.yours ? ' · your choice' : '');
+    return `<button class="row" data-f data-k="df-${k.kind}" data-act="dfPick" data-kind="${k.kind}"><span class="ricon">${I[DF_ICONS[k.kind]]||I.lib}</span><div class="rt"><b>${esc(k.label)}</b><small>${sub}</small></div>${DF.busy===k.kind?'<span class="mini-spin"></span>':'<div class="rv">›</div>'}</button>`;
+  }).join(''));
+  const any = kinds.some(k=>k.yours);
+  h += shead('Hearth\'s defaults')
+    + sgrid(`<button class="row" data-f data-k="df-reset" data-act="dfResetAll"><span class="ricon">${I.refresh}</span><div class="rt"><b>Reset to Hearth's defaults</b><small>${any?'Hearth\'s own apps open everything again; the choices above are forgotten':'Every kind already opens in the app Hearth chose'}</small></div>${DF.busy==='all'?'<span class="mini-spin"></span>':''}</button>`)
+    + tipRow('df-tip', 'Game Mode and Desktop Mode', 'These are the same in both modes: changing one here changes it in Desktop Mode\'s Settings › Default apps too. An app you install that can open these shows up in the list.');
+  return h;
+}
+function dfDo(m, args, key, done){
+  DF.busy = args.kind || 'all'; render(key, true);
+  dfCall(m, args).then(r=>{ DF.s=r; toast(done); }).catch(e=>toast(e.message||String(e))).finally(()=>{ DF.busy=''; render(key, true); });
+}
+function dfAct(a, d){
+  const kinds=(DF.s&&DF.s.kinds)||[];
+  if(a==='dfPick'){
+    const k=kinds.find(x=>x.kind===d.kind); if(!k) return;
+    if(!k.options.length) return toast('No installed app can open these yet. Install one from Apps.');
+    const items = k.options.map(o=>({label:o.name+(o.hearth?' · Hearth\'s default':''), icon:o.id===k.current?'check':'', run:()=>{ if(o.id!==k.current) dfDo('defaults.set', {kind:k.kind, app:o.id}, 'df-'+k.kind, o.name+' opens '+k.label.toLowerCase()+' now'); }}));
+    if(k.yours && k.hearth) items.push({label:'Reset to Hearth\'s default ('+k.hearthName+')', icon:'refresh', run:()=>dfDo('defaults.reset', {kind:k.kind}, 'df-'+k.kind, k.hearthName+' opens '+k.label.toLowerCase()+' again')});
+    return openSheet({title:k.label, sub:'Which app opens these, in Game Mode and Desktop Mode', items});
+  }
+  if(a==='dfResetAll') return openSheet({title:'Reset to Hearth\'s defaults?', sub:'Hearth\'s own apps open links and files again. Apps you installed stay installed.', items:[
+    {label:'Reset all', icon:'refresh', run:()=>dfDo('defaults.reset', {}, 'df-reset', 'Hearth\'s default apps are back')}]});
+}
+// ---------- end Settings › Default apps
 
 // ---------- Settings › System and › About ----------
 const SYSINFO = {s:null};
@@ -3519,6 +3592,9 @@ const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
 // ---- Accessibility: its page (pageAccess) in You, on Hearth OS only
 if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='liblook')+1, 0, ['access','text','Accessibility']); STAB_GROUP.access='you'; }
 // ---- end Accessibility
+// ---- Default apps: its page (pageDefaults) in System, on Hearth OS only
+if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='system'), 0, ['defaults','lib','Default apps']); STAB_GROUP.defaults='system'; }
+// ---- end Default apps
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -5315,6 +5391,7 @@ function viewSettings(){
   if(t==='system') body = pageSystem();
   if(t==='appearance') body = pageAppearance();
   if(t==='access') body = pageAccess();   // Accessibility
+  if(t==='defaults') body = pageDefaults();   // Default apps
   if(t==='liblook') body = pageLibLook();
   if(t==='controller') body = pageControls();
   if(t==='sources'){
@@ -6003,6 +6080,7 @@ function act(el){
   blip(880,.05,.045);
   if(a.startsWith('bcn')) return beaconAct(a, d);   // Beacon's screens (Game setup, Mods)
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
+  if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
   switch(a){
@@ -8526,6 +8604,7 @@ function onSettingsTab(t){
   if(t==='appearance'){ loadDeskWall(); watchVotes(true); }
   if(t==='liblook') watchVotes(true);
   if(t==='access') a11yLoad();   // Accessibility
+  if(t==='defaults') dfLoad();   // Default apps
   if(t==='import') loadImport();
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();

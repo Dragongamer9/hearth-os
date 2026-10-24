@@ -16,10 +16,16 @@ change as you (no root). The parts that need root go through /usr/libexec/nimbus
   hearth-system labwc-config         prepare Desktop Mode's labwc folder with your keyboard and mouse settings in it
                                      ($XDG_RUNTIME_DIR/hearth-labwc) and print its path (nimbus-session runs it)
   hearth-system shortcuts            JSON: Desktop Mode's keyboard shortcuts, from labwc's rc.xml
-  hearth-system defaults             JSON: the default browser, file manager, text editor, image viewer, video and
-                                     music player, and the installed apps that can be each
+  hearth-system defaults             JSON: Settings › Default apps: for each kind (browser, files, text, image, video,
+                                     music, ebooks, documents, sheets, slides, terminal, email, calendar, contacts,
+                                     maps, archives) the app it opens in, Hearth's own, and the installed apps that can
   hearth-system default-set KIND APP_ID
-                                     make APP_ID (a .desktop id) the default for KIND (mimeapps.list)
+                                     make APP_ID (a .desktop id) the default for KIND (~/.config/mimeapps.list)
+  hearth-system default-reset [KIND] back to Hearth's default for KIND (every kind without one): your choice comes out
+  hearth-system defaults-tidy        Hearth apps that aren't installed any more come out of your lists (each sign-in)
+  hearth-system defaults-system [ROOT]
+                                     write Hearth's defaults into the image's lists (os-bases/*/build.sh, as root)
+  hearth-system terminal-open        open your terminal (Desktop Mode's Super+Enter, through open.sh)
   hearth-system users                JSON: the accounts on this device, which one is you, who's an administrator
   hearth-system pictures             JSON: pictures you could use for your account
   hearth-system picture-set PATH|""  use a picture (PNG or JPEG) for your account ("" removes it)
@@ -34,6 +40,7 @@ import json
 import os
 import pwd
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -612,6 +619,16 @@ def shortcuts():
 
 
 # ---------------------------------------------------------------------- default apps
+# One place for Hearth's default apps, used three ways:
+#   - when the image is built (defaults-system): every Hearth app's MimeType becomes the system default for those
+#     types, in Desktop Mode's and Game Mode's list (/etc/xdg/nimbus-mimeapps.list: XDG_CURRENT_DESKTOP=Nimbus) and
+#     in every desktop's (/usr/share/applications/mimeapps.list, for the apps that aren't only for Hearth's desktop).
+#     When two Hearth apps open a type, HEARTH_RANK says which one is the default.
+#   - Settings › Default apps in Desktop Mode (SetDefaults.qml) and Game Mode (hearth-core's defaults.* calls):
+#     defaults, default-set and default-reset. Your choices go in ~/.config/mimeapps.list, which comes before the
+#     system's lists; "Reset to Hearth's defaults" takes them out again, so the system's (Hearth's) apply.
+#   - each sign-in (defaults-tidy, from nimbus-session): your own lists keep your choices, but a Hearth app an older
+#     Hearth wrote there that isn't installed any more is taken out, so the type falls back to Hearth's default.
 def load_files_helper():
     """hearth-files (next to this file): its .desktop and mimeapps.list readers are reused here."""
     loader = importlib.machinery.SourceFileLoader('hearth_files', os.path.join(HERE, 'hearth-files'))
@@ -621,133 +638,539 @@ def load_files_helper():
     return m
 
 
-def load_browser_mimes():
-    try:
-        loader = importlib.machinery.SourceFileLoader('hearth_browser', os.path.join(HERE, 'hearth-browser'))
-        spec = importlib.util.spec_from_loader('hearth_browser', loader)
-        m = importlib.util.module_from_spec(spec)
-        loader.exec_module(m)
-        return list(m.MIME)
-    except Exception:
-        return ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']
+TEXT_TYPES = ['text/plain', 'text/x-log', 'text/markdown', 'text/x-markdown', 'text/x-python', 'text/x-python3',
+              'application/x-shellscript', 'text/x-shellscript', 'application/json', 'application/x-yaml', 'text/x-yaml',
+              'application/yaml', 'application/toml', 'text/x-toml', 'text/x-ini', 'text/x-csrc', 'text/x-chdr',
+              'text/x-c++src', 'text/x-c++hdr', 'text/x-csharp', 'text/x-rust', 'text/rust', 'text/javascript',
+              'application/javascript', 'text/x-typescript', 'application/typescript', 'text/css', 'text/xml',
+              'application/xml', 'text/x-makefile', 'text/x-cmake', 'text/x-diff', 'text/x-patch', 'text/x-java',
+              'text/x-go', 'text/x-lua', 'text/x-sql', 'application/sql', 'text/x-readme', 'text/x-changelog',
+              'application/x-zerosize', 'text/x-systemd-unit', 'application/x-ruby', 'text/x-perl', 'application/x-perl',
+              'application/x-powershell', 'text/x-dockerfile']
+IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/x-bmp', 'image/x-ms-bmp',
+               'image/tiff', 'image/svg+xml', 'image/avif', 'image/heic', 'image/heif', 'image/jxl', 'image/x-icon',
+               'image/vnd.microsoft.icon', 'image/apng']
+VIDEO_TYPES = ['video/mp4', 'video/x-m4v', 'video/x-matroska', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+               'video/avi', 'video/x-ms-wmv', 'video/x-flv', 'video/mpeg', 'video/mp2t', 'video/3gpp', 'video/3gpp2',
+               'video/ogg', 'video/x-ogm+ogg', 'video/vnd.avi', 'video/dv', 'video/x-mpeg2']
+AUDIO_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/x-mp3', 'audio/flac', 'audio/x-flac', 'audio/ogg', 'audio/x-vorbis+ogg',
+               'audio/vorbis', 'audio/opus', 'audio/x-opus+ogg', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac',
+               'audio/x-aac', 'audio/wav', 'audio/x-wav', 'audio/vnd.wave', 'audio/x-ms-wma', 'audio/x-aiff', 'audio/aiff',
+               'audio/x-ape', 'audio/x-wavpack', 'audio/x-matroska', 'audio/webm', 'audio/x-mpegurl', 'audio/mpegurl',
+               'application/vnd.apple.mpegurl', 'audio/x-scpls', 'application/x-ogg']
+EBOOK_TYPES = ['application/pdf', 'application/x-pdf', 'application/epub+zip', 'application/vnd.comicbook+zip',
+               'application/x-cbz', 'application/vnd.comicbook-rar', 'application/x-cbr']
+DOCUMENT_TYPES = ['application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  'application/vnd.oasis.opendocument.text', 'application/rtf', 'text/rtf', 'application/msword']
+SHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+               'application/vnd.ms-excel.sheet.macroEnabled.12', 'application/vnd.ms-excel',
+               'application/vnd.oasis.opendocument.spreadsheet', 'text/csv', 'text/tab-separated-values']
+SLIDE_TYPES = ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/x-hearth-slides',
+               'application/vnd.ms-powerpoint', 'application/vnd.oasis.opendocument.presentation']
+ARCHIVE_TYPES = ['application/zip', 'application/x-tar', 'application/x-compressed-tar', 'application/x-xz-compressed-tar',
+                 'application/x-bzip2-compressed-tar', 'application/x-zstd-compressed-tar', 'application/gzip',
+                 'application/x-gzip', 'application/x-xz', 'application/x-bzip2', 'application/zstd',
+                 'application/x-7z-compressed', 'application/vnd.rar', 'application/x-rar']
+BROWSER_TYPES = ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']
 
-
-KINDS = [
-    {'kind': 'browser', 'label': 'Web browser', 'category': 'WebBrowser', 'mimes': None},
-    {'kind': 'files', 'label': 'File manager', 'category': 'FileManager', 'mimes': ['inode/directory']},
-    {'kind': 'text', 'label': 'Text editor', 'category': 'TextEditor', 'mimes': ['text/plain']},
-    {'kind': 'image', 'label': 'Image viewer', 'category': 'Viewer', 'mimes': ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml', 'image/avif', 'image/heic']},
-    {'kind': 'documents', 'label': 'Document viewer', 'category': 'Viewer', 'mimes': ['application/pdf', 'application/epub+zip', 'application/vnd.comicbook+zip']},
-    {'kind': 'video', 'label': 'Video player', 'category': 'Video', 'mimes': ['video/mp4', 'video/x-matroska', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/mpeg', 'video/ogg']},
-    {'kind': 'music', 'label': 'Music player', 'category': 'Audio', 'mimes': ['audio/mpeg', 'audio/flac', 'audio/ogg', 'audio/x-wav', 'audio/mp4', 'audio/x-vorbis+ogg', 'audio/opus']},
+# Settings › Default apps, in order. hearth: Hearth's own app for it (None: Hearth has none). primary: the type whose
+# default is "the" app for it. every: picking an app makes it the default for all the types (they're all the same
+# kind of thing: web pages, text, folders), not only those it lists. terminal: the apps are terminals
+# (Categories=TerminalEmulator), and the choice also goes in xdg-terminal-exec's list.
+CATEGORIES = [
+    {'kind': 'browser', 'label': 'Web browser', 'hearth': 'hearth-browser.desktop', 'primary': 'x-scheme-handler/https',
+     'mimes': BROWSER_TYPES, 'every': True},
+    {'kind': 'files', 'label': 'File manager', 'hearth': 'hearth-files.desktop', 'primary': 'inode/directory',
+     'mimes': ['inode/directory', 'x-directory/normal'], 'every': True},
+    {'kind': 'text', 'label': 'Text editor', 'hearth': 'hearth-text.desktop', 'primary': 'text/plain', 'mimes': TEXT_TYPES,
+     'every': True},
+    {'kind': 'image', 'label': 'Images', 'hearth': 'hearth-photos.desktop', 'primary': 'image/jpeg', 'mimes': IMAGE_TYPES},
+    {'kind': 'video', 'label': 'Video', 'hearth': 'hearth-player.desktop', 'primary': 'video/mp4', 'mimes': VIDEO_TYPES},
+    {'kind': 'music', 'label': 'Music', 'hearth': 'hearth-player.desktop', 'primary': 'audio/mpeg', 'mimes': AUDIO_TYPES},
+    {'kind': 'ebooks', 'label': 'PDF & e-books', 'hearth': 'hearth-documents.desktop', 'primary': 'application/pdf',
+     'mimes': EBOOK_TYPES},
+    {'kind': 'documents', 'label': 'Documents', 'hearth': 'hearth-write.desktop', 'primary': DOCUMENT_TYPES[0],
+     'mimes': DOCUMENT_TYPES},
+    {'kind': 'sheets', 'label': 'Spreadsheets', 'hearth': 'hearth-sheets.desktop', 'primary': SHEET_TYPES[0],
+     'mimes': SHEET_TYPES},
+    {'kind': 'slides', 'label': 'Presentations', 'hearth': 'hearth-slides.desktop', 'primary': SLIDE_TYPES[0],
+     'mimes': SLIDE_TYPES},
+    {'kind': 'terminal', 'label': 'Terminal', 'hearth': 'hearth-terminal.desktop', 'primary': 'x-scheme-handler/terminal',
+     'mimes': ['x-scheme-handler/terminal'], 'every': True, 'terminal': True},
+    {'kind': 'email', 'label': 'Email', 'hearth': None, 'primary': 'x-scheme-handler/mailto',
+     'mimes': ['x-scheme-handler/mailto', 'message/rfc822']},
+    {'kind': 'calendar', 'label': 'Calendar', 'hearth': 'hearth-calendar.desktop', 'primary': 'text/calendar',
+     'mimes': ['text/calendar', 'x-scheme-handler/webcal', 'x-scheme-handler/webcals']},
+    {'kind': 'contacts', 'label': 'Contacts', 'hearth': 'hearth-contacts.desktop', 'primary': 'text/vcard',
+     'mimes': ['text/vcard', 'text/x-vcard', 'text/directory']},
+    {'kind': 'maps', 'label': 'Maps', 'hearth': 'hearth-maps.desktop', 'primary': 'x-scheme-handler/geo',
+     'mimes': ['x-scheme-handler/geo']},
+    {'kind': 'archives', 'label': 'Archives', 'hearth': 'hearth-files.desktop', 'primary': 'application/zip',
+     'mimes': ARCHIVE_TYPES},
 ]
+# Which Hearth app is the system default when two of them open a type: the first here (then any other Hearth app,
+# by name). Photos before Paint for pictures, Text before Write for plain text and Markdown, Sheets before Text
+# for CSV, the browser for HTML.
+HEARTH_RANK = ['hearth-browser.desktop', 'hearth-files.desktop', 'hearth-photos.desktop', 'hearth-documents.desktop',
+               'hearth-player.desktop', 'hearth-sheets.desktop', 'hearth-slides.desktop', 'hearth-text.desktop',
+               'hearth-write.desktop', 'hearth-calendar.desktop', 'hearth-contacts.desktop', 'hearth-maps.desktop',
+               'hearth-fonts.desktop', 'hearth-terminal.desktop', 'hearth-install-package.desktop', 'hearth-paint.desktop']
+# Folders open in Hearth Files in every desktop's list too, though it's only shown in Hearth's (OnlyShowIn=Nimbus):
+# hearth-filemanager hands them to Dolphin and the others outside Hearth's session.
+EVERY_DESKTOP_TOO = ('inode/directory', 'x-directory/normal')
+DEFAULTS = '[Default Applications]'
+ADDED = '[Added Associations]'
+REMOVED = '[Removed Associations]'
+SYSTEM_LIST_NOTE = ("# Hearth's default apps, made from each Hearth app's MimeType when the image was built (hearth-system\n"
+                    "# defaults-system). Your own choices (Settings › Default apps) are in ~/.config/mimeapps.list, which comes first.")
 
 
-def kind_mimes(k):
-    return k['mimes'] if k['mimes'] is not None else load_browser_mimes()
+def config_dir():
+    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.environ.get('HOME') or HOME, '.config')
+
+
+def user_lists(hf):
+    """Your own mimeapps.list files, the ones that win over the system's: ~/.config/<desktop>-mimeapps.list and
+    ~/.config/mimeapps.list (and the old ~/.local/share/applications/mimeapps.list)."""
+    cfg = config_dir()
+    out = [os.path.join(cfg, d + '-mimeapps.list') for d in hf.desktops()] + [os.path.join(cfg, 'mimeapps.list')]
+    data = os.environ.get('XDG_DATA_HOME') or os.path.join(os.environ.get('HOME') or HOME, '.local', 'share')
+    return out + [os.path.join(data, 'applications', 'mimeapps.list')]
+
+
+# ---- reading and writing mimeapps.list: every line is kept as it was (comments, blank lines, other sections and
+# types), only the lines for the types being changed are.
+def ml_parse(text):
+    """[[section header or None, [lines]]]: everything, in order."""
+    secs = [[None, []]]
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('[') and s.endswith(']'):
+            secs.append([s, []])
+        else:
+            secs[-1][1].append(line)
+    return secs
+
+
+def ml_text(secs):
+    out = []
+    for head, lines in secs:
+        if head is None and not lines:
+            continue
+        if head is not None:
+            # A blank line before a section, unless a comment is right above it (it's about the section).
+            if out and out[-1].strip() and not out[-1].lstrip().startswith('#'):
+                out.append('')
+            out.append(head)
+        out += lines
+    while out and not out[-1].strip():
+        out.pop()
+    while out and not out[0].strip():
+        out.pop(0)
+    return '\n'.join(out) + '\n' if out else ''
+
+
+def ml_key(line):
+    s = line.strip()
+    if not s or s.startswith('#') or '=' not in s:
+        return None
+    return s.split('=', 1)[0].strip()
+
+
+def ml_ids(line):
+    return [x.strip() for x in line.split('=', 1)[1].split(';') if x.strip()]
+
+
+def ml_section(secs, head):
+    for s in secs:
+        if s[0] == head:
+            return s
+    # A new section goes before trailing blank lines' worth of nothing: at the end.
+    s = [head, []]
+    secs.append(s)
+    return s
+
+
+def ml_put(lines, key, value):
+    """Sets key=value in a section's lines: the first line for key is replaced, any others dropped; a new key goes
+    after the section's last entry."""
+    out, done = [], False
+    for line in lines:
+        if ml_key(line) == key:
+            if not done:
+                out.append(key + '=' + value)
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        i = len(out)
+        while i and not out[i - 1].strip():
+            i -= 1
+        out.insert(i, key + '=' + value)
+    return out
+
+
+def ml_read(text, mime, head=DEFAULTS):
+    ids = []
+    for h, lines in ml_parse(text):
+        if h == head:
+            for line in lines:
+                if ml_key(line) == mime:
+                    ids += ml_ids(line)
+    return ids
+
+
+def mimeapps_with(text, mimes, app_id):
+    """mimeapps.list text with app_id as the default for each mime (and first in its added associations, and no
+    longer a removed one)."""
+    secs = ml_parse(text)
+    d = ml_section(secs, DEFAULTS)
+    for m in mimes:
+        d[1] = ml_put(d[1], m, app_id + ';')
+    a = ml_section(secs, ADDED)
+    for m in mimes:
+        have = []
+        for line in a[1]:
+            if ml_key(line) == m:
+                have += [x for x in ml_ids(line) if x != app_id and x not in have]
+        a[1] = ml_put(a[1], m, ';'.join([app_id] + have) + ';')
+    for s in secs:
+        if s[0] != REMOVED:
+            continue
+        out = []
+        for line in s[1]:
+            if ml_key(line) in mimes:
+                ids = [x for x in ml_ids(line) if x != app_id]
+                if ids:
+                    out.append(ml_key(line) + '=' + ';'.join(ids) + ';')
+                continue
+            out.append(line)
+        s[1] = out
+    return ml_text(secs)
+
+
+def mimeapps_without(text, mimes, heads=(DEFAULTS,)):
+    """mimeapps.list text with no lines for these mimes in these sections."""
+    secs = ml_parse(text)
+    for s in secs:
+        if s[0] in heads:
+            s[1] = [line for line in s[1] if ml_key(line) not in mimes]
+    return ml_text(secs)
+
+
+def mimeapps_tidy(text, installed, ours=('hearth-', 'nimbus-')):
+    """Takes Hearth's apps (ids starting with `ours`) that aren't installed out of the defaults and added
+    associations; a type left with no app loses its line. Other apps' lines are never touched."""
+    secs = ml_parse(text)
+    for s in secs:
+        if s[0] not in (DEFAULTS, ADDED):
+            continue
+        out = []
+        for line in s[1]:
+            k = ml_key(line)
+            if k is None:
+                out.append(line)
+                continue
+            ids = ml_ids(line)
+            keep = [x for x in ids if x in installed or not x.startswith(ours)]
+            if keep == ids:
+                out.append(line)
+            elif keep:
+                out.append(k + '=' + ';'.join(keep) + ';')
+        s[1] = out
+    return ml_text(secs)
+
+
+def mimeapps_merge(text, table, installed=None):
+    """A system list with table ({mime: id}) as its defaults: those types' lines replaced, everything else kept (a
+    Hearth app that isn't in the image taken out when installed is given), table's lines in order."""
+    if installed is not None:
+        text = mimeapps_tidy(text, installed)
+    secs = ml_parse(text)
+    d = ml_section(secs, DEFAULTS)
+    d[1] = [line for line in d[1] if ml_key(line) not in table]
+    while d[1] and not d[1][-1].strip():
+        d[1].pop()
+    d[1] += ['%s=%s;' % (m, table[m]) for m in table]
+    if not any(SYSTEM_LIST_NOTE.splitlines()[0] in line for line in secs[0][1]):
+        secs[0][1] = SYSTEM_LIST_NOTE.splitlines() + secs[0][1]
+    return ml_text(secs)
+
+
+# ---- Hearth's own defaults (the system lists)
+def mime_list(fields):
+    return [t.strip() for t in fields.get('MimeType', '').split(';') if t.strip() and '*' not in t]
+
+
+def hearth_rank(did):
+    return (HEARTH_RANK.index(did), '') if did in HEARTH_RANK else (len(HEARTH_RANK), did)
+
+
+def only_for_some_desktops(fields):
+    return bool(fields.get('OnlyShowIn', '').strip(';') or fields.get('NotShowIn', '').strip(';'))
+
+
+def category_order():
+    order = {}
+    for c in CATEGORIES:
+        for m in c['mimes']:
+            order.setdefault(m, len(order))
+    return order
+
+
+def system_defaults(apps):
+    """apps: {id: fields} of Hearth's own apps. -> (Desktop Mode's table, every desktop's table): {mime: id}, the
+    first app in HEARTH_RANK that opens a type; every desktop's leaves out apps only for some desktops
+    (OnlyShowIn=Nimbus: Hearth Files), but for folders (EVERY_DESKTOP_TOO)."""
+    order = category_order()
+
+    def table(ids, also=()):
+        out = {}
+        for did in sorted(ids, key=hearth_rank):
+            for m in mime_list(apps[did]):
+                out.setdefault(m, did)
+        for did in sorted(apps, key=hearth_rank):
+            for m in mime_list(apps[did]):
+                if m in also:
+                    out.setdefault(m, did)
+        return {m: out[m] for m in sorted(out, key=lambda m: (order.get(m, len(order)), m))}
+    return table(list(apps)), table([d for d in apps if not only_for_some_desktops(apps[d])], EVERY_DESKTOP_TOO)
+
+
+def hearth_apps(apps_dir, hf):
+    """Hearth's own apps in an applications folder: {id: fields}, the ones that can start."""
+    out = {}
+    try:
+        names = sorted(os.listdir(apps_dir))
+    except OSError:
+        return out
+    for name in names:
+        if not (name.startswith('hearth-') and name.endswith('.desktop')):
+            continue
+        fields = hf.parse_desktop(os.path.join(apps_dir, name))
+        if fields and hf.usable(fields):
+            out[name] = fields
+    return out
+
+
+def defaults_system(root='/', hf=None):
+    """Writes Hearth's defaults into the image's lists (run by os-bases/*/build.sh once every app is in)."""
+    hf = hf or load_files_helper()
+    apps_dir = os.path.join(root, 'usr/share/applications')
+    apps = hearth_apps(apps_dir, hf)
+    nimbus, generic = system_defaults(apps)
+    installed = set(os.listdir(apps_dir)) if os.path.isdir(apps_dir) else set()
+    nimbus_list = os.path.join(root, 'etc/xdg/nimbus-mimeapps.list')
+    generic_list = os.path.join(apps_dir, 'mimeapps.list')
+    write_atomic(nimbus_list, mimeapps_merge(read(nimbus_list), nimbus, installed))
+    write_atomic(generic_list, mimeapps_merge(read(generic_list), generic, installed))
+    per_app = {}
+    for m, did in nimbus.items():
+        per_app.setdefault(did, []).append(m)
+    return {'ok': True, 'apps': sorted(apps), 'types': len(nimbus), 'everyDesktop': len(generic),
+            'byApp': {d: len(v) for d, v in sorted(per_app.items())}, 'files': [nimbus_list, generic_list]}
+
+
+# ---- Settings › Default apps
+def entry_name(did, fields):
+    return fields.get('Name') or did[:-8]
+
+
+def app_option(did, fields, hearth):
+    return {'id': did, 'name': entry_name(did, fields), 'icon': fields.get('Icon', ''), 'hearth': did == hearth}
+
+
+def terminal_list_files(hf):
+    """xdg-terminal-exec's lists, yours first: (yours to write, all of them in order)."""
+    cfg = config_dir()
+    dirs = [cfg] + [d for d in (os.environ.get('XDG_CONFIG_DIRS') or '/etc/xdg').split(':') if d]
+    files = []
+    for d in dirs:
+        for desk in hf.desktops():
+            files.append(os.path.join(d, desk + '-xdg-terminals.list'))
+        files.append(os.path.join(d, 'xdg-terminals.list'))
+    mine = os.path.join(cfg, (hf.desktops() or ['nimbus'])[0] + '-xdg-terminals.list')
+    return mine, ([mine] if mine not in files else []) + files
+
+
+def terminal_ids(text):
+    return [l.strip() for l in text.splitlines() if l.strip().endswith('.desktop') and not l.strip().startswith('#')]
+
+
+def category_current(c, hf, entries):
+    """(the app it opens in now, whether that's your own choice)."""
+    ok = lambda d: d in entries and hf.usable(entries[d][1])
+    if c.get('terminal'):
+        mine, files = terminal_list_files(hf)
+        for f in files:
+            for did in terminal_ids(read(f)):
+                if ok(did):
+                    return did, f == mine
+    for f in user_lists(hf):
+        text = read(f)
+        if not text:
+            continue
+        for m in [c['primary']] + c['mimes']:
+            did = next((d for d in ml_read(text, m) if ok(d)), None)
+            if did:
+                return did, True
+    dflt, _, _ = hf.mimeapps(c['primary'])
+    return next((d for d in dflt if ok(d)), None), False
+
+
+def category_options(c, hf, entries, current):
+    opts = []
+    majors = {m.split('/')[0] + '/*' for m in c['mimes'] if m.split('/')[0] in ('image', 'video', 'audio')}
+    for did, (_, fields) in entries.items():
+        if not hf.usable(fields):
+            continue
+        cats = [x for x in fields.get('Categories', '').split(';') if x]
+        if c.get('terminal'):
+            hit = 'TerminalEmulator' in cats
+        else:
+            types = [t for t in fields.get('MimeType', '').split(';') if t]
+            hit = any(m in types for m in c['mimes']) or any(m in types for m in majors)
+        hidden = fields.get('NoDisplay', '').lower() == 'true'
+        if hit and (not hidden or did in (current, c['hearth'])):
+            opts.append(app_option(did, fields, c['hearth']))
+    if current and not any(o['id'] == current for o in opts):
+        opts.append(app_option(current, entries[current][1], c['hearth']))
+    # Hearth's own first, then by name.
+    opts.sort(key=lambda o: (not o['hearth'], o['name'].lower()))
+    return opts
 
 
 def defaults(hf=None):
     hf = hf or load_files_helper()
     entries = hf.desktop_entries()
     out = []
-    for k in KINDS:
-        mimes = kind_mimes(k)
-        primary = mimes[0] if k['kind'] != 'browser' else 'x-scheme-handler/https'
-        dflt, added, removed = hf.mimeapps(primary)
-        current = next((d for d in dflt if d in entries and hf.usable(entries[d][1])), None)
-        opts = []
-        for did, (_, fields) in entries.items():
-            if not hf.usable(fields) or fields.get('NoDisplay', '').lower() == 'true' or did in removed:
-                continue
-            types = [t for t in fields.get('MimeType', '').split(';') if t]
-            if primary in types or (k['kind'] != 'browser' and any(m in types for m in mimes)):
-                opts.append({'id': did, 'name': fields.get('Name') or did[:-8], 'icon': fields.get('Icon', '')})
-        if current and not any(o['id'] == current for o in opts):
-            f = entries[current][1]
-            opts.append({'id': current, 'name': f.get('Name') or current[:-8], 'icon': f.get('Icon', '')})
-        opts.sort(key=lambda o: o['name'].lower())
-        out.append({'kind': k['kind'], 'label': k['label'], 'current': current, 'options': opts})
+    for c in CATEGORIES:
+        current, mine = category_current(c, hf, entries)
+        opts = category_options(c, hf, entries, current)
+        hearth_ok = bool(c['hearth'] and c['hearth'] in entries and hf.usable(entries[c['hearth']][1]))
+        cur_name = entry_name(current, entries[current][1]) if current else ''
+        out.append({'kind': c['kind'], 'label': c['label'], 'current': current, 'currentName': cur_name,
+                    'yours': mine, 'hearth': c['hearth'] if hearth_ok else None,
+                    'hearthName': entry_name(c['hearth'], entries[c['hearth']][1]) if hearth_ok else '',
+                    'isHearth': bool(hearth_ok and current == c['hearth']), 'options': opts})
     return {'kinds': out}
 
 
-def mimeapps_with(text, mimes, app_id):
-    """mimeapps.list text with app_id as the default (and an added association) for each mime."""
-    sections, order, cur = {}, [], None
-    for line in text.splitlines():
-        s = line.strip()
-        if s.startswith('[') and s.endswith(']'):
-            cur = s
-            if cur not in sections:
-                sections[cur] = []
-                order.append(cur)
-            continue
-        if cur is None:
-            cur = ''
-            sections.setdefault('', [])
-            order.insert(0, '')
-        sections[cur].append(line)
-    for sec in ('[Default Applications]', '[Added Associations]'):
-        if sec not in sections:
-            sections[sec] = []
-            order.append(sec)
-    dflt = [l for l in sections['[Default Applications]'] if l.split('=', 1)[0].strip() not in mimes]
-    sections['[Default Applications]'] = dflt + ['%s=%s;' % (m, app_id) for m in mimes]
-    added = []
-    have = {}
-    for l in sections['[Added Associations]']:
-        k = l.split('=', 1)[0].strip()
-        if '=' in l and k in mimes:
-            have[k] = [x for x in l.split('=', 1)[1].strip().split(';') if x and x != app_id]
-        else:
-            added.append(l)
-    sections['[Added Associations]'] = added + ['%s=%s;' % (m, ';'.join([app_id] + have.get(m, []))) for m in mimes]
-    if '[Removed Associations]' in sections:
-        rem = []
-        for l in sections['[Removed Associations]']:
-            k = l.split('=', 1)[0].strip()
-            if '=' in l and k in mimes:
-                ids = [x for x in l.split('=', 1)[1].strip().split(';') if x and x != app_id]
-                if ids:
-                    rem.append('%s=%s;' % (k, ';'.join(ids)))
-            else:
-                rem.append(l)
-        sections['[Removed Associations]'] = rem
-    out = []
-    for sec in order:
-        body = [l for l in sections[sec] if l.strip()]
-        if sec:
-            if out:
-                out.append('')
-            out.append(sec)
-        out += body
-    return '\n'.join(out) + '\n'
+def category(kind):
+    c = next((c for c in CATEGORIES if c['kind'] == kind), None)
+    if not c:
+        raise Fail('unknown kind of app')
+    return c
+
+
+def types_for(c, fields):
+    """The types picking this app sets: all of them for a category where they're all alike, else those it says it
+    opens (an image viewer without HEIC keeps HEIC in the one that has it)."""
+    if c.get('every'):
+        return list(c['mimes'])
+    types = [t for t in fields.get('MimeType', '').split(';') if t]
+    majors = {t for t in types if t.endswith('/*')}
+    got = [m for m in c['mimes'] if m in types or m.split('/')[0] + '/*' in majors]
+    return got or [c['primary']]
+
+
+def strip_desktop_lists(hf, mimes):
+    """~/.config/<desktop>-mimeapps.list comes before ~/.config/mimeapps.list: these types are taken out of it."""
+    cfg = config_dir()
+    for desk in hf.desktops():
+        p = os.path.join(cfg, desk + '-mimeapps.list')
+        if os.path.exists(p):
+            text = read(p)
+            new = mimeapps_without(text, mimes)
+            if new != text:
+                write_atomic(p, new)
 
 
 def default_set(kind, app_id, hf=None):
-    k = next((k for k in KINDS if k['kind'] == kind), None)
-    if not k:
-        raise Fail('unknown kind of app')
+    c = category(kind)
     if not re.fullmatch(r'[A-Za-z0-9_.+-]{1,200}\.desktop', app_id or ''):
         raise Fail('not an app id')
     hf = hf or load_files_helper()
     entries = hf.desktop_entries()
     if app_id not in entries or not hf.usable(entries[app_id][1]):
         raise Fail('that app isn\'t installed')
-    mimes = kind_mimes(k)
-    path = os.path.join(CONFIG, 'mimeapps.list')
+    fields = entries[app_id][1]
+    mimes = types_for(c, fields)
+    path = os.path.join(config_dir(), 'mimeapps.list')
     write_atomic(path, mimeapps_with(read(path), mimes, app_id))
-    # A desktop-specific file (~/.config/nimbus-mimeapps.list) would win over mimeapps.list: take these out of it.
-    for desk in hf.desktops():
-        p = os.path.join(CONFIG, desk + '-mimeapps.list')
-        if os.path.exists(p):
-            text = read(p)
-            keep = [l for l in text.splitlines() if l.split('=', 1)[0].strip() not in mimes]
-            if len(keep) != len(text.splitlines()):
-                write_atomic(p, '\n'.join(keep) + '\n')
+    strip_desktop_lists(hf, mimes)
+    if c.get('terminal'):
+        mine, _ = terminal_list_files(hf)
+        rest = [d for d in terminal_ids(read(mine)) if d != app_id]
+        write_atomic(mine, '\n'.join([app_id] + rest) + '\n')
     if kind == 'browser' and shutil.which('xdg-settings'):
         run(['xdg-settings', 'set', 'default-web-browser', app_id], timeout=15)
-    return {'ok': True, 'kind': kind, 'current': app_id}
+    return {'ok': True, 'kind': kind, 'current': app_id, 'name': entry_name(app_id, fields), 'types': mimes}
+
+
+def default_reset(kind=None, hf=None):
+    """Takes your own choice out (one kind, or every one), so Hearth's default applies again."""
+    hf = hf or load_files_helper()
+    cats = [category(kind)] if kind else CATEGORIES
+    mimes = sorted({m for c in cats for m in c['mimes']})
+    changed = []
+    for p in user_lists(hf):
+        if os.path.exists(p):
+            text = read(p)
+            new = mimeapps_without(text, mimes)
+            if new != text:
+                write_atomic(p, new)
+                changed.append(p)
+    if any(c.get('terminal') for c in cats):
+        mine, _ = terminal_list_files(hf)
+        if os.path.exists(mine):
+            os.unlink(mine)
+            changed.append(mine)
+    return {'ok': True, 'kind': kind or 'all', 'changed': changed}
+
+
+def defaults_tidy(hf=None):
+    """Each sign-in: Hearth apps that aren't installed any more come out of your own lists."""
+    hf = hf or load_files_helper()
+    entries = hf.desktop_entries()
+    installed = {d for d, (_, f) in entries.items() if hf.usable(f)}
+    changed = []
+    for p in user_lists(hf):
+        if os.path.exists(p):
+            text = read(p)
+            new = mimeapps_tidy(text, installed)
+            if new != text:
+                write_atomic(p, new)
+                changed.append(p)
+    mine, _ = terminal_list_files(hf)
+    if os.path.exists(mine):
+        ids = terminal_ids(read(mine))
+        keep = [d for d in ids if d in installed or not d.startswith(('hearth-', 'nimbus-'))]
+        if keep != ids:
+            if keep:
+                write_atomic(mine, '\n'.join(keep) + '\n')
+            else:
+                os.unlink(mine)
+            changed.append(mine)
+    return {'ok': True, 'changed': changed}
+
+
+def terminal_open(hf=None):
+    """Opens your terminal (Settings › Default apps › Terminal; Mantel's Super+Enter through open.sh)."""
+    hf = hf or load_files_helper()
+    entries = hf.desktop_entries()
+    did, _ = category_current(category('terminal'), hf, entries)
+    if not did:
+        raise Fail('no terminal is installed')
+    full, fields = entries[did]
+    try:
+        words = shlex.split(fields['Exec'])
+    except ValueError:
+        words = fields['Exec'].split()
+    # Nothing to open: the field codes (%u, %F, %i...) go.
+    argv = [w.replace('%%', '%') for w in words if not re.fullmatch(r'%[a-zA-Z]', w)]
+    hf.spawn(argv, cwd=os.environ.get('HOME') or HOME)
+    return {'ok': True, 'app': did}
 
 
 # ---------------------------------------------------------------------- accounts
@@ -948,6 +1371,14 @@ def main(argv):
         out = defaults()
     elif c == 'default-set' and len(a) == 2:
         out = default_set(a[0], a[1])
+    elif c == 'default-reset' and len(a) <= 1:
+        out = default_reset(a[0] if a else None)
+    elif c == 'defaults-tidy' and not a:
+        out = defaults_tidy()
+    elif c == 'defaults-system' and len(a) <= 1:
+        out = defaults_system(a[0] if a else '/')
+    elif c == 'terminal-open' and not a:
+        out = terminal_open()
     elif c == 'users' and not a:
         out = users()
     elif c == 'pictures' and not a:
@@ -960,7 +1391,8 @@ def main(argv):
         out = printer_test(a[0])
     else:
         print('usage: hearth-system time | timezones | keyboard | keyboard-layouts | keyboard-set | pointer | pointer-set | labwc-config | '
-              'shortcuts | defaults | default-set KIND APP_ID | users | pictures | picture-set PATH | printers | '
+              'shortcuts | defaults | default-set KIND APP_ID | default-reset [KIND] | defaults-tidy | defaults-system [ROOT] | '
+              'terminal-open | users | pictures | picture-set PATH | printers | '
               'printer-test NAME')
         sys.exit(2)
     print(json.dumps(out), flush=True)
