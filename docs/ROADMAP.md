@@ -99,6 +99,20 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.5 (released)
+
+- [x] Hearth Link: pair your Hearth devices, copy games between them fast on your network or over the internet, and sync your Hearth data
+- [x] Hearth Friends on Matrix: friends, encrypted chats, "Playing X · Joinable", invite-to-play cards, join via Steam or a server address; in Game Mode, Quick Access and Desktop Mode's bar; Play together (Beta Experimental, same network)
+- [x] A Store in Game Mode with Steam, GOG, Epic and Xbox sections; store sign-ins shared with the library
+- [x] One new on-screen keyboard everywhere (Ember Wheel, split sticks, word suggestions, layouts, emoji, themes)
+- [x] Hearth Mods: Nexus Mods downloads (Mod Manager Download links), Wabbajack modlists, links/copies/overlay installs
+- [x] Bazaar is the app store on both editions; Hearth's old app store is archived
+- [x] Steam owned games come from this device's Steam files when Steam's site needs a signed-in visitor; file pickers no longer freeze Hearth
+- [x] Missing store sign-ins come back from the device, with private sign-in backups
+- [x] Real sleep on the power button; the built-in controller no longer wakes handhelds; a Sleep section in Send logs
+- [x] Couch Co-op and Multi-seat: Bluetooth LE controllers (Xbox Wireless) can be claimed, co-op players' screens start, and a failed start says why
+- [x] hearthos.fun redesigned, with open-source game art in the screenshots
+
 ## 0.6.4 (released)
 
 - [x] Photos, Documents, Calculator, Player, Write, Sheets, Slides, Terminal and Beacon no longer close as they open on Nvidia PCs
