@@ -23,6 +23,12 @@ else. Hearth keeps each answer for a while: store pages for 30 minutes, searches
 with a note that it's from earlier. Hearth sends one request at a time to each store, with a pause between them, so
 the stores' rate limits aren't hit. Steam's game pages have a longer pause (1.5 s).
 
+Sometimes Epic's store asks for a browser check (Cloudflare) instead of answering. It's more likely from data
+centres than from home connections. Hearth doesn't try to get around the check. Epic's free games still show,
+because they come from a feed without the check, and the page offers Epic's own site in the store window instead.
+That window is a real browser, so the check passes there. Every section except Steam also has a button for the
+store's own site (GOG.com, Epic Games Store, Xbox.com), and a failed search offers the same search on that site.
+
 Games already in your library show **In your library** or **Installed**, and their page offers **Install** or
 **Play**. Install is the library's own install: Steam games install quietly through Steam, and GOG and Epic games
 install through Hearth. Xbox PC games show **Open Xodus Nexus**, or **Set up Xbox PC games** if Nexus isn't added
