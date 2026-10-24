@@ -55,6 +55,8 @@ pub mod profiles;
 pub mod remote;
 pub mod renderer;
 pub mod signin_handoff;
+// ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
+pub mod signins;
 pub mod space;
 pub mod steam;
 pub mod steam_ctl;
