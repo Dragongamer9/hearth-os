@@ -78,6 +78,9 @@ fn recorder_cli(args: &[&str]) -> Result<Value, String> {
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
+        // Before anything else this version does: store sign-ins that went missing are put back from where they
+        // still are, they're backed up (privately, on this device), and the log says per store whether it's signed in.
+        crate::signins::at_start(version);
         let store = Store::open(paths::data_dir().join("library.json"));
         let mut b = Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version);
         // Quick Resume games (and a game that was running) are still there after Hearth restarts.
@@ -119,6 +122,16 @@ impl Bridge {
                     if let Some(t) = r["to"].as_str() { m["to"] = json!(t); }
                     out.push(m);
                 }
+            }
+            // A picker closed (picker.rs): the call that opened it is finished and answered now.
+            "picked" => {
+                let r = &v["reply"];
+                let mut m = match self.picked(v["method"].as_str().unwrap_or(""), &v["args"], v["path"].as_str().map(str::to_string)) {
+                    Ok(value) => json!({"type": "result", "id": r["id"], "ok": true, "value": value}),
+                    Err(error) => json!({"type": "result", "id": r["id"], "ok": false, "error": error}),
+                };
+                if let Some(t) = r["to"].as_str() { m["to"] = json!(t); }
+                out.push(m);
             }
             "installDone" => {
                 let d = self.library.install_done(v["id"].as_str().unwrap_or(""), v["error"].as_str(), v["gogDir"].as_str());
@@ -213,11 +226,7 @@ impl Bridge {
         let (sname, savatar, sinstalled) = self.steam_account();
         let steam_owned = self.library.games.values().filter(|g| g.source == "steam").count();
         let so = crate::steam_owned::load_current(&self.library.home).unwrap_or(json!({}));
-        let (s_hint, s_error) = match so["problem"].as_str() {
-            Some("private") => (Some(crate::steam_owned::PRIVATE_NOTE.to_string()), None),
-            Some(p) => (None, Some(format!("Couldn't get your Steam games list: {p}"))),
-            None => (None, None),
-        };
+        let (s_hint, s_error) = crate::steam_owned::card_text(so["problem"].as_str(), so["source"].as_str(), so["games"].as_array().map(|a| a.len()).unwrap_or(0));
         // Why Hearth can't read the Steam games (shown on the card, with Refresh): Steam games turned off, no Steam
         // folder, or no signed-in account in it (steam::find_account says which file and how many accounts).
         let s_on = self.library.store.source_on("steam");
@@ -266,6 +275,8 @@ impl Bridge {
             match crate::stores::finish_sign_in(s, &code) {
                 Ok(()) => {
                     log(&format!("accounts: signed in to {s}"));
+                    crate::signins::clear_signed_out(s);
+                    crate::signins::backup(&format!("signed in to {s}"));
                     crate::stores::expiry::clear(s);
                     crate::stores::notify(Bridge::event("accounts.changed", json!({})));
                     reply(Ok(true));
@@ -396,6 +407,7 @@ impl Bridge {
                 let dirs: Vec<std::path::PathBuf> = d.iter().filter_map(|x| x["path"].as_str().map(Into::into)).collect();
                 if !crate::backup::list(&dirs).iter().any(|b| b["file"] == file.as_str()) { return Err("That backup isn't on a drive Hearth can see anymore".into()); }
                 if self.library.running_id().is_some() { return Err("Close the game first".into()); }
+                crate::signins::backup("before restoring a Hearth backup");
                 let meta = crate::backup::restore(std::path::Path::new(&file), &paths::data_dir(), &paths::config_dir(), &chrono::Local::now().format("%Y-%m-%d-%H-%M-%S").to_string())?;
                 (self.emit)(json!({"type": "restart"}));   // Hearth reads it all at start
                 Ok(meta)
@@ -415,6 +427,8 @@ impl Bridge {
             // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
             "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
             // ---- end of Hearth's gaming apps
+            // ---- Bazaar, Hearth OS's app store (bazaar.rs): Game Mode's menu › Apps
+            "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -534,10 +548,10 @@ impl Bridge {
             "store.web" => crate::storefront::open_web(&req("store")?, &req("url")?, a["title"].as_str().unwrap_or("")).map(|_| json!({"ok": true})),
             "store.webClose" => { crate::storefront::close_web(); Ok(json!({"ok": true})) }
             // ---- end of Game Mode › Store
+            // Pickers open off the bridge and answer later (picker.rs; the choice comes back to `picked`).
             "accounts.pickFolder" => {
                 let cur = self.library.install_root().to_string_lossy().to_string();
-                if let Some(dir) = (self.pick_folder)("Where should Hearth install games?", &cur) { io(self.library.store.update(|d| { d.insert("installRoot".into(), json!(dir)); }))?; }
-                Ok(json!({"installRoot": self.library.install_root().to_string_lossy()}))
+                self.pick_later(method, a, crate::picker::Ask::Folder("Where should Hearth install games?".into(), cur))
             }
             // Settings › Import games, and removing the old system afterwards
             "import.status" => Ok(self.importer.status(self.pending_epic().len())),
@@ -695,10 +709,7 @@ impl Bridge {
             }
             "profile.pickImage" => {
                 let kind = req("kind")?;
-                match (self.pick_file)(if kind == "avatar" { "Choose a profile picture" } else { "Choose a background picture" }) {
-                    Some(f) => crate::profile::set_image(&mut self.library.store, &kind, &f),
-                    None => Ok(Value::Null),
-                }
+                self.pick_later(method, a, crate::picker::Ask::File(if kind == "avatar" { "Choose a profile picture" } else { "Choose a background picture" }.into()))
             }
             "desktop.wallpaper" => Ok(json!({"wallpaper": crate::admin::desktop_wallpaper()})),
             "desktop.setWallpaper" => {
@@ -716,6 +727,7 @@ impl Bridge {
                 if self.profiles.restricted(&self.profiles.active()) && id != self.profiles.active() { self.need_pin()?; }
                 log(&format!("profiles: switching to {}", to["name"]));
                 (self.emit)(Bridge::event("profiles.switching", json!({"name": to["name"]})));
+                crate::signins::backup("before switching profiles");
                 crate::profiles::stop_steam();
                 // The Steam account this profile used stays its own (Steam writes its files as it closes, so read after).
                 let leaving = self.profiles.active();
@@ -870,15 +882,10 @@ impl Bridge {
                 Ok(json!({"paused": self.library.pause()?}))
             }
             "game.unpause" => { self.library.resume(); Ok(json!({"paused": false})) }
-            "library.addManual" => {
-                let file = match a["path"].as_str() { Some(p) if !p.is_empty() => p.to_string(), _ => match (self.pick_file)("Choose a game: a program, AppImage, .desktop file or Windows .exe") { Some(f) => f, None => return Ok(Value::Null) } };
-                if !std::path::Path::new(&file).exists() { return Err(format!("File not found: {file}")); }
-                let id = format!("manual:{:012x}", crate::library::now_ms() * 1000 + (std::process::id() as u64 % 1000));
-                let m = json!({"id": id, "title": crate::manual::title_for(&file), "path": file, "added": crate::library::now_ms()});
-                io(self.library.store.update(|d| { crate::store::array_in(d, "manual").push(m); }))?;
-                self.library.scan();
-                self.library.games.get(&id).map(|g| self.library.dto(g)).ok_or("Couldn't add it".into())
-            }
+            "library.addManual" => match a["path"].as_str() {
+                Some(p) if !p.is_empty() => self.add_manual(p),
+                _ => self.pick_later(method, a, crate::picker::Ask::File("Choose a game: a program, AppImage, .desktop file or Windows .exe".into())),
+            },
             "library.remove" => {
                 let id = req("id")?;
                 io(self.library.store.update(|d| {
@@ -1194,6 +1201,39 @@ impl Bridge {
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
+    }
+    /// Opens a picker for the request in hand without holding the bridge (picker.rs) and answers it when the picker
+    /// closes: the choice comes back as {type:'internal', what:'picked'} and `picked` finishes the call.
+    fn pick_later(&self, method: &str, a: &Value, ask: crate::picker::Ask) -> Result<Value, String> {
+        let (m, args, id, to) = (method.to_string(), a.clone(), self.cur_id.clone(), self.cur_label.clone());
+        crate::picker::open(&self.pick_file, &self.pick_folder, ask, method, move |path| crate::stores::notify(crate::picker::picked_message(&m, &args, path, &id, &to)))?;
+        Ok(json!(DEFERRED))
+    }
+    /// The rest of a call that opened a picker, with what was picked (None: closed without a choice).
+    pub fn picked(&mut self, method: &str, a: &Value, path: Option<String>) -> Result<Value, String> {
+        match method {
+            "accounts.pickFolder" => {
+                if let Some(dir) = path.filter(|d| !d.is_empty()) {
+                    self.library.store.update(|d| { d.insert("installRoot".into(), json!(dir)); }).map_err(|e| e.to_string())?;
+                }
+                Ok(json!({"installRoot": self.library.install_root().to_string_lossy()}))
+            }
+            "profile.pickImage" => match path {
+                Some(f) => crate::profile::set_image(&mut self.library.store, a["kind"].as_str().unwrap_or("avatar"), &f),
+                None => Ok(Value::Null),
+            },
+            "library.addManual" => match path { Some(f) => self.add_manual(&f), None => Ok(Value::Null) },
+            _ => Err(format!("Nothing waits for a picker in {method}")),
+        }
+    }
+    /// Library › Add a game: a program, AppImage, .desktop file or Windows .exe, as a library entry.
+    fn add_manual(&mut self, file: &str) -> Result<Value, String> {
+        if !std::path::Path::new(file).exists() { return Err(format!("File not found: {file}")); }
+        let id = format!("manual:{:012x}", crate::library::now_ms() * 1000 + (std::process::id() as u64 % 1000));
+        let m = json!({"id": id, "title": crate::manual::title_for(file), "path": file, "added": crate::library::now_ms()});
+        self.library.store.update(|d| { crate::store::array_in(d, "manual").push(m); }).map_err(|e| e.to_string())?;
+        self.library.scan();
+        self.library.games.get(&id).map(|g| self.library.dto(g)).ok_or("Couldn't add it".into())
     }
     /// Runs `f` on its own thread and answers the request in hand with its result then (to the window that asked).
     fn later(&self, f: impl FnOnce() -> Result<Value, String> + Send + 'static) -> Result<Value, String> {
@@ -1669,6 +1709,7 @@ fn features() -> Vec<&'static str> {
     if crate::matrix_friends::available() { f.push("mfriends"); }
     // ---- end of Hearth's gaming apps
     if crate::link::available() { f.push("hearthLink"); }
+    if crate::bazaar::available() { f.push("bazaar"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
@@ -1724,6 +1765,63 @@ mod tests {
         let r = b.handle(&json!({"type":"call","id":9,"method":"library.setFav","args":{"id":"steam:1","on":true}})).unwrap();
         assert_eq!(r["ok"], true);
         assert!(b.library.store.list_has("favorites", "steam:1"));
+    }
+    /// The page's other calls are answered while a picker waits for the person (it held the bridge before 0.6.5,
+    /// so Hearth froze and the fail-safe stopped it: "stuck in accounts.pickFolder").
+    #[test]
+    fn keeps_answering_while_a_picker_is_open() {
+        use std::sync::{mpsc, Arc, Mutex};
+        let _turn = crate::picker::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        static SEEN: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+        crate::stores::set_notify(Arc::new(|v| SEEN.lock().unwrap_or_else(|e| e.into_inner()).push(v)));
+        let dir = tempfile::tempdir().unwrap();
+        let bridge = Arc::new(Mutex::new(Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23")));
+        let (choose, chosen) = mpsc::channel::<Option<String>>();
+        let chosen = Mutex::new(chosen);
+        let (asked_tx, asked) = mpsc::channel::<(String, String)>();
+        let asked_tx = Mutex::new(asked_tx);
+        bridge.lock().unwrap().pick_folder = Arc::new(move |title: &str, start: &str| {
+            asked_tx.lock().unwrap().send((title.to_string(), start.to_string())).unwrap();
+            chosen.lock().unwrap().recv().unwrap()
+        });
+        let t = std::time::Instant::now();
+        let r = bridge.lock().unwrap().handle(&json!({"type":"call","id":101,"method":"accounts.pickFolder","args":{}}));
+        assert!(r.is_none(), "answered later, not now: {r:?}");
+        let (title, _) = asked.recv_timeout(std::time::Duration::from_secs(5)).expect("the picker opened");
+        assert_eq!(title, "Where should Hearth install games?");
+        assert!(t.elapsed() < std::time::Duration::from_secs(3), "the call waited for the picker");
+        assert!(crate::picker::is_open());
+        // Other calls, from another thread as the windows send them, while the picker is open.
+        let b2 = bridge.clone();
+        let other = std::thread::spawn(move || b2.lock().unwrap().handle(&json!({"type":"call","id":102,"method":"library.get","args":{}})).unwrap());
+        let r = other.join().unwrap();
+        assert_eq!((r["id"].as_u64(), r["ok"].as_bool()), (Some(102), Some(true)), "{r}");
+        assert!(crate::watchdog::busy().map(|(m, _)| m != "accounts.pickFolder").unwrap_or(true), "the fail-safe doesn't see the picker");
+        // A second picker isn't opened over the first.
+        let r = bridge.lock().unwrap().handle(&json!({"type":"call","id":103,"method":"profile.pickImage","args":{"kind":"avatar"}})).unwrap();
+        assert_eq!(r["error"], crate::picker::ALREADY_OPEN);
+        // The choice comes back as an internal message, and the bridge answers call 101 with it.
+        let games = dir.path().join("Games2");
+        choose.send(Some(games.to_string_lossy().to_string())).unwrap();
+        let mut picked = None;
+        for _ in 0..250 {
+            picked = SEEN.lock().unwrap().iter().find(|m| m["what"] == "picked" && m["reply"]["id"] == 101).cloned();
+            if picked.is_some() { break; }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let picked = picked.expect("the choice came back");
+        assert_eq!(picked["reply"]["to"], "main");
+        assert!(SEEN.lock().unwrap().iter().any(|m| m["name"] == "picker" && m["data"]["open"] == false));
+        let out = bridge.lock().unwrap().internal(&picked);
+        let res = out.iter().find(|m| m["type"] == "result").expect("an answer");
+        assert_eq!((res["id"].as_u64(), res["ok"].as_bool(), res["to"].as_str()), (Some(101), Some(true), Some("main")), "{res}");
+        assert_eq!(res["value"]["installRoot"], games.to_string_lossy().as_ref());
+        // Closed without a choice: the folder stays, the call is still answered.
+        let mut b = bridge.lock().unwrap();
+        let same = b.picked("accounts.pickFolder", &json!({}), None).unwrap();
+        assert_eq!(same["installRoot"], games.to_string_lossy().as_ref());
+        assert_eq!(b.picked("library.addManual", &json!({}), None).unwrap(), Value::Null);
+        assert!(b.picked("library.addManual", &json!({}), Some("/nonexistent/game.exe".into())).unwrap_err().contains("File not found"));
     }
     #[test]
     fn claude_actions_are_a_fixed_list() {

@@ -1,5 +1,5 @@
 #!/bin/sh
-# REQUIRED image check (base-peppermint.yml, base-anatase.yml; also run by hosts/linux/test/test_hearth_apps_store.py):
+# ARCHIVED (docs/ARCHIVED.md): no longer run by the image checks. Was a REQUIRED image check (base-peppermint.yml, base-anatase.yml; also run by test_hearth_apps_store.py):
 # Hearth's app store (Apps, hearth-apps) lists apps with the image's own Python, offline. A small Flathub catalog
 # (appstream.xml.gz, where flatpak keeps it) goes in a throwaway home folder; then what Apps asks for when it opens
 # (status, browse featured) and when you look around (browse a category, search, an app's page) must return apps.
