@@ -261,7 +261,9 @@ try:
     ok('typing indicator')
 
     # ---- a picture (a screenshot)
-    shot = os.path.join(alice.dir, 'shot.png')
+    # In ~/Pictures: Hearth's core sends pictures only from there or the screenshots folder.
+    os.makedirs(os.path.join(alice.home, 'Pictures'), exist_ok=True)
+    shot = os.path.join(alice.home, 'Pictures', 'shot.png')
     open(shot, 'wb').write(png())
     alice.call('sendImage', {'roomId': room, 'path': shot})
     im = wait('bob gets the picture', lambda: [x for x in bob.call('messages', {'roomId': room})['messages'] if x.get('kind') == 'image'])
@@ -269,6 +271,23 @@ try:
     if not data.startswith('data:image/png;base64,') or base64.b64decode(data.split(',', 1)[1])[:8] != b'\x89PNG\r\n\x1a\n':
         fail('the picture did not come through: %r' % data[:80])
     ok('screenshot sent encrypted and opened on the other side')
+    if A.cores:
+        other = os.path.join(alice.dir, 'elsewhere.png')
+        open(other, 'wb').write(png())
+        refused = None
+        try:
+            alice.call('sendImage', {'roomId': room, 'path': other})
+        except RuntimeError as e:
+            refused = str(e)
+        if not refused:
+            fail('the core sent a picture from outside Pictures and the screenshots folder')
+        ok('the core refuses pictures from other folders (%s)' % refused)
+        # The page's Steam links: only Steam's own windows.
+        try:
+            alice.call('openSteam', {'url': 'steam://openurl/https://example.org'})
+            fail('an unsafe steam:// link was accepted')
+        except RuntimeError:
+            ok('unsafe steam:// links are refused')
 
     # ---- presence and Playing <game>
     alice.call('playing', {'game': {'title': 'Portal 2', 'store': 'steam', 'id': 'steam:620', 'appId': '620'}, 'joinable': True})
