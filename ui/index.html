@@ -1895,7 +1895,7 @@ function mfPickInvite(){
   if(!gs.length) return toast('No games in your library to invite to yet.');
   openSheet({title:'Invite to play', sub:'Your friend gets a card that opens the same game in their library', items:gs.map((g,i)=>({label:(i===0&&S.running===g.id?'Now playing: ':'')+g.title, icon:'play', run:()=>openSheet({title:g.title, items:[
     {label:'Send the invite', icon:'play', run:()=>mfSendInvite(g)},
-    {label:'Send it with my server address…', icon:'globe', run:()=>openPrompt({title:'Server to join (address:port)', value:''}).then(a=>{ if(a) mfSendInvite(g, a.trim()); })}]})}))});
+    {label:'Send it with my server address…', icon:'globe', run:()=>openPrompt({title:'Server to join (address:port)', value:'', mode:'url', placeholder:'192.168.1.20:27015', enterLabel:'Send'}).then(a=>{ if(a) mfSendInvite(g, a.trim()); })}]})}))});
 }
 function mfSendInvite(g, server){ call('mfriends.invite',{roomId:MF.room, game:mfGameRef(g, server)}).then(()=>toast(`Invite to ${g.title} sent`)).catch(e=>toast(e.message)); }
 function mfPtSend(room, play){ return call('mfriends.play',{roomId:room, play}); }
@@ -1916,27 +1916,27 @@ async function mfAct(a, d){
   switch(a){
     case 'mfTop': MF.top=d.v; if(d.v==='stores') loadFriends(); else mfLoad(); return render('mft-'+d.v,true);
     case 'mfTab': MF.tab=d.v; if(d.v==='settings') MF.ptInfo=null; return render('mfb-'+d.v,true);
-    case 'mfServer': return openPrompt({title:'Matrix server (like matrix.org, or your own)', value:MF.hs||(MF.st&&MF.st.settings&&MF.st.settings.homeserver)||'matrix.org'}).then(v=>{ if(v){ MF.hs=v.trim(); render('mf-hs',true); } });
+    case 'mfServer': return openPrompt({title:'Matrix server (like matrix.org, or your own)', mode:'url', placeholder:'matrix.org', enterLabel:'Done', value:MF.hs||(MF.st&&MF.st.settings&&MF.st.settings.homeserver)||'matrix.org'}).then(v=>{ if(v){ MF.hs=v.trim(); render('mf-hs',true); } });
     case 'mfSignIn': {
       const hs = MF.hs || (MF.st&&MF.st.settings&&MF.st.settings.homeserver) || 'matrix.org';
-      const user = await openPrompt({title:`Your Matrix user name on ${hs} (or @name:server)`}); if(!user) return;
-      const password = await openPrompt({title:'Password', secret:true}); if(!password) return;
+      const user = await openPrompt({title:`Your Matrix user name on ${hs} (or @name:server)`, mode:'email', placeholder:'name or @name:server', enterLabel:'Next'}); if(!user) return;
+      const password = await openPrompt({title:'Password', secret:true, mode:'password', enterLabel:'Sign in'}); if(!password) return;
       toast('Signing in…');
       return call('mfriends.login',{homeserver:hs, user:user.trim(), password},100000).then(st=>{ MF.st=st; toast(`Signed in as ${st.userId}`); mfLists(); mfRedraw(); }).catch(e=>toast(e.message));
     }
     case 'mfCreate': {
       const hs = MF.hs || (MF.st&&MF.st.settings&&MF.st.settings.homeserver) || 'matrix.org';
-      const user = await openPrompt({title:`Pick a user name on ${hs}`}); if(!user) return;
-      const password = await openPrompt({title:'Pick a password (8 characters or more)', secret:true}); if(!password) return;
+      const user = await openPrompt({title:`Pick a user name on ${hs}`, mode:'email', placeholder:'lower-case letters and numbers', enterLabel:'Next'}); if(!user) return;
+      const password = await openPrompt({title:'Pick a password (8 characters or more)', secret:true, mode:'password', enterLabel:'Create'}); if(!password) return;
       const tryIt = token => call('mfriends.register',{homeserver:hs, user:user.trim(), password, token},100000).then(r=>{
-        if(r.needsToken) return openPrompt({title:'Sign-up token from the server\'s owner', secret:true}).then(t=>{ if(t) return tryIt(t.trim()); });
+        if(r.needsToken) return openPrompt({title:'Sign-up token from the server\'s owner', secret:true, mode:'password', enterLabel:'Create'}).then(t=>{ if(t) return tryIt(t.trim()); });
         if(r.needsWeb) return openSheet({title:'Make the account on the web', sub:`${r.why} Then come back and press Sign in. ${r.url}`, items:[{label:'OK', icon:'check', run:()=>{}}]});
         MF.st=r; toast(`Welcome, ${r.userId}`); mfLists(); mfRedraw();
       });
       toast('Creating your account…');
       return tryIt(null).catch(e=>toast(e.message));
     }
-    case 'mfAdd': return openPrompt({title:'Friend\'s Matrix address (like @sam:matrix.org) or link'}).then(v=>{ if(!v) return; call('mfriends.add',{userId:v.trim()}).then(r=>{ toast(r.already?'You already have a chat with them':'Friend request sent'); mfLists(); }).catch(e=>toast(e.message)); });
+    case 'mfAdd': return openPrompt({title:'Friend\'s Matrix address (like @sam:matrix.org) or link', mode:'email', placeholder:'@name:matrix.org', enterLabel:'Add'}).then(v=>{ if(!v) return; call('mfriends.add',{userId:v.trim()}).then(r=>{ toast(r.already?'You already have a chat with them':'Friend request sent'); mfLists(); }).catch(e=>toast(e.message)); });
     case 'mfCode': return call('mfriends.link').then(l=>{ MF.code=l; openSheet({title:'Add me on Matrix', sub:`${l.userId} · ${l.matrixTo}`, items:[{label:'Done', icon:'check', run:()=>{}}], html:l.qr}); }).catch(e=>toast(e.message));
     case 'mfFriend': return mfFriendSheet((MF.friends||[])[+d.i]);
     case 'mfOpen': return mfOpenChat(d.room);
@@ -1948,7 +1948,7 @@ async function mfAct(a, d){
     case 'mfMore': return mfLoadMsgs(MF.room, true);
     case 'mfType': {
       const c=mfChat(MF.room); call('mfriends.typing',{roomId:MF.room, on:true}).catch(()=>{});
-      const t = await openPrompt({title:`Message ${c?c.name:''}`});
+      const t = await openPrompt({title:`Message ${c?c.name:''}`, mode:'text', placeholder:'Write a message', enterLabel:'Send'});
       call('mfriends.typing',{roomId:MF.room, on:false}).catch(()=>{});
       return mfSend(t);
     }
@@ -1988,9 +1988,9 @@ async function mfAct(a, d){
     case 'mfDecline': return call('mfriends.decline',{roomId:d.room}).then(()=>{ toast('Declined'); mfLists(); }).catch(e=>toast(e.message));
     case 'mfBlockReq': return call('mfriends.block',{userId:d.user, on:true}).then(()=>{ toast('Blocked'); mfLists(); }).catch(e=>toast(e.message));
     case 'mfGroup': {
-      const name = await openPrompt({title:'Group chat name'}); if(!name) return;
+      const name = await openPrompt({title:'Group chat name', mode:'text', enterLabel:'Next'}); if(!name) return;
       const fs=(MF.friends||[]).filter(f=>f.state==='friend');
-      const people = await openPrompt({title:'Who? Matrix addresses, separated by commas', value:fs.slice(0,3).map(f=>f.userId).join(', ')}); if(people==null) return;
+      const people = await openPrompt({title:'Who? Matrix addresses, separated by commas', mode:'email', enterLabel:'Make group', value:fs.slice(0,3).map(f=>f.userId).join(', ')}); if(people==null) return;
       return call('mfriends.createGroup',{name, users:people.split(',').map(s=>s.trim()).filter(Boolean)}).then(r=>{ toast('Group made'); mfLists().then(()=>mfOpenChat(r.roomId)); }).catch(e=>toast(e.message));
     }
     case 'mfSet': {
@@ -2000,7 +2000,7 @@ async function mfAct(a, d){
     }
     case 'mfPresence': return openSheet({title:'Status', items:[['online','Online'],['unavailable','Away'],['offline','Appear offline']].map(([k,l])=>({label:l, icon:'user', run:()=>call('mfriends.settings',{presence:k}).then(st=>{ MF.st=st; render('mfs-presence',true); }).catch(e=>toast(e.message))}))});
     case 'mfBlocked': return call('mfriends.blocked').then(l=>openSheet({title:'Blocked people', sub:l.length?'Pick someone to unblock them':'Nobody is blocked', items:l.map(u=>({label:u, icon:'x', run:()=>call('mfriends.block',{userId:u, on:false}).then(()=>toast('Unblocked')).catch(e=>toast(e.message))}))})).catch(e=>toast(e.message));
-    case 'mfName': return openPrompt({title:'Display name'}).then(n=>{ if(n) call('mfriends.setName',{name:n}).then(()=>toast('Name changed')).catch(e=>toast(e.message)); });
+    case 'mfName': return openPrompt({title:'Display name', mode:'text', enterLabel:'Save'}).then(n=>{ if(n) call('mfriends.setName',{name:n}).then(()=>toast('Name changed')).catch(e=>toast(e.message)); });
     case 'mfSignOut': return openSheet({title:'Sign out of Hearth Friends?', sub:'This device\'s encryption keys are removed. Your chats stay on your other Matrix devices.', items:[{label:'Sign out', icon:'power', run:()=>call('mfriends.logout',{},30000).then(st=>{ MF.st=st; MF.friends=MF.chats=MF.req=null; MF.msgs={}; mfRedraw(); }).catch(e=>toast(e.message))}]});
     case 'mfSteamFriends': return call('mfriends.openSteam',{url:'steam://open/friends'}).then(()=>toast('Opening Steam friends…')).catch(e=>toast(e.message));
     case 'mfDiscord': return call('mfriends.discord').then(r=>openSheet({title:'Discord', sub:r.installed?'Discord is installed.':'Discord isn\'t part of Hearth; it comes from Flathub ('+r.flathub+').', items:[r.installed?{label:'Open Discord', icon:'play', run:()=>call('mfriends.openDiscord').catch(e=>toast(e.message))}:{label:'Install Discord from Flathub', icon:'dl', run:()=>{ toast('Installing Discord…'); call('mfriends.installDiscord',{},900000).then(()=>toast('Discord is installed')).catch(e=>toast(e.message)); }}]})).catch(e=>toast(e.message));
@@ -2016,7 +2016,7 @@ function mfFriendSheet(f){
   if(local) items.push({label:`Play ${local.title}`, icon:'play', run:()=>{ closeAll(); navigate('game',{game:local.id}); }});
   if(local && local.src==='steam') items.push({label:'Join via Steam (Steam\'s friends list)', icon:'globe', run:()=>call('mfriends.openSteam',{url:'steam://open/friends'}).catch(e=>toast(e.message))});
   items.push({label:f.muted?'Turn notifications on':'Mute', icon:'mute', run:()=>call('mfriends.mute',{roomId:f.roomId, on:!f.muted}).then(mfSoon).catch(e=>toast(e.message))});
-  items.push({label:'Report', icon:'info', run:()=>openPrompt({title:'What happened? (goes to your server\'s admins)'}).then(r=>{ if(r!=null) call('mfriends.report',{userId:f.userId, reason:r||'Reported from Hearth'}).then(()=>toast('Reported. Thank you.')).catch(e=>toast(e.message)); })});
+  items.push({label:'Report', icon:'info', run:()=>openPrompt({title:'What happened? (goes to your server\'s admins)', mode:'text', enterLabel:'Report'}).then(r=>{ if(r!=null) call('mfriends.report',{userId:f.userId, reason:r||'Reported from Hearth'}).then(()=>toast('Reported. Thank you.')).catch(e=>toast(e.message)); })});
   items.push({label:'Block', icon:'x', run:()=>call('mfriends.block',{userId:f.userId, on:true}).then(()=>{ toast(`${f.name} is blocked`); mfLists(); }).catch(e=>toast(e.message))});
   items.push({label:f.state==='pending'?'Cancel the request':'Remove friend', icon:'trash', run:()=>call('mfriends.leave',{roomId:f.roomId}).then(()=>{ toast('Removed'); mfLists(); }).catch(e=>toast(e.message))});
   openSheet({title:f.name, sub:`${mfFriendLine(f).replace(/&amp;/g,'&')} · ${f.userId}`, items});
