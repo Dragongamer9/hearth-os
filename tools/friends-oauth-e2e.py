@@ -285,7 +285,7 @@ try:
     def renewed():
         # Something that needs the server, now and then: an expired token is only noticed on a request.
         SVC.call('setName', {'name': 'Dave %d' % int(time.time())})
-        return 'access token was renewed; the new one is in the keyring' in SVC.log()
+        return 'renewed the access and refresh tokens; the new ones are in the keyring' in SVC.log()
     wait('the access token is renewed (60 s tokens) and kept', renewed, 330, 20)
     SVC.call('setName', {'name': 'Dave again'})
     if not SVC.call('status').get('signedIn'):
