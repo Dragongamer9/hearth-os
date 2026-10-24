@@ -78,6 +78,9 @@ fn recorder_cli(args: &[&str]) -> Result<Value, String> {
 
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
+        // Before anything else this version does: store sign-ins that went missing are put back from where they
+        // still are, they're backed up (privately, on this device), and the log says per store whether it's signed in.
+        crate::signins::at_start(version);
         let store = Store::open(paths::data_dir().join("library.json"));
         let mut b = Bridge::with(Library::new(store, paths::home()), crate::profiles::Profiles::open(&paths::data_dir()), version);
         // Quick Resume games (and a game that was running) are still there after Hearth restarts.
@@ -272,6 +275,8 @@ impl Bridge {
             match crate::stores::finish_sign_in(s, &code) {
                 Ok(()) => {
                     log(&format!("accounts: signed in to {s}"));
+                    crate::signins::clear_signed_out(s);
+                    crate::signins::backup(&format!("signed in to {s}"));
                     crate::stores::expiry::clear(s);
                     crate::stores::notify(Bridge::event("accounts.changed", json!({})));
                     reply(Ok(true));
@@ -397,6 +402,7 @@ impl Bridge {
                 let dirs: Vec<std::path::PathBuf> = d.iter().filter_map(|x| x["path"].as_str().map(Into::into)).collect();
                 if !crate::backup::list(&dirs).iter().any(|b| b["file"] == file.as_str()) { return Err("That backup isn't on a drive Hearth can see anymore".into()); }
                 if self.library.running_id().is_some() { return Err("Close the game first".into()); }
+                crate::signins::backup("before restoring a Hearth backup");
                 let meta = crate::backup::restore(std::path::Path::new(&file), &paths::data_dir(), &paths::config_dir(), &chrono::Local::now().format("%Y-%m-%d-%H-%M-%S").to_string())?;
                 (self.emit)(json!({"type": "restart"}));   // Hearth reads it all at start
                 Ok(meta)
@@ -714,6 +720,7 @@ impl Bridge {
                 if self.profiles.restricted(&self.profiles.active()) && id != self.profiles.active() { self.need_pin()?; }
                 log(&format!("profiles: switching to {}", to["name"]));
                 (self.emit)(Bridge::event("profiles.switching", json!({"name": to["name"]})));
+                crate::signins::backup("before switching profiles");
                 crate::profiles::stop_steam();
                 // The Steam account this profile used stays its own (Steam writes its files as it closes, so read after).
                 let leaving = self.profiles.active();
