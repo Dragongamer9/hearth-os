@@ -1,0 +1,283 @@
+#!/usr/bin/python3
+"""hearth-flatpak: Flatpak and Bazaar for Hearth's Settings and Mantel. Bazaar (io.github.kolunmi.Bazaar, a full
+Flathub store) is Hearth OS's app store: hearth-flatpak-setup installs it for everyone at every boot until it's there
+(see /usr/libexec/nimbus/hearth-flatpak-setup). Hearth's own store (Apps, hearth-apps) is archived (docs/ARCHIVED.md);
+the parts of it the rest of Hearth still needs are here:
+  - whether your own Flatpak folder can be used (~/.local/share/flatpak, or ~/.local/share, owned by root or by an
+    account from another system, e.g. after moving editions), said plainly with the fix (Settings › Apps' "Fix your
+    Flatpak folder", the bug report);
+  - removing a Flatpak app (Mantel's app menu: right-click › Uninstall…);
+  - opening Bazaar (Mantel's "apps" IPC target, Settings › Apps).
+
+  hearth-flatpak status                  JSON: flatpak, Flathub (yours, the system's), your folder, Bazaar, the
+                                         last run of hearth-flatpak-setup
+  hearth-flatpak installed               JSON: installed apps
+  hearth-flatpak remove APP_ID [--delete-data]
+                                         progress lines, then JSON
+  hearth-flatpak open-bazaar             start Bazaar (detached); "error: ..." when it isn't installed yet
+Progress lines are "progress: <0-100> <what>"; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser('~')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+CACHE_HOME = os.environ.get('XDG_CACHE_HOME') or os.path.join(HOME, '.cache')
+REPAIR = 'pkexec /usr/libexec/nimbus/hearth-admin home-repair'
+REMOTE = 'flathub'
+SYSTEM_FLATPAK = '/var/lib/flatpak'
+APP_ID = re.compile(r'^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){2,}$')
+BAZAAR = 'io.github.kolunmi.Bazaar'
+# Bazaar from the system image (a distribution package: the `bazaar` command), else Flathub's. Detached (setsid), so
+# whoever asked doesn't wait for it; exit 3 when it isn't installed.
+BAZAAR_CMD = ('if command -v bazaar >/dev/null 2>&1; then setsid -f bazaar >/dev/null 2>&1; '
+              'elif flatpak info %s >/dev/null 2>&1; then setsid -f flatpak run %s >/dev/null 2>&1; '
+              'else exit 3; fi' % (BAZAAR, BAZAAR))
+# What hearth-flatpak-setup (root, every boot) last did: written by it, read here for Settings › Apps.
+SETUP_STATE = '/var/lib/hearth/flatpak-setup.json'
+NOT_YET = ('Bazaar isn\'t installed yet. Hearth OS installs it for everyone when the PC is online (a few minutes after '
+           'the first start or an update; it keeps trying every 15 minutes).')
+
+
+class Fail(Exception):
+    pass
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+def flatpak(args, timeout=120):
+    """(code, output) of flatpak with C-locale output; (127, '') without flatpak."""
+    try:
+        r = subprocess.run(['flatpak'] + args, capture_output=True, text=True, timeout=timeout,
+                           env=dict(os.environ, LC_ALL='C'))
+        return r.returncode, r.stdout + (r.stderr if r.returncode else '')
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+
+
+def check_id(app_id):
+    if not isinstance(app_id, str) or not APP_ID.fullmatch(app_id) or len(app_id) > 255:
+        raise Fail('not an app id')
+    return app_id
+
+
+# ---------------------------------------------------------------------- can your own installation be used?
+def owner_name(uid):
+    try:
+        import pwd
+        return pwd.getpwuid(uid).pw_name
+    except (KeyError, ImportError):
+        return 'an account that no longer exists (id %d)' % uid
+
+
+def repair_hint():
+    return 'Hearth fixes this when the PC starts; to fix it now, run in a terminal: ' + REPAIR
+
+
+def user_dir_problems(uid=None, cache=True):
+    """[{path, owner, uid}] for the folders your own Flatpak installation writes to that aren't yours or can't be
+    written: ~/.local/share/flatpak (or, before it exists, the folder it would be made in), ~/.local/share, ~/.cache.
+    Empty when everything is fine."""
+    uid = os.getuid() if uid is None else uid
+    fp = os.path.join(DATA, 'flatpak')
+    checks = [fp] if os.path.lexists(fp) else []
+    checks += [DATA] + ([CACHE_HOME] if cache else [])
+    if os.path.isdir(fp) and not os.path.islink(fp):
+        for sub in ('repo', 'appstream', 'repo/tmp', 'repo/objects', 'repo/refs/remotes'):
+            p = os.path.join(fp, sub)
+            if os.path.lexists(p):
+                checks.append(p)
+    out = []
+    for p in checks:
+        try:
+            st = os.lstat(p)
+        except FileNotFoundError:
+            # Not made yet: the nearest folder above it must be writable.
+            parent = os.path.dirname(p)
+            while parent and not os.path.exists(parent):
+                parent = os.path.dirname(parent)
+            if parent and not os.access(parent, os.W_OK | os.X_OK):
+                st = os.stat(parent)
+                out.append({'path': parent, 'owner': owner_name(st.st_uid), 'uid': st.st_uid})
+            continue
+        except OSError:
+            continue
+        if os.path.islink(p):
+            continue
+        if st.st_uid != uid or not os.access(p, os.W_OK | os.X_OK):
+            out.append({'path': p, 'owner': owner_name(st.st_uid), 'uid': st.st_uid})
+    seen, uniq = set(), []
+    for o in out:
+        if o['path'] not in seen:
+            seen.add(o['path'])
+            uniq.append(o)
+    return uniq
+
+
+def problem_text(problems):
+    if not problems:
+        return ''
+    first = problems[0]
+    where = first['path'].replace(HOME, '~', 1)
+    who = 'root' if first['uid'] == 0 else first['owner']
+    return ('Your own Flatpak folder can\'t be used: %s belongs to %s, not you%s, so apps can\'t be installed for '
+            'you alone. %s' % (where, who, ' (and %d more)' % (len(problems) - 1) if len(problems) > 1 else '', repair_hint()))
+
+
+def user_usable():
+    return not user_dir_problems(cache=False)
+
+
+def remotes(inst):
+    code, out = flatpak(['remotes', '--' + inst, '--columns=name'])
+    return out.split() if code == 0 else []
+
+
+# ---------------------------------------------------------------------- installed apps
+def parse_columns(text, names):
+    """flatpak's tab-separated --columns output -> [{name: value}] (header lines, if any, skipped)."""
+    out = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        f = line.split('\t')
+        if len(f) == 1:
+            f = re.split(r'\s{2,}', line.strip())
+        row = {n: (f[i].strip() if i < len(f) else '') for i, n in enumerate(names)}
+        if row.get(names[0]) in ('Application ID', 'Application', 'Ref') or not APP_ID.fullmatch(row.get(names[0], '')):
+            continue
+        out.append(row)
+    return out
+
+
+def installed():
+    names = ['id', 'name', 'version', 'installation', 'size', 'origin']
+    code, out = flatpak(['list', '--app', '--columns=application,name,version,installation,size,origin'])
+    return parse_columns(out, names) if code == 0 else []
+
+
+def installed_map():
+    return {r['id']: r for r in installed()}
+
+
+def remove(app_id, delete_data=False):
+    check_id(app_id)
+    have = installed_map().get(app_id)
+    if not have:
+        raise Fail('it isn\'t installed')
+    inst = '--system' if have.get('installation') == 'system' else '--user'
+    progress(10, 'Removing')
+    cmd = ['flatpak', 'uninstall', inst, '-y', '--noninteractive'] + (['--delete-data'] if delete_data else []) + [app_id]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail('couldn\'t remove it (%s)' % e)
+    if r.returncode != 0 and app_id in installed_map():
+        msg = ((r.stderr or r.stdout).strip().splitlines() or ['flatpak uninstall failed'])[-1]
+        raise Fail('couldn\'t remove it (%s)' % re.sub(r'^error:\s*', '', msg, flags=re.I))
+    if delete_data:
+        # --delete-data needs a newer flatpak: the app's own folder otherwise (only ~/.var/app/<id>, never more).
+        d = os.path.join(HOME, '.var', 'app', app_id)
+        if os.path.isdir(d) and not os.path.islink(d):
+            shutil.rmtree(d, ignore_errors=True)
+    progress(80, 'Tidying up')
+    try:
+        subprocess.run(['flatpak', 'uninstall', inst, '--unused', '-y', '--noninteractive'], capture_output=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    progress(100, 'Removed')
+    return {'ok': True, 'id': app_id, 'installed': False, 'installation': have.get('installation', '')}
+
+
+# ---------------------------------------------------------------------- Bazaar
+def bazaar_where():
+    """'package' (the system image's), 'system' or 'user' (a Flatpak), or '' when Bazaar isn't installed."""
+    for d in ('/usr/share/applications', '/usr/local/share/applications'):
+        if os.path.exists(os.path.join(d, BAZAAR + '.desktop')) and shutil.which('bazaar'):
+            return 'package'
+    if os.path.isdir(os.path.join(SYSTEM_FLATPAK, 'app', BAZAAR)):
+        return 'system'
+    if os.path.isdir(os.path.join(DATA, 'flatpak', 'app', BAZAAR)):
+        return 'user'
+    return ''
+
+
+def setup_state(path=None):
+    """hearth-flatpak-setup's last run ({time, ok, step, message}), or None."""
+    try:
+        with open(path or SETUP_STATE) as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def open_bazaar():
+    if not bazaar_where():
+        raise Fail(NOT_YET)
+    try:
+        r = subprocess.run(['sh', '-c', BAZAAR_CMD], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail('couldn\'t open Bazaar (%s)' % e)
+    if r.returncode == 3:
+        raise Fail(NOT_YET)
+    if r.returncode != 0:
+        raise Fail('couldn\'t open Bazaar (%s)' % ((r.stderr or r.stdout).strip()[-300:] or 'exit %d' % r.returncode))
+    return {'ok': True, 'opened': BAZAAR}
+
+
+def flatpak_version():
+    code, out = flatpak(['--version'])
+    return out.strip() if code == 0 else ''
+
+
+def status():
+    have = bool(shutil.which('flatpak'))
+    user_r = remotes('user') if have else []
+    sys_r = remotes('system') if have else []
+    problems = user_dir_problems()
+    where = bazaar_where()
+    return {'flatpak': have, 'version': flatpak_version() if have else '', 'flathub': REMOTE in user_r + sys_r,
+            'userRemote': REMOTE in user_r, 'systemRemote': REMOTE in sys_r,
+            'userWritable': not problems, 'userProblems': problems, 'userProblem': problem_text(problems),
+            'repair': REPAIR, 'installTo': ('user' if user_usable() else 'system' if REMOTE in sys_r else ''),
+            'bazaar': bool(where), 'bazaarId': BAZAAR, 'bazaarInstallation': where, 'bazaarCommand': BAZAAR_CMD,
+            'bazaarMissing': '' if where else NOT_YET, 'setup': setup_state(), 'time': int(time.time())}
+
+
+USAGE = 'usage: hearth-flatpak status | installed | remove ID [--delete-data] | open-bazaar'
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status' and not a:
+        out = status()
+    elif c == 'installed' and not a:
+        out = {'apps': sorted(installed(), key=lambda r: (r.get('name') or r['id']).lower())}
+    elif c == 'remove' and len(a) in (1, 2) and a[1:] in ([], ['--delete-data']):
+        out = remove(a[0], a[1:] == ['--delete-data'])
+    elif c == 'open-bazaar' and not a:
+        out = open_bazaar()
+    else:
+        print(USAGE)
+        sys.exit(2)
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
+    except OSError as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
