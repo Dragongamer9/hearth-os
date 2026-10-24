@@ -1081,7 +1081,7 @@ const path = require('path');
     const kp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     kp.on('pageerror', e => errors.push(`on-screen keyboard: ${e.message}`));
     const kerr = m => errors.push('on-screen keyboard: ' + m);
-    const shot = async (name) => { try { await kp.waitForTimeout(260); await kp.screenshot({ path: path.join(oskShots, name + '.jpg'), type: 'jpeg', quality: 42, clip: { x: 0, y: 380, width: 1280, height: 420 } }); } catch (e) { kerr('picture ' + name + ': ' + e.message); } };
+    const shot = async (name) => { try { await kp.waitForTimeout(260); await kp.screenshot({ path: path.join(oskShots, name + '.jpg'), type: 'jpeg', quality: 30, clip: { x: 0, y: 390, width: 1280, height: 410 } }); } catch (e) { kerr('picture ' + name + ': ' + e.message); } };
     try {
       await kp.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
       await kp.waitForTimeout(1500);
