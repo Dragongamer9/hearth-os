@@ -327,16 +327,21 @@ function move(dir) {
   if (best) { best.focus(); best.scrollIntoView({ block: 'nearest' }); }
 }
 
-// The on-screen keyboard, for typing a search with a controller.
+// The on-screen keyboard, for typing a search with a controller: Hearth's shared keyboard (osk/, docs/OSK.md); the
+// small one below only if its files are missing.
 let oskTarget = null, shift = false;
 const OSK = ['1234567890', 'qwertyuiop', 'asdfghjkl\'', 'zxcvbnm,.-'];
 function openOsk(input) {
   oskTarget = input;
+  if (window.HearthOSK) {
+    HearthOSK.open({ target: input, mode: 'search', enterLabel: 'Search', onEnter: () => { HearthOSK.close(); runSearch(input.value); }, onClose: () => { oskTarget = null; } });
+    return;
+  }
   const rows = OSK.map(r => [...r].map(c => `<button class="f" data-key="${esc(c)}">${esc(c)}</button>`).join('')).join('');
   $('#searchrow').insertAdjacentHTML('afterend', `<div class="osk" id="osk">${rows}<button class="f wide" data-key="shift">Shift</button><button class="f wide" data-key="space">Space</button><button class="f wide" data-key="back">⌫</button><button class="f wide" data-key="clear">Clear</button><button class="f wide" data-key="done">Search</button></div>`);
   $('#osk [data-key="q"]').focus();
 }
-function closeOsk() { const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
+function closeOsk() { if (window.HearthOSK && HearthOSK.isOpen()) { HearthOSK.close(); return; } const t = oskTarget; $('#osk')?.remove(); oskTarget = null; t?.focus(); }
 function oskPress(k) {
   const t = oskTarget; if (!t) return;
   if (k === 'done') { closeOsk(); runSearch(t.value); return; }
@@ -362,6 +367,8 @@ function pad() {
     st.up ||= bt(12); st.down ||= bt(13); st.left ||= bt(14); st.right ||= bt(15);
     st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.lb ||= bt(4); st.view ||= bt(8); st.menu ||= bt(9);
   }
+  // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after).
+  if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(st)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(pad); return; }
   const onMap = map && (document.activeElement === map.getCanvas() || document.activeElement === document.body);
   if (map && (lx || ly || Math.abs(zoom) > .05)) {
     S.pad = true; showPadHints(true);

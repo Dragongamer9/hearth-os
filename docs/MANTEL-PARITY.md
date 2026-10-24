@@ -106,6 +106,10 @@ different, with the reason.
 
 ## On-screen keyboard (Keyboard.qml + hearth-pad)
 
+Since the on-screen keyboard overhaul, Hearth OS's Desktop Mode uses Hearth's shared keyboard (ui/osk, docs/OSK.md:
+suggestions, accents, emoji, layouts, the Ember Wheel; typing through wtype). Ember's Mantel still has the older
+US-layout keyboard below; moving it to ui/osk (KeyTyper already types any character) is still to do.
+
 | Item | Hearth OS | Windows before | Now |
 |---|---|---|---|
 | Keyboard | Hearth's own: full US layout (5 rows), wide keys, glass, docked at the bottom, reserves its space | Windows' touch keyboard, or osk.exe | **done**: `mantel.html?part=keyboard` in its own no-focus window, docked above the taskbar as an app bar (full Mantel: by hand + work area), same size rule (≤ 40 % height, ≥ 260 or 22 % width) |
