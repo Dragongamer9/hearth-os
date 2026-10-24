@@ -1,7 +1,0 @@
-# Oukitel firmware pieces — extracted locally, never committed
-stock/
-# build outputs and fetched tooling
-build/
-workdir/
-out/
-dt/
