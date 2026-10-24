@@ -339,7 +339,7 @@ Scope {
                         spacing: 8
                         Text {
                             Layout.fillWidth: true
-                            text: fr.room ? ((fr.chats.find(c => c.roomId === fr.room) || {}).name || "Chat") + "  ·  🔒 end-to-end encrypted" : "Pick a chat or a friend"
+                            text: fr.room ? ((fr.chats.find(c => c.roomId === fr.room) || {}).name || "Chat") + "  ·  end-to-end encrypted" : "Pick a chat or a friend"
                             color: Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideRight
                         }
                         ListView {
@@ -370,7 +370,7 @@ Scope {
                                         width: Math.min(implicitWidth, chatList.width * 0.8 - 28)
                                         wrapMode: Text.Wrap
                                         textFormat: Text.PlainText
-                                        text: bubble.game ? "🎮 Game invite: " + bubble.game.title + (bubble.game.server ? " · server " + bubble.game.server : "")
+                                        text: bubble.game ? "Game invite: " + bubble.game.title + (bubble.game.server ? " · server " + bubble.game.server : "")
                                             : bubble.modelData.kind === "image" ? (fr.images[bubble.modelData.id] ? "" : "Picture (click to show)")
                                             : (bubble.modelData.body || "")
                                         color: bubble.modelData.kind === "member" || bubble.modelData.kind === "locked" ? Theme.muted : Theme.text; font.family: Theme.font; font.pixelSize: 14
