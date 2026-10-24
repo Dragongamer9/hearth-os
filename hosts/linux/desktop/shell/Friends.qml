@@ -267,7 +267,7 @@ Scope {
                     }
                     // The server's page: phone (QR code) and browser, sign in or make an account.
                     Flow {
-                        visible: fr.available && !fr.auth && !!fr.ways && (fr.ways.qr || fr.ways.browser)
+                        visible: !!(fr.available && !fr.auth && fr.ways && (fr.ways.qr || fr.ways.browser))
                         Layout.fillWidth: true
                         spacing: 8
                         Repeater {
@@ -342,7 +342,7 @@ Scope {
                         }
                     }
                     Text {
-                        visible: fr.available && !fr.auth && !!fr.ways && fr.ways.password && (fr.ways.qr || fr.ways.browser)
+                        visible: !!(fr.available && !fr.auth && fr.ways && fr.ways.password && (fr.ways.qr || fr.ways.browser))
                         text: "Or with a user name and password:"
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                     }
