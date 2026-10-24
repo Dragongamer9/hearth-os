@@ -8,6 +8,8 @@ Icon=hearth-terminal
 Type=Application
 Categories=System;TerminalEmulator;Utility;
 Keywords=terminal;shell;command;prompt;console;bash;
+# The default terminal (Settings › Default apps › Terminal) for apps that ask for one this way.
+MimeType=x-scheme-handler/terminal;
 StartupNotify=true
 StartupWMClass=hearth-terminal
 X-TerminalArgExec=-e
