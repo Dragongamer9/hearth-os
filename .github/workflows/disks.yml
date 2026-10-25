@@ -87,7 +87,9 @@ jobs:
           # problems are errors here, but the job goes on.
           ./target/release/hearth-disks --usb-catalog-check > catalog.txt 2> catalog.err; rc=$?
           cat catalog.txt; cat catalog.err
-          echo "::notice title=USB catalog::$(tr '\n' '|' < catalog.txt | cut -c1-3900)"
+          n=$(wc -l < catalog.txt); h=$(( (n + 1) / 2 ))
+          echo "::notice title=USB catalog (1)::$(head -n $h catalog.txt | tr '\n' '|' | cut -c1-4000)"
+          echo "::notice title=USB catalog (2)::$(tail -n +$((h + 1)) catalog.txt | tr '\n' '|' | cut -c1-4000)"
           grep '^PROBLEM' catalog.err | head -10 | while read -r l; do echo "::error title=USB catalog::$l"; done
           exit $rc
       - name: Make a bootable USB — the helper refuses the runner's own disks
