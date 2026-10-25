@@ -1,0 +1,299 @@
+{
+  "schema": 1,
+  "about": "What Hearth Disks' Make a bootable USB offers to download. Every address is the project's own server or mirror network. 'resolve' says how the newest version is found from the project's own release index; 'checksums' and 'signature' say how a download is checked before anything is written (see src/usb/catalog.rs for the fields, docs in usb/README.md). Keys are in usb/keys, with where each came from below.",
+  "groups": [
+    { "id": "linux", "name": "Linux" },
+    { "id": "windows", "name": "Windows" },
+    { "id": "hearth", "name": "Hearth OS" }
+  ],
+  "keys": {
+    "fedora": {
+      "file": "fedora.asc",
+      "owner": "Fedora (43), (44), (45) and (46) release keys",
+      "fingerprints": ["C6E7F081CF80E13146676E88829B606631645531", "36F612DCF27F7D1A48A835E4DBFCF71C6D9F90A6", "4F50A6114CD5C6976A7F1179655A4B02F577861E", "D924B10D3E810DABDD8B56B596E7E91491211FCE"],
+      "source": "https://fedoraproject.org/fedora.gpg",
+      "documented": "https://fedoraproject.org/security/"
+    },
+    "ubuntu": {
+      "file": "ubuntu-cdimage-2012.asc",
+      "owner": "Ubuntu CD Image Automatic Signing Key (2012) <cdimage@ubuntu.com>",
+      "fingerprints": ["843938DF228D22F7B3742BC0D94AA3F0EFE21092"],
+      "source": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x843938DF228D22F7B3742BC0D94AA3F0EFE21092",
+      "documented": "https://ubuntu.com/tutorials/how-to-verify-ubuntu"
+    },
+    "debian": {
+      "file": "debian-cd-2011.asc",
+      "owner": "Debian CD signing key <debian-cd@lists.debian.org>",
+      "fingerprints": ["DF9B9C49EAA9298432589D76DA87E80D6294BE9B"],
+      "source": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xDF9B9C49EAA9298432589D76DA87E80D6294BE9B",
+      "documented": "https://www.debian.org/CD/verify"
+    },
+    "mint": {
+      "file": "linuxmint.asc",
+      "owner": "Linux Mint ISO Signing Key <root@linuxmint.com>",
+      "fingerprints": ["27DEB15644C6B3CF3BD7D291300F846BA25BAE09"],
+      "source": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x27DEB15644C6B3CF3BD7D291300F846BA25BAE09",
+      "documented": "https://linuxmint-installation-guide.readthedocs.io/en/latest/verify.html"
+    },
+    "arch": {
+      "file": "archlinux-pierre-schmitz.asc",
+      "owner": "Pierre Schmitz <pierre@archlinux.org> (Arch Linux release signing)",
+      "fingerprints": ["3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C"],
+      "source": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C (also WKD pierre@archlinux.org)",
+      "documented": "https://archlinux.org/download/ and the pgp_fingerprint in https://archlinux.org/releng/releases/json/"
+    },
+    "cachyos": {
+      "file": "cachyos.asc",
+      "owner": "CachyOS <admin@cachyos.org>",
+      "fingerprints": ["882DCFE48E2051D48E2562ABF3B607488DB35A47"],
+      "source": "https://keys.openpgp.org/vks/v1/by-fingerprint/882DCFE48E2051D48E2562ABF3B607488DB35A47",
+      "documented": "https://wiki.cachyos.org/cachyos_basic/download/"
+    },
+    "opensuse": {
+      "file": "opensuse.asc",
+      "owner": "openSUSE Project Signing Key <opensuse@opensuse.org> (valid until 2030-05-27)",
+      "fingerprints": ["AD485664E901B867051AB15F35A2F86E29B700A4"],
+      "source": "https://download.opensuse.org/tumbleweed/repo/oss/repodata/repomd.xml.key",
+      "documented": "https://en.opensuse.org/openSUSE:Signing_Keys"
+    },
+    "manjaro": {
+      "file": "manjaro-build-server.asc",
+      "owner": "Manjaro Build Server <build@manjaro.org>",
+      "fingerprints": ["3B794DE6D4320FCE594F4171279E7CF5D8D56EC8"],
+      "source": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3B794DE6D4320FCE594F4171279E7CF5D8D56EC8",
+      "documented": "https://forum.manjaro.org/t/root-tip-how-to-forum-mini-guide-to-verify-iso-signature/146680"
+    }
+  },
+  "entries": [
+    {
+      "id": "fedora-workstation", "group": "linux", "family": "Fedora", "name": "Fedora Workstation", "flavour": "GNOME",
+      "homepage": "https://fedoraproject.org/workstation/", "sizeHint": "2.9 GB",
+      "about": "Fedora with the GNOME desktop. Hearth OS's Anatase edition is built on Fedora.",
+      "resolve": { "kind": "fedora", "index": "https://fedoraproject.org/releases.json", "subvariant": "Workstation" },
+      "checksums": { "listing": "-CHECKSUM$" },
+      "signature": { "kind": "clearsigned", "of": "checksums", "key": "fedora" }
+    },
+    {
+      "id": "fedora-kde", "group": "linux", "family": "Fedora", "name": "Fedora KDE Plasma Desktop", "flavour": "KDE Plasma",
+      "homepage": "https://fedoraproject.org/kde/", "sizeHint": "3.4 GB",
+      "about": "Fedora with the KDE Plasma desktop.",
+      "resolve": { "kind": "fedora", "index": "https://fedoraproject.org/releases.json", "subvariant": "KDE" },
+      "checksums": { "listing": "-CHECKSUM$" },
+      "signature": { "kind": "clearsigned", "of": "checksums", "key": "fedora" }
+    },
+    {
+      "id": "ubuntu-lts", "group": "linux", "family": "Ubuntu", "name": "Ubuntu", "flavour": "Desktop, long-term support",
+      "homepage": "https://ubuntu.com/desktop", "sizeHint": "6 GB",
+      "about": "Ubuntu's long-term support release: five years of updates.",
+      "resolve": { "kind": "dir-index", "index": "https://releases.ubuntu.com/", "dir": "^(\\d\\d)\\.04(?:\\.\\d+)?/$", "lts": true },
+      "checksums": { "file": "{dir}SHA256SUMS", "pick": "^ubuntu-(\\d\\d\\.04(?:\\.\\d+)?)-desktop-amd64\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.gpg", "key": "ubuntu" }
+    },
+    {
+      "id": "ubuntu-latest", "group": "linux", "family": "Ubuntu", "name": "Ubuntu", "flavour": "Desktop, newest",
+      "homepage": "https://ubuntu.com/desktop", "sizeHint": "6 GB",
+      "about": "Ubuntu's newest release (nine months of updates).",
+      "resolve": { "kind": "dir-index", "index": "https://releases.ubuntu.com/", "dir": "^(\\d\\d\\.\\d\\d)/$" },
+      "checksums": { "file": "{dir}SHA256SUMS", "pick": "^ubuntu-(\\d\\d\\.\\d\\d(?:\\.\\d+)?)-desktop-amd64\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.gpg", "key": "ubuntu" }
+    },
+    {
+      "id": "kubuntu-lts", "group": "linux", "family": "Ubuntu", "name": "Kubuntu", "flavour": "KDE Plasma, long-term support",
+      "homepage": "https://kubuntu.org/", "sizeHint": "4.5 GB",
+      "about": "Ubuntu with the KDE Plasma desktop, long-term support release.",
+      "resolve": { "kind": "dir-index", "index": "https://cdimage.ubuntu.com/kubuntu/releases/", "dir": "^(\\d\\d)\\.04(?:\\.\\d+)?/$", "lts": true, "sub": "release/" },
+      "checksums": { "file": "{dir}SHA256SUMS", "pick": "^kubuntu-(\\d\\d\\.04(?:\\.\\d+)?)-desktop-amd64\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.gpg", "key": "ubuntu" }
+    },
+    {
+      "id": "debian-netinst", "group": "linux", "family": "Debian", "name": "Debian", "flavour": "Network installer",
+      "homepage": "https://www.debian.org/", "sizeHint": "800 MB",
+      "about": "Debian's small installer: it downloads the rest while installing. Hearth OS's Peppermint edition is built on Debian.",
+      "resolve": { "kind": "dir", "dir": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/" },
+      "checksums": { "file": "{dir}SHA256SUMS", "pick": "^debian-(\\d+\\.\\d+\\.\\d+)-amd64-netinst\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.sign", "key": "debian" }
+    },
+    {
+      "id": "debian-live-kde", "group": "linux", "family": "Debian", "name": "Debian Live", "flavour": "KDE Plasma",
+      "homepage": "https://www.debian.org/CD/live/", "sizeHint": "3.5 GB",
+      "about": "Try Debian with KDE Plasma from the USB drive, then install it.",
+      "resolve": { "kind": "dir", "dir": "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" },
+      "checksums": { "file": "{dir}SHA256SUMS", "pick": "^debian-live-(\\d+\\.\\d+\\.\\d+)-amd64-kde\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.sign", "key": "debian" }
+    },
+    {
+      "id": "debian-live-gnome", "group": "linux", "family": "Debian", "name": "Debian Live", "flavour": "GNOME",
+      "homepage": "https://www.debian.org/CD/live/", "sizeHint": "3.5 GB",
+      "about": "Try Debian with GNOME from the USB drive, then install it.",
+      "resolve": { "kind": "dir", "dir": "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/" },
+      "checksums": { "file": "{dir}SHA256SUMS", "pick": "^debian-live-(\\d+\\.\\d+\\.\\d+)-amd64-gnome\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.sign", "key": "debian" }
+    },
+    {
+      "id": "mint-cinnamon", "group": "linux", "family": "Linux Mint", "name": "Linux Mint", "flavour": "Cinnamon",
+      "homepage": "https://linuxmint.com/", "sizeHint": "2.9 GB",
+      "about": "Linux Mint with its own Cinnamon desktop. Downloaded from kernel.org's mirror, one of Mint's official mirrors.",
+      "resolve": { "kind": "dir-index", "index": "https://mirrors.kernel.org/linuxmint/stable/", "dir": "^(\\d+(?:\\.\\d+)?)/$" },
+      "checksums": { "file": "{dir}sha256sum.txt", "pick": "^linuxmint-(\\d+(?:\\.\\d+)?)-cinnamon-64bit\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}sha256sum.txt.gpg", "key": "mint" }
+    },
+    {
+      "id": "mint-xfce", "group": "linux", "family": "Linux Mint", "name": "Linux Mint", "flavour": "Xfce",
+      "homepage": "https://linuxmint.com/", "sizeHint": "2.9 GB",
+      "about": "Linux Mint with the light Xfce desktop, for older PCs.",
+      "resolve": { "kind": "dir-index", "index": "https://mirrors.kernel.org/linuxmint/stable/", "dir": "^(\\d+(?:\\.\\d+)?)/$" },
+      "checksums": { "file": "{dir}sha256sum.txt", "pick": "^linuxmint-(\\d+(?:\\.\\d+)?)-xfce-64bit\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}sha256sum.txt.gpg", "key": "mint" }
+    },
+    {
+      "id": "mint-mate", "group": "linux", "family": "Linux Mint", "name": "Linux Mint", "flavour": "MATE",
+      "homepage": "https://linuxmint.com/", "sizeHint": "2.9 GB",
+      "about": "Linux Mint with the MATE desktop.",
+      "resolve": { "kind": "dir-index", "index": "https://mirrors.kernel.org/linuxmint/stable/", "dir": "^(\\d+(?:\\.\\d+)?)/$" },
+      "checksums": { "file": "{dir}sha256sum.txt", "pick": "^linuxmint-(\\d+(?:\\.\\d+)?)-mate-64bit\\.iso$" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{dir}sha256sum.txt.gpg", "key": "mint" }
+    },
+    {
+      "id": "popos-intel", "group": "linux", "family": "Pop!_OS", "name": "Pop!_OS", "flavour": "AMD and Intel graphics",
+      "homepage": "https://system76.com/pop/", "sizeHint": "3 GB",
+      "about": "System76's Pop!_OS with the COSMIC desktop.",
+      "resolve": { "kind": "pop", "index": "https://api.pop-os.org/builds/24.04/intel" },
+      "pinned": "Pop!_OS 24.04: System76's build service is asked for the newest 24.04 build; change the address in usb/catalog.json for a new Pop!_OS release.",
+      "note": "System76 publishes a SHA-256 for each build through its own build service (over HTTPS), but no signature."
+    },
+    {
+      "id": "popos-nvidia", "group": "linux", "family": "Pop!_OS", "name": "Pop!_OS", "flavour": "Nvidia graphics",
+      "homepage": "https://system76.com/pop/", "sizeHint": "4 GB",
+      "about": "Pop!_OS with Nvidia's driver already installed.",
+      "resolve": { "kind": "pop", "index": "https://api.pop-os.org/builds/24.04/nvidia" },
+      "pinned": "Pop!_OS 24.04: System76's build service is asked for the newest 24.04 build; change the address in usb/catalog.json for a new Pop!_OS release.",
+      "note": "System76 publishes a SHA-256 for each build through its own build service (over HTTPS), but no signature."
+    },
+    {
+      "id": "arch", "group": "linux", "family": "Arch Linux", "name": "Arch Linux", "flavour": "Monthly installer",
+      "homepage": "https://archlinux.org/", "sizeHint": "1.6 GB",
+      "about": "Arch Linux's installer (installing is done with commands or archinstall).",
+      "resolve": { "kind": "arch", "index": "https://archlinux.org/releng/releases/json/", "mirror": "https://geo.mirror.pkgbuild.com" },
+      "checksums": { "file": "{dir}sha256sums.txt" },
+      "signature": { "kind": "detached", "of": "image", "file": "{url}.sig", "key": "arch" }
+    },
+    {
+      "id": "cachyos", "group": "linux", "family": "CachyOS", "name": "CachyOS", "flavour": "Desktop",
+      "homepage": "https://cachyos.org/", "sizeHint": "3 GB",
+      "about": "Arch-based and tuned for speed, with a graphical installer.",
+      "resolve": { "kind": "dir-index", "index": "https://mirror.cachyos.org/ISO/desktop/", "dir": "^(\\d{6})/$", "image": "^cachyos-desktop-linux-(\\d{6})\\.iso$" },
+      "checksums": { "file": "{url}.sha256" },
+      "signature": { "kind": "detached", "of": "image", "file": "{url}.sig", "key": "cachyos" }
+    },
+    {
+      "id": "bazzite", "group": "linux", "family": "Bazzite", "name": "Bazzite", "flavour": "Desktop, KDE Plasma",
+      "homepage": "https://bazzite.gg/", "sizeHint": "8 GB",
+      "about": "Fedora-based gaming system for desktops and laptops.",
+      "resolve": { "kind": "single", "url": "https://download.bazzite.gg/bazzite-stable-amd64.iso" },
+      "checksums": { "file": "{url}-CHECKSUM" },
+      "pinned": "Bazzite publishes one 'stable' image at a fixed address; it changes when Bazzite updates it.",
+      "note": "Bazzite publishes a SHA-256 next to the image, but no signature for the ISO."
+    },
+    {
+      "id": "bazzite-gnome", "group": "linux", "family": "Bazzite", "name": "Bazzite", "flavour": "Desktop, GNOME",
+      "homepage": "https://bazzite.gg/", "sizeHint": "8 GB",
+      "about": "Bazzite with the GNOME desktop.",
+      "resolve": { "kind": "single", "url": "https://download.bazzite.gg/bazzite-gnome-stable-amd64.iso" },
+      "checksums": { "file": "{url}-CHECKSUM" },
+      "pinned": "Bazzite publishes one 'stable' image at a fixed address; it changes when Bazzite updates it.",
+      "note": "Bazzite publishes a SHA-256 next to the image, but no signature for the ISO."
+    },
+    {
+      "id": "bazzite-deck", "group": "linux", "family": "Bazzite", "name": "Bazzite", "flavour": "Handheld and living-room PCs",
+      "homepage": "https://bazzite.gg/", "sizeHint": "8 GB",
+      "about": "Bazzite that starts in Steam's Game Mode, for handhelds and TV PCs.",
+      "resolve": { "kind": "single", "url": "https://download.bazzite.gg/bazzite-deck-stable-amd64.iso" },
+      "checksums": { "file": "{url}-CHECKSUM" },
+      "pinned": "Bazzite publishes one 'stable' image at a fixed address; it changes when Bazzite updates it.",
+      "note": "Bazzite publishes a SHA-256 next to the image, but no signature for the ISO."
+    },
+    {
+      "id": "opensuse-tumbleweed", "group": "linux", "family": "openSUSE", "name": "openSUSE Tumbleweed", "flavour": "Offline installer",
+      "homepage": "https://get.opensuse.org/tumbleweed/", "sizeHint": "4.5 GB",
+      "about": "openSUSE's rolling release; the full installer, no internet needed while installing.",
+      "resolve": { "kind": "single", "url": "https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso", "followName": true },
+      "checksums": { "file": "{url}.sha256" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{url}.sha256.asc", "key": "opensuse" }
+    },
+    {
+      "id": "opensuse-tumbleweed-kde", "group": "linux", "family": "openSUSE", "name": "openSUSE Tumbleweed", "flavour": "KDE Plasma live",
+      "homepage": "https://get.opensuse.org/tumbleweed/", "sizeHint": "1.2 GB",
+      "about": "Try openSUSE Tumbleweed with KDE Plasma from the USB drive, then install it.",
+      "resolve": { "kind": "single", "url": "https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-KDE-Live-x86_64-Current.iso", "followName": true },
+      "checksums": { "file": "{url}.sha256" },
+      "signature": { "kind": "detached", "of": "checksums", "file": "{url}.sha256.asc", "key": "opensuse" }
+    },
+    {
+      "id": "manjaro-kde", "group": "linux", "family": "Manjaro", "name": "Manjaro", "flavour": "KDE Plasma",
+      "homepage": "https://manjaro.org/", "sizeHint": "4.5 GB",
+      "about": "Arch-based with a friendly installer and tested updates.",
+      "resolve": { "kind": "page", "page": "https://manjaro.org/products/download/x86", "pick": "https://download\\.manjaro\\.org/kde/[0-9.]+/manjaro-kde-([0-9.]+)-[0-9]+-linux[0-9]+\\.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "signature": { "kind": "detached", "of": "image", "file": "{url}.sig", "key": "manjaro" }
+    },
+    {
+      "id": "manjaro-gnome", "group": "linux", "family": "Manjaro", "name": "Manjaro", "flavour": "GNOME",
+      "homepage": "https://manjaro.org/", "sizeHint": "4 GB",
+      "about": "Manjaro with the GNOME desktop.",
+      "resolve": { "kind": "page", "page": "https://manjaro.org/products/download/x86", "pick": "https://download\\.manjaro\\.org/gnome/[0-9.]+/manjaro-gnome-([0-9.]+)-[0-9]+-linux[0-9]+\\.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "signature": { "kind": "detached", "of": "image", "file": "{url}.sig", "key": "manjaro" }
+    },
+    {
+      "id": "manjaro-xfce", "group": "linux", "family": "Manjaro", "name": "Manjaro", "flavour": "Xfce",
+      "homepage": "https://manjaro.org/", "sizeHint": "4 GB",
+      "about": "Manjaro with the light Xfce desktop.",
+      "resolve": { "kind": "page", "page": "https://manjaro.org/products/download/x86", "pick": "https://download\\.manjaro\\.org/xfce/[0-9.]+/manjaro-xfce-([0-9.]+)-[0-9]+-linux[0-9]+\\.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "signature": { "kind": "detached", "of": "image", "file": "{url}.sig", "key": "manjaro" }
+    },
+    {
+      "id": "windows-11", "group": "windows", "family": "Windows", "name": "Windows 11", "flavour": "Home, Pro and Education",
+      "homepage": "https://www.microsoft.com/software-download/windows11", "sizeHint": "7 GB",
+      "about": "Microsoft's own download page opens in your browser: pick the language there and download. Hearth notices the ISO when it lands in Downloads.",
+      "resolve": { "kind": "microsoft-page", "page": "https://www.microsoft.com/en-us/software-download/windows11", "product": "windows11" },
+      "write": "windows",
+      "note": "Microsoft only hands out the ISO through its own download page. Hearth doesn't download it by itself, because that would mean getting around the page's bot protection. Compare the SHA-256 Hearth shows with Microsoft's list under \"Verify your download\" on the same page."
+    },
+    {
+      "id": "windows-10", "group": "windows", "family": "Windows", "name": "Windows 10", "flavour": "Home, Pro and Education",
+      "homepage": "https://www.microsoft.com/software-download/windows10ISO", "sizeHint": "6 GB",
+      "about": "Windows 10 no longer gets updates without Microsoft's Extended Security Updates (support ended October 14, 2025). Microsoft's page opens in your browser.",
+      "resolve": { "kind": "microsoft-page", "page": "https://www.microsoft.com/en-us/software-download/windows10ISO", "product": "windows10" },
+      "write": "windows",
+      "note": "Microsoft only hands out the ISO through its own download page. Compare the SHA-256 Hearth shows with Microsoft's list under \"Verify your download\"."
+    },
+    {
+      "id": "hearth-live", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Offline USB (Anatase)",
+      "homepage": "https://hearthos.fun/", "sizeHint": "9 GB",
+      "about": "Hearth OS's Anatase edition: try it from the USB drive and install it without internet.",
+      "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",
+      "note": "Hearth publishes a SHA-256 next to each ISO."
+    },
+    {
+      "id": "hearth-installer", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Small online installer (Anatase)",
+      "homepage": "https://hearthos.fun/", "sizeHint": "1.6 GB",
+      "about": "The small installer: it downloads Hearth OS while installing.",
+      "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",
+      "note": "Hearth publishes a SHA-256 next to each ISO."
+    },
+    {
+      "id": "hearth-peppermint", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Peppermint edition",
+      "homepage": "https://hearthos.fun/docs/install.html", "sizeHint": "4 GB",
+      "about": "Hearth OS's Peppermint (Debian) edition.",
+      "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",
+      "note": "Hearth publishes a SHA-256 next to each ISO."
+    }
+  ]
+}
