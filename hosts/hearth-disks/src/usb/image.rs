@@ -70,7 +70,7 @@ pub fn sniff(head: &[u8]) -> (bool, bool, String) {
     if mbr_sig { for i in 0..4 { if head[446 + i * 16 + 4] != 0 { parts = true; } } }
     let table = gpt || (mbr_sig && parts);
     let iso = head.len() >= 32774 && &head[32769..32774] == b"CD001";
-    let label = if head.len() >= 32808 && iso { String::from_utf8_lossy(&head[32808..32840]).trim().to_string() } else { String::new() };
+    let label = if head.len() >= 32808 && iso { String::from_utf8_lossy(&head[32808..32840]).trim_matches(|c: char| c == '\0' || c.is_whitespace()).to_string() } else { String::new() };
     (table, iso, label)
 }
 

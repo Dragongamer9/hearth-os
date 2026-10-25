@@ -220,7 +220,7 @@ pub fn validate(c: &Catalog) -> Vec<String> {
         let has_index_sum = matches!(e.resolve, Resolve::Pop { .. } | Resolve::Arch { .. } | Resolve::Fedora { .. });
         if !windows && e.checksums.is_none() && !has_index_sum { bad.push(format!("{}: no way to check the download", e.id)); }
         if !windows && e.signature.is_none() && e.note.is_empty() { bad.push(format!("{}: unsigned: say so in note", e.id)); }
-        if matches!(e.resolve, Resolve::Single { .. } | Resolve::Pop { .. }) && e.pinned.is_empty() { bad.push(format!("{}: a fixed address: say what's pinned in pinned", e.id)); }
+        if matches!(e.resolve, Resolve::Single { follow_name: false, .. } | Resolve::Pop { .. }) && e.pinned.is_empty() { bad.push(format!("{}: a fixed address: say what's pinned in pinned", e.id)); }
     }
     bad
 }
