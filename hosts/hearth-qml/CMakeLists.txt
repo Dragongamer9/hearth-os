@@ -41,46 +41,54 @@ endif()
 
 set(SINGLETONS qml/Theme.qml qml/App.qml qml/Nav.qml)
 set_source_files_properties(${SINGLETONS} PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set(QML_SOURCES
+  ${SINGLETONS}
+  qml/Main.qml
+  qml/Icons.js
+  qml/Icon.qml
+  qml/Focusable.qml
+  qml/Btn.qml
+  qml/Chip.qml
+  qml/SetRow.qml
+  qml/Bar.qml
+  qml/Heading.qml
+  qml/ArtImage.qml
+  qml/GameTile.qml
+  qml/Scroller.qml
+  qml/TopBar.qml
+  qml/Footer.qml
+  qml/Toast.qml
+  qml/HomeView.qml
+  qml/LibraryView.qml
+  qml/GameView.qml
+  qml/DownloadsView.qml
+  qml/SettingsView.qml
+  qml/MissingView.qml
+  qml/MainMenu.qml
+  qml/QuickAccess.qml
+  qml/PowerMenu.qml
+  qml/Sheet.qml
+  qml/SearchLayer.qml
+  qml/LaunchScreen.qml
+  qml/OverlayWindow.qml
+  qml/SelfTest.qml
+  qml/Input.qml
+  qml/OskBoard.qml
+  qml/OskKey.qml
+)
+set(QML_RESOURCES qml/hearth-osk.js)
+# Every file at the module's root (qrc:/qt/qml/HearthQml/Main.qml), next to its qmldir: in a qml/ folder of their own,
+# the folder's implicit import shadowed the module's singletons (Theme, App, Nav) with plain types.
+foreach(f IN LISTS QML_SOURCES QML_RESOURCES)
+  get_filename_component(n "${f}" NAME)
+  set_source_files_properties("${f}" PROPERTIES QT_RESOURCE_ALIAS "${n}")
+endforeach()
 
 qt_add_qml_module(hearth-qml
   URI HearthQml
   VERSION 1.0
-  QML_FILES
-    ${SINGLETONS}
-    qml/Main.qml
-    qml/Icons.js
-    qml/Icon.qml
-    qml/Focusable.qml
-    qml/Btn.qml
-    qml/Chip.qml
-    qml/SetRow.qml
-    qml/Bar.qml
-    qml/Heading.qml
-    qml/ArtImage.qml
-    qml/GameTile.qml
-    qml/Scroller.qml
-    qml/TopBar.qml
-    qml/Footer.qml
-    qml/Toast.qml
-    qml/HomeView.qml
-    qml/LibraryView.qml
-    qml/GameView.qml
-    qml/DownloadsView.qml
-    qml/SettingsView.qml
-    qml/MissingView.qml
-    qml/MainMenu.qml
-    qml/QuickAccess.qml
-    qml/PowerMenu.qml
-    qml/Sheet.qml
-    qml/SearchLayer.qml
-    qml/LaunchScreen.qml
-    qml/OverlayWindow.qml
-    qml/SelfTest.qml
-    qml/Input.qml
-    qml/OskBoard.qml
-    qml/OskKey.qml
-  RESOURCES
-    qml/hearth-osk.js
+  QML_FILES ${QML_SOURCES}
+  RESOURCES ${QML_RESOURCES}
 )
 
 if(HEARTH_FONT AND EXISTS "${HEARTH_FONT}")

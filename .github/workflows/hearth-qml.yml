@@ -56,7 +56,7 @@ jobs:
           echo "Base: $img"
       - name: Build, and the self-test in the build container
         run: |
-          set -o pipefail
+          set +e -o pipefail
           mkdir -p /tmp/out
           docker run --rm -e HEARTH_VERSION="${{ steps.ver.outputs.version }}" -v "$PWD:/src:ro" -v /tmp/out:/out "${{ steps.base.outputs.image }}" \
             bash /src/.github/scripts/hearth-qml-build.sh build 2>&1 | tee /tmp/build.log
@@ -70,7 +70,7 @@ jobs:
       - name: Self-test again with only the image's packages
         if: always()
         run: |
-          set -o pipefail
+          set +e -o pipefail
           test -x /tmp/out/hearth-qml/hearth-qml || exit 0
           docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "${{ steps.base.outputs.image }}" bash /src/.github/scripts/hearth-qml-build.sh runtime-test 2>&1 | tee /tmp/rt.log
           rc=${PIPESTATUS[0]}
