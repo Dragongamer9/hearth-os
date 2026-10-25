@@ -118,6 +118,15 @@ impl Updates {
         }
         self.status()
     }
+    /// Settings › Updates › Go back: makes the previous Hearth OS version (bootc's rollback deployment) the one that
+    /// starts next; run again before restarting, it undoes that. hearth-admin refuses while an update waits for a
+    /// restart, and where there's no previous version.
+    pub fn rollback(&self) -> Result<Value, String> {
+        if self.busy() { return Err("An update is running: wait for it to finish first.".into()); }
+        let v = run(&["rollback"], None, &mut |_| {})?;
+        { let mut s = self.state.lock().unwrap(); s["status"] = v; s["error"] = Value::Null; }
+        Ok(self.status())
+    }
     /// Checks (or installs) in the background; `emit` sends each change to the page.
     pub fn start(&self, install: bool, emit: crate::system::bt_scan::Emit) -> Value {
         if self.busy() { return self.status(); }

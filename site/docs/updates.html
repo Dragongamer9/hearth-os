@@ -36,16 +36,20 @@
 
 <section><h2 id="how">How updates work</h2>
 <ul>
-<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › Updates › Check automatically</b>).</li>
+<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › System › Updates › Check automatically</b>).</li>
 <li>An update downloads in the background while you play. It's used <b>the next time you restart</b>.</li>
 <li>The whole system is replaced in one piece, so an update can't half-install. The version before it stays on the drive.</li>
-<li>To update now: <b>Settings › Updates › Check for updates</b>, then restart when it says it's ready.</li>
+<li>To update now: <b>Settings › System › Updates › Check for updates</b>, then restart when it says it's ready.</li>
 </ul>
 <p>From a terminal in Desktop Mode, the same update:</p>
 <div class="cmd" data-cmd="update-now"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin update</code></pre></div>
 
 </section><section><h2 id="rollback">Going back to the last version</h2>
 <p>If a new version has a problem, go back to the one before it.</p>
+<h3>From Settings</h3>
+<p><b>Settings › System › Updates › Go back to</b> (the version before) makes it the one that starts next, then restart.
+Changed your mind before restarting? The same place offers <b>Stay on</b> the version you have. It's there on the Hearth OS
+images (Anatase) while the older version is still kept, and not while a new update waits for a restart.</p>
 <h3>From the boot menu</h3>
 <p>Restart, and in the boot menu pick the second <b>Hearth OS</b> entry (the older version). On a handheld, the boot menu
 can be moved with the D-pad or volume buttons.</p>
@@ -55,7 +59,7 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 </section><section><h2 id="switch">Switching edition</h2>
-<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › Updates › Switch edition</b>. On Ubuntu or CachyOS
+<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Ubuntu or CachyOS
 (archived for now) the same button moves you to Anatase or Peppermint.</p>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>

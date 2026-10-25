@@ -28,7 +28,7 @@
   </div>
 </nav>
 <div class="wrap layout">
-  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#apps">Hearth's own apps</a><a href="#claude">Installing Claude</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#menu">The dock and Settings</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#apps">Hearth's own apps</a><a href="#claude">Installing Claude</a><a href="#logs">Sending logs</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
     <div class="crumb"><span>Docs · for Hearth OS 0.6.51</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Using Hearth</h1>
@@ -40,7 +40,7 @@ a file manager and a terminal.</p>
 <ul>
 <li>To the desktop: <b>Power › Switch to desktop</b> in Game Mode.</li>
 <li>Back to Game Mode: the <b>Game Mode</b> button at the bottom right of the desktop.</li>
-<li><b>Settings › Sign-in › Start in</b> picks which one you see after signing in.</li>
+<li><b>Settings › You › Sign-in › Start in</b> picks which one you see after signing in.</li>
 </ul>
 
 </section><section><h2 id="controller">Controller</h2>
@@ -48,12 +48,23 @@ a file manager and a terminal.</p>
 <tr><th>Button</th><th>In Game Mode</th></tr>
 <tr><td>A / B</td><td>Select / back</td></tr>
 <tr><td>Y</td><td>Search</td></tr>
-<tr><td>Menu (☰)</td><td>Main menu</td></tr>
+<tr><td>Menu (☰)</td><td>The dock (main menu); B closes it</td></tr>
 <tr><td>View (⧉)</td><td>Quick Access: volume, brightness, power, Wi-Fi</td></tr>
 <tr><td>Xbox / Guide</td><td>Over a game: the overlay (back to Hearth, close the game, settings)</td></tr>
 <tr><td>View + Menu together</td><td>Controller mouse on or off (for launchers and installers a controller can't drive)</td></tr>
 </table></div>
 <p>The controller mouse: right stick moves the pointer, A or RT clicks, X or LT right-clicks, left stick scrolls, B is Esc.</p>
+
+</section><section><h2 id="menu">The dock and Settings</h2>
+<p>Menu (☰) opens the <b>dock</b> along the bottom: Home, Library, Store, Friends, Downloads, Hearth Link, then Search,
+Settings, Power and your profile. Left and right move along it; the item you're on shows a card above it (who's online,
+the download queue with <b>Pause all</b>, your devices...), and up goes into the card's buttons. While you browse, a small
+copy sits at the bottom edge for the mouse. Over a game it shows the game instead: <b>Resume</b>, <b>Quick Access</b>,
+<b>Invite a friend</b>, <b>Exit game</b>, a screenshot, recording and performance.</p>
+<p>Prefer the old menu? <b>Settings › You › Appearance › Menu style › Side menu (classic)</b>.</p>
+<p><b>Settings</b> has six groups along the top (You, Connections, Display &amp; sound, Controls &amp; power, Games, System), each
+with a summary on the left and its pages on the right. Inside a group, LB and RB move between its pages and B goes back.
+<b>Search</b> (Y, or the search button in Settings) finds settings too: type "refresh" to get to the refresh rate.</p>
 
 </section><section><h2 id="keyboard">The on-screen keyboard</h2>
 <p>Laid out like SteamOS's, at the bottom of the screen. With a controller:</p>
@@ -70,19 +81,19 @@ a file manager and a terminal.</p>
 <p>The ← and → keys move the text cursor. A USB or Bluetooth keyboard works too.</p>
 
 </section><section><h2 id="power">The power button</h2>
-<p><b>Settings › Power › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
+<p><b>Settings › Controls &amp; power › Power &amp; sleep › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
 Holding the button for several seconds always turns the device off.</p>
 
 </section><section><h2 id="display">Display and performance</h2>
 <ul>
-<li><b>Settings › Display › Drawing engine</b>: on Nvidia graphics Hearth uses Chromium to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
-<li><b>Settings › Power</b>: power mode and the power limit (TDP) on handhelds.</li>
+<li><b>Settings › Display &amp; sound › Display › Renderer</b>: on Nvidia graphics Hearth uses Electron (Chromium) to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
+<li><b>Settings › Controls &amp; power › Power &amp; sleep</b>: power mode and the power limit (TDP) on handhelds.</li>
 </ul>
 
 </section><section><h2 id="profiles">Profiles and stores</h2>
 <ul>
 <li>Each Hearth profile can sign in to its own Steam account. With more than one profile, each sees its own Steam games.</li>
-<li>Stores are signed in to from <b>Settings › Game stores</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
+<li>Stores are signed in to from <b>Settings › Games › Game stores &amp; accounts</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
 </ul>
 
 </section><section><h2 id="apps">Hearth's own apps</h2>
@@ -110,7 +121,7 @@ Holding the button for several seconds always turns the device off.</p>
 system and stays through Hearth OS updates. Sign in with your Claude account in the browser when it asks.</p>
 <ul>
 <li><b>Claude Desktop</b> (the app: chat, Cowork and Claude Code sessions): <b>Get Claude</b> in Desktop Mode's app menu, or
-<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Claude</b>. Hearth downloads Anthropic's own package from
+<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Device › Claude</b>. Hearth downloads Anthropic's own package from
 downloads.claude.ai, checks it against Anthropic's signing key, installs it and opens it.</li>
 <li><b>Updates:</b> Anthropic's Linux app doesn't update itself, so Hearth checks for a newer one every day and installs it
 (if Claude is open, the next time it's closed). <b>Check for an update</b> on the same page does it now.</li>
@@ -126,7 +137,7 @@ Removing keeps your chats (they're in your Claude account) and settings.</p>
 <div class="ed" data-ed="peppermint"><div class="note"><p>On Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic's repository, following Anthropic's instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div></div>
 
 </section><section><h2 id="logs">Sending logs</h2>
-<p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
+<p>When something goes wrong, <b>Settings › System › Help &amp; logs › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
 before they're sent, and only someone with the code can read them.</p>
 </section>

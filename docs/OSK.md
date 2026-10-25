@@ -140,7 +140,7 @@ rumble (`FF_RUMBLE`) on the controller. Controllers read by Hearth's host (Quick
 
 ### Settings
 
-Game Mode: Settings › Device › Keyboard. Desktop Mode: Hearth Settings › Keyboard › On-screen keyboard. Both save
+Game Mode: Settings › Controls & power › Keyboard. Desktop Mode: Hearth Settings › Keyboard › On-screen keyboard. Both save
 `~/.config/nimbus/osk.json` (Game Mode through the `osk.set` call; it also keeps a copy in its page's storage, which
 is what Ember on Windows uses). Keys: `layouts` (`["auto"]` or layout ids), `suggestions`, `learn`, `autocap`,
 `doubleSpace`, `fast` (`wheel` | `split` | `off`), `shape` (`full` | `split`), `size` (`s` | `m` | `l`), `position`
