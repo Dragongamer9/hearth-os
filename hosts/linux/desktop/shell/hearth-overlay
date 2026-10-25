@@ -146,6 +146,45 @@ fi
 # generic-family rules those three files replaced, and a font cache of its own that's made again whenever the image's
 # fonts change (ostree keeps every folder's time the same across updates, so fontconfig can't tell by itself; an old
 # cache names font files that are gone, and Chromium then finds none). HEARTH_OVERLAY_SYSTEM_FONTS=1 turns it off.
+# Every file is copied, not included in place: a conf.d file can itself <include> one of those three by its own path
+# (Fedora 45's pulled /usr/share/fontconfig/conf.avail/48-guessfamily.conf back in: 45 warnings), so the files a
+# copy includes are followed the same way (fc_take) and the copies have no <include> of their own.
+#
+# fc_take <file or folder>: the file (or the folder's *.conf files) copied into $dir/conf, an <include> line for each
+# copy on stdout, then the same for what it includes; left out (named in $left) when Chromium's fontconfig can't read it.
+fc_take() {
+  local real incf inc attrs body path k
+  real=$(readlink -f "$1" 2>/dev/null) || return 0
+  [ -n "$real" ] || return 0
+  if [ -d "$real" ]; then
+    for k in "$real"/*.conf; do [ -e "$k" ] && fc_take "$k"; done
+    return 0
+  fi
+  [ -f "$real" ] && [ -r "$real" ] || return 0
+  case " $seen " in *" $real "*) return 0 ;; esac
+  seen="$seen $real"
+  if grep -Eq "$newsyntax" "$real" 2>/dev/null; then left="$left ${real##*/}"; return 0; fi
+  n=$((n + 1))
+  k="$dir/conf/$(printf '%03d' "$n")-${real##*/}"
+  sed -e 's#<include[^>]*/>##g' -e 's#<include[^>]*>[^<]*</include>##g' "$real" > "$k" 2>/dev/null || return 0
+  echo "  <include ignore_missing=\"yes\">$k</include>"
+  incf="$dir/conf/.inc-$n"
+  grep -o '<include[^>]*>[^<]*</include>' "$real" > "$incf" 2>/dev/null || return 0
+  while IFS= read -r inc; do
+    attrs=${inc%%>*}; body=${inc#*>}; body=${body%%</include>*}
+    body=$(printf '%s' "$body" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    [ -n "$body" ] || continue
+    case "$attrs" in
+      *'prefix="xdg"'*) path="${XDG_CONFIG_HOME:-$HOME/.config}/$body" ;;
+      *) case "$body" in
+           /*) path=$body ;;
+           '~/'*) path="$HOME/${body#??}" ;;
+           *) if [ -e "${real%/*}/$body" ]; then path="${real%/*}/$body"; else path="$etc/$body"; fi ;;
+         esac ;;
+    esac
+    fc_take "$path"
+  done < "$incf"
+}
 fonts_setup() {
   [ -z "${HEARTH_OVERLAY_SYSTEM_FONTS:-}" ] || { note "fonts: the system's fontconfig setup (HEARTH_OVERLAY_SYSTEM_FONTS)"; return 0; }
   [ -z "${FONTCONFIG_FILE:-}" ] || { note "fonts: FONTCONFIG_FILE=$FONTCONFIG_FILE is already set"; return 0; }
@@ -164,8 +203,10 @@ fonts_setup() {
   else
     cache="$dir/cache"
   fi
-  newsyntax='xsi:nil|<const>[[:space:]]*(sans-serif|serif|monospace|emoji|math|system-ui|cursive|fantasy|fangsong|ui-[a-z-]+)[[:space:]]*</const>'
-  left=""; n=0
+  # fontconfig 2.17's new syntax: xsi:nil, and the generic families (or nothing) as constants.
+  newsyntax='xsi:nil|<const>[[:space:]]*(sans-serif|serif|monospace|emoji|math|system-ui|cursive|fantasy|fangsong|ui-[a-z-]+)?[[:space:]]*</const>'
+  left=""; n=0; seen=""
+  rm -rf "$dir/conf" 2>/dev/null; mkdir -p "$dir/conf" 2>/dev/null || { note "fonts: can't make $dir/conf; the system's setup"; return 0; }
   {
     echo '<?xml version="1.0"?>'
     echo '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">'
@@ -176,9 +217,7 @@ fonts_setup() {
     echo '  <dir prefix="xdg">fonts</dir>'
     echo "  <cachedir>$cache</cachedir>"
     for f in "$etc"/conf.d/*.conf; do
-      [ -f "$f" ] || continue
-      if grep -Eq "$newsyntax" "$f" 2>/dev/null; then left="$left ${f##*/}"; continue; fi
-      echo "  <include ignore_missing=\"yes\">$f</include>"; n=$((n + 1))
+      [ -e "$f" ] && fc_take "$f"
     done
     cat <<'XML'
   <!-- What 49-sansserif.conf did before fontconfig 2.17: a font asked for by name gets sans-serif behind it. -->
@@ -199,7 +238,7 @@ XML
   } > "$dir/fonts.conf.new" 2>/dev/null && mv -f "$dir/fonts.conf.new" "$dir/fonts.conf" || { note "fonts: couldn't write $dir/fonts.conf; the system's setup"; return 0; }
   FONTCONFIG_FILE="$dir/fonts.conf"
   export FONTCONFIG_FILE
-  note "fonts: Hearth's setup for Chromium's fontconfig ($FONTCONFIG_FILE: $n of the system's conf.d files, cache $cache)${left:+; left out (fontconfig 2.17 only):$left}"
+  note "fonts: Hearth's setup for Chromium's fontconfig ($FONTCONFIG_FILE: $n of the system's fontconfig files, copied to $dir/conf; cache $cache)${left:+; left out (fontconfig 2.17 only):$left}"
 }
 fonts_setup
 note "LANG=${LANG:-unset}; system fontconfig: $(fc-match sans-serif 2>/dev/null | head -1 || echo 'fc-match missing'), $(fc-list 2>/dev/null | wc -l) fonts"

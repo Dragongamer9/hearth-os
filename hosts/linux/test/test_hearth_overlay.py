@@ -6,6 +6,7 @@ programs stand in for Electron, quickshell and pgrep (gamescope running or not).
 import sys
 sys.dont_write_bytecode = True
 import os
+import re
 import pathlib
 import signal
 import subprocess
@@ -112,6 +113,19 @@ class HearthOverlay(unittest.TestCase):
         (etc / 'conf.d' / '10-hinting.conf').write_text('<fontconfig><match/></fontconfig>\n')
         (etc / 'conf.d' / '48-guessfamily.conf').write_text('<fontconfig><test xsi:nil="true"/><const>sans-serif</const></fontconfig>\n')
         (etc / 'conf.d' / '49-sansserif.conf').write_text('<fontconfig><const>monospace</const></fontconfig>\n')
+        # Fedora 45: a conf.d file that includes one of the new-syntax files by its own path (it came back in through
+        # it: 45 warnings), one the old fontconfig can read, a relative one and the user's folder.
+        avail = self.dir / 'conf.avail'
+        avail.mkdir()
+        (avail / '48-guessfamily.conf').write_text('<fontconfig>\n<test xsi:nil="true"/>\n<const></const>\n</fontconfig>\n')
+        (avail / '30-fine.conf').write_text('<fontconfig><alias><family>Fine</family></alias></fontconfig>\n')
+        (etc / 'local.conf').write_text('<fontconfig><alias><family>Local</family></alias></fontconfig>\n')
+        (etc / 'conf.d' / '60-latin.conf').write_text(
+            f'<fontconfig>\n  <include ignore_missing="yes">{avail}/48-guessfamily.conf</include>\n'
+            f'  <include ignore_missing="yes">{avail}/30-fine.conf</include>\n  <include ignore_missing="yes">local.conf</include>\n'
+            '  <include ignore_missing="yes" prefix="xdg">fontconfig/conf.d</include>\n  <match/>\n</fontconfig>\n')
+        (self.dir / '.config' / 'fontconfig' / 'conf.d').mkdir(parents=True)
+        (self.dir / '.config' / 'fontconfig' / 'conf.d' / '10-mine.conf').write_text('<fontconfig><match/></fontconfig>\n')
         fonts = self.dir / 'fonts'
         fonts.mkdir()
         (fonts / 'a.ttf').write_text('x')
@@ -124,7 +138,18 @@ class HearthOverlay(unittest.TestCase):
         conf = self.run / 'hearth-overlay-fonts' / 'fonts.conf'
         self.assertEqual(self.logged()[-1], f'FONTCONFIG_FILE={conf}')
         text = conf.read_text()
-        self.assertIn(f'<include ignore_missing="yes">{etc}/conf.d/10-hinting.conf</include>', text)
+        # Copies of the files Chromium's fontconfig can read (and of what they include), none of the others, and no
+        # <include> left in a copy that could bring one back.
+        copies = self.run / 'hearth-overlay-fonts' / 'conf'
+        inc = re.findall(r'<include ignore_missing="yes">([^<]*)</include>', text)
+        names = [pathlib.Path(i).name for i in inc]
+        self.assertEqual(names, ['001-10-hinting.conf', '002-60-latin.conf', '003-30-fine.conf', '004-local.conf', '005-10-mine.conf'])
+        for i in inc:
+            self.assertEqual(pathlib.Path(i).parent, copies)
+            body = pathlib.Path(i).read_text()
+            self.assertNotIn('<include', body)
+            self.assertNotIn('xsi:nil', body)
+        self.assertIn('<match/>', (copies / '002-60-latin.conf').read_text())
         self.assertNotIn('48-guessfamily.conf</include>', text)
         self.assertNotIn('49-sansserif.conf</include>', text)
         self.assertIn('<dir>/usr/share/fonts</dir>', text)
