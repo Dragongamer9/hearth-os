@@ -8,6 +8,7 @@ Item {
     property var kinds: ["cover", "wide"]
     property bool load: true               // off while far out of view (big libraries)
     property int fill: Image.PreserveAspectCrop
+    property int hAlign: Image.AlignHCenter
     property string url: ""
     readonly property bool ready: img.status === Image.Ready
     readonly property string wanted: {
@@ -29,6 +30,7 @@ Item {
         anchors.fill: parent
         source: a.url
         fillMode: a.fill
+        horizontalAlignment: a.hAlign
         asynchronous: true
         cache: true
         smooth: true

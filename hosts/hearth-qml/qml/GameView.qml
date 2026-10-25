@@ -44,6 +44,7 @@ Item {
                     game: gp.game
                     kinds: ["logo"]
                     fill: Image.PreserveAspectFit
+                    hAlign: Image.AlignLeft
                     visible: ready
                 }
                 Text {

@@ -32,7 +32,7 @@ Item {
                     kind: modelData.danger ? "danger" : "menu"
                     navScope: "sheet"
                     navKey: "sh-" + index
-                    navFirst: modelData.on || index === 0
+                    navFirst: !!modelData.on || (index === 0 && !(sh.s.items || []).some(x => x.on))
                     icon: modelData.icon || ""
                     text: modelData.label || ""
                     sub: modelData.sub || ""
