@@ -37,3 +37,14 @@ test('other programs and remote or non-admin users are left to polkit', () => {
   assert.strictEqual(decide({ program: ADMIN, command_line: ADMIN + ' hostname x' }, { local: false }), 'default');
   assert.strictEqual(decide({ program: ADMIN, command_line: ADMIN + ' hostname x' }, { isInGroup: () => false }), 'default');
 });
+
+test('Make a bootable USB: USB drives need no password, internal drives always ask', () => {
+  const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
+  assert.strictEqual(decide(cl('usb-raw /dev/sdb --expect-size 16008609792 --size 2000000')), 'yes');
+  assert.strictEqual(decide(cl('usb-prepare /dev/sdb --expect-size 1 --scheme gpt --label WIN11')), 'yes');
+  assert.strictEqual(decide(cl('usb-raw /dev/sda --expect-size 1 --allow-internal')), 'auth_admin');
+  assert.strictEqual(decide(cl('usb-prepare /dev/sda --allow-internal --expect-size 1 --scheme gpt --label X')), 'auth_admin');
+  // Only for usb-* commands, and a remote or non-admin user still gets nothing from Hearth's rule.
+  assert.strictEqual(decide(cl('usb-raw /dev/sda --allow-internal'), { isInGroup: () => false }), 'auth_admin');
+  assert.strictEqual(decide(cl('hostname x')), 'yes');
+});
