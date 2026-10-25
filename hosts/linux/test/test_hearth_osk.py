@@ -55,7 +55,7 @@ class Copies(unittest.TestCase):
     def test_pages_load_it(self):
         self.assertIn('osk/hearth-osk.js', read(ROOT, 'ui', 'index.html'))
         self.assertIn('osk/hearth-osk.css', read(ROOT, 'ui', 'index.html'))
-        for app in ('hearth-maps/ui/index.html', 'hearth-contacts/ui/index.html', 'hearth-time/ui/notes.html', 'hearth-time/ui/calendar.html'):
+        for app in ('hearth-maps/ui/index.html', 'hearth-contacts/ui/index.html', 'hearth-time/ui/notes.html', 'hearth-time/ui/calendar.html', 'hearth-disks/ui/index.html'):
             self.assertIn('osk/hearth-osk.js', read(ROOT, 'hosts', app), app)
 
 

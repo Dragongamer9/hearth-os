@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Disks</title>
+<link rel="stylesheet" href="osk/hearth-osk.css">
 <style>
 /* Hearth's ember palette (hosts/linux/desktop/shell/Theme.qml). */
 :root {
@@ -112,6 +113,57 @@ footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6e
 @keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(340%); } }
 .msg { color:var(--muted); }
 .ok { color:var(--good); } .bad { color:var(--danger); }
+
+/* ---------------------------------------------------------------- Make a bootable USB */
+.usb { display:grid; grid-template-rows:auto 1fr; gap:.7em; padding:0 var(--gut) .6em; min-height:0; }
+.usb[hidden], main[hidden], .btn[hidden] { display:none; }
+.steps { display:flex; gap:.4em; flex-wrap:wrap; align-items:center; color:var(--faint); font-size:.82em; }
+.steps span { padding:.25em .7em; border-radius:99px; background:var(--panel); border:1px solid var(--line); }
+.steps span.on { color:var(--ink); background:var(--ember); border-color:transparent; font-weight:650; }
+.steps span.done { color:var(--text); }
+.tabs { display:flex; gap:.4em; flex-wrap:wrap; }
+.tab { padding:.45em 1em; border-radius:99px; background:var(--panel); border:1px solid var(--line); }
+.tab.on { background:var(--panel3); border-color:var(--ember); color:var(--flame); }
+.cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(15.5em, 1fr)); gap:.6em; }
+.card { display:grid; grid-template-columns:3em 1fr; gap:.15em .8em; align-items:center; text-align:left; padding:.75em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); min-height:5em; }
+.card .mono { grid-row:span 3; width:3em; height:3em; border-radius:12px; display:grid; place-items:center; font-weight:750; font-size:1.05em; color:#1b120c; letter-spacing:-.02em; }
+.card .n { font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card .m { color:var(--muted); font-size:.8em; display:flex; gap:.5em; flex-wrap:wrap; align-items:center; }
+.card.sel { border-color:var(--ember); background:var(--panel2); }
+.fam { grid-column:1/-1; color:var(--muted); font-size:.8em; letter-spacing:.06em; text-transform:uppercase; margin:.5em 0 0; }
+.chk { font-size:.72em; padding:.1em .5em; border-radius:99px; white-space:nowrap; }
+.chk.signed { background:rgba(111,208,140,.15); color:var(--good); }
+.chk.sum { background:rgba(255,209,102,.14); color:var(--flame); }
+.pane { display:grid; grid-template-columns:minmax(0, 1.25fr) minmax(16em, 1fr); gap:var(--gut); min-height:0; align-items:start; }
+.big { font-size:1.3em; font-weight:650; margin:0 0 .25em; }
+.sub2 { color:var(--muted); font-size:.9em; }
+.facts2 { display:grid; grid-template-columns:auto 1fr; gap:.3em 1em; font-size:.9em; margin:.8em 0; }
+.facts2 dt { color:var(--muted); } .facts2 dd { margin:0; overflow-wrap:anywhere; }
+.ok-line { color:var(--good); } .warn-line { color:var(--flame); } .bad-line { color:var(--danger); }
+.sha { font-family:ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; font-size:.9em; letter-spacing:.04em; word-spacing:.35em; background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:.5em .7em; overflow-wrap:anywhere; user-select:text; -webkit-user-select:text; }
+.toggle { display:flex; gap:.8em; align-items:flex-start; text-align:left; width:100%; padding:.6em .8em; border-radius:12px; background:var(--panel); border:1px solid var(--line); margin:.35em 0; }
+.toggle .box { flex:none; width:2.4em; height:1.4em; border-radius:99px; background:var(--panel3); position:relative; margin-top:.1em; transition:background .15s; }
+.toggle .box::after { content:""; position:absolute; top:.15em; left:.15em; width:1.1em; height:1.1em; border-radius:50%; background:var(--muted); transition:transform .15s var(--ease), background .15s; }
+.toggle.on .box { background:var(--ember); } .toggle.on .box::after { transform:translateX(1em); background:var(--ink); }
+.toggle small { display:block; color:var(--muted); font-size:.78em; margin-top:.15em; }
+.dcard { display:grid; grid-template-columns:2.6em 1fr auto; gap:.15em .9em; align-items:center; text-align:left; width:100%; padding:.8em 1em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); margin-bottom:.55em; }
+.dcard .ico { grid-row:span 2; width:2.6em; height:2.6em; border-radius:10px; display:grid; place-items:center; background:var(--panel3); color:var(--ember); }
+.dcard .ico svg { width:1.5em; height:1.5em; }
+.dcard .sz { grid-row:span 2; font-variant-numeric:tabular-nums; font-weight:600; }
+.dcard.internal { border-color:#5c2a22; }
+.erase { margin:.8em 0; padding:.9em 1em; border-radius:14px; background:#2a1210; border:1px solid #6a2a22; }
+.erase b { color:var(--danger); font-size:1.08em; }
+.erase ul { margin:.4em 0 0; padding-left:1.2em; color:#ffc9bd; font-size:.88em; }
+.hold { position:relative; overflow:hidden; padding:.8em 1.4em; border-radius:14px; background:#3a1512; border:1px solid #7a2c22; color:#ffd5cb; font-weight:650; min-width:16em; }
+.hold i { position:absolute; inset:0 auto 0 0; width:0; background:linear-gradient(90deg, var(--danger), #ff8a6a); opacity:.85; }
+.hold span { position:relative; }
+.stages { display:flex; gap:.5em; flex-wrap:wrap; margin:.4em 0 1em; }
+.stages span { padding:.3em .8em; border-radius:99px; background:var(--panel); border:1px solid var(--line); color:var(--faint); font-size:.85em; }
+.stages span.on { border-color:var(--ember); color:var(--flame); } .stages span.done { color:var(--good); border-color:#2f5a3c; }
+.prog.big2 { height:1em; }
+.nums { display:flex; gap:1.2em; flex-wrap:wrap; color:var(--muted); font-size:.85em; font-variant-numeric:tabular-nums; }
+.logbox { white-space:pre-wrap; font-family:ui-monospace, monospace; font-size:.72em; max-height:50vh; overflow:auto; background:var(--bg2); border-radius:10px; padding:.6em; user-select:text; -webkit-user-select:text; }
+@media (max-width: 760px) { .pane { grid-template-columns:1fr; } }
 @media (max-width: 760px) { main { grid-template-columns:1fr; overflow:auto; } .drives { flex-direction:row; overflow:auto; } .drive { min-width:15em; } }
 </style>
 </head>
@@ -121,15 +173,18 @@ footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6e
     <h1>Disks</h1>
     <span class="sub" id="sub"></span>
     <span class="spacer"></span>
+    <button class="btn f" id="usbOpen" data-act="usb" hidden>Make a bootable USB</button>
     <button class="btn f" id="refresh" data-act="refresh">Look again</button>
   </header>
   <main>
     <div class="scroll"><div class="drives" id="drives"></div></div>
     <section class="detail" id="detail"></section>
   </main>
+  <section class="usb" id="usb" hidden></section>
   <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
 </div>
 <div id="layer"></div>
+<script src="osk/hearth-osk.js"></script>
 <script>
 'use strict';
 const T = window.__TAURI__;
@@ -150,13 +205,14 @@ const ICONS = {
 };
 ICONS.other = ICONS.ssd;
 
-const S = { host: 'linux', drives: [], sel: null, part: null, busy: false, pad: false };
+const S = { host: 'linux', drives: [], sel: null, part: null, busy: false, pad: false, view: 'disks' };
 let lastJson = '';
 
 async function load(keepFocus = true) {
   try {
     const r = await invoke('list');
     S.host = r.host; S.busy = r.busy;
+    $('#usbOpen').hidden = S.host !== 'linux';
     const json = JSON.stringify(r.drives);
     if (json === lastJson && keepFocus) return;
     lastJson = json;
@@ -261,14 +317,18 @@ function partPanel(d, p) {
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   if ($('#layer').firstChild && !b.closest('#layer')) return;
+  if (b.dataset.u) { if (!b.closest('#layer')) usbClick(b); return; }
   if (b.dataset.drive) { S.sel = b.dataset.drive; S.part = null; render(); $(`[data-key="drive:${CSS.escape(b.dataset.drive)}"]`)?.focus(); if (S.pad) setTimeout(() => (document.querySelector('.part.f') || document.querySelector('[data-key^="dact:"]'))?.focus(), 0); }
   else if (b.dataset.part) { S.part = b.dataset.part; renderDetail(); const first = document.querySelector('[data-key^="pact:"]'); (S.pad && first ? first : $(`[data-key="part:${CSS.escape(b.dataset.part)}"]`))?.focus(); }
-  else if (b.dataset.act === 'refresh') { lastJson = ''; load(); }
+  else if (b.dataset.act === 'refresh') { if (S.view === 'usb') usbRefresh(); else { lastJson = ''; load(); } }
+  else if (b.dataset.act === 'usb') openUsb();
   else if (b.dataset.act && b.dataset.target) openAction(b.dataset.act, b.dataset.target);
 });
 
 function back() {
+  if (sharedOsk() && HearthOSK.isOpen()) { HearthOSK.close(); return; }
   if (oskTarget) { closeOsk(); return; }
+  if (S.view === 'usb' && !$('#layer').firstChild) { usbBack(); return; }
   const dlg = $('#layer').firstChild;
   if (dlg) { if (!dlg.dataset.locked) closeDialog(); return; }
   const a = document.activeElement;
@@ -284,7 +344,7 @@ function showDialog(html, locked = false) {
   const first = $('#layer [data-autofocus]') || $('#layer .f');
   first?.focus();
 }
-function closeDialog() { $('#layer').innerHTML = ''; current = null; oskTarget = null; const k = lastFocus; setTimeout(() => (k && document.querySelector(`[data-key="${CSS.escape(k)}"]`) || $('.drive.sel'))?.focus(), 0); }
+function closeDialog() { if (sharedOsk() && HearthOSK.isOpen()) HearthOSK.close(); $('#layer').innerHTML = ''; current = null; oskTarget = null; const k = lastFocus; setTimeout(() => (k && document.querySelector(`[data-key="${CSS.escape(k)}"]`) || $('.drive.sel'))?.focus(), 0); }
 let lastFocus = null;
 
 async function openAction(action, target) {
@@ -336,7 +396,13 @@ $('#layer').addEventListener('input', e => {
 // The on-screen keyboard, for typing with a controller.
 let oskTarget = null;
 const OSK = 'QWERTYUIOP ASDFGHJKL- ZXCVBNM_ 1234567890'.split(' ');
+// Hearth's own on-screen keyboard (ui/osk, docs/OSK.md); the small one below only if it didn't load.
+const sharedOsk = () => typeof HearthOSK !== 'undefined' && HearthOSK.version >= 1;
 function openOsk(input) {
+  if (sharedOsk()) {
+    HearthOSK.open({ target: input, enterLabel: 'Done', pad: true, onEnter: () => { HearthOSK.close(); input.focus(); move('down'); }, onClose: () => { if (document.contains(input)) input.focus(); } });
+    return;
+  }
   oskTarget = input;
   const rows = OSK.map(r => [...r].map(c => `<button class="f" data-key="${c}">${c}</button>`).join('')).join('');
   input.insertAdjacentHTML('afterend', `<div class="osk" id="osk">${rows}<button class="f wide" data-key="space">Space</button><button class="f wide" data-key="back">⌫</button><button class="f wide" data-key="lower">abc</button><button class="f wide" data-key="done">Done</button></div>`);
@@ -408,11 +474,13 @@ function move(dir) {
 function choose() {
   const el = document.activeElement;
   if (!el || el === document.body) { focusables()[0]?.focus(); return; }
-  if (el.dataset.osk && S.pad) { if (!oskTarget) openOsk(el); return; }
+  if (el.id === 'holdGo') { holdStart('pad'); return; }
+  if (el.dataset.osk && S.pad) { if (!oskTarget && !(sharedOsk() && HearthOSK.isOpen())) openOsk(el); return; }
   if (el.tagName === 'BUTTON') el.click();
 }
 document.addEventListener('keydown', e => {
   S.pad = false;
+  if (e.target.id === 'holdGo' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); if (!e.repeat) holdStart('key'); return; }
   const typing = e.target.tagName === 'INPUT' && e.target.type !== 'range';
   const k = e.key;
   if (k === 'Escape' || (k === 'Backspace' && !typing)) { e.preventDefault(); back(); return; }
@@ -420,8 +488,10 @@ document.addEventListener('keydown', e => {
   const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   if (dirs[k]) { e.preventDefault(); move(dirs[k]); return; }
   if (k === 'Enter' && typing) { e.preventDefault(); move('down'); return; }
-  if (k === 'F5') { e.preventDefault(); lastJson = ''; load(); }
+  if (k === 'F5') { e.preventDefault(); if (S.view === 'usb') usbRefresh(); else { lastJson = ''; load(); } }
+  if (S.view === 'usb' && !typing && (k === 'PageUp' || k === 'PageDown')) { e.preventDefault(); usbTab(k === 'PageDown' ? 1 : -1); }
 });
+document.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') holdEnd('key'); });
 document.addEventListener('focusin', e => {
   // Choosing a partition with the D-pad shows its details without opening anything.
   const el = e.target;
@@ -433,13 +503,15 @@ const held = {}; let lastPadMove = 0;
 function pad() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   const now = performance.now();
-  const state = { up: false, down: false, left: false, right: false, a: false, b: false, y: false };
+  if (sharedOsk() && HearthOSK.isOpen()) { for (const k in held) held[k] = now; requestAnimationFrame(pad); return; }
+  const state = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, rb: false };
   for (const g of pads) {
     const bt = i => g.buttons[i]?.pressed;
     const ax = g.axes[0] || 0, ay = g.axes[1] || 0;
     state.up ||= bt(12) || ay < -.6; state.down ||= bt(13) || ay > .6; state.left ||= bt(14) || ax < -.6; state.right ||= bt(15) || ax > .6;
-    state.a ||= bt(0); state.b ||= bt(1); state.y ||= bt(3);
+    state.a ||= bt(0); state.b ||= bt(1); state.x ||= bt(2); state.y ||= bt(3); state.lb ||= bt(4); state.rb ||= bt(5);
   }
+  if (!state.a) holdEnd('pad');
   for (const [k, on] of Object.entries(state)) {
     if (!on) { held[k] = 0; continue; }
     const first = !held[k];
@@ -447,7 +519,10 @@ function pad() {
     if (first) held[k] = now;
     if (!(first || (repeat && ['up','down','left','right'].includes(k)))) continue;
     S.pad = true; lastPadMove = now;
-    if (k === 'a') choose(); else if (k === 'b') back(); else if (k === 'y') { if (!$('#layer').firstChild) { lastJson = ''; load(); } }
+    if (k === 'a') choose(); else if (k === 'b') back();
+    else if (k === 'y') { if (!$('#layer').firstChild) { if (S.view === 'usb') usbRefresh(); else { lastJson = ''; load(); } } }
+    else if (k === 'lb' || k === 'rb') { if (S.view === 'usb' && !$('#layer').firstChild) usbTab(k === 'rb' ? 1 : -1); }
+    else if (k === 'x') { if (S.view === 'usb' && U.step === 'run') usbClick({ dataset: { u: 'cancel' } }); }
     else move(k);
   }
   requestAnimationFrame(pad);
@@ -457,9 +532,353 @@ window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Co
 
 // Drives come and go: look again every few seconds while nothing is open (less often on Windows, where looking
 // runs PowerShell), and whenever the window comes back to the front.
-(function tick() { setTimeout(async () => { if (!$('#layer').firstChild && document.visibilityState === 'visible') await load(); tick(); }, S.host === 'windows' ? 8000 : 3000); })();
-window.addEventListener('focus', () => { if (!$('#layer').firstChild) load(); });
-load(false).then(() => $('.drive.sel')?.focus());
+(function tick() { setTimeout(async () => { if (!$('#layer').firstChild && document.visibilityState === 'visible') { if (S.view === 'usb') await usbTick(); else await load(); } tick(); }, S.host === 'windows' ? 8000 : 3000); })();
+window.addEventListener('focus', () => { if (!$('#layer').firstChild && S.view !== 'usb') load(); });
+load(false).then(() => {
+  if (window.__DISKS_USB_FILE) openUsb(window.__DISKS_USB_FILE);
+  else if (window.__DISKS_USB_FIRST) openUsb();
+  else $('.drive.sel')?.focus();
+});
+
+// ---------------------------------------------------------------- Make a bootable USB (Linux)
+// Steps: pick (a system from the catalog, Windows, Hearth OS, your own ISO, earlier downloads) → item (the newest
+// version and how it's checked; Windows: Microsoft's page) or file (your ISO checked) → drive → options → confirm
+// (hold A, or type ERASE for an internal drive) → run (download, check, write, read back) → done.
+const U = { step: 'pick', tab: 'linux', catalog: null, entry: null, release: null, resolving: false, file: null, checking: false, drives: [], showAll: false,
+  drive: null, scheme: 'gpt', tweaks: { skipChecks: false, skipOnline: false, localAccount: '' }, keep: true, accept: false, progress: null, result: null,
+  watching: 0, found: null, cache: [], log: '', error: '' };
+const USB_TABS = [['linux', 'Linux'], ['windows', 'Windows'], ['hearth', 'Hearth OS'], ['own', 'Your own ISO'], ['cache', 'Downloaded']];
+const FAM_COLOR = { 'Fedora': '#6ea8ff', 'Ubuntu': '#ff8a5c', 'Debian': '#ff6f91', 'Linux Mint': '#8fd66b', 'Pop!_OS': '#6fe0d2', 'Arch Linux': '#5fb6ff',
+  'CachyOS': '#4fd8b0', 'Bazzite': '#b08cff', 'openSUSE': '#9be36b', 'Manjaro': '#4fd18b', 'Windows': '#58b4ff', 'Hearth OS': '#ff8a3d' };
+const mono = n => n.replace(/[^A-Za-z0-9 ]/g, '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const fmtTime = s => { if (s == null || !isFinite(s)) return ''; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return h ? `${h} h ${m} min` : m ? `${m} min ${String(x).padStart(2, '0')} s` : `${x} s`; };
+const shaGroups = h => (h || '').replace(/(.{8})/g, '$1 ').trim();
+const isWinEntry = () => U.entry && U.entry.windows;
+const isWindowsJob = () => (U.file && U.file.inspect && U.file.inspect.mode === 'windows') || isWinEntry();
+const win11 = () => { const w = U.file && U.file.inspect && U.file.inspect.windows; return w ? w.product === 'Windows 11' : (U.entry && U.entry.id === 'windows-11'); };
+
+async function openUsb(file) {
+  S.view = 'usb';
+  $('main').hidden = true; $('#usb').hidden = false; $('#usbOpen').hidden = true;
+  $('#refresh').textContent = 'Look again';
+  if (!U.catalog) { try { U.catalog = await invoke('usb_catalog'); } catch (e) { U.error = String(e); } }
+  if (file) { U.entry = null; U.release = null; await usbCheckFile(file); return; }
+  U.step = 'pick'; renderUsb(); focusFirstUsb();
+}
+function closeUsb() {
+  S.view = 'disks';
+  $('#usb').hidden = true; $('main').hidden = false; $('#usbOpen').hidden = S.host !== 'linux';
+  lastJson = ''; load(false).then(() => $('[data-act="usb"]')?.focus() || $('.drive.sel')?.focus());
+}
+function focusFirstUsb(sel) {
+  setTimeout(() => { const el = (sel && $(sel)) || $('#usb [data-autofocus]') || $('#usb .card.sel') || $('#usb .card') || $('#usb .f'); el?.focus({ preventScroll: false }); }, 0);
+}
+function usbTab(dir) {
+  if (U.step !== 'pick') return;
+  const i = USB_TABS.findIndex(t => t[0] === U.tab);
+  U.tab = USB_TABS[(i + dir + USB_TABS.length) % USB_TABS.length][0];
+  if (U.tab === 'cache') loadCache();
+  renderUsb(); focusFirstUsb(`[data-u="tab"][data-id="${U.tab}"]`);
+}
+async function loadCache() { try { U.cache = (await invoke('usb_cache')).files || []; } catch (e) { U.cache = []; } if (U.step === 'pick' && U.tab === 'cache') renderUsb(true); }
+function usbRefresh() { if (U.step === 'drive') loadDrives(); else if (U.step === 'item' && U.entry && !U.entry.windows) resolveEntry(U.entry); else if (U.tab === 'cache') loadCache(); }
+async function usbTick() {
+  if (U.step === 'drive') await loadDrives();
+  if (U.step === 'item' && U.watching) {
+    try {
+      const f = await invoke('usb_find_windows', { since: U.watching });
+      if (f && f.path) { U.watching = 0; U.found = f; await usbCheckFile(f.path, true); }
+    } catch (e) { /* keep watching */ }
+  }
+}
+
+function usbBack() {
+  if (hold) return;
+  switch (U.step) {
+    case 'pick': closeUsb(); return;
+    case 'item': case 'file': U.watching = 0; U.step = 'pick'; break;
+    case 'drive': U.step = U.entry && !U.entry.windows ? 'item' : 'file'; break;
+    case 'options': U.step = 'drive'; loadDrives(); break;
+    case 'confirm': U.step = needsOptions() ? 'options' : 'drive'; if (U.step === 'drive') loadDrives(); break;
+    case 'run': return;   // Cancel is its own button (X)
+    case 'done': U.step = 'pick'; U.result = null; break;
+  }
+  renderUsb(); focusFirstUsb();
+}
+const needsOptions = () => isWindowsJob() || (U.entry && !U.entry.windows);
+
+async function resolveEntry(e) {
+  U.release = null; U.resolving = true; U.error = ''; renderUsb(true);
+  try { U.release = await invoke('usb_resolve', { id: e.id }); }
+  catch (err) { U.error = String(err); }
+  U.resolving = false;
+  if (U.step === 'item' && U.entry === e) { renderUsb(true); if (U.release) focusFirstUsb('[data-u="to-drive"]'); }
+}
+
+async function usbCheckFile(path, fromMicrosoft) {
+  U.step = 'file'; U.file = null; U.checking = true; U.accept = false; U.error = ''; U.progress = null; U.fromMicrosoft = !!fromMicrosoft;
+  if (!fromMicrosoft) U.entry = null;
+  renderUsb();
+  try { U.file = await invoke('usb_check_file', { path }); }
+  catch (e) { U.error = String(e); }
+  U.checking = false; U.progress = null;
+  if (U.step === 'file') { renderUsb(); focusFirstUsb('[data-u="accept"]') ; if (!$('[data-u="accept"]')) focusFirstUsb('[data-u="to-drive"]'); }
+}
+
+async function loadDrives() {
+  try {
+    const r = await invoke('usb_drives', { showAll: U.showAll });
+    const json = JSON.stringify(r.drives);
+    if (json === JSON.stringify(U.drives)) return;
+    U.drives = r.drives;
+    if (U.drive && !U.drives.find(d => d.id === U.drive.id && d.fingerprint === U.drive.fingerprint)) U.drive = null;
+  } catch (e) { U.error = String(e); }
+  if (U.step === 'drive') renderUsb(true);
+}
+
+function usbClick(b) {
+  const u = b.dataset.u, id = b.dataset.id;
+  if (u === 'tab') { U.tab = id; if (id === 'cache') loadCache(); renderUsb(true); return; }
+  if (u === 'entry') {
+    const e = U.catalog.entries.find(x => x.id === id); if (!e) return;
+    U.entry = e; U.file = null; U.step = 'item'; U.watching = 0;
+    renderUsb(); if (!e.windows) resolveEntry(e); focusFirstUsb(e.windows ? '[data-u="ms-open"]' : null); return;
+  }
+  if (u === 'pick-file') { pickFile(); return; }
+  if (u === 'cached') { U.entry = null; usbCheckFile(id); return; }
+  if (u === 'cache-del') { invoke('usb_cache_remove', { path: id }).then(loadCache, err => showResult(false, err)); return; }
+  if (u === 'ms-open') { invoke('usb_open_page', { id: U.entry.id }).catch(err => showResult(false, err)); U.watching = Date.now(); renderUsb(true); return; }
+  if (u === 'home') { invoke('usb_open_page', { id: U.entry.id }).catch(err => showResult(false, err)); return; }
+  if (u === 'accept') { U.accept = !U.accept; renderUsb(true); return; }
+  if (u === 'to-drive') { if (!canPickDrive()) return; U.step = 'drive'; U.drive = null; renderUsb(); loadDrives().then(() => focusFirstUsb('.dcard')); return; }
+  if (u === 'show-all') { U.showAll = !U.showAll; U.drives = []; loadDrives(); return; }
+  if (u === 'drive') { U.drive = U.drives.find(d => d.id === id) || null; if (!U.drive) return; U.step = needsOptions() ? 'options' : 'confirm'; U.typed = ''; renderUsb(); focusFirstUsb(); return; }
+  if (u === 'scheme') { U.scheme = id; renderUsb(true); return; }
+  if (u === 'tweak') { U.tweaks[id] = !U.tweaks[id]; renderUsb(true); return; }
+  if (u === 'keep') { U.keep = id === 'yes'; renderUsb(true); return; }
+  if (u === 'to-confirm') { if (U.tweaks.localAccount && !/^[^"\/\\\[\]:;|=,+*?<>@%]{1,20}$/.test(U.tweaks.localAccount.trim())) { showResult(false, 'Account names are 1 to 20 characters, without " / \\ [ ] : ; | = , + * ? < > @ %'); return; } U.step = 'confirm'; U.typed = ''; renderUsb(); focusFirstUsb(); return; }
+  if (u === 'go-typed') { if ((U.typed || '').trim().toUpperCase() === 'ERASE') startJob(); return; }
+  if (u === 'cancel') { invoke('usb_cancel'); const t = $('#usbText'); if (t) t.textContent = 'Stopping…'; return; }
+  if (u === 'eject') { if (U.result && U.result.drive) openAction('eject', U.result.drive); return; }
+  if (u === 'again') { U.step = 'pick'; U.result = null; U.drive = null; renderUsb(); focusFirstUsb(); return; }
+  if (u === 'retry') { U.step = 'confirm'; renderUsb(); focusFirstUsb(); return; }
+  if (u === 'log') { invoke('usb_log').then(t => showDialog(`<h2>Make a bootable USB: log</h2><div class="logbox">${esc(t || 'Nothing logged yet.')}</div><div class="row"><button class="btn primary f" data-dlg="close" data-autofocus>Close</button></div>`)); return; }
+  if (u === 'back') { usbBack(); return; }
+}
+function canPickDrive() {
+  if (U.entry && !U.entry.windows) return !!U.release;
+  const f = U.file; if (!f) return false;
+  if (f.mismatch || !f.inspect || f.inspect.mode === 'unknown') return false;
+  return f.verified || U.accept;
+}
+async function pickFile() {
+  try { const p = await invoke('usb_pick_file'); if (p) { U.entry = null; await usbCheckFile(p); } }
+  catch (e) { showResult(false, e); }
+}
+
+// Holding A (or Enter, or the button with a finger or the mouse) for 1.5 s starts the job: one press can't erase a drive.
+const HOLD_MS = 1500;
+let hold = null;
+function holdStart(src) {
+  if (hold || S.view !== 'usb' || U.step !== 'confirm' || !$('#holdGo')) return;
+  hold = { src, start: performance.now() };
+  (function tick() {
+    if (!hold) return;
+    const p = Math.min(1, (performance.now() - hold.start) / HOLD_MS);
+    const bar = $('#holdGo i'); if (bar) bar.style.width = `${p * 100}%`;
+    if (p >= 1) { hold = null; startJob(); return; }
+    requestAnimationFrame(tick);
+  })();
+}
+function holdEnd(src) {
+  if (!hold || (src && hold.src !== src)) return;
+  hold = null;
+  const bar = $('#holdGo i'); if (bar) bar.style.width = '0';
+}
+document.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('#holdGo')) { e.preventDefault(); holdStart('ptr'); } });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(t => document.addEventListener(t, () => holdEnd('ptr'), true));
+
+async function startJob() {
+  if (!U.drive) return;
+  const job = {
+    source: U.entry && !U.entry.windows ? 'catalog' : 'file', id: U.entry && !U.entry.windows ? U.entry.id : '', path: U.file ? U.file.path : '',
+    drive: U.drive.id, expect: U.drive.fingerprint, showAll: U.showAll, typed: U.typed || '', scheme: U.scheme,
+    tweaks: win11() ? { skipChecks: U.tweaks.skipChecks, skipOnline: U.tweaks.skipOnline, localAccount: (U.tweaks.localAccount || '').trim() } : {},
+    keep: U.keep, acceptUnverified: !!U.accept,
+  };
+  U.step = 'run'; U.progress = { stage: 'find', text: 'Starting' }; U.result = null; U.error = '';
+  renderUsb(); focusFirstUsb('[data-u="cancel"]');
+  try { await invoke('usb_start', { job }); }
+  catch (e) { U.step = 'done'; U.result = { ok: false, error: String(e) }; renderUsb(); focusFirstUsb(); }
+}
+listen('usb://progress', ev => {
+  U.progress = ev.payload;
+  if (S.view !== 'usb') return;
+  if (U.step === 'run') paintProgress();
+  else if (U.step === 'file' && U.checking) paintCheck();
+});
+listen('usb://done', ev => {
+  U.result = ev.payload; U.step = 'done';
+  if (S.view === 'usb') { renderUsb(); focusFirstUsb(U.result.ok ? '[data-u="eject"]' : '[data-u="retry"]'); }
+});
+
+const STAGES = [['download', 'Download', ['find', 'download']], ['check', 'Check', ['verify', 'inspect']], ['write', 'Write', ['prepare', 'write', 'copy', 'split']], ['verify', 'Verify', ['readback', 'finish']]];
+function stageIndex(st) { return STAGES.findIndex(s => s[2].includes(st)); }
+function progressHtml() {
+  const p = U.progress || {};
+  const at = stageIndex(p.stage);
+  const show = STAGES.filter(s => s[0] !== 'download' || (U.entry && !U.entry.windows));
+  const pct = p.pct != null ? Math.max(0, Math.min(1, p.pct)) : null;
+  const nums = [p.done != null ? `${human(p.done)}${p.total ? ` of ${human(p.total)}` : ''}` : '', p.speed ? `${human(p.speed)}/s` : '', p.eta ? `about ${fmtTime(p.eta)} left` : '', pct != null ? `${Math.round(pct * 100)}%` : ''].filter(Boolean);
+  return `<div class="stages">${show.map(s => { const i = STAGES.indexOf(s); return `<span class="${i < at ? 'done' : i === at ? 'on' : ''}">${i < at ? '✓ ' : ''}${s[1]}</span>`; }).join('')}</div>
+    <div class="prog big2 ${pct == null ? 'spin' : ''}" id="usbBar"><i style="${pct != null ? `width:${Math.round(pct * 100)}%` : ''}"></i></div>
+    <div class="msg" id="usbText">${esc(p.text || 'Working')}</div>
+    <div class="nums" id="usbNums">${nums.map(esc).map(x => `<span>${x}</span>`).join('')}</div>`;
+}
+function paintProgress() { const el = $('#usbProg'); if (el) el.innerHTML = progressHtml(); }
+function paintCheck() { const el = $('#usbCheck'); if (el) el.innerHTML = progressHtml(); }
+
+function stepsBar() {
+  const order = [['pick', 'System'], ['drive', 'USB drive'], ['options', 'Options'], ['confirm', 'Confirm'], ['run', 'Write']];
+  const map = { item: 'pick', file: 'pick', done: 'run' };
+  const cur = map[U.step] || U.step;
+  const ci = order.findIndex(o => o[0] === cur);
+  return `<div class="steps">${order.filter(o => o[0] !== 'options' || needsOptions() || cur === 'options').map(o => { const i = order.indexOf(o); return `<span class="${i === ci ? 'on' : i < ci ? 'done' : ''}">${esc(o[1])}</span>`; }).join('')}</div>`;
+}
+function checkBadge(e) {
+  if (e.windows) return '<span class="chk sum">From Microsoft</span>';
+  return e.signedBy ? '<span class="chk signed">Signed</span>' : '<span class="chk sum">Checksum</span>';
+}
+function entryCard(e) {
+  return `<button class="card f ${U.entry && U.entry.id === e.id ? 'sel' : ''}" data-u="entry" data-id="${esc(e.id)}" data-key="usb:${esc(e.id)}">
+    <span class="mono" style="background:${FAM_COLOR[e.family] || 'var(--flame)'}">${esc(mono(e.family))}</span>
+    <span class="n">${esc(e.name)}</span><span class="m">${esc(e.flavour)}</span><span class="m">${esc(e.sizeHint)} ${checkBadge(e)}</span></button>`;
+}
+function driveIcon(k) { return `<svg viewBox="0 0 24 24">${ICONS[k] || ICONS.usb}</svg>`; }
+
+function renderUsb(keepFocus) {
+  const focusKey = keepFocus ? document.activeElement?.dataset?.key : null;
+  const el = $('#usb');
+  const back = `<button class="btn f" data-u="back" data-key="usb-back">${U.step === 'pick' ? '← Disks' : '← Back'}</button>`;
+  let body = '';
+  const c = U.catalog || { entries: [], groups: [] };
+  if (U.step === 'pick') {
+    const tabs = `<div class="tabs">${USB_TABS.map(([id, n]) => `<button class="tab f ${U.tab === id ? 'on' : ''}" data-u="tab" data-id="${id}" data-key="usbtab:${id}">${esc(n)}</button>`).join('')}</div>`;
+    let inner = '';
+    if (['linux', 'windows', 'hearth'].includes(U.tab)) {
+      const list = c.entries.filter(e => e.group === U.tab);
+      inner = `<div class="cards">${list.map(entryCard).join('')}</div>`;
+      if (U.tab === 'windows') inner = `<p class="sub2">Microsoft only hands out Windows through its own download page. Hearth opens it in your browser and picks up the ISO when it's downloaded.</p>` + inner;
+    } else if (U.tab === 'own') {
+      inner = `<div class="panel" style="max-width:40em"><p class="big">Use an ISO I already have</p><p class="sub2">An ISO, or a disk image (.img, .img.xz, .img.zst, .img.gz). Hearth checks it against a checksum file beside it when there is one (SHA256SUMS, name.sha256 …).</p>
+        <div class="row" style="justify-content:flex-start"><button class="btn primary f" data-u="pick-file" data-autofocus data-key="usb-pick">Choose an ISO or disk image…</button></div></div>`;
+    } else if (U.tab === 'cache') {
+      inner = U.cache.length ? `<p class="sub2">Downloads kept in ${esc(c.cache || 'Downloads/Hearth USB')}.</p><div class="cards">${U.cache.map(f => `<div style="display:grid;gap:.3em"><button class="card f" data-u="cached" data-id="${esc(f.path)}" data-key="usbc:${esc(f.path)}">
+          <span class="mono" style="background:var(--flame)">ISO</span><span class="n">${esc(f.name || f.file)}</span><span class="m">${esc(f.version || '')} ${esc(human(f.size))}</span><span class="m">${f.verifiedBy ? `<span class="chk signed">Checked</span>` : ''}</span></button>
+          <button class="btn f danger" data-u="cache-del" data-id="${esc(f.path)}" data-key="usbd:${esc(f.path)}">Delete ${esc(f.file)}</button></div>`).join('')}</div>` : `<div class="empty">Nothing downloaded yet. Downloads you keep after writing show up here.</div>`;
+    }
+    body = `${tabs}<div class="scroll" style="margin-top:.6em">${inner}</div>`;
+  } else if (U.step === 'item') {
+    const e = U.entry, r = U.release;
+    let left = `<p class="big">${esc(e.name)}</p><p class="sub2">${esc(e.flavour)} · ${esc(e.arch)}</p><p>${esc(e.about)}</p>`;
+    let right = '';
+    if (e.windows) {
+      left += `<div class="panel"><h3>How it works</h3><ol style="margin:.2em 0 0;padding-left:1.2em;font-size:.92em">
+        <li>Microsoft's download page opens in your browser.</li><li>Pick the language there and download the 64-bit ISO.</li>
+        <li>Hearth notices it in your Downloads folder and checks it.</li><li>Compare the SHA-256 Hearth shows with Microsoft's list under "Verify your download".</li></ol></div>
+        <p class="sub2" style="font-size:.8em">${esc(e.note)}</p>`;
+      right = `<div class="panel">${U.watching ? `<p class="warn-line">Waiting for the ISO in ${esc(c.downloads || 'Downloads')}…</p><div class="prog spin"><i></i></div><p class="sub2" style="font-size:.8em">Leave this open while the browser downloads it.</p>` : ''}
+        <div class="acts" style="margin-top:.6em;flex-direction:column;align-items:stretch">
+          <button class="btn primary f" data-u="ms-open" data-key="usb-ms">${U.watching ? 'Open Microsoft\'s page again' : 'Open Microsoft\'s page'}</button>
+          <button class="btn f" data-u="pick-file" data-key="usb-pick">I already have it: choose the ISO…</button></div></div>`;
+    } else {
+      if (U.resolving) right = `<div class="panel"><p>Finding the newest version…</p><div class="prog spin"><i></i></div></div>`;
+      else if (r) right = `<div class="panel"><h3>${esc(r.name)}</h3><dl class="facts2"><dt>Version</dt><dd>${esc(r.version)}</dd><dt>File</dt><dd>${esc(r.file)}</dd>
+          <dt>Size</dt><dd>${esc(r.size ? human(r.size) : e.sizeHint)}</dd><dt>From</dt><dd>${esc((r.url.split('/')[2]) || '')}</dd>
+          <dt>Checked with</dt><dd>${r.signedBy ? `<span class="ok-line">SHA-256 and OpenPGP signature</span> by ${esc(r.signedBy)}` : `<span class="warn-line">SHA-256 only</span>: ${esc(r.note || 'the project doesn\'t sign it')}`}</dd>
+          ${r.cached ? '<dt>Already here</dt><dd>A checked copy is in Downloads/Hearth USB: no download needed.</dd>' : ''}</dl>
+          <div class="acts"><button class="btn primary f" data-u="to-drive" data-key="usb-todrive">Choose the USB drive</button><button class="btn f" data-u="home" data-key="usb-home">Project page</button></div></div>`;
+      else right = `<div class="panel"><p class="bad-line">${esc(U.error || 'Couldn\'t find it.')}</p><div class="acts"><button class="btn f" data-u="back" data-key="usb-err-back">Back</button></div></div>`;
+      if (e.pinned) left += `<p class="sub2" style="font-size:.8em">${esc(e.pinned)}</p>`;
+    }
+    body = `<div class="pane scroll"><div>${left}</div><div>${right}</div></div>`;
+  } else if (U.step === 'file') {
+    const f = U.file;
+    let main = '';
+    if (U.checking) main = `<div class="panel"><p class="big">Checking the image</p><div id="usbCheck">${progressHtml()}</div></div>`;
+    else if (!f) main = `<div class="panel"><p class="bad-line">${esc(U.error || 'That file couldn\'t be read.')}</p><div class="acts"><button class="btn f" data-u="back" data-key="usb-fback">Back</button></div></div>`;
+    else {
+      const i = f.inspect || {}; const w = i.windows;
+      const how = { raw: 'Written to the drive as it is (it\'s a hybrid ISO or disk image), then read back to check it.', windows: 'A FAT32 partition with Windows\' files copied to it (starts on UEFI PCs, Secure Boot works).', 'uefi-copy': 'Its files are copied to a FAT32 partition (it isn\'t a hybrid ISO).', unknown: 'Hearth can\'t write this file.' }[i.mode] || '';
+      let check;
+      if (f.mismatch) check = `<p class="bad-line">This file doesn't match ${esc(f.against)}: it's damaged or isn't the file it should be. Hearth won't write it.</p>`;
+      else if (f.verified) check = `<p class="ok-line">✓ The SHA-256 matches ${esc(f.against)}.</p>`;
+      else if (U.fromMicrosoft || (w && !f.verified)) check = `<p class="warn-line">Compare this SHA-256 with Microsoft's list under "Verify your download" on the page you downloaded it from:</p><div class="sha">${esc(shaGroups(f.sha256))}</div>
+        <button class="toggle f ${U.accept ? 'on' : ''}" data-u="accept" data-key="usb-accept"><span class="box"></span><span>It matches Microsoft's list<small>Only go on if it's exactly the same.</small></span></button>`;
+      else check = `<p class="warn-line">Nothing could check this file: there's no checksum file beside it. Write it only if you trust where it came from.</p>
+        <button class="toggle f ${U.accept ? 'on' : ''}" data-u="accept" data-key="usb-accept"><span class="box"></span><span>I trust this file; write it anyway<small>A damaged or tampered image may not start, or may harm the PC it's installed on.</small></span></button>`;
+      main = `<div class="pane"><div><p class="big">${esc(w ? `${w.product}${w.arch ? ` (${w.arch})` : ''}` : f.file)}</p><p class="sub2">${esc(f.file)} · ${esc(human(f.size))}</p>
+          ${w ? `<dl class="facts2"><dt>Editions</dt><dd>${esc((w.editions || []).join(', ') || 'not listed')}</dd>${w.build ? `<dt>Build</dt><dd>${esc(w.build)}</dd>` : ''}<dt>Installer</dt><dd>${esc(w.install)} (${esc(human(w.installSize))})${w.needsSplit ? ', split into parts for FAT32' : ''}</dd></dl>` : ''}
+          <p>${esc(how)}</p>${(i.warnings || []).map(x => `<p class="warn-line" style="font-size:.88em">${esc(x)}</p>`).join('')}</div>
+        <div class="panel">${check}${!f.mismatch && f.verified ? `<p class="sub2" style="font-size:.8em">SHA-256</p><div class="sha">${esc(shaGroups(f.sha256))}</div>` : ''}
+          <div class="acts" style="margin-top:.8em"><button class="btn primary f" data-u="to-drive" data-key="usb-todrive" ${canPickDrive() ? '' : 'disabled'}>Choose the USB drive</button></div></div></div>`;
+    }
+    body = `<div class="scroll">${main}</div>`;
+  } else if (U.step === 'drive') {
+    const list = U.drives.map(d => `<button class="dcard f ${d.internal ? 'internal' : ''}" data-u="drive" data-id="${esc(d.id)}" data-key="usbdrive:${esc(d.id)}">
+        <span class="ico">${driveIcon(d.kind)}</span><span class="n" style="font-weight:650">${esc(d.name)}</span><span class="sz">${esc(human(d.size))}</span>
+        <span class="m" style="color:var(--muted);font-size:.82em">${esc(d.connection)}${d.device ? ` · ${esc(d.device)}` : ''}${d.partitions.length ? ` · ${esc(d.partitions.join(' · '))}` : ' · empty'}${d.internal ? ' · <b style="color:var(--danger)">internal drive</b>' : ''}</span></button>`).join('');
+    body = `<div class="pane scroll"><div><p class="big">Which USB drive?</p><p class="sub2">Everything on it will be erased. Only USB drives and SD cards are shown; the drive Hearth runs from never is.</p>
+        <div style="margin-top:.7em">${list || '<div class="empty">Plug in a USB drive or SD card (8 GB or more is best).</div>'}</div></div>
+      <div class="panel"><h3>Writing</h3><p class="sub2">${esc(U.entry && !U.entry.windows ? `${U.entry.name} ${U.release ? U.release.version : ''}` : (U.file ? U.file.file : ''))}</p>
+        <button class="toggle f ${U.showAll ? 'on' : ''}" data-u="show-all" data-key="usb-showall"><span class="box"></span><span>Show all drives<small>Internal drives too (never the one Hearth runs from). Writing to one needs ERASE typed and an administrator's password.</small></span></button></div></div>`;
+  } else if (U.step === 'options') {
+    let opts = '';
+    if (isWindowsJob()) {
+      opts += `<div class="field"><label>Partition layout</label><div class="chips">
+        <button class="chip f ${U.scheme === 'gpt' ? 'on' : ''}" data-u="scheme" data-id="gpt" data-key="usb-gpt">GPT<small>For UEFI PCs (almost every PC since 2012). Recommended</small></button>
+        <button class="chip f ${U.scheme === 'mbr' ? 'on' : ''}" data-u="scheme" data-id="mbr" data-key="usb-mbr">MBR<small>For UEFI PCs that don't start from GPT USB drives. Old BIOS-only PCs aren't supported</small></button></div></div>`;
+      if (win11()) opts += `<div class="field"><label>Windows 11 options (off unless you turn them on)</label>
+        <button class="toggle f ${U.tweaks.skipChecks ? 'on' : ''}" data-u="tweak" data-id="skipChecks" data-key="usb-t1"><span class="box"></span><span>Install without TPM 2.0, Secure Boot or 4 GB of memory<small>For older PCs Windows 11 refuses. Microsoft doesn't support Windows 11 on them and may hold back updates.</small></span></button>
+        <button class="toggle f ${U.tweaks.skipOnline ? 'on' : ''}" data-u="tweak" data-id="skipOnline" data-key="usb-t2"><span class="box"></span><span>Set up without a Microsoft account<small>Skips the online account screens, so a local account can be made.</small></span></button>
+        <label for="acct" style="display:block;color:var(--muted);font-size:.85em;margin:.6em 0 .3em">Local account name (optional; Windows asks for its password at the first sign-in)</label>
+        <input class="inp f" id="acct" data-osk="acct" data-key="usb-acct" maxlength="20" value="${esc(U.tweaks.localAccount || '')}" spellcheck="false" autocomplete="off" placeholder="e.g. Sam"></div>`;
+    }
+    if (U.entry && !U.entry.windows) opts += `<div class="field"><label>The download, after writing</label><div class="chips">
+        <button class="chip f ${U.keep ? 'on' : ''}" data-u="keep" data-id="yes" data-key="usb-keep">Keep it<small>In Downloads/Hearth USB, for the next stick</small></button>
+        <button class="chip f ${!U.keep ? 'on' : ''}" data-u="keep" data-id="no" data-key="usb-del">Delete it<small>Frees the space</small></button></div></div>`;
+    body = `<div class="pane scroll"><div><p class="big">Options</p>${opts}</div><div class="panel"><h3>Next</h3><p class="sub2">Writing to ${esc(U.drive.name)} (${esc(human(U.drive.size))}).</p><div class="acts"><button class="btn primary f" data-u="to-confirm" data-key="usb-toconfirm">Continue</button></div></div></div>`;
+  } else if (U.step === 'confirm') {
+    const d = U.drive;
+    const what = U.entry && !U.entry.windows ? `${U.entry.name}${U.release ? ` ${U.release.version}` : ''}` : (U.file ? U.file.file : '');
+    const how = isWindowsJob() ? `FAT32, ${U.scheme.toUpperCase()}${win11() && (U.tweaks.skipChecks || U.tweaks.skipOnline || U.tweaks.localAccount) ? ', with your Windows 11 options' : ''}` : (U.file && U.file.inspect && U.file.inspect.mode === 'uefi-copy' ? 'files copied to FAT32' : 'written as it is, then read back');
+    const go = d.internal
+      ? `<div class="field"><label for="typed">This is an internal drive. To go ahead, type <b>ERASE</b></label><input class="inp f" id="typed" data-osk="typed" data-key="usb-typed" maxlength="12" value="${esc(U.typed || '')}" spellcheck="false" autocomplete="off" autocapitalize="characters"></div>
+         <button class="btn primary danger f" data-u="go-typed" data-key="usb-gotyped" id="goTyped" ${(U.typed || '').trim().toUpperCase() === 'ERASE' ? '' : 'disabled'}>Erase and write</button>`
+      : `<button class="hold f" id="holdGo" data-key="usb-hold" data-autofocus><i></i><span>Hold A to erase and write</span></button><p class="sub2" style="font-size:.8em">Or hold Enter, or hold the button.</p>`;
+    body = `<div class="pane scroll"><div><p class="big">Ready to write</p><dl class="facts2"><dt>System</dt><dd>${esc(what)}</dd><dt>How</dt><dd>${esc(how)}</dd><dt>Drive</dt><dd>${esc(d.name)}, ${esc(human(d.size))}, ${esc(d.connection)}${d.device ? ` (${esc(d.device)})` : ''}</dd></dl>
+        <div class="erase"><b>Everything on ${esc(d.name)} (${esc(human(d.size))}) will be erased.</b>${d.partitions.length ? `<ul>${d.partitions.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}</div></div>
+      <div class="panel">${go}</div></div>`;
+  } else if (U.step === 'run') {
+    body = `<div class="pane scroll"><div><p class="big">Making ${esc(U.drive ? U.drive.name : 'the USB drive')} bootable</p><div id="usbProg">${progressHtml()}</div>
+        <p class="sub2" style="font-size:.85em;margin-top:1em">Keep the drive plugged in until this finishes.</p></div>
+      <div class="panel"><div class="acts"><button class="btn f danger" data-u="cancel" data-key="usb-cancel">Cancel (X)</button><button class="btn f" data-u="log" data-key="usb-log">Show log</button></div></div></div>`;
+  } else if (U.step === 'done') {
+    const r = U.result || {};
+    body = r.ok
+      ? `<div class="pane scroll"><div><p class="big ok">Done</p><p>${esc(r.result.message)}</p></div><div class="panel"><div class="acts" style="flex-direction:column;align-items:stretch">
+          <button class="btn primary f" data-u="eject" data-key="usb-eject">Safely remove the drive</button><button class="btn f" data-u="again" data-key="usb-again">Make another</button><button class="btn f" data-u="log" data-key="usb-log">Show log</button></div></div></div>`
+      : `<div class="pane scroll"><div><p class="big ${r.cancelled ? '' : 'bad'}">${r.cancelled ? 'Cancelled' : 'That didn\'t work'}</p><p>${esc(r.error || 'Something went wrong.')}</p></div><div class="panel"><div class="acts" style="flex-direction:column;align-items:stretch">
+          <button class="btn primary f" data-u="retry" data-key="usb-retry">Try again</button><button class="btn f" data-u="again" data-key="usb-again">Start over</button><button class="btn f" data-u="log" data-key="usb-log">Show log</button></div></div></div>`;
+  }
+  el.innerHTML = `<div style="display:flex;gap:.8em;align-items:center;flex-wrap:wrap">${U.step === 'run' ? '' : back}<h2 style="margin:0;font-size:1.15em">Make a bootable USB</h2>${stepsBar()}</div>${body}`;
+  $('#hint').textContent = U.step === 'pick' ? 'LB/RB: categories' : U.step === 'run' ? 'X: cancel' : U.step === 'confirm' ? 'Hold A: erase and write' : '';
+  if (focusKey) { const b = document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`); if (b) b.focus({ preventScroll: true }); else focusFirstUsb(); }
+}
+$('#usb').addEventListener('input', e => {
+  if (e.target.id === 'acct') U.tweaks.localAccount = e.target.value;
+  if (e.target.id === 'typed') { U.typed = e.target.value; const g = $('#goTyped'); if (g) g.disabled = U.typed.trim().toUpperCase() !== 'ERASE'; }
+});
 
 // ---------------------------------------------------------------- without the app (opening the page in a browser): sample drives
 function demoInvoke(cmd, args) {
@@ -489,6 +908,18 @@ function demoInvoke(cmd, args) {
     : { action: args.action, title: 'Format "Games" (Steam library, 429 GB)', refuse: null, typed: 'ERASE', lose: ['Everything on "Games" (Steam library, 429 GB): 268 GB of files, with the games on it'], warn: ['This is the drive Hearth OS runs from. Only "Games" is changed; Hearth OS itself isn\'t touched.'], confirm: 'Erase and format', danger: true,
         fsChoices: [{ id: 'exfat', label: 'exFAT', note: 'For sharing' }, { id: 'ext4', label: 'ext4', note: 'Best for games and files on Hearth OS' }], askLabel: true, labelDefault: 'Games', maxSize: 0 });
   if (cmd === 'run') return Promise.reject('This is a preview: open Disks to make changes.');
+  // Make a bootable USB, previewed.
+  const E = (id, group, family, name, flavour, sizeHint, signedBy, windows) => ({ id, group, family, name, flavour, arch: 'x86_64', homepage: 'https://example.org/', about: `${name}: a preview entry.`, sizeHint, windows: !!windows, signedBy, note: windows ? 'Microsoft only hands out the ISO through its own download page.' : '', pinned: '' });
+  if (cmd === 'usb_catalog') return Promise.resolve({ groups: [], cache: '/home/you/Downloads/Hearth USB', downloads: '/home/you/Downloads', entries: [
+    E('fedora-workstation', 'linux', 'Fedora', 'Fedora Workstation', 'GNOME', '2.9 GB', 'Fedora (43) … (46) release keys'), E('fedora-kde', 'linux', 'Fedora', 'Fedora KDE Plasma Desktop', 'KDE Plasma', '3.4 GB', 'Fedora release keys'),
+    E('ubuntu-lts', 'linux', 'Ubuntu', 'Ubuntu', 'Desktop, long-term support', '6 GB', 'Ubuntu CD Image Automatic Signing Key (2012)'), E('mint-cinnamon', 'linux', 'Linux Mint', 'Linux Mint', 'Cinnamon', '2.9 GB', 'Linux Mint ISO Signing Key'),
+    E('popos-intel', 'linux', 'Pop!_OS', 'Pop!_OS', 'AMD and Intel graphics', '3 GB', null), E('bazzite', 'linux', 'Bazzite', 'Bazzite', 'Desktop, KDE Plasma', '8 GB', null),
+    E('windows-11', 'windows', 'Windows', 'Windows 11', 'Home, Pro and Education', '7 GB', null, true), E('hearth-live', 'hearth', 'Hearth OS', 'Hearth OS', 'Offline USB (Anatase)', '9 GB', null)] });
+  if (cmd === 'usb_resolve') return Promise.resolve({ id: args.id, name: 'Fedora Workstation (GNOME)', version: '44', url: 'https://download.fedoraproject.org/pub/fedora/linux/releases/44/Workstation/x86_64/iso/Fedora-Workstation-Live-44-1.7.x86_64.iso', file: 'Fedora-Workstation-Live-44-1.7.x86_64.iso', size: 2851612672, signedBy: 'Fedora (43) … (46) release keys', cached: false });
+  if (cmd === 'usb_drives') return Promise.resolve({ busy: false, drives: [{ id: 'usb1', device: '/dev/sdb', name: 'SanDisk Cruzer Blade', size: 32 * 1e9, serial: 'AA00', kind: 'usb', connection: 'USB', internal: false, partitions: ['"STICK" (Files), 32 GB, 1.2 GB used'], fingerprint: 'f' }] });
+  if (cmd === 'usb_cache') return Promise.resolve({ files: [] });
+  if (cmd === 'usb_log') return Promise.resolve('preview');
+  if (cmd.startsWith('usb_')) return Promise.reject('This is a preview: open Disks to write a USB drive.');
   return Promise.reject('unknown');
 }
 </script>

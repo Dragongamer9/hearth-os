@@ -1,41 +1,25 @@
 # Hearth Disks (hosts/hearth-disks), the disk manager for Hearth OS and Ember: built and tested on Linux and
 # Windows. Linux also runs it against a real disk image through udisks2 (tests/loop_device.rs) and takes a
-# screenshot of its window. Release builds of it are made by base-*.yml (the Linux images) and release.yml (Ember).
+# screenshot of its window. Make a bootable USB (src/usb, Linux) is tested too: its root helper's drive checks
+# (hosts/linux/test/test_hearth_usb.py, and refusing the runner's own disks for real), every catalog entry found
+# and its signature checked against the projects' servers (--usb-catalog-check), and whole jobs against a disk
+# image (tests/usb_write.rs): a download from a local server checked against a signed checksum (and refused when
+# it doesn't match or the signature is wrong), a hybrid ISO written raw and read back, a fake Windows 11 ISO
+# written as GPT + FAT32 with install.wim split and autounattend.xml, a UEFI ISO copied with MBR, a .img.zst.
+# Then its screens, driven with the keyboard like a controller, as pictures (notices "SHOT usb-*"). Release builds of it are made by base-*.yml (the Linux images) and release.yml (Ember).
 name: Hearth Disks
 
 on:
   push:
     branches: [apps-disks, main, linux-host]
-    paths: ['hosts/hearth-disks/**', 'hosts/hearth-core/**', '.github/workflows/disks.yml']
+    paths: ['hosts/hearth-disks/**', 'hosts/hearth-core/**', '.github/workflows/disks.yml', 'os/system_files/usr/libexec/nimbus/hearth-usb']
   workflow_dispatch:
-    inputs:
-      probe:
-        description: 'Probe the USB maker download indexes (temporary)'
-        type: boolean
-        default: false
 
 env:
   CARGO_TERM_COLOR: never
 
 jobs:
-  probe:
-    if: inputs.probe
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [k4]
-    steps:
-      - uses: actions/checkout@v4
-      - run: python3 tools/usb-probe.py ${{ matrix.group }} > out.txt 2>err.txt || true; wc -l out.txt; cat err.txt | tail -5
-      - run: sed -n '1,10p' out.txt
-      - run: sed -n '11,20p' out.txt
-      - run: sed -n '21,30p' out.txt
-      - run: sed -n '31,40p' out.txt
-      - run: sed -n '41,50p' out.txt
-
   linux:
-    if: ${{ !inputs.probe }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -49,6 +33,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             udisks2 exfatprogs dosfstools ntfs-3g btrfs-progs e2fsprogs xvfb imagemagick dbus-x11 xdotool >/dev/null
+          # Make a bootable USB: what it runs (parted, gdisk, wimlib, gpg, xz, zstd), and what the test images are made with.
+          sudo apt-get install -y -qq parted gdisk wimtools gnupg xz-utils zstd xorriso grub-common grub-pc-bin grub-efi-amd64-bin mtools >/dev/null
       - name: Test the Steam library code it shares with Hearth (hearth-core)
         working-directory: hosts/hearth-core
         run: cargo test steam 2>&1 | tail -15
@@ -58,6 +44,10 @@ jobs:
           set -o pipefail
           cargo test --lib 2>&1 | tee test.log || { echo "::error title=unit tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=unit tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Make a bootable USB's root helper (which drives it writes to)
+        run: |
+          set -o pipefail
+          cd hosts/linux && python3 -m unittest discover -s test -p 'test_hearth_usb.py' -v 2>&1 | tail -30
       - name: Build
         working-directory: hosts/hearth-disks
         run: |
@@ -88,6 +78,145 @@ jobs:
           HEARTH_DISKS_LOOP="$dev" cargo test --release --test loop_device -- --nocapture 2>&1 | tee loop.log \
             || { echo "::error title=disk image test::$(grep -E '(panicked|failed|error)' -A6 loop.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=disk image test::listed, formatted, mounted, renamed, checked, partitioned, set up for games and removed a disk image through udisks2"
+      - name: Make a bootable USB — the catalog against the projects' servers
+        working-directory: hosts/hearth-disks
+        continue-on-error: true
+        run: |
+          # Every entry's newest release found, its checksum file's signature checked with the built-in key (or the
+          # signer of the image's signature read), and its server asked about the image (HEAD). Servers can be down:
+          # problems are errors here, but the job goes on.
+          ./target/release/hearth-disks --usb-catalog-check > catalog.txt 2> catalog.err; rc=$?
+          cat catalog.txt; cat catalog.err
+          echo "::notice title=USB catalog::$(tr '\n' '|' < catalog.txt | cut -c1-3900)"
+          grep '^PROBLEM' catalog.err | head -10 | while read -r l; do echo "::error title=USB catalog::$l"; done
+          exit $rc
+      - name: Make a bootable USB — the helper refuses the runner's own disks
+        run: |
+          set -e
+          H="sudo -n env HEARTH_USB_ALLOW_LOOP=1 PKEXEC_UID=$(id -u) python3 $GITHUB_WORKSPACE/os/system_files/usr/libexec/nimbus/hearth-admin"
+          sys=$(sudo -n python3 -c "import importlib.machinery as m; h=m.SourceFileLoader('h','os/system_files/usr/libexec/nimbus/hearth-usb').load_module(); print(' '.join(sorted(h.system_disks())))")
+          echo "system disks: $sys"; test -n "$sys"
+          for d in $(lsblk -dno NAME,TYPE | awk '$2=="disk"{print $1}'); do
+            size=$(lsblk -dbno SIZE /dev/$d)
+            out=$($H usb-raw /dev/$d --expect-size "$size" < /dev/null 2>&1 || true); echo "/dev/$d: $out"
+            echo "$out" | grep -qE "running from this drive|internal drive|NVMe" || { echo "::error title=USB helper::/dev/$d wasn't refused: $out"; exit 1; }
+            out=$($H usb-raw /dev/$d --expect-size "$size" --allow-internal < /dev/null 2>&1 || true)
+            if echo " $sys " | grep -q " $d "; then echo "$out" | grep -q "running from this drive" || { echo "::error title=USB helper::the system disk /dev/$d wasn't refused with --allow-internal: $out"; exit 1; }; fi
+          done
+          root=$(findmnt -no SOURCE / | sed 's/\[.*//')
+          out=$($H usb-raw "$root" --expect-size 1 < /dev/null 2>&1 || true); echo "$root: $out"; echo "$out" | grep -qE "whole|running" || { echo "::error title=USB helper::a partition wasn't refused"; exit 1; }
+          out=$($H usb-raw /dev/disk/by-id/x --expect-size 1 2>&1 || true); echo "$out" | grep -q whole
+          echo "::notice title=USB helper::refused every disk of the runner ($(lsblk -dno NAME,TYPE | awk '$2=="disk"{print $1}' | tr '\n' ' ')), the system's ($sys) even with --allow-internal, and a partition"
+      - name: Make a bootable USB — whole jobs against a disk image
+        working-directory: hosts/hearth-disks
+        run: |
+          set -eo pipefail
+          FX=$RUNNER_TEMP/usbfx; rm -rf "$FX"; mkdir -p "$FX"/{good,tampered,badsig,win/root,uefi/root,own}
+          export GNUPGHOME=$RUNNER_TEMP/gnupg; rm -rf "$GNUPGHOME"; mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-gen-key "Hearth CI test <ci@hearthos.fun>" ed25519 sign never
+          gpg --batch --passphrase '' --quick-gen-key "Someone else <else@example.org>" ed25519 sign never
+          FPR=$(gpg --with-colons --list-keys ci@hearthos.fun | awk -F: '/^fpr/{print $10; exit}')
+          gpg --armor --export ci@hearthos.fun > "$FX/test.asc"
+          sign() { gpg --batch --yes -u "$2" --output "$1/SHA256SUMS.gpg" --detach-sign "$1/SHA256SUMS"; }
+          # A hybrid ISO (grub-mkrescue: an ISO that's also a disk), served with a signed SHA256SUMS.
+          R=$RUNNER_TEMP/isoroot; rm -rf "$R"; mkdir -p "$R/boot/grub"; echo 'menuentry "Fake Linux" { true }' > "$R/boot/grub/grub.cfg"
+          head -c 3000000 /dev/urandom > "$R/payload.bin"
+          grub-mkrescue -o "$FX/good/fake-linux-1.iso" "$R" -- -volid FAKE_LINUX 2>&1 | tail -2
+          (cd "$FX/good" && sha256sum fake-linux-1.iso > SHA256SUMS); sign "$FX/good" ci@hearthos.fun
+          cp "$FX/good/fake-linux-1.iso" "$FX/tampered/"; echo "$(printf '%064d' 0)  fake-linux-1.iso" > "$FX/tampered/SHA256SUMS"; sign "$FX/tampered" ci@hearthos.fun
+          cp "$FX/good/fake-linux-1.iso" "$FX/good/SHA256SUMS" "$FX/badsig/"; sign "$FX/badsig" else@example.org
+          # A fake Windows 11 ISO: not hybrid, bootmgr and EFI files, a 12 MB install.wim named "Windows 11 Pro".
+          W=$FX/win/root; mkdir -p "$W/efi/boot" "$W/efi/microsoft/boot" "$W/sources" "$W/boot" "$RUNNER_TEMP/wim" "$RUNNER_TEMP/bootwim"
+          head -c 400000 /dev/urandom > "$W/bootmgr"; head -c 900000 /dev/urandom > "$W/bootmgr.efi"; head -c 1500000 /dev/urandom > "$W/efi/boot/bootx64.efi"
+          head -c 20000 /dev/urandom > "$W/efi/microsoft/boot/bcd"; head -c 20000 /dev/urandom > "$W/boot/bcd"; echo "[AutoRun.Amd64]" > "$W/autorun.inf"
+          head -c 12000000 /dev/urandom > "$RUNNER_TEMP/wim/data.bin"; echo setup > "$RUNNER_TEMP/bootwim/setup.txt"
+          wimlib-imagex capture "$RUNNER_TEMP/wim" "$W/sources/install.wim" "Windows 11 Pro" --compress=none
+          wiminfo "$W/sources/install.wim" 1 --image-property WINDOWS/ARCH=9 --image-property WINDOWS/VERSION/MAJOR=10 --image-property WINDOWS/VERSION/BUILD=26100 --image-property WINDOWS/INSTALLATIONTYPE=Client || echo "(wimlib couldn't set Windows' facts; the name is enough)"
+          wimlib-imagex capture "$RUNNER_TEMP/bootwim" "$W/sources/boot.wim" "Microsoft Windows Setup (amd64)"
+          wiminfo "$W/sources/install.wim" | sed -n '/Index/,$p'
+          xorriso -as mkisofs -o "$FX/win/fake-win11.iso" -V CCCOMA_X64FRE_EN-US_DV9 -J -joliet-long -R "$W" 2>&1 | tail -1
+          # A UEFI ISO that isn't hybrid.
+          mkdir -p "$FX/uefi/root/efi/boot" "$FX/uefi/root/boot/grub"; head -c 800000 /dev/urandom > "$FX/uefi/root/efi/boot/bootx64.efi"; echo 'set timeout=1' > "$FX/uefi/root/boot/grub/grub.cfg"
+          xorriso -as mkisofs -o "$FX/uefi/fake-uefi.iso" -V FAKE_UEFI -J -R "$FX/uefi/root" 2>&1 | tail -1
+          # A compressed disk image with its checksum beside it.
+          truncate -s 24M "$FX/own/disk.img"; printf 'label: dos\n,,c\n' | sfdisk -q "$FX/own/disk.img"; dd if=/dev/urandom of="$FX/own/disk.img" bs=1M seek=2 count=3 conv=notrunc status=none
+          zstd -q "$FX/own/disk.img" -o "$FX/own/disk.img.zst"; (cd "$FX/own" && sha256sum disk.img.zst > disk.img.zst.sha256)
+          ls -lR "$FX" | head -60
+          (cd "$FX" && python3 -m http.server 8765 --bind 127.0.0.1 > "$RUNNER_TEMP/http.log" 2>&1 &)
+          sleep 1
+          # The disk image (256 MB) the jobs write to.
+          sudo tee /etc/polkit-1/rules.d/50-hearth-disks-ci.rules >/dev/null <<'RULE'
+          polkit.addRule(function (action, subject) {
+              if (action.id.indexOf("org.freedesktop.udisks2.") == 0 && subject.user == "runner") return polkit.Result.YES;
+          });
+          RULE
+          sudo systemctl restart polkit || true; sudo systemctl start udisks2
+          truncate -s 256M "$RUNNER_TEMP/usb.img"
+          dev=$(udisksctl loop-setup --no-user-interaction -f "$RUNNER_TEMP/usb.img" | grep -o '/dev/loop[0-9]*' | head -1); test -n "$dev"; echo "disk image: $dev"
+          echo "dev=$dev" >> "$GITHUB_ENV"; echo "FX=$FX" >> "$GITHUB_ENV"
+          export HEARTH_USB_LOOP=$dev HEARTH_USB_FIXTURES=$FX HEARTH_USB_SERVER=http://127.0.0.1:8765 HEARTH_USB_TEST_KEY=$FX/test.asc HEARTH_USB_TEST_FPR=$FPR
+          export HEARTH_DISKS_ADMIN="sudo -n env HEARTH_USB_ALLOW_LOOP=1 PKEXEC_UID=$(id -u) python3 $GITHUB_WORKSPACE/os/system_files/usr/libexec/nimbus/hearth-admin"
+          cargo test --release --test usb_write -- --nocapture --test-threads=1 2>&1 | tee usb.log \
+            || { echo "::error title=USB write tests::$(grep -E '(panicked|failed|error|FAILED)' -A8 usb.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=USB write tests::$(grep -E '^test ' usb.log | tr '\n' ' ' | cut -c1-1500)"
+      - name: Make a bootable USB — its screens
+        working-directory: hosts/hearth-disks
+        run: |
+          mkdir -p shots
+          export DISPLAY=:98 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_USB_ALLOW_LOOP=1
+          export HEARTH_DISKS_ADMIN="sudo -n env HEARTH_USB_ALLOW_LOOP=1 PKEXEC_UID=$(id -u) python3 $GITHUB_WORKSPACE/os/system_files/usr/libexec/nimbus/hearth-admin"
+          Xvfb :98 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          shot() { import -window root "shots/usb-$1.png" || true; }
+          key() { xdotool key --clearmodifiers "$@"; sleep 0.8; }
+          win() { w=$(xdotool search --name '^Make a bootable USB$' | tail -1); [ -n "$w" ] && xdotool windowactivate --sync "$w" 2>/dev/null; }
+          # 1. The catalog: Linux, an entry found on its project's server, Windows.
+          ./target/release/hearth-disks --usb > usb-run.log 2>&1 &
+          sleep 7; win; shot 1-pick
+          key Return; sleep 6; shot 2-fedora
+          key Escape; key Next; key Next; sleep 1; shot 3-hearth
+          key Prior; key Down; sleep 0.5; key Return; sleep 1; shot 4-windows
+          pkill -f 'target/release/hearth-disks' || true; sleep 1
+          # 2. Your own image, all the way: checked against the checksum beside it, the drive, hold Enter, written.
+          ./target/release/hearth-disks --usb "$FX/own/disk.img.zst" >> usb-run.log 2>&1 &
+          sleep 8; win; shot 5-own-file
+          key Return; sleep 3; shot 6-drive
+          key Return; sleep 1; shot 7-confirm
+          xdotool keydown Return; sleep 0.8; shot 8-holding; sleep 1.5; xdotool keyup Return
+          sleep 1; shot 9-writing
+          for i in $(seq 1 40); do sleep 1; grep -q 'done:' "$HOME/.local/share/nimbus/usb-maker.log" 2>/dev/null && break; done
+          sleep 1; shot 10-done
+          pkill -f 'target/release/hearth-disks' || true
+          tail -20 "$HOME/.local/share/nimbus/usb-maker.log" || true
+          sudo cmp -n "$(stat -c %s "$FX/own/disk.img")" "$FX/own/disk.img" "$dev" && echo "::notice title=USB screens::the screens wrote the image through the real helper and it reads back the same" || echo "::warning title=USB screens::the image written through the screens didn't read back the same"
+          echo "::notice title=App output::$(tail -c 1500 usb-run.log | tr '\n' '|')"
+      - name: Picture 1-pick
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-1-pick.png && convert shots/usb-1-pick.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-1-pick $i::$part"; done || true
+      - name: Picture 2-fedora
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-2-fedora.png && convert shots/usb-2-fedora.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-2-fedora $i::$part"; done || true
+      - name: Picture 4-windows
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-4-windows.png && convert shots/usb-4-windows.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-4-windows $i::$part"; done || true
+      - name: Picture 5-own-file
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-5-own-file.png && convert shots/usb-5-own-file.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-5-own-file $i::$part"; done || true
+      - name: Picture 6-drive
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-6-drive.png && convert shots/usb-6-drive.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-6-drive $i::$part"; done || true
+      - name: Picture 7-confirm
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-7-confirm.png && convert shots/usb-7-confirm.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-7-confirm $i::$part"; done || true
+      - name: Picture 8-holding
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-8-holding.png && convert shots/usb-8-holding.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-8-holding $i::$part"; done || true
+      - name: Picture 9-writing
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-9-writing.png && convert shots/usb-9-writing.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-9-writing $i::$part"; done || true
+      - name: Picture 10-done
+        working-directory: hosts/hearth-disks
+        run: test -f shots/usb-10-done.png && convert shots/usb-10-done.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-10-done $i::$part"; done || true
       - name: Screenshot of the window
         working-directory: hosts/hearth-disks
         run: |
@@ -114,7 +243,6 @@ jobs:
             hosts/hearth-disks/shots
 
   windows:
-    if: ${{ !inputs.probe }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
