@@ -12,7 +12,8 @@ Matrix app (Element and others) too.
 | Game Mode's Friends screen, chat, Quick Access › Friends, toasts | `ui/index.html` (search `Hearth Friends on Matrix`) |
 | Desktop Mode (Mantel): the bar's Friends button and panel | `hosts/linux/desktop/shell/Friends.qml` |
 | Image builds: `/usr/bin/hearth-friends`, `hearth-friends.service` (user), `/usr/share/nimbus/emoji-data.js` | `base-anatase.yml`, `base-peppermint.yml`, `os-bases/*/build.sh` |
-| Tests | `cargo test` in the crate; `tools/friends-e2e.py` against Synapse; `tools/ui-check.js`; `.github/workflows/friends.yml` |
+| Signing in and up on the server's own page (OAuth 2.0: QR code for a phone, the browser), the recovery key | `hosts/hearth-friends/src/service/oauth.rs` |
+| Tests | `cargo test` in the crate; `tools/friends-e2e.py` against Synapse; `tools/friends-oauth-e2e.py` against Synapse with the Matrix Authentication Service; `tools/ui-check.js`; `.github/workflows/friends.yml` |
 
 ## How it fits together
 
@@ -35,7 +36,8 @@ Matrix app (Element and others) too.
   (GNOME Keyring), named per data folder. If the keyring isn't there, the player stays signed in only until the
   service stops (the screen says so). Nothing secret is written to Hearth's files.
 * **Logs.** The service doesn't set up matrix-sdk's tracing, and every error that's shown or logged passes through
-  `redact()` (access/refresh tokens, `Bearer`, passwords, PINs). CI greps the logs for tokens.
+  `redact()` (access/refresh tokens, `Bearer`, passwords, PINs, sign-in codes, web addresses' query parts). CI greps
+  the logs for tokens and codes.
 * **Defaults.** Messages from friends only: invites from anyone else go to Requests without a pop-up (a friend
   request, being a direct chat, is always a request). "Show what I'm playing" is on and can be turned off; presence
   and status aren't end-to-end encrypted (the homeserver sees them), and the Settings page says so. Block uses
@@ -68,7 +70,55 @@ Matrix app (Element and others) too.
 
 ## Accounts
 
-Sign-in is with a user name and password (works on matrix.org, including its newer account system, and on most
-servers). New accounts can be made from Hearth on servers with open sign-up or a sign-up token; servers that want a
-captcha, an email or their terms accepted on their own page (matrix.org among them) get their web page instead
-(app.element.io), after which the player signs in. Single sign-on (OAuth) isn't there yet.
+Hearth asks each server how it signs people in (`authMethods`) and shows only what it offers:
+
+* **With your phone (QR code)**: for servers with Matrix's newer sign-in on their own page (OAuth 2.0, MSC3861 and
+  its parts; matrix.org runs the Matrix Authentication Service) that offer the device authorization grant
+  (RFC 8628). Hearth shows a QR code, the short address and a code; the player scans it, signs in or makes the
+  account on the server's own page on the phone (its captcha, email and terms included) and allows Hearth. Hearth
+  checks back every few seconds and is signed in by itself: nothing is typed with the controller. "Create an
+  account with your phone" is the same page; the player picks *Create account* there.
+* **In the browser on this device**: the authorization code flow with PKCE. Hearth listens on
+  `http://127.0.0.1:<port>/callback` (a loopback address, RFC 8252), opens the server's page in Hearth Browser
+  (Game Mode) or the default browser (Desktop Mode, through the service), and finishes when the browser comes back.
+  "Create an account" asks for the server's sign-up page (`prompt=create`) when the server offers it.
+* **User name and password**: servers without the newer sign-in (and matrix.org, where it still works).
+* **Create an account in Hearth**: servers with open sign-up or a sign-up token. Servers that want a captcha, an
+  email or their terms accepted on their own page and have no newer sign-in get their web page instead.
+
+How the newer sign-in works in the service (`hosts/hearth-friends/src/service/oauth.rs`):
+
+* matrix-sdk's OAuth API does the discovery (`auth_metadata`), the authorization code flow, restoring the session,
+  renewing tokens and revoking them. The device grant is plain HTTP in oauth.rs (matrix-sdk keeps its own copy for
+  logging in from another Matrix device, MSC4108).
+* Hearth registers itself with the server at each sign-in, on each device (dynamic client registration, MSC2966):
+  a public client named "Hearth", `client_uri` https://hearthos.fun/, the logo from the site, `application_type`
+  native, and only the grant that sign-in uses. There is no client id or secret in the repository.
+* The session (client id, user, device, access and refresh tokens) is kept in the system keyring like password
+  sessions, as `{"kind": "oauth", ...}`; sessions from 0.6.5 (no kind) are password sessions and keep working.
+  matrix-sdk renews the access token with the refresh token when it runs out, and the new pair replaces the old
+  one in the keyring. If the server refuses the refresh token, the player is signed out with a message.
+* Signing out revokes the session's tokens at the server (RFC 7009); password sessions call `/logout` as before.
+* The log (`service.log` / the journal) gets each step (discovery, registration, code issued, approved, browser
+  came back, token renewed, signed out) and never a token, a code, or an address with a code or state in it
+  (`redact()` drops web addresses' query parts too).
+
+After signing in, Hearth offers a **recovery key** once (Friends screen and Settings › Recovery key): "Set up a
+recovery key" turns on the encrypted key backup and shows the key once (Hearth doesn't keep it), and an account that
+already has one (made in Element, say) gets "Enter my recovery key" to unlock older encrypted messages. "Not now"
+skips it.
+
+### Testing it with a phone
+
+1. Friends › Hearth Friends, signed out, server matrix.org: "With your phone" and "On this device" show.
+2. "Create an account with your phone": scan the QR code with the phone's camera (or open the short address and type
+   the code), pick Create account on matrix.org's page, finish it there, then allow Hearth. Hearth signs in by
+   itself within a few seconds.
+3. Settings › Sign out, then "Sign in with your phone" with the same account; then "Sign in in the browser".
+4. The recovery key question: set one up, sign out, sign in again and use "Enter my recovery key".
+5. Desktop Mode's Friends panel: the same buttons; A starts the phone sign-in.
+
+CI (`.github/workflows/friends.yml`) runs all of it against a second Synapse that uses the Matrix Authentication
+Service, both started for the run with one throwaway account (`tools/friends-oauth-e2e.py`): the phone and the
+browser are played by a small form filler on MAS's own pages. It also looks, read only, at what matrix.org
+advertises. No real server gets an account from CI.

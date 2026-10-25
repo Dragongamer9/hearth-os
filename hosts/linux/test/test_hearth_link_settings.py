@@ -39,6 +39,16 @@ class Requests(unittest.TestCase):
         with self.assertRaises(hls.Fail):
             hls.request(['join', '; rm -rf /'], '123456')
 
+    def test_short_codes(self):
+        # Pairing from somewhere else: the short code on stdin, checked here (no 0/O/1/I/L, the check character).
+        self.assertEqual(hls.request(['pair-open-internet']), ('pair.open', {'internet': True}))
+        self.assertEqual(hls.request(['join-code'], '234 567 89a9\n'), ('pair.join', {'code': '234-567-89A9'}))
+        for bad in ('234-567-89AA', '234-567-89A0', '234-567', '', 'K7M-4QX-92HC-X'):
+            with self.assertRaises(hls.Fail):
+                hls.request(['join-code'], bad)
+        with self.assertRaises(hls.Fail):
+            hls.request(['join-code', 'extra'], '234-567-89A9')
+
     def test_settings_are_checked(self):
         self.assertEqual(hls.request(['set', 'sync', 'off']), ('settings.set', {'sync': False}))
         self.assertEqual(hls.request(['set', 'name', 'Deck']), ('settings.set', {'name': 'Deck'}))
@@ -76,6 +86,19 @@ class Wiring(unittest.TestCase):
         ui = (ROOT / 'ui' / 'index.html').read_text()
         for needle in ["function pageLink()", "['link','refresh','Hearth Link']", 'data-act="lkGet"', "call('link.status'", "call('link.ui.sync'"]:
             self.assertIn(needle, ui)
+
+    def test_easy_pairing_in_both_modes(self):
+        # Game Mode: the devices on this network to pick, the number pad for the 6-digit code, short codes typed
+        # with the same check as the service; Mantel the same.
+        ui = (ROOT / 'ui' / 'index.html').read_text()
+        for needle in ["mode:'number'", "call('link.pair.join'", "'link.pair.open', {internet:true}", "const LK_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'", 'Wrong code', 'Paired ✓ with']:
+            self.assertIn(needle, ui)
+        qml = (SHELL / 'SetLink.qml').read_text()
+        for needle in ['"pair-open-internet"', '["join-code"]', 'readonly property string abc: "23456789ABCDEFGHJKMNPQRSTUVWXYZ"', 'Paired ✓ with']:
+            self.assertIn(needle, qml)
+        rs = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'shortcode.rs').read_text()
+        self.assertIn('pub const ALPHABET: &[u8; 31] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";', rs)
+        self.assertEqual(hls.ABC, '23456789ABCDEFGHJKMNPQRSTUVWXYZ')
 
     def test_both_images_install_the_service(self):
         for ed in ('anatase', 'peppermint'):
