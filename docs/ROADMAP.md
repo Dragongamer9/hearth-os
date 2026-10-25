@@ -99,6 +99,13 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.51 (released)
+
+- [x] The controller works the on-screen keyboard in Game Mode again (search, Send logs and every other prompt); the controller is now tested through the real gamepad path
+- [x] Hearth Link pairing without long links: nearby devices are listed by themselves (name, kind, edition) and a 6-digit code pairs them; different networks use a short code like K7M-4QX-92HC (typos caught at once, 10 minutes, single use); wrong codes can be retried, 5 wrong codes stop pairing
+- [x] Hearth Friends: sign up or sign in with a QR code on your phone, or in the browser, without retyping (matrix.org and other servers with Matrix's newer sign-in); a recovery key for encrypted history
+- [x] hearth-input ends cleanly when the session stops; repeating controller errors no longer flood the log
+
 ## 0.6.5 (released)
 
 - [x] Hearth Link: pair your Hearth devices, copy games between them fast on your network or over the internet, and sync your Hearth data

@@ -60,7 +60,7 @@ fn connect() -> Result<UnixStream, String> {
 /// One request to the service. Sign-in and sending pictures can take a while; the rest answer quickly.
 pub fn call(method: &str, args: &Value) -> Result<Value, String> {
     let mut s = connect()?;
-    let secs = match method { "login" | "register" => 90, "sendImage" | "image" | "messages" => 60, _ => 30 };
+    let secs = match method { "login" | "register" => 90, "sendImage" | "image" | "messages" | "authMethods" | "authStart" | "recoveryEnable" | "recoveryRestore" => 60, _ => 30 };
     s.set_read_timeout(Some(Duration::from_secs(secs))).ok();
     let mut line = json!({"id": 1, "method": method, "args": args}).to_string();
     line.push('\n');

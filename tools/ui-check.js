@@ -1007,10 +1007,116 @@ const path = require('path');
   } catch (e) { errors.push('guide over a game: ' + e.message.split('\n')[0]); }
   await gp.close();
 
+  // The on-screen keyboard driven by a real controller (the Gamepad API, as Game Mode on Linux reads it), not input():
+  // in 0.6.5 pollPadsNow threw "Cannot access 'ax' before initialization" every frame while the keyboard had the
+  // selection, so it came up but the controller did nothing on it. Each place Game Mode types: search (Y), the
+  // Library's "Search your games" prompt, Send logs' "What happened?", a password prompt, and Hearth's own presses
+  // (Quick Access / the overlay / the Windows host: onSysEvent 'pad'). Send logs must say which way presses came.
+  {
+    const op = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    op.on('pageerror', e => errors.push('keyboard with a controller: ' + e.message));
+    const oerr = m => errors.push('keyboard with a controller: ' + m);
+    try {
+      await op.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+      await op.waitForTimeout(1200);
+      await op.evaluate(() => {
+        const pad = { id: 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+                      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+        window.__pad = pad; navigator.getGamepads = () => [pad, null, null, null];
+        window.__sent = []; const realSend = window.send;
+        window.send = m => { window.__sent.push(m); try { return realSend(m); } catch (e) { return null; } };
+        closeAll(); S.history = []; navigate('home', {}, false);
+      });
+      const B = { a: 0, b: 1, x: 2, y: 3, up: 12, down: 13, left: 14, right: 15 };
+      const press = async (k) => {
+        await op.evaluate(i => { window.__pad.buttons[i] = { pressed: true, value: 1 }; }, B[k]); await op.waitForTimeout(90);
+        await op.evaluate(i => { window.__pad.buttons[i] = { pressed: false, value: 0 }; }, B[k]); await op.waitForTimeout(90);
+      };
+      const logs = () => op.evaluate(() => window.__sent.filter(m => m && m.type === 'log').map(m => m.text));
+      const errs = async () => (await logs()).filter(t => /^controller: /.test(t));
+      // Moves right once and presses A, all on the controller: one more character, the one that was selected.
+      const typeOne = async (where, textOf) => {
+        const before = await op.evaluate(textOf);
+        const st0 = await op.evaluate(() => ({ owns: oskOwns(), sel: GOSK.engine && GOSK.engine.view().sel }));
+        if (!st0.owns) { oerr(where + ": the keyboard didn't have the selection"); return; }
+        await press('right');
+        const st1 = await op.evaluate(() => { const v = GOSK.engine.view(), k = v.rows[v.sel.r][v.sel.c]; return { sel: v.sel, k: k && k.t === 'ch' ? k.v : null }; });
+        if (st1.sel.r === st0.sel.r && st1.sel.c === st0.sel.c) oerr(where + ': D-pad right on the controller did not move on the keyboard');
+        await press('a');
+        const after = await op.evaluate(textOf);
+        if (after.length !== before.length + 1 || (st1.k && after.slice(-1).toLowerCase() !== st1.k.toLowerCase())) oerr(`${where}: A on the controller typed ${JSON.stringify(before)} → ${JSON.stringify(after)} (key ${st1.k})`);
+        // The left stick reaches the keyboard: the Ember Wheel (the default) picks a petal; without it the selection moves.
+        const s0 = await op.evaluate(() => GOSK.engine.view().sel);
+        await op.evaluate(() => { window.__pad.axes[0] = 0.95; }); await op.waitForTimeout(450);
+        const sw = await op.evaluate(() => { const v = GOSK.engine.view(); return { wheel: !!(v.wheel && v.wheel.active), sel: v.sel }; });
+        await op.evaluate(() => { window.__pad.axes[0] = 0; }); await op.waitForTimeout(150);
+        if (!sw.wheel && s0.r === sw.sel.r && s0.c === sw.sel.c) oerr(where + ': the left stick did nothing on the keyboard (no Ember Wheel petal, no move)');
+        if (await op.evaluate(() => { const v = GOSK.engine.view(); return !!(v.wheel && v.wheel.active); })) oerr(where + ': the Ember Wheel stayed open after the stick was let go');
+      };
+      // 1) Search: Y on the controller.
+      await press('y');
+      if (!(await op.evaluate(() => S.layers.at(-1) === 'search' && !!document.querySelector('#search .kb .hosk')))) oerr('Y on the controller did not open search with the keyboard');
+      await typeOne('search', () => query);
+      await press('b');
+      if (await op.evaluate(() => oskOwns())) oerr('search: B on the controller did not put the keyboard away');
+      // 2) The Library's "Search your games", 3) Send logs' note, 4) a password: openPrompt, as they call it.
+      for (const [where, o] of [['Library search prompt', { title: 'Search your games', value: '' }], ['Send logs note', { title: 'What happened?', value: '' }], ['password prompt', { title: 'Wi-Fi password', secret: true }]]) {
+        await op.evaluate(o => { closeAll(); window.__pr = openPrompt(o); }, o); await op.waitForTimeout(250);
+        await typeOne(where, () => prompt ? prompt.text : '');
+        await op.evaluate(() => closeAll()); await op.waitForTimeout(120);
+      }
+      // Send logs' button itself, when the preview draws it.
+      const dev = await op.evaluate(() => { S.settingsTab = 'system'; navigate('settings', {}, false); const b = document.querySelector('[data-act="sendLogsDev"]'); if (!b) return null; act(b); return S.layers.at(-1); });
+      if (dev !== null) { await op.waitForTimeout(250); if (dev !== 'prompt') oerr('Send logs: no "What happened?" prompt'); else await typeOne('Send logs (from Settings)', () => prompt ? prompt.text : ''); await op.evaluate(() => closeAll()); }
+      const L = await logs();
+      if (!L.some(t => /^osk (search|prompt): keyboard has the selection · controller read here \(Gamepad API\) · pads seen 1/.test(t))) oerr("Send logs doesn't say the keyboard got the controller from the Gamepad API: " + JSON.stringify(L.filter(t => /^osk/.test(t))));
+      if (!L.some(t => /^osk (search|prompt): first press \w+ via gamepad$/.test(t))) oerr("Send logs doesn't say which way the first press reached the keyboard");
+      // 5) Hearth's own presses (the overlay, Quick Access, the Windows host, Multi-seat): no Gamepad API here.
+      await op.evaluate(() => { PAD.host = true; closeAll(); window.__pr = openPrompt({ title: 'Message' }); });
+      await op.waitForTimeout(250);
+      const h = await op.evaluate(() => { const owns = oskOwns(), before = prompt.text, s0 = GOSK.engine.view().sel; onSysEvent('pad', { b: 'right' }); const s1 = GOSK.engine.view().sel; onSysEvent('pad', { b: 'a' }); return { owns, moved: s0.c !== s1.c || s0.r !== s1.r, typed: prompt.text.length - before.length }; });
+      if (!h.owns || !h.moved || h.typed !== 1) oerr("Hearth's own controller presses don't drive the keyboard: " + JSON.stringify(h));
+      if (!(await logs()).some(t => /^osk prompt: first press \w+ via host$/.test(t))) oerr("Send logs doesn't say the keyboard's presses came from Hearth (host)");
+      await op.evaluate(() => { PAD.host = false; closeAll(); });
+      const e = await errs();
+      if (e.length) oerr('the controller loop threw: ' + e[0].split('\n')[0]);
+      await op.evaluate(() => { delete navigator.getGamepads; });
+      console.log('on-screen keyboard with a controller (Gamepad API and Hearth host): search, Library search, Send logs, password ok');
+    } catch (e) { oerr(e.message.split('\n')[0]); }
+    await op.close();
+  }
+
+  // The same with the docked keyboard Hearth's apps and Hearth Browser open (HearthOSK.open, which reads the controller
+  // itself): one app page per kind (hearth-time's notes, hearth-maps' search, hearth-contacts).
+  for (const app of ['hearth-time/ui/notes.html', 'hearth-maps/ui/index.html', 'hearth-contacts/ui/index.html']) {
+    const ap = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const aerr = m => errors.push(`keyboard with a controller (${app}): ` + m);
+    ap.on('pageerror', e => aerr(e.message));
+    try {
+      await ap.addInitScript(() => {
+        const pad = { id: 'Xbox Wireless Controller (test)', index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0],
+                      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+        window.__pad = pad; Object.defineProperty(navigator, 'getGamepads', { value: () => [pad, null, null, null], configurable: true });
+      });
+      await ap.goto('file://' + path.resolve(__dirname, '../hosts/' + app));
+      await ap.waitForTimeout(900);
+      const ok = await ap.evaluate(() => { if (!window.HearthOSK) return false; const i = document.createElement('input'); i.id = '__oskt'; document.body.appendChild(i); i.focus(); HearthOSK.open({ target: i }); return HearthOSK.isOpen(); });
+      if (!ok) { aerr('the keyboard did not open'); await ap.close(); continue; }
+      const press = async i => { await ap.evaluate(i => { window.__pad.buttons[i] = { pressed: true, value: 1 }; }, i); await ap.waitForTimeout(90); await ap.evaluate(i => { window.__pad.buttons[i] = { pressed: false, value: 0 }; }, i); await ap.waitForTimeout(90); };
+      await press(15); await press(0); await press(15); await press(0);
+      const v = await ap.evaluate(() => document.getElementById('__oskt').value);
+      if (v.length !== 2) aerr('D-pad and A on the controller typed ' + JSON.stringify(v));
+      await press(1);
+      if (await ap.evaluate(() => HearthOSK.isOpen())) aerr('B on the controller did not close the keyboard');
+    } catch (e) { aerr(e.message.split('\n')[0]); }
+    await ap.close();
+  }
+
   // Hearth Friends on Matrix (the preview's made-up account): the Friends screen's two halves (Hearth Friends and the
   // stores' friends), friends with "Playing" and Joinable, a chat with a game invite card (Play, Join server, Join via
   // Steam), a Play together request (let them join / not now), a picture, the emoji grid, Requests, Settings (privacy,
-  // Steam friends, Discord), signed out (Sign in, Create an account), the friend's sheet with the controller, and
+  // Steam friends, Discord), signed out (with a phone: QR code; in the browser; a password; Create an account), the
+  // recovery key question, the friend's sheet with the controller, and
   // Quick Access › Friends with a chat in it. Pictures of the screens go to tools/qa-shots (friends.yml posts them).
   {
     const fp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -1068,10 +1174,38 @@ const path = require('path');
         await mfAct('mfTop', { v: 'stores' }); await wait(200);
         if (!document.querySelector('#view .frow') && !/Loading/.test(document.querySelector('#view').textContent)) throw new Error('Steam & other stores shows nothing');
         await mfAct('mfTop', { v: 'mx' });
-        const was = MF.st; MF.st = { signedIn: false, settings: { homeserver: 'matrix.org' } }; render(null, true); await wait(100);
+        window.__mfWas = MF.st; MF.st = { signedIn: false, settings: { homeserver: 'matrix.org' } }; MF.ways = {}; MF.auth = null; render(null, true); await wait(100);
         if (!has('mf-signin') || !has('mf-create') || !has('mf-hs')) throw new Error('signed out: no Sign in / Create an account / server');
         if (!/matrix\.org/.test(document.querySelector('#view').textContent)) throw new Error('signed out: doesn\'t say where the account lives');
-        MF.st = was;
+        // matrix.org signs people in and up on its own page (OAuth 2.0): with a phone (QR code), or in the browser here.
+        await wait(300); render(null, true); await wait(100);
+        for (const k of ['mf-qr', 'mf-create', 'mf-web', 'mf-web-new', 'mf-signin', 'mf-hs']) if (!has(k)) throw new Error('signed out on matrix.org: no ' + k);
+        await mfAct('mfQrNew', {}); await wait(300);
+        const v = document.querySelector('#view').textContent;
+        if (!document.querySelector('#view .mfqrcode svg') || !/WDJB-MJHT/.test(v) || !/account\.matrix\.org\/link/.test(v) || !/Create account/.test(v)) throw new Error('the phone sign-up has no QR code / code / short address');
+        if (!has('mf-auth-cancel') || !has('mf-auth-web')) throw new Error('the phone sign-up has no Cancel / Use this device instead');
+      });
+      await shoot('signin');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        // The controller reaches Cancel; then the browser on this device.
+        await mfAct('mfAuthCancel', {}); await wait(150);
+        if (MF.auth || !has('mf-qr')) throw new Error('Cancel didn\'t go back to the sign-in choices');
+        await mfAct('mfWeb', {}); await wait(300);
+        if (!has('mf-auth-open') || !has('mf-auth-cancel') || !has('mf-auth-qr')) throw new Error('signing in in the browser has no Open again / Cancel / Use my phone');
+        await mfAct('mfAuthCancel', {}); await wait(150);
+        // A server without its own sign-in page: a password, and sign-up from Hearth.
+        MF.hs = 'example.org'; render(null, true); await wait(300); render(null, true);
+        if (has('mf-qr') || has('mf-web') || !has('mf-signin') || !has('mf-create')) throw new Error('a password-only server shows the wrong ways to sign in');
+        MF.hs = null;
+        // Signed in: the recovery key question, once.
+        MF.st = Object.assign({}, window.__mfWas, { askRecovery: true, recovery: 'disabled', accountUrl: 'https://account.matrix.org/account/' }); MF.tab = 'friends'; render(null, true); await wait(100);
+        if (!has('mf-rec-new') || !has('mf-rec-skip')) throw new Error('no recovery key question after signing in');
+        await mfAct('mfTab', { v: 'settings' }); await wait(200);
+        if (!has('mfs-recovery') || !has('mfs-account')) throw new Error('Friends › Settings has no Recovery key / account page');
+        await mfAct('mfTab', { v: 'friends' });
+        MF.st = window.__mfWas; render(null, true);
         // Quick Access › Friends, then a chat in it.
         closeAll(); openLayer('qam'); S.qtab = 'friends'; MF.room = null; renderQam(); await wait(300); renderQam();
         if (!document.querySelector('#qam [data-k="mfq-f-@sarah:matrix.org"]') || !document.querySelector('#qam [data-k="mfq-all"]')) throw new Error('Quick Access › Friends has no friends');
@@ -1349,6 +1483,74 @@ const path = require('path');
       console.log('on-screen keyboard: controller, suggestions, accents, emoji, layouts, wheel, split sticks, touch and settings ok');
     } catch (e) { kerr(e.message.split('\n')[0]); }
     await kp.close();
+  }
+
+  // Hearth Link pairing (Settings › Hearth Link): the code here and what's happening with it, the devices on this
+  // network with their kind and edition, picking one and typing its code with the number pad, a wrong code asked
+  // again with the tries left (nothing to start over), and short codes checked and formatted as they're typed (the
+  // same check character as the service, hosts/hearth-link shortcode.rs).
+  {
+    const lp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const lerr = m => errors.push('Hearth Link pairing: ' + m);
+    lp.on('pageerror', e => lerr(e.message));
+    try {
+      await lp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await lp.waitForTimeout(1200);
+      const r = await lp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const out = {};
+        const st = { running: true, me: { id: 'a'.repeat(64), name: 'Deck', ticket: 'a'.repeat(64) }, settings: { sync: true }, peers: [], transfers: [], offers: [], sending: [], signInHints: [], shortCodes: true,
+          pairing: { code: '482913', until: Date.now() + 290000, triesLeft: 4, netCode: null },
+          pairEvent: { state: 'wrong', name: 'Nvidia-PC', triesLeft: 4, at: Date.now() },
+          nearby: [{ id: 'b'.repeat(64), name: 'Nvidia-PC', pairing: true, kind: 'desktop', edition: 'Anatase' }, { id: 'c'.repeat(64), name: 'Office', pairing: false, kind: 'laptop', edition: 'Peppermint' }] };
+        const calls = [];
+        let joins = 0;
+        call = async (m, a) => {
+          calls.push([m, a]);
+          if (m === 'link.status') return st;
+          if (m === 'link.pair.join') { joins++; if (joins === 1) throw new Error('Wrong code. 3 tries left'); return { id: 'b'.repeat(64), name: 'Nvidia-PC' }; }
+          return {};
+        };
+        LK.s = st; closeAll(); S.settingsTab = 'link'; navigate('settings', {}, false); render(null, true); await wait(150);
+        const v = () => document.querySelector('#view').textContent;
+        out.code = /482 913/.test(v()); out.wrongHere = /Nvidia-PC typed a wrong code \(4 tries left\)/.test(v());
+        out.kind = /Desktop · Anatase · Ready to pair/.test(v()); out.notReady = /Laptop · Peppermint · To pair, select Pair a device on it first/.test(v());
+        out.netBtn = !!document.querySelector('#view [data-k="lk-pnet"]');
+        const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
+        out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
+        act(document.querySelector('#view [data-k="lk-n0"]')); await wait(200);
+        out.prompt1 = prompt && prompt.title; out.mode = prompt && prompt.mode;
+        prompt.text = '482914'; promptSubmit(); await wait(400);
+        out.prompt2 = prompt && prompt.title;
+        if (prompt) { prompt.text = '482 913'; promptSubmit(); }
+        await wait(400);
+        out.joined = calls.filter(c => c[0] === 'link.pair.join').map(c => c[1].code + '@' + c[1].id.slice(0, 2));
+        out.done = /Paired ✓ with Nvidia-PC/.test(v());
+        // The internet code showing here.
+        st.pairing.netCode = '234-567-89A9'; st.pairing.netUntil = Date.now() + 590000; st.pairEvent = null;
+        render(null, true); await wait(100);
+        out.net = /234-567-89A9/.test(v()) && /Works once/.test(v());
+        // Short codes: the page's check is the service's.
+        out.fmt = lkShortFmt('k7m4q'); out.ok = lkShortCheck('234-567-89a9'); out.typo = lkShortCheck('234-567-89AA'); out.amb = lkShortCheck('234-567-89A0'); out.short = lkShortCheck('234-567');
+        act(document.querySelector('#view [data-k="lk-entercode"]')); await wait(200);
+        for (const ch of '23456789a9') promptKey(ch);
+        out.typed = prompt && prompt.text; out.typedTitle = prompt && prompt.title;
+        promptKey('bksp'); promptKey('b');
+        out.typoTitle = prompt && prompt.title;
+        closeAll();
+        return out;
+      });
+      const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair' };
+      for (const k of Object.keys(want)) if (r[k] !== want[k]) lerr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
+      if (r.dupKeys.length) lerr('two rows with the same key: ' + r.dupKeys.join(', '));
+      if (!/The 6-digit code Nvidia-PC shows/.test(r.prompt1 || '')) lerr('picking a device asked: ' + r.prompt1);
+      if (!/^Wrong code\. 3 tries left\. Type the code Nvidia-PC shows/.test(r.prompt2 || '')) lerr('a wrong code asked again: ' + r.prompt2);
+      if (r.joined.join(' ') !== '482914@bb 482913@bb') lerr('codes sent: ' + r.joined.join(' '));
+      if (!/one of the characters is off/.test(r.typo) || !/never have 0/.test(r.amb) || !/10 characters/.test(r.short)) lerr('short code checks: ' + JSON.stringify([r.typo, r.amb, r.short]));
+      if (!/doesn't look right/.test(r.typoTitle || '')) lerr('a typo while typing: ' + r.typoTitle);
+      if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, number pad, wrong code asked again, short codes checked and formatted ok');
+    } catch (e) { lerr(e.message.split('\n')[0]); }
+    await lp.close();
   }
 
   // The Store's pictures (Steam's page, and a game's page), half size so each fits in the notices release.yml posts.

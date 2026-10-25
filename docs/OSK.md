@@ -226,15 +226,26 @@ each word's higher count), `osk.clear`.
 `openPrompt({title, value, secret, mode, enterLabel, placeholder, osk})` resolves with the text (or null). `mode` is
 one of the kinds above; `osk: true` shows the keyboard even after keyboard or mouse input.
 
+The controller reaches the keyboard one of two ways: the page reads it itself (Gamepad API, `pollPadsNow`: Linux Game
+Mode), or Hearth sends the presses (`onSysEvent('pad')`: the Windows host, Multi-seat pads, the overlay). Send logs
+says which, once each time the keyboard gets the selection and on the first press each way:
+`osk search: keyboard has the selection · controller read here (Gamepad API) · pads seen 1 (Xbox Wireless Controller)`,
+`osk search: first press right via gamepad` (or `via host`). A script error in the controller loop is logged once,
+then counted every 10 s (`controller: the same error N more times`).
+
 ## Tests
 
 - `tools/ui-check.js` (release.yml): in Game Mode, the controller walks to each key with the D-pad and types, search
   finds games, autocapital, suggestions picked from the strip, double space, X, accents with A held, LT, emoji (L3),
   B / A on the field, R3 to AZERTY, the Ember Wheel, split sticks, a click, ☰ finishing, the split / Daylight look,
   a real keyboard sending it away, clearing learned words, Settings › Keyboard. Pictures as notices
-  (`SHOT osk-<which>`).
+  (`SHOT osk-<which>`). Then the same through a pretend controller (`navigator.getGamepads`, buttons and the left
+  stick, the way Linux Game Mode reads it) in search (Y), the Library's search prompt, Send logs' note and a password
+  prompt, plus Hearth's own presses (`onSysEvent('pad')`), with the Send logs lines checked; and the docked keyboard
+  (`HearthOSK.open`) in hearth-time, hearth-maps and hearth-contacts with the same pretend controller.
 - `hosts/linux/test/osk.test.js` (node --test): the engine on its own.
-- `hosts/linux/test/test_hearth_osk.py`: copies, plain-JavaScript rules, word lists, wiring.
+- `hosts/linux/test/test_hearth_osk.py`: copies, plain-JavaScript rules, word lists, wiring, and no name in Game
+  Mode's controller loop declared again in an inner block (0.6.5's `ax` broke the controller on the keyboard).
 - `hosts/linux/test/test_hearth_pad.py`: hearth-pad hands the keyboard its buttons and sticks, types without wtype.
 - `.github/workflows/desktop-test.yml`: Desktop Mode types into a real app (foot running `cat`) through the keyboard:
   taps, a picked suggestion, X / Y, an accent with A held, an emoji, the Ember Wheel, Enter; pictures `osk-*.png`.
