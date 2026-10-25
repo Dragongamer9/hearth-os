@@ -172,17 +172,21 @@ jobs:
           sleep 2
           shot() { import -window root "shots/usb-$1.png" || true; }
           key() { xdotool key --clearmodifiers "$@"; sleep 0.8; }
-          win() { w=$(xdotool search --name '^Make a bootable USB$' | tail -1); if [ -n "$w" ]; then xdotool windowactivate --sync "$w" 2>/dev/null; else echo "::warning title=USB screens::no window yet"; fi; return 0; }
+          # Waits (up to a minute) for the window, then for the page to draw, and brings it to the front.
+          win() { for i in $(seq 1 60); do w=$(xdotool search --name '^Make a bootable USB$' 2>/dev/null | tail -1); [ -n "$w" ] && break; sleep 1; done
+                  if [ -n "$w" ]; then sleep 5; xdotool windowactivate --sync "$w" 2>/dev/null; xdotool mousemove 5 795; else echo "::warning title=USB screens::no window after a minute"; fi; return 0; }
+          # The disk image starts blank, so reading it back afterwards shows what the screens wrote.
+          sudo dd if=/dev/zero of="$dev" bs=1M count=32 conv=fsync status=none; sudo blockdev --rereadpt "$dev" || true
           # 1. The catalog: Linux, an entry found on its project's server, Windows.
           ./target/release/hearth-disks --usb > usb-run.log 2>&1 &
-          sleep 7; win; shot 1-pick
+          win; shot 1-pick
           key Return; sleep 6; shot 2-fedora
           key Escape; key Next; key Next; sleep 1; shot 3-hearth
           key Prior; key Down; sleep 0.5; key Return; sleep 1; shot 4-windows
           pkill -f 'target/release/hearth-disks' || true; sleep 1
           # 2. Your own image, all the way: checked against the checksum beside it, the drive, hold Enter, written.
           ./target/release/hearth-disks --usb "$FX/own/disk.img.zst" >> usb-run.log 2>&1 &
-          sleep 8; win; shot 5-own-file
+          win; sleep 3; shot 5-own-file
           key Return; sleep 3; shot 6-drive
           key Return; sleep 1; shot 7-confirm
           xdotool keydown Return; sleep 0.8; shot 8-holding; sleep 1.5; xdotool keyup Return
