@@ -166,10 +166,11 @@ fc_take() {
   if grep -Eq "$newsyntax" "$real" 2>/dev/null; then left="$left ${real##*/}"; return 0; fi
   n=$((n + 1))
   k="$dir/conf/$(printf '%03d' "$n")-${real##*/}"
-  sed -e 's#<include[^>]*/>##g' -e 's#<include[^>]*>[^<]*</include>##g' "$real" > "$k" 2>/dev/null || return 0
+  # (-z: an <include> written over several lines, as Fedora 45's are, is one match too.)
+  sed -z -e 's#<include[^>]*/>##g' -e 's#<include[^>]*>[^<]*</include>##g' "$real" > "$k" 2>/dev/null || return 0
   echo "  <include ignore_missing=\"yes\">$k</include>"
   incf="$dir/conf/.inc-$n"
-  grep -o '<include[^>]*>[^<]*</include>' "$real" > "$incf" 2>/dev/null || return 0
+  tr '\n\t' '  ' < "$real" | grep -o '<include[^>]*>[^<]*</include>' > "$incf" 2>/dev/null || return 0
   while IFS= read -r inc; do
     attrs=${inc%%>*}; body=${inc#*>}; body=${body%%</include>*}
     body=$(printf '%s' "$body" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
