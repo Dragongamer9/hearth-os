@@ -24,7 +24,14 @@ const { OverlayProtocol } = require('./protocol');
 const { HearthLink, socketPath } = require('./link');
 const { artFile } = require('./art');
 
-// stdout is HHD's (stat:/grab: lines): everything else goes to stderr, which HHD writes to its log.
+// stdout is HHD's (stat:/grab: lines): everything else goes to stderr, which HHD writes to its log, and to
+// $XDG_RUNTIME_DIR/hearth-overlay.log (hearth-overlay starts it), which Send logs includes.
+const LOG_FILE = process.env.XDG_RUNTIME_DIR ? path.join(process.env.XDG_RUNTIME_DIR, 'hearth-overlay.log') : null;
+const toStderr = console.error.bind(console);
+console.error = (...a) => {
+  toStderr(...a);
+  if (LOG_FILE) { try { fs.appendFileSync(LOG_FILE, a.map(x => typeof x === 'string' ? x : String(x && x.stack || x)).join(' ') + '\n'); } catch {} }
+};
 console.log = (...a) => console.error(...a);
 console.info = console.log;
 process.stdout.on('error', () => {});
@@ -49,6 +56,33 @@ const PAGE = 'nimbus://app/index.html?overlay=full';
 const BLANK = 'data:text/html,<html style="background:transparent"></html>';
 const TITLE = 'Hearth Overlay';   // Hearth leaves its own windows out of Quick Access's open apps by this name
 const HELLO_WAIT = 1500;          // how long a connecting Hearth gets to say where its screens are
+// HEARTH_OVERLAY_SELFTEST=1 (CI, base-*.yml): draw this app's own Quick Access page, say whether its text shows
+// (`overlay-selftest: {...}` on stderr) and end: 0 text shows, 3 no text (no font), 4 the page didn't load.
+const SELFTEST = process.env.HEARTH_OVERLAY_SELFTEST === '1';
+// Run in the page after it loads: does text draw? Chromium with no font it can use draws nothing at all (Quick Access
+// came up without any text on the Nvidia PC, 0.6.5): a canvas with text in the page's sans-serif and a span in the
+// page's own font both come out empty then.
+const FONT_PROBE = `(() => {
+  const r = { ink: 0, width: 0, spanWidth: 0 };
+  try {
+    const c = document.createElement('canvas'); c.width = 260; c.height = 60;
+    const x = c.getContext('2d'); x.font = '28px sans-serif'; x.fillStyle = '#fff'; x.fillText('Hearth Aa 09', 4, 40);
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) r.ink++;
+    r.width = Math.round(x.measureText('Hearth Aa 09').width);
+  } catch (e) { r.error = String(e); }
+  try {
+    const s = document.createElement('span'); s.textContent = 'Quick Access';
+    s.style.cssText = 'position:absolute;left:-9999px;top:0;white-space:nowrap;visibility:visible';
+    (document.body || document.documentElement).appendChild(s);
+    r.spanWidth = Math.round(s.getBoundingClientRect().width); s.remove();
+  } catch (e) { r.error = String(e); }
+  r.bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '';
+  r.quickAccess = !!document.getElementById('qam');
+  r.overlayMode = !!(document.body && document.body.classList.contains('overlay'));
+  return r;
+})()`;
+const fontsOk = r => !!r && r.ink > 0 && r.width > 0 && r.spanWidth > 0;
 const FILE_WAIT = 5000;           // one file from Hearth
 
 /** Where the page's files come from: {mode:'hearth'} (asked of Hearth), {mode:'dir', dir} or {mode:'own'} (UI_DIR). */
@@ -82,6 +116,7 @@ function hello(msg) {
   if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
   const dir = typeof msg.uiDir === 'string' && path.isAbsolute(msg.uiDir) ? path.normalize(msg.uiDir) : null;
   uiSrc = msg.ui === 'hearth' ? { mode: 'hearth' } : dir ? { mode: 'dir', dir } : { mode: 'own' };
+  hearthVersion = String(msg.version || '');
   console.error(`overlay: Hearth ${msg.version || ''} connected; its screens come from ${uiSrc.mode === 'hearth' ? 'Hearth itself' : uiSrc.mode === 'dir' ? uiSrc.dir : 'this app'}`);
   load(PAGE);
 }
@@ -123,7 +158,42 @@ function serveArt(req) {
   return file ? net.fetch(pathToFileURL(file).toString()) : new Response('Not found', { status: 404 });
 }
 
+/** Where the page came from, for the log. */
+function srcName() { return uiSrc.mode === 'hearth' ? 'Hearth itself' : uiSrc.mode === 'dir' ? uiSrc.dir : `this app (${UI_DIR})`; }
+let hearthVersion = '';
+/** After Quick Access loads: which page it is and whether its text shows (a line in HHD's log and Send logs). */
+async function checkPage() {
+  if (!win || win.isDestroyed()) return null;
+  const url = win.webContents.getURL();
+  if (!url.startsWith('nimbus://')) return null;
+  let r = null;
+  try { r = await win.webContents.executeJavaScript(FONT_PROBE, true); } catch (e) { r = { error: String(e && e.message || e) }; }
+  const what = `Quick Access page from ${srcName()}${hearthVersion ? ` (Hearth ${hearthVersion})` : ''}, overlay app ${app.getVersion()}, Electron ${process.versions.electron}`;
+  if (fontsOk(r)) console.error(`overlay: ${what}; text shows (fonts found: sans-serif ${r.width}px wide, page font ${r.bodyFont})`);
+  else console.error(`overlay: ${what}; NO TEXT: Chromium found no font it can use (${JSON.stringify(r)}); FONTCONFIG_FILE=${process.env.FONTCONFIG_FILE || 'the system\'s'}`);
+  return r;
+}
+
+/** CI: this app's own page, its text checked, then the end. */
+function selftest() {
+  Menu.setApplicationMenu(null);
+  protocol.handle('nimbus', serveUi);
+  protocol.handle('nimbus-art', serveArt);
+  win = new BrowserWindow({ x: 0, y: 0, width: 1280, height: 800, frame: false, transparent: true, backgroundColor: '#00000000', show: true, title: TITLE,
+    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false } });
+  const done = (code, r) => { process.stderr.write(`overlay-selftest: ${JSON.stringify({ ok: code === 0, code, fontconfig: process.env.FONTCONFIG_FILE || null, lang: process.env.LANG || null, electron: process.versions.electron, ...(r || {}) })}\n`); app.exit(code); };
+  const timer = setTimeout(() => done(4, { error: 'the page did not load in 40 s' }), 40000);
+  win.webContents.once('did-finish-load', () => setTimeout(async () => {
+    clearTimeout(timer);
+    const r = await checkPage();
+    done(fontsOk(r) ? 0 : 3, r);
+  }, 1500));
+  win.webContents.once('did-fail-load', (_e, code, desc) => { clearTimeout(timer); done(4, { error: `${code} ${desc}` }); });
+  load(PAGE);
+}
+
 function start() {
+  if (SELFTEST) return selftest();
   Menu.setApplicationMenu(null);
   protocol.handle('nimbus', serveUi);
   protocol.handle('nimbus-art', serveArt);
@@ -139,6 +209,8 @@ function start() {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('nimbus://')) e.preventDefault(); });
   win.webContents.on('render-process-gone', (_e, d) => { console.error(`overlay: page ended (${d.reason}), reloading`); proto.disconnected(); setTimeout(() => load(link.connected ? PAGE : BLANK), 500); });
+  // Each time Quick Access (not the blank page) loads: which page, and whether its text shows.
+  win.webContents.on('did-finish-load', () => { setTimeout(() => { checkPage().catch(() => {}); }, 1000); });
   // On screen (see-through) right away: HHD looks for the window within 10 seconds of starting us.
   load(BLANK).then(() => { if (win && !win.isDestroyed()) win.show(); });
 
