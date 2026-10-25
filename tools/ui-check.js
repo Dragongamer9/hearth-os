@@ -1218,10 +1218,11 @@ const path = require('path');
     await fp.close();
   }
 
-  // Quick Access is one panel: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT) and the
-  // overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same size, tabs,
-  // sections and buttons in the same order, with the same actions and the same controller navigation. Screenshots of
-  // both go to tools/qa-shots (release.yml posts them as notices).
+  // Quick Access is one implementation: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT)
+  // and the overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same tabs,
+  // sections and buttons in the same order, with the same actions and the same controller navigation: the top dock
+  // with a game running, the side panel (440 px on the right) without one. Screenshots of both go to tools/qa-shots
+  // (release.yml posts them as notices).
   const qaShots = path.resolve(__dirname, 'qa-shots');
   try { require('fs').mkdirSync(qaShots, { recursive: true }); } catch {}
   const qaPanel = async (which) => {
@@ -1249,27 +1250,30 @@ const path = require('path');
       const read = () => qp.evaluate(() => ({
         tab: S.qtab,
         tabs: [...document.querySelectorAll('#qam .qtab')].map(e => e.dataset.tab).join(' '),
+        top: document.querySelector('#qam').classList.contains('top'),
         buttons: [...document.querySelectorAll('#qam .qbody [data-f]')].map(e => `${e.dataset.k}:${e.dataset.act || e.dataset.slider || ''}:${e.textContent.replace(/\s+/g, ' ').trim()}`),
         focus: focused && focused.dataset.k,
       }));
+      const rect = () => qp.evaluate(() => { const r = document.querySelector('#qam').getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; });
       await open();
-      out.rect = await qp.evaluate(() => { const r = document.querySelector('#qam').getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; });
+      out.rectTop = await rect();
       out.now = await read();
       // Controller: down through the panel, then RB through every tab.
       out.nav = await qp.evaluate(() => { const ks = []; for (let i = 0; i < 6; i++) { input('down'); ks.push(focused && focused.dataset.k); } return ks.join(' '); });
       out.tabsVisited = [];
-      for (let i = 0; i < 6; i++) { await qp.evaluate(() => input('rb')); await qp.waitForTimeout(await qp.evaluate(() => S.qtab === 'perf' || S.qtab === 'apps') ? 1500 : 200); const r = await read(); out.tabsVisited.push(r.tab); out['tab-' + r.tab] = out['tab-' + r.tab] || r.buttons.join(' | ').replace(/\d+ ?(min|%|°C|W|MHz|MB|GB|fps)\b/g, '#'); }
+      for (let i = 0; i < 6; i++) { await qp.evaluate(() => input('rb')); await qp.waitForTimeout(await qp.evaluate(() => ['perf', 'apps', 'friends', 'capture', 'controls'].includes(S.qtab)) ? 1500 : 200); const r = await read(); out.tabsVisited.push(r.tab); out['tab-' + r.tab] = out['tab-' + r.tab] || r.buttons.filter(b => !/^n-/.test(b)).join(' | ').replace(/\d+ ?(min|%|°C|W|MHz|MB|GB|fps)\b/g, '#'); }
       out.tabsVisited = out.tabsVisited.join(' ');
       // The screenshot: Now playing with the game running.
       await qp.evaluate(() => { S.qtab = 'now'; renderQam(); setFocus(document.querySelector('#qam .qbody [data-f]'), true); });
       await qp.waitForTimeout(300);
       for (const q of [55, 40, 30, 22, 15]) {
-        const buf = await qp.screenshot({ type: 'jpeg', quality: q, clip: { x: 1280 - 460, y: 0, width: 460, height: 800 } });
+        const buf = await qp.screenshot({ type: 'jpeg', quality: q, clip: { x: 240, y: 0, width: 800, height: 520 } });
         if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(qaShots, `${which}.jpg`), buf); break; }
       }
       // Nothing running: the same "no game" card, buttons and Quick Resume list.
       await qp.evaluate(() => { window.__game = null; S.running = null; closeAll(); });
       await open();
+      out.rect = await rect();
       out.idle = await read();
     } catch (e) { errors.push(`quick access (${which}): ${e.message.split('\n')[0]}`); }
     await qp.close();
@@ -1279,16 +1283,134 @@ const path = require('path');
     const main = await qaPanel('main'), ov = await qaPanel('overlay');
     const same = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) errors.push(`quick access: ${what} differ between Hearth's panel and the overlay:\n  panel:   ${JSON.stringify(a)}\n  overlay: ${JSON.stringify(b)}`); };
     same('size and position', main.rect, ov.rect);
+    same('size and position (top dock)', main.rectTop, ov.rectTop);
+    if (!(main.now && main.now.top) || !(ov.now && ov.now.top)) errors.push(`quick access: with a game running it isn't the top dock (panel ${main.now && main.now.top}, overlay ${ov.now && ov.now.top})`);
+    if ((main.idle && main.idle.top) || (ov.idle && ov.idle.top)) errors.push('quick access: with no game it should be the side panel');
     for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, main[k] && main[k].buttons, ov[k] && ov[k].buttons); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
     same('controller navigation', main.nav, ov.nav);
     same('tab order (RB)', main.tabsVisited, ov.tabsVisited);
     // (Notifications: the overlay page starts with none of its own; what's in them isn't a button set.)
     for (const k of Object.keys(main).filter(k => k.startsWith('tab-') && k !== 'tab-notif')) same(`the ${k.slice(4)} tab`, main[k], ov[k]);
-    const want = ['q-shot', 'q-mouse', 'q-home', 'q-resume', 'q-pause', 'q-aside', 'q-exit'];
+    const want = ['q-resume', 'q-invite', 'q-gset', 'q-exit', 'q-pause', 'q-aside', 'q-home'];
     const got = ((main.now && main.now.buttons) || []).map(b => b.split(':')[0]).filter(k => want.includes(k));
     if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`quick access: Now playing buttons ${got.join(' ')} (want ${want.join(' ')})`);
     if (main.rect && !/^840,0 440x800$/.test(main.rect)) errors.push(`quick access: panel at ${main.rect} (want the overlay's 440 px on the right)`);
-    console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+    if (main.now && main.now.tabs !== 'now perf controls friends capture quick') errors.push(`quick access: top dock tabs ${main.now.tabs} (want now perf controls friends capture quick)`);
+    console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}, top dock ${main.rectTop}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+  }
+
+
+  // Quick Access over a game is the top dock (the approved design): the overlay page (?overlay=full) with a game
+  // running, every tab with the preview's data, the controller (left / right switch tabs, down into the panel, up back
+  // to the tab, LB / RB), B and Guide back to the game, the quick glance (a short Guide press: shown without opening
+  // Quick Access, hidden again by itself), quick replies, Y to type, X to keep the performance settings for the game,
+  // and the mouse (a tab click switches, a click beside it goes back to the game). Pictures to tools/overlay-shots
+  // (the ui-shots-overlay job posts them as notices, title "SHOT ovl-<tab> <n>").
+  {
+    const ovShots = path.resolve(__dirname, 'overlay-shots');
+    try { require('fs').mkdirSync(ovShots, { recursive: true }); } catch {}
+    const op = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const oerr = m => errors.push('overlay top dock: ' + m);
+    op.on('pageerror', e => oerr(e.message));
+    const ev = (f, a) => op.evaluate(f, a);
+    const shot = async (name) => {
+      for (const q of [50, 38, 28, 20, 14]) {
+        const buf = await op.screenshot({ type: 'jpeg', quality: q, clip: { x: 160, y: 0, width: 960, height: 640 } });
+        if (buf.toString('base64').length <= 6 * 3800 || q === 14) { require('fs').writeFileSync(path.join(ovShots, `${name}.jpg`), buf); break; }
+      }
+    };
+    try {
+      await op.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux&overlay=full');
+      await op.waitForTimeout(1200);
+      await ev(async () => {
+        window.__sent = []; window.__calls = [];
+        const realSend = send; window.send = m => { window.__sent.push(m); };
+        HOSTINFO.features = ['quickResume', 'pause']; QR.on = true;
+        const gs = GAMES.filter(g => !g.cloud); window.__game = gs[0].id;
+        const real = MOCK.call;
+        MOCK.call = (m, a) => { window.__calls.push([m, a]); return m === 'perf.stats' ? real(m, a).then(r => Object.assign({}, r, { runningId: window.__game, runningSince: Date.now() - 72 * 60e3 })) : real(m, a); };
+        S.running = window.__game; S.runningSince = Date.now() - 72 * 60e3;
+        // The game behind the overlay (the page is see-through): a picture-like background for the screenshots.
+        document.head.insertAdjacentHTML('beforeend', '<style>html.ovfull.shotbg{background:linear-gradient(180deg,#7fb7e0 0%,#d9c08a 55%,#8a6a3a 100%)!important}</style>');
+        document.documentElement.classList.add('shotbg');
+        await overlayShown();
+      });
+      await op.waitForTimeout(600);
+      let st = await ev(() => ({ top: document.querySelector('#qam').classList.contains('top'), tab: S.qtab, focus: focused && focused.dataset.k, tabs: qdTabs().map(t => t[0]).join(' '), shown: OV.shown }));
+      if (!st.top) oerr('Quick Access over a game is not the top dock');
+      if (st.tab !== 'now' || st.focus !== 'q-resume') oerr(`it opens on ${st.tab} / ${st.focus} (want Now playing / Back to game)`);
+      if (st.tabs !== 'now perf controls friends capture quick') oerr('tabs: ' + st.tabs);
+      // The game stays in view: the dock and its panel at the top, nothing dimming the lower part of the screen.
+      st = await ev(() => { const b = document.querySelector('#qam .qd-bar').getBoundingClientRect(), p = document.querySelector('#qam .qd-panel').getBoundingClientRect(), bg = getComputedStyle(document.body, '::before').backgroundImage; return { barTop: Math.round(b.top), panelTop: Math.round(p.top), below: Math.round(p.top - b.bottom), grad: bg }; });
+      if (st.barTop > 40 || st.below < 0 || st.below > 40) oerr(`dock at ${st.barTop}, panel ${st.below} px under it (want the panel right under the dock at the top)`);
+      if (!/gradient/.test(st.grad)) oerr('the game behind is dimmed all over (want only a gradient from the top)');
+      // Every tab, with the preview's data.
+      await ev(async () => { REC.ok = true; REC.st = { kind: 'replay' }; REC.secs = 30; MOCKHHD = true; imLoadTables(); await imSave(window.__game, { layout: 'rts' }); });
+      const want = { now: ['q-resume', 'q-invite', 'q-gset', 'q-exit'], perf: ['pf-0', 'po-0', 'q-pg'], controls: ['qi-off', 'qi-rts', 'qi-edit', 'q-imgyro', 'q-mouse'], friends: ['mfx-game', 'mfq-all'], capture: ['q-shot', 'q-rec', 'q-rsave'], quick: ['q-vol', 'q-mute', 'q-wifi', 'q-bt'] };
+      for (const t of Object.keys(want)) {
+        await ev(t => { qdGo(t); }, t);
+        await op.waitForTimeout(t === 'perf' || t === 'friends' || t === 'controls' ? 1600 : 500);
+        await ev(() => { const e = qdFirst(); if (e) setFocus(e, true); });
+        await op.waitForTimeout(150);
+        const keys = await ev(() => [...document.querySelectorAll('#qam .qd-panel [data-f]')].map(e => e.dataset.k));
+        for (const k of want[t]) if (!keys.includes(k)) oerr(`${t}: no ${k} (has ${keys.slice(0, 14).join(' ')})`);
+        if (t === 'controls' && !(await ev(() => /Right stick/.test((document.querySelector('#qam .qd-sum') || {}).textContent || '')))) oerr('controller layout: no mapping summary for the layout');
+        await shot(t);
+      }
+      // Friends: a chat with a new message opens by itself; quick replies send; Y types with the on-screen keyboard.
+      await ev(() => qdGo('friends')); await op.waitForTimeout(1500);
+      st = await ev(() => { const r = document.querySelector('#qam [data-act="qdReply"]'); if (r) act(r); return { room: MF.room, replies: [...document.querySelectorAll('#qam [data-act="qdReply"]')].map(e => e.textContent).join('|'), sent: window.__calls.filter(c => c[0] === 'mfriends.send').map(c => c[1].text) }; });
+      if (!st.room) oerr("Friends: the chat with a new message didn't open");
+      if (st.replies !== 'On my way|GG|👍') oerr('quick replies: ' + st.replies);
+      if (!st.sent.includes('On my way')) oerr('a quick reply was not sent');
+      st = await ev(() => { input('y'); const top = S.layers.at(-1); if (top === 'prompt') closeLayer(); return top; });
+      if (st !== 'prompt') oerr("Y in Friends didn't open the keyboard to type: " + st);
+      // The controller.
+      st = await ev(() => {
+        const k = () => focused && focused.dataset.k, o = [];
+        qdGo('now'); setFocus(document.querySelector('#qam [data-k="q-resume"]'), true);
+        input('up'); o.push(k());                          // up from the panel's top row: the tab
+        input('right'); o.push(S.qtab + ':' + k());        // along the tabs: switches
+        input('down'); o.push(document.querySelector('#qam .qd-panel').contains(focused) ? 'panel' : k());
+        input('up'); o.push(k());
+        input('left'); o.push(S.qtab);
+        input('rb'); input('rb'); o.push(S.qtab);
+        input('lb'); o.push(S.qtab);
+        return o.join(' ');
+      });
+      if (st !== 'qt-now perf:qt-perf panel qt-perf now controls perf') oerr('controller: ' + st + ' (want qt-now perf:qt-perf panel qt-perf now controls perf)');
+      // X on Performance: this game keeps its own settings (and X again: every game).
+      st = await ev(async () => { qdGo('perf'); await new Promise(r => setTimeout(r, 900)); const a = qdPgOn(); input('x'); await new Promise(r => setTimeout(r, 400)); const b = qdPgOn(); input('x'); await new Promise(r => setTimeout(r, 400)); return [a, b, qdPgOn()].join(' '); });
+      if (st !== 'false true false') oerr('X on Performance (per game): ' + st);
+      // B and Guide go back to the game (the overlay closes; the page asks Hearth to close it).
+      st = await ev(() => { window.__sent.length = 0; setFocus(document.querySelector('#qam [data-k="qt-perf"]'), true); input('b'); const b = window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length; input('guide'); return [b, window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length]; });
+      if (st[0] !== 1 || st[1] !== 2) oerr(`B / Guide didn't go back to the game (${st})`);
+      // The mouse: a tab click switches, a click beside the dock goes back to the game.
+      await ev(() => { window.__sent.length = 0; setInput('mouse'); qdGo('now'); });
+      await op.waitForTimeout(300);
+      await op.mouse.move(10, 10); await op.mouse.move(400, 300);
+      const tb = await ev(() => { const r = document.querySelector('#qam [data-k="qt-quick"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+      await op.mouse.click(tb[0], tb[1]); await op.waitForTimeout(300);
+      st = await ev(() => ({ tab: S.qtab, hint: !!document.querySelector('#qam .qd-hb') }));
+      if (st.tab !== 'quick') oerr('a click on a tab did not switch to it: ' + st.tab);
+      if (!st.hint) oerr('mouse mode has no Back to game button');
+      await shot('mouse');
+      await op.mouse.click(640, 760); await op.waitForTimeout(200);
+      st = await ev(() => window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length);
+      if (st !== 1) oerr('a click beside the dock did not go back to the game');
+      // The quick glance: Hearth hides Quick Access and shows the glance (osd kind glance); it hides itself after ~3 s.
+      await ev(() => { overlayHidden(); onSysEvent('osd', { kind: 'glance', ms: 3000 }); });
+      await op.waitForTimeout(700);
+      st = await ev(() => { const g = document.querySelector('#glance'); return { on: !!(g && g.classList.contains('on')), vis: g ? getComputedStyle(g).visibility : '', text: g ? g.textContent : '', qam: getComputedStyle(document.querySelector('#qam')).visibility }; });
+      if (!st.on || st.vis === 'hidden') oerr('the quick glance did not show');
+      if (!/\d/.test(st.text) || !/Hold Guide/.test(st.text)) oerr('the quick glance has no time / tip: ' + st.text);
+      if (st.qam !== 'hidden') oerr('Quick Access showed with the glance');
+      await shot('glance');
+      await op.waitForTimeout(3000);
+      st = await ev(() => document.querySelector('#glance').classList.contains('on'));
+      if (st) oerr("the quick glance didn't hide by itself");
+    } catch (e) { oerr(e.message.split('\n')[0]); }
+    await op.close();
   }
 
   // Settings › Default apps (Hearth OS, ?preview=linux with its made-up apps): in Settings › System, a row per kind

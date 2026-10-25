@@ -586,9 +586,35 @@ impl Bridge {
                 Ok(r)
             }
             // Game Mode: frame-rate limit, performance overlay, Quick Access over the game, open apps
-            "perf.setFpsLimit" => { let n = crate::gamescope::set_fps_limit(a["fps"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("fpsLimit".into(), json!(n)); }))?; Ok(json!({"fpsLimit": n})) }
+            "perf.setFpsLimit" => {
+                let fps = a["fps"].as_f64().unwrap_or(0.0).max(0.0).round() as u64;
+                // Quick Access over a game with "Saved for <game> only": the limit is that game's (game options), and
+                // your usual one comes back when it ends (after_events: per_game).
+                if a["game"] == true {
+                    if let Some(id) = self.library.running_id() {
+                        let n = crate::gamescope::set_fps_limit(fps)?;
+                        crate::game_options::set(&mut self.library.store, &id, &json!({"fpsLimit": n, "perfSaved": true}))?;
+                        if self.per_game.is_none() { self.per_game = Some(self.library.store.data["fpsLimit"].as_u64().unwrap_or(0)); }
+                        return Ok(json!({"fpsLimit": n, "game": id}));
+                    }
+                }
+                let n = crate::gamescope::set_fps_limit(fps)?; io(self.library.store.update(|d| { d.insert("fpsLimit".into(), json!(n)); }))?; Ok(json!({"fpsLimit": n}))
+            }
             "perf.setOverlay" => { let n = crate::gamescope::set_perf_overlay(a["level"].as_f64().unwrap_or(0.0).max(0.0).round() as u64)?; io(self.library.store.update(|d| { d.insert("perfOverlay".into(), json!(n)); }))?; Ok(json!({"perfOverlay": n})) }
             "overlay.settings" | "overlay.setGameBarButton" => Ok(self.overlay_settings()),
+            // Quick glance (a short Guide press over a game: a thin bar for a few seconds; held: Quick Access).
+            "overlay.setGlance" => {
+                let on = a["on"] == true;
+                io(self.library.store.update(|d| { d.insert("glance".into(), json!(on)); }))?;
+                self.guide.tap_hold.store(on, std::sync::atomic::Ordering::SeqCst);
+                Ok(self.overlay_settings())
+            }
+            // Quick replies in Quick Access › Friends over a game (Friends › Settings changes them).
+            "overlay.setQuickReplies" => {
+                let list: Vec<String> = a["list"].as_array().map(|l| l.iter().filter_map(|v| v.as_str()).map(|s| s.trim().chars().take(40).collect::<String>()).filter(|s| !s.is_empty()).take(6).collect()).unwrap_or_default();
+                io(self.library.store.update(|d| { d.insert("quickReplies".into(), json!(list)); }))?;
+                Ok(self.overlay_settings())
+            }
             "overlay.setHoldView" => {
                 let on = a["on"] == true;
                 io(self.library.store.update(|d| { d.insert("holdView".into(), json!(on)); }))?;
@@ -1273,7 +1299,12 @@ impl Bridge {
         used
     }
     fn overlay_settings(&self) -> Value {
-        json!({"holdView": self.library.store.data["holdView"] == true, "gameBarButton": false, "hotkey": "Ctrl+Alt+Q", "guide": self.guide.status()})
+        let replies = match self.library.store.data["quickReplies"].as_array() {
+            Some(l) => json!(l.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
+            None => json!(["On my way", "GG", "👍"]),
+        };
+        json!({"holdView": self.library.store.data["holdView"] == true, "gameBarButton": false, "hotkey": "Ctrl+Alt+Q", "guide": self.guide.status(),
+               "glance": self.library.store.data["glance"] != false, "quickReplies": replies})
     }
     /// Open apps for Quick Access: Hearth first, then every window, then Steam if it runs without a window.
     fn apps_list(&self) -> Value {
@@ -1909,6 +1940,23 @@ mod tests {
         assert_eq!(a(&["nimbus", "--page", "nope", "--settings"]), json!("settings"));
         // The program's own name is never read as an option.
         assert_eq!(a(&["--settings"]), Value::Null);
+    }
+    #[test]
+    fn quick_access_glance_and_quick_replies() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut b = Bridge::with(Library::new(Store::open(dir.path().join("l.json")), dir.path().to_path_buf()), crate::profiles::Profiles::open(dir.path()), "0.0.23");
+        let s = b.dispatch("overlay.settings", &json!({})).unwrap();
+        assert_eq!(s["glance"], true);
+        assert_eq!(s["quickReplies"], json!(["On my way", "GG", "👍"]));
+        let s = b.dispatch("overlay.setGlance", &json!({"on": false})).unwrap();
+        assert_eq!(s["glance"], false);
+        assert!(!b.guide.tap_hold.load(std::sync::atomic::Ordering::SeqCst));
+        let long = "x".repeat(60);
+        let s = b.dispatch("overlay.setQuickReplies", &json!({"list": ["Brb", "", 5, long, "a", "b", "c", "d", "e"]})).unwrap();
+        let l = s["quickReplies"].as_array().unwrap();
+        assert_eq!(l.len(), 6);
+        assert_eq!(l[0], "Brb");
+        assert_eq!(l[1].as_str().unwrap().chars().count(), 40);
     }
     #[test]
     fn read_only_calls_answer() {
