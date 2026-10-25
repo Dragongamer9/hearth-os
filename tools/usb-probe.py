@@ -168,3 +168,34 @@ if which == 'e':
         note('manjaro src ' + u, 'none' if b is None else (str(len(b)) + ' ' + ' '.join(h for h in hrefs(b) if 'iso' in h or 'download.manjaro' in h)[:3000]))
     r = subprocess.run(['curl', '-sSL', '--max-time', '60', '-o', '/dev/null', '-w', '%{http_code}', 'https://gitlab.manjaro.org/web/iso-info/-/raw/master/file-info.json'], capture_output=True, text=True)
     note('manjaro gitlab status', r.stdout + ' ' + r.stderr[:300])
+
+def minimal(fpr, src):
+    data = get(src)
+    if not data:
+        note('KEYFAIL', f'{fpr} {src}'); return
+    h = tempfile.mkdtemp()
+    subprocess.run(['gpg', '--homedir', h, '--batch', '--import'], input=data, capture_output=True)
+    r = subprocess.run(['gpg', '--homedir', h, '--batch', '--armor', '--export-options', 'export-minimal', '--export', fpr], capture_output=True)
+    b = base64.b64encode(r.stdout).decode()
+    for i in range(0, len(b), 3900):
+        note(f'MKEY {fpr} {i // 3900}', b[i:i + 3900])
+
+if which == 'k1':
+    minimal('843938DF228D22F7B3742BC0D94AA3F0EFE21092', 'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x843938DF228D22F7B3742BC0D94AA3F0EFE21092')
+    minimal('DF9B9C49EAA9298432589D76DA87E80D6294BE9B', 'https://keyring.debian.org/pks/lookup?op=get&search=0xDF9B9C49EAA9298432589D76DA87E80D6294BE9B')
+if which == 'k2':
+    minimal('27DEB15644C6B3CF3BD7D291300F846BA25BAE09', 'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x27DEB15644C6B3CF3BD7D291300F846BA25BAE09')
+    minimal('3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C', 'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x3E80CA1A8B89F69CBA57D98A76A5EF9054449A5C')
+if which == 'k3':
+    minimal('882DCFE48E2051D48E2562ABF3B607488DB35A47', 'https://keys.openpgp.org/vks/v1/by-fingerprint/882DCFE48E2051D48E2562ABF3B607488DB35A47')
+    page = get('https://manjaro.org/products/download/x86') or b''
+    isos = sorted(set(re.findall(rb'https://download\.manjaro\.org/[a-z0-9]+/[^"\' ]+?\.iso', page)))
+    for u in isos[:3]:
+        u = u.decode()
+        note('manjaro ' + u.rsplit('/', 1)[1], '\n'.join(e + ' ' + head(u + e) for e in ('', '.sha256', '.sha512', '.sha1', '.sig', '.torrent')) + '\n' + (get(u + '.sha256') or b'none').decode()[:200])
+        if u.endswith('.iso') and 'kde' in u:
+            sigprobe('manjaro', u + '.sig')
+            s = get(u + '.sig')
+            if s:
+                fp, kid = issuer(s)
+                if fp: minimal(fp, f'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x{fp}')
