@@ -1099,12 +1099,32 @@ var HearthOSK = (function () {
     DOCK.raf = win().requestAnimationFrame(padLoop);
   }
   function win() { return typeof window !== 'undefined' ? window : null; }
-  function rumble(strength, ms) {
-    var pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
-    for (var i = 0; i < pads.length; i++) {
-      var p = pads[i]; if (!p || !p.vibrationActuator || !p.vibrationActuator.playEffect) continue;
-      try { p.vibrationActuator.playEffect('dual-rumble', { duration: ms, weakMagnitude: strength, strongMagnitude: strength * 0.4 }).catch(function () { }); } catch (e) { /* no rumble */ }
+  // Key-press rumble. Some controllers (Handheld Daemon's virtual pad on the ROG Ally, some Bluetooth pads) ignore
+  // the effect's duration and keep rumbling until told to stop, so every rumble is followed by an explicit stop
+  // (reset) shortly after it should have ended; quick presses push the stop back instead of stacking.
+  var RUMBLE_STOP = null;
+  function padsWithRumble() {
+    var pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [], out = [];
+    for (var i = 0; i < pads.length; i++) { var p = pads[i]; if (p && p.vibrationActuator) out.push(p.vibrationActuator); }
+    return out;
+  }
+  function rumbleStop() {
+    if (RUMBLE_STOP) { clearTimeout(RUMBLE_STOP); RUMBLE_STOP = null; }
+    var acts = padsWithRumble();
+    for (var i = 0; i < acts.length; i++) {
+      var a = acts[i];
+      try { if (a.reset) { var r = a.reset(); if (r && r.catch) r.catch(function () { }); } else if (a.playEffect) { a.playEffect('dual-rumble', { duration: 0, weakMagnitude: 0, strongMagnitude: 0 }).catch(function () { }); } } catch (e) { /* nothing to stop */ }
     }
+  }
+  function rumble(strength, ms) {
+    var acts = padsWithRumble(); if (!acts.length) return;
+    ms = Math.max(1, Math.min(200, ms || 20));
+    for (var i = 0; i < acts.length; i++) {
+      var a = acts[i]; if (!a.playEffect) continue;
+      try { a.playEffect('dual-rumble', { duration: ms, weakMagnitude: strength, strongMagnitude: strength * 0.4 }).catch(function () { }); } catch (e) { /* no rumble */ }
+    }
+    if (RUMBLE_STOP) clearTimeout(RUMBLE_STOP);
+    RUMBLE_STOP = setTimeout(rumbleStop, ms + 40);
   }
   function open(o) {
     o = o || {};
@@ -1136,6 +1156,7 @@ var HearthOSK = (function () {
     if (e.key && e.key.length === 1) close();
   }
   function close(quiet) {
+    rumbleStop();
     if (!DOCK) return;
     var d = DOCK; DOCK = null;
     var w = win();
@@ -1177,6 +1198,7 @@ var HearthOSK = (function () {
     version: API_VERSION,
     LAYOUTS: LAYOUTS, THEMES: THEMES, DEFAULTS: DEFAULTS, EMOJI_CATS: EMOJI_CATS, WHEEL: WHEEL,
     createEngine: createEngine, mount: mount, open: open, close: close, input: input,
+    rumble: rumble, rumbleStop: rumbleStop,
     isOpen: function () { return !!DOCK; },
     inputAdapter: inputAdapter, modelAdapter: modelAdapter,
     configure: configure, setSetting: setSetting, settings: settings, activeLayouts: activeLayouts,

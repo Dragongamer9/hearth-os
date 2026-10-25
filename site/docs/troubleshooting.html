@@ -30,15 +30,15 @@
 <div class="wrap layout">
   <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="troubleshooting.html" class="cur" aria-current="page">Troubleshooting</a><div class="sub"><a href="#logs">First: send a log</a><a href="#terminal">Getting to a terminal</a><a href="#podman" data-ed="ubuntu cachyos peppermint">Switching edition or updating fails: "podman executable not found"</a><a href="#stuck">Stuck on a black screen, or Hearth doesn't respond</a><a href="#power-button">The power button turns the device off instead of sleeping</a><a href="#brightness" data-ed="ubuntu peppermint">Brightness doesn't change ("get write permission")</a><a href="#boot-text" data-ed="anatase">Lines of text when turning on and off</a><a href="#sounds">Game Mode sounds fade out</a><a href="#steam-mode">Stuck in Steam's Game Mode</a><a href="#pad-mouse">The controller mouse doesn't move the pointer</a><a href="#crash-loop" data-ed="cachyos">Game Mode keeps restarting (CachyOS)</a><a href="#display-stuck">Stuck after changing the resolution or refresh rate</a><a href="#nvidia">Game Mode feels slow on Nvidia</a><a href="#steam-games">Steam games are missing from the library</a><a href="#install-failed">Installing fails</a><a href="#ask">Still stuck? Tell us</a></div><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 0.6.51</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 0.6.52</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Troubleshooting</h1>
     <p class="lead">Fixes for known problems, how to get unstuck, and how to tell us when nothing here helps.</p>
 
 <div class="note"><p>Each fix says which version it's for. Most known problems are fixed by updating:
-<b>Settings › Updates › Check for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
+<b>Settings › System › Updates › Check for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
 
 <section><h2 id="logs">First: send a log</h2>
-<p><b>Settings › System › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
+<p><b>Settings › System › Help &amp; logs › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
 it went wrong, so send it right after the problem happens.</p>
 
 </section><section><h2 id="terminal">Getting to a terminal</h2>
@@ -65,7 +65,7 @@ then send a log from there.</li>
 </ol>
 
 </section><section><h2 id="power-button">The power button turns the device off instead of sleeping</h2>
-<p><span class="ver">0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span> Update. After updating, <b>Settings › Power › Power button</b> is followed.</p>
+<p><span class="ver">0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span> Update. After updating, <b>Settings › Controls &amp; power › Power &amp; sleep › Power button</b> is followed.</p>
 
 </section><section class="ed" data-ed="ubuntu peppermint"><h2 id="brightness">Brightness doesn't change ("get write permission")</h2>
 <p><span class="ver">Peppermint, Ubuntu · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span>
@@ -102,7 +102,7 @@ In Game Mode, a mode the screen can't show could leave it black or flickering. W
 <p>From 0.4.0, a new mode switches back by itself after 20 seconds unless you choose <b>Keep</b>.</p>
 
 </section><section><h2 id="nvidia">Game Mode feels slow on Nvidia</h2>
-<p>Check <b>Settings › Display › Drawing engine</b> is <b>Chromium</b> (the default on Nvidia since 0.2.6), and update.</p>
+<p>Check <b>Settings › Display &amp; sound › Display › Renderer</b> is <b>Automatic</b> or <b>Electron</b> (Chromium, the default on Nvidia since 0.2.6), and update.</p>
 
 </section><section><h2 id="steam-games">Steam games are missing from the library</h2>
 <p>Make sure Steam is signed in. With more than one Hearth profile, each profile shows the games of the Steam account
@@ -111,8 +111,8 @@ signed in on it: sign in to Steam on that profile.</p>
 </section><section><h2 id="install-failed">Installing fails</h2>
 <ul>
 <li>Try the <b>offline USB</b> for your edition instead of the small installer (no download to go wrong).</li>
-<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › Updates</b> and update.</li>
-<li>From the live USB, <b>Settings › System › Send logs to the developer</b> includes the installer's log.</li>
+<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › System › Updates</b> and update.</li>
+<li>From the live USB, <b>Settings › System › Help &amp; logs › Send logs to the developer</b> includes the installer's log.</li>
 </ul>
 
 </section><section><h2 id="ask">Still stuck? Tell us</h2>

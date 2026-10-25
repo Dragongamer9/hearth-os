@@ -13,5 +13,7 @@ __pycache__/
 hosts/electron/node_modules/
 hosts/electron/dist/
 tools/qa-shots/
+tools/dock-shots/
+tools/overlay-shots/
 site-shots/
 site-shots-tmp/
