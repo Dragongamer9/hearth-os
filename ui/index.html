@@ -7589,7 +7589,7 @@ function oskEngine(){
       for(const g of GAMES) for(const x of String(g.title||'').split(/[\s:,.!?()\-–]+/)) { const k=x.toLowerCase(); if(x.length>w.length && HearthOSK.fold(x).startsWith(f) && !seen.has(k)){ seen.add(k); out.push(x); if(out.length>=3) return out; } }
       return out; },
     onHide: oskHide, onLeave: ()=>{ if(GOSK.box && focused===GOSK.box) move('up'); },
-    onHaptic: (s,ms)=>{ for(const p of (navigator.getGamepads?[...navigator.getGamepads()]:[])) if(p && p.vibrationActuator && p.vibrationActuator.playEffect) p.vibrationActuator.playEffect('dual-rumble',{duration:ms,weakMagnitude:s,strongMagnitude:s*.4}).catch(()=>{}); },
+    onHaptic: (s,ms)=>{ try{ HearthOSK.rumble(s,ms); }catch(e){} },
     onSound: k=>{ if(k==='panel') blip(620,.03,.03); else if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
   return GOSK.engine;
 }
@@ -7794,6 +7794,7 @@ function openLayer(id, focusKey){
 }
 function closeLayer(){
   const id=S.layers.pop(); if(!id) return;
+  if(id==='prompt'||id==='search'){ try{ HearthOSK.rumbleStop(); }catch(e){} }  // pads that ignore rumble durations
   $('#'+id).classList.remove('open');
   syncScrim();
   LAYER_CLOSE[id]?.();
