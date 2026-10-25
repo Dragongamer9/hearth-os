@@ -1,0 +1,76 @@
+[hearth-qml] 11:58:11 warning: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[hearth-qml] 11:58:11 qml: starting: Qt 6.8.2, offscreen platform, hardware scene graph, self-test
+[hearth-qml] 11:58:11 qml: controllers: reading them with SDL 2.32.4
+[hearth-qml] 11:58:11 qml: window up (1280×800)
+[hearth-qml] 11:58:11 qml: core: starting /src/hosts/hearth-qml/test/fake-core.py --core-stdio
+[fake-core] started with ['--core-stdio']; art from /src/site/img/games
+[hearth-qml] 11:58:11 qml: core: first line in
+[hearth-qml] 11:58:11 qml: toast: Connected to the fake core (self-test)
+[hearth-qml] 11:58:11 qml: connected: Hearth 0.0.0-test, renderer qt, 4 features
+[fake-core] page: qt: connected: Hearth 0.0.0-test, renderer qt, 4 features
+[hearth-qml] 11:58:12 qml: self-test: ok: the core answered (host.info, library)
+[hearth-qml] 11:58:12 qml: self-test: ok: host.info answered (the channel works both ways)
+[hearth-qml] 11:58:15 qml: self-test: ok: the fake core's library loaded
+[hearth-qml] 11:58:15 qml: self-test: ok: Home is the first page
+[hearth-qml] 11:58:15 qml: self-test: 7 games
+[hearth-qml] 11:58:15 qml: self-test: picture 01-home.png
+[hearth-qml] 11:58:16 qml: self-test: ok: the selection moves with the D-pad
+[hearth-qml] 11:58:16 qml: self-test: picture 02-home-selection.png
+[hearth-qml] 11:58:17 qml: page: library
+[fake-core] page: qt: page: library
+[hearth-qml] 11:58:18 qml: self-test: ok: Library opens
+[hearth-qml] 11:58:18 qml: self-test: picture 03-library.png
+[hearth-qml] 11:58:19 qml: self-test: ok: LB / RB change the Library tab
+[hearth-qml] 11:58:19 qml: self-test: picture 04-library-installed.png
+[hearth-qml] 11:58:20 qml: osk: search opened (controller 0 pad(s) through SDL)
+[fake-core] page: qt: osk: search opened (controller 0 pad(s) through SDL)
+[hearth-qml] 11:58:21 qml: self-test: ok: Search types with the on-screen keyboard's field
+[hearth-qml] 11:58:21 qml: self-test: picture 05-search.png
+[hearth-qml] 11:58:22 qml: page: game steam:1
+[fake-core] page: qt: page: game steam:1
+[hearth-qml] 11:58:24 qml: self-test: ok: A game's page opens
+[hearth-qml] 11:58:24 qml: self-test: picture 06-game.png
+[hearth-qml] 11:58:24 qml: play steam:1
+[fake-core] page: qt: play steam:1
+[hearth-qml] 11:58:24 qml: self-test: picture 07-starting.png
+[hearth-qml] 11:58:27 qml: self-test: ok: Play starts the game (game.started)
+[hearth-qml] 11:58:28 qml: self-test: ok: Quick Access opens
+[hearth-qml] 11:58:28 qml: self-test: picture 08-quick-access.png
+[hearth-qml] 11:58:30 qml: self-test: picture 09-quick-access-performance.png
+[hearth-qml] 11:58:31 qml: self-test: picture 10-quick-access-quick-settings.png
+[hearth-qml] 11:58:31 qml: toast: Closing SuperTuxKart…
+[hearth-qml] 11:58:33 qml: self-test: ok: Exit game ends it (game.exited)
+[hearth-qml] 11:58:33 qml: page: downloads
+[fake-core] page: qt: page: downloads
+[hearth-qml] 11:58:34 qml: self-test: ok: Downloads opens
+[hearth-qml] 11:58:34 qml: self-test: picture 11-downloads.png
+[hearth-qml] 11:58:35 qml: self-test: ok: the power menu opens
+[hearth-qml] 11:58:36 qml: self-test: picture 12-power.png
+[hearth-qml] 11:58:36 qml: page: settings
+[fake-core] page: qt: page: settings
+[hearth-qml] 11:58:37 qml: self-test: ok: Settings opens
+[hearth-qml] 11:58:37 qml: self-test: picture 13-settings-renderer.png
+[hearth-qml] 11:58:38 qml: self-test: ok: Settings › Renderer offers the renderers
+[hearth-qml] 11:58:39 qml: self-test: picture 14-renderer-choices.png
+[hearth-qml] 11:58:40 qml: self-test: picture 15-settings-system.png
+[hearth-qml] 11:58:40 qml: page: missing
+[fake-core] page: qt: page: missing
+[hearth-qml] 11:58:41 qml: self-test: ok: a page that isn't here yet says so
+[hearth-qml] 11:58:41 qml: self-test: picture 16-not-here-yet.png
+[hearth-qml] 11:58:43 qml: self-test: ok: the menu opens
+[hearth-qml] 11:58:43 qml: self-test: picture 17-menu.png
+[hearth-qml] 11:58:43 qml: overlay window made
+[fake-core] page: qt: overlay window made
+[fake-core] page asked: {"type": "overlay", "action": "painted"}
+[fake-core] page asked: {"type": "overlay", "action": "alive"}
+[hearth-qml] 11:58:45 qml: self-test: ok: Quick Access over a game (the overlay window)
+[hearth-qml] 11:58:45 qml: self-test: picture 18-overlay.png
+[hearth-qml] 11:58:46 qml: page: home
+[fake-core] page: qt: page: home
+[hearth-qml] 11:58:47 qml: self-test: 0 failed step(s), 0 QML warning(s)
+[hearth-qml] 11:58:48 qml: leaving (exit code 0)
+[fake-core] input closed; leaving
+[hearth-qml] 11:58:48 qml: core exited (0)
