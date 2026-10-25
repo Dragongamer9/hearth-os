@@ -272,7 +272,7 @@ impl Service {
         let oauth = self.st.lock().unwrap().oauth;
         if let Some(c) = self.client.read().await.clone() {
             // OAuth sessions: the tokens are revoked at the server (RFC 7009); password sessions end with /logout.
-            let r = if oauth { c.oauth().logout().await.map_err(e2s) } else { c.matrix_auth().logout().await.map(|_| ()).map_err(e2s) };
+            let r = if oauth { self.revoke(&c).await } else { c.matrix_auth().logout().await.map(|_| ()).map_err(e2s) };
             match r { Ok(()) => log(if oauth { "auth: signed out; the server revoked the session's tokens" } else { "auth: signed out at the server" }),
                       Err(e) => log(&format!("auth: signing out at the server didn't work ({e}); this device's copy is removed anyway")) }
         }

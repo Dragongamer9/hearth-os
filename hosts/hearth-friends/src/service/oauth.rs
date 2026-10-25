@@ -344,6 +344,22 @@ impl Service {
         }
     }
 
+    /// Signing out of an OAuth session: its tokens are revoked at the server (RFC 7009). matrix-sdk does it on https
+    /// servers; a server on plain http (a test server on this machine) gets the same request from here.
+    pub(super) async fn revoke(&self, c: &Client) -> Result<(), String> {
+        match c.oauth().logout().await {
+            Ok(()) => Ok(()),
+            Err(e) if e.to_string().contains("HTTPS") => {
+                let meta = c.oauth().server_metadata().await.map_err(e2s)?;
+                let tokens = c.session_tokens().ok_or("no session")?;
+                let cid = c.oauth().client_id().map(|i| i.as_str().to_string()).unwrap_or_default();
+                let (code, v) = post_form(meta.revocation_endpoint.as_str(), &[("token", &tokens.access_token), ("token_type_hint", "access_token"), ("client_id", &cid)]).await?;
+                if code == 200 { Ok(()) } else { Err(format!("revocation refused: {}", oauth_error(&v))) }
+            }
+            Err(e) => Err(e2s(e)),
+        }
+    }
+
     // ------------------------------------------------------------------ end-to-end encryption: the recovery key
 
     pub async fn recovery(&self) -> Result<Value, String> {
