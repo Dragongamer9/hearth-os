@@ -1,0 +1,20 @@
+#!/bin/sh
+# Hearth: when the device last woke up, for the power button handlers (hearth-buttons, Hearth's Game Mode): the press
+# that wakes the device is delivered after it's back, and a handler that took it as a new press put the device
+# straight back to sleep (ROG Xbox Ally). /run/hearth-resumed holds /proc/uptime at waking (uptime counts the time
+# asleep too); presses in the next few seconds are ignored. Both moments go to the journal as hearth-sleep, listed with
+# who asked for each sleep in Send logs' Sleep section.
+# systemd-sleep calls this with "pre"/"post" and the operation (suspend, hibernate, suspend-then-hibernate, ...).
+case "$1" in
+  pre)
+    logger -t hearth-sleep "going to sleep ($2)" 2>/dev/null || true
+    ;;
+  post)
+    up=$(cut -d' ' -f1 /proc/uptime 2>/dev/null)
+    if [ -n "$up" ]; then
+      printf '%s\n' "$up" > /run/hearth-resumed.tmp 2>/dev/null && chmod 644 /run/hearth-resumed.tmp 2>/dev/null && mv -f /run/hearth-resumed.tmp /run/hearth-resumed 2>/dev/null
+    fi
+    logger -t hearth-sleep "woke up ($2)" 2>/dev/null || true
+    ;;
+esac
+exit 0

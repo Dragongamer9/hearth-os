@@ -11,7 +11,7 @@ PanelWindow {
     property int sel: 0
     readonly property var items: [
         { icon: "lock", label: "Lock", cmd: ["sh", "-c", "exec quickshell ipc -p \"$NIMBUS_SHARE/desktop/shell\" call lock lock"] },
-        { icon: "sleep", label: "Sleep", cmd: ["systemctl", "suspend"] },
+        { icon: "sleep", label: "Sleep", cmd: ["python3", Buttons.helper, "sleep", "Desktop Mode: power menu"] },
         { icon: "restart", label: "Restart", cmd: ["systemctl", "reboot"] },
         { icon: "power", label: "Shut down", cmd: ["systemctl", "poweroff"] },
         { icon: "pad", label: "Game Mode", cmd: ["nimbus-mode", "game"] },

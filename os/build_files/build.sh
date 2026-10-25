@@ -77,6 +77,9 @@ dnf5 -y copr disable errornointernet/quickshell
 # session Hearth handles it (Settings › Power button), so don't start that for every session; Bazzite's own
 # Steam session still pulls it in where it needs it.
 systemctl --global disable steamos-powerbuttond.service 2>/dev/null || true
+# When the device last woke up (/run/hearth-resumed) and each sleep in the journal (hearth-sleep): the press that
+# woke it is then not taken as a new one (os/system_files).
+chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed 2>/dev/null || true
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look
 cat > /usr/share/applications/hearth-files.desktop <<DESKTOP

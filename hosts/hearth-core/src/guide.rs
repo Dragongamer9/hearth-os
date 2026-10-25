@@ -199,7 +199,8 @@ impl Guide {
 // ------------------------------------------------------------------ power and volume buttons (Game Mode)
 
 /// Runs desktop/shell/hearth-buttons (reads the buttons from the kernel) and passes on its JSON lines:
-/// {t:'power', press:'long'|'short'}, {t:'vol', d}, {t:'mute'}, {t:'devices', list, problems}.
+/// {t:'power', press:'long'|'short'}, {t:'vol', d}, {t:'mute'}, {t:'devices', list, problems, power}; {t:'ignored', after}
+/// (a power press just after waking up, the one that woke it) is only logged.
 pub fn start_buttons(on: Arc<dyn Fn(Value) + Send + Sync>, devices: Arc<Mutex<Value>>) {
     let helper = crate::paths::desktop_dir().join("shell/hearth-buttons");
     if !helper.exists() { *devices.lock().unwrap() = json!({"devices": [], "problems": ["hearth-buttons is missing"]}); return; }
@@ -213,6 +214,9 @@ pub fn start_buttons(on: Arc<dyn Fn(Value) + Send + Sync>, devices: Arc<Mutex<Va
                 if m["t"] == "devices" {
                     crate::bridge::log(&format!("buttons: watching {}", m["list"]));
                     *devices.lock().unwrap() = json!({"devices": m["list"], "problems": m["problems"]});
+                } else if m["t"] == "ignored" {
+                    // The press that woke the device (hearth-buttons also wrote it to the journal as hearth-sleep).
+                    crate::bridge::log(&format!("power button: press ignored {} s after waking up (the press that woke it)", m["after"]));
                 } else { on(m); }
             }
         }

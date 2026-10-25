@@ -150,10 +150,47 @@ pub fn inhibitors() -> Vec<Inhibitor> {
         .map(|o| parse_inhibitors(&o)).unwrap_or_default()
 }
 
+/// How long after waking up the power button is ignored: the press that woke the device is delivered once it's
+/// back, and taken as a new press it put the device straight back to sleep (ROG Xbox Ally). The same as hearth-buttons.
+pub const WAKE_GRACE_SECS: f64 = 2.5;
+/// Hearth's system-sleep hook (os/system_files/usr/lib/systemd/system-sleep/hearth-resumed) writes /proc/uptime here
+/// each time the device wakes up.
+const RESUMED: &str = "/run/hearth-resumed";
+
+/// Seconds since the device woke up, from the hook's file and /proc/uptime (both count the time asleep). None when
+/// either can't be read or the file is from the future (a clock that went backwards: not trusted).
+pub fn since_resume_of(resumed: &str, uptime: &str) -> Option<f64> {
+    let first = |s: &str| s.split_whitespace().next().and_then(|w| w.parse::<f64>().ok());
+    let (at, now) = (first(resumed)?, first(uptime)?);
+    (now >= at).then_some(now - at)
+}
+/// Some(seconds since waking) when that's within WAKE_GRACE_SECS: a power button press then is the one that woke it.
+pub fn just_woke(since: Option<f64>) -> Option<f64> { since.filter(|s| *s >= 0.0 && *s < WAKE_GRACE_SECS) }
+fn since_resume() -> Option<f64> {
+    since_resume_of(&std::fs::read_to_string(RESUMED).ok()?, &std::fs::read_to_string("/proc/uptime").ok()?)
+}
+/// Whether a sleep asked for with this reason is the power button's (refused just after waking; the menus aren't).
+pub fn from_power_button(why: &str) -> bool { why.starts_with("power button") }
+/// One line in the journal as hearth-sleep: Send logs' Sleep section lists who asked for each sleep with the sleeps.
+fn journal(msg: &str) {
+    let _ = std::process::Command::new("logger").args(["-t", "hearth-sleep", "--", msg])
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+}
+
 /// Sleep, as the power button (or the power menu) asks: real suspend through logind, like SteamOS. A running game
 /// is kept as it is (the kernel freezes everything during sleep and it carries on after waking). Who holds sleep
-/// off is logged, and a refusal comes back as an error in plain words instead of nothing happening.
+/// off is logged, and a refusal comes back as an error in plain words instead of nothing happening. Who asked goes to
+/// the journal (hearth-sleep); a power button press within WAKE_GRACE_SECS of waking up is ignored (and logged).
 pub fn sleep_now(why: &str) -> Result<(), String> {
+    if from_power_button(why) {
+        if let Some(s) = just_woke(since_resume()) {
+            let m = format!("Hearth Game Mode: {why}: sleep ignored, the device woke up {s:.1} s ago (the press that woke it)");
+            crate::bridge::log(&format!("sleep: {why}: ignored, woke up {s:.1} s ago"));
+            journal(&m);
+            return Ok(());
+        }
+    }
+    journal(&format!("Hearth Game Mode: {why} → sleep"));
     let all = inhibitors();
     let blockers = sleep_blockers(&all);
     let delays: Vec<&Inhibitor> = all.iter().filter(|i| i.mode == "delay" && i.what.split(':').any(|w| w == "sleep")).collect();
@@ -507,6 +544,19 @@ mod tests {
         assert_eq!(df_free_kb(""), None);
     }
 
+    #[test]
+    fn power_button_ignored_just_after_waking() {
+        assert_eq!(since_resume_of("1000.50\n", "1001.75 3000.00\n"), Some(1.25));
+        assert_eq!(since_resume_of("1000.5", "999.0 1.0"), None);          // from the future: not trusted
+        assert_eq!(since_resume_of("", "5.0 1.0"), None);
+        assert_eq!(since_resume_of("x", "5.0 1.0"), None);
+        assert_eq!(just_woke(Some(0.4)), Some(0.4));
+        assert_eq!(just_woke(Some(WAKE_GRACE_SECS)), None);
+        assert_eq!(just_woke(Some(690.0)), None);
+        assert_eq!(just_woke(None), None);
+        assert!(from_power_button("power button"));
+        assert!(!from_power_button("the power menu"));
+    }
     #[test]
     fn finds_who_blocks_sleep() {
         let j = r#"{"type":"a(ssssuu)","data":[[["handle-power-key:handle-suspend-key","Hearth","Hearth handles the power button","block",1000,2100],["sleep","Steam","Steam wants to know","delay",1000,3300],["idle:sleep","Hearth Player","Playing music","block",1000,4400],["shutdown:sleep","NetworkManager","","delay",0,800]]]}"#;

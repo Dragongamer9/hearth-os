@@ -23,7 +23,7 @@ Scope {
     function sleepNow() {
         // The screen comes back on first, so it isn't dark after waking.
         if (root.screenIsOff) { root.screenIsOff = false; Quickshell.execDetached(["wlopm", "--on", "*"]); }
-        Quickshell.execDetached(["systemctl", "suspend"]);
+        Buttons.sleep("idle timer (Settings › Power)");
     }
 
     // ---- Hearth Player block (logind inhibitors): what's blocked right now, then do what's still allowed.

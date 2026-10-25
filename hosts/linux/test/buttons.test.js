@@ -25,6 +25,7 @@ test('buttons: helper messages become events', () => {
   b.on('volume', d => got.push('vol:' + d));
   b.on('mute', () => got.push('mute'));
   b.onMessage({ t: 'devices', list: ['Power Button'], problems: [] });
+  b.onMessage({ t: 'ignored', after: 0.4 });     // the press that woke the device: not a press
   b.onMessage({ t: 'power', press: 'short' });
   b.onMessage({ t: 'power', press: 'long' });
   b.onMessage({ t: 'vol', d: -1 });
