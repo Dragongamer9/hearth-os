@@ -125,7 +125,7 @@ SetPage {
     }
     SetHeader { text: "Turn off or switch" }
     SetRow { icon: "pad"; title: "Game Mode"; sub: "Back to Hearth on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
-    SetRow { icon: "sleep"; title: "Sleep"; onActivated: Quickshell.execDetached(["systemctl", "suspend"]) }
+    SetRow { icon: "sleep"; title: "Sleep"; onActivated: Buttons.sleep("Settings › Power › Sleep") }
     SetRow { icon: "restart"; title: "Restart"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
     SetRow { icon: "power"; title: "Shut down"; danger: true; onActivated: Quickshell.execDetached(["systemctl", "poweroff"]) }
 }

@@ -189,8 +189,9 @@
     <keybind key="XF86AudioNext"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media next'" /></keybind>
     <keybind key="XF86AudioPrev"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media previous'" /></keybind>
     <keybind key="XF86AudioStop"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media stop'" /></keybind>
-    <!-- The sleep key (the session holds it so the power button stays Hearth's, so it's done here). -->
-    <keybind key="XF86Sleep"><action name="Execute" command="systemctl suspend" /></keybind>
+    <!-- The sleep key (the session holds it so the power button stays Hearth's, so it's done here), through
+         hearth-buttons: who asked goes to the journal, and a key that just woke the device doesn't put it back to sleep. -->
+    <keybind key="XF86Sleep"><action name="Execute" command="sh -c 'python3 $NIMBUS_SHARE/desktop/shell/hearth-buttons sleep &quot;Desktop Mode: sleep key (labwc)&quot;'" /></keybind>
     <!-- ==== Accessibility and the emoji picker (Settings › Accessibility; hearth-access, hearth-emoji) ====
          Super+= zooms in (and turns the magnifier on), Super+- zooms out (off at the lowest step), Super+Esc turns
          it off or back on at the last level; its size and steps are set in Settings (hearth-system adds them to this file). Super+Alt+S turns
