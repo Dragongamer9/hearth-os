@@ -1236,7 +1236,7 @@ impl Bridge {
         self.library.games.get(&id).map(|g| self.library.dto(g)).ok_or("Couldn't add it".into())
     }
     /// Runs `f` on its own thread and answers the request in hand with its result then (to the window that asked).
-    fn later(&self, f: impl FnOnce() -> Result<Value, String> + Send + 'static) -> Result<Value, String> {
+    pub(crate) fn later(&self, f: impl FnOnce() -> Result<Value, String> + Send + 'static) -> Result<Value, String> {
         crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), f);
         Ok(json!(DEFERRED))
     }
