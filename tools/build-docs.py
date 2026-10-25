@@ -229,7 +229,7 @@ If an install fails on your hardware, <a href="troubleshooting.html#logs">send t
 
 {h2('first', 'The first start')}
 <ul>
-<li>Hearth starts in Game Mode. Sign in to Steam and your other stores from <b>Settings › Game stores</b>.</li>
+<li>Hearth starts in Game Mode. Sign in to Steam and your other stores from <b>Settings › Games › Game stores &amp; accounts</b>.</li>
 <li class="ed" data-ed="anatase">Steam installs itself (from Flathub) the first time the device is online, so after an offline install it appears a few minutes after you connect.</li>
 <li class="ed" data-ed="ubuntu cachyos peppermint">Steam is already installed (from the edition's own packages).</li>
 <li>An installed system starts at the version the ISO was made with, and <a href="updates.html">updates itself</a> to the newest one once it's online.</li>
@@ -246,16 +246,20 @@ From the Bazzite-based Hearth OS, use <b>Settings › Updates › Move to a new 
 UPDATES = f'''
 {h2('how', 'How updates work')}
 <ul>
-<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › Updates › Check automatically</b>).</li>
+<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › System › Updates › Check automatically</b>).</li>
 <li>An update downloads in the background while you play. It's used <b>the next time you restart</b>.</li>
 <li>The whole system is replaced in one piece, so an update can't half-install. The version before it stays on the drive.</li>
-<li>To update now: <b>Settings › Updates › Check for updates</b>, then restart when it says it's ready.</li>
+<li>To update now: <b>Settings › System › Updates › Check for updates</b>, then restart when it says it's ready.</li>
 </ul>
 <p>From a terminal in Desktop Mode, the same update:</p>
 {cmd('update-now', 'pkexec /usr/libexec/nimbus/hearth-admin update')}
 
 {h2('rollback', 'Going back to the last version')}
 <p>If a new version has a problem, go back to the one before it.</p>
+<h3>From Settings</h3>
+<p><b>Settings › System › Updates › Go back to</b> (the version before) makes it the one that starts next, then restart.
+Changed your mind before restarting? The same place offers <b>Stay on</b> the version you have. It's there on the Hearth OS
+images (Anatase) while the older version is still kept, and not while a new update waits for a restart.</p>
 <h3>From the boot menu</h3>
 <p>Restart, and in the boot menu pick the second <b>Hearth OS</b> entry (the older version). On a handheld, the boot menu
 can be moved with the D-pad or volume buttons.</p>
@@ -265,7 +269,7 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 {h2('switch', 'Switching edition')}
-<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › Updates › Switch edition</b>. On Ubuntu or CachyOS
+<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Ubuntu or CachyOS
 (archived for now) the same button moves you to Anatase or Peppermint.</p>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
@@ -292,7 +296,7 @@ a file manager and a terminal.</p>
 <ul>
 <li>To the desktop: <b>Power › Switch to desktop</b> in Game Mode.</li>
 <li>Back to Game Mode: the <b>Game Mode</b> button at the bottom right of the desktop.</li>
-<li><b>Settings › Sign-in › Start in</b> picks which one you see after signing in.</li>
+<li><b>Settings › You › Sign-in › Start in</b> picks which one you see after signing in.</li>
 </ul>
 
 {h2('controller', 'Controller')}
@@ -300,12 +304,23 @@ a file manager and a terminal.</p>
 <tr><th>Button</th><th>In Game Mode</th></tr>
 <tr><td>A / B</td><td>Select / back</td></tr>
 <tr><td>Y</td><td>Search</td></tr>
-<tr><td>Menu (☰)</td><td>Main menu</td></tr>
+<tr><td>Menu (☰)</td><td>The dock (main menu); B closes it</td></tr>
 <tr><td>View (⧉)</td><td>Quick Access: volume, brightness, power, Wi-Fi</td></tr>
 <tr><td>Xbox / Guide</td><td>Over a game: the overlay (back to Hearth, close the game, settings)</td></tr>
 <tr><td>View + Menu together</td><td>Controller mouse on or off (for launchers and installers a controller can't drive)</td></tr>
 </table></div>
 <p>The controller mouse: right stick moves the pointer, A or RT clicks, X or LT right-clicks, left stick scrolls, B is Esc.</p>
+
+{h2('menu', 'The dock and Settings')}
+<p>Menu (☰) opens the <b>dock</b> along the bottom: Home, Library, Store, Friends, Downloads, Hearth Link, then Search,
+Settings, Power and your profile. Left and right move along it; the item you're on shows a card above it (who's online,
+the download queue with <b>Pause all</b>, your devices...), and up goes into the card's buttons. While you browse, a small
+copy sits at the bottom edge for the mouse. Over a game it shows the game instead: <b>Resume</b>, <b>Quick Access</b>,
+<b>Invite a friend</b>, <b>Exit game</b>, a screenshot, recording and performance.</p>
+<p>Prefer the old menu? <b>Settings › You › Appearance › Menu style › Side menu (classic)</b>.</p>
+<p><b>Settings</b> has six groups along the top (You, Connections, Display &amp; sound, Controls &amp; power, Games, System), each
+with a summary on the left and its pages on the right. Inside a group, LB and RB move between its pages and B goes back.
+<b>Search</b> (Y, or the search button in Settings) finds settings too: type "refresh" to get to the refresh rate.</p>
 
 {h2('keyboard', 'The on-screen keyboard')}
 <p>Laid out like SteamOS's, at the bottom of the screen. With a controller:</p>
@@ -322,19 +337,19 @@ a file manager and a terminal.</p>
 <p>The ← and → keys move the text cursor. A USB or Bluetooth keyboard works too.</p>
 
 {h2('power', 'The power button')}
-<p><b>Settings › Power › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
+<p><b>Settings › Controls &amp; power › Power &amp; sleep › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
 Holding the button for several seconds always turns the device off.</p>
 
 {h2('display', 'Display and performance')}
 <ul>
-<li><b>Settings › Display › Drawing engine</b>: on Nvidia graphics Hearth uses Chromium to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
-<li><b>Settings › Power</b>: power mode and the power limit (TDP) on handhelds.</li>
+<li><b>Settings › Display &amp; sound › Display › Renderer</b>: on Nvidia graphics Hearth uses Electron (Chromium) to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
+<li><b>Settings › Controls &amp; power › Power &amp; sleep</b>: power mode and the power limit (TDP) on handhelds.</li>
 </ul>
 
 {h2('profiles', 'Profiles and stores')}
 <ul>
 <li>Each Hearth profile can sign in to its own Steam account. With more than one profile, each sees its own Steam games.</li>
-<li>Stores are signed in to from <b>Settings › Game stores</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
+<li>Stores are signed in to from <b>Settings › Games › Game stores &amp; accounts</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
 </ul>
 
 {h2('apps', "Hearth's own apps")}
@@ -362,7 +377,7 @@ Holding the button for several seconds always turns the device off.</p>
 system and stays through Hearth OS updates. Sign in with your Claude account in the browser when it asks.</p>
 <ul>
 <li><b>Claude Desktop</b> (the app: chat, Cowork and Claude Code sessions): <b>Get Claude</b> in Desktop Mode's app menu, or
-<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Claude</b>. Hearth downloads Anthropic's own package from
+<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Device › Claude</b>. Hearth downloads Anthropic's own package from
 downloads.claude.ai, checks it against Anthropic's signing key, installs it and opens it.</li>
 <li><b>Updates:</b> Anthropic's Linux app doesn't update itself, so Hearth checks for a newer one every day and installs it
 (if Claude is open, the next time it's closed). <b>Check for an update</b> on the same page does it now.</li>
@@ -378,7 +393,7 @@ Removing keeps your chats (they're in your Claude account) and settings.</p>
 {only('peppermint', '<div class="note"><p>On Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
 
 {h2('logs', 'Sending logs')}
-<p>When something goes wrong, <b>Settings › System › Send logs to the developer</b>. You get a short code (like
+<p>When something goes wrong, <b>Settings › System › Help &amp; logs › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
 before they're sent, and only someone with the code can read them.</p>
 '''
@@ -386,10 +401,10 @@ before they're sent, and only someone with the code can read them.</p>
 # ------------------------------------------------------------------ Troubleshooting
 TROUBLE = f'''
 <div class="note"><p>Each fix says which version it's for. Most known problems are fixed by updating:
-<b>Settings › Updates › Check for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
+<b>Settings › System › Updates › Check for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
 
 {h2('logs', 'First: send a log')}
-<p><b>Settings › System › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
+<p><b>Settings › System › Help &amp; logs › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
 it went wrong, so send it right after the problem happens.</p>
 
 {h2('terminal', 'Getting to a terminal')}
@@ -416,7 +431,7 @@ then send a log from there.</li>
 </ol>
 
 {h2('power-button', 'The power button turns the device off instead of sleeping')}
-<p><span class="ver">0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span> Update. After updating, <b>Settings › Power › Power button</b> is followed.</p>
+<p><span class="ver">0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span> Update. After updating, <b>Settings › Controls &amp; power › Power &amp; sleep › Power button</b> is followed.</p>
 
 {h2('brightness', 'Brightness doesn\'t change ("get write permission")')}
 <p><span class="ver">Peppermint, Ubuntu · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span>
@@ -453,7 +468,7 @@ In Game Mode, a mode the screen can't show could leave it black or flickering. W
 <p>From 0.4.0, a new mode switches back by itself after 20 seconds unless you choose <b>Keep</b>.</p>
 
 {h2('nvidia', 'Game Mode feels slow on Nvidia')}
-<p>Check <b>Settings › Display › Drawing engine</b> is <b>Chromium</b> (the default on Nvidia since 0.2.6), and update.</p>
+<p>Check <b>Settings › Display &amp; sound › Display › Renderer</b> is <b>Automatic</b> or <b>Electron</b> (Chromium, the default on Nvidia since 0.2.6), and update.</p>
 
 {h2('steam-games', 'Steam games are missing from the library')}
 <p>Make sure Steam is signed in. With more than one Hearth profile, each profile shows the games of the Steam account
@@ -462,8 +477,8 @@ signed in on it: sign in to Steam on that profile.</p>
 {h2('install-failed', 'Installing fails')}
 <ul>
 <li>Try the <b>offline USB</b> for your edition instead of the small installer (no download to go wrong).</li>
-<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › Updates</b> and update.</li>
-<li>From the live USB, <b>Settings › System › Send logs to the developer</b> includes the installer's log.</li>
+<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › System › Updates</b> and update.</li>
+<li>From the live USB, <b>Settings › System › Help &amp; logs › Send logs to the developer</b> includes the installer's log.</li>
 </ul>
 
 {h2('ask', 'Still stuck? Tell us')}

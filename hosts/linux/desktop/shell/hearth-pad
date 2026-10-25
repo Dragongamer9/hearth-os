@@ -33,6 +33,7 @@ mouse {on: false} and exits. Hearth sends pause {on} while it or its Quick Acces
 import json
 import math
 import os
+import threading
 import select
 import sys
 import time
@@ -667,8 +668,26 @@ def main():
                         pass
                 c.ff_id = c.dev.upload_effect(eff)
                 c.dev.write(e.EV_FF, c.ff_id, 1)
+                # Some pads (Handheld Daemon's virtual pad on the ROG Ally) ignore the replay length and rumble
+                # until told to stop: stop it explicitly just after it should have ended.
+                stop_rumble_later(c, c.ff_id, ms)
             except (OSError, AttributeError, TypeError):
                 pass
+
+    def stop_rumble_later(c, ff_id, ms):
+        old = getattr(c, 'ff_stop', None)
+        if old is not None:
+            old.cancel()
+
+        def stop():
+            try:
+                c.dev.write(e.EV_FF, ff_id, 0)
+            except (OSError, AttributeError, TypeError):
+                pass
+        t = threading.Timer((ms + 40) / 1000.0, stop)
+        t.daemon = True
+        c.ff_stop = t
+        t.start()
     out.rumbler = rumble
     pressed = set()
     names = ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'view', 'menu', 'guide', 'l3', 'r3',

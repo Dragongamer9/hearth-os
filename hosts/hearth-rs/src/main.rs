@@ -281,7 +281,10 @@ fn overlay_hello() -> serde_json::Value {
     if UI_APP.get().is_some() { h["ui"] = serde_json::json!("hearth"); }
     else {
         let app = std::env::var("HEARTH_ELECTRON_APP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(hearth_core::renderer::ELECTRON_APP));
-        if let Some(dir) = app.parent().map(|d| d.join("resources").join("ui")).filter(|d| d.join("index.html").is_file()) { h["uiDir"] = serde_json::json!(dir.to_string_lossy()); }
+        // The Qt window app (Experimental) has no web page of its own: Quick Access over games stays the web one,
+        // from the Electron app's folder (or HEARTH_UI_DIR).
+        let env_dir = std::env::var("HEARTH_UI_DIR").ok().map(std::path::PathBuf::from).filter(|d| d.join("index.html").is_file());
+        if let Some(dir) = env_dir.or_else(|| app.parent().map(|d| d.join("resources").join("ui")).filter(|d| d.join("index.html").is_file())) { h["uiDir"] = serde_json::json!(dir.to_string_lossy()); }
     }
     h
 }
@@ -314,6 +317,8 @@ pub(crate) fn page_msg(host: &Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, l
         }
     }
     if ty == "overlay" && msg["action"] == "open" { send_to(host, &label, Bridge::event("overlay.unavailable", serde_json::json!({}))); return; }
+    // The renderer was changed by itself (the Qt renderer was given up): said once, on the next screen.
+    if ty == "ready" && label == "main" { if let Some(t) = hearth_core::renderer::take_note() { send_to(host, &label, serde_json::json!({"type": "toast", "text": t})); } }
     if ty == "ready" { send_to(host, &label, Bridge::event("padHost", serde_json::json!({"connected": 0}))); return; }
     let (reply, quit) = {
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
@@ -532,7 +537,7 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
 /// Game Mode: the overlay window, the Guide button, the power and volume buttons, and the settings that
 /// only work in gamescope (frame-rate limit, performance overlay).
 fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, windowed: bool) {
-    let (guide, hold) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true), Err(_) => return };
+    let (guide, hold, glance) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true, b.library.store.data["glance"] != false), Err(_) => return };
     let gm = GameMode::new(host.clone(), bridge.clone(), guide.clone(), windowed);
     {
         // The controller mouse pauses while Hearth or its Quick Access is in front (the controller is Hearth's then).
@@ -556,6 +561,7 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
     // game asked for, never another one's frozen picture).
     gm.start_window_ids();
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
+    guide.tap_hold.store(glance, std::sync::atomic::Ordering::SeqCst);   // Quick glance: a short Guide press (guide.rs)
     let (g1, g2) = (gm.clone(), gm.clone());
     guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),
                 Arc::new(move |b: &str, down: bool| { g2.overlay_pad(b, down); g2.seat_pad(b, down); }));
@@ -735,6 +741,38 @@ fn gpu_always(w: &tauri::WebviewWindow) {
 }
 
 
+/// Hearth drawn by Qt (Experimental, hosts/hearth-qml): its window app runs as this process's child (it starts the
+/// windowless core itself, as `nimbus --core-stdio`), and this process waits for it, so a crash is seen here: it's
+/// counted (3 within a few minutes, or a start that never brought the screen up, give Qt up: renderer.rs), and in the
+/// session Hearth is started again at once (75) instead of the session's watchdog counting it as Hearth crashing.
+/// Hearth's own exit codes (0 leave, 75 start again) pass through.
+fn run_qt(app: &std::path::Path, args: &[String]) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    hearth_core::renderer::note_qt_start();
+    hearth_core::bridge::log(&format!("renderer: Qt, Experimental (Qt Quick window app {})", app.display()));
+    let me = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "/usr/bin/nimbus".into());
+    let started = std::time::Instant::now();
+    let status = std::process::Command::new(app).args(&args[1..]).env("HEARTH_CORE_BIN", &me).env("HEARTH_QT_PARENT", std::process::id().to_string()).status();
+    let status = match status {
+        Ok(s) => s,
+        Err(e) => {
+            hearth_core::bridge::log(&format!("renderer: couldn't start the Qt window app ({e}); trying again the usual way"));
+            hearth_core::renderer::note_qt_crash();
+            return if in_session() { 75 } else { 1 };
+        }
+    };
+    let secs = started.elapsed().as_secs();
+    match status.code() {
+        Some(0) | Some(75) => status.code().unwrap_or(0),
+        _ => {
+            let how = match (status.code(), status.signal()) { (Some(c), _) => format!("exit code {c}"), (None, Some(sig)) => format!("signal {sig}"), _ => "unknown".into() };
+            hearth_core::bridge::log(&format!("renderer: the Qt window app ended badly ({how}) after {secs} s; counted as a crash"));
+            hearth_core::renderer::note_qt_crash();
+            if in_session() { 75 } else { status.code().unwrap_or(1) }
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let has = |a: &str| args.iter().any(|x| x == a);
@@ -757,14 +795,19 @@ fn main() {
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }
     // Which engine draws Hearth: Chromium (the Electron window app) on Nvidia graphics, WebKit elsewhere; Settings ›
-    // Display › Drawing engine, or HEARTH_RENDERER, says otherwise. Chromium that failed to start twice lately: WebKit.
-    if let Some(app) = hearth_core::renderer::chromium_to_run() {
-        use std::os::unix::process::CommandExt;
-        hearth_core::renderer::note_chromium_start();
-        hearth_core::bridge::log(&format!("renderer: Chromium (Electron window app {})", app.display()));
-        let me = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "/usr/bin/nimbus".into());
-        let err = std::process::Command::new(&app).args(&args[1..]).env("HEARTH_CORE_BIN", me).exec();
-        hearth_core::bridge::log(&format!("renderer: couldn't start the Electron window app ({err}); drawing with WebKit"));
+    // Display › Renderer, or HEARTH_RENDERER, says otherwise (also Qt, Experimental). Chromium that failed to start
+    // twice lately: WebKit. Qt that failed: back to Automatic (hearth_core::renderer).
+    match hearth_core::renderer::pick_at_start() {
+        hearth_core::renderer::Start::Chromium(app) => {
+            use std::os::unix::process::CommandExt;
+            hearth_core::renderer::note_chromium_start();
+            hearth_core::bridge::log(&format!("renderer: Chromium (Electron window app {})", app.display()));
+            let me = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "/usr/bin/nimbus".into());
+            let err = std::process::Command::new(&app).args(&args[1..]).env("HEARTH_CORE_BIN", me).exec();
+            hearth_core::bridge::log(&format!("renderer: couldn't start the Electron window app ({err}); drawing with WebKit"));
+        }
+        hearth_core::renderer::Start::Qt(app) => std::process::exit(run_qt(&app, &args)),
+        hearth_core::renderer::Start::WebKit => {}
     }
     // WebKit's newer GPU path draws a black window on some Nvidia drivers: the older one works everywhere.
     // Only there: on AMD and Intel (the ROG Ally, Steam Deck) it's the fast path, and without it WebKit draws
