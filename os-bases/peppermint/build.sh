@@ -1189,6 +1189,9 @@ rm -f /etc/network/interfaces
 
 # ------------------------------------------------------------------ power button
 systemctl --global disable steamos-powerbuttond.service 2>/dev/null || true
+# When the device last woke up (/run/hearth-resumed) and each sleep in the journal (hearth-sleep): the press that
+# woke it is then not taken as a new one (os/system_files).
+chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed
 
 # ------------------------------------------------------------------ services
 systemctl enable NetworkManager.service bluetooth.service systemd-resolved.service systemd-timesyncd.service \
