@@ -99,6 +99,16 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.52 (released)
+
+- [x] The Bottom Dock is Game Mode's main menu: live cards above each item (continue playing, friends online, downloads with progress, nearby devices), badges, a game dock over a running game, and search that finds settings too; the classic side menu stays under Settings › You › Appearance › Menu style
+- [x] Settings redesigned: six groups (You, Connections, Display & sound, Controls & power, Games, System) with live status cards, pages as tabs (LB/RB), a new Help & logs page; every earlier setting is still there
+- [x] Go back to the previous version from Settings › System › Updates (Anatase)
+- [x] The in-game overlay is a top dock: Now playing, Performance (temperatures, power draw, per-game saving), Controller layout, Friends (quick replies), Capture and Quick settings; a short Guide tap shows a quick-glance bar without pausing the game
+- [x] The overlay that Handheld Daemon starts gets a font setup Chromium can read (for the blank overlay on Nvidia PCs) and its own log section
+- [x] Qt renderer (Experimental): Settings › Display › Renderer › Qt — Home, Library, game pages, Downloads, Quick Access, Power and Settings drawn natively with Qt Quick; falls back to Automatic if it fails
+- [x] On-screen keyboard rumble always stops (ROG Ally kept rumbling)
+
 ## 0.6.51 (released)
 
 - [x] The controller works the on-screen keyboard in Game Mode again (search, Send logs and every other prompt); the controller is now tested through the real gamepad path
