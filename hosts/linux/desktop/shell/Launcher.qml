@@ -389,7 +389,7 @@ PanelWindow {
                 ActionButton { label: "Game Mode"; primary: true; command: ["nimbus-mode", "game"] }
                 ActionButton { label: "Settings"; command: [] }
                 Item { Layout.fillWidth: true }
-                ActionButton { label: "Sleep"; command: ["systemctl", "suspend"] }
+                ActionButton { label: "Sleep"; command: ["python3", Buttons.helper, "sleep", "Desktop Mode: menu"] }
                 ActionButton { label: "Restart"; command: ["systemctl", "reboot"] }
                 ActionButton { label: "Shut down"; command: ["systemctl", "poweroff"] }
                 ActionButton { label: "Log out"; command: ["nimbus-mode", "logout"] }

@@ -4,10 +4,17 @@
 // The password change still checks the current password itself.
 // One exception: write-file (Hearth Text's Edit as administrator saving a system file) always asks for an
 // administrator's password, so nothing running as you can change system files without it.
+// The same for Make a bootable USB (Hearth Disks) writing to an internal drive (usb-* --allow-internal, only after
+// "Show all drives" and typing ERASE): USB drives and SD cards don't ask, internal drives always do.
 polkit.addRule(function (action, subject) {
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
         /^\S+\s+write-file(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+usb-\S+(\s.*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
 });

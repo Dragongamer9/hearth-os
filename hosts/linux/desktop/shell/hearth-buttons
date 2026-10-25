@@ -10,11 +10,20 @@ one JSON object per line on stdout:
   {"t": "power", "press": "long"}     ... held for a second (sent while still held)
   {"t": "vol", "d": 1}  / -1          volume up / down (repeats while held)
   {"t": "mute"}                       the mute key
-  {"t": "devices", "list": [...], "problems": [...]}   what it's watching, and what it can't read
+  {"t": "devices", "list": [...], "problems": [...], "power": true}   what it's watching (power: one of them has the
+                                      power button), and what it can't read
+  {"t": "ignored", "after": 0.4}      a power button press ignored because the device woke up 0.4 s ago
 
 Hearth (Game Mode) and the Desktop Mode shell decide what each press does (Settings › Power button).
 Many power buttons only report "pressed and let go" together; those can't be held, only pressed.
-The press that wakes the device from sleep is ignored, so waking up doesn't put it straight back to sleep.
+The press that wakes the device from sleep is ignored, so waking up doesn't put it straight back to sleep: for
+WAKE_GRACE seconds after waking (seen two ways: the time asleep, BOOTTIME minus MONOTONIC, jumped; or Hearth's sleep
+hook's /run/hearth-resumed says so) power presses are reported as "ignored" and written to the journal (hearth-sleep).
+
+`hearth-buttons sleep WHO` is how Desktop Mode puts the device to sleep: it writes "WHO → sleep" to the journal
+(hearth-sleep, shown in Send logs' Sleep section) and runs systemctl suspend, unless the device woke up less than
+WAKE_GRACE seconds ago (then it writes that it ignored it and exits 3): a press that woke the device and reached
+something else too (labwc's key binding) can't put it back to sleep.
 
 Needs python3-evdev and read access to the devices (Hearth's udev rule 70-hearth-buttons.rules).
 Exit 2: python3-evdev missing.
@@ -25,12 +34,18 @@ import select
 import sys
 import time
 
+try:
+    import syslog
+except ImportError:          # not on Linux
+    syslog = None
+
 KEY_MUTE, KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_POWER = 113, 114, 115, 116
 BTN_GAMEPAD = 0x130
 WATCH = (KEY_POWER, KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE)
 HOLD = 1.0           # seconds held for a long press
 REPEAT = 0.12        # fastest volume repeat while held
-WAKE_GRACE = 2.0     # ignore the power button this long after waking from sleep
+WAKE_GRACE = 2.5     # ignore the power button this long after waking from sleep
+RESUMED = '/run/hearth-resumed'      # /proc/uptime when the device last woke up (Hearth's system-sleep hook)
 
 
 def sleep_offset():
@@ -41,29 +56,81 @@ def sleep_offset():
         return 0.0
 
 
+def since_resume(resumed=RESUMED, uptime='/proc/uptime'):
+    """Seconds since the device last woke up, from Hearth's sleep hook (None: unknown, or never slept this boot).
+    /proc/uptime counts the time asleep too, the same clock the hook wrote."""
+    try:
+        with open(resumed) as f:
+            at = float(f.read().split()[0])
+        with open(uptime) as f:
+            now = float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    return now - at if now >= at else None
+
+
+def journal(msg):
+    """One line in the journal as hearth-sleep (Send logs' Sleep section lists them with the sleeps)."""
+    if syslog is None:
+        return
+    try:
+        syslog.openlog('hearth-sleep', 0, syslog.LOG_USER)
+        syslog.syslog(syslog.LOG_NOTICE, msg)
+    except OSError:
+        pass
+
+
 class Buttons:
     """What the presses mean; no devices here, so it can be tested."""
 
-    def __init__(self, out, offset=sleep_offset):
+    def __init__(self, out, offset=sleep_offset, resumed=since_resume, log=journal):
         self.out = out
         self.offset = offset
+        self.resumed = resumed
+        self.log = log
         self.last_offset = offset()
         self.power_down = None      # time the power button went down
         self.long_sent = False
         self.ignore_until = 0.0
+        self.woke_at = 0.0
+        self.ignored_down = False   # the press now held went down while ignored
         self.last_vol = {}
 
     def woke_up(self, now):
         o = self.offset()
         if o - self.last_offset > 1.0:          # slept since we last looked
             self.ignore_until = now + WAKE_GRACE
+            self.woke_at = now
             self.power_down = None
         self.last_offset = o
+
+    def just_woke(self, now):
+        """Seconds since waking up when that's less than WAKE_GRACE ago, else None."""
+        if now < self.ignore_until:
+            return max(0.0, now - self.woke_at)
+        s = self.resumed()
+        if s is not None and 0 <= s < WAKE_GRACE:
+            return s
+        return None
 
     def key(self, code, value, now):
         self.woke_up(now)
         if code == KEY_POWER:
-            if now < self.ignore_until:
+            after = self.just_woke(now) if value in (0, 1) else None
+            if after is not None:
+                self.power_down = None
+                # Once per press: at its press, or at its release when the press itself came before we looked.
+                if value == 1 or not self.ignored_down:
+                    after = round(after, 1)
+                    self.out({'t': 'ignored', 'after': after})
+                    self.log(f'hearth-buttons: power button press ignored {after} s after waking up (the press that woke it)')
+                self.ignored_down = value == 1
+                return
+            if value == 2:
+                return
+            if value == 0 and self.ignored_down:     # the release of a press that came while ignored
+                self.ignored_down = False
+                self.power_down = None
                 return
             if value == 1:
                 self.power_down, self.long_sent = now, False
@@ -117,6 +184,21 @@ def meant_to_be_readable(path, udev_data=UDEV_DATA):
     return props.get('ID_INPUT_KEY') == '1' and props.get('ID_INPUT_KEYBOARD') != '1' and props.get('ID_INPUT_JOYSTICK') != '1'
 
 
+def sleep(who, since=since_resume, run=os.execvp, log=journal):
+    """`hearth-buttons sleep WHO`: suspend, written to the journal, unless the device has only just woken up."""
+    s = since()
+    if s is not None and 0 <= s < WAKE_GRACE:
+        log(f'{who}: sleep ignored, the device woke up {round(s, 1)} s ago (the press that woke it)')
+        return 3
+    log(f'{who} → sleep')
+    try:
+        run('systemctl', ['systemctl', 'suspend'])
+    except OSError as e:
+        log(f'{who}: systemctl suspend failed: {e}')
+        return 1
+    return 0
+
+
 def main():
     try:
         import evdev
@@ -126,6 +208,7 @@ def main():
 
     b = Buttons(emit)
     devs = {}            # path → InputDevice
+    power = set()        # the ones with the power button
     problems = {}
     reported = None
 
@@ -148,16 +231,22 @@ def main():
                 ok = False
             if ok:
                 devs[path] = d
+                try:
+                    if KEY_POWER in d.capabilities().get(1, []):
+                        power.add(path)
+                except OSError:
+                    pass
                 problems.pop(path, None)
             else:
                 d.close()
                 problems.pop(path, None)
         for path in [p for p in devs if not os.path.exists(p)]:
             devs.pop(path).close()
-        state = (sorted(d.name for d in devs.values()), sorted(problems))
+            power.discard(path)
+        state = (sorted(d.name for d in devs.values()), sorted(problems), bool(power & set(devs)))
         if state != reported:
             reported = state
-            emit({'t': 'devices', 'list': state[0], 'problems': [f'{p}: {problems[p]}' for p in state[1]]})
+            emit({'t': 'devices', 'list': state[0], 'problems': [f'{p}: {problems[p]}' for p in state[1]], 'power': state[2]})
 
     last_scan = 0.0
     while True:
@@ -179,6 +268,7 @@ def main():
                         b.key(ev.code, ev.value, time.monotonic())
             except OSError:          # unplugged
                 devs.pop(path, None)
+                power.discard(path)
                 try:
                     d.close()
                 except OSError:
@@ -187,6 +277,8 @@ def main():
 
 
 if __name__ == '__main__':
+    if len(sys.argv) >= 2 and sys.argv[1] == 'sleep':
+        sys.exit(sleep(' '.join(sys.argv[2:]) or 'someone'))
     try:
         main()
     except KeyboardInterrupt:

@@ -147,8 +147,11 @@ done
 echo
 grep -rsE '^[[:space:]]*(Handle|Idle|Inhibit|Suspend|Allow|HibernateDelay|MemorySleepMode)' /etc/systemd/logind.conf /etc/systemd/logind.conf.d /usr/lib/systemd/logind.conf.d /run/systemd/logind.conf.d /etc/systemd/sleep.conf /etc/systemd/sleep.conf.d /usr/lib/systemd/sleep.conf.d /run/systemd/sleep.conf.d
 echo "power button helpers running: $(pgrep -af 'hearth-buttons|steamos-powerbuttond|powerbuttond' | grep -v pgrep | sed 's/^[0-9]* //' | paste -sd';' -)"
-echo "Steam's gamepad UI (Handheld Daemon's powerbuttond only acts while it runs): $(pgrep -f -- '-gamepadui' >/dev/null && echo running || echo 'not running')"
-journalctl -b --no-pager -u hhd 2>/dev/null | grep -iE 'PBTN|powerbutton|power button|inhibit' | tail -12
+gp='not running'
+for p in $(pgrep -x steam 2>/dev/null); do tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -- '-gamepadui' && gp=running; done
+echo "Steam's gamepad UI (Handheld Daemon's powerbuttond only acts while it runs): $gp"
+journalctl -b --no-pager -u hhd 2>/dev/null | grep -iE 'PBTN|powerbutton|power button|inhibit|Executing (short|long) press|systemctl suspend' | tail -12
+echo "when it last woke up (Hearth's sleep hook, /run/hearth-resumed, seconds of uptime): $(cat /run/hearth-resumed 2>/dev/null || echo 'not this boot') | uptime now: $(cut -d' ' -f1 /proc/uptime 2>/dev/null)"
 echo "--- inhibitors (block = sleep refused while held; delay = held off a few seconds)"
 systemd-inhibit --list --no-pager 2>&1
 echo "--- what can wake the device"
@@ -173,8 +176,15 @@ journalctl -b -k -o short-unix --no-pager 2>/dev/null | grep -E 'PM: suspend (en
     *exit*) [ -n "$s" ] && echo "$(date -d "@${t%.*}" '+%F %T') woke up after $(( ${t%.*} - s )) s"; s="";;
   esac
 done
-echo "--- kernel and logind around sleep (this boot)"
-journalctl -b --no-pager -o short-precise -k -u systemd-logind -u systemd-suspend.service 2>/dev/null | grep -iE 'PM: |s2idle|ACPI: PM|Low-level resume|amd_pmc|deepest|power key|suspend|wakeup|freez|restarting tasks|hardware sleep|resume' | tail -80
+echo "--- who asked for each sleep, power presses ignored after waking, kernel and logind around sleep (this boot, oldest first)"
+echo "(hearth-sleep: Hearth Game Mode, Desktop Mode, hearth-buttons and Hearth's sleep hook; hhd: Handheld Daemon's powerbuttond)"
+# One journalctl each: -k with -u matched only kernel lines from those units (none), so this part came out empty.
+{
+  journalctl -b --no-pager -o short-iso-precise -k 2>/dev/null | grep -iE 'PM: |s2idle|ACPI: PM|Low-level resume|amd_pmc|deepest|suspend|wakeup|freez|restarting tasks|hardware sleep|resume'
+  journalctl -b --no-pager -o short-iso-precise -u systemd-logind -u systemd-suspend.service -u systemd-suspend-then-hibernate.service -u systemd-hibernate.service 2>/dev/null | grep -iE 'power key|suspend|sleep|lid|hibernat|wake|resume|inhibit'
+  journalctl -b --no-pager -o short-iso-precise -t hearth-sleep 2>/dev/null
+  journalctl -b --no-pager -o short-iso-precise -u hhd 2>/dev/null | grep -E 'Executing (short|long) press|systemctl suspend|woke up from sleep'
+} | grep -v '^-- ' | sort -s -k1,1 | tail -100
 echo "--- how the previous boot ended (asleep and never woke, or stuck waking up?)"
 journalctl --list-boots --no-pager 2>/dev/null | tail -5
 journalctl -b -1 -k --no-pager -o short-precise 2>/dev/null | grep -iE 'PM: |s2idle|ACPI: PM|amd_pmc|amdgpu|deepest|wakeup|resume' | tail -20
@@ -487,7 +497,7 @@ mod tests {
         for s in [SCREEN_SH, DRIVER_SH, SLEEP_SH] { assert!(s.trim_end().ends_with("\ntrue"), "{s}"); }
         // The Sleep section: the states, the deep-sleep counters, who handles the power button, the inhibitors, the
         // wake sources, and the last sleeps with their lengths.
-        for k in ["/sys/power/mem_sleep", "total_hw_sleep", "HandlePowerKey", "systemd-inhibit --list", "/proc/acpi/wakeup", "PM: suspend (entry|exit)", "journalctl -b -1 -k", "amd_pmc"] {
+        for k in ["/sys/power/mem_sleep", "total_hw_sleep", "HandlePowerKey", "systemd-inhibit --list", "/proc/acpi/wakeup", "PM: suspend (entry|exit)", "journalctl -b -1 -k", "amd_pmc", "-t hearth-sleep", "/run/hearth-resumed"] {
             assert!(SLEEP_SH.contains(k), "{k}");
         }
         assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));

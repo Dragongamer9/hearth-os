@@ -105,6 +105,19 @@ class SleepSection(unittest.TestCase):
             self.assertIn(k, s)
         self.assertTrue(s.rstrip().endswith('\ntrue'))
 
+    def test_who_asked_and_the_kernel_lines_arent_empty(self):
+        # -k together with -u matched kernel lines from those units only: none, so that part came out empty.
+        s = sleep_script()
+        for line in s.splitlines():
+            if not line.lstrip().startswith('#') and 'journalctl' in line and re.search(r'(^|\s)-k(\s|$)', line):
+                self.assertNotIn(' -u ', line, line)
+        # Who asked for each sleep (Hearth Game Mode, Desktop Mode, hearth-buttons, the sleep hook) and Handheld
+        # Daemon's own presses, in one timeline with the kernel's and logind's lines.
+        for k in ('-t hearth-sleep', 'Executing (short|long) press', '/run/hearth-resumed', 'sort -s -k1,1'):
+            self.assertIn(k, s)
+        # Steam's gamepad UI is looked for in Steam's own command line (pgrep -f matched this script itself).
+        self.assertNotIn("pgrep -f -- '-gamepadui'", s)
+
 
 if __name__ == '__main__':
     unittest.main()

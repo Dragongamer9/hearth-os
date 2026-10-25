@@ -1,0 +1,535 @@
+#!/usr/bin/python3
+"""hearth-usb: the root half of Hearth Disks' "Make a bootable USB" (hosts/hearth-disks/src/usb).
+
+Run as `hearth-admin usb-<command>` through pkexec (Hearth's polkit rule, 49-hearth-admin.rules). Disks does
+everything it can as you (downloading, checking signatures, reading the ISO, copying Windows' files); only these
+four steps need root, and each one writes to one USB drive and nothing else:
+
+  usb-check   DEVICE --expect-size BYTES [--expect-serial S] [--allow-internal]
+              JSON: what the drive is, if Hearth would write to it (read only)
+  usb-raw     DEVICE --expect-size BYTES [--expect-serial S] [--size N] [--allow-internal]
+              writes the image on standard input to the whole drive (dd-style), then reads it back: JSON with the
+              SHA-256 of what was written and of what was read back
+  usb-prepare DEVICE --expect-size BYTES [--expect-serial S] --scheme gpt|mbr --label LABEL [--allow-internal]
+              erases the drive and makes one FAT32 partition (GPT, or MBR with the boot flag) for Windows' files;
+              mounts it at /run/hearth-usb/<drive> owned by you, so Disks copies the files as you. JSON {mount, partition}
+  usb-finish  DEVICE
+              flushes, unmounts /run/hearth-usb/<drive> and checks the FAT32 file system (read only). JSON
+
+What it writes to is checked every time, from the kernel's own view (/sys, /proc/self/mountinfo), not from what
+Disks says:
+  - a whole drive (/dev/sdX or /dev/mmcblkN), never a partition, a link, or anything else;
+  - removable or on USB (an SD card in a reader or slot counts; a soldered-in eMMC doesn't). --allow-internal lets
+    an internal drive through, and polkit then always asks for an administrator's password;
+  - never a drive the running system is on (its root, /sysroot, /boot, /boot/efi, /var, /usr, /home, swap, the
+    live medium Hearth booted from, every device of the system's btrfs and what an encrypted or LVM system sits
+    on), whatever the options say;
+  - nothing on it mounted or in use (an open encrypted partition, LVM), and opened exclusively (O_EXCL);
+  - the same drive Disks showed you: its size (and serial, when it has one) must match.
+Output: "progress: <0-100> <what>" lines, then one JSON line; "error: ..." and exit 1 on failure.
+"""
+import hashlib
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import time
+
+SYS = '/sys'
+MOUNTINFO = '/proc/self/mountinfo'
+SWAPS = '/proc/swaps'
+RUN_DIR = '/run/hearth-usb'
+# Where the running system lives; a drive with any of these on it is the system's.
+SYSTEM_MOUNTS = ('/', '/sysroot', '/boot', '/boot/efi', '/efi', '/usr', '/var', '/etc', '/home', '/var/home', '/opt',
+                 '/srv', '/root', '/run/initramfs/live', '/run/live/medium', '/lib/live/mount/medium',
+                 '/run/archiso/bootmnt', '/run/rootfsbase', '/run/initramfs/isoscan')
+SYSTEM_PREFIXES = ('/sysroot/', '/ostree/', '/boot/')
+DEVICE_RE = re.compile(r'^/dev/(sd[a-z]{1,2}|mmcblk[0-9]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|loop[0-9]{1,3})$')
+LABEL_RE = re.compile(r'^[A-Z0-9_\-]{1,11}$')
+BLOCK = 4 * 1024 * 1024
+BLKFLSBUF = 0x1261
+# CI writes to disk images (loop devices) with this set; pkexec clears the environment, so it can't be set that way.
+ALLOW_LOOP = os.environ.get('HEARTH_USB_ALLOW_LOOP') == '1'
+
+
+class Refuse(Exception):
+    pass
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def progress(pct, what):
+    print(f'progress: {max(0, min(100, int(pct)))} {what}', flush=True)
+
+
+def read(path, default=''):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def sysblock(name):
+    return os.path.join(SYS, 'class', 'block', name)
+
+
+def disk_of(name, depth=0):
+    """The whole drives a kernel block device is on: a partition's drive, and what a dm/md device is made from."""
+    if depth > 8 or not name:
+        return set()
+    base = sysblock(name)
+    if not os.path.exists(base):
+        return set()
+    if os.path.exists(os.path.join(base, 'partition')):
+        parent = os.path.basename(os.path.dirname(os.path.realpath(base)))
+        return {parent}
+    slaves = os.path.join(base, 'slaves')
+    out = set()
+    if os.path.isdir(slaves) and os.listdir(slaves):
+        for s in os.listdir(slaves):
+            out |= disk_of(s, depth + 1)
+        return out
+    return {name}
+
+
+def name_of_devnum(major, minor):
+    p = os.path.join(SYS, 'dev', 'block', f'{major}:{minor}')
+    if not os.path.exists(p):
+        return ''
+    return os.path.basename(os.path.realpath(p))
+
+
+def mounts():
+    """[(major, minor, mountpoint, fstype, source)] from mountinfo."""
+    out = []
+    try:
+        with open(MOUNTINFO) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        left, _, right = line.partition(' - ')
+        a, b = left.split(), right.split()
+        if len(a) < 5 or len(b) < 2:
+            continue
+        mj, _, mn = a[2].partition(':')
+        mp = a[4].replace('\\040', ' ')
+        out.append((mj, mn, mp, b[0], b[1]))
+    return out
+
+
+def is_system_mount(mp):
+    m = mp.rstrip('/') or '/'
+    return m in SYSTEM_MOUNTS or any(m.startswith(p) for p in SYSTEM_PREFIXES)
+
+
+def source_name(src):
+    """A kernel device name from a mount source (/dev/nvme0n1p3, /dev/mapper/luks-..)."""
+    if not src.startswith('/dev/'):
+        return ''
+    try:
+        st = os.stat(src)
+    except OSError:
+        return os.path.basename(src)
+    if not stat.S_ISBLK(st.st_mode):
+        return ''
+    return name_of_devnum(os.major(st.st_rdev), os.minor(st.st_rdev)) or os.path.basename(os.path.realpath(src))
+
+
+def btrfs_siblings(name):
+    """Every device of the btrfs file system `name` belongs to."""
+    root = os.path.join(SYS, 'fs', 'btrfs')
+    if not os.path.isdir(root):
+        return set()
+    for fs in os.listdir(root):
+        devs = os.path.join(root, fs, 'devices')
+        if os.path.isdir(devs) and name in os.listdir(devs):
+            return set(os.listdir(devs))
+    return set()
+
+
+def system_disks():
+    """The drives the running system is on."""
+    names = set()
+    for mj, mn, mp, fstype, src in mounts():
+        if not is_system_mount(mp):
+            continue
+        for n in {name_of_devnum(mj, mn), source_name(src)}:
+            if n:
+                names.add(n)
+                names |= btrfs_siblings(n)
+    try:
+        with open(SWAPS) as f:
+            for line in f.read().splitlines()[1:]:
+                n = source_name(line.split()[0]) if line.split() else ''
+                if n:
+                    names.add(n)
+    except OSError:
+        pass
+    disks = set()
+    for n in names:
+        disks |= disk_of(n)
+    return disks
+
+
+def partitions(name):
+    base = sysblock(name)
+    try:
+        return sorted(e for e in os.listdir(base) if e.startswith(name) and os.path.exists(os.path.join(base, e, 'partition')))
+    except OSError:
+        return []
+
+
+def in_use(name, allow_mount=None):
+    """Why the drive is busy (mounted somewhere, or held by an encrypted/LVM device), or ''."""
+    ours = set([name] + partitions(name))
+    for mj, mn, mp, fstype, src in mounts():
+        n = name_of_devnum(mj, mn) or source_name(src)
+        if n in ours and mp != allow_mount:
+            return f'{mp} is mounted from it'
+    for n in ours:
+        holders = os.path.join(sysblock(n), 'holders')
+        if os.path.isdir(holders) and os.listdir(holders):
+            return f'{n} is in use by {", ".join(os.listdir(holders))} (an open encrypted partition or LVM)'
+    return ''
+
+
+def serial(name):
+    """The drive's serial numbers as udev knows them (udisks shows one of these)."""
+    try:
+        out = subprocess.run(['udevadm', 'info', '--query=property', '--name', '/dev/' + name], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    props = dict(l.split('=', 1) for l in out.splitlines() if '=' in l)
+    return [v for v in (props.get('ID_SERIAL_SHORT'), props.get('ID_SERIAL'), props.get('ID_SCSI_SERIAL')) if v]
+
+
+def describe(name):
+    base = sysblock(name)
+    real = os.path.realpath(base)
+    removable = read(os.path.join(base, 'removable')) == '1'
+    usb = '/usb' in real
+    mmc_type = read(os.path.join(base, 'device', 'type'))
+    sd = name.startswith('mmcblk') and mmc_type == 'SD'
+    return {
+        'device': '/dev/' + name,
+        'size': int(read(os.path.join(base, 'size'), '0') or 0) * 512,
+        'readOnly': read(os.path.join(base, 'ro')) == '1',
+        'removable': removable or usb or sd,
+        'usb': usb,
+        'sd': sd,
+        'loop': name.startswith('loop'),
+        'model': read(os.path.join(base, 'device', 'model')),
+        'vendor': read(os.path.join(base, 'device', 'vendor')),
+        'partitions': ['/dev/' + p for p in partitions(name)],
+    }
+
+
+def is_block(dev):
+    """A block device itself, not a link to one."""
+    try:
+        return stat.S_ISBLK(os.lstat(dev).st_mode)
+    except OSError:
+        return False
+
+
+def check_device(dev, expect_size, expect_serial='', allow_internal=False, allow_loop=None, allow_mount=None):
+    """The checks every command makes before it touches DEVICE. Returns describe(); raises Refuse."""
+    allow_loop = ALLOW_LOOP if allow_loop is None else allow_loop
+    if not isinstance(dev, str) or not DEVICE_RE.match(dev):
+        raise Refuse('Only a whole USB drive or SD card (/dev/sdX, /dev/mmcblkN) can be written to.')
+    name = dev[5:]
+    if name.startswith('loop') and not allow_loop:
+        raise Refuse('Disk images (loop devices) aren\'t written to here.')
+    if name in system_disks():
+        raise Refuse('Hearth OS is running from this drive. It is never written to.')
+    if name.startswith('nvme') and not allow_internal:
+        raise Refuse('That\'s an internal NVMe drive. Hearth only writes to USB drives and SD cards.')
+    if not os.path.exists(sysblock(name)):
+        raise Refuse('That drive isn\'t there anymore. It may have been unplugged.')
+    if os.path.exists(os.path.join(sysblock(name), 'partition')):
+        raise Refuse('That\'s a partition, not a whole drive.')
+    if not is_block(dev):
+        raise Refuse('That isn\'t a drive (or it was just unplugged).')
+    if name in system_disks():
+        raise Refuse('Hearth OS is running from this drive. It is never written to.')
+    info = describe(name)
+    if info['readOnly']:
+        raise Refuse('This drive is read-only (a write-protect switch on an SD card or USB stick?).')
+    if info['size'] <= 0:
+        raise Refuse('There\'s no media in it.')
+    if not (info['removable'] or info['loop']) and not allow_internal:
+        raise Refuse('That\'s an internal drive. Hearth only writes to USB drives and SD cards unless "Show all drives" is on.')
+    if int(expect_size) != info['size']:
+        raise Refuse('This isn\'t the drive you chose (its size is different; it may have been swapped). Nothing was changed.')
+    if expect_serial:
+        s = serial(name)
+        if s and expect_serial not in s:
+            raise Refuse('This isn\'t the drive you chose (its serial number is different). Nothing was changed.')
+    why = in_use(name, allow_mount)
+    if why:
+        raise Refuse(f'The drive is in use: {why}. Safely remove its partitions in Disks first.')
+    return info
+
+
+def part_path(dev, n=1):
+    return f'{dev}p{n}' if dev[-1].isdigit() else f'{dev}{n}'
+
+
+def wait_for(path, seconds=15):
+    end = time.time() + seconds
+    subprocess.run(['udevadm', 'settle', '--timeout=10'], capture_output=True)
+    while time.time() < end:
+        if os.path.exists(path):
+            return True
+        time.sleep(0.2)
+    return os.path.exists(path)
+
+
+def reread(dev):
+    subprocess.run(['blockdev', '--rereadpt', dev], capture_output=True)
+    subprocess.run(['partprobe', dev], capture_output=True)
+    subprocess.run(['udevadm', 'settle', '--timeout=10'], capture_output=True)
+
+
+def write_all(fd, data):
+    view = memoryview(data)
+    while view:
+        n = os.write(fd, view)
+        view = view[n:]
+
+
+def zero_ends(fd, size):
+    """Clears the first and last MiB (old partition tables, the backup GPT at the end)."""
+    mib = 1024 * 1024
+    zeros = b'\0' * mib
+    os.lseek(fd, 0, os.SEEK_SET)
+    write_all(fd, zeros)
+    if size > 2 * mib:
+        os.lseek(fd, size - mib, os.SEEK_SET)
+        write_all(fd, zeros)
+    os.lseek(fd, 0, os.SEEK_SET)
+
+
+def drop_cache(fd):
+    try:
+        import fcntl
+        fcntl.ioctl(fd, BLKFLSBUF, 0)
+    except OSError:
+        pass
+    try:
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    except (OSError, AttributeError):
+        pass
+
+
+def cmd_raw(dev, info, size, src=None):
+    src = src or sys.stdin.buffer
+    total = size or 0
+    if total and total > info['size']:
+        raise Refuse(f'The image ({total} bytes) is bigger than the drive ({info["size"]} bytes).')
+    try:
+        fd = os.open(dev, os.O_WRONLY | os.O_EXCL | os.O_CLOEXEC)
+    except OSError as e:
+        raise Refuse(f'The drive couldn\'t be opened just for Hearth (is something using it?): {e.strerror}')
+    h = hashlib.sha256()
+    n = 0
+    last = 0.0
+    try:
+        zero_ends(fd, info['size'])
+        progress(0, 'writing')
+        while True:
+            chunk = src.read(BLOCK)
+            if not chunk:
+                break
+            if n + len(chunk) > info['size']:
+                raise Refuse('The image is bigger than the drive.')
+            write_all(fd, chunk)
+            h.update(chunk)
+            n += len(chunk)
+            now = time.monotonic()
+            if now - last > 0.5:
+                last = now
+                print(f'written: {n}', flush=True)
+                if total:
+                    progress(n * 100 / total, 'writing')
+        progress(100, 'flushing')
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    if total and n != total:
+        raise Refuse(f'The image stopped after {n} of {total} bytes. The drive isn\'t usable; try again.')
+    if n == 0:
+        raise Refuse('Nothing was written: the image was empty.')
+    # Read it back from the drive itself, not from memory.
+    fd = os.open(dev, os.O_RDONLY | os.O_CLOEXEC)
+    rb = hashlib.sha256()
+    try:
+        drop_cache(fd)
+        left = n
+        done = 0
+        last = 0.0
+        while left:
+            chunk = os.read(fd, min(BLOCK, left))
+            if not chunk:
+                break
+            rb.update(chunk)
+            left -= len(chunk)
+            done += len(chunk)
+            now = time.monotonic()
+            if now - last > 0.5:
+                last = now
+                progress(done * 100 / n, 'verifying')
+    finally:
+        os.close(fd)
+    progress(100, 'verifying')
+    reread(dev)
+    out = {'ok': True, 'device': dev, 'written': n, 'writtenSha256': h.hexdigest(), 'readbackSha256': rb.hexdigest()}
+    if out['writtenSha256'] != out['readbackSha256']:
+        out['ok'] = False
+    return out
+
+
+def owner():
+    uid = os.environ.get('PKEXEC_UID', '')
+    if not uid.isdigit():
+        raise Refuse('run this through pkexec')
+    import pwd
+    pw = pwd.getpwuid(int(uid))
+    return pw.pw_uid, pw.pw_gid
+
+
+def mount_dir(dev):
+    return os.path.join(RUN_DIR, os.path.basename(dev))
+
+
+def cmd_prepare(dev, info, scheme, label):
+    if scheme not in ('gpt', 'mbr'):
+        raise Refuse('The layout must be gpt or mbr.')
+    if not LABEL_RE.match(label):
+        raise Refuse('The name must be 1 to 11 capital letters, digits, - or _.')
+    uid, gid = owner()
+    fd = os.open(dev, os.O_WRONLY | os.O_EXCL | os.O_CLOEXEC)
+    try:
+        zero_ends(fd, info['size'])
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    progress(10, 'making the partition')
+    subprocess.run(['wipefs', '-a', '-q', dev], capture_output=True)
+    if scheme == 'gpt':
+        run(['parted', '-s', '-a', 'optimal', dev, 'mklabel', 'gpt', 'mkpart', 'WINUSB', 'fat32', '1MiB', '100%', 'set', '1', 'msftdata', 'on'])
+    else:
+        run(['parted', '-s', '-a', 'optimal', dev, 'mklabel', 'msdos', 'mkpart', 'primary', 'fat32', '1MiB', '100%', 'set', '1', 'boot', 'on', 'set', '1', 'lba', 'on'])
+    reread(dev)
+    part = part_path(dev)
+    if not wait_for(part):
+        raise Refuse(f'The new partition ({part}) didn\'t show up.')
+    progress(40, 'formatting FAT32')
+    run(['mkfs.vfat', '-F', '32', '-n', label, part])
+    reread(dev)
+    progress(80, 'mounting')
+    target = mount_dir(dev)
+    os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+    os.makedirs(target, mode=0o755, exist_ok=True)
+    run(['mount', '-t', 'vfat', '-o', f'uid={uid},gid={gid},umask=022,shortname=mixed,utf8,flush,noatime', part, target])
+    progress(100, 'ready')
+    return {'ok': True, 'device': dev, 'partition': part, 'mount': target, 'scheme': scheme, 'label': label}
+
+
+def cmd_finish(dev):
+    target = mount_dir(dev)
+    part = part_path(dev)
+    progress(10, 'flushing')
+    os.sync()
+    mounted = any(mp == target for _, _, mp, _, _ in mounts())
+    if mounted:
+        run(['umount', target])
+    try:
+        os.rmdir(target)
+    except OSError:
+        pass
+    progress(60, 'checking the file system')
+    r = subprocess.run(['fsck.vfat', '-n', part], capture_output=True, text=True)
+    os.sync()
+    progress(100, 'done')
+    return {'ok': r.returncode == 0, 'device': dev, 'partition': part, 'fsck': (r.stdout + r.stderr)[-1500:], 'wasMounted': mounted}
+
+
+def run(argv):
+    r = subprocess.run(argv, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Refuse(f'{argv[0]} failed: {(r.stderr or r.stdout).strip()[-400:]}')
+    return r
+
+
+def parse(args):
+    """DEVICE then --key value options; unknown or repeated options are refused."""
+    if not args or args[0].startswith('-'):
+        raise Refuse('usage: hearth-admin usb-<command> DEVICE --expect-size BYTES ...')
+    dev, opts, i = args[0], {}, 1
+    flags = {'--allow-internal'}
+    valued = {'--expect-size', '--expect-serial', '--size', '--scheme', '--label'}
+    while i < len(args):
+        a = args[i]
+        if a in flags and a not in opts:
+            opts[a] = True
+            i += 1
+        elif a in valued and a not in opts and i + 1 < len(args):
+            opts[a] = args[i + 1]
+            i += 2
+        else:
+            raise Refuse(f'unknown option {a}')
+    for k in ('--expect-size', '--size'):
+        if k in opts and not str(opts[k]).isdigit():
+            raise Refuse(f'{k} must be a number of bytes')
+    if '--expect-serial' in opts and not re.fullmatch(r'[A-Za-z0-9 ._:\-]{1,64}', opts['--expect-serial']):
+        raise Refuse('--expect-serial has characters a serial number doesn\'t')
+    return dev, opts
+
+
+def main(argv):
+    if len(argv) < 2:
+        fail('usage: hearth-usb check|raw|prepare|finish DEVICE ...')
+    cmd, rest = argv[1], argv[2:]
+    try:
+        dev, o = parse(rest)
+        if cmd == 'finish':
+            # The drive may now hold our own mount; everything else is checked the same.
+            if not DEVICE_RE.match(dev):
+                raise Refuse('Only a whole USB drive or SD card can be used.')
+            name = dev[5:]
+            if name in system_disks():
+                raise Refuse('Hearth OS is running from this drive.')
+            print(json.dumps(cmd_finish(dev)), flush=True)
+            return
+        if '--expect-size' not in o:
+            raise Refuse('--expect-size is needed (the size of the drive you chose)')
+        if os.geteuid() != 0 and cmd != 'check':
+            raise Refuse('needs root (run through pkexec)')
+        info = check_device(dev, o['--expect-size'], o.get('--expect-serial', ''), o.get('--allow-internal', False))
+        if cmd == 'check':
+            print(json.dumps({'ok': True, **info}), flush=True)
+        elif cmd == 'raw':
+            out = cmd_raw(dev, info, int(o.get('--size', 0) or 0))
+            print(json.dumps(out), flush=True)
+            if not out['ok']:
+                sys.exit(1)
+        elif cmd == 'prepare':
+            print(json.dumps(cmd_prepare(dev, info, o.get('--scheme', ''), o.get('--label', ''))), flush=True)
+        else:
+            raise Refuse('usage: hearth-usb check|raw|prepare|finish DEVICE ...')
+    except Refuse as e:
+        fail(str(e))
+    except BrokenPipeError:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main(sys.argv)
