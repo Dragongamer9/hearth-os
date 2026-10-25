@@ -264,10 +264,12 @@ pub struct Settings {
     pub muted: Vec<String>,
     /// The last homeserver used, for the sign-in screen.
     pub homeserver: String,
+    /// The "keep your encrypted chats: a recovery key" question was answered (or skipped) for this sign-in.
+    pub recovery_asked: bool,
 }
 
 impl Default for Settings {
-    fn default() -> Self { Settings { friends_only: true, share_playing: true, presence: "online".into(), previews: true, muted: vec![], homeserver: DEFAULT_HOMESERVER.into() } }
+    fn default() -> Self { Settings { friends_only: true, share_playing: true, presence: "online".into(), previews: true, muted: vec![], homeserver: DEFAULT_HOMESERVER.into(), recovery_asked: false } }
 }
 
 impl Settings {
@@ -324,21 +326,32 @@ pub fn socket_path() -> PathBuf {
 
 // ------------------------------------------------------------------------------------------------ logs
 
-/// Text that may be written to a log or shown: access tokens, refresh tokens, passwords and PINs taken out.
+/// Text that may be written to a log or shown: access tokens, refresh tokens, passwords, PINs, sign-in codes and the
+/// query part of web addresses (where OAuth codes and states travel) taken out.
 /// Matrix servers' tokens start syt_ (Synapse), mct_/mat_/mar_ (Matrix Authentication Service) or are opaque after
 /// "access_token"; every such word is replaced.
 pub fn redact(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut hide_next = false;
+    let mut in_query = false;
     for word in s.split_inclusive(|c: char| c.is_whitespace() || c == '&' || c == ',' || c == '"' || c == '\'' || c == '=') {
         let w = word.trim_end_matches(|c: char| c.is_whitespace() || c == '&' || c == ',' || c == '"' || c == '\'' || c == '=');
         let tail = &word[w.len()..];
         let lw = w.to_ascii_lowercase();
         let secretish = ["syt_", "mct_", "mat_", "mar_", "syr_", "mxr_"].iter().any(|p| lw.starts_with(p)) || lw.starts_with("bearer") && w.len() > 6;
+        let url_ends = |t: &str| t.is_empty() || t.chars().any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == ',');
+        // A web address's query (codes, states, user codes): left out up to the end of the address.
+        if in_query { if url_ends(tail) { in_query = false; out.push_str(tail); } continue; }
+        if (lw.starts_with("http://") || lw.starts_with("https://")) && w.contains('?') {
+            out.push_str(&w[..w.find('?').unwrap_or(w.len())]);
+            out.push_str("?[hidden]");
+            if url_ends(tail) { out.push_str(tail); } else { in_query = true; }
+            continue;
+        }
         if hide_next && !w.is_empty() && !lw.ends_with(':') { out.push_str("[hidden]"); out.push_str(tail); hide_next = false; continue; }
         if secretish { out.push_str("[hidden]"); out.push_str(tail); continue; }
         out.push_str(word);
-        if ["access_token", "refresh_token", "password", "pin", "authorization", "token"].iter().any(|k| lw.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_') == *k) { hide_next = true; }
+        if ["access_token", "refresh_token", "password", "pin", "authorization", "token", "device_code", "user_code", "code_verifier", "client_secret", "recovery_key"].iter().any(|k| lw.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_') == *k) { hide_next = true; }
     }
     out
 }
@@ -347,6 +360,118 @@ pub fn redact(s: &str) -> String {
 pub fn qr_svg(text: &str) -> Option<String> {
     let code = qrcode::QrCode::new(text.as_bytes()).ok()?;
     Some(code.render::<qrcode::render::svg::Color>().min_dimensions(220, 220).quiet_zone(true).build())
+}
+
+/// The same QR code as rows of "1" (dark) and "0" (light), without the quiet zone: for Mantel's Friends panel, which
+/// draws it itself.
+pub fn qr_rows(text: &str) -> Option<Vec<String>> {
+    let code = qrcode::QrCode::new(text.as_bytes()).ok()?;
+    let w = code.width();
+    let colors = code.to_colors();
+    Some(colors.chunks(w).map(|row| row.iter().map(|c| if *c == qrcode::Color::Dark { '1' } else { '0' }).collect()).collect())
+}
+
+// ------------------------------------------------------------------------------------------------ the server's own sign-in page
+
+// Servers with Matrix's newer sign-in (OAuth 2.0, MSC3861 and its parts MSC2964-MSC2967; matrix.org runs the Matrix
+// Authentication Service) sign people in and up on their own page. Hearth registers itself as an app there on each
+// device, at each sign-in (dynamic client registration, MSC2966): a public client, no secret anywhere.
+pub const CLIENT_NAME: &str = "Hearth";
+pub const CLIENT_URI: &str = "https://hearthos.fun/";
+pub const LOGO_URI: &str = "https://hearthos.fun/img/logo.svg";
+/// RFC 8628's grant type: sign in on another device (a phone) with a code or a QR code.
+pub const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
+
+/// Hearth's client metadata for the server: for a phone, the device authorization grant; with a redirect address
+/// (the browser on this device comes back to Hearth's loopback address, RFC 8252), the authorization code grant.
+/// Each registration asks only for the grant it uses (a server may have the device grant turned off).
+pub fn client_metadata(redirect_uri: Option<&str>) -> Value {
+    let mut m = json!({"application_type": "native", "client_name": CLIENT_NAME, "client_uri": CLIENT_URI, "logo_uri": LOGO_URI,
+                       "token_endpoint_auth_method": "none"});
+    match redirect_uri {
+        Some(r) => {
+            m["grant_types"] = json!(["authorization_code", "refresh_token"]);
+            m["redirect_uris"] = json!([r]);
+            m["response_types"] = json!(["code"]);
+        }
+        None => { m["grant_types"] = json!([DEVICE_GRANT, "refresh_token"]); }
+    }
+    m
+}
+
+/// The scopes for a session: the whole client-server API, and this device's id (MSC2967).
+pub fn oauth_scope(device_id: &str) -> String {
+    format!("urn:matrix:org.matrix.msc2967.client:api:* urn:matrix:org.matrix.msc2967.client:device:{device_id}")
+}
+
+/// application/x-www-form-urlencoded, for the device authorization and token endpoints.
+pub fn form_body(pairs: &[(&str, &str)]) -> String {
+    let enc = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+    pairs.iter().map(|(k, v)| format!("{}={}", enc(k), enc(v))).collect::<Vec<_>>().join("&")
+}
+
+/// The server's answer to "sign in on another device" (RFC 8628 §3.2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeviceGrant { pub device_code: String, pub user_code: String, pub uri: String, pub complete: Option<String>, pub expires_in: u64, pub interval: u64 }
+
+impl DeviceGrant {
+    pub fn parse(v: &Value) -> Option<DeviceGrant> {
+        let web = |s: &str| (s.starts_with("https://") || s.starts_with("http://")) && s.len() < 2048 && !s.chars().any(|c| c.is_whitespace() || c.is_control());
+        let s = |k: &str| v[k].as_str().map(str::to_string).filter(|x| !x.is_empty());
+        let uri = s("verification_uri").filter(|u| web(u))?;
+        Some(DeviceGrant {
+            device_code: s("device_code")?, user_code: s("user_code")?, uri,
+            complete: s("verification_uri_complete").filter(|u| web(u)),
+            expires_in: v["expires_in"].as_u64().unwrap_or(600).clamp(30, 1800),
+            interval: v["interval"].as_u64().unwrap_or(5).clamp(1, 60),
+        })
+    }
+    /// What the QR code opens: the page with the code filled in, when the server gives one.
+    pub fn link(&self) -> &str { self.complete.as_deref().unwrap_or(&self.uri) }
+}
+
+/// What to do after a token request during the device grant (RFC 8628 §3.5).
+#[derive(Debug, PartialEq)]
+pub enum Poll { Wait, SlowDown, Expired, Denied, Failed }
+
+pub fn device_poll(error: &str) -> Poll {
+    match error { "authorization_pending" => Poll::Wait, "slow_down" => Poll::SlowDown, "expired_token" => Poll::Expired, "access_denied" => Poll::Denied, _ => Poll::Failed }
+}
+
+/// A web address as people type it: no https://, no trailing slash.
+pub fn short_url(u: &str) -> String {
+    u.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/').to_string()
+}
+
+/// The browser coming back to Hearth's loopback address: the query of `GET /callback?...` (else None: a favicon,
+/// anything else).
+pub fn callback_query(head: &str) -> Option<String> {
+    let line = head.lines().next()?;
+    let mut parts = line.split(' ');
+    if parts.next()? != "GET" { return None; }
+    let target = parts.next()?;
+    let q = target.strip_prefix("/callback?")?;
+    (!q.is_empty() && q.len() < 8192).then(|| q.to_string())
+}
+
+/// The page the browser shows after coming back to Hearth.
+pub fn callback_page(ok: bool) -> String {
+    let (title, text) = if ok { ("You're signed in", "Hearth Friends is signed in. You can close this page and go back to Hearth.") }
+        else { ("That didn't work", "Hearth couldn't finish signing in. Go back to Hearth and try again.") };
+    format!("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Hearth: {title}</title>\
+<style>body{{font-family:system-ui,sans-serif;background:#12161c;color:#e8edf2;display:grid;place-items:center;min-height:100vh;margin:0}}main{{max-width:30em;padding:2em;text-align:center}}h1{{font-size:1.6em}}</style></head>\
+<body><main><h1>{title}</h1><p>{text}</p></main></body></html>")
+}
+
+/// What a server says to an empty sign-up request: "open" (sign-up from apps), "token" (needs a sign-up token),
+/// "web" (its own page: captcha, email, terms) or "none" (no sign-up).
+pub fn register_kind(status: u16, body: &Value) -> &'static str {
+    if status != 401 { return "none"; }
+    let flows: Vec<Vec<String>> = body["flows"].as_array().cloned().unwrap_or_default().iter()
+        .map(|f| f["stages"].as_array().cloned().unwrap_or_default().iter().filter_map(|s| s.as_str().map(str::to_string)).collect()).collect();
+    if flows.iter().any(|st| st.iter().all(|s| s == "m.login.dummy")) { "open" }
+    else if flows.iter().any(|st| st.iter().all(|s| s == "m.login.dummy" || s == "m.login.registration_token")) { "token" }
+    else if flows.is_empty() { "none" } else { "web" }
 }
 
 /// A random id or PIN: `n` characters from `alphabet`.
@@ -502,6 +627,63 @@ mod tests {
         let r = redact("pin 4821 for pairing");
         assert!(!r.contains("4821"), "{r}");
         assert_eq!(redact("Couldn't reach matrix.org"), "Couldn't reach matrix.org");
+    }
+
+    #[test]
+    fn sign_in_codes_never_reach_logs() {
+        let r = redact("open https://account.example.org/link?code=ABCD-EFGH&x=1 now");
+        assert_eq!(r, "open https://account.example.org/link?[hidden] now");
+        let r = redact("GET http://127.0.0.1:4711/callback?code=s3cr3t&state=xyz");
+        assert!(!r.contains("s3cr3t") && !r.contains("xyz"), "{r}");
+        let r = redact(r#"{"device_code":"dc123","user_code":"UC42"}"#);
+        assert!(!r.contains("dc123") && !r.contains("UC42"), "{r}");
+        assert_eq!(redact("see https://hearthos.fun/ for more"), "see https://hearthos.fun/ for more");
+    }
+
+    #[test]
+    fn oauth_client_and_device_grant() {
+        let m = client_metadata(None);
+        assert_eq!(m["application_type"], "native");
+        assert_eq!(m["client_name"], "Hearth");
+        assert_eq!(m["token_endpoint_auth_method"], "none");
+        assert!(m["grant_types"].as_array().unwrap().iter().any(|g| g == DEVICE_GRANT));
+        assert!(m.get("redirect_uris").is_none());
+        let m = client_metadata(Some("http://127.0.0.1:4711/callback"));
+        assert_eq!(m["redirect_uris"][0], "http://127.0.0.1:4711/callback");
+        assert_eq!(m["grant_types"][0], "authorization_code");
+        assert!(!m["grant_types"].as_array().unwrap().iter().any(|g| g == DEVICE_GRANT));
+        assert_eq!(m["response_types"][0], "code");
+        assert!(oauth_scope("ABCDEF").ends_with("client:device:ABCDEF"));
+        assert_eq!(form_body(&[("scope", "a:* b"), ("x", "é&=")]), "scope=a%3A%2A%20b&x=%C3%A9%26%3D");
+        let g = DeviceGrant::parse(&json!({"device_code": "d", "user_code": "WDJB-MJHT", "verification_uri": "https://account.example.org/link",
+                                           "verification_uri_complete": "https://account.example.org/link?code=WDJB-MJHT", "expires_in": 900, "interval": 0})).unwrap();
+        assert_eq!(g.link(), "https://account.example.org/link?code=WDJB-MJHT");
+        assert_eq!(g.interval, 1);
+        assert_eq!(short_url(&g.uri), "account.example.org/link");
+        assert!(DeviceGrant::parse(&json!({"device_code": "d", "user_code": "u", "verification_uri": "javascript:alert(1)"})).is_none());
+        let g = DeviceGrant::parse(&json!({"device_code": "d", "user_code": "u", "verification_uri": "https://a.example/link", "verification_uri_complete": "bad uri"})).unwrap();
+        assert_eq!(g.link(), "https://a.example/link");
+        assert_eq!(device_poll("authorization_pending"), Poll::Wait);
+        assert_eq!(device_poll("slow_down"), Poll::SlowDown);
+        assert_eq!(device_poll("expired_token"), Poll::Expired);
+        assert_eq!(device_poll("access_denied"), Poll::Denied);
+        assert_eq!(device_poll("invalid_grant"), Poll::Failed);
+    }
+
+    #[test]
+    fn loopback_and_sign_up_kinds() {
+        assert_eq!(callback_query("GET /callback?code=abc&state=def HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").as_deref(), Some("code=abc&state=def"));
+        assert_eq!(callback_query("GET /favicon.ico HTTP/1.1\r\n\r\n"), None);
+        assert_eq!(callback_query("POST /callback?code=abc HTTP/1.1\r\n\r\n"), None);
+        assert!(callback_page(true).contains("signed in"));
+        assert!(!callback_page(false).contains("<script"));
+        assert_eq!(register_kind(401, &json!({"flows": [{"stages": ["m.login.dummy"]}]})), "open");
+        assert_eq!(register_kind(401, &json!({"flows": [{"stages": ["m.login.registration_token"]}]})), "token");
+        assert_eq!(register_kind(401, &json!({"flows": [{"stages": ["m.login.recaptcha", "m.login.terms", "m.login.email.identity"]}]})), "web");
+        assert_eq!(register_kind(403, &json!({"errcode": "M_FORBIDDEN"})), "none");
+        assert_eq!(register_kind(404, &json!({})), "none");
+        let rows = qr_rows("https://account.example.org/link?code=WDJB-MJHT").unwrap();
+        assert!(rows.len() >= 21 && rows.iter().all(|r| r.len() == rows.len() && r.chars().all(|c| c == '0' || c == '1')));
     }
 
     #[test]

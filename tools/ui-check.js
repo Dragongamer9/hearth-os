@@ -1115,7 +1115,8 @@ const path = require('path');
   // Hearth Friends on Matrix (the preview's made-up account): the Friends screen's two halves (Hearth Friends and the
   // stores' friends), friends with "Playing" and Joinable, a chat with a game invite card (Play, Join server, Join via
   // Steam), a Play together request (let them join / not now), a picture, the emoji grid, Requests, Settings (privacy,
-  // Steam friends, Discord), signed out (Sign in, Create an account), the friend's sheet with the controller, and
+  // Steam friends, Discord), signed out (with a phone: QR code; in the browser; a password; Create an account), the
+  // recovery key question, the friend's sheet with the controller, and
   // Quick Access › Friends with a chat in it. Pictures of the screens go to tools/qa-shots (friends.yml posts them).
   {
     const fp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -1173,10 +1174,38 @@ const path = require('path');
         await mfAct('mfTop', { v: 'stores' }); await wait(200);
         if (!document.querySelector('#view .frow') && !/Loading/.test(document.querySelector('#view').textContent)) throw new Error('Steam & other stores shows nothing');
         await mfAct('mfTop', { v: 'mx' });
-        const was = MF.st; MF.st = { signedIn: false, settings: { homeserver: 'matrix.org' } }; render(null, true); await wait(100);
+        window.__mfWas = MF.st; MF.st = { signedIn: false, settings: { homeserver: 'matrix.org' } }; MF.ways = {}; MF.auth = null; render(null, true); await wait(100);
         if (!has('mf-signin') || !has('mf-create') || !has('mf-hs')) throw new Error('signed out: no Sign in / Create an account / server');
         if (!/matrix\.org/.test(document.querySelector('#view').textContent)) throw new Error('signed out: doesn\'t say where the account lives');
-        MF.st = was;
+        // matrix.org signs people in and up on its own page (OAuth 2.0): with a phone (QR code), or in the browser here.
+        await wait(300); render(null, true); await wait(100);
+        for (const k of ['mf-qr', 'mf-create', 'mf-web', 'mf-web-new', 'mf-signin', 'mf-hs']) if (!has(k)) throw new Error('signed out on matrix.org: no ' + k);
+        await mfAct('mfQrNew', {}); await wait(300);
+        const v = document.querySelector('#view').textContent;
+        if (!document.querySelector('#view .mfqrcode svg') || !/WDJB-MJHT/.test(v) || !/account\.matrix\.org\/link/.test(v) || !/Create account/.test(v)) throw new Error('the phone sign-up has no QR code / code / short address');
+        if (!has('mf-auth-cancel') || !has('mf-auth-web')) throw new Error('the phone sign-up has no Cancel / Use this device instead');
+      });
+      await shoot('signin');
+      await run(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const has = k => document.querySelector(`#view [data-k="${k}"]`);
+        // The controller reaches Cancel; then the browser on this device.
+        await mfAct('mfAuthCancel', {}); await wait(150);
+        if (MF.auth || !has('mf-qr')) throw new Error('Cancel didn\'t go back to the sign-in choices');
+        await mfAct('mfWeb', {}); await wait(300);
+        if (!has('mf-auth-open') || !has('mf-auth-cancel') || !has('mf-auth-qr')) throw new Error('signing in in the browser has no Open again / Cancel / Use my phone');
+        await mfAct('mfAuthCancel', {}); await wait(150);
+        // A server without its own sign-in page: a password, and sign-up from Hearth.
+        MF.hs = 'example.org'; render(null, true); await wait(300); render(null, true);
+        if (has('mf-qr') || has('mf-web') || !has('mf-signin') || !has('mf-create')) throw new Error('a password-only server shows the wrong ways to sign in');
+        MF.hs = null;
+        // Signed in: the recovery key question, once.
+        MF.st = Object.assign({}, window.__mfWas, { askRecovery: true, recovery: 'disabled', accountUrl: 'https://account.matrix.org/account/' }); MF.tab = 'friends'; render(null, true); await wait(100);
+        if (!has('mf-rec-new') || !has('mf-rec-skip')) throw new Error('no recovery key question after signing in');
+        await mfAct('mfTab', { v: 'settings' }); await wait(200);
+        if (!has('mfs-recovery') || !has('mfs-account')) throw new Error('Friends › Settings has no Recovery key / account page');
+        await mfAct('mfTab', { v: 'friends' });
+        MF.st = window.__mfWas; render(null, true);
         // Quick Access › Friends, then a chat in it.
         closeAll(); openLayer('qam'); S.qtab = 'friends'; MF.room = null; renderQam(); await wait(300); renderQam();
         if (!document.querySelector('#qam [data-k="mfq-f-@sarah:matrix.org"]') || !document.querySelector('#qam [data-k="mfq-all"]')) throw new Error('Quick Access › Friends has no friends');
