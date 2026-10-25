@@ -717,6 +717,13 @@ jobs:
           sudo podman run --rm -v "$PWD:/src:ro" -v /tmp/qcheck:/out hearth-peppermint:latest bash /src/.github/scripts/hearth-qml-build.sh image-check 2>&1 | tail -60
           exit ${PIPESTATUS[0]}
 
+      # REQUIRED: Quick Access over games shows text when Handheld Daemon starts it (its environment exactly, on a
+      # virtual screen, as a plain user): .github/scripts/overlay-text-check.sh. 0.6.5 showed none on an Nvidia PC.
+      - name: Quick Access over games shows text (as Handheld Daemon starts it)
+        timeout-minutes: 15
+        run: |
+          sudo podman run --rm -v "$PWD/.github/scripts/overlay-text-check.sh:/ovtext.sh:ro" hearth-peppermint:latest bash /ovtext.sh
+
       # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
       # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
       # nested containers, which a runner may not give, so it never fails the build.
