@@ -187,9 +187,10 @@ fn d_windows_iso_gpt_split_and_windows_11_options() {
         let x = std::fs::read_to_string(m.join("autounattend.xml")).unwrap();
         assert!(x.contains("BypassTPMCheck") && x.contains("BypassNRO") && x.contains("<Name>Hearth</Name>"));
         // The parts make one readable WIM again.
-        let o = std::process::Command::new("wiminfo").arg(m.join("sources/install.swm")).arg("--ref").arg(m.join("sources/install*.swm")).output().unwrap();
-        assert!(o.status.success(), "wiminfo on the split WIM: {}", String::from_utf8_lossy(&o.stderr));
-        assert!(String::from_utf8_lossy(&o.stdout).contains("Windows 11 Pro"));
+        let o = std::process::Command::new("wimlib-imagex").arg("verify").arg(m.join("sources/install.swm")).arg(format!("--ref={}", m.join("sources/install*.swm").display())).output().unwrap();
+        assert!(o.status.success(), "wimlib-imagex verify on the split WIM: {}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+        let o = std::process::Command::new("wiminfo").arg(m.join("sources/install.swm")).output().unwrap();
+        assert!(String::from_utf8_lossy(&o.stdout).contains("Windows 11 Pro"), "{}", String::from_utf8_lossy(&o.stdout));
         let a = std::fs::read(fx.join("win/root/efi/boot/bootx64.efi")).unwrap();
         assert_eq!(std::fs::read(m.join("efi/boot/bootx64.efi")).unwrap(), a);
     });
