@@ -164,6 +164,7 @@ jobs:
       - name: Make a bootable USB — its screens
         working-directory: hosts/hearth-disks
         run: |
+          set +e
           mkdir -p shots
           export DISPLAY=:98 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_USB_ALLOW_LOOP=1
           export HEARTH_DISKS_ADMIN="sudo -n env HEARTH_USB_ALLOW_LOOP=1 PKEXEC_UID=$(id -u) python3 $GITHUB_WORKSPACE/os/system_files/usr/libexec/nimbus/hearth-admin"
@@ -171,7 +172,7 @@ jobs:
           sleep 2
           shot() { import -window root "shots/usb-$1.png" || true; }
           key() { xdotool key --clearmodifiers "$@"; sleep 0.8; }
-          win() { w=$(xdotool search --name '^Make a bootable USB$' | tail -1); [ -n "$w" ] && xdotool windowactivate --sync "$w" 2>/dev/null; }
+          win() { w=$(xdotool search --name '^Make a bootable USB$' | tail -1); if [ -n "$w" ]; then xdotool windowactivate --sync "$w" 2>/dev/null; else echo "::warning title=USB screens::no window yet"; fi; return 0; }
           # 1. The catalog: Linux, an entry found on its project's server, Windows.
           ./target/release/hearth-disks --usb > usb-run.log 2>&1 &
           sleep 7; win; shot 1-pick
@@ -193,30 +194,39 @@ jobs:
           sudo cmp -n "$(stat -c %s "$FX/own/disk.img")" "$FX/own/disk.img" "$dev" && echo "::notice title=USB screens::the screens wrote the image through the real helper and it reads back the same" || echo "::warning title=USB screens::the image written through the screens didn't read back the same"
           echo "::notice title=App output::$(tail -c 1500 usb-run.log | tr '\n' '|')"
       - name: Picture 1-pick
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-1-pick.png && convert shots/usb-1-pick.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-1-pick $i::$part"; done || true
       - name: Picture 2-fedora
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-2-fedora.png && convert shots/usb-2-fedora.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-2-fedora $i::$part"; done || true
       - name: Picture 4-windows
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-4-windows.png && convert shots/usb-4-windows.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-4-windows $i::$part"; done || true
       - name: Picture 5-own-file
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-5-own-file.png && convert shots/usb-5-own-file.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-5-own-file $i::$part"; done || true
       - name: Picture 6-drive
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-6-drive.png && convert shots/usb-6-drive.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-6-drive $i::$part"; done || true
       - name: Picture 7-confirm
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-7-confirm.png && convert shots/usb-7-confirm.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-7-confirm $i::$part"; done || true
       - name: Picture 8-holding
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-8-holding.png && convert shots/usb-8-holding.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-8-holding $i::$part"; done || true
       - name: Picture 9-writing
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-9-writing.png && convert shots/usb-9-writing.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-9-writing $i::$part"; done || true
       - name: Picture 10-done
+        if: always()
         working-directory: hosts/hearth-disks
         run: test -f shots/usb-10-done.png && convert shots/usb-10-done.png -resize 640x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | while read -r i part; do echo "::notice title=SHOT usb-10-done $i::$part"; done || true
       - name: Screenshot of the window
