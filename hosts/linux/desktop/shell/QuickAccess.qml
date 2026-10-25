@@ -118,7 +118,7 @@ PanelWindow {
         case "keyboard": shown = false; root.keyboardRequested(); break;
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
-        case "sleep": shown = false; run(["systemctl", "suspend"]); break;
+        case "sleep": shown = false; Buttons.sleep("Quick Access"); break;
         case "weather": shown = false; run(["hearth-weather"]); break;   // Hearth Weather
         }
     }
