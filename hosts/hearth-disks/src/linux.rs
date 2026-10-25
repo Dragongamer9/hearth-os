@@ -192,6 +192,13 @@ fn tear_down(c: &Connection, d: &Drive) -> Result<(), String> {
     Ok(())
 }
 
+/// Lets go of a whole drive before Make a bootable USB writes to it: everything on it unmounted, encrypted
+/// partitions locked.
+pub fn release(d: &Drive) -> Result<(), String> {
+    let c = bus()?;
+    tear_down(&c, d)
+}
+
 /// The partition type for a new partition holding `fs` on a `table` (gpt or dos) table.
 pub fn part_type(table: &str, fs: &str) -> &'static str {
     let linux = matches!(fs, "ext4" | "btrfs" | "xfs" | "f2fs");
