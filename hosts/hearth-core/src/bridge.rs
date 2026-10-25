@@ -1051,6 +1051,7 @@ impl Bridge {
             "system.update.status" => Ok(self.updates.refresh()),
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
             "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
+            "system.update.rollback" => self.updates.rollback(),
             // Profiles and parental controls (switching restarts Hearth; that part comes with the app's restart)
             "profiles.get" => Ok(self.profiles_info()),
             "profiles.create" => { self.need_pin()?; self.profiles.create(a["name"].as_str().unwrap_or(""), a["color"].as_str()) }
