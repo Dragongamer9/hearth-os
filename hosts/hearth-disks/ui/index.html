@@ -481,6 +481,8 @@ function choose() {
 document.addEventListener('keydown', e => {
   S.pad = false;
   if (e.target.id === 'holdGo' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); if (!e.repeat) holdStart('key'); return; }
+  // A held Enter or Space repeats: it must not press whatever gets the focus next (Cancel, once writing starts).
+  if (e.repeat && (e.key === 'Enter' || e.key === ' ') && e.target.tagName === 'BUTTON') { e.preventDefault(); return; }
   const typing = e.target.tagName === 'INPUT' && e.target.type !== 'range';
   const k = e.key;
   if (k === 'Escape' || (k === 'Backspace' && !typing)) { e.preventDefault(); back(); return; }
@@ -491,7 +493,13 @@ document.addEventListener('keydown', e => {
   if (k === 'F5') { e.preventDefault(); if (S.view === 'usb') usbRefresh(); else { lastJson = ''; load(); } }
   if (S.view === 'usb' && !typing && (k === 'PageUp' || k === 'PageDown')) { e.preventDefault(); usbTab(k === 'PageDown' ? 1 : -1); }
 });
-document.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') holdEnd('key'); });
+document.addEventListener('keyup', e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    holdEnd('key');
+    // The key that finished a hold lets go over the next screen's button: not a press.
+    if (S.view === 'usb' && performance.now() - (U.startedAt || 0) < 4000 && e.target.tagName === 'BUTTON') e.preventDefault();
+  }
+}, true);
 document.addEventListener('focusin', e => {
   // Choosing a partition with the D-pad shows its details without opening anything.
   const el = e.target;
@@ -658,7 +666,7 @@ function usbClick(b) {
   if (u === 'keep') { U.keep = id === 'yes'; renderUsb(true); return; }
   if (u === 'to-confirm') { if (U.tweaks.localAccount && !/^[^"\/\\\[\]:;|=,+*?<>@%]{1,20}$/.test(U.tweaks.localAccount.trim())) { showResult(false, 'Account names are 1 to 20 characters, without " / \\ [ ] : ; | = , + * ? < > @ %'); return; } U.step = 'confirm'; U.typed = ''; renderUsb(); focusFirstUsb(); return; }
   if (u === 'go-typed') { if ((U.typed || '').trim().toUpperCase() === 'ERASE') startJob(); return; }
-  if (u === 'cancel') { invoke('usb_cancel'); const t = $('#usbText'); if (t) t.textContent = 'Stopping…'; return; }
+  if (u === 'cancel') { if (performance.now() - (U.startedAt || 0) < 1500) return; invoke('usb_cancel'); const t = $('#usbText'); if (t) t.textContent = 'Stopping…'; return; }
   if (u === 'eject') { if (U.result && U.result.drive) openAction('eject', U.result.drive); return; }
   if (u === 'again') { U.step = 'pick'; U.result = null; U.drive = null; renderUsb(); focusFirstUsb(); return; }
   if (u === 'retry') { U.step = 'confirm'; renderUsb(); focusFirstUsb(); return; }
@@ -706,7 +714,7 @@ async function startJob() {
     tweaks: win11() ? { skipChecks: U.tweaks.skipChecks, skipOnline: U.tweaks.skipOnline, localAccount: (U.tweaks.localAccount || '').trim() } : {},
     keep: U.keep, acceptUnverified: !!U.accept,
   };
-  U.step = 'run'; U.progress = { stage: 'find', text: 'Starting' }; U.result = null; U.error = '';
+  U.step = 'run'; U.progress = { stage: 'find', text: 'Starting' }; U.result = null; U.error = ''; U.startedAt = performance.now();
   renderUsb(); focusFirstUsb('[data-u="cancel"]');
   try { await invoke('usb_start', { job }); }
   catch (e) { U.step = 'done'; U.result = { ok: false, error: String(e) }; renderUsb(); focusFirstUsb(); }
