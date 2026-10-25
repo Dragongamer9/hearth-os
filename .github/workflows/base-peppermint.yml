@@ -713,6 +713,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
+          mkdir -p /tmp/qcheck
           sudo podman run --rm -v "$PWD:/src:ro" -v /tmp/qcheck:/out hearth-peppermint:latest bash /src/.github/scripts/hearth-qml-build.sh image-check 2>&1 | tail -60
           exit ${PIPESTATUS[0]}
 
