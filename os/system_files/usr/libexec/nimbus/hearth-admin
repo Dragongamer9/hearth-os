@@ -13,6 +13,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin update-check          look for an update, then the same JSON
   hearth-admin update                download and stage the update (applies at restart), and update the
                                      system Flatpak apps; progress lines, then the JSON
+  hearth-admin rollback              go back to the previous version (bootc's rollback deployment) at the next
+                                     restart; run again before restarting, it undoes that. Refused while an update
+                                     waits for a restart or when there's no previous version; then the JSON
   hearth-admin tdp-info              JSON: how this device's power limit can be set, its range and value
                                      (read-only; works without root)
   hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj
@@ -181,7 +184,27 @@ def bootc_status(quiet=False):
         'booted': info(booted),
         'staged': info(staged),
         'available': ({'version': cached.get('version'), 'timestamp': cached.get('timestamp')} if cached else None),
+        # The version before this one, kept by bootc (Settings › Updates › Go back), and whether it starts next.
+        'rollback': info(st.get('rollback')),
+        'rollbackQueued': bool(st.get('rollbackQueued')),
     }
+
+
+def rollback():
+    """Settings › Updates › Go back: the previous deployment becomes the default at the next restart (bootc
+    rollback swaps the two; a second run before restarting swaps them back). Nothing changes until the restart."""
+    if not shutil.which('bootc'):
+        fail('going back needs bootc, which this system doesn\'t have')
+    st = bootc_status()
+    if not st.get('rollback'):
+        fail('there is no previous version to go back to')
+    if st.get('staged'):
+        fail('an update is waiting for a restart. Restart first; if that version has problems, go back from there')
+    if layered():
+        run_logged(['rpm-ostree', 'rollback'])
+    else:
+        run_logged(['bootc', 'rollback'])
+    print(json.dumps(bootc_status()))
 
 
 def run_logged(cmd):
@@ -2472,6 +2495,8 @@ def main(argv):
         print(json.dumps(bootc_status()))
     elif cmd == 'update-check':
         update_check()
+    elif cmd == 'rollback' and len(argv) == 2:
+        rollback()
     elif cmd == 'update':
         update()
     elif cmd == 'tdp' and len(argv) == 3:
