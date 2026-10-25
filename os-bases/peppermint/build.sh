@@ -274,7 +274,7 @@ if [ -x /ctx/nimbus-app/hearth ]; then
   # (docs/RENDERERS.md). Built by CI inside this image's base (.github/scripts/hearth-qml-build.sh), so it links this Qt.
   # Its packages: the same list as hearth-qml-build.sh runtime_pkgs.
   if [ -x /ctx/nimbus-app/qml/hearth-qml ]; then
-    "${APT[@]}" qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes qml6-module-qtqml-workerscript qml6-module-qtqml-models qt6-qpa-plugins qt6-image-formats-plugins libsdl2-2.0-0 || echo "warning: some of the Qt renderer's packages didn't install"
+    "${APT[@]}" qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes qml6-module-qtquick-layouts qml6-module-qtqml-workerscript qml6-module-qtqml-models qt6-qpa-plugins qt6-image-formats-plugins libsdl2-2.0-0 || echo "warning: some of the Qt renderer's packages didn't install"
     mkdir -p /usr/lib/hearth-qml && cp -a /ctx/nimbus-app/qml/. /usr/lib/hearth-qml/
     chmod 755 /usr/lib/hearth-qml/hearth-qml
   fi

@@ -21,7 +21,8 @@ Item {
     function resolve() {
         if (!load || !wanted) { if (!wanted) url = ""; return; }
         const w = wanted;
-        App.art(w, u => { if (a.wanted === w) a.url = u; });
+        const me = a;
+        App.art(w, u => { try { if (me && me.wanted === w) me.url = u; } catch (e) { /* gone meanwhile */ } });
     }
     Image {
         id: img
