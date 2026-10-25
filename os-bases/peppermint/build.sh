@@ -301,6 +301,10 @@ done
 
 # ------------------------------------------------------------------ Hearth Disks (hosts/hearth-disks)
 # The disk manager, built with the app (base-peppermint.yml). udisks2 does all its changes (installed with the base packages above).
+# Make a bootable USB (Disks' USB maker, src/usb): parted and gdisk lay out a Windows USB drive, wimtools splits and reads
+# Windows' install.wim, gpg checks the projects' signatures, xz and zstd unpack compressed disk images.
+"${APT[@]}" parted gdisk wimtools gnupg xz-utils zstd dosfstools curl || true
+for t in parted sgdisk wimlib-imagex wiminfo gpg xz zstd mkfs.vfat fsck.vfat; do command -v "$t" >/dev/null || echo "warning: $t is missing, so Make a bootable USB can't do everything"; done
 command -v udisksctl >/dev/null || echo "warning: udisks2 is missing, so Disks can't change drives"
 if [ -x /ctx/nimbus-app/hearth-disks ]; then
   install -Dm755 /ctx/nimbus-app/hearth-disks /usr/bin/hearth-disks
@@ -316,6 +320,18 @@ Icon=hearth-disks
 Type=Application
 Categories=System;Utility;
 Keywords=disk;drive;partition;format;usb;sd;card;mount;eject;storage;steam;library;
+DESKTOP
+  cat > /usr/share/applications/hearth-usb-maker.desktop <<DESKTOP
+[Desktop Entry]
+Name=Make a Bootable USB
+GenericName=Bootable USB Maker
+Comment=Download Linux or Windows and put it on a USB drive to install it, checked before it's written
+Exec=/usr/bin/hearth-disks --usb %f
+Icon=hearth-disks
+Type=Application
+Categories=System;Utility;
+MimeType=application/x-cd-image;application/x-iso9660-image;application/x-raw-disk-image;application/x-raw-disk-image-xz-compressed;
+Keywords=usb;iso;bootable;installer;flash;burn;write;linux;windows;fedora;ubuntu;debian;arch;rufus;etcher;
 DESKTOP
 fi
 
