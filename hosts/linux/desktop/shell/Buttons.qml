@@ -4,6 +4,12 @@ pragma Singleton
 // file Hearth's Game Mode settings use). hearth-buttons reads the buttons from the kernel; shell.qml runs it
 // and calls volume()/mute()/power() here. labwc's key bindings call the same through ipc, as a backup for
 // keyboards hearth-buttons can't read; presses that both see are counted once.
+//
+// The power button has exactly one handler: hearth-buttons whenever it watches a device with the power button
+// (labwc's copy of the press is then dropped), labwc's binding only when it doesn't. The press that wakes the device
+// reaches labwc too: hearth-buttons ignores it (and says so), and labwc's copy used to go on after 250 ms and put
+// the device straight back to sleep (ROG Xbox Ally, Desktop Mode). Sleep goes through `hearth-buttons sleep`, which
+// writes who asked to the journal and refuses within a few seconds of waking up.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -17,6 +23,7 @@ Singleton {
     readonly property real maxVolume: overamp ? 1.5 : 1.0
     property var watching: []
     property var problems: []
+    property bool helperHasPower: false  // hearth-buttons watches a device with the power button
 
     signal osd(real volume, bool muted)
     signal powerMenuRequested()
@@ -79,7 +86,10 @@ Singleton {
         doMute();
     }
     function power(kind, fromHelper) {
-        if (!fromHelper) return later({ kind: "power" });
+        if (!fromHelper) {
+            if (helperHasPower) { console.info("power button: labwc's copy of the press left to hearth-buttons"); return; }
+            return later({ kind: "power" });
+        }
         lastHelperPower = Date.now();
         doPower(kind);
     }
@@ -98,9 +108,12 @@ Singleton {
         a.muted = !a.muted;
         osd(a.volume, a.muted);
     }
+    // Sleep, with who asked written to the journal (Send logs' Sleep section); refused just after waking up.
+    function sleep(who) { Quickshell.execDetached(["python3", root.helper, "sleep", "Desktop Mode: " + who]); }
     function doPower(kind) {
         const what = kind === "long" ? hold : press;
-        if (what === "sleep") Quickshell.execDetached(["systemctl", "suspend"]);
+        console.info("power button: " + kind + " press → " + what);
+        if (what === "sleep") sleep("power button " + kind + " press (" + (Date.now() - lastHelperPower < 1500 ? "hearth-buttons" : "labwc key binding") + ")");
         else if (what === "shutdown") Quickshell.execDetached(["systemctl", "poweroff"]);
         else if (what === "menu") powerMenuRequested();
     }
@@ -117,10 +130,11 @@ Singleton {
                 if (m.t === "vol") root.volume(m.d, true);
                 else if (m.t === "mute") root.mute(true);
                 else if (m.t === "power") root.power(m.press, true);
-                else if (m.t === "devices") { root.watching = m.list || []; root.problems = m.problems || []; }
+                else if (m.t === "ignored") { root.lastHelperPower = Date.now(); console.info("power button: press ignored " + m.after + " s after waking up"); }
+                else if (m.t === "devices") { root.watching = m.list || []; root.problems = m.problems || []; root.helperHasPower = m.power === true; }
             }
         }
-        onExited: code => { if (code !== 2) restart.start(); }
+        onExited: code => { root.helperHasPower = false; if (code !== 2) restart.start(); }
     }
     Timer { id: restart; interval: 3000; onTriggered: proc.running = true }
 }

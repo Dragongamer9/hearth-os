@@ -3,6 +3,7 @@
 //! Steam library). Linux: udisks2 over D-Bus (linux.rs; polkit asks for the password when it's needed). Windows:
 //! the Storage PowerShell module (winps.rs; changes run elevated, so Windows asks first).
 //! model.rs is what both show; safety.rs decides what's offered and checks it again right before it runs.
+//! usb/ is Make a bootable USB (Hearth OS only): download a system, check it, write it to a USB drive.
 
 pub mod model;
 pub mod safety;
@@ -12,6 +13,9 @@ pub mod windows;
 pub mod linux;
 #[cfg(windows)]
 pub mod winps;
+/// Make a bootable USB (Linux only: Hearth OS).
+#[cfg(target_os = "linux")]
+pub mod usb;
 
 use model::{Drive, Partition};
 use safety::{Opts, Plan};
