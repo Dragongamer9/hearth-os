@@ -8,12 +8,34 @@ on:
     branches: [apps-disks, main, linux-host]
     paths: ['hosts/hearth-disks/**', 'hosts/hearth-core/**', '.github/workflows/disks.yml']
   workflow_dispatch:
+    inputs:
+      probe:
+        description: 'Probe the USB maker download indexes (temporary)'
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: never
 
 jobs:
+  probe:
+    if: inputs.probe
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [a, b, c, d]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/usb-probe.py ${{ matrix.group }} > out.txt 2>err.txt || true; wc -l out.txt; cat err.txt | tail -5
+      - run: sed -n '1,10p' out.txt
+      - run: sed -n '11,20p' out.txt
+      - run: sed -n '21,30p' out.txt
+      - run: sed -n '31,40p' out.txt
+      - run: sed -n '41,50p' out.txt
+
   linux:
+    if: ${{ !inputs.probe }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -92,6 +114,7 @@ jobs:
             hosts/hearth-disks/shots
 
   windows:
+    if: ${{ !inputs.probe }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
