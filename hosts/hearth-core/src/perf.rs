@@ -78,12 +78,48 @@ pub fn parse_nvidia_smi(out: &str) -> (Option<u64>, Option<f64>) {
     (busy, vram)
 }
 
+/// A temperature in °C from the first hardware sensor (/sys/class/hwmon) named one of `names` (its temp1_input,
+/// in thousandths of a degree). None when there's no such sensor (Quick Access then shows no temperature).
+pub fn hwmon_temp(root: &Path, names: &[&str]) -> Option<u64> {
+    let mut dirs: Vec<_> = std::fs::read_dir(root).ok()?.flatten().map(|e| e.path()).collect();
+    dirs.sort();
+    for want in names {
+        for d in &dirs {
+            if std::fs::read_to_string(d.join("name")).map(|n| n.trim() == *want).unwrap_or(false) {
+                if let Some(t) = std::fs::read_to_string(d.join("temp1_input")).ok().and_then(|s| s.trim().parse::<f64>().ok()) {
+                    if t > 0.0 { return Some((t / 1000.0).round() as u64); }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// What the device draws from its battery, in watts, while it runs on battery (power_now, or current × voltage);
+/// None when charging or there's no battery.
+pub fn battery_watts(root: &Path) -> Option<f64> {
+    let read = |p: std::path::PathBuf| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
+    let mut dirs: Vec<_> = std::fs::read_dir(root).ok()?.flatten().map(|e| e.path()).collect();
+    dirs.sort();
+    for d in dirs {
+        if read(d.join("type")) != "Battery" || read(d.join("scope")) == "Device" { continue; }
+        if read(d.join("status")) != "Discharging" { return None; }
+        let num = |f: &str| read(d.join(f)).parse::<f64>().ok().filter(|v| *v > 0.0);
+        let uw = num("power_now").or_else(|| Some(num("current_now")? * num("voltage_now")? / 1e6))?;
+        return Some((uw / 1e6 * 10.0).round() / 10.0);
+    }
+    None
+}
+
 pub fn sample() -> Value {
     let stat = std::fs::read_to_string("/proc/stat").unwrap_or_default();
     let mem = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
     let (used, total) = memory(&mem);
     let (g, v) = gpu(Path::new("/sys/class/drm"));
-    json!({"cpu": cpu_percent(&stat), "ramUsed": used, "ramTotal": total, "gpu": g, "vramUsed": v})
+    let hw = Path::new("/sys/class/hwmon");
+    json!({"cpu": cpu_percent(&stat), "ramUsed": used, "ramTotal": total, "gpu": g, "vramUsed": v,
+           "cpuTemp": hwmon_temp(hw, &["k10temp", "zenpower", "coretemp", "cpu_thermal"]), "gpuTemp": hwmon_temp(hw, &["amdgpu", "xe"]),
+           "powerW": battery_watts(Path::new("/sys/class/power_supply"))})
 }
 
 #[cfg(test)]
@@ -108,5 +144,26 @@ mod tests {
         let _ = cpu_percent("cpu  100 0 100 700 100 0 0 0");
         assert_eq!(cpu_percent("cpu  200 0 200 800 100 0 0 0"), 67);
         assert_eq!(memory("MemTotal:       16384000 kB\nMemAvailable:    8192000 kB\n"), (7.8, 15.6));
+    }
+    #[test]
+    fn temperatures_and_battery_power() {
+        let dir = tempfile::tempdir().unwrap();
+        let hw = dir.path().join("hwmon");
+        for (n, name, t) in [("hwmon0", "acpitz", "40000"), ("hwmon1", "amdgpu", "61000"), ("hwmon2", "k10temp", "67600")] {
+            std::fs::create_dir_all(hw.join(n)).unwrap();
+            std::fs::write(hw.join(n).join("name"), format!("{name}\n")).unwrap();
+            std::fs::write(hw.join(n).join("temp1_input"), t).unwrap();
+        }
+        assert_eq!(hwmon_temp(&hw, &["k10temp", "coretemp"]), Some(68));
+        assert_eq!(hwmon_temp(&hw, &["amdgpu"]), Some(61));
+        assert_eq!(hwmon_temp(&hw, &["coretemp"]), None);
+        let ps = dir.path().join("ps");
+        std::fs::create_dir_all(ps.join("BAT0")).unwrap();
+        for (f, v) in [("type", "Battery"), ("status", "Discharging"), ("current_now", "1500000"), ("voltage_now", "12000000")] { std::fs::write(ps.join("BAT0").join(f), v).unwrap(); }
+        assert_eq!(battery_watts(&ps), Some(18.0));
+        std::fs::write(ps.join("BAT0").join("power_now"), "9100000").unwrap();
+        assert_eq!(battery_watts(&ps), Some(9.1));
+        std::fs::write(ps.join("BAT0").join("status"), "Charging").unwrap();
+        assert_eq!(battery_watts(&ps), None);
     }
 }

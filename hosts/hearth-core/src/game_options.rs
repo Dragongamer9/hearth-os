@@ -2,14 +2,15 @@
 //! MangoHud, GameMode, FSR, frame-rate cap, power limit, cloud saves. Port of library/game-options.js.
 //! On Handheld Daemon systems a game also keeps the HHD power settings picked in Quick Access › Performance
 //! while it was in front ("hhdPower": {HHD key: value}, see hhd::game_power_key) and their name for its page
-//! ("powerLabel"). Setting the power limit on the game's page replaces them.
+//! ("powerLabel"). Setting the power limit on the game's page replaces them. "perfSaved": Quick Access › Performance
+//! keeps this game's frame limit and power for it alone ("Saved for <game> only"), not for every game.
 
 use crate::store::Store;
 use serde_json::{json, Map, Value};
 use std::path::Path;
 
 pub fn defaults() -> Value {
-    json!({"proton": "", "args": "", "env": "", "mangohud": false, "gamemode": false, "fsr": false, "fpsLimit": 0, "tdp": 0, "cloudSaves": true, "hhdPower": {}, "powerLabel": ""})
+    json!({"proton": "", "args": "", "env": "", "mangohud": false, "gamemode": false, "fsr": false, "fpsLimit": 0, "tdp": 0, "cloudSaves": true, "hhdPower": {}, "powerLabel": "", "perfSaved": false})
 }
 
 pub fn get(store: &Store, id: &str) -> Value {
