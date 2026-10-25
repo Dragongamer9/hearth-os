@@ -1,0 +1,135 @@
+XDP: load portals from /tmp/home/.local/share/xdg-desktop-portal/portals
+XDP: load portals from /tmp/home/.local/share/flatpak/exports/share/xdg-desktop-portal/portals
+XDP: load portals from /var/lib/flatpak/exports/share/xdg-desktop-portal/portals
+XDP: load portals from /var/lib/snapd/desktop/xdg-desktop-portal/portals
+XDP: load portals from /usr/local/share/xdg-desktop-portal/portals
+XDP: load portals from /usr/share/xdg-desktop-portal/portals
+XDP: loading /usr/share/xdg-desktop-portal/portals/wlr.portal
+XDP: portal implementation supports org.freedesktop.impl.portal.Screenshot
+XDP: portal implementation supports org.freedesktop.impl.portal.ScreenCast
+XDP: loading /usr/share/xdg-desktop-portal/portals/gtk.portal
+XDP: portal implementation supports org.freedesktop.impl.portal.FileChooser
+XDP: portal implementation supports org.freedesktop.impl.portal.AppChooser
+XDP: portal implementation supports org.freedesktop.impl.portal.Print
+XDP: portal implementation supports org.freedesktop.impl.portal.Notification
+XDP: portal implementation supports org.freedesktop.impl.portal.Inhibit
+XDP: portal implementation supports org.freedesktop.impl.portal.Access
+XDP: portal implementation supports org.freedesktop.impl.portal.Account
+XDP: portal implementation supports org.freedesktop.impl.portal.Email
+XDP: portal implementation supports org.freedesktop.impl.portal.DynamicLauncher
+XDP: portal implementation supports org.freedesktop.impl.portal.Settings
+XDP: loading /usr/share/xdg-desktop-portal/portals/hearth.portal
+XDP: portal implementation supports org.freedesktop.impl.portal.FileChooser
+XDP: load portals from /usr/share/xdg-desktop-portal/portals
+XDP: loading /usr/share/xdg-desktop-portal/portals/wlr.portal
+XDP: Skipping duplicate source wlr
+XDP: loading /usr/share/xdg-desktop-portal/portals/gtk.portal
+XDP: Skipping duplicate source gtk
+XDP: loading /usr/share/xdg-desktop-portal/portals/hearth.portal
+XDP: Skipping duplicate source hearth
+XDP: Looking for portals configuration in '/tmp/home/.config/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/tmp/home/.config/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/etc/xdg/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/etc/xdg/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/etc/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/etc/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/tmp/home/.local/share/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/tmp/home/.local/share/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/tmp/home/.local/share/flatpak/exports/share/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/tmp/home/.local/share/flatpak/exports/share/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/var/lib/flatpak/exports/share/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/var/lib/flatpak/exports/share/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/var/lib/snapd/desktop/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/var/lib/snapd/desktop/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/usr/local/share/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Looking for portals configuration in '/usr/local/share/xdg-desktop-portal/portals.conf'
+XDP: Looking for portals configuration in '/usr/share/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Preferred portals for interface 'default': none
+XDP: Preferred portals for interface 'org.freedesktop.impl.portal.FileChooser': hearth
+XDP: Using portal configuration file '/usr/share/xdg-desktop-portal/nimbus-portals.conf' for desktop 'nimbus'
+XDP: Looking for portals configuration in '/usr/share/xdg-desktop-portal/nimbus-portals.conf'
+XDP: Preferred portals for interface 'default': none
+XDP: Preferred portals for interface 'org.freedesktop.impl.portal.FileChooser': hearth
+XDP: Using portal configuration file '/usr/share/xdg-desktop-portal/nimbus-portals.conf' for desktop 'nimbus'
+
+(/usr/libexec/xdg-desktop-portal:1827): xdg-desktop-portal-WARNING **: 20:55:45.491: Document portal fuse mount point unknown: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name :1.24 was not provided by any .service files
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Providing portal org.freedesktop.portal.MemoryMonitor
+XDP: Providing portal org.freedesktop.portal.PowerProfileMonitor
+XDP: Providing portal org.freedesktop.portal.NetworkMonitor
+XDP: Providing portal org.freedesktop.portal.ProxyResolver
+XDP: Providing portal org.freedesktop.portal.Trash
+XDP: Providing portal org.freedesktop.portal.GameMode
+
+(/usr/libexec/xdg-desktop-portal:1827): xdg-desktop-portal-WARNING **: 20:55:45.500: Failed to create RealtimeKit proxy: Could not connect: No such file or directory
+XDP: Providing portal org.freedesktop.portal.Realtime
+XDP: Found 'none' in configuration for default
+XDP: Found 'hearth' in configuration for org.freedesktop.impl.portal.FileChooser
+XDP: Using hearth.portal for org.freedesktop.impl.portal.FileChooser (interface specific config)
+XDP: Providing portal org.freedesktop.portal.FileChooser
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+
+(/usr/libexec/xdg-desktop-portal:1827): xdg-desktop-portal-WARNING **: 20:55:45.604: The location portal requires an access impl
+
+(/usr/libexec/xdg-desktop-portal:1827): xdg-desktop-portal-WARNING **: 20:55:45.604: The camera portal requires an access impl
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Found 'none' in configuration for default
+XDP: Providing portal org.freedesktop.host.portal.Registry
+XDP: org.freedesktop.portal.Desktop acquired
+XDP: Adding XdpAppInfo: XdpAppInfoHost app '' for :1.27
+XDP: Handling OpenFile
+XDP: Adding registered host app 'org.quickshell'
+XDP: Adding XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.28
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.28
+XDP: convert uri file:///tmp/home/Documents/data.csv -> file:///tmp/home/Documents/data.csv
+
+XDP: Found XdpAppInfo in cache: XdpAppInfoHost app '' for :1.27
+XDP: Handling SaveFile
+XDP: Adding registered host app 'org.quickshell'
+XDP: Adding XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.29
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.29
+XDP: convert uri file:///tmp/home/Documents/saved%20report.txt -> file:///tmp/home/Documents/saved%20report.txt
+
+XDP: Found XdpAppInfo in cache: XdpAppInfoHost app '' for :1.27
+XDP: Handling SaveFile
+XDP: Adding registered host app 'org.quickshell'
+XDP: Adding XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.30
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.30
+XDP: convert uri file:///tmp/home/Documents/data.csv -> file:///tmp/home/Documents/data.csv
+
+XDP: Found XdpAppInfo in cache: XdpAppInfoHost app '' for :1.27
+XDP: Handling OpenFile
+XDP: Adding registered host app 'org.quickshell'
+XDP: Adding XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.31
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.31
+XDP: convert uri file:///tmp/home/Documents -> file:///tmp/home/Documents
+
+XDP: Found XdpAppInfo in cache: XdpAppInfoHost app '' for :1.27
+XDP: Handling OpenFile
+XDP: Adding registered host app 'org.quickshell'
+XDP: Adding XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.32
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.32
+XDP: Adding XdpAppInfo: XdpAppInfoHost app '' for :1.34
+XDP: Handling OpenFile
+XDP: Adding registered host app 'org.quickshell'
+XDP: Adding XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.39
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app 'org.quickshell' for :1.39
+XDP: convert uri file:///tmp/home/Documents/data.csv -> file:///tmp/home/Documents/data.csv
+
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app '' for :1.34
+XDP: Deleting XdpAppInfo: XdpAppInfoHost app '' for :1.27
