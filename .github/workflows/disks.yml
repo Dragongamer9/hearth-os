@@ -174,7 +174,7 @@ jobs:
           key() { xdotool key --clearmodifiers "$@"; sleep 0.8; }
           # Waits (up to a minute) for the window, then for the page to draw, and brings it to the front.
           win() { for i in $(seq 1 60); do w=$(xdotool search --name '^Make a bootable USB$' 2>/dev/null | tail -1); [ -n "$w" ] && break; sleep 1; done
-                  if [ -n "$w" ]; then sleep 5; xdotool windowactivate --sync "$w" 2>/dev/null; xdotool mousemove 5 795; else echo "::warning title=USB screens::no window after a minute"; fi; return 0; }
+                  if [ -n "$w" ]; then sleep 8; xdotool mousemove --window "$w" 20 20; xdotool windowactivate --sync "$w" 2>/dev/null; xdotool windowfocus "$w" 2>/dev/null; else echo "::warning title=USB screens::no window after a minute"; fi; return 0; }
           # The disk image starts blank, so reading it back afterwards shows what the screens wrote.
           sudo dd if=/dev/zero of="$dev" bs=1M count=32 conv=fsync status=none; sudo blockdev --rereadpt "$dev" || true
           # 1. The catalog: Linux, an entry found on its project's server, Windows.
