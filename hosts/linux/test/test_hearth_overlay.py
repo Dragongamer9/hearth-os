@@ -121,7 +121,7 @@ class HearthOverlay(unittest.TestCase):
         (avail / '30-fine.conf').write_text('<fontconfig><alias><family>Fine</family></alias></fontconfig>\n')
         (etc / 'local.conf').write_text('<fontconfig><alias><family>Local</family></alias></fontconfig>\n')
         (etc / 'conf.d' / '60-latin.conf').write_text(
-            f'<fontconfig>\n  <include ignore_missing="yes">{avail}/48-guessfamily.conf</include>\n'
+            f'<fontconfig>\n  <include ignore_missing="yes">\n    {avail}/48-guessfamily.conf\n  </include>\n'
             f'  <include ignore_missing="yes">{avail}/30-fine.conf</include>\n  <include ignore_missing="yes">local.conf</include>\n'
             '  <include ignore_missing="yes" prefix="xdg">fontconfig/conf.d</include>\n  <match/>\n</fontconfig>\n')
         (self.dir / '.config' / 'fontconfig' / 'conf.d').mkdir(parents=True)
