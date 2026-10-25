@@ -42,8 +42,8 @@ def key(fpr, src):
     r = subprocess.run(['gpg', '--show-keys', '--with-colons', '--with-fingerprint'], input=data, capture_output=True)
     note('KEYINFO ' + fpr[-16:], src + '\n' + r.stdout.decode('utf-8', 'replace')[:3000])
     b = base64.b64encode(data).decode()
-    for i in range(0, len(b), 60000):
-        note(f'KEY {fpr} {i // 60000}', b[i:i + 60000])
+    for i in range(0, len(b), 4000):
+        note(f'KEY {fpr} {i // 4000}', b[i:i + 4000])
 
 def sigprobe(name, sig_url):
     s = get(sig_url)
@@ -82,8 +82,8 @@ if which in ('all', 'a'):
         uids = [l for l in r.stdout.decode().splitlines() if l.startswith(('fpr', 'uid'))]
         note('fedora.gpg', f'{len(fk)} bytes\n' + '\n'.join(uids[-40:]))
         b = base64.b64encode(fk).decode()
-        for i in range(0, len(b), 60000):
-            note(f'KEY fedora.gpg {i // 60000}', b[i:i + 60000])
+        for i in range(0, len(b), 4000):
+            note(f'KEY fedora.gpg {i // 4000}', b[i:i + 4000])
 
 if which in ('all', 'b'):
     for base, flt in (('https://releases.ubuntu.com/', None), ('https://cdimage.ubuntu.com/kubuntu/releases/', None)):
@@ -161,3 +161,10 @@ if which in ('all', 'd'):
         note('hearth ' + f, head(b + f) + '\n' + (get(b + f + '.sha256') or b'none').decode()[:300])
     for u in ('https://www.microsoft.com/en-us/software-download/windows11', 'https://www.microsoft.com/en-us/software-download/windows10ISO'):
         note('ms ' + u, head(u))
+
+if which == 'e':
+    for u in ('https://gitlab.manjaro.org/web/iso-info/-/raw/master/file-info.json', 'https://manjaro.org/products/download/x86', 'https://download.manjaro.org/kde/', 'https://manjaro.org/download/'):
+        b = get(u)
+        note('manjaro src ' + u, 'none' if b is None else (str(len(b)) + ' ' + ' '.join(h for h in hrefs(b) if 'iso' in h or 'download.manjaro' in h)[:3000]))
+    r = subprocess.run(['curl', '-sSL', '--max-time', '60', '-o', '/dev/null', '-w', '%{http_code}', 'https://gitlab.manjaro.org/web/iso-info/-/raw/master/file-info.json'], capture_output=True, text=True)
+    note('manjaro gitlab status', r.stdout + ' ' + r.stderr[:300])
