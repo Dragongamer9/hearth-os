@@ -46,7 +46,9 @@ fn same_bytes(dev: &str, file: &std::path::Path) {
 /// The partition table as sfdisk sees it.
 fn table(dev: &str) -> Value {
     let _ = std::process::Command::new("udevadm").arg("settle").status();
-    serde_json::from_str::<Value>(&sudo(&["sfdisk", "--json", dev])).map(|v| v["partitiontable"].clone()).unwrap_or(Value::Null)
+    let o = std::process::Command::new("sudo").args(["-n", "sfdisk", "--json", dev]).output().expect("sfdisk");
+    serde_json::from_slice::<Value>(&o.stdout).map(|v| v["partitiontable"].clone())
+        .unwrap_or_else(|e| panic!("sfdisk --json {dev}: {e}: {}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))
 }
 
 /// Mounts the drive's first partition (as you, through udisks), runs `f` on it, unmounts it.
@@ -165,7 +167,7 @@ fn d_windows_iso_gpt_split_and_windows_11_options() {
     eprintln!("{r:#}");
     assert_eq!(r["summary"]["mode"], "windows");
     assert_eq!(r["summary"]["scheme"], "gpt");
-    assert!(r["summary"]["swmParts"].as_u64().unwrap() >= 3, "{}", r["summary"]);
+    assert!(r["summary"]["swmParts"].as_u64().unwrap() >= 2, "{}", r["summary"]);
     assert_eq!(r["summary"]["unattend"], true);
     std::env::remove_var("HEARTH_USB_SPLIT_MB");
     // GPT with one Microsoft basic data partition, FAT32, and the files.

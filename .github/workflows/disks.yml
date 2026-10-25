@@ -129,7 +129,7 @@ jobs:
           W=$FX/win/root; mkdir -p "$W/efi/boot" "$W/efi/microsoft/boot" "$W/sources" "$W/boot" "$RUNNER_TEMP/wim" "$RUNNER_TEMP/bootwim"
           head -c 400000 /dev/urandom > "$W/bootmgr"; head -c 900000 /dev/urandom > "$W/bootmgr.efi"; head -c 1500000 /dev/urandom > "$W/efi/boot/bootx64.efi"
           head -c 20000 /dev/urandom > "$W/efi/microsoft/boot/bcd"; head -c 20000 /dev/urandom > "$W/boot/bcd"; echo "[AutoRun.Amd64]" > "$W/autorun.inf"
-          head -c 12000000 /dev/urandom > "$RUNNER_TEMP/wim/data.bin"; echo setup > "$RUNNER_TEMP/bootwim/setup.txt"
+          for i in 1 2 3 4; do head -c 3000000 /dev/urandom > "$RUNNER_TEMP/wim/data$i.bin"; done; echo setup > "$RUNNER_TEMP/bootwim/setup.txt"
           wimlib-imagex capture "$RUNNER_TEMP/wim" "$W/sources/install.wim" "Windows 11 Pro" --compress=none
           wiminfo "$W/sources/install.wim" 1 --image-property WINDOWS/ARCH=9 --image-property WINDOWS/VERSION/MAJOR=10 --image-property WINDOWS/VERSION/BUILD=26100 --image-property WINDOWS/INSTALLATIONTYPE=Client || echo "(wimlib couldn't set Windows' facts; the name is enough)"
           wimlib-imagex capture "$RUNNER_TEMP/bootwim" "$W/sources/boot.wim" "Microsoft Windows Setup (amd64)"
