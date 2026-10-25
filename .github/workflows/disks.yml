@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [k1, k2, k3]
+        group: [k4]
     steps:
       - uses: actions/checkout@v4
       - run: python3 tools/usb-probe.py ${{ matrix.group }} > out.txt 2>err.txt || true; wc -l out.txt; cat err.txt | tail -5

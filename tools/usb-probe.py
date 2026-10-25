@@ -199,3 +199,17 @@ if which == 'k3':
             if s:
                 fp, kid = issuer(s)
                 if fp: minimal(fp, f'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x{fp}')
+
+if which == 'k4':
+    minimal('DF9B9C49EAA9298432589D76DA87E80D6294BE9B', 'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0xDF9B9C49EAA9298432589D76DA87E80D6294BE9B')
+    page = get('https://manjaro.org/products/download/x86') or b''
+    isos = sorted(set(re.findall(rb'https://download\.manjaro\.org/kde/[^"\' ]+?\.iso', page)))
+    note('manjaro kde', ' '.join(i.decode() for i in isos))
+    for u in isos[:1]:
+        u = u.decode()
+        s = get(u + '.sig')
+        if s:
+            fp, kid = issuer(s)
+            note('SIG manjaro kde', f'{fp} {kid}')
+            if fp: minimal(fp, f'https://keyserver.ubuntu.com/pks/lookup?op=get&options=mr&search=0x{fp}')
+        note('manjaro sha', (get(u + '.sha256') or b'none').decode()[:200])
