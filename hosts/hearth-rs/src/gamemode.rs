@@ -82,6 +82,9 @@ pub struct GameMode {
     pub ip: AtomicBool,
     launch_busy: AtomicU64,
     last_guide: AtomicU64,
+    /// When the overlay last opened: a Guide tap (its release) right after it opened during that same press (Handheld
+    /// Daemon's Guide + B, the Quick Access button) doesn't close it again.
+    shown_at: AtomicU64,
     b_gen: AtomicU64,
     repeat_gen: AtomicU64,
     last_pad: Mutex<(String, u64)>,
@@ -169,7 +172,7 @@ impl GameMode {
     pub fn new(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, guide: hearth_core::guide::Guide, windowed: bool) -> Arc<GameMode> {
         let gm = Arc::new(GameMode { host, bridge, windowed, guide, gen: AtomicU64::new(0), focus_lock: Mutex::new(()), ip_lock: Mutex::new(()), overlay_lock: Mutex::new(()), launch_gen: AtomicU64::new(0),
             overlay_on: AtomicBool::new(false), osd_on: AtomicBool::new(false), osd_gen: AtomicU64::new(0), look_closed: AtomicBool::new(true),
-            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), b_gen: AtomicU64::new(0),
+            before_overlay: AtomicU64::new(0), overlay_alive: AtomicU64::new(0), reveal_gen: AtomicU64::new(0), ip: AtomicBool::new(false), launch_busy: AtomicU64::new(0), last_guide: AtomicU64::new(0), shown_at: AtomicU64::new(0), b_gen: AtomicU64::new(0),
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
             hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false),
             over_launch: AtomicBool::new(false), waiting: AtomicU64::new(0), wait_gen: AtomicU64::new(0), opened_after_wait: AtomicU64::new(0),
@@ -580,6 +583,7 @@ impl GameMode {
         if !self.overlay_ready() { return false; }
         let _o = self.overlay_lock.lock().unwrap();
         self.overlay_on.store(true, Ordering::SeqCst);
+        self.shown_at.store(now(), Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
         self.sync_main_pads();
         self.claim();   // opening it is a choice too: a hand-back still waiting from the last close is dropped
@@ -849,6 +853,10 @@ impl GameMode {
         // The same press can come from two places (InputPlumber and the controller itself).
         let t = now();
         // A press ignored as a repeat still made InputPlumber catch everything: put its mode back.
+        if how == "guide-tap" && self.overlay_on.load(Ordering::SeqCst) && t.saturating_sub(self.shown_at.load(Ordering::SeqCst)) < 1000 {
+            log("overlay: Guide let go just after Quick Access opened (Guide + B, the Quick Access button); leaving it open");
+            return;
+        }
         if t.saturating_sub(self.last_guide.swap(t, Ordering::SeqCst)) < 400 { self.ip_sync(); return; }
         if self.overlay_on.load(Ordering::SeqCst) { log(&format!("overlay: {how} pressed, closing")); self.hide_overlay(); return; }
         // Pressed again while waiting for HHD's overlay app: you changed your mind.
@@ -856,6 +864,15 @@ impl GameMode {
         if self.hearth_on_screen() {
             // Hearth's own UI handles Guide itself: InputPlumber caught it, so pass it on and give the controller back.
             if self.ip.load(Ordering::SeqCst) { self.ip_sync(); self.to_main(ev("pad", json!({"b": "guide"}))); }
+            return;
+        }
+        // A short press over a game (Settings › Controls › Quick glance): a thin bar with the time, battery, FPS and
+        // the latest message for a few seconds, drawn like the volume bar (the overlay on screen without taking
+        // input, so the game keeps its controller and isn't paused). A hold (or anything but a game) opens Quick Access.
+        if how == "guide-tap" && self.running().is_some() && self.overlay_ready() {
+            log("overlay: Guide tapped over a game: the glance");
+            self.ip_sync();
+            self.osd(json!({"kind": "glance", "ms": 3000}));
             return;
         }
         log(&format!("overlay: {how} pressed over another app"));
@@ -1116,7 +1133,11 @@ impl GameMode {
             ("overlay", "close") => self.close_for("its page closed it: B, Guide or the panel emptied"),
             ("overlay", "alive") => self.overlay_alive.store(now(), Ordering::SeqCst),
             ("overlay", "painted") => self.reveal_overlay(),
-            ("overlay", "home") => { self.claim(); self.close_for("Back to Hearth"); self.come_back(); }
+            ("overlay", "home") => {
+                self.claim(); self.close_for("Back to Hearth"); self.come_back();
+                // A page of Hearth's to open there (Quick Access over a game: Game settings, Edit this layout, Screenshots).
+                if m["open"].is_object() { self.to_main(ev("open", m["open"].clone())); }
+            }
             ("hhd", "open") => self.hhd_open(m["late"] == true),
             // The page (re)loaded: HHD's overlay app loads it each time it connects, maybe after Quick Access was
             // opened (a press that waited for the app): it's told again, and gets its 5 s to answer from now.

@@ -537,7 +537,7 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
 /// Game Mode: the overlay window, the Guide button, the power and volume buttons, and the settings that
 /// only work in gamescope (frame-rate limit, performance overlay).
 fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, windowed: bool) {
-    let (guide, hold) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true), Err(_) => return };
+    let (guide, hold, glance) = match bridge.lock() { Ok(b) => (b.guide.clone(), b.library.store.data["holdView"] == true, b.library.store.data["glance"] != false), Err(_) => return };
     let gm = GameMode::new(host.clone(), bridge.clone(), guide.clone(), windowed);
     {
         // The controller mouse pauses while Hearth or its Quick Access is in front (the controller is Hearth's then).
@@ -561,6 +561,7 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
     // game asked for, never another one's frozen picture).
     gm.start_window_ids();
     guide.hold_view.store(hold, std::sync::atomic::Ordering::SeqCst);
+    guide.tap_hold.store(glance, std::sync::atomic::Ordering::SeqCst);   // Quick glance: a short Guide press (guide.rs)
     let (g1, g2) = (gm.clone(), gm.clone());
     guide.start(Arc::new(move |how: &str| { let (gm, how) = (g1.clone(), how.to_string()); std::thread::spawn(move || gm.guide_pressed(&how)); }),
                 Arc::new(move |b: &str, down: bool| { g2.overlay_pad(b, down); g2.seat_pad(b, down); }));
