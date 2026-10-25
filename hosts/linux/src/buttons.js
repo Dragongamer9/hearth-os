@@ -81,6 +81,7 @@ class Buttons extends EventEmitter {
   }
   onMessage(m) {
     if (m.t === 'devices') { this.devices = m.list || []; this.problems = m.problems || []; log(`buttons: watching ${this.devices.join(', ') || 'nothing'}`); }
+    else if (m.t === 'ignored') log(`power button: press ignored ${m.after} s after waking up (the press that woke it)`);
     else if (m.t === 'power') this.emit('power', m.press === 'long' ? 'long' : 'short');
     else if (m.t === 'vol') this.emit('volume', m.d > 0 ? 1 : -1);
     else if (m.t === 'mute') this.emit('mute');
