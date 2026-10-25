@@ -758,6 +758,9 @@ CONF
 # ------------------------------------------------------------------ power button
 # Hearth handles the power button in its session (Settings › Power button), not Steam's helper.
 systemctl --global disable steamos-powerbuttond.service 2>/dev/null || true
+# When the device last woke up (/run/hearth-resumed) and each sleep in the journal (hearth-sleep): the press that
+# woke it is then not taken as a new one (os/system_files).
+chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look
 cat > /usr/share/applications/hearth-files.desktop <<DESKTOP
