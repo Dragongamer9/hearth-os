@@ -187,7 +187,7 @@ pub fn mount_iso(path: &Path) -> Result<IsoMount, String> {
     let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
     let dev = regex::Regex::new(r"/dev/loop[0-9]+").unwrap().find(&text).map(|m| m.as_str().trim_end_matches('.').to_string())
         .ok_or_else(|| format!("The ISO couldn't be opened: {}", text.trim()))?;
-    let m = IsoMount { dev: dev.clone(), root: PathBuf::new() };
+    let mut m = IsoMount { dev: dev.clone(), root: PathBuf::new() };
     // udisks may mount it by itself; give it a moment, then mount it ourselves.
     let mut root = None;
     for _ in 0..10 { if let Some(p) = mount_point_of(&dev) { root = Some(p); break; } std::thread::sleep(std::time::Duration::from_millis(200)); }
@@ -197,7 +197,8 @@ pub fn mount_iso(path: &Path) -> Result<IsoMount, String> {
         root = t.split(" at ").nth(1).map(|s| PathBuf::from(s.trim().trim_end_matches('.'))).filter(|p| p.is_dir()).or_else(|| mount_point_of(&dev));
         if root.is_none() { return Err(format!("The ISO couldn't be opened: {}{}", t.trim(), String::from_utf8_lossy(&o.stderr).trim())); }
     }
-    Ok(IsoMount { root: root.unwrap(), ..m })
+    m.root = root.unwrap();
+    Ok(m)
 }
 
 /// Every file under `root` (relative paths) and the bytes they add up to.
