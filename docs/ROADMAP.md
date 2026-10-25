@@ -99,6 +99,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.53 (released)
+
+- [x] Make a bootable USB (Hearth Disks): pick a Linux distro and Hearth downloads it from the project's own servers, checks its checksum and signature, writes it and reads it back; Windows 10/11 from Microsoft's page (with optional Windows 11 setup tweaks); or your own ISO/image. Only removable drives are offered; Hearth's own drive never is
+- [x] The power-button press that wakes the device no longer puts it back to sleep (ROG Ally in Desktop Mode); one power-button handler per mode, presses right after waking are ignored, and Send logs shows who asked for each sleep
+
 ## 0.6.52 (released)
 
 - [x] The Bottom Dock is Game Mode's main menu: live cards above each item (continue playing, friends online, downloads with progress, nearby devices), badges, a game dock over a running game, and search that finds settings too; the classic side menu stays under Settings › You › Appearance › Menu style
