@@ -22,7 +22,7 @@ runtime_pkgs() {
   if [ "$FAMILY" = fedora ]; then
     echo qt6-qtbase qt6-qtbase-gui qt6-qtdeclarative qt6-qtimageformats SDL2
   else
-    echo qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes qml6-module-qtqml-workerscript \
+    echo qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes qml6-module-qtquick-layouts qml6-module-qtqml-workerscript \
       qml6-module-qtqml-models qt6-qpa-plugins qt6-image-formats-plugins libsdl2-2.0-0
   fi
 }
