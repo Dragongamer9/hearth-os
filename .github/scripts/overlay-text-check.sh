@@ -32,18 +32,19 @@ fc-match sans-serif >/dev/null 2>&1 || err "fonts" "fc-match sans-serif fails in
 # (Xvfb also needs xkbcomp and the keyboard data to start.)
 if ! command -v Xvfb >/dev/null 2>&1 || ! command -v xkbcomp >/dev/null 2>&1; then
   { dnf5 -y install xorg-x11-server-Xvfb xorg-x11-xkb-utils xkeyboard-config || dnf -y install xorg-x11-server-Xvfb xorg-x11-xkb-utils xkeyboard-config || \
-    { apt-get update && apt-get install -y --no-install-recommends xvfb x11-xkb-utils xkb-data; }; } >/tmp/xvfb-install.log 2>&1
-fi
-if ! command -v Xvfb >/dev/null 2>&1; then
-  warn "overlay text" "couldn't install Xvfb in the image to run the check: $(tail -3 /tmp/xvfb-install.log)"
-  exit "$fail"
+    { mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial && apt-get update && apt-get install -y --no-install-recommends xvfb x11-xkb-utils xkb-data; }; } >/tmp/xvfb-install.log 2>&1
 fi
 mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
-# Xvfb crashes in some build containers; then Chromium draws headless instead (--ozone-platform=headless). Skia and
-# fontconfig still lay out and rasterise the text there, so whether a font is found is checked the same way.
+# Xvfb crashes in some build containers (or can't be installed in the image); then Chromium draws headless instead
+# (--ozone-platform=headless). Skia and fontconfig still lay out and rasterise the text there, so whether a font is
+# found (and whether Chromium's fontconfig complains) is checked the same way: the check always runs.
 HEADLESS=()
-Xvfb :7 -screen 0 1280x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
-for _ in $(seq 1 75); do [ -e /tmp/.X11-unix/X7 ] && break; sleep 0.2; done
+if command -v Xvfb >/dev/null 2>&1; then
+  Xvfb :7 -screen 0 1280x800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+  for _ in $(seq 1 75); do [ -e /tmp/.X11-unix/X7 ] && break; sleep 0.2; done
+else
+  echo "no Xvfb: $(tail -3 /tmp/xvfb-install.log 2>/dev/null)" >/tmp/xvfb.log
+fi
 if [ ! -e /tmp/.X11-unix/X7 ]; then
   note "overlay text" "the virtual screen (Xvfb :7) didn't start here; drawing headless instead: $(tail -4 /tmp/xvfb.log)"
   HEADLESS=(--ozone-platform=headless)
@@ -85,6 +86,13 @@ $(grep -m2 'Could not find any font\|ERROR' "$log")"
 --- log tail:
 $(tail -25 "$log")"
   fi
-  if [ "$fcw" != 0 ]; then err "overlay fontconfig" "Chromium's fontconfig still complains about the setup hearth-overlay gives it: $(grep -m5 'Fontconfig' "$log")"; fi
+  if [ "$fcw" != 0 ]; then
+    conf="/run/user/$uid/hearth-overlay-fonts/fonts.conf"
+    err "overlay fontconfig" "Chromium's fontconfig still complains ($fcw warnings) about the setup hearth-overlay gives it: $(grep -m5 'Fontconfig' "$log")
+--- files in $conf: $(grep -o '<include[^>]*>[^<]*</include>' "$conf" 2>/dev/null | sed 's/<[^>]*>//g' | tr '\n' ' ')
+--- where they came from: $(grep -h -o '<include[^>]*>[^<]*</include>' /etc/fonts/conf.d/*.conf 2>/dev/null | sort -u | head -20 | tr '\n' ' ')"
+  else
+    note "overlay fontconfig" "0 fontconfig warnings from Chromium with hearth-overlay's setup"
+  fi
 done
 exit "$fail"
