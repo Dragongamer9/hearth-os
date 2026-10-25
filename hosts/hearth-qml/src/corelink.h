@@ -16,7 +16,7 @@ public:
     explicit CoreLink(Host *host, QObject *parent = nullptr);
     ~CoreLink() override;
 
-    bool running() const { return m_proc.state() != QProcess::NotRunning; }
+    bool running() const { return m_proc.state() == QProcess::Running; }
     QString program() const { return m_program; }
 
     /// Hearth's own arguments for the core (--windowed, --session, --page X...), not Qt's or Chromium's.

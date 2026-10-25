@@ -49,7 +49,7 @@ QStringList CoreLink::coreArgs(const QStringList &argv) {
 }
 
 void CoreLink::start() {
-    if (running()) return;
+    if (m_proc.state() != QProcess::NotRunning) return;
     const QStringList a = coreArgs(m_host->args());
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     // host.info and Settings › Display › Renderer say Qt draws; the core counts the start as working once the page is up.

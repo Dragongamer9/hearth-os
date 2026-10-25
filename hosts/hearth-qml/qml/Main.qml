@@ -36,6 +36,7 @@ Window {
     }
     Connections {
         target: coreLink
+        function onLine(l) { App.fromCore(l); }
         function onRunningChanged() { if (coreLink.running && App.connection === "starting") { App.boot(); win.reportLater.start(); } }
     }
     property Timer reportLater: Timer { interval: 300; onTriggered: App.reportWin("main", win) }
@@ -45,6 +46,7 @@ Window {
     Item {
         id: frame
         anchors.fill: parent
+        Rectangle { anchors.fill: parent; color: Theme.bg }
         TopBar {
             id: top
             anchors { left: parent.left; right: parent.right; top: parent.top }

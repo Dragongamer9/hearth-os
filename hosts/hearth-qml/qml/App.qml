@@ -98,12 +98,10 @@ QtObject {
         }
     }
 
-    property Connections linkConn: Connections {
-        target: typeof coreLink !== "undefined" ? coreLink : null
-        function onLine(l) { app.onLine(l); }
-    }
-
-    function onLine(l) {
+    // Lines from the core arrive through Main.qml (a Connections there; coreLink.line → App.fromCore).
+    property int linesIn: 0
+    function fromCore(l) {
+        if (linesIn++ === 0) hostApp.log("core: first line in");
         let m;
         try { m = JSON.parse(l); } catch (e) { return; }
         if (!m || typeof m.t !== "string") return;
