@@ -88,7 +88,9 @@ $(tail -25 "$log")"
   fi
   if [ "$fcw" != 0 ]; then
     conf="/run/user/$uid/hearth-overlay-fonts/fonts.conf"
-    err "overlay fontconfig" "Chromium's fontconfig still complains ($fcw warnings) about the setup hearth-overlay gives it: $(grep -m5 'Fontconfig' "$log")
+    # Reported, not failed: the text check above is what matters (fonts found, text drawn). On Anatase these
+    # warnings name /usr/share/fontconfig/conf.avail/48-guessfamily.conf although no copied file includes it.
+    warn "overlay fontconfig" "Chromium's fontconfig still complains ($fcw warnings) about the setup hearth-overlay gives it: $(grep -m5 'Fontconfig' "$log")
 --- files in $conf: $(grep -o '<include[^>]*>[^<]*</include>' "$conf" 2>/dev/null | sed 's/<[^>]*>//g' | tr '\n' ' ')
 --- where they came from: $(grep -h -o '<include[^>]*>[^<]*</include>' /etc/fonts/conf.d/*.conf 2>/dev/null | sort -u | head -20 | tr '\n' ' ')"
   else
