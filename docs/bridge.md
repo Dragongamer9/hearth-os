@@ -10,6 +10,7 @@ and to the browser-preview `MOCK` in the UI.
 | Linux | `window.nimbusHost` (Electron preload, same API) | `hosts/linux/src/bridge.js`, `main.js` |
 | Android | `window.nimbusHost` with `platform: 'android'` (a shim over the WebView's `HearthAndroid` interface); a subset, see [ANDROID.md](ANDROID.md) | `hosts/android/app/src/main/java/dev/hearthos/android/Bridge.kt`, `MainActivity.kt` |
 | Browser preview | none, the UI uses its built-in `MOCK` | `ui/index.html` |
+| Linux, Qt renderer (Experimental) | no web page: native QML screens make the same calls over the core channel | `hosts/hearth-qml/qml/App.qml` ([RENDERERS.md](RENDERERS.md)) |
 
 Both channels have the same shape: `postMessage(obj)` and `addEventListener('message', e => e.data)`.
 
@@ -88,7 +89,9 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `browser.status` (Windows, Mantel) | | `{installed, default, version}` for Aloha Browser |
 | `claude.status` · `claude.act` (Hearth OS) | — · `{action: install\|update\|check\|remove\|open\|install-code\|remove-code}` | hearth-claude's status (`{installed, ours, apt, version, latest, updateAvailable, pending, running, official, sandbox, code: {installed, version}}`) with the running job's `state`, `progress`, `line`, `error`; jobs push `claude` |
 | `shell.pickWallpaper` (Windows) | | shell status, or `null` if cancelled; `shell.status` has `pictures` (file names) and `shell.setWallpaper` takes `custom:<file>` |
-| `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available}}`; check and install return at once and push `systemUpdate` |
+| `display.renderer` (Linux) | `{set?: auto\|webkit\|chromium\|qt, once?: web\|webkit\|chromium\|qt}` | `{pick, running, electron, qt, nvidia, qtCrashes, env}`; `set` from the next start, `once` for the next start only ([RENDERERS.md](RENDERERS.md)) |
+| `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available, rollback, rollbackQueued}}`; check and install return at once and push `systemUpdate` |
+| `system.update.rollback` (Hearth OS images) | | the same; makes the previous version (`status.rollback`, bootc's rollback deployment) the one that starts next, and again before restarting undoes it (`hearth-admin rollback`). Refused while an update waits for a restart |
 
 **Game** = `{id, title, source, fav, hidden, minutes, lastPlayed, added, sizeBytes, art:{cover,hero,logo,wide}, path, canRemove, installed, state, cloud, progress, bytesDone, bytesTotal, bytesPerSec?}`
 

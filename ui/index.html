@@ -453,9 +453,135 @@ body.overlay.ovfull #qam{left:auto;width:min(440px,92vw);box-shadow:-20px 0 60px
 .chip.on{background:var(--accent);color:var(--accentInk)}
 .pctl{margin-top:14px}
 .pctl .lab{font-size:13px;color:var(--dim);display:flex;align-items:center;gap:8px}
+body.overlay .dk-chips{top:24px}
 body.overlay #toasts{bottom:14px;right:72px}
-/* Closed overlay: nothing drawn but the volume bar (the window itself stays on screen, see-through) */
-body.overlay.ov-closed > :not(#osd){visibility:hidden!important}
+/* Closed overlay: nothing drawn but the volume bar and the quick glance (the window itself stays on screen, see-through) */
+body.overlay.ov-closed > :not(#osd):not(#glance){visibility:hidden!important}
+body.overlay.ov-closed:before{display:none}
+/* ---------- Quick Access over a game: the top dock (#qam.top). The Bottom Dock's look at the top of the screen: the game
+   on the left, the tabs (the picked one accent-filled and bigger), the clock and battery on the right; the picked tab's
+   panel drops down under it. The game stays in view: only a gradient from the top. Over a game only (qamTop). ---------- */
+#qam.top{left:0;right:0;top:0;bottom:0;width:auto;background:none;box-shadow:none;display:block;transform:translateY(-14px);opacity:0;transition:transform .2s var(--ease),opacity .16s,visibility .2s}
+#qam.top.open{transform:none;opacity:1}
+body.overlay #qam.top,body.overlay.ovfull #qam.top{left:0;right:0;width:auto;box-shadow:none;transform:none;opacity:1}
+body.qtop.ovfull:before{background:linear-gradient(180deg,rgba(6,9,13,.78) 0,rgba(6,9,13,.42) 38%,rgba(6,9,13,.12) 70%,transparent 100%)}
+.scrim.qa.qtop{background:rgba(6,9,13,.62)}
+body.qtop:not(.overlay) #footer{visibility:hidden}
+.qd-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:22px 16px 0;pointer-events:none;max-height:100%;box-sizing:border-box}
+.qd-wrap > *{pointer-events:auto}
+.qd-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:26px;background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--line);
+  box-shadow:0 18px 50px rgba(0,0,0,.45);max-width:calc(100vw - 32px);flex:none}
+.qd-game{display:flex;align-items:center;gap:10px;padding:0 10px 0 4px;min-width:0;max-width:220px}
+.qd-cover{width:34px;height:44px;border-radius:6px;position:relative;overflow:hidden;flex:none;background:var(--panel3)}
+.qd-cover .art,.qd-art .art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.qd-gt{display:flex;flex-direction:column;min-width:0}.qd-gt b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qd-gt span{font-size:11px;color:var(--dim)}
+.qd-sep{width:1px;height:34px;background:var(--line);margin:0 4px;flex:none}
+#qam.top .qd-tab{position:relative;width:56px;height:56px;border-radius:18px;display:grid;place-items:center;color:var(--dim);flex:none;background:none;
+  transition:width .16s var(--ease),height .16s var(--ease),background .16s,color .16s,border-radius .16s}
+#qam.top .qd-tab svg{width:24px;height:24px}
+#qam.top .qd-tab:hover,#qam.top .qd-tab.focus:not(.on){color:var(--text);background:var(--panel2)}
+#qam.top .qd-tab.on{width:72px;height:72px;border-radius:22px;background:var(--accent);color:var(--accentInk);box-shadow:0 10px 30px color-mix(in srgb,var(--accent) 35%,transparent)}
+#qam.top .qd-tab.on svg{width:28px;height:28px}
+#qam.top .qd-tab.on.focus{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--text),0 10px 30px color-mix(in srgb,var(--accent) 35%,transparent)}
+#qam.top .qd-tab.mfbadge::after{display:none}
+.qd-stat{display:flex;flex-direction:column;align-items:flex-end;padding:0 6px;font-size:12px;color:var(--dim);white-space:nowrap}.qd-stat b{font-size:15px;color:var(--text);font-variant-numeric:tabular-nums}
+.qd-panel{width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 170px);overflow-y:auto;scrollbar-width:none;border-radius:18px;background:color-mix(in srgb,var(--panel) 97%,transparent);
+  border:1px solid var(--line);padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 18px 50px rgba(0,0,0,.45);animation:qdDrop .18s var(--ease)}
+.qd-panel::-webkit-scrollbar{display:none}
+@keyframes qdDrop{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+body.reduce-motion .qd-panel{animation:none}
+.qd-p-now{width:min(600px,calc(100vw - 32px))}.qd-p-controls,.qd-p-friends{width:min(760px,calc(100vw - 32px))}
+.qd-p-friends{padding:0;flex-direction:row;gap:0;height:min(480px,calc(100vh - 170px))}
+.qd-panel h4{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.qd-np{display:flex;gap:14px;align-items:center}
+.qd-art{width:64px;height:86px;border-radius:8px;position:relative;overflow:hidden;flex:none;background:var(--panel3)}
+.qd-npt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.qd-kick{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.qd-h{font-size:24px;line-height:1.15;font-weight:800}
+.qd-sub{font-size:13px;color:var(--dim)}
+.qd-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.qd-btn{min-height:48px;border-radius:12px;background:var(--panel3);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;text-align:center}
+.qd-btn svg{width:18px;height:18px}
+.qd-btn.pri{background:var(--accent);color:var(--accentInk)}
+.qd-btn.danger{background:rgba(255,107,107,.15);color:var(--danger)}
+.qd-btn:disabled{opacity:.45}
+.qd-chips{display:flex;gap:8px;flex-wrap:wrap}
+.qd-chips span{padding:6px 10px;border-radius:8px;background:var(--panel2);font-size:12px;color:var(--dim)}
+.qd-more{display:flex;gap:8px;flex-wrap:wrap}
+.qd-mini{min-height:36px;padding:0 12px;border-radius:10px;background:var(--panel2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+.qd-mini svg{width:16px;height:16px}
+.qd-tiles{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:10px}
+.qd-tile{border-radius:12px;background:var(--bg);padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.qd-tile span{font-size:12px;color:var(--faint)}.qd-tile b{font-size:24px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qd-tile small{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qd-row{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;background:var(--panel2);flex-wrap:wrap}
+.qd-row > b{flex:1;font-size:14px;min-width:110px}
+.qd-row .qd-v{font-size:13px;color:var(--dim)}
+.qd-seg{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.qd-seg .chip{padding:7px 12px;border-radius:8px;font-size:13px;background:none;font-weight:600}
+.qd-seg .chip.on{background:var(--accent);color:var(--accentInk)}
+.qd-hhd .pctl{margin:0;padding:12px 14px;border-radius:12px;background:var(--panel2)}
+.qd-hhd .qhhd-note{margin-top:6px;font-size:12px}
+.qd-pg{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:12px;color:var(--dim);padding:8px 10px;border-radius:10px;text-align:left}
+.qd-pg b{color:var(--text);font-weight:600}.qd-pg.on b{color:var(--accent)}
+.qd-ctl{display:flex;gap:20px}
+.qd-lays{width:300px;flex:none;display:flex;flex-direction:column;gap:10px}
+.qd-lay{padding:12px 14px;border-radius:12px;background:var(--panel2);display:flex;flex-direction:column;gap:2px;text-align:left}
+.qd-lay b{font-size:14px}.qd-lay small{font-size:12px;color:var(--dim)}
+.qd-lay.on{background:var(--panel3);box-shadow:inset 0 0 0 2px var(--accent)}
+.qd-lay.edit{border:1px dashed var(--line);background:none;font-size:13px;color:var(--dim);align-items:center}
+.qd-map{flex:1;display:flex;flex-direction:column;gap:10px;align-items:center;min-width:0}
+.qd-map svg.qd-pad{width:300px;max-width:100%;height:auto}
+.qd-pad path,.qd-pad circle,.qd-pad rect{fill:none;stroke:var(--dim);stroke-width:.5;stroke-linecap:round}
+.qd-pad .on{stroke:var(--accent);stroke-width:.7}
+.qd-sum{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px;font-size:13px;width:100%}
+.qd-sum span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qd-sum b{color:var(--text)}.qd-sum b.ac{color:var(--accent)}
+.qd-fl{width:250px;flex:none;border-right:1px solid var(--line);padding:14px;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;overflow-y:auto;scrollbar-width:none}
+.qd-fr{display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;text-align:left;min-width:0}
+.qd-fr.on{background:var(--panel3)}
+.qd-av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;flex:none;color:#10141a}
+.qd-fr .t{display:flex;flex-direction:column;min-width:0}.qd-fr .t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qd-fr .t small{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qd-fr .t small.j{color:var(--accent)}
+.qd-fl .qd-btn{min-height:42px;font-size:13px;background:var(--panel2)}
+.qd-chat{flex:1;display:flex;flex-direction:column;padding:14px 18px;gap:10px;min-width:0}
+.qd-chat .hd{display:flex;align-items:center;gap:10px}.qd-chat .hd b{font-size:16px}.qd-chat .hd small{font-size:12px;color:var(--dim)}
+.qd-msgs{flex:1;display:flex;flex-direction:column;gap:10px;overflow-y:auto;scrollbar-width:none;min-height:0}
+.qd-msgs::-webkit-scrollbar{display:none}.qd-msgs > :first-child{margin-top:auto}
+.qd-msgs .mfcard{gap:8px}.qd-msgs .mfcard .btn{min-height:32px;padding:6px 10px;font-size:13px}
+.qd-msgs .mfmsg{max-width:75%;align-self:flex-start;margin:0}
+.qd-msgs .mfmsg.mine{align-self:flex-end}
+.qd-msgs .mfmsg .mftext{padding:10px 12px;border-radius:14px 14px 14px 4px;background:var(--panel3);font-size:14px}
+.qd-msgs .mfmsg.mine .mftext{border-radius:14px 14px 4px 14px;background:var(--accent);color:var(--accentInk)}
+.qd-msgs .mfmsg small{font-size:11px;color:var(--faint)}
+.qd-replies{display:flex;gap:8px;flex-wrap:wrap}
+.qd-reply{padding:8px 12px;border-radius:16px;background:var(--panel2);font-size:13px;font-weight:600}
+.qd-type{flex:1;min-width:150px;padding:8px 12px;border-radius:16px;background:var(--bg);border:1px solid var(--line);font-size:13px;color:var(--dim);text-align:left}
+.qd-caps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.qd-cap{height:96px;border-radius:14px;background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600}
+.qd-cap svg{width:26px;height:26px}.qd-cap.rec svg{color:var(--danger)}
+.qd-cap.recording{background:rgba(255,107,107,.15);color:var(--danger)}
+.qd-thumbs{display:flex;gap:10px;flex-wrap:wrap}
+.qd-thumb{width:140px;height:80px;border-radius:10px;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--panel3),var(--bg2))}
+.qd-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.qd-thumb span{position:absolute;right:6px;bottom:6px;font-size:11px;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:6px}
+.qd-capbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.qd-capbar .st{margin-left:auto;font-size:12px;color:var(--dim)}
+.qd-qs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.qd-qs .ctl{margin:0}
+.qd-qs .wide{grid-column:1/-1}
+.qd-hints{position:fixed;right:32px;bottom:26px;display:flex;gap:18px;align-items:center;font-size:13px;color:var(--text);text-shadow:0 1px 3px rgba(0,0,0,.7);pointer-events:auto}
+.qd-hints span{display:flex;align-items:center;gap:7px}
+.qd-hb{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:12px;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);font-size:13px;font-weight:600}
+.qd-hb svg{width:16px;height:16px}
+@media (max-width:900px){.qd-game{display:none}.qd-game + .qd-sep{display:none}.qd-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.qd-lays{width:220px}.qd-fl{width:200px}}
+/* the quick glance: a short Guide press over a game (thin, at the top, for a few seconds; the game keeps the controller) */
+#glance{position:fixed;top:18px;left:50%;transform:translate(-50%,-12px);z-index:9998;display:flex;align-items:center;gap:16px;padding:8px 18px;border-radius:22px;
+  background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);font-size:14px;color:var(--text);opacity:0;transition:opacity .18s,transform .18s var(--ease);pointer-events:none;white-space:nowrap;max-width:calc(100vw - 32px)}
+#glance.on{opacity:1;transform:translate(-50%,0)}
+#glance b{font-size:16px;font-variant-numeric:tabular-nums}
+#glance i.s{width:1px;height:22px;background:var(--line);flex:none}
+#glance .msg{display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#glance .msg:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--danger);flex:none}
+#glance .tip{color:var(--accent)}
 body.overlay .modal{width:min(380px,92vw)}
 .np .nart .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .pstat{padding:12px;border-radius:9px;background:var(--panel2);margin-bottom:6px}
@@ -1029,6 +1155,137 @@ body.mk-on .mk [data-f].focus:not(.mkc):not(.mkr):not(.mkm-i){box-shadow:0 0 0 2
 /* Settings: Library layout previews */
 .lprev .lp-a{background:var(--accent)}.lprev .lp-t{background:var(--text)}.lprev .lp-p{background:var(--panel2)}
 body.reduce-motion .lfc,body.reduce-motion .ldk{transition:none}
+/* ---------- Bottom Dock (the main menu; Settings › You › Appearance › Menu style). The classic side menu is #menu
+   without .is-dock. Open: a floating pill at the bottom, the selected item big and accent-filled, a card above it with
+   live details. Closed: a small copy in the footer (.mdock) that takes no room from the screen above it. ---------- */
+body.menu-dock #menu{left:0;right:0;top:auto;bottom:0;width:auto;max-width:none;background:none;box-shadow:none;transform:translateY(28px);opacity:0;
+  transition:transform .22s var(--ease),opacity .18s,visibility .22s;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:14px;padding:0 16px 22px;pointer-events:none}
+body.menu-dock #menu.open{transform:none;opacity:1}
+body.menu-dock #menu.open > *{pointer-events:auto}
+.dk-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:26px;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--line);
+  box-shadow:0 18px 50px rgba(0,0,0,.45);max-width:calc(100vw - 32px);overflow-x:auto;scrollbar-width:none}
+.dk-bar::-webkit-scrollbar{display:none}
+.dk{position:relative;width:58px;height:58px;border-radius:18px;display:grid;place-items:center;color:var(--dim);flex:none;
+  transition:width .16s var(--ease),height .16s var(--ease),background .16s,color .16s,border-radius .16s}
+.dk svg{width:26px;height:26px}
+.dk.sm{width:50px;height:50px;border-radius:16px}.dk.sm svg{width:22px;height:22px}
+.dk.cur{color:var(--accent);background:var(--panel3)}
+.dk:hover{color:var(--text);background:var(--panel2)}
+.dk.focus{width:74px;height:74px;border-radius:22px;background:var(--accent);color:var(--accentInk);box-shadow:0 10px 30px color-mix(in srgb,var(--accent) 35%,transparent)}
+.dk.sm.focus{width:64px;height:64px;border-radius:20px}
+.dk.focus svg{width:30px;height:30px}
+.dk.av{width:48px;height:48px;border-radius:50%}
+.dk.av .avatar{width:40px;height:40px;border-radius:50%;font-size:14px}
+.dk.av.focus{width:58px;height:58px;border-radius:50%;background:var(--accent)}
+.dk.av.focus .avatar{width:50px;height:50px}
+.dk-sep{width:1px;height:36px;background:var(--line);margin:0 6px;flex:none}
+.dk-b{position:absolute;top:5px;right:5px;min-width:18px;height:18px;border-radius:9px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.dk svg.dk-ring,.dk.focus svg.dk-ring{position:absolute;left:3px;top:3px;width:calc(100% - 6px);height:calc(100% - 6px);transform:rotate(-90deg);pointer-events:none}
+.dk-ring circle{fill:none;stroke-width:3}
+.dk-ring .bgc{stroke:color-mix(in srgb,currentColor 18%,transparent)}
+.dk-ring .fgc{stroke:var(--accent);stroke-linecap:round}
+.dk.focus .dk-ring .fgc{stroke:var(--accentInk)}
+.dk-card{width:min(560px,calc(100vw - 32px));border-radius:18px;background:color-mix(in srgb,var(--panel) 96%,transparent);border:1px solid var(--line);padding:16px 20px;
+  display:flex;flex-direction:column;gap:10px;box-shadow:0 18px 50px rgba(0,0,0,.45);animation:dkUp .2s var(--ease)}
+.dk-card:empty{display:none}
+@keyframes dkUp{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+.dk-card .dkh{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.dk-card .dkh b{font-size:17px}
+.dk-card .dkk{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--warn)}
+.dk-card .dks{font-size:13px;color:var(--dim);line-height:1.45}
+.dk-card .dkl{display:flex;justify-content:space-between;gap:12px;font-size:14px}.dk-card .dkl span:first-child{color:var(--dim)}
+.dk-card .dkq{display:flex;gap:12px;align-items:center}
+.dk-card .dkq .thumb{width:40px;height:54px;border-radius:6px;position:relative;overflow:hidden;flex:none;background:var(--panel2)}
+.dk-card .dkq .qt{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.dk-card .dkq .qt>div{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.dk-card .dkq .qt>div span:last-child{color:var(--dim);white-space:nowrap}
+.dk-card .bar{height:6px;border-radius:3px;background:var(--panel3);overflow:hidden}.dk-card .bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.dk-card .dkbtns{display:flex;gap:8px;flex-wrap:wrap}
+.dk-card .dkbtns.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.dk-card .dkbtn{flex:1;min-height:42px;padding:0 14px;border-radius:12px;background:var(--panel3);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.dk-card .dkbtn.pri{background:var(--accent);color:var(--accentInk)}
+.dk-card .dkbtn.danger{background:rgba(255,107,107,.15);color:var(--danger)}
+.dk-card .dkbtn svg{width:18px;height:18px}
+.dk-card .np{display:flex;gap:12px;align-items:center}
+.dk-card .np .nart{width:44px;height:58px;border-radius:8px;position:relative;overflow:hidden;flex:none}
+.dk-card .ppl{display:flex;flex-direction:column;gap:6px}
+.dk-card .ppl>div{display:flex;align-items:center;gap:10px;font-size:14px}
+.dk-card .ppl i{width:9px;height:9px;border-radius:50%;background:var(--faint);flex:none}.dk-card .ppl i.on{background:var(--accent)}.dk-card .ppl i.game{background:#7fb4ff}
+.dk-card .ppl small{color:var(--dim);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dk-chips{position:fixed;top:calc(var(--top) + 14px);right:var(--gut);display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.dk-chips:empty{display:none}
+.dk-chips span{padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+/* the dock while you browse: small, in the footer, for the mouse (the controller opens it with ☰) */
+body.menu-dock{--foot:54px}
+.footer{position:relative}
+.mdock{display:flex;align-items:center;gap:2px;padding:3px 8px;border-radius:18px;background:var(--panel);border:1px solid var(--line);opacity:.62;transition:opacity .16s;margin-right:auto}
+.mdock:hover{opacity:1}
+.mdock button{width:34px;height:34px;border-radius:10px;color:var(--dim);display:grid;place-items:center;position:relative}
+.mdock button svg{width:19px;height:19px}
+.mdock button:hover{color:var(--text);background:var(--panel2)}
+.mdock button.cur{color:var(--accent);background:var(--panel3)}
+.mdock i.sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.mdock .dk-b{top:0;right:0;min-width:14px;height:14px;font-size:9px}
+.mdock .mdk-hint{font-size:12px;color:var(--faint);margin-left:8px;white-space:nowrap}
+.mdock + .running{margin-right:auto}
+@media (max-width:760px){.mdock .mdk-hint{display:none}}
+@media (max-width:620px){.dk{width:48px;height:48px}.dk.focus{width:60px;height:60px}.dk.sm{width:42px;height:42px}.dk.sm.focus{width:52px;height:52px}.dk-bar{gap:3px;padding:8px}}
+/* Search over the dock: grouped results (Settings, Games, Store, Friends) */
+.sres .sgh{flex:none;align-self:center;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);padding:0 4px 0 12px;font-weight:700}
+.sres .sgh:first-child{padding-left:4px}
+.sres .row .ricon svg{width:18px;height:18px}
+body.menu-dock #search.over-dock .kbtop{border-radius:0 0 18px 18px}
+
+/* ---------- Settings C: the groups as tabs, a live summary card on the left, the pages (or a page's rows) on the
+   right. Inside a group: back, the group's pages as tabs (LB / RB), the page's own card and its rows. ---------- */
+.setc{display:flex;flex-direction:column;gap:16px;margin-top:6px}
+.sc-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.sc-head h1{font-size:26px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.sc-head .sc-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-left:10px}
+.sc-head .sc-tabs .chip{padding:9px 16px;border-radius:20px;font-size:14px}
+.sc-head .sc-lbrb{margin-left:auto;font-size:13px;color:var(--faint);white-space:nowrap}
+.sc-head .sc-back{width:40px;height:40px;border-radius:50%;background:var(--panel)}
+.sc-head .sc-search{width:42px;height:42px;border-radius:50%;background:var(--panel)}
+.sc-body{display:flex;gap:22px;align-items:flex-start;min-width:0}
+.sc-side{width:clamp(250px,27vw,400px);flex:none;display:flex;flex-direction:column;gap:14px;position:sticky;top:0}
+.sc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.sc-main.srows{max-width:none}
+.sc-card{border-radius:18px;background:var(--panel);padding:22px;display:flex;flex-direction:column;gap:14px}
+.sc-card .sci{width:52px;height:52px;border-radius:16px;background:var(--accent);color:var(--accentInk);display:grid;place-items:center}
+.sc-card .sci svg{width:28px;height:28px}
+.sc-card h2{all:unset;font-size:24px;font-weight:800;color:var(--text)}
+.sc-card .scbig{font-size:30px;font-weight:800;line-height:1.1}
+.sc-card .scl{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.sc-card .scl span:first-child{color:var(--dim);flex:none}
+.sc-card .scl span:last-child{text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sc-card .scs{font-size:13px;color:var(--dim);line-height:1.5}
+.sc-card .scok{font-size:14px;color:var(--accent)}
+.sc-card .scchips{display:flex;gap:8px;flex-wrap:wrap}
+.sc-card .scchips span{padding:6px 12px;border-radius:14px;background:var(--panel3);font-size:13px}
+.sc-card .scchips span.warn{background:color-mix(in srgb,var(--warn) 22%,var(--panel));color:var(--warn)}
+.sc-card .bar{height:8px;border-radius:4px;background:var(--panel3);overflow:hidden}.sc-card .bar i{display:block;height:100%;background:var(--accent)}
+.sc-card .scbtns{display:flex;gap:8px;flex-wrap:wrap}
+.sc-card .scbtns .pill{padding:10px 14px;border-radius:10px;background:var(--panel3)}
+.sc-card .scdev{display:flex;align-items:center;gap:12px}
+.sc-card .scdev b{display:block;font-size:16px}.sc-card .scdev small{color:var(--dim);font-size:13px}
+.sc-card .screen{align-self:center;width:min(300px,100%);aspect-ratio:16/9;border-radius:10px;background:linear-gradient(135deg,var(--panel3),var(--panel2));border:6px solid #05070a;display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--text);text-align:center;padding:6px}
+.sc-card .stand{align-self:center;width:80px;height:8px;border-radius:4px;background:#05070a;margin-top:-8px}
+.sc-card .scav .avatar{width:64px;height:64px;border-radius:50%;font-size:22px}
+.sc-tip{border-radius:16px;background:color-mix(in srgb,var(--warn) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.sc-tip b{font-size:15px;color:var(--warn)}
+.sc-tip span{font-size:13px;line-height:1.5;color:var(--text);opacity:.85}
+.sc-tip.ok{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.sc-tip.ok b{color:var(--accent)}
+.sc-tip .pill{align-self:flex-start;background:var(--warn);color:#2a2416;font-weight:600;border-radius:10px;padding:8px 14px}
+.sc-row{display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:14px;background:var(--panel);width:100%}
+.sc-row .ricon{width:40px;height:40px;border-radius:12px}
+.sc-row .rt{flex:1;min-width:0}.sc-row .rt b{display:block;font-size:16px;font-weight:600}
+.sc-row .rt small{display:block;font-size:13px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row .rv{color:var(--dim);font-size:18px}
+.sc-row .ext{font-size:12px;color:var(--faint);margin-left:6px}
+.setc .sgrid{display:contents}
+@media (min-width:1700px){.setc .sgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}}
+@media (max-width:900px){.sc-body{flex-direction:column;align-items:stretch}.sc-side{width:auto;position:static}.sc-head .sc-lbrb{display:none}}
 </style>
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <script src="osk/hearth-osk.js"></script>
@@ -1221,7 +1478,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) loadOverlaySettings(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1361,15 +1618,15 @@ const MOCK = (()=>{
     'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
     'perf.stats':async(a)=>({gamePower:S.running?{id:S.running,saved:!!(MOCKOPT[S.running]&&MOCKOPT[S.running].powerLabel),label:(MOCKOPT[S.running]||{}).powerLabel||'',tdp:(MOCKOPT[S.running]||{}).tdp||0}:null,
-      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
+      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,cpuTemp:68,gpuTemp:61,powerW:st.battery&&st.battery.charging?null:18.4,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
       ...(a&&a.hhd?{powerMode:null,powerModes:[],tdp:{supported:false}}:{})}),
     'perf.setTdp':async({watts})=>{ st.tdp=watts; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); S2.tdp.unified.tdp.mode='custom'; S2.tdp.unified.tdp.custom.tdp=watts; return {supported:true,watts,min:7,max:30}; },
-    'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
+    'perf.setFpsLimit':async({fps,game})=>{ if(game&&S.running){ MOCKOPT[S.running]=Object.assign(MOCKOPT[S.running]||{},{fpsLimit:fps,perfSaved:true}); return {fpsLimit:fps,game:S.running}; } MOCKFPS=fps; return {fpsLimit:fps}; },
     'perf.setOverlay':async({level})=>{ MOCKPO=level; return {perfOverlay:level}; },
     'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
-    'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
+    'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:'',perfSaved:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
     'bazaar.open':async()=>({ok:true, mouse:true}),   // Bazaar, Hearth OS's app store (hearth-core bazaar.rs)
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle',hearth:{available:true,installed:true,own:true,default:false,version:'150.0'}}),
@@ -1423,8 +1680,10 @@ const MOCK = (()=>{
     'oldfiles.restore':async({item})=>{ const f=await MOCK.call('oldfiles.status'); f.folders[0].moved=f.folders[0].moved.filter(x=>x!==item); st.oldf=clone(f); return Object.assign(f,{restored:'/home/you/'+item}); },
     'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
-    'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
-    'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
+    'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q',glance:st.glance!==false,quickReplies:st.qr||['On my way','GG','👍']}),
+    'overlay.setHoldView':async({on})=>{ st.holdView=on; return MOCK.call('overlay.settings'); },
+    'overlay.setGlance':async({on})=>{ st.glance=!!on; return MOCK.call('overlay.settings'); },
+    'overlay.setQuickReplies':async({list})=>{ st.qr=(list||[]).map(x=>String(x).trim().slice(0,40)).filter(Boolean).slice(0,6); return MOCK.call('overlay.settings'); },
     'overlay.setGameBarButton':async({on})=>{ st.gbb=on; return {holdView:!!st.holdView,gameBarButton:on,hotkey:'Ctrl+Alt+Q'}; },
     // Stores & profile (preview data)
     'accounts.status':async()=>({installRoot:'C:\\Users\\Player\\Games', accounts:[
@@ -1642,6 +1901,7 @@ function applyLook(){
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
   b.classList.toggle('no-battpct', !LOOK.battPct);
+  b.classList.toggle('menu-dock', typeof dockOn==='function' ? dockOn() : (LOOK.menuStyle||'dock')!=='side');   // Settings › Appearance › Menu style
   if(typeof applyMk==='function') applyMk();
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
@@ -1881,6 +2141,10 @@ function mfSettings(){
     ${sw('askToJoin', !pt || pt.askToJoin!==false, 'Let friends ask to join my game', 'Play together (Beta Experimental): you say yes to each join'+(pt&&!pt.canHost?' · needs Remote play\'s Sunshine':''))}
     </div>
     <div class="note">${I.lock} Chats with friends are end-to-end encrypted: only the people in a chat can read it, not Hearth and not the server. What you're playing and whether you're online aren't encrypted: your Matrix server sees them.</div>
+    ${shead('Quick replies over a game')}<div class="rows">
+    ${QD.replies.map((r,i)=>`<button class="row" data-f data-k="mfs-qr-${i}" data-act="ovQuickReply" data-i="${i}"><div class="rt"><b>${esc(r)}</b><small>Quick Access › Friends, one press to send · change or clear it</small></div><div class="rv">›</div></button>`).join('')}
+    ${QD.replies.length<6?`<button class="row" data-f data-k="mfs-qr-${QD.replies.length}" data-act="ovQuickReply" data-i="${QD.replies.length}"><div class="rt"><b>Add a quick reply</b></div><div class="rv">+</div></button>`:''}
+    <button class="row" data-f data-k="mfs-qr-reset" data-act="ovQuickReset"><div class="rt"><b>Back to the usual ones</b><small>On my way · GG · 👍</small></div><div class="rv">›</div></button></div>
     ${shead('Account')}<div class="rows">
     <div class="row"><div class="rt"><b>${esc(MF.st.userId)}</b><small>Lives on ${esc(MF.st.lives||MF.st.homeserver)} · this device: ${esc(MF.st.deviceId||'')}</small></div></div>
     <button class="row" data-f data-k="mfs-name" data-act="mfName"><div class="rt"><b>Display name</b><small>What friends see</small></div><div class="rv">›</div></button>
@@ -3163,6 +3427,8 @@ function pageAppearance(){
   const mf=LOOK.madeFor||'auto';
   return shead('Made for') + `<div class="row"><span class="ricon">${I.kbd}</span><div class="rt"><b>Made for</b><small>${mf==='auto'?`Automatic: mouse &amp; keyboard while you use them (now: <span id="mfNow">${mkOn()?'mouse &amp; keyboard':'controller'}</span>), controller when you pick one up`:mf==='mk'?'Hover actions, right-click menus and key hints. The on-screen keyboard only comes up from a controller':'Big targets and button prompts. The on-screen keyboard comes up for every text field'}</small></div>
       <div class="seg">${MADE_FOR.map(([k,l])=>`<button class="${mf===k?'on':''}" data-f data-k="ap-mf-${k}" data-act="madeFor" data-v="${k}">${l}</button>`).join('')}</div></div>`
+    + `<div class="row"><span class="ricon">${I.layout}</span><div class="rt"><b>Menu style</b><small>${dockOn()?'A dock along the bottom with live details. ☰ (Menu) opens it':'The classic menu that slides in from the side'}</small></div>
+      <div class="seg">${[['dock','Dock (new)'],['side','Side menu (classic)']].map(([k,l])=>`<button class="${(LOOK.menuStyle||'dock')===k?'on':''}" data-f data-k="ap-ms-${k}" data-act="menuStyle" data-v="${k}">${l}</button>`).join('')}</div></div>`
     + shead('Themes') + `<div class="opts">${THEME_PACKS.map(themeCard).join('')}</div>`
     + note(`An accent color, background and sounds together${LINUX?', and the desktop\'s wallpaper':''}. Change any of them on its own below or in your profile.`)
     + shead('Home layout')
@@ -3338,7 +3604,12 @@ function pageSystem(){
     + `<button class="row" data-f data-k="sy-count" data-act="countMe"><div class="rt"><b>Count me in the player count</b><small>${APP} tells Hearth OS's counter it's running about every 10 minutes: a random number made on this device, the edition and the version. No names, games or accounts.</small></div><div class="sw ${counterOn()?'on':''}"></div></button>`);
   if(LINUX) h += shead('Backup') + sgrid(`<button class="row" data-f data-k="sy-backup" data-act="backupNow"><span class="ricon">${I.dl}</span><div class="rt"><b>Back up ${APP}</b><small>Settings, profiles, favorites, collections, play time and your own games, to a USB drive or this device</small></div>${BACKUP.busy?'<span class="mini-spin"></span>':'<div class="rv">›</div>'}</button>`
     + `<button class="row" data-f data-k="sy-restore" data-act="restoreBackup"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore from a backup</b><small>On a new device, or after a reinstall. ${APP} restarts after.</small></div><div class="rv">›</div></button>`);
-  h += shead('Troubleshooting');
+  return ANDROID ? h + pageHelp() : h;
+}
+// Settings › System › Help & logs (Android: on its System page).
+function pageHelp(){
+  const feat=f=>(HOSTINFO.features||[]).includes(f);
+  let h = shead('Troubleshooting');
   let tr='', logs='';
   if(feat('restartApp')) tr += `<button class="row" data-f data-k="sy-restart" data-act="restartApp"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP}</b><small>Closes and reopens ${APP}. Games keep running.</small></div></button>`;
   tr += `<button class="row" data-f data-k="sy-inlog" data-act="inputLog"><div class="rt"><b>Log controller input</b><small>Writes every button press and what it selected to the log, for reporting a jumpy selection. Then use Save logs.</small></div><div class="sw ${INPUT_LOG?'on':''}"></div></button>`;
@@ -4389,7 +4660,8 @@ function viewGame(){
 const DL_DONE = [];   // ids installed this session, newest first
 function dlItems(){
   if(host) return GAMES.filter(isActive).map(g=>({g, state:g.state, pct:dlInfo(g).pct, label:dlInfo(g).label, done:g.bytesDone, total:g.bytesTotal, speed:g.state==='downloading'?g.speed:0}));
-  return DOWNLOADS.map(d=>{ const g=G(d.g); const tot=parseFloat(g.size)*1e9||0; return {g, state:d.p>=1?'updating':d.p>0?'downloading':'queued', pct:Math.round(d.p*100), label:d.state,
+  // The preview's queue (a game that isn't in the library is left out: the dock's ring reads this on every screen).
+  return DOWNLOADS.filter(d=>G(d.g)).map(d=>{ const g=G(d.g); const tot=parseFloat(g.size)*1e9||0; return {g, state:d.p>=1?'updating':d.p>0?'downloading':'queued', pct:Math.round(d.p*100), label:d.state,
     done:tot*d.p, total:tot, speed:d.speed?parseFloat(d.speed)*1e6:0}; });
 }
 const gbs = b => b!=null&&b>0 ? (b/1e9).toFixed(b>=1e10?0:1)+' GB' : '';
@@ -4472,15 +4744,16 @@ function viewDownloads(){
   return h + '</div>';
 }
 
-const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['liblook','lib','Library'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display','Display & sound'],['audio','vol','Audio'],['power','bolt','Power'],
-  ['controller','pad','Controls'],['keyboard','kbd','Keyboard'],['remote','play','Remote play'],['sources','lib','Library'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install'],['switch','dl','Hearth OS'],['shell','shell','Shell'],['updates','refresh','Updates'],['linux','shell','Linux (Beta Experimental)'],['system','gear','System'],['about','info','About']];
-// Settings, condensed: five groups on the left, each with its pages as tabs along the top.
-const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['device','display','Device'],['games','lib','Games'],['system','gear','System']];
+const STABS = [['profile','user','Profile'],['profiles','user','Profiles'],['appearance','layout','Appearance'],['liblook','lib','Library look'],['signin','lock','Sign-in'],['wifi','wifi','Wi-Fi'],['bluetooth','bt','Bluetooth'],['display','display',ANDROID?'Display & sound':'Display'],['audio','vol','Sound'],['power','bolt','Power & sleep'],
+  ['controller','pad','Controllers'],['keyboard','kbd','Keyboard'],['remote','play','Remote play'],['sources','lib','Library sources'],['seats','display','Multi-seat (Beta Experimental)'],['import','dl','Import'],['osinstall','dl','Install Hearth OS'],['switch','dl','Hearth OS'],['shell','shell',LINUX?'Desktop Mode':'Shell'],['updates','refresh','Updates'],['linux','shell','Linux (Beta Experimental)'],['system','gear','Device'],['help','info','Help & logs'],['about','info','About']];
+// Settings C: six groups (tabs on the front page, each with a summary card and its pages as rows); inside a group its
+// pages are tabs along the top (LB / RB). The order inside a group is SORDER's (Settings C block, by renderMenu).
+const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['display','display','Display & sound'],['controls','pad','Controls & power'],['games','lib','Games'],['system','gear','System']];
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
-  display:'device',audio:'device',power:'device',controller:'device',keyboard:'device',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',linux:'system',system:'system',osinstall:'system',switch:'system',about:'system'};
+  display:'display',audio:'display',power:'controls',controller:'controls',keyboard:'controls',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',linux:'system',system:'system',help:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
-const stabShown = k => STABS.some(x=>x[0]===k) && k!=='audio' && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
-const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k));
+const stabShown = k => STABS.some(x=>x[0]===k) && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
+const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k)).sort((a,b)=>SORDER.indexOf(a[0])-SORDER.indexOf(b[0]));
 // ---- Accessibility: its page (pageAccess) in You, on Hearth OS only
 if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='liblook')+1, 0, ['access','text','Accessibility']); STAB_GROUP.access='you'; }
 // ---- end Accessibility
@@ -4833,7 +5106,7 @@ function pageDisplay(){
   else g += infoRow('scale','Scale',d.scale||'—');
   h += sgrid(g);
   if(!d.supported) h += note('Brightness works on built-in screens (laptops and handhelds), not external monitors yet.');
-  const hzTip=dispHzTip(d); if(hzTip) h += note(hzTip);
+  const hzTip=dispHzTip(d); if(hzTip && ANDROID) h += note(hzTip);   // elsewhere: the Display page's card (pageCard)
   h += note((d.appliesOnRestart ? 'In Game Mode, a new resolution or refresh rate restarts '+APP+' for a moment.'
     : 'A new resolution or refresh rate switches back after 15 seconds unless you keep it.')+(d.scaleIsInterface?' Scale sizes the '+APP+' interface.':''));
   if((HOSTINFO.features||[]).includes('nvidiaDrawing')){
@@ -4843,8 +5116,8 @@ function pageDisplay(){
   }
   // Which engine draws Hearth (Chromium through Hearth's Electron window app, or WebKit): docs/RENDERERS.md.
   if((HOSTINFO.features||[]).includes('renderer')){
-    const r=RND.s, names={auto:'Automatic',webkit:'WebKit',chromium:'Chromium'}, running=r?r.running:(HOSTINFO.renderer||'webkit');
-    h += shead('Drawing engine') + `<button class="row" data-f data-k="s-rnd" data-act="rndPick"><div class="rt"><b>Drawing engine</b><small>Automatic uses Chromium on Nvidia graphics (smoother there) and WebKit everywhere else. Drawing with ${running==='chromium'?'Chromium':'WebKit'} now.</small></div><div class="rv">${names[r&&r.pick||'auto']} ›</div></button>`;
+    const r=RND.s, names={auto:'Automatic',webkit:'WebKit',chromium:'Electron',qt:'Qt (Experimental)'}, running=r?r.running:(HOSTINFO.renderer||'webkit');
+    h += shead('Renderer') + `<button class="row" data-f data-k="s-rnd" data-act="rndPick"><div class="rt"><b>Renderer</b><small>Automatic uses Electron (Chromium) on Nvidia graphics (smoother there) and WebKit everywhere else. Qt is Experimental. Drawing with ${names[running]||'WebKit'} now.</small></div><div class="rv">${names[r&&r.pick||'auto']} ›</div></button>`;
     if(!RND.s && host) call('display.renderer').then(x=>{ RND.s=x; if(S.view==='settings') render(null,true); }).catch(()=>{});
   }
   return h;
@@ -4911,6 +5184,7 @@ const POWER_CHOICES = [['sleep','Sleep'],['menu','Power menu'],['shutdown','Shut
 let osdTimer=null;
 function showOsd(d){
   if(!d) return;
+  if(d.kind==='glance') return showGlance(d);   // a short Guide press over a game (the top dock's block)
   let el=$('#osd'); if(!el){ el=document.createElement('div'); el.id='osd'; el.className='osd'; document.body.appendChild(el); }
   if(d.kind==='msg'){ el.innerHTML=`${I[d.icon]||I.bell}<span style="flex:1">${esc(d.text||'')}</span>`; el.classList.add('on'); clearTimeout(osdTimer); osdTimer=setTimeout(()=>el.classList.remove('on'),(d.ms||4000)-300); return; }
   if(d.kind!=='vol') return;
@@ -5305,7 +5579,8 @@ function pageControls(){
     const o=OVS.s, gd=o&&o.guide;
     h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Guide (Xbox / Home) button, or Ctrl+Alt+Q</b><small>${APP} comes back with Quick Access open: performance, screenshots, Back to game, Exit game. In a cloud stream, hold View + Menu to leave the stream.</small></div></div>`;
     if(o){
-      h += sgrid(`<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up ${APP}</b><small>For controllers whose Guide button doesn't reach ${APP}. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`
+      h += sgrid(`<button class="row" data-f data-k="ov-glance" data-act="ovGlance"><div class="rt"><b>Quick glance</b><small>A short Guide press over a game shows the time, battery and your latest message for 3 seconds, without pausing it. Hold Guide (or the Quick Access button) for Quick Access. Off: any press opens Quick Access.</small></div><div class="sw ${o.glance!==false?'on':''}"></div></button>`
+        + `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up ${APP}</b><small>For controllers whose Guide button doesn't reach ${APP}. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`
         + `<div class="row" data-f data-k="ov-dev"><div class="rt"><b>Controllers ${APP} watches</b><small>${gd&&gd.devices.length?esc(gd.devices.join(', ')):'None found with a Guide button'}${gd&&gd.lastPress?` · Guide last seen ${ago(gd.lastPress).toLowerCase()}`:''}</small></div></div>`);
       if(gd && gd.problems && gd.problems.length) h += note('Can\'t read: '+esc(gd.problems.join('; ')));
     }
@@ -5455,9 +5730,29 @@ function pageSystemUpdate(){
     if(st.staged) h += `<button class="row" data-f data-k="su-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to finish updating</b><small>Takes a minute. If something's wrong, the previous version is still in the boot menu.</small></div></button>`;
     h += `<button class="row" data-f data-k="su-install" data-act="sysUpdInstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Update now</b><small>Downloads the newest Hearth (system, drivers, ${APP}) and updates your apps. Keep playing while it downloads.</small></div></button>`;
     h += `<button class="row" data-f data-k="su-check" data-act="sysUpdCheck"><span class="ricon">${I.refresh}</span><div class="rt"><b>Check for updates</b></div></button>`;
+    h += rollbackRows(st);
   }
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
   return h + newOsRows();
+}
+
+// ---------- Settings › Updates › Go back to the previous version (Hearth OS images: bootc keeps the version before
+// this one; hearth-admin rollback makes it the one that starts next, and running it again before restarting undoes
+// that). Shown only when the system reports a previous version (not on Peppermint, which isn't an image).
+function rollbackRows(st){
+  const rb=st && st.rollback, v=x=>x&&x.version?x.version:'';
+  if(!LINUX || !HOSTINFO.system || HOSTINFO.edition==='peppermint' || !rb || !v(rb) || st.staged) return '';
+  if(st.rollbackQueued) return `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(rb))}</b><small>Hearth OS ${esc(v(rb))} starts at the next restart. Your games and files stay.</small></div></button>`
+    + `<button class="row" data-f data-k="su-rollback" data-act="sysRollback" data-undo="1"><span class="ricon">${I.x}</span><div class="rt"><b>Stay on ${esc(v(st.booted))}</b><small>Don't go back after all</small></div></button>`;
+  return `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Go back to ${esc(v(rb))}</b><small>If something broke after the last update: restarts into the version before this one. Your games and files stay.</small></div><div class="rv">›</div></button>`;
+}
+function sysRollback(undo){
+  const st=(SYSUPD.s&&SYSUPD.s.status)||{}, v=x=>x&&x.version?x.version:'';
+  const go=()=>call('system.update.rollback',{},180000).then(r=>{ if(r) SYSUPD.s=r; const q=SYSUPD.s&&SYSUPD.s.status&&SYSUPD.s.status.rollbackQueued; toast(q?`Hearth OS ${v(st.rollback)} starts at the next restart`:`Staying on ${v(st.booted)}`); render(q?'su-rbgo':'su-rollback',true); }).catch(e=>toast(e.message));
+  if(undo) return go();
+  openSheet({title:`Go back to Hearth OS ${v(st.rollback)}?`, sub:`The version before this one (${v(st.booted)}) starts at your next restart. Your games, saves and files stay. Hearth updates again by itself later; if the problem is still there then, send logs from Settings › System › Help & logs.`, items:[
+    {label:'Go back and restart now (open games close)', icon:'restart', run:()=>call('system.update.rollback',{},180000).then(r=>{ if(r) SYSUPD.s=r; power('restart', true); }).catch(e=>toast(e.message))},
+    {label:'Go back at the next restart', icon:'clock', run:go}]});
 }
 
 // ---------- Settings › Updates › Move to a new Hearth OS (only on the Bazzite-based Hearth OS) ----------
@@ -6574,60 +6869,22 @@ function oskSettingAct(a, d){
     {label:'Clear', icon:'trash', run:()=>{ HearthOSK.clearLearned(); if(host) call('osk.clear').catch(()=>{}); toast('Learned words cleared'); render('kb-clear'); }}]});
   if(a==='oskTry') return openPrompt({title:'Try the keyboard', osk:true, placeholder:'Type something'}).then(()=>{});
 }
-function viewSettings(){
-  if(S.settingsTab==='audio') S.settingsTab='display';   // Audio is part of the Display page (one page for the screen and sound)
-  if(!stabShown(S.settingsTab)) S.settingsTab='profile';
-  const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp); let body='';
-  if(t==='wifi') body = pageWifi();
-  if(t==='seats') body = pageSeats();
-  if(t==='bluetooth') body = pageBluetooth() + pageLinkApps();   // + Nearby Share and Hearth Connect
-  if(t==='display') body = pageDisplay() + shead('Sound') + pageAudio();
-  if(t==='power') body = pagePower();
-  if(t==='profile') body = pageProfile();
-  if(t==='profiles') body = pageProfiles();
-  if(t==='remote') body = pageRemote();
-  if(t==='signin') body = pageSignin();
-  if(t==='system') body = pageSystem();
-  if(t==='appearance') body = pageAppearance();
-  if(t==='access') body = pageAccess();   // Accessibility
-  if(t==='defaults') body = pageDefaults();   // Default apps
-  if(t==='link') body = pageLink();   // Hearth Link
-  if(t==='liblook') body = pageLibLook();
-  if(t==='controller') body = pageControls();
-  if(t==='keyboard') body = pageKeyboard();
-  if(t==='sources'){
-    const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
-    const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
-    body = sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
-      +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
-      +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
-      +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
-      +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
-      +(LINUX?swRow('srcEmu','Emulators','Retro games from your ROMs folder, played with RetroArch'+n('emu')):''))
-      +(LINUX?emuRows():'')
-      +(LINUX&&hasFeat('xodus')?xodusRows():'')
-      +shead('Accounts and more')
-      +sgrid(`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
-      +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
-      +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`);
-  }
-  if(t==='shell') body = pageShell();
-  if(t==='updates') body = pageUpdates();
-  if(t==='import') body = pageImport();
-  if(t==='switch') body = pageSwitch();
-  if(t==='osinstall') body = shead('Install Hearth OS')
-    + `<button class="row" data-f data-k="osi-open" data-act="osiChoose"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Hearth OS on this PC</b><small>Next to Windows, or on a whole drive. About 10 to 20 minutes, with internet.</small></div><div class="rv">›</div></button>`
-    + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
-  if(t==='about') body = pageAbout();
-  if(t==='linux') body = linuxPage();
-  if(ANDROID) body = androidPage(t, body);
-  return `<div class="settings">
-    <div class="snav">${SGROUPS.map(g=>{ const subs=stabsIn(g[0]); if(!subs.length) return '';
-      return `<button class="${g[0]===grp?'on':''}" data-f data-k="sg-${g[0]}" data-act="sgroup" data-g="${g[0]}"><span class="sgi">${I[g[1]]}</span><span class="sgt"><b>${g[2]}</b><small>${subs.map(x=>x[2]).join(' · ')}</small></span></button>`; }).join('')}</div>
-    <div class="spane">${tabs.length>1?`<div class="stabs">${tabs.map(([k,,l])=>`<button class="chip ${t===k?'on':''}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${l}</button>`).join('')}</div>`:''}
-    <div class="rows srows">${body}</div></div></div>`;
+function pageSources(){
+  const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
+  const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
+  return sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
+    +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
+    +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
+    +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
+    +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
+    +(LINUX?swRow('srcEmu','Emulators','Retro games from your ROMs folder, played with RetroArch'+n('emu')):''))
+    +(LINUX?emuRows():'')
+    +(LINUX&&hasFeat('xodus')?xodusRows():'')
+    +shead('Accounts and more')
+    +sgrid(`<button class="row" data-f data-k="s-stores" data-act="stores"><span class="ricon">${I.user}</span><div class="rt"><b>Game stores &amp; accounts</b><small>Sign in to Epic, GOG and Xbox</small></div><div class="rv">›</div></button>`
+    +`<button class="row" data-f data-k="s-addexe" data-act="addManual"><div class="rt"><b>Add a game manually</b><small>${LINUX?'A program, AppImage, .desktop file, or Windows .exe (runs with Proton)':'Any .exe or shortcut'}${n('manual')}</small></div><div class="rv">＋</div></button>`
+    +`<button class="row" data-f data-k="s-rescan" data-act="rescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>${LIB.loading?'Scanning…':'Rescan library'}</b><small>Picks up games you installed or removed</small></div></button>`);
 }
-
 const VIEWS = {pad:viewPad, live:viewLive, profiles:viewProfiles, lock:viewLock, setup:viewSetup, osinstall:viewOsInstall, home:viewHome, library:viewLibrary, game:viewGame, downloads:viewDownloads, friends:viewFriends, shots:viewShots, coop:viewCoop, settings:viewSettings, stores:viewStores, shop:viewShop, gameset:viewGameSettings, hhd:viewHhd};
 
 // quiet=true: in-place refresh (live data changed) — no animation, keep scroll and focus.
@@ -6665,10 +6922,11 @@ function renderNow(focusKey, quiet){
 function navigate(view, params={}, push=true){
   if(S.locked && view!=='lock') return;   // locked: only the lock screen
   if(push) S.history.push({view:S.view, game:S.game, k:focused?.dataset.k, top:$('#view').scrollTop});
+  if(view==='settings'){ params = Object.assign({sfront:false}, params); if(params.sfront && !params.sgroup) params.sgroup = stabGroup(S.settingsTab); }
   Object.assign(S, {view}, params);
   $('#view').scrollTop=0;
-  render(params.focusKey);
-  if(view==='settings') onSettingsTab(S.settingsTab);
+  render(params.focusKey || (view==='settings' && S.sfront ? setFrontFocus() : undefined));
+  if(view==='settings'){ if(S.sfront) setFrontLoad(S.sgroup); else onSettingsTab(S.settingsTab); }
   if(view==='downloads'){ if(host) startDownloadPoll(); loadSysInfo(); }
   if(view==='stores') loadAccounts();
   if(view==='friends'){ loadFriends(); mfLoad(); }
@@ -6694,7 +6952,7 @@ function bazaarOpen(){
   closeAll(); toast('Opening Bazaar…');
   return call('bazaar.open',{},15000).then(r=>{ if(r && r.mouse) toast('Bazaar: the controller mouse is on (right stick moves, A clicks, View + Menu turns it off)'); }).catch(e=>toast(e.message));
 }
-function renderMenu(){
+function renderSideMenu(){
   const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
@@ -6704,6 +6962,470 @@ function renderMenu(){
     ${hasProfiles()&&PROF.s&&PROF.s.list.length>1?`<button class="mitem" data-f data-k="m-switch" data-act="nav" data-view="profiles">${I.user}Switch profile</button>`:''}
     <button class="mfoot" data-f data-k="m-prof" data-act="goset" data-tab="profile">${avatarHtml(PROFILE)}<div><b>${esc(PROFILE.name)}</b><div class="muted">${esc(PROFILE.status||'Online')}</div></div></button>`;
 }
+function renderMenu(){
+  const m=$('#menu'); m.classList.toggle('is-dock', dockOn());
+  m.setAttribute('aria-label', dockOn() ? (dockGameMode()?'Game dock':'Main menu') : 'Main menu');
+  if(dockOn()) return renderDock();
+  renderSideMenu();
+}
+// ==== Bottom Dock: the main menu (Settings › You › Appearance › Menu style: Dock, the default, or the classic side
+// menu above). ☰ / Start opens it, B closes it. Left and right go along it; the selected item grows and a card rises
+// above it with live details (up goes into the card's buttons). Over a game it shows the game's actions instead.
+// While you browse, a small copy sits in the footer (miniDock) for the mouse: it takes no room from the screen.
+const DOCK = {cur:null, timer:null, perfAt:0, loaded:false};
+const DKI = {
+  friends:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/></svg>',
+  link:'<svg viewBox="0 0 24 24"><rect x="2" y="5" width="8" height="12" rx="1.5"/><rect x="14" y="7" width="8" height="12" rx="1.5"/><path d="M10 11h4"/></svg>',
+  shot:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M9 6l1.5-2h3L15 6"/></svg>',
+  rec:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>',
+  perf:'<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-9"/><path d="M15 6h5v5"/></svg>',
+  back:'<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+};
+function dockOn(){ return (LOOK.menuStyle||'dock')!=='side'; }
+// Over a game: Hearth's own window with a game running, or the overlay when it covers the whole screen.
+function dockGameMode(){ return !!S.running && (!OVERLAY || document.documentElement.classList.contains('ovfull')); }
+const friendsOn = () => (HOSTINFO.features||[]).includes('friends');
+const dkBadge = n => n ? `<span class="dk-b">${n>99?'99+':n}</span>` : '';
+function dkRing(pct){
+  if(pct==null) return '';
+  const c=2*Math.PI*15;
+  return `<svg class="dk-ring" viewBox="0 0 34 34" aria-hidden="true"><circle class="bgc" cx="17" cy="17" r="15"/><circle class="fgc" cx="17" cy="17" r="15" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c*(1-Math.max(0,Math.min(100,pct))/100)).toFixed(1)}"/></svg>`;
+}
+function dkDlNow(){ let L=[]; try{ L=ANDROID?[]:dlItems(); }catch(e){} return L.find(i=>i.state==='downloading') || L[0] || null; }
+function dkUnread(){ try{ return MF.st && MF.st.signedIn ? mfUnread() : 0; }catch(e){ return 0; } }
+/** The dock's items: {k, ic, label, act (data attributes), sm, av, cur, extra} or {sep:true}. */
+function dockItems(game){
+  const L=[], add=(k,ic,label,act,o={})=>L.push(Object.assign({k, ic:I[ic]||DKI[ic]||ic, label, act}, o)), sep=()=>L.push({sep:true});
+  if(game && dockGameMode()){
+    const g=G(S.running);
+    add('game','pad', g?g.title:'Your game', 'data-act="dockResume"', {cur:true});
+    if(OVERLAY||LINUX) add('shot','shot','Screenshot','data-act="ovShot"');
+    if(LINUX && REC.ok) add('rec','rec', REC.st&&REC.st.kind==='record'?'Stop recording':'Record','data-act="recToggle"');
+    if(QTABS.some(q=>q[0]==='friends')) add('friends','friends','Friends','data-act="qam" data-tab="friends"', {extra:dkBadge(dkUnread())});
+    if(QTABS.some(q=>q[0]==='perf')) add('perf','perf','Performance','data-act="qam" data-tab="perf"');
+    sep();
+    add('home','home', OVERLAY?'Back to '+APP:'Home', OVERLAY?'data-act="ovHome"':'data-act="nav" data-view="home"', {sm:true});
+    if(!OVERLAY) add('settings','gear','Settings','data-act="nav" data-view="settings"', {sm:true});
+    add('power','power','Power','data-act="power"', {sm:true});
+    return L;
+  }
+  const cur = v => S.view===v;
+  add('home','home','Home','data-act="nav" data-view="home"', {cur:cur('home')});
+  add('library','lib','Library','data-act="nav" data-view="library"', {cur:cur('library')||cur('game')});
+  if(shopOn()) add('shop','shop','Store','data-act="nav" data-view="shop"', {cur:cur('shop')});
+  if(friendsOn()) add('friends','friends','Friends','data-act="nav" data-view="friends"', {cur:cur('friends'), extra:dkBadge(dkUnread())});
+  if(!ANDROID){ const d=dkDlNow(); add('downloads','dl','Downloads','data-act="nav" data-view="downloads"', {cur:cur('downloads'), extra:d?dkRing(d.pct||0):''}); }
+  if(lkOn()) add('link','link','Hearth Link','data-act="goset" data-tab="link"', {cur:cur('settings')&&S.settingsTab==='link'&&!S.sfront});
+  if(coopOn()) add('coop','pad','Couch Co-op','data-act="nav" data-view="coop"', {cur:cur('coop')});
+  if(bazaarOn()) add('bazaar','apps','Apps','data-act="bazaar"');
+  sep();
+  add('search','search','Search','data-act="search" data-keep="1"', {sm:true});
+  add('settings','gear','Settings','data-act="nav" data-view="settings"', {sm:true, cur:cur('settings')&&!(S.settingsTab==='link'&&!S.sfront&&lkOn())});
+  add('power','power','Power','data-act="power"', {sm:true});
+  sep();
+  add('prof', avatarHtml(PROFILE), PROFILE.name||'Profile', hasProfiles()&&PROF.s&&PROF.s.list.length>1 ? 'data-act="nav" data-view="profiles"' : 'data-act="goset" data-tab="profile"', {av:true});
+  return L;
+}
+function renderDock(){
+  const game=dockGameMode(), items=dockItems(true);
+  $('#menu').innerHTML = `<div class="dk-chips">${game?dockChips():''}</div><div class="dk-card" id="dkCard" aria-live="polite"></div>
+    <nav class="dk-bar" aria-label="${game?'Game dock':'Main menu'}">${items.map(it=>it.sep?'<i class="dk-sep"></i>'
+      :`<button class="dk${it.sm?' sm':''}${it.av?' av':''}${it.cur?' cur':''}" data-f data-k="m-${it.k}" data-dock="${it.k}" ${it.act} aria-label="${esc(it.label)}" title="${esc(it.label)}">${it.ic}${it.extra||''}</button>`).join('')}</nav>`;
+  DOCK.cur=null;
+  dockLoad();
+  if(!DOCK.timer) DOCK.timer=setInterval(dockTick, 1500);
+}
+// What the cards show, loaded once when the dock first opens (each quietly: a missing service just leaves it out).
+function dockLoad(){
+  if(dockGameMode()){ recLoad(); DOCK.perfAt=0; dockPerf(); }
+  if(DOCK.loaded) return; DOCK.loaded=true;
+  if(friendsOn() && mfOn() && !MF.st) try{ mfLoad(); }catch(e){}
+  if(friendsOn() && !FR.s) try{ loadFriends(); }catch(e){}
+  if(lkOn() && !LK.s) loadLink();
+}
+function dockPerf(){
+  if(Date.now()-DOCK.perfAt<1800) return; DOCK.perfAt=Date.now();
+  call('perf.stats',{},8000).then(r=>{ PERF.s=r; const c=$('#menu .dk-chips'); if(c) c.innerHTML=dockChips(); if(DOCK.cur==='perf'||DOCK.cur==='game') dockCardDraw(); }).catch(()=>{});
+}
+function dockChips(){
+  const p=PERF.s; if(!p) return '';
+  const c=[];
+  if(p.fps) c.push(`${p.fps} FPS`);
+  if(p.gpu!=null) c.push(`GPU ${p.gpu}%${p.gpuTemp?` · ${p.gpuTemp}°C`:''}`);
+  if(p.cpu!=null) c.push(`CPU ${p.cpu}%`);
+  const b=p.battery||S.sys.battery; if(b && b.present!==false && b.pct!=null) c.push(`${b.pct}%${b.charging?' ⚡':''}`);
+  return c.map(x=>`<span>${esc(x)}</span>`).join('');
+}
+function dockTick(){
+  if(!S.layers.includes('menu') || !dockOn()){ clearInterval(DOCK.timer); DOCK.timer=null; return; }
+  if(dockGameMode()) dockPerf();
+  // The download ring and the unread count, in place.
+  const d=$('#menu [data-dock="downloads"]'); if(d){ const n=dkDlNow(), r=d.querySelector('.dk-ring'); if(r) r.remove(); if(n) d.insertAdjacentHTML('beforeend', dkRing(n.pct||0)); }
+  if(['downloads','friends','link','game','perf','rec'].includes(DOCK.cur)) dockCardDraw();
+}
+function dockFocus(k){ if(DOCK.cur===k) return; DOCK.cur=k; dockCardDraw(); }
+/** The card drawn again; the selection stays on the same button when it was in the card. */
+function dockCardDraw(){
+  const box=$('#dkCard'); if(!box) return;
+  const inCard = focused && box.contains(focused) ? focused.dataset.k : null;
+  let h=''; try{ h=dockCard(DOCK.cur); }catch(e){ h=''; }
+  if(box.dataset.h===h) return;
+  box.dataset.h=h; box.innerHTML=h;
+  if(inCard){ const el=box.querySelector(`[data-k="${CSS.escape(inCard)}"]`); setFocus(el || $(`#menu [data-dock="${DOCK.cur}"]`), true); }
+}
+function dkLastGame(){ return visible().filter(g=>g.last && !g.cloud).sort((a,b)=>b.last-a.last)[0] || visible().filter(g=>g.last).sort((a,b)=>b.last-a.last)[0] || null; }
+function dkPeople(){
+  if(MF.st && MF.st.signedIn && MF.friends) return MF.friends.map(f=>({name:f.name||f.userId, on:f.presence==='online'||!!f.game, game:f.game||'', joinable:!!f.joinable}));
+  const s=FR.s; if(s && s.signedIn) return frPlatforms(s).flatMap(p=>(p.friends||[]).map(f=>({name:f.name, on:f.state!=='offline', game:f.state==='ingame'?(f.game||''):''})));
+  return null;
+}
+const dkH = (title, right) => `<div class="dkh"><b>${title}</b>${right?`<span class="dks">${right}</span>`:''}</div>`;
+const dkBtn = (k, act, label, cls='', icon='') => `<button class="dkbtn ${cls}" data-f data-k="mc-${k}" ${act}>${icon?I[icon]||'':''}${label}</button>`;
+function dockCard(k){
+  if(!k) return '';
+  const game = dockGameMode();
+  if(game && k==='game'){
+    const g=G(S.running), mins=S.runningSince?Math.max(0,Math.round((Date.now()-S.runningSince)/60000)):null;
+    const resume = OVERLAY ? 'data-act="dockResume"' : 'data-act="dockResume"';
+    return `<div class="np">${g?`<div class="nart" style="${artBg(g)}">${artImg(g,['cover','hero','wide'])}</div>`:''}<div><b style="font-size:17px">${esc(g?g.title:'Your game')}</b><div class="dks">${g?SOURCES[g.src]||'':''}${mins!=null?` · playing ${mins<60?mins+' min':hrs(mins/60)}`:' · running'}</div></div></div>
+      <div class="dkbtns g2">${dkBtn('resume',resume,'Resume game','pri','play')}${dkBtn('qam','data-act="qam" data-tab="now"','Quick Access','','sliders')}
+      ${QTABS.some(q=>q[0]==='friends')?dkBtn('invite','data-act="qam" data-tab="friends"','Invite a friend','','user'):''}${dkBtn('exit','data-act="exitgame"','Exit game','danger','stop')}</div>`;
+  }
+  if(game && k==='shot') return dkH('Screenshot') + `<div class="dks">Takes a picture of the game. See it in Library › Screenshots.</div>`;
+  if(game && k==='rec') return dkH(REC.st&&REC.st.kind==='record'?'Recording':'Record') + `<div class="dks">${REC.st&&REC.st.kind==='record'?'Select to stop and save the recording (Videos › Recordings).':'Records the game with Hearth Recorder. Instant replay is in Quick Access › Now playing.'}</div>`;
+  if(game && k==='perf'){ const p=PERF.s; return dkH('Performance', 'Quick Access › Performance') + (p?`<div class="dkl"><span>CPU</span><span>${p.cpu}%</span></div>${p.gpu!=null?`<div class="dkl"><span>GPU</span><span>${p.gpu}%</span></div>`:''}${p.ramTotal?`<div class="dkl"><span>Memory</span><span>${p.ramUsed} of ${p.ramTotal} GB</span></div>`:''}<div class="dks">Frame-rate limit, power and the on-screen overlay are there too.</div>`:'<div class="dks">Reading…</div>'); }
+  if(k==='home'){
+    if(game) return dkH(OVERLAY?'Back to '+APP:'Home') + `<div class="dks">Your game keeps running. Come back to it from the dock or Quick Access.</div>`;
+    const g=dkLastGame();
+    if(!g) return dkH('Home') + `<div class="dks">Your games, the last one you played first.</div>`;
+    return `<span class="dkk">Continue playing</span>${dkH(esc(g.title), esc(SOURCES[g.src]||''))}<div class="dks">${[g.hrs?hrs(g.hrs)+' played':'', g.last?'last played '+ago(g.last).toLowerCase():''].filter(Boolean).join(' · ')}</div>
+      <div class="dkbtns">${playable(g)?dkBtn('play',`data-act="dockPlay" data-id="${esc(g.id)}"`,'Play','pri','play'):''}${dkBtn('game',`data-act="game" data-id="${esc(g.id)}"`,'Game page')}</div>`;
+  }
+  if(k==='library'){
+    const V=visible(), inst=V.filter(g=>g.inst).length, fav=V.filter(g=>g.fav).length;
+    const by={}; V.forEach(g=>{ by[g.src]=(by[g.src]||0)+1; });
+    const src=Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([s,n])=>`${SOURCES[s]||s} ${n}`).join(' · ');
+    return dkH('Library', `${V.length} game${V.length===1?'':'s'}`) + `<div class="dkl"><span>Installed</span><span>${inst}</span></div><div class="dkl"><span>Favorites</span><span>${fav}</span></div>${src?`<div class="dks">${esc(src)}</div>`:''}`;
+  }
+  if(k==='shop') return dkH('Store', 'Steam · GOG · Epic · Xbox') + `<div class="dks">Deals, new games and search for every store. Buying and installing use the sign-ins from your library.</div>`;
+  if(k==='friends'){
+    const P=dkPeople(), n=dkUnread();
+    if(!P) return dkH('Friends') + `<div class="dks">${mfOn()?'Sign in to Hearth Friends to chat and invite friends to play.':'See who\'s online and what they\'re playing.'}</div>`;
+    const on=P.filter(p=>p.on).sort((a,b)=>(b.game?1:0)-(a.game?1:0));
+    return dkH('Friends', `${on.length} online${n?` · ${n} unread`:''}`) + (on.length ? `<div class="ppl">${on.slice(0,4).map(p=>`<div><i class="${p.game?'game':'on'}"></i>${esc(p.name)}<small>${p.game?'Playing '+esc(p.game)+(p.joinable?' · joinable':''):'Online'}</small></div>`).join('')}</div>${on.length>4?`<div class="dks">and ${on.length-4} more</div>`:''}` : `<div class="dks">Nobody's online right now.</div>`);
+  }
+  if(k==='downloads'){
+    const L=dlItems();
+    if(!L.length) return dkH('Downloads') + `<div class="dks">Nothing is downloading.</div><div class="dkbtns">${dkBtn('dl','data-act="nav" data-view="downloads"','Open Downloads')}</div>`;
+    const speed=L.reduce((t,i)=>t+(i.speed||0),0), eta=etaText(L.find(i=>i.state==='downloading')||L[0]);
+    const canPause=L.some(i=>ours(i) && i.state!=='paused');
+    return dkH('Downloads', [speed?fmtSpeed(speed):'', eta].filter(Boolean).join(' · ')) + L.slice(0,3).map(it=>`<div class="dkq"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(it.g)}"></div>${artImg(it.g,['cover','wide'])}</div><div class="qt"><div><span>${esc(it.g.title)}</span><span>${esc(it.state==='queued'?'Up next':it.state==='paused'?'Paused':(it.pct!=null?it.pct+'%':it.label||''))}${it.total?` · ${it.done&&it.state!=='queued'?gbs(it.done)+' of ':''}${gbs(it.total)}`:''}</span></div><div class="bar"><i style="width:${it.state==='queued'?0:Math.max(0,Math.min(100,it.pct||0))}%"></i></div></div></div>`).join('')
+      + (L.length>3?`<div class="dks">and ${L.length-3} more</div>`:'')
+      + `<div class="dkbtns">${canPause?dkBtn('pause','data-act="dockPauseAll"','Pause all','','pause'):''}${dkBtn('dl','data-act="nav" data-view="downloads"','Open Downloads')}</div>`;
+  }
+  if(k==='link'){
+    const s=LK.s;
+    if(!s) return dkH('Hearth Link') + `<div class="dks">Loading…</div>`;
+    if(!s.running) return dkH('Hearth Link') + `<div class="dks">${s.installed?'Hearth Link isn\'t running right now.':'Hearth Link comes with the next Hearth OS update.'}</div>`;
+    const P=s.peers||[], jobs=(s.transfers||[]).filter(t=>t.state==='copying');
+    return dkH('Hearth Link', P.length?`${P.filter(p=>p.online).length} of ${P.length} online`:'') + (P.length?`<div class="ppl">${P.slice(0,4).map(p=>`<div><i class="${p.online?'on':''}"></i>${esc(p.name)}<small>${p.online?'Nearby':'Not on right now'}</small></div>`).join('')}</div>`:`<div class="dks">Pair your other Hearth devices to keep favorites and play time the same and copy games between them.</div>`)
+      + jobs.slice(0,2).map(t=>`<div class="dkq"><div class="qt"><div><span>${esc(t.title)}</span><span>${t.total?Math.floor(100*t.done/t.total)+'%':''}</span></div><div class="bar"><i style="width:${t.total?Math.floor(100*t.done/t.total):0}%"></i></div></div></div>`).join('');
+  }
+  if(k==='coop') return dkH('Couch Co-op', 'Beta Experimental') + `<div class="dks">Play split-screen with friends on this screen, each with their own controller.</div>`;
+  if(k==='bazaar') return dkH('Apps') + `<div class="dks">Bazaar: apps from Flathub, opened full screen with the controller mouse.</div>`;
+  if(k==='search') return dkH('Search') + `<div class="dks">Games, settings, the store and friends. Type with a keyboard, or with the on-screen keyboard.</div>`;
+  if(k==='settings'){
+    const w=S.sys.wifi, b=S.sys.battery;
+    return dkH('Settings') + `<div class="dkl"><span>Wi-Fi</span><span>${esc(scWifi())}</span></div>${b&&b.present!==false&&b.pct!=null?`<div class="dkl"><span>Battery</span><span>${b.pct}%${b.charging?' · charging':''}</span></div>`:''}<div class="dkl"><span>${APP}</span><span>${esc(scVersion())}</span></div>`;
+  }
+  if(k==='power'){ const b=S.sys.battery; return dkH('Power', b&&b.present!==false&&b.pct!=null?`${b.pct}%${b.charging?' · charging':''}`:'') + `<div class="dks">${ANDROID?'Leave '+APP+'.':'Sleep, restart, shut down or '+(LINUX?'switch to the desktop.':'go to Desktop Mode.')}</div>`; }
+  if(k==='prof'){
+    const multi=hasProfiles()&&PROF.s&&PROF.s.list.length>1;
+    return dkH(esc(PROFILE.name||'Profile'), esc(PROFILE.status||'Online')) + `<div class="dkbtns">${multi?dkBtn('switch','data-act="nav" data-view="profiles"','Switch profile','','user'):''}${dkBtn('profset','data-act="goset" data-tab="profile"','Profile settings','','gear')}</div>`;
+  }
+  return '';
+}
+function dockPauseAll(){
+  const L=dlItems().filter(i=>ours(i) && i.state!=='paused');
+  if(!L.length) return toast('Nothing to pause');
+  L.forEach(i=>dlCall('game.pauseInstall', i.g.id, null));
+  toast(L.length===1?'Paused':`Paused ${L.length} downloads`);
+  setTimeout(dockCardDraw, 500);
+}
+/** The small dock in the footer while you browse (mouse and touch; ☰ opens the real one). */
+function miniDock(){
+  if(!dockOn() || OVERLAY || S.locked || ['setup','pad','lock','live','osinstall'].includes(S.view)) return '';
+  const items=dockItems(false).filter(it=>it.k!=='prof');
+  return `<nav class="mdock" aria-label="Main menu (small)">${items.map(it=>it.sep?'<i class="sep"></i>':`<button class="${it.cur?'cur':''}" ${it.act} aria-label="${esc(it.label)}" title="${esc(it.label)}">${it.ic}${it.k==='friends'?it.extra||'':''}</button>`).join('')}</nav>`;
+}
+// ==== end of Bottom Dock
+// ==== Settings C: the front page (the groups as tabs, a live summary card for the picked group, its pages as rows)
+// and a group's page (back, the group's pages as tabs: LB / RB, the page's own card on the left and its rows).
+// S.sfront: the front page (navigate('settings',{sfront:true}): the dock and the menus); a page otherwise (goset).
+// Pages that live elsewhere (Friends' privacy settings, Couch Co-op, …) are links on the front page (SLINKS).
+const SORDER = ['profile','profiles','appearance','liblook','access','signin','wifi','bluetooth','link','remote','display','audio','controller','keyboard','power',
+  'sources','import','seats','updates','system','help','shell','defaults','linux','osinstall','switch','about'];
+const SLINKS = [
+  {k:'friends', g:'connect', ic:'user', label:'Friends & privacy', kw:'matrix messages chat blocked status presence', show:()=>friendsOn() && mfOn(),
+    sub:()=>MF.st ? (MF.st.signedIn ? 'Signed in · messages, status, blocked people' : 'Not signed in to Hearth Friends') : 'Messages, status, blocked people',
+    go:()=>{ MF.top='mx'; MF.room=null; MF.tab='settings'; navigate('friends'); }},
+  {k:'coop', g:'games', ic:'pad', label:'Couch Co-op (Beta Experimental)', kw:'split screen local multiplayer', show:()=>coopOn(), sub:()=>'Split-screen with friends on this screen', go:()=>navigate('coop')},
+  {k:'stores', g:'games', ic:'lock', label:'Game stores & accounts', kw:'sign in epic gog xbox steam account login', show:()=>!ANDROID, sub:()=>'Sign in to Epic, GOG and Xbox', go:()=>navigate('stores')},
+  {k:'renderer', g:'system', ic:'display', label:'Renderer', kw:'electron webkit qt chromium drawing', show:()=>hasFeat('renderer'), sub:()=>'In Display & sound › Display', go:()=>{ S.settingsTab='display'; navigate('settings',{focusKey:'s-rnd'}); }},
+];
+const slinksIn = g => SLINKS.filter(l=>l.g===g && l.show());
+const sgroupsShown = () => SGROUPS.filter(g=>stabsIn(g[0]).length || slinksIn(g[0]).length);
+const stabLabel = t => (STABS.find(x=>x[0]===t)||[])[2] || t;
+const sgroupLabel = g => (SGROUPS.find(x=>x[0]===g)||[])[2] || '';
+function settingsBody(t){
+  let body='';
+  if(t==='wifi') body = pageWifi();
+  if(t==='seats') body = pageSeats();
+  if(t==='bluetooth') body = pageBluetooth() + pageLinkApps();   // + Nearby Share and Hearth Connect
+  if(t==='display') body = pageDisplay() + (stabShown('audio') ? '' : shead('Sound') + pageAudio());
+  if(t==='audio') body = pageAudio();
+  if(t==='power') body = pagePower();
+  if(t==='profile') body = pageProfile();
+  if(t==='profiles') body = pageProfiles();
+  if(t==='remote') body = pageRemote();
+  if(t==='signin') body = pageSignin();
+  if(t==='system') body = pageSystem();
+  if(t==='help') body = pageHelp();
+  if(t==='appearance') body = pageAppearance();
+  if(t==='access') body = pageAccess();   // Accessibility
+  if(t==='defaults') body = pageDefaults();   // Default apps
+  if(t==='link') body = pageLink();   // Hearth Link
+  if(t==='liblook') body = pageLibLook();
+  if(t==='controller') body = pageControls();
+  if(t==='keyboard') body = pageKeyboard();
+  if(t==='sources') body = pageSources();
+  if(t==='shell') body = pageShell();
+  if(t==='updates') body = pageUpdates();
+  if(t==='import') body = pageImport();
+  if(t==='switch') body = pageSwitch();
+  if(t==='osinstall') body = shead('Install Hearth OS')
+    + `<button class="row" data-f data-k="osi-open" data-act="osiChoose"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Hearth OS on this PC</b><small>Next to Windows, or on a whole drive. About 10 to 20 minutes, with internet.</small></div><div class="rv">›</div></button>`
+    + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
+  if(t==='about') body = pageAbout();
+  if(t==='linux') body = linuxPage();
+  if(ANDROID) body = androidPage(t, body);
+  return body;
+}
+function viewSettings(){
+  if(S.settingsTab==='audio' && !stabShown('audio')) S.settingsTab='display';   // Android: sound is on the Display page
+  if(!stabShown(S.settingsTab)) S.settingsTab='profile';
+  if(S.sfront) return viewSettingsFront();
+  const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp);
+  SLAST[grp]=t;
+  return `<div class="setc">
+    <header class="sc-head"><button class="ibtn sc-back" data-f data-k="sb-back" data-act="setBack" aria-label="Back to Settings">${DKI.back}</button><h1>${sgroupLabel(grp)}</h1>
+      ${tabs.length>1?`<div class="sc-tabs stabs" role="tablist">${tabs.map(([k,,l])=>`<button class="chip ${t===k?'on':''}" role="tab" aria-selected="${t===k}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${l}</button>`).join('')}</div><span class="sc-lbrb">LB ‹ › RB</span>`:''}</header>
+    <div class="sc-body"><aside class="sc-side">${scSafe(()=>pageCard(t))}</aside><div class="rows srows sc-main">${settingsBody(t)}</div></div></div>`;
+}
+function viewSettingsFront(){
+  const groups=sgroupsShown();
+  if(!groups.some(g=>g[0]===S.sgroup)) S.sgroup = groups.some(g=>g[0]===stabGroup(S.settingsTab)) ? stabGroup(S.settingsTab) : groups[0][0];
+  const g=S.sgroup;
+  return `<div class="setc front">
+    <header class="sc-head"><h1>Settings</h1><div class="sc-tabs" role="tablist">${groups.map(x=>`<button class="chip ${x[0]===g?'on':''}" role="tab" aria-selected="${x[0]===g}" data-f data-k="sg-${x[0]}" data-act="sgroup" data-g="${x[0]}">${x[2]}</button>`).join('')}</div>
+      <span class="sc-lbrb">LB ‹ › RB</span><button class="ibtn sc-search" data-f data-k="ss-search" data-act="setSearch" aria-label="Search settings">${I.search}</button></header>
+    <div class="sc-body"><aside class="sc-side">${scSafe(()=>groupCard(g))}</aside><div class="sc-main">
+      ${stabsIn(g).map(([k,ic,l])=>`<button class="sc-row" data-f data-k="sp-${k}" data-act="stab" data-tab="${k}"><span class="ricon">${I[ic]||I.gear}</span><div class="rt"><b>${l}</b><small>${esc(scSafe(()=>pageSub(k)))}</small></div><span class="rv">›</span></button>`).join('')}
+      ${slinksIn(g).map(l=>`<button class="sc-row" data-f data-k="sl-${l.k}" data-act="setLink" data-v="${l.k}"><span class="ricon">${I[l.ic]||I.gear}</span><div class="rt"><b>${esc(l.label)}</b><small>${esc(scSafe(l.sub))}</small></div><span class="rv">↗</span></button>`).join('')}
+    </div></div></div>`;
+}
+const scSafe = f => { try{ return f()||''; }catch(e){ return ''; } };
+function setFrontFocus(){ const p=stabsIn(S.sgroup||stabGroup(S.settingsTab)); return p.length ? 'sp-'+p[0][0] : null; }
+/** Opens a page from the front page (or its tab): the selection goes to the page's first row. */
+function setEnter(t, fromTab){
+  S.settingsTab=t; S.sfront=false; SLAST[stabGroup(t)]=t;
+  render('st-'+t);
+  if(!fromTab){ const f=$('#view .sc-main [data-f]'); if(f) setFocus(f,true); }
+  onSettingsTab(t);
+}
+function setBackToFront(){
+  const t=S.settingsTab; S.sfront=true; S.sgroup=stabGroup(t);
+  render('sp-'+t); setFrontLoad(S.sgroup);
+}
+function setShiftTab(d){
+  if(S.sfront){
+    const G=sgroupsShown().map(g=>g[0]), i=Math.max(0,G.indexOf(S.sgroup));
+    S.sgroup=G[(i+d+G.length)%G.length];
+    const onTab = focused && focused.dataset.k && focused.dataset.k.startsWith('sg-');
+    render(onTab ? 'sg-'+S.sgroup : setFrontFocus()); setFrontLoad(S.sgroup);
+    return;
+  }
+  const T=stabsIn(stabGroup(S.settingsTab)).map(x=>x[0]); if(T.length<2) return;
+  const i=Math.max(0,T.indexOf(S.settingsTab)); setEnter(T[(i+d+T.length)%T.length], true);
+}
+// The summary cards' live data, loaded quietly for the group on show.
+const SCLOAD = {};
+function setFrontLoad(g){
+  if(!host) return;
+  const once=(k,f)=>{ if(SCLOAD[k] && Date.now()-SCLOAD[k]<15000) return; SCLOAD[k]=Date.now(); try{ f(); }catch(e){} };
+  if(g==='display'){ once('disp',()=>call('display.get').then(r=>{ Object.assign(S.sys.display,r); S.set.bright=r.brightness??S.set.bright; refreshUI(); }).catch(()=>{}));
+    once('audio',()=>call('audio.get').then(r=>{ Object.assign(S.sys.audio,r); S.set.vol=r.volume; refreshUI(); }).catch(()=>{})); }
+  if(g==='controls') once('power',()=>call('power.get').then(r=>{ S.sys.battery={present:r.present,pct:r.pct,charging:r.charging}; S.sys.powerMode=r.mode; S.sys.power=r; refreshUI(); }).catch(()=>{}));
+  if(g==='connect'){ if(!ANDROID && S.sys.paired==null) once('bt',()=>loadPaired()); if(lkOn()) once('link',()=>loadLink()); if(friendsOn() && mfOn() && !MF.st) once('mf',()=>mfLoad()); }
+  if(g==='system'){ once('upd',()=>{ loadUpdateStatus(); loadSystemUpdate(); }); once('sys',()=>loadSysInfo()); }
+  if(g==='games') once('sys',()=>loadSysInfo());
+}
+// ---- live text for the cards and the front page's rows
+function scWifi(){ const w=S.sys.wifi; if(S.sys.airplane) return 'Airplane mode'; if(!w || !w.on) return 'Off'; return w.ssid ? w.ssid + (w.bars?` · ${['','weak','fair','good','strong'][Math.min(4,w.bars)]||''}`:'') : 'Not connected'; }
+function scBt(){ const b=S.sys.bt; if(!b || !b.on) return 'Off'; const c=(S.sys.paired||[]).filter(d=>d.connected); return c.length ? c.slice(0,2).map(d=>d.name).join(', ')+(c.length>2?` +${c.length-2}`:'') : 'On · nothing connected'; }
+function scLink(){ const s=LK.s; if(!s) return host ? 'Loading…' : 'Pair your other Hearth devices'; if(!s.running) return 'Not running'; const P=s.peers||[]; return P.length ? `${P.filter(p=>p.online).length} of ${P.length} device${P.length===1?'':'s'} online` : 'No devices paired'; }
+function scDisp(){ const d=S.sys.display||{}; return d.width ? `${d.width} × ${d.height}${d.refreshRate?` · ${d.refreshRate} Hz`:''}` : (d.resolution||'—'); }
+function scVol(){ const a=S.sys.audio||{}; return a.muted ? 'Muted' : `${a.volume??S.set.vol}%`; }
+function scOut(){ const d=((S.sys.audio||{}).devices||[]).find(x=>x.isDefault); return d ? d.name : ''; }
+function scBatt(){ const b=S.sys.battery; return !b ? '' : b.present===false ? 'Plugged in (no battery)' : b.pct==null ? '' : `${b.pct}%${b.charging?' · charging':''}`; }
+function scPmode(){ const m=PMODES.find(x=>x[0]===S.sys.powerMode); return m ? m[1] : ''; }
+function scVersion(){
+  if(LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted && SYSUPD.s.status.booted.version) return SYSUPD.s.status.booted.version;
+  return UPD.status ? UPD.status.current : host ? (HOSTINFO.version||'…') : 'Browser preview';
+}
+function scUpdate(){
+  if(LINUX && HOSTINFO.system){ const u=SYSUPD.s; if(!u) return host?'Checking…':''; const st=u.status||{}; return u.state==='updating'?'Updating…':u.state==='checking'?'Checking…':st.staged?'Restart to finish updating':st.available?'An update is available':u.error?'Couldn\'t check':'Up to date'; }
+  const s=UPD.status; if(!s) return host?'Checking…':'Works in the app';
+  return {idle:'Not checked yet', checking:'Checking…', upToDate:'Up to date', available:'An update is available', downloading:'Downloading an update…', ready:'Ready to install', error:'Couldn\'t check'}[s.state] || s.state;
+}
+function scSources(){ const L=[['srcSteam','Steam'],['srcEpic','Epic'],['srcGog','GOG'],['srcXbox','Xbox']].concat(LINUX?[['srcEmu','Emulators']]:[]).filter(([k])=>S.set[k]).map(x=>x[1]); return L.join(', ') || 'None'; }
+function pageSub(k){
+  const V=visible();
+  switch(k){
+    case 'profile': return `${PROFILE.name||''} · ${PROFILE.status||'Online'}`;
+    case 'profiles': return PROF.s && PROF.s.list ? `${PROF.s.list.length} profile${PROF.s.list.length===1?'':'s'} · switch, add, parental limits` : 'Switch, add, parental limits';
+    case 'appearance': return `${(LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name||''} layout · themes · menu style`;
+    case 'liblook': return 'How the Library shows your games';
+    case 'access': return 'Zoom, colour filters, screen reader, text';
+    case 'signin': return 'Sign in automatically, start mode, device name, password';
+    case 'wifi': return scWifi();
+    case 'bluetooth': return ANDROID ? 'In Android\'s settings' : scBt();
+    case 'link': return scLink() + ' · copy games, keep data in sync';
+    case 'remote': return 'Stream this PC to a phone, tablet or TV';
+    case 'display': return ANDROID ? 'Volume, display and sound settings' : `${scDisp()}${S.sys.display&&S.sys.display.supported?` · brightness ${S.set.bright}%`:''}`;
+    case 'audio': return `Volume ${scVol()}${scOut()?' · '+scOut():''}`;
+    case 'controller': return 'Button test, layouts, controller mouse'+(LINUX?', Handheld Daemon':'');
+    case 'keyboard': return 'The on-screen keyboard: layouts, suggestions, the Ember Wheel';
+    case 'power': return [scBatt(), scPmode()].filter(Boolean).join(' · ') || 'Power mode, power button';
+    case 'sources': return `${scSources()}${V.length?` · ${V.length} games`:''}`;
+    case 'import': return 'Games and files from other drives and systems';
+    case 'seats': return 'Several players at once, each on their own screen';
+    case 'updates': return `${APP} ${scVersion()} · ${scUpdate()}`;
+    case 'system': return 'This device, storage, date and time, backup';
+    case 'help': return 'Save or send logs for a bug report, restart '+APP;
+    case 'shell': return LINUX ? 'Mantel, the desktop' : 'Ember as your Windows shell';
+    case 'defaults': return 'Browser, files, music, pictures and more';
+    case 'linux': return 'A real Linux inside '+APP;
+    case 'osinstall': return 'Install Hearth OS on this PC';
+    case 'switch': return 'Move this PC to Hearth OS';
+    case 'about': return `${APP} ${scVersion()}${SYSINFO.s&&SYSINFO.s.device?' · '+SYSINFO.s.device:''}`;
+  }
+  return '';
+}
+const scLines = L => `<div style="display:flex;flex-direction:column;gap:10px">${L.filter(x=>x && x[1]!=null && x[1]!=='').map(([a,b])=>`<div class="scl"><span>${a}</span><span>${esc(String(b))}</span></div>`).join('')}</div>`;
+const scHead = (ic, title) => `<div class="sci">${I[ic]||DKI[ic]||I.gear}</div><h2>${title}</h2>`;
+const scPreview = () => host ? '' : `<div class="scs">Browser preview: sample values. ${APP} shows this device's own.</div>`;
+function groupCard(g){
+  const ic=(SGROUPS.find(x=>x[0]===g)||[])[1]||'gear';
+  let L=[];
+  if(g==='you') L=[['Profile',PROFILE.name],['Status',PROFILE.status||'Online'],['Home layout',(LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name],['Made for',(MADE_FOR.find(m=>m[0]===(LOOK.madeFor||'auto'))||[])[1]],['Menu',dockOn()?'Dock':'Side menu']];
+  if(g==='connect') L=[['Internet',scWifi()],ANDROID?null:['Bluetooth',scBt()],lkOn()?['Hearth Link',scLink()]:null,friendsOn()&&mfOn()&&MF.st?['Friends',MF.st.signedIn?'Signed in'+(MF.st.homeserver?' · '+MF.st.homeserver:''):'Not signed in']:null];
+  if(g==='display') L=[['Screen',scDisp()],S.sys.display&&S.sys.display.supported?['Brightness',S.set.bright+'%']:null,['Volume',scVol()],['Output',scOut()]];
+  if(g==='controls') L=[['Battery',scBatt()],['Power mode',scPmode()],['Button prompts',{auto:'Automatic',pad:'Controller',kbd:'Keyboard'}[INPUT.mode]||'Automatic'],['A and B',PAD.swapAB?'Swapped':'As labelled']];
+  if(g==='games'){ const V=visible(); L=[['Games',`${V.length} · ${V.filter(x=>x.inst).length} installed`],['Sources',scSources()],ANDROID?null:['Downloading',dlItems().length?`${dlItems().length} in the queue`:'Nothing'],SYSINFO.s&&SYSINFO.s.storage&&SYSINFO.s.storage.totalBytes?['Free space',gb(SYSINFO.s.storage.freeBytes)]:null]; }
+  if(g==='system') L=[[APP,scVersion()],['Updates',scUpdate()],LINUX&&HOSTINFO.system?['Edition',osEditionName()]:null,['Device',(SYSINFO.s&&SYSINFO.s.hostname)||HOSTINFO.name||'']];
+  return `<div class="sc-card">${scHead(ic, sgroupLabel(g))}${scLines(L)}${scPreview()}</div>`;
+}
+function pageCard(t){
+  const d=S.sys.display||{}, b=S.sys.battery;
+  if(t==='display' && !ANDROID){
+    const m=dispModeOf(d.width,d.height), cur=d.refreshRate||0;
+    let best=0; (d.modes||[]).forEach(x=>{ const r=x.rates&&x.rates.length?Math.max(...x.rates):0; if(r>best) best=r; });
+    const tip=dispHzTip(d);
+    const chips=[d.width?`${d.width} × ${d.height}`:(d.resolution||''), cur?`<span class="${tip?'warn':''}">${cur} Hz${best>cur?` of ${best}`:''}</span>`:'', d.scalePercent?`Scale ${d.scalePercent}%`:(d.scale||'')].filter(Boolean);
+    return `<div class="sc-card"><div class="screen">${esc(SYSINFO.s&&SYSINFO.s.device||'This screen')}</div><div class="stand"></div>
+      <div class="scchips">${chips.map(c=>c.startsWith('<span')?c:`<span>${esc(c)}</span>`).join('')}</div>${scPreview()}</div>`
+      + (tip ? `<div class="sc-tip"><b>Why only ${cur} Hz?</b><span>${esc(tip)}</span>${m&&m.rates&&m.rates.length>1?`<button class="pill" data-f data-k="sc-hz" data-act="dispHz">Refresh rate</button>`:''}</div>` : '');
+  }
+  if(t==='audio'){ const a=S.sys.audio||{};
+    return `<div class="sc-card"><span class="scs" style="text-transform:uppercase;letter-spacing:.12em;font-size:11px">Playing through</span><div class="scdev"><span class="ricon">${a.muted?I.mute:I.vol}</span><div><b>${esc(scOut()||'This device')}</b><small>${esc(scVol())}</small></div></div>
+      <div class="bar"><i style="width:${a.muted?0:Math.min(100,(a.volume??S.set.vol)/volMax()*100)}%"></i></div>${scPreview()}</div>`; }
+  if(t==='wifi' && !ANDROID){ const w=S.sys.wifi||{};
+    return `<div class="sc-card">${scHead('wifi', w.on&&w.ssid?esc(w.ssid):w.on?'Not connected':'Wi-Fi is off')}${scLines([['Status',S.sys.airplane?'Airplane mode':w.on?(w.ssid?'Connected':'Not connected'):'Off'],w.ssid?['Signal',['No signal','Weak','Fair','Good','Strong'][Math.min(4,w.bars||0)]]:null,['Networks found',S.sys.nets?S.sys.nets.length:'']])}${scPreview()}</div>`; }
+  if(t==='bluetooth' && !ANDROID){ const P=(S.sys.paired||[]).slice().sort((a,c)=>(c.connected?1:0)-(a.connected?1:0));
+    return `<div class="sc-card">${scHead('bt', S.sys.bt&&S.sys.bt.on?'Bluetooth is on':'Bluetooth is off')}${P.length?`<div class="dk-card" style="all:unset;display:flex;flex-direction:column;gap:8px">${P.slice(0,5).map(p=>`<div class="scl"><span>${esc(p.name)}</span><span>${p.connected?'Connected':'Paired'}</span></div>`).join('')}</div>`:`<div class="scs">${S.sys.paired?'Nothing paired yet.':'Reading paired devices…'}</div>`}${scPreview()}</div>`; }
+  if(t==='link' && lkOn()){ const s=LK.s||{}, P=s.peers||[], jobs=(s.transfers||[]).filter(x=>x.state==='copying');
+    return `<div class="sc-card">${scHead('link', esc(s.me&&s.me.name||'Hearth Link'))}${scLines([['Status',scLink()]].concat(P.slice(0,4).map(p=>[esc(p.name),p.online?'Online':'Not on right now'])))}${jobs.map(j=>`<div class="scl"><span>${esc(j.title)}</span><span>${j.total?Math.floor(100*j.done/j.total)+'%':''}</span></div><div class="bar"><i style="width:${j.total?Math.floor(100*j.done/j.total):0}%"></i></div>`).join('')}</div>`; }
+  if(t==='power' && !ANDROID){ const pw=S.sys.power||{};
+    return `<div class="sc-card">${b&&b.present!==false&&b.pct!=null?`<div class="scbig">${b.pct}%</div><div class="scs">${b.charging?'Charging':'On battery'}</div><div class="bar"><i style="width:${b.pct}%"></i></div>`:scHead('bolt','Power')+`<div class="scs">${b&&b.present===false?'Plugged in: no battery.':'Battery details show here on a handheld or laptop.'}</div>`}
+      ${scLines([['Power mode',scPmode()],pw.tdp&&pw.tdp.supported?['Power limit',pw.tdp.watts+' W']:null])}${scPreview()}</div>`; }
+  if(t==='updates' || t==='about'){
+    const u=SYSUPD.s, rb=u&&u.status&&u.status.rollback&&u.status.rollback.version;
+    return `<div class="sc-card"><div class="sci">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div class="scbig">${APP} ${esc(scVersion())}</div><div class="scok">${esc(scUpdate())}</div>
+      <div class="scs">${LINUX&&HOSTINFO.system?esc(osEditionName())+'. ':''}${rb&&t==='updates'?`The previous version (${esc(rb)}) is kept, so you can go back if something breaks.`:''}</div>
+      ${t==='updates'&&host?`<div class="scbtns"><button class="pill" data-f data-k="sc-check" data-act="${LINUX&&HOSTINFO.system?'sysUpdCheck':'updCheck'}">${I.refresh}Check now</button></div>`:''}
+      ${t==='about'?scLines([['Device',SYSINFO.s&&SYSINFO.s.device],['Processor',SYSINFO.s&&SYSINFO.s.cpu],['Graphics',SYSINFO.s&&SYSINFO.s.gpu]]):''}</div>`;
+  }
+  if(t==='profile') return `<div class="sc-card"><div class="scav">${avatarHtml(PROFILE)}</div><h2>${esc(PROFILE.name||'')}</h2><div class="scs">${esc(PROFILE.status||'Online')}</div></div>`;
+  return groupCard(stabGroup(t));
+}
+// ---- Settings search: every page and every row, found by its title, its explanation and a few extra words.
+const SKW = {wifi:'wireless internet network wlan hotspot', bluetooth:'pair headset headphones speaker controller', link:'transfer copy sync devices pair',
+  display:'screen resolution refresh rate hz brightness scale monitor tv hdmi hdr', audio:'sound volume speakers headphones output mute microphone',
+  power:'battery sleep tdp power button suspend', controller:'gamepad buttons remap layout mouse gyro test vibration', keyboard:'osk on-screen typing keys',
+  appearance:'theme accent layout home dark colors menu dock side', liblook:'library layout covers grid', profile:'name avatar picture account', profiles:'switch user parental limits pin',
+  updates:'update upgrade version rollback previous', system:'storage disk time date backup restore browser claude', help:'logs bug report crash restart', about:'version device cpu gpu memory',
+  sources:'steam epic gog xbox emulators roms library refresh rescan', import:'drives windows copy', remote:'stream moonlight sunshine', access:'zoom contrast screen reader accessibility',
+  signin:'login password autologin start mode hostname device name', shell:'desktop mantel explorer', defaults:'default apps browser', seats:'multi-seat players'};
+let SIDX = {at:0, list:[]};
+const SEXTRA = ANDROID ? [] : [['display','s-hz','Refresh rate','hz 60 120 144 fps smooth'],['display','s-res','Resolution','4k 1080p 1440p'],['display','s-scale','Scale','size zoom'],
+  ['display','q-bright','Brightness','screen dim'],['audio','q-vol','Volume','loud quiet sound'],['audio','a-mute','Mute','silent sound'],['power','batt','Battery','charge']];
+function settingsIndex(){
+  if(SIDX.list.length && Date.now()-SIDX.at<20000) return SIDX.list;
+  const L=[], tpl=document.createElement('template');
+  const txt = el => (el && el.textContent || '').replace(/\s+/g,' ').trim();
+  for(const g of SGROUPS) for(const [t,ic,label] of stabsIn(g[0])){
+    L.push({t, k:'', title:label, path:g[2], kw:(SKW[t]||'')+' '+pageSubSafe(t), ic});
+    let html=''; try{ html=settingsBody(t); }catch(e){ continue; }
+    tpl.innerHTML=html;
+    const seen=new Set();
+    const take=(el,k)=>{ const tEl=el.querySelector('b')||el.querySelector('.lab'); const title=txt(tEl); if(!k || !title || title.length>70 || seen.has(title)) return; seen.add(title); L.push({t, k, title, path:`${g[2]} › ${label}`, kw:txt(el.querySelector('small'))+' '+(SKW[t]||''), ic}); };
+    tpl.content.querySelectorAll('[data-k]').forEach(el=>{ if(el.closest('.seg,.chips,.opts')) return; take(el, el.dataset.k); });
+    // A row whose controls are its buttons (a segmented choice): found by its title, opening on its first button.
+    tpl.content.querySelectorAll('.row:not([data-k])').forEach(el=>{ const f=el.querySelector('[data-k]'); if(f) take(el, f.dataset.k); });
+  }
+  // Rows that only show once their data is read (the screen's modes, sound outputs): in the index all the same.
+  for(const [t,k,title,kw] of SEXTRA) if(stabShown(t) && !L.some(e=>e.t===t && e.title===title)){ const g=SGROUPS.find(x=>x[0]===stabGroup(t)); L.push({t, k, title, path:`${g?g[2]:''} › ${stabLabel(t)}`, kw, ic:(STABS.find(x=>x[0]===t)||[])[1]}); }
+  SLINKS.forEach(l=>{ if(l.show()) L.push({link:l.k, title:l.label, path:sgroupLabel(l.g), kw:l.kw||'', ic:l.ic}); });
+  SIDX={at:Date.now(), list:L}; return L;
+}
+const pageSubSafe = t => scSafe(()=>pageSub(t));
+function settingsSearch(q){
+  q=(q||'').toLowerCase().trim(); if(q.length<2) return [];
+  const words=q.split(/\s+/).filter(Boolean), out=[];
+  for(const e of settingsIndex()){
+    const ti=e.title.toLowerCase(), all=(ti+' '+e.kw+' '+e.path).toLowerCase();
+    let s = ti.startsWith(q) ? 4 : ti.split(/[^a-z0-9]+/).some(w=>w.startsWith(q)) ? 3 : ti.includes(q) ? 2 : words.every(w=>all.includes(w)) ? 1 : 0;
+    if(!s) continue;
+    if(!e.k && !e.link) s+=.5;   // a page itself before its rows, at the same score
+    out.push([s,e]);
+  }
+  return out.sort((a,b)=>b[0]-a[0]).map(x=>x[1]);
+}
+// Search opening: the screen's details for the index (its rows depend on them), read once.
+function setSearchPrefetch(){ if(host && !ANDROID && !(S.sys.display&&S.sys.display.modes) && !SCLOAD.sdisp){ SCLOAD.sdisp=1; call('display.get').then(r=>{ Object.assign(S.sys.display,r); SIDX.at=0; }).catch(()=>{}); } }
+function setOpen(t, k){
+  closeAll();
+  S.settingsTab=t;
+  navigate('settings', {focusKey:k||null, sfront:false});
+  const first=$('#view .sc-main [data-f]');
+  if(!k || !$(`#view [data-k="${CSS.escape(k)}"]`)){ if(first) setFocus(first,true); }
+  if(k && !$(`#view [data-k="${CSS.escape(k)}"]`)){ let n=0; const was=focused;
+    const tryIt=()=>{ if(S.view!=='settings' || S.settingsTab!==t || focused!==was && !(focused && was && focused.dataset.k===was.dataset.k)) return;
+      const el=$(`#view [data-k="${CSS.escape(k)}"]`); if(el) return setFocus(el,true); if(++n<15) setTimeout(tryIt,200); };
+    setTimeout(tryIt,150); }
+}
+// ==== end of Settings C
 function sliderCtl(key,ic,label,min=0,max=100,step=5,unit='%'){
   const v=S.set[key], pct=(v-min)/(max-min)*100;
   return `<div class="ctl" data-f data-k="q-${key}" data-slider="${key}" data-min="${min}" data-max="${max}" data-step="${step}" data-unit="${unit}">
@@ -6799,7 +7521,7 @@ function qamPerfRedraw(){
   const qb=$('#qam .qbody'); if(!qb) return;
   const inQam = !!(focused && $('#qam').contains(focused));
   const k = inQam ? focused.dataset.k : null, wasSlide = !!(SLIDE && SLIDE===focused), top=qb.scrollTop;
-  qb.innerHTML=`<h3>Performance</h3>${perfBody()}`; qb.scrollTop=top;
+  qb.innerHTML = $('#qam').classList.contains('top') ? qdPerf() : `<h3>Performance</h3>${perfBody()}`; qb.scrollTop=top;
   if(!inQam) return;
   const el = k && $(`#qam [data-k="${CSS.escape(k)}"]`);
   if(!el){ setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); return; }
@@ -6880,7 +7602,7 @@ async function overlayShown(){
   qamFresh();
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
   refreshStatus(); loadProfile();
-  if(S.qtab==='perf') startPerf();
+  if(qamTop()) qdOnTab(S.qtab); else if(S.qtab==='perf') startPerf();
   OV.busy=false;
   if(OV.wantPower){ OV.wantPower=false; openLayer('power'); }
 }
@@ -6895,7 +7617,7 @@ function recLoad(){
   REC.at=Date.now();
   call('recorder.status',{},8000).then(r=>{
     const was=JSON.stringify([REC.ok,REC.st]); REC.ok=true; REC.st=(r&&r.session)||null; REC.secs=(r&&r.settings&&r.settings.replaySecs)||30;
-    if(JSON.stringify([REC.ok,REC.st])!==was && S.layers.includes('qam') && S.qtab==='now'){ const k=document.activeElement&&document.activeElement.dataset.k; renderQam(); if(k) setFocus($(`#qam [data-k="${k}"]`)||$('#qam .qbody [data-f]'),true); }
+    if(JSON.stringify([REC.ok,REC.st])!==was && S.layers.includes('qam') && (S.qtab==='now' || S.qtab==='capture')){ const k=document.activeElement&&document.activeElement.dataset.k; renderQam(); if(k) setFocus($(`#qam [data-k="${k}"]`)||$('#qam .qbody [data-f]'),true); }
   }).catch(()=>{ REC.ok=false; });
 }
 function recQam(){
@@ -6910,6 +7632,7 @@ function recQam(){
 function recDone(r, what){
   REC.at=0; recLoad();
   const f = r && (r.file||r.saved);
+  if(f) QD.caps.unshift({kind:what==='Replay'?'replay':'video', file:String(f), time:Date.now(), label:what==='Replay'?'Replay':'Video'});
   if(f) toast(`${what} saved · ${String(f).split('/').pop()} (Videos › Recordings)`);
   else if(r && r.started) toast(r.started.kind==='replay' ? `Instant replay on · Save last ${REC.secs>=60?(REC.secs/60)+' min':(REC.secs||30)+' s'} from here` : 'Recording · stop it from here');
   else toast(what==='Replay'?'Instant replay off':'Done');
@@ -6918,6 +7641,11 @@ function recDone(r, what){
 /** Quick Access opened by Guide (Hearth's panel or the overlay): on Now playing with a game running, else Quick settings. */
 function qamFresh(){ S.qtab = S.running ? 'now' : 'quick'; }
 function renderQam(){
+  // Over a game: the top dock (renderQd); the side panel otherwise.
+  const top=qamTop();
+  document.body.classList.toggle('qtop', top); $('#qam').classList.toggle('top', top); $('#scrim').classList.toggle('qtop', top);
+  if(top) return renderQd();
+  if(!QTABS.some(q=>q[0]===S.qtab)) S.qtab = S.running && QTABS.some(q=>q[0]==='now') ? 'now' : 'quick';
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
   if(t==='quick'){ const w=S.sys.wifi;
@@ -6958,6 +7686,396 @@ function qamQuick(){
   return `<h3 style="margin-top:16px">Quick Resume</h3>${L.map(g=>`<div class="qrrow"><button class="btn" data-f data-k="q-qr-${esc(g.id)}" data-act="quickres" data-id="${esc(g.id)}">${I.play}${esc(g.title)}</button><button class="btn sm danger" data-f data-k="q-qrx-${esc(g.id)}" data-act="quickclose" data-id="${esc(g.id)}" aria-label="Close ${esc(g.title)}">${I.stop}</button></div>`).join('')}
     <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${!qrKeeps()?'Sleep keeps them; turning off closes them.':qrKeepsRestart()?'They\'re kept through sleep, Restart and Shut down.':'They\'re kept through sleep and Shut down; Restart closes them.'}</div>`;
 }
+// ==== Quick Access over a game: the top dock (approved design, Ovl-*.dc.html). Over a game (the overlay page, Hearth's
+// own overlay window or Handheld Daemon's overlay app: the same page, ?overlay=full; or Hearth's window with a game
+// running) Quick Access is the Bottom Dock's look at the top of the screen: the game, the tabs (Now playing,
+// Performance, Controller layout, Friends, Capture, Quick settings), the clock and battery; the picked tab's panel drops
+// down under it. Left / right on the tabs switch them (LB / RB anywhere), down goes into the panel, up from its top row
+// back to the tab; B, Guide or the View button go back to the game. Mouse and keyboard work the same (Esc, the hint
+// button, a click beside it). The side panel (renderQam's other half) stays for Quick Access with no game running.
+// A short Guide press over a game shows the quick glance instead (showGlance: drawn like the volume bar, the game
+// keeps its controller); holding it, or Handheld Daemon's Quick Access button, opens this dock.
+const QD = {timer:null, tick:0, opts:{}, optsAt:{}, shots:null, shotsAt:0, caps:[], replies:['On my way','GG','👍'], glance:true, glanceT:null};
+const QDI = {
+  now:'<svg viewBox="0 0 24 24"><path d="M6 12h4M8 10v4"/><circle cx="16" cy="11" r="1"/><path d="M7 6h10a5 5 0 0 1 4.9 6l-1 5a2.5 2.5 0 0 1-4.4 1L15 16H9l-1.5 2a2.5 2.5 0 0 1-4.4-1l-1-5A5 5 0 0 1 7 6z"/></svg>',
+  perf:'<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-9"/><path d="M15 6h5v5"/></svg>',
+  controls:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="5"/><path d="M8 10v4M6 12h4"/><circle cx="16" cy="12" r="1"/></svg>',
+  friends:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/></svg>',
+  capture:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M9 6l1.5-2h3L15 6"/></svg>',
+  quick:'<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  rec:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>',
+  replay:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5"/><path d="M12 8v4l3 2"/></svg>',
+};
+const QD_TABS = [['now','Now playing'],['perf','Performance'],['controls','Controller layout'],['friends','Friends'],['capture','Capture'],['quick','Quick settings']];
+/** Quick Access is the top dock: a game is running, and there's room (an overlay page beside the game, Ember's narrow one, keeps the panel). */
+function qamTop(){
+  if(ANDROID || !S.running) return false;
+  if(OVERLAY && !document.documentElement.classList.contains('ovfull')) return false;
+  return (window.innerWidth||1280) >= 700;
+}
+function qdTabs(){
+  const g=S.running && G(S.running);
+  return QD_TABS.filter(([k])=> k==='perf' ? QTABS.some(q=>q[0]==='perf')
+    : k==='controls' ? (LINUX || hasFeat('hearthInput')) && !(g && g.cloud)
+    : k==='friends' ? QTABS.some(q=>q[0]==='friends')
+    : k==='capture' ? (OVERLAY || LINUX) : true);
+}
+/** "1 h 12 min" since the game started (nothing when Hearth doesn't know). */
+function qdPlayed(){
+  if(!S.runningSince) return '';
+  const m=Math.max(0, Math.round((Date.now()-S.runningSince)/60000));
+  return m<60 ? m+' min' : Math.floor(m/60)+' h'+(m%60 ? ' '+(m%60)+' min' : '');
+}
+function qdBattery(){ const b=(PERF.s && PERF.s.battery) || S.sys.battery; return b && b.present!==false && b.pct!=null ? b : null; }
+/** The dock's right side and the glance: battery, and the frame rate when the host says it. */
+function qdStatLine(){ const b=qdBattery(), p=PERF.s, x=[]; if(b) x.push(b.pct+'%'+(b.charging?' ⚡':'')); if(p && p.fps) x.push(p.fps+' FPS'); return x.join(' · '); }
+function qdHints(){
+  const st=promptStyle(), pad=st==='pad';
+  if(st==='mouse' || (INPUT.last==='mouse' && !pad)) return `<div class="qd-hints"><button class="qd-hb" data-act="dockResume">${I.x}Back to game</button></div>`;
+  const gl=(k,c)=>`<span class="glyph ${pad?c:'kc'}">${k}</span>`;
+  const extra = S.qtab==='friends' && pad && mfIn() ? `<span>${gl('Y','y')}Type</span>` : S.qtab==='perf' && pad && qdPerGameShown() ? `<span>${gl('X','x')}${qdPgOn()?'Every game':'This game only'}</span>` : '';
+  return `<div class="qd-hints"><span>${gl(pad?'◀ ▶':'← →','')}Switch tab</span><span>${gl(pad?'A':'Enter','a')}Select</span>${extra}<span>${gl(pad?'B':'Esc','b')}Back to game</span></div>`;
+}
+function renderQd(){
+  // Drawn again in place (new messages, the recorder, a setting): the selection stays on the same control.
+  const had = focused && $('#qam').contains(focused) ? focused : null, k = had && had.dataset.k, wasTab = had && had.classList.contains('qd-tab'), wasSlide = !!(had && SLIDE===had);
+  const T=qdTabs(); if(!T.some(t=>t[0]===S.qtab)) S.qtab='now';
+  const t=S.qtab, g=S.running && G(S.running), n=dkUnread();
+  let body='';
+  try{ body = t==='now' ? qdNow(g) : t==='perf' ? qdPerf() : t==='controls' ? qdControls(g) : t==='friends' ? qdFriends(g) : t==='capture' ? qdCapture(g) : qdQuick(); }
+  catch(e){ body=`<div class="muted">${esc(e.message)}</div>`; }
+  const label=(T.find(x=>x[0]===t)||[])[1]||'';
+  $('#qam').innerHTML = `<div class="qd-wrap"><nav class="qd-bar" role="tablist" aria-label="Quick Access">
+      <div class="qd-game"><div class="qd-cover"${g?` style="${artBg(g)}"`:''}>${g?artImg(g,['cover','wide','hero']):''}</div><div class="qd-gt"><b>${esc(g?g.title:'Your game')}</b><span class="qd-time">${qdPlayed()||'Running'}</span></div></div>
+      <i class="qd-sep"></i>
+      ${T.map(([k,l])=>`<button class="qtab qd-tab ${t===k?'on':''}" role="tab" aria-selected="${t===k}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}" title="${l}">${QDI[k]}${k==='friends'&&n?`<span class="dk-b">${n>99?'99+':n}</span>`:''}</button>`).join('')}
+      <i class="qd-sep"></i>
+      <div class="qd-stat"><b class="qd-clock">${clockText(new Date())}</b><span class="qd-line">${esc(qdStatLine())}</span></div>
+    </nav><section class="qbody qd-panel qd-p-${t}" role="tabpanel" aria-label="${esc(label)}">${body}</section></div>${qdHints()}`;
+  qdTimer();
+  if(t==='friends'){ const m=$('#qam .qd-msgs'); if(m) m.scrollTop=m.scrollHeight; }
+  if(had){
+    const el = (k && $(`#qam [data-k="${CSS.escape(k)}"]`)) || (wasTab ? $(`#qam [data-k="qt-${S.qtab}"]`) : qdFirst());
+    if(el){ if(wasSlide) SLIDE=null; setFocus(el, true); if(wasSlide){ SLIDE=el; el.classList.add('editing'); } }
+  }
+}
+/** What a tab needs loaded when it's picked. */
+function qdOnTab(t){
+  if(t==='perf'){ startPerf(); qdLoadOpts(); }
+  if(t==='capture'){ recLoad(); qdLoadShots(); }
+  if(t==='friends' && mfOn() && !MF.st && !MF.loading){ try{ mfLoad(); }catch(e){} }
+  // Friends with a new message waiting: that chat opens (the newest), so the message is right there (once the
+  // chats are in: qdFriends).
+  if(t==='friends'){ QD.auto=true; if(mfIn() && !MF.room) renderQam(); }
+}
+/** Switch to a tab (the selection on it). */
+function qdGo(t){ S.qtab=t; renderQam(); qdOnTab(t); setFocus($(`#qam [data-k="qt-${t}"]`), true); blip(600); }
+// While it's open: the time played, the clock and the battery in place, and the host's numbers now and then.
+function qdTimer(){
+  if(QD.timer) return;
+  QD.timer=setInterval(()=>{
+    if(!S.layers.includes('qam') || !qamTop() || (OVERLAY && !OV.shown)){ clearInterval(QD.timer); QD.timer=null; return; }
+    const set=(sel,v)=>{ const e=$(sel); if(e && e.textContent!==v) e.textContent=v; };
+    set('#qam .qd-time', qdPlayed()||'Running'); set('#qam .qd-clock', clockText(new Date())); set('#qam .qd-line', qdStatLine());
+    if(++QD.tick%3===0 && S.qtab!=='perf') call('perf.stats', hhdPerf()?{hhd:true}:{}, 8000).then(r=>{ PERF.s=r; applyRunning(r); set('#qam .qd-line', qdStatLine()); }).catch(()=>{});
+  }, 2000);
+}
+/** Down from a tab: the panel's main control (the picked choice, else its first). */
+function qdFirst(){ const p=$('#qam .qd-panel'); return p && (p.querySelector('[data-first]') || p.querySelector('[data-f]')); }
+/** The controller on the tabs: left / right switch them, down into the panel. */
+function qdTabMove(dir){
+  if(dir==='down'){ const el=qdFirst(); if(el){ setFocus(el); blip(); } return; }
+  if(dir!=='left' && dir!=='right') return;
+  const T=qdTabs(), i=T.findIndex(x=>x[0]===S.qtab), j=i+(dir==='left'?-1:1);
+  if(j<0 || j>=T.length) return;
+  qdGo(T[j][0]);
+}
+
+// ---- Now playing
+function qdChips(g){
+  const c=[], p=qdPlayed();
+  if(p) c.push('Playing for '+p);
+  if(g && g.ach && g.ach[1]) c.push(`Achievements ${g.ach[0]} / ${g.ach[1]}`);
+  const P=(dkPeople()||[]).filter(f=>f.game && g && f.game.toLowerCase()===String(g.title||'').toLowerCase());
+  if(P.length) c.push(P.length===1 ? `${P[0].name} is playing too` : `${P[0].name} and ${P.length-1} more are playing too`);
+  return c;
+}
+function qdNow(g){
+  const im = g && !g.cloud && (LINUX || hasFeat('hearthInput'));
+  if(im){ imLoadTables(); imLoad(g.id); }
+  const c = im && IM.games[g.id];
+  const sub=[g?SOURCES[g.src]||'':'', c && c.layout!=='off' ? 'layout: '+imChoiceLabel(c) : ''].filter(Boolean).join(' · ');
+  const btn=(k,act,label,cls='')=>`<button class="qd-btn ${cls}" data-f data-k="${k}" ${act}>${label}</button>`;
+  const gset = g && !g.cloud && (!host || LINUX || hasFeat('gameSettings'));
+  let h = `<div class="qd-np">${g?`<div class="qd-art" style="${artBg(g)}">${artImg(g,['cover','wide','hero'])}</div>`:''}<div class="qd-npt"><span class="qd-kick">Now playing</span><b class="qd-h">${esc(g?g.title:'Your game')}</b>${sub?`<span class="qd-sub">${esc(sub)}</span>`:''}</div></div>
+    <div class="qd-g2">${btn('q-resume','data-act="dockResume" data-first','Back to game','pri')}${QTABS.some(q=>q[0]==='friends')?btn('q-invite','data-act="qdInvite"','Invite a friend'):''}${gset?btn('q-gset','data-act="qdGameSet"','Game settings'):''}${btn('q-exit','data-act="exitgame"','Exit game','danger')}</div>`;
+  const chips=qdChips(g);
+  if(chips.length) h += `<div class="qd-chips">${chips.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`;
+  const more=[];
+  if((LINUX || hasFeat('pause')) && !(g && g.cloud)) more.push(`<button class="qd-mini" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`);
+  if(qrFeature() && QR.on && g && !g.cloud) more.push(`<button class="qd-mini" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`);
+  if(QTABS.some(q=>q[0]==='apps')) more.push(`<button class="qd-mini" data-f data-k="q-apps" data-act="qdApps">${I.lib}Switch app</button>`);
+  more.push(`<button class="qd-mini" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>`);
+  h += `<div class="qd-more">${more.join('')}</div>`;
+  return h + qamQuick();
+}
+
+// ---- Performance (the same controls as the side panel's, Handheld Daemon's power when it runs the power)
+function qdLoadOpts(){
+  const id=S.running; if(!id || Date.now()-(QD.optsAt[id]||0)<4000) return;
+  QD.optsAt[id]=Date.now();
+  call('game.options.get',{id},8000).then(r=>{ QD.opts[id]=(r&&r.options)||{}; qamPerfRedraw(); }).catch(()=>{});
+}
+function qdPerGameShown(){ const g=S.running && G(S.running); return !!(g && !g.cloud && PERF.s && (PERF.s.canFpsLimit || hhdPerf() || (PERF.s.tdp && PERF.s.tdp.supported))); }
+/** This game keeps its own frame limit and power (Saved for <game> only). */
+function qdPgOn(){
+  const id=S.running; if(!id) return false;
+  const o=QD.opts[id]||{}, gp=PERF.s && PERF.s.gamePower;
+  return !!(o.perfSaved || o.fpsLimit>0 || o.tdp>0 || (gp && gp.id===id && gp.saved));
+}
+async function qdPerGame(){
+  const id=S.running, g=G(id), p=PERF.s; if(!id || !p) return;
+  const on=qdPgOn(), name=g ? g.title : 'this game';
+  try{
+    if(on){
+      await call('game.options.set',{id, options:{perfSaved:false, fpsLimit:0, tdp:0}});
+      await call('perf.gamePowerForget',{id}).catch(()=>null);
+      if(p.canFpsLimit) await call('perf.setFpsLimit',{fps:p.fpsLimit||0}).catch(()=>null);   // your usual limit back
+      toast('Using your usual settings for every game');
+    } else {
+      const opt={perfSaved:true};
+      if(p.canFpsLimit) opt.fpsLimit=p.fpsLimit||0;
+      if(!hhdPerf() && p.tdp && p.tdp.supported) opt.tdp=p.tdp.watts||0;
+      await call('game.options.set',{id, options:opt});
+      toast(`Saved for ${name} only: they come back whenever it plays`);
+    }
+  }catch(e){ return toast(e.message); }
+  QD.optsAt[id]=0; QD.opts[id]=Object.assign({}, QD.opts[id]||{}, {perfSaved:!on}); qdLoadOpts();
+  qamPerfRedraw();
+}
+function qdPerf(){
+  const p=PERF.s; if(!p) return '<div class="muted">Reading…</div>';
+  const tile=(l,v,s)=>`<div class="qd-tile"><span>${l}</span><b>${v}</b>${s?`<small>${s}</small>`:''}</div>`, T=[];
+  if(p.fps) T.push(tile('FPS', p.fps, p.fpsLow?'1% low '+p.fpsLow:''));
+  T.push(tile('CPU', (p.cpu||0)+'%', p.cpuTemp?p.cpuTemp+'°C':''));
+  if(p.gpu!=null) T.push(tile('GPU', p.gpu+'%', [p.gpuTemp?p.gpuTemp+'°C':'', p.vramUsed!=null?p.vramUsed+' GB':''].filter(Boolean).join(' · ')));
+  if(p.ramTotal) T.push(tile('Memory', p.ramUsed+' GB', 'of '+p.ramTotal+' GB'));
+  const b=p.battery;
+  if(b && b.present!==false && b.pct!=null) T.push(p.powerW ? tile('Power', p.powerW+' W', b.pct+'% battery') : tile('Battery', b.pct+'%', b.charging?'Charging':''));
+  let h=`<div class="qd-tiles" style="--n:${Math.min(T.length,5)}">${T.join('')}</div>`;
+  const row=(label,val,items)=>`<div class="qd-row"><b>${label}</b>${val?`<span class="qd-v">${val}</span>`:''}<div class="qd-seg" role="group" aria-label="${label}">${items}</div></div>`;
+  const chip=(k,on,act,v,l)=>`<button class="chip ${on?'on':''}" data-f data-k="${k}" data-act="${act}" data-v="${v}"${on?' data-first':''}>${l}</button>`;
+  if(p.canFpsLimit){ const lim=p.fpsLimit||0; h += row('Frame limit', '', FPS_CHOICES.map(v=>chip('pf-'+v, lim===v, 'fpsLimit', v, v?v:'Off')).join('')); }
+  const hp=hhdPerf();
+  if(hp) h += `<div class="qd-hhd">${hhdQamBody()}${hhdGameNote(p)}<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div></div>`;
+  if(!hp && p.tdp && p.tdp.supported){
+    const choices=[5,8,10,12,15,18,20,25,30].filter(v=>v>=p.tdp.min && v<=p.tdp.max);
+    h += row('Power limit', p.tdp.watts+' W', choices.map(v=>chip('pt-'+v, p.tdp.watts===v, 'tdp', v, v+' W')).join(''));
+  }
+  if(!hp && p.powerMode) h += row('Power', '', (p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>chip('pp-'+k, p.powerMode===k, 'perfPower', k, l)).join(''));
+  if(p.canOverlay){ const lv=p.perfOverlay||0; h += row('On-screen stats', '', PO_LEVELS.map((l,i)=>chip('po-'+i, lv===i, 'perfOverlay', i, l)).join('')); }
+  if(qdPerGameShown()){
+    const g=G(S.running), on=qdPgOn(), n=esc(g.title);
+    h += `<button class="qd-pg ${on?'on':''}" data-f data-k="q-pg" data-act="qdPerGame"><b>${on?`Saved for ${n} only`:'Used for every game'}</b><span>${on?'Use for every game':`Save for ${n} only`}</span></button>`;
+  }
+  if(!p.canFpsLimit && LINUX) h += '<div class="muted" style="font-size:12px">The frame-rate limit works in Game Mode.</div>';
+  return h;
+}
+
+// ---- Controller layout (Hearth Input: the game's layout, what it does, Edit this layout)
+const QD_PAD = {   // where each control is on the drawing (viewBox 0 0 24 16)
+  ls:'<circle cx="8" cy="7" r="1.6"/>', rs:'<circle cx="15" cy="9.5" r="1.4"/>', dpad:'<path d="M8.6 9.6v2.4M7.4 10.8h2.4"/>',
+  y:'<circle cx="17.5" cy="5.5" r=".7"/>', b:'<circle cx="19" cy="7" r=".7"/>', x:'<circle cx="16" cy="7" r=".7"/>', a:'<circle cx="17.5" cy="8.5" r=".7"/>',
+  lb:'<path d="M4.5 2.2h3.5"/>', rb:'<path d="M16 2.2h3.5"/>', lt:'<path d="M5 .9h2.5"/>', rt:'<path d="M16.5 .9h2.5"/>',
+  view:'<circle cx="10.6" cy="5.4" r=".45"/>', menu:'<circle cx="13.4" cy="5.4" r=".45"/>',
+};
+function qdLayoutOf(c){
+  if(!c || c.layout==='off') return null;
+  if(c.layout==='custom') return c.custom || null;
+  const t=((IM.tables&&IM.tables.templates)||[]).find(x=>x.id===c.layout);
+  return t ? t.layout : null;
+}
+function qdStick(s){
+  if(!s) return '';
+  if(s.mode==='mouse') return 'Mouse';
+  if(s.mode==='scroll') return 'Scroll';
+  if(s.mode==='keys'){ const k=[s.up,s.left,s.down,s.right].map(v=>imActLabel(v)); return k.join(' ').length<=12 ? k.join(' ') : 'Keys'; }
+  return s.mode||'';
+}
+function qdControls(g){
+  if(!g) return '<div class="muted">No game from your library is running.</div>';
+  imLoadTables(); imLoad(g.id); imLoadStatus();
+  const c=IM.games[g.id], T=IM.tables;
+  const mouse=`<button class="qd-mini" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
+  if(!c || !T) return '<div class="muted">Loading…</div>';
+  const lay=(k,v,title,sub)=>`<button class="qd-lay ${c.layout===v?'on':''}" data-f data-k="${k}" data-act="qdLayout" data-v="${esc(v)}"${c.layout===v?' data-first':''}><b>${esc(title)}</b><small>${esc(sub)}</small></button>`;
+  let left=`<h4>Layout for ${esc(g.title)}</h4>${lay('qi-off','off','Off','The game reads the controller itself')}`;
+  for(const t of T.templates) left += lay('qi-'+t.id, t.id, t.name, t.blurb||'');
+  if(c.custom) left += lay('qi-custom', 'custom', (c.custom.name||'Custom')+' (yours)', 'Your own layout');
+  left += `<button class="qd-lay edit" data-f data-k="qi-edit" data-act="qdImEdit">${c.layout==='off' && !c.custom ? 'Make a layout for this game' : 'Edit this layout'}</button>`;
+  const L=qdLayoutOf(c), B=(L&&L.buttons)||{}, Sx=(L&&L.sticks)||{};
+  const on=new Set(); for(const k of Object.keys(B)) on.add(['up','down','left','right'].includes(k)?'dpad':k); for(const k of Object.keys(Sx)) on.add(k);
+  const pad=`<svg class="qd-pad" viewBox="0 0 24 16" aria-hidden="true"><path d="M6 2h12a5 5 0 0 1 4.9 6l-1 5a2.4 2.4 0 0 1-4.3.9L16 12H8l-1.6 1.9a2.4 2.4 0 0 1-4.3-.9l-1-5A5 5 0 0 1 6 2z"/>${Object.entries(QD_PAD).map(([k,s])=>s.replace(/^<(\w+)/, `<$1 class="${on.has(k)?'on':''}"`)).join('')}</svg>`;
+  let right=pad;
+  if(!L) right += `<div class="muted" style="text-align:center;font-size:13px">No layout: ${esc(g.title)} gets the controller as it is. A layout makes it act as a keyboard and mouse, for games without controller support.</div>`;
+  else {
+    const btn=x=>{ const v=B[x]; return v==null ? null : imActLabel(typeof v==='string'?v:v.press); };
+    const items=[];
+    if(Sx.rs) items.push(['Right stick', qdStick(Sx.rs), true]);
+    if(Sx.ls) items.push(['Left stick', qdStick(Sx.ls), !Sx.rs]);
+    for(const [k,l] of [['rt','RT'],['lt','LT'],['a','A'],['b','B'],['x','X'],['y','Y'],['lb','LB'],['rb','RB'],['view','View'],['menu','Menu']]){ const v=btn(k); if(v) items.push([l, v, false]); }
+    if(B.up||B.down||B.left||B.right) items.push(['D-pad', [B.up,B.left,B.down,B.right].map(v=>v?imActLabel(typeof v==='string'?v:v.press):'').filter(Boolean).slice(0,4).join(' ').slice(0,24), false]);
+    right += `<div class="qd-sum">${items.slice(0,12).map(([k,v,ac])=>`<span><b class="${ac?'ac':''}">${esc(k)}</b> · ${esc(v)}</span>`).join('')}</div>`;
+    const gy=IM.status && IM.status.gyro, gon=!!(c.prefs && c.prefs.gyro);
+    right += `<div class="qd-more" style="justify-content:center"><button class="qd-mini" data-f data-k="q-imgyro" data-act="im" data-op="qaGyro" data-id="${esc(g.id)}">${I.pad}Gyro aiming: ${gon?'on':'off'}${gy && !gy.available?' (no motion sensors)':''}</button></div>`;
+  }
+  right += `<div class="qd-more" style="justify-content:center">${mouse}</div>`;
+  return `<div class="qd-ctl"><div class="qd-lays">${left}</div><div class="qd-map">${right}</div></div>`;
+}
+
+// ---- Friends (Hearth Friends on Matrix: who's online and joinable, the chat, invites with Join, quick replies)
+const QD_AV = ['#ff8a3d','#8b7bff','#ffd166','#3fd0b8','#7fb4ff','#ff6b9a'];
+function qdAv(name){ let h=0; for(const ch of String(name||'?')) h=(h*31+ch.charCodeAt(0))>>>0; const n=String(name||'?').replace(/^@/,'').trim(); const ini=(n.split(/\s+/).length>1 ? n.split(/\s+/).slice(0,2).map(w=>w[0]).join('') : n.slice(0,2)).toUpperCase();
+  return `<span class="qd-av" style="background:${QD_AV[h%QD_AV.length]}">${esc(ini)}</span>`; }
+function qdFriends(g){
+  if(!mfOn()) return `<div class="qd-chat"><div class="muted">Hearth Friends comes with Hearth OS.</div></div>`;
+  if(!MF.st && !MF.loading){ MF.loading=true; setTimeout(()=>{ MF.loading=false; }, 3000); mfLoad(); }
+  if(!mfIn()) return `<div class="qd-chat"><b>Friends</b><div class="muted">Sign in to Hearth Friends (Matrix) from Friends in ${APP}'s menu to chat and invite friends over your game.</div><div class="qd-more"><button class="qd-mini" data-f data-k="mfq-all" data-act="mfQAll" data-first>${I.user}Open Friends</button></div></div>`;
+  if(QD.auto && MF.chats){
+    QD.auto=false;
+    const c=!MF.room && MF.chats.filter(x=>x.unread && !x.muted).sort((a,b)=>((b.last&&b.last.at)||0)-((a.last&&a.last.at)||0))[0];
+    if(c){ MF.room=c.roomId; MF.emojiOpen=false; setTimeout(()=>mfLoadMsgs(c.roomId, false), 0); }
+  }
+  const fs=(MF.friends||[]).filter(f=>f.state==='friend');
+  const on=fs.filter(f=>f.presence!=='offline' || f.game).sort((a,b)=>(b.joinable?2:b.game?1:0)-(a.joinable?2:a.game?1:0));
+  const list=(on.length?on:fs).slice(0,8);
+  let left=`<h4>${on.length?'Online · '+on.length:'Friends'}</h4>`;
+  left += list.map(f=>`<button class="qd-fr ${MF.room&&MF.room===f.roomId?'on':''}" data-f data-k="mfq-f-${esc(f.userId)}" data-act="mfQOpen" data-room="${esc(f.roomId)}"${MF.room===f.roomId?' data-first':''}>${qdAv(f.name)}<span class="t"><b>${esc(f.name)}</b><small class="${f.joinable?'j':''}">${f.game?esc(f.game)+(f.joinable?' · Joinable':''):f.presence==='unavailable'?'Away':f.presence==='offline'?'Offline':'Online'}</small></span></button>`).join('') || '<div class="muted" style="font-size:13px">No friends yet.</div>';
+  const unread=(MF.chats||[]).filter(c=>c.unread && !c.muted && !list.some(f=>f.roomId===c.roomId)).slice(0,3);
+  if(unread.length) left += `<h4 style="margin-top:6px">New messages</h4>` + unread.map(c=>`<button class="qd-fr ${MF.room===c.roomId?'on':''}" data-f data-k="mfq-c-${esc(c.roomId)}" data-act="mfQOpen" data-room="${esc(c.roomId)}">${qdAv(c.name)}<span class="t"><b>${esc(c.name)}</b><small>${c.unread} new</small></span></button>`).join('');
+  left += `<span style="margin-top:auto"></span>${g?`<button class="qd-btn" data-f data-k="mfx-game" data-act="qdInviteHere">Invite to ${esc(g.title)}</button>`:''}<button class="qd-btn" data-f data-k="mfq-all" data-act="mfQAll">Open Friends</button>`;
+  let right;
+  if(!MF.room) right = `<div class="hd"><b>Chats</b></div><div class="qd-msgs" style="justify-content:center;align-items:center"><div class="muted" style="text-align:center">Pick a friend to chat${unread.length||(MF.chats||[]).some(c=>c.unread)?' · you have new messages':''}.</div></div>`;
+  else {
+    const c=mfChat(MF.room)||{name:'Chat'}, ms=(MF.msgs[MF.room]||null);
+    right = `<div class="hd"><b>${esc(c.name)}</b><small>${c.encrypted!==false?'🔒 Encrypted':'Not encrypted'}</small></div>
+      <div class="qd-msgs mfmsgs">${ms ? (ms.slice(-6).map(m=>mfMsg(m)).join('') || '<div class="muted">No messages yet. Say hello!</div>') : '<div class="muted">Loading messages…</div>'}</div>
+      <div class="qd-replies">${QD.replies.map((r,i)=>`<button class="qd-reply" data-f data-k="qr-${i}" data-act="qdReply" data-v="${esc(r)}">${esc(r)}</button>`).join('')}<button class="qd-type" data-f data-k="mfx-type" data-act="mfType" data-first>Type a message${INPUT.last==='pad'?' (Y)':''}</button></div>`;
+  }
+  return `<div class="qd-fl">${left}</div><div class="qd-chat">${right}</div>`;
+}
+
+// ---- Capture (screenshot; Hearth Recorder's record and instant replay where it's installed; this session's pictures)
+function qdLoadShots(){
+  if(!(LINUX || !host) || Date.now()-QD.shotsAt<3000) return;
+  QD.shotsAt=Date.now();
+  call('screenshots.list',{},15000).then(r=>{ QD.shots=(r&&r.list)||[]; if(S.layers.includes('qam') && S.qtab==='capture') refreshUI(); }).catch(()=>{ QD.shots=[]; });
+}
+function qdSession(){
+  const since=S.runningSince||0;
+  const shots=(QD.shots||[]).filter(x=>x.time>=since).map(x=>({kind:'shot', file:x.file, url:x.url, time:x.time}));
+  const caps=QD.caps.filter(x=>x.time>=since);
+  return [...shots, ...caps].sort((a,b)=>b.time-a.time);
+}
+function qdCapture(g){
+  const k=REC.ok && REC.st && REC.st.kind, len=REC.secs>=60?(REC.secs/60)+' min':(REC.secs||30)+' s';
+  const cap=(key,act,label,icon,cls='')=>`<button class="qd-cap ${cls}" data-f data-k="${key}" ${act}>${icon}${label}</button>`;
+  let h=`<div class="qd-caps">${cap('q-shot','data-act="ovShot" data-first','Screenshot',QDI.capture)}`;
+  if(REC.ok) h += k==='record' ? cap('q-rec','data-act="recToggle"','Stop recording',I.stop,'recording') : cap('q-rec','data-act="recToggle"'+(k==='sound'?' disabled':''),'Record',QDI.rec,'rec');
+  if(REC.ok && k==='replay') h += cap('q-rsave','data-act="recSave"','Save last '+len,QDI.replay);
+  h += '</div>';
+  const L=qdSession();
+  h += `<h4>From this session</h4>` + (L.length ? `<div class="qd-thumbs">${L.slice(0,4).map(x=>`<div class="qd-thumb">${x.url?`<img src="${esc(x.url)}" alt="">`:''}${x.kind!=='shot'?`<span>${esc(x.label||'Video')}</span>`:''}</div>`).join('')}</div>` : `<div class="muted" style="font-size:13px">Nothing yet: screenshots and clips you take while playing show here.</div>`);
+  const bar=[];
+  if(mfOn() && mfIn() && L.some(x=>x.kind==='shot')) bar.push(`<button class="qd-mini" data-f data-k="q-csend" data-act="qdSendShot">${I.user}Send to a friend</button>`);
+  if(LINUX || !host) bar.push(`<button class="qd-mini" data-f data-k="q-cshots" data-act="qdOpenShots">${I.display}Open Screenshots</button>`);
+  if(REC.ok && !k) bar.push(`<button class="qd-mini" data-f data-k="q-ron" data-act="recReplay">${QDI.replay}Turn on instant replay</button>`);
+  if(REC.ok && k==='replay') bar.push(`<button class="qd-mini" data-f data-k="q-roff" data-act="recReplay">Instant replay off</button>`);
+  const st = k==='record' ? 'Recording…' : k==='replay' ? 'Instant replay is on' : '';
+  h += `<div class="qd-capbar">${bar.join('')}${st?`<span class="st">${st}</span>`:''}</div>`;
+  return h;
+}
+
+// ---- Quick settings (volume, brightness, mute, Wi-Fi, Bluetooth, airplane mode, sounds; notifications under them)
+function qdQuick(){
+  const w=S.sys.wifi, a=S.sys.audio;
+  let h=`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
+    <button class="ctl tg" data-f data-k="q-mute" data-act="mute">${a.muted?I.mute:I.vol}<span class="tgl">Mute</span><div class="sw ${a.muted?'on':''}"></div></button>
+    ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
+    ${qRadio('bt','bt','Bluetooth', S.sys.bt.on?'On':'Off')}
+    ${qRadio('air','plane','Airplane mode', '')}
+    ${tgCtl('sounds','note','Interface sounds')}</div>`;
+  if(NOTIFS.length) h += `<h4>Notifications</h4>` + NOTIFS.slice(0,3).map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%;margin:0"><div class="ni">${I[n.i]||I.bell}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')
+    + `<div class="qd-more"><button class="qd-mini" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button></div>`;
+  return h;
+}
+
+/** Something of Hearth's own to open (Game settings, the layout editor, Screenshots): over a game, Hearth comes back with it. */
+function qdOpenInHearth(open){
+  if(OVERLAY) return send({type:'overlay', action:'home', open});
+  closeAll();
+  qdOpenHere(open);
+}
+function qdOpenHere(o){
+  if(!o) return;
+  if(o.edit==='input' && o.game){ imLoadTables(); imLoad(o.game, true); let n=0; const go=()=>{ if(IM.games[o.game] && IM.tables) return imEdit(o.game); if(++n<25) setTimeout(go, 200); }; return go(); }
+  if(o.view==='gameset' && o.game) return navigate('gameset',{game:o.game});
+  if(o.view==='shots'){ SH.open=-1; return S.view==='shots' ? null : navigate('shots'); }
+  if(o.view && S.view!==o.view) navigate(o.view);
+}
+function qdAct(a, d){
+  const g=S.running && G(S.running);
+  switch(a){
+    case 'qdInvite': S.qtab='friends'; renderQam(); qdOnTab('friends'); return setFocus($('#qam [data-k="mfx-game"]') || qdFirst() || $('#qam [data-k="qt-friends"]'), true);
+    case 'qdInviteHere': if(!g) return; if(!MF.room) return toast('Pick a friend first'); return mfSendInvite(g);
+    case 'qdReply': if(!MF.room) return toast('Pick a friend first'); mfSend(d.v); return toast('Sent: '+d.v);
+    case 'qdGameSet': if(g) return qdOpenInHearth({view:'gameset', game:g.id}); return;
+    case 'qdImEdit': if(g) return qdOpenInHearth({edit:'input', game:g.id}); return;
+    case 'qdLayout': if(g) return imSave(g.id, {layout:d.v}, true); return;
+    case 'qdOpenShots': return qdOpenInHearth({view:'shots'});
+    case 'qdPerGame': return qdPerGame();
+    case 'qdApps': return call('apps.list').then(L=>{ L=(L||[]).filter(x=>!x.hearth);
+      if(!L.length) return toast('Nothing else is open');
+      openSheet({title:'Switch app', items:L.map(x=>({label:x.title+(x.focused?' (on screen)':''), icon:x.game?'play':'display', run:()=>{ const b=document.createElement('button'); b.dataset.act='appFocus'; b.dataset.id=x.id; b.dataset.pid=x.pid; act(b); }}))}); }).catch(e=>toast(e.message));
+    case 'qdSendShot': {
+      const shot=qdSession().find(x=>x.kind==='shot'); if(!shot) return toast('Take a screenshot first');
+      const fs=(MF.friends||[]).filter(f=>f.state==='friend' && f.roomId);
+      if(!fs.length) return toast('No friends to send it to yet');
+      return openSheet({title:'Send your latest screenshot', sub:'Sent end-to-end encrypted', items:fs.slice(0,10).map(f=>({label:f.name, icon:'user', run:()=>{ toast('Sending…'); call('mfriends.sendImage',{roomId:f.roomId, path:shot.file},90000).then(()=>toast('Screenshot sent to '+f.name)).catch(e=>toast(e.message)); }}))});
+    }
+  }
+}
+/** X and Y over the dock: X keeps this game's performance settings (or not), Y types in the chat. */
+function qdKey(k){
+  if(k==='y' && S.qtab==='friends' && mfIn()){ if(!MF.room) return toast('Pick a friend first'); return mfAct('mfType', {}); }
+  if(k==='x' && S.qtab==='perf' && qdPerGameShown()) return qdPerGame();
+}
+
+// ---- The quick glance: time, battery, FPS and the latest message for a moment, without Quick Access opening.
+function glanceMsg(){
+  const c=(MF.chats||[]).filter(x=>x.unread && !x.muted && x.last).sort((a,b)=>((b.last&&b.last.at)||0)-((a.last&&a.last.at)||0))[0];
+  return c ? `${c.name}: ${mfPreview(c.last)}` : '';
+}
+function showGlance(d){
+  if(!QD.glance && OVERLAY) return;
+  let el=$('#glance'); if(!el){ el=document.createElement('div'); el.id='glance'; el.setAttribute('role','status'); document.body.appendChild(el); }
+  const draw=()=>{ const b=qdBattery(), p=PERF.s, m=glanceMsg(), parts=[`<b>${clockText(new Date())}</b>`];
+    if(b) parts.push(`<span>${b.pct}%${b.charging?' ⚡':''}</span>`);
+    if(p && p.fps) parts.push(`<span>${p.fps} FPS</span>`);
+    if(S.running && S.runningSince) parts.push(`<span>${esc(qdPlayed())}</span>`);
+    if(m) parts.push(`<span class="msg">${esc(m.length>60?m.slice(0,59)+'…':m)}</span>`);
+    parts.push(`<span class="tip">Hold Guide for Quick Access</span>`);
+    el.innerHTML=parts.join('<i class="s"></i>'); };
+  draw(); el.classList.add('on');
+  // Fresh numbers (the overlay page can be minutes old): drawn again when they come.
+  refreshStatus().then(draw);
+  if(host) call('perf.stats',{},4000).then(r=>{ PERF.s=Object.assign({}, PERF.s||{}, r); draw(); }).catch(()=>{});
+  clearTimeout(QD.glanceT); QD.glanceT=setTimeout(()=>el.classList.remove('on'), Math.max(800, (d && d.ms || 3000)-250));
+}
+function loadOverlaySettings(){
+  call('overlay.settings').then(r=>{ OVS.s=r; if(r && Array.isArray(r.quickReplies)) QD.replies=r.quickReplies.slice(0,6); if(r && 'glance' in r) QD.glance=r.glance!==false; }).catch(()=>{});
+}
+// ==== end of the top dock
 function renderPower(){
   // Android: the system's own power menu (hold the power button) sleeps and turns off; Hearth can only step aside.
   if(ANDROID){ $('#powerBox').innerHTML = `<h3>Power</h3><button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}Leave ${APP}</button>
@@ -7000,7 +8118,7 @@ function oskEngine(){
       for(const g of GAMES) for(const x of String(g.title||'').split(/[\s:,.!?()\-–]+/)) { const k=x.toLowerCase(); if(x.length>w.length && HearthOSK.fold(x).startsWith(f) && !seen.has(k)){ seen.add(k); out.push(x); if(out.length>=3) return out; } }
       return out; },
     onHide: oskHide, onLeave: ()=>{ if(GOSK.box && focused===GOSK.box) move('up'); },
-    onHaptic: (s,ms)=>{ for(const p of (navigator.getGamepads?[...navigator.getGamepads()]:[])) if(p && p.vibrationActuator && p.vibrationActuator.playEffect) p.vibrationActuator.playEffect('dual-rumble',{duration:ms,weakMagnitude:s,strongMagnitude:s*.4}).catch(()=>{}); },
+    onHaptic: (s,ms)=>{ try{ HearthOSK.rumble(s,ms); }catch(e){} },
     onSound: k=>{ if(k==='panel') blip(620,.03,.03); else if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
   return GOSK.engine;
 }
@@ -7102,13 +8220,23 @@ function searchResults(){
   // A profile with parental limits finds only the games it's allowed (as everywhere else).
   const a=allowedList();
   const res = q ? GAMES.filter(g=>(!a || a.includes(g.id)) && (g.title||'').toLowerCase().includes(q)).slice(0,8) : [];
-  return res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('')
-    || `<div class="muted" style="padding:16px 4px">${q?'No matches':oskShown(SKB)?'Type with the keyboard below, or a real keyboard':'Type the name of a game'}</div>`;
+  const games = res.map(g=>`<button class="row" data-f data-k="sr-${esc(g.id)}" data-act="game" data-id="${esc(g.id)}"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div></div><div class="rt"><b>${esc(g.title)}</b><small>${SOURCES[g.src]}</small></div></button>`).join('');
+  if(!q) return `<div class="muted" style="padding:16px 4px">${oskShown(SKB)?'Type with the keyboard below, or a real keyboard':'Type the name of a game or a setting'}</div>`;
+  // Grouped, like the dock's search: Settings (every page and row: settingsSearch), Games, the Store, Friends.
+  // A profile with parental limits gets games only (no settings, store or chats from here).
+  if(a) return games || '<div class="muted" style="padding:16px 4px">No matches</div>';
+  const grp = (t, h) => h ? `<div class="sgh">${t}</div>${h}` : '';
+  let sets=''; try{ sets=settingsSearch(q).slice(0,5).map((e,i)=>`<button class="row" data-f data-k="ss-r-${i}" ${e.link?`data-act="setLink" data-v="${esc(e.link)}"`:`data-act="setOpen" data-tab="${esc(e.t)}" data-fk="${esc(e.k||'')}"`}><span class="ricon">${I[e.ic]||I.gear}</span><div class="rt"><b>${esc(e.title)}</b><small>${esc(e.path)}</small></div></button>`).join(''); }catch(e){}
+  const store = shopOn() && !OVERLAY ? `<button class="row" data-f data-k="ss-store" data-act="storeSearch" data-q="${esc(query.trim())}"><span class="ricon">${I.shop||I.search}</span><div class="rt"><b>Search “${esc(query.trim())}” in the Store</b><small>Steam · GOG · Epic · Xbox</small></div></button>` : '';
+  const P = typeof dkPeople==='function' && !OVERLAY ? (dkPeople()||[]).filter(f=>(f.name||'').toLowerCase().includes(q)).slice(0,4) : [];
+  const fr = P.map((f,i)=>`<button class="row" data-f data-k="ss-f-${i}" data-act="friendOpen"><span class="ricon">${I.user}</span><div class="rt"><b>${esc(f.name)}</b><small>${f.game?'Playing '+esc(f.game):f.on?'Online':'Offline'}</small></div></button>`).join('');
+  return grp('Settings', sets) + grp('Games', games) + grp('Store', store) + grp('Friends', fr)
+    || '<div class="muted" style="padding:16px 4px">No matches</div>';
 }
 function renderSearch(keepKey){
   const t=Object.assign(SKB,{text:query});
   const osk=oskShown(SKB);
-  $('#search').innerHTML = `<div class="kbtop"><div class="sfield" data-f data-k="sk-field" data-act="oskField" data-v="search">${I.search}${kbField(t,'','Search your library')}</div>
+  $('#search').innerHTML = `<div class="kbtop"><div class="sfield" data-f data-k="sk-field" data-act="oskField" data-v="search">${I.search}${kbField(t,'','Search games, settings, the store and friends')}</div>
     <div class="sres">${searchResults()}</div></div>
     ${osk?kbBox('sk'):kbNone('sk','key')}`;
   if(osk) oskMount('search');
@@ -7118,7 +8246,7 @@ function renderSearch(keepKey){
 function searchUpdate(){
   const f=$('#search .sfield .kbv'), r=$('#search .sres');
   if(!f || !r) return renderSearch(focused?.dataset.k);
-  f.outerHTML=kbField(Object.assign(SKB,{text:query}),'','Search your library');
+  f.outerHTML=kbField(Object.assign(SKB,{text:query}),'','Search games, settings, the store and friends');
   const keep = focused && r.contains(focused) ? focused.dataset.k : null;
   r.innerHTML=searchResults();
   if(keep){ const el=r.querySelector(`[data-k="${CSS.escape(keep)}"]`); setFocus(el || $('#search [data-k="sk-field"]'), true); }
@@ -7171,11 +8299,14 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(qamTop()) qdOnTab(S.qtab); else { if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); } }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
   mkmenu:()=>{ MK.menu=null; },
+  menu:()=>{ clearInterval(DOCK.timer); DOCK.timer=null; DOCK.cur=null; },
+  search:()=>{ $('#search').classList.remove('over-dock'); },
+  qam:()=>{ if(!OVERLAY){ document.body.classList.remove('qtop'); $('#scrim').classList.remove('qtop'); } },
 };
 const focusStack=[];
 function openLayer(id, focusKey){
@@ -7193,6 +8324,7 @@ function openLayer(id, focusKey){
 }
 function closeLayer(){
   const id=S.layers.pop(); if(!id) return;
+  if(id==='prompt'||id==='search'){ try{ HearthOSK.rumbleStop(); }catch(e){} }  // pads that ignore rumble durations
   $('#'+id).classList.remove('open');
   syncScrim();
   LAYER_CLOSE[id]?.();
@@ -7225,7 +8357,9 @@ function syncScrim(){
 // =====================================================================
 let focused=null;
 function root(){ const top=S.layers.at(-1); return top ? $('#'+top) : $('#app'); }
-function focusables(){ return [...root().querySelectorAll('[data-f]')].filter(el=>el.getClientRects().length); }
+// MOVE_IN: a part of the screen the next move stays inside (the top dock's panel: up from its top row goes to its tab).
+let MOVE_IN=null;
+function focusables(){ return [...(MOVE_IN||root()).querySelectorAll('[data-f]')].filter(el=>el.getClientRects().length); }
 // Scrolling to the focused item. While presses come quickly (a held direction, fast tapping) it jumps instead
 // of gliding: a smooth scroll still moving under the next press made the next pick wrong (it bounced between
 // two items), and the glide fell behind on a handheld.
@@ -7243,6 +8377,7 @@ function setFocus(el, quiet){
   oskFocusSync();
   if(S.view==='library' && !S.layers.length) libFocus(el);   // Library layouts: fit, and fill the detail panel
   if(el.dataset.mkspot && !S.layers.length) mkSpot(el.dataset.mkspot);   // keyboard & mouse layouts: the panel / page
+  if(el.dataset.dock) dockFocus(el.dataset.dock);   // the Bottom Dock: its card follows the selection
   const now=performance.now(), rapid = now-lastNav < 260;
   lastNav=now;
   el.scrollIntoView(scrollOpts(el, !quiet && !rapid && !LOOK.reduceMotion));
@@ -7274,6 +8409,17 @@ function move(dir){
   try { moveNow(dir); } finally { perfLog('move '+dir, t0); }
 }
 function moveNow(dir){
+  // Quick Access's top dock: left / right along the tabs switch them, down goes into the panel; in the panel the
+  // selection stays in it, and up from its top row goes back to the picked tab (not whichever tab is nearest).
+  if(!MOVE_IN && focused.closest('#qam.top')){
+    if(focused.classList.contains('qd-tab')) return qdTabMove(dir);
+    const p=focused.closest('.qd-panel');
+    if(p){ const was=focused; MOVE_IN=p; try{ moveNow(dir); } finally { MOVE_IN=null; }
+      if(focused===was && dir==='up'){ const t=$(`#qam [data-k="qt-${S.qtab}"]`); if(t){ setFocus(t); blip(); } }
+      return; }
+  }
+  // The Bottom Dock: down from its card goes back to the item the card is about (not whichever is nearest).
+  if(dir==='down' && DOCK.cur && focused.closest('#dkCard')){ const it=$(`#menu [data-dock="${DOCK.cur}"]`); if(it){ setFocus(it); blip(); return; } }
   // A menu (power menu, option sheets) goes item by item, so none can be skipped.
   if((dir==='up'||dir==='down') && focused.classList.contains('mitem')){
     const items=[...focused.parentElement.querySelectorAll(':scope > .mitem[data-f]')];
@@ -7351,21 +8497,34 @@ function act(el){
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
+  if(/^qd[A-Z]/.test(a)) return qdAct(a, d);   // Quick Access over a game (the top dock)
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
     case 'menu': return toggleLayer('menu');
     case 'qam': closeAll(); if(d.tab) S.qtab=d.tab; return openLayer('qam');
-    case 'search': closeAll(); query=''; SKB.forceOsk=false; SKB.oskHidden=false; SKB.caret=0; return openLayer('search', oskWanted()?'sk-kb':'sk-field');
+    case 'search': setSearchPrefetch(); if(!d.keep) closeAll(); query=''; SKB.forceOsk=false; SKB.oskHidden=false; SKB.caret=0; $('#search').classList.toggle('over-dock', S.layers.includes('menu')); return openLayer('search', oskWanted()?'sk-kb':'sk-field');
     case 'power': closeAll(); return openLayer('power');
     case 'back': return back();
-    case 'nav': closeAll(); if(S.view!==d.view){ S.history=[]; navigate(d.view,{},false);} return;
+    case 'nav': closeAll();
+      if(d.view==='settings'){ if(S.view!=='settings'){ S.history=[]; navigate('settings',{sfront:true},false); } else if(!S.sfront) setBackToFront(); return; }
+      if(S.view!==d.view){ S.history=[]; navigate(d.view,{},false);} return;
     case 'game': closeAll(); return navigate('game',{game:d.id});
     case 'tab': S.tab=d.tab; return render('tab-'+d.tab);
     case 'sort': { const i=SORTS.findIndex(s=>s[0]===S.sort); S.sort=SORTS[(i+1)%SORTS.length][0]; return render('sort'); }
-    case 'stab': S.settingsTab=d.tab; SLAST[stabGroup(d.tab)]=d.tab; render('st-'+d.tab); return onSettingsTab(d.tab);
-    case 'sgroup': { const subs=stabsIn(d.g); if(!subs.length) return; const k=(SLAST[d.g]&&subs.some(x=>x[0]===SLAST[d.g]))?SLAST[d.g]:subs[0][0]; S.settingsTab=k; render('sg-'+d.g); return onSettingsTab(k); }
-    case 'goset': closeAll(); S.settingsTab=d.tab;
+    case 'stab': return setEnter(d.tab, !S.sfront);
+    case 'sgroup': S.sgroup=d.g; S.sfront=true; render('sg-'+d.g); return setFrontLoad(d.g);
+    case 'setBack': return setBackToFront();
+    case 'setLink': { const l=SLINKS.find(x=>x.k===d.v); if(l){ closeAll(); l.go(); } return; }
+    case 'setOpen': return setOpen(d.tab, d.fk);
+    case 'setSearch': setSearchPrefetch(); query=''; SKB.forceOsk=false; SKB.oskHidden=false; SKB.caret=0; return openLayer('search', oskWanted()?'sk-kb':'sk-field');
+    case 'menuStyle': LOOK.menuStyle=d.v; saveLook(); renderFooter(); toast(d.v==='side'?'Classic side menu: ☰ opens it':'The dock: ☰ opens it'); return render('ap-ms-'+d.v);
+    case 'dockResume': if(OVERLAY) return overlayClose(); closeAll(); return send({type:'resume'});
+    case 'dockPlay': closeAll(); return launch(G(d.id));
+    case 'dockPauseAll': return dockPauseAll();
+    case 'storeSearch': closeAll(); if(S.view!=='shop') navigate('shop'); return shopDoSearch(SHOP.store||'steam', d.q||'');
+    case 'friendOpen': closeAll(); MF.top='mx'; MF.tab='friends'; MF.room=null; FR.plat='all'; return S.view==='friends' ? render(null,true) : navigate('friends');
+    case 'goset': closeAll(); S.settingsTab=d.tab; S.sfront=false;
       if(S.view==='settings'){ render('st-'+d.tab); return onSettingsTab(d.tab); }
       return navigate('settings',{focusKey:'st-'+d.tab});
     case 'radio': return toggleRadio(d.kind);
@@ -7434,6 +8593,7 @@ function act(el){
     case 'loginStart': return loginStart();
     case 'loginPass': return loginPass();
     case 'loginHost': return loginHost();
+    case 'sysRollback': return sysRollback(!!d.undo);
     case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'impScan': return call('import.scan',{},6*60e3).then(onImport).catch(e=>toast(e.message));
     case 'impToggle': return impToggle(d.key);
@@ -7523,14 +8683,14 @@ function act(el){
     case 'madeFor': LOOK.madeFor=d.v; saveLook(); renderFooter(); return render('ap-mf-'+d.v);
     case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; t.oskHidden=false; oskRefresh(); } return; }
     case 'oskKb': return;   // the keyboard's own box (its keys handle taps and clicks themselves)
-    case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'qtab': S.qtab=d.tab; renderQam(); if(qamTop()) qdOnTab(d.tab); else { if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); } return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
     case 'gsRetry': loadGameSet(S.game); return render(null,true);
     case 'gsToggle': return saveGameSet({[d.key]:!GSET.s.options[d.key]}, 'gs-'+d.key);
     case 'gsProton': return openSheet({title:'Proton version', sub:'For '+(G(GSET.id)?.title||'this game'), items:GSET.s.protonChoices.map(c=>({label:c.label+(c.sub?' — '+c.sub:''), icon:GSET.s.options.proton===c.id?'check':'', run:()=>saveGameSet({proton:c.id},'gs-proton')}))});
     case 'gsText': { const key=d.key; const title=key==='args'?'Launch options':'Environment variables';
       return openPrompt({title, value:GSET.s.options[key]||''}).then(v=>{ if(v!=null) saveGameSet({[key]:v.trim()}, 'gs-'+key); }); }
-    case 'rndPick': return openSheet({title:'Drawing engine', sub:`${APP} restarts to change it.`, items:[['auto','Automatic','Chromium on Nvidia, WebKit elsewhere'],['chromium','Chromium','Smoother on Nvidia graphics'],['webkit','WebKit','Lighter; the usual one on AMD and Intel']].map(([v,l,sb])=>({label:`${l} · ${sb}`, icon:'display', run:()=>call('display.renderer',{set:v}).then(r=>{ RND.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
+    case 'rndPick': return openSheet({title:'Renderer', sub:`${APP} restarts to change it. Qt draws Game Mode's main screens natively and is Experimental; if it can't start, ${APP} goes back to Automatic.`, items:[['auto','Automatic','Electron on Nvidia, WebKit elsewhere'],['chromium','Electron','Chromium; smoother on Nvidia graphics'],['webkit','WebKit','Lighter; the usual one on AMD and Intel'],['qt','Qt (Experimental)','Native Qt Quick screens; not everything is there yet']].filter(([v])=>!RND.s || (v!=='qt' || RND.s.qt) && (v!=='chromium' || RND.s.electron!==false)).map(([v,l,sb])=>({label:`${l} · ${sb}`, icon:RND.s&&RND.s.pick===v?'check':'display', run:()=>call('display.renderer',{set:v}).then(r=>{ RND.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
     case 'nvDrawing': return openSheet({title:`How ${APP} draws on Nvidia`, sub:`${APP} restarts to change it.`, items:[['auto','Automatic','Fast on newer drivers'],['fast','Fast','Smooth menus and library'],['compatible','Compatible','Slower; for a black screen']].map(([v,l,s])=>({label:`${l} · ${s}`, icon:'display', run:()=>call('display.nvidiaDrawing',{set:v}).then(r=>{ NVD.s=r; toast(`Restarting ${APP}…`); setTimeout(()=>call('app.restart').catch(()=>{}),600); }).catch(e=>toast(e.message))}))});
     case 'gsDelete': return uninstallGame(G(GSET.id||S.game));
     case 'gsReset': return openSheet({title:'Reset Proton files?', sub:'Deletes this game\'s Wine prefix. Proton sets it up again the next time you play. Cloud saves are fine; saves stored only in the prefix are lost.', items:[{label:'Reset', icon:'refresh', run:()=>call('game.resetPrefix',{id:GSET.id}).then(()=>toast('Done. The next start sets it up fresh.')).catch(e=>toast(e.message))}]});
@@ -7538,9 +8698,10 @@ function act(el){
     case 'appFocus': if(OVERLAY) overlayClose(); else closeAll();   // close first, so a slow or failed switch can't leave it open
       return call('apps.focus',{id:+d.id, pid:+d.pid}).catch(e=>toast(e.message));
     case 'appClose': return openSheet({title:`Close ${d.t}?`, sub:'Anything unsaved in it may be lost.', items:[{label:'Close it', icon:'x', run:()=>call('apps.close',{pid:+d.pid}).then(()=>{ toast(`Closed ${d.t}`); setTimeout(loadApps,800); }).catch(e=>toast(e.message))}]});
-    case 'tdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    case 'tdp': if(qamTop() && S.layers.includes('qam') && qdPgOn() && S.running) call('game.options.set',{id:S.running, options:{tdp:+d.v, perfSaved:true}}).catch(()=>{});
+      return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
-    case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    case 'fpsLimit': return call('perf.setFpsLimit',Object.assign({fps:+d.v}, qamTop() && S.layers.includes('qam') && qdPgOn() ? {game:true} : {})).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
     // ==== Hearth Recorder (recQam)
     case 'recToggle': toast(REC.st&&REC.st.kind==='record'?'Saving the recording…':'Starting to record…'); return call('recorder.toggle',{},70000).then(r=>recDone(r,'Recording')).catch(e=>{ REC.at=0; recLoad(); toast(e.message); });
@@ -7548,11 +8709,17 @@ function act(el){
     case 'recSave': toast('Saving the replay…'); return call('recorder.saveReplay',{},70000).then(r=>recDone(r,'Replay')).catch(e=>toast(e.message));
     // ==== end of Hearth Recorder
     case 'ovShot': {   // Hearth's own panel closes first, so it isn't in the picture
-      const shot=()=>call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
+      const shot=()=>call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; QD.shotsAt=0; if(S.qtab==='capture') qdLoadShots(); toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
       if(OVERLAY) return shot();
       closeAll(); return setTimeout(shot, 350);
     }
     case 'ovHome': return OVERLAY ? send({type:'overlay', action:'home'}) : closeAll();   // Hearth's panel: Hearth is already on screen
+    case 'ovGlance': return call('overlay.setGlance',{on:!(OVS.s && OVS.s.glance!==false)}).then(r=>{ OVS.s=r; QD.glance=r.glance!==false; toast(QD.glance?'Quick glance on: tap Guide over a game, hold it for Quick Access':'Quick glance off: Guide opens Quick Access'); render('ov-glance'); }).catch(e=>toast(e.message));
+    case 'ovQuickReply': { const i=+d.i, L=QD.replies.slice();
+      return openPrompt({title:i<L.length?'Quick reply':'New quick reply', mode:'text', value:L[i]||'', placeholder:'On my way', enterLabel:'Save'}).then(v=>{ if(v==null) return;
+        if(v.trim()) L[i]=v.trim().slice(0,40); else L.splice(i,1);
+        return call('overlay.setQuickReplies',{list:L}).then(r=>{ OVS.s=r; QD.replies=(r.quickReplies||L).slice(0,6); render('mfs-qr-'+Math.min(i,QD.replies.length)); }); }).catch(e=>toast(e.message)); }
+    case 'ovQuickReset': return call('overlay.setQuickReplies',{list:['On my way','GG','👍']}).then(r=>{ OVS.s=r; QD.replies=r.quickReplies; toast('Quick replies reset'); render('mfs-qr-reset'); }).catch(e=>toast(e.message));
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
     case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
     case 'toggle': { S.set[d.key]=!S.set[d.key];
@@ -7670,6 +8837,7 @@ function back(){
   if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
   if(!S.layers.length && S.view==='shots' && SH.open>=0){ const i=SH.open; SH.open=-1; return render('sh-'+i,true); }
   if(!S.layers.length && S.view==='shop' && SHOP.page) return shopBack();
+  if(!S.layers.length && S.view==='settings' && !S.sfront){ setBackToFront(); return blip(420,.05); }
   if(!S.layers.length && goBack()) return blip(420,.05);
 }
 function typeKey(c){
@@ -9755,7 +10923,7 @@ function onSysEvent(name, data){
   if(name==='watchdog'){ const d=data||{}; if(d.code){ LOGS.r={code:d.code, url:'https://hearth-counter.game305-cl.workers.dev/v1/logs/'+d.code}; NOTIFS.unshift({i:'refresh', t:APP+' got stuck and sent a report', s:'Code '+d.code}); updateBadge(); toast(APP+' got stuck. Report sent: '+d.code); } else toast(APP+' got stuck. It\'s freeing itself.'); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
-  if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
+  if(name==='open'){ if(data && (data.edit || data.game || data.view==='shots')) return qdOpenHere(data); if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
@@ -10063,6 +11231,7 @@ function renderFooter(){
   if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done',top==='search'?'Search':'Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(!top && S.view==='shop') h.push(['tabs','Stores']);
+  if(!top && S.view==='settings' && (S.sfront || stabsIn(stabGroup(S.settingsTab)).length>1)) h.push(['tabs',S.sfront?'Groups':'Pages']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
   // Keyboard & mouse layouts with a keyboard or mouse: their own keys.
@@ -10075,7 +11244,7 @@ function renderFooter(){
     else { const [k,c]=(GLYPHS[style]||GLYPHS.kbd)[id]; glyph=`<span class="glyph ${c}">${k}</span>`; }
     return `<button class="hint ${i>2?'hide-s':''}" data-act="hint" data-h="${id}">${glyph}${l}</button>`;
   });
-  $('#footer').innerHTML = (g?`<div class="running"><span class="dot"></span>${esc(g.title)}</div>`:'') + items.join('');
+  $('#footer').innerHTML = (typeof miniDock==='function' ? miniDock() : '') + (g?`<div class="running"><span class="dot"></span>${esc(g.title)}</div>`:'') + items.join('');
 }
 function hintAction(id){
   if(id.startsWith('mk')){ const f=focused && $('#view').contains(focused) ? focused : null, g=f && G(f.dataset.id||f.dataset.mkplay);
@@ -10113,9 +11282,10 @@ function input(k){
   if(OVERLAY){
     // The overlay is only the Quick Access panel (plus its pop-ups and the text prompt).
     if((k==='select'||k==='guide') && top==='qam') return overlayClose();
-    if(k==='start' && top!=='prompt') return;
-    if((k==='y'||k==='x') && top!=='prompt') return;
+    if(k==='start' && top!=='prompt' && !(dockOn() && S.running && document.documentElement.classList.contains('ovfull'))) return;   // over a game: the game dock
+    if((k==='y'||k==='x') && top!=='prompt'){ if(top==='qam' && qamTop()) qdKey(k); return; }
   }
+  if((k==='y'||k==='x') && top==='qam' && qamTop()) return qdKey(k);
   // The on-screen keyboard: everything while it has the selection; its shortcuts (X ⌫, Y space, LB/RB caret, ☰ Enter,
   // LT shift, RT symbols, L3 emoji) while its search / prompt is open with the selection on the field or a result.
   if((top==='prompt'||top==='search') && GOSK.engine && GOSK.box && document.contains(GOSK.box)){
@@ -10139,8 +11309,10 @@ function input(k){
 }
 function shiftTab(d){
   const top=S.layers.at(-1);
+  if(top==='qam' && qamTop()){ const T=qdTabs(), i=T.findIndex(t=>t[0]===S.qtab); return qdGo(T[(i+d+T.length)%T.length][0]); }
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='shop') return shopShiftTab(d);
+  if(!top && S.view==='settings'){ setShiftTab(d); return blip(600); }
   if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; if(mkKind()){ MK.sel.clear(); mkRender('mks-'+S.tab); } else render('tab-'+S.tab); return blip(600); }
 }
 
@@ -10328,6 +11500,8 @@ document.addEventListener('pointerdown', e=>{
   setInput('mouse');
 });
 document.addEventListener('click', e=>{
+  // A click beside Quick Access's top dock (on the game): back to the game, like B.
+  if(e.target.id==='qam' && e.target.classList.contains('top') && S.layers.at(-1)==='qam') return back();
   const el=e.target.closest('[data-act],[data-f]'); if(!el) return;
   if(el.dataset.f!==undefined) setFocus(el,true);
   if(el.dataset.slider){ const s=el.querySelector('.slider'), r=s.getBoundingClientRect();
@@ -10348,7 +11522,7 @@ document.addEventListener('pointermove', e=>{
   if(performance.now()-NAV_AT < 800) return;
   setInput('mouse');
   const el=e.target.closest('[data-f]');
-  if(el && el!==focused && root().contains(el)) { if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); renderFooter(); }
+  if(el && el!==focused && root().contains(el)) { if(focused) focused.classList.remove('focus'); focused=el; el.classList.add('focus'); if(el.dataset.dock) dockFocus(el.dataset.dock); renderFooter(); }
 });
 document.addEventListener('contextmenu', e=>e.preventDefault());
 

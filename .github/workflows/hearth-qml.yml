@@ -1,0 +1,99 @@
+# Hearth's Qt Quick renderer (hosts/hearth-qml, Experimental; docs/RENDERERS.md): built inside both Hearth OS bases
+# (Anatase's Fedora image and Debian trixie for Peppermint), then run offscreen with its self-test against a fake core
+# (every screen, a picture of each), once in the build container and once in a fresh one with only the packages the
+# images install. Pictures go to the branch ci/qml-shots-<branch>-<base>, said in a notice. Failures are annotations.
+name: Qt renderer
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: ['ci/**']
+    paths: ['hosts/hearth-qml/**', '.github/scripts/hearth-qml-build.sh', '.github/workflows/hearth-qml.yml', 'hosts/linux/desktop/shell/OskBoard.qml', 'hosts/linux/desktop/shell/OskKey.qml', 'ui/osk/hearth-osk.js']
+
+permissions:
+  contents: write    # the pictures branch
+
+concurrency:
+  group: hearth-qml-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shared:
+    name: Shared files are the same as their originals
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The on-screen keyboard and the icons
+        run: |
+          fail=0
+          for p in "hosts/linux/desktop/shell/OskBoard.qml hosts/hearth-qml/qml/OskBoard.qml" "hosts/linux/desktop/shell/OskKey.qml hosts/hearth-qml/qml/OskKey.qml" "ui/osk/hearth-osk.js hosts/hearth-qml/qml/hearth-osk.js"; do
+            set -- $p
+            cmp -s "$1" "$2" || { echo "::error title=hearth-qml::$2 isn't the same as $1 (copy it again)"; fail=1; }
+          done
+          python3 hosts/hearth-qml/tools/gen-icons.py >/dev/null && git diff --quiet -- hosts/hearth-qml/qml/Icons.js || { echo "::error title=hearth-qml::qml/Icons.js is out of date: run hosts/hearth-qml/tools/gen-icons.py"; fail=1; }
+          python3 -m py_compile hosts/hearth-qml/test/fake-core.py || fail=1
+          exit $fail
+
+  build:
+    name: Build and self-test (${{ matrix.base }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        base: [peppermint, anatase]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: ver
+        run: echo "version=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)" >> "$GITHUB_OUTPUT"
+      - name: The base image
+        id: base
+        run: |
+          if [ "${{ matrix.base }}" = anatase ]; then img=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          else img=docker.io/library/debian:trixie; fi
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+          echo "Base: $img"
+      - name: Build, and the self-test in the build container
+        run: |
+          set +e -o pipefail
+          mkdir -p /tmp/out
+          docker run --rm -e HEARTH_VERSION="${{ steps.ver.outputs.version }}" -v "$PWD:/src:ro" -v /tmp/out:/out "${{ steps.base.outputs.image }}" \
+            bash /src/.github/scripts/hearth-qml-build.sh build 2>&1 | tee /tmp/build.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != 0 ]; then
+            msg=$(grep -v -e '^\s*$' /tmp/build.log | tail -40 | cut -c1-300 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=hearth-qml ${{ matrix.base }} build/self-test::$msg"
+            exit 1
+          fi
+          echo "::notice title=hearth-qml ${{ matrix.base }}::built and self-tested: $(grep -m1 'starting: Qt' /tmp/out/shots/selftest.log | sed 's/.*starting: //') · $(grep 'failed step' /tmp/out/shots/selftest.log | tail -1 | sed 's/.*self-test: //')"
+      - name: Self-test again with only the image's packages
+        if: always()
+        run: |
+          set +e -o pipefail
+          test -x /tmp/out/hearth-qml/hearth-qml || exit 0
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "${{ steps.base.outputs.image }}" bash /src/.github/scripts/hearth-qml-build.sh runtime-test 2>&1 | tee /tmp/rt.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != 0 ]; then
+            msg=$(grep -v -e '^\s*$' /tmp/rt.log | tail -30 | cut -c1-300 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=hearth-qml ${{ matrix.base }} with the image's packages::$msg"
+            exit 1
+          fi
+          echo "::notice title=hearth-qml ${{ matrix.base }} runtime::the self-test passes with only: $(docker run --rm -v "$PWD:/src:ro" "${{ steps.base.outputs.image }}" bash /src/.github/scripts/hearth-qml-build.sh runtime-pkgs | tr '\n' ' ')"
+      - name: Pictures to a branch
+        if: always()
+        run: |
+          test -d /tmp/out/shots || exit 0
+          sudo chown -R "$(id -u)" /tmp/out
+          to="ci/qml-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')-${{ matrix.base }}"
+          mkdir -p /tmp/pub && cp -a /tmp/out/shots /tmp/pub/ && { cp -a /tmp/out/shots-runtime /tmp/pub/ 2>/dev/null || true; } && { cp /tmp/out/qmllint.log /tmp/pub/ 2>/dev/null || true; }
+          cd /tmp/pub && git init -q -b "$to" && git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qm "Qt renderer pictures ${GITHUB_SHA::7} (${{ matrix.base }})"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          n=$(ls /tmp/pub/shots/*.png 2>/dev/null | wc -l)
+          echo "::notice title=hearth-qml ${{ matrix.base }} pictures::$n pictures on branch $to (shots/, shots-runtime/)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-qml-${{ matrix.base }}
+          path: /tmp/out

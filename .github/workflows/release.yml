@@ -78,10 +78,81 @@ jobs:
       - name: Store picture (game page)
         if: always()
         run: f=tools/store-shots/game.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT store-game $i::$part"; done || true
+      # The Bottom Dock and Settings C (ui-check.js): their pictures, posted by the ui-shots job (this job's notices are full).
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dock-settings-shots
+          path: tools/dock-shots
+          if-no-files-found: ignore
+          retention-days: 14
+      # Quick Access over a game, the top dock (ui-check.js): every tab, the mouse and the quick glance, posted by the
+      # ui-shots-overlay job.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: overlay-shots
+          path: tools/overlay-shots
+          if-no-files-found: ignore
+          retention-days: 14
       # Mantel on Windows (Ember): the taskbar, launcher, menus, clock panel, clipboard history, desktop icons,
       # Hearth Settings and Apps pages, driven through a stand-in for Ember's host.
       - name: Check Mantel's pages
         run: cd tools && node mantel-check.js
+
+  # The Bottom Dock (the main menu: open, Downloads' card, over a game, search) and Settings C (the front page, a
+  # group's page): pictures as notices like the ui job's (title "SHOT <which> <n>"), one step each: a job keeps 50.
+  ui-shots:
+    needs: ui
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: dock-settings-shots
+          path: shots
+      - name: Picture (dock-home)
+        run: f=shots/dock-home.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT dock-home $i::$part"; done || true
+      - name: Picture (dock-downloads)
+        run: f=shots/dock-downloads.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT dock-downloads $i::$part"; done || true
+      - name: Picture (dock-ingame)
+        run: f=shots/dock-ingame.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT dock-ingame $i::$part"; done || true
+      - name: Picture (dock-search)
+        run: f=shots/dock-search.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT dock-search $i::$part"; done || true
+      - name: Picture (settings-front)
+        run: f=shots/settings-front.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-front $i::$part"; done || true
+      - name: Picture (settings-display)
+        run: f=shots/settings-display.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-display $i::$part"; done || true
+
+  # Quick Access over a game (the top dock): its pictures as notices (title "SHOT ovl-<which> <n>"), at most 6 a picture
+  # (ui-check.js keeps them under 6 x 3800 characters) so all eight fit in a job's 50.
+  ui-shots-overlay:
+    needs: ui
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: overlay-shots
+          path: shots
+      - name: Picture (ovl-now)
+        run: f=shots/now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-now $i::$part"; done || true
+      - name: Picture (ovl-perf)
+        run: f=shots/perf.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-perf $i::$part"; done || true
+      - name: Picture (ovl-controls)
+        run: f=shots/controls.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-controls $i::$part"; done || true
+      - name: Picture (ovl-friends)
+        run: f=shots/friends.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-friends $i::$part"; done || true
+      - name: Picture (ovl-capture)
+        run: f=shots/capture.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-capture $i::$part"; done || true
+      - name: Picture (ovl-quick)
+        run: f=shots/quick.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-quick $i::$part"; done || true
+      - name: Picture (ovl-mouse)
+        run: f=shots/mouse.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-mouse $i::$part"; done || true
+      - name: Picture (ovl-glance)
+        run: f=shots/glance.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT ovl-glance $i::$part"; done || true
 
   windows:
     needs: version

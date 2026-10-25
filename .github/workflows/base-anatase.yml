@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
+    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -312,6 +312,21 @@ jobs:
           else echo "::warning title=hearth-link::it didn't build, so this image is made without it"; fi
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Link
+      # ---- Hearth's Qt renderer (hosts/hearth-qml, Experimental; docs/RENDERERS.md): built inside Anatase's own image (so
+      # it links exactly Anatase's Qt) and self-tested offscreen there (hearth-qml.yml does the same with pictures).
+      # Carried as qml/ (build.sh installs it in /usr/lib/hearth-qml). Not fatal: without it there's no Qt choice.
+      - name: Build Hearth's Qt renderer (Experimental, inside Anatase)
+        continue-on-error: true
+        run: |
+          set +e
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          mkdir -p /tmp/qout
+          docker run --rm -e HEARTH_VERSION="${{ steps.ver.outputs.version }}" -v "$PWD:/src:ro" -v /tmp/qout:/out "$base" bash /src/.github/scripts/hearth-qml-build.sh build 2>&1 | tail -80
+          rc=${PIPESTATUS[0]}
+          if [ -x /tmp/qout/hearth-qml/hearth-qml ]; then mkdir -p /tmp/app/qml && cp -a /tmp/qout/hearth-qml/. /tmp/app/qml/ && tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+          else echo "::warning title=hearth-qml::it didn't build inside Anatase, so this image is made without the Qt renderer"; exit 1; fi
+          [ "$rc" = 0 ] || { echo "::warning title=hearth-qml::built, but its self-test failed (see hearth-qml.yml for pictures)"; exit 1; }
+      # ---- end of Hearth's Qt renderer
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -632,6 +647,23 @@ jobs:
           echo "--- bootc container lint"
           sudo podman run --rm hearth-os:build bootc container lint 2>&1 | tee /tmp/lint.log || {
             msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+
+      # The Qt renderer (Experimental) starts in the image and draws every screen: offscreen, against the fake core (and,
+      # reported only, the image's own core). Doesn't stop the image: without a working Qt renderer Hearth falls back.
+      - name: Check the Qt renderer in the image
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p /tmp/qcheck
+          sudo podman run --rm -v "$PWD:/src:ro" -v /tmp/qcheck:/out hearth-os:build bash /src/.github/scripts/hearth-qml-build.sh image-check 2>&1 | tail -60
+          exit ${PIPESTATUS[0]}
+
+      # REQUIRED: Quick Access over games shows text when Handheld Daemon starts it (its environment exactly, on a
+      # virtual screen, as a plain user): .github/scripts/overlay-text-check.sh. 0.6.5 showed none on an Nvidia PC.
+      - name: Quick Access over games shows text (as Handheld Daemon starts it)
+        timeout-minutes: 15
+        run: |
+          sudo podman run --rm -v "$PWD/.github/scripts/overlay-text-check.sh:/ovtext.sh:ro" hearth-os:build bash /ovtext.sh
 
       # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
       # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and

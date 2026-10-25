@@ -1066,7 +1066,7 @@ const path = require('path');
         await op.evaluate(() => closeAll()); await op.waitForTimeout(120);
       }
       // Send logs' button itself, when the preview draws it.
-      const dev = await op.evaluate(() => { S.settingsTab = 'system'; navigate('settings', {}, false); const b = document.querySelector('[data-act="sendLogsDev"]'); if (!b) return null; act(b); return S.layers.at(-1); });
+      const dev = await op.evaluate(() => { S.settingsTab = 'help'; navigate('settings', {}, false); const b = document.querySelector('[data-act="sendLogsDev"]'); if (!b) return null; act(b); return S.layers.at(-1); });
       if (dev !== null) { await op.waitForTimeout(250); if (dev !== 'prompt') oerr('Send logs: no "What happened?" prompt'); else await typeOne('Send logs (from Settings)', () => prompt ? prompt.text : ''); await op.evaluate(() => closeAll()); }
       const L = await logs();
       if (!L.some(t => /^osk (search|prompt): keyboard has the selection · controller read here \(Gamepad API\) · pads seen 1/.test(t))) oerr("Send logs doesn't say the keyboard got the controller from the Gamepad API: " + JSON.stringify(L.filter(t => /^osk/.test(t))));
@@ -1218,10 +1218,11 @@ const path = require('path');
     await fp.close();
   }
 
-  // Quick Access is one panel: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT) and the
-  // overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same size, tabs,
-  // sections and buttons in the same order, with the same actions and the same controller navigation. Screenshots of
-  // both go to tools/qa-shots (release.yml posts them as notices).
+  // Quick Access is one implementation: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT)
+  // and the overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same tabs,
+  // sections and buttons in the same order, with the same actions and the same controller navigation: the top dock
+  // with a game running, the side panel (440 px on the right) without one. Screenshots of both go to tools/qa-shots
+  // (release.yml posts them as notices).
   const qaShots = path.resolve(__dirname, 'qa-shots');
   try { require('fs').mkdirSync(qaShots, { recursive: true }); } catch {}
   const qaPanel = async (which) => {
@@ -1249,27 +1250,30 @@ const path = require('path');
       const read = () => qp.evaluate(() => ({
         tab: S.qtab,
         tabs: [...document.querySelectorAll('#qam .qtab')].map(e => e.dataset.tab).join(' '),
+        top: document.querySelector('#qam').classList.contains('top'),
         buttons: [...document.querySelectorAll('#qam .qbody [data-f]')].map(e => `${e.dataset.k}:${e.dataset.act || e.dataset.slider || ''}:${e.textContent.replace(/\s+/g, ' ').trim()}`),
         focus: focused && focused.dataset.k,
       }));
+      const rect = () => qp.evaluate(() => { const r = document.querySelector('#qam').getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; });
       await open();
-      out.rect = await qp.evaluate(() => { const r = document.querySelector('#qam').getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`; });
+      out.rectTop = await rect();
       out.now = await read();
       // Controller: down through the panel, then RB through every tab.
       out.nav = await qp.evaluate(() => { const ks = []; for (let i = 0; i < 6; i++) { input('down'); ks.push(focused && focused.dataset.k); } return ks.join(' '); });
       out.tabsVisited = [];
-      for (let i = 0; i < 6; i++) { await qp.evaluate(() => input('rb')); await qp.waitForTimeout(await qp.evaluate(() => S.qtab === 'perf' || S.qtab === 'apps') ? 1500 : 200); const r = await read(); out.tabsVisited.push(r.tab); out['tab-' + r.tab] = out['tab-' + r.tab] || r.buttons.join(' | ').replace(/\d+ ?(min|%|°C|W|MHz|MB|GB|fps)\b/g, '#'); }
+      for (let i = 0; i < 6; i++) { await qp.evaluate(() => input('rb')); await qp.waitForTimeout(await qp.evaluate(() => ['perf', 'apps', 'friends', 'capture', 'controls'].includes(S.qtab)) ? 1500 : 200); const r = await read(); out.tabsVisited.push(r.tab); out['tab-' + r.tab] = out['tab-' + r.tab] || r.buttons.filter(b => !/^n-/.test(b)).join(' | ').replace(/\d+ ?(min|%|°C|W|MHz|MB|GB|fps)\b/g, '#'); }
       out.tabsVisited = out.tabsVisited.join(' ');
       // The screenshot: Now playing with the game running.
       await qp.evaluate(() => { S.qtab = 'now'; renderQam(); setFocus(document.querySelector('#qam .qbody [data-f]'), true); });
       await qp.waitForTimeout(300);
       for (const q of [55, 40, 30, 22, 15]) {
-        const buf = await qp.screenshot({ type: 'jpeg', quality: q, clip: { x: 1280 - 460, y: 0, width: 460, height: 800 } });
+        const buf = await qp.screenshot({ type: 'jpeg', quality: q, clip: { x: 240, y: 0, width: 800, height: 520 } });
         if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(qaShots, `${which}.jpg`), buf); break; }
       }
       // Nothing running: the same "no game" card, buttons and Quick Resume list.
       await qp.evaluate(() => { window.__game = null; S.running = null; closeAll(); });
       await open();
+      out.rect = await rect();
       out.idle = await read();
     } catch (e) { errors.push(`quick access (${which}): ${e.message.split('\n')[0]}`); }
     await qp.close();
@@ -1279,16 +1283,134 @@ const path = require('path');
     const main = await qaPanel('main'), ov = await qaPanel('overlay');
     const same = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) errors.push(`quick access: ${what} differ between Hearth's panel and the overlay:\n  panel:   ${JSON.stringify(a)}\n  overlay: ${JSON.stringify(b)}`); };
     same('size and position', main.rect, ov.rect);
+    same('size and position (top dock)', main.rectTop, ov.rectTop);
+    if (!(main.now && main.now.top) || !(ov.now && ov.now.top)) errors.push(`quick access: with a game running it isn't the top dock (panel ${main.now && main.now.top}, overlay ${ov.now && ov.now.top})`);
+    if ((main.idle && main.idle.top) || (ov.idle && ov.idle.top)) errors.push('quick access: with no game it should be the side panel');
     for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, main[k] && main[k].buttons, ov[k] && ov[k].buttons); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
     same('controller navigation', main.nav, ov.nav);
     same('tab order (RB)', main.tabsVisited, ov.tabsVisited);
     // (Notifications: the overlay page starts with none of its own; what's in them isn't a button set.)
     for (const k of Object.keys(main).filter(k => k.startsWith('tab-') && k !== 'tab-notif')) same(`the ${k.slice(4)} tab`, main[k], ov[k]);
-    const want = ['q-shot', 'q-mouse', 'q-home', 'q-resume', 'q-pause', 'q-aside', 'q-exit'];
+    const want = ['q-resume', 'q-invite', 'q-gset', 'q-exit', 'q-pause', 'q-aside', 'q-home'];
     const got = ((main.now && main.now.buttons) || []).map(b => b.split(':')[0]).filter(k => want.includes(k));
     if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`quick access: Now playing buttons ${got.join(' ')} (want ${want.join(' ')})`);
     if (main.rect && !/^840,0 440x800$/.test(main.rect)) errors.push(`quick access: panel at ${main.rect} (want the overlay's 440 px on the right)`);
-    console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+    if (main.now && main.now.tabs !== 'now perf controls friends capture quick') errors.push(`quick access: top dock tabs ${main.now.tabs} (want now perf controls friends capture quick)`);
+    console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}, top dock ${main.rectTop}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+  }
+
+
+  // Quick Access over a game is the top dock (the approved design): the overlay page (?overlay=full) with a game
+  // running, every tab with the preview's data, the controller (left / right switch tabs, down into the panel, up back
+  // to the tab, LB / RB), B and Guide back to the game, the quick glance (a short Guide press: shown without opening
+  // Quick Access, hidden again by itself), quick replies, Y to type, X to keep the performance settings for the game,
+  // and the mouse (a tab click switches, a click beside it goes back to the game). Pictures to tools/overlay-shots
+  // (the ui-shots-overlay job posts them as notices, title "SHOT ovl-<tab> <n>").
+  {
+    const ovShots = path.resolve(__dirname, 'overlay-shots');
+    try { require('fs').mkdirSync(ovShots, { recursive: true }); } catch {}
+    const op = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const oerr = m => errors.push('overlay top dock: ' + m);
+    op.on('pageerror', e => oerr(e.message));
+    const ev = (f, a) => op.evaluate(f, a);
+    const shot = async (name) => {
+      for (const q of [50, 38, 28, 20, 14]) {
+        const buf = await op.screenshot({ type: 'jpeg', quality: q, clip: { x: 160, y: 0, width: 960, height: 640 } });
+        if (buf.toString('base64').length <= 6 * 3800 || q === 14) { require('fs').writeFileSync(path.join(ovShots, `${name}.jpg`), buf); break; }
+      }
+    };
+    try {
+      await op.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux&overlay=full');
+      await op.waitForTimeout(1200);
+      await ev(async () => {
+        window.__sent = []; window.__calls = [];
+        const realSend = send; window.send = m => { window.__sent.push(m); };
+        HOSTINFO.features = ['quickResume', 'pause']; QR.on = true;
+        const gs = GAMES.filter(g => !g.cloud); window.__game = gs[0].id;
+        const real = MOCK.call;
+        MOCK.call = (m, a) => { window.__calls.push([m, a]); return m === 'perf.stats' ? real(m, a).then(r => Object.assign({}, r, { runningId: window.__game, runningSince: Date.now() - 72 * 60e3 })) : real(m, a); };
+        S.running = window.__game; S.runningSince = Date.now() - 72 * 60e3;
+        // The game behind the overlay (the page is see-through): a picture-like background for the screenshots.
+        document.head.insertAdjacentHTML('beforeend', '<style>html.ovfull.shotbg{background:linear-gradient(180deg,#7fb7e0 0%,#d9c08a 55%,#8a6a3a 100%)!important}</style>');
+        document.documentElement.classList.add('shotbg');
+        await overlayShown();
+      });
+      await op.waitForTimeout(600);
+      let st = await ev(() => ({ top: document.querySelector('#qam').classList.contains('top'), tab: S.qtab, focus: focused && focused.dataset.k, tabs: qdTabs().map(t => t[0]).join(' '), shown: OV.shown }));
+      if (!st.top) oerr('Quick Access over a game is not the top dock');
+      if (st.tab !== 'now' || st.focus !== 'q-resume') oerr(`it opens on ${st.tab} / ${st.focus} (want Now playing / Back to game)`);
+      if (st.tabs !== 'now perf controls friends capture quick') oerr('tabs: ' + st.tabs);
+      // The game stays in view: the dock and its panel at the top, nothing dimming the lower part of the screen.
+      st = await ev(() => { const b = document.querySelector('#qam .qd-bar').getBoundingClientRect(), p = document.querySelector('#qam .qd-panel').getBoundingClientRect(), bg = getComputedStyle(document.body, '::before').backgroundImage; return { barTop: Math.round(b.top), panelTop: Math.round(p.top), below: Math.round(p.top - b.bottom), grad: bg }; });
+      if (st.barTop > 40 || st.below < 0 || st.below > 40) oerr(`dock at ${st.barTop}, panel ${st.below} px under it (want the panel right under the dock at the top)`);
+      if (!/gradient/.test(st.grad)) oerr('the game behind is dimmed all over (want only a gradient from the top)');
+      // Every tab, with the preview's data.
+      await ev(async () => { REC.ok = true; REC.st = { kind: 'replay' }; REC.secs = 30; MOCKHHD = true; imLoadTables(); await imSave(window.__game, { layout: 'rts' }); });
+      const want = { now: ['q-resume', 'q-invite', 'q-gset', 'q-exit'], perf: ['pf-0', 'po-0', 'q-pg'], controls: ['qi-off', 'qi-rts', 'qi-edit', 'q-imgyro', 'q-mouse'], friends: ['mfx-game', 'mfq-all'], capture: ['q-shot', 'q-rec', 'q-rsave'], quick: ['q-vol', 'q-mute', 'q-wifi', 'q-bt'] };
+      for (const t of Object.keys(want)) {
+        await ev(t => { qdGo(t); }, t);
+        await op.waitForTimeout(t === 'perf' || t === 'friends' || t === 'controls' ? 1600 : 500);
+        await ev(() => { const e = qdFirst(); if (e) setFocus(e, true); });
+        await op.waitForTimeout(150);
+        const keys = await ev(() => [...document.querySelectorAll('#qam .qd-panel [data-f]')].map(e => e.dataset.k));
+        for (const k of want[t]) if (!keys.includes(k)) oerr(`${t}: no ${k} (has ${keys.slice(0, 14).join(' ')})`);
+        if (t === 'controls' && !(await ev(() => /Right stick/.test((document.querySelector('#qam .qd-sum') || {}).textContent || '')))) oerr('controller layout: no mapping summary for the layout');
+        await shot(t);
+      }
+      // Friends: a chat with a new message opens by itself; quick replies send; Y types with the on-screen keyboard.
+      await ev(() => qdGo('friends')); await op.waitForTimeout(1500);
+      st = await ev(() => { const r = document.querySelector('#qam [data-act="qdReply"]'); if (r) act(r); return { room: MF.room, replies: [...document.querySelectorAll('#qam [data-act="qdReply"]')].map(e => e.textContent).join('|'), sent: window.__calls.filter(c => c[0] === 'mfriends.send').map(c => c[1].text) }; });
+      if (!st.room) oerr("Friends: the chat with a new message didn't open");
+      if (st.replies !== 'On my way|GG|👍') oerr('quick replies: ' + st.replies);
+      if (!st.sent.includes('On my way')) oerr('a quick reply was not sent');
+      st = await ev(() => { input('y'); const top = S.layers.at(-1); if (top === 'prompt') closeLayer(); return top; });
+      if (st !== 'prompt') oerr("Y in Friends didn't open the keyboard to type: " + st);
+      // The controller.
+      st = await ev(() => {
+        const k = () => focused && focused.dataset.k, o = [];
+        qdGo('now'); setFocus(document.querySelector('#qam [data-k="q-resume"]'), true);
+        input('up'); o.push(k());                          // up from the panel's top row: the tab
+        input('right'); o.push(S.qtab + ':' + k());        // along the tabs: switches
+        input('down'); o.push(document.querySelector('#qam .qd-panel').contains(focused) ? 'panel' : k());
+        input('up'); o.push(k());
+        input('left'); o.push(S.qtab);
+        input('rb'); input('rb'); o.push(S.qtab);
+        input('lb'); o.push(S.qtab);
+        return o.join(' ');
+      });
+      if (st !== 'qt-now perf:qt-perf panel qt-perf now controls perf') oerr('controller: ' + st + ' (want qt-now perf:qt-perf panel qt-perf now controls perf)');
+      // X on Performance: this game keeps its own settings (and X again: every game).
+      st = await ev(async () => { qdGo('perf'); await new Promise(r => setTimeout(r, 900)); const a = qdPgOn(); input('x'); await new Promise(r => setTimeout(r, 400)); const b = qdPgOn(); input('x'); await new Promise(r => setTimeout(r, 400)); return [a, b, qdPgOn()].join(' '); });
+      if (st !== 'false true false') oerr('X on Performance (per game): ' + st);
+      // B and Guide go back to the game (the overlay closes; the page asks Hearth to close it).
+      st = await ev(() => { window.__sent.length = 0; setFocus(document.querySelector('#qam [data-k="qt-perf"]'), true); input('b'); const b = window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length; input('guide'); return [b, window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length]; });
+      if (st[0] !== 1 || st[1] !== 2) oerr(`B / Guide didn't go back to the game (${st})`);
+      // The mouse: a tab click switches, a click beside the dock goes back to the game.
+      await ev(() => { window.__sent.length = 0; setInput('mouse'); qdGo('now'); });
+      await op.waitForTimeout(300);
+      await op.mouse.move(10, 10); await op.mouse.move(400, 300);
+      const tb = await ev(() => { const r = document.querySelector('#qam [data-k="qt-quick"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+      await op.mouse.click(tb[0], tb[1]); await op.waitForTimeout(300);
+      st = await ev(() => ({ tab: S.qtab, hint: !!document.querySelector('#qam .qd-hb') }));
+      if (st.tab !== 'quick') oerr('a click on a tab did not switch to it: ' + st.tab);
+      if (!st.hint) oerr('mouse mode has no Back to game button');
+      await shot('mouse');
+      await op.mouse.click(640, 760); await op.waitForTimeout(200);
+      st = await ev(() => window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length);
+      if (st !== 1) oerr('a click beside the dock did not go back to the game');
+      // The quick glance: Hearth hides Quick Access and shows the glance (osd kind glance); it hides itself after ~3 s.
+      await ev(() => { overlayHidden(); onSysEvent('osd', { kind: 'glance', ms: 3000 }); });
+      await op.waitForTimeout(700);
+      st = await ev(() => { const g = document.querySelector('#glance'); return { on: !!(g && g.classList.contains('on')), vis: g ? getComputedStyle(g).visibility : '', text: g ? g.textContent : '', qam: getComputedStyle(document.querySelector('#qam')).visibility }; });
+      if (!st.on || st.vis === 'hidden') oerr('the quick glance did not show');
+      if (!/\d/.test(st.text) || !/Hold Guide/.test(st.text)) oerr('the quick glance has no time / tip: ' + st.text);
+      if (st.qam !== 'hidden') oerr('Quick Access showed with the glance');
+      await shot('glance');
+      await op.waitForTimeout(3000);
+      st = await ev(() => document.querySelector('#glance').classList.contains('on'));
+      if (st) oerr("the quick glance didn't hide by itself");
+    } catch (e) { oerr(e.message.split('\n')[0]); }
+    await op.close();
   }
 
   // Settings › Default apps (Hearth OS, ?preview=linux with its made-up apps): in Settings › System, a row per kind
@@ -1578,6 +1700,154 @@ const path = require('path');
       await sp.waitForTimeout(700); await shot('game');
     } catch (e) { errors.push('store pictures: ' + e.message.split('\n')[0]); }
     await sp.close();
+  }
+
+  // ---- The Bottom Dock (the main menu) and Settings C. Every control the old Settings pages drew
+  // (tools/settings-keys.json, per platform) can still be reached from the new front page: group tab › page row › the
+  // page (and its tabs). Then the dock: open and close, moving along it, its cards, up into a card, the game dock,
+  // search (settings, games, the store), the settings search, the classic side menu, the mouse. Pictures for
+  // release.yml go to tools/dock-shots (its ui-shots job posts them as notices).
+  {
+    const SKEYS = require('./settings-keys.json');
+    const dockShots = path.resolve(__dirname, 'dock-shots');
+    require('fs').mkdirSync(dockShots, { recursive: true });
+    for (const [plat, q] of [['windows', ''], ['linux', '?preview=linux'], ['android', '?preview=android']]) {
+      const rp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      rp.on('pageerror', e => errors.push(`settings C (${plat}): ${e.message}`));
+      try {
+        await rp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + q);
+        await rp.waitForTimeout(1300);
+        const r = await rp.evaluate(async () => {
+          const wait = ms => new Promise(res => setTimeout(res, ms));
+          closeAll(); S.history = []; navigate('home', {}, false);
+          input('start');
+          const dk = document.querySelector('#menu [data-k="m-settings"]');
+          if (!dk) return { err: 'no Settings in the dock' };
+          setFocus(dk); act(dk); await wait(300);
+          if (S.view !== 'settings' || !S.sfront) return { err: 'Settings from the dock did not open the front page' };
+          const found = new Set(), pages = new Set(), groups = [...document.querySelectorAll('#view [data-act="sgroup"]')].map(b => b.dataset.g);
+          for (const g of groups) {
+            act(document.querySelector(`#view [data-k="sg-${g}"]`));
+            if (S.sgroup !== g) return { err: 'the group tab ' + g + " didn't switch" };
+            const rows = [...document.querySelectorAll('#view .sc-main [data-act="stab"]')].map(e => e.dataset.tab);
+            for (const t of rows) {
+              act(document.querySelector(`#view [data-k="sp-${t}"]`)); await wait(350); render(null, true);
+              if (S.sfront || S.settingsTab !== t) return { err: 'the row for ' + t + ' did not open it' };
+              pages.add(t);
+              document.querySelectorAll('#view [data-k]').forEach(e => found.add(e.dataset.k));
+              back();
+              if (!S.sfront) return { err: 'B in ' + t + ' did not go back to the front page' };
+            }
+          }
+          return { found: [...found], pages: [...pages], groups };
+        });
+        if (r.err) { errors.push(`settings C (${plat}): ${r.err}`); continue; }
+        const want = SKEYS[plat] || {};
+        const lostPages = Object.keys(want).filter(t => !r.pages.includes(t) && !(t === 'audio'));
+        if (lostPages.length) errors.push(`settings C (${plat}): pages no longer reachable: ${lostPages.join(', ')}`);
+        const lost = [];
+        for (const [t, keys] of Object.entries(want)) for (const k of keys) if (!r.found.includes(k)) lost.push(`${t}:${k}`);
+        if (lost.length) errors.push(`settings C (${plat}): ${lost.length} old settings no longer reachable: ${lost.slice(0, 30).join(', ')}`);
+        if (plat !== 'android' && r.groups.length !== 6) errors.push(`settings C (${plat}): ${r.groups.length} groups, not 6: ${r.groups.join(', ')}`);
+      } catch (e) { errors.push(`settings C (${plat}): ${e.message.split('\n')[0]}`); }
+      await rp.close();
+    }
+    // Half-size pictures (a notice holds 3800 characters, a step 10 notices).
+    let dp; try { dp = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 0.5 }); } catch { dp = await browser.newPage({ viewport: { width: 1280, height: 800 } }); }
+    const derr = m => errors.push('dock: ' + m);
+    dp.on('pageerror', e => derr(e.message));
+    const dshot = async name => { try { for (const q of [70, 55, 45, 35, 25, 15]) { const buf = await dp.screenshot({ type: 'jpeg', quality: q }); if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(dockShots, name + '.jpg'), buf); break; } } } catch (e) { derr('picture ' + name + ': ' + e.message); } };
+    const dev = fn => dp.evaluate(fn);
+    try {
+      await dp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await dp.waitForTimeout(1300);
+      // Open and close, and the default style.
+      let st = await dev(() => { closeAll(); S.history = []; navigate('home', {}, false); input('start');
+        return { open: S.layers.at(-1) === 'menu', dock: !!document.querySelector('#menu .dk-bar'), body: document.body.classList.contains('menu-dock'), f: focused && focused.dataset.k, card: document.querySelector('#dkCard').textContent }; });
+      if (!st.open || !st.dock || !st.body) derr('☰ did not open the dock: ' + JSON.stringify(st));
+      if (st.f !== 'm-home') derr('the dock did not start on Home (the screen showing): ' + st.f);
+      if (!/Continue playing/.test(st.card)) derr("Home's card doesn't show the game to continue: " + st.card.slice(0, 80));
+      await dp.waitForTimeout(300); await dshot('dock-home');
+      st = await dev(() => { input('b'); return { open: S.layers.includes('menu'), mini: !!document.querySelector('#footer .mdock') }; });
+      if (st.open) derr('B did not close the dock');
+      if (!st.mini) derr('no small dock in the footer while browsing');
+      // Along the dock: Library (its counts), Downloads (the queue, Pause all, the ring), up into the card and back.
+      st = await dev(() => { input('start'); input('right'); return { f: focused.dataset.k, card: document.querySelector('#dkCard').textContent }; });
+      if (st.f !== 'm-library' || !/Installed/.test(st.card)) derr("right didn't go to Library with its card: " + JSON.stringify(st).slice(0, 160));
+      st = await dev(() => { let n = 0; while (focused.dataset.k !== 'm-downloads' && n++ < 8) input('right');
+        return { f: focused.dataset.k, pause: !!document.querySelector('#dkCard [data-k="mc-pause"]'), open: !!document.querySelector('#dkCard [data-k="mc-dl"]'), ring: !!document.querySelector('#menu [data-k="m-downloads"] .dk-ring'), q: document.querySelectorAll('#dkCard .dkq').length }; });
+      if (st.f !== 'm-downloads' || !st.pause || !st.open || !st.ring || !st.q) derr("Downloads' card or ring is missing: " + JSON.stringify(st));
+      await dshot('dock-downloads');
+      st = await dev(() => { input('up'); const up = focused.closest('#dkCard') ? focused.dataset.k : null; input('down'); return { up, down: focused.dataset.dock || null }; });
+      if (!st.up) derr("up didn't go into the card");
+      if (st.down !== 'downloads') derr("down from the card didn't come back to Downloads: " + st.down);
+      st = await dev(() => { const l = document.querySelector('#menu [data-k="m-library"]'); setFocus(l); act(l); return { v: S.view, open: S.layers.includes('menu') }; });
+      if (st.v !== 'library' || st.open) derr("A on Library didn't open the Library and close the dock: " + JSON.stringify(st));
+      st = await dev(() => { closeAll(); navigate('home', {}, false); const b = [...document.querySelectorAll('#footer .mdock button')].find(e => e.getAttribute('aria-label') === 'Library'); if (!b) return 'none'; b.click(); return S.view; });
+      if (st !== 'library') derr('the small dock in the footer did not open the Library: ' + st);
+      // Over a game: the game's card (Resume, Quick Access, Invite, Exit), its tools, the chips.
+      st = await dev(async () => { closeAll(); navigate('home', {}, false); S.running = GAMES.find(g => g.inst).id; S.runningSince = Date.now() - 72 * 60000; input('start');
+        await new Promise(r => setTimeout(r, 600));
+        return { f: focused.dataset.k, keys: [...document.querySelectorAll('#menu [data-k]')].map(e => e.dataset.k), chips: document.querySelectorAll('#menu .dk-chips span').length }; });
+      for (const k of ['m-game', 'm-shot', 'm-perf', 'm-home', 'm-settings', 'm-power', 'mc-resume', 'mc-qam', 'mc-exit']) if (!st.keys.includes(k)) derr('the game dock has no ' + k);
+      if (st.f !== 'm-game') derr('the game dock did not start on the game: ' + st.f);
+      if (!st.chips) derr('the game dock shows no performance chips');
+      await dshot('dock-ingame');
+      st = await dev(() => { act(document.querySelector('#menu [data-k="mc-qam"]')); const t = S.layers.at(-1); closeAll(); S.running = null; return t; });
+      if (st !== 'qam') derr("Quick Access in the game dock didn't open it: " + st);
+      // Search from the dock: grouped results; a setting opens its page with that row selected.
+      st = await dev(() => { closeAll(); navigate('home', {}, false); input('start'); const s = document.querySelector('#menu [data-k="m-search"]'); setFocus(s); act(s);
+        for (const c of 'refresh') typeKey(c);
+        const r = document.querySelector('#search [data-k="ss-r-0"]');
+        return { layers: S.layers.join(','), over: document.querySelector('#search').classList.contains('over-dock'), first: r && r.textContent, store: !!document.querySelector('#search [data-k="ss-store"]'), groups: [...document.querySelectorAll('#search .sgh')].map(e => e.textContent) }; });
+      if (st.layers !== 'menu,search' || !st.over) derr('Search from the dock did not open over it: ' + st.layers);
+      if (!/Refresh rate/.test(st.first || '')) derr('settings search for "refresh" did not find Refresh rate first: ' + st.first);
+      if (!st.store || !st.groups.includes('Settings') || !st.groups.includes('Store')) derr('search results are not grouped: ' + st.groups.join(', '));
+      await dshot('dock-search');
+      st = await dev(async () => { act(document.querySelector('#search [data-k="ss-r-0"]')); await new Promise(r => setTimeout(r, 900)); return { v: S.view, t: S.settingsTab, front: S.sfront, f: focused && focused.dataset.k, layers: S.layers.length }; });
+      if (st.v !== 'settings' || st.t !== 'display' || st.front || st.f !== 's-hz' || st.layers) derr('a settings result did not open Display with Refresh rate selected: ' + JSON.stringify(st));
+      // The front page's search button, and LB / RB.
+      st = await dev(() => { closeAll(); navigate('settings', { sfront: true }, false); act(document.querySelector('#view [data-k="ss-search"]')); const o = S.layers.at(-1); closeAll(); return o; });
+      if (st !== 'search') derr("Settings' search button didn't open search");
+      st = await dev(() => { closeAll(); S.sgroup = 'you'; navigate('settings', { sfront: true, sgroup: 'you' }, false); input('rb'); const a = S.sgroup; input('lb'); const b = S.sgroup;
+        S.settingsTab = 'wifi'; navigate('settings', {}, false); input('rb'); const c = S.settingsTab; input('lb'); const d = S.settingsTab; return { a, b, c, d }; });
+      if (st.a !== 'connect' || st.b !== 'you') derr('LB / RB on the front page did not switch groups: ' + JSON.stringify(st));
+      if (st.c !== 'bluetooth' || st.d !== 'wifi') derr('LB / RB in Connections did not switch pages: ' + JSON.stringify(st));
+      await dev(() => { closeAll(); S.sgroup = 'connect'; navigate('settings', { sfront: true, sgroup: 'connect' }, false); });
+      await dp.waitForTimeout(300); await dshot('settings-front');
+      await dev(() => { S.settingsTab = 'display'; navigate('settings', {}, false); });
+      await dp.waitForTimeout(300); await dshot('settings-display');
+      // Go back to the previous version (Hearth OS images only; never on Peppermint or with an update waiting).
+      st = await dev(() => { const was = [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s]; HOSTINFO.system = true; HOSTINFO.edition = 'anatase';
+        const base = { booted: { version: '0.6.51' }, rollback: { version: '0.6.5' }, staged: null };
+        SYSUPD.s = { state: 'idle', status: base }; const a = pageSystemUpdate();
+        SYSUPD.s = { state: 'idle', status: Object.assign({}, base, { rollbackQueued: true }) }; const b = pageSystemUpdate();
+        SYSUPD.s = { state: 'idle', status: Object.assign({}, base, { staged: { version: '0.6.52' } }) }; const c = pageSystemUpdate();
+        HOSTINFO.edition = 'peppermint'; SYSUPD.s = { state: 'idle', status: base }; const d = pageSystemUpdate();
+        [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s] = was;
+        return { a: /data-k="su-rollback"/.test(a) && /Go back to 0\.6\.5/.test(a), b: /su-rbgo/.test(b) && /Stay on 0\.6\.51/.test(b), c: /su-rollback/.test(c), d: /su-rollback/.test(d) }; });
+      if (!st.a || !st.b) derr('Updates has no Go back row (or its undo): ' + JSON.stringify(st));
+      if (st.c || st.d) derr('Go back shows with an update waiting or on Peppermint: ' + JSON.stringify(st));
+      // The classic side menu (Settings › You › Appearance › Menu style), and back to the dock.
+      st = await dev(() => { closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false); act(document.querySelector('#view [data-k="ap-ms-side"]'));
+        const body = document.body.classList.contains('menu-dock'); input('start');
+        const r = { body, side: !!document.querySelector('#menu .mitem[data-k="m-library"]'), dock: !!document.querySelector('#menu .dk-bar'), mini: !!document.querySelector('#footer .mdock') };
+        closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false); act(document.querySelector('#view [data-k="ap-ms-dock"]')); r.back = document.body.classList.contains('menu-dock') && LOOK.menuStyle === 'dock'; return r; });
+      if (st.body || !st.side || st.dock || st.mini) derr('Menu style: Side menu did not bring the classic menu back: ' + JSON.stringify(st));
+      if (!st.back) derr('Menu style: Dock did not come back');
+      // Mouse: pointing at an item selects it (its card follows), a click opens it.
+      await dev(() => { closeAll(); LOOK.madeFor = 'mk'; saveLook(); S.history = []; navigate('home', {}, false); input('start'); NAV_AT = 0; });
+      const box = await dev(() => { const r = document.querySelector('#menu [data-k="m-shop"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await dp.waitForTimeout(900);
+      await dp.mouse.move(box.x - 60, box.y - 60); await dp.mouse.move(box.x, box.y, { steps: 4 }); await dp.waitForTimeout(200);
+      st = await dev(() => ({ f: focused && focused.dataset.k, card: document.querySelector('#dkCard').textContent }));
+      if (st.f !== 'm-shop' || !/Store/.test(st.card)) derr('hovering Store with the mouse did not select it: ' + JSON.stringify(st).slice(0, 120));
+      await dp.mouse.click(box.x, box.y); await dp.waitForTimeout(300);
+      st = await dev(() => ({ v: S.view, open: S.layers.includes('menu') }));
+      if (st.v !== 'shop' || st.open) derr('clicking Store in the dock did not open the Store: ' + JSON.stringify(st));
+      await dev(() => { closeAll(); LOOK.madeFor = 'auto'; saveLook(); });
+    } catch (e) { derr(e.message.split('\n')[0]); }
+    await dp.close();
   }
 
   await browser.close();

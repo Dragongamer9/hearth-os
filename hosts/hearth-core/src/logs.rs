@@ -234,6 +234,11 @@ pub fn report(version: &str) -> String {
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
+    // Which engine draws Hearth's screens (docs/RENDERERS.md), and the Qt renderer's own log (Experimental).
+    {
+        let qt = std::fs::read_to_string(data.join("hearth-qml.log")).map(|t| tail(&t, 300)).unwrap_or_else(|_| "(no hearth-qml.log: the Qt renderer hasn't run)".into());
+        section("Renderer", format!("{}\n\nQt renderer log (hearth-qml.log):\n{}", serde_json::to_string_pretty(&crate::renderer::status()).unwrap_or_default(), qt));
+    }
     // Hearth Input (controller layouts for keyboard-and-mouse games): what the mapper did, and what it's doing now
     // (its controllers, whether it holds them, the layout running, its last error).
     {
@@ -328,6 +333,16 @@ pub fn report(version: &str) -> String {
             journalctl -b --no-pager -n 40 -u systemd-hibernate.service -u nvidia-hibernate.service -u nvidia-resume.service -u systemd-hibernate-resume.service 2>/dev/null | tail -40")));
     section("Controllers (InputPlumber)", sh("busctl --system --list tree org.shadowblip.InputPlumber | head -40; for d in $(busctl --system --list tree org.shadowblip.InputPlumber | grep -o '/org/shadowblip/InputPlumber/CompositeDevice[0-9]*' | sort -u); do echo \"$d\"; busctl --system get-property org.shadowblip.InputPlumber $d org.shadowblip.Input.CompositeDevice Name InterceptMode ProfileName 2>&1 | sed 's/^/  /'; done"));
     section("Controllers and power (Handheld Daemon)", crate::hhd::report());
+    // Quick Access over games (Handheld Daemon's overlay app, hearth-overlay): its own log (the fonts it was given,
+    // which page it loaded and whether that page's text shows), and fontconfig as the system sees it. Quick Access
+    // came up with no text at all on an Nvidia PC (0.6.5): Chromium's own fontconfig found no font.
+    if Path::new("/usr/share/nimbus/desktop/shell/hearth-overlay").exists() || run.join("hearth-overlay.log").exists() {
+        let log = std::fs::read_to_string(run.join("hearth-overlay.log")).map(|t| tail(&t, 120)).unwrap_or_else(|_| "(no hearth-overlay.log: Handheld Daemon hasn't started Quick Access in Game Mode this boot)".into());
+        let fc = sh("{ rpm -q fontconfig 2>/dev/null || fc-match --version; echo \"sans-serif: $(fc-match sans-serif)\"; echo \"Sans: $(fc-match Sans)\"; echo \"fonts: $(fc-list | wc -l)\"; \
+            for f in 48-guessfamily 48-spacing 49-sansserif; do [ -e /etc/fonts/conf.d/$f.conf ] && echo \"conf.d/$f.conf -> $(readlink -f /etc/fonts/conf.d/$f.conf) ($(rpm -qf /etc/fonts/conf.d/$f.conf 2>/dev/null || dpkg -S /etc/fonts/conf.d/$f.conf 2>/dev/null | cut -d: -f1))\"; done; \
+            echo \"overlay's fonts.conf: $(ls -l \"${XDG_RUNTIME_DIR:-/tmp}/hearth-overlay-fonts/fonts.conf\" 2>&1)\"; echo \"caches: $(ls -d ~/.cache/hearth-overlay/* ~/.cache/fontconfig 2>&1 | tr '\\n' ' ')\"; } 2>&1");
+        section("Quick Access over games (overlay app)", format!("{}\n\nFonts (the system's fontconfig):\n{}", log, fc.trim_end()));
+    }
     // Long enough for an external screen's whole mode list (it was cut at 300 characters, in the middle of it).
     section("gamescope", sh("xprop -root | grep -E '^GAMESCOPE|^GAMESCOPECTRL' | cut -c1-4000"));
     // "My TV does 144 Hz but Game Mode shows 60": what gamescope, the kernel and the TV itself (its EDID) say, and
