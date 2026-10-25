@@ -22,6 +22,7 @@ TARGETS = {
     'hosts/hearth-contacts/ui/osk': ('js', 'css', 'words'),
     'hosts/hearth-gaming/ui/osk': ('js', 'css', 'words'),
     'os/system_files/usr/share/hearth-browser/firefox/hearth/osk': ('js', 'css', 'words'),
+    'hosts/hearth-qml/qml': ('js',),   # the Qt renderer's copy (its CI checks it matches)
 }
 
 
