@@ -455,8 +455,133 @@ body.overlay.ovfull #qam{left:auto;width:min(440px,92vw);box-shadow:-20px 0 60px
 .pctl .lab{font-size:13px;color:var(--dim);display:flex;align-items:center;gap:8px}
 body.overlay .dk-chips{top:24px}
 body.overlay #toasts{bottom:14px;right:72px}
-/* Closed overlay: nothing drawn but the volume bar (the window itself stays on screen, see-through) */
-body.overlay.ov-closed > :not(#osd){visibility:hidden!important}
+/* Closed overlay: nothing drawn but the volume bar and the quick glance (the window itself stays on screen, see-through) */
+body.overlay.ov-closed > :not(#osd):not(#glance){visibility:hidden!important}
+body.overlay.ov-closed:before{display:none}
+/* ---------- Quick Access over a game: the top dock (#qam.top). The Bottom Dock's look at the top of the screen: the game
+   on the left, the tabs (the picked one accent-filled and bigger), the clock and battery on the right; the picked tab's
+   panel drops down under it. The game stays in view: only a gradient from the top. Over a game only (qamTop). ---------- */
+#qam.top{left:0;right:0;top:0;bottom:0;width:auto;background:none;box-shadow:none;display:block;transform:translateY(-14px);opacity:0;transition:transform .2s var(--ease),opacity .16s,visibility .2s}
+#qam.top.open{transform:none;opacity:1}
+body.overlay #qam.top,body.overlay.ovfull #qam.top{left:0;right:0;width:auto;box-shadow:none;transform:none;opacity:1}
+body.qtop.ovfull:before{background:linear-gradient(180deg,rgba(6,9,13,.78) 0,rgba(6,9,13,.42) 38%,rgba(6,9,13,.12) 70%,transparent 100%)}
+.scrim.qa.qtop{background:rgba(6,9,13,.62)}
+body.qtop:not(.overlay) #footer{visibility:hidden}
+.qd-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:22px 16px 0;pointer-events:none;max-height:100%;box-sizing:border-box}
+.qd-wrap > *{pointer-events:auto}
+.qd-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:26px;background:color-mix(in srgb,var(--panel) 95%,transparent);border:1px solid var(--line);
+  box-shadow:0 18px 50px rgba(0,0,0,.45);max-width:calc(100vw - 32px);flex:none}
+.qd-game{display:flex;align-items:center;gap:10px;padding:0 10px 0 4px;min-width:0;max-width:220px}
+.qd-cover{width:34px;height:44px;border-radius:6px;position:relative;overflow:hidden;flex:none;background:var(--panel3)}
+.qd-cover .art,.qd-art .art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.qd-gt{display:flex;flex-direction:column;min-width:0}.qd-gt b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qd-gt span{font-size:11px;color:var(--dim)}
+.qd-sep{width:1px;height:34px;background:var(--line);margin:0 4px;flex:none}
+#qam.top .qd-tab{position:relative;width:56px;height:56px;border-radius:18px;display:grid;place-items:center;color:var(--dim);flex:none;background:none;
+  transition:width .16s var(--ease),height .16s var(--ease),background .16s,color .16s,border-radius .16s}
+#qam.top .qd-tab svg{width:24px;height:24px}
+#qam.top .qd-tab:hover,#qam.top .qd-tab.focus:not(.on){color:var(--text);background:var(--panel2)}
+#qam.top .qd-tab.on{width:72px;height:72px;border-radius:22px;background:var(--accent);color:var(--accentInk);box-shadow:0 10px 30px color-mix(in srgb,var(--accent) 35%,transparent)}
+#qam.top .qd-tab.on svg{width:28px;height:28px}
+#qam.top .qd-tab.on.focus{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--text),0 10px 30px color-mix(in srgb,var(--accent) 35%,transparent)}
+#qam.top .qd-tab.mfbadge::after{display:none}
+.qd-stat{display:flex;flex-direction:column;align-items:flex-end;padding:0 6px;font-size:12px;color:var(--dim);white-space:nowrap}.qd-stat b{font-size:15px;color:var(--text);font-variant-numeric:tabular-nums}
+.qd-panel{width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 170px);overflow-y:auto;scrollbar-width:none;border-radius:18px;background:color-mix(in srgb,var(--panel) 97%,transparent);
+  border:1px solid var(--line);padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 18px 50px rgba(0,0,0,.45);animation:qdDrop .18s var(--ease)}
+.qd-panel::-webkit-scrollbar{display:none}
+@keyframes qdDrop{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+body.reduce-motion .qd-panel{animation:none}
+.qd-p-now{width:min(600px,calc(100vw - 32px))}.qd-p-controls,.qd-p-friends{width:min(760px,calc(100vw - 32px))}
+.qd-p-friends{padding:0;flex-direction:row;gap:0;height:min(480px,calc(100vh - 170px))}
+.qd-panel h4{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.qd-np{display:flex;gap:14px;align-items:center}
+.qd-art{width:64px;height:86px;border-radius:8px;position:relative;overflow:hidden;flex:none;background:var(--panel3)}
+.qd-npt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.qd-kick{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.qd-h{font-size:24px;line-height:1.15;font-weight:800}
+.qd-sub{font-size:13px;color:var(--dim)}
+.qd-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.qd-btn{min-height:48px;border-radius:12px;background:var(--panel3);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;text-align:center}
+.qd-btn svg{width:18px;height:18px}
+.qd-btn.pri{background:var(--accent);color:var(--accentInk)}
+.qd-btn.danger{background:rgba(255,107,107,.15);color:var(--danger)}
+.qd-btn:disabled{opacity:.45}
+.qd-chips{display:flex;gap:8px;flex-wrap:wrap}
+.qd-chips span{padding:6px 10px;border-radius:8px;background:var(--panel2);font-size:12px;color:var(--dim)}
+.qd-more{display:flex;gap:8px;flex-wrap:wrap}
+.qd-mini{min-height:36px;padding:0 12px;border-radius:10px;background:var(--panel2);font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+.qd-mini svg{width:16px;height:16px}
+.qd-tiles{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:10px}
+.qd-tile{border-radius:12px;background:var(--bg);padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.qd-tile span{font-size:12px;color:var(--faint)}.qd-tile b{font-size:24px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qd-tile small{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qd-row{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;background:var(--panel2);flex-wrap:wrap}
+.qd-row > b{flex:1;font-size:14px;min-width:110px}
+.qd-row .qd-v{font-size:13px;color:var(--dim)}
+.qd-seg{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.qd-seg .chip{padding:7px 12px;border-radius:8px;font-size:13px;background:none;font-weight:600}
+.qd-seg .chip.on{background:var(--accent);color:var(--accentInk)}
+.qd-hhd .pctl{margin:0;padding:12px 14px;border-radius:12px;background:var(--panel2)}
+.qd-hhd .qhhd-note{margin-top:6px;font-size:12px}
+.qd-pg{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:12px;color:var(--dim);padding:8px 10px;border-radius:10px;text-align:left}
+.qd-pg b{color:var(--text);font-weight:600}.qd-pg.on b{color:var(--accent)}
+.qd-ctl{display:flex;gap:20px}
+.qd-lays{width:300px;flex:none;display:flex;flex-direction:column;gap:10px}
+.qd-lay{padding:12px 14px;border-radius:12px;background:var(--panel2);display:flex;flex-direction:column;gap:2px;text-align:left}
+.qd-lay b{font-size:14px}.qd-lay small{font-size:12px;color:var(--dim)}
+.qd-lay.on{background:var(--panel3);box-shadow:inset 0 0 0 2px var(--accent)}
+.qd-lay.edit{border:1px dashed var(--line);background:none;font-size:13px;color:var(--dim);align-items:center}
+.qd-map{flex:1;display:flex;flex-direction:column;gap:10px;align-items:center;min-width:0}
+.qd-map svg.qd-pad{width:300px;max-width:100%;height:auto}
+.qd-pad path,.qd-pad circle,.qd-pad rect{fill:none;stroke:var(--dim);stroke-width:.5;stroke-linecap:round}
+.qd-pad .on{stroke:var(--accent);stroke-width:.7}
+.qd-sum{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px;font-size:13px;width:100%}
+.qd-sum span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qd-sum b{color:var(--text)}.qd-sum b.ac{color:var(--accent)}
+.qd-fl{width:250px;flex:none;border-right:1px solid var(--line);padding:14px;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;overflow-y:auto;scrollbar-width:none}
+.qd-fr{display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;text-align:left;min-width:0}
+.qd-fr.on{background:var(--panel3)}
+.qd-av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;flex:none;color:#10141a}
+.qd-fr .t{display:flex;flex-direction:column;min-width:0}.qd-fr .t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qd-fr .t small{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qd-fr .t small.j{color:var(--accent)}
+.qd-fl .qd-btn{min-height:42px;font-size:13px;background:var(--panel2)}
+.qd-chat{flex:1;display:flex;flex-direction:column;padding:14px 18px;gap:10px;min-width:0}
+.qd-chat .hd{display:flex;align-items:center;gap:10px}.qd-chat .hd b{font-size:16px}.qd-chat .hd small{font-size:12px;color:var(--dim)}
+.qd-msgs{flex:1;display:flex;flex-direction:column;gap:10px;overflow-y:auto;scrollbar-width:none;min-height:0}
+.qd-msgs::-webkit-scrollbar{display:none}.qd-msgs > :first-child{margin-top:auto}
+.qd-msgs .mfcard{gap:8px}.qd-msgs .mfcard .btn{min-height:32px;padding:6px 10px;font-size:13px}
+.qd-msgs .mfmsg{max-width:75%;align-self:flex-start;margin:0}
+.qd-msgs .mfmsg.mine{align-self:flex-end}
+.qd-msgs .mfmsg .mftext{padding:10px 12px;border-radius:14px 14px 14px 4px;background:var(--panel3);font-size:14px}
+.qd-msgs .mfmsg.mine .mftext{border-radius:14px 14px 4px 14px;background:var(--accent);color:var(--accentInk)}
+.qd-msgs .mfmsg small{font-size:11px;color:var(--faint)}
+.qd-replies{display:flex;gap:8px;flex-wrap:wrap}
+.qd-reply{padding:8px 12px;border-radius:16px;background:var(--panel2);font-size:13px;font-weight:600}
+.qd-type{flex:1;min-width:150px;padding:8px 12px;border-radius:16px;background:var(--bg);border:1px solid var(--line);font-size:13px;color:var(--dim);text-align:left}
+.qd-caps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.qd-cap{height:96px;border-radius:14px;background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600}
+.qd-cap svg{width:26px;height:26px}.qd-cap.rec svg{color:var(--danger)}
+.qd-cap.recording{background:rgba(255,107,107,.15);color:var(--danger)}
+.qd-thumbs{display:flex;gap:10px;flex-wrap:wrap}
+.qd-thumb{width:140px;height:80px;border-radius:10px;position:relative;overflow:hidden;background:linear-gradient(135deg,var(--panel3),var(--bg2))}
+.qd-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.qd-thumb span{position:absolute;right:6px;bottom:6px;font-size:11px;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:6px}
+.qd-capbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.qd-capbar .st{margin-left:auto;font-size:12px;color:var(--dim)}
+.qd-qs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.qd-qs .ctl{margin:0}
+.qd-qs .wide{grid-column:1/-1}
+.qd-hints{position:fixed;right:32px;bottom:26px;display:flex;gap:18px;align-items:center;font-size:13px;color:var(--text);text-shadow:0 1px 3px rgba(0,0,0,.7);pointer-events:auto}
+.qd-hints span{display:flex;align-items:center;gap:7px}
+.qd-hb{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:12px;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);font-size:13px;font-weight:600}
+.qd-hb svg{width:16px;height:16px}
+@media (max-width:900px){.qd-game{display:none}.qd-game + .qd-sep{display:none}.qd-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.qd-lays{width:220px}.qd-fl{width:200px}}
+/* the quick glance: a short Guide press over a game (thin, at the top, for a few seconds; the game keeps the controller) */
+#glance{position:fixed;top:18px;left:50%;transform:translate(-50%,-12px);z-index:9998;display:flex;align-items:center;gap:16px;padding:8px 18px;border-radius:22px;
+  background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);font-size:14px;color:var(--text);opacity:0;transition:opacity .18s,transform .18s var(--ease);pointer-events:none;white-space:nowrap;max-width:calc(100vw - 32px)}
+#glance.on{opacity:1;transform:translate(-50%,0)}
+#glance b{font-size:16px;font-variant-numeric:tabular-nums}
+#glance i.s{width:1px;height:22px;background:var(--line);flex:none}
+#glance .msg{display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#glance .msg:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--danger);flex:none}
+#glance .tip{color:var(--accent)}
 body.overlay .modal{width:min(380px,92vw)}
 .np .nart .img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .pstat{padding:12px;border-radius:9px;background:var(--panel2);margin-bottom:6px}
@@ -1353,7 +1478,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) loadOverlaySettings(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1493,15 +1618,15 @@ const MOCK = (()=>{
     'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
     'perf.stats':async(a)=>({gamePower:S.running?{id:S.running,saved:!!(MOCKOPT[S.running]&&MOCKOPT[S.running].powerLabel),label:(MOCKOPT[S.running]||{}).powerLabel||'',tdp:(MOCKOPT[S.running]||{}).tdp||0}:null,
-      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
+      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,cpuTemp:68,gpuTemp:61,powerW:st.battery&&st.battery.charging?null:18.4,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
       ...(a&&a.hhd?{powerMode:null,powerModes:[],tdp:{supported:false}}:{})}),
     'perf.setTdp':async({watts})=>{ st.tdp=watts; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); S2.tdp.unified.tdp.mode='custom'; S2.tdp.unified.tdp.custom.tdp=watts; return {supported:true,watts,min:7,max:30}; },
-    'perf.setFpsLimit':async({fps})=>{ MOCKFPS=fps; return {fpsLimit:fps}; },
+    'perf.setFpsLimit':async({fps,game})=>{ if(game&&S.running){ MOCKOPT[S.running]=Object.assign(MOCKOPT[S.running]||{},{fpsLimit:fps,perfSaved:true}); return {fpsLimit:fps,game:S.running}; } MOCKFPS=fps; return {fpsLimit:fps}; },
     'perf.setOverlay':async({level})=>{ MOCKPO=level; return {perfOverlay:level}; },
     'game.pause':async()=>({paused:true}), 'game.unpause':async()=>({paused:false}),
     'apps.list':async()=>[{id:1,pid:10,title:'Ironvale Tactics',app:'Ironvale.exe',game:true,focused:true},{id:2,pid:11,title:'Hearth',hearth:true},{id:3,pid:12,title:'Discord',app:'Discord'},{id:4,pid:13,title:'Steam',app:'steam'}],
     'apps.focus':async()=>null, 'apps.close':async()=>({ok:true}),
-    'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:''},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
+    'game.options.get':async({id})=>({id,kind:(G(id)&&G(id).src==='beacon')?'beacon':'proton',options:Object.assign({proton:'',args:'',env:'',mangohud:false,gamemode:false,fsr:false,fpsLimit:0,tdp:0,hhdPower:{},powerLabel:'',perfSaved:false},MOCKOPT[id]||{}),gamemode:true,canResetPrefix:true,
       protonChoices:[{id:'',label:'Default',sub:'UMU-Proton, the newest, downloaded when needed'},{id:'GE-Proton',label:'GE-Proton (newest)',sub:'Community build with extra fixes'},{id:'/x/GE-Proton10-4',label:'GE-Proton10-4',sub:'Installed'}]}),
     'bazaar.open':async()=>({ok:true, mouse:true}),   // Bazaar, Hearth OS's app store (hearth-core bazaar.rs)
     'browser.status':async()=>clone(st.br||{available:true,installed:true,default:true,version:'4.9.1.0',checkedAt:Math.floor(Date.now()/1000)-86400,state:'idle',hearth:{available:true,installed:true,own:true,default:false,version:'150.0'}}),
@@ -1555,8 +1680,10 @@ const MOCK = (()=>{
     'oldfiles.restore':async({item})=>{ const f=await MOCK.call('oldfiles.status'); f.folders[0].moved=f.folders[0].moved.filter(x=>x!==item); st.oldf=clone(f); return Object.assign(f,{restored:'/home/you/'+item}); },
     'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
     'pad.toggleMouse':async()=>({mouseOn:!PAD.mouseOn}),
-    'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}),
-    'overlay.setHoldView':async({on})=>{ st.holdView=on; return {holdView:on,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q'}; },
+    'overlay.settings':async()=>({holdView:!!st.holdView,gameBarButton:st.gbb!==false,hotkey:'Ctrl+Alt+Q',glance:st.glance!==false,quickReplies:st.qr||['On my way','GG','👍']}),
+    'overlay.setHoldView':async({on})=>{ st.holdView=on; return MOCK.call('overlay.settings'); },
+    'overlay.setGlance':async({on})=>{ st.glance=!!on; return MOCK.call('overlay.settings'); },
+    'overlay.setQuickReplies':async({list})=>{ st.qr=(list||[]).map(x=>String(x).trim().slice(0,40)).filter(Boolean).slice(0,6); return MOCK.call('overlay.settings'); },
     'overlay.setGameBarButton':async({on})=>{ st.gbb=on; return {holdView:!!st.holdView,gameBarButton:on,hotkey:'Ctrl+Alt+Q'}; },
     // Stores & profile (preview data)
     'accounts.status':async()=>({installRoot:'C:\\Users\\Player\\Games', accounts:[
@@ -2014,6 +2141,10 @@ function mfSettings(){
     ${sw('askToJoin', !pt || pt.askToJoin!==false, 'Let friends ask to join my game', 'Play together (Beta Experimental): you say yes to each join'+(pt&&!pt.canHost?' · needs Remote play\'s Sunshine':''))}
     </div>
     <div class="note">${I.lock} Chats with friends are end-to-end encrypted: only the people in a chat can read it, not Hearth and not the server. What you're playing and whether you're online aren't encrypted: your Matrix server sees them.</div>
+    ${shead('Quick replies over a game')}<div class="rows">
+    ${QD.replies.map((r,i)=>`<button class="row" data-f data-k="mfs-qr-${i}" data-act="ovQuickReply" data-i="${i}"><div class="rt"><b>${esc(r)}</b><small>Quick Access › Friends, one press to send · change or clear it</small></div><div class="rv">›</div></button>`).join('')}
+    ${QD.replies.length<6?`<button class="row" data-f data-k="mfs-qr-${QD.replies.length}" data-act="ovQuickReply" data-i="${QD.replies.length}"><div class="rt"><b>Add a quick reply</b></div><div class="rv">+</div></button>`:''}
+    <button class="row" data-f data-k="mfs-qr-reset" data-act="ovQuickReset"><div class="rt"><b>Back to the usual ones</b><small>On my way · GG · 👍</small></div><div class="rv">›</div></button></div>
     ${shead('Account')}<div class="rows">
     <div class="row"><div class="rt"><b>${esc(MF.st.userId)}</b><small>Lives on ${esc(MF.st.lives||MF.st.homeserver)} · this device: ${esc(MF.st.deviceId||'')}</small></div></div>
     <button class="row" data-f data-k="mfs-name" data-act="mfName"><div class="rt"><b>Display name</b><small>What friends see</small></div><div class="rv">›</div></button>
@@ -5053,6 +5184,7 @@ const POWER_CHOICES = [['sleep','Sleep'],['menu','Power menu'],['shutdown','Shut
 let osdTimer=null;
 function showOsd(d){
   if(!d) return;
+  if(d.kind==='glance') return showGlance(d);   // a short Guide press over a game (the top dock's block)
   let el=$('#osd'); if(!el){ el=document.createElement('div'); el.id='osd'; el.className='osd'; document.body.appendChild(el); }
   if(d.kind==='msg'){ el.innerHTML=`${I[d.icon]||I.bell}<span style="flex:1">${esc(d.text||'')}</span>`; el.classList.add('on'); clearTimeout(osdTimer); osdTimer=setTimeout(()=>el.classList.remove('on'),(d.ms||4000)-300); return; }
   if(d.kind!=='vol') return;
@@ -5447,7 +5579,8 @@ function pageControls(){
     const o=OVS.s, gd=o&&o.guide;
     h += `<div class="row" data-f data-k="ov-info"><span class="ricon">${I.sliders}</span><div class="rt"><b>Guide (Xbox / Home) button, or Ctrl+Alt+Q</b><small>${APP} comes back with Quick Access open: performance, screenshots, Back to game, Exit game. In a cloud stream, hold View + Menu to leave the stream.</small></div></div>`;
     if(o){
-      h += sgrid(`<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up ${APP}</b><small>For controllers whose Guide button doesn't reach ${APP}. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`
+      h += sgrid(`<button class="row" data-f data-k="ov-glance" data-act="ovGlance"><div class="rt"><b>Quick glance</b><small>A short Guide press over a game shows the time, battery and your latest message for 3 seconds, without pausing it. Hold Guide (or the Quick Access button) for Quick Access. Off: any press opens Quick Access.</small></div><div class="sw ${o.glance!==false?'on':''}"></div></button>`
+        + `<button class="row" data-f data-k="ov-hold" data-act="ovHoldView"><div class="rt"><b>Hold View to bring up ${APP}</b><small>For controllers whose Guide button doesn't reach ${APP}. Off by default because some games use a held View.</small></div><div class="sw ${o.holdView?'on':''}"></div></button>`
         + `<div class="row" data-f data-k="ov-dev"><div class="rt"><b>Controllers ${APP} watches</b><small>${gd&&gd.devices.length?esc(gd.devices.join(', ')):'None found with a Guide button'}${gd&&gd.lastPress?` · Guide last seen ${ago(gd.lastPress).toLowerCase()}`:''}</small></div></div>`);
       if(gd && gd.problems && gd.problems.length) h += note('Can\'t read: '+esc(gd.problems.join('; ')));
     }
@@ -7388,7 +7521,7 @@ function qamPerfRedraw(){
   const qb=$('#qam .qbody'); if(!qb) return;
   const inQam = !!(focused && $('#qam').contains(focused));
   const k = inQam ? focused.dataset.k : null, wasSlide = !!(SLIDE && SLIDE===focused), top=qb.scrollTop;
-  qb.innerHTML=`<h3>Performance</h3>${perfBody()}`; qb.scrollTop=top;
+  qb.innerHTML = $('#qam').classList.contains('top') ? qdPerf() : `<h3>Performance</h3>${perfBody()}`; qb.scrollTop=top;
   if(!inQam) return;
   const el = k && $(`#qam [data-k="${CSS.escape(k)}"]`);
   if(!el){ setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); return; }
@@ -7469,7 +7602,7 @@ async function overlayShown(){
   qamFresh();
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
   refreshStatus(); loadProfile();
-  if(S.qtab==='perf') startPerf();
+  if(qamTop()) qdOnTab(S.qtab); else if(S.qtab==='perf') startPerf();
   OV.busy=false;
   if(OV.wantPower){ OV.wantPower=false; openLayer('power'); }
 }
@@ -7484,7 +7617,7 @@ function recLoad(){
   REC.at=Date.now();
   call('recorder.status',{},8000).then(r=>{
     const was=JSON.stringify([REC.ok,REC.st]); REC.ok=true; REC.st=(r&&r.session)||null; REC.secs=(r&&r.settings&&r.settings.replaySecs)||30;
-    if(JSON.stringify([REC.ok,REC.st])!==was && S.layers.includes('qam') && S.qtab==='now'){ const k=document.activeElement&&document.activeElement.dataset.k; renderQam(); if(k) setFocus($(`#qam [data-k="${k}"]`)||$('#qam .qbody [data-f]'),true); }
+    if(JSON.stringify([REC.ok,REC.st])!==was && S.layers.includes('qam') && (S.qtab==='now' || S.qtab==='capture')){ const k=document.activeElement&&document.activeElement.dataset.k; renderQam(); if(k) setFocus($(`#qam [data-k="${k}"]`)||$('#qam .qbody [data-f]'),true); }
   }).catch(()=>{ REC.ok=false; });
 }
 function recQam(){
@@ -7499,6 +7632,7 @@ function recQam(){
 function recDone(r, what){
   REC.at=0; recLoad();
   const f = r && (r.file||r.saved);
+  if(f) QD.caps.unshift({kind:what==='Replay'?'replay':'video', file:String(f), time:Date.now(), label:what==='Replay'?'Replay':'Video'});
   if(f) toast(`${what} saved · ${String(f).split('/').pop()} (Videos › Recordings)`);
   else if(r && r.started) toast(r.started.kind==='replay' ? `Instant replay on · Save last ${REC.secs>=60?(REC.secs/60)+' min':(REC.secs||30)+' s'} from here` : 'Recording · stop it from here');
   else toast(what==='Replay'?'Instant replay off':'Done');
@@ -7507,6 +7641,11 @@ function recDone(r, what){
 /** Quick Access opened by Guide (Hearth's panel or the overlay): on Now playing with a game running, else Quick settings. */
 function qamFresh(){ S.qtab = S.running ? 'now' : 'quick'; }
 function renderQam(){
+  // Over a game: the top dock (renderQd); the side panel otherwise.
+  const top=qamTop();
+  document.body.classList.toggle('qtop', top); $('#qam').classList.toggle('top', top); $('#scrim').classList.toggle('qtop', top);
+  if(top) return renderQd();
+  if(!QTABS.some(q=>q[0]===S.qtab)) S.qtab = S.running && QTABS.some(q=>q[0]==='now') ? 'now' : 'quick';
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
   if(t==='quick'){ const w=S.sys.wifi;
@@ -7547,6 +7686,396 @@ function qamQuick(){
   return `<h3 style="margin-top:16px">Quick Resume</h3>${L.map(g=>`<div class="qrrow"><button class="btn" data-f data-k="q-qr-${esc(g.id)}" data-act="quickres" data-id="${esc(g.id)}">${I.play}${esc(g.title)}</button><button class="btn sm danger" data-f data-k="q-qrx-${esc(g.id)}" data-act="quickclose" data-id="${esc(g.id)}" aria-label="Close ${esc(g.title)}">${I.stop}</button></div>`).join('')}
     <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${!qrKeeps()?'Sleep keeps them; turning off closes them.':qrKeepsRestart()?'They\'re kept through sleep, Restart and Shut down.':'They\'re kept through sleep and Shut down; Restart closes them.'}</div>`;
 }
+// ==== Quick Access over a game: the top dock (approved design, Ovl-*.dc.html). Over a game (the overlay page, Hearth's
+// own overlay window or Handheld Daemon's overlay app: the same page, ?overlay=full; or Hearth's window with a game
+// running) Quick Access is the Bottom Dock's look at the top of the screen: the game, the tabs (Now playing,
+// Performance, Controller layout, Friends, Capture, Quick settings), the clock and battery; the picked tab's panel drops
+// down under it. Left / right on the tabs switch them (LB / RB anywhere), down goes into the panel, up from its top row
+// back to the tab; B, Guide or the View button go back to the game. Mouse and keyboard work the same (Esc, the hint
+// button, a click beside it). The side panel (renderQam's other half) stays for Quick Access with no game running.
+// A short Guide press over a game shows the quick glance instead (showGlance: drawn like the volume bar, the game
+// keeps its controller); holding it, or Handheld Daemon's Quick Access button, opens this dock.
+const QD = {timer:null, tick:0, opts:{}, optsAt:{}, shots:null, shotsAt:0, caps:[], replies:['On my way','GG','👍'], glance:true, glanceT:null};
+const QDI = {
+  now:'<svg viewBox="0 0 24 24"><path d="M6 12h4M8 10v4"/><circle cx="16" cy="11" r="1"/><path d="M7 6h10a5 5 0 0 1 4.9 6l-1 5a2.5 2.5 0 0 1-4.4 1L15 16H9l-1.5 2a2.5 2.5 0 0 1-4.4-1l-1-5A5 5 0 0 1 7 6z"/></svg>',
+  perf:'<svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 8-9"/><path d="M15 6h5v5"/></svg>',
+  controls:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="5"/><path d="M8 10v4M6 12h4"/><circle cx="16" cy="12" r="1"/></svg>',
+  friends:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/></svg>',
+  capture:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M9 6l1.5-2h3L15 6"/></svg>',
+  quick:'<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  rec:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>',
+  replay:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5"/><path d="M12 8v4l3 2"/></svg>',
+};
+const QD_TABS = [['now','Now playing'],['perf','Performance'],['controls','Controller layout'],['friends','Friends'],['capture','Capture'],['quick','Quick settings']];
+/** Quick Access is the top dock: a game is running, and there's room (an overlay page beside the game, Ember's narrow one, keeps the panel). */
+function qamTop(){
+  if(ANDROID || !S.running) return false;
+  if(OVERLAY && !document.documentElement.classList.contains('ovfull')) return false;
+  return (window.innerWidth||1280) >= 700;
+}
+function qdTabs(){
+  const g=S.running && G(S.running);
+  return QD_TABS.filter(([k])=> k==='perf' ? QTABS.some(q=>q[0]==='perf')
+    : k==='controls' ? (LINUX || hasFeat('hearthInput')) && !(g && g.cloud)
+    : k==='friends' ? QTABS.some(q=>q[0]==='friends')
+    : k==='capture' ? (OVERLAY || LINUX) : true);
+}
+/** "1 h 12 min" since the game started (nothing when Hearth doesn't know). */
+function qdPlayed(){
+  if(!S.runningSince) return '';
+  const m=Math.max(0, Math.round((Date.now()-S.runningSince)/60000));
+  return m<60 ? m+' min' : Math.floor(m/60)+' h'+(m%60 ? ' '+(m%60)+' min' : '');
+}
+function qdBattery(){ const b=(PERF.s && PERF.s.battery) || S.sys.battery; return b && b.present!==false && b.pct!=null ? b : null; }
+/** The dock's right side and the glance: battery, and the frame rate when the host says it. */
+function qdStatLine(){ const b=qdBattery(), p=PERF.s, x=[]; if(b) x.push(b.pct+'%'+(b.charging?' ⚡':'')); if(p && p.fps) x.push(p.fps+' FPS'); return x.join(' · '); }
+function qdHints(){
+  const st=promptStyle(), pad=st==='pad';
+  if(st==='mouse' || (INPUT.last==='mouse' && !pad)) return `<div class="qd-hints"><button class="qd-hb" data-act="dockResume">${I.x}Back to game</button></div>`;
+  const gl=(k,c)=>`<span class="glyph ${pad?c:'kc'}">${k}</span>`;
+  const extra = S.qtab==='friends' && pad && mfIn() ? `<span>${gl('Y','y')}Type</span>` : S.qtab==='perf' && pad && qdPerGameShown() ? `<span>${gl('X','x')}${qdPgOn()?'Every game':'This game only'}</span>` : '';
+  return `<div class="qd-hints"><span>${gl(pad?'◀ ▶':'← →','')}Switch tab</span><span>${gl(pad?'A':'Enter','a')}Select</span>${extra}<span>${gl(pad?'B':'Esc','b')}Back to game</span></div>`;
+}
+function renderQd(){
+  // Drawn again in place (new messages, the recorder, a setting): the selection stays on the same control.
+  const had = focused && $('#qam').contains(focused) ? focused : null, k = had && had.dataset.k, wasTab = had && had.classList.contains('qd-tab'), wasSlide = !!(had && SLIDE===had);
+  const T=qdTabs(); if(!T.some(t=>t[0]===S.qtab)) S.qtab='now';
+  const t=S.qtab, g=S.running && G(S.running), n=dkUnread();
+  let body='';
+  try{ body = t==='now' ? qdNow(g) : t==='perf' ? qdPerf() : t==='controls' ? qdControls(g) : t==='friends' ? qdFriends(g) : t==='capture' ? qdCapture(g) : qdQuick(); }
+  catch(e){ body=`<div class="muted">${esc(e.message)}</div>`; }
+  const label=(T.find(x=>x[0]===t)||[])[1]||'';
+  $('#qam').innerHTML = `<div class="qd-wrap"><nav class="qd-bar" role="tablist" aria-label="Quick Access">
+      <div class="qd-game"><div class="qd-cover"${g?` style="${artBg(g)}"`:''}>${g?artImg(g,['cover','wide','hero']):''}</div><div class="qd-gt"><b>${esc(g?g.title:'Your game')}</b><span class="qd-time">${qdPlayed()||'Running'}</span></div></div>
+      <i class="qd-sep"></i>
+      ${T.map(([k,l])=>`<button class="qtab qd-tab ${t===k?'on':''}" role="tab" aria-selected="${t===k}" data-f data-k="qt-${k}" data-act="qtab" data-tab="${k}" aria-label="${l}" title="${l}">${QDI[k]}${k==='friends'&&n?`<span class="dk-b">${n>99?'99+':n}</span>`:''}</button>`).join('')}
+      <i class="qd-sep"></i>
+      <div class="qd-stat"><b class="qd-clock">${clockText(new Date())}</b><span class="qd-line">${esc(qdStatLine())}</span></div>
+    </nav><section class="qbody qd-panel qd-p-${t}" role="tabpanel" aria-label="${esc(label)}">${body}</section></div>${qdHints()}`;
+  qdTimer();
+  if(t==='friends'){ const m=$('#qam .qd-msgs'); if(m) m.scrollTop=m.scrollHeight; }
+  if(had){
+    const el = (k && $(`#qam [data-k="${CSS.escape(k)}"]`)) || (wasTab ? $(`#qam [data-k="qt-${S.qtab}"]`) : qdFirst());
+    if(el){ if(wasSlide) SLIDE=null; setFocus(el, true); if(wasSlide){ SLIDE=el; el.classList.add('editing'); } }
+  }
+}
+/** What a tab needs loaded when it's picked. */
+function qdOnTab(t){
+  if(t==='perf'){ startPerf(); qdLoadOpts(); }
+  if(t==='capture'){ recLoad(); qdLoadShots(); }
+  if(t==='friends' && mfOn() && !MF.st && !MF.loading){ try{ mfLoad(); }catch(e){} }
+  // Friends with a new message waiting: that chat opens (the newest), so the message is right there (once the
+  // chats are in: qdFriends).
+  if(t==='friends'){ QD.auto=true; if(mfIn() && !MF.room) renderQam(); }
+}
+/** Switch to a tab (the selection on it). */
+function qdGo(t){ S.qtab=t; renderQam(); qdOnTab(t); setFocus($(`#qam [data-k="qt-${t}"]`), true); blip(600); }
+// While it's open: the time played, the clock and the battery in place, and the host's numbers now and then.
+function qdTimer(){
+  if(QD.timer) return;
+  QD.timer=setInterval(()=>{
+    if(!S.layers.includes('qam') || !qamTop() || (OVERLAY && !OV.shown)){ clearInterval(QD.timer); QD.timer=null; return; }
+    const set=(sel,v)=>{ const e=$(sel); if(e && e.textContent!==v) e.textContent=v; };
+    set('#qam .qd-time', qdPlayed()||'Running'); set('#qam .qd-clock', clockText(new Date())); set('#qam .qd-line', qdStatLine());
+    if(++QD.tick%3===0 && S.qtab!=='perf') call('perf.stats', hhdPerf()?{hhd:true}:{}, 8000).then(r=>{ PERF.s=r; applyRunning(r); set('#qam .qd-line', qdStatLine()); }).catch(()=>{});
+  }, 2000);
+}
+/** Down from a tab: the panel's main control (the picked choice, else its first). */
+function qdFirst(){ const p=$('#qam .qd-panel'); return p && (p.querySelector('[data-first]') || p.querySelector('[data-f]')); }
+/** The controller on the tabs: left / right switch them, down into the panel. */
+function qdTabMove(dir){
+  if(dir==='down'){ const el=qdFirst(); if(el){ setFocus(el); blip(); } return; }
+  if(dir!=='left' && dir!=='right') return;
+  const T=qdTabs(), i=T.findIndex(x=>x[0]===S.qtab), j=i+(dir==='left'?-1:1);
+  if(j<0 || j>=T.length) return;
+  qdGo(T[j][0]);
+}
+
+// ---- Now playing
+function qdChips(g){
+  const c=[], p=qdPlayed();
+  if(p) c.push('Playing for '+p);
+  if(g && g.ach && g.ach[1]) c.push(`Achievements ${g.ach[0]} / ${g.ach[1]}`);
+  const P=(dkPeople()||[]).filter(f=>f.game && g && f.game.toLowerCase()===String(g.title||'').toLowerCase());
+  if(P.length) c.push(P.length===1 ? `${P[0].name} is playing too` : `${P[0].name} and ${P.length-1} more are playing too`);
+  return c;
+}
+function qdNow(g){
+  const im = g && !g.cloud && (LINUX || hasFeat('hearthInput'));
+  if(im){ imLoadTables(); imLoad(g.id); }
+  const c = im && IM.games[g.id];
+  const sub=[g?SOURCES[g.src]||'':'', c && c.layout!=='off' ? 'layout: '+imChoiceLabel(c) : ''].filter(Boolean).join(' · ');
+  const btn=(k,act,label,cls='')=>`<button class="qd-btn ${cls}" data-f data-k="${k}" ${act}>${label}</button>`;
+  const gset = g && !g.cloud && (!host || LINUX || hasFeat('gameSettings'));
+  let h = `<div class="qd-np">${g?`<div class="qd-art" style="${artBg(g)}">${artImg(g,['cover','wide','hero'])}</div>`:''}<div class="qd-npt"><span class="qd-kick">Now playing</span><b class="qd-h">${esc(g?g.title:'Your game')}</b>${sub?`<span class="qd-sub">${esc(sub)}</span>`:''}</div></div>
+    <div class="qd-g2">${btn('q-resume','data-act="dockResume" data-first','Back to game','pri')}${QTABS.some(q=>q[0]==='friends')?btn('q-invite','data-act="qdInvite"','Invite a friend'):''}${gset?btn('q-gset','data-act="qdGameSet"','Game settings'):''}${btn('q-exit','data-act="exitgame"','Exit game','danger')}</div>`;
+  const chips=qdChips(g);
+  if(chips.length) h += `<div class="qd-chips">${chips.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`;
+  const more=[];
+  if((LINUX || hasFeat('pause')) && !(g && g.cloud)) more.push(`<button class="qd-mini" data-f data-k="q-pause" data-act="pauseGame">${S.paused?I.play+'Unpause':I.pause+'Pause'}</button>`);
+  if(qrFeature() && QR.on && g && !g.cloud) more.push(`<button class="qd-mini" data-f data-k="q-aside" data-act="putaside">${I.pause}Put aside (Quick Resume)</button>`);
+  if(QTABS.some(q=>q[0]==='apps')) more.push(`<button class="qd-mini" data-f data-k="q-apps" data-act="qdApps">${I.lib}Switch app</button>`);
+  more.push(`<button class="qd-mini" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>`);
+  h += `<div class="qd-more">${more.join('')}</div>`;
+  return h + qamQuick();
+}
+
+// ---- Performance (the same controls as the side panel's, Handheld Daemon's power when it runs the power)
+function qdLoadOpts(){
+  const id=S.running; if(!id || Date.now()-(QD.optsAt[id]||0)<4000) return;
+  QD.optsAt[id]=Date.now();
+  call('game.options.get',{id},8000).then(r=>{ QD.opts[id]=(r&&r.options)||{}; qamPerfRedraw(); }).catch(()=>{});
+}
+function qdPerGameShown(){ const g=S.running && G(S.running); return !!(g && !g.cloud && PERF.s && (PERF.s.canFpsLimit || hhdPerf() || (PERF.s.tdp && PERF.s.tdp.supported))); }
+/** This game keeps its own frame limit and power (Saved for <game> only). */
+function qdPgOn(){
+  const id=S.running; if(!id) return false;
+  const o=QD.opts[id]||{}, gp=PERF.s && PERF.s.gamePower;
+  return !!(o.perfSaved || o.fpsLimit>0 || o.tdp>0 || (gp && gp.id===id && gp.saved));
+}
+async function qdPerGame(){
+  const id=S.running, g=G(id), p=PERF.s; if(!id || !p) return;
+  const on=qdPgOn(), name=g ? g.title : 'this game';
+  try{
+    if(on){
+      await call('game.options.set',{id, options:{perfSaved:false, fpsLimit:0, tdp:0}});
+      await call('perf.gamePowerForget',{id}).catch(()=>null);
+      if(p.canFpsLimit) await call('perf.setFpsLimit',{fps:p.fpsLimit||0}).catch(()=>null);   // your usual limit back
+      toast('Using your usual settings for every game');
+    } else {
+      const opt={perfSaved:true};
+      if(p.canFpsLimit) opt.fpsLimit=p.fpsLimit||0;
+      if(!hhdPerf() && p.tdp && p.tdp.supported) opt.tdp=p.tdp.watts||0;
+      await call('game.options.set',{id, options:opt});
+      toast(`Saved for ${name} only: they come back whenever it plays`);
+    }
+  }catch(e){ return toast(e.message); }
+  QD.optsAt[id]=0; QD.opts[id]=Object.assign({}, QD.opts[id]||{}, {perfSaved:!on}); qdLoadOpts();
+  qamPerfRedraw();
+}
+function qdPerf(){
+  const p=PERF.s; if(!p) return '<div class="muted">Reading…</div>';
+  const tile=(l,v,s)=>`<div class="qd-tile"><span>${l}</span><b>${v}</b>${s?`<small>${s}</small>`:''}</div>`, T=[];
+  if(p.fps) T.push(tile('FPS', p.fps, p.fpsLow?'1% low '+p.fpsLow:''));
+  T.push(tile('CPU', (p.cpu||0)+'%', p.cpuTemp?p.cpuTemp+'°C':''));
+  if(p.gpu!=null) T.push(tile('GPU', p.gpu+'%', [p.gpuTemp?p.gpuTemp+'°C':'', p.vramUsed!=null?p.vramUsed+' GB':''].filter(Boolean).join(' · ')));
+  if(p.ramTotal) T.push(tile('Memory', p.ramUsed+' GB', 'of '+p.ramTotal+' GB'));
+  const b=p.battery;
+  if(b && b.present!==false && b.pct!=null) T.push(p.powerW ? tile('Power', p.powerW+' W', b.pct+'% battery') : tile('Battery', b.pct+'%', b.charging?'Charging':''));
+  let h=`<div class="qd-tiles" style="--n:${Math.min(T.length,5)}">${T.join('')}</div>`;
+  const row=(label,val,items)=>`<div class="qd-row"><b>${label}</b>${val?`<span class="qd-v">${val}</span>`:''}<div class="qd-seg" role="group" aria-label="${label}">${items}</div></div>`;
+  const chip=(k,on,act,v,l)=>`<button class="chip ${on?'on':''}" data-f data-k="${k}" data-act="${act}" data-v="${v}"${on?' data-first':''}>${l}</button>`;
+  if(p.canFpsLimit){ const lim=p.fpsLimit||0; h += row('Frame limit', '', FPS_CHOICES.map(v=>chip('pf-'+v, lim===v, 'fpsLimit', v, v?v:'Off')).join('')); }
+  const hp=hhdPerf();
+  if(hp) h += `<div class="qd-hhd">${hhdQamBody()}${hhdGameNote(p)}<div class="muted qhhd-note">More (fan curve, lights, the controller): ${APP} › Settings › Controls › Handheld Daemon.</div></div>`;
+  if(!hp && p.tdp && p.tdp.supported){
+    const choices=[5,8,10,12,15,18,20,25,30].filter(v=>v>=p.tdp.min && v<=p.tdp.max);
+    h += row('Power limit', p.tdp.watts+' W', choices.map(v=>chip('pt-'+v, p.tdp.watts===v, 'tdp', v, v+' W')).join(''));
+  }
+  if(!hp && p.powerMode) h += row('Power', '', (p.powerModes&&p.powerModes.length?PMODES.filter(([k])=>p.powerModes.includes(k)):PMODES).map(([k,l])=>chip('pp-'+k, p.powerMode===k, 'perfPower', k, l)).join(''));
+  if(p.canOverlay){ const lv=p.perfOverlay||0; h += row('On-screen stats', '', PO_LEVELS.map((l,i)=>chip('po-'+i, lv===i, 'perfOverlay', i, l)).join('')); }
+  if(qdPerGameShown()){
+    const g=G(S.running), on=qdPgOn(), n=esc(g.title);
+    h += `<button class="qd-pg ${on?'on':''}" data-f data-k="q-pg" data-act="qdPerGame"><b>${on?`Saved for ${n} only`:'Used for every game'}</b><span>${on?'Use for every game':`Save for ${n} only`}</span></button>`;
+  }
+  if(!p.canFpsLimit && LINUX) h += '<div class="muted" style="font-size:12px">The frame-rate limit works in Game Mode.</div>';
+  return h;
+}
+
+// ---- Controller layout (Hearth Input: the game's layout, what it does, Edit this layout)
+const QD_PAD = {   // where each control is on the drawing (viewBox 0 0 24 16)
+  ls:'<circle cx="8" cy="7" r="1.6"/>', rs:'<circle cx="15" cy="9.5" r="1.4"/>', dpad:'<path d="M8.6 9.6v2.4M7.4 10.8h2.4"/>',
+  y:'<circle cx="17.5" cy="5.5" r=".7"/>', b:'<circle cx="19" cy="7" r=".7"/>', x:'<circle cx="16" cy="7" r=".7"/>', a:'<circle cx="17.5" cy="8.5" r=".7"/>',
+  lb:'<path d="M4.5 2.2h3.5"/>', rb:'<path d="M16 2.2h3.5"/>', lt:'<path d="M5 .9h2.5"/>', rt:'<path d="M16.5 .9h2.5"/>',
+  view:'<circle cx="10.6" cy="5.4" r=".45"/>', menu:'<circle cx="13.4" cy="5.4" r=".45"/>',
+};
+function qdLayoutOf(c){
+  if(!c || c.layout==='off') return null;
+  if(c.layout==='custom') return c.custom || null;
+  const t=((IM.tables&&IM.tables.templates)||[]).find(x=>x.id===c.layout);
+  return t ? t.layout : null;
+}
+function qdStick(s){
+  if(!s) return '';
+  if(s.mode==='mouse') return 'Mouse';
+  if(s.mode==='scroll') return 'Scroll';
+  if(s.mode==='keys'){ const k=[s.up,s.left,s.down,s.right].map(v=>imActLabel(v)); return k.join(' ').length<=12 ? k.join(' ') : 'Keys'; }
+  return s.mode||'';
+}
+function qdControls(g){
+  if(!g) return '<div class="muted">No game from your library is running.</div>';
+  imLoadTables(); imLoad(g.id); imLoadStatus();
+  const c=IM.games[g.id], T=IM.tables;
+  const mouse=`<button class="qd-mini" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`;
+  if(!c || !T) return '<div class="muted">Loading…</div>';
+  const lay=(k,v,title,sub)=>`<button class="qd-lay ${c.layout===v?'on':''}" data-f data-k="${k}" data-act="qdLayout" data-v="${esc(v)}"${c.layout===v?' data-first':''}><b>${esc(title)}</b><small>${esc(sub)}</small></button>`;
+  let left=`<h4>Layout for ${esc(g.title)}</h4>${lay('qi-off','off','Off','The game reads the controller itself')}`;
+  for(const t of T.templates) left += lay('qi-'+t.id, t.id, t.name, t.blurb||'');
+  if(c.custom) left += lay('qi-custom', 'custom', (c.custom.name||'Custom')+' (yours)', 'Your own layout');
+  left += `<button class="qd-lay edit" data-f data-k="qi-edit" data-act="qdImEdit">${c.layout==='off' && !c.custom ? 'Make a layout for this game' : 'Edit this layout'}</button>`;
+  const L=qdLayoutOf(c), B=(L&&L.buttons)||{}, Sx=(L&&L.sticks)||{};
+  const on=new Set(); for(const k of Object.keys(B)) on.add(['up','down','left','right'].includes(k)?'dpad':k); for(const k of Object.keys(Sx)) on.add(k);
+  const pad=`<svg class="qd-pad" viewBox="0 0 24 16" aria-hidden="true"><path d="M6 2h12a5 5 0 0 1 4.9 6l-1 5a2.4 2.4 0 0 1-4.3.9L16 12H8l-1.6 1.9a2.4 2.4 0 0 1-4.3-.9l-1-5A5 5 0 0 1 6 2z"/>${Object.entries(QD_PAD).map(([k,s])=>s.replace(/^<(\w+)/, `<$1 class="${on.has(k)?'on':''}"`)).join('')}</svg>`;
+  let right=pad;
+  if(!L) right += `<div class="muted" style="text-align:center;font-size:13px">No layout: ${esc(g.title)} gets the controller as it is. A layout makes it act as a keyboard and mouse, for games without controller support.</div>`;
+  else {
+    const btn=x=>{ const v=B[x]; return v==null ? null : imActLabel(typeof v==='string'?v:v.press); };
+    const items=[];
+    if(Sx.rs) items.push(['Right stick', qdStick(Sx.rs), true]);
+    if(Sx.ls) items.push(['Left stick', qdStick(Sx.ls), !Sx.rs]);
+    for(const [k,l] of [['rt','RT'],['lt','LT'],['a','A'],['b','B'],['x','X'],['y','Y'],['lb','LB'],['rb','RB'],['view','View'],['menu','Menu']]){ const v=btn(k); if(v) items.push([l, v, false]); }
+    if(B.up||B.down||B.left||B.right) items.push(['D-pad', [B.up,B.left,B.down,B.right].map(v=>v?imActLabel(typeof v==='string'?v:v.press):'').filter(Boolean).slice(0,4).join(' ').slice(0,24), false]);
+    right += `<div class="qd-sum">${items.slice(0,12).map(([k,v,ac])=>`<span><b class="${ac?'ac':''}">${esc(k)}</b> · ${esc(v)}</span>`).join('')}</div>`;
+    const gy=IM.status && IM.status.gyro, gon=!!(c.prefs && c.prefs.gyro);
+    right += `<div class="qd-more" style="justify-content:center"><button class="qd-mini" data-f data-k="q-imgyro" data-act="im" data-op="qaGyro" data-id="${esc(g.id)}">${I.pad}Gyro aiming: ${gon?'on':'off'}${gy && !gy.available?' (no motion sensors)':''}</button></div>`;
+  }
+  right += `<div class="qd-more" style="justify-content:center">${mouse}</div>`;
+  return `<div class="qd-ctl"><div class="qd-lays">${left}</div><div class="qd-map">${right}</div></div>`;
+}
+
+// ---- Friends (Hearth Friends on Matrix: who's online and joinable, the chat, invites with Join, quick replies)
+const QD_AV = ['#ff8a3d','#8b7bff','#ffd166','#3fd0b8','#7fb4ff','#ff6b9a'];
+function qdAv(name){ let h=0; for(const ch of String(name||'?')) h=(h*31+ch.charCodeAt(0))>>>0; const n=String(name||'?').replace(/^@/,'').trim(); const ini=(n.split(/\s+/).length>1 ? n.split(/\s+/).slice(0,2).map(w=>w[0]).join('') : n.slice(0,2)).toUpperCase();
+  return `<span class="qd-av" style="background:${QD_AV[h%QD_AV.length]}">${esc(ini)}</span>`; }
+function qdFriends(g){
+  if(!mfOn()) return `<div class="qd-chat"><div class="muted">Hearth Friends comes with Hearth OS.</div></div>`;
+  if(!MF.st && !MF.loading){ MF.loading=true; setTimeout(()=>{ MF.loading=false; }, 3000); mfLoad(); }
+  if(!mfIn()) return `<div class="qd-chat"><b>Friends</b><div class="muted">Sign in to Hearth Friends (Matrix) from Friends in ${APP}'s menu to chat and invite friends over your game.</div><div class="qd-more"><button class="qd-mini" data-f data-k="mfq-all" data-act="mfQAll" data-first>${I.user}Open Friends</button></div></div>`;
+  if(QD.auto && MF.chats){
+    QD.auto=false;
+    const c=!MF.room && MF.chats.filter(x=>x.unread && !x.muted).sort((a,b)=>((b.last&&b.last.at)||0)-((a.last&&a.last.at)||0))[0];
+    if(c){ MF.room=c.roomId; MF.emojiOpen=false; setTimeout(()=>mfLoadMsgs(c.roomId, false), 0); }
+  }
+  const fs=(MF.friends||[]).filter(f=>f.state==='friend');
+  const on=fs.filter(f=>f.presence!=='offline' || f.game).sort((a,b)=>(b.joinable?2:b.game?1:0)-(a.joinable?2:a.game?1:0));
+  const list=(on.length?on:fs).slice(0,8);
+  let left=`<h4>${on.length?'Online · '+on.length:'Friends'}</h4>`;
+  left += list.map(f=>`<button class="qd-fr ${MF.room&&MF.room===f.roomId?'on':''}" data-f data-k="mfq-f-${esc(f.userId)}" data-act="mfQOpen" data-room="${esc(f.roomId)}"${MF.room===f.roomId?' data-first':''}>${qdAv(f.name)}<span class="t"><b>${esc(f.name)}</b><small class="${f.joinable?'j':''}">${f.game?esc(f.game)+(f.joinable?' · Joinable':''):f.presence==='unavailable'?'Away':f.presence==='offline'?'Offline':'Online'}</small></span></button>`).join('') || '<div class="muted" style="font-size:13px">No friends yet.</div>';
+  const unread=(MF.chats||[]).filter(c=>c.unread && !c.muted && !list.some(f=>f.roomId===c.roomId)).slice(0,3);
+  if(unread.length) left += `<h4 style="margin-top:6px">New messages</h4>` + unread.map(c=>`<button class="qd-fr ${MF.room===c.roomId?'on':''}" data-f data-k="mfq-c-${esc(c.roomId)}" data-act="mfQOpen" data-room="${esc(c.roomId)}">${qdAv(c.name)}<span class="t"><b>${esc(c.name)}</b><small>${c.unread} new</small></span></button>`).join('');
+  left += `<span style="margin-top:auto"></span>${g?`<button class="qd-btn" data-f data-k="mfx-game" data-act="qdInviteHere">Invite to ${esc(g.title)}</button>`:''}<button class="qd-btn" data-f data-k="mfq-all" data-act="mfQAll">Open Friends</button>`;
+  let right;
+  if(!MF.room) right = `<div class="hd"><b>Chats</b></div><div class="qd-msgs" style="justify-content:center;align-items:center"><div class="muted" style="text-align:center">Pick a friend to chat${unread.length||(MF.chats||[]).some(c=>c.unread)?' · you have new messages':''}.</div></div>`;
+  else {
+    const c=mfChat(MF.room)||{name:'Chat'}, ms=(MF.msgs[MF.room]||null);
+    right = `<div class="hd"><b>${esc(c.name)}</b><small>${c.encrypted!==false?'🔒 Encrypted':'Not encrypted'}</small></div>
+      <div class="qd-msgs mfmsgs">${ms ? (ms.slice(-6).map(m=>mfMsg(m)).join('') || '<div class="muted">No messages yet. Say hello!</div>') : '<div class="muted">Loading messages…</div>'}</div>
+      <div class="qd-replies">${QD.replies.map((r,i)=>`<button class="qd-reply" data-f data-k="qr-${i}" data-act="qdReply" data-v="${esc(r)}">${esc(r)}</button>`).join('')}<button class="qd-type" data-f data-k="mfx-type" data-act="mfType" data-first>Type a message${INPUT.last==='pad'?' (Y)':''}</button></div>`;
+  }
+  return `<div class="qd-fl">${left}</div><div class="qd-chat">${right}</div>`;
+}
+
+// ---- Capture (screenshot; Hearth Recorder's record and instant replay where it's installed; this session's pictures)
+function qdLoadShots(){
+  if(!(LINUX || !host) || Date.now()-QD.shotsAt<3000) return;
+  QD.shotsAt=Date.now();
+  call('screenshots.list',{},15000).then(r=>{ QD.shots=(r&&r.list)||[]; if(S.layers.includes('qam') && S.qtab==='capture') refreshUI(); }).catch(()=>{ QD.shots=[]; });
+}
+function qdSession(){
+  const since=S.runningSince||0;
+  const shots=(QD.shots||[]).filter(x=>x.time>=since).map(x=>({kind:'shot', file:x.file, url:x.url, time:x.time}));
+  const caps=QD.caps.filter(x=>x.time>=since);
+  return [...shots, ...caps].sort((a,b)=>b.time-a.time);
+}
+function qdCapture(g){
+  const k=REC.ok && REC.st && REC.st.kind, len=REC.secs>=60?(REC.secs/60)+' min':(REC.secs||30)+' s';
+  const cap=(key,act,label,icon,cls='')=>`<button class="qd-cap ${cls}" data-f data-k="${key}" ${act}>${icon}${label}</button>`;
+  let h=`<div class="qd-caps">${cap('q-shot','data-act="ovShot" data-first','Screenshot',QDI.capture)}`;
+  if(REC.ok) h += k==='record' ? cap('q-rec','data-act="recToggle"','Stop recording',I.stop,'recording') : cap('q-rec','data-act="recToggle"'+(k==='sound'?' disabled':''),'Record',QDI.rec,'rec');
+  if(REC.ok && k==='replay') h += cap('q-rsave','data-act="recSave"','Save last '+len,QDI.replay);
+  h += '</div>';
+  const L=qdSession();
+  h += `<h4>From this session</h4>` + (L.length ? `<div class="qd-thumbs">${L.slice(0,4).map(x=>`<div class="qd-thumb">${x.url?`<img src="${esc(x.url)}" alt="">`:''}${x.kind!=='shot'?`<span>${esc(x.label||'Video')}</span>`:''}</div>`).join('')}</div>` : `<div class="muted" style="font-size:13px">Nothing yet: screenshots and clips you take while playing show here.</div>`);
+  const bar=[];
+  if(mfOn() && mfIn() && L.some(x=>x.kind==='shot')) bar.push(`<button class="qd-mini" data-f data-k="q-csend" data-act="qdSendShot">${I.user}Send to a friend</button>`);
+  if(LINUX || !host) bar.push(`<button class="qd-mini" data-f data-k="q-cshots" data-act="qdOpenShots">${I.display}Open Screenshots</button>`);
+  if(REC.ok && !k) bar.push(`<button class="qd-mini" data-f data-k="q-ron" data-act="recReplay">${QDI.replay}Turn on instant replay</button>`);
+  if(REC.ok && k==='replay') bar.push(`<button class="qd-mini" data-f data-k="q-roff" data-act="recReplay">Instant replay off</button>`);
+  const st = k==='record' ? 'Recording…' : k==='replay' ? 'Instant replay is on' : '';
+  h += `<div class="qd-capbar">${bar.join('')}${st?`<span class="st">${st}</span>`:''}</div>`;
+  return h;
+}
+
+// ---- Quick settings (volume, brightness, mute, Wi-Fi, Bluetooth, airplane mode, sounds; notifications under them)
+function qdQuick(){
+  const w=S.sys.wifi, a=S.sys.audio;
+  let h=`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
+    <button class="ctl tg" data-f data-k="q-mute" data-act="mute">${a.muted?I.mute:I.vol}<span class="tgl">Mute</span><div class="sw ${a.muted?'on':''}"></div></button>
+    ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
+    ${qRadio('bt','bt','Bluetooth', S.sys.bt.on?'On':'Off')}
+    ${qRadio('air','plane','Airplane mode', '')}
+    ${tgCtl('sounds','note','Interface sounds')}</div>`;
+  if(NOTIFS.length) h += `<h4>Notifications</h4>` + NOTIFS.slice(0,3).map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%;margin:0"><div class="ni">${I[n.i]||I.bell}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')
+    + `<div class="qd-more"><button class="qd-mini" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button></div>`;
+  return h;
+}
+
+/** Something of Hearth's own to open (Game settings, the layout editor, Screenshots): over a game, Hearth comes back with it. */
+function qdOpenInHearth(open){
+  if(OVERLAY) return send({type:'overlay', action:'home', open});
+  closeAll();
+  qdOpenHere(open);
+}
+function qdOpenHere(o){
+  if(!o) return;
+  if(o.edit==='input' && o.game){ imLoadTables(); imLoad(o.game, true); let n=0; const go=()=>{ if(IM.games[o.game] && IM.tables) return imEdit(o.game); if(++n<25) setTimeout(go, 200); }; return go(); }
+  if(o.view==='gameset' && o.game) return navigate('gameset',{game:o.game});
+  if(o.view==='shots'){ SH.open=-1; return S.view==='shots' ? null : navigate('shots'); }
+  if(o.view && S.view!==o.view) navigate(o.view);
+}
+function qdAct(a, d){
+  const g=S.running && G(S.running);
+  switch(a){
+    case 'qdInvite': S.qtab='friends'; renderQam(); qdOnTab('friends'); return setFocus($('#qam [data-k="mfx-game"]') || qdFirst() || $('#qam [data-k="qt-friends"]'), true);
+    case 'qdInviteHere': if(!g) return; if(!MF.room) return toast('Pick a friend first'); return mfSendInvite(g);
+    case 'qdReply': if(!MF.room) return toast('Pick a friend first'); mfSend(d.v); return toast('Sent: '+d.v);
+    case 'qdGameSet': if(g) return qdOpenInHearth({view:'gameset', game:g.id}); return;
+    case 'qdImEdit': if(g) return qdOpenInHearth({edit:'input', game:g.id}); return;
+    case 'qdLayout': if(g) return imSave(g.id, {layout:d.v}, true); return;
+    case 'qdOpenShots': return qdOpenInHearth({view:'shots'});
+    case 'qdPerGame': return qdPerGame();
+    case 'qdApps': return call('apps.list').then(L=>{ L=(L||[]).filter(x=>!x.hearth);
+      if(!L.length) return toast('Nothing else is open');
+      openSheet({title:'Switch app', items:L.map(x=>({label:x.title+(x.focused?' (on screen)':''), icon:x.game?'play':'display', run:()=>{ const b=document.createElement('button'); b.dataset.act='appFocus'; b.dataset.id=x.id; b.dataset.pid=x.pid; act(b); }}))}); }).catch(e=>toast(e.message));
+    case 'qdSendShot': {
+      const shot=qdSession().find(x=>x.kind==='shot'); if(!shot) return toast('Take a screenshot first');
+      const fs=(MF.friends||[]).filter(f=>f.state==='friend' && f.roomId);
+      if(!fs.length) return toast('No friends to send it to yet');
+      return openSheet({title:'Send your latest screenshot', sub:'Sent end-to-end encrypted', items:fs.slice(0,10).map(f=>({label:f.name, icon:'user', run:()=>{ toast('Sending…'); call('mfriends.sendImage',{roomId:f.roomId, path:shot.file},90000).then(()=>toast('Screenshot sent to '+f.name)).catch(e=>toast(e.message)); }}))});
+    }
+  }
+}
+/** X and Y over the dock: X keeps this game's performance settings (or not), Y types in the chat. */
+function qdKey(k){
+  if(k==='y' && S.qtab==='friends' && mfIn()){ if(!MF.room) return toast('Pick a friend first'); return mfAct('mfType', {}); }
+  if(k==='x' && S.qtab==='perf' && qdPerGameShown()) return qdPerGame();
+}
+
+// ---- The quick glance: time, battery, FPS and the latest message for a moment, without Quick Access opening.
+function glanceMsg(){
+  const c=(MF.chats||[]).filter(x=>x.unread && !x.muted && x.last).sort((a,b)=>((b.last&&b.last.at)||0)-((a.last&&a.last.at)||0))[0];
+  return c ? `${c.name}: ${mfPreview(c.last)}` : '';
+}
+function showGlance(d){
+  if(!QD.glance && OVERLAY) return;
+  let el=$('#glance'); if(!el){ el=document.createElement('div'); el.id='glance'; el.setAttribute('role','status'); document.body.appendChild(el); }
+  const draw=()=>{ const b=qdBattery(), p=PERF.s, m=glanceMsg(), parts=[`<b>${clockText(new Date())}</b>`];
+    if(b) parts.push(`<span>${b.pct}%${b.charging?' ⚡':''}</span>`);
+    if(p && p.fps) parts.push(`<span>${p.fps} FPS</span>`);
+    if(S.running && S.runningSince) parts.push(`<span>${esc(qdPlayed())}</span>`);
+    if(m) parts.push(`<span class="msg">${esc(m.length>60?m.slice(0,59)+'…':m)}</span>`);
+    parts.push(`<span class="tip">Hold Guide for Quick Access</span>`);
+    el.innerHTML=parts.join('<i class="s"></i>'); };
+  draw(); el.classList.add('on');
+  // Fresh numbers (the overlay page can be minutes old): drawn again when they come.
+  refreshStatus().then(draw);
+  if(host) call('perf.stats',{},4000).then(r=>{ PERF.s=Object.assign({}, PERF.s||{}, r); draw(); }).catch(()=>{});
+  clearTimeout(QD.glanceT); QD.glanceT=setTimeout(()=>el.classList.remove('on'), Math.max(800, (d && d.ms || 3000)-250));
+}
+function loadOverlaySettings(){
+  call('overlay.settings').then(r=>{ OVS.s=r; if(r && Array.isArray(r.quickReplies)) QD.replies=r.quickReplies.slice(0,6); if(r && 'glance' in r) QD.glance=r.glance!==false; }).catch(()=>{});
+}
+// ==== end of the top dock
 function renderPower(){
   // Android: the system's own power menu (hold the power button) sleeps and turns off; Hearth can only step aside.
   if(ANDROID){ $('#powerBox').innerHTML = `<h3>Power</h3><button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}Leave ${APP}</button>
@@ -7770,13 +8299,14 @@ function promptSubmit(){
   p.done=true; closeLayer(); p.res(p.text);
 }
 
-const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
+const LAYER_RENDER = {menu:renderMenu, qam:()=>{ renderQam(); refreshStatus(); if(qamTop()) qdOnTab(S.qtab); else { if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); } }, power:renderPower, search:()=>renderSearch(), sheet:renderSheet, prompt:()=>renderPrompt(), mkmenu:()=>renderMkMenu()};
 const LAYER_CLOSE = {
   sheet:()=>{ if(sheet && !sheet.picked && sheet.onCancel) sheet.onCancel(); sheet=null; },
   prompt:()=>{ if(prompt && !prompt.done) prompt.res(null); prompt=null; },
   mkmenu:()=>{ MK.menu=null; },
   menu:()=>{ clearInterval(DOCK.timer); DOCK.timer=null; DOCK.cur=null; },
   search:()=>{ $('#search').classList.remove('over-dock'); },
+  qam:()=>{ if(!OVERLAY){ document.body.classList.remove('qtop'); $('#scrim').classList.remove('qtop'); } },
 };
 const focusStack=[];
 function openLayer(id, focusKey){
@@ -7827,7 +8357,9 @@ function syncScrim(){
 // =====================================================================
 let focused=null;
 function root(){ const top=S.layers.at(-1); return top ? $('#'+top) : $('#app'); }
-function focusables(){ return [...root().querySelectorAll('[data-f]')].filter(el=>el.getClientRects().length); }
+// MOVE_IN: a part of the screen the next move stays inside (the top dock's panel: up from its top row goes to its tab).
+let MOVE_IN=null;
+function focusables(){ return [...(MOVE_IN||root()).querySelectorAll('[data-f]')].filter(el=>el.getClientRects().length); }
 // Scrolling to the focused item. While presses come quickly (a held direction, fast tapping) it jumps instead
 // of gliding: a smooth scroll still moving under the next press made the next pick wrong (it bounced between
 // two items), and the glide fell behind on a handheld.
@@ -7877,6 +8409,15 @@ function move(dir){
   try { moveNow(dir); } finally { perfLog('move '+dir, t0); }
 }
 function moveNow(dir){
+  // Quick Access's top dock: left / right along the tabs switch them, down goes into the panel; in the panel the
+  // selection stays in it, and up from its top row goes back to the picked tab (not whichever tab is nearest).
+  if(!MOVE_IN && focused.closest('#qam.top')){
+    if(focused.classList.contains('qd-tab')) return qdTabMove(dir);
+    const p=focused.closest('.qd-panel');
+    if(p){ const was=focused; MOVE_IN=p; try{ moveNow(dir); } finally { MOVE_IN=null; }
+      if(focused===was && dir==='up'){ const t=$(`#qam [data-k="qt-${S.qtab}"]`); if(t){ setFocus(t); blip(); } }
+      return; }
+  }
   // The Bottom Dock: down from its card goes back to the item the card is about (not whichever is nearest).
   if(dir==='down' && DOCK.cur && focused.closest('#dkCard')){ const it=$(`#menu [data-dock="${DOCK.cur}"]`); if(it){ setFocus(it); blip(); return; } }
   // A menu (power menu, option sheets) goes item by item, so none can be skipped.
@@ -7956,6 +8497,7 @@ function act(el){
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
+  if(/^qd[A-Z]/.test(a)) return qdAct(a, d);   // Quick Access over a game (the top dock)
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
@@ -8141,7 +8683,7 @@ function act(el){
     case 'madeFor': LOOK.madeFor=d.v; saveLook(); renderFooter(); return render('ap-mf-'+d.v);
     case 'oskShow': { const t = d.v==='pk' ? prompt : SKB; if(t){ t.forceOsk=true; t.oskHidden=false; oskRefresh(); } return; }
     case 'oskKb': return;   // the keyboard's own box (its keys handle taps and clicks themselves)
-    case 'qtab': S.qtab=d.tab; renderQam(); if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
+    case 'qtab': S.qtab=d.tab; renderQam(); if(qamTop()) qdOnTab(d.tab); else { if(d.tab==='perf') startPerf(); if(d.tab==='apps') loadApps(); } return setFocus($(`#qam [data-k="qt-${d.tab}"]`),true);
     case 'toggleMouse': return call('pad.toggleMouse').then(r=>{ PAD.mouseOn=!!r.mouseOn; renderQam(); setFocus($('#qam [data-k="q-mouse"]'),true); }).catch(e=>toast(e.message));
     case 'gsRetry': loadGameSet(S.game); return render(null,true);
     case 'gsToggle': return saveGameSet({[d.key]:!GSET.s.options[d.key]}, 'gs-'+d.key);
@@ -8156,9 +8698,10 @@ function act(el){
     case 'appFocus': if(OVERLAY) overlayClose(); else closeAll();   // close first, so a slow or failed switch can't leave it open
       return call('apps.focus',{id:+d.id, pid:+d.pid}).catch(e=>toast(e.message));
     case 'appClose': return openSheet({title:`Close ${d.t}?`, sub:'Anything unsaved in it may be lost.', items:[{label:'Close it', icon:'x', run:()=>call('apps.close',{pid:+d.pid}).then(()=>{ toast(`Closed ${d.t}`); setTimeout(loadApps,800); }).catch(e=>toast(e.message))}]});
-    case 'tdp': return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    case 'tdp': if(qamTop() && S.layers.includes('qam') && qdPgOn() && S.running) call('game.options.set',{id:S.running, options:{tdp:+d.v, perfSaved:true}}).catch(()=>{});
+      return call('perf.setTdp',{watts:+d.v}).then(r=>{ if(PERF.s) PERF.s.tdp=r; renderQam(); setFocus($(`#qam [data-k="pt-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfOverlay': return call('perf.setOverlay',{level:+d.v}).then(r=>{ if(PERF.s) PERF.s.perfOverlay=r.perfOverlay; toast(r.perfOverlay?`Overlay: ${PO_LEVELS[r.perfOverlay]}`:'Overlay off'); renderQam(); setFocus($(`#qam [data-k="po-${d.v}"]`),true); }).catch(e=>toast(e.message));
-    case 'fpsLimit': return call('perf.setFpsLimit',{fps:+d.v}).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
+    case 'fpsLimit': return call('perf.setFpsLimit',Object.assign({fps:+d.v}, qamTop() && S.layers.includes('qam') && qdPgOn() ? {game:true} : {})).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; toast(r.fpsLimit?`Limited to ${r.fpsLimit} FPS`:'Frame-rate limit off'); renderQam(); setFocus($(`#qam [data-k="pf-${d.v}"]`),true); }).catch(e=>toast(e.message));
     case 'perfPower': return call('power.setMode',{mode:d.v}).then(r=>{ if(PERF.s) PERF.s.powerMode=r.mode||d.v; renderQam(); setFocus($(`#qam [data-k="pp-${d.v}"]`),true); }).catch(e=>toast(e.message));
     // ==== Hearth Recorder (recQam)
     case 'recToggle': toast(REC.st&&REC.st.kind==='record'?'Saving the recording…':'Starting to record…'); return call('recorder.toggle',{},70000).then(r=>recDone(r,'Recording')).catch(e=>{ REC.at=0; recLoad(); toast(e.message); });
@@ -8166,11 +8709,17 @@ function act(el){
     case 'recSave': toast('Saving the replay…'); return call('recorder.saveReplay',{},70000).then(r=>recDone(r,'Replay')).catch(e=>toast(e.message));
     // ==== end of Hearth Recorder
     case 'ovShot': {   // Hearth's own panel closes first, so it isn't in the picture
-      const shot=()=>call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
+      const shot=()=>call('overlay.screenshot',{},20000).then(r=>{ SH.list=null; QD.shotsAt=0; if(S.qtab==='capture') qdLoadShots(); toast(`Screenshot saved · see it in Library › Screenshots`); }).catch(e=>toast(e.message));
       if(OVERLAY) return shot();
       closeAll(); return setTimeout(shot, 350);
     }
     case 'ovHome': return OVERLAY ? send({type:'overlay', action:'home'}) : closeAll();   // Hearth's panel: Hearth is already on screen
+    case 'ovGlance': return call('overlay.setGlance',{on:!(OVS.s && OVS.s.glance!==false)}).then(r=>{ OVS.s=r; QD.glance=r.glance!==false; toast(QD.glance?'Quick glance on: tap Guide over a game, hold it for Quick Access':'Quick glance off: Guide opens Quick Access'); render('ov-glance'); }).catch(e=>toast(e.message));
+    case 'ovQuickReply': { const i=+d.i, L=QD.replies.slice();
+      return openPrompt({title:i<L.length?'Quick reply':'New quick reply', mode:'text', value:L[i]||'', placeholder:'On my way', enterLabel:'Save'}).then(v=>{ if(v==null) return;
+        if(v.trim()) L[i]=v.trim().slice(0,40); else L.splice(i,1);
+        return call('overlay.setQuickReplies',{list:L}).then(r=>{ OVS.s=r; QD.replies=(r.quickReplies||L).slice(0,6); render('mfs-qr-'+Math.min(i,QD.replies.length)); }); }).catch(e=>toast(e.message)); }
+    case 'ovQuickReset': return call('overlay.setQuickReplies',{list:['On my way','GG','👍']}).then(r=>{ OVS.s=r; QD.replies=r.quickReplies; toast('Quick replies reset'); render('mfs-qr-reset'); }).catch(e=>toast(e.message));
     case 'ovHoldView': return call('overlay.setHoldView',{on:!(OVS.s&&OVS.s.holdView)}).then(r=>{ OVS.s=r; render('ov-hold'); }).catch(e=>toast(e.message));
     case 'ovGameBar': return call('overlay.setGameBarButton',{on:!(OVS.s&&OVS.s.gameBarButton)}).then(r=>{ OVS.s=r; render('ov-gb'); }).catch(e=>toast(e.message));
     case 'toggle': { S.set[d.key]=!S.set[d.key];
@@ -10374,7 +10923,7 @@ function onSysEvent(name, data){
   if(name==='watchdog'){ const d=data||{}; if(d.code){ LOGS.r={code:d.code, url:'https://hearth-counter.game305-cl.workers.dev/v1/logs/'+d.code}; NOTIFS.unshift({i:'refresh', t:APP+' got stuck and sent a report', s:'Code '+d.code}); updateBadge(); toast(APP+' got stuck. Report sent: '+d.code); } else toast(APP+' got stuck. It\'s freeing itself.'); return; }
   if(name==='library.changed'){ if(!OVERLAY) loadLibrary(false); return; }
   if(name==='desktopFailed') return openSheet({title:"Mantel (Desktop Mode) couldn't start", sub:data.text, items:[{label:'OK', icon:'check', run:()=>{}}]});
-  if(name==='open'){ if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
+  if(name==='open'){ if(data && (data.edit || data.game || data.view==='shots')) return qdOpenHere(data); if(data&&data.view&&S.view!==data.view) navigate(data.view); return; }
   if(name==='game.started') return gameStarted(data.id);
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
@@ -10734,8 +11283,9 @@ function input(k){
     // The overlay is only the Quick Access panel (plus its pop-ups and the text prompt).
     if((k==='select'||k==='guide') && top==='qam') return overlayClose();
     if(k==='start' && top!=='prompt' && !(dockOn() && S.running && document.documentElement.classList.contains('ovfull'))) return;   // over a game: the game dock
-    if((k==='y'||k==='x') && top!=='prompt') return;
+    if((k==='y'||k==='x') && top!=='prompt'){ if(top==='qam' && qamTop()) qdKey(k); return; }
   }
+  if((k==='y'||k==='x') && top==='qam' && qamTop()) return qdKey(k);
   // The on-screen keyboard: everything while it has the selection; its shortcuts (X ⌫, Y space, LB/RB caret, ☰ Enter,
   // LT shift, RT symbols, L3 emoji) while its search / prompt is open with the selection on the field or a result.
   if((top==='prompt'||top==='search') && GOSK.engine && GOSK.box && document.contains(GOSK.box)){
@@ -10759,6 +11309,7 @@ function input(k){
 }
 function shiftTab(d){
   const top=S.layers.at(-1);
+  if(top==='qam' && qamTop()){ const T=qdTabs(), i=T.findIndex(t=>t[0]===S.qtab); return qdGo(T[(i+d+T.length)%T.length][0]); }
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='shop') return shopShiftTab(d);
   if(!top && S.view==='settings'){ setShiftTab(d); return blip(600); }
@@ -10949,6 +11500,8 @@ document.addEventListener('pointerdown', e=>{
   setInput('mouse');
 });
 document.addEventListener('click', e=>{
+  // A click beside Quick Access's top dock (on the game): back to the game, like B.
+  if(e.target.id==='qam' && e.target.classList.contains('top') && S.layers.at(-1)==='qam') return back();
   const el=e.target.closest('[data-act],[data-f]'); if(!el) return;
   if(el.dataset.f!==undefined) setFocus(el,true);
   if(el.dataset.slider){ const s=el.querySelector('.slider'), r=s.getBoundingClientRect();

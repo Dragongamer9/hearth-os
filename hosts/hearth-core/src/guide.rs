@@ -15,6 +15,8 @@ const EV_ABS: u16 = 3;
 const BTN_GAMEPAD: usize = 0x130;
 const BTN_MODE: u16 = 0x13c;
 const BTN_SELECT: u16 = 0x13a;
+/// How long Guide is held before it counts as a hold (Quick Access) rather than a tap (the glance).
+pub const HOLD_MS: u64 = 350;
 pub const EVENT_SIZE: usize = 24;   // struct input_event on 64-bit: timeval (16) + type (2) + code (2) + value (4)
 
 /// Does a /sys capabilities bitmap ("key": hex words, most significant first) have this bit?
@@ -90,7 +92,17 @@ pub fn chord_filter(events: Vec<(&'static str, bool)>, held: &mut bool) -> Vec<(
     out
 }
 
-/// What the Guide button does: "guide", "view" (View held a second, if turned on) or "hotkey"; and every
+/// What a Guide press or release means now: pressed (`down`), with tap/hold on (`timed`: the glance is on and the
+/// overlay isn't open), whether this press is being timed (`timing`) and whether its hold already fired.
+#[derive(Debug, PartialEq)]
+pub enum GuideNow { Press, Wait, Tap, Nothing }
+pub fn tap_or_hold(down: bool, timed: bool, timing: bool, fired: bool) -> GuideNow {
+    if down { return if timed { GuideNow::Wait } else { GuideNow::Press }; }
+    if timing && !fired { GuideNow::Tap } else { GuideNow::Nothing }
+}
+
+/// What the Guide button does: "guide" (pressed, or held with the glance on), "guide-tap" (a short press with the
+/// glance on), "view" (View held a second, if turned on) or "hotkey"; and every
 /// button while `buttons` is on (for the overlay).
 pub type OnPress = Arc<dyn Fn(&str) + Send + Sync>;
 pub type OnButton = Arc<dyn Fn(&str, bool) + Send + Sync>;
@@ -111,6 +123,11 @@ pub struct Guide {
     /// opens Quick Access through the app instead, and Guide still comes through here. Off with InputPlumber
     /// (Bazzite), where nothing changes.
     pub chord_guard: Arc<AtomicBool>,
+    /// Quick glance (on by default; Settings › Controls): a short Guide press is told apart from a held one. Short
+    /// ("guide-tap", on release) shows the glance bar over a game; held for HOLD_MS ("guide") opens Quick Access.
+    /// Off: every press is "guide" the moment it's pressed, as before. While the overlay is open (grabbed) a press
+    /// is "guide" at once too (it closes it either way).
+    pub tap_hold: Arc<AtomicBool>,
     open: Arc<Mutex<HashMap<String, String>>>,
     /// Grabbed now (the overlay is open). Not the same as `buttons`: in multi-seat every button is passed on
     /// while nothing is grabbed (games still get the controller).
@@ -122,7 +139,7 @@ pub struct Guide {
 impl Default for Guide { fn default() -> Self { Self::new() } }
 
 impl Guide {
-    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), open: Arc::default(), grabbed: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
+    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), tap_hold: Arc::default(), open: Arc::default(), grabbed: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
     /// For Settings › Controls: which devices are watched, and when Guide last came through.
     pub fn status(&self) -> Value {
         json!({"devices": self.open.lock().unwrap().values().cloned().collect::<Vec<_>>(),
@@ -165,6 +182,13 @@ impl Guide {
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
         let view_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        // Guide's own press number: a hold fires when this press is still the latest (not released) after HOLD_MS.
+        let mode_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mode_fired = Arc::new(AtomicBool::new(false));
+        let mut mode_timed = false;
+        // Another button pressed while Guide is held (Handheld Daemon's Guide + A / Guide + B shortcuts): that press
+        // of Guide was a shortcut, neither a tap nor a hold (HHD acts on it itself).
+        let mode_chord = Arc::new(AtomicBool::new(false));
         let mut guide_held = false;
         loop {
             let n = match f.read(&mut buf) { Ok(0) | Err(_) => break, Ok(n) => n };
@@ -174,14 +198,35 @@ impl Guide {
             let presses = if self.chord_guard.load(Ordering::SeqCst) {
                 // One record at a time, so a press in the same read as Guide's is judged in order.
                 let mut all = Vec::new();
-                for rec in chunk.chunks_exact(EVENT_SIZE) { all.extend(chord_filter(pad_events(rec, &mut state), &mut guide_held)); }
+                for rec in chunk.chunks_exact(EVENT_SIZE) {
+                    let raw = pad_events(rec, &mut state);
+                    if raw.iter().any(|(b, down)| *down && *b == "guide") { mode_chord.store(false, Ordering::SeqCst); }   // a new press of Guide
+                    else if guide_held && raw.iter().any(|(b, down)| *down && *b != "guide") { mode_chord.store(true, Ordering::SeqCst); }
+                    all.extend(chord_filter(raw, &mut guide_held));
+                }
                 all
             } else { pad_events(&chunk, &mut state) };
             if self.buttons.load(Ordering::SeqCst) { for (b, down) in presses { on_button(b, down); } }
             for rec in chunk.chunks_exact(EVENT_SIZE) {
                 let (ty, code, value) = (u16::from_le_bytes([rec[16], rec[17]]), u16::from_le_bytes([rec[18], rec[19]]), i32::from_le_bytes([rec[20], rec[21], rec[22], rec[23]]));
                 if ty != EV_KEY { continue; }
-                if code == BTN_MODE && value == 1 { self.fire("guide", &on_press); }
+                if code == BTN_MODE && (value == 0 || value == 1) {
+                    let g = mode_gen.fetch_add(1, Ordering::SeqCst) + 1;
+                    let fired = mode_fired.load(Ordering::SeqCst) || mode_chord.load(Ordering::SeqCst);
+                    match tap_or_hold(value == 1, self.tap_hold.load(Ordering::SeqCst) && !self.grabbed.load(Ordering::SeqCst), mode_timed, fired) {
+                        GuideNow::Press => { mode_timed = false; self.fire("guide", &on_press); }
+                        GuideNow::Wait => {
+                            mode_timed = true; mode_fired.store(false, Ordering::SeqCst);
+                            let (mg, fired, chord, me, press) = (mode_gen.clone(), mode_fired.clone(), mode_chord.clone(), self.clone(), on_press.clone());
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(HOLD_MS));
+                                if mg.load(Ordering::SeqCst) == g && !chord.load(Ordering::SeqCst) && !fired.swap(true, Ordering::SeqCst) { me.fire("guide", &press); }
+                            });
+                        }
+                        GuideNow::Tap => { mode_timed = false; if !mode_fired.swap(true, Ordering::SeqCst) { self.fire("guide-tap", &on_press); } }
+                        GuideNow::Nothing => { mode_timed = false; }
+                    }
+                }
                 if code == BTN_SELECT {
                     let g = view_gen.fetch_add(1, Ordering::SeqCst) + 1;
                     if value == 1 && self.hold_view.load(Ordering::SeqCst) {
@@ -255,6 +300,18 @@ mod tests {
         let mut st = HashMap::new();
         let mut buf = ev(1, 0x130, 1); buf.extend(ev(3, 17, -1)); buf.extend(ev(3, 17, 0)); buf.extend(ev(3, 0, -30000)); buf.extend(ev(1, 0x130, 2));
         assert_eq!(pad_events(&buf, &mut st), vec![("a", true), ("up", true), ("up", false), ("left", true)]);
+    }
+    #[test]
+    fn guide_tap_or_hold() {
+        // The glance off (or the overlay open): a press is Quick Access at once, the release nothing.
+        assert_eq!(tap_or_hold(true, false, false, false), GuideNow::Press);
+        assert_eq!(tap_or_hold(false, false, false, false), GuideNow::Nothing);
+        // On: a press waits; let go before HOLD_MS is a tap; after the hold fired, the release is nothing.
+        assert_eq!(tap_or_hold(true, true, false, false), GuideNow::Wait);
+        assert_eq!(tap_or_hold(false, true, true, false), GuideNow::Tap);
+        assert_eq!(tap_or_hold(false, true, true, true), GuideNow::Nothing);
+        // A release whose press wasn't timed (the glance turned on mid-press) is nothing.
+        assert_eq!(tap_or_hold(false, true, false, false), GuideNow::Nothing);
     }
     #[test]
     fn handheld_daemon_chord() {
