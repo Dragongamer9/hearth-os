@@ -25,7 +25,7 @@ fn main() {
         "call" => {
             let Some(method) = args.get(2) else { eprintln!("usage: hearth-friends call METHOD [JSON]"); std::process::exit(2) };
             let a: Value = args.get(3).map(|s| serde_json::from_str(s).unwrap_or(json!({}))).unwrap_or(json!({}));
-            let timeout = std::time::Duration::from_secs(if method == "login" || method == "register" { 90 } else { 45 });
+            let timeout = std::time::Duration::from_secs(if ["login", "register", "authStart", "recoveryEnable"].contains(&method.as_str()) { 90 } else { 45 });
             ensure_running();
             match proto::call(&hearth_friends::socket_path(), method, &a, timeout) {
                 Ok(v) => println!("{v}"),

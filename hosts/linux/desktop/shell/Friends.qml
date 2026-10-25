@@ -3,6 +3,8 @@
 // `hearth-friends watch`. Opens from the bar's Friends button (or `quickshell ipc call friends toggle`).
 // Controller: Up/Down pick (the controller types arrow keys here), A opens a chat or accepts, X declines a request,
 // Y writes a message (Mantel's on-screen keyboard), B goes back / closes. Mouse and keyboard work as usual.
+// Signed out: servers with their own sign-in page (matrix.org) sign you in or up with your phone (a QR code: A) or
+// in the browser here, with nothing to type into Hearth; Y makes an account with the phone. A password works too.
 // New messages pop up through Mantel's notifications (the service sends them there when Game Mode isn't showing
 // its own).
 import QtQuick
@@ -27,6 +29,9 @@ Scope {
     property int unread: 0
     property string signUser: ""
     property string signServer: "matrix.org"
+    property var ways: null                // what signServer offers (authMethods): its page (qr, browser), password
+    property string waysFor: ""
+    property var auth: null                // a sign-in waiting on the server's page (authStart: QR code or browser)
     property bool pickingGame: false
     readonly property var rows: buildRows()
     readonly property string gamesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-games").toString().replace(/^file:\/\//, ""))
@@ -95,7 +100,8 @@ Scope {
                     if (!fr.msgs.some(m => m.id === o.data.msg.id)) fr.msgs = fr.msgs.concat([o.data.msg]);
                     if (fr.shown) fr.svc("read", { roomId: fr.room });
                 }
-                if (o.event === "status") fr.st = o.data;
+                if (o.event === "status") { fr.st = o.data; if (o.data && o.data.signedIn && fr.auth) { fr.auth = null; SettingsNav.toast("Signed in as " + o.data.userId); } }
+                if (o.event === "auth" && o.data && o.data.state !== "cancelled" && fr.auth) { fr.auth = null; SettingsNav.toast(o.data.why || "Signing in didn't finish"); }
                 if (["message", "rooms", "presence", "request", "resync", "status"].indexOf(o.event) >= 0) refreshSoon.restart();
             }
         }
@@ -113,13 +119,31 @@ Scope {
         svc("status", {}, (r, e) => {
             if (!r) return;
             st = r;
-            if (!r.signedIn) { friends = []; chats = []; reqs = []; unread = 0; return; }
+            if (!r.signedIn) { friends = []; chats = []; reqs = []; unread = 0; loadWays(); return; }
             svc("friends", {}, f => { if (f) friends = f; });
             svc("chats", {}, c => { if (c) { chats = c; unread = c.filter(x => !x.muted).reduce((n, x) => n + (x.unread || 0), 0); SettingsNav.friendsUnread = unread; } });
             svc("requests", {}, q => { if (q) reqs = (q.requests || []).concat(q.invites || []); });
         });
         if (shown && !gameList.running) gameList.running = true;
     }
+    // The server's own sign-in page (OAuth 2.0): a QR code for a phone, or the browser on this computer.
+    function loadWays() {
+        const hs = signServer.trim() || "matrix.org";
+        if (!st || st.signedIn || waysFor === hs) return;
+        waysFor = hs; ways = null;
+        // No answer (the server can't be reached right now): the password fields, and asked again next time.
+        svc("authMethods", { homeserver: hs }, r => { if (fr.waysFor !== hs) return; if (r) fr.ways = r; else { fr.ways = { password: true }; fr.waysFor = ""; } });
+    }
+    function startAuth(mode, create) {
+        SettingsNav.toast(mode === "qr" ? "Getting a code…" : "Opening the sign-in page…");
+        svc("authStart", { homeserver: signServer.trim() || "matrix.org", mode: mode, create: create }, r => {
+            if (!r) return;
+            fr.auth = r;
+            if (mode === "browser") fr.svc("authOpen", {});
+        });
+    }
+    function cancelAuth() { auth = null; svc("authCancel", {}); }
+    Timer { id: waysSoon; interval: 900; onTriggered: fr.loadWays() }
     function buildRows() {
         const out = [];
         if (reqs.length) { out.push({ kind: "head", text: "Requests" }); reqs.forEach(r => out.push({ kind: "req", r: r })); }
@@ -193,10 +217,14 @@ Scope {
                     switch (e.key) {
                     case Qt.Key_Down: fr.current = Math.min(fr.rows.length - 1, fr.current + 1); while (fr.rows[fr.current] && fr.rows[fr.current].kind === "head" && fr.current < fr.rows.length - 1) fr.current++; break;
                     case Qt.Key_Up: fr.current = Math.max(0, fr.current - 1); while (fr.rows[fr.current] && fr.rows[fr.current].kind === "head" && fr.current > 0) fr.current--; break;
-                    case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: fr.activate(fr.current); break;
+                    case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space:
+                        if (fr.st && !fr.st.signedIn) { if (!fr.auth && fr.ways && fr.ways.qr) fr.startAuth("qr", false); break; }
+                        fr.activate(fr.current); break;
                     case Qt.Key_X: case Qt.Key_Delete: fr.decline(fr.current); break;
-                    case Qt.Key_Y: case Qt.Key_Tab: if (fr.room) input.forceActiveFocus(); break;
-                    case Qt.Key_Escape: if (fr.room) fr.room = ""; else fr.close(); break;
+                    case Qt.Key_Y: case Qt.Key_Tab:
+                        if (fr.st && !fr.st.signedIn) { if (!fr.auth && fr.ways && fr.ways.qr) fr.startAuth("qr", true); break; }
+                        if (fr.room) input.forceActiveFocus(); break;
+                    case Qt.Key_Escape: if (fr.auth) fr.cancelAuth(); else if (fr.room) fr.room = ""; else fr.close(); break;
                     default: return;
                     }
                     list.positionViewAtIndex(fr.current, ListView.Contain);
@@ -217,7 +245,11 @@ Scope {
                         text: fr.st && fr.st.signedIn ? fr.st.userId + " · lives on " + (fr.st.lives || fr.st.homeserver) : "Matrix: the open chat network"
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight
                     }
-                    Text { text: "Ⓐ open  Ⓧ decline  Ⓨ write  Ⓑ back"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+                    Text {
+                        text: fr.st && !fr.st.signedIn ? (fr.auth ? "Ⓑ cancel" : fr.ways && fr.ways.qr ? "Ⓐ sign in with your phone  Ⓨ create an account  Ⓑ close" : "Ⓑ close")
+                            : "Ⓐ open  Ⓧ decline  Ⓨ write  Ⓑ back"
+                        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                    }
                 }
 
                 // Not signed in, or no service.
@@ -227,13 +259,96 @@ Scope {
                     Layout.fillHeight: true
                     spacing: 10
                     Text {
+                        visible: !fr.auth
                         Layout.fillWidth: true; wrapMode: Text.WordWrap
                         text: !fr.available ? "Hearth Friends comes with Hearth OS and isn't on this system."
-                            : "Chat with friends, invite them to games and see what they're playing, on Matrix. Hearth doesn't run a server: your account lives on matrix.org or any Matrix server you pick. Chats with friends are end-to-end encrypted. New accounts on matrix.org are made at app.element.io; servers that allow it can be signed up to from Game Mode's Friends screen."
+                            : "Chat with friends, invite them to games and see what they're playing, on Matrix. Hearth doesn't run a server: your account lives on " + (fr.signServer || "matrix.org") + " or any Matrix server you pick. Chats with friends are end-to-end encrypted."
+                            + (fr.ways && fr.ways.oauth ? " Sign in or make an account on the server's own page: with your phone (scan the QR code) or in the browser here. Nothing to type into Hearth." : "")
                         color: Theme.text; font.family: Theme.font; font.pixelSize: 14
                     }
+                    // The server's page: phone (QR code) and browser, sign in or make an account.
+                    Flow {
+                        visible: !!(fr.available && !fr.auth && fr.ways && (fr.ways.qr || fr.ways.browser))
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Repeater {
+                            model: !fr.ways ? [] : [["Sign in with your phone", "qr", false, fr.ways.qr], ["Create an account with your phone", "qr", true, fr.ways.qr],
+                                                    ["Sign in in the browser", "browser", false, fr.ways.browser], ["Create an account in the browser", "browser", true, fr.ways.browser]].filter(w => w[3])
+                            delegate: Rectangle {
+                                required property var modelData
+                                required property int index
+                                implicitWidth: wt.implicitWidth + 28; implicitHeight: 42; radius: 12
+                                color: index === 0 ? Theme.accent : wm.containsMouse ? Theme.panel3 : Theme.panel2
+                                Text { id: wt; anchors.centerIn: parent; text: modelData[0]; color: index === 0 ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 14; font.bold: index === 0 }
+                                MouseArea { id: wm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: fr.startAuth(modelData[1], modelData[2]) }
+                            }
+                        }
+                    }
+                    // Waiting for the phone (QR code, short address, code) or for the browser.
+                    RowLayout {
+                        visible: fr.available && !!fr.auth
+                        Layout.fillWidth: true
+                        spacing: 24
+                        Canvas {
+                            id: qrCanvas
+                            visible: !!fr.auth && fr.auth.mode === "qr"
+                            readonly property var rows: fr.auth && fr.auth.qrRows ? fr.auth.qrRows : []
+                            implicitWidth: 240; implicitHeight: 240
+                            onRowsChanged: requestPaint()
+                            onPaint: {
+                                const ctx = getContext("2d");
+                                ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, width, height);
+                                const n = rows.length;
+                                if (!n) return;
+                                const cell = Math.floor((width - 24) / n), off = Math.floor((width - cell * n) / 2);
+                                ctx.fillStyle = "#000000";
+                                for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (rows[y][x] === "1") ctx.fillRect(off + x * cell, off + y * cell, cell, cell);
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Text {
+                                Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                text: !fr.auth ? "" : (fr.auth.create ? "Create your account" : "Sign in") + (fr.auth.mode === "qr" ? " with your phone" : " in the browser")
+                                color: Theme.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true; wrapMode: Text.WordWrap; textFormat: Text.PlainText
+                                text: !fr.auth ? "" : fr.auth.mode === "qr"
+                                    ? "1. Point your phone's camera at the code" + (fr.auth.shortUrl ? ", or go to " + fr.auth.shortUrl : "") + "\n2. If it asks for a code: " + (fr.auth.userCode || "")
+                                      + "\n3. " + (fr.auth.create ? "Pick Create account and make your account" : "Sign in") + " on " + fr.auth.homeserver + "'s page, then allow Hearth\n\nHearth finishes by itself when you're done."
+                                    : fr.auth.homeserver + "'s page is open in the browser. " + (fr.auth.create ? "Make your account there" : "Sign in there") + " and allow Hearth: Hearth signs in by itself when the page is done."
+                                color: Theme.text; font.family: Theme.font; font.pixelSize: 14; lineHeight: 1.3
+                            }
+                            Text {
+                                visible: !!fr.auth && fr.auth.mode === "qr"
+                                text: fr.auth && fr.auth.userCode ? fr.auth.userCode : ""
+                                color: Theme.accent; font.family: Theme.font; font.pixelSize: 28; font.bold: true; font.letterSpacing: 4
+                            }
+                            RowLayout {
+                                spacing: 8
+                                Rectangle {
+                                    visible: !!fr.auth && fr.auth.mode === "browser"
+                                    implicitWidth: oa.implicitWidth + 28; implicitHeight: 40; radius: 12; color: om.containsMouse ? Theme.panel3 : Theme.panel2
+                                    Text { id: oa; anchors.centerIn: parent; text: "Open the page again"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
+                                    MouseArea { id: om; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: fr.svc("authOpen", {}) }
+                                }
+                                Rectangle {
+                                    implicitWidth: ca.implicitWidth + 28; implicitHeight: 40; radius: 12; color: cm.containsMouse ? Theme.panel3 : Theme.panel2
+                                    Text { id: ca; anchors.centerIn: parent; text: "Cancel"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
+                                    MouseArea { id: cm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: fr.cancelAuth() }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        visible: !!(fr.available && !fr.auth && fr.ways && fr.ways.password && (fr.ways.qr || fr.ways.browser))
+                        text: "Or with a user name and password:"
+                        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                    }
                     Repeater {
-                        model: fr.available ? [["Server", "server"], ["User name or @name:server", "user"], ["Password", "pass"]] : []
+                        model: fr.available && !fr.auth ? (!fr.ways || fr.ways.password ? [["Server", "server"], ["User name or @name:server", "user"], ["Password", "pass"]] : [["Server", "server"]]) : []
                         delegate: Rectangle {
                             required property var modelData
                             Layout.fillWidth: true; implicitHeight: 44; radius: 12; color: Theme.bg2; border.color: fld.activeFocus ? Theme.accent : Theme.line
@@ -244,7 +359,7 @@ Scope {
                                 color: Theme.text; font.pixelSize: 15; font.family: Theme.font; clip: true
                                 echoMode: modelData[1] === "pass" ? TextInput.Password : TextInput.Normal
                                 text: modelData[1] === "server" ? fr.signServer : ""
-                                onTextChanged: { if (modelData[1] === "server") fr.signServer = text; if (modelData[1] === "user") fr.signUser = text; if (modelData[1] === "pass") signPass.text = text; }
+                                onTextChanged: { if (modelData[1] === "server") { fr.signServer = text; waysSoon.restart(); } if (modelData[1] === "user") fr.signUser = text; if (modelData[1] === "pass") signPass.text = text; }
                                 Keys.onReturnPressed: signBtn.go()
                                 Text { visible: !parent.text; text: modelData[0]; color: Theme.muted; font: parent.font; anchors.verticalCenter: parent.verticalCenter }
                             }
@@ -253,7 +368,7 @@ Scope {
                     TextInput { id: signPass; visible: false }
                     Rectangle {
                         id: signBtn
-                        visible: fr.available
+                        visible: fr.available && !fr.auth && (!fr.ways || fr.ways.password)
                         function go() {
                             if (!fr.signUser || !signPass.text) return;
                             SettingsNav.toast("Signing in…");
