@@ -196,6 +196,7 @@ downloads the system while it installs, and offers every edition.</p>
 <tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (recommended)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
 <tr><td><a href="{R2}hearth-os-installer.iso">Small installer</a> (every edition)</td><td>1.6 GB</td><td>Needed</td></tr>
 <tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Peppermint, offline</a></td><td>about 4.3 GB</td><td>Not needed</td></tr>
+<tr><td><a href="{R2}hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example
 <a href="{R2}hearth-os-live.iso.sha256">hearth-os-live.iso.sha256</a>). On Linux:</p>
@@ -428,6 +429,33 @@ Change <code>ubuntu</code> to the edition you want:</p>
 <li><b>Hold the power button</b> for about 10 seconds to turn the device off, then turn it on again.</li>
 <li><b>Still stuck after starting?</b> Pick the older <b>Hearth OS</b> entry in the boot menu (<a href="updates.html#rollback">going back</a>),
 then send a log from there.</li>
+<li><b>No boot menu, or nothing in it starts?</b> Use the <a href="#recovery-usb">Hearth Recovery USB</a>.</li>
+</ol>
+
+{h2('recovery-usb', 'Hearth Recovery USB: fix a Hearth device that won\'t start')}
+<p>When Hearth OS doesn't start any more and the boot menu doesn't help, the <b>Hearth Recovery USB</b> starts a repair
+screen from a USB stick. It needs no keyboard: it works with only the controller or the touchscreen, and starts by itself
+3 seconds after the stick's menu appears.</p>
+<p><a href="{R2}hearth-recovery.iso">Download hearth-recovery.iso</a> (about 5 GB) ·
+<a href="{R2}hearth-recovery.iso.sha256">SHA-256</a></p>
+<h3>Making the stick</h3>
+<ul>
+<li><b>The Hearth USB maker:</b> on another Hearth device, <b>Hearth Disks › Make a bootable USB</b>, pick <b>Hearth Recovery USB</b>.
+It downloads it, checks the checksum, writes it and reads it back.</li>
+<li><b>Rufus</b> (Windows): pick the ISO, and when Rufus asks, choose <b>Write in DD Image mode</b> (ISO mode doesn't start).</li>
+<li><b>Ventoy:</b> copy the ISO onto the Ventoy stick. Ventoy's own menu waits for a key, so for a controller-only device
+add <code>"VTOY_MENU_TIMEOUT": 3</code> under <code>"control"</code> in <code>ventoy/ventoy.json</code> (with
+<code>VTOY_DEFAULT_IMAGE</code> pointing at the ISO when there are several), so it starts by itself.</li>
+<li>Fedora Media Writer and balenaEtcher work too, like for the other ISOs.</li>
+</ul>
+<h3>Using it</h3>
+<ol class="steps">
+<li><b>Start the device from the stick.</b> On handhelds use the firmware boot menu: on a <b>ROG Ally</b>, hold <b>Volume Down + Power</b>
+and pick the USB stick. On PCs, often <b>F12</b>, <b>F11</b> or <b>F8</b> at power-on.</li>
+<li><b>Pick "Start the previous version".</b> It makes the Hearth OS that last worked the one that starts, and keeps the newer one on the
+drive. This is the tested action. Then choose <b>Restart now</b> and take the stick out.</li>
+<li><b>Other actions</b> if that isn't enough: Start in Desktop Mode next time, Reset Game Mode's display settings,
+Send logs to the developer, Copy my files to a USB drive, Update or reinstall Hearth OS, and Factory reset (erases the drive).</li>
 </ol>
 
 {h2('power-button', 'The power button turns the device off instead of sleeping')}

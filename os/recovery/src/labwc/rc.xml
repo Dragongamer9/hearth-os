@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Hearth Recovery: labwc only shows the recovery screen (a fullscreen layer). One do-nothing key binding, so
+     labwc's default ones (terminal, close window...) aren't added. -->
+<labwc_config>
+  <core><gap>0</gap></core>
+  <keyboard>
+    <keybind key="W-F12"><action name="None"/></keybind>
+  </keyboard>
+</labwc_config>
