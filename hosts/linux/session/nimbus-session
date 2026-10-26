@@ -217,9 +217,9 @@ run_game() {
 # it: this user's stopped processes carrying a game's mark (HEARTH_GAME_ID, or Steam's SteamGameId / SteamAppId) are
 # woken, asked to close, and killed after 3 s. Never fails and never waits longer than that.
 end_stopped_games() {
-  pids=""
+  pids=""; me=$(id -u)
   for d in /proc/[0-9]*; do
-    [ -O "$d" ] || continue
+    [ "$(stat -c %u "$d" 2>/dev/null)" = "$me" ] || continue
     st=$(sed -n 's/^State:[[:space:]]*\([A-Za-z]\).*/\1/p' "$d/status" 2>/dev/null)
     [ "$st" = "T" ] || continue
     tr '\0' '\n' <"$d/environ" 2>/dev/null | grep -qE '^(HEARTH_GAME_ID|SteamGameId|SteamAppId)=[1-9]' || continue
