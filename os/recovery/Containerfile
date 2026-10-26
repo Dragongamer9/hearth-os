@@ -1,0 +1,11 @@
+# Hearth Recovery: a USB stick that repairs an installed Hearth OS (like SteamOS's recovery image). Made from Hearth
+# OS on Anatase (ghcr.io/dragongamer9/hearth-os, by digest) so it has the same kernel, Handheld Daemon (the Ally's
+# built-in controller), Wi-Fi drivers, ostree and bootupd, plus a live boot and the recovery screen instead of
+# Hearth's session. Built by .github/workflows/recovery-iso.yml (context: os/), turned into an ISO by Titanoboa.
+# Unlike the live ISO it carries no copy of the Hearth OS image: updating and factory reset download it.
+ARG BASE=ghcr.io/dragongamer9/hearth-os:latest
+FROM ${BASE}
+COPY recovery/src /src
+COPY live/src/hearth-install live/src/hearth-live-prep /src/installer/
+COPY live/src/branding /src/branding
+RUN --mount=type=cache,target=/var/cache/libdnf5 /src/build.sh && rm -rf /src

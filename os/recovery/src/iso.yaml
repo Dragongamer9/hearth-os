@@ -1,0 +1,12 @@
+label: "HearthRecov"
+grub2:
+  # Starts by itself after 3 seconds: the Ally (and any handheld) has no keyboard for GRUB's menu.
+  default: 0
+  timeout: 3
+  entries:
+    - name: "Hearth Recovery"
+      linux: "/images/pxeboot/vmlinuz quiet splash root=live:CDLABEL=HearthRecov enforcing=0 rd.live.image hearth.recovery"
+      initrd: "/images/pxeboot/initrd.img"
+    - name: "Hearth Recovery (basic graphics)"
+      linux: "/images/pxeboot/vmlinuz quiet splash root=live:CDLABEL=HearthRecov enforcing=0 rd.live.image hearth.recovery nomodeset"
+      initrd: "/images/pxeboot/initrd.img"
