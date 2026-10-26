@@ -4,6 +4,10 @@
 name: Hearth Recovery ISO
 
 on:
+  # The branch it's developed on builds it on push (a dispatch needs the workflow on the default branch first).
+  push:
+    branches: [hearth-recovery]
+    paths: ['os/recovery/**', '.github/workflows/recovery-iso.yml']
   workflow_dispatch:
     inputs:
       tag:
