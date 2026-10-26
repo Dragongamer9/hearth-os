@@ -1,13 +1,12 @@
 # Builds the Hearth Recovery ISO (os/recovery): a USB stick that repairs an installed Hearth OS. GRUB on it starts
-# the recovery screen by itself after 3 seconds (no keyboard needed). Manual only; the ISO is kept as a download on
-# the run for 14 days. Nothing is uploaded to the release or R2.
+# the recovery screen by itself after 3 seconds (no keyboard needed). Manual only (Actions › Hearth Recovery ISO ›
+# Run workflow). The ISO is kept as a download on the run for 14 days and, like the live and installer ISOs, uploaded
+# to Hearth's Cloudflare R2 bucket under a fixed name (what the website's Recovery USB link points at):
+#   https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso, with a .sha256, and latest.json.
+#   Secrets (Settings › Secrets and variables › Actions): R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
 name: Hearth Recovery ISO
 
 on:
-  # The branch it's developed on builds it on push (a dispatch needs the workflow on the default branch first).
-  push:
-    branches: [hearth-recovery]
-    paths: ['os/recovery/**', '.github/workflows/recovery-iso.yml']
   workflow_dispatch:
     inputs:
       tag:
@@ -15,6 +14,10 @@ on:
         type: choice
         options: [latest, testing]
         default: latest
+      upload:
+        description: 'Upload the ISO to the download site (Cloudflare R2, as hearth-recovery.iso; needs the R2_* secrets)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -27,6 +30,7 @@ jobs:
     env:
       IMAGE: ghcr.io/dragongamer9/hearth-os
       TAG: ${{ inputs.tag || 'latest' }}
+      HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Make room
@@ -58,6 +62,8 @@ jobs:
           (cd "$out" && sha256sum "$f" | tee "$f.sha256")
           echo "::notice title=Hearth Recovery ISO::$(ls -l "$out/$f" | awk '{print $5}') bytes, sha256 $(cut -d' ' -f1 "$out/$f.sha256")"
           echo "dir=$out" >> "$GITHUB_OUTPUT"
+          v=$(sudo podman run --rm localhost/hearth-recovery:latest cat /usr/share/nimbus/version 2>/dev/null || echo latest)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
       - name: Keep the ISO as a download on this run
         uses: actions/upload-artifact@v4
         with:
@@ -66,3 +72,13 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+      - name: Upload to the download site (Cloudflare R2)
+        if: env.HAVE_R2 == 'true' && inputs.upload
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          V: ${{ steps.iso.outputs.version }}
+          DIR: ${{ steps.iso.outputs.dir }}
+        run: tools/r2-upload.sh "$DIR/hearth-recovery.iso" hearth-recovery.iso "$V"
