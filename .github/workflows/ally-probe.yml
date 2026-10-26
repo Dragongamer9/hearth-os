@@ -8,7 +8,7 @@ on:
     branches: [ally-black-screen-probe]
 
 permissions:
-  contents: read
+  contents: write
   packages: read
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api "/users/Dragongamer9/packages/container/hearth-peppermint/versions?per_page=80" --jq '.[] | "\(.name) \(.created_at) \(.metadata.container.tags|join(","))"' | tee /tmp/versions.txt || true
-          old=$(awk '$2 < "2026-10-24T21:50:00Z" {print $1; exit}' /tmp/versions.txt)
+          old=$(grep -m1 'testing-0.6.51-' /tmp/versions.txt | cut -d' ' -f1)
           echo "OLD=$old" >> "$GITHUB_ENV"
           echo "::notice title=old image::$(grep "$old" /tmp/versions.txt)"
           echo "::notice title=versions::$(head -25 /tmp/versions.txt | tr '\n' '|')"
@@ -38,7 +38,7 @@ jobs:
       - name: Packages and files
         run: |
           cat > /tmp/inv.sh <<'SH'
-          dpkg-query -W -f '${Package}:${Architecture} ${Version}\n' | sort > /out/pkgs.txt
+          dpkg-query --admindir=/usr/lib/sysimage/dpkg -W -f '${Package}:${Architecture} ${Version}\n' | sort > /out/pkgs.txt
           cat /usr/share/hearth/image-info.json /usr/share/nimbus/image-info.json 2>/dev/null > /out/info.txt
           ls /usr/lib/modules > /out/kernels.txt
           find /etc /usr/lib/systemd /usr/share/nimbus /usr/libexec/nimbus /usr/share/wayland-sessions /usr/share/xsessions /usr/lib/sddm /usr/share/sddm /usr/lib/udev/rules.d /usr/share/polkit-1 /usr/bin/nimbus* /usr/lib/hearth-electron/resources -xdev \( -type f -o -type l \) 2>/dev/null \
@@ -54,18 +54,24 @@ jobs:
           cat /tmp/filediff.txt
           grep -v -e '/usr/share/nimbus/ui/' -e 'hearth-electron/resources' -e '/osk/' -e '/usr/share/doc' /tmp/filediff.txt > /tmp/fd2.txt
           split -l 50 /tmp/fd2.txt /tmp/fd.; for p in /tmp/fd.*; do echo "::notice title=filediff $(basename $p)::$(tr '\n' '|' < $p | cut -c1-3900)"; done
-      - name: Game Mode in each image (gamescope headless, software drawing)
+      - name: Hearth's page in each image's WebKitGTK (Xvfb, windowed, a screenshot)
         run: |
-          cat > /tmp/gm.sh <<'SH'
-          useradd -m t 2>/dev/null
-          mkdir -p /tmp/r && chown t /tmp/r && chmod 700 /tmp/r
-          echo "== gamescope: $(gamescope --version 2>&1 | head -1)"
-          runuser -u t -- env XDG_RUNTIME_DIR=/tmp/r HOME=/home/t LIBGL_ALWAYS_SOFTWARE=1 NIMBUS_SESSION=1 \
-            dbus-run-session -- timeout 60 gamescope --backend headless -W 1280 -H 800 -- sh -c 'timeout 45 /usr/bin/nimbus; echo "nimbus exit: $?"' > /tmp/gm.log 2>&1
-          echo "== gamescope exit: $?"
-          grep -v '^$' /tmp/gm.log | tail -n 60
-          echo "== bridge.log"
-          tail -n 60 /home/t/.local/share/nimbus/bridge.log 2>/dev/null
+          cat > /tmp/win.sh <<'SH'
+          ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg 2>/dev/null; mkdir -p /var/lib/apt/lists /var/cache/apt/archives/partial
+          apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq --no-install-recommends xvfb x11-apps imagemagick xdotool >/dev/null 2>&1 || echo "apt failed"
+          useradd -m t 2>/dev/null; mkdir -p /tmp/r && chown t /tmp/r && chmod 700 /tmp/r
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2
+          runuser -u t -- env DISPLAY=:99 XDG_RUNTIME_DIR=/tmp/r HOME=/home/t LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 NO_AT_BRIDGE=1 \
+            dbus-run-session -- timeout 40 /usr/bin/nimbus --windowed > /out/run.log 2>&1 &
+          for t in 10 25; do sleep 12; xwd -root -display :99 -silent | convert xwd:- /out/at-$t.png 2>/dev/null || echo "no screenshot"; done
+          sleep 5
+          cp /home/t/.local/share/nimbus/bridge.log /out/bridge.log 2>/dev/null
+          echo "== run.log"; tail -n 40 /out/run.log; echo "== bridge.log"; tail -n 40 /out/bridge.log 2>/dev/null
           SH
-          for i in old new; do echo "######## $i"; sudo podman run --rm --privileged -v /tmp/gm.sh:/gm.sh:ro p$i bash /gm.sh 2>&1 | tee /tmp/gm-$i.txt | tail -n 130
-            echo "::notice title=gamemode $i::$(grep -E 'nimbus exit|gamescope exit|renderer|page|ready|panic|error|Error' /tmp/gm-$i.txt | head -40 | tr '\n' '|' | cut -c1-3900)"; done
+          mkdir -p /tmp/shots
+          for i in old new; do mkdir -p /tmp/shots/$i; sudo podman run --rm -v /tmp/win.sh:/win.sh:ro -v /tmp/shots/$i:/out p$i bash /win.sh 2>&1 | tail -n 90
+            echo "::notice title=page $i::$(tail -n 25 /tmp/shots/$i/run.log 2>/dev/null | tr '\n' '|' | cut -c1-3000)"; done
+          cp /tmp/old/pkgs.txt /tmp/shots/old/; cp /tmp/new/pkgs.txt /tmp/shots/new/; cp /tmp/pkgdiff.txt /tmp/filediff.txt /tmp/shots/ 2>/dev/null
+          sudo chown -R "$(id -u)" /tmp/shots
+          cd /tmp/shots && git init -q && git checkout -q -b probe-out && git add -A && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "ally probe $GITHUB_RUN_ID"
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" HEAD:refs/heads/ally-black-screen-probe-out
