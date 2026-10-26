@@ -204,7 +204,7 @@ impl Bridge {
         let (home, host, url) = (self.library.home.clone(), self.host.clone(), url.to_string());
         std::thread::spawn(move || {
             if let Err(e) = crate::steam_ctl::open_url(&home, &url) { log(&format!("steam: {e}")); return; }
-            host("showSteam", &json!({"wait": 45}));
+            host("showSteam", &json!({"wait": 45, "why": url}));
         });
     }
 
@@ -468,7 +468,7 @@ impl Bridge {
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
             "steam.downloads" => { self.open_steam("steam://open/downloads"); Ok(json!({"ok": true})) }
             // Steam's window in front again (during a sign-in, after coming back to Hearth).
-            "steam.showWindow" => { (self.host)("showSteam", &json!({"wait": 30})); Ok(json!({"ok": true})) }
+            "steam.showWindow" => { (self.host)("showSteam", &json!({"wait": 30, "why": "Steam's window button in Hearth"})); Ok(json!({"ok": true})) }
             "steam.signInCancel" => { crate::steam_ctl::cancel_sign_in(); (self.host)("comeBack", &Value::Null); Ok(json!({"ok": true})) }
             // Where Steam games install: Steam's libraries, and the one picked.
             "steam.libraries" => {
@@ -1348,7 +1348,7 @@ impl Bridge {
         for e in events {
             match e["name"].as_str().unwrap_or("") {
                 // Steam's window is needed (its install window after a silent install didn't start): in front.
-                "steam.window" => (self.host)("showSteam", &json!({"wait": 30})),
+                "steam.window" => (self.host)("showSteam", &json!({"wait": 30, "why": format!("Steam's install window ({})", e["data"]["id"].as_str().unwrap_or("?"))})),
                 "game.started" => {
                     crate::link::set_playing(true);   // Hearth Link stays quiet while you play
                     self.parental_since = now_ms(); self.parental_warned = false;
