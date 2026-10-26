@@ -34,6 +34,19 @@ for f in "$ENTRIES"/*.conf; do
   printf '%s\t%s\n' "$v" "$f" >> "$TMP.list"
 done
 
+# The ostree root (where /ostree/boot.N lives): /sysroot on a running system; HEARTH_SYSROOT for an installer/recovery.
+SYSROOT="${HEARTH_SYSROOT:-}"
+[ -n "$SYSROOT" ] || { [ -d /sysroot/ostree ] && SYSROOT=/sysroot; }
+# ostree= names /ostree/boot.0/... or /ostree/boot.1/...; only one of the two exists after ostree swaps them. A menu
+# written at the wrong moment pointed every entry at the one that was then removed, and nothing could start (ROG Ally,
+# 0.6.53). Point each entry at the boot.N that really has it.
+fix_ostree() {
+  o="$1"; p=$(printf '%s' "$o" | sed -n 's/.*ostree=\(\/ostree\/boot\.[01]\/[^ ]*\).*/\1/p')
+  if [ -z "$p" ] || [ -z "$SYSROOT" ] || [ -e "$SYSROOT$p" ]; then printf '%s' "$o"; return; fi
+  case "$p" in /ostree/boot.0/*) q="/ostree/boot.1/${p#/ostree/boot.0/}" ;; *) q="/ostree/boot.0/${p#/ostree/boot.1/}" ;; esac
+  if [ -e "$SYSROOT$q" ]; then printf '%s' "$o" | sed "s|ostree=$p|ostree=$q|"; else printf '%s' "$o"; fi
+}
+
 quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
 TAB=$(printf '\t')
@@ -44,7 +57,7 @@ sort -t "$TAB" -k1,1nr "$TMP.list" | {
   while IFS="$TAB" read -r _ f; do
     title=$(sed -n 's/^title[[:space:]]\{1,\}//p' "$f" | head -1)
     linux=$(sed -n 's/^linux[[:space:]]\{1,\}//p' "$f" | head -1)
-    opts=$(sed -n 's/^options[[:space:]]\{1,\}//p' "$f" | head -1)
+    opts=$(fix_ostree "$(sed -n 's/^options[[:space:]]\{1,\}//p' "$f" | head -1)")
     initrd=$(sed -n 's/^initrd[[:space:]]\{1,\}//p' "$f" | tr '\n' ' ')
     [ -n "$linux" ] || continue
     title="${title:-Hearth OS}"
