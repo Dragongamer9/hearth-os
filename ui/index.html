@@ -11622,6 +11622,7 @@ document.addEventListener('click', e=>{
   // A click (a tap, a click-through) just as Quick Access or its Put aside question opened isn't a choice.
   if(el.closest('#qam,#sheet') && (S.layers.at(-1)==='qam' || (S.layers.at(-1)==='sheet' && sheet && sheet.guard)) && qaGuarded(`a ${INPUT.touch?'tap':'click'} on ${el.dataset.k||el.dataset.act||'?'}`)) return;
   qaVia(`${INPUT.touch?'tap':'mouse click'} on ${el.dataset.k||el.dataset.act||'?'}`); qaTrace('click');
+  if(el.dataset.f!==undefined) setFocus(el,true);
   if(el.dataset.slider){ const s=el.querySelector('.slider'), r=s.getBoundingClientRect();
     if(e.clientX>=r.left-8 && e.clientX<=r.right+8){ const min=+el.dataset.min,max=+el.dataset.max,st=+el.dataset.step;
       const v=min+Math.round(((e.clientX-r.left)/r.width)*(max-min)/st)*st; S.set[el.dataset.slider]=Math.max(min,Math.min(max,v)); adjustSlider(el,0);} return; }
