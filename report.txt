@@ -1,0 +1,3 @@
+0 errors, 2 warnings, 8 pages at 390/820/1440 px, 40 links to other sites
+warn  link to another site doesn't answer (404): https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256
+warn  link to another site doesn't answer (404): https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso
