@@ -33,6 +33,12 @@ SHOTS = [
     ('gm-game', "navigate('game',{game:'o-wesnoth'},false)", 1500, None, 1600),
     # Quick Access over a running game (0 A.D., on its page)
     ('gm-qa', "S.running='o-0ad'; navigate('game',{game:'o-0ad'},false); setTimeout(()=>{ S.qtab='quick'; openLayer('qam'); }, 400)", 1800, None, 1600),
+    # The Bottom Dock (Game Mode's main menu) open on Home, its card above the selected item
+    ('gm-dock', "S.running=null; navigate('home',{},false); setTimeout(()=>toggleLayer('menu'),600)", 2200, None, 1600),
+    # The top-dock overlay over a running game (0 A.D.), on its Quick settings tab
+    ('gm-overlay', "S.running='o-0ad'; navigate('game',{game:'o-0ad'},false); setTimeout(()=>{ S.qtab='quick'; openLayer('qam'); }, 500)", 2200, None, 1600),
+    # The redesigned Settings (a group with its status card and pages as tabs); cropped above the footer
+    ('gm-settings', "S.running=null; navigate('settings',{},false)", 2000, (0, 0, 1920, 1020), 1600),
 ]
 # The layout shots, at 1920x1080 like the layout audit's (tools/layout-audit.js): Home in Desk grid, the Library in
 # Cover Flow. Same fields as above.
