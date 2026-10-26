@@ -99,6 +99,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.54 (released)
+
+- [x] Peppermint: the boot menu points each entry at the ostree boot folder that really exists (after 0.6.53 a stale path left the ROG Ally at a black screen)
+
 ## 0.6.53 (released)
 
 - [x] Make a bootable USB (Hearth Disks): pick a Linux distro and Hearth downloads it from the project's own servers, checks its checksum and signature, writes it and reads it back; Windows 10/11 from Microsoft's page (with optional Windows 11 setup tweaks); or your own ISO/image. Only removable drives are offered; Hearth's own drive never is
