@@ -1,0 +1,18 @@
+#!/bin/sh
+# Hearth Recovery: the screen on tty1 (hearth-recovery-ui.service, as root). labwc shows the recovery screen
+# (Quickshell, ui/shell.qml) fullscreen. Qt draws in software, so it works on every graphics card, Nvidia without
+# its driver included. If labwc can't use the graphics card it tries again with software drawing (pixman).
+mkdir -p /run/hearth-recovery
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=HearthRecovery QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software \
+       QT_WAYLAND_DISABLE_WINDOWDECORATION=1 HOME=/root LANG="${LANG:-C.UTF-8}"
+LOG=/run/hearth-recovery/labwc.log
+echo "$(date '+%F %T') starting labwc" >>"$LOG"
+start=$(date +%s)
+labwc -C /usr/share/hearth-recovery/labwc >>"$LOG" 2>&1
+# Ended within 10 seconds: the graphics didn't work. Software drawing next time.
+if [ $(( $(date +%s) - start )) -lt 10 ]; then
+  echo "$(date '+%F %T') labwc ended at once; trying software drawing" >>"$LOG"
+  WLR_RENDERER=pixman exec labwc -C /usr/share/hearth-recovery/labwc >>"$LOG" 2>&1
+fi
