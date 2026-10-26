@@ -295,6 +295,15 @@ impl Bridge {
         match msg["type"].as_str().unwrap_or("") {
             "power" => {
                 let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+                // Desktop Mode with a game stopped (Quick Resume, Pause) froze the desktop: they're ended first (the page
+                // asked: "<game> is paused and will be closed"). nimbus-session does it again before Desktop Mode starts.
+                if msg["action"] == "desktop" {
+                    let ended = self.library.end_stopped();
+                    if !ended.is_empty() {
+                        log(&format!("desktop mode: ended the games Hearth had stopped first: {}", ended.join(", ")));
+                        (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
+                    }
+                }
                 match crate::power::action(msg["action"].as_str().unwrap_or(""), in_session) {
                     Ok(quit) => quit,
                     Err(e) => { (self.emit)(json!({"type": "toast", "text": e})); false }
@@ -615,6 +624,13 @@ impl Bridge {
                 io(self.library.store.update(|d| { d.insert("quickReplies".into(), json!(list)); }))?;
                 Ok(self.overlay_settings())
             }
+            // Settings › You › Appearance › Quick Access style: the top dock or the classic side panel. Kept here as well
+            // as in the page's own look settings, because Handheld Daemon's overlay app has storage of its own.
+            "overlay.setQaStyle" => {
+                let v = if a["style"] == "side" { "side" } else { "dock" };
+                io(self.library.store.update(|d| { d.insert("qaStyle".into(), json!(v)); }))?;
+                Ok(self.overlay_settings())
+            }
             "overlay.setHoldView" => {
                 let on = a["on"] == true;
                 io(self.library.store.update(|d| { d.insert("holdView".into(), json!(on)); }))?;
@@ -874,6 +890,8 @@ impl Bridge {
                 Ok(st)
             }
             "game.putAside" => {
+                // Only ever on a choice in Quick Access (asked first there): what chose it, for Send logs.
+                log(&format!("quick resume: put aside asked for by the page: {}", a["why"].as_str().map(|w| w.chars().take(600).collect::<String>()).unwrap_or_else(|| "no reason given".into())));
                 self.library.freeze_running()?;
                 (self.host)("comeBack", &Value::Null);
                 let st = self.library.quick_state();
@@ -1304,7 +1322,8 @@ impl Bridge {
             None => json!(["On my way", "GG", "👍"]),
         };
         json!({"holdView": self.library.store.data["holdView"] == true, "gameBarButton": false, "hotkey": "Ctrl+Alt+Q", "guide": self.guide.status(),
-               "glance": self.library.store.data["glance"] != false, "quickReplies": replies})
+               "glance": self.library.store.data["glance"] != false, "quickReplies": replies,
+               "qaStyle": match self.library.store.data["qaStyle"].as_str() { Some("side") => json!("side"), Some(_) => json!("dock"), None => Value::Null }})
     }
     /// Open apps for Quick Access: Hearth first, then every window, then Steam if it runs without a window.
     fn apps_list(&self) -> Value {
@@ -1948,6 +1967,9 @@ mod tests {
         let s = b.dispatch("overlay.settings", &json!({})).unwrap();
         assert_eq!(s["glance"], true);
         assert_eq!(s["quickReplies"], json!(["On my way", "GG", "👍"]));
+        assert!(s["qaStyle"].is_null());
+        assert_eq!(b.dispatch("overlay.setQaStyle", &json!({"style": "side"})).unwrap()["qaStyle"], "side");
+        assert_eq!(b.dispatch("overlay.setQaStyle", &json!({"style": "nonsense"})).unwrap()["qaStyle"], "dock");
         let s = b.dispatch("overlay.setGlance", &json!({"on": false})).unwrap();
         assert_eq!(s["glance"], false);
         assert!(!b.guide.tap_hold.load(std::sync::atomic::Ordering::SeqCst));
