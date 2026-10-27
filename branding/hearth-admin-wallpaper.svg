@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs><linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#090f19"/><stop offset=".6" stop-color="#152335"/><stop offset="1" stop-color="#20190f"/></linearGradient><radialGradient id="ember"><stop stop-color="#e08b3a" stop-opacity=".30"/><stop offset="1" stop-color="#e08b3a" stop-opacity="0"/></radialGradient></defs>
+<rect width="1920" height="1080" fill="url(#night)"/><circle cx="1470" cy="400" r="700" fill="url(#ember)"/>
+<path d="M100 780 L410 510 L640 710 L890 390 L1170 700 L1490 480 L1820 800" fill="none" stroke="#285066" stroke-width="5" opacity=".48"/>
+<path d="M0 960 Q560 820 1020 950 T1920 870 V1080 H0" fill="#0b1724"/>
+<g transform="translate(960 350)" stroke="#eab56f" stroke-width="12" stroke-linecap="round" fill="none"><path d="M-110 15 Q-40 -95 55 -65 Q125 -45 80 30 Q35 90 -40 42 Q-98 0 -60 -45"/><path d="M55 -65 L114 -116 L103 -45 L170 -24 L91 13"/><path d="M-110 15 L-175 -28 L-150 39 L-192 83 L-88 59"/></g>
+<text x="960" y="557" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="88" letter-spacing="11" fill="#f6eee2">HEARTH OS</text>
+<text x="960" y="616" text-anchor="middle" font-family="sans-serif" font-size="27" letter-spacing="13" fill="#eab56f">ADMIN EDITION</text>
+<text x="960" y="670" text-anchor="middle" font-family="sans-serif" font-size="21" letter-spacing="3" fill="#aabcc7">REPAIR  ·  RECOVER  ·  MAINTAIN</text>
+</svg>
