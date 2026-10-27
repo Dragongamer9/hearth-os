@@ -6,6 +6,8 @@ on:
     paths: ['.github/workflows/linux-mint-writable-hearth-iso.yml']
 permissions:
   contents: read
+env:
+  ISO_WORK: ${{ github.workspace }}/.iso-work
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,11 +30,13 @@ jobs:
       - name: Reclaim build space before unpacking Mint
         run: |
           set -euxo pipefail
-          install -Dm755 hosts/hearth-rs/target/release/hearth /tmp/hearth-built
+          mkdir -p "$ISO_WORK"
+          install -Dm755 hosts/hearth-rs/target/release/hearth "$ISO_WORK/hearth-built"
           rm -rf hosts/hearth-rs/target
           rm -rf "$HOME/.rustup/toolchains" "$HOME/.cargo/registry" "$HOME/.cargo/git" || true
           sudo apt-get clean
-          df -h /
+          df -h / /tmp "$ISO_WORK"
+          df -i / /tmp "$ISO_WORK"
       - name: Download and verify original Mint ISO
         env:
           ISO_URL: https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
@@ -40,26 +44,26 @@ jobs:
         run: |
           set -euxo pipefail
           [[ "$ISO_URL" == https://* ]]
-          curl --fail --location --retry 4 "$SUMS_URL" -o /tmp/sha256sum.txt
-          ISO_SHA=$(awk '$2 == "*linuxmint-22.3-cinnamon-64bit.iso" || $2 == "linuxmint-22.3-cinnamon-64bit.iso" {print $1}' /tmp/sha256sum.txt)
+          curl --fail --location --retry 4 "$SUMS_URL" -o $ISO_WORK/sha256sum.txt
+          ISO_SHA=$(awk '$2 == "*linuxmint-22.3-cinnamon-64bit.iso" || $2 == "linuxmint-22.3-cinnamon-64bit.iso" {print $1}' $ISO_WORK/sha256sum.txt)
           [[ "$ISO_SHA" =~ ^[0-9a-fA-F]{64}$ ]]
-          curl --fail --location --retry 4 "$ISO_URL" -o /tmp/mint.iso
-          printf '%s  %s\n' "$ISO_SHA" /tmp/mint.iso | sha256sum -c -
-          xorriso -indev /tmp/mint.iso -pvd_info
+          curl --fail --location --retry 4 "$ISO_URL" -o $ISO_WORK/mint.iso
+          printf '%s  %s\n' "$ISO_SHA" $ISO_WORK/mint.iso | sha256sum -c -
+          xorriso -indev $ISO_WORK/mint.iso -pvd_info
       - name: Remaster Mint live filesystem without OSTree or bootc
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/mint-iso /tmp/mint-root
-          xorriso -osirrox on -indev /tmp/mint.iso -extract / /tmp/mint-iso
-          sudo chmod -R u+w /tmp/mint-iso
-          squash=$(find /tmp/mint-iso/casper -maxdepth 1 -name 'filesystem.squashfs' -print -quit)
+          mkdir -p $ISO_WORK/mint-iso $ISO_WORK/mint-root
+          xorriso -osirrox on -indev $ISO_WORK/mint.iso -extract / $ISO_WORK/mint-iso
+          sudo chmod -R u+w $ISO_WORK/mint-iso
+          squash=$(find $ISO_WORK/mint-iso/casper -maxdepth 1 -name 'filesystem.squashfs' -print -quit)
           test -n "$squash"
-          sudo unsquashfs -d /tmp/mint-root "$squash"
+          sudo unsquashfs -d $ISO_WORK/mint-root "$squash"
           # Install Hearth's compiled executable and a normal desktop launcher.
-          sudo install -Dm755 /tmp/hearth-built /tmp/mint-root/usr/local/bin/hearth
-          sudo install -d /tmp/mint-root/usr/share/applications
-          cat > /tmp/hearth.desktop <<'DESKTOP'
+          sudo install -Dm755 $ISO_WORK/hearth-built $ISO_WORK/mint-root/usr/local/bin/hearth
+          sudo install -d $ISO_WORK/mint-root/usr/share/applications
+          cat > $ISO_WORK/hearth.desktop <<'DESKTOP'
           [Desktop Entry]
           Name=Hearth OS
           Comment=Hearth gaming interface on Linux Mint
@@ -68,24 +72,24 @@ jobs:
           Type=Application
           Categories=Game;
           DESKTOP
-          sudo install -Dm644 /tmp/hearth.desktop /tmp/mint-root/usr/share/applications/hearth.desktop
-          printf '%s\n' 'Linux Mint writable Hearth test build' | sudo tee /tmp/mint-root/etc/hearth-mint-test
+          sudo install -Dm644 $ISO_WORK/hearth.desktop $ISO_WORK/mint-root/usr/share/applications/hearth.desktop
+          printf '%s\n' 'Linux Mint writable Hearth test build' | sudo tee $ISO_WORK/mint-root/etc/hearth-mint-test
           # This is the original Mint package-managed filesystem, not an OSTree deployment.
-          test -x /tmp/mint-root/usr/bin/apt
-          test -x /tmp/mint-root/usr/bin/dpkg
-          test ! -e /tmp/mint-root/ostree
+          test -x $ISO_WORK/mint-root/usr/bin/apt
+          test -x $ISO_WORK/mint-root/usr/bin/dpkg
+          test ! -e $ISO_WORK/mint-root/ostree
           sudo rm -f "$squash"
-          sudo mksquashfs /tmp/mint-root "$squash" -comp xz -noappend
-          if [ -f /tmp/mint-iso/casper/filesystem.size ]; then
-            sudo du -sx --block-size=1 /tmp/mint-root | awk '{print $1}' | sudo tee /tmp/mint-iso/casper/filesystem.size
+          sudo mksquashfs $ISO_WORK/mint-root "$squash" -comp xz -noappend
+          if [ -f $ISO_WORK/mint-iso/casper/filesystem.size ]; then
+            sudo du -sx --block-size=1 $ISO_WORK/mint-root | awk '{print $1}' | sudo tee $ISO_WORK/mint-iso/casper/filesystem.size
           fi
       - name: Repack using original Mint boot configuration
         shell: bash
         run: |
           set -euxo pipefail
           # Replay the original ISO's boot entries (BIOS and UEFI) rather than inventing new boot flags.
-          xorriso -indev /tmp/mint.iso -outdev "$GITHUB_WORKSPACE/hearth-linux-mint-writable-test-amd64.iso" \
-            -map /tmp/mint-iso / -boot_image any replay -commit -end
+          xorriso -indev $ISO_WORK/mint.iso -outdev "$GITHUB_WORKSPACE/hearth-linux-mint-writable-test-amd64.iso" \
+            -map $ISO_WORK/mint-iso / -boot_image any replay -commit -end
           test -s hearth-linux-mint-writable-test-amd64.iso
           sha256sum hearth-linux-mint-writable-test-amd64.iso > SHA256SUMS
       - uses: actions/upload-artifact@v4
