@@ -87,9 +87,13 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # Replay the original ISO's boot entries (BIOS and UEFI) rather than inventing new boot flags.
-          xorriso -indev $ISO_WORK/mint.iso -outdev "$GITHUB_WORKSPACE/hearth-linux-mint-writable-test-amd64.iso" \
-            -map $ISO_WORK/mint-iso / -boot_image any replay -commit -end
+          # Preserve the original Mint ISO tree, including its embedded El Torito
+          # boot image and isohybrid EFI/BIOS boot metadata. Mapping a fresh '/'
+          # discards hidden boot-image references and breaks -boot_image replay.
+          xorriso -indev "$ISO_WORK/mint.iso" -outdev "$GITHUB_WORKSPACE/hearth-linux-mint-writable-test-amd64.iso" \
+            -map "$ISO_WORK/mint-iso/casper/filesystem.squashfs" /casper/filesystem.squashfs \
+            -map "$ISO_WORK/mint-iso/casper/filesystem.size" /casper/filesystem.size \
+            -boot_image any replay -commit -end
           test -s hearth-linux-mint-writable-test-amd64.iso
           sha256sum hearth-linux-mint-writable-test-amd64.iso > SHA256SUMS
       - uses: actions/upload-artifact@v4
