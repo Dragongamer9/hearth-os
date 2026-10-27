@@ -39,6 +39,22 @@ class TestApiBoundary(unittest.TestCase):
         self.assertEqual(self.request("POST","/api/ask",body=json.dumps({
             "agent":"unapproved","prompt":"hello"}),headers={
             "X-Hearth-Token":server.TOKEN,"Content-Type":"application/json"}),400)
+    def test_malformed_request_shapes(self):
+        for item in ([], None, "text", 1, {"agent": [], "prompt": "hello"}):
+            with self.subTest(item=item):
+                self.assertEqual(self.request("POST", "/api/ask", body=json.dumps(item), headers={
+                    "X-Hearth-Token": server.TOKEN, "Content-Type": "application/json"}), 400)
+    def test_script_served_with_strict_policy(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_port, timeout=3)
+        try:
+            conn.request("GET", "/app.js")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertIn("text/javascript", response.getheader("Content-Type"))
+            self.assertIn("script-src 'self'", response.getheader("Content-Security-Policy"))
+            self.assertIn(b"function refresh", response.read())
+        finally:
+            conn.close()
     def test_reject_large_body(self):
         self.assertEqual(self.request("POST","/api/ask",body=" " * 12001,headers={
             "X-Hearth-Token":server.TOKEN,"Content-Type":"application/json"}),413)
