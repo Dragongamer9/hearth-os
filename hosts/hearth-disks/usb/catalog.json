@@ -294,6 +294,15 @@
       "checksums": { "file": "{url}.sha256" },
       "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",
       "note": "Hearth publishes a SHA-256 next to each ISO."
+    },
+    {
+      "id": "hearth-recovery", "group": "hearth", "family": "Hearth OS", "name": "Hearth Recovery USB", "flavour": "Fix a Hearth device that won't start",
+      "homepage": "https://hearthos.fun/docs/troubleshooting.html#recovery-usb", "sizeHint": "5 GB",
+      "about": "Starts a repair screen that works with only a controller or the touchscreen. On handhelds, start it from the firmware boot menu (ROG Ally: hold Volume Down + Power). \"Start the previous version\" brings back the Hearth OS that last worked.",
+      "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso" },
+      "checksums": { "file": "{url}.sha256" },
+      "pinned": "Hearth Recovery's newest ISO at its fixed address on Hearth's download server.",
+      "note": "Hearth publishes a SHA-256 next to each ISO."
     }
   ]
 }

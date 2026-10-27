@@ -120,6 +120,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.55 (released)
+
+- [x] Peppermint: `sudo hearth-unlock` unlocks the system (apt installs and changes anything, kept across restarts) while keeping updates and rollback; `sudo hearth-unlock --reapply` after an update reinstalls your packages
+- [x] Hearth Recovery listed in the USB maker
+
 ## 0.6.54 (released)
 
 - [x] Peppermint: the boot menu points each entry at the ostree boot folder that really exists (after 0.6.53 a stale path left the ROG Ally at a black screen)
