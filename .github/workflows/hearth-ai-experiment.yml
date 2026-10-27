@@ -6,6 +6,8 @@ on:
       - experiment/hearth-ai-test-os
     paths:
       - 'experiments/hearth-ai-test-os/**'
+      - 'experiments/dragonfire-game-mode/**'
+      - 'experiments/dragonfire-game-mode/**'
       - '.github/workflows/hearth-ai-experiment.yml'
   pull_request:
     paths:
@@ -52,3 +54,14 @@ jobs:
           node-version: '22'
       - name: Parse UI JavaScript
         run: node --check app.js
+
+  dragonfire-contract:
+    name: Dragonfire bridge and controller contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate experimental Game Mode
+        run: node experiments/dragonfire-game-mode/tests/contract.cjs
