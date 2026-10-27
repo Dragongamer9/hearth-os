@@ -1,0 +1,78 @@
+name: Dragonfire experimental live ISO (manual, never published)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  preview-iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free image build space
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+      - name: Validate branch and UI contract
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "experiment/hearth-ai-test-os"
+          node experiments/dragonfire-game-mode/tests/contract.cjs
+          test -f experiments/dragonfire-game-mode/Containerfile
+      - name: Build an isolated Dragonfire preview OS layer
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /mnt/containers /var/lib/containers
+          sudo mount --bind /mnt/containers /var/lib/containers
+          sudo podman build --pull=newer \
+            -f experiments/dragonfire-game-mode/Containerfile \
+            -t localhost/hearth-dragonfire-preview:ci .
+          sudo podman run --rm localhost/hearth-dragonfire-preview:ci \
+            test -f /usr/share/applications/hearth-dragonfire-preview.desktop
+      - name: Build Hearth live layer from the experimental OS
+        run: |
+          set -euo pipefail
+          sudo podman build --pull=never --cap-add=sys_admin --security-opt label=disable \
+            --build-arg EDITION=anatase \
+            --build-arg BASE=localhost/hearth-dragonfire-preview:ci \
+            --build-arg IMAGE_REF= \
+            -t localhost/hearth-dragonfire-live:ci \
+            -f os/live/Containerfile os/live
+      - name: Assemble ISO with pinned Titanoboa
+        id: iso
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/ublue-os/titanoboa.git /tmp/titanoboa
+          git -C /tmp/titanoboa checkout -q 5c457c3d0518bd17e754be0fd98a60d29d26abb4
+          sudo mkdir -p /mnt/dragonfire-output
+          iso=$(cd /tmp/titanoboa && sudo TITANOBOA_OUTPUT_DIR=/mnt/dragonfire-output \
+            ./main.sh localhost/hearth-dragonfire-live:ci)
+          sudo chown -R "$(id -u):$(id -g)" /mnt/dragonfire-output
+          mv "$iso" /mnt/dragonfire-output/hearth-dragonfire-experimental-live.iso
+          (cd /mnt/dragonfire-output && sha256sum hearth-dragonfire-experimental-live.iso > hearth-dragonfire-experimental-live.iso.sha256)
+          echo "file=/mnt/dragonfire-output/hearth-dragonfire-experimental-live.iso" >> "$GITHUB_OUTPUT"
+      - name: Verify ISO format and embedded boot files
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xorriso
+          iso="${{ steps.iso.outputs.file }}"
+          test -s "$iso"
+          xorriso -indev "$iso" -pvd_info
+          mkdir -p /tmp/dragonfire-boot
+          xorriso -osirrox on -indev "$iso" \
+            -extract /images/pxeboot/vmlinuz /tmp/dragonfire-boot/vmlinuz \
+            -extract /images/pxeboot/initrd.img /tmp/dragonfire-boot/initrd.img
+          test -s /tmp/dragonfire-boot/vmlinuz
+          test -s /tmp/dragonfire-boot/initrd.img
+          echo "::notice title=Boot validation::ISO structure checked; full VM boot test still required"
+      - name: Retain experimental ISO only as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-dragonfire-experimental-live
+          path: /mnt/dragonfire-output/hearth-dragonfire-experimental-live.iso*
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
