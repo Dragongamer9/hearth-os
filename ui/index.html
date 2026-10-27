@@ -3179,10 +3179,22 @@ function quickClose(id){
   toast(`Closing ${g?g.title:'the game'}…`);
   call('game.quickClose',{id},20000).then(r=>{ applyQuick(r.state); if(r.game&&r.game.id){ const x=G(r.game.id); if(x) Object.assign(x, fromHost(r.game)); } render(null,true); if(S.layers.includes('qam')) renderQam(); }).catch(e=>toast(e.message));
 }
+// Put aside (Quick Resume) freezes the game: only ever on an explicit choice. Picking it asks first (Cancel has the
+// selection, and A / a click in the first moment is dropped: qaGuarded), and both steps are logged with what chose them.
 function putAside(){
+  const g=G(S.running), name=g?g.title:'the game';
+  if(!S.running) return;
+  const why = `${QA_IN.last||'?'}; ${qaWhere()}`;
+  send({type:'log', text:`quick resume: Put aside picked for ${S.running} by ${why}; asking first`});
+  openSheet({title:`Put ${name} aside?`, sub:'It freezes where it is and stays in memory. Pick it from Quick Resume to carry on.', guard:true, focus:'sh-x',
+    items:[{label:'Put aside', icon:'pause', run:()=>putAsideNow(why)}]});
+}
+function putAsideNow(picked){
   const g=G(S.running);
+  const why = `${QA_IN.last||'?'} on "Put aside?" (${qaSince()} ms after it asked); picked by ${picked}`;
+  send({type:'log', text:`quick resume: putting ${S.running} aside: confirmed by ${why}`});
   if(!host){ if(S.running){ QR.list.unshift({id:S.running,frozenAt:Date.now()}); S.running=null; } closeAll(); return render(null,true); }
-  call('game.putAside').then(r=>{ applyQuick(r); closeAll(); toast(`${g?g.title:'The game'} is put aside. Pick it from Quick Resume to carry on.`); render(null,true); }).catch(e=>toast(e.message));
+  call('game.putAside',{why:why.slice(0,600)}).then(r=>{ applyQuick(r); closeAll(); toast(`${g?g.title:'The game'} is put aside. Pick it from Quick Resume to carry on.`); render(null,true); }).catch(e=>toast(e.message));
 }
 // Home: the games put aside, newest first.
 function quickShelf(){
@@ -7592,12 +7604,13 @@ function appsBody(){
 const OV = {shown:false};
 function overlayClose(){ send({type:'overlay', action:'close'}); }
 async function overlayShown(){
-  OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed');
+  OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
   // Tell Hearth once Quick Access has really been drawn, so it's made visible with something in it (shown
   // before that, gamescope sometimes put up an empty, black overlay over the game).
   if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
   while(S.layers.length>1) closeLayer();
   try{ const r=await call('perf.stats'); PERF.s=r; applyRunning(r); if(!r.runningId) S.running=null; if(r.quickResume) applyQuick({list:r.quickResume.list, on:r.quickResume.on}); }catch(e){}
+  QA_IN.open=performance.now();   // drawn from here: the guard counts from what's on screen
   if(S.running && !G(S.running)) await loadLibrary();
   qamFresh();
   if(!S.layers.includes('qam')) openLayer('qam'); else { renderQam(); setFocus($('#qam .qbody [data-f]')||$('#qam [data-f]'),true); }
@@ -8254,7 +8267,7 @@ function searchUpdate(){
 
 // ---------- action sheet (small option menu) ----------
 let sheet=null;
-function openSheet(s){ sheet=s; openLayer('sheet'); }
+function openSheet(s){ sheet=s; openLayer('sheet', s.focus); }
 function renderSheet(){
   const s=sheet; if(!s) return;
   $('#sheetBox').innerHTML = `<h3>${esc(s.title)}</h3>${s.sub?`<div class="muted" style="margin:-6px 0 14px">${esc(s.sub)}</div>`:''}${s.html?`<div class="sheethtml">${s.html}</div>`:''}
@@ -8315,6 +8328,7 @@ function openLayer(id, focusKey){
   LAYER_RENDER[id]?.();
   focusStack.push({el:focused, k:focused?.dataset.k});
   S.layers.push(id);
+  if(id==='qam' || (id==='sheet' && sheet && sheet.guard)) QA_IN.open=performance.now();
   $('#'+id).classList.add('open');
   syncScrim();
   // Quick Access starts on its first control (not its tab), in Hearth's panel as over a game.
@@ -11268,7 +11282,12 @@ let INPUT_LOG=false; try{ INPUT_LOG=localStorage.getItem('nimbus.inputLog')==='1
 function logInput(what){ if(INPUT_LOG) send({type:'log', text:`input ${what} | view ${S.view} layer ${S.layers.at(-1)||'-'} | focus ${focused?.dataset.k||'-'} | t ${Math.round(performance.now())}`}); }
 function input(k){
   logInput(k);
+  qaTrace(k);
   const top=S.layers.at(-1);
+  // A / Enter just after Quick Access (or its Put aside question) opened isn't a choice; neither is a second Guide / View
+  // (the press that opened it, delivered twice).
+  if(k==='a' && (top==='qam' || (top==='sheet' && sheet && sheet.guard)) && qaGuarded('A / Enter')) return;
+  if((k==='guide'||k==='select') && top==='qam' && qaGuarded(k==='guide'?'Guide':'View')) return;
   if(top==='launch'){
     // While a game starts: Guide / the Quick Access button open Quick Access over the starting screen (to close
     // the game, change power or the layout); B or A on "Show it now" stops waiting. Everything else waits.
@@ -11336,14 +11355,36 @@ function mapPad(k){
 }
 const PAD_NAMES = {a:'A',b:'B',x:'X',y:'Y',lb:'LB',rb:'RB',start:'Menu (☰)',select:'View (⧉)',guide:'Xbox / Guide',up:'D-pad up',down:'D-pad down',left:'D-pad left',right:'D-pad right'};
 const PAD_AT={};
-function padPressed(k){
+function padPressed(k, via){
+  qaVia(`controller ${k} (${via||'read by this page'})`);
   PAD_AT[k]=performance.now(); PAD_AT[mapPad(k)]=PAD_AT[k];   // swapped A/B or X/Y: the key Steam sends is the physical one
   setInput('pad');
   PAD.last=k;
   const t=$('#padTest'); if(t) t.textContent = PAD_NAMES[k]||k;
   input(k);
 }
-function hostPad(k){ if(oskOwns()) oskLogPath('host', mapPad(k)); padPressed(mapPad(k)); }
+function hostPad(k){ if(oskOwns()) oskLogPath('host', mapPad(k)); padPressed(mapPad(k), OVERLAY ? 'sent to Quick Access over the game' : "sent by Hearth"); }
+// ---- What chose something (the log line for Put aside, a press dropped just after Quick Access opened): where each
+// press, key or click came from, the last few of them, and when Quick Access (or the Put aside question) opened.
+var QA_IN = {via:'', recent:[], open:0};
+function qaVia(v){ QA_IN.via=v; }
+function qaTrace(k){
+  const v = QA_IN.via || `input ${k} (from the page itself, no device)`; QA_IN.via='';
+  QA_IN.last = v; QA_IN.recent.push(`${v} @${Math.round(performance.now())}`); if(QA_IN.recent.length>6) QA_IN.recent.shift();
+}
+function qaSince(){ return Math.round(performance.now()-QA_IN.open); }
+/** Where Quick Access is, what has the selection, and the presses that led here: for the log. */
+function qaWhere(){
+  return `${OVERLAY?'Quick Access over the game (overlay page)':"Hearth's window"}, ${qamTop()?'top dock':'side panel'}, selection ${focused&&focused.dataset.k||'-'}, ${qaSince()} ms after it opened; last input: ${QA_IN.recent.join(' · ')||'none'}`;
+}
+// Quick Access just opened (or the Put aside question): A / Enter / a click this soon isn't a choice (the press that
+// opened it, a key or button its opener sent along, a stray press from the controller's driver), and is dropped.
+const QA_GUARD_MS = 400;
+function qaGuarded(what){
+  if(qaSince() >= QA_GUARD_MS) return false;
+  send({type:'log', text:`quick access: ${what} ignored, ${qaSince()} ms after it opened (${QA_IN.last||'?'})`});
+  return true;
+}
 
 // Gamepad (standard mapping) with key-repeat on d-pad / stick
 const REPEAT = new Set(['up','down','left','right']);
@@ -11456,7 +11497,21 @@ function padHeldNow(){
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   return pads.some(p => p.buttons.some(b => b && b.pressed) || (p.mapping==='standard' && p.axes.slice(0,4).some(a => Math.abs(a) > .5)));
 }
+// Steam games (0.6.54): with Steam running, Steam Input's desktop configuration turns the controller into keys for any
+// window that isn't the game, so Quick Access over a Steam game got every press twice: from Hearth / Handheld Daemon
+// (the pad events) and again as arrow keys / Enter from Steam. A d-pad press moved two rows, so the selection went from
+// Back to game past Game settings onto Put aside, and the next A put the game aside. GOG games have no Steam behind
+// them, which is why only Steam games froze. Over a game on Hearth OS the controller comes from Hearth: these keys are
+// dropped there unless a real keyboard has typed in this page (Esc still works).
+const STEAM_ECHO_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Tab','PageUp','PageDown']);
+let STEAM_ECHO_LOGGED = 0;
+function steamEcho(e){
+  if(!(LINUX && OVERLAY && PAD.host && !INPUT.hwKbd && STEAM_ECHO_KEYS.has(e.key))) return false;
+  if(STEAM_ECHO_LOGGED !== QA_IN.open){ STEAM_ECHO_LOGGED = QA_IN.open; send({type:'log', text:`quick access: key ${e.key === ' ' ? 'Space' : e.key} dropped over the game (Steam Input turns the controller into keys too; the controller comes from Hearth)`}); }
+  return true;
+}
 document.addEventListener('keydown', e=>{
+  if(steamEcho(e)){ e.preventDefault(); e.stopImmediatePropagation(); return; }
   if(deskActive()){ if(DESK.rfb && document.activeElement && document.activeElement.tagName!=='CANVAS') try{ DESK.rfb.focus({preventScroll:true}); }catch(_){} return; }
   if(NAV_KEYS.has(e.key) && !e.ctrlKey && !e.altKey && padHeldNow()){ logInput('key '+e.key+' dropped (controller held)'); e.preventDefault(); e.stopImmediatePropagation(); return; }
   if(INPUT_LOG && NAV_KEYS.has(e.key)) logInput('key '+e.key);
@@ -11492,7 +11547,7 @@ document.addEventListener('keydown', e=>{
   // Steam or the controller's driver can also turn a press into a key a moment later (sometimes after the button
   // is up): the same move from the keyboard within 250 ms of the controller's is that echo, not a second press.
   if(performance.now()-(PAD_AT[k]||0) < 250 && !e.ctrlKey && !e.altKey){ logInput('key '+e.key+' dropped (echo of the controller)'); return; }
-  setInput('kbd'); input(k);
+  setInput('kbd'); qaVia('key '+e.key); input(k);
 });
 document.addEventListener('pointerdown', e=>{
   const touch=e.pointerType==='touch';
@@ -11503,6 +11558,9 @@ document.addEventListener('click', e=>{
   // A click beside Quick Access's top dock (on the game): back to the game, like B.
   if(e.target.id==='qam' && e.target.classList.contains('top') && S.layers.at(-1)==='qam') return back();
   const el=e.target.closest('[data-act],[data-f]'); if(!el) return;
+  // A click (a tap, a click-through) just as Quick Access or its Put aside question opened isn't a choice.
+  if(el.closest('#qam,#sheet') && (S.layers.at(-1)==='qam' || (S.layers.at(-1)==='sheet' && sheet && sheet.guard)) && qaGuarded(`a ${INPUT.touch?'tap':'click'} on ${el.dataset.k||el.dataset.act||'?'}`)) return;
+  qaVia(`${INPUT.touch?'tap':'mouse click'} on ${el.dataset.k||el.dataset.act||'?'}`); qaTrace('click');
   if(el.dataset.f!==undefined) setFocus(el,true);
   if(el.dataset.slider){ const s=el.querySelector('.slider'), r=s.getBoundingClientRect();
     if(e.clientX>=r.left-8 && e.clientX<=r.right+8){ const min=+el.dataset.min,max=+el.dataset.max,st=+el.dataset.step;

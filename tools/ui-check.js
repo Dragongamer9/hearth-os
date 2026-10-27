@@ -1298,6 +1298,55 @@ const path = require('path');
     if (main.now && main.now.tabs !== 'now perf controls friends capture quick') errors.push(`quick access: top dock tabs ${main.now.tabs} (want now perf controls friends capture quick)`);
     console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}, top dock ${main.rectTop}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
   }
+  // Put aside only on an explicit choice (0.6.54: over a Steam game Quick Access put the game aside by itself a moment
+  // after it opened). An A just after it opens is dropped, Put aside asks first with Cancel selected, the question drops
+  // an A in its first moment too, and every step is logged with what chose it. Steam Input's desktop configuration turns
+  // the controller into keys for the overlay window as well, so those keys are dropped over a game: that double press is
+  // what walked the selection from Back to game onto Put aside in the first place.
+  {
+    const pp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    pp.on('pageerror', e => errors.push(`put aside: ${e.message}`));
+    try {
+      await pp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux&overlay=full');
+      await pp.waitForTimeout(1200);
+      const r = await pp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms)), o = {};
+        window.__sent = []; window.send = m => { window.__sent.push(m); };
+        HOSTINFO.features = ['quickResume', 'pause']; QR.on = true;
+        const id = GAMES.filter(g => !g.cloud)[0].id;
+        const real = MOCK.call; window.__calls = [];
+        MOCK.call = (m, a) => { window.__calls.push(m); return m === 'perf.stats' ? real(m, a).then(x => Object.assign({}, x, { runningId: id, runningSince: Date.now() - 6e5 })) : real(m, a); };
+        S.running = id; S.runningSince = Date.now() - 6e5;
+        await overlayShown();
+        hostPad('a'); o.early = { layers: S.layers.join(','), close: window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length };
+        await wait(500);
+        // Steam Input's keys for the same presses (Steam games): dropped, the controller comes from Hearth.
+        PAD.host = true; const f0 = focused && focused.dataset.k;
+        for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        o.echo = { moved: (focused && focused.dataset.k) !== f0, layers: S.layers.join(','), close: window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length };
+        setFocus(document.querySelector('#qam [data-k="q-aside"]'), true);
+        hostPad('a'); o.asked = { top: S.layers.at(-1), focus: focused && focused.dataset.k };
+        hostPad('a'); o.quick = S.layers.at(-1);   // on Cancel, in the question's first moment: dropped
+        await wait(500); hostPad('a'); o.cancel = S.layers.at(-1);
+        hostPad('a'); await wait(500); hostPad('up'); hostPad('a');
+        o.calls = window.__sent.filter(m => m.type === 'log' && /^quick resume: putting /.test(m.text)).length;   // (the preview has no host to call)
+        o.aside = !S.running && QR.list.some(q => q.id === id);
+        o.logs = window.__sent.filter(m => m.type === 'log').map(m => m.text);
+        return o;
+      });
+      const perr = m => errors.push(`put aside: ${m}`);
+      if (r.early.layers !== 'qam' || r.early.close) perr(`an A right after it opened acted (${JSON.stringify(r.early)})`);
+      if (r.echo.moved || r.echo.layers !== 'qam' || r.echo.close) perr(`Steam's arrow keys / Enter over the game acted (${JSON.stringify(r.echo)})`);
+      if (r.asked.top !== 'sheet' || r.asked.focus !== 'sh-x') perr(`Put aside didn't ask first with Cancel selected (${JSON.stringify(r.asked)})`);
+      if (r.quick !== 'sheet') perr('an A right after the question opened answered it');
+      if (r.cancel !== 'qam') perr('Cancel did not go back to Quick Access');
+      if (r.calls !== 1 || !r.aside) perr(`put aside ${r.calls} times (want once, after the question; aside: ${r.aside})`);
+      if (!r.logs.some(t => /^quick access: A \/ Enter ignored/.test(t))) perr('the dropped A is not logged');
+      if (!r.logs.some(t => /^quick resume: Put aside picked for .* by controller a/.test(t)) || !r.logs.some(t => /^quick resume: putting .* aside: confirmed by controller a/.test(t))) perr('what chose Put aside is not logged: ' + r.logs.join(' | '));
+      console.log(`put aside: asked first ${r.asked.top} / ${r.asked.focus}, put aside ${r.calls} time(s), early A dropped ${r.early.layers === 'qam'}, Steam keys dropped ${!r.echo.moved}`);
+    } catch (e) { errors.push('put aside: ' + ((e && e.message) || e)); }
+    await pp.close();
+  }
 
 
   // Quick Access over a game is the top dock (the approved design): the overlay page (?overlay=full) with a game
