@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Hearth AI Test OS: dependency-free loopback prototype, not an installer."""
-import json, os, secrets, shutil, subprocess, sys, threading, urllib.parse, webbrowser
+import json, os, secrets, shutil, subprocess, sys, threading, urllib.parse, webbrowser, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import metrics
@@ -34,7 +34,11 @@ class Handler(BaseHTTPRequestHandler):
   self.send_header("Content-Length",str(len(data)))
   self.end_headers();self.wfile.write(data)
  def _authorized(self):
-  return self.headers.get("X-Hearth-Token")==TOKEN
+  origin=self.headers.get("Origin")
+  if origin:
+   expected=f"http://127.0.0.1:{self.server.server_port}"
+   if origin!=expected: return False
+  return secrets.compare_digest(self.headers.get("X-Hearth-Token",""),TOKEN)
  def do_GET(self):
   url=urllib.parse.urlsplit(self.path)
   if url.path=="/" and urllib.parse.parse_qs(url.query).get("token")==[TOKEN]:
@@ -45,6 +49,8 @@ class Handler(BaseHTTPRequestHandler):
   return self._respond(404,{"error":"Not found"})
  def do_POST(self):
   if self.path!="/api/ask" or not self._authorized():return self._respond(403,{"error":"Forbidden"})
+  if self.headers.get("Content-Type","").split(";")[0].strip()!="application/json":
+   return self._respond(415,{"error":"JSON requests only"})
   try:
    length=int(self.headers.get("Content-Length","0"))
    if length<=0 or length>12000: return self._respond(413,{"error":"Invalid prompt size"})
@@ -62,7 +68,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "exitCode":proc.returncode})
   except subprocess.TimeoutExpired:return self._respond(504,{"error":"AI call timed out after 90 seconds"})
   except (ValueError,TypeError,json.JSONDecodeError):return self._respond(400,{"error":"Invalid request"})
-  except Exception as e:return self._respond(500,{"error":str(e)[:300]})
+  except Exception:
+   return self._respond(500,{"error":"AI invocation failed; check the local server terminal for diagnostics"})
  def log_message(self,*args):pass
 if __name__=="__main__":
  server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
