@@ -3,6 +3,7 @@
 import json, os, secrets, shutil, subprocess, sys, threading, urllib.parse, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import metrics
 
 ROOT=Path(__file__).resolve().parent
 TOKEN=secrets.token_urlsafe(32)
@@ -18,6 +19,7 @@ def detect():
   "agents":[{"name":name,"found":bool(shutil.which(command)),"path":shutil.which(command),"command":command}
             for name,(command,_) in TOOLS.items()],
   "games":[{"name":name,"found":bool(shutil.which(cmd))} for name,cmd in GAMES.items()],
+  "telemetry":metrics.snapshot(),
   "system":{"platform":sys.platform,"hostname":os.uname().nodename if hasattr(os,"uname") else "unknown",
             "cpuThreads":os.cpu_count()}
  }
