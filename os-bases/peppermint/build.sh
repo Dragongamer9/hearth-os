@@ -1321,6 +1321,8 @@ cat /usr/lib/sysusers.d/hearth-image.conf
 # the image's /var is left empty. dpkg's database moves to /usr/lib/sysimage/dpkg (linked back from /var/lib/dpkg),
 # so the list of installed packages stays with the packages, read-only. /opt contents move to /usr/lib/opt.
 mkdir -p /usr/lib/sysimage
+mkdir -p /usr/share/hearth && apt-mark showmanual | sort -u > /usr/share/hearth/apt-baseline.list   # hearth-unlock: what the image itself installed
+chmod 755 /usr/bin/hearth-unlock 2>/dev/null || true
 mv /var/lib/dpkg /usr/lib/sysimage/dpkg
 VARCONF=/usr/lib/tmpfiles.d/hearth-var.conf
 : > "$VARCONF"
