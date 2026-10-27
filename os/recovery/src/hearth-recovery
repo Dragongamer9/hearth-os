@@ -1,0 +1,1249 @@
+#!/usr/bin/python3
+"""hearth-recovery: the engine behind Hearth Recovery, the USB stick that repairs an installed Hearth OS
+(like SteamOS's recovery image). Its screen (ui/shell.qml) runs these commands; every one prints JSON.
+
+Run as root (the recovery USB's screen runs as root). Works on the drives of the PC the stick started:
+
+  hearth-recovery scan                       the Hearth OS installs on the internal drives: device, edition, users,
+                                             deployments (current first, then previous) with versions and dates
+  hearth-recovery set-default SYS INDEX      start deployment INDEX next time (`ostree admin set-default`), the GRUB
+                                             menu rewritten to match on Peppermint (hearth-bls-grub), read back
+  hearth-recovery reset-display SYS [--desktop] [--user NAME]
+                                             Game Mode's display settings back to automatic (renderer, resolution,
+                                             display.sh...), and with --desktop the next start in Desktop Mode
+  hearth-recovery send-logs SYS [NOTE]       the installed system's journal (last boots) and Hearth's own logs,
+                                             sent the way hearth-send-logs sends them: {"code": ..., "url": ...}
+  hearth-recovery update SYS                 the newest published image of that edition deployed onto the drive
+                                             (ostree container image deploy), keeping /etc changes, /var and /home
+  hearth-recovery factory-reset SYS          erases the drive and installs Hearth OS again (hearth-install)
+  hearth-recovery usb-drives                 USB drives files can be copied to
+  hearth-recovery copy-home SYS USER PART    copies USER's home folder onto the USB drive partition PART
+  hearth-recovery wifi-list | wifi-connect SSID [PASSWORD] | net-status
+  hearth-recovery restart [SYS] | poweroff   restart (into that Hearth OS when the firmware allows: BootNext)
+
+SYS is a system's "id" from `scan` (its partition, and the btrfs subvolume holding the ostree sysroot).
+Long commands print progress lines `stage: {json}` and end with `result: {json}` or `error: <message>`.
+
+For tests, HEARTH_RECOVERY_FAKE=<dir> replaces the PC's drives with folders: <dir>/devices.json lists them
+({"name": ..., "fstype": ..., "uuid": ..., "disk": ...}) and <dir>/<name> is each one's contents; "mounting" is a
+symlink. HEARTH_RECOVERY_LOGS_URL replaces the log service.
+"""
+import contextlib
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+RUN = os.environ.get('HEARTH_RECOVERY_RUN', '/run/hearth-recovery')
+FAKE = os.environ.get('HEARTH_RECOVERY_FAKE', '')
+LOGS_URL = os.environ.get('HEARTH_RECOVERY_LOGS_URL', 'https://hearth-counter.game305-cl.workers.dev/v1/logs')
+INSTALLER = os.environ.get('HEARTH_RECOVERY_INSTALLER', '/usr/libexec/nimbus/hearth-install')
+MAX_SEND = 600_000
+# The images Hearth OS installs from (the same table as hearth-install's EDITIONS): the only ones `update` deploys.
+EDITIONS = {
+    'anatase': {'image': 'ghcr.io/dragongamer9/hearth-os:latest', 'label': 'Hearth OS on Anatase'},
+    'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Hearth OS on Peppermint'},
+    'ubuntu': {'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing', 'label': 'Hearth OS on Ubuntu'},
+    'cachyos': {'image': 'ghcr.io/dragongamer9/hearth-cachyos:testing', 'label': 'Hearth OS on CachyOS'},
+}
+IMAGE_EDITION = {'hearth-os': 'anatase', 'hearth-peppermint': 'peppermint', 'hearth-ubuntu': 'ubuntu', 'hearth-cachyos': 'cachyos'}
+# Game Mode's settings that can leave the screen black (in ~/.config/nimbus): renderer (Settings › Display ›
+# Renderer, hearth-core/src/renderer.rs), its one-start choice and trial counters, Desktop Mode's saved screen modes
+# (display.sh, display.rs), a Game Mode mode on trial, Nvidia's drawing choice.
+DISPLAY_FILES = ('renderer-once', 'renderer-chromium-starts', 'renderer-qt-starts', 'renderer-qt-crashes', 'display.sh',
+                 'display-pending.json', 'nvidia-drawing')
+
+
+class Fail(Exception):
+    pass
+
+
+def sh(cmd, check=True, input=None, timeout=None, **kw):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, input=input, timeout=timeout, **kw)
+    except FileNotFoundError:
+        if check:
+            raise Fail(f'{cmd[0]} is missing on this USB stick')
+        return subprocess.CompletedProcess(cmd, 127, '', f'{cmd[0]}: not found')
+    except subprocess.TimeoutExpired:
+        if check:
+            raise Fail(f'{os.path.basename(cmd[0])} took too long')
+        return subprocess.CompletedProcess(cmd, 124, '', 'timed out')
+    if check and r.returncode != 0:
+        last = ((r.stderr or r.stdout or '').strip().splitlines() or [' '.join(cmd) + ' failed'])[-1]
+        raise Fail(f'{os.path.basename(cmd[0])}: {last}')
+    return r
+
+
+def stage(name, pct, text, **extra):
+    print('stage: ' + json.dumps({'stage': name, 'pct': round(max(0, min(100, pct)), 1), 'text': text, **extra}), flush=True)
+
+
+def read(path, default=''):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def kv_file(text):
+    """os-release style KEY=value (quotes taken off)."""
+    out = {}
+    for line in text.splitlines():
+        m = re.match(r'^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$', line)
+        if m:
+            v = m.group(2)
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'':
+                v = v[1:-1]
+            out[m.group(1)] = v
+    return out
+
+
+# ------------------------------------------------------------------ drives and mounting
+
+def block_devices():
+    """[{name, path, fstype, uuid, label, disk, model, size, removable, tran}] for every partition (or whole-disk
+    file system), from lsblk; in a test, from HEARTH_RECOVERY_FAKE/devices.json."""
+    if FAKE:
+        out = []
+        for d in json.loads(read(os.path.join(FAKE, 'devices.json'), '[]')):
+            out.append({'name': d['name'], 'path': 'fake:' + d['name'], 'fstype': d.get('fstype', 'btrfs'), 'uuid': d.get('uuid', ''),
+                        'label': d.get('label', ''), 'disk': d.get('disk', 'fake:disk'), 'model': d.get('model', 'Test drive'),
+                        'size': int(d.get('size', 0)), 'removable': bool(d.get('removable')), 'tran': d.get('tran', 'nvme'),
+                        'partuuid': d.get('partuuid', '')})
+        return out
+    tree = json.loads(sh(['lsblk', '-J', '-b', '-o', 'NAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,FSTYPE,LABEL,UUID,PARTUUID']).stdout or '{}')
+    out = []
+
+    def walk(node, disk):
+        kids = node.get('children') or []
+        if node.get('fstype') and node.get('type') in ('part', 'disk', 'lvm', 'crypt'):
+            out.append({'name': node['name'], 'path': node['path'], 'fstype': node.get('fstype') or '', 'uuid': node.get('uuid') or '',
+                        'label': node.get('label') or '', 'disk': disk['path'], 'model': (disk.get('model') or '').strip() or 'Drive',
+                        'size': int(node.get('size') or 0), 'removable': bool(disk.get('rm')), 'tran': disk.get('tran') or '',
+                        'partuuid': (node.get('partuuid') or '').lower()})
+        for k in kids:
+            walk(k, disk)
+
+    for d in tree.get('blockdevices', []):
+        if d.get('type') in ('disk',) and not re.match(r'/dev/(zram|sr|ram|loop)', d['path']) or \
+                (d.get('type') == 'loop' and os.environ.get('HEARTH_RECOVERY_LOOP')):
+            walk(d, d)
+    return out
+
+
+def live_disk():
+    """The USB stick this runs from (never touched)."""
+    if FAKE:
+        return 'fake:usb'
+    src = sh(['findmnt', '-no', 'SOURCE', '/run/initramfs/live'], check=False).stdout.strip()
+    if not src:
+        return ''
+    pk = sh(['lsblk', '-no', 'PKNAME', src], check=False).stdout.strip().splitlines()
+    return '/dev/' + pk[0] if pk and pk[0] else src
+
+
+def by_uuid(devs, uuid):
+    return next((d for d in devs if uuid and d['uuid'].lower() == uuid.lower()), None)
+
+
+def is_mounted(path):
+    if FAKE:
+        return os.path.islink(path)
+    return os.path.ismount(path)
+
+
+def mount(dev, target, opts=()):
+    """Mounts `dev` (a block_devices() path) at `target`. Fake drives become a symlink to their folder (a btrfs
+    subvol=X option picks that subfolder)."""
+    if FAKE:
+        name = dev[5:] if dev.startswith('fake:') else dev
+        src = os.path.join(FAKE, name)
+        sub = next((o.split('=', 1)[1] for o in opts if o.startswith('subvol=')), '')
+        if sub:
+            src = os.path.join(src, sub)
+        if os.path.isdir(target) and not os.path.islink(target):
+            if os.listdir(target):
+                raise Fail(f'{target} is not empty')
+            os.rename(target, target + '.hearth-mountpoint')
+        elif os.path.lexists(target):
+            os.remove(target)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        os.symlink(src, target)
+        return
+    os.makedirs(target, exist_ok=True)
+    cmd = ['mount']
+    opts = list(opts)
+    if '-t' in opts:
+        i = opts.index('-t')
+        cmd += ['-t', opts[i + 1]]
+        del opts[i:i + 2]
+    if opts:
+        cmd += ['-o', ','.join(opts)]
+    sh(cmd + [dev, target])
+
+
+def umount(target):
+    if FAKE:
+        if os.path.islink(target):
+            os.remove(target)
+            if os.path.isdir(target + '.hearth-mountpoint'):
+                os.rename(target + '.hearth-mountpoint', target)
+        return
+    if os.path.ismount(target):
+        sh(['sync'], check=False)
+        if sh(['umount', target], check=False).returncode != 0:
+            sh(['umount', '-l', target], check=False)
+
+
+@contextlib.contextmanager
+def mounted_at(dev, target, opts=()):
+    mount(dev, target, opts)
+    try:
+        yield target
+    finally:
+        umount(target)
+
+
+def find_sysroots(top):
+    """Folders under a mounted file system that hold an ostree sysroot: the top itself (xfs/ext4, bootc's own
+    installs) or a first-level btrfs subvolume (Hearth's installer: "root"). Returns ['', 'root', ...]."""
+    out = []
+    if os.path.isdir(os.path.join(top, 'ostree', 'deploy')):
+        out.append('')
+    try:
+        names = sorted(os.listdir(top))
+    except OSError:
+        names = []
+    for n in names:
+        if n in ('ostree', 'boot', 'home') and '' in out:
+            continue
+        if os.path.isdir(os.path.join(top, n, 'ostree', 'deploy')):
+            out.append(n)
+    return out
+
+
+# ------------------------------------------------------------------ the installed system: deployments
+
+def resolve_in(root, path):
+    """`path` inside the tree at `root`, following symlinks as if `root` were / (ostree's boot links are relative,
+    but an absolute one must not leave the drive)."""
+    parts = [p for p in path.split('/') if p]
+    cur = []
+    hops = 0
+    while parts:
+        p = parts.pop(0)
+        if p == '.':
+            continue
+        if p == '..':
+            cur = cur[:-1]
+            continue
+        full = os.path.join(root, *cur, p)
+        if os.path.islink(full):
+            hops += 1
+            if hops > 40:
+                raise Fail('too many links under ' + path)
+            t = os.readlink(full)
+            if t.startswith('/'):
+                cur = []
+            parts = [x for x in t.split('/') if x] + parts
+        else:
+            cur.append(p)
+    return os.path.join(root, *cur)
+
+
+def bls_entries(boot):
+    """The boot entries ostree wrote (Boot Loader Specification files), the one that starts first (highest
+    "version") first: [{file, title, version, linux, options, ostree}]."""
+    out = []
+    for f in glob.glob(os.path.join(boot, 'loader', 'entries', '*.conf')):
+        e = {'file': os.path.basename(f), 'title': '', 'version': 0, 'linux': '', 'options': '', 'initrd': []}
+        for line in read(f).splitlines():
+            m = re.match(r'^(\w+)\s+(.*)$', line.strip())
+            if not m:
+                continue
+            k, v = m.group(1), m.group(2).strip()
+            if k == 'version':
+                e['version'] = int(v) if v.isdigit() else 0
+            elif k == 'initrd':
+                e['initrd'].append(v)
+            elif k in ('title', 'linux', 'options'):
+                e[k] = v
+        m = re.search(r'(?:^|\s)ostree=(\S+)', e['options'])
+        e['ostree'] = m.group(1) if m else ''
+        out.append(e)
+    out.sort(key=lambda e: (-e['version'], e['file']))
+    return out
+
+
+def origin_image(dep):
+    """The container image a deployment came from (its .origin file), without the transport:
+    'ghcr.io/dragongamer9/hearth-peppermint:testing', or ''."""
+    text = read(dep + '.origin')
+    m = re.search(r'^container-image-reference\s*=\s*(\S+)', text, re.M)
+    if not m:
+        return ''
+    return strip_transport(m.group(1))
+
+
+def strip_transport(ref):
+    for pre in ('ostree-unverified-registry:', 'ostree-unverified-image:docker://', 'ostree-unverified-image:registry:',
+                'ostree-image-signed:docker://', 'ostree-image-signed:registry:', 'docker://', 'registry:'):
+        if ref.startswith(pre):
+            return ref[len(pre):]
+    m = re.match(r'^ostree-remote-(?:image|registry):[^:]+:(?:docker://|registry:)?(.*)$', ref)
+    return m.group(1) if m else ref
+
+
+def edition_of(image, osrel, installed=None):
+    """anatase / peppermint / ubuntu / cachyos, from the image name, else the installer's note, else os-release."""
+    name = image.split('@')[0].rsplit('/', 1)[-1].split(':')[0] if image else ''
+    if name in IMAGE_EDITION:
+        return IMAGE_EDITION[name]
+    if installed and installed.get('edition') in EDITIONS:
+        return installed['edition']
+    ids = (osrel.get('ID', '') + ' ' + osrel.get('ID_LIKE', '')).lower()
+    if 'peppermint' in ids or 'debian' in ids:
+        return 'peppermint'
+    if 'ubuntu' in ids:
+        return 'ubuntu'
+    if 'cachyos' in ids or 'arch' in ids:
+        return 'cachyos'
+    return 'anatase'
+
+
+def fmt_date(ts):
+    return time.strftime('%Y-%m-%d %H:%M', time.localtime(ts)) if ts else ''
+
+
+def commit_date(sysroot, csum):
+    """When the deployment's image was built (its ostree commit), as a Unix time, or 0."""
+    if not csum or not shutil.which('ostree'):
+        return 0
+    r = sh(['ostree', 'show', '--repo', os.path.join(sysroot, 'ostree', 'repo'), csum], check=False, timeout=20)
+    m = re.search(r'^Date:\s+(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\s*([+-]\d{4})?', r.stdout or '', re.M)
+    if not m:
+        return 0
+    try:
+        import datetime
+        tz = m.group(2) or '+0000'
+        dt = datetime.datetime.strptime(m.group(1) + ' ' + tz, '%Y-%m-%d %H:%M:%S %z')
+        return int(dt.timestamp())
+    except ValueError:
+        return 0
+
+
+def deployment_info(sysroot, dep, entry=None):
+    name = os.path.basename(dep)
+    csum, _, serial = name.rpartition('.')
+    stateroot = os.path.basename(os.path.dirname(os.path.dirname(dep)))
+    osrel = kv_file(read(os.path.join(dep, 'usr/lib/os-release')) or read(os.path.join(dep, 'etc/os-release')))
+    hv = read(os.path.join(dep, 'usr/share/nimbus/version')).strip()
+    image = origin_image(dep)
+    try:
+        installed = json.loads(read(os.path.join(dep, 'etc/nimbus/installed.json'), '{}'))
+    except ValueError:
+        installed = {}
+    try:
+        deployed = int(os.stat(dep).st_mtime)
+    except OSError:
+        deployed = 0
+    built = commit_date(sysroot, csum)
+    return {
+        'path': dep, 'stateroot': stateroot, 'checksum': csum, 'serial': serial,
+        'entry': entry['file'] if entry else '', 'title': entry['title'] if entry else '',
+        'hearthVersion': hv, 'osName': osrel.get('PRETTY_NAME') or osrel.get('NAME') or '',
+        'osVersion': osrel.get('VERSION') or osrel.get('VERSION_ID') or osrel.get('IMAGE_VERSION') or '',
+        'image': image, 'edition': edition_of(image, osrel, installed),
+        'deployed': deployed, 'deployedText': fmt_date(deployed), 'built': built, 'builtText': fmt_date(built),
+        'kargs': entry['options'] if entry else '',
+    }
+
+
+def deployments(sysroot, boot):
+    """The deployments in the order the boot menu starts them: [0] is the one that starts by default, [1] the
+    previous version. From ostree's boot entries; without any, every deployment folder (newest first)."""
+    out, seen = [], set()
+    for e in bls_entries(boot):
+        if not e['ostree']:
+            continue
+        dep = resolve_in(sysroot, e['ostree'])
+        if not os.path.isdir(dep) or dep in seen:
+            continue
+        seen.add(dep)
+        out.append(deployment_info(sysroot, dep, e))
+    if not out:
+        dirs = [d for d in glob.glob(os.path.join(sysroot, 'ostree', 'deploy', '*', 'deploy', '*.*'))
+                if os.path.isdir(d) and re.search(r'\.\d+$', d)]
+        dirs.sort(key=lambda d: -os.stat(d).st_mtime)
+        out = [deployment_info(sysroot, d) for d in dirs]
+    for i, d in enumerate(out):
+        d['index'] = i
+        d['role'] = 'current' if i == 0 else 'previous' if i == 1 else 'older'
+    return out
+
+
+def fstab(dep):
+    """[(spec, mountpoint, fstype, options)] from a deployment's /etc/fstab."""
+    out = []
+    for line in read(os.path.join(dep, 'etc/fstab')).splitlines():
+        line = line.split('#', 1)[0].strip()
+        f = line.split()
+        if len(f) >= 3:
+            out.append((f[0], f[1], f[2], f[3] if len(f) > 3 else 'defaults'))
+    return out
+
+
+def fstab_dev(devs, spec):
+    if spec.startswith('UUID='):
+        return by_uuid(devs, spec[5:])
+    if spec.startswith('PARTUUID='):
+        return next((d for d in devs if d.get('partuuid') == spec[9:].lower()), None)
+    if spec.startswith('LABEL='):
+        return next((d for d in devs if d['label'] == spec[6:]), None)
+    return next((d for d in devs if d['path'] == spec), None)
+
+
+def users_of(dep):
+    out = []
+    for line in read(os.path.join(dep, 'etc/passwd')).splitlines():
+        f = line.split(':')
+        if len(f) >= 7 and f[2].isdigit() and 1000 <= int(f[2]) < 60000 and not f[6].endswith(('nologin', 'false')):
+            out.append({'name': f[0], 'full': f[4].split(',')[0] or f[0], 'uid': int(f[2]), 'gid': int(f[3]) if f[3].isdigit() else int(f[2]), 'home': f[5]})
+    return out
+
+
+class System:
+    """One installed Hearth OS: where its parts are and, while open, where they're mounted."""
+
+    def __init__(self, dev, subvol, devs):
+        self.dev = dev
+        self.subvol = subvol
+        self.devs = devs
+        self.boot_dev = None
+        self.home_dev = None
+        self.home_opts = []
+        self.esp_dev = None
+        self.sysroot = None
+        self.boot = None
+        self.home = None
+        self.deps = []
+
+    @property
+    def id(self):
+        return self.dev['path'] + (':' + self.subvol if self.subvol else '')
+
+    def root_opts(self, rw):
+        o = ['rw' if rw else 'ro']
+        if self.subvol and self.dev['fstype'] == 'btrfs':
+            o.append('subvol=' + self.subvol)
+        return o
+
+    def learn_layout(self, sysroot):
+        """/boot, /boot/efi and /var/home from the deployments' fstab (the newest one that has an fstab)."""
+        for dep in sorted(glob.glob(os.path.join(sysroot, 'ostree', 'deploy', '*', 'deploy', '*.*')), key=lambda d: -os.stat(d).st_mtime):
+            tab = fstab(dep) if os.path.isdir(dep) else []
+            if not tab:
+                continue
+            for spec, mp, fs, opts in tab:
+                d = fstab_dev(self.devs, spec)
+                if mp == '/boot':
+                    self.boot_dev = d
+                elif mp == '/boot/efi':
+                    self.esp_dev = d
+                elif mp in ('/var/home', '/home'):
+                    self.home_dev = d
+                    self.home_opts = [o for o in opts.split(',') if o.startswith('subvol=')]
+            return
+
+    @contextlib.contextmanager
+    def open(self, rw=False, boot=True, home=False):
+        """Mounts the sysroot at RUN/sys (its /boot partition at RUN/sys/boot) and, with home, the home folders at
+        RUN/home. Everything comes off again afterwards."""
+        base = os.path.join(RUN, 'sys')
+        stack = contextlib.ExitStack()
+        with stack:
+            for p in (os.path.join(RUN, 'home'), os.path.join(base, 'boot'), base):
+                umount(p)
+            stack.enter_context(mounted_at(self.dev['path'], base, self.root_opts(rw)))
+            self.sysroot = base
+            if not self.boot_dev and not self.esp_dev:
+                self.learn_layout(base)
+            self.boot = os.path.join(base, 'boot')
+            if boot and self.boot_dev:
+                if FAKE or os.path.isdir(self.boot):
+                    stack.enter_context(mounted_at(self.boot_dev['path'], self.boot, ['rw' if rw else 'ro']))
+            self.home = None
+            if home and self.home_dev:
+                opts = ['rw' if rw else 'ro'] + (self.home_opts if self.home_dev['fstype'] == 'btrfs' else [])
+                stack.enter_context(mounted_at(self.home_dev['path'], os.path.join(RUN, 'home'), opts))
+                self.home = os.path.join(RUN, 'home')
+            self.deps = deployments(self.sysroot, self.boot)
+            try:
+                yield self
+            finally:
+                self.sysroot = self.boot = self.home = None
+
+    def stateroot_var(self, stateroot=None):
+        st = stateroot or (self.deps[0]['stateroot'] if self.deps else 'default')
+        return os.path.join(self.sysroot, 'ostree', 'deploy', st, 'var')
+
+    def host_path(self, path):
+        """Where a path of the installed system (/var/home/sam, /var/log/journal) is on the recovery USB."""
+        if path.startswith(('/var/home/', '/home/')) or path in ('/var/home', '/home'):
+            rest = path.split('/home', 1)[1].lstrip('/')
+            if self.home:
+                return os.path.join(self.home, rest)
+            return os.path.join(self.stateroot_var(), 'home', rest)
+        if path.startswith('/var/'):
+            return os.path.join(self.stateroot_var(), path[5:])
+        if path.startswith('/etc/') and self.deps:
+            return os.path.join(self.deps[0]['path'], path[1:])
+        return os.path.join(self.sysroot, path.lstrip('/'))
+
+    def summary(self):
+        cur = self.deps[0] if self.deps else {}
+        users = users_of(cur['path']) if cur else []
+        return {
+            'id': self.id, 'device': self.dev['path'], 'disk': self.dev['disk'], 'model': self.dev['model'],
+            'size': self.dev['size'], 'fstype': self.dev['fstype'], 'subvol': self.subvol,
+            'boot': self.boot_dev['path'] if self.boot_dev else '', 'esp': self.esp_dev['path'] if self.esp_dev else '',
+            'edition': cur.get('edition', ''), 'editionLabel': EDITIONS.get(cur.get('edition', ''), {}).get('label', 'Hearth OS'),
+            'users': [{k: u[k] for k in ('name', 'full', 'home')} for u in users],
+            'deployments': [{k: v for k, v in d.items() if k not in ('path', 'kargs')} for d in self.deps],
+            'hostname': read(os.path.join(cur['path'], 'etc/hostname')).strip() if cur else '',
+        }
+
+
+def find_systems():
+    """Every installed Hearth OS (any ostree sysroot) on the PC's drives, except the USB stick this runs from."""
+    devs = block_devices()
+    live = live_disk()
+    probe = os.path.join(RUN, 'probe')
+    found = []
+    for d in devs:
+        if d['fstype'] not in ('btrfs', 'ext4', 'xfs') or (live and d['disk'] == live) or d['label'] in ('HearthRecov', 'Hearth-Live', 'HEARTH-CI'):
+            continue
+        opts = ['ro'] + (['subvolid=5'] if d['fstype'] == 'btrfs' and not FAKE else [])
+        try:
+            with mounted_at(d['path'], probe, opts):
+                for sub in find_sysroots(probe):
+                    found.append(System(d, sub, devs))
+        except Fail:
+            continue
+    return found
+
+
+def get_system(sid):
+    for s in find_systems():
+        if s.id == sid:
+            return s
+    raise Fail("that Hearth OS isn't there any more: go back and look again")
+
+
+def scan():
+    out = []
+    for s in find_systems():
+        try:
+            with s.open(rw=False, boot=True, home=False):
+                if s.deps:
+                    out.append(s.summary())
+        except Fail as e:
+            out.append({'id': s.id, 'device': s.dev['path'], 'model': s.dev['model'], 'error': str(e), 'deployments': []})
+    return {'systems': out}
+
+
+# ------------------------------------------------------------------ 1. start the previous version
+
+def grub_menu_ids(boot):
+    """The menu entries hearth-bls-grub wrote (Peppermint/Debian's GRUB menu), in order: [(title, ostree= path)]."""
+    text = read(os.path.join(boot, 'grub2', 'hearth-bls.cfg'))
+    out = []
+    for m in re.finditer(r"^menuentry\s+'((?:[^']|'\\'')*)'.*?\{(.*?)^\}", text, re.M | re.S):
+        o = re.search(r'ostree=(\S+)', m.group(2))
+        out.append((m.group(1), o.group(1) if o else ''))
+    return out
+
+
+def refresh_grub(s, dep_path):
+    """Peppermint (and the other Debian/Ubuntu editions): GRUB's menu is written from ostree's entries by the
+    image's own hearth-bls-grub. Fedora's GRUB (Anatase) reads the entries itself: nothing to do."""
+    script = os.path.join(dep_path, 'usr/libexec/nimbus/hearth-bls-grub')
+    if not os.path.isfile(script):
+        return False
+    sh(['sh', script, '--boot', s.boot])
+    return True
+
+
+def swap_bls(boot, first_file):
+    """Without ostree: makes `first_file` the entry that starts first by giving it the highest version (the
+    others keep their order below it). ostree writes the same thing when it changes the default."""
+    entries = bls_entries(boot)
+    order = [e for e in entries if e['file'] == first_file] + [e for e in entries if e['file'] != first_file]
+    n = len(order)
+    for i, e in enumerate(order):
+        p = os.path.join(boot, 'loader', 'entries', e['file'])
+        text = read(p)
+        text = re.sub(r'^version\s+\d+\s*$', f'version {n - i}', text, flags=re.M) if re.search(r'^version\s', text, re.M) else f'version {n - i}\n' + text
+        tmp = p + '.hearth-tmp'
+        with open(tmp, 'w') as f:
+            f.write(text)
+        os.replace(tmp, p)
+
+
+def set_default(sid, index):
+    s = get_system(sid)
+    index = int(index)
+    with s.open(rw=True, boot=True):
+        if index < 0 or index >= len(s.deps):
+            raise Fail('that version is gone: go back and look again')
+        target = s.deps[index]
+        how = 'already'
+        if index != 0:
+            how = 'ostree'
+            r = sh(['ostree', 'admin', 'set-default', '--sysroot', s.sysroot, str(index)], check=False, timeout=300)
+            if r.returncode != 0:
+                if r.returncode == 127 or re.search(r'Unknown (command|subcommand)|not found', (r.stderr or '') + (r.stdout or ''), re.I):
+                    how = 'entries'
+                    swap_bls(s.boot, target['entry'])
+                else:
+                    raise Fail('ostree: ' + (((r.stderr or r.stdout).strip().splitlines() or ['failed'])[-1]))
+        grub = refresh_grub(s, target['path'])
+        sh(['sync'], check=False)
+        # Read back: the boot entries (and Peppermint's GRUB menu) must now start the chosen version.
+        after = deployments(s.sysroot, s.boot)
+        if not after or after[0]['checksum'] != target['checksum'] or after[0]['serial'] != target['serial']:
+            raise Fail("the change didn't stick: the boot menu still starts another version")
+        menu = grub_menu_ids(s.boot) if grub else []
+        if grub:
+            if not menu or resolve_in(s.sysroot, menu[0][1]) != resolve_in(s.sysroot, after[0]['path'][len(s.sysroot):]):
+                raise Fail("the boot entries changed, but GRUB's menu (hearth-bls-grub) doesn't start that version first")
+        return {'ok': True, 'how': how, 'grubMenu': [t for t, _ in menu], 'default': {k: after[0][k] for k in ('hearthVersion', 'osVersion', 'deployedText', 'builtText', 'checksum', 'title')},
+                'deployments': [{k: v for k, v in d.items() if k not in ('path', 'kargs')} for d in after]}
+
+
+# ------------------------------------------------------------------ 2. desktop mode next time / reset display
+
+def keep_owner(path, ref):
+    try:
+        st = os.stat(ref)
+        os.chown(path, st.st_uid, st.st_gid)
+    except OSError:
+        pass
+
+
+def session_conf_text(old, desktop):
+    """session.conf without Game Mode's screen options (NIMBUS_GAMESCOPE_ARGS: resolution, refresh rate) and, with
+    desktop, starting in Desktop Mode. Everything else stays."""
+    lines = [l for l in old.splitlines() if not re.match(r'^\s*(export\s+)?NIMBUS_GAMESCOPE_ARGS=', l)]
+    if desktop:
+        lines = [l for l in lines if not re.match(r'^\s*(export\s+)?NIMBUS_START_MODE=', l)]
+        lines.append('NIMBUS_START_MODE=desktop   # set by Hearth Recovery')
+    return '\n'.join(lines).strip('\n') + '\n' if lines else ''
+
+
+def reset_user_display(home, uid, gid, desktop, stamp):
+    cfg = os.path.join(home, '.config', 'nimbus')
+    changed = []
+    backup = os.path.join(cfg, 'recovery-backup-' + stamp)
+
+    def save(p):
+        if os.path.isfile(p):
+            os.makedirs(backup, exist_ok=True)
+            shutil.copy2(p, os.path.join(backup, os.path.basename(p)))
+
+    for p in (os.path.join(home, '.config'), cfg):
+        if not os.path.isdir(p):
+            os.makedirs(p, exist_ok=True)
+            os.chown(p, uid, gid)
+    conf = os.path.join(cfg, 'session.conf')
+    old = read(conf)
+    new = session_conf_text(old, desktop)
+    if new != old:
+        save(conf)
+        with open(conf, 'w') as f:
+            f.write(new)
+        os.chown(conf, uid, gid)
+        changed.append('session.conf' + (' (starts in Desktop Mode)' if desktop else ' (Game Mode resolution back to automatic)'))
+    ren = os.path.join(cfg, 'renderer')
+    if read(ren).strip() not in ('', 'auto'):
+        save(ren)
+        changed.append(f'renderer ({read(ren).strip()} → automatic)')
+    with open(ren, 'w') as f:
+        f.write('auto')
+    os.chown(ren, uid, gid)
+    for n in DISPLAY_FILES:
+        p = os.path.join(cfg, n)
+        if os.path.lexists(p):
+            save(p)
+            os.remove(p)
+            changed.append(n + ' removed')
+    if os.path.isdir(backup):
+        for p in [backup] + [os.path.join(backup, x) for x in os.listdir(backup)]:
+            os.chown(p, uid, gid)
+    return changed
+
+
+def reset_display(sid, desktop=False, user=None):
+    s = get_system(sid)
+    with s.open(rw=True, boot=False, home=True):
+        if not s.deps:
+            raise Fail('no Hearth OS found there')
+        people = [u for u in users_of(s.deps[0]['path']) if not user or u['name'] == user]
+        if not people:
+            raise Fail('no user account found on that Hearth OS')
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        out = []
+        for u in people:
+            home = s.host_path(u['home'])
+            if not os.path.isdir(home):
+                out.append({'user': u['name'], 'changed': [], 'note': 'no home folder'})
+                continue
+            out.append({'user': u['name'], 'changed': reset_user_display(home, u['uid'], u['gid'], desktop, stamp), 'backup': '~/.config/nimbus/recovery-backup-' + stamp})
+        sh(['sync'], check=False)
+        return {'ok': True, 'desktop': desktop, 'users': out}
+
+
+# ------------------------------------------------------------------ 3. send logs
+
+def redact(text, user='', home=''):
+    """Personal details out, as Hearth's own log sender does (hearth-core/src/logs.rs `redact`)."""
+    t = text
+    if len(home) > 1:
+        t = t.replace(home, '~')
+    if user:
+        t = re.sub(r'(?:/var)?/home/' + re.escape(user) + r'\b', '~', t)
+    rules = [
+        (r'(?i)("?(?:access_token|refresh_token|id_token|token|password|passwd|psk|secret|cookie|authorization|session_?id|code)"?\s*[:=]\s*"?)[^\s",&}]{4,}', r'\1[removed]'),
+        (r'(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}', r'\1[removed]'),
+        (r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[email]'),
+        (r'\b7656119\d{10}\b', '[steam-id]'),
+        (r'(?i)([?&](?:code|token|key|sig|signature)=)[^&\s]+', r'\1[removed]'),
+        (r'(?i)(ssid[\s:=]+)\S+', r'\1[wifi]'),
+    ]
+    for rx, to in rules:
+        t = re.sub(rx, to, t)
+    if len(user) >= 3:
+        t = re.sub(r'\b' + re.escape(user) + r'\b', '[user]', t)
+    return t
+
+
+def tail(text, n):
+    lines = text.splitlines()
+    return '\n'.join(lines[-n:])
+
+
+def journal_boots(jdir):
+    """[(offset, boot id, first, last)] of the journal in jdir, newest last."""
+    r = sh(['journalctl', '-D', jdir, '--list-boots', '--no-pager'], check=False, timeout=60)
+    out = []
+    for line in (r.stdout or '').splitlines():
+        m = re.match(r'^\s*(-?\d+)\s+([0-9a-f]{32})\s+(.*)$', line)
+        if m:
+            rest = m.group(3).strip()
+            halves = re.split(r'\s[—-]\s|\s{2,}', rest, maxsplit=1)
+            out.append((int(m.group(1)), m.group(2), halves[0].strip(), halves[1].strip() if len(halves) > 1 else ''))
+    return out
+
+
+def journal_section(jdir, boots=3):
+    """The last `boots` boots of the installed system's journal: for each, its errors and warnings and its last
+    lines (where a black screen usually shows: the session, gamescope, the graphics driver)."""
+    if not os.path.isdir(jdir):
+        return f'(no journal at {jdir}: the installed system keeps no logs on the drive)'
+    if not shutil.which('journalctl'):
+        return '(journalctl is missing on this USB stick)'
+    listed = journal_boots(jdir)
+    parts = ['Boots in the journal (newest last):\n' + '\n'.join(f'{o:>4} {b} {a} - {z}' for o, b, a, z in listed[-10:])]
+    for off, bid, first, last in reversed(listed[-boots:]):
+        warn = sh(['journalctl', '-D', jdir, '-b', bid, '-p', 'warning', '--no-pager', '-o', 'short-iso', '-n', '600'], check=False, timeout=120).stdout or ''
+        full = sh(['journalctl', '-D', jdir, '-b', bid, '--no-pager', '-o', 'short-iso', '-n', '2500'], check=False, timeout=120).stdout or ''
+        hearth = sh(['journalctl', '-D', jdir, '-b', bid, '--no-pager', '-o', 'short-iso', '-n', '400', '-g',
+                     'nimbus|hearth|gamescope|labwc|plasmalogin|sddm|amdgpu|nvidia|i915|xe |drm|hhd'], check=False, timeout=120).stdout or ''
+        parts.append(f'----- boot {off} ({bid}) {first} - {last}: errors and warnings -----\n{warn.strip()}')
+        parts.append(f'----- boot {off}: Hearth, the session and graphics -----\n{hearth.strip()}')
+        parts.append(f'----- boot {off}: last lines -----\n{tail(full, 900)}')
+    return '\n\n'.join(parts)
+
+
+HEARTH_LOGS = ('session.log', 'session.log.old', 'bridge.log', 'labwc.log', 'pad.log', 'input.log', 'ci-window.log', 'seat-host.log',
+               'multiplay.log', 'watchdog.log', 'electron.log', 'qml.log', 'updates.log')
+
+
+def hearth_user_logs(home):
+    data = os.path.join(home, '.local', 'share', 'nimbus')
+    cfg = os.path.join(home, '.config', 'nimbus')
+    parts = []
+    names = list(HEARTH_LOGS) + sorted(os.path.basename(p) for p in glob.glob(os.path.join(data, '*.log')) if os.path.basename(p) not in HEARTH_LOGS)
+    for n in names:
+        p = os.path.join(data, n)
+        if os.path.isfile(p):
+            parts.append(f'----- ~/.local/share/nimbus/{n} -----\n{tail(read(p), 400)}')
+    for n in ('session.conf', 'renderer', 'renderer-note', 'display.sh', 'display-pending.json', 'nvidia-drawing', 'drawing-fallback', 'app-path'):
+        p = os.path.join(cfg, n)
+        if os.path.isfile(p):
+            parts.append(f'----- ~/.config/nimbus/{n} -----\n{tail(read(p), 60)}')
+    return '\n\n'.join(parts) or '(no Hearth logs in this home folder)'
+
+
+def logs_report(s, note=''):
+    cur = s.deps[0] if s.deps else {}
+    ver = cur.get('hearthVersion') or '?'
+    out = [f"Hearth logs · {time.strftime('%Y-%m-%d %H:%M')} · Hearth {ver} · sent from Hearth Recovery (USB)", '']
+    if note:
+        out.append('What happened: ' + note)
+
+    def section(title, body):
+        out.append(f'\n===== {title} =====\n{body.rstrip()}')
+
+    rec_ver = read('/usr/share/nimbus/version').strip()
+    section('About this device', json.dumps({
+        'recovery': f'Hearth Recovery {rec_ver}'.strip(), 'edition': cur.get('edition'), 'device': s.dev['path'], 'model': s.dev['model'],
+        'product': read('/sys/class/dmi/id/product_name').strip(), 'vendor': read('/sys/class/dmi/id/sys_vendor').strip(),
+        'board': read('/sys/class/dmi/id/board_name').strip(), 'bios': read('/sys/class/dmi/id/bios_version').strip(),
+    }, indent=2))
+    section('Installed versions (the first starts by default)', '\n'.join(
+        f"[{d['index']}] {d['role']}: Hearth {d['hearthVersion'] or '?'} · {d['osName']} {d['osVersion']} · image {d['image'] or '?'} · built {d['builtText'] or '?'} · installed {d['deployedText'] or '?'} · {d['checksum'][:12]}.{d['serial']}\n     options: {d['kargs']}"
+        for d in s.deps))
+    entries = '\n\n'.join(f"### {os.path.basename(f)}\n{read(f).strip()}" for f in sorted(glob.glob(os.path.join(s.boot, 'loader', 'entries', '*.conf'))))
+    section('Boot entries (/boot/loader/entries)', entries or '(none)')
+    grub = read(os.path.join(s.boot, 'grub2', 'hearth-bls.cfg'))
+    if grub:
+        section("GRUB's menu (hearth-bls-grub)", grub)
+    jdir = os.path.join(s.stateroot_var(), 'log', 'journal')
+    section('System journal (last boots)', journal_section(jdir))
+    people = users_of(cur['path']) if cur else []
+    for u in people:
+        section(f"Hearth's logs ({u['name']})", redact(hearth_user_logs(s.host_path(u['home'])), u['name'], u['home']))
+    text = '\n'.join(out) + '\n'
+    for u in people:
+        text = redact(text, u['name'], u['home'])
+    return redact(text)
+
+
+def fit(text, limit):
+    """At most `limit` bytes: the oldest lines of the longest parts go first (the header stays)."""
+    b = text.encode('utf-8', 'replace')
+    if len(b) <= limit:
+        return text
+    head, body = text[:2000], text[2000:]
+    lines = body.splitlines()
+    while lines and len((head + '\n'.join(lines)).encode('utf-8', 'replace')) > limit:
+        lines = lines[max(1, len(lines) // 20):]
+    return head + '\n[older lines left out to fit]\n' + '\n'.join(lines)
+
+
+def header_note(note):
+    n = note.strip().encode('utf-8')[:1000]
+    out = ''
+    for b in n:
+        c = chr(b)
+        out += c if (c.isascii() and (c.isalnum() or c in " -_.~!*'()")) else f'%{b:02X}'
+    return out
+
+
+def upload_logs(text, version, kind, note):
+    data = text.encode('utf-8', 'replace')
+    req = urllib.request.Request(LOGS_URL, data=data, method='POST', headers={
+        'Content-Type': 'text/plain; charset=utf-8', 'X-Hearth-Version': re.sub(r'[^\w.+-]', '', version)[:20] or 'recovery',
+        'X-Hearth-Kind': kind, 'X-Hearth-Note': header_note('Hearth Recovery USB. ' + note), 'User-Agent': 'hearth-recovery'})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            reply = json.loads(r.read().decode() or '{}')
+    except urllib.error.HTTPError as e:
+        try:
+            reply = json.loads(e.read().decode() or '{}')
+        except ValueError:
+            reply = {}
+        raise Fail(f"the log service said no ({reply.get('error') or e.code}). Try again in a minute")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise Fail(f"couldn't send the logs ({getattr(e, 'reason', e)}). Check the internet connection (Wi-Fi) and try again")
+    code = reply.get('code')
+    if not code:
+        raise Fail('the log service gave no code: ' + (reply.get('error') or 'unknown reply'))
+    return code
+
+
+def send_logs(sid, note=''):
+    s = get_system(sid)
+    stage('collect', 10, 'Reading the logs on the drive')
+    with s.open(rw=False, boot=True, home=True):
+        if not s.deps:
+            raise Fail('no Hearth OS found there')
+        text = fit(logs_report(s, note), MAX_SEND)
+        cur = s.deps[0]
+    os.makedirs('/tmp/hearth-recovery', exist_ok=True)
+    path = f"/tmp/hearth-recovery/logs-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+    with open(path, 'w') as f:
+        f.write(text)
+    stage('send', 60, 'Sending the logs')
+    kind = cur.get('edition') if cur.get('edition') in EDITIONS else 'other'
+    code = upload_logs(text, cur.get('hearthVersion') or 'recovery', kind, note)
+    base = LOGS_URL.rstrip('/')
+    return {'ok': True, 'code': code, 'url': f'{base}/{code}', 'path': path, 'bytes': len(text.encode())}
+
+
+# ------------------------------------------------------------------ 4. update / reinstall keeping games and files
+
+def keep_kargs(options):
+    """The default entry's kernel options, minus what ostree writes itself (ostree=, BOOT_IMAGE=)."""
+    return [k for k in options.split() if not k.startswith(('ostree=', 'BOOT_IMAGE=', 'initrd='))]
+
+
+def image_for(dep):
+    """The published image for this install: its own origin when that's one of Hearth's, else its edition's."""
+    img = dep.get('image') or ''
+    known = {v['image'] for v in EDITIONS.values()}
+    if img in known:
+        return img
+    return EDITIONS.get(dep.get('edition') or 'anatase', EDITIONS['anatase'])['image']
+
+
+def parse_needed(line):
+    """ostree's "layers needed: 12 (3.1 GB)" → (12, bytes)."""
+    m = re.search(r'layers (?:already present|needed):?\s*(\d+)\s*\(([\d.]+)\s*([kMGT]?B)\)', line)
+    if not m:
+        return None
+    mult = {'B': 1, 'kB': 1e3, 'MB': 1e6, 'GB': 1e9, 'TB': 1e12}.get(m.group(3), 1)
+    return int(m.group(1)), int(float(m.group(2)) * mult)
+
+
+def online(host='ghcr.io'):
+    if FAKE:
+        return True
+    try:
+        urllib.request.urlopen(f'https://{host}/v2/', timeout=10)
+        return True
+    except urllib.error.HTTPError:
+        return True   # 401: it answered
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def update(sid):
+    s = get_system(sid)
+    if not online():
+        raise Fail('there\'s no internet connection. Connect to Wi-Fi first (Wi-Fi on the main screen), then try again')
+    with s.open(rw=True, boot=True):
+        if not s.deps:
+            raise Fail('no Hearth OS found there')
+        cur = s.deps[0]
+        image = image_for(cur)
+        ref = 'ostree-unverified-registry:' + image
+        stage('download', 5, f'Getting {image}')
+        cmd = ['ostree', 'container', 'image', 'deploy', '--sysroot', s.sysroot, '--stateroot', cur['stateroot'],
+               '--imgref', ref, '--target-imgref', ref]
+        for k in keep_kargs(cur['kargs']):
+            cmd += ['--karg', k]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        need = done = 0
+        tail_lines = []
+        for line in p.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            tail_lines = (tail_lines + [line])[-10:]
+            n = parse_needed(line)
+            if n:
+                need = n[0]
+                stage('download', 10, f'Downloading {n[1] / 1e9:.1f} GB', of=need)
+            elif re.match(r'Fetching (layer|ostree chunk|ostree commit)', line):
+                done += 1
+                stage('download', 10 + 70 * (done / need if need else 0.5), f'Downloading · {done} of {need or "?"} parts', done=done, of=need)
+            elif re.search(r'Deploying|Staging|Writing|Committing', line):
+                stage('deploy', 85, 'Putting the new version in place')
+        if p.wait() != 0:
+            msg = next((l for l in reversed(tail_lines) if re.search('error', l, re.I)), tail_lines[-1] if tail_lines else 'failed')
+            raise Fail('updating failed: ' + msg)
+        after = deployments(s.sysroot, s.boot)
+        if not after:
+            raise Fail('the new version was downloaded but isn\'t in the boot menu')
+        new = after[0]
+        stage('boot', 92, 'Updating the boot menu')
+        grub = refresh_grub(s, new['path'])
+        if grub:
+            menu = grub_menu_ids(s.boot)
+            if not menu or resolve_in(s.sysroot, menu[0][1]) != resolve_in(s.sysroot, new['path'][len(s.sysroot):]):
+                raise Fail("the new version is installed, but GRUB's menu doesn't start it first")
+        sh(['sync'], check=False)
+        stage('done', 100, 'Done')
+        return {'ok': True, 'image': image, 'new': {k: new[k] for k in ('hearthVersion', 'osVersion', 'builtText', 'checksum')},
+                'same': new['checksum'] == cur['checksum'], 'grub': grub,
+                'deployments': [{k: v for k, v in d.items() if k not in ('path', 'kargs')} for d in after]}
+
+
+# ------------------------------------------------------------------ 5. factory reset
+
+def factory_plan(summary):
+    """hearth-install's plan for erasing the drive and installing the same edition again: the first user's name
+    (no password: the recovery USB has no keyboard to type one; set one later in Settings › Users), the same
+    device name and time zone."""
+    users = summary.get('users') or []
+    u = users[0] if users else {'name': 'hearth', 'full': 'Hearth'}
+    name = u['name'] if re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', u['name']) else 'hearth'
+    return {'mode': 'whole', 'disk': summary['disk'], 'edition': summary.get('edition') or 'anatase',
+            'user': {'name': name, 'full': u.get('full') or name, 'password': '', 'nopassword': True},
+            'hostname': summary.get('hostname') or 'hearth', 'timezone': summary.get('timezone') or 'UTC', 'signin': 'auto'}
+
+
+def timezone_of(dep):
+    try:
+        t = os.readlink(os.path.join(dep, 'etc/localtime'))
+    except OSError:
+        return 'UTC'
+    m = re.search(r'zoneinfo/(.+)$', t)
+    return m.group(1) if m else 'UTC'
+
+
+def factory_reset(sid):
+    s = get_system(sid)
+    with s.open(rw=False, boot=True):
+        summary = s.summary()
+        summary['timezone'] = timezone_of(s.deps[0]['path']) if s.deps else 'UTC'
+    if summary['disk'] == live_disk():
+        raise Fail("that's the USB stick")
+    if not online():
+        raise Fail('there\'s no internet connection, and Hearth OS is downloaded while it installs. Connect to Wi-Fi first. Nothing was changed')
+    plan = factory_plan(summary)
+    stage('start', 1, f"Erasing {summary['model']} and installing {EDITIONS.get(plan['edition'], {}).get('label', 'Hearth OS')}")
+    p = subprocess.Popen([INSTALLER, 'run'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    p.stdin.write(json.dumps(plan))
+    p.stdin.close()
+    result = None
+    err = None
+    for line in p.stdout:
+        line = line.rstrip('\n')
+        if line.startswith('stage: '):
+            print(line, flush=True)
+        elif line.startswith('result: '):
+            result = json.loads(line[8:])
+        elif line.startswith('error: '):
+            err = line[7:]
+    p.wait()
+    if err or not result:
+        raise Fail(err or 'the installer stopped')
+    return {'ok': True, 'user': plan['user']['name'], 'edition': plan['edition'], 'disk': summary['disk'], 'installer': result}
+
+
+# ------------------------------------------------------------------ 6. copy my files to a USB drive
+
+COPY_SKIP = ['.cache/', '.local/share/Steam/', '.steam/', '.var/app/*/cache/', '.local/share/Trash/',
+             'Games/Heroic/', '.local/share/heroic/', '.local/share/nimbus/prefixes/', '.local/share/containers/',
+             '.local/share/flatpak/']
+
+
+def usb_drives():
+    live = live_disk()
+    out = []
+    for d in block_devices():
+        if d['disk'] == live or not (d['removable'] or d['tran'] == 'usb'):
+            continue
+        if d['fstype'] not in ('vfat', 'exfat', 'ntfs', 'ext4', 'btrfs', 'xfs'):
+            continue
+        free = 0
+        out.append({'part': d['path'], 'label': d['label'] or d['model'], 'model': d['model'], 'fstype': d['fstype'], 'size': d['size'], 'free': free})
+    return {'drives': out}
+
+
+def copy_home(sid, user, part):
+    if part not in [d['part'] for d in usb_drives()['drives']]:
+        raise Fail('that USB drive is gone: plug it in again and pick it')
+    s = get_system(sid)
+    dest_mnt = os.path.join(RUN, 'usb')
+    with s.open(rw=False, boot=False, home=True):
+        u = next((x for x in users_of(s.deps[0]['path']) if x['name'] == user), None) if s.deps else None
+        if not u:
+            raise Fail('no such user on that Hearth OS')
+        src = s.host_path(u['home']).rstrip('/') + '/'
+        fs = next((d['fstype'] for d in usb_drives()['drives'] if d['part'] == part), '')
+        opts = ['rw'] + (['uid=0', 'gid=0'] if fs in ('vfat', 'exfat') else [])
+        if fs == 'ntfs' and not FAKE and not shutil.which('mount.ntfs') and not shutil.which('ntfs-3g'):
+            opts = ['rw', '-t', 'ntfs3']
+        with mounted_at(part, dest_mnt, opts):
+            dest = os.path.join(dest_mnt, f"Hearth-files-{user}-{time.strftime('%Y%m%d-%H%M')}")
+            os.makedirs(dest, exist_ok=True)
+            stage('copy', 2, 'Copying your files')
+            if shutil.which('rsync'):
+                cmd = ['rsync', '-rlt', '--no-owner', '--no-group', '--no-perms', '--safe-links', '--modify-window=2', '--info=progress2', '--no-inc-recursive']
+                for x in COPY_SKIP:
+                    cmd += ['--exclude', '/' + x]
+                p = subprocess.Popen(cmd + [src, dest + '/'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+                buf = ''
+                err = []
+                while True:
+                    ch = p.stdout.read(1)
+                    if not ch:
+                        break
+                    if ch in '\r\n':
+                        m = re.search(r'([\d,]+)\s+(\d+)%', buf)
+                        if m:
+                            stage('copy', int(m.group(2)), f"Copying your files · {int(m.group(1).replace(',', '')) / 1e9:.1f} GB")
+                        elif buf.strip():
+                            err = (err + [buf.strip()])[-5:]
+                        buf = ''
+                    else:
+                        buf += ch
+                code = p.wait()
+                # 23/24: some files couldn't be copied (names FAT can't hold, files vanished): the rest is there.
+                if code not in (0, 23, 24):
+                    raise Fail('copying stopped: ' + (err[-1] if err else f'rsync {code}') + '. Is the USB drive full?')
+                partial = code in (23, 24)
+            else:
+                shutil.copytree(src, dest, symlinks=True, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.cache', 'Steam', '.steam'))
+                partial = False
+            sh(['sync'], check=False)
+            stage('done', 100, 'Copied')
+            return {'ok': True, 'folder': os.path.basename(dest), 'partial': partial, 'skipped': COPY_SKIP}
+
+
+# ------------------------------------------------------------------ Wi-Fi, restart, power off
+
+def nm_split(line):
+    """nmcli -t fields (":" separated, "\\:" inside a value)."""
+    out, cur, esc = [], '', False
+    for ch in line:
+        if esc:
+            cur += ch
+            esc = False
+        elif ch == '\\':
+            esc = True
+        elif ch == ':':
+            out.append(cur)
+            cur = ''
+        else:
+            cur += ch
+    out.append(cur)
+    return out
+
+
+def wifi_list():
+    r = sh(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan', 'yes'], check=False, timeout=40)
+    nets = {}
+    for line in (r.stdout or '').splitlines():
+        f = nm_split(line)
+        if len(f) < 4 or not f[1]:
+            continue
+        sig = int(f[2]) if f[2].isdigit() else 0
+        cur = nets.get(f[1])
+        if not cur or sig > cur['signal'] or f[0] == '*':
+            nets[f[1]] = {'ssid': f[1], 'signal': sig, 'secure': f[3] not in ('', '--'), 'connected': f[0] == '*' or bool(cur and cur['connected'])}
+    out = sorted(nets.values(), key=lambda n: (not n['connected'], -n['signal']))
+    return {'networks': out, **net_status()}
+
+
+def wifi_connect(ssid, password=''):
+    cmd = ['nmcli', 'device', 'wifi', 'connect', ssid]
+    if password:
+        cmd += ['password', password]
+    r = sh(cmd, check=False, timeout=60)
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout).strip().splitlines()
+        m = msg[-1] if msg else 'failed'
+        if re.search(r'secrets|password|802-11-wireless-security', m, re.I):
+            raise Fail('wrong password, or this network needs one')
+        raise Fail("couldn't connect: " + m.replace('Error: ', ''))
+    return {'ok': True, **net_status()}
+
+
+def net_status():
+    st = sh(['nmcli', '-t', '-f', 'CONNECTIVITY', 'general'], check=False, timeout=10).stdout.strip()
+    con = ''
+    for line in sh(['nmcli', '-t', '-f', 'NAME,TYPE,DEVICE', 'connection', 'show', '--active'], check=False, timeout=10).stdout.splitlines():
+        f = nm_split(line)
+        if len(f) >= 2 and f[1] in ('802-11-wireless', '802-3-ethernet', 'wifi', 'ethernet'):
+            con = f[0]
+            break
+    return {'online': st == 'full', 'connectivity': st or 'unknown', 'connection': con}
+
+
+def boot_next_for(sid):
+    """BootNext = the installed Hearth OS's own firmware entry, so a restart with the USB stick still in starts
+    Hearth OS once instead of this stick again. Best effort."""
+    if FAKE or not shutil.which('efibootmgr') or not os.path.isdir('/sys/firmware/efi'):
+        return None
+    try:
+        s = get_system(sid)
+        with s.open(rw=False, boot=False):
+            pass
+    except Fail:
+        return None
+    esp = s.esp_dev
+    text = sh(['efibootmgr', '-v'], check=False).stdout
+    pick = None
+    for m in re.finditer(r'^Boot([0-9A-Fa-f]{4})\*?\s+(.*)$', text, re.M):
+        line = m.group(2)
+        if esp and esp.get('partuuid') and esp['partuuid'] in line.lower():
+            pick = m.group(1)
+            break
+        if pick is None and 'Hearth OS' in line:
+            pick = m.group(1)
+    if pick:
+        sh(['efibootmgr', '-q', '-n', pick], check=False)
+    return pick
+
+
+def power(what, sid=None):
+    nxt = boot_next_for(sid) if (what == 'restart' and sid) else None
+    if not FAKE:
+        sh(['sync'], check=False)
+        subprocess.Popen(['systemctl', 'reboot' if what == 'restart' else 'poweroff'])
+    return {'ok': True, 'bootNext': nxt}
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if os.geteuid() != 0 and not FAKE:
+        print('error: run this as root', flush=True)
+        return 1
+    os.makedirs(RUN, exist_ok=True)
+    try:
+        long = {'update', 'factory-reset', 'copy-home', 'send-logs'}
+        if cmd == 'scan':
+            res = scan()
+        elif cmd == 'set-default' and len(a) == 2:
+            res = set_default(a[0], a[1])
+        elif cmd == 'reset-display' and a:
+            user = a[a.index('--user') + 1] if '--user' in a and a.index('--user') + 1 < len(a) else None
+            res = reset_display(a[0], '--desktop' in a, user)
+        elif cmd == 'send-logs' and a:
+            res = send_logs(a[0], ' '.join(a[1:]))
+        elif cmd == 'update' and len(a) == 1:
+            res = update(a[0])
+        elif cmd == 'factory-reset' and len(a) == 1:
+            res = factory_reset(a[0])
+        elif cmd == 'usb-drives':
+            res = usb_drives()
+        elif cmd == 'copy-home' and len(a) == 3:
+            res = copy_home(*a)
+        elif cmd == 'wifi-list':
+            res = wifi_list()
+        elif cmd == 'wifi-connect' and a:
+            res = wifi_connect(a[0], a[1] if len(a) > 1 else '')
+        elif cmd == 'net-status':
+            res = net_status()
+        elif cmd in ('restart', 'poweroff'):
+            res = power(cmd, a[0] if a else None)
+        else:
+            print('error: usage: hearth-recovery scan | set-default SYS INDEX | reset-display SYS [--desktop] | send-logs SYS [NOTE] | '
+                  'update SYS | factory-reset SYS | usb-drives | copy-home SYS USER PART | wifi-list | wifi-connect SSID [PW] | '
+                  'net-status | restart [SYS] | poweroff', flush=True)
+            return 1
+        print(('result: ' if cmd in long else '') + json.dumps(res), flush=True)
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
