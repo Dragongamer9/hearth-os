@@ -38,6 +38,14 @@ jobs:
           dpkg-deb --contents "$pkg" > /tmp/hearth-package-contents.txt
           grep -q './usr/bin/hearth' /tmp/hearth-package-contents.txt
           grep -q './usr/share/applications/hearth.desktop' /tmp/hearth-package-contents.txt
+          grep -q './usr/bin/hearth-upgrade' /tmp/hearth-package-contents.txt
+          bash -n scripts/build-hearth-mint-deb.sh scripts/hearth-upgrade.sh
+          bash scripts/hearth-upgrade.sh status
+          unpack_dir=$(mktemp -d)
+          dpkg-deb --extract "$pkg" "$unpack_dir"
+          test -x "$unpack_dir/usr/bin/hearth"
+          test -x "$unpack_dir/usr/bin/hearth-upgrade"
+          grep -Fx 'Exec=/usr/bin/hearth --windowed' "$unpack_dir/usr/share/applications/hearth.desktop"
           sha256sum "$pkg" > dist/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
