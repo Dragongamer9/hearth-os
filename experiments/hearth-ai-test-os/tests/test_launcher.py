@@ -21,7 +21,7 @@ class DesktopLauncherTests(unittest.TestCase):
             entry = desktop.read_text(encoding="utf-8")
             self.assertIn("Type=Application", entry)
             self.assertIn("Terminal=true", entry)
-            self.assertIn("Exec=\\\"", entry)
+            self.assertIn('Exec="', entry)
             self.assertIn("launch.sh", entry)
             result = subprocess.run(["sh", str(INSTALLER), "--remove"], env=env,
                                     capture_output=True, text=True, timeout=10)
