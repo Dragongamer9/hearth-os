@@ -40,3 +40,18 @@ The experiment now has explicit D-pad/left-stick focus traversal, A to activate,
 ## Current blocker for a new experimental ISO
 
 The existing live ISO workflow pulls `ghcr.io/dragongamer9/hearth-os:testing` or `:latest`, not this branch's UI. There is no verified branch-specific Anatase image digest carrying Dragonfire. Do not claim an ISO was produced until this separate branch has been integrated into a bootc image, built successfully, and passed the repository's QEMU boot check. No image was published and no ISO build was started by this commit.
+
+## Manual Dragonfire live ISO workflow (new)
+
+Open **Actions → Dragonfire experimental live ISO (manual, never published)** on the `experiment/hearth-ai-test-os` branch and choose **Run workflow**.
+
+The workflow:
+- builds an isolated preview overlay atop the existing Anatase `:testing` image;
+- adds Dragonfire as an **optional launcher** without replacing the normal Hearth Game Mode;
+- creates a live ISO using Hearth's pinned Titanoboa workflow;
+- checks that the generated ISO contains the expected boot kernel and initramfs; and
+- retains the ISO artifact for seven days, without uploading it to releases, Cloudflare R2, or the production registry.
+
+**Important:** This is a preview-only live ISO pipeline, not a release installer for a fully integrated Dragonfire OS. The included Hearth installer retains its normal upstream installation/update targets; installing from this experiment could install ordinary Hearth instead of this experimental overlay. **Use live mode or a disposable virtual machine; don't install over your main PC.**
+
+The GitHub Actions workflow has been committed but has **not been dispatched**, and there is no verified ISO artifact yet. The structural check is not a boot test. Complete QEMU boot validation and actual controller/game-launch testing remain mandatory before calling the result usable.
