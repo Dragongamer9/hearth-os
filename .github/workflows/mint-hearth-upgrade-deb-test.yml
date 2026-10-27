@@ -47,6 +47,22 @@ jobs:
           test -x "$unpack_dir/usr/bin/hearth-upgrade"
           grep -Fx 'Exec=/usr/bin/hearth --windowed' "$unpack_dir/usr/share/applications/hearth.desktop"
           sha256sum "$pkg" > dist/SHA256SUMS
+      - name: Install package on Ubuntu 24.04 Mint-compatible base
+        run: |
+          set -euo pipefail
+          pkg=$(find dist -maxdepth 1 -name 'hearth-os-app_*_amd64.deb' -print -quit)
+          # Emulate original V1 binary and desktop shortcut.
+          sudo install -Dm755 hosts/hearth-rs/target/release/hearth /usr/local/bin/hearth
+          sudo mkdir -p /usr/share/applications
+          printf '[Desktop Entry]\nType=Application\nName=Hearth OS\nExec=/usr/local/bin/hearth --windowed\n' | sudo tee /usr/share/applications/hearth.desktop
+          sudo apt-get install -y "./$pkg"
+          test -x /usr/local/bin/hearth
+          test -x /usr/bin/hearth
+          test -x /usr/bin/hearth-upgrade
+          dpkg-query -W -f='${Status}\n' hearth-os-app | grep -Fx 'install ok installed'
+          grep -Fx 'Exec=/usr/bin/hearth --windowed' /usr/share/applications/hearth.desktop
+          hearth-upgrade status
+          # GUI boot and launch still need physical/VM validation.
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-mint-upgrade-deb-test
