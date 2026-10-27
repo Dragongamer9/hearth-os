@@ -33,7 +33,7 @@ The tool prints and opens a loopback URL. On a remote machine, use `python3 serv
 - The AI CLI receives prompt text and may contact its vendor. Do **not** paste secrets.
 - Since each CLI is an external program, review its local configuration and permission settings before use. Do not give it an unrestricted workspace.
 - It uses the user's CLI environment, which may include provider credentials. Do not expose the local URL or run untrusted browser extensions on this session.
-- Shared handoffs, real performance telemetry, Steam library controls, updates and desktop shell integration are **future work**, not simulated functionality.
+- Native Hearth host-bridge integration, GPU utilization/FPS, Steam library controls, updates and desktop shell integration are **future work**. An explicit, manual text-based agent handoff now works within the prototype; it is not a provider-native session transfer.
 
 Next steps: write a native host bridge for the existing `hosts/hearth-core` plus permission prompts, then wire that into `ui/index.html` behind an experimental feature flag. Keep default release unaffected.
 
@@ -48,3 +48,9 @@ python3 -m unittest discover -s tests -v
 ```
 
 The visual preview screenshot produced during development is illustrative; the interface reports real values only when connected to its local server.
+
+## Agent handoff (experimental)
+
+The Command Center keeps up to 40 conversation turns in the current browser tab's memory. Select another **installed** agent in AI Team Handoff and click **Prepare handoff**. Hearth fills the prompt field with a bounded, plain-text excerpt of the conversation. You can edit this text before clicking **Send**; no request is made on preparation alone. **Export session** downloads a local plain-text file, while **Clear session** drops the in-memory transcript. Reloading the page also clears it. Avoid putting secrets in prompts, handoffs or exports.
+
+Status: development branch and draft PR only; this feature has not yet been tested in the actual Hearth gaming session. The development screenshot is a visual preview with illustrative machine data, not a screenshot of Hearth booted on a PC.
