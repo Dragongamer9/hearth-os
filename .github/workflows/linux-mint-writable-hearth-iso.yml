@@ -25,6 +25,14 @@ jobs:
       - name: Build Hearth application
         working-directory: hosts/hearth-rs
         run: cargo build --release
+      - name: Reclaim build space before unpacking Mint
+        run: |
+          set -euxo pipefail
+          install -Dm755 hosts/hearth-rs/target/release/hearth /tmp/hearth-built
+          rm -rf hosts/hearth-rs/target
+          rm -rf "$HOME/.rustup/toolchains" "$HOME/.cargo/registry" "$HOME/.cargo/git" || true
+          sudo apt-get clean
+          df -h /
       - name: Download and verify original Mint ISO
         env:
           ISO_URL: https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
@@ -49,7 +57,7 @@ jobs:
           test -n "$squash"
           sudo unsquashfs -d /tmp/mint-root "$squash"
           # Install Hearth's compiled executable and a normal desktop launcher.
-          sudo install -Dm755 hosts/hearth-rs/target/release/hearth /tmp/mint-root/usr/local/bin/hearth
+          sudo install -Dm755 /tmp/hearth-built /tmp/mint-root/usr/local/bin/hearth
           sudo install -d /tmp/mint-root/usr/share/applications
           cat > /tmp/hearth.desktop <<'DESKTOP'
           [Desktop Entry]
