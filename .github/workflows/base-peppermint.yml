@@ -556,6 +556,9 @@ jobs:
           check "dpkg's database is in the image (/usr/lib/sysimage)" "test -f /usr/lib/sysimage/dpkg/status && grep -q 'L+ /var/lib/dpkg' /usr/lib/tmpfiles.d/hearth-var.conf"
           check "system accounts are recreated by sysusers (sddm, ...)" "grep -q '^u sddm ' /usr/lib/sysusers.d/hearth-image.conf"
           check "the bootc layout (/ostree, /var/home)" "test -L /ostree && test \"\$(readlink /home)\" = var/home"
+          # The log: /var starts empty in this image, so journald's default (Storage=auto) would keep the journal in
+          # memory only (see os-bases/peppermint/system_files/usr/lib/systemd/journald.conf.d).
+          check "the log is kept across restarts (Storage=persistent, not the default auto)" "systemd-analyze cat-config systemd/journald.conf 2>/dev/null | grep -q '^Storage=persistent'"
           check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Peppermint /usr/lib/os-release"
           # ---- Hearth Paint, Emoji, Fonts and Settings › Accessibility (apps-create.yml)
           warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
