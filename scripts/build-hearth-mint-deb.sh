@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${1:-$ROOT/hosts/hearth-rs/target/release/hearth}"
 OUT="${2:-$ROOT/dist}"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$ROOT/hosts/hearth-rs/Cargo.toml" | head -1)"
-PACKAGE_VERSION="${VERSION}-5"
+PACKAGE_VERSION="${VERSION}-6"
 test -x "$BIN"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 ARCH="$(dpkg --print-architecture)"
@@ -19,9 +19,10 @@ install -Dm755 "$ROOT/scripts/hearth-admin-report.py" "$STAGE/usr/bin/hearth-adm
 install -Dm755 "$ROOT/scripts/hearth-admin-branding.sh" "$STAGE/usr/bin/hearth-admin-branding"
 install -Dm755 "$ROOT/scripts/hearth-admin-desktop.sh" "$STAGE/usr/bin/hearth-admin-desktop"
 install -Dm755 "$ROOT/scripts/hearth-welcome.py" "$STAGE/usr/bin/hearth-welcome"
+install -Dm755 "$ROOT/scripts/hearth-convert.sh" "$STAGE/usr/bin/hearth-convert"
 install -Dm644 "$ROOT/branding/hearth-admin-wallpaper.svg" "$STAGE/usr/share/backgrounds/hearth-admin-edition.svg"
 install -d "$STAGE/etc"
-printf "NAME=\"Hearth OS Admin Edition\"\\nVERSION=\"2.4 experimental\"\\nBASE=\"Linux Mint 22.3\"\\n" > "$STAGE/etc/hearth-admin-release"
+printf "NAME=\"Hearth OS Admin Edition\"\\nVERSION=\"3.0 experimental\"\\nBASE=\"Linux Mint 22.3\"\\n" > "$STAGE/etc/hearth-admin-release"
 install -d "$STAGE/usr/share/applications" "$STAGE/DEBIAN"
 cat > "$STAGE/usr/share/applications/hearth.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -62,6 +63,16 @@ Exec=/usr/bin/hearth-welcome
 Icon=computer
 Terminal=false
 Categories=System;Utility;
+DESKTOP
+cat > "$STAGE/usr/share/applications/hearth-convert.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Hearth OS Conversion Setup
+Comment=Enable Hearth Welcome on login; keep your system writable
+Exec=/usr/bin/hearth-convert enable
+Icon=preferences-system
+Terminal=true
+Categories=System;Settings;
 DESKTOP
 cat > "$STAGE/DEBIAN/control" <<CONTROL
 Package: hearth-os-app
