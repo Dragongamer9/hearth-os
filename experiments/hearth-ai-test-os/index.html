@@ -32,7 +32,7 @@ footer{text-align:center;padding:23px;color:#9e8f83;font-size:12px}#error{color:
 <section class="panel"><div class="hero"><div class="flame">🔥</div><strong>Welcome to Hearth</strong><p>Your computer. Your rules. Your AI companions. Your world.</p></div>
 <h2>AI Command Center</h2><div class="messages" id="messages">HEARTH SYSTEM: Ready. Pick an installed agent to begin. Nothing runs without clicking Send.</div>
 <div style="height:13px"></div><textarea id="prompt" placeholder="Ask Hearth AI to explain a problem, brainstorm a project, or help with a task…"></textarea><div class="actions"><span class="muted" id="chosen">No agent selected</span><button class="primary" id="send">Send to selected AI →</button></div>
-</section><aside class="panel side"><h2>System Diagnostics</h2><div id="system"></div><h2>Gaming Toolkit</h2><div class="games" id="games"></div><p class="muted">This is an isolated test environment and does not change your existing OS, games or bootloader.</p><h2>Next Milestone</h2><p>Real shared agent handoffs, opt-in system diagnostics, and integration with Hearth's existing game library.</p></aside>
+</section><aside class="panel side"><h2>System Diagnostics</h2><div id="system"></div><h2>Live Read-Only Telemetry</h2><div id="telemetry"></div><h2>Gaming Toolkit</h2><div class="games" id="games"></div><p class="muted">This is an isolated test environment and does not change your existing OS, games or bootloader.</p><h2>Next Milestone</h2><p>Real shared agent handoffs, opt-in system diagnostics, and integration with Hearth's existing game library.</p></aside>
 </div></main><footer>HEARTH OS EXPERIMENTAL PROTOTYPE • NO AUTOMATED SYSTEM MODIFICATIONS • GPL-3.0-or-later</footer>
 <script>
 const token=new URLSearchParams(location.search).get('token')||'';
@@ -41,6 +41,7 @@ async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET'
 function node(tag,cls,text){let e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 async function refresh(){try{data=await api('/api/status');$('error').textContent='';const a=$('agents');a.replaceChildren();
 for(const agent of data.agents){let b=node('button','agent'+(agent.name===selected?' selected':''));b.disabled=!agent.found;b.append(node('span','orb',agent.name==='Claude'?'✦':agent.name==='Gemini'?'✧':agent.name==='Local / Ollama'?'⬡':'◉'));let t=node('span');t.append(node('strong','',agent.name),node('small','',agent.found?'Installed • '+agent.command:'Not found on PATH'));b.append(t,node('span','dot'+(agent.found?' up':'')));b.onclick=()=>{selected=agent.name;$('chosen').textContent='Selected: '+selected;refreshButtons()};a.append(b)}
+$('telemetry').replaceChildren(...Object.entries({CPU:data.telemetry.cpuPercent===null?'Sampling…':data.telemetry.cpuPercent+'%',Memory:data.telemetry.memory.percent===null?'Unavailable':data.telemetry.memory.percent+'% ('+data.telemetry.memory.usedGiB+' / '+data.telemetry.memory.totalGiB+' GiB)',GPU:data.telemetry.gpuDrivers.join(', ')||'Unavailable',FPS:'Requires game integration'}).map(([k,v])=>{let e=node('div','metric');e.append(node('span','',k),node('b','',v));return e}));
 function refreshButtons(){document.querySelectorAll('.agent').forEach((el,i)=>el.classList.toggle('selected',data.agents[i].name===selected))}
 if(!data.agents.some(x=>x.name===selected&&x.found))selected='';
 $('chosen').textContent=selected?'Selected: '+selected:'No agent selected';
@@ -49,5 +50,5 @@ $('games').replaceChildren(...data.games.map(g=>node('div','game',(g.found?'● 
 }catch(e){$('error').textContent=e.message}}
 $('refresh').onclick=refresh;
 $('send').onclick=async()=>{const prompt=$('prompt').value.trim();if(!selected)return alert('Select an installed AI first.');if(!prompt)return alert('Enter a prompt.');let btn=$('send');btn.disabled=true;const messages=$('messages');messages.textContent+='\n\nYOU → '+prompt+'\n\n'+selected+' → Working…';try{const result=await api('/api/ask',{agent:selected,prompt});messages.textContent=messages.textContent.replace(/Working…$/,result.output||('(Exited with '+result.exitCode+', no output)'));}catch(e){messages.textContent=messages.textContent.replace(/Working…$/,'Error: '+e.message)}finally{btn.disabled=false;messages.scrollTop=messages.scrollHeight}}
-refresh();
+refresh();setInterval(()=>{if(document.visibilityState==='visible')refresh()},5000);
 </script></body></html>
