@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hearth — Dragonfire Game Mode (Experimental)</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;color:#f6eee4;background:#090d12;--a:#ffab54}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 70% 15%,#8b3b1d99 0,transparent 32%),linear-gradient(135deg,#090d13,#17232b 60%,#0a0e14)}
+body:before{content:"";pointer-events:none;position:fixed;inset:0;background:repeating-linear-gradient(140deg,transparent 0 80px,#d4742a0d 81px 84px);opacity:.7}
+.top{display:flex;align-items:center;gap:20px;padding:18px 28px;background:#0b1016c9;border-bottom:1px solid #79452b70}
+.brand{font-size:25px;color:#ffb163;font-weight:800;letter-spacing:1px}.mode{font-size:11px;letter-spacing:4px;color:#aea69f}
+.status{margin-left:auto;font-size:12px;color:#c8b9ac}main{position:relative;max-width:1700px;margin:auto;padding:30px}
+.grid{display:grid;grid-template-columns:108px minmax(0,1fr) 330px;gap:21px}
+aside,.hero,.shelf,.panel{background:#0b121be8;border:1px solid #684931a6;border-radius:17px;box-shadow:0 10px 40px #0007}
+nav{display:flex;flex-direction:column;gap:9px;padding:12px}nav button{padding:20px 4px}
+button{color:#f5e9dc;background:#1b232c;border:1px solid #4e514f;border-radius:11px;cursor:pointer;padding:13px;font:inherit}
+button:hover,button:focus-visible,.tile:focus-visible{outline:2px solid var(--a);outline-offset:2px;border-color:#fab267}
+button.active,.play{background:linear-gradient(135deg,#c56b2b,#793515);border-color:#ffd08d;box-shadow:0 0 20px #ed79234d}
+.hero{min-height:420px;display:flex;flex-direction:column;justify-content:end;padding:36px;background:linear-gradient(20deg,#080b11 8%,#11141b88 60%,#49271986),radial-gradient(ellipse at 75% 20%,#e1772470,transparent 45%)}
+.eyebrow{letter-spacing:3px;color:#ffb872;font-size:12px}h1{font:clamp(32px,5vw,65px)/1.1 Georgia,serif;letter-spacing:2px;margin:10px 0}p{color:#b8b2ac;line-height:1.5;max-width:530px}
+.hero button{font-size:17px;margin-right:9px;min-width:135px}.secondary{background:#18202ac9}
+.shelf{padding:17px;margin-top:20px}h2{font-size:16px;color:#f8bd82;margin:0 0 15px}.tiles{display:flex;gap:12px;overflow:auto;padding:6px}
+.tile{flex:0 0 156px;min-height:208px;border:1px solid #74553d;border-radius:11px;text-align:left;display:flex;flex-direction:column;justify-content:end;padding:12px;background:linear-gradient(165deg,#4b2b23,#11212d 60%,#0a0d12);font-weight:700}
+.tile:nth-child(3n){background:linear-gradient(145deg,#174454,#241f2d 65%,#0a0d12)}
+.tile:nth-child(3n + 2){background:linear-gradient(145deg,#824820,#271c22 65%,#0a0d12)}
+.tile small{font-size:11px;color:#c6b7a7;margin-top:7px}
+.right{display:flex;flex-direction:column;gap:17px}.panel{padding:20px}.metric{display:flex;justify-content:space-between;border-bottom:1px solid #45413d;padding:11px 0;color:#c9c0b5}.metric strong{color:#ffc18b}
+.notice{color:#c4a581;font-size:12px}.bottom{margin-top:20px;padding:14px;color:#c2b1a2;text-align:right;font-size:13px}
+@media(max-width:1050px){.grid{grid-template-columns:1fr}.right{display:grid;grid-template-columns:1fr 1fr}nav{flex-direction:row;overflow:auto}}
+@media(max-width:640px){.right{grid-template-columns:1fr}main{padding:12px}.hero{padding:20px}.top{padding:12px;flex-wrap:wrap}.status{margin-left:0}.hero button{margin-bottom:8px}}
+</style></head><body><header class="top"><div class="brand">♜ HEARTH OS</div><div class="mode">GAMESCOPE · DRAGONFIRE EXPERIMENT</div><div class="status" id="status">Checking Hearth host…</div></header>
+<main><div class="grid"><nav aria-label="Game Mode pages"><button class="active" type="button">⌂<br>Home</button><button type="button" id="libraryBtn">▦<br>Library</button><button type="button" id="refreshBtn">↻<br>Rescan</button></nav>
+<div><section class="hero"><div class="eyebrow" id="source">HEARTH · GAME LIBRARY</div><h1 id="title">Your games.<br>Your world.</h1><p id="description">Select a game from your real Hearth library, then choose Play. When opened outside Hearth, this screen displays a clearly labeled interface preview.</p><div><button type="button" class="play" id="play">▶ Play</button><button type="button" class="secondary" id="details">ⓘ Details</button></div><p class="notice" id="feedback" role="status"></p></section><section class="shelf"><h2>YOUR GAME LIBRARY <span id="count"></span></h2><div class="tiles" id="games"></div></section></div>
+<div class="right"><section class="panel"><h2>System Information</h2><div class="metric"><span>Mode</span><strong id="mode">Detecting</strong></div><div class="metric"><span>Games</span><strong id="total">—</strong></div><div class="metric"><span>Controller</span><strong>Gamepad supported</strong></div><p class="notice">Live CPU, GPU and FPS require Hearth's actual performance bridge. No simulated performance data.</p></section><section class="panel"><h2>Game Mode Actions</h2><button id="reload">Reload library</button><p class="notice">Arrow keys or D-pad move focus. A / Enter selects. B / Escape returns to Home.</p></section></div></div><div class="bottom">HEARTH OS · EXPERIMENTAL CONTROLLER-FIRST GAME MODE · MAIN OS UNCHANGED</div></main>
+<script>
+(()=>{
+let selected=null, games=[],host=null,pending=new Map(),serial=0,preview=false;
+const $=id=>document.getElementById(id);
+const mock=[{id:"preview-1",title:"Sample RPG",source:"preview",installed:false},{id:"preview-2",title:"Sample Adventure",source:"preview",installed:false},{id:"preview-3",title:"Sample Racing",source:"preview",installed:false}];
+function call(method,args={}){
+ return new Promise((resolve,reject)=>{
+  if(!host)return reject(new Error("Hearth host unavailable"));
+  const id=++serial;
+  const timer=setTimeout(()=>{pending.delete(id);reject(new Error("Host request timed out"));},9000);
+  pending.set(id,v=>{clearTimeout(timer);v.ok?resolve(v.value):reject(new Error(v.error||"Host error"))});
+  host.postMessage({type:"call",id,method,args});
+ });
+}
+function select(game){selected=game;$("title").textContent=game.title;$("source").textContent=(game.source||"HEARTH").toUpperCase();$("description").textContent=preview?"UI preview only. Game launching is disabled without Hearth's native host.":game.installed===false?"This title is not installed. Open it through Hearth's existing library to install.":"Ready to launch through Hearth's native game bridge.";$("play").disabled=preview||game.installed===false;
+ for(const node of $("games").children)node.classList.toggle("active",node.dataset.id===String(game.id));
+}
+function render(list){games=list;const grid=$("games");grid.replaceChildren();$("count").textContent="("+games.length+")";$("total").textContent=String(games.length);
+ for(const g of games){const b=document.createElement("button");b.type="button";b.className="tile";b.dataset.id=g.id;b.textContent=g.title;const sub=document.createElement("small");sub.textContent=g.source||"Manual";b.append(sub);b.onclick=()=>select(g);grid.append(b)}
+ if(games.length)select(games[0]);else{$("title").textContent="Your library is empty";$("play").disabled=true}
+}
+async function load(){try{const v=await call("library.get");const list=(v&&Array.isArray(v.games)?v.games:[]).filter(x=>x&&x.id&&x.title&&!x.hidden);preview=false;$("status").textContent="Connected to Hearth host";$("mode").textContent="Native Hearth bridge";render(list)}
+ catch(e){preview=true;$("status").textContent="Preview only · Hearth host unavailable";$("mode").textContent="Browser preview";render(mock);$("feedback").textContent="Run inside Hearth Game Mode for your real library."}}
+$("play").onclick=async()=>{if(preview||!selected)return;$("feedback").textContent="Requesting game launch…";try{await call("game.launch",{id:selected.id});$("feedback").textContent="Launch request sent to Hearth."}catch(e){$("feedback").textContent=e.message}};
+$("details").onclick=()=>{$("feedback").textContent=selected?(selected.title+" · "+(selected.source||"Manual")):"Select a game."};
+$("reload").onclick=load;$("refreshBtn").onclick=load;$("libraryBtn").onclick=()=>{$("games").querySelector("button")?.focus()};
+function connect(){host=window.nimbusHost||window.chrome?.webview||null;if(host)host.addEventListener("message",ev=>{const msg=ev.data;if(msg&&msg.type==="result"&&pending.has(msg.id)){const callback=pending.get(msg.id);pending.delete(msg.id);callback(msg)}});load()}
+window.addEventListener("keydown",e=>{if(e.key==="Escape"){e.preventDefault();$("play").focus()}});
+let gamepadHeld=false;
+function gamepad(){const pad=(navigator.getGamepads?.()||[]).find(Boolean);if(pad){const a=pad.buttons[0]?.pressed;if(a&&!gamepadHeld){const focused=document.activeElement;if(focused instanceof HTMLElement)focused.click()}gamepadHeld=!!a}requestAnimationFrame(gamepad)}
+connect();requestAnimationFrame(gamepad);
+})();
+</script></body></html>
