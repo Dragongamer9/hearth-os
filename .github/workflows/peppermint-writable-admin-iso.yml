@@ -51,7 +51,6 @@ jobs:
           mkdir -p config/package-lists
           cat > config/package-lists/hearth-admin.list.chroot <<'PACKAGES'
           task-xfce-desktop
-          calamares
           sudo
           apt
           dpkg-dev
