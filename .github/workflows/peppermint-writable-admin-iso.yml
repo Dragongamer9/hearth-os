@@ -48,8 +48,8 @@ jobs:
             --iso-publisher "Hearth OS test build" \
             --iso-volume "PEPPERMINT-ADMIN"
 
-          mkdir -p config/package-lists
-          cat > config/package-lists/hearth-admin.list.chroot <<'PACKAGES'
+          sudo mkdir -p config/package-lists
+          sudo tee config/package-lists/hearth-admin.list.chroot >/dev/null <<'PACKAGES'
           task-xfce-desktop
           sudo
           apt
@@ -93,8 +93,8 @@ jobs:
           PACKAGES
 
           # Do not disable Debian's APT signature verification or privilege boundaries.
-          mkdir -p config/hooks/normal
-          cat > config/hooks/normal/0900-hearth-admin.hook.chroot <<'HOOK'
+          sudo mkdir -p config/hooks/normal
+          sudo tee config/hooks/normal/0900-hearth-admin.hook.chroot >/dev/null <<'HOOK'
           #!/bin/sh
           set -eu
           printf '%s\n' 'Hearth Peppermint writable admin test image' > /etc/hearth-peppermint-admin-test
@@ -106,7 +106,7 @@ jobs:
           apt-get update
           dpkg --audit
           HOOK
-          chmod +x config/hooks/normal/0900-hearth-admin.hook.chroot
+          sudo chmod +x config/hooks/normal/0900-hearth-admin.hook.chroot
 
       - name: Build ISO
         working-directory: /tmp/peppermint-admin
