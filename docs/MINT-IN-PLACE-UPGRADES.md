@@ -15,7 +15,7 @@ This branch creates a versioned `hearth-os-app_<version>_amd64.deb` that install
 4. Install the package (replace filename with the downloaded version):
    `sudo apt install ./hearth-os-app_<version>_amd64.deb`
 5. Relaunch Hearth from the desktop menu. Check `dpkg -s hearth-os-app` and `command -v hearth`.
-6. A later version of the same package can be installed via `sudo apt install ./hearth-os-app_<new-version>_amd64.deb`, without reinstalling the OS.
+6. Run `hearth-upgrade status` to inspect which Hearth executable is active. For a later **trusted and checksum-verified** package use `hearth-upgrade install ./hearth-os-app_<new-version>_amd64.deb`; it checks the package name, architecture and version, refuses a downgrade, and asks for explicit confirmation. You can also use `sudo apt install ./hearth-os-app_<new-version>_amd64.deb`. Neither approach requires reinstalling the OS.
 
 This is currently a **manual package upgrade**, not an automatic Hearth update service. A signed APT repository and Update Manager integration are planned; do not enable a source that has not yet been signed, verified, and published. Never pipe remote scripts into sudo for updates.
 
