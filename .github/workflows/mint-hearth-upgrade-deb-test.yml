@@ -5,6 +5,7 @@ on:
     branches: [test/mint-hearth-upgrade-foundation]
     paths:
       - 'scripts/build-hearth-mint-deb.sh'
+      - 'scripts/hearth-admin-center.py'
       - '.github/workflows/mint-hearth-upgrade-deb-test.yml'
       - 'hosts/hearth-rs/**'
       - 'hosts/hearth-core/**'
@@ -40,11 +41,14 @@ jobs:
           grep -q './usr/share/applications/hearth.desktop' /tmp/hearth-package-contents.txt
           grep -q './usr/bin/hearth-upgrade' /tmp/hearth-package-contents.txt
           bash -n scripts/build-hearth-mint-deb.sh scripts/hearth-upgrade.sh
+          python3 -m py_compile scripts/hearth-admin-center.py
           bash scripts/hearth-upgrade.sh status
           unpack_dir=$(mktemp -d)
           dpkg-deb --extract "$pkg" "$unpack_dir"
           test -x "$unpack_dir/usr/bin/hearth"
           test -x "$unpack_dir/usr/bin/hearth-upgrade"
+          test -x "$unpack_dir/usr/bin/hearth-admin-center"
+          grep -Fx 'Exec=/usr/bin/hearth-admin-center' "$unpack_dir/usr/share/applications/hearth-admin-center.desktop"
           grep -Fx 'Exec=/usr/bin/hearth --windowed' "$unpack_dir/usr/share/applications/hearth.desktop"
           sha256sum "$pkg" > dist/SHA256SUMS
       - name: Install package on Ubuntu 24.04 Mint-compatible base
@@ -59,6 +63,7 @@ jobs:
           test -x /usr/local/bin/hearth
           test -x /usr/bin/hearth
           test -x /usr/bin/hearth-upgrade
+          test -x /usr/bin/hearth-admin-center
           dpkg-query -W -f='${Status}\n' hearth-os-app | grep -Fx 'install ok installed'
           grep -Fx 'Exec=/usr/bin/hearth --windowed' /usr/share/applications/hearth.desktop
           hearth-upgrade status
