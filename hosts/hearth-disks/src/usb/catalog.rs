@@ -429,6 +429,36 @@ pub mod tests {
         }
     }
 
+    /// The Recovery USB is the way back to a Hearth device that won't start, so it gets a test of its own: the
+    /// entry must stay in the catalog, right after Hearth Peppermint, at its fixed address, and check out offline.
+    /// A merge once dropped it silently (the ISO and the docs stayed; only this entry went), which is what this pins.
+    #[test]
+    fn the_recovery_usb_stays_in_the_catalog() {
+        let c = load();
+        let ids: Vec<&str> = c.entries.iter().map(|e| e.id.as_str()).collect();
+        let i = ids.iter().position(|id| *id == "hearth-recovery").expect("the Hearth Recovery USB entry is gone from the catalog");
+        let pepper = ids.iter().position(|id| *id == "hearth-peppermint").expect("hearth-peppermint is gone from the catalog");
+        assert_eq!(i, pepper + 1, "the Recovery USB comes right after Hearth Peppermint (another Hearth image between them means this line needs updating)");
+        let e = &c.entries[i];
+        assert_eq!((e.group.as_str(), e.homepage.as_str()), ("hearth", "https://hearthos.fun/docs/troubleshooting.html#recovery-usb"));
+        match &e.resolve {
+            Resolve::Single { url, follow_name } => {
+                assert_eq!(url, "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso", "a recovery image has to keep coming from the same address");
+                assert!(!*follow_name, "the address is the image itself, not a moving link to follow");
+            }
+            other => panic!("the Recovery USB is a fixed address, not {other:?}"),
+        }
+        assert_eq!(e.checksums.as_ref().map(|cs| cs.file.as_str()), Some("{url}.sha256"), "its SHA-256 is published next to it");
+        assert!(e.signature.is_none() && !e.note.is_empty(), "it's unsigned, and the note says so (validate requires one)");
+        assert!(!e.pinned.is_empty(), "a fixed address says what's pinned (validate requires it)");
+        // It resolves with nothing fetched but its own checksum file, to the file the checksum names.
+        let get = canned();
+        let r = resolve(e, &get).unwrap_or_else(|err| panic!("hearth-recovery: {err}"));
+        assert_eq!((r.url.as_str(), r.file_name.as_str()), ("https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso", "hearth-recovery.iso"));
+        let body = String::from_utf8(r.checksums_body.clone().unwrap()).unwrap();
+        assert_eq!(expected_sha256(&r, Some(&body)).unwrap(), "c6fdf8b766fd7ce3d13644e3c4a11338fa4017dc0e340173632b3d1e471b5ed7");
+    }
+
     #[test]
     fn validation_catches_mistakes() {
         let mut c = load();
@@ -496,6 +526,8 @@ pub mod tests {
         m.insert("https://manjaro.org/products/download/x86", r#"<a href="https://download.manjaro.org/kde/26.0.4/manjaro-kde-26.0.4-260401-linux618.iso">old</a> <a href="https://download.manjaro.org/kde/26.1.0/manjaro-kde-26.1.0-260812-linux71.iso">KDE</a> <a href="https://download.manjaro.org/gnome/26.1.0/manjaro-gnome-26.1.0-260812-linux71.iso">GNOME</a>"#.into());
         m.insert("https://download.manjaro.org/kde/26.1.0/manjaro-kde-26.1.0-260812-linux71.iso.sha256", "711b64362abe0b45348dc33bd4a2c654641e069b50ae9ae37c01771da880aa99  manjaro-kde-26.1.0-260812-linux71.iso\n".into());
         m.insert("https://download.bazzite.gg/bazzite-stable-amd64.iso-CHECKSUM", "9c8d06cd8e57f2274678edeb14b4b13a79b8117c70571a65199919a66305b5c7  bazzite-stable-amd64.iso\n".into());
+        // Hearth's own ISOs: a fixed address with the SHA-256 published beside it (as the download server answered).
+        m.insert("https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256", "c6fdf8b766fd7ce3d13644e3c4a11338fa4017dc0e340173632b3d1e471b5ed7  hearth-recovery.iso\n".into());
         m
     }
 
