@@ -793,15 +793,32 @@ pub fn spawn(home: &Path, arg: &str) -> Result<(), String> {
         .spawn().map(|c| { crate::procs::detach(c); }).map_err(|e| format!("Couldn't start Steam: {e}"))
 }
 
-/// Is the Steam client running (native or the Flatpak's)?
+/// Is the Steam client running (native or the Flatpak's)? By the process name, and by the command line too (the
+/// Flatpak's client can carry another name), and a game Steam started (its reaper with SteamLaunch) means it is.
 pub fn is_running() -> bool {
     let Ok(dir) = std::fs::read_dir("/proc") else { return false };
     dir.flatten().any(|e| {
         let name = e.file_name();
         let n = name.to_string_lossy();
-        n.chars().all(|c| c.is_ascii_digit()) && matches!(std::fs::read_to_string(e.path().join("comm")).unwrap_or_default().trim(), "steam" | "steamwebhelper")
+        if !n.chars().all(|c| c.is_ascii_digit()) { return false; }
+        let comm = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default();
+        if matches!(comm.trim(), "steam" | "steamwebhelper") { return true; }
+        let cmd = std::fs::read(e.path().join("cmdline")).unwrap_or_default();
+        running_by_cmdline(comm.trim(), &cmd)
     })
 }
+/// A process's command line (NUL-separated) that is Steam's client, or a game Steam is running.
+fn running_by_cmdline(comm: &str, cmd: &[u8]) -> bool {
+    let args: Vec<String> = cmd.split(|c| *c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+    let Some(first) = args.first() else { return false };
+    if first.ends_with("ubuntu12_32/steam") || first.ends_with("ubuntu12_64/steamwebhelper") || first.ends_with("/steamwebhelper") { return true; }
+    comm == "reaper" && args.iter().any(|a| a == "SteamLaunch")
+}
+
+/// One start of Steam at a time, and not again right after one: a second "-silent" while the first is still coming
+/// up (the Flatpak takes a while) opened more Steam windows.
+static STARTING: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
+const RESTART_GUARD_MS: u64 = 90_000;
 
 /// Starts Steam hidden (-silent: no window, only its background part) if it isn't running, and waits until it's
 /// up, so a game started next comes straight up instead of Steam's update and main windows. Blocks up to ~35 s:
@@ -809,6 +826,18 @@ pub fn is_running() -> bool {
 pub fn ensure_running_silent(home: &Path) {
     crate::steam_ctl::touch();
     if is_running() || !client_installed(home) { return; }
+    {
+        let mut at = STARTING.lock().unwrap_or_else(|p| p.into_inner());
+        let t = crate::library::now_ms();
+        if *at != 0 && t.saturating_sub(*at) < RESTART_GUARD_MS {
+            crate::bridge::log(&format!("steam: already started {} s ago and still coming up; not starting it again", t.saturating_sub(*at) / 1000));
+            drop(at);
+            for _ in 0..60 { if is_running() { return; } std::thread::sleep(std::time::Duration::from_millis(500)); }
+            return;
+        }
+        if is_running() { return; }
+        *at = t;
+    }
     crate::bridge::log("steam: starting it in the background (-silent)");
     if spawn(home, "-silent").is_err() { return; }
     // Started by Hearth: Hearth may close it again once nothing needs it (steam_ctl, "Start Steam only when needed").
@@ -816,6 +845,20 @@ pub fn ensure_running_silent(home: &Path) {
     for _ in 0..60 {
         std::thread::sleep(std::time::Duration::from_millis(500));
         if is_running() { std::thread::sleep(std::time::Duration::from_secs(3)); return; }
+    }
+}
+
+#[cfg(test)]
+mod running_tests {
+    use super::*;
+    #[test]
+    fn steam_by_command_line() {
+        assert!(running_by_cmdline("steam.sh", b"/home/u/.local/share/Steam/ubuntu12_32/steam\0-silent\0"));
+        assert!(running_by_cmdline("steamwebhelpe", b"/app/x/ubuntu12_64/steamwebhelper\0-lang=en\0"));
+        assert!(running_by_cmdline("reaper", b"/s/ubuntu12_32/reaper\0SteamLaunch\0AppId=5\0--\0game\0"));
+        assert!(!running_by_cmdline("reaper", b"/s/reaper\0other\0"));
+        assert!(!running_by_cmdline("bash", b"bash\0-c\0steam\0"));
+        assert!(!running_by_cmdline("x", b""));
     }
 }
 

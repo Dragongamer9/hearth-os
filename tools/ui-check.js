@@ -1210,7 +1210,8 @@ const path = require('path');
         closeAll(); openLayer('qam'); S.qtab = 'friends'; MF.room = null; renderQam(); await wait(300); renderQam();
         if (!document.querySelector('#qam [data-k="mfq-f-@sarah:matrix.org"]') || !document.querySelector('#qam [data-k="mfq-all"]')) throw new Error('Quick Access › Friends has no friends');
         await mfAct('mfQOpen', { room: '!s:matrix.org' }); await wait(300); renderQam();
-        if (!document.querySelector('#qam [data-k="mfx-type"]') || !document.querySelector('#qam [data-k="mfx-game"]')) throw new Error('Quick Access › Friends chat has no Reply / Invite');
+        // (Invite to <game> only with a game running: the top dock's Friends tab, with or without a game.)
+        if (!document.querySelector('#qam [data-k="mfx-type"]') || (S.running && !document.querySelector('#qam [data-k="mfx-game"]'))) throw new Error('Quick Access › Friends chat has no Reply / Invite');
       });
       await shoot('qam');
       await run(() => { closeAll(); MF.room = null; });
@@ -1220,8 +1221,8 @@ const path = require('path');
 
   // Quick Access is one implementation: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT)
   // and the overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same tabs,
-  // sections and buttons in the same order, with the same actions and the same controller navigation: the top dock
-  // with a game running, the side panel (440 px on the right) without one. Screenshots of both go to tools/qa-shots
+  // sections and buttons in the same order, with the same actions and the same controller navigation: the top dock,
+  // with a game running and without one (no Now playing then). Screenshots of both go to tools/qa-shots
   // (release.yml posts them as notices).
   const qaShots = path.resolve(__dirname, 'qa-shots');
   try { require('fs').mkdirSync(qaShots, { recursive: true }); } catch {}
@@ -1285,8 +1286,10 @@ const path = require('path');
     same('size and position', main.rect, ov.rect);
     same('size and position (top dock)', main.rectTop, ov.rectTop);
     if (!(main.now && main.now.top) || !(ov.now && ov.now.top)) errors.push(`quick access: with a game running it isn't the top dock (panel ${main.now && main.now.top}, overlay ${ov.now && ov.now.top})`);
-    if ((main.idle && main.idle.top) || (ov.idle && ov.idle.top)) errors.push('quick access: with no game it should be the side panel');
-    for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, main[k] && main[k].buttons, ov[k] && ov[k].buttons); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
+    if (!(main.idle && main.idle.top) || !(ov.idle && ov.idle.top)) errors.push('quick access: with no game it should be the top dock too');
+    if (main.idle && (main.idle.tab !== 'quick' || / (now|controls)\b/.test(' ' + main.idle.tabs))) errors.push(`quick access: with no game it opens on ${main.idle.tab} with tabs ${main.idle.tabs} (want Quick settings, no Now playing / Controller layout)`);
+    const noN = b => b && b.filter(x => !/^n-/.test(x));   // notifications: the overlay page starts with none of its own
+    for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, noN(main[k] && main[k].buttons), noN(ov[k] && ov[k].buttons)); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
     same('controller navigation', main.nav, ov.nav);
     same('tab order (RB)', main.tabsVisited, ov.tabsVisited);
     // (Notifications: the overlay page starts with none of its own; what's in them isn't a button set.)
@@ -1294,9 +1297,82 @@ const path = require('path');
     const want = ['q-resume', 'q-invite', 'q-gset', 'q-exit', 'q-pause', 'q-aside', 'q-home'];
     const got = ((main.now && main.now.buttons) || []).map(b => b.split(':')[0]).filter(k => want.includes(k));
     if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`quick access: Now playing buttons ${got.join(' ')} (want ${want.join(' ')})`);
-    if (main.rect && !/^840,0 440x800$/.test(main.rect)) errors.push(`quick access: panel at ${main.rect} (want the overlay's 440 px on the right)`);
+    for (const k of ['q-gw', 'q-gb', 'q-kbd', 'q-mouse']) if (main.idle && !main.idle.buttons.some(b => b.startsWith(k + ':'))) errors.push(`quick access with no game: the side panel's ${k} isn't in the dock`);
     if (main.now && main.now.tabs !== 'now perf controls friends capture quick') errors.push(`quick access: top dock tabs ${main.now.tabs} (want now perf controls friends capture quick)`);
     console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}, top dock ${main.rectTop}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+  }
+  // Put aside only on an explicit choice (0.6.54: Quick Access over a game put the game aside by itself a moment after
+  // it opened): A just after it opens is dropped, Put aside asks first with Cancel selected, the question drops an A in
+  // its first moment too, and every step is logged with what chose it. The same for the classic side panel. Then
+  // Settings › Appearance › Quick Access style: the side panel everywhere (over a game too), and a narrow window keeps
+  // the dock.
+  for (const style of ['dock', 'side']) {
+    const pp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    pp.on('pageerror', e => errors.push(`put aside (${style}): ${e.message}`));
+    try {
+      await pp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux&overlay=full');
+      await pp.waitForTimeout(1200);
+      const r = await pp.evaluate(async (style) => {
+        const wait = ms => new Promise(res => setTimeout(res, ms)), o = {};
+        window.__sent = []; window.send = m => { window.__sent.push(m); };
+        HOSTINFO.features = ['quickResume', 'pause']; QR.on = true; LOOK.qaStyle = style;
+        const id = GAMES.filter(g => !g.cloud)[0].id;
+        const real = MOCK.call; window.__calls = [];
+        MOCK.call = (m, a) => { window.__calls.push(m); return m === 'perf.stats' ? real(m, a).then(x => Object.assign({}, x, { runningId: id, runningSince: Date.now() - 6e5 })) : real(m, a); };
+        S.running = id; S.runningSince = Date.now() - 6e5;
+        await overlayShown();
+        o.top = document.querySelector('#qam').classList.contains('top');
+        hostPad('a'); o.early = { layers: S.layers.join(','), close: window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length };
+        await wait(500);
+        if (style === 'side') S.qtab = 'now', renderQam();
+        // Steam Input's keys for the same presses (Steam games): dropped, the controller comes from Hearth.
+        PAD.host = true; const f0 = focused && focused.dataset.k;
+        for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        o.echo = { moved: (focused && focused.dataset.k) !== f0, layers: S.layers.join(','), close: window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').length };
+        setFocus(document.querySelector('#qam [data-k="q-aside"]'), true);
+        hostPad('a'); o.asked = { top: S.layers.at(-1), focus: focused && focused.dataset.k };
+        hostPad('a'); o.quick = S.layers.at(-1);   // on Cancel, in the question's first moment: dropped
+        await wait(500); hostPad('a'); o.cancel = S.layers.at(-1);
+        hostPad('a'); await wait(500); hostPad('up'); hostPad('a');
+        o.calls = window.__sent.filter(m => m.type === 'log' && /^quick resume: putting /.test(m.text)).length;   // (the preview has no host to call)
+        o.aside = !S.running && QR.list.some(q => q.id === id);
+        o.logs = window.__sent.filter(m => m.type === 'log').map(m => m.text);
+        return o;
+      }, style);
+      const perr = m => errors.push(`put aside (${style}): ${m}`);
+      if (r.top !== (style === 'dock')) perr(`Quick Access style ${style}: over a game it's the ${r.top ? 'top dock' : 'side panel'}`);
+      if (r.early.layers !== 'qam' || r.early.close) perr(`an A right after it opened acted (${JSON.stringify(r.early)})`);
+      if (r.echo.moved || r.echo.layers !== 'qam' || r.echo.close) perr(`Steam's arrow keys / Enter over the game acted (${JSON.stringify(r.echo)})`);
+      if (r.asked.top !== 'sheet' || r.asked.focus !== 'sh-x') perr(`Put aside didn't ask first with Cancel selected (${JSON.stringify(r.asked)})`);
+      if (r.quick !== 'sheet') perr('an A right after the question opened answered it');
+      if (r.cancel !== 'qam') perr('Cancel did not go back to Quick Access');
+      if (r.calls !== 1 || !r.aside) perr(`put aside ${r.calls} times (want once, after the question; aside: ${r.aside})`);
+      if (!r.logs.some(t => /^quick access: A \/ Enter ignored/.test(t))) perr('the dropped A is not logged');
+      if (!r.logs.some(t => /^quick resume: Put aside picked for .* by controller a/.test(t)) || !r.logs.some(t => /^quick resume: putting .* aside: confirmed by controller a/.test(t))) perr('what chose Put aside is not logged: ' + r.logs.join(' | '));
+    } catch (e) { errors.push(`put aside (${style}): ${e.message.split('\n')[0]}`); }
+    await pp.close();
+  }
+  {
+    const np = await browser.newPage({ viewport: { width: 420, height: 800 } });
+    np.on('pageerror', e => errors.push(`quick access (narrow): ${e.message}`));
+    try {
+      await np.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await np.waitForTimeout(1200);
+      const r = await np.evaluate(async () => {
+        const out = {};
+        for (const run of [false, true]) {
+          closeAll(); S.running = run ? GAMES.filter(g => !g.cloud)[0].id : null; input('guide');
+          await new Promise(res => setTimeout(res, 400));
+          const b = document.querySelector('#qam .qd-bar'), p = document.querySelector('#qam .qd-panel');
+          const rb = b && b.getBoundingClientRect(), rp = p && p.getBoundingClientRect();
+          out[run ? 'game' : 'idle'] = { top: document.querySelector('#qam').classList.contains('top'), fits: !!(rb && rp && rb.left >= 0 && rb.right <= innerWidth && rp.left >= 0 && rp.right <= innerWidth), wide: document.documentElement.scrollWidth <= innerWidth };
+        }
+        closeAll(); S.running = null;
+        return out;
+      });
+      for (const k of ['idle', 'game']) if (!r[k].top || !r[k].fits || !r[k].wide) errors.push(`quick access (narrow window, ${k}): ${JSON.stringify(r[k])} (want the top dock, inside the window)`);
+    } catch (e) { errors.push('quick access (narrow): ' + e.message.split('\n')[0]); }
+    await np.close();
   }
 
 

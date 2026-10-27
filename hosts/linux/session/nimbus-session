@@ -212,8 +212,35 @@ run_game() {
   return "$gs_rc"
 }
 
+# Games Hearth stopped (Quick Resume's put aside, Pause: SIGSTOP) and still stopped when Desktop Mode starts froze the
+# desktop. Hearth ends them when you switch (bridge.rs "power" → library.rs end_stopped); this is the safety net after
+# it: this user's stopped processes carrying a game's mark (HEARTH_GAME_ID, or Steam's SteamGameId / SteamAppId) are
+# woken, asked to close, and killed after 3 s. Never fails and never waits longer than that.
+end_stopped_games() {
+  pids=""; me=$(id -u)
+  for d in /proc/[0-9]*; do
+    [ "$(stat -c %u "$d" 2>/dev/null)" = "$me" ] || continue
+    st=$(sed -n 's/^State:[[:space:]]*\([A-Za-z]\).*/\1/p' "$d/status" 2>/dev/null)
+    [ "$st" = "T" ] || continue
+    tr '\0' '\n' <"$d/environ" 2>/dev/null | grep -qE '^(HEARTH_GAME_ID|SteamGameId|SteamAppId)=[1-9]' || continue
+    pids="$pids ${d#/proc/}"
+  done
+  [ -n "$pids" ] || return 0
+  log "desktop mode: ending games still stopped (put aside or paused):$pids"
+  kill -CONT $pids 2>/dev/null; kill -TERM $pids 2>/dev/null
+  for _ in 1 2 3 4 5 6; do
+    left=""; for p in $pids; do [ -d "/proc/$p" ] && left="$left $p"; done
+    [ -n "$left" ] || return 0
+    sleep 0.5
+  done
+  log "desktop mode: killing what didn't close:$left"
+  kill -KILL $left 2>/dev/null
+  return 0
+}
+
 run_desktop() {
   log "desktop mode"
+  end_stopped_games || true
   # Nvidia: wlroots' hardware cursor doesn't show (or doesn't move) on Nvidia's driver, so the pointer draws in
   # software there. Same as every wlroots desktop needs on Nvidia.
   if [ -d /sys/module/nvidia_drm ]; then
