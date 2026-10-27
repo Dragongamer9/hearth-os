@@ -120,6 +120,13 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.56 (released)
+
+- [x] Quick Access over Steam games no longer puts the game aside by itself (black or frozen games on the ROG Ally)
+- [x] Steam is never started twice and its window is asked for once at a time (several Steam windows and a sluggish game on the Nvidia PC)
+- [x] Switching to Desktop Mode closes paused / put-aside games first (they froze the system), with a safety net in the session
+- [x] Settings › You › Appearance › Quick Access style: Top dock (new) or Side panel (classic)
+
 ## 0.6.55 (released)
 
 - [x] Peppermint: `sudo hearth-unlock` unlocks the system (apt installs and changes anything, kept across restarts) while keeping updates and rollback; `sudo hearth-unlock --reapply` after an update reinstalls your packages
