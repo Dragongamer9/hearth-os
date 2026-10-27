@@ -1210,7 +1210,8 @@ const path = require('path');
         closeAll(); openLayer('qam'); S.qtab = 'friends'; MF.room = null; renderQam(); await wait(300); renderQam();
         if (!document.querySelector('#qam [data-k="mfq-f-@sarah:matrix.org"]') || !document.querySelector('#qam [data-k="mfq-all"]')) throw new Error('Quick Access › Friends has no friends');
         await mfAct('mfQOpen', { room: '!s:matrix.org' }); await wait(300); renderQam();
-        if (!document.querySelector('#qam [data-k="mfx-type"]') || !document.querySelector('#qam [data-k="mfx-game"]')) throw new Error('Quick Access › Friends chat has no Reply / Invite');
+        // (Invite to <game> only with a game running: the top dock's Friends tab, with or without a game.)
+        if (!document.querySelector('#qam [data-k="mfx-type"]') || (S.running && !document.querySelector('#qam [data-k="mfx-game"]'))) throw new Error('Quick Access › Friends chat has no Reply / Invite');
       });
       await shoot('qam');
       await run(() => { closeAll(); MF.room = null; });
@@ -1220,8 +1221,8 @@ const path = require('path');
 
   // Quick Access is one implementation: Hearth's own (Guide with Hearth on screen, the starting screen, LAST RESORT)
   // and the overlay over a game (?overlay=full, HHD's overlay app or Hearth's overlay window) draw the same tabs,
-  // sections and buttons in the same order, with the same actions and the same controller navigation: the top dock
-  // with a game running, the side panel (440 px on the right) without one. Screenshots of both go to tools/qa-shots
+  // sections and buttons in the same order, with the same actions and the same controller navigation: the top dock,
+  // with a game running and without one (no Now playing then). Screenshots of both go to tools/qa-shots
   // (release.yml posts them as notices).
   const qaShots = path.resolve(__dirname, 'qa-shots');
   try { require('fs').mkdirSync(qaShots, { recursive: true }); } catch {}
@@ -1285,8 +1286,10 @@ const path = require('path');
     same('size and position', main.rect, ov.rect);
     same('size and position (top dock)', main.rectTop, ov.rectTop);
     if (!(main.now && main.now.top) || !(ov.now && ov.now.top)) errors.push(`quick access: with a game running it isn't the top dock (panel ${main.now && main.now.top}, overlay ${ov.now && ov.now.top})`);
-    if ((main.idle && main.idle.top) || (ov.idle && ov.idle.top)) errors.push('quick access: with no game it should be the side panel');
-    for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, main[k] && main[k].buttons, ov[k] && ov[k].buttons); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
+    if (!(main.idle && main.idle.top) || !(ov.idle && ov.idle.top)) errors.push('quick access: with no game it should be the top dock too');
+    if (main.idle && (main.idle.tab !== 'quick' || / (now|controls)\b/.test(' ' + main.idle.tabs))) errors.push(`quick access: with no game it opens on ${main.idle.tab} with tabs ${main.idle.tabs} (want Quick settings, no Now playing / Controller layout)`);
+    const noN = b => b && b.filter(x => !/^n-/.test(x));   // notifications: the overlay page starts with none of its own
+    for (const k of ['now', 'idle']) { same(`opening tab (${k})`, main[k] && main[k].tab, ov[k] && ov[k].tab); same(`tabs (${k})`, main[k] && main[k].tabs, ov[k] && ov[k].tabs); same(`buttons (${k})`, noN(main[k] && main[k].buttons), noN(ov[k] && ov[k].buttons)); same(`first focus (${k})`, main[k] && main[k].focus, ov[k] && ov[k].focus); }
     same('controller navigation', main.nav, ov.nav);
     same('tab order (RB)', main.tabsVisited, ov.tabsVisited);
     // (Notifications: the overlay page starts with none of its own; what's in them isn't a button set.)
@@ -1294,9 +1297,92 @@ const path = require('path');
     const want = ['q-resume', 'q-invite', 'q-gset', 'q-exit', 'q-pause', 'q-aside', 'q-home'];
     const got = ((main.now && main.now.buttons) || []).map(b => b.split(':')[0]).filter(k => want.includes(k));
     if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`quick access: Now playing buttons ${got.join(' ')} (want ${want.join(' ')})`);
-    if (main.rect && !/^840,0 440x800$/.test(main.rect)) errors.push(`quick access: panel at ${main.rect} (want the overlay's 440 px on the right)`);
+    for (const k of ['q-gw', 'q-gb', 'q-kbd', 'q-mouse']) if (main.idle && !main.idle.buttons.some(b => b.startsWith(k + ':'))) errors.push(`quick access with no game: the side panel's ${k} isn't in the dock`);
     if (main.now && main.now.tabs !== 'now perf controls friends capture quick') errors.push(`quick access: top dock tabs ${main.now.tabs} (want now perf controls friends capture quick)`);
     console.log(`quick access: panel ${main.rect}, overlay ${ov.rect}, top dock ${main.rectTop}; tabs ${main.now && main.now.tabs}; now playing: ${got.join(' ')}`);
+  }
+  {
+    const np = await browser.newPage({ viewport: { width: 420, height: 800 } });
+    np.on('pageerror', e => errors.push(`quick access (narrow): ${e.message}`));
+    try {
+      await np.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await np.waitForTimeout(1200);
+      const r = await np.evaluate(async () => {
+        const out = {};
+        for (const run of [false, true]) {
+          closeAll(); S.running = run ? GAMES.filter(g => !g.cloud)[0].id : null; input('guide');
+          await new Promise(res => setTimeout(res, 400));
+          const b = document.querySelector('#qam .qd-bar'), p = document.querySelector('#qam .qd-panel');
+          const rb = b && b.getBoundingClientRect(), rp = p && p.getBoundingClientRect();
+          out[run ? 'game' : 'idle'] = { top: document.querySelector('#qam').classList.contains('top'), fits: !!(rb && rp && rb.left >= 0 && rb.right <= innerWidth && rp.left >= 0 && rp.right <= innerWidth), wide: document.documentElement.scrollWidth <= innerWidth };
+        }
+        closeAll(); S.running = null;
+        return out;
+      });
+      for (const k of ['idle', 'game']) if (!r[k].top || !r[k].fits || !r[k].wide) errors.push(`quick access (narrow window, ${k}): ${JSON.stringify(r[k])} (want the top dock, inside the window)`);
+    } catch (e) { errors.push('quick access (narrow): ' + e.message.split('\n')[0]); }
+    await np.close();
+  }
+  // Settings › You › Appearance › Quick Access style: the top dock (the default) or the classic side panel, chosen the
+  // way a player chooses it, saved (LOOK, and Hearth's overlay.settings for HHD's overlay app), and the real Quick
+  // Access following the choice over a game and with none - not just the button that looks picked. Reopening Settings
+  // shows the choice that was made.
+  {
+    const qp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    qp.on('pageerror', e => errors.push(`quick access style: ${e.message}`));
+    try {
+      await qp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await qp.waitForTimeout(1200);
+      const r = await qp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms)), out = {};
+        const game = GAMES.filter(g => !g.cloud)[0].id;
+        const appearance = () => { closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false); };
+        const picked = style => document.querySelector(`#view [data-k="ap-qs-${style}"]`);
+        // Guide opens Quick Access; true when it's the top dock (the side panel has no qtop class on #qam).
+        const openQuick = async running => { closeAll(); S.running = running ? game : null; input('guide'); await wait(400); return document.querySelector('#qam').classList.contains('top'); };
+        out.styles = {};
+        for (const style of ['dock', 'side']) {
+          appearance();
+          if (!picked(style)) throw new Error(`Appearance has no Quick Access style ${style}`);
+          act(picked(style));
+          await wait(250);
+          const o = { selected: picked(style).classList.contains('on'), look: LOOK.qaStyle };
+          try { o.stored = (JSON.parse(localStorage.getItem('nimbus.look')) || {}).qaStyle; } catch (e) { o.stored = null; }
+          o.row = (picked(style).closest('.row') || {}).textContent || '';
+          o.running = await openQuick(true);
+          o.idle = await openQuick(false);
+          appearance(); await wait(200);
+          o.again = picked(style).classList.contains('on');
+          // Hearth's setting reaches this page (HHD's overlay app has storage of its own and reads it from Hearth),
+          // and the call behind it: the host's answer is what the overlay follows.
+          const flip = style === 'dock' ? 'side' : 'dock';
+          qaStyleFrom({ qaStyle: flip }); o.took = LOOK.qaStyle;
+          qaStyleFrom({ qaStyle: style }); o.back = LOOK.qaStyle;
+          const s = await call('overlay.setQaStyle', { style: flip });
+          o.fromHost = s && s.qaStyle;
+          await call('overlay.setQaStyle', { style });
+          out.styles[style] = o;
+        }
+        appearance(); act(picked('dock')); closeAll(); S.running = null;   // the dock again, for the checks after this
+        return out;
+      });
+      for (const style of ['dock', 'side']) {
+        const o = r.styles[style], want = style === 'dock';
+        const perr = m => errors.push(`quick access style ${style}: ${m}`);
+        if (!o.selected) perr("the Appearance choice isn't shown as the one picked");
+        if (o.look !== style) perr(`not saved (LOOK.qaStyle is ${o.look})`);
+        if (o.stored && o.stored !== style) perr(`not saved (stored as ${o.stored})`);
+        if (o.running !== want) perr(`over a game it is the ${o.running ? 'top dock' : 'side panel'}`);
+        if (o.idle !== want) perr(`with no game it is the ${o.idle ? 'top dock' : 'side panel'}`);
+        if (!o.again) perr('opening Settings again lost the choice');
+        if (!(want ? /dock/i : /panel/i).test(o.row)) perr(`the row does not say what it is: ${o.row.slice(0, 90)}`);
+        if (o.took !== (want ? 'side' : 'dock')) perr(`Hearth's setting was not taken over (${o.took})`);
+        if (o.back !== style) perr(`Hearth's setting was not taken back (${o.back})`);
+        if (o.fromHost !== (want ? 'side' : 'dock')) perr(`overlay.setQaStyle answered ${o.fromHost}`);
+      }
+      console.log(`quick access style: dock over a game ${r.styles.dock.running}, side panel over a game ${!r.styles.side.running}, stored ${r.styles.side.stored}, kept on reopen ${r.styles.side.again}`);
+    } catch (e) { errors.push('quick access style: ' + ((e && e.message) || e)); }
+    await qp.close();
   }
 
 
