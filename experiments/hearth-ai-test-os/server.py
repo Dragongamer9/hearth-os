@@ -43,6 +43,8 @@ class Handler(BaseHTTPRequestHandler):
   url=urllib.parse.urlsplit(self.path)
   if url.path=="/" and urllib.parse.parse_qs(url.query).get("token")==[TOKEN]:
    return self._respond(200,(ROOT/"index.html").read_text(),"text/html")
+  if url.path=="/app.js":
+   return self._respond(200,(ROOT/"app.js").read_text(),"text/javascript")
   if url.path=="/api/status":
    if not self._authorized(): return self._respond(403,{"error":"Forbidden"})
    return self._respond(200,detect())
@@ -55,8 +57,10 @@ class Handler(BaseHTTPRequestHandler):
    length=int(self.headers.get("Content-Length","0"))
    if length<=0 or length>12000: return self._respond(413,{"error":"Invalid prompt size"})
    item=json.loads(self.rfile.read(length))
+   if not isinstance(item,dict):
+    return self._respond(400,{"error":"Request must be a JSON object"})
    name=item.get("agent");prompt=item.get("prompt")
-   if name not in TOOLS or not isinstance(prompt,str) or not prompt.strip() or len(prompt)>6000:
+   if not isinstance(name,str) or name not in TOOLS or not isinstance(prompt,str) or not prompt.strip() or len(prompt)>6000:
     return self._respond(400,{"error":"Select an AI and enter a prompt (max 6000 characters)"})
    exe,args=TOOLS[name]
    resolved=shutil.which(exe)

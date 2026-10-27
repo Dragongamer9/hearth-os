@@ -75,3 +75,27 @@ This is a standard Linux `.desktop` launcher, **not yet** a built-in Mantel Quic
 ### Promotion gate
 
 Only consider merging features into production after automated unit tests, checks on both handheld and desktop hardware, security review of CLI permission boundaries, and an easy uninstall/rollback procedure. This experimental branch is **not** release-ready.
+
+## Browser regression check
+
+The dashboard JavaScript is served as `/app.js` so it can run under the server's
+`script-src 'self'` policy; inline scripts remain blocked. The API rejects JSON
+values that are not objects and non-string provider names with HTTP 400.
+
+From this directory, run the standard-library tests:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+For the live browser check, install Playwright 1.48.2 outside the checkout and set
+`NODE_PATH` to that installation's `node_modules`. Then run:
+
+```sh
+node tests/browser-smoke.cjs
+```
+
+The check starts and stops its own loopback server, loads the real dashboard,
+checks providers and diagnostics, and saves `/tmp/hearth-ai-command-center.png`.
+It never invokes an AI provider. `HEARTH_CHROMIUM` can select another installed
+Chromium executable; the default is `/usr/bin/chromium`.
