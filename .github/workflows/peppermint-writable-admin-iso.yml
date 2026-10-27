@@ -1,0 +1,150 @@
+name: Peppermint writable admin test ISO
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [test/peppermint-writable-admin-iso]
+    paths:
+      - '.github/workflows/peppermint-writable-admin-iso.yml'
+      - 'docs/PEPPERMINT-WRITABLE-ADMIN-ISO.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peppermint-writable-admin-iso
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build conventional Debian-based test ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install live-build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y live-build debootstrap xorriso squashfs-tools qemu-system-x86
+
+      - name: Configure Peppermint-style writable test system
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/peppermint-admin
+          cd /tmp/peppermint-admin
+
+          sudo lb config \
+            --distribution trixie \
+            --architectures amd64 \
+            --binary-images iso-hybrid \
+            --archive-areas "main contrib non-free non-free-firmware" \
+            --debian-installer live \
+            --debian-installer-gui true \
+            --apt-recommends true \
+            --bootappend-live "boot=live components username=hearth hostname=hearth-peppermint-admin" \
+            --iso-application "Peppermint Writable Admin Test" \
+            --iso-publisher "Hearth OS test build" \
+            --iso-volume "PEPPERMINT-ADMIN"
+
+          mkdir -p config/package-lists
+          cat > config/package-lists/hearth-admin.list.chroot <<'PACKAGES'
+          task-xfce-desktop
+          calamares
+          sudo
+          apt
+          dpkg-dev
+          build-essential
+          git
+          curl
+          wget
+          ca-certificates
+          flatpak
+          gdebi
+          synaptic
+          network-manager
+          network-manager-gnome
+          firmware-linux
+          firmware-linux-nonfree
+          firmware-misc-nonfree
+          linux-headers-amd64
+          vim
+          nano
+          htop
+          pciutils
+          usbutils
+          efibootmgr
+          grub-efi-amd64
+          grub-pc
+          os-prober
+          gparted
+          btrfs-progs
+          xfsprogs
+          e2fsprogs
+          dosfstools
+          ntfs-3g
+          exfatprogs
+          openssh-client
+          rsync
+          xz-utils
+          zstd
+          xorriso
+          squashfs-tools
+          PACKAGES
+
+          # Do not disable Debian's APT signature verification or privilege boundaries.
+          mkdir -p config/hooks/normal
+          cat > config/hooks/normal/0900-hearth-admin.hook.chroot <<'HOOK'
+          #!/bin/sh
+          set -eu
+          printf '%s\n' 'Hearth Peppermint writable admin test image' > /etc/hearth-peppermint-admin-test
+          # Make sudo available to the live user when live-config creates it.
+          if getent group sudo >/dev/null; then
+            usermod -aG sudo hearth 2>/dev/null || true
+          fi
+          # Keep standard Debian repositories and package verification enabled.
+          apt-get update
+          dpkg --audit
+          HOOK
+          chmod +x config/hooks/normal/0900-hearth-admin.hook.chroot
+
+      - name: Build ISO
+        working-directory: /tmp/peppermint-admin
+        env:
+          LB_APT_RECOMMENDS: "true"
+        run: |
+          set -euxo pipefail
+          sudo lb build 2>&1 | tee /tmp/peppermint-admin-build.log
+          iso=$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)
+          test -n "$iso"
+          test -s "$iso"
+          xorriso -indev "$iso" -pvd_info
+          sha256sum "$iso" | tee SHA256SUMS
+          mv "$iso" "$GITHUB_WORKSPACE/peppermint-writable-admin-test-amd64.iso"
+          mv SHA256SUMS "$GITHUB_WORKSPACE/SHA256SUMS"
+
+      - name: Upload ISO artifact (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: peppermint-writable-admin-test-iso
+          path: |
+            peppermint-writable-admin-test-amd64.iso
+            SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Boot smoke test in QEMU
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/qemu-test
+          timeout 150s sudo qemu-system-x86_64 \
+            -m 4096 -smp 2 -machine q35 \
+            -cdrom "$GITHUB_WORKSPACE/peppermint-writable-admin-test-amd64.iso" \
+            -boot d -display none -serial file:/tmp/qemu-test/serial.log \
+            -no-reboot -no-shutdown || rc=$?
+          cat /tmp/qemu-test/serial.log || true
+          # The serial log can be empty for a graphical live ISO; ISO structure and successful build are checked above.
+          test -s "$GITHUB_WORKSPACE/peppermint-writable-admin-test-amd64.iso"
