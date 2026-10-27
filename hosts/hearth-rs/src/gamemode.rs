@@ -40,6 +40,8 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+/// Suppress duplicate requests while waiting for Steam to map a window.
+static STEAM_WINDOW_WAIT: AtomicBool = AtomicBool::new(false);
 use crate::winhost::WindowHost;
 
 pub const MAIN_TITLE: &str = "Hearth";
@@ -1198,6 +1200,10 @@ impl GameMode {
             // Steam's chat (or another Steam window) was asked for: Hearth steps aside once it's up.
             "showSteam" => {
                 if !self.inside() { return; }
+                // Only ever on something you asked for (who: a["why"]), and one at a time.
+                let why = a["why"].as_str().unwrap_or("not said").to_string();
+                if STEAM_WINDOW_WAIT.swap(true, Ordering::SeqCst) { log(&format!("friends: Steam's window asked for again ({why}) while the last ask still waits; not asking twice")); return; }
+                log(&format!("friends: Steam's window asked for ({why})"));
                 self.claim();
                 self.close_for("a Steam window");
                 let me = self.clone();
@@ -1208,8 +1214,9 @@ impl GameMode {
                     for _ in 0..tries {
                         std::thread::sleep(Duration::from_millis(700));
                         let hit = gs::mapped_windows().into_iter().find(|w| w.pid != mine && w.w >= 300 && w.h >= 200 && matches!(std::fs::read_to_string(format!("/proc/{}/comm", w.pid)).unwrap_or_default().trim(), "steam" | "steamwebhelper"));
-                        if let Some(w) = hit { me.step_aside(); me.focus_xid("steam window", w.win, 0, false); return; }
+                        if let Some(w) = hit { STEAM_WINDOW_WAIT.store(false, Ordering::SeqCst); me.step_aside(); me.focus_xid("steam window", w.win, 0, false); return; }
                     }
+                    STEAM_WINDOW_WAIT.store(false, Ordering::SeqCst);
                     log("friends: Steam's window didn't show up");
                 });
             }
