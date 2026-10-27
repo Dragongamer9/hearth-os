@@ -853,6 +853,25 @@ impl Library {
         self.finish(r)
     }
 
+    /// Before Desktop Mode: the games Hearth stopped (put aside with Quick Resume, or paused) are ended (each process
+    /// woken up first, then asked to close, killed after 5 s: procs::stop). A stopped game left behind froze the
+    /// desktop session. Returns their titles (for the log and the page).
+    pub fn end_stopped(&mut self) -> Vec<String> {
+        let title = |me: &Self, id: &str| me.games.get(id).map(|g| g.title.clone()).unwrap_or_else(|| id.to_string());
+        let mut ended = Vec::new();
+        for r in std::mem::take(&mut self.frozen) {
+            ended.push(title(self, &r.id));
+            self.close_frozen_entry(r);
+        }
+        if let Some(id) = self.running.as_ref().filter(|r| r.paused_at > 0).map(|r| r.id.clone()) {
+            ended.push(title(self, &id));
+            self.resume();
+            self.close_running();
+        }
+        self.save_quick();
+        ended
+    }
+
     /// What Quick Resume holds, newest first: [{id, title, frozenAt}]
     pub fn quick_list(&self) -> Value {
         json!(self.frozen.iter().map(|f| json!({"id": f.id, "title": self.games.get(&f.id).map(|g| g.title.clone()).unwrap_or_else(|| f.id.clone()), "frozenAt": f.frozen_at})).collect::<Vec<_>>())
