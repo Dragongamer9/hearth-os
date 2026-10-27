@@ -33,7 +33,7 @@ jobs:
           set -euxo pipefail
           [[ "$ISO_URL" == https://* ]]
           curl --fail --location --retry 4 "$SUMS_URL" -o /tmp/sha256sum.txt
-          ISO_SHA=$(awk '$2 == "linuxmint-22.3-cinnamon-64bit.iso" {print $1}' /tmp/sha256sum.txt)
+          ISO_SHA=$(awk '$2 == "*linuxmint-22.3-cinnamon-64bit.iso" || $2 == "linuxmint-22.3-cinnamon-64bit.iso" {print $1}' /tmp/sha256sum.txt)
           [[ "$ISO_SHA" =~ ^[0-9a-fA-F]{64}$ ]]
           curl --fail --location --retry 4 "$ISO_URL" -o /tmp/mint.iso
           printf '%s  %s\n' "$ISO_SHA" /tmp/mint.iso | sha256sum -c -
