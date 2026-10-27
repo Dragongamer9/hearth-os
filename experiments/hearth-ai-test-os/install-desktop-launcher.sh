@@ -18,6 +18,7 @@ from pathlib import Path
 
 here, target = map(Path, sys.argv[1:])
 script = (here / "launch.sh").resolve(strict=True)
+icon = (here / "hearth-ai.svg").resolve(strict=True)
 if not script.is_file():
     raise SystemExit("Hearth AI launch script is not a regular file")
 
@@ -37,11 +38,11 @@ Name=Hearth AI Command Center (Experimental)
 Comment=Test-only local AI dashboard for Hearth OS
 Exec={exec_command}
 Path={working_dir}
-Icon=utilities-terminal
+Icon={icon_path}
 Terminal=true
 Categories=Utility;Development;
 StartupNotify=false
-""".format(exec_command=desktop_argument(script), working_dir=desktop_value(here))
+""".format(exec_command=desktop_argument(script), working_dir=desktop_value(here),icon_path=desktop_value(icon))
 target.write_text(entry, encoding="utf-8")
 PY
     chmod u+x "$HERE/launch.sh"
