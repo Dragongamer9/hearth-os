@@ -2,12 +2,13 @@ name: Hearth Mint in-place upgrade package (test)
 on:
   workflow_dispatch:
   push:
-    branches: [test/mint-hearth-upgrade-foundation, test/admin-v2-2-major-diagnostics]
+    branches: [test/mint-hearth-upgrade-foundation, test/admin-v2-2-major-diagnostics, test/admin-v2-3-desktop-integration]
     paths:
       - 'scripts/build-hearth-mint-deb.sh'
       - 'scripts/hearth-admin-center.py'
       - 'scripts/hearth-admin-report.py'
       - 'scripts/hearth-admin-branding.sh'
+      - 'scripts/hearth-admin-desktop.sh'
       - 'branding/hearth-admin-wallpaper.svg'
       - '.github/workflows/mint-hearth-upgrade-deb-test.yml'
       - 'hosts/hearth-rs/**'
@@ -45,7 +46,7 @@ jobs:
           grep -q './usr/bin/hearth-upgrade' /tmp/hearth-package-contents.txt
           bash -n scripts/build-hearth-mint-deb.sh scripts/hearth-upgrade.sh
           python3 -m py_compile scripts/hearth-admin-center.py scripts/hearth-admin-report.py
-          bash -n scripts/hearth-admin-branding.sh
+          bash -n scripts/hearth-admin-branding.sh scripts/hearth-admin-desktop.sh
           python3 scripts/hearth-admin-report.py --section recovery > /tmp/hearth-recovery-report.txt
           python3 scripts/hearth-admin-report.py --section hardware --json > /tmp/hearth-hardware-report.json
           bash scripts/hearth-upgrade.sh status
@@ -56,6 +57,7 @@ jobs:
           test -x "$unpack_dir/usr/bin/hearth-admin-center"
           test -x "$unpack_dir/usr/bin/hearth-admin-report"
           test -x "$unpack_dir/usr/bin/hearth-admin-branding"
+          test -x "$unpack_dir/usr/bin/hearth-admin-desktop"
           test -s "$unpack_dir/usr/share/backgrounds/hearth-admin-edition.svg"
           grep -F "Hearth OS Admin Edition" "$unpack_dir/etc/hearth-admin-release"
           grep -Fx 'Exec=/usr/bin/hearth-admin-center' "$unpack_dir/usr/share/applications/hearth-admin-center.desktop"
@@ -75,6 +77,7 @@ jobs:
           test -x /usr/bin/hearth-upgrade
           test -x /usr/bin/hearth-admin-center
           test -x /usr/bin/hearth-admin-report
+          test -x /usr/bin/hearth-admin-desktop
           test -f /etc/hearth-admin-release
           dpkg-query -W -f='${Status}\n' hearth-os-app | grep -Fx 'install ok installed'
           grep -Fx 'Exec=/usr/bin/hearth --windowed' /usr/share/applications/hearth.desktop
