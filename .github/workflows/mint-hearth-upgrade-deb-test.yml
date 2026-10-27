@@ -1,0 +1,48 @@
+name: Hearth Mint in-place upgrade package (test)
+on:
+  workflow_dispatch:
+  push:
+    branches: [test/mint-hearth-upgrade-foundation]
+    paths:
+      - 'scripts/build-hearth-mint-deb.sh'
+      - '.github/workflows/mint-hearth-upgrade-deb-test.yml'
+      - 'hosts/hearth-rs/**'
+      - 'hosts/hearth-core/**'
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Hearth build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+      - name: Compile Hearth
+        working-directory: hosts/hearth-rs
+        run: cargo build --release
+      - name: Build upgrade deb
+        run: bash scripts/build-hearth-mint-deb.sh
+      - name: Verify package
+        run: |
+          set -euo pipefail
+          pkg=$(find dist -maxdepth 1 -name 'hearth-os-app_*_amd64.deb' -print -quit)
+          test -s "$pkg"
+          dpkg-deb --field "$pkg" Package | grep -Fx hearth-os-app
+          dpkg-deb --contents "$pkg" > /tmp/hearth-package-contents.txt
+          grep -q './usr/bin/hearth' /tmp/hearth-package-contents.txt
+          grep -q './usr/share/applications/hearth.desktop' /tmp/hearth-package-contents.txt
+          sha256sum "$pkg" > dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-mint-upgrade-deb-test
+          path: |
+            dist/*.deb
+            dist/SHA256SUMS
+          retention-days: 14
