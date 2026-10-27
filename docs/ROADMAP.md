@@ -4,6 +4,27 @@ Hearth OS is one controller-first UI with two homes: **Hearth** (Linux: an insta
 an app/session for other distros, with **Mantel** as its desktop) and **Ember** (the Windows 11 shell).
 Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
+## Planned
+
+**Next update: safety first** (the owner picks the number)
+- [ ] Automatic fallback: two failed starts in a row → the previous version starts by itself (no keyboard needed)
+- [ ] Hearth Recovery screen on the device: hold Volume Down at the logo → previous version, Desktop Mode, safe graphics, reset renderer, send logs (controller/touch)
+- [ ] Hearth Recovery USB: test and enable the other actions (send logs, reinstall keeping files, Desktop Mode, copy files, factory reset); listed in the USB maker
+- [ ] Peppermint keeps logs across restarts (persistent journal)
+- [ ] ROG Ally Wi-Fi dropping under heavy downloads (power saving off on handhelds + the card's driver fix)
+- [ ] .deb install stuck on "Reading the package…"
+
+**After that**
+- [ ] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store
+- [ ] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned)
+- [ ] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
+- [ ] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share, wake on network
+- [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md)
+- [ ] Discord: "Playing X" status and Discord in Quick Access (needs the owner's Discord application ID)
+- [ ] Hearth Link ideas: download once and share to all devices, "Continue on this device", update every device at once
+- [ ] Ventoy (multi-ISO) mode in the USB maker
+- [ ] Ideas: local AI over Hearth Link, Support page/donations
+
 ## Done
 
 - Game Mode in gamescope, Mantel desktop (labwc + Quickshell) with its own settings app, switching between them
