@@ -12,6 +12,7 @@ test "$ARCH" = amd64 || { echo 'Only amd64 is supported for this first test.' >&
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 install -Dm755 "$BIN" "$STAGE/usr/bin/hearth"
+install -Dm755 "$ROOT/scripts/hearth-upgrade.sh" "$STAGE/usr/bin/hearth-upgrade"
 install -d "$STAGE/usr/share/applications" "$STAGE/DEBIAN"
 cat > "$STAGE/usr/share/applications/hearth.desktop" <<'DESKTOP'
 [Desktop Entry]
