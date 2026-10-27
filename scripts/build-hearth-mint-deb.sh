@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${1:-$ROOT/hosts/hearth-rs/target/release/hearth}"
 OUT="${2:-$ROOT/dist}"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$ROOT/hosts/hearth-rs/Cargo.toml" | head -1)"
-PACKAGE_VERSION="${VERSION}-3"
+PACKAGE_VERSION="${VERSION}-4"
 test -x "$BIN"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 ARCH="$(dpkg --print-architecture)"
@@ -17,9 +17,10 @@ install -Dm755 "$ROOT/scripts/hearth-upgrade.sh" "$STAGE/usr/bin/hearth-upgrade"
 install -Dm755 "$ROOT/scripts/hearth-admin-center.py" "$STAGE/usr/bin/hearth-admin-center"
 install -Dm755 "$ROOT/scripts/hearth-admin-report.py" "$STAGE/usr/bin/hearth-admin-report"
 install -Dm755 "$ROOT/scripts/hearth-admin-branding.sh" "$STAGE/usr/bin/hearth-admin-branding"
+install -Dm755 "$ROOT/scripts/hearth-admin-desktop.sh" "$STAGE/usr/bin/hearth-admin-desktop"
 install -Dm644 "$ROOT/branding/hearth-admin-wallpaper.svg" "$STAGE/usr/share/backgrounds/hearth-admin-edition.svg"
 install -d "$STAGE/etc"
-printf "NAME=\"Hearth OS Admin Edition\"\\nVERSION=\"2.2 experimental\"\\nBASE=\"Linux Mint 22.3\"\\n" > "$STAGE/etc/hearth-admin-release"
+printf "NAME=\"Hearth OS Admin Edition\"\\nVERSION=\"2.3 experimental\"\\nBASE=\"Linux Mint 22.3\"\\n" > "$STAGE/etc/hearth-admin-release"
 install -d "$STAGE/usr/share/applications" "$STAGE/DEBIAN"
 cat > "$STAGE/usr/share/applications/hearth.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -40,6 +41,16 @@ Exec=/usr/bin/hearth-admin-center
 Icon=utilities-system-monitor
 Terminal=false
 Categories=System;Utility;
+DESKTOP
+cat > "$STAGE/usr/share/applications/hearth-admin-desktop.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Hearth Admin Desktop Setup
+Comment=Apply Hearth desktop wallpaper (reversible)
+Exec=/usr/bin/hearth-admin-desktop apply
+Icon=preferences-desktop-wallpaper
+Terminal=true
+Categories=Settings;DesktopSettings;
 DESKTOP
 cat > "$STAGE/DEBIAN/control" <<CONTROL
 Package: hearth-os-app
