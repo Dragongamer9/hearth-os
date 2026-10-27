@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hearth AI · Test OS</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,Arial,sans-serif;background:#0b1015;color:#eee7dc}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% 0,#32251e 0,#10171d 43%,#090d11 100%);min-height:100vh}
+header{height:66px;display:flex;align-items:center;gap:14px;padding:0 28px;border-bottom:1px solid #62504166;background:#111821dd}
+.logo{font-size:31px;color:#ef9948}h1{font-size:20px;margin:0;color:#e9c18d;letter-spacing:2px}.sub{font-size:11px;color:#a6a0a0;letter-spacing:1.7px}
+.pill{margin-left:auto;color:#f5b16e;border:1px solid #705239;padding:8px 12px;border-radius:30px;font-size:12px}
+main{max-width:1520px;margin:auto;padding:28px}nav{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+button{background:#242d35;border:1px solid #635041;color:#f3e9dc;border-radius:9px;padding:11px 16px;cursor:pointer}button:hover{border-color:#e49c55}button:disabled{opacity:.45;cursor:not-allowed}
+button.active,.primary{background:linear-gradient(#b36b34,#814420);border-color:#e1a263;color:white}
+.layout{display:grid;grid-template-columns:minmax(260px,1fr) minmax(360px,1.45fr) minmax(250px,.8fr);gap:18px}
+.panel{background:#121b24e6;border:1px solid #5b4b4080;border-radius:14px;padding:18px;box-shadow:0 9px 35px #0004}
+h2{font-size:15px;letter-spacing:1.2px;color:#eba660;text-transform:uppercase;margin:0 0 15px}
+h3{font-size:14px;margin:13px 0;color:#eee}p,.muted{color:#adabb0;font-size:13px;line-height:1.6}
+.agent{display:flex;align-items:center;gap:12px;background:#202832;border:1px solid #39414c;border-radius:9px;padding:12px;margin:10px 0;text-align:left;width:100%}
+.agent.selected{border-color:#ed9950;background:#38291f}.orb{font-size:25px;width:32px}.agent span{flex:1}.agent small{display:block;color:#a6a4a8;margin-top:4px}
+.dot{width:9px;height:9px;border-radius:50%;background:#6f727b}.dot.up{background:#72c996;box-shadow:0 0 9px #5dce89}
+.hero{padding:12px 0 18px;text-align:center}.hero .flame{font-size:57px;filter:drop-shadow(0 0 22px #f38e40)}
+.hero strong{font-size:24px;display:block;color:#efc38e}.messages{height:260px;overflow:auto;border:1px solid #443e3a;background:#0b1218;border-radius:10px;padding:14px;white-space:pre-wrap;font:13px/1.65 ui-monospace,monospace}
+textarea{background:#0a1119;border:1px solid #6b5747;color:#f3eadf;border-radius:10px;padding:13px;width:100%;min-height:100px;resize:vertical;font:inherit}
+.actions{display:flex;gap:10px;margin-top:10px;justify-content:space-between;align-items:center}
+.metric{margin:18px 0;display:flex;justify-content:space-between;border-bottom:1px solid #343c43;padding-bottom:8px}
+.metric b{color:#eab47c}.games{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.game{padding:12px;background:#242b31;border:1px solid #3d4548;border-radius:8px;font-size:12px}
+footer{text-align:center;padding:23px;color:#9e8f83;font-size:12px}#error{color:#ffad9f}
+@media(max-width:1050px){.layout{grid-template-columns:1fr 1fr}.layout .side{grid-column:1/-1}}
+@media(max-width:690px){.layout{grid-template-columns:1fr}.layout .side{grid-column:auto}header{padding:12px;height:auto;flex-wrap:wrap}main{padding:14px}}
+</style></head><body>
+<header><span class="logo">♜</span><div><h1>HEARTH OS</h1><div class="sub">AI COMMAND CENTER · EXPERIMENTAL</div></div><div class="pill">◆ OWNER CONTROLLED · LOCAL TEST</div></header>
+<main><nav><button class="active">◈ Command Center</button><button disabled>▣ Game Hub (coming next)</button><button disabled>⚙ System Control (coming next)</button><button disabled>✧ Hearth Mode (coming next)</button></nav>
+<div class="layout"><section class="panel"><h2>AI Companions</h2><p>Auto-detected from your actual PATH. Select an available CLI.</p><div id="agents"></div><button id="refresh">↻ Rescan installed AIs</button><p id="error"></p><p class="muted">Signing into ChatGPT in a browser does not automatically sign in to Codex CLI. Authenticate each CLI using its own documented login process.</p></section>
+<section class="panel"><div class="hero"><div class="flame">🔥</div><strong>Welcome to Hearth</strong><p>Your computer. Your rules. Your AI companions. Your world.</p></div>
+<h2>AI Command Center</h2><div class="messages" id="messages">HEARTH SYSTEM: Ready. Pick an installed agent to begin. Nothing runs without clicking Send.</div>
+<div style="height:13px"></div><textarea id="prompt" placeholder="Ask Hearth AI to explain a problem, brainstorm a project, or help with a task…"></textarea><div class="actions"><span class="muted" id="chosen">No agent selected</span><button class="primary" id="send">Send to selected AI →</button></div>
+</section><aside class="panel side"><h2>System Diagnostics</h2><div id="system"></div><h2>Gaming Toolkit</h2><div class="games" id="games"></div><p class="muted">This is an isolated test environment and does not change your existing OS, games or bootloader.</p><h2>Next Milestone</h2><p>Real shared agent handoffs, opt-in system diagnostics, and integration with Hearth's existing game library.</p></aside>
+</div></main><footer>HEARTH OS EXPERIMENTAL PROTOTYPE • NO AUTOMATED SYSTEM MODIFICATIONS • GPL-3.0-or-later</footer>
+<script>
+const token=new URLSearchParams(location.search).get('token')||'';
+const $=id=>document.getElementById(id);let selected='',data;
+async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Hearth-Token':token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const x=await r.json();if(!r.ok)throw Error(x.error||'Request failed');return x}
+function node(tag,cls,text){let e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+async function refresh(){try{data=await api('/api/status');$('error').textContent='';const a=$('agents');a.replaceChildren();
+for(const agent of data.agents){let b=node('button','agent'+(agent.name===selected?' selected':''));b.disabled=!agent.found;b.append(node('span','orb',agent.name==='Claude'?'✦':agent.name==='Gemini'?'✧':agent.name==='Local / Ollama'?'⬡':'◉'));let t=node('span');t.append(node('strong','',agent.name),node('small','',agent.found?'Installed • '+agent.command:'Not found on PATH'));b.append(t,node('span','dot'+(agent.found?' up':'')));b.onclick=()=>{selected=agent.name;$('chosen').textContent='Selected: '+selected;refreshButtons()};a.append(b)}
+function refreshButtons(){document.querySelectorAll('.agent').forEach((el,i)=>el.classList.toggle('selected',data.agents[i].name===selected))}
+if(!data.agents.some(x=>x.name===selected&&x.found))selected='';
+$('chosen').textContent=selected?'Selected: '+selected:'No agent selected';
+$('system').replaceChildren(...Object.entries(data.system).map(([k,v])=>{let e=node('div','metric');e.append(node('span','',k),node('b','',String(v)));return e}));
+$('games').replaceChildren(...data.games.map(g=>node('div','game',(g.found?'● ':'○ ')+g.name)));
+}catch(e){$('error').textContent=e.message}}
+$('refresh').onclick=refresh;
+$('send').onclick=async()=>{const prompt=$('prompt').value.trim();if(!selected)return alert('Select an installed AI first.');if(!prompt)return alert('Enter a prompt.');let btn=$('send');btn.disabled=true;const messages=$('messages');messages.textContent+='\n\nYOU → '+prompt+'\n\n'+selected+' → Working…';try{const result=await api('/api/ask',{agent:selected,prompt});messages.textContent=messages.textContent.replace(/Working…$/,result.output||('(Exited with '+result.exitCode+', no output)'));}catch(e){messages.textContent=messages.textContent.replace(/Working…$/,'Error: '+e.message)}finally{btn.disabled=false;messages.scrollTop=messages.scrollHeight}}
+refresh();
+</script></body></html>
