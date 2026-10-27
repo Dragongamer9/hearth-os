@@ -1,0 +1,196 @@
+#!/usr/bin/python3
+"""recovery-pad: Hearth Recovery's buttons. Reads every controller (anything with an A button and sticks: the
+Ally's built-in one through Handheld Daemon, Xbox/PlayStation/8BitDo pads) and the handheld's own volume and power
+buttons, and prints what was pressed as JSON lines for the recovery screen (ui/shell.qml):
+
+  {"t": "key", "k": "up" | "down" | "left" | "right" | "a" | "b" | "x" | "y" | "lb" | "rb" | "menu" | "view"}
+  {"t": "press" | "release", "k": "a"}      A (or the power button) going down and up: "hold to confirm"
+  {"t": "pads", "n": 2, "names": [...]}     the controllers found (on start and whenever that changes)
+
+Volume Down / Volume Up move down / up and a short press of the power button is A, so the screen works with no
+controller at all (logind is told to ignore the power button on the recovery USB; holding it 4 s still turns the
+handheld off in its firmware). Nothing is grabbed: a keyboard keeps working as usual.
+"""
+import json
+import os
+import select
+import sys
+import time
+
+REPEAT_DELAY = 0.42
+REPEAT_EVERY = 0.12
+
+
+def emit(o):
+    sys.stdout.write(json.dumps(o) + '\n')
+    sys.stdout.flush()
+
+
+def button_map(e):
+    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y', e.BTN_TL: 'lb', e.BTN_TR: 'rb',
+         e.BTN_SELECT: 'view', e.BTN_START: 'menu'}
+    for code, name in (('BTN_DPAD_UP', 'up'), ('BTN_DPAD_DOWN', 'down'), ('BTN_DPAD_LEFT', 'left'), ('BTN_DPAD_RIGHT', 'right')):
+        if hasattr(e, code):
+            m[getattr(e, code)] = name
+    return m
+
+
+def key_map(e):
+    """The handheld's own buttons (and a TV remote's): volume and power."""
+    return {e.KEY_VOLUMEDOWN: 'down', e.KEY_VOLUMEUP: 'up', e.KEY_POWER: 'a'}
+
+
+class Nav:
+    """Turns held directions into repeated key events (a held D-pad or stick scrolls a list)."""
+
+    def __init__(self):
+        self.held = {}   # direction -> (next repeat time)
+
+    def set(self, d, on, now):
+        if on and d not in self.held:
+            emit({'t': 'key', 'k': d})
+            self.held[d] = now + REPEAT_DELAY
+        elif not on and d in self.held:
+            del self.held[d]
+
+    def tick(self, now):
+        for d, t in list(self.held.items()):
+            if now >= t:
+                emit({'t': 'key', 'k': d})
+                self.held[d] = now + REPEAT_EVERY
+
+
+def axis_norm(info, v):
+    if not info or info.max == info.min:
+        return 0.0
+    mid = (info.max + info.min) / 2
+    return max(-1.0, min(1.0, (v - mid) / ((info.max - info.min) / 2)))
+
+
+def scan(evdev, known):
+    e = evdev.ecodes
+    found = {}
+    for path in evdev.list_devices():
+        if path in known:
+            found[path] = known[path]
+            continue
+        try:
+            d = evdev.InputDevice(path)
+            caps = d.capabilities(absinfo=True)
+        except OSError:
+            continue
+        keys = caps.get(e.EV_KEY, [])
+        absinfo = dict(caps.get(e.EV_ABS, []))
+        pad = e.BTN_SOUTH in keys and bool(absinfo)
+        hw = any(k in keys for k in (e.KEY_VOLUMEDOWN, e.KEY_VOLUMEUP, e.KEY_POWER))
+        # A full keyboard already reaches the screen as a keyboard (arrows, Enter, Esc): only its volume/power keys
+        # would be doubled, so keyboards are left alone; the handheld's own button devices are small.
+        full_keyboard = e.KEY_A in keys and e.KEY_ENTER in keys and len(keys) > 60
+        if not pad and not (hw and not full_keyboard):
+            d.close()
+            continue
+        found[path] = {'dev': d, 'pad': pad, 'abs': absinfo}
+    for path, c in known.items():
+        if path not in found:
+            try:
+                c['dev'].close()
+            except OSError:
+                pass
+    return found
+
+
+def main():
+    try:
+        import evdev
+    except ImportError:
+        emit({'t': 'error', 'text': 'python3-evdev is missing: use the touchscreen'})
+        return 2
+    e = evdev.ecodes
+    bmap = button_map(e)
+    kmap = key_map(e)
+    nav = Nav()
+    devices = {}
+    last_scan = 0
+    last_names = None
+    stick = {}      # (path, axis) -> direction held by that stick
+    power_down = 0.0
+    while True:
+        now = time.monotonic()
+        if now - last_scan > 2:
+            devices = scan(evdev, devices)
+            last_scan = now
+            names = sorted(c['dev'].name for c in devices.values() if c['pad'])
+            if names != last_names:
+                emit({'t': 'pads', 'n': len(names), 'names': names})
+                last_names = names
+        fds = {c['dev'].fd: p for p, c in devices.items()}
+        try:
+            r, _, _ = select.select(list(fds), [], [], 0.05)
+        except (OSError, ValueError):
+            devices = {}
+            continue
+        now = time.monotonic()
+        for fd in r:
+            path = fds[fd]
+            c = devices.get(path)
+            if not c:
+                continue
+            try:
+                events = list(c['dev'].read())
+            except OSError:
+                devices.pop(path, None)
+                continue
+            for ev in events:
+                if ev.type == e.EV_KEY:
+                    name = bmap.get(ev.code) if c['pad'] else None
+                    if name is None and ev.code in kmap:
+                        name = kmap[ev.code]
+                        if ev.code == e.KEY_POWER:
+                            # Power: A on release of a short press (a long press is the firmware's power off).
+                            if ev.value == 1:
+                                power_down = now
+                                emit({'t': 'press', 'k': 'a'})
+                            elif ev.value == 0:
+                                emit({'t': 'release', 'k': 'a'})
+                                if now - power_down < 1.5:
+                                    emit({'t': 'key', 'k': 'a'})
+                            continue
+                    if name is None:
+                        continue
+                    if name in ('up', 'down', 'left', 'right'):
+                        if ev.value in (0, 1):
+                            nav.set(name, ev.value == 1, now)
+                        continue
+                    if name == 'a':
+                        if ev.value == 1:
+                            emit({'t': 'press', 'k': 'a'})
+                        elif ev.value == 0:
+                            emit({'t': 'release', 'k': 'a'})
+                    if ev.value == 1:
+                        emit({'t': 'key', 'k': name})
+                elif ev.type == e.EV_ABS and c['pad']:
+                    info = c['abs'].get(ev.code)
+                    if ev.code in (e.ABS_HAT0X, e.ABS_HAT0Y):
+                        neg, pos = ('left', 'right') if ev.code == e.ABS_HAT0X else ('up', 'down')
+                        nav.set(neg, ev.value < 0, now)
+                        nav.set(pos, ev.value > 0, now)
+                    elif ev.code in (e.ABS_X, e.ABS_Y):
+                        v = axis_norm(info, ev.value)
+                        neg, pos = ('left', 'right') if ev.code == e.ABS_X else ('up', 'down')
+                        key = (path, ev.code)
+                        was = stick.get(key)
+                        now_dir = neg if v < -0.6 else pos if v > 0.6 else (was if was and abs(v) > 0.4 else None)
+                        if now_dir != was:
+                            if was:
+                                nav.set(was, False, now)
+                            if now_dir:
+                                nav.set(now_dir, True, now)
+                            stick[key] = now_dir
+        nav.tick(now)
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (KeyboardInterrupt, BrokenPipeError):
+        sys.exit(0)

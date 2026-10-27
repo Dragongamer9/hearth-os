@@ -1,0 +1,7 @@
+#!/bin/sh
+# Hearth Recovery's screen, started again if it ever closes.
+UI=/usr/share/hearth-recovery/ui
+while true; do
+  quickshell -p "$UI" >>/run/hearth-recovery/ui.log 2>&1
+  sleep 1
+done &
