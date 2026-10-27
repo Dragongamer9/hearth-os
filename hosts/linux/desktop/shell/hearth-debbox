@@ -406,8 +406,12 @@ def has_subids(user, uid, path):
     return False
 
 
-def box_exists():
-    code, _ = run(['podman', 'container', 'exists', BOX], timeout=60)
+def box_exists(timeout=60):
+    """Whether the box is there. Pass a short `timeout` where the answer is only a hint: filling in a package's
+    boxReady used to start podman on a read that needs no container at all, and a podman that doesn't answer (its
+    first run ever, or its storage lock) held the whole read - and the Install Package window's one line of text -
+    for the full 60 s. Measured on the same file: 0.09 s without it, 60.10 s with."""
+    code, _ = run(['podman', 'container', 'exists', BOX], timeout=timeout)
     return code == 0
 
 
@@ -517,7 +521,9 @@ def inspect(path):
         raise Fail('this .deb file doesn\'t name its package')
     rec = load_records().get(info['package'])
     info.update({'file': p, 'installed': bool(rec), 'installedVersion': (rec or {}).get('version', ''),
-                 'apps': (rec or {}).get('apps', []), 'limits': LIMITS, 'boxReady': tools()['podman'] and box_exists()})
+                 'apps': (rec or {}).get('apps', []), 'limits': LIMITS,
+                 # a hint, not a fact: reading the package must not sit and wait on the container manager
+                 'boxReady': tools()['podman'] and box_exists(5)})
     return info
 
 
