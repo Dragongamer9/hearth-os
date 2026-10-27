@@ -58,8 +58,32 @@ $("details").onclick=()=>{$("feedback").textContent=selected?(selected.title+" Â
 $("reload").onclick=load;$("refreshBtn").onclick=load;$("libraryBtn").onclick=()=>{$("games").querySelector("button")?.focus()};
 function connect(){host=window.nimbusHost||window.chrome?.webview||null;if(host)host.addEventListener("message",ev=>{const msg=ev.data;if(msg&&msg.type==="result"&&pending.has(msg.id)){const callback=pending.get(msg.id);pending.delete(msg.id);callback(msg)}});load()}
 window.addEventListener("keydown",e=>{if(e.key==="Escape"){e.preventDefault();$("play").focus()}});
-let gamepadHeld=false;
-function gamepad(){const pad=(navigator.getGamepads?.()||[]).find(Boolean);if(pad){const a=pad.buttons[0]?.pressed;if(a&&!gamepadHeld){const focused=document.activeElement;if(focused instanceof HTMLElement)focused.click()}gamepadHeld=!!a}requestAnimationFrame(gamepad)}
+const padPrevious={a:false,b:false,up:false,down:false,left:false,right:false};
+let padNextRepeat=0;
+function moveFocus(delta){
+ const items=[...document.querySelectorAll("nav button,.hero button,.shelf button,.panel button")].filter(el=>!el.disabled&&el.getClientRects().length);
+ if(!items.length)return;
+ const current=items.indexOf(document.activeElement);
+ const index=current<0?0:(current+delta+items.length)%items.length;
+ items[index].focus();
+}
+function gamepad(){
+ const pad=(navigator.getGamepads?.()||[]).find(Boolean);
+ if(pad){
+  const now={a:!!pad.buttons[0]?.pressed,b:!!pad.buttons[1]?.pressed,up:!!pad.buttons[12]?.pressed||pad.axes[1]<-0.55,down:!!pad.buttons[13]?.pressed||pad.axes[1]>0.55,left:!!pad.buttons[14]?.pressed||pad.axes[0]<-0.55,right:!!pad.buttons[15]?.pressed||pad.axes[0]>0.55};
+  if(now.a&&!padPrevious.a && document.activeElement instanceof HTMLElement)document.activeElement.click();
+  if(now.b&&!padPrevious.b)$("play").focus();
+  const step=(now.down||now.right)?1:(now.up||now.left)?-1:0;
+  if(step && (performance.now()>padNextRepeat || !(padPrevious.up||padPrevious.down||padPrevious.left||padPrevious.right))){
+    moveFocus(step);padNextRepeat=performance.now()+185;
+  }
+  if(!step)padNextRepeat=0;
+  Object.assign(padPrevious,now);
+ }else{
+  Object.keys(padPrevious).forEach(k=>padPrevious[k]=false);
+ }
+ requestAnimationFrame(gamepad);
+}
 connect();requestAnimationFrame(gamepad);
 })();
 </script></body></html>
