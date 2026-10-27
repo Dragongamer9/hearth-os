@@ -54,3 +54,24 @@ The visual preview screenshot produced during development is illustrative; the i
 The Command Center keeps up to 40 conversation turns in the current browser tab's memory. Select another **installed** agent in AI Team Handoff and click **Prepare handoff**. Hearth fills the prompt field with a bounded, plain-text excerpt of the conversation. You can edit this text before clicking **Send**; no request is made on preparation alone. **Export session** downloads a local plain-text file, while **Clear session** drops the in-memory transcript. Reloading the page also clears it. Avoid putting secrets in prompts, handoffs or exports.
 
 Status: development branch and draft PR only; this feature has not yet been tested in the actual Hearth gaming session. The development screenshot is a visual preview with illustrative machine data, not a screenshot of Hearth booted on a PC.
+
+## Optional Mantel / Linux desktop entry
+
+Install a **per-user** application-menu shortcut (no sudo, no OS image modifications):
+
+```bash
+cd experiments/hearth-ai-test-os
+sh install-desktop-launcher.sh install
+```
+
+Launch **Hearth AI Command Center (Experimental)** from the desktop application menu. The launcher opens a terminal to keep logs visible and starts the loopback-only Python server. Stop it with Ctrl+C. To remove the shortcut:
+
+```bash
+sh install-desktop-launcher.sh --remove
+```
+
+This is a standard Linux `.desktop` launcher, **not yet** a built-in Mantel Quick Access entry or native Hearth bridge integration. The source checkout must remain at the same location. A future integration needs an opt-in native bridge and compatibility testing on an actual Hearth OS installation.
+
+### Promotion gate
+
+Only consider merging features into production after automated unit tests, checks on both handheld and desktop hardware, security review of CLI permission boundaries, and an easy uninstall/rollback procedure. This experimental branch is **not** release-ready.
