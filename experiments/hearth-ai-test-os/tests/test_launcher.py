@@ -23,6 +23,9 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertIn("Terminal=true", entry)
             self.assertIn('Exec="', entry)
             self.assertIn("launch.sh", entry)
+            self.assertIn("Icon=", entry)
+            self.assertIn("hearth-ai.svg", entry)
+            self.assertTrue((ROOT / "hearth-ai.svg").is_file())
             result = subprocess.run(["sh", str(INSTALLER), "--remove"], env=env,
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
