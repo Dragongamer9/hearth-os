@@ -30,7 +30,7 @@ Section: games
 Priority: optional
 Architecture: amd64
 Maintainer: Hearth OS community <noreply@github.com>
-Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libayatana-appindicator3-1 | libappindicator3-1
+Depends: libwebkit2gtk-4.1-0
 Description: Hearth OS gaming interface
  Upgradeable native application for the writable Linux Mint Hearth OS test.
 CONTROL
