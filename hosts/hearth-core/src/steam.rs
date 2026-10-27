@@ -819,8 +819,6 @@ fn running_by_cmdline(comm: &str, cmd: &[u8]) -> bool {
 
 /// One start of Steam at a time, and not again right after one: a second "-silent" while the first is still coming
 /// up (the Flatpak takes a while) opened more Steam windows.
-static STARTING: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
-const RESTART_GUARD_MS: u64 = 90_000;
 
 /// Starts Steam hidden (-silent: no window, only its background part) if it isn't running, and waits until it's
 /// up, so a game started next comes straight up instead of Steam's update and main windows. Blocks up to ~35 s:
