@@ -23,3 +23,20 @@ Arrow keys, Tab and controller D-pad navigate focus; Enter or controller A selec
 The repository's maintained installer is `.github/workflows/live-iso.yml`, which consumes an already-published Anatase OS image and boot-tests its output. Its normal `latest` / `testing` tags point to public Hearth releases, **not** this experimental branch.
 
 A real Dragonfire ISO requires adding the tested UI to an experimental OS image, building that image in CI, and building and boot-testing a live ISO against that exact image digest. A plain screenshot or the HTML experiment is not an ISO. Do not run the archived Bazzite workflow.
+
+## Gamescope preview (opt-in; does not replace the game session)
+
+On a Linux desktop with Gamescope, Python 3, and Chromium or Firefox available, run:
+
+```sh
+cd experiments/dragonfire-game-mode
+sh preview-in-gamescope.sh
+```
+
+This opens the **browser-only UI preview inside a nested 1280×800 Gamescope window**. It does not carry Hearth's host bridge, does not show your real library, cannot start games, and does not modify session settings. The real Gamescope boot session and watchdog remain unchanged. Close the browser with Alt+F4 to exit the preview.
+
+The experiment now has explicit D-pad/left-stick focus traversal, A to activate, and B to return focus to Play. Native controller testing is still required on real hardware.
+
+## Current blocker for a new experimental ISO
+
+The existing live ISO workflow pulls `ghcr.io/dragongamer9/hearth-os:testing` or `:latest`, not this branch's UI. There is no verified branch-specific Anatase image digest carrying Dragonfire. Do not claim an ISO was produced until this separate branch has been integrated into a bootc image, built successfully, and passed the repository's QEMU boot check. No image was published and no ISO build was started by this commit.
