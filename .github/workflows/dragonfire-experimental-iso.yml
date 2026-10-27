@@ -1,7 +1,10 @@
-name: Dragonfire experimental live ISO (manual, never published)
+name: Dragonfire experimental live ISO (never published)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [experiment/hearth-ai-test-os]
+    paths: ['.github/workflows/dragonfire-experimental-iso.yml']
 
 permissions:
   contents: read
