@@ -43,7 +43,7 @@ jobs:
             --debian-installer live \
             --debian-installer-gui true \
             --apt-recommends true \
-            --bootappend-live "boot=live components username=hearth hostname=hearth-peppermint-admin" \
+            --bootappend-live "boot=live components username=hearth user-default-groups=sudo hostname=hearth-peppermint-admin" \
             --iso-application "Peppermint Writable Admin Test" \
             --iso-publisher "Hearth OS test build" \
             --iso-volume "PEPPERMINT-ADMIN"
