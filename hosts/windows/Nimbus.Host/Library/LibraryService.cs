@@ -808,6 +808,7 @@ public sealed class LibraryService : IDisposable
     public string? RunningTitle => _monitor.RunningId is { } id && _games.TryGetValue(id, out var g) ? g.Title : null;
     public DateTime? RunningSince => _monitor.StartedAt;
     public bool OverlayHoldView { get => _store.Read(d => d.OverlayHoldView); set => _store.Update(d => d.OverlayHoldView = value); }
+    public string? OverlayQaStyle { get => _store.Read(d => d.OverlayQaStyle); set => _store.Update(d => d.OverlayQaStyle = value); }
     public string StartMode { get => _store.Read(d => d.StartMode) ?? "game"; set => _store.Update(d => d.StartMode = value); }
     public string DesktopStyle { get => _store.Read(d => d.DesktopStyle) ?? "mantel"; set => _store.Update(d => d.DesktopStyle = value); }
     public string MantelWallpaper { get => _store.Read(d => d.MantelWallpaper) ?? "anim:fireside"; set => _store.Update(d => d.MantelWallpaper = value); }

@@ -870,8 +870,13 @@ app.whenReady().then(() => {
       // Bringing Nimbus up over a game (the Linux "overlay"): Guide button, optional held View, Ctrl+Alt+Q.
       overlay: {
         settings: () => ({ holdView: !!library.store.data.holdView, gameBarButton: false, hotkey: 'Ctrl+Alt+Q',
+          // Quick Access style: "dock" (a bar along the top) or "side" (the classic right-hand panel), null until
+          // it's been chosen - the same answer Hearth OS's bridge gives. The page draws it; this host's overlay
+          // window is the whole display, so nothing here changes shape.
+          qaStyle: library.store.data.qaStyle == null ? null : (library.store.data.qaStyle === 'side' ? 'side' : 'dock'),
           guide: guide ? guide.status() : { devices: [], problems: [], lastPress: 0 } }),
         setHoldView: on => { library.store.update(d => { d.holdView = !!on; }); if (guide) guide.holdView = !!on; },
+        setQaStyle: style => { library.store.update(d => { d.qaStyle = style === 'side' ? 'side' : 'dock'; }); },
       },
       screenInfo: () => {
         const d = screen.getPrimaryDisplay();

@@ -59,6 +59,7 @@ public sealed class LibraryData
     public bool QuickResume { get; set; } = true;       // starting another game puts the running one aside (frozen)
     public string ControllerMouse { get; set; } = "steam"; // right stick as mouse: off | steam | always
     public bool OverlayHoldView { get; set; }              // hold View for a second to open the in-game overlay
+    public string? OverlayQaStyle { get; set; }            // Quick Access style: "dock" (along the top) or "side" (classic right-hand panel); null until chosen
     public string StartMode { get; set; } = "game";        // as the shell: start in "game" (Ember) or "desktop" (Explorer)
     public string DesktopStyle { get; set; } = "mantel";   // Desktop Mode: "mantel" (Hearth's taskbar and launcher) or "windows"
     public string MantelWallpaper { get; set; } = "anim:fireside"; // the Hearth fireside (moving), a Hearth picture, "custom:<file>", or "" for your Windows wallpaper

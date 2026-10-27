@@ -758,6 +758,9 @@ public sealed class SystemBridge : IDisposable
             case "overlay.setGameBarButton":
                 Overlay.GameBarButton.Set(Bool(a, "on"));
                 return OverlaySettings();
+            case "overlay.setQaStyle":
+                Games.OverlayQaStyle = Str(a, "style") == "side" ? "side" : "dock";
+                return OverlaySettings();
 
             case "pad.toggleMouse": return new { mouseOn = Pad?.ToggleMouse() ?? false };
             case "pad.status":
@@ -915,6 +918,7 @@ public sealed class SystemBridge : IDisposable
         holdView = Games.OverlayHoldView,
         gameBarButton = Overlay.GameBarButton.Get(),
         hotkey = "Ctrl+Alt+Q",
+        qaStyle = Games.OverlayQaStyle,        // null until it has been chosen; the page then keeps its own setting
     };
 
     private async Task SetAirplaneAsync(bool on)
