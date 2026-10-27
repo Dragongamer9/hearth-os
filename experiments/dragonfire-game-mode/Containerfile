@@ -1,0 +1,12 @@
+# Experimental overlay on the existing Hearth Anatase testing image.
+# Deliberately separate from any production tag or default Gamescope session.
+ARG BASE=ghcr.io/dragongamer9/hearth-os:testing
+FROM ${BASE}
+COPY experiments/dragonfire-game-mode/index.html /usr/share/hearth-dragonfire/index.html
+COPY experiments/dragonfire-game-mode/preview-in-gamescope.sh /usr/share/hearth-dragonfire/preview-in-gamescope.sh
+RUN chmod 0755 /usr/share/hearth-dragonfire/preview-in-gamescope.sh && \
+    printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Dragonfire Game Mode (Experimental Preview)' \
+      'Comment=Preview only; does not launch games or change Game Mode' \
+      'Exec=sh /usr/share/hearth-dragonfire/preview-in-gamescope.sh' \
+      'Icon=hearth' 'Terminal=false' 'Categories=Game;' \
+      > /usr/share/applications/hearth-dragonfire-preview.desktop
