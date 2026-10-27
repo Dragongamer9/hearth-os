@@ -204,7 +204,7 @@ impl Bridge {
         let (home, host, url) = (self.library.home.clone(), self.host.clone(), url.to_string());
         std::thread::spawn(move || {
             if let Err(e) = crate::steam_ctl::open_url(&home, &url) { log(&format!("steam: {e}")); return; }
-            host("showSteam", &json!({"wait": 45}));
+            host("showSteam", &json!({"wait": 45, "why": url}));
         });
     }
 
@@ -295,6 +295,15 @@ impl Bridge {
         match msg["type"].as_str().unwrap_or("") {
             "power" => {
                 let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
+                // Desktop Mode with a game stopped (Quick Resume, Pause) froze the desktop: they're ended first (the page
+                // asked: "<game> is paused and will be closed"). nimbus-session does it again before Desktop Mode starts.
+                if msg["action"] == "desktop" {
+                    let ended = self.library.end_stopped();
+                    if !ended.is_empty() {
+                        log(&format!("desktop mode: ended the games Hearth had stopped first: {}", ended.join(", ")));
+                        (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
+                    }
+                }
                 match crate::power::action(msg["action"].as_str().unwrap_or(""), in_session) {
                     Ok(quit) => quit,
                     Err(e) => { (self.emit)(json!({"type": "toast", "text": e})); false }
@@ -459,7 +468,7 @@ impl Bridge {
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
             "steam.downloads" => { self.open_steam("steam://open/downloads"); Ok(json!({"ok": true})) }
             // Steam's window in front again (during a sign-in, after coming back to Hearth).
-            "steam.showWindow" => { (self.host)("showSteam", &json!({"wait": 30})); Ok(json!({"ok": true})) }
+            "steam.showWindow" => { (self.host)("showSteam", &json!({"wait": 30, "why": "Steam's window button in Hearth"})); Ok(json!({"ok": true})) }
             "steam.signInCancel" => { crate::steam_ctl::cancel_sign_in(); (self.host)("comeBack", &Value::Null); Ok(json!({"ok": true})) }
             // Where Steam games install: Steam's libraries, and the one picked.
             "steam.libraries" => {
