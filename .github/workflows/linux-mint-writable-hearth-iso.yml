@@ -1,0 +1,94 @@
+name: Linux Mint writable Hearth test ISO
+on:
+  workflow_dispatch:
+    inputs:
+      mint_iso_url:
+        description: 'Direct HTTPS URL to an official Linux Mint Cinnamon amd64 ISO'
+        required: true
+        type: string
+      mint_iso_sha256:
+        description: 'Official SHA256 checksum for that exact ISO (64 hex characters)'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare tools and disk space
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache /usr/share/dotnet || true
+          sudo apt-get update
+          sudo apt-get install -y xorriso squashfs-tools rsync curl libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+      - name: Build Hearth application
+        working-directory: hosts/hearth-rs
+        run: cargo build --release
+      - name: Download and verify original Mint ISO
+        env:
+          ISO_URL: ${{ inputs.mint_iso_url }}
+          ISO_SHA: ${{ inputs.mint_iso_sha256 }}
+        run: |
+          set -euxo pipefail
+          [[ "$ISO_URL" == https://* ]]
+          [[ "$ISO_SHA" =~ ^[0-9a-fA-F]{64}$ ]]
+          curl --fail --location --retry 4 "$ISO_URL" -o /tmp/mint.iso
+          printf '%s  %s\n' "$ISO_SHA" /tmp/mint.iso | sha256sum -c -
+          xorriso -indev /tmp/mint.iso -pvd_info
+      - name: Remaster Mint live filesystem without OSTree or bootc
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/mint-iso /tmp/mint-root
+          xorriso -osirrox on -indev /tmp/mint.iso -extract / /tmp/mint-iso
+          sudo chmod -R u+w /tmp/mint-iso
+          squash=$(find /tmp/mint-iso/casper -maxdepth 1 -name 'filesystem.squashfs' -print -quit)
+          test -n "$squash"
+          sudo unsquashfs -d /tmp/mint-root "$squash"
+          # Install Hearth's compiled executable and a normal desktop launcher.
+          sudo install -Dm755 hosts/hearth-rs/target/release/hearth /tmp/mint-root/usr/local/bin/hearth
+          sudo install -d /tmp/mint-root/usr/share/applications
+          cat > /tmp/hearth.desktop <<'DESKTOP'
+          [Desktop Entry]
+          Name=Hearth OS
+          Comment=Hearth gaming interface on Linux Mint
+          Exec=/usr/local/bin/hearth --windowed
+          Terminal=false
+          Type=Application
+          Categories=Game;
+          DESKTOP
+          sudo install -Dm644 /tmp/hearth.desktop /tmp/mint-root/usr/share/applications/hearth.desktop
+          printf '%s\n' 'Linux Mint writable Hearth test build' | sudo tee /tmp/mint-root/etc/hearth-mint-test
+          # This is the original Mint package-managed filesystem, not an OSTree deployment.
+          test -x /tmp/mint-root/usr/bin/apt
+          test -x /tmp/mint-root/usr/bin/dpkg
+          test ! -e /tmp/mint-root/ostree
+          sudo rm -f "$squash"
+          sudo mksquashfs /tmp/mint-root "$squash" -comp xz -noappend
+          if [ -f /tmp/mint-iso/casper/filesystem.size ]; then
+            sudo du -sx --block-size=1 /tmp/mint-root | awk '{print $1}' | sudo tee /tmp/mint-iso/casper/filesystem.size
+          fi
+      - name: Repack using original Mint boot configuration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Replay the original ISO's boot entries (BIOS and UEFI) rather than inventing new boot flags.
+          xorriso -indev /tmp/mint.iso -outdev "$GITHUB_WORKSPACE/hearth-linux-mint-writable-test-amd64.iso" \
+            -map /tmp/mint-iso / -boot_image any replay -commit -end
+          test -s hearth-linux-mint-writable-test-amd64.iso
+          sha256sum hearth-linux-mint-writable-test-amd64.iso > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-linux-mint-writable-test-iso
+          path: |
+            hearth-linux-mint-writable-test-amd64.iso
+            SHA256SUMS
+          compression-level: 0
+          retention-days: 14
