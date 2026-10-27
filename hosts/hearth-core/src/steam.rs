@@ -826,6 +826,7 @@ fn running_by_cmdline(comm: &str, cmd: &[u8]) -> bool {
 pub fn ensure_running_silent(home: &Path) {
     crate::steam_ctl::touch();
     if is_running() || !client_installed(home) { return; }
+    let started_at;
     {
         let mut at = STARTING.lock().unwrap_or_else(|p| p.into_inner());
         let t = crate::library::now_ms();
@@ -837,9 +838,17 @@ pub fn ensure_running_silent(home: &Path) {
         }
         if is_running() { return; }
         *at = t;
+        started_at = t;
     }
     crate::bridge::log("steam: starting it in the background (-silent)");
-    if spawn(home, "-silent").is_err() { return; }
+    if let Err(e) = spawn(home, "-silent") {
+        // Don't leave a failed spawn blocking later retries for the full 90-second guard.
+        let mut at = STARTING.lock().unwrap_or_else(|p| p.into_inner());
+        if *at == started_at { *at = 0; }
+        drop(at);
+        crate::bridge::log(&format!("steam: couldn't start it in the background: {e}"));
+        return;
+    }
     // Started by Hearth: Hearth may close it again once nothing needs it (steam_ctl, "Start Steam only when needed").
     crate::steam_ctl::started_by_hearth();
     for _ in 0..60 {
