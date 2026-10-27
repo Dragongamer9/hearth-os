@@ -760,6 +760,7 @@ public sealed class SystemBridge : IDisposable
                 return OverlaySettings();
             case "overlay.setQaStyle":
                 Games.OverlayQaStyle = Str(a, "style") == "side" ? "side" : "dock";
+                (_ui as ShellForm)?.InGameOverlay?.Reshape();   // an overlay that's already up follows the choice
                 return OverlaySettings();
 
             case "pad.toggleMouse": return new { mouseOn = Pad?.ToggleMouse() ?? false };

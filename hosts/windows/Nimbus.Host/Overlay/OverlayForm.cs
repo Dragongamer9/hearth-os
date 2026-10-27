@@ -147,8 +147,7 @@ public sealed class OverlayForm : Form
         var screen = _prevForeground != IntPtr.Zero ? Screen.FromHandle(_prevForeground) : Screen.PrimaryScreen!;
         var b = screen.Bounds;
         double scale = DpiOf(b) / 96.0;
-        int width = Math.Min(b.Width, (int)Math.Round(440 * scale));
-        Bounds = new Rectangle(b.Right - width, b.Top, width, b.Height);
+        Bounds = ShapeFor(_bridge.Games.OverlayQaStyle, b, scale);
         _shownAt = DateTime.UtcNow;
         if (!Visible) Show();
         TopMost = true;
@@ -157,6 +156,33 @@ public sealed class OverlayForm : Form
         _web.Focus();
         Event("overlay.shown", new { });
         SystemBridge.Log("overlay shown");
+    }
+
+    /// <summary>Where the overlay window sits, for a Quick Access style. The side panel (the classic) is the column
+    /// down the right edge it has always been, 440 px at 100%. The top dock gets the screen's full width and that
+    /// same reference size in height instead: a bar across the top with the panel opening under it needs width, and
+    /// the page draws its bar in the top ~170 px and scrolls whatever else it needs inside what it is given
+    /// (#qam.top in ui/index.html). "side" is the classic panel; anything else - including null, before a style has
+    /// been chosen - is the dock, which is the page's own default. The dock's height is the one number to change if
+    /// it should be taller or shorter over a game.</summary>
+    private static Rectangle ShapeFor(string? style, Rectangle screen, double scale)
+    {
+        int reference = (int)Math.Round(440 * scale);
+        if (style == "side")
+        {
+            int width = Math.Min(screen.Width, reference);
+            return new Rectangle(screen.Right - width, screen.Top, width, screen.Height);
+        }
+        return new Rectangle(screen.Left, screen.Top, screen.Width, Math.Min(screen.Height, reference));
+    }
+
+    /// <summary>The style was changed while the overlay is up (Settings › Appearance inside it): follow it now
+    /// rather than at the next open.</summary>
+    public void Reshape()
+    {
+        if (!Visible || _busy) return;
+        var screen = Screen.FromHandle(Handle).Bounds;
+        Bounds = ShapeFor(_bridge.Games.OverlayQaStyle, screen, DpiOf(screen) / 96.0);
     }
 
     public void HideOverlay(bool restoreFocus)

@@ -28,6 +28,9 @@ public sealed class ShellForm : Form
     /// <summary>Hearth's desktop look on Windows, shown in Desktop Mode.</summary>
     public Nimbus.Host.Mantel.MantelHost? Mantel { get; private set; }
 
+    /// <summary>The in-game overlay (Quick Access over a game), once it has been created.</summary>
+    public Overlay.OverlayForm? InGameOverlay => _overlay;
+
     public ShellForm(bool windowed)
     {
         _windowed = windowed;
