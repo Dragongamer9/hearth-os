@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${1:-$ROOT/hosts/hearth-rs/target/release/hearth}"
 OUT="${2:-$ROOT/dist}"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$ROOT/hosts/hearth-rs/Cargo.toml" | head -1)"
-PACKAGE_VERSION="${VERSION}-6"
+PACKAGE_VERSION="${VERSION}-7"
 test -x "$BIN"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 ARCH="$(dpkg --print-architecture)"
@@ -20,9 +20,10 @@ install -Dm755 "$ROOT/scripts/hearth-admin-branding.sh" "$STAGE/usr/bin/hearth-a
 install -Dm755 "$ROOT/scripts/hearth-admin-desktop.sh" "$STAGE/usr/bin/hearth-admin-desktop"
 install -Dm755 "$ROOT/scripts/hearth-welcome.py" "$STAGE/usr/bin/hearth-welcome"
 install -Dm755 "$ROOT/scripts/hearth-convert.sh" "$STAGE/usr/bin/hearth-convert"
+install -Dm755 "$ROOT/scripts/hearth-session.sh" "$STAGE/usr/bin/hearth-session"
 install -Dm644 "$ROOT/branding/hearth-admin-wallpaper.svg" "$STAGE/usr/share/backgrounds/hearth-admin-edition.svg"
 install -d "$STAGE/etc"
-printf "NAME=\"Hearth OS Admin Edition\"\\nVERSION=\"3.0 experimental\"\\nBASE=\"Linux Mint 22.3\"\\n" > "$STAGE/etc/hearth-admin-release"
+printf "NAME=\"Hearth OS Admin Edition\"\\nVERSION=\"3.1 experimental\"\\nBASE=\"Linux Mint 22.3\"\\n" > "$STAGE/etc/hearth-admin-release"
 install -d "$STAGE/usr/share/applications" "$STAGE/DEBIAN"
 cat > "$STAGE/usr/share/applications/hearth.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -74,6 +75,16 @@ Icon=preferences-system
 Terminal=true
 Categories=System;Settings;
 DESKTOP
+install -d "$STAGE/usr/share/xsessions"
+cat > "$STAGE/usr/share/xsessions/hearth-admin.desktop" <<'SESSION'
+[Desktop Entry]
+Name=Hearth OS Admin Edition (Cinnamon)
+Comment=Writable Hearth desktop with Cinnamon fallback
+Exec=/usr/bin/hearth-session
+TryExec=/usr/bin/cinnamon-session
+Type=Application
+DesktopNames=X-Cinnamon;
+SESSION
 cat > "$STAGE/DEBIAN/control" <<CONTROL
 Package: hearth-os-app
 Version: $PACKAGE_VERSION
