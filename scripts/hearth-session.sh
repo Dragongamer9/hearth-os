@@ -8,5 +8,5 @@ fi
 # Autostart Hearth welcome in this session only; never change the user's default login.
 export XDG_CURRENT_DESKTOP="X-Cinnamon"
 export DESKTOP_SESSION="hearth-admin"
-mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+( sleep 8; /usr/bin/hearth-welcome >/dev/null 2>&1 ) &
 exec cinnamon-session
