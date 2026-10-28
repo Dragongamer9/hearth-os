@@ -2,7 +2,7 @@ name: Hearth Mint in-place upgrade package (test)
 on:
   workflow_dispatch:
   push:
-    branches: [test/mint-hearth-upgrade-foundation, test/admin-v2-2-major-diagnostics, test/admin-v2-3-desktop-integration, test/admin-v2-4-identity, test/admin-v3-unlocked-conversion]
+    branches: [test/mint-hearth-upgrade-foundation, test/admin-v2-2-major-diagnostics, test/admin-v2-3-desktop-integration, test/admin-v2-4-identity, test/admin-v3-unlocked-conversion, test/admin-v3-1-full-conversion]
     paths:
       - 'scripts/build-hearth-mint-deb.sh'
       - 'scripts/hearth-admin-center.py'
@@ -11,6 +11,7 @@ on:
       - 'scripts/hearth-admin-desktop.sh'
       - 'scripts/hearth-welcome.py'
       - 'scripts/hearth-convert.sh'
+      - 'scripts/hearth-session.sh'
       - 'branding/hearth-admin-wallpaper.svg'
       - '.github/workflows/mint-hearth-upgrade-deb-test.yml'
       - 'hosts/hearth-rs/**'
@@ -63,6 +64,8 @@ jobs:
           test -x "$unpack_dir/usr/bin/hearth-admin-desktop"
           test -x "$unpack_dir/usr/bin/hearth-welcome"
           test -x "$unpack_dir/usr/bin/hearth-convert"
+          test -x "$unpack_dir/usr/bin/hearth-session"
+          grep -Fx "Exec=/usr/bin/hearth-session" "$unpack_dir/usr/share/xsessions/hearth-admin.desktop"
           grep -Fx "Exec=/usr/bin/hearth-welcome" "$unpack_dir/usr/share/applications/hearth-welcome.desktop"
           test -s "$unpack_dir/usr/share/backgrounds/hearth-admin-edition.svg"
           grep -F "Hearth OS Admin Edition" "$unpack_dir/etc/hearth-admin-release"
@@ -86,6 +89,7 @@ jobs:
           test -x /usr/bin/hearth-admin-desktop
           test -x /usr/bin/hearth-welcome
           test -x /usr/bin/hearth-convert
+          test -x /usr/bin/hearth-session
           hearth-convert verify
           test -f /etc/hearth-admin-release
           dpkg-query -W -f='${Status}\n' hearth-os-app | grep -Fx 'install ok installed'
