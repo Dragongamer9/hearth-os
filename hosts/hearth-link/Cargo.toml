@@ -1,5 +1,5 @@
 [package]
-# No version here on purpose: the owner picks Hearth's version numbers (CLAUDE.md). Cargo treats a missing version as
+# No version here on purpose: the owner picks Hearth's version numbers (MILESTONES.md). Cargo treats a missing version as
 # 0.0.0 and never publishes the crate.
 name = "hearth-link"
 edition = "2021"

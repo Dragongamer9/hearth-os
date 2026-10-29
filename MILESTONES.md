@@ -1,4 +1,4 @@
-# Notes for AI assistants working on Hearth OS
+# Hearth OS milestones and rules
 
 ## RED FLAG: version numbers
 The owner chooses every release/update version number. Never pick, bump, or change a version number
