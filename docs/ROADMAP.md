@@ -19,6 +19,13 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [ ] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned)
 - [ ] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
 - [ ] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share, wake on network
+- [ ] Dragonfire look (from the concept art): a darker ember theme for Game Mode and Desktop Mode, fully usable with a controller
+  - Game Mode home: big hero for the last game (Play / Details), Continue Playing, Library, Installed Launchers row, bottom bar (Home, Search, Quick Settings, Hearth, Capture, Overlay, Exit)
+  - Performance rings (CPU, GPU, RAM, FPS) with temperature, watts, controller battery and the power mode
+  - Friends & Party panel (only with real friends lists from the stores)
+  - Updates & Recovery page: update timeline, snapshots before updates, restore, reinstall keeping files (ties into "safety first"); any writable mode keeps the previous version startable, like hearth-unlock
+  - Desktop Mode: Control Center window, monitor/status side cards, now-playing widget
+  - No store-owned covers in screenshots, no macOS-style window buttons in Game Mode
 - [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md)
 - [ ] Discord: "Playing X" status and Discord in Quick Access (needs the owner's Discord application ID)
 - [ ] Hearth Link ideas: download once and share to all devices, "Continue on this device", update every device at once
