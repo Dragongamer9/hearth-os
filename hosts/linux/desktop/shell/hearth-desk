@@ -127,11 +127,15 @@ def clean(raw):
 # hearth-apps.desktop) is archived: a pin of it becomes Bazaar.
 BAZAAR = 'io.github.kolunmi.Bazaar'
 OLD_STORE = 'hearth-apps'
-# Apps on a new user's taskbar, when they're installed: Beacon (BFME and friends; Hearth OS ships it) and Bazaar.
-DEFAULT_PINS = ('beacon', BAZAAR)
+# Xodus Nexus (Xbox PC games): Hearth OS ships it like Beacon (os-bases/*/build.sh, xodus-nexus.desktop).
+XODUS = 'xodus-nexus'
+# Apps on a new user's taskbar, when they're installed: Beacon (BFME and friends; Hearth OS ships it), Xodus Nexus
+# and Bazaar.
+DEFAULT_PINS = ('beacon', XODUS, BAZAAR)
 # Pinned once for everyone, also on a taskbar that's already set up, the first time they're installed (Bazaar comes a
-# few minutes after the first online start); unpinning it then is yours to keep (pinnedOnce remembers).
-PIN_ONCE = (BAZAAR,)
+# few minutes after the first online start; Xodus Nexus with the image update that adds it); unpinning it then is
+# yours to keep (pinnedOnce remembers).
+PIN_ONCE = (XODUS, BAZAAR)
 SYSTEM_EXPORTS = '/var/lib/flatpak/exports/share'
 
 

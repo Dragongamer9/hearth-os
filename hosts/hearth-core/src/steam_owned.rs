@@ -166,6 +166,16 @@ fn better(a: Problem, b: Problem) -> Problem {
 
 /// Asks the community site (XML first, then the page). Blocking: call it off the UI thread. When both are behind
 /// Steam's sign-in, the profile's own XML (public) tells a private profile apart.
+/// The Open engine's library answer ({appid, name, type, …}) as owned games: games only, with a name.
+pub fn from_open_engine(list: &[Value]) -> Vec<OwnedGame> {
+    list.iter().filter_map(|g| {
+        let app_id = g["appid"].as_u64().filter(|n| *n > 0 && *n <= u32::MAX as u64)? as u32;
+        let title = g["name"].as_str().map(str::trim).filter(|t| !t.is_empty())?.to_string();
+        let kind = g["type"].as_str().unwrap_or("game").to_ascii_lowercase();
+        (kind == "game" || kind == "demo").then_some(OwnedGame { app_id, title, minutes: 0, last_played: 0 })
+    }).collect()
+}
+
 pub fn fetch(id64: u64) -> Result<Vec<OwnedGame>, Problem> {
     let answer = |url: String, parse: fn(&str) -> Result<Vec<OwnedGame>, Problem>| match crate::http::get(&url, &[]) {
         Ok(r) if r.ok() => parse(&r.text),
@@ -410,7 +420,8 @@ fn start(home: &Path, force: bool) -> Result<bool, String> {
     if BUSY.swap(true, Ordering::SeqCst) { return Ok(false); }
     crate::stores::notify(json!({"type": "event", "name": "accounts.changed", "data": {}}));
     std::thread::spawn(move || {
-        let result = fetch(id64);
+        // Open engine (experimental), signed in: the account's licences give the list (private profiles too).
+        let result = match crate::steam_engine::owned_games() { Some(list) => Ok(from_open_engine(&list)), None => fetch(id64) };
         // The community page out of reach: the games Steam remembers on this device (that account's folder only).
         let apps = match &result {
             Err(_) => {
@@ -442,6 +453,15 @@ fn start(home: &Path, force: bool) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_open_engines_library() {
+        let l = vec![json!({"appid": 620, "name": "Portal 2", "type": "Game"}), json!({"appid": 228980, "name": "Redist", "type": "Tool"}),
+                     json!({"appid": 0, "name": "x"}), json!({"appid": 70, "name": "  "}), json!({"appid": 440, "name": "TF2"})];
+        let g = from_open_engine(&l);
+        assert_eq!(g.iter().map(|g| g.app_id).collect::<Vec<_>>(), vec![620, 440]);
+        assert_eq!(g[0].title, "Portal 2");
+    }
 
     #[test]
     fn reads_the_games_xml() {

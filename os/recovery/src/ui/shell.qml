@@ -3,7 +3,8 @@
 // it works on a handheld with no keyboard. Every action is a hearth-recovery command (../hearth-recovery).
 //
 // Buttons: D-pad / left stick / Volume move · A (or Power) selects · B goes back · X deletes (keyboard) ·
-// Y switches capitals (keyboard) · Menu connects (keyboard). Destructive actions are "hold A for 3 seconds".
+// Y switches capitals (keyboard) · Menu connects (keyboard). Factory reset asks twice, the second time "hold A
+// for 3 seconds", after factory-check has said exactly what it erases (never another system's partitions).
 // From a terminal or a test: quickshell ipc -p <this folder> call recovery key <up|down|left|right|a|b|x|y|menu>
 //   recovery press a / release a (hold), recovery state (JSON of what's on screen), recovery tap <index>
 import QtQuick
@@ -37,12 +38,14 @@ ShellRoot {
     readonly property var sys: systems.length > sysIdx ? systems[sysIdx] : null
     property bool scanned: false
     property string scanError: ""
-    property string screen: "scan"        // scan home versions confirm work done wifi osk users drives power systems
+    property string screen: "scan"        // scan home versions confirm checking work done wifi osk users drives power systems
     property var dialog: null             // confirm: {title, body, confirm, danger, hold, run, kind}
     property var work: ({ title: "", text: "", pct: -1, busy: false, ok: false, error: "", result: null, kind: "" })
     property var net: ({ online: false, connection: "", connectivity: "unknown" })
     property var wifi: ({ busy: false, networks: [], error: "" })
     property var drives: []
+    property bool drivesBusy: false
+    property var factory: null            // factory-check's answer: {mode, erase, others, reason, ...}
     property string pickUser: ""
     property string wifiSsid: ""
     property string pw: ""
@@ -57,7 +60,7 @@ ShellRoot {
     property var history: []              // screens to go back to
     property real hold: 0                 // 0..1 while A is held on a "hold" item
     property bool holding: false
-    readonly property bool busy: work.busy || wifi.busy || !scanned
+    readonly property bool busy: work.busy || wifi.busy || !scanned || factoryProc.running
 
     function dep(i) { return sys && sys.deployments && sys.deployments.length > i ? sys.deployments[i] : null; }
     function depName(d) {
@@ -77,7 +80,7 @@ ShellRoot {
     // ---------------------------------------------------------------- what each screen shows: {title, body, big, items}
     // Every screen is the same layout: a title, some text, maybe a big code, and a list of choices. Items:
     // {label, sub, icon, act, danger, hold, off}
-    function build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned) {
+    function build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned, drivesBusy) {
         const s = systems.length > sysIdx ? systems[sysIdx] : null;
         const items = [];
         if (screen === "scan") {
@@ -92,17 +95,17 @@ ShellRoot {
             const cur = dep(0), prev = dep(1);
             items.push({ label: "Start the previous version", icon: "back", act: "previous", off: !prev,
                          sub: prev ? depName(prev) + " (" + (prev.deployedText || prev.builtText || "older") + ") instead of " + depName(cur) : "There's no previous version on this drive" });
-            items.push({ label: "Start in Desktop Mode next time", icon: "window", act: "desktop",
-                         sub: "Skips Game Mode once it starts, and resets the display settings that can turn the screen black" });
+            items.push({ label: "Start in Desktop Mode", icon: "window", act: "desktop",
+                         sub: "Starts in Desktop Mode instead of Game Mode, and resets the display settings that can turn the screen black" });
             items.push({ label: "Reset Game Mode's display settings", icon: "display", act: "resetdisplay",
                          sub: "Renderer, resolution and refresh rate back to automatic. Your games and other settings stay" });
             items.push({ label: "Send logs to the developer", icon: "help", act: "logs",
                          sub: "The installed system's logs from its last starts. You get a code to share" + (net.online ? "" : " · needs Wi-Fi") });
-            items.push({ label: "Update or reinstall Hearth OS", icon: "update", act: "update",
-                         sub: "Puts the newest " + (s ? s.editionLabel : "Hearth OS") + " on the drive. Keeps your games, files and settings" + (net.online ? "" : " · needs Wi-Fi") });
-            items.push({ label: "Copy my files to a USB drive", icon: "folder", act: "copy", sub: "Your home folder (not games), onto another USB drive" });
+            items.push({ label: "Reinstall Hearth OS, keeping my files", icon: "update", act: "update",
+                         sub: "Puts the newest " + (s ? s.editionLabel : "Hearth OS") + " on the drive. Keeps your games, files, settings and the versions already there" + (net.online ? "" : " · needs Wi-Fi") });
+            items.push({ label: "Copy my files off this device", icon: "folder", act: "copy", sub: "Your home folder (not games), onto a USB drive or another drive" });
             items.push({ label: "Wi-Fi", icon: "wifi", act: "wifi", sub: net.online ? "Connected" + (net.connection ? " to " + net.connection : "") : "Not connected" });
-            items.push({ label: "Factory reset", icon: "trash", act: "factory", danger: true, sub: "Erases the whole drive and installs Hearth OS again. Everything on it is lost" });
+            items.push({ label: "Factory reset", icon: "trash", act: "factory", danger: true, sub: "Erases Hearth OS and everything in it, then installs it again. Other systems on the drive stay" });
             if (systems.length > 1) items.push({ label: "Choose another Hearth OS", icon: "file", act: "systems", sub: systems.length + " found on this PC" });
             items.push({ label: "Restart", icon: "restart", act: "restart", sub: "Into the Hearth OS on the drive (take the USB stick out if this screen comes back)" });
             items.push({ label: "Power off", icon: "power", act: "poweroff", sub: "" });
@@ -117,8 +120,8 @@ ShellRoot {
             return { title: "Which version should start?", body: "The version that starts now is " + depName(dep(0)) + ". Pick one to start instead (it stays the default until the next update).", items: items };
         }
         if (screen === "confirm" && dialog) {
-            items.push({ label: dialog.confirm, sub: dialog.hold ? "Hold A (or touch and hold) for 3 seconds" : "", icon: dialog.danger ? "trash" : "check", act: "go", danger: !!dialog.danger, hold: !!dialog.hold });
-            items.push({ label: "Cancel", icon: "close", act: "back", sub: "" });
+            if (dialog.confirm) items.push({ label: dialog.confirm, sub: dialog.hold ? "Hold A (or touch and hold) for 3 seconds" : (dialog.next ? "Next: one more check" : ""), icon: dialog.danger ? "trash" : "check", act: "go", danger: !!dialog.danger, hold: !!dialog.hold });
+            items.push({ label: dialog.confirm ? "Cancel" : "Back", icon: "close", act: "back", sub: "" });
             return { title: dialog.title, body: dialog.body, items: items };
         }
         if (screen === "work") {
@@ -130,16 +133,17 @@ ShellRoot {
             let body = work.error;
             if (ok && work.result) {
                 const r = work.result;
-                if (work.kind === "logs") { big = r.code; body = "Share this code with the developer (Discord, GitHub or e-mail). The logs are kept for 14 days. A copy is on this USB stick at " + r.path + "."; }
+                if (work.kind === "logs") { big = r.code; body = "Share this code with the developer (Discord, GitHub or e-mail). The logs are kept for 14 days."; }
                 else if (work.kind === "previous") body = "Next time it starts " + depName(r["default"]) + (r["default"].deployedText ? " (installed " + r["default"].deployedText + ")" : "") + ". The boot menu was read back and starts that version first." + (r.grubMenu && r.grubMenu.length ? "\n\nBoot menu: " + r.grubMenu.join(" · ") : "");
                 else if (work.kind === "desktop" || work.kind === "resetdisplay") {
                     const lines = [];
                     for (const u of r.users) lines.push(u.user + ": " + (u.changed.length ? u.changed.join(", ") : "nothing needed changing"));
-                    body = (work.kind === "desktop" ? "Hearth starts in Desktop Mode next time. Switch back to Game Mode from the Hearth menu once you're in.\n\n" : "Game Mode's display settings are back to automatic.\n\n") + lines.join("\n") + (r.users.length && r.users[0].backup ? "\n\nThe old files are in " + r.users[0].backup : "");
+                    body = (work.kind === "desktop" ? "Hearth starts in Desktop Mode from now on. Once it works again, Settings › Sign-in › Start in › Game Mode switches back.\n\n" : "Game Mode's display settings are back to automatic.\n\n") + lines.join("\n") + (r.users.length && r.users[0].backup ? "\n\nThe old files are in " + r.users[0].backup : "");
                 }
-                else if (work.kind === "update") body = r.same ? "The newest " + r.image + " is the version you already had; it was put in place again." : "Installed " + depName(r["new"]) + (r["new"].builtText ? " (built " + r["new"].builtText + ")" : "") + ". It starts next time; the version before stays as the previous one.";
-                else if (work.kind === "copy") body = "Copied to the folder " + r.folder + " on the USB drive." + (r.partial ? " Some files couldn't be copied (names the drive can't hold, or files that changed)." : "") + " Games, caches and Steam's folders were left out.";
-                else if (work.kind === "factory") body = "Hearth OS is installed again. Sign in as " + r.user + " (no password: set one in Settings › Users). Take the USB stick out and restart.";
+                else if (work.kind === "update") body = (r.same ? "The newest " + r.image + " is the version you already had; it was installed again fresh and starts next time." : "Installed " + depName(r["new"]) + (r["new"].builtText ? " (built " + r["new"].builtText + ")" : "") + ". It starts next time.")
+                    + " The " + (r.kept === 1 ? "version that was there stays" : r.kept + " versions that were there stay") + " on the drive: Start the previous version brings one back." + (r.lost ? " (" + r.lost + " older version" + (r.lost === 1 ? " was" : "s were") + " removed by ostree.)" : "");
+                else if (work.kind === "copy") body = "Copied " + (r.bytes ? gb(r.bytes) + " " : "") + "to the folder " + r.folder + " on " + (r.drive || "the drive") + "." + (r.partial ? " Some files couldn't be copied (names the drive can't hold, or files that changed)." : "") + " Games, caches and Steam's folders were left out.";
+                else if (work.kind === "factory") body = "Hearth OS is installed again. Sign in as " + r.user + " (no password: set one in Settings › Users)." + (r.kept && r.kept.length ? " Nothing else on the drive was changed." : "") + " Take the USB stick out and restart.";
                 else body = "Done.";
             }
             items.push({ label: "Back to the menu", icon: "back", act: "menu", sub: "" });
@@ -161,11 +165,14 @@ ShellRoot {
             return { title: "Whose files?", body: "", items: items };
         }
         if (screen === "drives") {
-            for (const d of drives) items.push({ label: d.label || d.model, sub: d.part + " · " + d.fstype + " · " + gb(d.size), icon: "folder", act: "drive:" + d.part });
+            if (app.drivesBusy) return { title: "Copy to which drive?", body: "Looking for drives…", items: [], progress: -1 };
+            for (const d of drives) items.push({ label: d.label || d.model, icon: "folder", act: "drive:" + d.part,
+                sub: (d.kind === "usb" ? "USB drive" : d.sameDrive ? "Same drive as Hearth OS" : "Another drive in this PC") + " · " + d.part + " · " + d.fstype + " · " + gb(d.size) + (d.free ? ", " + gb(d.free) + " free" : "") });
             items.push({ label: "Look again", sub: "Plug the USB drive in, then look again", icon: "search", act: "drivescan" });
             items.push({ label: "Back", sub: "", icon: "close", act: "back" });
-            return { title: "Copy to which USB drive?", body: drives.length ? "A folder named Hearth-files-… is made on it; nothing on it is deleted." : "No USB drive found. Plug one in (not this recovery stick).", items: items };
+            return { title: "Copy to which drive?", body: drives.length ? "A folder named Hearth-files-… is made on it; nothing on it is deleted. Drives with Windows or another system on them aren't offered." : "No drive to copy to was found. Plug in a USB drive (not this recovery stick), then look again.", items: items };
         }
+        if (screen === "checking") return { title: "Factory reset", body: "Checking what's on the drive…", items: [], progress: -1 };
         if (screen === "systems") {
             for (let i = 0; i < systems.length; i++) items.push({ label: systems[i].editionLabel + " · " + systems[i].model, sub: systems[i].device + " · " + (systems[i].deployments.length ? depName(systems[i].deployments[0]) : ""), icon: i === sysIdx ? "check" : "file", act: "sys:" + i });
             items.push({ label: "Back", sub: "", icon: "close", act: "back" });
@@ -174,17 +181,19 @@ ShellRoot {
         if (screen === "osk") return { title: "Password for " + app.wifiSsid, body: "", items: [], osk: true };
         return { title: "", body: "", items: [] };
     }
-    readonly property var pg: build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned)
+    readonly property var pg: build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned, drivesBusy)
     onPgChanged: if (sel >= pg.items.length) sel = Math.max(0, pg.items.length - 1)
 
     // ---------------------------------------------------------------- navigation
     function go(to) { history = history.concat([screen]); screen = to; sel = firstOn(); hold = 0; holding = false; }
-    function firstOn() { const it = build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned).items; for (let i = 0; i < it.length; i++) if (!it[i].off) return i; return 0; }
+    function firstOn() { const it = build(screen, systems, sysIdx, dialog, work, wifi, net, drives, pickUser, scanned, drivesBusy).items; for (let i = 0; i < it.length; i++) if (!it[i].off) return i; return 0; }
     function back() {
         if (work.busy) return;
         if (screen === "osk") { screen = "wifi"; sel = 0; return; }
         if (history.length === 0) return;
         const h = history.slice(); screen = h.pop(); history = h; sel = 0; hold = 0; holding = false;
+        // Back from a second confirmation: the first one again.
+        if (screen === "confirm" && dialog && dialog.prev) dialog = dialog.prev;
     }
     function menu() { history = []; screen = systems.length ? "home" : "scan"; sel = 0; }
     function move(d) {
@@ -227,8 +236,8 @@ ShellRoot {
             else confirmPrevious(1);
         }
         else if (a.startsWith("version:")) confirmPrevious(parseInt(a.slice(8)));
-        else if (a === "desktop") ask({ kind: "desktop", title: "Start in Desktop Mode next time?", confirm: "Start in Desktop Mode", doneTitle: "Desktop Mode next time",
-            body: "When this Hearth OS starts, it opens Desktop Mode instead of Game Mode. Game Mode's renderer goes back to automatic, and its saved resolution, refresh rate and screen modes are cleared (a copy of the old files is kept). Games, files, accounts and every other setting stay.",
+        else if (a === "desktop") ask({ kind: "desktop", title: "Start in Desktop Mode?", confirm: "Start in Desktop Mode", doneTitle: "Desktop Mode from now on",
+            body: "This Hearth OS opens Desktop Mode instead of Game Mode when it starts, until you switch back (Settings › Sign-in › Start in). Game Mode's renderer goes back to automatic, and its saved resolution, refresh rate and screen modes are cleared (a copy of the old files is kept). Games, files, accounts and every other setting stay.",
             run: ["reset-display", sys.id, "--desktop"] });
         else if (a === "resetdisplay") ask({ kind: "resetdisplay", title: "Reset Game Mode's display settings?", confirm: "Reset display settings", doneTitle: "Display settings reset",
             body: "Renderer back to automatic; Game Mode's resolution, refresh rate and saved screen modes cleared (a copy of the old files is kept). Hearth still starts in Game Mode. Everything else stays.",
@@ -236,8 +245,8 @@ ShellRoot {
         else if (a === "logs") ask({ kind: "logs", title: "Send logs to the developer?", confirm: "Send logs", doneTitle: "Logs sent",
             body: "Sends the installed Hearth OS's system journal from its last three starts and Hearth's own logs. Names, e-mail addresses, passwords and sign-in tokens are taken out first. You get a code to share." + (net.online ? "" : "\n\nConnect to Wi-Fi first (Wi-Fi on the main screen)."),
             run: ["send-logs", sys.id, "Sent from Hearth Recovery"] });
-        else if (a === "update") ask({ kind: "update", title: "Update or reinstall Hearth OS?", confirm: "Update Hearth OS", doneTitle: "Hearth OS updated",
-            body: "Downloads the newest " + sys.editionLabel + " and puts it on " + sys.model + " as the version that starts next. Your games, files, accounts and settings stay (they're kept apart from the system). The version that starts now becomes the previous one. This needs Wi-Fi and takes a while (a few GB)." + (net.online ? "" : "\n\nConnect to Wi-Fi first."),
+        else if (a === "update") ask({ kind: "update", title: "Reinstall Hearth OS, keeping your files?", confirm: "Reinstall Hearth OS", doneTitle: "Hearth OS reinstalled",
+            body: "Downloads the newest " + sys.editionLabel + " and installs it fresh on " + sys.model + " as the version that starts next. Your games, files, accounts and settings stay (they're kept apart from the system). Every version already on the drive stays too, so Start the previous version can still bring one back. This needs Wi-Fi and takes a while (a few GB)." + (net.online ? "" : "\n\nConnect to Wi-Fi first."),
             run: ["update", sys.id] });
         else if (a === "copy") {
             if (sys.users.length === 1) { pickUser = sys.users[0].name; go("drives"); driveScan(); }
@@ -247,16 +256,15 @@ ShellRoot {
         else if (a === "drivescan") driveScan();
         else if (a.startsWith("drive:")) {
             const part = a.slice(6);
+            const d = drives.find(x => x.part === part) || { label: part };
             ask({ kind: "copy", title: "Copy " + pickUser + "'s files?", confirm: "Copy files", doneTitle: "Files copied",
-                  body: "Copies the home folder of " + pickUser + " onto " + part + " (games, caches and Steam's folders are left out). Nothing on the Hearth OS drive changes.",
+                  body: "Copies the home folder of " + pickUser + " into a new folder on " + (d.label || part) + " (" + part + "). Games, caches and Steam's folders are left out. Nothing on it is deleted, and nothing on the Hearth OS drive changes.",
                   run: ["copy-home", sys.id, pickUser, part] });
         }
-        else if (a === "factory") ask({ kind: "factory", title: "Erase everything and reinstall?", confirm: "Erase " + sys.model, danger: true, hold: true, doneTitle: "Hearth OS reinstalled",
-            body: "This erases the WHOLE drive " + sys.model + " (" + sys.disk + "): every game, file, account and setting on it, and any other system on that drive. Then it downloads " + sys.editionLabel + " and installs it (needs Wi-Fi). The account is made again as " + (sys.users.length ? sys.users[0].name : "hearth") + " with no password.\n\nCopy your files to a USB drive first if you need them.",
-            run: ["factory-reset", sys.id] });
+        else if (a === "factory") factoryCheck();
         else if (a === "systems") go("systems");
         else if (a.startsWith("sys:")) { sysIdx = parseInt(a.slice(4)); menu(); }
-        else if (a === "go") runDialog();
+        else if (a === "go") { if (dialog && dialog.next) { dialog = Object.assign({}, dialog.next, { prev: dialog }); go("confirm"); } else runDialog(); }
         else if (a === "restart") { run(["restart"].concat(sys ? [sys.id] : []), "power", "Restarting…"); }
         else if (a === "poweroff") { run(["poweroff"], "power", "Turning off…"); }
     }
@@ -267,6 +275,26 @@ ShellRoot {
               run: ["set-default", sys.id, String(i)] });
     }
     function ask(d) { dialog = d; go("confirm"); }
+    // Factory reset: factory-check says what would be erased, then two confirmations, the second "hold A".
+    function factoryCheck() { factory = null; go("checking"); factoryProc.command = [app.bin, "factory-check", sys.id]; factoryProc.running = true; }
+    function factoryAsk(f, err) {
+        if (screen !== "checking") return;
+        const h = history.slice(); screen = h.pop() || "home"; history = h;   // the dialog replaces "checking"
+        if (err || !f || !f.mode) {
+            ask({ kind: "factory", title: "Factory reset can't be done here", confirm: "",
+                  body: (err || (f && f.reason ? f.reason.charAt(0).toUpperCase() + f.reason.slice(1) + "." : "It stopped.")) + (f && f.others && f.others.length ? "\n\nAlso on this drive: " + f.others.join(" · ") : "") });
+            return;
+        }
+        const whole = f.mode === "whole";
+        const erase = whole ? "the whole drive " + f.model + " (" + f.disk + ")" : "Hearth OS on " + f.model + " (" + f.erase.join(", ") + ")";
+        const second = { kind: "factory", title: "Last check: erase " + (whole ? f.model : "Hearth OS") + "?", confirm: "Erase and reinstall", danger: true, hold: true, doneTitle: "Hearth OS reinstalled",
+            body: "Everything in this Hearth OS is deleted for good: games, saves that aren't in the cloud, files, accounts, settings and every version on the drive. This can't be undone.\n\nHold A for 3 seconds to erase " + erase + " and install " + (f.editionLabel || "Hearth OS") + " again.",
+            run: ["factory-reset", sys.id, f.mode] };
+        ask({ kind: "factory", title: "Erase Hearth OS and start over?", confirm: "Continue", danger: true, next: second,
+              body: "Erases " + erase + ", then downloads " + (f.editionLabel || "Hearth OS") + " and installs it again (needs Wi-Fi). The account is made again as " + f.user + " with no password."
+                    + (whole ? " Nothing else is on this drive." : "\n\nThese stay as they are: " + f.others.join(" · ") + ".")
+                    + "\n\nCopy your files off first (Copy my files off this device) if you need them." + (net.online ? "" : "\n\nConnect to Wi-Fi first.") });
+    }
 
     // ---------------------------------------------------------------- running hearth-recovery
     property var jobLines: []
@@ -362,14 +390,28 @@ ShellRoot {
             app.sel = 0;
         }
     }
-    function driveScan() { drives = []; driveProc.running = true; }
+    // Drives to copy to (USB drives and other drives' data partitions; never this Hearth OS's own or another system's).
+    function driveScan() { if (driveProc.running) return; drives = []; drivesBusy = true; driveProc.command = [app.bin, "copy-targets"].concat(sys ? [sys.id] : []); driveProc.running = true; }
     Process {
         id: driveProc
-        command: [app.bin, "usb-drives"]
         property string out: ""
         stdout: SplitParser { onRead: data => driveProc.out += data }
         onRunningChanged: if (running) out = ""
-        onExited: code => { try { app.drives = JSON.parse(driveProc.out).drives; } catch (e) { app.drives = []; } }
+        onExited: code => { try { app.drives = JSON.parse(driveProc.out).drives; } catch (e) { app.drives = []; } app.drivesBusy = false; app.sel = 0; }
+    }
+    Process {
+        id: factoryProc
+        property string out: ""
+        stdout: SplitParser { onRead: data => factoryProc.out += data + "\n" }
+        onRunningChanged: if (running) out = ""
+        onExited: code => {
+            const t = factoryProc.out.trim();
+            let r = null;
+            try { r = JSON.parse(t); } catch (e) {}
+            const err = t.startsWith("error: ") ? t.slice(7).charAt(0).toUpperCase() + t.slice(8) + "." : (r ? "" : "Checking the drive failed.");
+            app.factory = r;
+            app.factoryAsk(r, err);
+        }
     }
     Process {
         id: netProc
@@ -601,7 +643,7 @@ ShellRoot {
             Rectangle {
                 id: progressBox
                 property real sweepPos: 0
-                visible: app.screen === "work" || (app.screen === "wifi" && app.wifi.busy) || (app.screen === "scan" && !app.scanned)
+                visible: app.screen === "work" || app.screen === "checking" || (app.screen === "drives" && app.drivesBusy) || (app.screen === "wifi" && app.wifi.busy) || (app.screen === "scan" && !app.scanned)
                 Layout.fillWidth: true
                 implicitHeight: 14 * win.u; radius: height / 2; color: app.panel2
                 Rectangle {

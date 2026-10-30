@@ -64,8 +64,8 @@ PanelWindow {
     readonly property var apps: Array.from(DesktopEntries.applications.values)
         .filter(a => !a.noDisplay && !/^(qt5ct|qt6ct)$/.test(a.id || ""))
         .sort((a, b) => a.name.localeCompare(b.name))
-    // Hearth's own apps (and Beacon, and Bazaar, the app store Hearth OS picks): never in the folder.
-    function ours(a) { return /^(hearth|nimbus|beacon|io\.github\.kolunmi\.Bazaar$)/i.test(a.id || "") || /^Hearth\b/.test(a.name || ""); }
+    // Hearth's own apps (and Beacon, Xodus Nexus, and Bazaar, the app store Hearth OS picks): never in the folder.
+    function ours(a) { return /^(hearth|nimbus|beacon|xodus-nexus$|io\.github\.kolunmi\.Bazaar$)/i.test(a.id || "") || /^Hearth\b/.test(a.name || ""); }
     function systemApp(a) { return !ours(a) && root.systemIds[a.id] === true; }
     readonly property var mainApps: apps.filter(a => !systemApp(a))
     readonly property var sysApps: apps.filter(a => systemApp(a))

@@ -133,6 +133,11 @@ run_game() {
   [ -n "$HEARTH_SEAT" ] && NIMBUS_GAMESCOPE_ARGS=""
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
+  # Hearth Recovery on the device › Safe graphics this time: the screen's own mode and the compatible drawing.
+  if [ -f /run/hearth/safe-graphics ]; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+    export WEBKIT_DISABLE_DMABUF_RENDERER=1
+  fi
   [ -n "$HEARTH_SEAT" ] && [ -n "$ENV_GAMESCOPE_ARGS" ] && NIMBUS_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS $ENV_GAMESCOPE_ARGS"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
@@ -357,6 +362,8 @@ input_stop() {
 
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
+# Hearth Recovery on the device › Desktop Mode this time (until the next restart).
+[ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
 # Extra multi-seat players have Game Mode only, even when their session.conf says to start in Desktop Mode.
 [ -n "$HEARTH_SEAT" ] && mode=game
 rm -f "$NEXT"

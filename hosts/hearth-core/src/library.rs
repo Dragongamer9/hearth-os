@@ -47,6 +47,10 @@ pub struct Game {
     pub beacon: Option<crate::beacon::BeaconGame>,
     /// Steam downloads: what Steam is doing now ("Verifying", "Waiting for Steam", "Stopped: Disk write failure").
     pub stage: Option<String>,
+    /// Multi-seat (seat_share.rs): another player's Epic or GOG install, played from their folder ("Player 1").
+    pub shared_from: Option<String>,
+    /// Multi-seat: a Steam game another Steam account installed in the shared library (Steam Family lends it).
+    pub borrowed: bool,
 }
 
 /// The game that's running: what to watch, and its times (ms since 1970).
@@ -72,6 +76,32 @@ pub struct Running {
 pub const QUICK_RESUME_MAX: usize = 5;
 fn quick_file() -> PathBuf { PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-quick-resume.json") }
 fn proc_root() -> &'static std::path::Path { std::path::Path::new("/proc") }
+
+/// Open engine: a game's first direct start is a test. Still running after 20 seconds (or having run that long) means
+/// it works and it starts directly from now on; gone sooner means it needs Valve's client (Steam's DRM, a launcher):
+/// that's remembered and it's started again through Valve's client right away.
+fn first_run_watch(track: crate::procs::Track, app: u32, home: std::path::PathBuf, uri: String) {
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let me = std::process::id();
+        let alive = |t: &crate::procs::Track| {
+            let snap = crate::procs::snapshot(proc_root());
+            let direct = crate::procs::Track { steam_app_id: None, ..t.clone() };
+            !crate::procs::game_processes(&direct, &snap, me).is_empty()
+        };
+        while start.elapsed() < std::time::Duration::from_secs(20) && alive(&track) { std::thread::sleep(std::time::Duration::from_millis(500)); }
+        let ok = steam_open_first_run_ok(start.elapsed(), alive(&track));
+        crate::steam_engine::launch_result(app, ok);
+        if !ok {
+            crate::bridge::log(&format!("steam (open): {app} stopped at once when started directly; starting it through Valve's client"));
+            steam::ensure_running_silent(&home);
+            if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
+        }
+    });
+}
+
+/// Same rule as the engine's LaunchPolicy.FirstRunOk (pure, for the tests).
+pub fn steam_open_first_run_ok(ran: std::time::Duration, still_running: bool) -> bool { still_running || ran >= std::time::Duration::from_secs(20) }
 fn pids_of(track: &crate::procs::Track) -> Vec<u32> { crate::procs::game_processes(track, &crate::procs::snapshot(proc_root()), std::process::id()) }
 fn rec(r: &Running) -> Value {
     json!({"id": r.id, "pid": r.track.pid, "dirs": r.track.dirs, "steamAppId": r.track.steam_app_id, "appId": r.app_id, "launchedAt": r.launched_at, "startedAt": r.started_at,
@@ -138,6 +168,12 @@ pub struct Library {
     beacon_next: Arc<Mutex<Option<crate::beacon::Snapshot>>>,
     beacon_busy: Arc<std::sync::atomic::AtomicBool>,
     beacon_checked: u64,
+    /// Multi-seat (seat_share.rs): games running on the other seats (id → "Player 2"), and when that was read;
+    /// what this player last offered the others; whether Steam has the shared library yet.
+    in_use: HashMap<String, String>,
+    in_use_checked: u64,
+    share_sig: Option<String>,
+    steam_share_done: bool,
 }
 
 fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect() }
@@ -146,7 +182,8 @@ impl Library {
     pub fn new(store: Store, home: PathBuf) -> Library {
         Library { running: None, store, games: BTreeMap::new(), counts: BTreeMap::new(), home, queue: Arc::new(Mutex::new(stores::Queue::new())),
                   accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new(), frozen: vec![], quick_saved: String::new(),
-                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0 }
+                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0,
+                  in_use: HashMap::new(), in_use_checked: 0, share_sig: None, steam_share_done: false }
     }
 
     /// Games you added yourself (kept in library.json "manual").
@@ -188,8 +225,17 @@ impl Library {
     pub fn scan(&mut self) {
         let mut all = BTreeMap::new();
         let mut counts = BTreeMap::new();
+        // Multi-seat with shared games: its shared folder (seat_share.rs).
+        let share = crate::seat_share::active();
         if self.store.source_on("steam") {
-            let list: Vec<Game> = steam::scan(&self.home).into_iter().map(Game::from).collect();
+            // A game in the shared folder's Steam library that another Steam account installed is lent by Steam Family.
+            let me64 = share.as_ref().and_then(|_| steam::steam_path(&self.home)).and_then(|s| steam::find_account(&self.home, &s, false).ok()).map(|(id, _)| id);
+            let list: Vec<Game> = steam::scan(&self.home).into_iter().map(|sg| {
+                let lent = share.as_ref().is_some_and(|(_, d)| sg.install_path.starts_with(d)) && sg.owner != 0 && me64.is_some_and(|m| m != sg.owner);
+                let mut g = Game::from(sg);
+                g.borrowed = lent;
+                g
+            }).collect();
             counts.insert("steam".to_string(), list.iter().filter(|g| g.installed).count());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
@@ -209,13 +255,25 @@ impl Library {
             counts.insert("gog".to_string(), list.len());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
+        if let Some((cfg, dir)) = &share { self.add_shared(&mut all, cfg, dir); }
         if self.store.source_on("xbox") {
             let list = xcloud::scan();
             counts.insert("xbox".to_string(), list.len().saturating_sub(1));
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
-        // Xbox PC games through Xodus Nexus, once you've added it (Settings › Games › Library).
-        if let Some(g) = crate::xodus::game() { counts.insert("xodus".to_string(), 1); all.insert(g.id.clone(), g); }
+        // Xbox PC games through Xodus Nexus (Hearth OS ships it; elsewhere Settings › Games › Library adds it): Nexus
+        // itself and the games you made shortcuts for in it.
+        if self.store.source_on("xodus") {
+            let list = crate::xodus::games();
+            counts.insert("xodus".to_string(), list.len());
+            for g in list { all.insert(g.id.clone(), g); }
+        }
+        // Battle.net, once it's set up (Library › Stores › Battle.net), and the Blizzard games it installed.
+        if self.store.source_on("battlenet") {
+            let list = crate::battlenet::games();
+            counts.insert("battlenet".to_string(), list.len());
+            for g in list { all.insert(g.id.clone(), g); }
+        }
         // Beacon's games (BFME, Age of the Ring, LOTR: Conquest...), read again when Beacon's files changed.
         if self.store.source_on("beacon") {
             // Never waits for Beacon here (its program can take a while, or not answer): the last answer is used and a
@@ -270,15 +328,96 @@ impl Library {
         }
         self.games = all;
         self.counts = counts;
+        if let Some((_, dir)) = &share { self.share_mine(dir); }
+        self.refresh_in_use();
         self.steam_stages(None);
         if !self.queue_restored { self.queue_restored = true; self.restore_queue(); }
         self.download_sig = self.signature();
     }
 
+    // ------------------------------------------------------------------ multi-seat shared games (seat_share.rs)
+
+    /// The other players' Epic and GOG installs, in this player's library. GOG games start from the other player's
+    /// folder (DRM-free); an Epic install only shows for a player whose own Epic account has the game.
+    fn add_shared(&self, all: &mut BTreeMap<String, Game>, cfg: &Value, dir: &std::path::Path) {
+        let me = crate::seat_share::me();
+        let epic_owned = Owned::load(epic::CACHE);
+        let gog_owned = Owned::load(gog::CACHE);
+        for s in crate::seat_share::shared_games(dir, &me, cfg, &crate::seat_share::uid_of) {
+            if !self.store.source_on(&s.store) { continue; }
+            if let Some(g) = all.get_mut(&s.id) {
+                // Already in this player's library: their own copy stays theirs; the shared folder their Epic
+                // registered earlier is still the other player's.
+                if g.install_path.as_deref() == Some(s.path.as_path()) { g.shared_from = Some(s.from.clone()); g.can_uninstall = false; }
+                continue;
+            }
+            let mut g = match s.store.as_str() {
+                "gog" => {
+                    let mut rec = serde_json::Map::new();
+                    rec.insert(s.id.trim_start_matches("gog:").to_string(), json!(s.path.to_string_lossy()));
+                    let Some(mut g) = gog::installed(&Value::Object(rec), &gog_owned).pop() else { continue };
+                    if g.art.is_empty() { g.art = stores::art_of(&s.art); }
+                    g
+                }
+                "epic" => {
+                    if !stores::signed_in("epic") { continue; }
+                    let Some(o) = epic_owned.find(s.id.trim_start_matches("epic:")) else { continue };
+                    stores::game(s.id.clone(), &s.title, "epic", &s.path.to_string_lossy(), None, stores::art_of(&o["art"]), true)
+                }
+                _ => continue,
+            };
+            g.shared_from = Some(s.from);
+            g.can_uninstall = false;
+            all.insert(g.id.clone(), g);
+        }
+    }
+
+    /// Offers this player's own Epic and GOG installs to the others (hearth-seats share-publish) when they changed,
+    /// and adds the shared folder's Steam library to this player's Steam once Steam is closed (Steam rewrites its
+    /// list of libraries when it closes, so it isn't changed under a running Steam).
+    fn share_mine(&mut self, dir: &std::path::Path) {
+        let mut mine: Vec<String> = self.games.values().filter(|g| matches!(g.source, "epic" | "gog") && g.installed && g.shared_from.is_none())
+            .map(|g| format!("{}={}", g.id, g.install_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default())).collect();
+        mine.sort();
+        let sig = mine.join("\n");
+        if self.share_sig.as_deref() != Some(sig.as_str()) {
+            self.share_sig = Some(sig);
+            std::thread::spawn(|| match crate::multiplay::ask(crate::multiplay::SEATS, &["share-publish"]) {
+                Ok(v) => crate::bridge::log(&format!("multi-seat: shared {} games with the other players{}", v["shared"].as_u64().unwrap_or(0),
+                    v["not_shared"].as_array().filter(|a| !a.is_empty()).map(|a| format!(" (couldn't share {})", a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", "))).unwrap_or_default())),
+                Err(e) => crate::bridge::log(&format!("multi-seat: couldn't share games: {e}")),
+            });
+        }
+        if !self.steam_share_done && self.store.source_on("steam") && !steam::is_running() {
+            self.steam_share_done = true;
+            let (home, lib) = (self.home.clone(), dir.join("Steam"));
+            std::thread::spawn(move || {
+                let Some(s) = steam::steam_path(&home) else { return };
+                if steam::libraries(&s).iter().any(|l| *l == lib) { return; }
+                match steam::add_library(&home, &lib) {
+                    Ok(_) => crate::bridge::log("multi-seat: the shared games folder is one of Steam's libraries now"),
+                    Err(e) => crate::bridge::log(&format!("multi-seat: Steam's shared library: {e}")),
+                }
+            });
+        }
+    }
+
+    /// What's running on the other seats.
+    fn refresh_in_use(&mut self) {
+        self.in_use_checked = now_ms();
+        self.in_use = match crate::seat_share::active() {
+            Some((cfg, _)) => crate::seat_share::in_use(std::path::Path::new(crate::seat_share::IN_USE), &crate::seat_share::me(), &cfg, &crate::seat_share::uid_of, &crate::procs::alive),
+            None => HashMap::new(),
+        };
+    }
+
     // ------------------------------------------------------------------ installs (Epic, GOG) and downloads
 
     pub fn install_root(&self) -> PathBuf {
-        self.store.data["installRoot"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or_else(|| self.home.join("Games"))
+        // Multi-seat with shared games: new installs go in the shared folder, so every player can start them.
+        self.store.data["installRoot"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from)
+            .or_else(|| crate::seat_share::active().map(|(_, d)| d))
+            .unwrap_or_else(|| self.home.join("Games"))
     }
 
     fn start_install(&mut self, id: &str, title: &str, uri: &str, paused: bool) -> Result<(), String> {
@@ -347,6 +486,12 @@ impl Library {
         let app: u32 = id.strip_prefix("steam:").and_then(|a| a.parse().ok()).ok_or("That isn't a Steam game.")?;
         if !steam::client_installed(&self.home) { return Err("Steam isn't installed on this device.".into()); }
         let lib = self.steam_library().ok_or("Steam isn't set up yet. Open Steam once, then try again.")?;
+        // Lightweight or Open engine: it takes the install up itself (its records show progress as usual).
+        let mode = self.steam_engine_mode();
+        if crate::steam_engine::install(mode, app, &lib).is_some() {
+            if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = None; }
+            return Ok(json!({"silent": true, "waiting": false, "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}));
+        }
         let r = crate::steam_ctl::install(&self.home, app, &g.title, &lib)?;
         if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = Some("Waiting for Steam".into()); }
         Ok(r)
@@ -401,6 +546,7 @@ impl Library {
     pub fn uninstall(&mut self, id: &str) -> Result<(), String> {
         let g = self.games.get(id).cloned().ok_or("That game isn't in the library anymore.")?;
         if self.running.as_ref().map(|r| r.id == id).unwrap_or(false) { return Err(format!("Exit {} first.", g.title)); }
+        if let Some(who) = &g.shared_from { return Err(format!("This is {who}'s copy of {}. Only {who} can delete it.", g.title)); }
         if !g.can_uninstall { return Err(format!("Uninstall {} from its store app.", g.title)); }
         match g.source {
             "epic" => epic::uninstall(id.trim_start_matches("epic:"))?,
@@ -511,6 +657,7 @@ impl Library {
             "bytesDone": g.bytes_done, "bytesTotal": g.bytes_total, "canUninstall": g.can_uninstall, "note": g.note,
             "installKind": match g.install_uri.as_deref() { None => None, Some(u) if u.starts_with("nimbus-") => Some("nimbus"), Some(u) if u.starts_with("steam:") => Some("steam"), Some(u) if u.starts_with("beacon:") => Some("beacon"), Some(_) => Some("store") },
             "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id), "stage": g.stage,
+            "sharedFrom": g.shared_from, "borrowed": g.borrowed, "inUse": self.in_use.get(&g.id),
         });
         if let Some(b) = &g.beacon {
             out["beacon"] = json!({"family": b.family, "short": b.short, "ready": b.ready, "blocker": b.blocker(), "edition": b.edition, "viaSteam": b.via_steam, "custom": b.custom,
@@ -548,13 +695,45 @@ impl Library {
             return Ok(json!({"tracked": true, "stream": g.stream_url, "title": g.title}));
         }
         if !g.installed { return Err(format!("{} isn't installed yet.", g.title)); }
+        // Multi-seat: a copy another player has right now waits for them (seat_share.rs).
+        self.refresh_in_use();
+        if let Some(who) = self.in_use.get(id) {
+            if crate::seat_share::must_wait(g.source, g.shared_from.as_deref(), g.borrowed) {
+                return Err(format!("{} is in use by {who}. {}", g.title, if g.source == "steam" { "Steam Family lets one player at a time play a lent game." } else { "One player at a time can play this copy." }));
+            }
+        }
         let track = match g.source {
             "steam" => {
                 let uri = g.launch_uri.clone().unwrap_or_default();
                 crate::steam_ctl::touch();
-                // Started cold by the game's URL, Steam shows its update and main windows over everything.
-                // Started hidden first (-silent), it only starts the game.
-                if steam::is_running() {
+                let app_num: u32 = id.trim_start_matches("steam:").parse().unwrap_or(0);
+                let mode = self.steam_engine_mode();
+                // Open engine: a DRM-free game is started by Hearth itself (natively or with Proton through umu); everything
+                // else (Steamworks, VAC, a failed first start…) starts through Valve's client below.
+                let direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
+                if let Some(info) = direct {
+                    let opts = crate::game_options::get(&self.store, id);
+                    match crate::steam_engine::launch_direct(&info, &opts, app_num, app_id) {
+                        Ok(pid) => {
+                            let dirs = info["dir"].as_str().map(|d| vec![d.to_string()]).unwrap_or_default();
+                            let track = crate::procs::Track { pid: Some(pid), dirs, steam_app_id: Some(app_num.to_string()), app_id: Some(app_id) };
+                            if info["firstRun"] == true { first_run_watch(track.clone(), app_num, self.home.clone(), uri.clone()); }
+                            crate::bridge::log(&format!("launch: {id} as id {app_id} (steam, started directly by Hearth, process {pid})"));
+                            self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id });
+                            return Ok(json!({"tracked": true, "direct": true}));
+                        }
+                        Err(e) => crate::bridge::log(&format!("steam (open): {app_num} couldn't start directly ({e}); using Valve's client")),
+                    }
+                }
+                if mode == crate::steam_engine::Mode::Lightweight && app_num > 0 && !steam::client_running() {
+                    // Lightweight engine first; anything it can't do starts with the normal client instead.
+                    let home = self.home.clone();
+                    std::thread::spawn(move || {
+                        if crate::steam_engine::launch(crate::steam_engine::Mode::Lightweight, app_num) { return; }
+                        steam::ensure_running_silent(&home);
+                        if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
+                    });
+                } else if steam::is_running() {
                     steam::spawn(&self.home, &uri)?;
                 } else {
                     if !steam::client_installed(&self.home) { return Err("Couldn't start Steam: it isn't installed.".into()); }
@@ -576,12 +755,28 @@ impl Library {
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
                 crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
             }
+            // Games a launcher starts (Battle.net in its Proton prefix, Xodus Nexus): Hearth runs the launcher's script or
+            // shortcut with the game's number in its environment, and the game's own folder finds its processes, since
+            // the launcher (not Hearth) starts the game itself.
+            "battlenet" | "xodus" => {
+                let exe = g.exe.clone().unwrap_or_default();
+                let opts = crate::game_options::get(&self.store, id);
+                let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
+                let dirs = g.install_path.as_ref().filter(|p| p.starts_with(crate::battlenet::prefix())).map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
+            }
             "emu" => {
                 let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home, app_id)?;
                 crate::procs::Track { pid: Some(pid), app_id: Some(app_id), ..Default::default() }
             }
-            "epic" | "gog" if g.can_uninstall => {
+            "epic" | "gog" if g.can_uninstall || g.shared_from.is_some() => {
                 // Installed by Hearth: started directly with Proton, so Hearth can watch it.
+                if g.source == "epic" && g.shared_from.is_some() && !epic::installed(&Owned::default()).iter().any(|x| x.id == id) {
+                    // Another player's Epic install: registered once with this player's own Epic sign-in, which then
+                    // starts it with this player's copy of the game.
+                    let dir = g.install_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                    epic::import_game(id.trim_start_matches("epic:"), &dir)?;
+                }
                 let opts = crate::game_options::get(&self.store, id);
                 let pid = if g.source == "epic" { epic::launch(id.trim_start_matches("epic:"), &opts, app_id)? } else { gog::launch(&g, &opts, app_id)? };
                 let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
@@ -606,6 +801,8 @@ impl Library {
             _ => "started".to_string(),
         }));
         self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id });
+        // Multi-seat: the other players see "In use by …" (nothing on a PC without shared games).
+        if let Err(e) = crate::seat_share::take(std::path::Path::new(crate::seat_share::IN_USE), id, &crate::seat_share::me(), std::process::id()) { crate::bridge::log(&format!("multi-seat: couldn't note {id} as in use: {e}")); }
         // Started without the store (its sign-in expired): the page says cloud saves and online play wait for Sign in again.
         let expired = matches!(g.source, "epic" | "gog") && stores::expiry::is_expired(g.source);
         Ok(serde_json::json!({"tracked": true, "expired": if expired { Some(g.source) } else { None }}))
@@ -658,10 +855,12 @@ impl Library {
         let mut events = self.beacon_tick();
         // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
         if self.store.source_on("steam") {
+            crate::steam_engine::tick(self.steam_engine_mode());
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
             events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
         }
         events.extend(self.tick_running());
+        if now_ms().saturating_sub(self.in_use_checked) > 10_000 { self.refresh_in_use(); }
         let mut q = self.quick_tick();
         // The list only goes to the page when it changed.
         if self.frozen.len() == before && q.last().map(|e| e["name"] == "quickResume").unwrap_or(false) { q.pop(); }
@@ -752,6 +951,9 @@ impl Library {
 
     /// A game is over (or a Quick Resume game was closed): play time saved, Epic saves uploaded. Returns its dto.
     fn finish(&mut self, r: Running) -> Value {
+        crate::seat_share::release(std::path::Path::new(crate::seat_share::IN_USE), &r.id, &crate::seat_share::me());
+        // Saves follow you (Hearth Storage): this game's save goes to the server, if it's one Hearth Link follows.
+        crate::link::game_closed(&r.id);
         // Epic cloud saves go up once the game has closed.
         // GOG cloud saves go up once the game has closed.
         if let Some(gid) = r.id.strip_prefix("gog:") {
@@ -961,6 +1163,10 @@ impl Library {
 
     /// "Start Steam only when needed" (Settings › Library, on by default).
     pub fn steam_on_demand(&self) -> bool { self.store.data["steamOnDemand"] != false }
+    /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
+    pub fn steam_lightweight(&self) -> bool { self.steam_engine_mode() == crate::steam_engine::Mode::Lightweight }
+    /// Settings › Library › Steam engine: Classic (default), Lightweight or Open (both experimental).
+    pub fn steam_engine_mode(&self) -> crate::steam_engine::Mode { crate::steam_engine::Mode::from_setting(&self.store.data["steamEngine"]) }
 
     pub fn get(&mut self, rescan: bool) -> Value {
         if rescan || self.games.is_empty() { self.scan(); }
@@ -969,13 +1175,21 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn steam_open_first_start_rule() {
+        use std::time::Duration;
+        assert!(steam_open_first_run_ok(Duration::from_secs(20), true));
+        assert!(steam_open_first_run_ok(Duration::from_secs(25), false));
+        assert!(!steam_open_first_run_ok(Duration::from_secs(4), false));
+    }
     #[test]
     fn downloads_with_a_queued_store_game_answers() {
         let dir = tempfile::tempdir().unwrap();

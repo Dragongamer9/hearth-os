@@ -1,0 +1,15 @@
+# Once Hearth has been up for 45 seconds (Game Mode, Desktop Mode or the login screen), this start counts as good:
+# GRUB's start count goes back to 0. If this start was the automatic fallback, the previous version becomes the
+# default. See /usr/libexec/nimbus/hearth-boot-guard.
+[Unit]
+Description=Hearth: mark this start as good once Hearth is up
+After=hearth-boot-guard.service multi-user.target
+RequiresMountsFor=/boot
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-boot-guard watch
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

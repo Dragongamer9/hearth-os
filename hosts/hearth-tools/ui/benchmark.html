@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Benchmark</title>
+<link rel="stylesheet" href="common.css">
+<style>
+.hero { display:flex; gap:1.2em; align-items:center; padding:.9em 1.1em; border-radius:18px; background:linear-gradient(120deg, #2a1a10, var(--panel)); border:1px solid #4a372b; margin-bottom:.8em; flex-wrap:wrap; }
+.hero .big { font-size:1.35em; font-weight:700; }
+.score { font-size:2.6em; font-weight:800; line-height:1; background:linear-gradient(180deg, var(--flame), var(--ember)); -webkit-background-clip:text; background-clip:text; color:transparent; font-variant-numeric:tabular-nums; }
+.score.sm { font-size:1.5em; }
+.modes { display:grid; gap:.8em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 16em), 1fr)); margin-bottom:.8em; }
+.mode { text-align:left; display:flex; flex-direction:column; gap:.3em; padding:.9em 1em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); }
+.mode b { font-size:1.08em; } .mode small { color:var(--muted); }
+.mode.primary { background:linear-gradient(140deg, #3b2214, var(--panel)); border-color:#6a442b; }
+.section { margin:.9em 0 .45em; color:var(--muted); font-size:.82em; text-transform:uppercase; letter-spacing:.08em; }
+.tiles { display:grid; gap:.6em; grid-template-columns:repeat(auto-fill, minmax(8.5em, 1fr)); }
+.tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.55em .75em; }
+.tile .k { color:var(--muted); font-size:.78em; } .tile .v { font-size:1.35em; font-weight:700; font-variant-numeric:tabular-nums; }
+.tile.hot .v { color:var(--danger); }
+.tests { display:flex; flex-direction:column; gap:.35em; }
+.trow { display:grid; grid-template-columns:1.6em 1fr auto; gap:.6em; align-items:center; padding:.45em .7em; border-radius:10px; background:var(--panel); border:1px solid var(--line); }
+.trow.on { border-color:var(--ember); }
+.res { display:grid; gap:.7em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 19em), 1fr)); }
+.rcard { display:flex; flex-direction:column; gap:.35em; }
+.rcard .top { display:flex; align-items:baseline; gap:.5em; }
+.rcard .top b { flex:1; }
+.graphs { display:grid; gap:.6em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 22em), 1fr)); }
+.graph { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.5em .7em; }
+.graph .h { display:flex; justify-content:space-between; font-size:.82em; color:var(--muted); }
+.graph svg { width:100%; height:4.2em; display:block; }
+.chg.up { color:var(--good); } .chg.down { color:var(--danger); }
+.warnbox { border:1px solid #6a4a1f; background:#2a1f10; color:#ffe2a8; border-radius:12px; padding:.6em .8em; margin:.5em 0; font-size:.9em; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, human } = H;
+const TABS = [{ id: 'run', label: 'Run' }, { id: 'results', label: 'Results' }, { id: 'history', label: 'History' }, { id: 'compare', label: 'Compare' }];
+let ST = null, HIST = [], SHOW = null, RUN = null, DEVS = null;
+const OPT = { place: '', peer: '', minutes: 10, gpuLoad: true, thorough: false, picked: new Set(['cpu1', 'cpuN', 'memBw', 'memLat']) };
+const LONG_MIN = { quick: 2, full: 12, battery: 4 };
+
+H.shell({ title: 'Hearth Benchmark', sub: 'How fast this device is, and whether it stays fast', tabs: TABS, onTab: draw, hints: [['Y', 'Look again']] });
+H.S.refresh = load;
+H.S.back = () => { if (RUN) { stop(); return true; } return false; };
+
+const name = id => (ST && ST.tests.find(t => t.id === id) || {}).name || id;
+const n0 = v => v == null ? '–' : Math.round(v).toLocaleString();
+const n1 = v => v == null ? '–' : (Math.round(v * 10) / 10).toLocaleString();
+const modeName = m => ({ quick: 'Quick test', full: 'Full test', custom: 'Chosen tests', sustained: 'Sustained and heat', battery: 'Battery drain' }[m] || m);
+const chg = c => c == null ? '' : `<span class="chg ${c > 0.5 ? 'up' : c < -0.5 ? 'down' : ''}">${c > 0 ? '+' : ''}${n1(c)} %</span>`;
+
+function draw() {
+  if (RUN) return drawRun();
+  const t = H.S.tab;
+  if (t === 'run') drawHome(); else if (t === 'results') drawResults(); else if (t === 'history') drawHistory(); else drawCompare();
+}
+
+// ---------------------------------------------------------------- Run
+function missing() {
+  if (!ST) return [];
+  const t = ST.tools, m = [];
+  if (!t.sevenzip) m.push('7-Zip (processor)'); if (!t.fio) m.push('fio (storage)'); if (!t.vkmark) m.push('vkmark (Vulkan)'); if (!t.glmark2) m.push('glmark2 (OpenGL, game-style)');
+  return m;
+}
+function drawHome() {
+  if (!ST) { $('#main').innerHTML = '<div class="empty"><span class="spinner"></span> Getting ready…</div>'; return; }
+  const d = ST.device || {}, last = ST.last, p = ST.power;
+  let h = `<div class="scroll"><div class="hero"><div class="grow"><div class="big">${esc(d.model || d.name || 'This device')}</div>
+    <div class="muted">${esc([d.cpu, d.gpu, d.memory ? human(d.memory) + ' memory' : ''].filter(Boolean).join(' · '))}</div>
+    ${p ? `<div class="chips" style="margin-top:.4em"><span class="badge ${p.onBattery ? 'warn' : 'good'}">${p.onBattery ? 'On battery' : 'Plugged in'}${p.percent != null ? ' · ' + Math.round(p.percent) + ' %' : ''}</span></div>` : ''}</div>
+    ${last ? `<div style="text-align:right"><div class="muted" style="font-size:.8em">Last score · ${esc(H.ago(last.at))}</div><div class="score">${n0(last.overall)}</div><div class="muted" style="font-size:.8em">${esc(modeName(last.mode))}</div></div>` : ''}</div>`;
+  const m = missing();
+  if (m.length) h += `<div class="warnbox">Not installed here, so those tests are skipped: ${esc(m.join(', '))}.</div>`;
+  h += `<div class="modes">
+    <button class="mode primary f" data-run="quick"><b>Quick test</b><small>About 2 minutes. Processor, memory, storage and graphics.</small></button>
+    <button class="mode f" data-run="full"><b>Full test</b><small>About 12 minutes. Everything in Quick, longer, plus game-style 3D scenes, internet and home network.</small></button>
+    <button class="mode f" data-run="sustained"><b>Sustained and heat</b><small>${OPT.minutes} minutes of full load. Clocks, temperatures, watts and slowing down over time.</small></button>
+    <button class="mode f" data-run="battery"><b>Battery drain</b><small>About 4 minutes on battery: how long it lasts idle and under load.</small></button>
+  </div>`;
+  h += `<div class="section">Sustained test</div><div class="chips">${[10, 15, 20].map(x => `<button class="chip f${OPT.minutes === x ? ' on' : ''}" data-min="${x}">${x} minutes</button>`).join('')}
+    <button class="chip f${OPT.gpuLoad ? ' on' : ''}" id="gpuload">Graphics load too</button></div>`;
+  h += `<div class="section">Storage test drive</div><div class="chips">${(ST.places || []).map(pl => `<button class="chip f${(OPT.place || ST.places[0].path) === pl.path ? ' on' : ''}" data-place="${esc(pl.path)}">${esc(pl.label)}${pl.free ? ' · ' + human(pl.free) + ' free' : ''}</button>`).join('') || '<span class="muted">No drive found</span>'}</div>
+    <div class="faint" style="font-size:.8em;margin-top:.3em">A test file goes in a .hearth-benchmark folder on that drive and is deleted right after.</div>`;
+  h += `<div class="section">Home network test device</div><div class="chips" id="peers">${peerChips()}</div>`;
+  h += `<div class="section">Choose tests</div><div class="chips">${ST.tests.map(t => `<button class="chip f${OPT.picked.has(t.id) ? ' on' : ''}" data-pick="${t.id}">${esc(t.name)}</button>`).join('')}</div>
+    <div class="row" style="margin-top:.6em"><button class="chip f${OPT.thorough ? ' on' : ''}" id="thorough">Longer, more precise</button><span class="grow"></span><button class="btn primary f" id="runpicked">Run the chosen tests</button></div>
+    <p class="faint" style="font-size:.8em">Scores: 1000 is a typical gaming handheld (4 Zen 2 cores, RDNA 2 graphics); 2000 is twice as fast. Hot? The test stops by itself at 95 °C. B stops it any time.</p></div>`;
+  $('#main').innerHTML = h;
+  $$('[data-run]').forEach(b => b.onclick = () => start(b.dataset.run));
+  $$('[data-min]').forEach(b => b.onclick = () => { OPT.minutes = +b.dataset.min; refocus(b, drawHome); });
+  $('#gpuload').onclick = e => { OPT.gpuLoad = !OPT.gpuLoad; refocus(e.currentTarget, drawHome); };
+  $('#thorough').onclick = e => { OPT.thorough = !OPT.thorough; refocus(e.currentTarget, drawHome); };
+  $$('[data-place]').forEach(b => b.onclick = () => { OPT.place = b.dataset.place; refocus(b, drawHome); });
+  $$('[data-pick]').forEach(b => b.onclick = () => { const id = b.dataset.pick; OPT.picked.has(id) ? OPT.picked.delete(id) : OPT.picked.add(id); refocus(b, drawHome); });
+  $('#runpicked').onclick = () => start('custom');
+  bindPeers();
+}
+function peerChips() {
+  if (!DEVS) return '<button class="chip f" id="askdevs">Find my Hearth devices</button>';
+  if (DEVS.error) return `<span class="muted">${esc(DEVS.error)}</span>`;
+  const on = (DEVS.devices || []).filter(x => x.online);
+  return on.length ? on.map(x => `<button class="chip f${OPT.peer === x.id ? ' on' : ''}" data-peer="${esc(x.id)}">${esc(x.name)}</button>`).join('') : '<span class="muted">No paired Hearth device answered.</span>';
+}
+function bindPeers() {
+  const a = $('#askdevs'); if (a) a.onclick = () => askDevices().then(() => { const el = $('#peers'); if (el) { el.innerHTML = peerChips(); bindPeers(); (el.querySelector('.f') || $('#runpicked')).focus(); } });
+  $$('[data-peer]').forEach(b => b.onclick = () => { OPT.peer = OPT.peer === b.dataset.peer ? '' : b.dataset.peer; refocus(b, drawHome); });
+}
+function refocus(el, redraw) {
+  const key = [...el.attributes].filter(a => a.name.startsWith('data-') || a.name === 'id').map(a => `[${a.name}="${CSS.escape(a.value)}"]`).join('');
+  const top = $('.scroll')?.scrollTop || 0; redraw();
+  if ($('.scroll')) $('.scroll').scrollTop = top;
+  ($(key) || H.firstFocus())?.focus();
+}
+async function askDevices() {
+  try { DEVS = await H.job('bench.devices'); } catch (e) { DEVS = { error: String(e), devices: [] }; }
+  return DEVS;
+}
+
+// ---------------------------------------------------------------- running
+async function start(mode) {
+  if (RUN) return;
+  const args = { mode, place: OPT.place, peer: OPT.peer, minutes: OPT.minutes, gpuLoad: OPT.gpuLoad, thorough: OPT.thorough, tests: [...OPT.picked] };
+  if (mode === 'custom' && !OPT.picked.size) return H.toast('Choose at least one test', true);
+  const p = ST && ST.power;
+  const long = mode === 'full' || mode === 'sustained' || (mode === 'custom' && (OPT.picked.has('sustained') || OPT.picked.has('battery')));
+  if (p && p.onBattery && long) {
+    const mins = mode === 'sustained' || OPT.picked.has('sustained') ? OPT.minutes : LONG_MIN[mode] || 10;
+    const ok = await H.confirm('On battery', `<p>This test keeps the device at full load for about ${mins} minutes${p.percent != null ? ` and the battery is at ${Math.round(p.percent)} %` : ''}. It will drain fast and the device gets warm.</p><p class="muted">Plugging in the charger gives steadier results.</p>`, 'Run on battery');
+    if (!ok) return;
+    args.onBatteryOk = true;
+  }
+  if (mode === 'battery' && p && !p.onBattery) return H.dialog({ title: 'Unplug the charger', html: '<p>Battery drain can only be measured on battery. Unplug the charger and try again.</p>' });
+  const plan = mode === 'quick' ? ST.quick : mode === 'full' ? ST.full : mode === 'custom' ? ST.tests.map(t => t.id).filter(id => OPT.picked.has(id)) : [mode];
+  RUN = { mode, plan, cur: null, idx: 0, results: {}, live: {}, hist: [], step: null, started: Date.now(), stopping: false };
+  H.setHints([]);
+  draw();
+  const job = H.job('bench.run', args, onStep);
+  RUN.job = job;
+  try {
+    const r = await job;
+    SHOW = r; RUN = null; H.setHints([['Y', 'Look again']]);
+    if (r.stopped) H.toast(r.stopped, true);
+    load(true); H.setTab('results', true);
+  } catch (e) {
+    RUN = null; H.setHints([['Y', 'Look again']]);
+    if (String(e).startsWith('on-battery')) { draw(); return; }
+    H.fail(e); draw(); setTimeout(() => H.firstFocus()?.focus(), 0);
+  }
+}
+function stop() {
+  if (!RUN || RUN.stopping) return;
+  RUN.stopping = true;
+  if (RUN.job && RUN.job.cancel) RUN.job.cancel(); else DEMO_STOP = true;
+  drawRun();
+}
+function onStep(s) {
+  if (!RUN) return;
+  if (s.live) { RUN.live = s.live; RUN.hist.push(s.live); if (RUN.hist.length > 300) RUN.hist.shift(); }
+  if (s.test) { RUN.cur = s.test; RUN.idx = s.index; if (s.state === 'done') RUN.results[s.test] = s.result; RUN.step = null; }
+  if (s.step) RUN.step = s.step;
+  drawRun();
+}
+let drawQueued = false;
+function drawRun() {
+  if (drawQueued) return; drawQueued = true;
+  requestAnimationFrame(() => { drawQueued = false; if (RUN) drawRunNow(); });
+}
+function tiles(l) {
+  const t = (k, v, unit, hot) => `<div class="tile${hot ? ' hot' : ''}"><div class="k">${k}</div><div class="v">${v}<small class="muted" style="font-size:.55em"> ${unit}</small></div></div>`;
+  return t('Processor', n0(l.cpuMhz), 'MHz') + t('Processor heat', n0(l.cpuTemp), '°C', l.cpuTemp >= 90) + t('Busy', n0(l.cpuPct), '%')
+    + t('Graphics', n0(l.gpuMhz), 'MHz') + t('Graphics heat', n0(l.gpuTemp), '°C', l.gpuTemp >= 90)
+    + t(l.battW != null ? 'Battery draw' : 'Graphics power', n1(l.battW != null ? l.battW : l.gpuW), 'W') + t('Frame rate', n0(l.fps), 'FPS');
+}
+function spark(vals, color, fmt, label) {
+  const v = vals.filter(x => x != null && isFinite(x));
+  if (v.length < 2) return `<div class="graph"><div class="h"><span>${label}</span><span>–</span></div><svg viewBox="0 0 100 30"></svg></div>`;
+  const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+  const pts = vals.map((x, i) => x == null ? null : `${(i / (vals.length - 1) * 100).toFixed(2)},${(28 - (x - lo) / span * 26).toFixed(2)}`).filter(Boolean).join(' ');
+  return `<div class="graph"><div class="h"><span>${label}</span><span>${fmt(v[v.length - 1])} · peak ${fmt(hi)}</span></div>
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg></div>`;
+}
+function drawRunNow() {
+  const R = RUN, l = R.live || {}, n = R.plan.length;
+  const done = Object.keys(R.results).length;
+  const st = R.step;
+  const frac = st && st.total ? st.elapsed / st.total : st && st.of ? (st.part + .5) / st.of : .4;
+  const pct = Math.min(100, (done + (R.cur && !R.results[R.cur] ? frac : 0)) / n * 100);
+  const secs = Math.round((Date.now() - R.started) / 1000);
+  let h = `<div class="scroll"><div class="hero"><div class="grow"><div class="big">${R.stopping ? 'Stopping…' : esc(R.cur ? name(R.cur) : 'Starting…')}</div>
+    <div class="muted">${esc(modeName(R.mode))} · test ${Math.min(done + 1, n)} of ${n} · ${Math.floor(secs / 60)} min ${secs % 60} s${st && st.total ? ` · ${Math.max(0, st.total - st.elapsed)} s left in this test` : ''}</div>
+    <div class="prog"><i style="width:${pct.toFixed(1)}%"></i></div></div>
+    <button class="btn danger f" id="stop">Stop (B)</button></div>`;
+  h += `<div class="tiles">${tiles(l)}</div>`;
+  h += `<div class="section">Live</div><div class="graphs">${spark(R.hist.map(x => x.cpuTemp), 'var(--ember)', v => n0(v) + ' °C', 'Processor heat')}
+    ${spark(R.hist.map(x => x.cpuMhz), 'var(--sky)', v => n0(v) + ' MHz', 'Processor clock')}
+    ${spark(R.hist.map(x => x.battW != null ? x.battW : x.gpuW), 'var(--flame)', v => n1(v) + ' W', 'Power')}
+    ${R.mode === 'sustained' || R.cur === 'battery' ? spark(R.hist.map(x => x.rate), 'var(--good)', v => n0(v) + '/s', 'Work done') : spark(R.hist.map(x => x.fps), 'var(--good)', v => n0(v) + ' FPS', 'Frame rate')}</div>`;
+  h += `<div class="section">Tests</div><div class="tests">${R.plan.map(id => {
+    const r = R.results[id], on = R.cur === id && !r;
+    return `<div class="trow${on ? ' on' : ''}"><span>${r ? (r.skipped ? '–' : '✓') : on ? '<span class="spinner"></span>' : '<span class="dot"></span>'}</span><span>${esc(name(id))}${r && r.skipped ? `<div class="faint" style="font-size:.8em">${esc(r.skipped)}</div>` : ''}</span><span class="num">${r && r.score != null ? n0(r.score) : ''}</span></div>`;
+  }).join('')}</div></div>`;
+  const had = document.activeElement && document.activeElement.id === 'stop';
+  $('#main').innerHTML = h;
+  $('#stop').onclick = stop;
+  if (had || !document.activeElement || document.activeElement === document.body) $('#stop').focus();
+}
+
+// ---------------------------------------------------------------- results
+function resultCards(run) {
+  const c = run.compare && run.compare.tests || {};
+  return Object.entries(run.tests || {}).map(([id, r]) => {
+    const d = r.detail || {};
+    let more = '';
+    if (id === 'disk' && !r.skipped) more = `Read ${n0(d.seqReadMBs)} MB/s · write ${n0(d.seqWriteMBs)} MB/s · random 4K ${n0(d.randReadIops)} / ${n0(d.randWriteIops)} IOPS`;
+    else if (id === 'memBw' && !r.skipped) more = `Copy ${n1(d.copyGBs)} GB/s · read ${n1(d.readGBs)} GB/s`;
+    else if ((id === 'inet' || id === 'lan') && !r.skipped) more = `Down ${n0(d.downMbps)} · up ${n0(d.upMbps)} Mbit/s${d.latencyMs != null ? ` · ${n0(d.latencyMs)} ms` : ''}${d.device ? ' · to ' + esc(d.device) : ''}`;
+    else if (id === 'battery' && !r.skipped) more = `Idle ${n1(d.lightHours)} h (${n1(d.lightWatts)} W) · load ${n1(d.loadHours)} h (${n1(d.loadWatts)} W)`;
+    else if (id === 'sustained' && !r.skipped) more = `Clock ${n0(d.startMhz)} → ${n0(d.endMhz)} MHz · peak ${n0(d.peakCpuTemp)} °C${d.peakGpuTemp != null ? ' / ' + n0(d.peakGpuTemp) + ' °C graphics' : ''}${d.avgWatts != null ? ' · ' + n1(d.avgWatts) + ' W' : ''}${d.throttled ? ' · slowed down by heat' : ''}`;
+    else if (d.avgFps != null) more = `${n0(d.avgFps)} FPS average · ${d.scenes} scenes · ${esc(d.tool || '')}`;
+    else if (d.tool) more = esc(d.tool);
+    const w = r.score ? Math.min(100, r.score / 30) : 0;
+    return `<div class="panel rcard f" tabindex="0"><div class="top"><b>${esc(name(id))}</b>${r.skipped ? '<span class="badge warn">Skipped</span>' : `<span class="score sm">${n0(r.score)}</span>`}</div>
+      ${r.skipped ? `<div class="muted" style="font-size:.88em">${esc(r.skipped)}</div>` : `<div class="bar"><i style="width:${w}%"></i></div>
+      <div class="row" style="font-size:.88em"><span class="grow">${n1(r.value)} ${esc(r.unit)}</span>${c[id] ? chg(c[id].change) : ''}</div><div class="faint" style="font-size:.8em">${more}</div>`}
+      ${r.stopped ? `<div class="bad" style="font-size:.85em">${esc(r.stopped)}</div>` : ''}</div>`;
+  }).join('');
+}
+function sustainedGraphs(run) {
+  const s = run.tests && run.tests.sustained && run.tests.sustained.detail && run.tests.sustained.detail.samples;
+  if (!s || s.length < 2) return '';
+  const peak = Math.max(...s.map(x => x.rate || 0)) || 1;
+  return `<div class="section">Sustained load over ${n0(s[s.length - 1].t / 60)} minutes</div><div class="graphs">
+    ${spark(s.map(x => x.rate != null ? x.rate / peak * 100 : null), 'var(--good)', v => n0(v) + ' %', 'Speed (of its best)')}
+    ${spark(s.map(x => x.mhz), 'var(--sky)', v => n0(v) + ' MHz', 'Processor clock')}
+    ${spark(s.map(x => x.cpuT), 'var(--ember)', v => n0(v) + ' °C', 'Processor heat')}
+    ${spark(s.map(x => x.gpuT), 'var(--danger)', v => n0(v) + ' °C', 'Graphics heat')}
+    ${spark(s.map(x => x.w), 'var(--flame)', v => n1(v) + ' W', 'Power')}</div>`;
+}
+function drawResults() {
+  const run = SHOW || HIST[0];
+  if (!run) { $('#main').innerHTML = '<div class="empty">No results yet. Run a test on the Run page.</div>'; return; }
+  const c = run.compare;
+  let h = `<div class="scroll"><div class="hero"><div class="grow"><div class="big">${esc(modeName(run.mode))}</div>
+    <div class="muted">${esc(H.when(run.at))} · Hearth ${esc(run.version || '')} · ${esc((run.device || {}).model || '')} · ${n0(run.seconds / 60)} min</div>
+    ${c && c.overall ? `<div style="margin-top:.35em">Against the ${esc(modeName(run.mode).toLowerCase())} of ${esc(H.when(c.at))}${c.version && c.version !== run.version ? ` (Hearth ${esc(c.version)})` : ''}: ${chg(c.overall.change)}</div>` : ''}
+    ${run.stopped ? `<div class="bad" style="margin-top:.35em">${esc(run.stopped)}</div>` : ''}</div>
+    <div style="text-align:right"><div class="muted" style="font-size:.8em">Overall score</div><div class="score">${n0(run.overall)}</div></div></div>`;
+  h += sustainedGraphs(run);
+  h += `<div class="section">Tests</div><div class="res">${resultCards(run)}</div>`;
+  h += `<div class="row end" style="margin-top:.8em"><button class="btn f" id="copy">Copy as text</button></div></div>`;
+  $('#main').innerHTML = h;
+  $('#copy').onclick = () => H.copy(asText(run));
+}
+function asText(run) {
+  const lines = [`Hearth Benchmark · ${modeName(run.mode)} · ${H.when(run.at)} · Hearth ${run.version || ''}`, `${(run.device || {}).model || ''} · ${(run.device || {}).cpu || ''} · ${(run.device || {}).gpu || ''}`, `Overall: ${n0(run.overall)}`];
+  for (const [id, r] of Object.entries(run.tests || {})) lines.push(`${name(id)}: ${r.skipped ? 'skipped (' + r.skipped + ')' : `${n0(r.score)} (${n1(r.value)} ${r.unit})`}`);
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------- history and compare
+function drawHistory() {
+  if (!HIST.length) { $('#main').innerHTML = '<div class="empty">No runs yet.</div>'; return; }
+  $('#main').innerHTML = `<div class="scroll"><table class="list"><thead><tr><th>When</th><th>Run</th><th>Hearth</th><th class="num">Score</th><th class="num">Change</th><th></th></tr></thead><tbody>
+    ${HIST.map((r, i) => `<tr class="f" tabindex="0" data-i="${i}"><td>${esc(H.when(r.at))}</td><td>${esc(modeName(r.mode))}${r.stopped ? ' <span class="badge bad">stopped</span>' : ''}</td><td>${esc(r.version || '')}</td>
+      <td class="num">${n0(r.overall)}</td><td class="num">${r.compare && r.compare.overall ? chg(r.compare.overall.change) : ''}</td><td class="num"><button class="btn small f" data-del="${esc(r.id)}">Delete</button></td></tr>`).join('')}</tbody></table>
+    <p class="faint" style="font-size:.8em">A shows a run. Changes are against the run of the same kind before it, so you see what an update changed.</p></div>`;
+  $$('tr[data-i]').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-del]')) return; SHOW = HIST[+tr.dataset.i]; H.setTab('results', true); }; tr.onkeydown = e => { if (e.key === 'Enter') tr.click(); }; });
+  $$('[data-del]').forEach(b => b.onclick = async () => { if (!await H.confirm('Delete this run?', '<p>It goes from the history on this device.</p>', 'Delete', true)) return; try { await H.call('bench.delete', { id: b.dataset.del }); if (SHOW && SHOW.id === b.dataset.del) SHOW = null; await load(true); } catch (e) { H.fail(e); } });
+}
+let CMP = { before: '', after: '' };
+function drawCompare() {
+  let h = '<div class="scroll">';
+  if (HIST.length >= 2) {
+    if (!CMP.after || !HIST.find(r => r.id === CMP.after)) CMP.after = HIST[0].id;
+    if (!CMP.before || !HIST.find(r => r.id === CMP.before)) { const a = HIST.find(r => r.id === CMP.after); CMP.before = (HIST.find(r => r.id !== a.id && r.mode === a.mode) || HIST[1]).id; }
+    const a = HIST.find(r => r.id === CMP.before), b = HIST.find(r => r.id === CMP.after);
+    const opt = sel => HIST.map(r => `<option value="${esc(r.id)}"${r.id === sel ? ' selected' : ''}>${esc(H.when(r.at))} · ${esc(modeName(r.mode))} · ${n0(r.overall)}</option>`).join('');
+    h += `<div class="section">Two runs on this device</div><div class="row"><label class="grow">Before<select class="inp f" id="cb">${opt(CMP.before)}</select></label><label class="grow">After<select class="inp f" id="ca">${opt(CMP.after)}</select></label></div>`;
+    if (a.mode !== b.mode) h += '<div class="warnbox">These are different kinds of run, so the graphics scores aren\'t measured the same way.</div>';
+    const ids = [...new Set([...Object.keys(a.tests || {}), ...Object.keys(b.tests || {})])];
+    const pc = (x, y) => x && y ? (y - x) / x * 100 : null;
+    h += `<table class="list" style="margin-top:.5em"><thead><tr><th>Test</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th></tr></thead><tbody>
+      <tr><td><b>Overall</b></td><td class="num">${n0(a.overall)}</td><td class="num">${n0(b.overall)}</td><td class="num">${chg(pc(a.overall, b.overall))}</td></tr>
+      ${ids.map(id => { const x = (a.tests[id] || {}).score, y = (b.tests[id] || {}).score; return `<tr><td>${esc(name(id))}</td><td class="num">${n0(x)}</td><td class="num">${n0(y)}</td><td class="num">${chg(pc(x, y))}</td></tr>`; }).join('')}</tbody></table>
+      <p class="faint" style="font-size:.8em">Before: Hearth ${esc(a.version || '?')} · After: Hearth ${esc(b.version || '?')}</p>`;
+  } else h += '<div class="muted" style="padding:.5em 0">Run the benchmark twice (say, before and after an update) to compare the runs here.</div>';
+  h += `<div class="section">Your Hearth devices</div>`;
+  if (!DEVS) h += '<button class="btn f" id="ask">Ask my devices (Hearth Link)</button>';
+  else if (DEVS.error) h += `<div class="muted">${esc(DEVS.error)}</div><button class="btn f" id="ask" style="margin-top:.4em">Ask again</button>`;
+  else {
+    const me = { name: (DEVS.name || 'This device') + ' (this one)', online: true, summary: DEVS.me };
+    const rows = [me, ...(DEVS.devices || [])];
+    const ids = ST ? ST.tests.filter(t => t.overall).map(t => t.id) : [];
+    h += `<table class="list"><thead><tr><th>Device</th><th class="num">Overall</th>${ids.map(id => `<th class="num">${esc(name(id).replace(/^Processor, /, 'CPU ').replace(/^Graphics, /, ''))}</th>`).join('')}<th>Hearth</th></tr></thead><tbody>
+      ${rows.map(d => { const s = d.summary || {}; return `<tr class="f" tabindex="0"><td>${esc(d.name)}${d.online ? '' : ' <span class="badge">offline</span>'}<div class="faint" style="font-size:.8em">${esc((s.device || {}).model || (s.at ? '' : 'no benchmark yet'))}</div></td><td class="num"><b>${n0(s.overall)}</b></td>${ids.map(id => `<td class="num">${n0((s.scores || {})[id])}</td>`).join('')}<td>${esc(s.version || '')}</td></tr>`; }).join('')}</tbody></table>
+      <button class="btn f" id="ask" style="margin-top:.5em">Ask again</button>`;
+  }
+  $('#main').innerHTML = h + '</div>';
+  const cb = $('#cb'), ca = $('#ca');
+  if (cb) cb.onchange = () => { CMP.before = cb.value; refocus(cb, drawCompare); };
+  if (ca) ca.onchange = () => { CMP.after = ca.value; refocus(ca, drawCompare); };
+  $('#ask').onclick = async () => { $('#ask').textContent = 'Asking…'; await askDevices(); drawCompare(); $('#ask')?.focus(); };
+}
+
+async function load(quiet) {
+  try {
+    const [s, h] = await Promise.all([H.call('bench.state'), H.call('bench.history')]);
+    ST = s; HIST = h.runs || [];
+    if (!quiet) draw(); else if (H.S.tab !== 'results') draw();
+    if (!quiet) setTimeout(() => (document.activeElement === document.body || !document.activeElement) && $('[data-run="quick"]')?.focus(), 0);
+  } catch (e) { H.fail(e); }
+}
+
+// ---------------------------------------------------------------- preview data (opened in a plain browser)
+let DEMO_STOP = false;
+const DEMO_TESTS = [['cpu1', 'Processor, one core', 'MIPS', 1], ['cpuN', 'Processor, all cores', 'MIPS', 1], ['memBw', 'Memory speed', 'GB/s', 1], ['memLat', 'Memory latency', 'ns', 1], ['disk', 'Storage', 'MB/s', 1],
+  ['vulkan', 'Graphics, Vulkan', 'points', 1], ['opengl', 'Graphics, OpenGL', 'points', 1], ['game', 'Game-style 3D scenes', 'FPS', 1], ['sustained', 'Sustained load and heat', '% kept', 1],
+  ['battery', 'Battery life estimate', 'h', 0], ['inet', 'Internet speed', 'Mbit/s', 0], ['lan', 'Home network to another Hearth device', 'Mbit/s', 0]];
+const demoSamples = Array.from({ length: 240 }, (_, i) => ({ t: i * 5, mhz: 4700 - Math.min(900, i * 6) + (i % 7) * 20, cpuT: Math.min(88, 52 + i * .5) + (i % 5), gpuT: Math.min(80, 48 + i * .4), w: 24 - Math.min(6, i * .05), rate: 100 - Math.min(14, i * .09) + (i % 4) }));
+const demoRun = (mode, at, k) => ({ id: at.toString(16), at, seconds: 131, mode, version: k > 1 ? '0.6.52' : '0.6.53', overall: Math.round(1840 * k), device: { model: 'ROG Ally RC71L', cpu: 'AMD Ryzen Z1 Extreme', gpu: 'AMD Radeon 780M' },
+  tests: { cpu1: { value: 5900 * k, unit: 'MIPS', score: Math.round(1405 * k), detail: { tool: '7-Zip benchmark' } }, cpuN: { value: 61000 * k, unit: 'MIPS', score: Math.round(2346 * k), detail: { tool: '7-Zip benchmark' } },
+    memBw: { value: 52.4, unit: 'GB/s', score: 2096, detail: { copyGBs: 52.4, readGBs: 61.2 } }, memLat: { value: 98, unit: 'ns', score: 1122 },
+    disk: { value: 3120, unit: 'MB/s read', score: 1730, detail: { seqReadMBs: 3120, seqWriteMBs: 1850, randReadIops: 92000, randWriteIops: 61000 } },
+    vulkan: { value: 6120 * k, unit: 'points', score: Math.round(2040 * k), detail: { avgFps: 6120, scenes: 5, tool: 'vkmark' } }, opengl: { skipped: 'glmark2 isn\'t installed (package glmark2), so this can\'t be measured.' } } });
+const DEMO_HIST = [demoRun('quick', Date.now() - 3600e3, 1.04), demoRun('quick', Date.now() - 5 * 86400e3, 1)];
+DEMO_HIST[0].tests.sustained = { value: 86.2, unit: '% kept', score: 862, detail: { startMhz: 4650, endMhz: 3820, peakCpuTemp: 92, peakGpuTemp: 80, avgWatts: 21.3, throttled: true, samples: demoSamples } };
+H.demo.call = (m, a) => {
+  if (m === 'bench.state') return { tools: { sevenzip: '/usr/bin/7z', fio: '/usr/bin/fio', vkmark: '/usr/bin/vkmark', glmark2: null }, places: [{ path: '/home/sam', label: 'Home folder (system drive)', free: 212e9 }, { path: '/run/media/sam/Games', label: 'Drive “Games”', free: 401e9 }],
+    power: { percent: 81, onBattery: true }, device: { model: 'ROG Ally RC71L', cpu: 'AMD Ryzen Z1 Extreme', gpu: 'AMD Radeon 780M', memory: 16e9 },
+    tests: DEMO_TESTS.map(([id, nm, unit, o]) => ({ id, name: nm, unit, overall: !!o })), quick: ['cpu1', 'cpuN', 'memBw', 'memLat', 'disk', 'vulkan', 'opengl'], full: ['cpu1', 'cpuN', 'memBw', 'memLat', 'disk', 'vulkan', 'opengl', 'game', 'inet', 'lan'], last: DEMO_HIST[0] };
+  if (m === 'bench.history') return { runs: DEMO_HIST.map((r, i) => i === 0 ? Object.assign({}, r, { compare: { at: DEMO_HIST[1].at, version: '0.6.52', overall: { change: 4 }, tests: { cpu1: { change: 4 }, cpuN: { change: 4 }, vulkan: { change: 4 } } } }) : r) };
+  if (m === 'bench.delete') return { ok: true };
+  throw 'unknown ' + m;
+};
+H.demo.job = (name, args, onStep) => {
+  if (name === 'bench.devices') return { name: 'ally', me: { overall: 1914, scores: { cpu1: 1461, cpuN: 2440 }, version: '0.6.53', device: { model: 'ROG Ally RC71L' } },
+    devices: [{ id: 'ab12cd34', name: 'Nvidia-PC', online: true, summary: { overall: 5210, scores: { cpu1: 2900, cpuN: 6100, vulkan: 9800 }, version: '0.6.53', device: { model: 'Desktop PC' } } }, { id: 'ef56ab78', name: 'Laptop', online: false, summary: null }] };
+  if (name === 'bench.run') return new Promise((res, rej) => {
+    DEMO_STOP = false;
+    const plan = args.mode === 'quick' ? ['cpu1', 'cpuN', 'memBw', 'memLat', 'disk', 'vulkan', 'opengl'] : args.mode === 'custom' ? args.tests : [args.mode];
+    let i = 0, tick = 0;
+    const iv = setInterval(() => {
+      if (DEMO_STOP) { clearInterval(iv); rej('Stopped. Nothing was saved.'); return; }
+      tick++;
+      onStep({ live: { cpuMhz: 4500 - tick * 9, cpuTemp: 60 + tick % 20, cpuPct: 98, gpuMhz: 2700, gpuTemp: 58 + tick % 9, gpuW: 18 + tick % 4, battW: 24.5, fps: 140 + tick % 30, rate: 900 - tick } });
+      if (tick % 4 === 1) onStep({ test: plan[i], index: i, count: plan.length, state: 'running' });
+      if (tick % 4 === 0) { onStep({ test: plan[i], index: i, count: plan.length, state: 'done', result: DEMO_HIST[0].tests[plan[i]] || { value: 1, unit: '', score: 1000 } }); i++; }
+      if (i >= plan.length) { clearInterval(iv); res(Object.assign({}, DEMO_HIST[0], { mode: args.mode, at: Date.now(), compare: { overall: { change: 4 }, tests: {} } })); }
+    }, 200);
+  });
+  throw 'unknown ' + name;
+};
+load();
+</script>
+</body>
+</html>

@@ -49,6 +49,10 @@ pub fn safe_rel(p: &str) -> Option<PathBuf> {
 /// `root/rel`, or None when `rel` isn't safe or a link in between leads outside `root`.
 pub fn resolve_inside(root: &Path, rel: &str) -> Option<PathBuf> {
     let r = safe_rel(rel)?;
+    // A root that's one file (walk lists it under its own name): that file, and nothing else.
+    if std::fs::symlink_metadata(root).map(|m| m.is_file()).unwrap_or(false) {
+        return (root.file_name()? == r.as_os_str()).then(|| root.to_path_buf());
+    }
     let full = root.join(&r);
     let real_root = std::fs::canonicalize(root).ok()?;
     let parent = full.parent()?;
@@ -126,6 +130,17 @@ mod tests {
         assert!(resolve_inside(&root, "data/x.bin").is_some());
         assert!(resolve_inside(&root, "escape/authorized_keys").is_none());
         assert!(resolve_inside(&root, "../outside/x").is_none());
+    }
+    #[test]
+    fn a_root_that_is_one_file() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("film.mkv");
+        std::fs::write(&f, b"x").unwrap();
+        let mut e = Vec::new();
+        walk(&f, 0, &[], &mut e).unwrap();
+        assert_eq!(e.len(), 1);
+        assert_eq!(resolve_inside(&f, &e[0].p), Some(f.clone()));
+        assert!(resolve_inside(&f, "other.mkv").is_none());
     }
     #[test]
     fn link_targets() {

@@ -1,7 +1,9 @@
-//! Xbox PC games through Xodus Nexus (experimental, optional): an independent Linux launcher for Microsoft Store
-//! and PC Game Pass games, built on the Xodus project (not Microsoft's). Hearth downloads its AppImage from its
-//! GitHub releases when you ask, keeps it updated, and shows it in the library as one entry that opens it full
-//! screen. Nexus downloads its own backend and runtime from its Settings. https://github.com/domsvoboda/xodus-nexus
+//! Xbox PC games through Xodus Nexus (experimental): an independent Linux launcher for Microsoft Store and PC Game
+//! Pass games, built on the Xodus project (not Microsoft's). Hearth OS ships it, like Beacon (os-bases/*/build.sh put
+//! its AppImage in /usr/lib/xodus-nexus and `xodus-nexus` in /usr/bin). Elsewhere, or for a newer version than the
+//! image has, Hearth downloads its AppImage from its GitHub releases into your data folder; that copy wins.
+//! The library shows Nexus as one entry that opens it full screen, plus a tile for each game you made a shortcut for
+//! in Nexus. Nexus downloads its own backend and runtime from its Settings. https://github.com/domsvoboda/xodus-nexus
 
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -12,11 +14,20 @@ pub const ID: &str = "xodus:nexus";
 const RELEASES: &str = "https://api.github.com/repos/domsvoboda/xodus-nexus/releases/latest";
 pub const PROJECT: &str = "https://github.com/domsvoboda/xodus-nexus";
 
+/// Where Hearth OS's image keeps Nexus, and the program that starts it (the same script as RUN_SH).
+pub const SYSTEM_DIR: &str = "/usr/lib/xodus-nexus";
+pub const SYSTEM_RUNNER: &str = "/usr/bin/xodus-nexus";
+
 pub fn dir() -> PathBuf { crate::paths::data_dir().join("xodus-nexus") }
 fn appimage() -> PathBuf { dir().join("Xodus-Nexus.AppImage") }
+fn own_runner() -> PathBuf { dir().join("run.sh") }
+/// Your own copy (downloaded by Hearth), which wins over the image's.
+fn own_copy() -> bool { appimage().exists() && own_runner().exists() }
+/// The copy Hearth OS ships.
+pub fn system_copy() -> bool { std::path::Path::new(SYSTEM_DIR).join("Xodus-Nexus.AppImage").is_file() && std::path::Path::new(SYSTEM_RUNNER).is_file() }
 /// What the library starts: a small script that runs the AppImage the way it works in gamescope.
-pub fn runner() -> PathBuf { dir().join("run.sh") }
-fn version_file() -> PathBuf { dir().join("version") }
+pub fn runner() -> PathBuf { if own_copy() || !system_copy() { own_runner() } else { PathBuf::from(SYSTEM_RUNNER) } }
+fn version_file() -> PathBuf { if own_copy() || !system_copy() { dir().join("version") } else { PathBuf::from(SYSTEM_DIR).join("version") } }
 fn folder_file() -> PathBuf { dir().join("games-folder") }
 /// Where you chose to keep Xbox games (Nexus is pointed at it in its Settings).
 pub fn games_folder() -> Option<String> { std::fs::read_to_string(folder_file()).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) }
@@ -55,16 +66,54 @@ pub fn open_in_desktop() -> Result<(), String> {
     std::fs::write(f, runner().to_string_lossy().as_bytes()).map_err(|e| e.to_string())
 }
 
-pub fn installed() -> bool { appimage().exists() && runner().exists() }
+pub fn installed() -> bool { own_copy() || system_copy() }
 pub fn version() -> Option<String> { std::fs::read_to_string(version_file()).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) }
 
 /// The library entry (only when installed).
 pub fn game() -> Option<crate::library::Game> {
     if !installed() { return None; }
     let exe = runner().to_string_lossy().to_string();
-    Some(crate::library::Game { id: ID.into(), title: "Xbox PC Games (Xodus Nexus)".into(), source: "manual", install_path: Some(dir()),
+    Some(crate::library::Game { id: ID.into(), title: "Xbox PC Games (Xodus Nexus)".into(), source: "xodus", install_path: Some(dir()),
         installed: true, state: "installed", exe: Some(exe), ..Default::default() })
 }
+
+/// Nexus and the games you made shortcuts for in it: what the library shows under Xbox PC (only when installed).
+pub fn games() -> Vec<crate::library::Game> {
+    let Some(nexus) = game() else { return vec![] };
+    let mut out = vec![nexus];
+    let home = crate::paths::home();
+    let apps = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share")).join("applications");
+    for folder in [apps, home.join("Desktop")] {
+        for e in std::fs::read_dir(&folder).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x != "desktop").unwrap_or(true) { continue; }
+            let Ok(text) = std::fs::read_to_string(&p) else { continue };
+            let Some((id, title)) = shortcut(&e.file_name().to_string_lossy(), &text) else { continue };
+            if out.iter().any(|g| g.id == id) { continue; }
+            out.push(crate::library::Game { id, title, source: "xodus", installed: true, state: "installed", exe: Some(p.to_string_lossy().to_string()), ..Default::default() });
+        }
+    }
+    out
+}
+
+/// A game shortcut Nexus made (a game's menu › Create shortcuts): (library id, title), or None for anything else.
+/// Nexus doesn't document what its shortcuts look like, so this only takes .desktop files whose Exec names Xodus,
+/// and leaves out Nexus's own menu entry. The shortcut itself is what Play starts, exactly as Nexus wrote it.
+pub fn shortcut(file_name: &str, text: &str) -> Option<(String, String)> {
+    let d = crate::manual::parse_desktop(text);
+    let exec = d.get("Exec")?.to_lowercase();
+    let name = d.get("Name").map(|n| n.trim().to_string()).filter(|n| !n.is_empty())?;
+    let stem = file_name.trim_end_matches(".desktop").to_lowercase();
+    if !exec.contains("xodus") || stem.starts_with("xodus") || name.to_lowercase().starts_with("xodus") { return None; }
+    let slug: String = stem.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).take(80).collect();
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() { return None; }
+    Some((format!("xodus:game:{slug}"), name.chars().filter(|c| !c.is_control()).take(120).collect()))
+}
+
+/// Nexus's own window is driven with a mouse, so it starts with the "Mouse only" controller layout. Xbox games have
+/// controller support of their own and start Off, like any game.
+pub fn pointer_by_default(library_id: &str) -> bool { library_id == ID }
 
 const RUN_SH: &str = r#"#!/bin/sh
 # Starts Xodus Nexus for Hearth (made by Hearth; replaced on each update).
@@ -121,6 +170,8 @@ impl Xodus {
             c.1.clone()
         };
         s["installed"] = json!(installed()); s["version"] = json!(version()); s["project"] = json!(PROJECT); s["folder"] = json!(games_folder());
+        // Hearth OS's copy can't be removed (only your own download), and Nexus's game shortcuts count as its games.
+        s["preinstalled"] = json!(system_copy()); s["own"] = json!(own_copy()); s["games"] = json!(games().len().saturating_sub(1));
         s["update"] = json!(update_of(version(), &latest));
         s
     }
@@ -156,9 +207,9 @@ impl Xodus {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
                 std::fs::rename(&part, appimage()).map_err(|e| e.to_string())?;
-                std::fs::write(runner(), RUN_SH).map_err(|e| e.to_string())?;
-                std::fs::set_permissions(runner(), std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
-                std::fs::write(version_file(), &ver).map_err(|e| e.to_string())?;
+                std::fs::write(own_runner(), RUN_SH).map_err(|e| e.to_string())?;
+                std::fs::set_permissions(own_runner(), std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+                std::fs::write(dir().join("version"), &ver).map_err(|e| e.to_string())?;
                 Ok(())
             })();
             { let mut s = state.lock().unwrap(); s["busy"] = json!(false); s["progress"] = Value::Null; s["error"] = match r { Ok(()) => Value::Null, Err(e) => json!(e) }; }
@@ -168,7 +219,8 @@ impl Xodus {
     }
 }
 
-/// Removes Hearth's copy (Nexus's own data, sign-in and installed games stay where Nexus keeps them).
+/// Removes Hearth's download (Nexus's own data, sign-in and installed games stay where Nexus keeps them). On Hearth OS
+/// the image's copy stays, so this goes back to it.
 pub fn remove() -> Result<(), String> {
     if dir().exists() { std::fs::remove_dir_all(dir()).map_err(|e| format!("Couldn't remove it: {e}"))?; }
     Ok(())
@@ -176,6 +228,19 @@ pub fn remove() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn game_shortcuts_from_nexus() {
+        use super::shortcut;
+        let game = "[Desktop Entry]\nType=Application\nName=Forza Horizon 5\nExec=/home/me/Apps/Xodus-Nexus.AppImage --launch 9NKX70BBCDRN\n";
+        assert_eq!(shortcut("Forza Horizon 5.desktop", game), Some(("xodus:game:forza-horizon-5".into(), "Forza Horizon 5".into())));
+        // Nexus's own entry, other apps, and broken files aren't games.
+        assert_eq!(shortcut("xodus-nexus.desktop", "[Desktop Entry]\nName=Xodus Nexus\nExec=xodus-nexus %U\n"), None);
+        assert_eq!(shortcut("nexus.desktop", "[Desktop Entry]\nName=Xodus Nexus\nExec=/opt/Xodus-Nexus.AppImage\n"), None);
+        assert_eq!(shortcut("firefox.desktop", "[Desktop Entry]\nName=Firefox\nExec=firefox %u\n"), None);
+        assert_eq!(shortcut("x.desktop", "[Desktop Entry]\nExec=xodus run\n"), None);
+        assert!(super::pointer_by_default("xodus:nexus") && !super::pointer_by_default("xodus:game:forza-horizon-5"));
+    }
+
     #[test]
     fn runner_script_starts_the_appimage() {
         assert!(super::RUN_SH.starts_with("#!/bin/sh") && super::RUN_SH.contains("exec \"$here/Xodus-Nexus.AppImage\""));

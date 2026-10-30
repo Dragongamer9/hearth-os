@@ -56,6 +56,8 @@ dnf install -y ntfsprogs ntfs-3g dosfstools exfatprogs e2fsprogs btrfs-progs efi
 if ! ostree container --help >/dev/null 2>&1; then dnf install -y rpm-ostree; fi
 ostree container image deploy --help >/dev/null
 ostree admin set-default --help >/dev/null
+# Reinstalling keeps every version on the drive by pinning them while the new one is deployed.
+ostree admin pin --help >/dev/null
 if ! command -v bootupctl >/dev/null; then dnf install -y bootupd; fi
 command -v labwc && command -v quickshell && python3 -c 'import evdev'
 
@@ -69,7 +71,8 @@ install -Dm644 /src/labwc/rc.xml /usr/share/hearth-recovery/labwc/rc.xml
 install -Dm644 /src/labwc/menu.xml /usr/share/hearth-recovery/labwc/menu.xml
 install -Dm755 /src/labwc/autostart /usr/share/hearth-recovery/labwc/autostart
 install -Dm644 /src/branding/hearth-512.png /usr/share/pixmaps/hearth.png
-# Factory reset uses Hearth's own installer (the live USB's), offering every edition (it downloads what it installs).
+# Factory reset uses Hearth's own installer (the live USB's), offering every edition (it downloads what it installs):
+# the whole drive when nothing else is on it, else only Hearth's own partitions (its "reuse" mode).
 install -Dm755 /src/installer/hearth-install /usr/libexec/nimbus/hearth-install
 install -Dm755 /src/installer/hearth-live-prep /usr/libexec/nimbus/hearth-live-prep
 echo installer > /etc/hearth-live

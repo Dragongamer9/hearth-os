@@ -12,7 +12,9 @@ Run as root (pkexec; the live user is allowed). Installed only on the live USB.
                                 "stage: {json}", then "result: {json}" or "error: <message>"
 
 The plan:
-  {"mode": "whole" | "beside",          whole: erase the drive; beside: install next to what's on it
+  {"mode": "whole" | "beside" | "reuse", whole: erase the drive; beside: install next to what's on it;
+                                        reuse (Hearth Recovery's factory reset): erase only Hearth's own
+                                        partitions and install in their place, nothing else on the drive changed
    "disk": "/dev/nvme0n1",
    "part": "/dev/nvme0n1p8",            beside next to Linux: the partition that gives the room (ext4 or btrfs;
                                         SteamOS: its home partition). Left out: Windows (hearth-live-prep)
@@ -96,7 +98,7 @@ def uuid_of(dev):
 
 def check_plan(p):
     """Raises Fail with a message people can act on; returns the plan with defaults filled in."""
-    if p.get('mode') not in ('whole', 'beside'):
+    if p.get('mode') not in ('whole', 'beside', 'reuse'):
         raise Fail('choose how to install: on the whole drive, or next to Windows')
     if not re.fullmatch(r'/dev/[A-Za-z0-9/_-]+', p.get('disk') or ''):
         raise Fail('choose a drive')
@@ -691,6 +693,45 @@ def partition_beside(disk, give):
             last = line[7:]
     if p.wait() != 0:
         raise Fail(last or "Windows' drive couldn't be shrunk")
+    return partition_free(disk)
+
+
+def reuse_room(info, ours, ss):
+    """Bytes of the free space Hearth's partitions leave once they're removed (with any free space next to them):
+    from the end of the partition before the "hearth" one to the start of the one after it. info: sfdisk -J's
+    partitiontable; ours: its partitions that are Hearth's. 0 without exactly one "hearth" partition."""
+    roots = [p for p in ours if p.get('name') == 'hearth']
+    if len(roots) != 1:
+        return 0
+    at = int(roots[0]['start'])
+    lo, hi = int(info.get('firstlba') or 2048), int(info.get('lastlba') or 0) + 1
+    mine = {p['node'] for p in ours}
+    for p in info.get('partitions', []):
+        if p['node'] in mine:
+            continue
+        start, end = int(p['start']), int(p['start']) + int(p['size'])
+        if end <= at:
+            lo = max(lo, end)
+        elif start > at:
+            hi = min(hi, start)
+    return max(0, hi - lo) * ss
+
+
+def partition_reuse(disk):
+    """Hearth Recovery's factory reset next to other systems: Hearth's own partitions (named boot, hearth and Hearth
+    EFI with their types, which nothing else makes) are removed and made again in the space they leave. Nothing
+    else on the drive is changed, and Windows is never made smaller: without room the install stops first."""
+    r = sh(['sfdisk', '-J', disk], check=False)
+    try:
+        info = json.loads(r.stdout)['partitiontable']
+    except (ValueError, KeyError):
+        raise Fail("couldn't read the drive's partitions. Nothing was changed")
+    ours = [p for p in info.get('partitions', []) if (p.get('name'), (p.get('type') or '').lower()) in
+            (('boot', XBOOTLDR_TYPE), ('hearth', LINUX_TYPE), (HEARTH_ESP_NAME, ESP_TYPE))]
+    # 1 MiB for lining the new partitions up.
+    if reuse_room(info, ours, sector_size(disk)) - MIB < MIN_DISK:
+        raise Fail("there isn't room for Hearth where it was, and the other systems on the drive aren't made smaller. Nothing was changed")
+    remove_ours(disk)
     return partition_free(disk)
 
 
@@ -1426,6 +1467,8 @@ def run(plan):
     try:
         if plan['mode'] == 'whole':
             esp, boot, root, esp_new = partition_whole(disk)
+        elif plan['mode'] == 'reuse':
+            esp, boot, root, esp_new = partition_reuse(disk)
         elif plan.get('part') and any(plan['part'] in (x.get('part'), x.get('shrink')) for x in info['systems'] if x['kind'] == 'linux'):
             esp, boot, root, esp_new = partition_beside_linux(disk, plan['part'], plan['give'])
         else:

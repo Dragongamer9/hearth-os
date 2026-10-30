@@ -1,0 +1,21 @@
+# Hearth's automatic fallback (see /usr/libexec/nimbus/hearth-boot-guard): writes the GRUB snippet that counts starts
+# at boot, and again at shutdown *after* ostree-finalize-staged.service has written an update's boot entry (units
+# stop in the reverse of their start order: Before= here), so the next start already knows the previous version.
+[Unit]
+Description=Hearth: automatic fallback to the previous version (boot menu)
+DefaultDependencies=no
+RequiresMountsFor=/boot
+After=local-fs.target
+Before=ostree-finalize-staged.service basic.target final.target
+Conflicts=final.target
+ConditionPathIsDirectory=/boot/loader/entries
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/nimbus/hearth-boot-guard write
+ExecStop=/usr/libexec/nimbus/hearth-boot-guard write
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,7 @@
 //! Hearth's host logic in Rust, without a window: the Tauri app (hosts/hearth-rs) puts the UI on screen and
 //! passes its messages here. Replaces the Electron host (hosts/linux) a part at a time; see docs/RUST.md.
+/// Hearth's version (this crate's, which the owner sets with Hearth's): Hearth Link reports it for device health.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod access;   // Settings › Accessibility (desktop/shell/hearth-access)
 pub mod admin;
 pub mod appid;
@@ -7,6 +9,7 @@ pub mod appupdate;
 pub mod artcache;
 pub mod backup;
 pub mod bazaar;   // Bazaar, Hearth OS's app store, opened from Game Mode's menu
+pub mod battlenet;   // Battle.net in its own Proton prefix (Library › Stores)
 pub mod beacon;
 pub mod binkv;
 pub mod bridge;
@@ -60,8 +63,10 @@ pub mod signin_handoff;
 // ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
 pub mod signins;
 pub mod space;
+pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
+pub mod steam_engine;   // Settings › Library › Steam engine: Lightweight (hosts/hearth-steam), with fallback to the normal client
 pub mod steam_owned;
 pub mod store;
 // ---- Game Mode › Store (browsing Steam, GOG, Epic and Xbox; buying on their own pages)

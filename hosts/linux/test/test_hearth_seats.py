@@ -1142,6 +1142,184 @@ class SetupNew(AdminNewBase):
         self.assertFalse(json.loads(lines[-1])['restart'])
 
 
+class ShareSetup(AdminBase):
+    """Shared games: the hearth-games group, the shared folder, the in-use folder (docs/MULTI-SEAT.md)."""
+
+    def setUp(self):
+        super().setUp()
+        self.ha.SEATS_SHARED_DIR = '/var/home/hearth-games'
+
+    def test_setup_makes_the_group_and_folder(self):
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested(start=True)))
+        self.assertEqual(code, 0, lines)
+        result = json.loads(lines[-1])
+        self.assertEqual((result['shared_dir'], result['warnings']), ('/var/home/hearth-games', []))
+        cmds = self.runner.cmds()
+        self.assertIn('groupadd --system hearth-games', cmds)
+        useradd = next(c for c in cmds if c.startswith('useradd'))
+        self.assertIn('--groups render,hearth-games', useradd)
+        self.assertIn('usermod -aG hearth-games bob', cmds)   # player 1 joins too
+        self.assertIn('install -d -m 2775 -o bob -g hearth-games /var/home/hearth-games', cmds)
+        self.assertIn('setfacl -m g:hearth-games:rwx,d:u::rwx,d:g:hearth-games:rwx,d:m::rwx,d:o::rx /var/home/hearth-games', cmds)
+        self.assertIn('install -d -m 3775 -o bob -g hearth-games /var/home/hearth-games/.hearth', cmds)
+        self.assertIn('install -d -m 2775 -o bob -g hearth-games /var/home/hearth-games/Steam', cmds)
+        # The group is made before the account that joins it.
+        self.assertLess(cmds.index('groupadd --system hearth-games'), cmds.index(useradd))
+        self.assertIn('d %s/in-use 1770 bob hearth-games -' % self.ha.SEATS_RUN, slurp(self.ha.SEATS_TMPFILES))
+        cfg = json.loads(slurp(self.ha.SEATS_CONFIG))
+        self.assertEqual((cfg['share_group'], cfg['shared_dir']), ('hearth-games', '/var/home/hearth-games'))
+
+    def test_existing_group_and_members_left_alone(self):
+        write(self.ha.SEATS_GROUP_FILE, slurp(self.ha.SEATS_GROUP_FILE) + 'hearth-games:x:990:bob\n')
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested()))
+        self.assertEqual(code, 0, lines)
+        cmds = self.runner.cmds()
+        self.assertFalse(any(c.startswith('groupadd') for c in cmds))
+        self.assertNotIn('usermod -aG hearth-games bob', cmds)
+
+    def test_reused_account_joins_the_group(self):
+        write(self.ha.SEATS_PASSWD_FILE, slurp(self.ha.SEATS_PASSWD_FILE) + 'hearth-p2:x:1001:1001::/var/home/hearth-p2:/bin/bash\n')
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested()))
+        self.assertEqual(code, 0, lines)
+        self.assertIn('usermod -aG hearth-games hearth-p2', self.runner.cmds())
+
+    def test_no_group_still_sets_up_without_sharing(self):
+        orig = self.runner.admin_run
+
+        def run(cmd, input=None):
+            if cmd[0] == 'groupadd':
+                self.runner.calls.append((list(cmd), input))
+                return 9, 'groupadd: cannot lock /etc/group'
+            return orig(cmd, input)
+        self.ha.seats_run = run
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested()))
+        self.assertEqual(code, 0, lines)
+        result = json.loads(lines[-1])
+        self.assertIsNone(result['shared_dir'])
+        self.assertTrue(any('can\'t be shared' in w for w in result['warnings']), result['warnings'])
+        useradd = next(c for c in self.runner.cmds() if c.startswith('useradd'))
+        self.assertNotIn('hearth-games', useradd)
+        self.assertNotIn('in-use', slurp(self.ha.SEATS_TMPFILES))   # tmpfiles would fail on a missing group
+        self.assertNotIn('share_group', json.loads(slurp(self.ha.SEATS_CONFIG)))
+
+    def test_failed_folder_turns_sharing_off(self):
+        orig = self.runner.admin_run
+
+        def run(cmd, input=None):
+            if cmd[0] == 'setfacl':
+                self.runner.calls.append((list(cmd), input))
+                return 1, 'setfacl: Operation not supported'
+            return orig(cmd, input)
+        self.ha.seats_run = run
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested()))
+        self.assertEqual(code, 0, lines)
+        self.assertIsNone(json.loads(lines[-1])['shared_dir'])
+        self.assertNotIn('in-use', slurp(self.ha.SEATS_TMPFILES))
+
+    def test_rollback_undoes_group_and_membership(self):
+        self.runner.fail_on = 'systemctl enable'
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested()))
+        self.assertEqual(code, 1)
+        cmds = self.runner.cmds()
+        self.assertIn('gpasswd -d bob hearth-games', cmds)
+        self.assertIn('groupdel hearth-games', cmds)
+        self.assertLess(cmds.index('gpasswd -d bob hearth-games'), cmds.index('groupdel hearth-games'))
+
+    def test_remove_keeps_the_shared_folder(self):
+        code, lines = self.run_cmd(self.ha.seats_setup, json.dumps(self.nested()))
+        self.assertEqual(code, 0, lines)
+        self.runner.calls.clear()
+        code, lines = self.run_cmd(self.ha.seats_remove, '', False)
+        self.assertEqual(code, 0, lines)
+        cmds = self.runner.cmds()
+        self.assertFalse(any('hearth-games' in c for c in cmds), cmds)
+
+
+class SharePublish(SeatsBase):
+    """hearth-seats share-publish: this player's Epic and GOG installs, offered to the others."""
+
+    def setUp(self):
+        super().setUp()
+        r = self.root
+        self.home = os.path.join(r, 'var/home/bob')
+        self.shared = os.path.join(r, 'var/home/hearth-games')
+        os.makedirs(os.path.join(self.shared, '.hearth'))
+        self.data = os.path.join(self.home, '.local/share/nimbus')
+        self.hs.SHARE_STATE = os.path.join(self.home, '.local/state/hearth/shared-folders.json')
+        self.hs.main_user = lambda: {'name': 'bob', 'uid': os.getuid()}
+        self.witcher = os.path.join(self.home, 'Games/GOG/The Witcher')
+        self.in_shared = os.path.join(self.shared, 'GOG/Gwent')
+        hades = os.path.join(self.shared, 'Epic/Hades')
+        write(os.path.join(self.witcher, 'goggame-1207658924.info'), json.dumps({'name': 'The Witcher'}))
+        write(os.path.join(self.in_shared, 'goggame-55.info'), json.dumps({'name': 'Gwent'}))
+        os.makedirs(hades)
+        write(os.path.join(self.data, 'library.json'), json.dumps({'gogInstalls': {
+            '1207658924': self.witcher, '55': self.in_shared, '77': os.path.join(self.home, 'Games/GOG/gone'),
+            '../x': self.witcher}}))
+        write(os.path.join(self.data, 'legendary/installed.json'), json.dumps({
+            'Min': {'title': 'Hades', 'install_path': hades},
+            'MinDLC': {'title': 'Hades DLC', 'install_path': hades, 'is_dlc': True}}))
+        write(os.path.join(self.data, 'cache/gog-owned.json'), json.dumps({'games': [
+            {'id': '1207658924', 'art': {'cover': 'https://images.gog.com/c.jpg', 'hero': 'file:///etc/passwd'}}]}))
+
+    def config(self, **over):
+        c = {'version': 2, 'mode': 'nested', 'main_user': 'bob', 'share_group': 'hearth-games', 'shared_dir': self.shared,
+             'seats': [{'seat': 1, 'user': 'bob'}, {'seat': 2, 'user': 'hearth-p2'}]}
+        c.update(over)
+        write(self.hs.CONFIG, json.dumps(c))
+
+    def publish(self):
+        with mock.patch.dict(os.environ, {'HOME': self.home}):
+            return self.hs.share_publish(self.data)
+
+    def test_publishes_and_opens_the_folders(self):
+        self.config()
+        r = self.publish()
+        self.assertEqual((r['ok'], r['shared'], r['not_shared']), (True, 3, []))
+        listing = json.loads(slurp(os.path.join(self.shared, '.hearth/library-bob.json')))
+        self.assertEqual((listing['user'], listing['seat']), ('bob', 1))
+        ids = [g['id'] for g in listing['games']]
+        self.assertEqual(ids, ['gog:1207658924', 'gog:55', 'epic:Min'])
+        self.assertEqual(listing['games'][0]['art'], {'cover': 'https://images.gog.com/c.jpg'})   # web pictures only
+        self.assertEqual(oct(os.stat(os.path.join(self.shared, '.hearth/library-bob.json')).st_mode & 0o777), '0o644')
+        cmds = self.runner.cmds()
+        # The folders above the game: pass through only. The game itself: read, and the same for new files.
+        self.assertIn('setfacl -m g:hearth-games:x %s' % self.home, cmds)
+        self.assertIn('setfacl -m g:hearth-games:x %s' % os.path.join(self.home, 'Games/GOG'), cmds)
+        self.assertIn('setfacl -R -m g:hearth-games:rX,d:g:hearth-games:rX %s' % self.witcher, cmds)
+        # Games in the shared folder already are (a narrower entry there would take write access away).
+        self.assertFalse(any(self.shared in c for c in cmds), cmds)
+        # Once per folder.
+        self.runner.calls.clear()
+        self.publish()
+        self.assertEqual(self.runner.cmds(), [])
+
+    def test_folder_that_cant_be_opened_isnt_offered(self):
+        self.config()
+        self.runner.answers['setfacl'] = (1, '', 'setfacl: Operation not permitted')
+        r = self.publish()
+        self.assertEqual((r['shared'], r['not_shared']), (2, ['The Witcher']))
+
+    def test_nothing_without_sharing(self):
+        self.config(share_group=None)
+        r = self.publish()
+        self.assertEqual(r['shared'], 0)
+        self.assertEqual(self.runner.calls, [])
+        self.assertFalse(os.path.exists(os.path.join(self.shared, '.hearth/library-bob.json')))
+
+    def test_not_a_player(self):
+        self.config(main_user='alice', seats=[{'seat': 1, 'user': 'alice'}, {'seat': 2, 'user': 'hearth-p2'}])
+        self.assertEqual(self.publish()['shared'], 0)
+
+    def test_never_the_home_folder(self):
+        self.config()
+        write(os.path.join(self.home, 'goggame-9.info'), json.dumps({'name': 'Home'}))
+        write(os.path.join(self.data, 'library.json'), json.dumps({'gogInstalls': {'9': self.home}}))
+        write(os.path.join(self.data, 'legendary/installed.json'), '{}')
+        self.assertEqual(self.publish()['shared'], 0)
+        self.assertFalse(any('-R' in c for c in self.runner.cmds()))
+
+
 # ---------------------------------------------------------------------------------------------- user side
 class SplitAndStreamUser(SeatsBase):
     def test_normalize_layout(self):

@@ -56,7 +56,11 @@ jobs:
           cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A12 build.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
           echo "::notice title=size::$(du -h target/release/hearth-link | cut -f1)"
       - name: Python tests
-        run: python3 -m unittest discover -q -s hosts/linux/test
+        run: |
+          if ! python3 -m unittest discover -q -s hosts/linux/test > /tmp/py.txt 2>&1; then
+            grep -A14 -E '^(FAIL|ERROR):' /tmp/py.txt | grep -v '^$' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; tail -3 /tmp/py.txt; exit 1
+          fi
+          tail -3 /tmp/py.txt
       - name: Two devices on one network (pair, copy, resume, update, sync, unpair)
         env:
           LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link

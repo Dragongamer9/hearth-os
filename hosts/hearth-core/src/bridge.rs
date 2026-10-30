@@ -17,6 +17,7 @@ pub struct Bridge {
     pub emit: system::bt_scan::Emit,
     pub updates: crate::admin::Updates,
     pub xodus: crate::xodus::Xodus,
+    pub battlenet: crate::battlenet::Battlenet,
     pub profiles: crate::profiles::Profiles,
     /// The parental-controls PIN unlocks managing profiles for a few minutes.
     pub pin_until: std::time::Instant,
@@ -100,7 +101,7 @@ impl Bridge {
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
-        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), profiles, pin_until: std::time::Instant::now(),
+        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), battlenet: crate::battlenet::Battlenet::new(), profiles, pin_until: std::time::Instant::now(),
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
@@ -254,7 +255,13 @@ impl Bridge {
         let bs = &self.library.beacon;
         let beacon = json!({"installed": bs.cli.is_some(), "app": bs.app.is_some(), "via": bs.cli.as_ref().map(|c| c.via()),
             "games": bs.games.len(), "setUp": bs.games.iter().filter(|g| g.installed).count(), "error": bs.error});
-        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy(), "beacon": beacon})
+        // Launchers with a card of their own in Library › Stores, like Beacon's: Xodus Nexus (Hearth OS ships it) and
+        // Battle.net (set up with one press). Quick: only files are looked at, never the network.
+        let xs = self.xodus.status(false);
+        let xodus = json!({"installed": xs["installed"], "preinstalled": xs["preinstalled"], "version": xs["version"], "games": xs["games"],
+            "busy": xs["busy"], "error": xs["error"]});
+        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy(), "beacon": beacon, "xodus": xodus,
+               "battlenet": self.battlenet.status()})
     }
 
     /// Signs in to a store: the sign-in page opens in its own window, and the answer comes later (this call is
@@ -399,6 +406,21 @@ impl Bridge {
                 if !on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
                 io(self.library.store.update(|d| { d.insert("steamOnDemand".into(), json!(on)); }))
             }
+            // Settings › Library › Steam engine (steam_engine.rs). Lightweight starts hosts/hearth-steam; Classic stops it.
+            // {engine: "classic"|"lightweight"|"open"}, or the older {lightweight: bool}. Open is Hearth's own Steam client.
+            "steam.engine.set" => {
+                let mode = match a["engine"].as_str() {
+                    Some(e) => crate::steam_engine::Mode::from_setting(&json!(e)),
+                    None if a["lightweight"] == true => crate::steam_engine::Mode::Lightweight,
+                    None => crate::steam_engine::Mode::Classic,
+                };
+                io(self.library.store.update(|d| { d.insert("steamEngine".into(), json!(mode.name())); }))?;
+                std::thread::spawn(move || crate::steam_engine::set(mode));
+                Ok(json!({"engine": mode.name(), "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}))
+            }
+            "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
+            // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
+            "steam.engine.signIn" => crate::steam_engine::sign_in(a),
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
                 if on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
@@ -493,7 +515,13 @@ impl Bridge {
                     let app: u32 = app.parse().map_err(|_| "That isn't a Steam game.".to_string())?;
                     let title = self.library.games.get(&id).map(|g| g.title.clone()).unwrap_or_else(|| "the game".into());
                     let (home, on_demand) = (self.library.home.clone(), self.library.steam_on_demand());
+                    let mode = self.library.steam_engine_mode();
                     crate::space::answer_later(self.cur_id.clone(), move || {
+                        // Lightweight engine: Steam's engine removes it itself; otherwise as below, with the normal client's files.
+                        if crate::steam_engine::uninstall(mode, app) {
+                            crate::stores::notify(json!({"type": "internal", "what": "rescan", "reply": null}));
+                            return Ok(json!({"steam": true, "silent": true, "lightweight": true, "engine": mode.name()}));
+                        }
                         let was_running = crate::steam_ctl::uninstall(&home, app, &title)?;
                         // Steam was closed for it: back hidden, unless it only runs when needed.
                         if was_running && !on_demand { crate::steam::ensure_running_silent(&home); }
@@ -980,6 +1008,14 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
+            // Battle.net (battlenet.rs): one-press setup in its own Proton prefix; you sign in in Battle.net's own window.
+            "battlenet.status" => Ok(self.battlenet.status()),
+            "battlenet.install" => Ok(self.battlenet.install(self.emit.clone())),
+            "battlenet.signInDesktop" => { crate::battlenet::open_in_desktop()?; Ok(json!({})) }
+            "battlenet.remove" => {
+                if self.battlenet.state.lock().unwrap()["busy"] == true { return Err("Battle.net is still being set up".into()); }
+                crate::battlenet::remove()?; self.library.scan(); Ok(self.battlenet.status())
+            }
             // Which engine draws Hearth: Chromium (the Electron window app; automatic on Nvidia) or WebKit (renderer.rs).
             "display.renderer" => {
                 if let Some(v) = a["set"].as_str() { crate::renderer::set(v)?; }
@@ -1096,6 +1132,9 @@ impl Bridge {
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
             "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
             "system.update.rollback" => self.updates.rollback(),
+            // Settings › Updates & Recovery (Dragonfire look): Hearth Recovery opens once at the next start
+            // (hearth-admin recovery-next-start, which runs hearth-recovery --next-start); the page restarts after.
+            "system.recovery.nextStart" => { crate::admin::run(&["recovery-next-start"], None, &mut |_| {})?; Ok(json!({"ok": true})) }
             // Profiles and parental controls (switching restarts Hearth; that part comes with the app's restart)
             "profiles.get" => Ok(self.profiles_info()),
             "profiles.create" => { self.need_pin()?; self.profiles.create(a["name"].as_str().unwrap_or(""), a["color"].as_str()) }
@@ -1748,7 +1787,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet"];
     // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
     f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }
@@ -1760,6 +1799,7 @@ fn features() -> Vec<&'static str> {
     if std::path::Path::new(crate::renderer::QT_APP).is_file() { f.push("qtRenderer"); }
     // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
     if crate::gaming_apps::available() { f.push("gamingApps"); }
+    if crate::gaming_apps::benchmark_available() { f.push("benchmark"); }
     // ---- Hearth Friends on Matrix (the service is installed)
     if crate::matrix_friends::available() { f.push("mfriends"); }
     // ---- end of Hearth's gaming apps

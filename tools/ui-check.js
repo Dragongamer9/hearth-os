@@ -190,6 +190,28 @@ const path = require('path');
     S.layers = []; await loadAccounts(); navigate('stores', {}, false);
     if (!document.querySelector('#view [data-k="sa-beacon-open"]')) throw new Error('no Beacon card');
   });
+  // Xodus Nexus and Battle.net: their cards in Library › Stores (like Beacon's), Battle.net's section in Game Mode ›
+  // Store, and the Mouse only layout their own windows start with.
+  await step('launcher stores cards', async () => {
+    S.layers = []; await loadAccounts(); navigate('stores', {}, false);
+    if (!document.querySelector('#view [data-k="sa-xodus-open"]') || !/Comes with Hearth OS/.test(document.querySelector('#view').textContent)) throw new Error('no Xodus Nexus card');
+    if (!document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Set up Battle.net');
+    const was = ACC.battlenet; ACC.battlenet = {installed: true, busy: false, games: 2, error: null}; render(null, true);
+    const ok = ['sa-bnet-open', 'sa-bnet-sign', 'sa-bnet-show', 'sa-bnet-rm'].every(k => document.querySelector(`#view [data-k="${k}"]`));
+    ACC.battlenet = was; render(null, true);
+    if (!ok) throw new Error("Battle.net's card is missing a button once set up");
+  });
+  await step('store battle.net section', async () => {
+    S.layers = []; S.history = []; SHOP.page = null; navigate('shop', {}, false); shopTab('battlenet');
+    await new Promise(r => setTimeout(r, 300));
+    if (!document.querySelector('#view [data-k="sf-t-battlenet"].on') || !document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Battle.net section in the Store');
+    input('rb'); if (SHOP.store !== 'steam') throw new Error('RB from Battle.net did not go round to Steam: ' + SHOP.store);
+  });
+  await step('launcher windows start with the mouse', async () => {
+    imLoadTables(); imLoad('battlenet:app', true); imLoad('xodus:nexus', true);
+    await new Promise(r => setTimeout(r, 200));
+    if (IM.games['battlenet:app'].layout !== 'mouse' || IM.games['xodus:nexus'].layout !== 'mouse') throw new Error("a launcher's window doesn't start with Mouse only");
+  });
   await step('beacon leave', () => { S.layers = []; S.tab = 'inst'; navigate('home', {}, false); });
   // ---- Hearth's gaming apps (with the host's "gamingApps" feature): Settings › Controls › Controller Lab, and a
   // game's ⋯ menu › Back up saves / Mods (Beacon's games keep only Beacon's own Mods).
@@ -1749,6 +1771,94 @@ const path = require('path');
       if (!errors.some(e => e.startsWith('Hearth Link pairing'))) console.log('Hearth Link pairing: code and states, devices with kind and edition, number pad, wrong code asked again, short codes checked and formatted ok');
     } catch (e) { lerr(e.message.split('\n')[0]); }
     await lp.close();
+  }
+
+  // Hearth Storage's page (Settings › Hearth Storage): a server among the paired devices, browsing its shared
+  // folder, this device as a server with a shared folder, the switches sending what they say.
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const serr = m => errors.push('Hearth Storage: ' + m);
+    sp.on('pageerror', e => serr(e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(1200);
+      const r = await sp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const out = {};
+        const srv = 'b'.repeat(64);
+        const st = { running: true, me: { id: 'a'.repeat(64), name: 'Deck' }, settings: {}, peers: [{ id: srv, name: 'Basement PC', online: true }], transfers: [], offers: [], sending: [], signInHints: [],
+          storage: { config: { server: true, folder: '/home/me/Hearth Storage', free: 5e11, shares: [{ id: 'a1b2c3d4e5f6', name: 'Videos', path: '/home/me/Videos', there: true }], archive: true, backups: true, media: true,
+                               away: false, smb: false, sleepMinutes: 0, backupTo: srv, backupSaves: true, backupShots: true, backupHours: 6, lastBackup: Date.now() - 3600e3,
+                               archived: { 'steam:620': { server: srv, title: 'Portal 2', size: 1.2e10, state: 'archived', key: 'aaaaaaaa-steam-620' } } },
+                     servers: [{ id: srv, name: 'Basement PC', shares: [{ id: 'c0ffee000001', name: 'Films' }], archive: true, backups: true, media: true, free: 2e12, usable: true, at: Date.now(), canWake: true }],
+                     jobs: [], user: 'me' } };
+        const calls = [];
+        call = async (m, a) => {
+          calls.push([m, a]);
+          if (m === 'link.status') return st;
+          if (m === 'link.storage.servers') return st.storage;
+          if (m === 'link.storage.ls') return { share: 'Films', entries: [{ name: 'Holiday', dir: true }, { name: 'clip.mkv', size: 5e8 }] };
+          if (m === 'link.storage.device.usage') return { backups: 3e9, archive: 4e10, games: ['Portal 2'] };
+          if (m === 'link.storage.device.remove') return { freed: 4.3e10 };
+          if (m === 'link.storage.cache.status') throw new Error("link.storage.cache.status isn't a Hearth Link call");
+          return {};
+        };
+        LK.s = st; closeAll(); S.settingsTab = 'storage'; navigate('settings', {}, false); render(null, true); await wait(150);
+        const v = () => document.querySelector('#view').textContent;
+        out.server = /Basement PC/.test(v()); out.backup = /To Basement PC every 6 hours/.test(v()); out.share = /\/home\/me\/Videos/.test(v());
+        out.archived = /Safely in Hearth Storage/.test(v()); out.off = /Windows sharing \(SMB\)/.test(v()) && /Away from home/.test(v());
+        out.advFolded = !document.querySelector('#view [data-k="stg-away"]');
+        act(document.querySelector('#view [data-k="lk-adv"]')); await wait(100);
+        out.off = /Windows sharing \(SMB\)/.test(v()) && /Away from home/.test(v());
+        const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
+        out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
+        act(document.querySelector('#view [data-k="stg-away"]')); await wait(100);
+        out.set = JSON.stringify((calls.find(c => c[0] === 'link.storage.set') || [])[1]);
+        act(document.querySelector('#view [data-k="lk-sv0"]')); await wait(150);
+        out.sheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(0); await wait(300);
+        out.browse = sheet && sheet.items.map(i => i.label).join('|');
+        out.ls = JSON.stringify((calls.find(c => c[0] === 'link.storage.ls') || [])[1]);
+        closeAll();
+        // Servers & devices: health, and removing an old device with its backups and games (how much it frees said).
+        const ally = 'c'.repeat(64);
+        STG.devices = { server: srv, devices: [{ id: st.me.id, name: 'Deck', me: true, online: true, battery: { percent: 64 }, version: '0.6.56', upToDate: true, newest: '0.6.56', boot: { good: true } },
+          { id: ally, name: 'ROG Ally', online: false, lastSeen: Date.now() - 864e5, battery: { percent: 12 }, free: 3e10, version: '0.6.52', upToDate: false, newest: '0.6.56', boot: { fellBack: '2026-10-28T10:00:00' } }] };
+        STG.saves = { games: [{ id: 'gog:1', title: 'Heroes 3', conflict: { server: { fromName: 'ROG Ally', at: Date.now() - 6e5, version: 'v9' }, local: { at: Date.now() - 864e5 } } }] };
+        render(null, true); await wait(100);
+        out.health = /Battery 12%/.test(v()) && /0\.6\.56 is out/.test(v()) && /went back to the previous version/.test(v()) && /Check it/.test(v());
+        out.cacheNa = /Sharing downloads and updates through Hearth Storage comes with the next/.test(v()) || !/Keep game downloads/.test(v());
+        act(document.querySelector('#view [data-k="lk-dv1"]')); await wait(100);
+        out.devSheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(sheet.items.length - 1); await wait(200);
+        out.removeSheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(sheet.items.length - 1); await wait(100);
+        out.confirm = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(0); await wait(100);
+        out.removed = JSON.stringify((calls.find(c => c[0] === 'link.storage.device.remove') || [])[1]);
+        closeAll(); render(null, true); await wait(100);
+        // A save changed on both: asked, never decided for you.
+        act(document.querySelector('#view [data-k="lk-sc0"]')); await wait(100);
+        out.saveSheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(1); await wait(100);
+        out.resolved = JSON.stringify((calls.find(c => c[0] === 'link.storage.saves.resolve') || [])[1]);
+        closeAll();
+        return out;
+      });
+      const want = { server: true, backup: true, share: true, archived: true, off: true, advFolded: true, set: '{"away":true}', health: true, cacheNa: true,
+                     removed: JSON.stringify({ id: 'c'.repeat(64), name: 'ROG Ally', backups: true, archive: true }), resolved: JSON.stringify({ game: 'gog:1', keep: 'local', now: true }) };
+      for (const k of Object.keys(want)) if (r[k] !== want[k]) serr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
+      if (r.dupKeys.length) serr('two rows with the same key: ' + r.dupKeys.join(', '));
+      if (!/^Browse shared folders\|Games kept there\|Stop backing up to it\|Wake it up$/.test(r.sheet || '')) serr('the server\'s menu: ' + r.sheet);
+      if (!/Remove this device…$/.test(r.devSheet || '')) serr('a device\'s menu: ' + r.devSheet);
+      if (!/delete both · 43\.0 GB$/.test(r.removeSheet || '')) serr('removing a device: ' + r.removeSheet);
+      if (!/^Remove and delete \(frees 43\.0 GB\)$/.test(r.confirm || '')) serr('removing, confirmed: ' + r.confirm);
+      if (!/^From ROG Ally · .*\|This device's · .*\|Decide later$/.test(r.saveSheet || '')) serr('picking a save: ' + r.saveSheet);
+      if (!/Holiday ›/.test(r.browse || '') || !/clip\.mkv/.test(r.browse || '')) serr('browsing: ' + r.browse);
+      if (r.ls !== JSON.stringify({ server: 'b'.repeat(64), share: 'c0ffee000001', path: '' })) serr('listing asked: ' + r.ls);
+      if (!errors.some(e => e.startsWith('Hearth Storage'))) console.log('Hearth Storage: servers, backups, shared folders, switches, browsing, device health, removing a device, picking a save ok');
+    } catch (e) { serr(e.message.split('\n')[0]); }
+    await sp.close();
   }
 
   // The Store's pictures (Steam's page, and a game's page), half size so each fits in the notices release.yml posts.

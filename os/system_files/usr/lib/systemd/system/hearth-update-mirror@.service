@@ -1,0 +1,15 @@
+# One connection from bootc to the local mirror (hearth-update-mirror.socket). Fails open: anything wrong and bootc
+# gets the image from ghcr.io.
+[Unit]
+Description=Hearth: Hearth OS update pieces from Hearth Storage
+
+[Service]
+ExecStart=/usr/libexec/nimbus/hearth-update-mirror serve
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+RuntimeDirectory=hearth-update-mirror
+RuntimeDirectoryPreserve=yes
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes

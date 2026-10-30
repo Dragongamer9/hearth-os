@@ -63,13 +63,13 @@ fn main() {
     // The first-run tour: once per account.
     if args.iter().any(|a| a == "--first-run") && hearth_tools::welcome::marker().exists() { return; }
     let fullscreen = args.iter().any(|a| a == "--fullscreen");
-    let boot = json!({"app": id, "title": title, "page": opt("--page").unwrap_or_default(), "firstRun": args.iter().any(|a| a == "--first-run")});
+    let boot = json!({"app": id, "title": title, "page": opt("--page").unwrap_or_default(), "firstRun": args.iter().any(|a| a == "--first-run"), "fullscreen": fullscreen});
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
     let mut ctx = tauri::generate_context!();
     // Each tool its own app id (Wayland), so the taskbar tells them apart; the .desktop files' StartupWMClass match.
     ctx.config_mut().identifier = format!("io.github.dragongamer9.hearth.{}", id.replace('-', ""));
-    let (w, h) = match id { "system-info" => (1000.0, 760.0), "welcome" => (1060.0, 720.0), "passwords" => (1060.0, 720.0), _ => (1240.0, 800.0) };
+    let (w, h) = match id { "system-info" => (1000.0, 760.0), "welcome" => (1060.0, 720.0), "passwords" => (1060.0, 720.0), "benchmark" => (1180.0, 760.0), _ => (1240.0, 800.0) };
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![call, start, cancel])
         .setup(move |app| {

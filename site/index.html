@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth OS</title>
-<meta name="description" content="Hearth OS turns your PC or handheld into a game console: Steam, Epic, GOG and Xbox in one library you drive with a controller, couch co-op, friends and invites, game transfer between your devices, and updates that roll back. Free and open source.">
+<meta name="description" content="Hearth OS turns your PC or handheld into a game console: Steam, Epic, GOG, Xbox and Battle.net in one library you drive with a controller, a home server for your Hearth devices, couch co-op, friends and invites, game transfer between your devices, and updates that roll back. Free and open source.">
 <meta property="og:title" content="Hearth OS">
 <meta property="og:description" content="The console OS for your PC and handheld. Steam, Epic, GOG and Xbox in one library.">
 <meta property="og:image" content="img/gm-home.webp">
@@ -201,6 +201,45 @@ section.band{background:var(--bg)}
 .also li{border-top:2px solid var(--line2);padding-top:14px;font-size:14.5px}
 .also li b{display:block;font-size:16px;margin-bottom:4px}
 
+/* 0.6.57: the release band. Stays at night in either theme, warmer than the rest of the page. */
+.release{background:radial-gradient(55% 32% at 88% 0%,rgba(255,77,61,.17),transparent 70%),radial-gradient(45% 28% at 0% 24%,rgba(255,122,47,.10),transparent 70%),var(--bg)}
+.release .head{margin-bottom:clamp(44px,6vw,72px)}
+.sub.d{font-size:clamp(28px,3.3vw,46px);line-height:1;text-transform:uppercase;font-stretch:118%;max-width:16ch}
+.df,.safe,.store-srv{display:grid;gap:28px clamp(28px,4.5vw,64px)}
+.safe,.store-srv,.more-h{margin-top:clamp(80px,9vw,128px)}
+.more-h{margin-bottom:28px}
+.df-words,.safe-words,.srv-words{display:grid;gap:14px;align-content:start}
+.df-words .pill,.safe-words .pill,.srv-words .pill{justify-self:start}
+.df-words p,.safe-words>p,.srv-words p{font-size:16.5px;max-width:34em}
+/* Dragonfire: the screenshot is the event; numbered pins on it match the list beside it */
+.df{grid-template-columns:minmax(0,4fr) minmax(0,9fr);grid-template-areas:"w s" "k s";align-items:start}
+.df-words{grid-area:w}.df-shot{grid-area:s;margin:0}.keys{grid-area:k}
+.frame{position:relative;border-radius:18px;padding:8px;background:linear-gradient(180deg,#3a2418,#120b08);box-shadow:0 0 0 1px #5a3a28,0 50px 120px -40px rgba(255,90,40,.75),0 20px 60px -30px #000}
+.frame img{border-radius:11px;width:100%;aspect-ratio:16/9;background:var(--shot)}
+.pin,.keys li::before{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;font:850 14px/1 var(--display);font-stretch:125%;color:#220e04;background:linear-gradient(180deg,var(--glow),var(--ember))}
+.pin{position:absolute;transform:translate(-50%,-50%);box-shadow:0 0 0 3px rgba(12,8,6,.85),0 0 22px rgba(255,140,60,.8)}
+.keys{list-style:none;counter-reset:k;display:grid;gap:16px}
+.keys li{counter-increment:k;position:relative;padding-left:46px;font-size:15px;min-height:30px}
+.keys li::before{content:counter(k);position:absolute;left:0;top:0}
+.keys li b,.ladder li>b:first-child,.feats li b{display:block;font-size:16px;margin-bottom:2px}
+/* Safety: a real sequence, each layer for when the one before can't help */
+.safe{grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:center}
+.safe-shot,.srv-shot{margin:0}
+.ladder{list-style:none;counter-reset:l;display:grid;gap:22px;margin-top:10px;position:relative}
+.ladder::before{content:"";position:absolute;left:19px;top:24px;bottom:24px;width:2px;background:linear-gradient(var(--ember),var(--hot) 60%,var(--line2))}
+.ladder li{counter-increment:l;position:relative;padding-left:58px;font-size:15px}
+.ladder li::before{content:counter(l);position:absolute;left:0;top:-2px;display:grid;place-items:center;width:40px;height:40px;border-radius:12px;font:850 17px/1 var(--display);font-stretch:125%;color:var(--text);background:var(--raise2);border:1px solid color-mix(in srgb,var(--ember) 60%,var(--line2))}
+.ladder li:first-child::before{background:linear-gradient(180deg,var(--ember2),var(--ember));color:#220e04;border-color:transparent}
+/* Hearth Storage */
+.store-srv{grid-template-columns:minmax(0,7fr) minmax(0,5fr);align-items:center}
+.feats{grid-column:1/-1;list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px 32px;margin-top:12px}
+.feats li{border-top:2px solid var(--line2);padding-top:14px;font-size:14.5px}
+.feats li:nth-child(-n+4){border-top-color:color-mix(in srgb,var(--ember) 70%,var(--line2))}
+.release .also{margin-top:0}
+.status .newin{border-color:color-mix(in srgb,var(--ember) 60%,var(--line2))}
+.status .newin a{color:var(--glow);text-decoration:none}
+.status .newin a:hover{color:var(--text)}
+
 /* Game Mode gallery */
 .tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:4px;margin:0 -4px 20px}
 .tabs::-webkit-scrollbar{display:none}
@@ -385,6 +424,11 @@ details.art[open] summary::before{content:"\2013"}
   .bento{grid-template-columns:repeat(2,minmax(0,1fr))}
   .card.w3,.card.w2{grid-column:span 1}
   .also{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .df,.safe,.store-srv{grid-template-columns:minmax(0,1fr)}
+  .df{grid-template-areas:"w" "s" "k"}
+  .keys{grid-template-columns:1fr 1fr}
+  .feats{grid-template-columns:1fr 1fr}
+  .srv-words{order:-1}
   .trio{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .trio .tile:last-child{grid-column:span 2}
   .apps{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -427,6 +471,10 @@ details.art[open] summary::before{content:"\2013"}
   .meters{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:6px}
   .meter{padding:10px}
   .meter b{font-size:19px}
+  .keys,.feats{grid-template-columns:minmax(0,1fr)}
+  .frame{padding:4px;border-radius:12px}
+  .frame img{border-radius:9px}
+  .pin{width:22px;height:22px;font-size:11px;box-shadow:0 0 0 2px rgba(12,8,6,.85)}
 }
 @media (max-width:440px){ .brand{font-size:15px;letter-spacing:0;gap:8px} .brand svg{width:26px;height:26px} .top .links a{padding:8px 8px} .top .links a.gh{display:none} .top .links a.dl{margin-left:2px} }
 @media (max-width:350px){ .brand span{display:none} }
@@ -485,7 +533,7 @@ details.art[open] summary::before{content:"\2013"}
   <div class="art" aria-hidden="true"></div>
   <div class="wrap grid">
     <div>
-      <ul class="status"><li class="ver">Version 0.6.56 · Beta</li><li>Free and open source</li><li class="live" id="live" hidden></li></ul>
+      <ul class="status"><li class="ver">Version 0.6.57 · Beta</li><li class="newin"><a href="#new">New: Dragonfire look, Hearth Storage</a></li><li>Free and open source</li><li class="live" id="live" hidden></li></ul>
       <h1 class="d"><span class="l1">Your PC is</span><span class="l2">a console now</span></h1>
       <p class="lede">Hearth OS boots straight into Game Mode: Steam, Epic, GOG and Xbox games in one library, a store, friends and couch co-op, all driven with a controller. On a handheld or a tower, from the couch.</p>
       <div class="ctas">
@@ -520,8 +568,8 @@ details.art[open] summary::before{content:"\2013"}
 
 <div class="ticker night" aria-label="Where your games come from">
   <ul>
-    <li>Steam</li><li>Epic Games</li><li>GOG</li><li>Xbox PC</li><li>Xbox Cloud</li><li>Beacon classics</li><li>Emulators</li><li>Flathub</li><li>Your own games</li>
-    <li aria-hidden="true">Steam</li><li aria-hidden="true">Epic Games</li><li aria-hidden="true">GOG</li><li aria-hidden="true">Xbox PC</li><li aria-hidden="true">Xbox Cloud</li><li aria-hidden="true">Beacon classics</li><li aria-hidden="true">Emulators</li><li aria-hidden="true">Flathub</li><li aria-hidden="true">Your own games</li>
+    <li>Steam</li><li>Epic Games</li><li>GOG</li><li>Xbox PC</li><li>Xbox Cloud</li><li>Battle.net</li><li>Beacon classics</li><li>Emulators</li><li>Flathub</li><li>Your own games</li>
+    <li aria-hidden="true">Steam</li><li aria-hidden="true">Epic Games</li><li aria-hidden="true">GOG</li><li aria-hidden="true">Xbox PC</li><li aria-hidden="true">Xbox Cloud</li><li aria-hidden="true">Battle.net</li><li aria-hidden="true">Beacon classics</li><li aria-hidden="true">Emulators</li><li aria-hidden="true">Flathub</li><li aria-hidden="true">Your own games</li>
   </ul>
 </div>
 
@@ -534,62 +582,124 @@ details.art[open] summary::before{content:"\2013"}
   </ul>
 </div>
 
-<section id="new">
+<section id="new" class="night release">
   <div class="wrap">
     <div class="head">
-      <div><span class="kicker">Now 0.6.56</span>
-        <h2 class="d">New in <em>0.6.5x</em></h2></div>
-      <p class="lede">A new way around Game Mode, an overlay you'll actually use mid-game, and a safety net for the day something goes wrong. <a href="docs/releases.html">Release notes</a> and <a href="docs/releases.html#next">what's next</a> are in the docs.</p>
+      <div><span class="kicker">Now 0.6.57</span>
+        <h2 class="d">A new look, a home server and <em>a way back</em></h2></div>
+      <p class="lede">0.6.57 brings the Dragonfire look, Hearth Storage for every Hearth device in your home, Battle.net and Xodus Nexus built in, and a safety net that gets a device starting again without a keyboard. <a href="docs/releases.html">Release notes</a> and <a href="docs/releases.html#next">what's next</a> are in the docs.</p>
     </div>
+
+    <div class="df" id="dragonfire">
+      <div class="df-words">
+        <span class="pill">Settings › Appearance › Look</span>
+        <h3 class="sub d">Dragonfire</h3>
+        <p>A darker ember theme for Game Mode, drawn from the concept art and made to be driven with a controller. Your last game fills the top of Home, with everything else a press away.</p>
+      </div>
+      <figure class="df-shot">
+        <div class="frame">
+          <img src="img/df-home.webp" width="1600" height="900" loading="lazy" alt="Game Mode's Home in the Dragonfire look: a big card for the last game with Play and Details, a Continue playing row, the library below, performance rings for CPU, GPU, RAM and FPS on the right with temperature, power draw, controller battery and power mode, a friends list under them, and a bar of shortcuts at the bottom">
+          <span class="pin" style="left:24%;top:16%" aria-hidden="true">1</span>
+          <span class="pin" style="left:3%;top:60%" aria-hidden="true">2</span>
+          <span class="pin" style="left:79.5%;top:6.5%" aria-hidden="true">3</span>
+          <span class="pin" style="left:33.5%;top:86%" aria-hidden="true">4</span>
+        </div>
+        <figcaption class="cap">Dragonfire's Home. The games, friends and readings are sample data; the covers are drawn by Hearth.</figcaption>
+      </figure>
+      <ol class="keys" aria-label="What's on Dragonfire's Home">
+        <li><b>Your last game, big</b>Play or Details straight from Home.</li>
+        <li><b>Continue playing and your library</b>Then a row for your installed launchers.</li>
+        <li><b>Performance rings</b>CPU, GPU, RAM and FPS, with temperature, watts, controller battery and power mode.</li>
+        <li><b>A bar of shortcuts</b>Home, Search, Quick settings, Hearth, Screenshots, Overlay and Desktop Mode.</li>
+      </ol>
+    </div>
+
+    <div class="safe" id="safety">
+      <div class="safe-words">
+        <span class="pill">Safety net</span>
+        <h3 class="sub d">If an update goes wrong, you get your device back</h3>
+        <p>Three layers, each one there if the one before can't help. All of them work with only a controller or the touchscreen.</p>
+        <ol class="ladder">
+          <li><b>It goes back by itself</b>When a new version fails to start twice in a row, the previous version starts on its own. Nothing to press.</li>
+          <li><b>Hearth Recovery, on the device</b>Hold <b>Volume Down</b> while it starts (Select&nbsp;+&nbsp;Start on a controller, F8 on a keyboard) to start the previous version, open Desktop Mode, use safe graphics, reset the renderer or send logs.</li>
+          <li><b>The Recovery USB</b>When nothing on the drive starts: start the previous version, reinstall keeping your files, copy your files off, send logs or reset. <a href="#recovery">Get it</a>, or make one with Hearth Disks.</li>
+        </ol>
+      </div>
+      <figure class="safe-shot">
+        <div class="pic"><img src="img/df-recovery.webp" width="1400" height="840" loading="lazy" alt="Settings, Updates and Recovery in the Dragonfire look: an update timeline with the available, running and previous versions, the snapshot kept before the last update with Restore this version, and Recovery options: Restart into Recovery, Reinstall keeping your files, and what to do if Hearth doesn't start"></div>
+        <figcaption class="cap">Settings › Updates &amp; Recovery: every version on a timeline, and the one before is kept.</figcaption>
+      </figure>
+    </div>
+
+    <div class="store-srv" id="hearth-storage">
+      <figure class="srv-shot">
+        <div class="pic"><img src="img/df-storage.webp" width="1600" height="850" loading="lazy" alt="Settings, Hearth Storage: a list of devices with battery, free space, last backup and version, shared folders on the Basement PC, a game kept in the archive and safe to uninstall, backups of saves and screenshots, Saves follow you, and a save to pick that changed on two devices"></div>
+        <figcaption class="cap">Settings › Hearth Storage, as a handheld sees a spare PC acting as its server.</figcaption>
+      </figure>
+      <div class="srv-words">
+        <span class="pill">Hearth Storage</span>
+        <h3 class="sub d">A spare PC becomes your home server</h3>
+        <p>Turn on <b>Use this device as Hearth Storage</b> and your paired Hearth devices share one place for games, saves and media. It runs on Hearth Link: paired devices only, encrypted, and nothing opened to the internet unless you turn it on.</p>
+      </div>
+      <ul class="feats">
+        <li><b>Shared folders</b>Browse them in Game Mode and Hearth Files; copy from them, play videos and music.</li>
+        <li><b>Game archive</b>Move a game off a full handheld and copy it back later as the store's own install.</li>
+        <li><b>Backups</b>Saves and screenshots from each device, every few hours. Only what changed is sent.</li>
+        <li><b>Saves follow you</b>Pick up on the handheld where you stopped on the PC. When both changed, you pick: never overwritten.</li>
+        <li><b>Media</b>Films and music from the server play in Hearth Player on any device.</li>
+        <li><b>Download once</b>A game comes down once and reaches your other devices at home-network speed.</li>
+        <li><b>Update cache with hold-back</b>Hearth OS updates come from the server, and one device starts a new version before the rest follow.</li>
+        <li><b>Device health</b>Battery, free space, last backup, version and whether the last start was good, for every device.</li>
+      </ul>
+    </div>
+
+    <h3 class="sub d more-h">More games, more ways to run them</h3>
     <div class="bento">
       <article class="card w3 rv">
-        <div class="shot"><img src="img/gm-dock.webp" width="1600" height="1000" loading="lazy" alt="The Bottom Dock open on Home: icons for Home, Library, Store, Friends, Downloads, Hearth Link and more along the bottom, with a Continue playing card for SuperTuxKart above the selected item"></div>
-        <span class="pill">Game Mode</span>
-        <h3>The Bottom Dock</h3>
-        <p>Game Mode's new main menu. Live cards rise above each item: continue playing, friends online, downloads with progress, nearby devices. Over a game it becomes the game's dock, and its search finds settings too.</p>
+        <svg class="ico big" aria-hidden="true"><use href="#i-bag"/></svg>
+        <span class="pill">Store</span>
+        <h3>Battle.net, one press</h3>
+        <p>Set up Battle.net installs Blizzard's own app with Proton. Blizzard games you install there join the Library, and Play starts them through Battle.net. Your Blizzard sign-in stays inside Battle.net's own window.</p>
       </article>
       <article class="card w3 rv">
-        <div class="shot"><img src="img/gm-overlay.webp" width="1600" height="1000" loading="lazy" alt="The top-dock overlay over 0 A.D. with its Quick settings tab open: volume, brightness, Wi-Fi, Bluetooth and notifications"></div>
-        <span class="pill">In game</span>
-        <h3>A top-dock overlay</h3>
-        <p>Now playing, Performance (temperatures, power draw, per-game saving), Controller layout, Friends with quick replies, Capture and Quick settings. A short Guide tap shows a quick-glance bar without pausing.</p>
+        <svg class="ico big" aria-hidden="true"><use href="#i-win"/></svg>
+        <span class="pill">Built in</span>
+        <h3>Xodus Nexus for Xbox PC games</h3>
+        <p>Preinstalled the way Beacon is: Xbox PC games you make shortcuts for show up in the Library, Nexus has its card in Stores, and it's pinned in Desktop Mode.</p>
       </article>
       <article class="card w2 rv">
-        <div class="shot"><img src="img/gm-settings.webp" width="1600" height="850" loading="lazy" alt="Settings, Connections: a status card for the Wi-Fi network, pages as tabs (Wi-Fi, Bluetooth, Hearth Link, Remote play) and the Wi-Fi settings"></div>
-        <span class="pill">Settings</span>
-        <h3>Settings, redesigned</h3>
-        <p>Six groups with live status cards and pages as tabs you flip with <span class="k sq">LB</span> <span class="k sq">RB</span>. Every earlier setting is still there.</p>
+        <svg class="ico big" aria-hidden="true"><use href="#i-pad"/></svg>
+        <span class="pill">Multi-seat</span>
+        <h3>One install for every seat</h3>
+        <p>A game is installed once and started from any seat, as far as each store allows: GOG games one player at a time, Epic for each player who owns it, Steam through Steam Family, with "In use by Player&nbsp;2" when a copy is busy.</p>
       </article>
       <article class="card w2 rv">
-        <svg class="ico big" aria-hidden="true"><use href="#i-qt"/></svg>
+        <svg class="ico big" aria-hidden="true"><use href="#i-play"/></svg>
         <span class="pill exp">Experimental</span>
-        <h3>Qt renderer</h3>
-        <p>Settings › Display › Renderer › Qt draws Home, the Library, game pages, Downloads, Quick Access, Power and Settings natively with Qt Quick. If it fails, Hearth falls back to Automatic.</p>
+        <h3>Lightweight Steam engine</h3>
+        <p>Valve's own Steam client runs as a small background service, so Steam games install and start without Steam's window. Anything it can't do goes to the normal Steam client. Settings › Library.</p>
       </article>
       <article class="card w2 rv">
-        <svg class="ico big" aria-hidden="true"><use href="#i-usb"/></svg>
-        <span class="pill">Hearth Disks</span>
-        <h3>A USB maker</h3>
-        <p>Pick a Linux distro and Hearth downloads it from the project's own servers, checks its checksum and signature, writes it and reads it back. Windows 10 and 11 come from Microsoft's page.</p>
-      </article>
-      <article class="card w3 rv">
-        <svg class="ico big" aria-hidden="true"><use href="#i-life"/></svg>
-        <span class="pill">New download</span>
-        <h3>Hearth Recovery USB</h3>
-        <p>For the day a Hearth device won't start. The recovery screen works with only the controller or the touchscreen, and <b>Start the previous version</b> brings back the Hearth OS that last worked. <a href="#recovery">Get it</a> · <a href="docs/troubleshooting.html#recovery-usb">how to use it</a>.</p>
-      </article>
-      <article class="card w3 rv">
-        <svg class="ico big" aria-hidden="true"><use href="#i-link"/></svg>
-        <span class="pill">0.6.5</span>
-        <h3>Hearth Link, Friends, Store and Mods</h3>
-        <p>0.6.5 brought game copies between your Hearth devices, friends and invites on Matrix, a Store with Steam, GOG, Epic and Xbox, a new on-screen keyboard, and Hearth Mods for Nexus Mods and Wabbajack.</p>
+        <svg class="ico big" aria-hidden="true"><use href="#i-term"/></svg>
+        <span class="pill exp">Experimental</span>
+        <h3>Hearth's own Steam client</h3>
+        <p>An open-source client that speaks Steam's protocol through SteamKit2: sign in with a QR code or Steam Guard, see your library and install games. Settings › Library › Open Steam client.</p>
       </article>
     </div>
+
+    <h3 class="sub d more-h">Earlier in 0.6.5x</h3>
+    <ul class="also">
+      <li><b>The Bottom Dock</b>Game Mode's main menu, with live cards above each item.</li>
+      <li><b>A top-dock overlay</b>Performance, controller layout, friends, capture and quick settings mid-game.</li>
+      <li><b>Settings, redesigned</b>Six groups, live status cards and pages you flip with <span class="k sq">LB</span> <span class="k sq">RB</span>.</li>
+      <li><b>Qt renderer</b>Experimental: Game Mode drawn natively with Qt Quick.</li>
+      <li><b>A USB maker</b>Hearth Disks downloads, checks and writes Linux and Windows USB sticks.</li>
+    </ul>
 
     <details class="rel" id="releases">
       <summary>Earlier releases <span>(0.6.0–0.6.4, 0.2–0.5, 0.1)</span></summary>
       <div class="body">
-        <p id="new-065"><b>0.6.5–0.6.56:</b> Hearth Link pairing with a 6-digit code, Hearth Friends sign-in with a QR code, go back to the previous version from Settings › System › Updates, real sleep on the power button, Bazaar as the app store, and fixes for the ROG Ally.</p>
+        <p id="new-065"><b>0.6.5–0.6.57:</b> Hearth Link pairing with a 6-digit code, Hearth Friends sign-in with a QR code, go back to the previous version from Settings › System › Updates, real sleep on the power button, Bazaar as the app store, and fixes for the ROG Ally. 0.6.5 also brought game copies between your Hearth devices, friends and invites on Matrix, a Store with Steam, GOG, Epic and Xbox, a new on-screen keyboard, and Hearth Mods for Nexus Mods and Wabbajack.</p>
         <p id="new-060"><b>0.6.0–0.6.4:</b> a full set of Hearth apps, keyboard &amp; mouse mode with Settings › Appearance › Made for and three keyboard &amp; mouse layouts, Hearth Files as the default file manager and the Open/Save window everywhere, Settings › Default apps, Beacon 0.0.18 (add any Windows game, compatibility tools), Claude on Hearth OS, and fixes for Steam, the overlay and Nvidia.</p>
         <p id="new-020"><b>0.2–0.5:</b> 16 library layouts, Beacon built in, a fail-safe that frees Hearth and sends a report, Couch Co-op with streamed and split-screen multi-seat, installer ISOs, Quick Resume through Restart and Shut down, the new in-game overlay and a full Hearth Files.</p>
         <p id="new-015"><b>0.1.5–0.1.9:</b> Hearth Input (a controller layout plays keyboard-and-mouse games, with gyro and back paddles), Quick Resume with a number per game, every Handheld Daemon setting inside Hearth, and Mantel as a full desktop.</p>
@@ -640,9 +750,9 @@ details.art[open] summary::before{content:"\2013"}
     <div class="words rv">
       <span class="kicker">Every store</span>
       <h2 class="d">Steam, GOG, Epic, Xbox. <em>One library.</em></h2>
-      <p class="lede">Sign in to a store once and its games join your library and its section of the Store. Epic and GOG games install, update and uninstall without their launchers.</p>
+      <p class="lede">Sign in to a store once and its games join your library and its section of the Store. Epic and GOG games install, update and uninstall without their launchers; Battle.net and Xodus Nexus are set up with one press.</p>
       <ul class="stores" aria-label="Stores and sources">
-        <li class="big">Steam</li><li class="big">Epic Games</li><li class="big">GOG</li><li class="big">Xbox PC games</li><li>Xbox Cloud Gaming</li><li>Beacon</li><li>Emulators</li><li>Your own games</li>
+        <li class="big">Steam</li><li class="big">Epic Games</li><li class="big">GOG</li><li class="big">Xbox PC games</li><li class="big">Battle.net</li><li>Xbox Cloud Gaming</li><li>Beacon</li><li>Emulators</li><li>Your own games</li>
       </ul>
     </div>
     <figure style="margin:0" class="rv"><div class="pic"><img src="img/gm-store-steam.webp" width="1600" height="1000" loading="lazy" alt="The Store's Steam section: Battle for Wesnoth featured, then rows of free games (Battle for Wesnoth, OpenTTD and Endless Sky), marked Installed or In your library"></div>
@@ -778,7 +888,7 @@ details.art[open] summary::before{content:"\2013"}
       <li><b>It downloads in the background</b>The new image comes down while you play, as one piece.</li>
       <li><b>You restart into it</b>Whenever suits you. Your games, saves and files stay as they are.</li>
       <li><b>The last version stays</b>It waits in the boot menu, and in Settings › System › Updates.</li>
-      <li><b>Something wrong? Go back</b>Pick it at start-up, or from the <a href="#recovery">Recovery USB</a> when nothing starts.</li>
+      <li><b>Something wrong? Go back</b>Two failed starts and it goes back by itself. Or hold Volume Down for Hearth Recovery, or use the <a href="#recovery">Recovery USB</a>.</li>
     </ol>
     <div class="split2">
       <dl class="glance" id="glance">
@@ -788,7 +898,7 @@ details.art[open] summary::before{content:"\2013"}
         <dt>Packages</dt><dd>Image-based (bootc) updates, Flatpak apps from Bazaar</dd>
         <dt>Init</dt><dd>systemd</dd>
         <dt>Status</dt><dd>Beta</dd>
-        <dt>Latest release</dt><dd>0.6.56 (2026-10-27), <a href="docs/releases.html">release notes</a></dd>
+        <dt>Latest release</dt><dd>0.6.57 (2026-10-30), <a href="docs/releases.html">release notes</a></dd>
         <dt>License</dt><dd>Free and open source (GPL-3.0)</dd>
       </dl>
       <div class="prose">
@@ -831,7 +941,7 @@ details.art[open] summary::before{content:"\2013"}
   <div class="wrap">
     <div class="head">
       <div><span class="kicker">Download</span>
-        <h2 class="d">Get Hearth OS <em>0.6.56</em></h2></div>
+        <h2 class="d">Get Hearth OS <em>0.6.57</em></h2></div>
       <p class="lede">For handhelds and PCs with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. Already on Bazzite or Fedora Atomic? <a href="#switch">Switch with one command</a>.</p>
     </div>
     <div class="dlgrid">
@@ -915,7 +1025,7 @@ details.art[open] summary::before{content:"\2013"}
     <div class="faq">
       <div>
         <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. For installing, a USB stick of 16 GB or more and a drive of 64 GB or more.</p></details>
-        <details><summary>Can I go back?</summary><p>Yes. Updates and switches keep the previous system in the boot menu; pick it, use Settings › System › Updates, or run <code>sudo bootc rollback</code>. If nothing starts, the <a href="#recovery">Hearth Recovery USB</a> can start the previous version.</p></details>
+        <details><summary>Can I go back?</summary><p>Yes. Updates and switches keep the previous system in the boot menu; pick it, use Settings › System › Updates, or run <code>sudo bootc rollback</code>. A version that fails to start twice in a row goes back by itself, and holding Volume Down while it starts opens Hearth Recovery. If nothing starts, the <a href="#recovery">Hearth Recovery USB</a> can start the previous version.</p></details>
         <details><summary>Does it work with anti-cheat games?</summary><p>Nothing is injected into games; the overlay is an ordinary window. Couch Co-op doesn't support anti-cheat games.</p></details>
       </div>
       <div>

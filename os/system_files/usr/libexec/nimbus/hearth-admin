@@ -16,6 +16,8 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin rollback              go back to the previous version (bootc's rollback deployment) at the next
                                      restart; run again before restarting, it undoes that. Refused while an update
                                      waits for a restart or when there's no previous version; then the JSON
+  hearth-admin recovery-next-start   open Hearth Recovery (the menu before Hearth starts) at the next start, once
+                                     (hearth-recovery --next-start); then {"ok": true}
   hearth-admin tdp-info              JSON: how this device's power limit can be set, its range and value
                                      (read-only; works without root)
   hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj
@@ -210,6 +212,19 @@ def rollback():
     else:
         run_logged(['bootc', 'rollback'])
     print(json.dumps(bootc_status()))
+
+
+def recovery_next_start():
+    """Settings › Updates & Recovery › Restart into Recovery: hearth-recovery's own --next-start (it sets a one-time
+    flag in GRUB's environment block, which hearth-recovery clears when its menu opens). Nothing else about starting
+    changes, and the next start after that is a normal one."""
+    tool = '/usr/libexec/nimbus/hearth-recovery'
+    if not os.path.exists(tool):
+        fail('this system doesn\'t have Hearth Recovery')
+    r = subprocess.run([tool, '--next-start'], capture_output=True, text=True)
+    if r.returncode != 0:
+        fail((r.stderr or r.stdout).strip() or 'couldn\'t set Hearth Recovery to open at the next start')
+    print(json.dumps({'ok': True}))
 
 
 def run_logged(cmd):
@@ -567,11 +582,28 @@ def ensure_podman():
         print('log: couldn\'t add podman: %s' % e, flush=True)
 
 
-def update():
-    stage = Stage()
-    progress(0, 'Starting')
-    print('log: Downloading the system update…', flush=True)
-    ensure_podman()
+HEARTH_UPDATE_MIRROR = '/usr/libexec/nimbus/hearth-update-mirror'
+
+
+def mirror_sync():
+    """hearth-update-mirror sync: True when the Hearth Storage mirror entry is in place for this update."""
+    if not os.path.exists(HEARTH_UPDATE_MIRROR):
+        return False
+    try:
+        r = subprocess.run([HEARTH_UPDATE_MIRROR, 'sync'], capture_output=True, text=True, timeout=60)
+        return json.loads(r.stdout.strip().splitlines()[-1]).get('entry') is True
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return False
+
+
+def mirror_disable(why):
+    try:
+        subprocess.run([HEARTH_UPDATE_MIRROR, 'disable', why], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def system_upgrade(stage):
     if layered():
         print('log: This system has extra packages installed on top, so it updates through rpm-ostree', flush=True)
         rpm_ostree_upgrade(stage)
@@ -589,6 +621,24 @@ def update():
             # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
             print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
             rpm_ostree_upgrade(stage)
+
+
+def update():
+    stage = Stage()
+    progress(0, 'Starting')
+    print('log: Downloading the system update…', flush=True)
+    ensure_podman()
+    # Hearth Storage's mirror entry: only while this device updates from a server; an update that fails through it
+    # is tried again at once straight from the registry, and the mirror is skipped for 7 days.
+    if mirror_sync():
+        try:
+            system_upgrade(stage)
+        except (UpgradeFailed, SystemExit) as e:
+            print('log: the update through Hearth Storage didn\'t work (%s); trying again straight from the registry' % str(e)[:200], flush=True)
+            mirror_disable('Update now failed while it went through Hearth Storage')
+            system_upgrade(stage)
+    else:
+        system_upgrade(stage)
     system_new = staged_any()
     if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
         progress(90, 'Updating apps')
@@ -857,6 +907,12 @@ SEATS_GROUP_FILE = '/etc/group'
 SEATS_PASSWD_FILE = '/etc/passwd'
 SEATS_PLAYER_GROUPS = ('render', 'gamemode')   # not input, audio, video or wheel: see docs/MULTI-SEAT.md
 SEAT_PLAYER_RE = re.compile(r'^hearth-p([2-4])$')
+# Shared games (docs/MULTI-SEAT.md, "Sharing games"): every player's account is in this group. The shared folder
+# sits beside the homes (same drive as the games already there), is player 1's (so player 1's running session can
+# use it before signing in again picks up the group), and its default ACL gives the group read and write, so Steam
+# on any player's account can update a game another one installed.
+SEATS_SHARE_GROUP = 'hearth-games'
+SEATS_SHARED_DIR = ('/var/home' if os.path.isdir('/var/home') else '/home') + '/hearth-games'
 SEAT_PAD_RE = re.compile(r'^(usb:[0-9]{1,3}-[0-9]{1,3}(\.[0-9]{1,3}){0,6}|uniq:[A-Za-z0-9:._-]{4,64})$')
 SEAT_OUTPUT_RE = re.compile(r'^(card[0-9]{1,2})-[A-Za-z]+(-[A-Za-z0-9]+){0,4}$')
 SEAT_PCI_RE = re.compile(r'^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$')
@@ -1273,6 +1329,10 @@ def seats_tmpfiles(config):
     for s in config['seats']:
         if s['seat'] != 1 and seats_kind(config, s) in ('nested', 'split'):
             lines.append('d %s/%s 2750 %s %s -' % (SEATS_RUN, s['user'], main, s['user']))
+    if config.get('share_group') == SEATS_SHARE_GROUP:
+        # "In use by ...": each player's Hearth puts a note here while it runs a game. Sticky, so a player can only
+        # remove their own note; notes of a Hearth that's gone are ignored by the others (its process is checked).
+        lines.append('d %s/in-use 1770 %s %s -' % (SEATS_RUN, main, SEATS_SHARE_GROUP))
     return '\n'.join(lines) + '\n'
 
 
@@ -1339,6 +1399,12 @@ class SeatsJournal:
     def firewall(self, ports):
         self.steps.append(('firewall', list(ports), None))
 
+    def group(self, name):
+        self.steps.append(('group', name, None))
+
+    def member(self, user, group):
+        self.steps.append(('member', user, group))
+
     def rollback(self):
         for kind, what, before in reversed(self.steps):
             try:
@@ -1353,6 +1419,10 @@ class SeatsJournal:
                     seats_run(['systemctl', 'disable', '--now', what])
                 elif kind == 'firewall':
                     seats_firewall(what, False)
+                elif kind == 'group':
+                    seats_run(['groupdel', what])
+                elif kind == 'member':
+                    seats_run(['gpasswd', '-d', what, before])
             except OSError:
                 pass
         seats_run(['udevadm', 'control', '--reload'])
@@ -1422,6 +1492,45 @@ def seats_apply_pads(pads, reconnect=True):
             seats_run(['udevadm', 'trigger', '--action=remove'] + sps)
             seats_run(['udevadm', 'settle', '--timeout=5'])
             seats_run(['udevadm', 'trigger', '--action=add'] + sps)
+
+
+def seats_group_members(name):
+    for line in seats_read(SEATS_GROUP_FILE).splitlines():
+        f = line.split(':')
+        if len(f) >= 4 and f[0] == name:
+            return {m for m in f[3].split(',') if m}
+    return set()
+
+
+def seats_share_group(j):
+    """The shared games group, made if it isn't there. False when it can't be (sharing is then left out, the rest
+    of multi-seat still sets up)."""
+    if SEATS_SHARE_GROUP in seats_existing_groups():
+        return True
+    code, _ = seats_run(['groupadd', '--system', SEATS_SHARE_GROUP])
+    if code != 0:
+        return False
+    j.group(SEATS_SHARE_GROUP)
+    return True
+
+
+def seats_shared_dir(main):
+    """The shared games folder: Steam/ for a Steam library every player's Steam adds, Epic/ and GOG/ for Hearth's own
+    installs, .hearth/ for each player's list of what they share (sticky: nobody can replace another's list).
+    Kept by seats-remove: games in it stay where they are."""
+    if not re.fullmatch(r'[a-z_][a-z0-9_.-]{0,31}', main):
+        return False
+    g = SEATS_SHARE_GROUP
+    steps = [['install', '-d', '-m', '2775', '-o', main, '-g', g, SEATS_SHARED_DIR],
+             # Files anyone makes in it stay group-writable whatever their program's umask (Steam's is 022).
+             ['setfacl', '-m', 'g:%s:rwx,d:u::rwx,d:g:%s:rwx,d:m::rwx,d:o::rx' % (g, g), SEATS_SHARED_DIR]]
+    for sub, mode in (('Steam', '2775'), ('Epic', '2775'), ('GOG', '2775'), ('.hearth', '3775')):
+        steps.append(['install', '-d', '-m', mode, '-o', main, '-g', g, os.path.join(SEATS_SHARED_DIR, sub)])
+    for cmd in steps:
+        code, _ = seats_run(cmd)
+        if code != 0:
+            return False
+    return True
 
 
 def seats_remove_impl(config, delete_users, quiet=False):
@@ -1502,10 +1611,16 @@ def seats_setup():
         seats_remove_impl(previous, delete_users=False, quiet=True)
     j = SeatsJournal()
     firewall_ports = []
+    share_warnings = []
     try:
         progress(15, 'Creating the players\' accounts')
         users = seats_existing_users()
         groups = [g for g in SEATS_PLAYER_GROUPS if g in seats_existing_groups()]
+        if seats_share_group(j):
+            groups.append(SEATS_SHARE_GROUP)
+            config['share_group'] = SEATS_SHARE_GROUP
+        else:
+            share_warnings.append('Games can\'t be shared between players: the "%s" group couldn\'t be made.' % SEATS_SHARE_GROUP)
         base = '/var/home' if os.path.isdir('/var/home') else '/home'
         for s in config['seats'][1:]:
             u = s['user']
@@ -1518,6 +1633,20 @@ def seats_setup():
             seats_must(cmd + [u], 'couldn\'t create the account for player %d' % s['seat'])
             j.user(u)
             created.append(u)
+        if config.get('share_group'):
+            # Player 1 and accounts made by an earlier set-up join the group too (new ones got it from useradd).
+            members = seats_group_members(SEATS_SHARE_GROUP)
+            for u in [config['main_user']] + [s['user'] for s in config['seats'][1:] if s['user'] in users]:
+                if u in members:
+                    continue
+                code, _ = seats_run(['usermod', '-aG', SEATS_SHARE_GROUP, u])
+                if code == 0:
+                    j.member(u, SEATS_SHARE_GROUP)
+                else:
+                    share_warnings.append('Player %s\'s account couldn\'t join the shared games group.' % u)
+            if not seats_shared_dir(config['main_user']):
+                config.pop('share_group', None)
+                share_warnings.append('Games can\'t be shared between players: the shared games folder couldn\'t be made.')
         progress(35, 'Saving the set-up')
         for s in config['seats'][1:]:
             j.write(os.path.join(SEATS_ENV_DIR, s['user'] + '.env'), seats_env(config, s))
@@ -1560,6 +1689,8 @@ def seats_setup():
             j.unit(unit)
         progress(95, 'Finishing')
         saved = {k: config[k] for k in ('version', 'mode', 'main_user', 'seats', 'split')}
+        if config.get('share_group'):
+            saved.update(share_group=SEATS_SHARE_GROUP, shared_dir=SEATS_SHARED_DIR)
         stream_files = [SEATS_STREAM_RULES, SEATS_MODULES] + [seats_stream_creds_file(s['user']) for s in config['seats'][1:]
                                                               if s['mode'] == 'stream'] if seats_has(config, 'stream') else []
         saved.update(enabled=config['start'], created_users=sorted(set(created)),
@@ -1576,14 +1707,14 @@ def seats_setup():
         fail('multi-seat couldn\'t be set up: %s. %s' % (e, 'The earlier multi-seat set-up was turned off; player 1 '
              'works as normal.' if previous else 'Nothing was changed.'))
     progress(100, 'Done')
-    warnings = []
+    warnings = list(share_warnings)
     if seats_has(config, 'stream') and not firewall_ports:
         code, _ = seats_run(['firewall-cmd', '--state'])
         if code == 0:
             warnings.append('The firewall didn\'t open the streaming ports, so other devices may not find this PC.')
     print(json.dumps({'ok': True, 'mode': config['mode'], 'seats': saved['seats'], 'split': saved['split'],
                       'enabled': saved['enabled'], 'created_users': saved['created_users'],
-                      'restart': seats_has(config, 'gpu'), 'warnings': warnings}))
+                      'shared_dir': saved.get('shared_dir'), 'restart': seats_has(config, 'gpu'), 'warnings': warnings}))
 
 
 def seats_remove(delete_users):
@@ -2502,6 +2633,8 @@ def main(argv):
         update_check()
     elif cmd == 'rollback' and len(argv) == 2:
         rollback()
+    elif cmd == 'recovery-next-start' and len(argv) == 2:
+        recovery_next_start()
     elif cmd == 'update':
         update()
     elif cmd == 'tdp' and len(argv) == 3:

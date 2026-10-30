@@ -13,6 +13,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -189,7 +190,7 @@ class ReadingDebs(Base):
 
     def test_inspect(self):
         f = make_test_deb.make(os.path.join(self.home, 'h.deb'))
-        self.d.box_exists = lambda: False
+        self.d.box_exists = lambda *a, **k: False
         info = self.d.inspect(f)
         self.assertEqual((info['package'], info['version'], info['installed']), ('hearth-hello', '1.0-1', False))
         self.assertIn('Debian box', info['limits'])
@@ -368,6 +369,26 @@ class WholeInstall(Base):
         with self.assertRaises(self.d.Fail) as e:
             self.quiet(self.d.create)
         self.assertIn('home-repair', str(e.exception))
+
+
+class BoundedRead(Base):
+    def test_inspect_does_not_wait_on_the_container_manager(self):
+        """Reading a .deb must answer from the file: filling in boxReady used to start podman, and a podman that
+        didn't answer held the read (and the window's "Reading the package...") for its full 60 s."""
+        f = make_test_deb.make(os.path.join(self.home, 'h.deb'))
+        seen = []
+        self.d.tools = lambda: {'distrobox': True, 'podman': True}
+
+        def fake_run(cmd, timeout=600, **kw):
+            seen.append((cmd, timeout))
+            return 124, 'it took too long'
+
+        self.d.run = fake_run
+        info = self.d.inspect(f)
+        self.assertEqual((info['package'], info['boxReady']), ('hearth-hello', False))
+        box = [t for cmd, t in seen if cmd[:2] == ['podman', 'container']]
+        self.assertTrue(box, 'the box check did not run at all')
+        self.assertLessEqual(box[0], 5, 'a read waited %ss on the container manager (it was 60)' % box[0])
 
 
 if __name__ == '__main__':

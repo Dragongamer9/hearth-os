@@ -1,0 +1,7 @@
+[Unit]
+Description=Hearth: automatic fallback, boot entries changed
+RequiresMountsFor=/boot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-boot-guard write

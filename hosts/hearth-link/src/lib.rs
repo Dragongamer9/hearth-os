@@ -29,18 +29,30 @@
 //! - xfer.rs: copying a game: chunked, content-addressed (BLAKE3), parallel streams, compression where it helps,
 //!   resumable, verified while it's written
 //! - sync.rs: the data that's kept in sync, and merging it
+//! - storage.rs: Hearth Storage, a Hearth device as a home server for the others (shared folders, a game archive,
+//!   backups of saves and screenshots, media, waking it from the network)
+//! - cache.rs: Hearth Storage's caches: games kept once for every device, Hearth OS updates fetched once (with
+//!   hold-back until one device has started a new version well)
+//! - saves.rs: saves follow you (a game's newest save from the Hearth Storage server before it starts, back after)
+//! - health.rs: every paired device's health on the server (battery, space, backups, version, last start), and
+//!   removing a device you don't use anymore
 //! - node.rs: the service: connections, the requests from other devices and from the UI
 //! - ipc.rs: the UI's (and `hearth-link call`'s) way in: a Unix socket only this user can open
 
 pub mod discovery;
 pub mod games;
+pub mod health;
 pub mod ipc;
 pub mod lookup;
 pub mod manifest;
 pub mod node;
 pub mod pair;
+pub mod saves;
 pub mod shortcode;
 pub mod state;
+pub mod storage;
+pub mod bench;
+pub mod cache;
 pub mod sync;
 pub mod wire;
 pub mod xfer;

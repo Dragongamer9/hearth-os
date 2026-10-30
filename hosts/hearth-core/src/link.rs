@@ -146,6 +146,14 @@ pub fn ui_sync(a: &Value) -> Result<Value, String> {
     })
 }
 
+/// A game closed: Hearth Link sends its save to the Hearth Storage server when saves follow you (it decides; nothing
+/// happens when it isn't running or the game's store keeps its saves itself). In the background.
+pub fn game_closed(id: &str) {
+    if !available() || id.is_empty() { return; }
+    let id = id.to_string();
+    std::thread::spawn(move || { if let Err(e) = call("storage.saves.after", &json!({"game": id}), 60) { if !e.contains("isn't running") { crate::bridge::log(&format!("hearth link: saves: {e}")); } } });
+}
+
 /// The bridge's "link.*" calls.
 pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> Result<Value, String> {
     let cmd = method.trim_start_matches("link.");
@@ -167,8 +175,39 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         "games" | "local.games" | "send" | "sync.now" | "unpair" => call(cmd, a, 60),
         "pair.close" | "pair.check" | "peer.set" | "settings.set" | "places" | "get" | "offer.accept" | "offer.decline"
         | "transfer.pause" | "transfer.resume" | "transfer.cancel" | "transfer.clear" | "ticket" => call(cmd, a, 15),
+        // Hearth Storage: anything that asks the server may first have to wake it (up to about a minute and a half),
+        // so it's answered from another thread like pairing.
+        "storage.play" => { let a = a.clone(); br.later(move || storage_play(&a)) }
+        "storage.servers" | "storage.ls" | "storage.get" | "storage.stream" | "storage.archive" | "storage.archived" | "storage.restore"
+        | "storage.backup.now" | "storage.archive.remove" | "storage.set" | "storage.share.add" | "storage.share.remove" | "storage.share.set"
+        | "storage.smb.password" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
+        "storage.status" | "storage.candidates" | "storage.backups" | "storage.archive.here" | "storage.archive.forget" | "storage.wake" => call(cmd, a, 15),
+        // Download once for every device (hearth-link's cache.rs): the status asks the server what it keeps.
+        "storage.cache.status" | "storage.updates.status" | "storage.cache.get" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
+        "storage.cache.set" | "storage.updates.set" | "storage.cache.remove" => call(cmd, a, 15),
+        // Saves follow you: the check before a game answers within a few seconds (the server isn't woken for it);
+        // pulling a save, the health list (asks the server) and removing a device take longer.
+        "storage.saves.before" | "storage.saves.pull" | "storage.saves.resolve" | "storage.saves.status" | "storage.devices" | "storage.device.usage"
+        | "storage.device.remove" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
         _ => Err(format!("{method} isn't a Hearth Link call")),
     }
+}
+
+/// A video or song from a Hearth Storage server, in Hearth Player: Hearth Link makes a link for it on this device
+/// (127.0.0.1 only, for that one file), and the player opens it like any web address.
+fn storage_play(a: &Value) -> Result<Value, String> {
+    let v = call("storage.stream", a, 150)?;
+    let url = v["url"].as_str().unwrap_or("").to_string();
+    if !url.starts_with("http://127.0.0.1:") { return Err("Hearth Link gave a link that isn't on this device".into()); }
+    const PLAYER: &str = "/usr/bin/hearth-player";
+    let mut c = if Path::new(PLAYER).exists() {
+        let mut c = std::process::Command::new(PLAYER);
+        if crate::gamescope::inside() { c.arg("--fullscreen"); }
+        c
+    } else { std::process::Command::new("xdg-open") };
+    c.arg(&url);
+    c.spawn().map(crate::procs::detach).map_err(|e| format!("Couldn't open the player: {e}"))?;
+    Ok(v)
 }
 
 #[cfg(test)]

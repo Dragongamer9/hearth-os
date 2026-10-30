@@ -71,6 +71,22 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- end hearthfetch
+# ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its
+# user service (hearth-steam-engine.service, not enabled) only while Settings › Library › Steam engine is Lightweight.
+# Not in this build, or it doesn't install: skipped with a warning (Hearth then always uses the normal Steam client).
+if [ -x /ctx/nimbus-app/hearth-steam/hearth-steam ] && [ -f /ctx/nimbus-app/hearth-steam/hearth-steam-engine.service ]; then
+  if mkdir -p /usr/lib/hearth-steam && cp -a /ctx/nimbus-app/hearth-steam/. /usr/lib/hearth-steam/ \
+     && install -Dm644 /usr/lib/hearth-steam/hearth-steam-engine.service /usr/lib/systemd/user/hearth-steam-engine.service; then
+    chmod 755 /usr/lib/hearth-steam/hearth-steam
+    echo "hearth-steam installed: $(du -sh /usr/lib/hearth-steam | cut -f1)"
+  else
+    echo "warning: hearth-steam didn't install; this image goes without the lightweight Steam engine"
+    rm -rf /usr/lib/hearth-steam /usr/lib/systemd/user/hearth-steam-engine.service
+  fi
+else
+  echo "warning: hearth-steam isn't in this build; this image goes without the lightweight Steam engine"
+fi
+# ---- end hearth-steam
 
 # ------------------------------------------------------------------ SVG icons for GTK (librsvg's gdk-pixbuf loader)
 # Without it GTK can't draw an SVG icon and aborts the whole program the first time it needs one (Hearth's Game Mode
@@ -411,6 +427,8 @@ for app in hearth-nearby hearth-connect; do
   fi
 done
 chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
+# Hearth Storage's root helper (Windows sharing, waking from the network; 49-hearth-storage.rules).
+chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
 rpm -q firewalld >/dev/null 2>&1 && echo "firewalld is in this image: Nearby Share and Hearth Connect open their ports with it" || echo "no firewalld in this image: nothing to open"
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then
@@ -570,6 +588,17 @@ if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
 fi
 # ---- end Hearth Tools
+# ---- Hearth Benchmark (Hearth Tools' --app benchmark): the programs its tests run. 7-Zip (processor), fio (storage;
+# only its libaio engine, without the weak dependencies that pull in Ceph and RDMA), glmark2 (OpenGL and the
+# game-style scenes) and vkmark (Vulkan). Each is optional: a missing one is a warning here and a skipped test in the
+# app, never a failed image.
+dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False 7zip fio fio-engine-libaio glmark2 vkmark \
+  || echo "warning: Hearth Benchmark: some benchmark programs couldn't be installed"
+command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null \
+  || dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False p7zip p7zip-plugins || true
+for p in fio glmark2 vkmark; do command -v "$p" >/dev/null || echo "warning: Hearth Benchmark: $p isn't installed (its test will be skipped)"; done
+command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null || echo "warning: Hearth Benchmark: 7-Zip isn't installed (the processor tests will be skipped)"
+# ---- end Hearth Benchmark
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
@@ -704,6 +733,50 @@ if [ "$(uname -m)" = x86_64 ] && dnf5 -y install "$BEACON_URL/beacon.x86_64.rpm"
   echo "Beacon installed"
 else
   echo "warning: couldn't install Beacon from $BEACON_URL (no release yet?); Hearth works without it"
+fi
+
+# ------------------------------------------------------------------ Xodus Nexus (Xbox PC and PC Game Pass games)
+# Shipped like Beacon: the AppImage in /usr/lib/xodus-nexus (with its version), `xodus-nexus` to start it (the same
+# script hosts/hearth-core/src/xodus.rs writes for a copy it downloads) and xodus-nexus.desktop (in Mantel's launcher
+# and pinned to its taskbar). Hearth's library shows it under Xbox PC; a newer release is offered in Settings and goes
+# in the user's own data folder, since the image is read-only. Nexus is an independent project built on Xodus
+# (github.com/domsvoboda/xodus-nexus), not made by Microsoft. It publishes only an AppImage, so its download address
+# comes from the latest release's asset list. Optional: without a release to download, the build says so and carries on.
+XODUS_API=https://api.github.com/repos/domsvoboda/xodus-nexus/releases/latest
+xodus_json="$(curl -fsSL --retry 3 "$XODUS_API" 2>/dev/null || true)"
+XODUS_URL="$(printf '%s' "$xodus_json" | python3 -c 'import json, sys; a=[x for x in json.load(sys.stdin).get("assets", []) if x["name"].lower().endswith(".appimage") and ("x86_64" in x["name"].lower() or "amd64" in x["name"].lower())]; print(a[0]["browser_download_url"] if a else "")' 2>/dev/null || true)"
+XODUS_VER="$(printf '%s' "$xodus_json" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("tag_name", "").lstrip("v"))' 2>/dev/null || true)"
+if [ "$(uname -m)" = x86_64 ] && [ -n "$XODUS_URL" ] && install -d /usr/lib/xodus-nexus \
+   && curl -fsSL --retry 3 -o /usr/lib/xodus-nexus/Xodus-Nexus.AppImage "$XODUS_URL"; then
+  chmod 755 /usr/lib/xodus-nexus/Xodus-Nexus.AppImage
+  printf '%s\n' "$XODUS_VER" > /usr/lib/xodus-nexus/version
+  cat > /usr/bin/xodus-nexus <<'EOF'
+#!/bin/sh
+# Starts Xodus Nexus (shipped with Hearth OS; Hearth's library runs this).
+# AppImages need FUSE; without it, unpack and run instead.
+if ! command -v fusermount >/dev/null 2>&1 && ! command -v fusermount3 >/dev/null 2>&1; then export APPIMAGE_EXTRACT_AND_RUN=1; fi
+# WebKit's newer GPU path draws a black window on some Nvidia drivers.
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+# Sign-in pages open in your default browser (Hearth Browser unless you picked another), not whichever it finds first.
+export BROWSER="${BROWSER:-xdg-open}"
+exec /usr/lib/xodus-nexus/Xodus-Nexus.AppImage "$@"
+EOF
+  chmod 755 /usr/bin/xodus-nexus
+  cat > /usr/share/applications/xodus-nexus.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Xodus Nexus
+GenericName=Xbox PC games
+Comment=Xbox PC and PC Game Pass games (an independent launcher, not made by Microsoft)
+Exec=xodus-nexus %U
+Icon=applications-games
+Terminal=false
+Categories=Game;
+EOF
+  echo "Xodus Nexus ${XODUS_VER:-?} installed"
+else
+  rm -rf /usr/lib/xodus-nexus
+  echo "warning: couldn't install Xodus Nexus from $XODUS_API (no release with an AppImage?); Hearth works without it"
 fi
 
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
@@ -1122,6 +1195,7 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase
 # (and SDDM's file, harmless when SDDM isn't there).
 systemctl enable nimbus-autologin.service
+systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 systemctl enable hearth-greeter-pad.service   # the controller on the login screen
 systemctl enable hearth-boot-first.service    # Hearth stays first in the boot order
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)

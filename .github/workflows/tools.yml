@@ -1,5 +1,6 @@
 # Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
-# Scanner and Welcome & Tips, in one program. Tests it (Rust unit tests, hearthfetch's library it shares, the
+# Scanner, Welcome & Tips and Hearth Benchmark, in one program. Hearth Benchmark also runs for real here (7-Zip, its
+# memory tests, fio in a temp folder, and glmark2/vkmark on the software renderer in the virtual screen). Tests it (Rust unit tests, hearthfetch's library it shares, the
 # hearth-admin commands it uses, the Welcome help made from the docs), builds it, asks it real questions on the
 # runner without a window (--call), checks every page in Chromium on its sample data, and takes a screenshot of
 # each tool's real window (the run's hearth-tools-linux artifact). Release builds are made by base-anatase.yml and
@@ -38,6 +39,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             xvfb imagemagick dbus-x11 xdotool sane-utils traceroute iputils-tracepath iw udisks2 >/dev/null
+          # Hearth Benchmark's programs (each optional, as on the images).
+          for p in 7zip fio glmark2-x11 glmark2 vkmark mesa-vulkan-drivers mesa-utils; do sudo apt-get install -y -qq "$p" >/dev/null 2>&1 && echo "installed $p" || echo "::warning title=benchmark programs::$p isn't installable on the runner"; done
       - name: The hearth-admin commands and the Welcome help (Python)
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_system_tools.py' -v 2>&1 | tail -15
@@ -91,6 +94,35 @@ jobs:
           if $t --call keys.wifiReveal '{"uuid":"--help","password":"x"}' 2>/dev/null; then echo "::error::a bad uuid was accepted"; exit 1; fi
           # The speed test reaches Cloudflare from here (not fatal: the runner's network varies).
           ask net.speed
+      - name: Hearth Benchmark for real (processor, memory, storage)
+        working-directory: hosts/hearth-tools
+        run: |
+          t=target/release/hearth-tools
+          $t --call bench.state | head -c 3000; echo
+          # Refused before anything runs: a drive that isn't one of its places, an unknown kind of run.
+          if $t --call bench.run '{"mode":"custom","tests":["disk"],"place":"/etc"}' 2>/dev/null; then echo "::error::the storage test accepted /etc"; exit 1; fi
+          if $t --call bench.run '{"mode":"rm"}' 2>/dev/null; then echo "::error::an unknown run was accepted"; exit 1; fi
+          if ! timeout 900 $t --call bench.run '{"mode":"custom","tests":["cpu1","cpuN","memBw","memLat","disk"]}' > bench.json 2> bench.log; then
+            echo "::error title=benchmark run::$(tail -c 1500 bench.log | tr '\n' '|')"; exit 1
+          fi
+          grep -c '"live"' bench.log | xargs -I{} echo "{} live readings"
+          python3 - <<'PY'
+          import json, os, sys
+          r = json.load(open('bench.json'))
+          print(json.dumps({k: v.get('score', v.get('skipped')) for k, v in r['tests'].items()}, indent=1))
+          bad = [k for k in ('cpu1', 'cpuN', 'memBw', 'memLat', 'disk') if not r['tests'].get(k, {}).get('score')]
+          print('::notice title=benchmark scores::overall %s; %s' % (r.get('overall'), ', '.join('%s %s (%s %s)' % (k, v.get('score'), v.get('value'), v.get('unit')) for k, v in r['tests'].items() if 'score' in v)))
+          if bad:
+              print('::error title=benchmark::no score for %s: %s' % (bad, {k: r['tests'].get(k) for k in bad})); sys.exit(1)
+          if os.path.exists(os.path.expanduser('~/.hearth-benchmark')):
+              print('::error title=benchmark::the storage test left its folder behind'); sys.exit(1)
+          h = json.load(open(os.path.expanduser('~/.local/share/nimbus/benchmark/history.json')))
+          assert h[0]['id'] == r['id'], 'not in the history'
+          print('history has', len(h), 'run(s); summary:', open(os.path.expanduser('~/.local/share/nimbus/benchmark/summary.json')).read()[:400])
+          PY
+          # A second run compares itself with the first.
+          $t --call bench.run '{"mode":"custom","tests":["memLat"]}' 2>/dev/null | python3 -c 'import json,sys; r=json.load(sys.stdin); print("compare:", r.get("compare",{}).get("tests"))'
+          $t --call bench.history | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["runs"]), "runs in the history")'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -108,7 +140,12 @@ jobs:
           Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
           sleep 2
           eval "$(dbus-launch --sh-syntax)"
-          for app in disk-usage system-info logs network passwords printers welcome; do
+          # Hearth Benchmark's graphics tests on the software renderer (llvmpipe / lavapipe): warn only.
+          if timeout 600 ./target/release/hearth-tools --call bench.run '{"mode":"custom","tests":["opengl","vulkan"]}' > gpu.json 2> gpu.log; then
+            python3 -c 'import json; r=json.load(open("gpu.json")); print("::notice title=benchmark graphics::" + "; ".join("%s: %s" % (k, v.get("score") or v.get("skipped")) for k, v in r["tests"].items()))'
+            grep -m3 '"fps":[0-9]' gpu.log | cut -c1-300 || true
+          else echo "::warning title=benchmark graphics::$(tail -c 800 gpu.log | tr '\n' '|')"; fi
+          for app in disk-usage system-info logs network passwords printers welcome benchmark; do
             ./target/release/hearth-tools --app "$app" > "shots/app/$app.log" 2>&1 &
             pid=$!
             sleep 9

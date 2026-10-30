@@ -1,0 +1,19 @@
+# Hearth Recovery on the device (see /usr/libexec/nimbus/hearth-recovery): before Hearth starts, opens a menu on the
+# text screen when Volume Down is held, when the last start failed, or when it was asked for. Otherwise it's gone
+# in a second and a half. The power button chooses in the menu instead of turning the device off.
+[Unit]
+Description=Hearth Recovery (hold Volume Down while starting)
+After=systemd-udev-trigger.service systemd-logind.service hhd.service local-fs.target
+Before=nimbus-autologin.service display-manager.service
+ConditionPathExists=!/etc/hearth-live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemd-inhibit --what=handle-power-key --who=Hearth --why=Recovery --mode=block /usr/libexec/nimbus/hearth-recovery
+# The menu continues by itself after two minutes without a press; this is only a last guard.
+TimeoutStartSec=15min
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

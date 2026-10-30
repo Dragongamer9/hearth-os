@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
+    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -390,9 +390,33 @@ jobs:
             hearth-browser.tar
             hearth-electron.tar
 
+  # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
+  # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
+  # build, the image is made without it and Hearth always uses the normal Steam client.
+  hearth-steam:
+    name: Build hearth-steam (lightweight Steam engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        continue-on-error: true
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        continue-on-error: true
+        run: |
+          if bash hosts/hearth-steam/publish.sh /tmp/hearth-steam; then tar -C /tmp/hearth-steam -cf hearth-steam.tar .
+          else echo "::warning title=hearth-steam::it didn't build, so this image is made without the lightweight Steam engine"; fi
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('hearth-steam.tar') != ''
+        continue-on-error: true
+        with:
+          name: hearth-steam-peppermint
+          path: hearth-steam.tar
+  # ---- end hearth-steam
   image:
     name: Build the OS image (hearth-peppermint)
-    needs: [app, browser]
+    needs: [app, browser, hearth-steam]
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
@@ -410,6 +434,12 @@ jobs:
         with:
           name: hearth-app-peppermint
 
+      # hearth-steam: only when it built (see the hearth-steam job). Missing: the image goes without it.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-steam-peppermint
+
       - uses: actions/download-artifact@v4
         with:
           name: hearth-browser-peppermint
@@ -421,6 +451,7 @@ jobs:
           tar -C os/nimbus-app/browser -xf hearth-browser.tar
           if [ -f hearth-electron.tar ]; then mkdir -p os/nimbus-app/electron && tar -C os/nimbus-app/electron -xf hearth-electron.tar; fi
           ls -la os/nimbus-app
+          if [ -f hearth-steam.tar ]; then mkdir -p os/nimbus-app/hearth-steam && tar -C os/nimbus-app/hearth-steam -xf hearth-steam.tar || rm -rf os/nimbus-app/hearth-steam; fi
           test -x os/nimbus-app/hearth
 
       - name: Build
@@ -539,6 +570,13 @@ jobs:
           warn "Hearth Tools is installed with its menu entries and icons" "test -x /usr/bin/hearth-tools && test -f /usr/share/applications/hearth-disk-usage.desktop && test -f /usr/share/applications/hearth-welcome.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-logs.svg"
           warn "every library Hearth Tools links is installed" "! ldd /usr/bin/hearth-tools | grep -q 'not found'"
           warn "Hearth Tools answers without a window (--list-apps, --call sys.overview)" "/usr/bin/hearth-tools --list-apps | grep -q printers && HOME=/tmp /usr/bin/hearth-tools --call sys.overview | grep -q memory"
+          # ---- Hearth Benchmark (hearth-tools --app benchmark) and the programs its tests run (each optional: warn only)
+          warn "Hearth Benchmark's menu entry is installed" "test -f /usr/share/applications/hearth-benchmark.desktop && /usr/bin/hearth-tools --list-apps | grep -q benchmark"
+          warn "Hearth Benchmark answers without a window (--call bench.state)" "HOME=/tmp /usr/bin/hearth-tools --call bench.state | grep -q places"
+          warn "7-Zip is installed (Hearth Benchmark's processor tests)" "command -v 7z || command -v 7zz || command -v 7za"
+          warn "fio is installed (Hearth Benchmark's storage test)" "command -v fio"
+          warn "glmark2 is installed (Hearth Benchmark's OpenGL and game-style tests)" "command -v glmark2 || command -v glmark2-wayland"
+          warn "vkmark is installed (Hearth Benchmark's Vulkan test)" "command -v vkmark"
           warn "the scanner tools (scanimage, sane-airscan) and traceroute are installed" "command -v scanimage && ls /etc/sane.d/airscan.conf && command -v traceroute"
           # ---- end Hearth Tools
           # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).
@@ -556,6 +594,9 @@ jobs:
           check "dpkg's database is in the image (/usr/lib/sysimage)" "test -f /usr/lib/sysimage/dpkg/status && grep -q 'L+ /var/lib/dpkg' /usr/lib/tmpfiles.d/hearth-var.conf"
           check "system accounts are recreated by sysusers (sddm, ...)" "grep -q '^u sddm ' /usr/lib/sysusers.d/hearth-image.conf"
           check "the bootc layout (/ostree, /var/home)" "test -L /ostree && test \"\$(readlink /home)\" = var/home"
+          # The log: /var starts empty in this image, so journald's default (Storage=auto) would keep the journal in
+          # memory only (see os-bases/peppermint/system_files/usr/lib/systemd/journald.conf.d).
+          check "the log is kept across restarts (Storage=persistent, not the default auto)" "systemd-analyze cat-config systemd/journald.conf 2>/dev/null | grep -q '^Storage=persistent'"
           check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Peppermint /usr/lib/os-release"
           # ---- Hearth Paint, Emoji, Fonts and Settings › Accessibility (apps-create.yml)
           warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
@@ -643,6 +684,7 @@ jobs:
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
           warn "RyzenAdj is installed" "command -v ryzenadj"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          warn "Xodus Nexus is installed (Xbox PC games; preinstalled like Beacon)" "test -x /usr/lib/xodus-nexus/Xodus-Nexus.AppImage && test -x /usr/bin/xodus-nexus && test -s /usr/lib/xodus-nexus/version && test -f /usr/share/applications/xodus-nexus.desktop"
           # ==== Hearth Recorder, Camera and Share (capture-apps.yml tests them for real): installed, with what they run.
           echo "--- Hearth Recorder, Camera and Share"
           for a in hearth-recorder hearth-camera hearth-share; do warn "$a is installed with its libraries and menu entry" "test -x /usr/bin/$a && ! ldd /usr/bin/$a | grep -q 'not found' && test -f /usr/share/applications/$a.desktop"; done

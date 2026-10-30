@@ -14,11 +14,25 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [ ] ROG Ally Wi-Fi dropping under heavy downloads (power saving off on handhelds + the card's driver fix)
 - [ ] .deb install stuck on "Reading the package…"
 
+**Desktop update (after 0.6.57; the owner picks the number)**
+- [ ] Desktop selector in Settings (and at sign-in): Hearth Classic (today's labwc + Mantel), Hearth Plasma, later Hearth GNOME; switching keeps your files and settings, the old desktop stays selectable as the fallback
+- [ ] Hearth Plasma: KDE Plasma 6 themed one-to-one with today's desktop (every part screenshotted and matched side by side: taskbar/dock, launcher, notifications, quick settings, windows, lock screen); Mantel's best parts (Hearth Link, Hearth Storage, quick settings, launcher) as Plasma widgets
+- [ ] Hearth Files built from Dolphin: everything Dolphin does plus Hearth's own (hearth:// Hearth Storage places, controller navigation, Hearth look); Hearth Storage as a KIO plugin so every KDE app's file dialogs can open files on the home server
+- [ ] KDE apps rebuilt as Hearth apps (GPL kept, KDE credited, Hearth names/icons): Hearth Terminal (Konsole), Hearth Text (Kate), document viewer (Okular), Hearth Capture (Spectacle), Hearth Calculator (KCalc); kept as they are: Photos, Contacts, Time, Paint, Office and the other Hearth apps
+- [ ] Hearth GNOME: later, themed the same way
+
 **After that**
-- [ ] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store
-- [ ] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned)
+- [x] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
+- [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)
 - [ ] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
 - [ ] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share, wake on network
+- [ ] Dragonfire look (from the concept art): a darker ember theme for Game Mode and Desktop Mode, fully usable with a controller
+  - Game Mode home: big hero for the last game (Play / Details), Continue Playing, Library, Installed Launchers row, bottom bar (Home, Search, Quick Settings, Hearth, Capture, Overlay, Exit)
+  - Performance rings (CPU, GPU, RAM, FPS) with temperature, watts, controller battery and the power mode
+  - Friends & Party panel (only with real friends lists from the stores)
+  - Updates & Recovery page: update timeline, snapshots before updates, restore, reinstall keeping files (ties into "safety first"); any writable mode keeps the previous version startable, like hearth-unlock
+  - Desktop Mode: Control Center window, monitor/status side cards, now-playing widget
+  - No store-owned covers in screenshots, no macOS-style window buttons in Game Mode
 - [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md)
 - [ ] Discord: "Playing X" status and Discord in Quick Access (needs the owner's Discord application ID)
 - [ ] Hearth Link ideas: download once and share to all devices, "Continue on this device", update every device at once
@@ -119,6 +133,19 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## 0.2.6 (released)
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
+
+## 0.6.57 (released)
+
+- [x] Automatic fallback: two starts in a row that never reach Hearth, and the previous version starts by itself (and stays the default); background updates pause for three days after
+- [x] Hearth Recovery on the device: hold Volume Down (F8, or Select + Start) while starting; opens by itself after a failed start; controller, volume/power buttons or keyboard
+- [x] Hearth Recovery USB: every action works (reinstall keeping files keeps the old versions, factory reset never erases other systems, copy files off, send logs, Desktop Mode)
+- [x] Peppermint keeps the system log across restarts; Wi-Fi power saving off (ROG Ally drops); .deb installs no longer stuck on "Reading the package…"
+- [x] Battle.net (one press, Blizzard games in the Library, Store section) and Xodus Nexus (preinstalled, Xbox PC tab, Stores card, pinned) — needs testing on a device
+- [x] Multi-seat game sharing: player 1's GOG games on every seat, shared Epic installs, Steam Family per seat with "In use by…"
+- [x] Hearth Storage: a spare Hearth PC as a home server — shared folders, game archive, backups, saves follow you, media, download once for every device, Hearth update cache with hold-back, device health, removing old devices, one new settings page
+- [x] Dragonfire look (Settings › Appearance › Look): its own Game Mode Home, performance rings, friends, Updates & Recovery page
+- [x] Steam engines (experimental, off by default): Lightweight (Valve's engine without Steam's window) and Hearth's own open Steam client
+- [x] Hearth Benchmark: processor, memory, storage, graphics, sustained/heat, battery and network tests with history and device compare
 
 ## 0.6.56 (released)
 

@@ -68,6 +68,19 @@ class LinkFirewall(unittest.TestCase):
         self.assertTrue(all('port port="47740-47741" protocol="udp"' in r for r in rules), rules)
         self.assertEqual(hlf.main(['x', 'open', 'hearth', '53317']), 2)
 
+    def test_hearth_storage_windows_sharing(self):
+        f = self.use('firewalld')
+        self.assertTrue(hlf.apply('open', 'smb', 53317)['ok'])
+        rules = [c[1] for c in f.calls if c[1].startswith('--add-rich-rule=')]
+        self.assertEqual(len(rules), 6)  # TCP 445 only, and only from local ranges
+        self.assertTrue(all('port port="445" protocol="tcp"' in r for r in rules), rules)
+        self.assertTrue(all(any(n in r for n in hlf.LOCAL_V4 + hlf.LOCAL_V6) for r in rules))
+        self.assertEqual(hlf.main(['x', 'open', 'smb', '53317']), 2)
+        f = self.use('ufw')
+        hlf.apply('open', 'smb', 53317)
+        adds = [c for c in f.calls if c[:2] == ['ufw', 'allow']]
+        self.assertTrue(adds and all(c[-2:] == ['comment', 'hearth-smb'] and '445' in c for c in adds))
+
     def test_ufw_rules_are_tagged_and_removed(self):
         f = self.use('ufw')
         hlf.apply('open', 'nearby', 53318)

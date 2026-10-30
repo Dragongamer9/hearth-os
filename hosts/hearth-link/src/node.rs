@@ -10,6 +10,8 @@
 //!   sync {fields, play, rev, got}     Hearth data (sync.rs); the answer is this device's
 //!   offer {game}                      "I'd like to send you this game" (accepted here, then pulled)
 //!   unpair                            the other device unpaired: forget it here too
+//!   storage.*, archive.*, backup.*    Hearth Storage (storage.rs)
+//!   cache.*, updates.*                Hearth Storage's game and update caches (cache.rs)
 //! A connection from a device that isn't paired is closed at once (except pairing, while a code is showing).
 //!
 //! Pairing (pair.rs) logs every step to the journal ("hearth-link: pairing: ..."), never a code.
@@ -70,6 +72,8 @@ pub struct Node {
     pub sending: Mutex<HashMap<String, Sending>>,
     pub sent_bytes: AtomicU64,
     pub announce_now: tokio::sync::Notify,
+    /// Hearth Storage: this device as a home server, or using one (storage.rs).
+    pub storage: crate::storage::Storage,
 }
 
 /// Says no to a pairing connection, in words the other device shows (a close reason doesn't reach it): pairing
@@ -152,7 +156,8 @@ impl Node {
             jobs: Mutex::new(jobs), offers: Mutex::new(Vec::new()),
             conns: tokio::sync::Mutex::new(HashMap::new()), remote_games: Mutex::new(HashMap::new()), game_cache: Mutex::new(HashMap::new()),
             sync: Mutex::new(SyncState::load(&dir)), sync_info: Mutex::new(HashMap::new()), src: Sources::here(),
-            sending: Mutex::new(HashMap::new()), sent_bytes: AtomicU64::new(0), announce_now: tokio::sync::Notify::new(), dir,
+            sending: Mutex::new(HashMap::new()), sent_bytes: AtomicU64::new(0), announce_now: tokio::sync::Notify::new(),
+            storage: crate::storage::Storage::load(&dir), dir,
         });
         eprintln!("hearth-link: {} ({}, {} {}) on UDP {}", node.name(), node.me, node.kind, node.edition, node.port);
         Ok(node)
@@ -166,6 +171,7 @@ impl Node {
         let n = self.clone(); tokio::spawn(async move { n.accept_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.discovery_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.sync_loop().await });
+        self.storage_start();
         // The firewall (Anatase has firewalld): our two UDP ports, to the local network only (hearth-link-firewall;
         // Hearth's polkit rule lets it run without a prompt). Over the internet nothing needs opening: hole
         // punching starts from both sides.
@@ -224,12 +230,22 @@ impl Node {
         let c = self.connect(id).await?;
         match wire::request(&c, req).await {
             Err(e) if e.starts_with("connection:") && !e.contains("not paired") => {
-                self.drop_conn(id).await;
+                // Only the dead one: another request may have made a new connection meanwhile, and closing that
+                // would break its request ("connection lost").
+                let replaced = c.close_reason().is_some() && self.conns.lock().await.get(id).map(|m| m.close_reason().is_none()).unwrap_or(false);
+                if !replaced { self.drop_conn(id).await; }
                 let c = self.connect(id).await?;
                 wire::request(&c, req).await
             }
             r => r,
         }
+    }
+
+    /// Unpairs a device: it's told (if it answers within 15 seconds), then forgotten here.
+    pub async fn unpair_device(self: &Arc<Self>, id: &str) {
+        let _ = tokio::time::timeout(Duration::from_secs(15), self.request(id, &json!({"op": "unpair"}))).await;
+        self.drop_conn(id).await;
+        crate::lock(&self.peers).remove(id);
     }
 
     pub async fn drop_conn(&self, id: &str) {
@@ -295,6 +311,10 @@ impl Node {
         crate::lock(&self.peers).seen(&remote, direct);
         loop {
             let (s, r) = match conn.accept_bi().await { Ok(x) => x, Err(e) => { eprintln!("hearth-link: connection from {remote} ended: {e:?}"); break; } };
+            // Hearth Storage answers away from home only when asked to: whether this request came over the local
+            // network (a direct path to a local address), checked per request since the path can change.
+            let local = conn.paths().iter().find(|p| p.is_selected()).map(|p| match p.remote_addr() { TransportAddr::Ip(a) => crate::discovery::is_local(a.ip()), _ => false }).unwrap_or(false);
+            self.storage_local(&remote, local);
             let n = self.clone(); let id = remote.clone();
             tokio::spawn(async move { n.on_stream(id, s, r).await });
         }
@@ -405,14 +425,27 @@ impl Node {
             let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
             return;
         }
+        if op == "storage.read" || op == "updates.read" {
+            if let Err(e) = self.storage_serve_read(&peer, &req, &mut s).await {
+                let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
+            }
+            let _ = s.finish();
+            let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
+            return;
+        }
         let reply = match self.clone().answer(&peer, &op, &req).await { Ok(v) => v, Err(e) => json!({"error": e}) };
         let _ = wire::write_msg(&mut s, &reply).await;
         let _ = s.finish();
         let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
     }
 
-    /// A game of this device by id, kept for a minute (a copy asks for its files many times).
-    async fn local_game(self: &Arc<Self>, id: &str) -> Result<Arc<crate::games::LocalGame>, String> {
+    /// A game of this device by id, kept for a minute (a copy asks for its files many times). Hearth Storage's
+    /// archived games, shared folders and backups (storage.rs) are checked for `peer` every time instead.
+    pub(crate) async fn local_game(self: &Arc<Self>, peer: &str, id: &str) -> Result<Arc<crate::games::LocalGame>, String> {
+        if crate::storage::is_special(id) {
+            let (n, p, i) = (self.clone(), peer.to_string(), id.to_string());
+            return tokio::task::spawn_blocking(move || n.storage_find(&p, &i)).await.map_err(|e| e.to_string())?.map(Arc::new);
+        }
         if let Some((t, g)) = crate::lock(&self.game_cache).get(id) { if t.elapsed() < Duration::from_secs(60) { return Ok(g.clone()); } }
         let (home, id2) = (self.home.clone(), id.to_string());
         let g = tokio::task::spawn_blocking(move || crate::games::find(&home, &id2)).await.map_err(|e| e.to_string())?
@@ -424,7 +457,7 @@ impl Node {
 
     async fn serve_chunks(self: &Arc<Self>, peer: &str, req: &Value, s: &mut iroh::endpoint::SendStream) -> Result<(), String> {
         let gid = req["game"].as_str().unwrap_or("");
-        let game = self.local_game(gid).await?;
+        let game = self.local_game(peer, gid).await?;
         let roots = crate::xfer::root_paths(&game, req["prefix"] == true);
         let items = crate::xfer::parse_items(req)?;
         let z = req["z"] == true;
@@ -461,12 +494,15 @@ impl Node {
                 Ok(json!({"games": list}))
             }
             "manifest" => {
-                let game = self.local_game(req["game"].as_str().unwrap_or("")).await?;
+                let game = self.local_game(peer, req["game"].as_str().unwrap_or("")).await?;
                 let prefix = req["prefix"] == true;
-                tokio::task::spawn_blocking(move || crate::xfer::manifest_for(&game, prefix)).await.map_err(|e| e.to_string())?
+                let mut m = tokio::task::spawn_blocking(move || crate::xfer::manifest_for(&game, prefix)).await.map_err(|e| e.to_string())??;
+                // An archived game goes back as the store's own game (its controller layout, its id in the library).
+                if let Some(orig) = m["game"]["meta"]["archivedId"].as_str().map(str::to_string) { m["game"]["id"] = json!(orig); }
+                Ok(m)
             }
             "hashes" => {
-                let game = self.local_game(req["game"].as_str().unwrap_or("")).await?;
+                let game = self.local_game(peer, req["game"].as_str().unwrap_or("")).await?;
                 let roots = crate::xfer::root_paths(&game, req["prefix"] == true);
                 let req = req.clone();
                 tokio::task::spawn_blocking(move || crate::xfer::hash_files(&roots, &req)).await.map_err(|e| e.to_string())?
@@ -495,6 +531,10 @@ impl Node {
             }
             "unpair" => { crate::lock(&self.peers).remove(peer); self.conns.lock().await.remove(peer); Ok(json!({"ok": true})) }
             "ping" => Ok(json!({"ok": true})),
+            o if o.starts_with("saves.") => self.clone().saves_answer(peer, op, req).await,
+            o if o.starts_with("device.") || o.starts_with("devices.") => self.clone().health_answer(peer, op, req).await,
+            o if o.starts_with("bench.") => self.clone().bench_answer(peer, op, req).await,
+            o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
             _ => Err(format!("Unknown request: {op}")),
         }
     }
@@ -602,7 +642,9 @@ impl Node {
 
     pub fn start_job(self: &Arc<Self>, peer: &str, game: &Value, place: PathBuf, prefix: bool) -> Result<Arc<Job>, String> {
         let gid = game["id"].as_str().ok_or("No game")?.to_string();
-        if crate::lock(&self.jobs).iter().any(|j| j.game_id == gid && !matches!(j.state().as_str(), "done" | "cancelled" | "error")) {
+        // Hearth Storage's copies (backups, archives) come from several devices with the same ids: per device.
+        let per_device = crate::storage::is_special(&gid) || game["store"] == "archive" || game["store"] == "cache";
+        if crate::lock(&self.jobs).iter().any(|j| j.game_id == gid && (j.peer == peer || !per_device) && !matches!(j.state().as_str(), "done" | "cancelled" | "error")) {
             return Err("That game is already being copied".into());
         }
         let id = crate::hex(&crate::random_bytes::<8>());
@@ -635,6 +677,7 @@ impl Node {
                 }
                 tokio::time::sleep(Duration::from_secs(10)).await;
             }
+            if job.state() == "done" { self.storage_job_done(&job).await; }
         });
     }
 
@@ -675,7 +718,8 @@ impl Node {
             let name = crate::lock(&self.peers).get(&o.peer).map(|p| p.name.clone()).unwrap_or_default();
             json!({"id": o.id, "peer": o.peer, "from": name, "game": o.game, "at": o.at})
         }).collect();
-        let jobs: Vec<Value> = crate::lock(&self.jobs).iter().map(|j| {
+        // Backups and archives other devices put here are on Hearth Storage's page (storage_status), not here.
+        let jobs: Vec<Value> = crate::lock(&self.jobs).iter().filter(|j| j.store != "archive" && j.store != "backup" && j.store != "cache").map(|j| {
             let mut v = j.to_json();
             v["from"] = json!(crate::lock(&self.peers).get(&j.peer).map(|p| p.name.clone()).unwrap_or_default());
             v
@@ -687,6 +731,7 @@ impl Node {
             "pairEvent": event, "joining": crate::lock(&self.joining).clone(), "shortCodes": !crate::lookup::relays().is_empty(),
             "peers": peers, "nearby": nearby, "transfers": jobs, "offers": offers, "sending": sending,
             "signInHints": hints, "sync": crate::lock(&self.sync).summary(), "playing": crate::game_running(),
+            "storage": self.storage_status(),
         })
     }
 
@@ -866,9 +911,7 @@ impl Node {
             }
             "unpair" => {
                 let id = s("id")?;
-                let _ = tokio::time::timeout(Duration::from_secs(15), self.request(&id, &json!({"op": "unpair"}))).await;
-                self.drop_conn(&id).await;
-                crate::lock(&self.peers).remove(&id);
+                self.unpair_device(&id).await;
                 Ok(Value::Null)
             }
             "peer.set" => {
@@ -929,7 +972,7 @@ impl Node {
             "send" => {
                 let peer = s("peer")?;
                 if !crate::lock(&self.peers).is_paired(&peer) { return Err("Not a paired device".into()); }
-                let game = self.local_game(&s("game")?).await?;
+                let game = self.local_game(&self.me, &s("game")?).await?;
                 self.request(&peer, &json!({"op": "offer", "game": game.to_json()})).await
             }
             "offer.accept" => {
@@ -970,6 +1013,8 @@ impl Node {
                 Ok(Value::Object(out))
             }
             "ticket" => Ok(json!({"ticket": self.ticket()})),
+            c if c.starts_with("storage.") => self.storage_command(c, a).await,
+            c if c.starts_with("bench.") => self.bench_command(c, a).await,
             _ => Err(format!("Unknown command: {cmd}")),
         }
     }

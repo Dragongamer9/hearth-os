@@ -2067,7 +2067,7 @@ Scope {
                                 Text {
                                     visible: placeItem.headH > 20
                                     anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 }
-                                    text: ({ games: "Games", bookmarks: "Bookmarks" })[placeItem.modelData.section] || "Drives and SD cards"
+                                    text: ({ games: "Games", bookmarks: "Bookmarks", network: "Hearth Storage" })[placeItem.modelData.section] || "Drives and SD cards"
                                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
                                 }
                                 Rectangle {
