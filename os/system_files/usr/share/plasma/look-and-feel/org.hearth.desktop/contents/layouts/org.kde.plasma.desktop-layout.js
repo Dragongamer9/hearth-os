@@ -50,7 +50,8 @@ panel.addWidget("org.hearth.quicksettings");
 var clock = panel.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];
 clock.writeConfig("showDate", "true");
-clock.writeConfig("dateDisplayFormat", "BesideTime");
+clock.writeConfig("dateDisplayFormat", "BelowTime");   // Mantel: the time with the date under it
+clock.writeConfig("dateFormat", "shortDate");
 
 panel.addWidget("org.hearth.gamemode");
 panel.addWidget("org.kde.plasma.showdesktop");

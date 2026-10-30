@@ -117,11 +117,14 @@ PlasmoidItem {
                     Keys.onTabPressed: root.section = root.section === "apps" ? "games" : "apps"
                     Keys.onEscapePressed: root.expanded = false
                 }
-                PlasmaComponents.TabBar {
-                    id: tabs
-                    currentIndex: root.section === "games" ? 1 : 0
-                    PlasmaComponents.TabButton { text: "Apps"; onClicked: { root.section = "apps"; root.folderOpen = false; } }
-                    PlasmaComponents.TabButton { text: "Games"; onClicked: root.section = "games" }
+                // Apps / Games, like Mantel's section buttons (Tab switches).
+                PlasmaComponents.Button {
+                    text: "Apps"; checkable: true; checked: root.section === "apps"
+                    onClicked: { root.section = "apps"; root.folderOpen = false; }
+                }
+                PlasmaComponents.Button {
+                    text: "Games"; checkable: true; checked: root.section === "games"
+                    onClicked: root.section = "games"
                 }
             }
 

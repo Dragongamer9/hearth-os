@@ -273,6 +273,10 @@ class ThemeFiles(unittest.TestCase):
         self.assertIn('LookAndFeelPackage=org.hearth.desktop', kg)
         self.assertIn('ColorScheme=Hearth', kg)
         self.assertIn('name=hearth', (SYSTEM_FILES / 'hearth-plasma' / 'xdg' / 'plasmarc').read_text())
+        # The colours themselves are in kdeglobals (KDE reads them there), equal to Hearth.colors.
+        colors = (ROOT / 'hosts' / 'linux' / 'desktop' / 'theme' / 'Hearth.colors').read_text()
+        body = '\n'.join(l for l in colors.splitlines() if not l.startswith('#')).strip()
+        self.assertIn(body, kg)
 
 
 if __name__ == '__main__':
