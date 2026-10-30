@@ -346,7 +346,10 @@ pub fn backup_roots(home: &Path, what: &str) -> Vec<(String, PathBuf, Vec<&'stat
 
 pub fn backup_game(home: &Path, what: &str) -> Result<LocalGame, String> {
     let roots = backup_roots(home, what);
-    if roots.is_empty() { return Err(if what == "shots" { "No screenshots on this device yet" } else { "No game saves found on this device" }.into()); }
+    if roots.is_empty() {
+        let why = if what == "shots" { "No screenshots on this device yet" } else { "No game saves found on this device" };
+        return Err(why.to_string());
+    }
     let labels: Vec<String> = roots.iter().map(|r| r.0.clone()).collect();
     Ok(LocalGame {
         id: format!("backup:{what}"), title: if what == "shots" { "Screenshots".into() } else { "Game saves".into() }, store: "backup", size: 0,
@@ -359,7 +362,7 @@ pub fn backup_game(home: &Path, what: &str) -> Result<LocalGame, String> {
 pub fn destinations(kind: &str, game: &Value, roots: &[Value], place: &Path) -> Option<Result<Vec<Option<PathBuf>>, String>> {
     match kind {
         "archive" => Some(Ok((0..roots.len()).map(|i| Some(place.join(format!("root{i}")))).collect())),
-        "backup" => Some((|| {
+        "backup" => Some((|| -> Result<Vec<Option<PathBuf>>, String> {
             let labels = game["meta"]["labels"].as_array().ok_or("The backup's folder names didn't come with it")?;
             if labels.len() != roots.len() { return Err("The backup's folder names don't match its folders".to_string()); }
             let mut out = Vec::new();
@@ -369,7 +372,7 @@ pub fn destinations(kind: &str, game: &Value, roots: &[Value], place: &Path) -> 
             }
             Ok(out)
         })()),
-        "share" => Some((|| {
+        "share" => Some((|| -> Result<Vec<Option<PathBuf>>, String> {
             if roots.len() != 1 { return Err("Not a shared file or folder".to_string()); }
             let f = game["meta"]["folder"].as_str().and_then(crate::games::safe_folder).ok_or("That name can't be used here")?;
             Ok(vec![Some(if game["meta"]["file"] == true { place.to_path_buf() } else { place.join(f) })])
@@ -878,6 +881,9 @@ impl Node {
             let mut out = serde_json::Map::new();
             for (what, on) in [("saves", c.backup_saves), ("shots", c.backup_shots)] {
                 if !on { continue; }
+                // Nothing of that kind here (no screenshots yet): not offered, so the server has nothing to fail on.
+                let (h, w) = (self.home.clone(), what.to_string());
+                if !tokio::task::spawn_blocking(move || !backup_roots(&h, &w).is_empty()).await.unwrap_or(false) { continue; }
                 let v = self.storage_request(&c.backup_to, &json!({"op": "backup.offer", "what": what})).await?;
                 out.insert(what.to_string(), v);
             }
@@ -1169,7 +1175,8 @@ impl Node {
             "storage.backups" => {
                 let c = self.st();
                 let dir = c.backups_dir(&home);
-                Ok(json!({"backups": tokio::task::spawn_blocking(move || backups_list(&dir)).await.map_err(|e| e.to_string())?}))
+                let list = tokio::task::spawn_blocking(move || backups_list(&dir)).await.map_err(|e| e.to_string())?;
+                Ok(json!({"backups": list}))
             }
             "storage.archive.here" => {
                 // This server's own archive, for its own Settings page.

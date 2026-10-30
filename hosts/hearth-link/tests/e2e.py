@@ -8,7 +8,7 @@ home folder, driven over their sockets the way Hearth's UI does (`hearth-link ca
                     picking the device and its 6-digit code (a wrong code first, then retried), a multi-GB synthetic Steam
                     game copied (speed posted), a copy killed halfway and resumed, an update copied as only its
                     changed chunks, every file's hash compared, Hearth data synced both ways, quiet while playing,
-                    unpairing
+                    unpairing, Hearth Storage (shared folder, media link, game archive there and back, backups)
   e2e.py internet   both devices behind their own NAT, a local iroh relay in between: pairing with a short code
                     (found through a pkarr relay on the "internet" too, nothing else typed), a copy
                     through the relay with direct UDP blocked (speed posted, the copy says it's relayed), then with
@@ -596,6 +596,110 @@ def report(title, j, t0, size):
     return mbs
 
 
+def storage(a, b):
+    """Hearth Storage (storage.rs): A as the server, B using it. A shared folder (hidden files not listed or given),
+    a file copied over, a byte range played through B's 127.0.0.1 link, a game moved to A's archive (checked
+    against B's copy, then B told it's safe), deleted on B and copied back as the Steam game it was, B's saves
+    and screenshots backed up (a prefix's Temp left out), and A refusing once it's turned off."""
+    import glob
+    st = b.call('storage.servers')
+    if any(s['id'] == a.id for s in st['servers']):
+        fail('A says it is Hearth Storage before it was turned on: %s' % st['servers'])
+    a.call('storage.set', {'server': True})
+    vids = os.path.join(a.home, 'Videos')
+    os.makedirs(os.path.join(vids, 'Films'), exist_ok=True)
+    write_random(os.path.join(vids, 'Films', 'clip.mkv'), 5 * MB + 12345)
+    with open(os.path.join(vids, '.secret'), 'w') as f:
+        f.write('not shared\n')
+    share = a.call('storage.share.add', {'path': vids})['share']['id']
+    st = b.call('storage.servers')
+    srv = [s for s in st['servers'] if s['id'] == a.id]
+    if not srv or not any(x['id'] == share for x in (srv[0].get('shares') or [])):
+        fail('B does not see A as Hearth Storage with its shared folder: %s' % st['servers'])
+    top = [e['name'] for e in b.call('storage.ls', {'server': a.id, 'share': share, 'path': ''})['entries']]
+    if top != ['Films']:
+        fail('the shared folder lists %s (hidden files must not show)' % top)
+    r = b.call('storage.get', {'server': a.id, 'share': share, 'path': '.secret'}, ok=False)
+    if 'error' not in r:
+        fail('a hidden file was given out: %s' % r)
+    # A file copied over (Hearth Link's copy engine: a job in the copies list).
+    j = b.call('storage.get', {'server': a.id, 'share': share, 'path': 'Films/clip.mkv'})
+    wait_job(b, j['id'], limit=120)
+    got = os.path.join(b.home, 'Downloads', 'clip.mkv')
+    if hashlib.sha256(open(got, 'rb').read()).hexdigest() != hashlib.sha256(open(os.path.join(vids, 'Films', 'clip.mkv'), 'rb').read()).hexdigest():
+        fail('the copied file differs')
+    # Played: a range through B's local link, as a player asks for it.
+    url = b.call('storage.stream', {'server': a.id, 'share': share, 'path': 'Films/clip.mkv'})['url']
+    if not url.startswith('http://127.0.0.1:'):
+        fail('the media link is not local: %s' % url)
+    out = subprocess.run(['ip', 'netns', 'exec', b.ns, 'curl', '-sS', '-r', '1048000-3100000', '-D', '-', url], capture_output=True, timeout=60)
+    head, _, body = out.stdout.partition(b'\r\n\r\n')
+    want = open(os.path.join(vids, 'Films', 'clip.mkv'), 'rb').read()[1048000:3100001]
+    if b' 206 ' not in head.split(b'\r\n')[0] or body != want:
+        fail('the media link answered %r with %d bytes (wanted 206 and %d bytes)' % (head[:200], len(body), len(want)))
+    bad = subprocess.run(['ip', 'netns', 'exec', b.ns, 'curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', url.rsplit('/', 2)[0] + '/0000/x'], capture_output=True, text=True, timeout=30)
+    if bad.stdout.strip() != '404':
+        fail('a made-up media link answered %s' % bad.stdout)
+    notice('storage: shared folder', 'listed without hidden files, a file copied over (hash checked), a range played through the 127.0.0.1 link (206, bytes checked), a made-up link refused')
+
+    # The game archive: moved from B to A, then back.
+    gb2 = os.path.join(b.steam, 'steamapps/common/Resume Game')
+    r = b.call('storage.archive', {'server': a.id, 'game': 'steam:1000002'})
+    key = r['key']
+    arch = os.path.join(a.home, 'Hearth Storage', 'Archive', key)
+    wait_for('the archive on A', lambda: os.path.exists(os.path.join(arch, 'game.json')), 900)
+    same_tree(gb2, os.path.join(arch, 'root0'), 'the archived game')
+    wait_for('B to hear the game is archived', lambda: (b.status()['storage']['config']['archived'].get('steam:1000002') or {}).get('state') == 'archived', 60)
+    listed = b.call('storage.archived', {'server': a.id})['games']
+    if not any(g['id'] == 'archive:' + key and g['store'] == 'steam' for g in listed):
+        fail('the archive lists %s' % listed)
+    ref = os.path.join(ROOT, 'resume-ref')
+    shutil.rmtree(ref, ignore_errors=True)
+    shutil.copytree(gb2, ref, symlinks=True)
+    shutil.rmtree(gb2)
+    os.remove(os.path.join(b.steam, 'steamapps/appmanifest_1000002.acf'))
+    j = b.call('storage.restore', {'server': a.id, 'game': 'archive:' + key})
+    j = wait_job(b, j['id'])
+    same_tree(ref, gb2, 'the game copied back from the archive')
+    acf = open(os.path.join(b.steam, 'steamapps/appmanifest_1000002.acf')).read()
+    if '"StateFlags"\t\t"4"' not in acf:
+        fail('the appmanifest after copying back: %s' % acf)
+    notice('storage: archive', 'Resume Game moved from B to A (every file checked), B told it was safe to uninstall, deleted on B, copied back from the archive as a Steam game (appmanifest in place, every file checked)')
+
+    # Backups of B's saves and screenshots on A.
+    with open(os.path.join(b.home, '.config/user-dirs.dirs'), 'w') as f:
+        f.write('XDG_PICTURES_DIR="$HOME/Pictures"\n')
+    shots = os.path.join(b.home, 'Pictures/Screenshots/Hearth')
+    os.makedirs(shots, exist_ok=True)
+    write_random(os.path.join(shots, 'shot1.png'), 300000)
+    tmp = os.path.join(b.steam, 'steamapps/compatdata/1000001/pfx/drive_c/users/steamuser/Temp')
+    os.makedirs(tmp, exist_ok=True)
+    write_random(os.path.join(tmp, 'junk.bin'), 100000)
+    b.call('storage.set', {'backupTo': a.id})
+    b.call('storage.backup.now')
+    base = os.path.join(a.home, 'Hearth Storage', 'Backups')
+    def done(what):
+        hits = glob.glob(os.path.join(base, 'B (*)', what, 'backup.json'))
+        return hits[0] if hits else None
+    wait_for('the backups on A', lambda: done('Saves') and done('Screenshots'), 300)
+    dev = os.path.dirname(os.path.dirname(done('Saves')))
+    save = os.path.join(dev, 'Saves', 'Steam 1000001', 'Saved Games/Game/save1.sav')
+    if not os.path.exists(save) or not os.path.exists(os.path.join(dev, 'Screenshots', 'Hearth', 'shot1.png')):
+        fail('the backup on A has %s' % [os.path.relpath(os.path.join(d, f), dev) for d, _, fs in os.walk(dev) for f in fs][:30])
+    if os.path.exists(os.path.join(dev, 'Saves', 'Steam 1000001', 'Temp')):
+        fail("a prefix's Temp folder was backed up")
+    if b.status()['storage']['config']['lastBackup'] <= 0:
+        fail('B does not say when it last backed up')
+    notice('storage: backups', "B's saves (every prefix's user folder, Temp left out) and screenshots are on A")
+
+    # Off: A answers nothing of Hearth Storage anymore.
+    a.call('storage.set', {'server': False})
+    r = b.call('storage.ls', {'server': a.id, 'share': share, 'path': ''}, ok=False)
+    if 'off' not in (r.get('error') or ''):
+        fail('A still answered with Hearth Storage off: %s' % r)
+    notice('storage: off', 'turned off on A: B is told so')
+
+
 def lan():
     shutil.rmtree(ROOT, ignore_errors=True)
     os.makedirs(ROOT)
@@ -737,6 +841,9 @@ def lan():
         for f in fs:
             if 'token' in f or 'loginusers' in f:
                 fail('a sign-in file came over: %s' % f)
+
+    # Hearth Storage: A as a home server for B.
+    storage(a, b)
 
     # 5. Unpairing on one side reaches the other.
     a.call('unpair', {'id': b.id})

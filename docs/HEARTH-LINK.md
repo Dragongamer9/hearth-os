@@ -102,3 +102,51 @@ short codes).
 - `tests/e2e.py internet`: pairing across two NATs from the short code alone.
 - `tools/ui-check.js` (release.yml): the Game Mode screens, the number pad, a wrong code asked again, short codes
   checked and formatted as typed. `hosts/linux/test/test_hearth_link_settings.py`: Mantel's helper.
+
+# Hearth Storage
+
+A spare PC running Hearth as a small home server for your other Hearth devices (`hosts/hearth-link/src/storage.rs`).
+It is Hearth Link: the same pairing, the same encrypted connections, the same copy engine. Only paired devices can
+use it, and nothing is opened to the internet unless you turn something on.
+
+**On the server:** Settings › Hearth Storage › **Use this device as Hearth Storage** (off by default). Then:
+
+- **Shared folders**: pick folders in Home or on a drive. Your devices list them (Game Mode's Hearth Storage page,
+  Hearth Files' "Hearth Storage" places as `hearth://…`), copy from them and play videos and music from them. Over
+  Hearth Link they're read-only; hidden files (name starting with a dot) are never listed or given out, and a link
+  pointing out of the shared folder is refused.
+- **Game archive**: a device moves a game here ("Move to Hearth Storage" in the game's menu). The server copies it
+  with its saves (`Hearth Storage/Archive/…`); when it's all there the device checks it against its own copy and
+  says it's safe to uninstall. "Copy it back" brings it back as the store's own game (Steam's appmanifest, Epic,
+  GOG, Beacon), only sending what isn't there already.
+- **Backups**: each device that picks this server ("Back up saves and screenshots") has them copied here every few
+  hours (`Hearth Storage/Backups/<device>/Saves|Screenshots`): Steam Cloud's local copies, every game's Windows user
+  folder (caches and Temp left out), Hearth's and Steam's screenshots. Only changed files are sent; files deleted on
+  the device stay in the backup.
+- **Away from home** (off by default): the server only answers devices on the local network. On, it also answers
+  them over Hearth Link's own connection (direct, or through the relay, end-to-end encrypted). No port is opened.
+- **Windows sharing (SMB)** (off by default): the shared folders for Windows PCs on this network, signed in as your
+  user with a password set on that page. `hearth-storage-helper` (root, through pkexec and 49-hearth-storage.rules)
+  writes Samba's config; the firewall opens TCP 445 to local addresses only (`hearth-link-firewall open smb`), again
+  at every start while it's on. Needs Samba installed on the server.
+- **Sleep when idle** (off by default): after N minutes with no copies, no game and the session idle (logind), it
+  suspends. Turning the server on sets its wired network cards to wake from the network (ethtool, and
+  NetworkManager so it lasts); the PC's firmware may need Wake on LAN turned on too.
+
+**On the other devices:** a server that doesn't answer is sent a Wake-on-LAN packet (its cards' addresses are
+remembered from the last time it answered) and waited for up to about a minute. Media plays through a link on the
+device itself (`http://127.0.0.1:<port>/<random>/<name>`, one link per file, 12 hours) that Hearth Player opens; the
+device fetches the bytes from the server over Hearth Link as the player asks for them.
+
+**Requests** (paired devices only, `storage.rs` lists them): `storage.info`, `storage.ls`, `storage.stat`,
+`storage.read` (chunk frames, like a copy), `archive.offer|list|remove|done`, `backup.offer`. Copies use the usual
+manifest/hashes/chunks requests with the ids `archive:<key>`, `share:<share>:<path>`, `backup:saves|shots`.
+
+**The UI's calls** (`hearth-link call storage.…`): `status`, `servers`, `set`, `candidates`, `share.add|remove|set`,
+`smb.password`, `ls`, `get`, `stream`, `archive`, `archived`, `archive.remove|forget|here`, `restore`, `backup.now`,
+`backups`, `wake`.
+
+**Tests:** `cargo test` (storage.rs: shared paths, settings, the archive's layout, where copies land, Wake-on-LAN
+packets, ranges, reading a range), `tests/e2e.py lan` (A as the server: shared folder, media link, a game archived
+and copied back, backups, turned off), `hosts/linux/test/test_hearth_storage.py` (Mantel, Hearth Files, wiring),
+`test_hearth_storage_helper.py` (Samba config, the password only on stdin), `test_link_firewall.py` (port 445).
