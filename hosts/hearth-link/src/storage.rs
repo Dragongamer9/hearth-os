@@ -90,6 +90,20 @@ pub struct StorageConfig {
     pub servers: HashMap<String, Value>,
     /// Games this device moved to a server: id → {server, title, size, at, state: archiving|archived|changed}.
     pub archived: HashMap<String, Value>,
+    // ---- download once for every device (cache.rs)
+    /// Server: keep a copy of the games paired devices install (Cache/), so the others copy them from here.
+    pub cache: bool,
+    /// Device: offer its installed games to a server's cache, and get games from it.
+    pub cache_use: bool,
+    /// Server: fetch each new Hearth OS image once (Updates/). Device: update from a server's copy (always falling
+    /// back to the normal registry).
+    pub updates: bool,
+    /// Devices wait until one device has started a new Hearth OS version well before staging it (at most 3 days).
+    pub hold_back: bool,
+    /// Device: the last hold-back answer {hold, since, latest, version, waitingFor, at}.
+    pub update_hold: Value,
+    /// Device: the `at` of /var/lib/hearth/boot-good.json last reported to the server.
+    pub reported_good: u64,
 }
 
 impl Default for StorageConfig {
@@ -98,6 +112,7 @@ impl Default for StorageConfig {
             server: false, folder: String::new(), shares: Vec::new(), archive: true, backups: true, media: true, away: false, smb: false,
             sleep_minutes: 0, backup_to: String::new(), backup_saves: true, backup_shots: true, backup_hours: 6, last_backup: 0,
             servers: HashMap::new(), archived: HashMap::new(),
+            cache: false, cache_use: true, updates: true, hold_back: true, update_hold: Value::Null, reported_good: 0,
         }
     }
 }
@@ -114,6 +129,8 @@ impl StorageConfig {
     }
     pub fn archive_dir(&self, home: &Path) -> PathBuf { self.root(home).join("Archive") }
     pub fn backups_dir(&self, home: &Path) -> PathBuf { self.root(home).join("Backups") }
+    pub fn cache_dir(&self, home: &Path) -> PathBuf { self.root(home).join("Cache") }
+    pub fn updates_dir(&self, home: &Path) -> PathBuf { self.root(home).join("Updates") }
 
     /// Changes from the UI, checked. (The backup server is checked against the paired devices by the caller.)
     pub fn apply(&mut self, a: &Value, home: &Path) -> Result<(), String> {
@@ -126,6 +143,10 @@ impl StorageConfig {
         if let Some(v) = b("smb") { self.smb = v; }
         if let Some(v) = b("backupSaves") { self.backup_saves = v; }
         if let Some(v) = b("backupShots") { self.backup_shots = v; }
+        if let Some(v) = b("cache") { self.cache = v; }
+        if let Some(v) = b("cacheUse") { self.cache_use = v; }
+        if let Some(v) = b("updates") { self.updates = v; }
+        if let Some(v) = b("holdBack") { self.hold_back = v; }
         if let Some(m) = a.get("sleepMinutes").and_then(Value::as_u64) { self.sleep_minutes = m.min(720); }
         if let Some(h) = a.get("backupHours").and_then(Value::as_u64) { self.backup_hours = h.clamp(1, 168); }
         if let Some(t) = a.get("backupTo").and_then(Value::as_str) {
@@ -179,7 +200,8 @@ impl StorageConfig {
                "shares": self.shares.iter().map(|s| json!({"id": s.id, "name": s.name, "path": s.path, "write": s.write, "there": s.path.is_dir()})).collect::<Vec<_>>(),
                "archive": self.archive, "backups": self.backups, "media": self.media, "away": self.away, "smb": self.smb, "sleepMinutes": self.sleep_minutes,
                "backupTo": self.backup_to, "backupSaves": self.backup_saves, "backupShots": self.backup_shots, "backupHours": self.backup_hours,
-               "lastBackup": self.last_backup, "archived": self.archived})
+               "lastBackup": self.last_backup, "archived": self.archived,
+               "cache": self.cache, "cacheUse": self.cache_use, "updates": self.updates, "holdBack": self.hold_back})
     }
 }
 
@@ -234,7 +256,7 @@ pub fn list_dir(dir: &Path) -> Result<Vec<Value>, String> {
 // ------------------------------------------------------------------ the games and folders copied with xfer.rs
 
 /// Ids that aren't a store's game but something of Hearth Storage.
-pub fn is_special(id: &str) -> bool { id.starts_with("archive:") || id.starts_with("share:") || id.starts_with("backup:") }
+pub fn is_special(id: &str) -> bool { id.starts_with("archive:") || id.starts_with("share:") || id.starts_with("backup:") || id.starts_with("cache:") }
 
 fn static_store(s: &str) -> Option<&'static str> {
     match s { "steam" => Some("steam"), "epic" => Some("epic"), "gog" => Some("gog"), "beacon" => Some("beacon"), "xodus" => Some("xodus"), _ => None }
@@ -260,7 +282,10 @@ pub fn device_folder(peer: &str, name: &str) -> String {
 }
 
 /// An archived game, offered for copying back: the original store's game, its files in root0, root1...
-pub fn archive_game(dir: &Path, key: &str) -> Result<LocalGame, String> {
+pub fn archive_game(dir: &Path, key: &str) -> Result<LocalGame, String> { stored_game(dir, key, "archive") }
+
+/// A game kept in the archive or the cache (`kind`), offered for copying: the original store's game.
+pub fn stored_game(dir: &Path, key: &str, kind: &str) -> Result<LocalGame, String> {
     if !key_ok(key) { return Err("Not an archived game".into()); }
     let base = dir.join(key);
     let v: Value = std::fs::read(base.join("game.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).ok_or("That game isn't in the archive (anymore)")?;
@@ -272,7 +297,7 @@ pub fn archive_game(dir: &Path, key: &str) -> Result<LocalGame, String> {
     let mut meta = game["meta"].clone();
     if !meta.is_object() { meta = json!({}); }
     meta["archivedId"] = game["id"].clone();
-    Ok(LocalGame { id: format!("archive:{key}"), title: game["title"].as_str().unwrap_or(key).to_string(), store, size: v["size"].as_u64().unwrap_or(0), roots, meta })
+    Ok(LocalGame { id: format!("{kind}:{key}"), title: game["title"].as_str().unwrap_or(key).to_string(), store, size: v["size"].as_u64().unwrap_or(0), roots, meta })
 }
 
 /// Every game in the archive.
@@ -361,7 +386,7 @@ pub fn backup_game(home: &Path, what: &str) -> Result<LocalGame, String> {
 /// Where each root of a Hearth Storage copy goes (None: it's a store's game; games.rs decides).
 pub fn destinations(kind: &str, game: &Value, roots: &[Value], place: &Path) -> Option<Result<Vec<Option<PathBuf>>, String>> {
     match kind {
-        "archive" => Some(Ok((0..roots.len()).map(|i| Some(place.join(format!("root{i}")))).collect())),
+        "archive" | "cache" => Some(Ok((0..roots.len()).map(|i| Some(place.join(format!("root{i}")))).collect())),
         "backup" => Some((|| -> Result<Vec<Option<PathBuf>>, String> {
             let labels = game["meta"]["labels"].as_array().ok_or("The backup's folder names didn't come with it")?;
             if labels.len() != roots.len() { return Err("The backup's folder names don't match its folders".to_string()); }
@@ -387,8 +412,9 @@ pub fn finalize(kind: &str, peer: &str, manifest: &Value, place: &Path) -> Optio
     let size = manifest["size"].as_u64().unwrap_or(0);
     match kind {
         // Written last: an archive without game.json (a copy that didn't finish) is never offered back.
-        "archive" => Some(crate::write_atomic(&place.join("game.json"), json!({"game": manifest["game"], "roots": manifest["roots"], "size": size,
-            "files": files, "from": peer, "at": crate::now_ms()}).to_string().as_bytes()).map(|_| "In the archive".to_string())),
+        "archive" | "cache" => Some(crate::write_atomic(&place.join("game.json"), json!({"game": manifest["game"], "roots": manifest["roots"], "size": size,
+            "files": files, "from": peer, "at": crate::now_ms()}).to_string().as_bytes())
+            .map(|_| if kind == "cache" { "Kept for your other devices".to_string() } else { "In the archive".to_string() })),
         "backup" => Some(crate::write_atomic(&place.join("backup.json"), json!({"size": size, "files": files, "at": crate::now_ms()}).to_string().as_bytes())
             .map(|_| "Backed up".to_string())),
         "share" => Some(Ok(format!("Copied to {}", place.display()))),
@@ -540,6 +566,16 @@ pub struct Storage {
     pub wol_note: Mutex<Option<String>>,
     /// The last time a backup was tried (it waits half an hour after one that didn't reach the server).
     pub backup_try: AtomicU64,
+    // ---- cache.rs
+    /// updates.json (the server's update cache: which image, who started it first, who said it starts well) is
+    /// changed under this.
+    pub upd: Mutex<()>,
+    /// A server fetching new Hearth OS images right now, and when it last started to.
+    pub fetching: AtomicBool,
+    pub fetch_at: AtomicU64,
+    /// When this device last offered its games to a server's cache, and what it offered: id → (build, when).
+    pub seed_at: AtomicU64,
+    pub offered: Mutex<HashMap<String, (String, u64)>>,
 }
 
 impl Storage {
@@ -548,6 +584,8 @@ impl Storage {
             cfg: Mutex::new(StorageConfig::load(dir)), servers: Mutex::new(HashMap::new()), local: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()), http_port: tokio::sync::Mutex::new(None), activity: AtomicU64::new(crate::now_ms()),
             backup_busy: AtomicBool::new(false), wol_note: Mutex::new(None), backup_try: AtomicU64::new(0),
+            upd: Mutex::new(()), fetching: AtomicBool::new(false), fetch_at: AtomicU64::new(0), seed_at: AtomicU64::new(crate::now_ms()),
+            offered: Mutex::new(HashMap::new()),
         }
     }
     pub fn touch(&self) { self.activity.store(crate::now_ms(), Ordering::Relaxed); }
@@ -592,16 +630,16 @@ fn session_idle() -> bool {
 }
 
 impl Node {
-    fn st(&self) -> StorageConfig { crate::lock(&self.storage.cfg).clone() }
+    pub(crate) fn st(&self) -> StorageConfig { crate::lock(&self.storage.cfg).clone() }
 
-    fn st_save(&self, c: StorageConfig) -> Result<(), String> {
+    pub(crate) fn st_save(&self, c: StorageConfig) -> Result<(), String> {
         c.save(&self.dir)?;
         *crate::lock(&self.storage.cfg) = c;
         Ok(())
     }
 
     /// A request from `peer` for this device's Hearth Storage: on, and from home unless Away from home is on.
-    fn storage_allowed(&self, peer: &str) -> Result<StorageConfig, String> {
+    pub(crate) fn storage_allowed(&self, peer: &str) -> Result<StorageConfig, String> {
         let c = self.st();
         if !c.server { return Err("Hearth Storage is off on that device".into()); }
         let local = crate::lock(&self.storage.local).get(peer).copied().unwrap_or(false);
@@ -616,6 +654,13 @@ impl Node {
             let c = self.storage_allowed(peer)?;
             if !c.archive { return Err("The game archive is off on that device".into()); }
             return archive_game(&c.archive_dir(&self.home), key);
+        }
+        if let Some(key) = id.strip_prefix("cache:") {
+            let c = self.storage_allowed(peer)?;
+            if !c.cache { return Err("The game cache is off on that device".into()); }
+            let dir = c.cache_dir(&self.home);
+            crate::cache::touch_used(&dir, key);
+            return stored_game(&dir, key, "cache");
         }
         if let Some(rest) = id.strip_prefix("share:") {
             let c = self.storage_allowed(peer)?;
@@ -646,7 +691,7 @@ impl Node {
                 Ok(json!({"server": true, "name": self.name(), "away": c.away, "local": local, "archive": c.archive, "backups": c.backups, "media": c.media,
                           "shares": c.shares.iter().filter(|s| s.path.is_dir()).map(|s| json!({"id": s.id, "name": s.name})).collect::<Vec<_>>(),
                           "macs": nics().into_iter().map(|n| n.1).collect::<Vec<_>>(), "free": crate::free_space(&c.root(&home)).unwrap_or(0),
-                          "usable": local || c.away}))
+                          "usable": local || c.away, "cache": c.cache, "updates": c.updates}))
             }
             "storage.ls" => {
                 let c = self.storage_allowed(peer)?;
@@ -715,6 +760,7 @@ impl Node {
                 self.start_job(peer, &json!({"id": gid, "title": format!("{title} from {name}"), "store": "backup"}), place, false)?;
                 Ok(json!({"accepted": true}))
             }
+            o if o.starts_with("cache.") || o.starts_with("updates.") => self.clone().cache_answer(peer, op, req).await,
             "archive.done" => {
                 // From the server this device moved a game to: checked against the game here before it's called
                 // safe to uninstall (same files, same size: not played since, or it says to archive it again).
@@ -758,8 +804,13 @@ impl Node {
     /// storage.read: a file's bytes as chunk frames.
     pub async fn storage_serve_read(self: &Arc<Self>, peer: &str, req: &Value, s: &mut iroh::endpoint::SendStream) -> Result<(), String> {
         let c = self.storage_allowed(peer)?;
-        if !c.media { return Err("Playing from that device is off".into()); }
-        let (full, _) = c.resolve(req["share"].as_str().unwrap_or(""), req["path"].as_str().unwrap_or(""))?;
+        let full = if req["op"] == "updates.read" {
+            if !c.updates { return Err("The update cache is off on that device".into()); }
+            crate::cache::blob_path(&c.updates_dir(&self.home), req["digest"].as_str().unwrap_or(""))?
+        } else {
+            if !c.media { return Err("Playing from that device is off".into()); }
+            c.resolve(req["share"].as_str().unwrap_or(""), req["path"].as_str().unwrap_or(""))?.0
+        };
         if !full.is_file() { return Err("That isn't a file".into()); }
         let off = req["offset"].as_u64().unwrap_or(0);
         let len = req["len"].as_u64().unwrap_or(wire::CHUNK).min(READ_MAX);
@@ -789,7 +840,7 @@ impl Node {
         Err(format!("{first}. A wake-up was sent: if it's set to wake from the network, try again in a minute"))
     }
 
-    async fn storage_request(self: &Arc<Self>, id: &str, req: &Value) -> Result<Value, String> {
+    pub(crate) async fn storage_request(self: &Arc<Self>, id: &str, req: &Value) -> Result<Value, String> {
         if !crate::lock(&self.peers).is_paired(id) { return Err("Not a paired device".into()); }
         self.storage_reach(id).await?;
         self.request(id, req).await.map_err(|e| e.trim_start_matches("connection: ").to_string())
@@ -813,7 +864,7 @@ impl Node {
                     if v["server"] == true {
                         let mut c = self.st();
                         let macs: Vec<Value> = v["macs"].as_array().cloned().unwrap_or_default().into_iter().filter(|m| m.as_str().map(valid_mac).unwrap_or(false)).collect();
-                        c.servers.insert(id.clone(), json!({"name": v["name"], "macs": macs, "at": crate::now_ms()}));
+                        c.servers.insert(id.clone(), json!({"name": v["name"], "macs": macs, "at": crate::now_ms(), "cache": v["cache"] == true, "updates": v["updates"] == true}));
                         let _ = self.st_save(c);
                     } else if self.st().servers.contains_key(&id) {
                         let mut c = self.st(); c.servers.remove(&id); let _ = self.st_save(c);
@@ -842,7 +893,7 @@ impl Node {
             servers.push(json!({"id": id, "name": name, "shares": v["shares"], "archive": v["archive"], "backups": v["backups"], "media": v["media"],
                                 "free": v["free"], "usable": v["usable"], "at": l.map(|x| x.0), "canWake": known.map(|k| k["macs"].as_array().map(|m| !m.is_empty()).unwrap_or(false)).unwrap_or(false)}));
         }
-        let jobs: Vec<Value> = crate::lock(&self.jobs).iter().filter(|j| j.store == "archive" || j.store == "backup").map(|j| {
+        let jobs: Vec<Value> = crate::lock(&self.jobs).iter().filter(|j| j.store == "archive" || j.store == "backup" || j.store == "cache").map(|j| {
             let mut v = j.to_json();
             v["from"] = json!(peers.iter().find(|p| p.0 == j.peer).map(|p| p.1.clone()).unwrap_or_default());
             v
@@ -865,6 +916,10 @@ impl Node {
             }
             "backup" => {
                 eprintln!("hearth-link: storage: backed up {}", job.title);
+                crate::lock(&self.jobs).retain(|j| j.id != job.id);
+            }
+            "cache" => {
+                eprintln!("hearth-link: storage: {} is in the game cache", job.title);
                 crate::lock(&self.jobs).retain(|j| j.id != job.id);
             }
             _ => {}
@@ -911,6 +966,7 @@ impl Node {
                 last_refresh = Some(Instant::now());
                 let _ = self.storage_refresh(None).await;
             }
+            self.cache_tick().await;
             let c = self.st();
             let now = crate::now_ms();
             let due = !c.backup_to.is_empty() && (c.backup_saves || c.backup_shots) && now.saturating_sub(c.last_backup) > c.backup_hours * 3_600_000
@@ -1023,9 +1079,14 @@ impl Node {
 
     /// Bytes of a shared file on a server (storage.read).
     pub async fn read_remote(self: &Arc<Self>, server: &str, share: &str, path: &str, off: u64, len: u64) -> Result<Vec<u8>, String> {
+        self.read_remote_req(server, &json!({"op": "storage.read", "share": share, "path": path, "offset": off, "len": len}), len).await
+    }
+
+    /// A range of bytes from a server, as chunk frames (storage.read, updates.read).
+    pub async fn read_remote_req(self: &Arc<Self>, server: &str, req: &Value, len: u64) -> Result<Vec<u8>, String> {
         let conn = self.connect(server).await?;
         let (mut s, mut r) = conn.open_bi().await.map_err(|e| format!("The connection broke: {e}"))?;
-        wire::write_msg(&mut s, &json!({"op": "storage.read", "share": share, "path": path, "offset": off, "len": len})).await?;
+        wire::write_msg(&mut s, req).await?;
         let _ = s.finish();
         let mut out = Vec::with_capacity(len as usize);
         let mut hb = [0u8; wire::HEADER];
@@ -1047,6 +1108,7 @@ impl Node {
         let home = self.home.clone();
         match cmd {
             "storage.status" => Ok(self.storage_status()),
+            c if c.starts_with("storage.cache.") || c.starts_with("storage.updates.") => self.cache_command(c, a).await,
             "storage.servers" => Ok(self.storage_refresh(a["peer"].as_str()).await),
             "storage.set" => {
                 let before = self.st();

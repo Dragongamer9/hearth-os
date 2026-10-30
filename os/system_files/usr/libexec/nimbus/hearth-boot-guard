@@ -11,6 +11,9 @@ How (Hearth OS on Anatase and Peppermint, both started by bootupd's GRUB menu):
     sets the count back to 0. Two starts in a row that never got there: GRUB's third start is the previous version.
   - If that start was the fallback, `good` makes the previous version the default (`bootc rollback`; the new one stays
     in the menu) and pauses background updates for three days, so the same update isn't put back right away.
+  - `good` also notes which image this start was (/var/lib/hearth/boot-good.json, after the count is reset): Hearth
+    Storage's hold-back lets the other devices update once one device has started a new version well
+    (hearth-update-mirror, hearth-link's cache.rs).
   - The entry that's started first also gets `fallback=1`: a version GRUB can't even load (its kernel missing:
     the ROG Ally after 0.6.53) goes straight to the previous version.
 
@@ -219,6 +222,37 @@ def booted_is_default(status_text):
 
 
 def cmd_good():
+    try:
+        return good_start()
+    finally:
+        record_good()
+
+
+def record_good():
+    """Which image this good start was, for Hearth Storage's hold-back (read by hearth-link). Never raises."""
+    try:
+        j = None
+        for args in (['bootc', 'status', '--format=json'], ['bootc', 'status', '--json']):
+            r = subprocess.run(args, capture_output=True, text=True, timeout=60)
+            if r.returncode == 0 and r.stdout.strip():
+                j = json.loads(r.stdout)
+                break
+        img = (((j or {}).get('status') or {}).get('booted') or {}).get('image') or {}
+        ref = (img.get('image') or {}).get('image') or ''
+        if not ref:
+            return
+        out = {'at': int(time.time() * 1000), 'image': ref, 'digest': img.get('imageDigest') or '', 'version': img.get('version') or ''}
+        os.makedirs(STATE, exist_ok=True)
+        tmp = os.path.join(STATE, 'boot-good.json.hearth-tmp')
+        with open(tmp, 'w') as f:
+            json.dump(out, f)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, os.path.join(STATE, 'boot-good.json'))
+    except Exception as e:
+        log(f'noting this start for Hearth Storage: {e}')
+
+
+def good_start():
     g = grub_dir()
     if not g:
         return 0

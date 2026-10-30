@@ -174,6 +174,9 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         | "storage.backup.now" | "storage.archive.remove" | "storage.set" | "storage.share.add" | "storage.share.remove" | "storage.share.set"
         | "storage.smb.password" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
         "storage.status" | "storage.candidates" | "storage.backups" | "storage.archive.here" | "storage.archive.forget" | "storage.wake" => call(cmd, a, 15),
+        // Download once for every device (hearth-link's cache.rs): the status asks the server what it keeps.
+        "storage.cache.status" | "storage.updates.status" | "storage.cache.get" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
+        "storage.cache.set" | "storage.updates.set" | "storage.cache.remove" => call(cmd, a, 15),
         _ => Err(format!("{method} isn't a Hearth Link call")),
     }
 }

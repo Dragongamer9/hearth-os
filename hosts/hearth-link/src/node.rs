@@ -11,6 +11,7 @@
 //!   offer {game}                      "I'd like to send you this game" (accepted here, then pulled)
 //!   unpair                            the other device unpaired: forget it here too
 //!   storage.*, archive.*, backup.*    Hearth Storage (storage.rs)
+//!   cache.*, updates.*                Hearth Storage's game and update caches (cache.rs)
 //! A connection from a device that isn't paired is closed at once (except pairing, while a code is showing).
 //!
 //! Pairing (pair.rs) logs every step to the journal ("hearth-link: pairing: ..."), never a code.
@@ -414,7 +415,7 @@ impl Node {
             let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
             return;
         }
-        if op == "storage.read" {
+        if op == "storage.read" || op == "updates.read" {
             if let Err(e) = self.storage_serve_read(&peer, &req, &mut s).await {
                 let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
             }
@@ -520,7 +521,7 @@ impl Node {
             }
             "unpair" => { crate::lock(&self.peers).remove(peer); self.conns.lock().await.remove(peer); Ok(json!({"ok": true})) }
             "ping" => Ok(json!({"ok": true})),
-            o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") => self.clone().storage_answer(peer, op, req).await,
+            o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
             _ => Err(format!("Unknown request: {op}")),
         }
     }
@@ -629,7 +630,7 @@ impl Node {
     pub fn start_job(self: &Arc<Self>, peer: &str, game: &Value, place: PathBuf, prefix: bool) -> Result<Arc<Job>, String> {
         let gid = game["id"].as_str().ok_or("No game")?.to_string();
         // Hearth Storage's copies (backups, archives) come from several devices with the same ids: per device.
-        let per_device = crate::storage::is_special(&gid) || game["store"] == "archive";
+        let per_device = crate::storage::is_special(&gid) || game["store"] == "archive" || game["store"] == "cache";
         if crate::lock(&self.jobs).iter().any(|j| j.game_id == gid && (j.peer == peer || !per_device) && !matches!(j.state().as_str(), "done" | "cancelled" | "error")) {
             return Err("That game is already being copied".into());
         }
@@ -705,7 +706,7 @@ impl Node {
             json!({"id": o.id, "peer": o.peer, "from": name, "game": o.game, "at": o.at})
         }).collect();
         // Backups and archives other devices put here are on Hearth Storage's page (storage_status), not here.
-        let jobs: Vec<Value> = crate::lock(&self.jobs).iter().filter(|j| j.store != "archive" && j.store != "backup").map(|j| {
+        let jobs: Vec<Value> = crate::lock(&self.jobs).iter().filter(|j| j.store != "archive" && j.store != "backup" && j.store != "cache").map(|j| {
             let mut v = j.to_json();
             v["from"] = json!(crate::lock(&self.peers).get(&j.peer).map(|p| p.name.clone()).unwrap_or_default());
             v

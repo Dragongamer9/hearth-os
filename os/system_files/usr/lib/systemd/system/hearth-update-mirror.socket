@@ -1,0 +1,14 @@
+# Hearth OS updates from Hearth Storage: the local registry mirror bootc pulls Hearth OS through
+# (/etc/containers/registries.conf.d/60-hearth-storage.conf). 127.0.0.1 only, and a port only root can take, so no
+# other program on the PC can pretend to be it. Without a Hearth Storage server it answers "unavailable" and bootc
+# goes to ghcr.io itself. See /usr/libexec/nimbus/hearth-update-mirror.
+[Unit]
+Description=Hearth: Hearth OS updates from Hearth Storage (local mirror)
+
+[Socket]
+ListenStream=127.0.0.1:479
+Accept=yes
+MaxConnections=32
+
+[Install]
+WantedBy=sockets.target

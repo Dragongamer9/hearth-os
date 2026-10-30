@@ -150,3 +150,74 @@ manifest/hashes/chunks requests with the ids `archive:<key>`, `share:<share>:<pa
 packets, ranges, reading a range), `tests/e2e.py lan` (A as the server: shared folder, media link, a game archived
 and copied back, backups, turned off), `hosts/linux/test/test_hearth_storage.py` (Mantel, Hearth Files, wiring),
 `test_hearth_storage_helper.py` (Samba config, the password only on stdin), `test_link_firewall.py` (port 445).
+
+## Download once for every device
+
+Hearth Storage can fetch things once and hand them to your other devices at home-network speed
+(`hosts/hearth-link/src/cache.rs`). Both caches fall back to the normal way by themselves: a server that's off,
+asleep or gone never stops a device from installing, updating or starting.
+
+### Games
+
+**Why this way:** the server already copies games with Hearth Link's copy engine (the archive), so the cache is the
+same thing kept per game instead of per device: paired devices only, encrypted, resumable, only changed files sent,
+and the copy lands as the store's own game. Store accounts, sign-ins and DRM are never touched: it's the files the
+store wrote, and the store still checks and finishes them. Not chosen: a lancache-style DNS-intercepting HTTP cache
+(it redirects every device on the network, not just paired ones, needs a DNS change on the router or each device,
+and Steam/Epic increasingly download over HTTPS it can't cache); Steam's own **Local Network Game Transfers**
+(Steam › Settings › Downloads, on by default for your own devices) keeps working alongside and is left as Steam set
+it: Hearth doesn't edit Steam's settings.
+
+- **On the server:** `cache` (off by default: it takes drive space). Copies go to `Hearth Storage/Cache/<store>-<id>`
+  (game files only, never saves or Proton prefixes). The oldest-used copies are removed when the drive gets within
+  20 GB of full; archives and backups are never touched.
+- **On the devices:** `cacheUse` (on). Every half hour a device offers one installed Steam/Epic/GOG game the server
+  hasn't got, or has an older build of (Steam's buildid); the server pulls only what changed, one game at a time.
+  `storage.cache.get` installs a game from the server instead of the store's download, or puts the server's newer
+  Steam build over the one installed here (not while a game runs; Steam is told by its appmanifest, restart Steam to
+  see it). Games the server itself has installed are offered too.
+- **Requests:** `cache.list`, `cache.offer {game}`; copies use the ids `cache:<key>` (from the server) and the
+  device's own game id with the store `cache` (to the server).
+
+### Hearth OS updates
+
+The server fetches each new image of the refs its devices run (they tell it, see below) once, every 6 hours
+(`hearth-update-mirror fetch`, as the server's user, into `Hearth Storage/Updates`: content-addressed, every piece
+checked against its sha256, the previous image kept too). Devices then update from it:
+
+- `/etc/containers/registries.conf.d/60-hearth-storage.conf` makes bootc (and rpm-ostree, uupd) try a mirror for
+  `ghcr.io/dragongamer9` first: `127.0.0.1:479`, `hearth-update-mirror.socket` (root, socket-activated, a port only
+  root can take, so no other program can pretend to be it).
+- With no server in use (`storage.updates.mirror` says no, or Hearth Link isn't running) the mirror's `/v2/` answers
+  503 and bootc goes to ghcr.io itself, exactly as before. With one: **tag manifests always come straight from
+  ghcr.io** (never stale, never from anyone else); manifests by digest and layers come from the server through this
+  device's Hearth Link (`storage.updates.fetch`: copied into `~/.cache/hearth-link/update-blobs`, then checked
+  against their sha256 by the mirror before a byte goes to bootc) and from ghcr.io when the server hasn't got them.
+  A piece that doesn't check out: never sent, fetched from ghcr.io instead, and the server is skipped for 6 hours.
+  bootc checks every piece itself as well.
+- Hearth Link's socket also accepts root for these four commands only (`ipc.rs` ROOT_COMMANDS).
+
+**Hold-back** (`holdBack`, on; only does anything with a server): when the server has a new image, the first device
+to ask goes first; the others' background updates wait (`ExecCondition=hearth-update-mirror may-stage` on
+bootc-fetch-apply-updates and uupd, next to hearth-boot-guard's may-update) until a device reports that
+hearth-boot-guard marked a start of that image good: `good` writes `/var/lib/hearth/boot-good.json` (image, digest,
+version) after resetting GRUB's count, and Hearth Link sends it to the server (`updates.report`). Limits, so it
+can never keep a device from updating: at most 3 days from when the server first saw the image, 3 days per device
+(Hearth Link) and 3 days in a row (may-stage's own `/var/lib/hearth/update-hold.json`); server unreachable: only a
+hold it already gave, within those 3 days; no Hearth Link, no server, any error: no wait. "Update now" is never
+held (ExecCondition is only on the background services). If the first device's start fails, hearth-boot-guard
+takes it back to the previous version and nobody else gets that image until someone starts it well or 3 days pass.
+
+- **Requests:** `updates.stat {digest}`, `updates.read {digest, offset, len}` (chunk frames), `updates.hold {ref,
+  booted}`, `updates.report {ref, digest, version, goodAt}`. Server state: `updates.json` in Hearth Link's folder.
+
+**Bridge calls** (`link.…` in hearth-core's link.rs): `storage.cache.status` (`enabled`, `keep`, `use`, the server's
+`games`, and on a device the server's `available` games and newer-build `updates`), `storage.cache.set {enabled}`
+(on a server: keep copies; on a device: use them; `keep`/`use` set either), `storage.cache.get {game, server?,
+place?}`, `storage.cache.remove {key}`, `storage.updates.status` (`cached`: each ref's image, version, `firstDevice`,
+`verifiedBy`, `holdUntil`; `using`, `booted`, this device's `hold`), `storage.updates.set {enabled, holdBack}`.
+
+**Tests:** `cargo test` (cache.rs: builds, keys, Steam libraries, digests and refs, hold-back's decision and caps,
+the cache's list), `hosts/linux/test/test_hearth_update_mirror.py` (a fake ghcr.io with its token step and a fake
+Hearth Link: the server's fetch, the mirror's pieces only when they check out, 503 without a server, hold-back's
+cap and failing open, the registries.conf.d entry, the boot guard's note).

@@ -1,5 +1,7 @@
 //! The UI's way in (Hearth's bridge, Mantel's settings page, `hearth-link call`): a Unix socket in the user's
-//! runtime folder (folder 0700, socket 0600, and the other end must be this same user). One JSON object per line:
+//! runtime folder (folder 0700, socket 0600, and the other end must be this same user). One JSON object per line.
+//! Root may also connect, for ROOT_COMMANDS only (hearth-update-mirror: bootc's update pieces from Hearth Storage,
+//! and the hold-back check of background updates):
 //!   in:  {"id": 1, "cmd": "status", "args": {...}}
 //!   out: {"id": 1, "ok": true, "data": ...} or {"id": 1, "ok": false, "error": "..."}
 
@@ -7,6 +9,8 @@ use crate::node::Node;
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
+
+pub const ROOT_COMMANDS: [&str; 4] = ["storage.updates.mirror", "storage.updates.fetch", "storage.updates.drop", "storage.updates.hold"];
 
 pub async fn serve(node: Arc<Node>, path: &Path) -> Result<(), String> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -19,7 +23,9 @@ pub async fn serve(node: Arc<Node>, path: &Path) -> Result<(), String> {
     let me = unsafe { libc::getuid() };
     loop {
         let Ok((stream, _)) = listener.accept().await else { continue };
-        if stream.peer_cred().map(|c| c.uid()).ok() != Some(me) { continue; }
+        let uid = stream.peer_cred().map(|c| c.uid()).ok();
+        let root = uid == Some(0) && me != 0;
+        if uid != Some(me) && !root { continue; }
         let node = node.clone();
         tokio::spawn(async move {
             let (rd, mut wr) = stream.into_split();
@@ -30,7 +36,8 @@ pub async fn serve(node: Arc<Node>, path: &Path) -> Result<(), String> {
                 let id = req["id"].clone();
                 let cmd = req["cmd"].as_str().unwrap_or("").to_string();
                 let args = req.get("args").cloned().unwrap_or(json!({}));
-                let reply = match node.command(&cmd, &args).await {
+                let r = if root && !ROOT_COMMANDS.contains(&cmd.as_str()) { Err("Not a command for root".to_string()) } else { node.command(&cmd, &args).await };
+                let reply = match r {
                     Ok(v) => json!({"id": id, "ok": true, "data": v}),
                     Err(e) => json!({"id": id, "ok": false, "error": e}),
                 };
