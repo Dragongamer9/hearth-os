@@ -1358,6 +1358,10 @@ body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accen
 .df-b.hm{width:58px;height:58px;padding:7px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#3b1d0e,#160c07);border:1px solid rgba(255,138,61,.45);box-shadow:0 0 22px rgba(255,138,61,.25)}
 .df-empty{padding:clamp(18px,3vw,36px);position:relative;z-index:1}
 @media (max-width:900px){.df-scroll{grid-template-columns:minmax(0,1fr)}.df-b span{display:none}}
+/* Handheld screens (ROG Ally, Steam Deck: 800 px tall or less): a shorter hero, so Continue playing and the library
+   both fit above the bar instead of the library row hiding behind it. */
+@media (max-height:860px){.df-hero{min-height:clamp(150px,27vh,230px)}.df-title{font-size:clamp(24px,3.4vw,40px);margin:4px 0 6px}
+  .df-main h2{margin:8px 0 2px;font-size:16px}.df-main .shelf{padding-bottom:10px}}
 .df-main .tile.l{height:clamp(120px,17vh,168px)}
 .df-main .tile.l .ct{font-size:clamp(16px,1.5vw,22px)}
 .df-main .tile.p{width:clamp(92px,8.6vw,136px)}
