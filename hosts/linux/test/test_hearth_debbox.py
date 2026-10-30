@@ -190,7 +190,7 @@ class ReadingDebs(Base):
 
     def test_inspect(self):
         f = make_test_deb.make(os.path.join(self.home, 'h.deb'))
-        self.d.box_exists = lambda: False
+        self.d.box_exists = lambda *a, **k: False
         info = self.d.inspect(f)
         self.assertEqual((info['package'], info['version'], info['installed']), ('hearth-hello', '1.0-1', False))
         self.assertIn('Debian box', info['limits'])
