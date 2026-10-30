@@ -19,6 +19,7 @@ COPY os/nimbus-app /nimbus-app
 COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
 COPY branding/icons /icons
+COPY hosts/hearth-kde /hearth-kde
 
 FROM ${BASE_IMAGE}
 

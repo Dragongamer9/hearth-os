@@ -717,10 +717,17 @@ CATEGORIES = [
 # Which Hearth app is the system default when two of them open a type: the first here (then any other Hearth app,
 # by name). Photos before Paint for pictures, Text before Write for plain text and Markdown, Sheets before Text
 # for CSV, the browser for HTML.
-HEARTH_RANK = ['hearth-browser.desktop', 'hearth-files.desktop', 'hearth-photos.desktop', 'hearth-documents.desktop',
-               'hearth-player.desktop', 'hearth-sheets.desktop', 'hearth-slides.desktop', 'hearth-text.desktop',
+# Hearth's KDE-based apps (hosts/hearth-kde, docs/KDE-APPS.md): Terminal (Konsole) and Text Editor (Kate) come before
+# the old Hearth Terminal and Hearth Text, which stay installed. Hearth Files built from Dolphin comes after the old
+# Hearth Files: Hearth Classic and Game Mode keep their built-in Files (it's only shown there, OnlyShowIn=Nimbus), and
+# every other desktop (Hearth Plasma) opens folders in the Dolphin one, which is the first there. Reader (Okular) after
+# Documents.
+HEARTH_RANK = ['hearth-browser.desktop', 'hearth-files.desktop', 'hearth-files-kde.desktop', 'hearth-photos.desktop',
+               'hearth-documents.desktop', 'hearth-reader.desktop',
+               'hearth-player.desktop', 'hearth-sheets.desktop', 'hearth-slides.desktop', 'hearth-text-kde.desktop', 'hearth-text.desktop',
                'hearth-write.desktop', 'hearth-calendar.desktop', 'hearth-contacts.desktop', 'hearth-maps.desktop',
-               'hearth-fonts.desktop', 'hearth-terminal.desktop', 'hearth-install-package.desktop', 'hearth-paint.desktop']
+               'hearth-fonts.desktop', 'hearth-terminal-kde.desktop', 'hearth-terminal.desktop', 'hearth-install-package.desktop',
+               'hearth-paint.desktop']
 # Folders open in Hearth Files in every desktop's list too, though it's only shown in Hearth's (OnlyShowIn=Nimbus):
 # hearth-filemanager hands them to Dolphin and the others outside Hearth's session.
 EVERY_DESKTOP_TOO = ('inode/directory', 'x-directory/normal')

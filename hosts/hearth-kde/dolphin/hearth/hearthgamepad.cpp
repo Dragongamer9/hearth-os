@@ -11,6 +11,7 @@
 #include <QHash>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QMainWindow>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QSocketNotifier>
@@ -370,8 +371,8 @@ private:
             // Back to the files.
             if (m_beforePlaces) {
                 m_beforePlaces->setFocus(Qt::OtherFocusReason);
-            } else {
-                dock->widget()->focusNextChild();
+            } else if (auto *mw = qobject_cast<QMainWindow *>(w); mw && mw->centralWidget()) {
+                mw->centralWidget()->setFocus(Qt::OtherFocusReason);
             }
             return;
         }

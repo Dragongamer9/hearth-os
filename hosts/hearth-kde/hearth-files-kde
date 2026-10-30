@@ -1,0 +1,42 @@
+#!/usr/bin/python3
+"""hearth-files-kde: starts Hearth Files (KDE Dolphin with Hearth's changes, /usr/lib/hearth-files; docs/KDE-APPS.md).
+
+  hearth-files-kde [DOLPHIN ARGS...]   Hearth Storage's places brought up to date (hearth_kde.sync_places), then Hearth Files
+  hearth-files-kde --sync-places       only the places (the session's autostart, so every KDE app's file dialogs have them)
+
+Without Hearth Files in the image (it didn't build), the old Hearth Files opens instead (hearth-filemanager), else
+the base's Dolphin: a folder always opens somewhere.
+"""
+import os
+import sys
+
+DOLPHIN = os.environ.get('HEARTH_FILES_BIN', '/usr/lib/hearth-files/bin/dolphin')
+sys.path.insert(0, os.environ.get('HEARTH_KDE_LIB', '/usr/share/hearth-kde'))
+
+
+def sync():
+    try:
+        import hearth_kde
+        return hearth_kde.sync_places()
+    except Exception as e:   # places are a nicety: never stop Hearth Files from opening
+        return {'ok': False, 'error': str(e)}
+
+
+def main(argv):
+    if argv[1:] == ['--sync-places']:
+        r = sync()
+        print(r)
+        return 0
+    sync()
+    if os.access(DOLPHIN, os.X_OK):
+        os.execv(DOLPHIN, [DOLPHIN] + argv[1:])
+    for fallback in ('/usr/bin/hearth-filemanager', '/usr/bin/dolphin'):
+        if os.access(fallback, os.X_OK):
+            args = [a for a in argv[1:] if not a.startswith('--')]
+            os.execv(fallback, [fallback] + (args[:1] if fallback.endswith('hearth-filemanager') else argv[1:]))
+    print('hearth-files-kde: no file manager is installed', file=sys.stderr)
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

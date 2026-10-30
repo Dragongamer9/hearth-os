@@ -1176,6 +1176,14 @@ if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/i
 else echo "Hearth Office wasn't built; this image goes without it"; fi
 # ---- end of Hearth Office
 
+# ------------------------------------------------------------------ Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md)
+# Hearth Terminal (Konsole), Hearth Text (Kate), Reader (Okular), Capture (Spectacle) and Hearth Calculator (KCalc), the
+# base's own KDE packages with Hearth's names, icons and colors; Hearth Files built from Dolphin and kio-hearth (hearth:/
+# in every KDE app) from CI's build inside this base (os/nimbus-app/hearth-kde.tar), only when they built, passed their
+# tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
+# Calculator stay installed as "… (classic)". Never stops the image build.
+bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
+
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
 # Desktop Mode's and Game Mode's list (/etc/xdg/nimbus-mimeapps.list, XDG_CURRENT_DESKTOP=Nimbus: it comes before

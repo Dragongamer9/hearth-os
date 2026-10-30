@@ -1,0 +1,15 @@
+[Desktop Entry]
+# Hearth Reader: KDE Okular with Hearth's colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About.
+Name=Reader
+GenericName=Document Viewer
+Comment=Read and mark up PDFs, e-books, comic books and other documents
+Exec=okular %U
+TryExec=okular
+Icon=hearth-reader
+Type=Application
+Categories=Qt;KDE;Office;Viewer;Graphics;
+MimeType=application/pdf;application/epub+zip;application/x-cbz;application/vnd.comicbook+zip;application/x-cbr;application/vnd.comicbook-rar;application/postscript;image/vnd.djvu;image/vnd.djvu+multipage;application/x-fictionbook+xml;application/vnd.oasis.opendocument.text;application/xps;application/oxps;
+Keywords=pdf;document;viewer;reader;ebook;epub;book;comic;okular;annotate;sign;
+StartupNotify=true
+StartupWMClass=org.kde.okular
+X-Hearth-Based-On=org.kde.okular.desktop

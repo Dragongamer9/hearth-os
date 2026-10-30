@@ -63,9 +63,9 @@ private Q_SLOTS:
     {
         QJsonValue data;
         QString err;
-        QVERIFY(parseAnswer(R"({"id":1,"ok":true,"data":{"a":1}})", &data, &err));
+        QVERIFY(parseAnswer("{\"id\":1,\"ok\":true,\"data\":{\"a\":1}}", &data, &err));
         QCOMPARE(data.toObject().value(QStringLiteral("a")).toInt(), 1);
-        QVERIFY(!parseAnswer(R"({"id":1,"ok":false,"error":"That isn't a shared folder"})", &data, &err));
+        QVERIFY(!parseAnswer("{\"id\":1,\"ok\":false,\"error\":\"That isn't a shared folder\"}", &data, &err));
         QCOMPARE(err, QStringLiteral("That isn't a shared folder"));
         QVERIFY(!parseAnswer("not json", &data, &err));
     }
@@ -91,10 +91,10 @@ private Q_SLOTS:
 
     void servers()
     {
-        const QByteArray json = R"({"servers":[
-            {"id":")" + SERVER.toLatin1() + R"(","name":"Den PC","media":false,"shares":[{"id":"AB12","name":"Movies"},{"id":"zz","name":"bad"}]},
-            {"id":"nope","name":"bad"},
-            {"id":"fedcba9876543210","name":"","shares":null}]})";
+        const QByteArray json = "{\"servers\":[\n"
+            "            {\"id\":\"" + SERVER.toLatin1() + "\",\"name\":\"Den PC\",\"media\":false,\"shares\":[{\"id\":\"AB12\",\"name\":\"Movies\"},{\"id\":\"zz\",\"name\":\"bad\"}]},\n"
+            "            {\"id\":\"nope\",\"name\":\"bad\"},\n"
+            "            {\"id\":\"fedcba9876543210\",\"name\":\"\",\"shares\":null}]}";
         const QJsonObject st = QJsonDocument::fromJson(json).object();
         const QList<Server> s = serversFromStatus(st);
         QCOMPARE(s.size(), 2);
@@ -111,12 +111,12 @@ private Q_SLOTS:
 
     void folderEntries()
     {
-        const QJsonObject ls = QJsonDocument::fromJson(R"({"share":"Movies","path":"","entries":[
-            {"name":"Films","dir":true,"size":0,"mtime":1700000000},
-            {"name":"notes.txt","dir":false,"size":11,"mtime":1700000001},
-            {"name":".hidden","dir":false,"size":1},
-            {"name":"a/b","dir":false,"size":1},
-            {"name":"","dir":false}]})")
+        const QJsonObject ls = QJsonDocument::fromJson("{\"share\":\"Movies\",\"path\":\"\",\"entries\":[\n"
+            "            {\"name\":\"Films\",\"dir\":true,\"size\":0,\"mtime\":1700000000},\n"
+            "            {\"name\":\"notes.txt\",\"dir\":false,\"size\":11,\"mtime\":1700000001},\n"
+            "            {\"name\":\".hidden\",\"dir\":false,\"size\":1},\n"
+            "            {\"name\":\"a/b\",\"dir\":false,\"size\":1},\n"
+            "            {\"name\":\"\",\"dir\":false}]}")
                                    .object();
         const QList<Item> items = itemsFromLs(ls);
         QCOMPARE(items.size(), 2);

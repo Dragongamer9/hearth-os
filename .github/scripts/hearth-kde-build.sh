@@ -170,6 +170,6 @@ cat >"$STAGE/usr/share/hearth-kde/build.json" <<JSON
 {"base": "$BASE", "dolphin": "$VER", "pinned": $PINNED, "files": $([ -d "$STAGE/usr/lib/hearth-files" ] && echo true || echo false), "kio": $KIO_OK, "kioTests": $KIO_TESTS, "kf": "${KF_VERSION:-}", "qt": "$QT_VERSION"}
 JSON
 cat "$STAGE/usr/share/hearth-kde/build.json"
-tar -C "$STAGE" -cf "$OUT/hearth-kde.tar" .
+(cd "$STAGE" && tar -cf "$OUT/hearth-kde.tar" usr)
 ls -l "$OUT/hearth-kde.tar"
 exit $rc

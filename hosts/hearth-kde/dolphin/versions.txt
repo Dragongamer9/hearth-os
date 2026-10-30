@@ -3,5 +3,5 @@
 # "discover" (no checksum yet): CI uses the base's packaged version and prints its sha256 to pin here; images are
 # only given a Hearth Files built from a pinned, checked release.
 # base        version   sha256 of dolphin-<version>.tar.xz from download.kde.org/stable/release-service
-anatase       discover  -
-peppermint    discover  -
+anatase       26.08.1   f5635feff84e7070d35342d6defb46e9b42ff1c44e3896635f4bd9f43da947c1
+peppermint    25.04.3   e822faf02d3d727faf14789eacd331288cb8a74bb9b9881f1e7cd1789752c3f1

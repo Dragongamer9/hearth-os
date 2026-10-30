@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**']
+    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -414,9 +414,35 @@ jobs:
           name: hearth-steam-peppermint
           path: hearth-steam.tar
   # ---- end hearth-steam
+  # ---- Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md; tested by kde-apps.yml): Hearth Files (Dolphin + Hearth's
+  # patches) and kio-hearth (hearth:/ in every KDE app), built and tested inside Debian trixie (Peppermint) by
+  # .github/scripts/hearth-kde-build.sh. Never stops the image: what didn't build or pass its tests is left out of the tar,
+  # and without the tar the image keeps the old Hearth Files (the KDE apps from the base's packages are still renamed).
+  kde:
+    name: Build Hearth's KDE apps (inside Debian trixie (Peppermint))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/out
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "docker.io/library/debian:trixie" bash /src/.github/scripts/hearth-kde-build.sh peppermint 2>&1 | tail -60
+          rc=${PIPESTATUS[0]}
+          [ "$rc" = 0 ] || { echo "::warning title=Hearth's KDE apps::not everything built or passed its tests; the image goes without that part"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-kde-peppermint
+          path: /tmp/out/hearth-kde.tar
+          if-no-files-found: ignore
+  # ---- end of Hearth's KDE apps
   image:
     name: Build the OS image (hearth-peppermint)
-    needs: [app, browser, hearth-steam]
+    needs: [app, browser, hearth-steam, kde]
+    # The KDE apps never hold the image back (if they failed, it's made without them).
+    if: ${{ !cancelled() && needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
@@ -444,6 +470,12 @@ jobs:
         with:
           name: hearth-browser-peppermint
 
+      # Hearth's KDE apps: only when they built (see the kde job). Missing: the old Hearth Files stays.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-kde-peppermint
+
       - name: Unpack Hearth into the build context
         run: |
           mkdir -p os/nimbus-app/browser
@@ -453,6 +485,7 @@ jobs:
           ls -la os/nimbus-app
           if [ -f hearth-steam.tar ]; then mkdir -p os/nimbus-app/hearth-steam && tar -C os/nimbus-app/hearth-steam -xf hearth-steam.tar || rm -rf os/nimbus-app/hearth-steam; fi
           test -x os/nimbus-app/hearth
+          if [ -f hearth-kde.tar ]; then cp hearth-kde.tar os/nimbus-app/hearth-kde.tar; fi
 
       - name: Build
         run: |
@@ -510,8 +543,14 @@ jobs:
           warn "Hearth Link is installed with every library it links" "test -x /usr/bin/hearth-link && ! ldd /usr/bin/hearth-link | grep -q 'not found'"
           check "Hearth Link's user service comes with it and starts with the session" "test ! -x /usr/bin/hearth-link || (grep -q 'hearth-link serve' /usr/lib/systemd/user/hearth-link.service && test -L /usr/lib/systemd/user/default.target.wants/hearth-link.service)"
           check "the firewall helper knows Hearth Link's ports" "grep -q '47740-47741' /usr/libexec/nimbus/hearth-link-firewall"
+          echo "--- Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md)"
+          warn "Hearth's KDE apps have Hearth's menu entries and colors (Terminal is Konsole)" "test -f /usr/share/applications/hearth-terminal-kde.desktop && test -f /usr/share/konsole/Hearth.profile && grep -q '^ColorScheme=Hearth' /etc/xdg/katerc"
+          warn "Hearth Files (Dolphin with Hearth's patches) is in, with every library it links" "test -x /usr/lib/hearth-files/bin/dolphin && ! ldd /usr/lib/hearth-files/bin/dolphin | grep -q 'not found' && test -f /usr/share/applications/hearth-files-kde.desktop"
+          warn "kio-hearth (hearth:/ in every KDE app's file dialogs) is in, with every library it links" "f=\$(find /usr/lib /usr/lib64 -path '*/kf6/kio/hearth.so' | head -1) && test -n \"\$f\" && ! ldd \"\$f\" | grep -q 'not found'"
+          check "the old Hearth Files stays installed (the fallback file manager)" "test -f /usr/share/applications/hearth-files.desktop"
+          warn "Hearth Classic and Game Mode still open folders in the old Hearth Files" "grep -q '^inode/directory=hearth-files.desktop' /etc/xdg/nimbus-mimeapps.list"
           warn "Hearth Text is installed with every library it links" "test -x /usr/bin/hearth-text && ! ldd /usr/bin/hearth-text | grep -q 'not found'"
-          warn "text files open in Hearth Text in Desktop Mode" "grep -q '^text/plain=hearth-text.desktop' /etc/xdg/nimbus-mimeapps.list"
+          warn "text files open in Hearth Text (Kate, or the classic one) in Desktop Mode" "grep -Eq '^text/plain=hearth-text(-kde)?.desktop' /etc/xdg/nimbus-mimeapps.list"
           echo "--- Hearth Files: every app's file chooser and the default file manager"
           check "the portal backend (hearth-portal) and its picker are installed" "test -x /usr/share/nimbus/desktop/shell/hearth-portal && test -f /usr/share/nimbus/desktop/shell/picker.qml && python3 -m py_compile /usr/share/nimbus/desktop/shell/hearth-portal"
           check "hearth.portal offers the FileChooser" "grep -q '^Interfaces=.*org.freedesktop.impl.portal.FileChooser' /usr/share/xdg-desktop-portal/portals/hearth.portal"
