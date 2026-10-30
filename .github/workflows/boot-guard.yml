@@ -1,5 +1,6 @@
 # Automatic fallback and Hearth Recovery on the device: their tests, with GRUB's own tools checking the menu snippet
-# and the environment block (an update must never stop a device from starting: MILESTONES.md).
+# and the environment block (an update must never stop a device from starting: MILESTONES.md). Also the Hearth
+# Recovery USB's engine on fake drives (reinstall keeps every version, factory reset never erases another system).
 name: Boot guard
 on:
   workflow_dispatch:
@@ -11,6 +12,9 @@ on:
       - 'os/system_files/usr/lib/systemd/system/hearth-boot-*'
       - 'os/system_files/usr/lib/systemd/system/hearth-recovery.service'
       - 'hosts/linux/test/test_hearth_boot_guard.py'
+      - 'os/recovery/src/**'
+      - 'os/live/src/hearth-install'
+      - 'hosts/linux/test/test_hearth_recovery_usb.py'
       - '.github/workflows/boot-guard.yml'
 jobs:
   test:
@@ -26,9 +30,18 @@ jobs:
             grep -v -E '^$|\.\.\. ok$' /tmp/t.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
           fi
           cat /tmp/t.txt
+      - name: Recovery USB tests
+        run: |
+          cd hosts/linux
+          if ! python3 -m unittest discover -s test -p 'test_hearth_recovery_usb.py' -v > /tmp/r.txt 2>&1; then
+            grep -v -E '^$|\.\.\. ok$' /tmp/r.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          cat /tmp/r.txt
       - name: Scripts compile, units parse
         run: |
-          python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-boot-guard os/system_files/usr/libexec/nimbus/hearth-recovery
+          python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-boot-guard os/system_files/usr/libexec/nimbus/hearth-recovery \
+            os/recovery/src/hearth-recovery os/recovery/src/recovery-pad
+          bash -n os/recovery/src/build.sh
           for u in os/system_files/usr/lib/systemd/system/hearth-boot-*.service os/system_files/usr/lib/systemd/system/hearth-recovery.service; do
             systemd-analyze verify --man=no "$u" 2>&1 | grep -v -E 'not found|Failed to|No such file|nimbus-autologin|display-manager|hhd' || true
           done
