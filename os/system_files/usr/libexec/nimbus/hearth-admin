@@ -582,11 +582,28 @@ def ensure_podman():
         print('log: couldn\'t add podman: %s' % e, flush=True)
 
 
-def update():
-    stage = Stage()
-    progress(0, 'Starting')
-    print('log: Downloading the system update…', flush=True)
-    ensure_podman()
+HEARTH_UPDATE_MIRROR = '/usr/libexec/nimbus/hearth-update-mirror'
+
+
+def mirror_sync():
+    """hearth-update-mirror sync: True when the Hearth Storage mirror entry is in place for this update."""
+    if not os.path.exists(HEARTH_UPDATE_MIRROR):
+        return False
+    try:
+        r = subprocess.run([HEARTH_UPDATE_MIRROR, 'sync'], capture_output=True, text=True, timeout=60)
+        return json.loads(r.stdout.strip().splitlines()[-1]).get('entry') is True
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return False
+
+
+def mirror_disable(why):
+    try:
+        subprocess.run([HEARTH_UPDATE_MIRROR, 'disable', why], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def system_upgrade(stage):
     if layered():
         print('log: This system has extra packages installed on top, so it updates through rpm-ostree', flush=True)
         rpm_ostree_upgrade(stage)
@@ -604,6 +621,24 @@ def update():
             # bootc refused (a system managed by rpm-ostree, or bootc not set up for it): the other way.
             print('log: bootc couldn\'t update this system (%s); trying rpm-ostree' % str(e)[:200], flush=True)
             rpm_ostree_upgrade(stage)
+
+
+def update():
+    stage = Stage()
+    progress(0, 'Starting')
+    print('log: Downloading the system update…', flush=True)
+    ensure_podman()
+    # Hearth Storage's mirror entry: only while this device updates from a server; an update that fails through it
+    # is tried again at once straight from the registry, and the mirror is skipped for 7 days.
+    if mirror_sync():
+        try:
+            system_upgrade(stage)
+        except (UpgradeFailed, SystemExit) as e:
+            print('log: the update through Hearth Storage didn\'t work (%s); trying again straight from the registry' % str(e)[:200], flush=True)
+            mirror_disable('Update now failed while it went through Hearth Storage')
+            system_upgrade(stage)
+    else:
+        system_upgrade(stage)
     system_new = staged_any()
     if subprocess.run(['sh', '-c', 'command -v flatpak'], capture_output=True).returncode == 0:
         progress(90, 'Updating apps')

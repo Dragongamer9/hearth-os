@@ -181,15 +181,24 @@ it: Hearth doesn't edit Steam's settings.
 
 ### Hearth OS updates
 
-The server fetches each new image of the refs its devices run (they tell it, see below) once, every 6 hours
+On the server this is opt-in (`updates`, off by default; devices use a server's copy with `updatesUse`, on). The
+server fetches each new image of the refs its devices run (they tell it, see below) once, every 6 hours
 (`hearth-update-mirror fetch`, as the server's user, into `Hearth Storage/Updates`: content-addressed, every piece
 checked against its sha256, the previous image kept too). Devices then update from it:
 
-- `/etc/containers/registries.conf.d/60-hearth-storage.conf` makes bootc (and rpm-ostree, uupd) try a mirror for
-  `ghcr.io/dragongamer9` first: `127.0.0.1:479`, `hearth-update-mirror.socket` (root, socket-activated, a port only
-  root can take, so no other program can pretend to be it).
-- With no server in use (`storage.updates.mirror` says no, or Hearth Link isn't running) the mirror's `/v2/` answers
-  503 and bootc goes to ghcr.io itself, exactly as before. With one: **tag manifests always come straight from
+- **The mirror entry is not in the image.** `hearth-update-mirror sync` (root; run by may-stage before every
+  background update and by `hearth-admin update` before "Update now") writes
+  `/etc/containers/registries.conf.d/60-hearth-storage.conf` only while this device updates from a server (Hearth
+  Link's `storage.updates.mirror` says `configured`: a paired server offers updates and `updatesUse` is on) and
+  removes it otherwise, or on any doubt. A device with no server has today's update path byte for byte. The entry
+  makes bootc (and rpm-ostree, uupd) try a mirror for `ghcr.io/dragongamer9` first: `127.0.0.1:479`,
+  `hearth-update-mirror.socket` (root, socket-activated, a port only root can take).
+- **Self-healing:** a background update that fails while the entry is in place (may-stage marks the attempt,
+  `ExecStopPost=hearth-update-mirror after-update` reads systemd's `$SERVICE_RESULT`) removes the entry and skips
+  the mirror for 7 days (`/var/lib/hearth/update-mirror-skip.json`), so the next attempt goes straight to ghcr.io.
+  "Update now" that fails with the entry in place does the same and is retried at once without it.
+- With the entry but the server not answering, the mirror's `/v2/` answers 503 and bootc goes to ghcr.io itself.
+  With one: **tag manifests always come straight from
   ghcr.io** (never stale, never from anyone else); manifests by digest and layers come from the server through this
   device's Hearth Link (`storage.updates.fetch`: copied into `~/.cache/hearth-link/update-blobs`, then checked
   against their sha256 by the mirror before a byte goes to bootc) and from ghcr.io when the server hasn't got them.
@@ -215,9 +224,11 @@ takes it back to the previous version and nobody else gets that image until some
 `games`, and on a device the server's `available` games and newer-build `updates`), `storage.cache.set {enabled}`
 (on a server: keep copies; on a device: use them; `keep`/`use` set either), `storage.cache.get {game, server?,
 place?}`, `storage.cache.remove {key}`, `storage.updates.status` (`cached`: each ref's image, version, `firstDevice`,
-`verifiedBy`, `holdUntil`; `using`, `booted`, this device's `hold`), `storage.updates.set {enabled, holdBack}`.
+`verifiedBy`, `holdUntil`; `using`, `booted`, this device's `hold`), `storage.updates.set {enabled, holdBack}`
+(`enabled`: on a server fetching images, on a device using a server's; `fetch`/`use` set either).
 
 **Tests:** `cargo test` (cache.rs: builds, keys, Steam libraries, digests and refs, hold-back's decision and caps,
 the cache's list), `hosts/linux/test/test_hearth_update_mirror.py` (a fake ghcr.io with its token step and a fake
 Hearth Link: the server's fetch, the mirror's pieces only when they check out, 503 without a server, hold-back's
-cap and failing open, the registries.conf.d entry, the boot guard's note).
+cap and failing open, the mirror entry written only while a server is used and removed for 7 days after a failed
+background update or "Update now" (retried straight from the registry), the boot guard's note).

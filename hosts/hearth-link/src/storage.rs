@@ -95,9 +95,11 @@ pub struct StorageConfig {
     pub cache: bool,
     /// Device: offer its installed games to a server's cache, and get games from it.
     pub cache_use: bool,
-    /// Server: fetch each new Hearth OS image once (Updates/). Device: update from a server's copy (always falling
-    /// back to the normal registry).
+    /// Server: fetch each new Hearth OS image once (Updates/), every 6 hours. Off by default (opt-in).
     pub updates: bool,
+    /// Device: update from a server's copy (the mirror entry is only written while a server offers it; always
+    /// falling back to the normal registry).
+    pub updates_use: bool,
     /// Devices wait until one device has started a new Hearth OS version well before staging it (at most 3 days).
     pub hold_back: bool,
     /// Device: the last hold-back answer {hold, since, latest, version, waitingFor, at}.
@@ -112,7 +114,7 @@ impl Default for StorageConfig {
             server: false, folder: String::new(), shares: Vec::new(), archive: true, backups: true, media: true, away: false, smb: false,
             sleep_minutes: 0, backup_to: String::new(), backup_saves: true, backup_shots: true, backup_hours: 6, last_backup: 0,
             servers: HashMap::new(), archived: HashMap::new(),
-            cache: false, cache_use: true, updates: true, hold_back: true, update_hold: Value::Null, reported_good: 0,
+            cache: false, cache_use: true, updates: false, updates_use: true, hold_back: true, update_hold: Value::Null, reported_good: 0,
         }
     }
 }
@@ -146,6 +148,7 @@ impl StorageConfig {
         if let Some(v) = b("cache") { self.cache = v; }
         if let Some(v) = b("cacheUse") { self.cache_use = v; }
         if let Some(v) = b("updates") { self.updates = v; }
+        if let Some(v) = b("updatesUse") { self.updates_use = v; }
         if let Some(v) = b("holdBack") { self.hold_back = v; }
         if let Some(m) = a.get("sleepMinutes").and_then(Value::as_u64) { self.sleep_minutes = m.min(720); }
         if let Some(h) = a.get("backupHours").and_then(Value::as_u64) { self.backup_hours = h.clamp(1, 168); }
@@ -201,7 +204,7 @@ impl StorageConfig {
                "archive": self.archive, "backups": self.backups, "media": self.media, "away": self.away, "smb": self.smb, "sleepMinutes": self.sleep_minutes,
                "backupTo": self.backup_to, "backupSaves": self.backup_saves, "backupShots": self.backup_shots, "backupHours": self.backup_hours,
                "lastBackup": self.last_backup, "archived": self.archived,
-               "cache": self.cache, "cacheUse": self.cache_use, "updates": self.updates, "holdBack": self.hold_back})
+               "cache": self.cache, "cacheUse": self.cache_use, "updates": self.updates, "updatesUse": self.updates_use, "holdBack": self.hold_back})
     }
 }
 

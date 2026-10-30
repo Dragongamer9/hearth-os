@@ -2,9 +2,15 @@
 """Hearth OS updates from Hearth Storage (docs/HEARTH-LINK.md, "Hearth OS updates"): the home server fetches each
 new image once, the other devices pull it from there, and they wait for one device to start it well first.
 
+  sync           root: writes /etc/containers/registries.conf.d/60-hearth-storage.conf (the mirror entry) only
+                 while this device uses a Hearth Storage server for updates (Hearth Link says `configured`) and the
+                 mirror isn't skipped; removes it otherwise. No server: no entry, today's update path byte for byte.
+                 Run by may-stage (before each background update) and hearth-admin update (before "Update now").
+  disable        root: removes the entry and skips the mirror for 7 days (an update through it failed).
+  after-update   root, ExecStopPost of background updates: the update failed while the entry was in place →
+                 disable, so the next attempt goes straight to ghcr.io.
   serve          root, one process per connection (hearth-update-mirror.socket, 127.0.0.1:479, Accept=yes): the
-                 registry mirror bootc pulls Hearth OS through (/etc/containers/registries.conf.d/
-                 60-hearth-storage.conf). Tag manifests always come straight from ghcr.io (never stale, never from
+                 registry mirror bootc pulls Hearth OS through while the entry is there. Tag manifests always come straight from ghcr.io (never stale, never from
                  anyone else); manifests by digest and layers come from the Hearth Storage server through this
                  user's Hearth Link (`storage.updates.fetch`), checked against their sha256 before a byte is sent,
                  and from ghcr.io when the server hasn't got them, sends something else or isn't there. No server
@@ -39,6 +45,8 @@ UPSTREAM = os.environ.get('HEARTH_UPSTREAM', 'https://ghcr.io')
 SOCKETS = os.environ.get('HEARTH_LINK_SOCKETS', '/run/user/*/hearth-link/link.sock')
 STATE = os.environ.get('HEARTH_STATE', '/var/lib/hearth')
 RUN = os.environ.get('HEARTH_MIRROR_RUN', '/run/hearth-update-mirror')
+ENTRY = os.environ.get('HEARTH_MIRROR_ENTRY', '/etc/containers/registries.conf.d/60-hearth-storage.conf')
+SKIP_DAYS = 7
 HOLD_MAX = 3 * 86400
 BAD_FOR = 6 * 3600
 CHUNK = 1 << 20
@@ -159,6 +167,116 @@ def find_link(cmd='storage.updates.mirror', key='use', timeout=10):
         if isinstance(v, dict) and v.get(key):
             return uid, p, v
     return None
+
+
+# ------------------------------------------------------------------ the mirror entry (registries.conf.d)
+ENTRY_TEXT = '''# Written by /usr/libexec/nimbus/hearth-update-mirror sync while this device updates from a Hearth Storage server
+# (docs/HEARTH-LINK.md); removed when that's off, no server is paired, or an update through it failed (then skipped
+# for 7 days). Hearth's images are tried through the local mirror (127.0.0.1 only) first, then ghcr.io.
+[[registry]]
+prefix = "ghcr.io/dragongamer9"
+location = "ghcr.io/dragongamer9"
+
+[[registry.mirror]]
+location = "127.0.0.1:479/dragongamer9"
+insecure = true
+'''
+
+
+def skip_file():
+    return os.path.join(STATE, 'update-mirror-skip.json')
+
+
+def skipped(now=None):
+    try:
+        with open(skip_file()) as f:
+            return (now or time.time()) < float(json.load(f).get('until', 0))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def entry_present():
+    return os.path.exists(ENTRY)
+
+
+def remove_entry():
+    try:
+        os.remove(ENTRY)
+        log('mirror entry removed: Hearth OS updates come straight from ghcr.io')
+    except FileNotFoundError:
+        pass
+
+
+def write_entry():
+    try:
+        with open(ENTRY) as f:
+            if f.read() == ENTRY_TEXT:
+                return
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(ENTRY), exist_ok=True)
+    tmp = ENTRY + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(ENTRY_TEXT)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, ENTRY)
+    log('mirror entry written: Hearth OS updates come from Hearth Storage when it has them')
+
+
+def sync(ask=None):
+    """The entry only while this device uses a server for updates; True when it's there. Never raises: on any
+    doubt the entry goes (no entry is today's update path)."""
+    try:
+        if skipped():
+            remove_entry()
+            return False
+        configured = (ask or (lambda: find_link('storage.updates.mirror', 'configured')))()
+        if configured:
+            write_entry()
+            return True
+        remove_entry()
+        return False
+    except Exception as e:
+        log(f'sync: {e}')
+        try:
+            remove_entry()
+        except OSError:
+            pass
+        return False
+
+
+def disable(why, now=None):
+    """An update failed through the mirror: entry gone, mirror skipped for 7 days."""
+    now = now or time.time()
+    try:
+        remove_entry()
+    except OSError:
+        pass
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(skip_file(), 'w') as f:
+            json.dump({'until': now + SKIP_DAYS * 86400, 'why': why}, f)
+    except OSError:
+        pass
+    log(f'mirror skipped for {SKIP_DAYS} days: {why}')
+
+
+def attempt_marker():
+    return os.path.join(RUN, 'attempt')
+
+
+def after_update(result=None):
+    """ExecStopPost: a background update that ran with the entry in place and failed → disable."""
+    result = result if result is not None else os.environ.get('SERVICE_RESULT', 'success')
+    try:
+        os.remove(attempt_marker())
+    except FileNotFoundError:
+        return 0
+    if result != 'success':
+        disable(f'the background update failed ({result}) while it went through Hearth Storage')
+    return 0
 
 
 # ------------------------------------------------------------------ serve: bootc's mirror
@@ -441,9 +559,25 @@ def hold_file():
     return os.path.join(STATE, 'update-hold.json')
 
 
-def may_stage(now=None, ask=None):
-    """0: background update may go; 1: wait (another device is starting the new version first)."""
+def may_stage(now=None, ask=None, sync_entry=None):
+    """0: background update may go; 1: wait (another device is starting the new version first). The mirror entry
+    is brought up to date first; when the update goes ahead with it in place, after-update gets to know."""
     now = now or time.time()
+    if sync_entry is None:
+        sync()
+    else:
+        sync_entry()
+    rc = hold_check(now, ask)
+    if rc == 0 and entry_present():
+        try:
+            os.makedirs(RUN, exist_ok=True)
+            open(attempt_marker(), 'w').close()
+        except OSError:
+            pass
+    return rc
+
+
+def hold_check(now, ask=None):
     try:
         with open(hold_file()) as f:
             st = json.load(f)
@@ -624,9 +758,20 @@ def main(argv):
         except Exception as e:  # never in the way of updating
             log(f'may-stage: {e}')
             return 0
+    if cmd in ('sync', 'disable', 'after-update'):
+        try:
+            if cmd == 'sync':
+                print(json.dumps({'entry': sync()}), flush=True)
+            elif cmd == 'disable':
+                disable(' '.join(argv[2:]) or 'asked to')
+            else:
+                after_update()
+        except Exception as e:  # never in the way of updating
+            log(f'{cmd}: {e}')
+        return 0
     if cmd == 'fetch' and len(argv) == 4:
         return cmd_fetch(argv[2], argv[3])
-    print('usage: hearth-update-mirror serve|may-stage|fetch REF DIR', file=sys.stderr)
+    print('usage: hearth-update-mirror sync|disable [WHY]|after-update|serve|may-stage|fetch REF DIR', file=sys.stderr)
     return 2
 
 

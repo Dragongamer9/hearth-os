@@ -10,11 +10,13 @@
 //!   (`storage.cache.get`): the copy lands as the store's own game, Steam then fetches only what's left, if anything.
 //!   Store accounts, sign-ins and DRM are never touched: it's the same files the store wrote.
 //!
-//! Hearth OS updates (`updates`, on; `holdBack`, on):
+//! Hearth OS updates (server: `updates`, off by default; devices: `updatesUse`, on; `holdBack`, on):
 //! - the server fetches each new image of the refs its devices run (hearth-update-mirror fetch, as this user) into
 //!   "Hearth Storage/Updates" (content-addressed, every piece checked against its sha256).
-//! - devices: bootc pulls through a mirror on 127.0.0.1:479 (registries.conf.d/60-hearth-storage.conf, a root
-//!   socket-activated hearth-update-mirror serve). Tag manifests always come from the real registry; manifests by
+//! - devices: bootc pulls through a mirror on 127.0.0.1:479 (a root socket-activated hearth-update-mirror serve),
+//!   but only while hearth-update-mirror sync has written registries.conf.d/60-hearth-storage.conf: when
+//!   `storage.updates.mirror` says `configured` (a server offers updates and this device uses it). A failed update
+//!   with it in place removes it for 7 days. Tag manifests always come from the real registry; manifests by
 //!   digest and layers come from the server through this service (`storage.updates.fetch`) when it has them,
 //!   checked, else from the registry. No server: the mirror answers "unavailable" and bootc uses the registry.
 //! - hold-back: the first device to ask for a new image goes first; the others wait (an ExecCondition on the
@@ -401,9 +403,9 @@ impl Node {
         let bg = boot_good();
         let at = bg["at"].as_u64().unwrap_or(0);
         let image = bg["image"].as_str().unwrap_or("").to_string();
-        if c.updates && at != 0 && at != c.reported_good && image_ref_ok(&image) {
+        if (c.updates || c.updates_use) && at != 0 && at != c.reported_good && image_ref_ok(&image) {
             let (digest, version) = (bg["digest"].as_str().unwrap_or("").to_string(), bg["version"].as_str().unwrap_or("").to_string());
-            let done = if c.server { self.updates_record(&self.me, &image, &digest, &version, at); true }
+            let done = if c.server && c.updates { self.updates_record(&self.me, &image, &digest, &version, at); true }
                 else if let Some(s) = self.storage_server_for("updates") {
                     let req = json!({"op": "updates.report", "ref": image, "digest": digest, "version": version, "goodAt": at});
                     matches!(tokio::time::timeout(Duration::from_secs(20), self.request(&s, &req)).await, Ok(Ok(_)))
@@ -548,35 +550,40 @@ impl Node {
                                            "verifiedBy": verified, "holdUntil": e["seen"].as_u64().map(|s| s + HOLD_MAX_MS)}));
                     }
                 }
-                let using = if c.server { Some(json!({"id": self.me, "name": self.name()})) }
+                let using = if c.server && c.updates { Some(json!({"id": self.me, "name": self.name()})) }
+                            else if !c.updates_use { None }
                             else { self.storage_server_for("updates").map(|s| json!({"id": s, "name": self.peer_name(&s)})) };
-                Ok(json!({"enabled": c.updates, "holdBack": c.hold_back, "server": c.server, "cached": cached, "fetching": self.storage.fetching.load(Ordering::Relaxed),
+                Ok(json!({"enabled": if c.server { c.updates } else { c.updates_use }, "fetch": c.updates, "use": c.updates_use, "holdBack": c.hold_back, "server": c.server, "cached": cached, "fetching": self.storage.fetching.load(Ordering::Relaxed),
                           "using": using, "booted": boot_good(), "hold": c.update_hold, "mirror": Path::new(MIRROR).exists()}))
             }
             "storage.updates.set" => {
                 let mut c = self.st();
-                if let Some(e) = a["enabled"].as_bool() { c.updates = e; }
+                if let Some(e) = a["enabled"].as_bool() { if c.server { c.updates = e; } else { c.updates_use = e; } }
+                if let Some(e) = a["fetch"].as_bool() { c.updates = e; }
+                if let Some(e) = a["use"].as_bool() { c.updates_use = e; }
                 if let Some(e) = a["holdBack"].as_bool() { c.hold_back = e; if !e { c.update_hold = Value::Null; } }
                 let fetch_now = c.server && c.updates;
                 self.st_save(c.clone())?;
                 if fetch_now { self.storage.fetch_at.store(0, Ordering::Relaxed); }
-                Ok(json!({"enabled": c.updates, "holdBack": c.hold_back}))
+                Ok(json!({"enabled": if c.server { c.updates } else { c.updates_use }, "fetch": c.updates, "use": c.updates_use, "holdBack": c.hold_back}))
             }
             // ---- hearth-update-mirror (root) on this device
             "storage.updates.mirror" => {
+                // `configured`: hearth-update-mirror sync writes the registries.conf.d entry only then (a server offers
+                // updates and this device uses it); `use`: the server answers right now.
                 let c = self.st();
-                if !c.updates { return Ok(json!({"use": false})); }
-                if c.server { return Ok(json!({"use": true, "server": self.me})); }
-                let Some(s) = self.storage_server_for("updates") else { return Ok(json!({"use": false})) };
+                if c.server && c.updates { return Ok(json!({"use": true, "configured": true, "server": self.me})); }
+                if !c.updates_use { return Ok(json!({"use": false, "configured": false})); }
+                let Some(s) = self.storage_server_for("updates") else { return Ok(json!({"use": false, "configured": false})) };
                 // Not woken for this: a server that doesn't answer at once is skipped and bootc uses the registry.
                 let ok = matches!(tokio::time::timeout(Duration::from_secs(5), self.connect(&s)).await, Ok(Ok(_)));
-                Ok(json!({"use": ok, "server": s}))
+                Ok(json!({"use": ok, "configured": true, "server": s}))
             }
             "storage.updates.fetch" => {
                 let c = self.st();
                 let digest = a["digest"].as_str().unwrap_or("").to_string();
                 if !digest_ok(&digest) { return Err("Not a piece of an image".into()); }
-                if c.server {
+                if c.server && c.updates {
                     let p = blob_path(&c.updates_dir(&home), &digest)?;
                     let md = std::fs::metadata(&p).map_err(|_| "Not in the update cache".to_string())?;
                     return Ok(json!({"path": p, "size": md.len()}));
@@ -616,18 +623,18 @@ impl Node {
             }
             "storage.updates.drop" => {
                 let digest = a["digest"].as_str().unwrap_or("");
-                if digest_ok(digest) && !self.st().server { let _ = std::fs::remove_file(home.join(".cache/hearth-link/update-blobs").join(&digest[7..])); }
+                if digest_ok(digest) && !(self.st().server && self.st().updates) { let _ = std::fs::remove_file(home.join(".cache/hearth-link/update-blobs").join(&digest[7..])); }
                 Ok(Value::Null)
             }
             "storage.updates.hold" => {
                 let c = self.st();
-                if !c.updates || !c.hold_back { return Ok(json!({"hold": false, "reason": "off"})); }
+                if !c.hold_back || !((c.server && c.updates) || c.updates_use) { return Ok(json!({"hold": false, "reason": "off"})); }
                 let bg = boot_good();
                 let image = bg["image"].as_str().unwrap_or("").to_string();
                 let booted = bg["digest"].as_str().unwrap_or("").to_string();
                 if !image_ref_ok(&image) { return Ok(json!({"hold": false, "reason": "unknown"})); }
                 let now = crate::now_ms();
-                let v = if c.server { self.server_hold(&self.me, &image, &booted) } else {
+                let v = if c.server && c.updates { self.server_hold(&self.me, &image, &booted) } else {
                     let Some(s) = self.storage_server_for("updates") else { return Ok(json!({"hold": false, "reason": "no server"})) };
                     match tokio::time::timeout(Duration::from_secs(100), self.storage_request(&s, &json!({"op": "updates.hold", "ref": image, "booted": booted}))).await {
                         Ok(Ok(v)) => v,
@@ -652,6 +659,12 @@ impl Node {
 mod tests {
     use super::*;
     use crate::storage::stored_game;
+
+    #[test]
+    fn update_fetching_is_opt_in() {
+        let c = crate::storage::StorageConfig::default();
+        assert!(!c.updates && c.updates_use && c.hold_back && !c.cache && c.cache_use);
+    }
 
     #[test]
     fn steam_builds_compare() {

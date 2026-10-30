@@ -1,7 +1,8 @@
 """Tests for hearth-update-mirror (os/system_files/usr/libexec/nimbus): Hearth OS updates from Hearth Storage. A fake
 ghcr.io (with its anonymous token step) and a fake Hearth Link socket stand in for the real ones: the server's
 fetch, bootc's mirror (pieces from the server only when they check out, ghcr.io otherwise, 503 with no server),
-hold-back's 3-day cap, the registries.conf.d entry, and hearth-boot-guard noting a good start."""
+hold-back's 3-day cap, the registries.conf.d entry written only while a server is used and removed for 7 days after
+a failed update (background and "Update now"), and hearth-boot-guard noting a good start."""
 import hashlib
 import http.server
 import importlib.machinery
@@ -30,6 +31,7 @@ def load(name, mod):
 
 M = load('hearth-update-mirror', 'hum')
 G = load('hearth-boot-guard', 'hbg_um')
+A = load('hearth-admin', 'hadm_um')
 
 
 def dg(b):
@@ -98,7 +100,7 @@ class FakeLink(threading.Thread):
             req = json.loads(c.makefile('rb').readline())
             self.calls.append(req['cmd'])
             if req['cmd'] == 'storage.updates.mirror':
-                out = {'ok': True, 'data': {'use': self.use}}
+                out = {'ok': True, 'data': {'use': self.use, 'configured': self.use}}
             elif req['cmd'] == 'storage.updates.fetch':
                 p = os.path.join(self.folder, req['args']['digest'][7:])
                 out = {'ok': True, 'data': {'path': p, 'size': os.path.getsize(p)}} if os.path.exists(p) else {'ok': False, 'error': 'Not in the update cache'}
@@ -140,6 +142,8 @@ class Base(unittest.TestCase):
         self.d = self.tmp.name
         M.RUN = os.path.join(self.d, 'run')
         M.STATE = os.path.join(self.d, 'state')
+        M.ENTRY = os.path.join(self.d, 'etc', 'registries.conf.d', '60-hearth-storage.conf')
+        M.SOCKETS = os.path.join(self.d, 'nolink', '*.sock')
         FakeGhcr.hits = []
 
     def tearDown(self):
@@ -240,28 +244,113 @@ class Hold(Base):
     def test_hold_and_its_cap(self):
         t = 1_000_000.0
         ask = lambda: {'hold': True, 'waitingFor': 'Ally', 'version': '0.6.52'}
-        self.assertEqual(M.may_stage(t, ask), 1)
-        self.assertEqual(M.may_stage(t + 86400, ask), 1)
-        self.assertEqual(json.load(open(M.hold_file()))['first_held'], t)
-        self.assertEqual(M.may_stage(t + 3 * 86400, ask), 0)
+        no = lambda: None
+        self.assertEqual(M.may_stage(t, ask, no), 1)
+        self.assertEqual(M.may_stage(t + 86400, ask, no), 1)
+        with open(M.hold_file()) as f:
+            self.assertEqual(json.load(f)['first_held'], t)
+        self.assertEqual(M.may_stage(t + 3 * 86400, ask, no), 0)
 
     def test_fails_open(self):
-        self.assertEqual(M.may_stage(1.0, lambda: {'hold': True}), 1)
-        self.assertEqual(M.may_stage(2.0, lambda: None), 0)
+        no = lambda: None
+        self.assertEqual(M.may_stage(1.0, lambda: {'hold': True}, no), 1)
+        self.assertEqual(M.may_stage(2.0, lambda: None, no), 0)
         self.assertFalse(os.path.exists(M.hold_file()))
         def boom():
             raise RuntimeError('x')
-        self.assertEqual(M.may_stage(3.0, boom), 0)
-        self.assertEqual(M.may_stage(4.0, lambda: {'hold': 'yes'}), 0)
+        self.assertEqual(M.may_stage(3.0, boom, no), 0)
+        self.assertEqual(M.may_stage(4.0, lambda: {'hold': 'yes'}, no), 0)
         # No Hearth Link at all.
         M.SOCKETS = f'{self.d}/none/*.sock'
         self.assertEqual(M.main(['x', 'may-stage']), 0)
 
 
+class Entry(Base):
+    def test_only_while_a_server_is_used(self):
+        self.assertFalse(M.sync())  # no Hearth Link at all
+        self.assertFalse(os.path.exists(M.ENTRY))
+        self.assertTrue(M.sync(lambda: (1000, 'sock', {'configured': True})))
+        with open(M.ENTRY) as f:
+            self.assertEqual(f.read(), M.ENTRY_TEXT)
+        self.assertFalse(M.sync(lambda: None))  # turned off, or the server unpaired
+        self.assertFalse(os.path.exists(M.ENTRY))
+        def boom():
+            raise RuntimeError('x')
+        M.sync(lambda: (1000, 'sock', {'configured': True}))
+        self.assertFalse(M.sync(boom))  # any doubt: no entry
+        self.assertFalse(os.path.exists(M.ENTRY))
+
+    def test_real_link_says_configured(self):
+        os.makedirs(f'{self.d}/user')
+        FakeLink(f'{self.d}/user/link.sock', self.d, use=False).start()
+        M.SOCKETS = f'{self.d}/user/link.sock'
+        self.assertFalse(M.sync())
+        self.assertFalse(os.path.exists(M.ENTRY))
+        os.makedirs(f'{self.d}/user2')
+        FakeLink(f'{self.d}/user2/link.sock', self.d, use=True).start()
+        M.SOCKETS = f'{self.d}/user*/link.sock'
+        self.assertTrue(M.sync())
+        self.assertTrue(os.path.exists(M.ENTRY))
+
+    def test_failed_update_removes_it_for_seven_days(self):
+        t = 1_000_000.0
+        M.sync(lambda: (1000, 'sock', {'configured': True}))
+        # may-stage lets the update go with the entry in place: after-update hears of it.
+        self.assertEqual(M.may_stage(t, lambda: {'hold': False}, lambda: None), 0)
+        self.assertTrue(os.path.exists(M.attempt_marker()))
+        M.after_update('exit-code')
+        self.assertFalse(os.path.exists(M.ENTRY))
+        self.assertFalse(os.path.exists(M.attempt_marker()))
+        self.assertTrue(M.skipped())
+        self.assertFalse(M.sync(lambda: (1000, 'sock', {'configured': True})))
+        self.assertFalse(os.path.exists(M.ENTRY))
+        with open(M.skip_file()) as f:
+            until = json.load(f)['until']
+        self.assertTrue(M.skipped(until - 3600) and not M.skipped(until + 1))
+        self.assertGreaterEqual(until - time.time(), 7 * 86400 - 60)
+
+    def test_successful_or_skipped_runs_keep_it(self):
+        M.sync(lambda: (1000, 'sock', {'configured': True}))
+        self.assertEqual(M.may_stage(1.0, lambda: {'hold': False}, lambda: None), 0)
+        M.after_update('success')
+        self.assertTrue(os.path.exists(M.ENTRY))
+        # Held (the service is skipped): no attempt, so a non-success result changes nothing.
+        self.assertEqual(M.may_stage(2.0, lambda: {'hold': True}, lambda: None), 1)
+        M.after_update('exit-code')
+        self.assertTrue(os.path.exists(M.ENTRY))
+        self.assertFalse(M.skipped())
+
+
+class UpdateNow(Base):
+    def run_update(self, entry, fails):
+        calls = []
+        def upgrade(stage):
+            calls.append('upgrade')
+            if len(calls) <= fails:
+                raise A.UpgradeFailed('pull failed')
+        with mock.patch.multiple(A, mirror_sync=lambda: entry, mirror_disable=lambda why: calls.append('disable'), system_upgrade=upgrade,
+                                 ensure_podman=lambda: None, staged_any=lambda: True, progress=lambda *a: None, bootc_status=lambda: {},
+                                 Stage=mock.Mock()), mock.patch.object(A.subprocess, 'run', mock.Mock(return_value=mock.Mock(returncode=1))), \
+                mock.patch('builtins.print'):
+            try:
+                A.update()
+            except A.UpgradeFailed:
+                calls.append('failed')
+        return calls
+
+    def test_retried_straight_from_the_registry(self):
+        self.assertEqual(self.run_update(True, 1), ['upgrade', 'disable', 'upgrade'])
+
+    def test_no_server_same_path_as_before(self):
+        self.assertEqual(self.run_update(False, 0), ['upgrade'])
+        self.assertEqual(self.run_update(False, 1), ['upgrade', 'failed'])
+
+
 class Wiring(unittest.TestCase):
-    def test_registries_entry(self):
-        with open(os.path.join(SYS, 'etc', 'containers', 'registries.conf.d', '60-hearth-storage.conf'), 'rb') as f:
-            conf = tomllib.load(f)
+    def test_wiring(self):
+        # No mirror entry in the image: devices without a server keep today's update path byte for byte.
+        self.assertFalse(os.path.exists(os.path.join(SYS, 'etc', 'containers', 'registries.conf.d', '60-hearth-storage.conf')))
+        conf = tomllib.loads(M.ENTRY_TEXT)
         r = conf['registry'][0]
         self.assertEqual((r['prefix'], r['location']), ('ghcr.io/dragongamer9', 'ghcr.io/dragongamer9'))
         self.assertEqual(r['mirror'], [{'location': '127.0.0.1:479/dragongamer9', 'insecure': True}])
@@ -273,6 +362,7 @@ class Wiring(unittest.TestCase):
             with open(os.path.join(SYS, 'usr', 'lib', 'systemd', 'system', f'{unit}.service.d', '30-hearth-hold-back.conf')) as f:
                 drop = f.read()
             self.assertIn('ExecCondition=/usr/libexec/nimbus/hearth-update-mirror may-stage', drop)
+            self.assertIn('ExecStopPost=-/usr/libexec/nimbus/hearth-update-mirror after-update', drop)
 
     def test_boot_guard_notes_a_good_start(self):
         status = {'status': {'booted': {'image': {'image': {'image': 'ghcr.io/dragongamer9/hearth-os:latest', 'transport': 'registry'},
