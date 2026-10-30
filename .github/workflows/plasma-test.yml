@@ -84,7 +84,7 @@ jobs:
               || { echo "::error title=widget $p::kpackagetool6 doesn't find it: $(tr '\n' ' ' </tmp/kp.out | cut -c1-400)"; fail=1; }
           done
           if command -v plasma-apply-lookandfeel >/dev/null; then
-            plasma-apply-lookandfeel --list 2>&1 | grep -q org.hearth.desktop || { echo "::error title=look-and-feel::plasma-apply-lookandfeel --list doesn't show org.hearth.desktop"; fail=1; }
+            QT_QPA_PLATFORM=offscreen timeout 30 plasma-apply-lookandfeel --list 2>&1 | tee /tmp/lnf.out | grep -q org.hearth.desktop || { echo "::error title=look-and-feel::plasma-apply-lookandfeel --list doesn't show org.hearth.desktop: $(head -c 400 /tmp/lnf.out | tr '\n' '|')"; fail=1; }
           fi
           test -f /usr/share/plasma/desktoptheme/hearth/colors || { echo "::error title=desktop theme::hearth/colors doesn't resolve to the Hearth colour scheme"; fail=1; }
           timeout 300 python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_plasma.py' >/tmp/py.out 2>&1 \
@@ -106,7 +106,7 @@ jobs:
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           # What nimbus-session's run_plasma gives Plasma.
           export XDG_CONFIG_DIRS="/usr/share/hearth-plasma/xdg:/etc/xdg" XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE HEARTH_DESKTOP=plasma
-          export KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
+          export QT_FORCE_STDERR_LOGGING=1 KWIN_COMPOSE=Q KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
           # The launcher's Games: what Hearth listed last time (no Hearth app here).
           mkdir -p "$HOME/.cache/hearth"
           printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
@@ -126,8 +126,16 @@ jobs:
           bus = dbus.SessionBus()
           i = dbus.Interface(bus.get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
           r, w = os.pipe()
-          res = i.CaptureWorkspace({'native-resolution': True}, dbus.types.UnixFd(w))
+          res = None
+          for how in ('CaptureActiveScreen', 'CaptureWorkspace'):
+              try:
+                  res = getattr(i, how)({'native-resolution': True}, dbus.types.UnixFd(w), timeout=15)
+                  break
+              except dbus.exceptions.DBusException as e:
+                  print(how, e, file=sys.stderr)
           os.close(w)
+          if res is None:
+              sys.exit(1)
           data = b''
           while True:
               c = os.read(r, 1 << 20)
@@ -167,7 +175,7 @@ jobs:
           ls shots/*.png >/dev/null 2>&1 || { echo "::error title=screenshots::none were taken: $(head -c 600 shots/shot-errors.txt 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; }
           head -c 1500 shots/shot-errors.txt 2>/dev/null | tr '\n' '|' | sed 's/^/::notice title=screenshot messages::/'; echo
           # Plasma and KWin end here, so nothing keeps the step open.
-          pkill plasmawindowed; pkill plasmashell; pkill -f /tmp/kwin_wayland; pkill kscreenlocker_greet; pkill dbus-daemon
+          pkill plasmawindowed; pkill plasmashell; pkill -f /tmp/kwin_wayland; pkill -f kscreenlocker_greet; pkill dbus-daemon
           sleep 2; pkill -9 plasmashell; pkill -9 -f /tmp/kwin_wayland; true
 
       - name: Side by side with Hearth Classic

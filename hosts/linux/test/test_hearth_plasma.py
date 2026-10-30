@@ -108,6 +108,8 @@ class SessionFallback(unittest.TestCase):
         self.assertTrue(self.labwc_ran(), log)
 
     def test_plasma_missing_uses_classic(self):
+        if any(shutil.which(b, path='/usr/bin:/bin') for b in ('startplasma-wayland', 'kwin_wayland', 'plasmashell')):
+            self.skipTest('Plasma is installed on this machine')
         _, log = self.session('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=plasma\n')
         self.assertIn('plasma: not installed', log)
         self.assertTrue(self.labwc_ran(), log)
