@@ -1222,6 +1222,8 @@ impl Bridge {
                 self.open_steam(&u);
                 Ok(Value::Null)
             }
+            "discord.status" => Ok(crate::discord::status()),
+            "discord.set" => crate::discord::set_enabled(a["enabled"] != false),
             "mfriends.discord" => Ok(json!({"installed": crate::matrix_friends::discord_installed(), "flathub": format!("https://flathub.org/apps/{}", crate::matrix_friends::DISCORD)})),
             "mfriends.installDiscord" => self.later(|| {
                 if !crate::system::has("flatpak") { return Err("Flatpak is needed to install Discord.".into()); }
@@ -1390,6 +1392,7 @@ impl Bridge {
                 "steam.window" => (self.host)("showSteam", &json!({"wait": 30, "why": format!("Steam's install window ({})", e["data"]["id"].as_str().unwrap_or("?"))})),
                 "game.started" => {
                     crate::link::set_playing(true);   // Hearth Link stays quiet while you play
+                    if let Some(g) = e["data"]["id"].as_str().and_then(|id| self.library.games.get(id)) { crate::discord::set_playing(Some(&g.title)); }
                     self.parental_since = now_ms(); self.parental_warned = false;
                     out.extend(self.parental_tick());
                     let id = e["data"]["id"].as_str().unwrap_or("").to_string();
@@ -1404,6 +1407,7 @@ impl Bridge {
                 }
                 "game.exited" => {
                     crate::link::set_playing(false);
+                    crate::discord::set_playing(None);
                     if self.parental_since > 0 {
                         let mins = now_ms().saturating_sub(self.parental_since) as f64 / 60000.0;   // the clock set back (time sync) wrapped to years
                         let active = self.profiles.active();
