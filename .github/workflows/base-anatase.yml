@@ -584,6 +584,7 @@ jobs:
           check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
+          warn "Xodus Nexus is installed (Xbox PC games; preinstalled like Beacon)" "test -x /usr/lib/xodus-nexus/Xodus-Nexus.AppImage && test -x /usr/bin/xodus-nexus && test -s /usr/lib/xodus-nexus/version && test -f /usr/share/applications/xodus-nexus.desktop"
           # ==== Hearth Recorder, Camera and Share (capture-apps.yml tests them for real): installed, with what they run.
           echo "--- Hearth Recorder, Camera and Share"
           for a in hearth-recorder hearth-camera hearth-share; do warn "$a is installed with its libraries and menu entry" "test -x /usr/bin/$a && ! ldd /usr/bin/$a | grep -q 'not found' && test -f /usr/share/applications/$a.desktop"; done

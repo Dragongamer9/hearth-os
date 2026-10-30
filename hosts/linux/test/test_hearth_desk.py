@@ -72,6 +72,29 @@ class Pins(Base):
         s = self.hd.load(); s['pins'] = []; self.hd.save(s)
         self.assertEqual(self.hd.load()['pins'], [])
 
+    def test_xodus_nexus_pinned_once_like_beacon(self):
+        self.hd.SYSTEM_EXPORTS = os.path.join(self.tmp, 'no-exports')
+        share = os.path.join(self.tmp, 'share-xodus')
+        os.environ['XDG_DATA_DIRS'] = share
+        os.makedirs(os.path.join(share, 'applications'))
+        # A new user: pinned straight away.
+        with open(os.path.join(share, 'applications', 'xodus-nexus.desktop'), 'w', encoding='utf-8') as f:
+            f.write('[Desktop Entry]\nType=Application\nName=Xodus Nexus\nExec=xodus-nexus %U\n')
+        self.assertEqual(self.hd.load()['pins'], ['xodus-nexus'])
+        # Unpinned stays unpinned.
+        self.hd.unpin('xodus-nexus')
+        self.assertEqual(self.hd.load()['pins'], [])
+
+    def test_xodus_nexus_pinned_once_on_an_existing_taskbar(self):
+        self.hd.SYSTEM_EXPORTS = os.path.join(self.tmp, 'no-exports')
+        os.environ['XDG_DATA_DIRS'] = os.path.join(self.tmp, 'share-xodus2')
+        self.hd.pin('firefox.desktop')
+        self.assertEqual(self.hd.load()['pins'], ['firefox.desktop'])      # not installed yet: not pinned
+        os.makedirs(os.path.join(self.tmp, 'share-xodus2', 'applications'))
+        with open(os.path.join(self.tmp, 'share-xodus2', 'applications', 'xodus-nexus.desktop'), 'w', encoding='utf-8') as f:
+            f.write('[Desktop Entry]\nType=Application\nName=Xodus Nexus\nExec=xodus-nexus %U\n')
+        self.assertEqual(self.hd.load()['pins'], ['firefox.desktop', 'xodus-nexus'])
+
     def bazaar_installed(self):
         share = os.path.join(self.tmp, 'share-bazaar')
         os.environ['XDG_DATA_DIRS'] = share

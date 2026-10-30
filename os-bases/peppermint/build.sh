@@ -1158,6 +1158,50 @@ else
 fi
 rm -f /tmp/beacon_amd64.deb
 
+# ------------------------------------------------------------------ Xodus Nexus (Xbox PC and PC Game Pass games)
+# Shipped like Beacon: the AppImage in /usr/lib/xodus-nexus (with its version), `xodus-nexus` to start it (the same
+# script hosts/hearth-core/src/xodus.rs writes for a copy it downloads) and xodus-nexus.desktop (in Mantel's launcher
+# and pinned to its taskbar). Hearth's library shows it under Xbox PC; a newer release is offered in Settings and goes
+# in the user's own data folder, since the image is read-only. Nexus is an independent project built on Xodus
+# (github.com/domsvoboda/xodus-nexus), not made by Microsoft. It publishes only an AppImage, so its download address
+# comes from the latest release's asset list. Optional: without a release to download, the build says so and carries on.
+XODUS_API=https://api.github.com/repos/domsvoboda/xodus-nexus/releases/latest
+xodus_json="$(curl -fsSL --retry 3 "$XODUS_API" 2>/dev/null || true)"
+XODUS_URL="$(printf '%s' "$xodus_json" | python3 -c 'import json, sys; a=[x for x in json.load(sys.stdin).get("assets", []) if x["name"].lower().endswith(".appimage") and ("x86_64" in x["name"].lower() or "amd64" in x["name"].lower())]; print(a[0]["browser_download_url"] if a else "")' 2>/dev/null || true)"
+XODUS_VER="$(printf '%s' "$xodus_json" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("tag_name", "").lstrip("v"))' 2>/dev/null || true)"
+if [ "$(uname -m)" = x86_64 ] && [ -n "$XODUS_URL" ] && install -d /usr/lib/xodus-nexus \
+   && curl -fsSL --retry 3 -o /usr/lib/xodus-nexus/Xodus-Nexus.AppImage "$XODUS_URL"; then
+  chmod 755 /usr/lib/xodus-nexus/Xodus-Nexus.AppImage
+  printf '%s\n' "$XODUS_VER" > /usr/lib/xodus-nexus/version
+  cat > /usr/bin/xodus-nexus <<'EOF'
+#!/bin/sh
+# Starts Xodus Nexus (shipped with Hearth OS; Hearth's library runs this).
+# AppImages need FUSE; without it, unpack and run instead.
+if ! command -v fusermount >/dev/null 2>&1 && ! command -v fusermount3 >/dev/null 2>&1; then export APPIMAGE_EXTRACT_AND_RUN=1; fi
+# WebKit's newer GPU path draws a black window on some Nvidia drivers.
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+# Sign-in pages open in your default browser (Hearth Browser unless you picked another), not whichever it finds first.
+export BROWSER="${BROWSER:-xdg-open}"
+exec /usr/lib/xodus-nexus/Xodus-Nexus.AppImage "$@"
+EOF
+  chmod 755 /usr/bin/xodus-nexus
+  cat > /usr/share/applications/xodus-nexus.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Xodus Nexus
+GenericName=Xbox PC games
+Comment=Xbox PC and PC Game Pass games (an independent launcher, not made by Microsoft)
+Exec=xodus-nexus %U
+Icon=applications-games
+Terminal=false
+Categories=Game;
+EOF
+  echo "Xodus Nexus ${XODUS_VER:-?} installed"
+else
+  rm -rf /usr/lib/xodus-nexus
+  echo "warning: couldn't install Xodus Nexus from $XODUS_API (no release with an AppImage?); Hearth works without it"
+fi
+
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
 # Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
 # Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. The archive's package

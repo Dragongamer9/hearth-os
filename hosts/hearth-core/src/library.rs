@@ -214,8 +214,19 @@ impl Library {
             counts.insert("xbox".to_string(), list.len().saturating_sub(1));
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
-        // Xbox PC games through Xodus Nexus, once you've added it (Settings › Games › Library).
-        if let Some(g) = crate::xodus::game() { counts.insert("xodus".to_string(), 1); all.insert(g.id.clone(), g); }
+        // Xbox PC games through Xodus Nexus (Hearth OS ships it; elsewhere Settings › Games › Library adds it): Nexus
+        // itself and the games you made shortcuts for in it.
+        if self.store.source_on("xodus") {
+            let list = crate::xodus::games();
+            counts.insert("xodus".to_string(), list.len());
+            for g in list { all.insert(g.id.clone(), g); }
+        }
+        // Battle.net, once it's set up (Library › Stores › Battle.net), and the Blizzard games it installed.
+        if self.store.source_on("battlenet") {
+            let list = crate::battlenet::games();
+            counts.insert("battlenet".to_string(), list.len());
+            for g in list { all.insert(g.id.clone(), g); }
+        }
         // Beacon's games (BFME, Age of the Ring, LOTR: Conquest...), read again when Beacon's files changed.
         if self.store.source_on("beacon") {
             // Never waits for Beacon here (its program can take a while, or not answer): the last answer is used and a
@@ -575,6 +586,16 @@ impl Library {
                 let home = crate::paths::home().to_string_lossy().to_string();
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
                 crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
+            }
+            // Games a launcher starts (Battle.net in its Proton prefix, Xodus Nexus): Hearth runs the launcher's script or
+            // shortcut with the game's number in its environment, and the game's own folder finds its processes, since
+            // the launcher (not Hearth) starts the game itself.
+            "battlenet" | "xodus" => {
+                let exe = g.exe.clone().unwrap_or_default();
+                let opts = crate::game_options::get(&self.store, id);
+                let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
+                let dirs = g.install_path.as_ref().filter(|p| p.starts_with(crate::battlenet::prefix())).map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             "emu" => {
                 let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home, app_id)?;

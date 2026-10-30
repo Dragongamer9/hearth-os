@@ -1398,7 +1398,7 @@ function barsIcon(n){
 
 // ---------- mock data ----------
 const H = 3600e3, D = 24*H, now = Date.now();
-const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', emu:'Emulators', beacon:'Beacon', manual:'Manual', android:'Android'};
+const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', xodus:'Xbox PC', battlenet:'Battle.net', emu:'Emulators', beacon:'Beacon', manual:'Manual', android:'Android'};
 const GAMES = [
   {id:'g01',title:'Starfall Drift',src:'steam',appId:'1000010',inst:true,fav:true,hrs:142.5,last:now-5*H,size:'38.2 GB',ach:[34,50],added:now-200*D,genre:'Arcade racing'},
   {id:'g02',title:'Hollow Pines',src:'gog',inst:true,fav:false,hrs:31.2,last:now-1*D,size:'12.9 GB',ach:[11,40],added:now-30*D,genre:'Survival horror'},
@@ -1462,7 +1462,7 @@ const S = {
        nets:null, scanning:false, scannedAt:0, connecting:null,
        paired:null, found:[], btScanning:false, foundDone:false, busy:{}}
 };
-const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
+const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['xodus','Xbox PC'],['battlenet','Battle.net'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
 // Open apps: wherever the host can list them (Hearth OS's window and every overlay page; not Ember's own window), the
 // same tab in Hearth's panel and over a game.
@@ -1702,7 +1702,9 @@ const MOCK = (()=>{
       MOCKEXP.gog ? {store:'gog',signedIn:true,name:'geralt',avatar:null,owned:48,installed:3,fetched:Date.now()-2.6e8,busy:false,error:null,toolReady:true,expired:true,expiredAt:MOCKEXP.gog}
         : {store:'gog',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:false},
       {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}],
-      beacon:{installed:true,app:true,via:'native',games:9,setUp:4,error:null}}),
+      beacon:{installed:true,app:true,via:'native',games:9,setUp:4,error:null},
+      xodus:{installed:true,preinstalled:true,version:'0.4.2',games:2,busy:false,error:null},
+      battlenet:{installed:false,busy:false,stage:null,error:null,games:0}}),
     'profile.get':async()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){} return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
     'profile.set':async(c)=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){}
       for(const k of ['name','status','avatar','accent','background']) if(c[k]!=null) p[k]=String(c[k]).trim()||null;
@@ -2469,7 +2471,9 @@ function mfQam(){
 // signs in or sees a password. Buying and wishlists happen on the stores' own pages: Steam's in the Steam client
 // (signed in already), GOG's, Epic's and Xbox's in Hearth's store window, which shares the browser profile of that
 // store's sign-in in Library › Stores, so one sign-in covers the library and the store (docs/STORE.md).
-const SHOP_STORES = [['steam','Steam'],['gog','GOG'],['epic','Epic Games'],['xbox','Xbox']];
+const SHOP_STORES = [['steam','Steam'],['gog','GOG'],['epic','Epic Games'],['xbox','Xbox'],['battlenet','Battle.net']];
+// Stores whose shop is only inside their own app: no shelves to read, the section opens the app (shopLauncher).
+const SHOP_IN_APP = ['battlenet'];
 const SHOP = {store:'steam', shot:null, back:null, home:{}, err:{}, busy:{}, q:{}, res:{}, rerr:{}, rbusy:{}, page:null, det:{}, derr:{}, more:false, status:null, steamVisit:0};
 try{ const s=localStorage.getItem('hearth.shopStore'); if(SHOP_STORES.some(x=>x[0]===s)) SHOP.store=s; }catch(e){}
 I.shop='<svg viewBox="0 0 24 24"><path d="M3.5 4.5h2.2l2.1 10.2h10.4l1.9-7.2H6.6"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="16.5" cy="19" r="1.4"/></svg>';
@@ -2546,6 +2550,7 @@ async function shopStatus(){
   if(S.view==='shop') render(null,true);
 }
 function shopLoad(store, again){
+  if(SHOP_IN_APP.includes(store)){ if(!ACC.battlenet) Promise.resolve(loadAccounts()).then(()=>{ if(S.view==='shop' && SHOP.store===store) render(null,true); }); return; }
   if(SHOP.busy[store] || (SHOP.home[store] && !again)) return;
   SHOP.busy[store]=true; SHOP.err[store]=null;
   (host ? call('store.home',{store},120000) : SHOP_MOCK.home(store))
@@ -2561,6 +2566,8 @@ function shopLoadDetails(store, id){
     .finally(()=>{ if(S.view==='shop' && SHOP.page && SHOP.page.store+':'+SHOP.page.id===k) render(null,true); });
 }
 function shopDoSearch(store, q){
+  // Battle.net's section has no search of its own: a search from elsewhere looks in Steam's store.
+  if(SHOP_IN_APP.includes(store)){ store='steam'; if(SHOP.store!==store) shopTab(store); }
   SHOP.q[store]=q; SHOP.res[store]=null; SHOP.rerr[store]=null;
   if(!q) return render('sf-search',true);
   SHOP.rbusy[store]=true; render('sf-search',true);
@@ -2590,8 +2597,20 @@ function shopHero(it){
   return `<button class="shop-hero" data-f data-k="sf-hero" data-act="shopOpen" data-s="${esc(it.store)}" data-id="${esc(it.id)}" style="${artBg({title:it.title||'?'})}">
     ${shopImg([it.wide,it.tall,it.thumb])}<div class="shk"><small>${it.price&&it.price.free&&it.until?'Free now':it.price&&it.price.discount?`${it.price.discount}% off`:'Featured'}</small><b>${esc(it.title)}</b><span class="shop-price">${shopPrice(it.price)}</span></div></button>`;
 }
+// Game Mode › Store › Battle.net: Blizzard's shop is in Battle.net's own app (it signs in there, like Steam's client),
+// so this section opens it, or sets it up first. Library › Stores has the same card.
+function shopLauncher(st){
+  const tabs=`<div class="shop-top"><div class="chips">${SHOP_STORES.map(([k,l])=>`<button class="chip ${k===st?'on':''}" data-f data-k="sf-t-${k}" data-act="shopTab" data-v="${k}">${l}</button>`).join('')}</div></div>`;
+  const b=ACC.battlenet;
+  if(!b) return tabs+`<div style="padding:30px 0">${shead('Loading Battle.net…', true)}</div>`;
+  if(!LINUX && host) return tabs+note(`Battle.net works in Hearth OS for now. Ember will get it later.`);
+  return tabs+`<div class="stores" style="max-width:720px">${battlenetCard()}</div>`
+    +note(b.installed ? `Buying happens in Battle.net's own shop, signed in with your Blizzard account. Games you buy and install there show up in Library › Battle.net.`
+      : `Blizzard sells its games only in Battle.net. Set it up once, sign in in its window, and buy and install there. ${APP} never sees your password or payment details.`);
+}
 function viewShop(){
   if(SHOP.page) return shopDetails();
+  if(SHOP_IN_APP.includes(SHOP.store)) return shopLauncher(SHOP.store);
   const st=SHOP.store, h=SHOP.home[st], q=SHOP.q[st]||'';
   let out = `<div class="shop-top"><div class="chips">${SHOP_STORES.map(([k,l])=>`<button class="chip ${k===st?'on':''}" data-f data-k="sf-t-${k}" data-act="shopTab" data-v="${k}">${l}</button>`).join('')}</div>
     <button class="pill" data-f data-k="sf-search" data-act="shopSearch">${I.search}${q?esc(q):'Search '+esc(shopName(st))}</button>
@@ -3652,7 +3671,7 @@ const LOGS = {busy:false, r:null};
 const hasFeat = f => (HOSTINFO.features||[]).includes(f);
 const XO = {s:null};
 function loadXodus(){ if(host && hasFeat('xodus')) call('xodus.status',{},30000).then(r=>{ XO.s=r; refreshUI(); }).catch(()=>{}); }
-function onXodus(d){ const was=XO.s&&XO.s.busy; XO.s=Object.assign(XO.s||{},d); if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Xodus Nexus is ready: it\'s in your library'); loadLibrary(true,true); } } if(S.view==='settings'&&S.settingsTab==='sources') render(null,true); }
+function onXodus(d){ const was=XO.s&&XO.s.busy; XO.s=Object.assign(XO.s||{},d); if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Xodus Nexus is ready: it\'s in your library'); loadLibrary(true,true); } } if(ACC.xodus) Object.assign(ACC.xodus, {busy:!!d.busy, error:d.error||null}, d.installed!=null?{installed:d.installed}:{}); if(S.view==='settings'&&S.settingsTab==='sources' || S.view==='stores') render(null,true); }
 // Where Xbox games go: picked when adding Nexus (or changed later); Hearth makes the folder.
 async function xodusPick(andInstall){
   let places=[]; try{ places=await call('xodus.places',{},15000); }catch(e){ return toast(e.message); }
@@ -3867,6 +3886,7 @@ function libTabs(){
   const t=LIB_TABS.filter(([k])=>{
     if(k==='hidden') return GAMES.some(g=>g.hidden);
     if(k==='beacon') return GAMES.some(g=>g.src==='beacon' && !g.hidden);   // only with Beacon installed
+    if(k==='xodus' || k==='battlenet') return GAMES.some(g=>g.src===k && !g.hidden);   // only with Xodus Nexus / Battle.net set up
     if(host && SOURCES[k]) return GAMES.some(g=>g.src===k && !g.hidden);
     return true;
   });
@@ -4307,7 +4327,7 @@ function mkSide(){
   const tabs=libTabs(), has=k=>tabs.some(t=>t[0]===k);
   const lists=[['all','All games'],['inst','Installed'],['fav','Favorites']].filter(([k])=>has(k));
   const stores=tabs.filter(([k])=>SOURCES[k]), cols=tabs.filter(([k])=>k.startsWith('c:'));
-  const SC={steam:'#4c8dff',epic:'#c9ced6',gog:'#b06bff',xbox:'#5fd068',emu:'#ff6fae',beacon:'#ffb547',manual:'#8d99a8'};
+  const SC={steam:'#4c8dff',epic:'#c9ced6',gog:'#b06bff',xbox:'#5fd068',xodus:'#5fd068',battlenet:'#3aa0ff',emu:'#ff6fae',beacon:'#ffb547',manual:'#8d99a8'};
   const playedOn = S.tab==='all' && S.lfilter==='played', neverOn = S.tab==='all' && S.lfilter==='unplayed';
   return `<aside class="mk-side mk-scroll" data-sk="side">
     <div class="mk-grp">${lists.map(([k,l])=>item(k,l,S.tab===k&&!(k==='all'&&(playedOn||neverOn)),mkTabCount(k))).join('')}
@@ -8869,6 +8889,8 @@ function act(el){
     case 'xodusGet': return (XO.s&&XO.s.installed) ? call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-up',true); }).catch(e=>toast(e.message)) : xodusPick(true);
     case 'xodusFolder': return xodusPick(false);
     case 'xodusSignIn': return call('xodus.signInDesktop',{},10000).then(()=>{ toast('Opening Desktop Mode… Nexus opens there in a moment'); setTimeout(()=>power('desktop',true),800); }).catch(e=>toast(e.message));
+    case 'lnOpen': { const g=G(d.id); return g ? launch(g) : toast('It isn\'t in your library yet: Library › Refresh finds it.'); }
+    case 'bnetGet': case 'bnetSignIn': case 'bnetRefresh': case 'bnetRemove': return bnetAct(a);
     case 'xodusRemove': return call('xodus.remove',{},30000).then(r=>{ XO.s=r; toast('Xodus Nexus removed'); loadLibrary(true,true); render('xo-get',true); }).catch(e=>toast(e.message));
     case 'install': return installGame(G(d.id));
     case 'play': return launch(G(d.id));
@@ -9119,8 +9141,8 @@ const IM_MOCK = (()=>{
     templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:1,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
       {id:'rts',name:'Strategy (RTS)',blurb:'For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups',layout:{version:1,name:'Strategy (RTS)',base:'rts',buttons:{rt:{press:'mouse:left',threshold:0.3},lt:{press:'mouse:right',threshold:0.3},a:'key:SPACE',b:'key:S',x:'key:Q',y:'key:H',lb:'shift',rb:'key:LEFTCTRL',menu:'key:ESC',view:'radial',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT'},sticks:{ls:{mode:'keys',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT',threshold:0.45},rs:{mode:'mouse',sensitivity:1.2,deadzone:0.1,outer:0.95,curve:2}},shift:{buttons:{up:'key:1',right:'key:2',down:'key:3',left:'key:4',y:'key:LEFTCTRL+1',b:'key:LEFTCTRL+2',a:'key:LEFTCTRL+3',x:'key:LEFTCTRL+4'}},radial:['key:5','key:6','key:7','key:8','key:F1','key:F2','key:F3','key:F4'],hold_ms:300,turbo_hz:10}},
       {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:1,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
-  // Beacon's strategy games start with Strategy (RTS), like input_map.rs's default_layout.
-  const store={}, fresh=id=>({layout:/^beacon:/.test(id||'')&&id!=='beacon:conquest'?'rts':'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
+  // Beacon's strategy games start with Strategy (RTS), and launchers' own windows with Mouse only, like input_map.rs's default_layout.
+  const store={}, fresh=id=>({layout:/^beacon:/.test(id||'')&&id!=='beacon:conquest'?'rts':['xodus:nexus','battlenet:app'].includes(id)?'mouse':'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
   const get=id=>Object.assign({game:id}, copy(store[id]||fresh(id)));
   return async (m,a)=>{
     if(m==='input.tables') return copy(T);
@@ -9655,6 +9677,48 @@ function beaconCard(){
     ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
     <div class="sbtns">${!b.installed?`<button class="sbtn pri" data-f data-k="sa-beacon-get" data-act="bcnGet">${I.globe}Get Beacon</button>`:''}${b.installed||b.app?`<button class="sbtn ${b.installed?'pri':''}" data-f data-k="sa-beacon-open" data-act="beaconOpen">${I.play}Open Beacon</button>`:''}${b.installed?`<button class="sbtn" data-f data-k="sa-beacon-scan" data-act="bcnJob" data-job="scan">${I.search}Find games</button>`:''}${b.installed&&b.games?`<button class="sbtn" data-f data-k="sa-beacon-show" data-act="accShow" data-s="beacon">${I.lib}Show games</button>`:''}</div></div>`;
 }
+// Library › Stores: Xodus Nexus's card, like Beacon's. Hearth OS ships Nexus; elsewhere Add downloads it.
+function xodusCard(){
+  const x=ACC.xodus; if(!x || !LINUX && host) return '';
+  const st = x.busy ? 'Getting Xodus Nexus…' : !x.installed ? 'Not added' : `${x.preinstalled?'Comes with Hearth OS':'Added'}${x.version?' · '+x.version:''}`;
+  const btn=(k,act,icon,label,pri,extra)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-xodus-${k}" data-act="${act}" ${extra||''}>${I[icon]}${label}</button>`;
+  return `<div class="scard" style="--sc:#107c10">
+    <div class="shd"><div class="smark">N</div><div class="sti"><b>Xodus Nexus</b><small class="${x.installed?'on':''}">${esc(st)}</small></div></div>
+    <div class="sblurb">Xbox PC and PC Game Pass games, installed on this device. An independent, early launcher built on the Xodus project, not made by Microsoft or ${APP}: only some games work so far. ${x.installed?`Open it from here or Library › Xbox PC, sign in with your Microsoft account in its Settings, and get its backend and runtime there. Games you make a shortcut for in Nexus get their own tile.`:`${APP} downloads it from its GitHub releases and keeps it updated.`}</div>
+    ${x.installed&&x.games?`<div class="sstats"><span><b>${x.games}</b> game shortcut${x.games===1?'':'s'}</span></div>`:''}
+    ${x.error?`<div class="serr">${esc(x.error)}</div>`:''}
+    <div class="sbtns">${x.busy?'<span class="mini-spin"></span>':!x.installed?btn('get','xodusGet','dl','Add Xodus Nexus',true)
+      :btn('open','lnOpen','play','Open Xodus Nexus',true,'data-id="xodus:nexus"')+btn('sign','xodusSignIn','user','Sign in')+btn('show','accShow','lib','Show games','','data-s="xodus"')}</div></div>`;
+}
+// Library › Stores: Battle.net's card. One press sets up Blizzard's own Battle.net app in a Proton prefix of its own;
+// signing in, buying and installing happen in Battle.net's window. Its Blizzard games then show in Library › Battle.net.
+function onBattlenet(d){
+  const was=ACC.battlenet&&ACC.battlenet.busy; ACC.battlenet=Object.assign(ACC.battlenet||{},d);
+  if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Battle.net is set up: open it from your library to sign in'); loadLibrary(true,true); } }
+  if(S.view==='stores' || S.view==='shop') render(null,true);
+}
+function battlenetCard(){
+  const b=ACC.battlenet; if(!b || !LINUX && host) return '';
+  const st = b.busy ? 'Setting up…' : !b.installed ? 'Not set up' : b.games ? `${b.games} Blizzard game${b.games===1?'':'s'} installed` : 'Set up';
+  const btn=(k,act,icon,label,pri,extra)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-bnet-${k}" data-act="${act}" ${extra||''}>${I[icon]}${label}</button>`;
+  return `<div class="scard" style="--sc:#0e5aa7">
+    <div class="shd"><div class="smark">B</div><div class="sti"><b>Battle.net</b><small class="${b.installed?'on':''}">${esc(st)}</small></div></div>
+    <div class="sblurb">Blizzard's games: Overwatch 2, Diablo, World of Warcraft, Hearthstone, StarCraft and more. ${b.installed?`Sign in, buy and install games in Battle.net's own window; they show up in Library › Battle.net, and Play starts them through Battle.net.`:`One press sets up Blizzard's own Battle.net app with Proton. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`}</div>
+    ${b.busy&&b.stage?`<div class="sblurb">${esc(b.stage)}</div>`:''}
+    ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
+    <div class="sbtns">${b.busy?'<span class="mini-spin"></span>':!b.installed?btn('get','bnetGet','dl','Set up Battle.net',true)
+      :btn('open','lnOpen','play','Open Battle.net',true,'data-id="battlenet:app"')+btn('sign','bnetSignIn','user','Sign in')+btn('refresh','bnetRefresh','refresh','Find games')+(b.games?btn('show','accShow','lib','Show games','','data-s="battlenet"'):'')+btn('rm','bnetRemove','x','Remove')}</div></div>`;
+}
+function bnetAct(a){
+  if(!host) return toast('Setting up Battle.net needs the '+APP+' app (not the browser preview).');
+  switch(a){
+    case 'bnetGet': return call('battlenet.install',{},30000).then(r=>{ ACC.battlenet=r; toast('Setting up Battle.net…'); render('sa-bnet-get',true); }).catch(e=>toast(e.message));
+    case 'bnetSignIn': return call('battlenet.signInDesktop',{},10000).then(()=>{ toast('Opening Desktop Mode… Battle.net opens there in a moment'); setTimeout(()=>power('desktop',true),800); }).catch(e=>toast(e.message));
+    case 'bnetRefresh': return loadLibrary(true,true).then(()=>loadAccounts());
+    case 'bnetRemove': return openSheet({title:'Remove Battle.net?', sub:'Deletes Battle.net and every Blizzard game installed with it on this device. Your Blizzard account and its games stay yours.', items:[
+      {label:'Remove', icon:'trash', run:()=>call('battlenet.remove',{},60000).then(r=>{ ACC.battlenet=r; toast('Battle.net removed'); loadLibrary(true,true); render('sa-bnet-get',true); }).catch(e=>toast(e.message))}]});
+  }
+}
 // ---------- Beacon's screens in Hearth: Game setup, Mods, the game's log (Beacon 0.0.6+, hearth-core beacon.rs) ----------
 // Everything Beacon's own window does, here: a Beacon game's page › Game setup / Mods. Each change goes to Beacon
 // (beacon.set, beacon.setKey…) and the answer is the game's details read again; long jobs (Prepare the game, an
@@ -10129,7 +10193,7 @@ async function loadAccounts(fromEvent){
   try{
     const r = await call('accounts.status');
     const first = ACC.list===null;
-    ACC.list=r.accounts||[]; ACC.root=r.installRoot||''; ACC.beacon=r.beacon||null;
+    ACC.list=r.accounts||[]; ACC.root=r.installRoot||''; ACC.beacon=r.beacon||null; ACC.xodus=r.xodus||null; ACC.battlenet=r.battlenet||null;
     ACC.steamLib=((ACC.list.find(a=>a.store==='steam')||{}).library)||'';
     // Reload the library when an account was added/removed or its game list arrived.
     const sig=ACC.list.map(a=>`${a.store}:${a.signedIn?1:0}:${a.fetched}`).join('|');
@@ -10728,7 +10792,7 @@ function viewStores(){
       <button class="row" data-f data-k="sa-back-game" data-act="backToGame"><span class="ricon">${I.pad}</span><div class="rt"><b>Back to Game Mode</b><small>${DESKSIGN.store?`When you've finished signing in to ${STORE_INFO[DESKSIGN.store].name}. `:''}${APP} opens full screen again, with your games.</small></div><div class="rv">›</div></button></div>` : '';
   return `<h2>Game stores &amp; accounts</h2>
     ${back}
-    <div class="stores">${cards}${beaconCard()}</div>
+    <div class="stores">${cards}${beaconCard()}${xodusCard()}${battlenetCard()}</div>
     <h2>Installing</h2>
     <div class="rows">
       <button class="row" data-f data-k="sa-folder" data-act="accFolder"><span class="ricon">${I.dl}</span><div class="rt"><b>Install folder for Epic and GOG games</b><small>${esc(ACC.root||'—')}</small></div><div class="rv">Change ›</div></button>
@@ -10985,6 +11049,7 @@ function onSysEvent(name, data){
   if(name.startsWith('linux.')) return onLinuxEvent(name, data);
   if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='xodus') return onXodus(data);
+  if(name==='battlenet') return onBattlenet(data);
   if(name==='store.webClosed') return shopWebClosed(data);
   if(name==='import') return onImport(data);
   if(name==='osInstall') return onOsInstall(data);

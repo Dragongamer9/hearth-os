@@ -1,8 +1,8 @@
 # Game Mode › Store
 
 Game Mode has a **Store** page (in the menu, the top bar and the layouts' navigation, next to Library). It has a
-section for each store: **Steam**, **GOG**, **Epic Games** and **Xbox** (Microsoft Store / PC Game Pass). LB and RB
-switch between them. Each section shows a featured game, shelves (deals, top sellers, new releases and so on), a
+section for each store: **Steam**, **GOG**, **Epic Games**, **Xbox** (Microsoft Store / PC Game Pass) and
+**Battle.net**. LB and RB switch between them. Each section shows a featured game, shelves (deals, top sellers, new releases and so on), a
 search, and a page for each game. The pages work with a controller, a keyboard and mouse, or touch.
 
 ## What each section shows, and where it comes from
@@ -77,13 +77,59 @@ Things to know:
 - Payment pop-ups (PayPal and the like) open as a small window over the store window in the Chromium window. In
   the WebKit window, links that would open a new window open in the same window instead.
 
+## Battle.net
+
+Blizzard sells and installs its games only in its own Battle.net app, and there's no open-source downloader for it
+(like legendary for Epic or gogdl for GOG). So Hearth runs **the real Battle.net app** with Proton, the way it runs
+Epic and GOG games (`hosts/hearth-core/src/battlenet.rs`):
+
+- **One press:** Library › Stores › Battle.net › **Set up Battle.net** (or the Store's Battle.net section). Hearth gets
+  umu-launcher if it isn't there yet, downloads Blizzard's installer from Blizzard
+  (`downloader.battle.net/…gameProgram=BATTLENET_APP`), and installs Battle.net into a Proton prefix of its own,
+  `~/.local/share/nimbus/battlenet/prefix`, in the system's language when Blizzard has it. When the installer has
+  finished (Battle.net opens by itself at the end), Hearth closes it and turns off Battle.net's hardware acceleration,
+  which draws a black window in Proton, unless you've chosen otherwise. The installer's output is in
+  `battlenet/setup.log`.
+- **Sign-in, buying, installing and updates all happen in Battle.net's own window.** Hearth never sees the Blizzard
+  password or payment details and never uses the account. **Sign in** on the card opens Battle.net in Desktop Mode,
+  where the controller types, like Xodus Nexus.
+- **Library › Battle.net:** Battle.net itself, and each Blizzard game it installed. A game is found by the
+  `.build.info` file Battle.net puts in every game folder (its product, or the folder's name), under Program Files,
+  Program Files (x86) or C:\Games in the prefix. Overwatch 2, World of Warcraft, Diablo II: Resurrected, III, IV and
+  Immortal, Hearthstone, Heroes of the Storm, StarCraft, StarCraft II and Warcraft III are known. **Find games** reads
+  them again.
+- **Play** starts the game through Battle.net (`Battle.net.exe --exec="launch <code>"`), so its sign-in and the game's
+  licence work as on Windows. The game's number (`HEARTH_GAME_ID`) is in Battle.net's environment, and the game's
+  folder finds its processes.
+- **Controller:** Battle.net's own window starts with the **Mouse only** layout (it's made for a mouse); the games
+  start Off, since they have controller support of their own.
+- **Remove** deletes the prefix, with every Blizzard game installed in it.
+- The Store's Battle.net section has no shelves: Hearth reads no Blizzard pages. It opens Battle.net, or sets it up.
+
+## Xodus Nexus (Xbox PC games)
+
+Xbox PC games show **Open Xodus Nexus**. Nexus is integrated the way Beacon is (`hosts/hearth-core/src/xodus.rs`):
+
+- **Preinstalled:** each Hearth OS edition's build puts the latest release's AppImage in `/usr/lib/xodus-nexus` (with
+  its version), `/usr/bin/xodus-nexus` to start it and `xodus-nexus.desktop`. If there's no release to download, the
+  build warns and carries on. Settings › Games › Library still offers a newer release, downloaded into your own data
+  folder (that copy wins; Remove goes back to the image's). Elsewhere, **Add Xodus Nexus** downloads it.
+- **Library › Xbox PC:** Nexus itself, and a tile for each game you made a shortcut for in Nexus (a game's menu ›
+  Create shortcuts). Nexus doesn't document its shortcuts, so Hearth takes `.desktop` files in your applications folder
+  or on the desktop whose Exec names Xodus, and Play starts the shortcut as Nexus wrote it.
+- **Library › Stores:** Nexus's card, with Open Xodus Nexus, Sign in (in Desktop Mode) and Show games.
+- **Controller:** Nexus's window starts with **Mouse only**; Xbox games start Off.
+- **Desktop Mode:** in Mantel's launcher, and pinned to the taskbar (for a new user, and once on an existing taskbar
+  the first time it's installed, like Bazaar).
+
 ## Checks
 
 - Rust tests for each store's reader use recorded answers from the real stores
   (`hosts/hearth-core/src/storefront/fixtures/`). These are trimmed copies of what `tools/store-live-check.py`
   saved.
 - `tools/ui-check.js` checks the Store page with the preview's data: the store tabs, LB/RB, the shelves, a game's
-  page offering Play, Sign in, Buy in Steam or Buy on Xbox as it should, search, and B going back. It also takes
+  page offering Play, Sign in, Buy in Steam or Buy on Xbox as it should, search, and B going back. It also checks the
+  Battle.net section and the Xodus Nexus and Battle.net cards in Library › Stores. It also takes
   two screenshots, which release.yml posts as notices (`SHOT store-home`, `SHOT store-game`).
 - The CI job `store-live` (rust.yml, warn-only) asks every endpoint above once. It also runs Hearth's own store
   code against the real stores (`cargo test --lib storefront::live -- --ignored`) and keeps the answers on the
