@@ -12,6 +12,8 @@ set(QT_MAJOR_VERSION 6)
 set(CMAKE_AUTOMOC ON)
 # The worker is a loadable module (KDECMakeSettings would set this; without it KF6 makes plugins static).
 set(BUILD_SHARED_LIBS ON)
+# Newer KDE Frameworks want this set (KDECMakeSettings would); the worker lands in plugins/kf6/kio, where the test looks.
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins")
 
 find_package(ECM 6.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
