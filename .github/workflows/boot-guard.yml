@@ -1,0 +1,29 @@
+# Automatic fallback and Hearth Recovery on the device: their tests, with GRUB's own tools checking the menu snippet
+# and the environment block (an update must never stop a device from starting: MILESTONES.md).
+name: Boot guard
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, bughunt]
+    paths:
+      - 'os/system_files/usr/libexec/nimbus/hearth-boot-guard'
+      - 'os/system_files/usr/libexec/nimbus/hearth-recovery'
+      - 'os/system_files/usr/lib/systemd/system/hearth-boot-*'
+      - 'os/system_files/usr/lib/systemd/system/hearth-recovery.service'
+      - 'hosts/linux/test/test_hearth_boot_guard.py'
+      - '.github/workflows/boot-guard.yml'
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: GRUB's tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq grub-common && which grub-script-check grub-editenv
+      - name: Tests
+        run: cd hosts/linux && python3 -m unittest discover -s test -p 'test_hearth_boot_guard.py' -v
+      - name: Scripts compile, units parse
+        run: |
+          python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-boot-guard os/system_files/usr/libexec/nimbus/hearth-recovery
+          for u in os/system_files/usr/lib/systemd/system/hearth-boot-*.service os/system_files/usr/lib/systemd/system/hearth-recovery.service; do
+            systemd-analyze verify --man=no "$u" 2>&1 | grep -v -E 'not found|Failed to|No such file|nimbus-autologin|display-manager|hhd' || true
+          done
