@@ -55,6 +55,7 @@ jobs:
       - name: Lint (widgets, packages, layout script, session tests)
         shell: bash
         run: |
+          set +e +o pipefail   # failures are collected in $fail and shown as annotations
           fail=0
           QMLFORMAT=$(command -v qmlformat || ls /usr/lib64/qt6/bin/qmlformat 2>/dev/null | head -1)
           QMLLINT=$(command -v qmllint || ls /usr/lib64/qt6/bin/qmllint 2>/dev/null | head -1)
@@ -94,6 +95,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set +e +o pipefail
           mkdir -p shots
           exec > >(tee shots/step.log) 2>&1
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
@@ -106,7 +108,9 @@ jobs:
           # The launcher's Games: what Hearth listed last time (no Hearth app here).
           mkdir -p "$HOME/.cache/hearth"
           printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
-          kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
           for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
           [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
           export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
@@ -164,6 +168,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set +e +o pipefail
           git config --global --add safe.directory "$PWD"
           mkdir -p shots/classic shots/compare
           for b in ci/desktop-shots-bughunt ci/desktop-shots; do
