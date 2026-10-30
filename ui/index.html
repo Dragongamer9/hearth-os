@@ -5132,7 +5132,7 @@ function stgArchLine(v){
 }
 function pageStorage(){
   const s=LK.s;
-  if(!s) return note('Loading…');
+  if(!s) return note(lkOn() ? 'Loading…' : 'Hearth Storage comes with Hearth Link in the next Hearth OS update.');
   if(!s.running) return note(s.installed ? 'Hearth Storage is part of Hearth Link, which isn\'t running. It starts with your session: sign out and in again, or restart.' : 'Hearth Storage comes with the next Hearth OS update.');
   const st=stgS(), c=st.config||{}, servers=st.servers||[];
   let h = shead('Use Hearth Storage');

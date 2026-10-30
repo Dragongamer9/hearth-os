@@ -1751,6 +1751,60 @@ const path = require('path');
     await lp.close();
   }
 
+  // Hearth Storage's page (Settings › Hearth Storage): a server among the paired devices, browsing its shared
+  // folder, this device as a server with a shared folder, the switches sending what they say.
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const serr = m => errors.push('Hearth Storage: ' + m);
+    sp.on('pageerror', e => serr(e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(1200);
+      const r = await sp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const out = {};
+        const srv = 'b'.repeat(64);
+        const st = { running: true, me: { id: 'a'.repeat(64), name: 'Deck' }, settings: {}, peers: [{ id: srv, name: 'Basement PC', online: true }], transfers: [], offers: [], sending: [], signInHints: [],
+          storage: { config: { server: true, folder: '/home/me/Hearth Storage', free: 5e11, shares: [{ id: 'a1b2c3d4e5f6', name: 'Videos', path: '/home/me/Videos', there: true }], archive: true, backups: true, media: true,
+                               away: false, smb: false, sleepMinutes: 0, backupTo: srv, backupSaves: true, backupShots: true, backupHours: 6, lastBackup: Date.now() - 3600e3,
+                               archived: { 'steam:620': { server: srv, title: 'Portal 2', size: 1.2e10, state: 'archived', key: 'aaaaaaaa-steam-620' } } },
+                     servers: [{ id: srv, name: 'Basement PC', shares: [{ id: 'c0ffee000001', name: 'Films' }], archive: true, backups: true, media: true, free: 2e12, usable: true, at: Date.now(), canWake: true }],
+                     jobs: [], user: 'me' } };
+        const calls = [];
+        call = async (m, a) => {
+          calls.push([m, a]);
+          if (m === 'link.status') return st;
+          if (m === 'link.storage.servers') return st.storage;
+          if (m === 'link.storage.ls') return { share: 'Films', entries: [{ name: 'Holiday', dir: true }, { name: 'clip.mkv', size: 5e8 }] };
+          return {};
+        };
+        LK.s = st; closeAll(); S.settingsTab = 'storage'; navigate('settings', {}, false); render(null, true); await wait(150);
+        const v = () => document.querySelector('#view').textContent;
+        out.server = /Basement PC/.test(v()); out.backup = /To Basement PC every 6 hours/.test(v()); out.share = /\/home\/me\/Videos/.test(v());
+        out.archived = /Safely in Hearth Storage/.test(v()); out.off = /Windows sharing \(SMB\)/.test(v()) && /Away from home/.test(v());
+        const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
+        out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
+        act(document.querySelector('#view [data-k="stg-away"]')); await wait(100);
+        out.set = JSON.stringify((calls.find(c => c[0] === 'link.storage.set') || [])[1]);
+        act(document.querySelector('#view [data-k="lk-sv0"]')); await wait(150);
+        out.sheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(0); await wait(300);
+        out.browse = sheet && sheet.items.map(i => i.label).join('|');
+        out.ls = JSON.stringify((calls.find(c => c[0] === 'link.storage.ls') || [])[1]);
+        closeAll();
+        return out;
+      });
+      const want = { server: true, backup: true, share: true, archived: true, off: true, set: '{"away":true}' };
+      for (const k of Object.keys(want)) if (r[k] !== want[k]) serr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
+      if (r.dupKeys.length) serr('two rows with the same key: ' + r.dupKeys.join(', '));
+      if (!/^Browse shared folders\|Games kept there\|Stop backing up to it\|Wake it up$/.test(r.sheet || '')) serr('the server\'s menu: ' + r.sheet);
+      if (!/Holiday ›/.test(r.browse || '') || !/clip\.mkv/.test(r.browse || '')) serr('browsing: ' + r.browse);
+      if (r.ls !== JSON.stringify({ server: 'b'.repeat(64), share: 'c0ffee000001', path: '' })) serr('listing asked: ' + r.ls);
+      if (!errors.some(e => e.startsWith('Hearth Storage'))) console.log('Hearth Storage: servers, backups, shared folders, switches, browsing ok');
+    } catch (e) { serr(e.message.split('\n')[0]); }
+    await sp.close();
+  }
+
   // The Store's pictures (Steam's page, and a game's page), half size so each fits in the notices release.yml posts.
   {
     const shots = path.resolve(__dirname, 'store-shots');
