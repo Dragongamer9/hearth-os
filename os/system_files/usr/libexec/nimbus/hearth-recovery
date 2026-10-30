@@ -241,15 +241,20 @@ def menu(why, auto):
     scr, inp = Screen(), Input()
     say = lambda m: (setattr(scr, 'msg', m), scr.draw('', why, items, sel))
     sel, deadline = 0, (time.monotonic() + auto) if auto else None
+    # Whatever opened it, two minutes without a press continues starting Hearth: a menu whose buttons don't reach
+    # it (a controller that isn't up yet, an unknown handheld) must never keep the device from starting.
+    idle_since = time.monotonic()
     try:
         while True:
+            if time.monotonic() - idle_since > 120:
+                return
             left = max(0, int(deadline - time.monotonic() + 0.99)) if deadline else None
             scr.draw('', why, items, sel, left)
             if deadline and left == 0:
                 return
             k = inp.read(0.5)
             if k:
-                deadline = None
+                deadline, idle_since = None, time.monotonic()
             if k == 'up':
                 sel = (sel - 1) % len(items)
             elif k == 'down':

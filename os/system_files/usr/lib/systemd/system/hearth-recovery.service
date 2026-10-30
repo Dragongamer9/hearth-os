@@ -10,7 +10,8 @@ ConditionPathExists=!/etc/hearth-live
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/systemd-inhibit --what=handle-power-key --who=Hearth --why=Recovery --mode=block /usr/libexec/nimbus/hearth-recovery
-TimeoutStartSec=infinity
+# The menu continues by itself after two minutes without a press; this is only a last guard.
+TimeoutStartSec=15min
 StandardOutput=journal
 StandardError=journal
 
