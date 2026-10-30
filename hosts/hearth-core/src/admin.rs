@@ -38,7 +38,7 @@ pub fn write_start_mode(text: &str, mode: &str) -> String {
 /// Desktop Mode's desktop (Settings › Desktop Mode › Desktop): HEARTH_DESKTOP in session.conf, read by nimbus-session
 /// at every Desktop Mode start. "classic" (labwc + Mantel, always installed: the fallback) or "plasma". The same rules
 /// are in desktop/plasma/hearth-plasma (desktop, desktop-set).
-pub fn read_desktop(text: &str) -> &'static str {
+pub fn read_desktop_choice(text: &str) -> &'static str {
     let mut val = "classic";
     for l in text.lines() {
         let t = l.trim_start();
@@ -54,7 +54,7 @@ fn is_desktop_line(l: &str) -> bool {
     t.strip_prefix("export").map(str::trim_start).unwrap_or(t).starts_with("HEARTH_DESKTOP=")
 }
 /// Sets HEARTH_DESKTOP, keeping everything else in the file.
-pub fn write_desktop(text: &str, desktop: &str) -> String {
+pub fn write_desktop_choice(text: &str, desktop: &str) -> String {
     let line = format!("HEARTH_DESKTOP={desktop}");
     if text.lines().any(is_desktop_line) {
         let mut out: Vec<String> = text.lines().map(|l| if is_desktop_line(l) { line.clone() } else { l.to_string() }).collect();
@@ -72,7 +72,7 @@ pub fn plasma_installed() -> bool {
 pub fn desktop() -> Value {
     let run = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     json!({
-        "desktop": read_desktop(&std::fs::read_to_string(session_conf()).unwrap_or_default()),
+        "desktop": read_desktop_choice(&std::fs::read_to_string(session_conf()).unwrap_or_default()),
         "plasma": plasma_installed(),
         "fellBack": Path::new(&run).join("hearth-plasma-failed").exists(),
     })
@@ -82,7 +82,7 @@ pub fn set_desktop(desktop_name: &str) -> Result<Value, String> {
     if desktop_name == "plasma" && !plasma_installed() { return Err("Hearth Plasma isn't installed on this system.".into()); }
     let f = session_conf();
     let text = std::fs::read_to_string(&f).unwrap_or_default();
-    crate::paths::write_atomic(&f, write_desktop(&text, desktop_name).as_bytes()).map_err(|e| e.to_string())?;
+    crate::paths::write_atomic(&f, write_desktop_choice(&text, desktop_name).as_bytes()).map_err(|e| e.to_string())?;
     Ok(desktop())
 }
 
@@ -225,11 +225,11 @@ mod tests {
     #[test]
     fn start_mode_file() {
         assert_eq!(read_start_mode("FOO=1\nNIMBUS_START_MODE=\"desktop\"\n"), "desktop");
-        assert_eq!(read_desktop(""), "classic");
-        assert_eq!(read_desktop("FOO=1\nexport HEARTH_DESKTOP=\"plasma\"\n"), "plasma");
-        assert_eq!(read_desktop("HEARTH_DESKTOP=plasma\nHEARTH_DESKTOP=gnome\n"), "classic");
-        assert_eq!(write_desktop("FOO=1", "plasma"), "FOO=1\nHEARTH_DESKTOP=plasma\n");
-        assert_eq!(write_desktop("HEARTH_DESKTOP=plasma\nNIMBUS_START_MODE=game\n", "classic"), "HEARTH_DESKTOP=classic\nNIMBUS_START_MODE=game\n");
+        assert_eq!(read_desktop_choice(""), "classic");
+        assert_eq!(read_desktop_choice("FOO=1\nexport HEARTH_DESKTOP=\"plasma\"\n"), "plasma");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=plasma\nHEARTH_DESKTOP=gnome\n"), "classic");
+        assert_eq!(write_desktop_choice("FOO=1", "plasma"), "FOO=1\nHEARTH_DESKTOP=plasma\n");
+        assert_eq!(write_desktop_choice("HEARTH_DESKTOP=plasma\nNIMBUS_START_MODE=game\n", "classic"), "HEARTH_DESKTOP=classic\nNIMBUS_START_MODE=game\n");
         assert_eq!(read_start_mode(""), "game");
         assert_eq!(write_start_mode("FOO=1\nNIMBUS_START_MODE=game\n", "desktop"), "FOO=1\nNIMBUS_START_MODE=desktop\n");
         assert_eq!(write_start_mode("FOO=1", "game"), "FOO=1\nNIMBUS_START_MODE=game\n");

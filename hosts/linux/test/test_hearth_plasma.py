@@ -186,7 +186,7 @@ class Helper(unittest.TestCase):
 
     def test_same_rules_as_settings_in_rust(self):
         rs = ADMIN_RS.read_text()
-        self.assertIn('pub fn read_desktop', rs)
+        self.assertIn('pub fn read_desktop_choice', rs)
         self.assertIn('"/usr/share/plasma/look-and-feel/org.hearth.desktop"', rs)
         self.assertEqual(self.m.PLASMA_LNF, '/usr/share/plasma/look-and-feel/org.hearth.desktop')
 
