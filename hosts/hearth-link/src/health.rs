@@ -59,6 +59,12 @@ pub fn newer(a: &str, b: &str) -> bool {
     p(a) > p(b)
 }
 
+/// Hearth Benchmark's latest overall score for the health page: {overall, at, mode} (or null).
+pub fn bench_brief(s: &Value) -> Value {
+    if s["overall"].is_null() { return Value::Null; }
+    json!({"overall": s["overall"], "at": s["at"], "mode": s["mode"]})
+}
+
 /// The rows of the health page: every device with its report, online, and whether it runs the newest Hearth.
 pub fn rows(devices: Vec<(String, String, bool, u64, bool)>, reports: &std::collections::HashMap<String, Value>, now: u64) -> Vec<Value> {
     let newest = reports.values().filter_map(|r| r["version"].as_str()).fold(String::new(), |m, v| if newest_of(&m, v) { v.to_string() } else { m });
@@ -70,7 +76,7 @@ pub fn rows(devices: Vec<(String, String, bool, u64, bool)>, reports: &std::coll
         json!({"id": id, "name": name, "me": me, "online": me || connected || now.saturating_sub(at) < ONLINE_MS, "lastSeen": seen,
                "kind": r["kind"], "edition": r["edition"], "battery": r["battery"], "free": r["free"], "total": r["total"],
                "lastBackup": r["lastBackup"], "version": r["version"], "boot": r["boot"], "server": r["server"] == true, "reported": at,
-               "upToDate": if version.is_empty() { Value::Null } else { json!(!newer(&newest, version)) }, "newest": newest})
+               "bench": r["bench"], "upToDate": if version.is_empty() { Value::Null } else { json!(!newer(&newest, version)) }, "newest": newest})
     }).collect()
 }
 fn newest_of(cur: &str, v: &str) -> bool { cur.is_empty() || newer(v, cur) }
@@ -109,7 +115,8 @@ impl Node {
         json!({"name": self.name(), "kind": self.kind, "edition": self.edition, "version": hearth_core::VERSION,
                "battery": battery(Path::new("/sys/class/power_supply")), "free": crate::free_space(&self.home), "total": total_space(&self.home),
                "lastBackup": if c.backup_to.is_empty() { Value::Null } else { json!(c.last_backup) }, "server": c.server,
-               "boot": boot_state(Path::new("/boot"), Path::new("/var/lib/hearth")), "at": crate::now_ms()})
+               "boot": boot_state(Path::new("/boot"), Path::new("/var/lib/hearth")), "at": crate::now_ms(),
+               "bench": bench_brief(&crate::bench::summary())})
     }
 
     fn reports_save(&self) {
@@ -139,7 +146,7 @@ impl Node {
                 let mut r = req["report"].clone();
                 if !r.is_object() { return Err("No report".into()); }
                 // Only what the page shows, and short.
-                let keep = ["name", "kind", "edition", "version", "battery", "free", "total", "lastBackup", "boot", "server"];
+                let keep = ["name", "kind", "edition", "version", "battery", "free", "total", "lastBackup", "boot", "server", "bench"];
                 r.as_object_mut().unwrap().retain(|k, v| keep.contains(&k.as_str()) && v.to_string().len() < 400);
                 r["at"] = json!(crate::now_ms());
                 crate::lock(&self.storage.reports).insert(peer.to_string(), r);

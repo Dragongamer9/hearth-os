@@ -1,6 +1,7 @@
 //! Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, separate programs on Hearth OS
 //! (/usr/bin/hearth-controller-lab, hearth-saves, hearth-mods). Game Mode opens them from Settings › Controls
 //! (Controller Lab) and a game's ⋯ menu (Back up saves, Mods): full screen in Game Mode, on that game.
+//! Hearth Benchmark (Hearth Tools' `--app benchmark`) opens the same way from Settings › System.
 
 use std::path::PathBuf;
 
@@ -13,11 +14,21 @@ pub fn find(program: &str) -> Option<PathBuf> {
     std::env::split_paths(&path).chain([PathBuf::from("/usr/bin"), PathBuf::from("/usr/local/bin")]).map(|d| d.join(program)).find(|p| p.is_file())
 }
 
+/// Hearth Benchmark: a Hearth Tools app (hosts/hearth-tools), not one of the gaming apps above.
+pub const BENCHMARK: (&str, &str) = ("benchmark", "hearth-tools");
+/// Whether Hearth Benchmark is installed (host.info feature "benchmark": its row in Settings › System).
+pub fn benchmark_available() -> bool { find(BENCHMARK.1).is_some() }
+
 /// Whether any of them is installed (the page then shows its entries: host.info feature "gamingApps").
 pub fn available() -> bool { APPS.iter().any(|(_, p)| find(p).is_some()) }
 
 /// The program and its arguments for one app, opened on one game (a library id, checked) or none.
 pub fn command(app: &str, game: Option<&str>, fullscreen: bool) -> Result<(&'static str, Vec<String>), String> {
+    if app == BENCHMARK.0 {
+        let mut args = vec!["--app".to_string(), "benchmark".into()];
+        if fullscreen { args.push("--fullscreen".into()); }
+        return Ok((BENCHMARK.1, args));
+    }
     let program = APPS.iter().find(|(a, _)| *a == app).map(|(_, p)| *p).ok_or("Unknown app")?;
     let mut args = Vec::new();
     if fullscreen { args.push("--fullscreen".to_string()); }
@@ -48,5 +59,6 @@ mod tests {
         assert_eq!(command("mods", None, false).unwrap().1, Vec::<String>::new());
         assert!(command("mods", Some("bad\"id"), false).is_err());
         assert!(command("rm", None, false).is_err());
+        assert_eq!(command("benchmark", Some("steam:620"), true).unwrap(), ("hearth-tools", vec!["--app".to_string(), "benchmark".into(), "--fullscreen".into()]));
     }
 }

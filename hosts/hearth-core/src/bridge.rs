@@ -1799,6 +1799,7 @@ fn features() -> Vec<&'static str> {
     if std::path::Path::new(crate::renderer::QT_APP).is_file() { f.push("qtRenderer"); }
     // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
     if crate::gaming_apps::available() { f.push("gamingApps"); }
+    if crate::gaming_apps::benchmark_available() { f.push("benchmark"); }
     // ---- Hearth Friends on Matrix (the service is installed)
     if crate::matrix_friends::available() { f.push("mfriends"); }
     // ---- end of Hearth's gaming apps

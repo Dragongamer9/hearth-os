@@ -413,6 +413,13 @@ if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
 fi
 # ---- end Hearth Tools
+# ---- Hearth Benchmark (Hearth Tools' --app benchmark): the programs its tests run. 7-Zip (processor), fio (storage),
+# glmark2 for X11 and Wayland (OpenGL and the game-style scenes) and vkmark (Vulkan). All optional: a missing one is
+# listed at the end of the build and its test is skipped in the app, never a failed image.
+optional 7zip fio vkmark glmark2-x11 glmark2-wayland
+command -v glmark2 >/dev/null || command -v glmark2-wayland >/dev/null || optional glmark2
+command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null || optional p7zip-full
+# ---- end Hearth Benchmark
 # ---- Nearby Share and Hearth Connect (hosts/hearth-nearby, hosts/hearth-connect) ------------------------------
 # Hearth's apps for phones and nearby devices, built with the app (base-peppermint.yml) and carried in os/nimbus-app
 # (their icons, hearth-nearby and hearth-connect, come with Hearth's icon set). Nearby Share speaks LocalSend's protocol, Hearth Connect KDE Connect's. playerctl lets a phone

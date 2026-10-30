@@ -526,6 +526,13 @@ jobs:
           warn "Hearth Tools is installed with its menu entries and icons" "test -x /usr/bin/hearth-tools && test -f /usr/share/applications/hearth-disk-usage.desktop && test -f /usr/share/applications/hearth-welcome.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-logs.svg"
           warn "every library Hearth Tools links is installed" "! ldd /usr/bin/hearth-tools | grep -q 'not found'"
           warn "Hearth Tools answers without a window (--list-apps, --call sys.overview)" "/usr/bin/hearth-tools --list-apps | grep -q printers && HOME=/tmp /usr/bin/hearth-tools --call sys.overview | grep -q memory"
+          # ---- Hearth Benchmark (hearth-tools --app benchmark) and the programs its tests run (each optional: warn only)
+          warn "Hearth Benchmark's menu entry is installed" "test -f /usr/share/applications/hearth-benchmark.desktop && /usr/bin/hearth-tools --list-apps | grep -q benchmark"
+          warn "Hearth Benchmark answers without a window (--call bench.state)" "HOME=/tmp /usr/bin/hearth-tools --call bench.state | grep -q places"
+          warn "7-Zip is installed (Hearth Benchmark's processor tests)" "command -v 7z || command -v 7zz || command -v 7za"
+          warn "fio is installed (Hearth Benchmark's storage test)" "command -v fio"
+          warn "glmark2 is installed (Hearth Benchmark's OpenGL and game-style tests)" "command -v glmark2 || command -v glmark2-wayland"
+          warn "vkmark is installed (Hearth Benchmark's Vulkan test)" "command -v vkmark"
           warn "the scanner tools (scanimage, sane-airscan) and traceroute are installed" "command -v scanimage && ls /etc/sane.d/airscan.conf && command -v traceroute"
           # ---- end Hearth Tools
           # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).

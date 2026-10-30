@@ -51,6 +51,7 @@ pub mod saves;
 pub mod shortcode;
 pub mod state;
 pub mod storage;
+pub mod bench;
 pub mod cache;
 pub mod sync;
 pub mod wire;
