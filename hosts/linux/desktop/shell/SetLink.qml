@@ -222,31 +222,63 @@ SetPage {
         current: page.st && page.st.settings ? page.st.settings.relay : "default"
         onChosen: v => page.run(["set", "relay", v], "Hearth Link restarts with the new setting")
     }
-    // Hearth Storage (hosts/hearth-link storage.rs): this device as a home server for the others, the main switches.
-    // Browsing, moving games and the rest are in Game Mode (Settings › Hearth Storage); shared folders on other
+    // Hearth Storage (hosts/hearth-link storage.rs, saves.rs, health.rs), in the same sections as Game Mode's page:
+    // this device's role, servers & devices (health, remove), shared folders, backups & saves, advanced. Browsing,
+    // moving games, media and downloads are in Game Mode (Settings › Hearth Storage); shared folders on other
     // devices show up in Hearth Files.
-    SetHeader { text: "Hearth Storage"; visible: !!page.stc }
+    property var devs: null
+    property string removing: ""
+    function devLine(d) {
+        const b = d.battery, boot = d.boot || {};
+        return [d.me ? "This device" : d.online ? "Online" : (d.lastSeen ? "Last seen " + new Date(d.lastSeen).toLocaleString() : "Not seen yet"),
+                b && b.percent !== undefined && b.percent !== null ? "Battery " + b.percent + "%" + (b.charging ? " (charging)" : "") : "",
+                d.free !== undefined && d.free !== null ? page.bytes(d.free) + " free" : "",
+                d.lastBackup ? "Backed up " + new Date(d.lastBackup).toLocaleString() : "",
+                d.version ? "Hearth " + d.version + (d.upToDate === false ? " (" + d.newest + " is out)" : "") : "",
+                boot.fellBack ? "Last update didn't start: went back to the previous version" : boot.good === false ? "Start not confirmed yet" : ""].filter(x => x).join(" · ");
+    }
+    function loadDevices() { if (page.stc) devJob.run(["devices"], r => page.devs = r, e => {}); }
+    SetJob { id: devJob; helper: "hearth-link-settings" }
+    Timer { interval: 60000; running: page.visible && !!page.stc; repeat: true; triggeredOnStart: true; onTriggered: if (!devJob.busy) page.loadDevices() }
+
+    SetHeader { text: "Hearth Storage · This device"; visible: !!page.stc }
     SetSwitch {
         visible: !!page.stc
         icon: "store"; title: "Use this device as Hearth Storage"
-        sub: "Your paired Hearth devices can use its shared folders, keep games on it and back up to it. Only paired devices; nothing is opened to the internet."
+        sub: "A home server for your paired Hearth devices: shared folders, games kept for them, their backups and saves. Only paired devices; nothing is opened to the internet."
         checked: !!page.stc && !!page.stc.server
         onToggled: v => page.run(["storage-set", "server", v ? "on" : "off"])
     }
-    SetSwitch {
-        visible: !!page.stc && !!page.stc.server
-        icon: "update"; title: "Away from home"
-        sub: "Your devices can use it when they aren't home, over Hearth Link's encrypted connection. No port is opened."
-        checked: !!page.stc && !!page.stc.away
-        onToggled: v => page.run(["storage-set", "away", v ? "on" : "off"])
+    SetHeader { text: "Servers & devices"; visible: !!page.stc && !!page.devs && (page.devs.devices || []).length > 0 }
+    Text {
+        visible: !!page.devs && !!page.devs.serverOffline
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: (page.devs && page.devs.serverName ? page.devs.serverName : "Your Hearth Storage") + " isn't answering (asleep or away), so only what this device knows is shown."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
-    SetSwitch {
-        visible: !!page.stc && !!page.stc.server
-        icon: "display"; title: "Windows sharing (SMB)"
-        sub: "The shared folders for Windows PCs on this network (port 445, this network only). Set its password in Game Mode."
-        checked: !!page.stc && !!page.stc.smb
-        onToggled: v => page.run(["storage-set", "smb", v ? "on" : "off"])
+    Repeater {
+        model: page.stc && page.devs ? (page.devs.devices || []) : []
+        delegate: SetRow {
+            required property var modelData
+            icon: "display"; title: modelData.name + (modelData.server ? " · Hearth Storage" : "")
+            sub: page.devLine(modelData) + (modelData.me ? "" : " · select to remove it")
+            value: modelData.me || modelData.online ? "OK" : "Off"
+            chevron: !modelData.me
+            onActivated: if (!modelData.me) page.removing = (page.removing === modelData.id ? "" : modelData.id)
+        }
     }
+    SetRow {
+        visible: page.removing !== ""
+        icon: "trash"; title: "Remove it"; sub: "Unpaired from your devices. What Hearth Storage keeps of it stays. It can pair again any time."
+        onActivated: { page.run(["device-remove", page.removing], "Removed"); page.removing = ""; page.loadDevices(); }
+    }
+    SetRow {
+        visible: page.removing !== ""
+        icon: "trash"; title: "Remove it and delete its backups and archived games"
+        sub: "Also frees their space on Hearth Storage. This can't be undone."
+        onActivated: { page.run(["device-remove", page.removing, "backups", "archive"], "Removed, and its backups and games deleted"); page.removing = ""; page.loadDevices(); }
+    }
+    SetHeader { text: "Shared folders"; visible: !!page.stc && !!page.stc.server }
     Repeater {
         model: page.stc && page.stc.server ? (page.stc.shares || []) : []
         delegate: SetRow {
@@ -267,11 +299,40 @@ SetPage {
         placeholder: "Folder to share, like /home/you/Videos"
         onSubmitted: t => { if (t.trim()) page.run(["share-add", t.trim()], "Shared"); shareField.text = ""; shareField.visible = false; }
     }
+    SetHeader { text: "Backups & saves"; visible: !!page.stc && (!!page.stc.backupTo || !!page.stc.server) }
     SetRow {
         visible: !!page.stc && !!page.stc.backupTo
         icon: "update"; title: "Back up now"
         sub: "Saves and screenshots to your Hearth Storage (only what changed)" + (page.stc && page.stc.lastBackup ? " · last " + new Date(page.stc.lastBackup).toLocaleString() : "")
         onActivated: page.run(["backup-now"], "Backing up")
+    }
+    SetSwitch {
+        visible: !!page.stc && !!page.stc.backupTo
+        icon: "update"; title: "Saves follow you"
+        sub: "Games without their store's cloud saves get their newest save from Hearth Storage before they start, and send it back after. If both changed, you're asked."
+        checked: !!page.stc && page.stc.savesFollow !== false
+        onToggled: v => page.run(["storage-set", "savesFollow", v ? "on" : "off"])
+    }
+    SetSwitch {
+        visible: !!page.stc && !!page.stc.server
+        icon: "store"; title: "Keep backups and saves for my devices"
+        checked: !!page.stc && !!page.stc.backups
+        onToggled: v => page.run(["storage-set", "backups", v ? "on" : "off"])
+    }
+    SetHeader { text: "Advanced"; visible: !!page.stc && !!page.stc.server }
+    SetSwitch {
+        visible: !!page.stc && !!page.stc.server
+        icon: "update"; title: "Away from home"
+        sub: "Your devices can use it when they aren't home, over Hearth Link's encrypted connection. No port is opened."
+        checked: !!page.stc && !!page.stc.away
+        onToggled: v => page.run(["storage-set", "away", v ? "on" : "off"])
+    }
+    SetSwitch {
+        visible: !!page.stc && !!page.stc.server
+        icon: "display"; title: "Windows sharing (SMB)"
+        sub: "The shared folders for Windows PCs on this network (port 445, this network only). Set its password in Game Mode."
+        checked: !!page.stc && !!page.stc.smb
+        onToggled: v => page.run(["storage-set", "smb", v ? "on" : "off"])
     }
     Text {
         visible: page.message !== ""

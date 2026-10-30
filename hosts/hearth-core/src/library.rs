@@ -907,6 +907,8 @@ impl Library {
     /// A game is over (or a Quick Resume game was closed): play time saved, Epic saves uploaded. Returns its dto.
     fn finish(&mut self, r: Running) -> Value {
         crate::seat_share::release(std::path::Path::new(crate::seat_share::IN_USE), &r.id, &crate::seat_share::me());
+        // Saves follow you (Hearth Storage): this game's save goes to the server, if it's one Hearth Link follows.
+        crate::link::game_closed(&r.id);
         // Epic cloud saves go up once the game has closed.
         // GOG cloud saves go up once the game has closed.
         if let Some(gid) = r.id.strip_prefix("gog:") {

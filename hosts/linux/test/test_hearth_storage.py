@@ -39,6 +39,21 @@ class Settings(unittest.TestCase):
                 hls.request(bad)
 
 
+    def test_devices_and_removing_one(self):
+        self.assertEqual(hls.request(['devices']), ('storage.devices', {}))
+        self.assertEqual(hls.request(['storage-set', 'savesFollow', 'off']), ('storage.set', {'savesFollow': False}))
+        self.assertEqual(hls.request(['device-remove', SRV]), ('storage.device.remove', {'id': SRV, 'backups': False, 'archive': False}))
+        self.assertEqual(hls.request(['device-remove', SRV, 'backups', 'archive']), ('storage.device.remove', {'id': SRV, 'backups': True, 'archive': True}))
+        for bad in (['device-remove', 'x'], ['device-remove', SRV, 'everything'], ['device-remove']):
+            with self.assertRaises(hls.Fail):
+                hls.request(bad)
+
+    def test_mantel_page_has_the_sections(self):
+        qml = (SHELL / 'SetLink.qml').read_text()
+        for needle in ['"Servers & devices"', '"Backups & saves"', '"Saves follow you"', '["device-remove", page.removing, "backups", "archive"]', 'devJob.run(["devices"]']:
+            self.assertIn(needle, qml)
+
+
 class Files(unittest.TestCase):
     def setUp(self):
         self.calls = []
@@ -115,6 +130,24 @@ class Wiring(unittest.TestCase):
         for needle in ["function pageStorage()", "['storage','lib','Hearth Storage']", "if(/^stg[A-Z]/.test(a)) return stgAct(a, d);",
                        "'Move to Hearth Storage…'", "call('link.storage.servers'", "case 'stgSmbPw'", "secret:true"]:
             self.assertIn(needle, ui)
+
+    def test_saves_follow_you_and_device_health(self):
+        ui = (ROOT / 'ui' / 'index.html').read_text()
+        # Before a game: asked briefly, never in the way (a timer starts it anyway), and both kept when both changed.
+        for needle in ["call('link.storage.saves.before'", "res({action:'slow'}), 6000", "stgSaveAsk(g, r, mod, false)", "call('link.storage.saves.pull'",
+                       "call('link.storage.devices'", "call('link.storage.device.remove'", "call('link.storage.device.usage'",
+                       "call('link.storage.cache.status'", "call('link.storage.updates.status'", "'storage.cache.set'", "'storage.updates.set'"]:
+            self.assertIn(needle, ui)
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'link.rs').read_text()
+        for c in ('"storage.saves.before"', '"storage.saves.pull"', '"storage.saves.resolve"', '"storage.devices"', '"storage.device.remove"', 'pub fn game_closed'):
+            self.assertIn(c, rs)
+        self.assertIn('crate::link::game_closed(&r.id)', (ROOT / 'hosts' / 'hearth-core' / 'src' / 'library.rs').read_text())
+        saves = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'saves.rs').read_text()
+        self.assertIn('pub const CHECK: Duration = Duration::from_millis(2500)', saves)
+        # Device health only reads hearth-boot-guard's files.
+        health = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'health.rs').read_text()
+        self.assertNotIn('Command::new', health)
+        self.assertNotIn('write(', health.split('#[cfg(test)]')[0].replace('write_atomic(&self.dir.join("devices.json")', ''))
 
     def test_bridge_passes_the_calls_on(self):
         rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'link.rs').read_text()

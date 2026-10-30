@@ -237,6 +237,13 @@ impl Node {
         }
     }
 
+    /// Unpairs a device: it's told (if it answers within 15 seconds), then forgotten here.
+    pub async fn unpair_device(self: &Arc<Self>, id: &str) {
+        let _ = tokio::time::timeout(Duration::from_secs(15), self.request(id, &json!({"op": "unpair"}))).await;
+        self.drop_conn(id).await;
+        crate::lock(&self.peers).remove(id);
+    }
+
     pub async fn drop_conn(&self, id: &str) {
         if let Some(c) = self.conns.lock().await.remove(id) { c.close(VarInt::from_u32(0), b"again"); }
     }
@@ -520,6 +527,8 @@ impl Node {
             }
             "unpair" => { crate::lock(&self.peers).remove(peer); self.conns.lock().await.remove(peer); Ok(json!({"ok": true})) }
             "ping" => Ok(json!({"ok": true})),
+            o if o.starts_with("saves.") => self.clone().saves_answer(peer, op, req).await,
+            o if o.starts_with("device.") || o.starts_with("devices.") => self.clone().health_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") => self.clone().storage_answer(peer, op, req).await,
             _ => Err(format!("Unknown request: {op}")),
         }
@@ -897,9 +906,7 @@ impl Node {
             }
             "unpair" => {
                 let id = s("id")?;
-                let _ = tokio::time::timeout(Duration::from_secs(15), self.request(&id, &json!({"op": "unpair"}))).await;
-                self.drop_conn(&id).await;
-                crate::lock(&self.peers).remove(&id);
+                self.unpair_device(&id).await;
                 Ok(Value::Null)
             }
             "peer.set" => {

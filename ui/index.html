@@ -346,6 +346,7 @@ body.hasbg .home-hero:after,body.hasbg .ghero:after{background:linear-gradient(1
 .row.focus .ricon{background:var(--panel3)}
 .tag{font-size:12px;font-weight:700;color:var(--dim);white-space:nowrap}
 .tag.on{color:var(--accent)}
+.tag.warn{color:var(--warn,#ffb547)}
 .mini-spin{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
 .note{color:var(--dim);font-size:13px;padding:8px 4px;line-height:1.5}
 /* Hearth Linux's output (Settings › System › Linux on Android) */
@@ -5396,19 +5397,33 @@ function lkAct(a, d){
 }
 // ---- Hearth Storage: its page (pageStorage) in Connections, on Hearth OS. A spare Hearth PC as a home server for
 // the paired devices (hosts/hearth-link storage.rs): shared folders, a game archive, backups, media, waking it up.
-const STG = {here:null, backups:null};
+const STG = {here:null, backups:null, devices:null, devLoading:false, saves:null, cache:null, updates:null, adv:false};
 function stgS(){ return (LK.s&&LK.s.storage)||{}; }
 function stgWhen(ms){ return ms ? new Date(ms).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : ''; }
 function stgCall(m, a, ok){ return call('link.'+m, a||{}, 150000).then(r=>{ if(ok) toast(ok); loadLink(); return r; }).catch(e=>{ toast(e.message); loadLink(); throw e; }); }
 // The paired devices that are Hearth Storage (asked when the page opens), and the server's own lists.
 function stgRefresh(){
   if(!lkOn()) return;
-  call('link.storage.servers',{},100000).then(r=>{ if(LK.s) LK.s.storage=r; lkRedraw(); }).catch(()=>{});
+  call('link.storage.servers',{},100000).then(r=>{ if(LK.s) LK.s.storage=r; lkRedraw(); stgExtras(); }).catch(()=>{});
   const c=stgS().config||{};
   if(c.server){
     call('link.storage.backups',{},15000).then(r=>{ STG.backups=r.backups||[]; lkRedraw(); }).catch(()=>{});
     call('link.storage.archive.here',{},15000).then(r=>{ STG.here=r.games||[]; lkRedraw(); }).catch(()=>{});
   }
+  stgDevices();
+  call('link.storage.saves.status',{},20000).then(r=>{ STG.saves=r; lkRedraw(); }).catch(()=>{});
+}
+// Every paired device's health (asked of the Hearth Storage server; a few seconds).
+function stgDevices(){
+  if(STG.devLoading) return;
+  STG.devLoading=true; lkRedraw();
+  call('link.storage.devices',{},40000).then(r=>{ STG.devices=r; }).catch(()=>{}).finally(()=>{ STG.devLoading=false; lkRedraw(); });
+}
+// Sharing downloads and updates through Hearth Storage: their own calls; a Hearth Link without them says so.
+function stgExtras(){
+  const na = () => ({na:true});   // not there yet (another Hearth Link), or it didn't answer: not offered
+  call('link.storage.cache.status',{},15000).then(r=>{ STG.cache=r||{}; }).catch(e=>{ STG.cache=na(e); }).finally(lkRedraw);
+  call('link.storage.updates.status',{},15000).then(r=>{ STG.updates=r||{}; }).catch(e=>{ STG.updates=na(e); }).finally(lkRedraw);
 }
 function stgSw(key, label, sub){ const c=stgS().config||{}; return `<button class="row" data-f data-k="stg-${key}" data-act="stgSet" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${c[key]?'on':''}"></div></button>`; }
 function stgServerLine(v){
@@ -5420,40 +5435,117 @@ function stgArchLine(v){
   if(v.state==='changed') return 'Changed here since it was moved (played?): move it again before uninstalling';
   return 'Being moved: it stays here until it\'s safely there';
 }
+// The page in sections, each a heading and its rows (the D-pad goes down through them; toggles two to a line on
+// wide screens): This device, Servers & devices (health, remove), Shared folders, Game archive, Backups & saves,
+// Media, Downloads & updates, and Away from home / Windows sharing / Wake folded away under Advanced.
+function stgAgo(ms){ if(!ms) return ''; const m=Math.round((Date.now()-ms)/60000); return m<2?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:stgWhen(ms); }
+function stgHealthLine(d){
+  const b=d.battery, boot=d.boot||{};
+  return [d.me?'This device':d.online?'Online':(d.lastSeen?'Last seen '+stgAgo(d.lastSeen):'Not seen yet'),
+    b&&b.percent!=null?`Battery ${b.percent}%${b.charging?' (charging)':''}`:'',
+    d.free!=null?lkBytes(d.free)+' free':'',
+    d.lastBackup?'Backed up '+stgAgo(d.lastBackup):d.lastBackup===0?'Not backed up yet':'',
+    d.version?`Hearth ${esc(d.version)}${d.upToDate===false?` (${esc(d.newest)} is out)`:''}`:'',
+    boot.fellBack?'Last update didn\'t start: went back to the previous version':boot.good===false?'Start not confirmed yet':''].filter(Boolean).join(' · ');
+}
+function stgHealthTag(d){
+  const boot=d.boot||{}, low=d.battery&&d.battery.percent<15&&!d.battery.charging, full=d.total&&d.free!=null&&d.free<d.total*0.05;
+  if(boot.fellBack||boot.good===false) return '<span class="tag warn">Check it</span>';
+  if(d.upToDate===false) return '<span class="tag warn">Update</span>';
+  if(low||full) return `<span class="tag warn">${low?'Low battery':'Almost full'}</span>`;
+  return d.me||d.online ? '<span class="tag on">OK</span>' : '<span class="tag">Off</span>';
+}
+function stgOptional(x, label){ return x&&x.na ? note(`${label} comes with the next Hearth OS update.`) : ''; }
 function pageStorage(){
   const s=LK.s;
   if(!s) return note(lkOn() ? 'Loading…' : 'Hearth Storage comes with Hearth Link in the next Hearth OS update.');
   if(!s.running) return note(s.installed ? 'Hearth Storage is part of Hearth Link, which isn\'t running. It starts with your session: sign out and in again, or restart.' : 'Hearth Storage comes with the next Hearth OS update.');
-  const st=stgS(), c=st.config||{}, servers=st.servers||[];
-  let h = shead('Use Hearth Storage');
-  if(!servers.length) h += note('None of your paired devices is Hearth Storage yet. On a spare PC running Hearth, open Settings › Hearth Storage › Use this device as Hearth Storage, and pair it with this one in Settings › Hearth Link.');
-  servers.forEach((v,i)=>{ h += lkRow('sv'+i,'stgServer','lib', esc(v.name), stgServerLine(v), undefined, ` data-id="${esc(v.id)}"`); });
+  const st=stgS(), c=st.config||{}, servers=st.servers||[], srv=c.server;
   const bto=servers.find(v=>v.id===c.backupTo);
-  h += lkRow('bto','stgBackupTo','refresh','Back up saves and screenshots', c.backupTo ? `To ${esc(bto?bto.name:'your Hearth Storage')} every ${c.backupHours} hours · ${c.lastBackup?'last '+stgWhen(c.lastBackup):'not yet'}` : 'Off: pick one of your Hearth Storage devices');
-  if(c.backupTo) h += sgrid(stgSw('backupSaves','Game saves','Steam Cloud\'s copies here and every game\'s Windows user folder') + stgSw('backupShots','Screenshots','Hearth\'s and Steam\'s'))
-    + lkRow('bnow','stgBackupNow','refresh','Back up now', st.busy?'Starting…':'Wakes it if it\'s asleep. Only what changed is sent.');
-  const arch=Object.entries(c.archived||{});
-  if(arch.length) h += shead('Moved to Hearth Storage') + arch.map(([id,v],i)=>lkRow('ar'+i,'stgArchived', v.state==='archived'?'check':'dl', esc(v.title||id), stgArchLine(v), undefined, ` data-id="${esc(id)}"`)).join('');
-  if(servers.length) h += lkRow('mv','stgMove','dl','Move a game to Hearth Storage','Frees the space here. Copy it back any time: fast on your home network.');
-  h += shead('This device as Hearth Storage');
-  h += stgSw('server','Use this device as Hearth Storage','Your paired Hearth devices can use its shared folders, keep games on it and back up to it. Only paired devices; nothing is opened to the internet.');
-  if(c.server){
-    h += lkRow('folder','stgFolder','lib','Where games and backups are kept', `${esc(c.folder||'')} · ${lkBytes(c.free)} free`);
+  // ---- This device
+  let h = shead('This device');
+  h += stgSw('server','Use this device as Hearth Storage','A home server for your paired Hearth devices: shared folders, games kept for them, their backups and saves. Only paired devices; nothing is opened to the internet.');
+  if(srv) h += lkRow('folder','stgFolder','lib','Where games, backups and saves are kept', `${esc(c.folder||'')} · ${lkBytes(c.free)} free`);
+  // ---- Servers & devices
+  h += shead('Servers & devices', STG.devLoading);
+  const devs=(STG.devices&&STG.devices.devices)||[];
+  if(STG.devices&&STG.devices.serverOffline) h += note(`${esc(STG.devices.serverName||'Your Hearth Storage')} isn't answering (asleep or away), so only what this device knows is shown.`);
+  if(devs.length) devs.forEach((d,i)=>{ const isSrv=d.server||servers.some(v=>v.id===d.id);
+    h += lkRow('dv'+i,'stgDevice', d.kind==='handheld'?'pad':d.kind==='laptop'?'desk':'display', esc(d.name)+(isSrv?' · Hearth Storage':''), stgHealthLine(d), stgHealthTag(d), ` data-id="${esc(d.id)}"`); });
+  else if(!(s.peers||[]).length) h += note('No paired devices yet. Pair them in Settings › Hearth Link.');
+  else h += note(STG.devLoading?'Asking your devices…':'Your devices show here once one of them is Hearth Storage.');
+  servers.filter(v=>!devs.some(d=>d.id===v.id)).forEach((v,i)=>{ h += lkRow('sv'+i,'stgServer','lib', esc(v.name)+' · Hearth Storage', stgServerLine(v), undefined, ` data-id="${esc(v.id)}"`); });
+  if(!servers.length && !srv) h += note('None of your paired devices is Hearth Storage yet. On a spare PC running Hearth, turn on Use this device as Hearth Storage, and pair it with this one.');
+  h += sgrid(lkRow('pair','stgPair','refresh','Pair a device','Settings › Hearth Link') + lkRow('devref','stgDevRefresh','restart','Check again','Asks every device how it\'s doing'));
+  // ---- Shared folders
+  if(srv || servers.some(v=>(v.shares||[]).length)){
     h += shead('Shared folders');
-    (c.shares||[]).forEach((x,i)=>{ h += lkRow('sh'+i,'stgShare','lib', esc(x.name), esc(x.path) + (x.there?'':' · not there right now') + (c.smb?(x.write?' · Windows PCs can change it':' · read-only for Windows PCs'):''), undefined, ` data-id="${esc(x.id)}"`); });
-    h += lkRow('shadd','stgShareAdd','lib','Share a folder','Your devices see it in Hearth Files and here, and can copy and play what\'s in it. Hidden files are never shared.');
-    h += shead('Server settings') + sgrid(stgSw('archive','Game archive','Devices can move games here') + stgSw('backups','Backups','Devices back up their saves and screenshots here')
-      + stgSw('media','Play from shared folders','Videos and music play on your other devices') + stgSw('away','Away from home','Your devices can use it when they aren\'t home, over Hearth Link\'s encrypted connection. No port is opened.'));
-    h += stgSw('smb','Windows sharing (SMB)','The shared folders for Windows PCs and other computers on this network. Opens port 445 to this network only.');
-    if(c.smb) h += lkRow('smbpw','stgSmbPw','lock','Windows sharing password', `From Windows, sign in as ${esc(st.user||'your user name')} with this password`);
-    h += lkRow('sleep','stgSleep','moon','Sleep when idle', c.sleepMinutes ? `After ${c.sleepMinutes} minutes with nothing to do and nobody using it. Your devices wake it from the network.` : 'Never');
-    if(st.wol) h += note('Waking from the network: '+esc(st.wol)+'. The PC\'s firmware settings (BIOS/UEFI) may need Wake on LAN turned on too, and a network cable works best.');
-    const jobs=st.jobs||[];
-    if(jobs.length) h += shead('Coming here now') + jobs.map((t,i)=>lkRow('sj'+i,'lkJob','dl', `${esc(t.title)}${t.from?' from '+esc(t.from):''}`, lkJobLine(t), t.state==='copying'&&t.total?`<div class="rv">${Math.floor(100*t.done/t.total)}%</div>`:undefined, ` data-id="${esc(t.id)}"`)).join('');
-    if(STG.here&&STG.here.length) h += shead('Games kept here') + STG.here.map((g,i)=>lkRow('gh'+i,'stgHereGame','lib', esc(g.title), `From ${esc(g.fromName||'a device')} · ${lkBytes(g.size)} · ${stgWhen(g.at)}`, undefined, ` data-id="${esc(g.id)}"`)).join('');
-    if(STG.backups&&STG.backups.length) h += shead('Backups kept here') + STG.backups.map((b,i)=>lkRow('bk'+i,'lkNone','refresh', esc(b.device),
-      [b.saves&&b.saves.at?`Saves ${stgWhen(b.saves.at)} (${lkBytes(b.saves.size)})`:'', b.shots&&b.shots.at?`Screenshots ${stgWhen(b.shots.at)} (${lkBytes(b.shots.size)})`:''].filter(Boolean).join(' · ') || 'The first backup isn\'t finished yet', '')).join('');
+    servers.filter(v=>(v.shares||[]).length).forEach((v,i)=>{ h += lkRow('br'+i,'stgBrowse','lib', `Browse ${esc(v.name)}`, (v.shares||[]).map(x=>esc(x.name)).join(', '), undefined, ` data-id="${esc(v.id)}"`); });
+    if(srv){
+      (c.shares||[]).forEach((x,i)=>{ h += lkRow('sh'+i,'stgShare','lib', esc(x.name), esc(x.path) + (x.there?'':' · not there right now') + (c.smb?(x.write?' · Windows PCs can change it':' · read-only for Windows PCs'):''), undefined, ` data-id="${esc(x.id)}"`); });
+      h += lkRow('shadd','stgShareAdd','lib','Share a folder','Your devices see it in Hearth Files and here, and can copy and play what\'s in it. Hidden files are never shared.');
+    }
   }
+  // ---- Game archive
+  const arch=Object.entries(c.archived||{});
+  if(srv || servers.length || arch.length){
+    h += shead('Game archive');
+    arch.forEach(([id,v],i)=>{ h += lkRow('ar'+i,'stgArchived', v.state==='archived'?'check':'dl', esc(v.title||id), stgArchLine(v), undefined, ` data-id="${esc(id)}"`); });
+    if(servers.length) h += sgrid(lkRow('mv','stgMove','dl','Move a game to Hearth Storage','Frees the space here. Copy it back any time.') + lkRow('kept','stgKept','lib','Games kept there','Copy one back, or remove it'));
+    if(srv){
+      h += stgSw('archive','Keep games for my devices','They move games here to free their space');
+      if(STG.here&&STG.here.length) STG.here.forEach((g,i)=>{ h += lkRow('gh'+i,'stgHereGame','lib', esc(g.title), `From ${esc(g.fromName||'a device')} · ${lkBytes(g.size)} · ${stgWhen(g.at)}`, undefined, ` data-id="${esc(g.id)}"`); });
+    }
+  }
+  // ---- Backups & saves
+  h += shead('Backups & saves');
+  h += lkRow('bto','stgBackupTo','refresh','Back up saves and screenshots', c.backupTo ? `To ${esc(bto?bto.name:'your Hearth Storage')} every ${c.backupHours} hours · ${c.lastBackup?'last '+stgWhen(c.lastBackup):'not yet'}` : (servers.length?'Off: pick one of your Hearth Storage devices':'Needs one of your devices to be Hearth Storage'));
+  if(c.backupTo){
+    h += sgrid(stgSw('backupSaves','Game saves','Steam Cloud\'s copies here and every game\'s Windows user folder') + stgSw('backupShots','Screenshots','Hearth\'s and Steam\'s')
+      + stgSw('savesFollow','Saves follow you','Games without their store\'s cloud saves get their newest save before they start, and send it back after') + lkRow('bnow','stgBackupNow','refresh','Back up now', st.busy?'Starting…':'Wakes it if it\'s asleep. Only what changed is sent.'));
+    const conf=((STG.saves&&STG.saves.games)||[]).filter(g=>g.conflict), pend=((STG.saves&&STG.saves.games)||[]).filter(g=>g.pending&&!g.conflict);
+    conf.forEach((g,i)=>{ h += lkRow('sc'+i,'stgSaveConflict','info', `Pick a save: ${esc(g.title||g.id)}`, `Changed here and on ${esc((g.conflict.server||{}).fromName||'another device')}: both are kept until you pick`, '<span class="tag warn">Choose</span>', ` data-id="${esc(g.id)}"`); });
+    if(pend.length) h += note(`${pend.length} save${pend.length===1?'':'s'} wait${pend.length===1?'s':''} to go to ${esc(bto?bto.name:'Hearth Storage')}: sent when it's on.`);
+  }
+  if(srv){
+    h += stgSw('backups','Keep backups and saves for my devices','Devices back up here, and their saves follow them through here');
+    if(STG.backups&&STG.backups.length) STG.backups.forEach((b,i)=>{ h += lkRow('bk'+i,'lkNone','refresh', esc(b.device),
+      [b.saves&&b.saves.at?`Saves ${stgWhen(b.saves.at)} (${lkBytes(b.saves.size)})`:'', b.shots&&b.shots.at?`Screenshots ${stgWhen(b.shots.at)} (${lkBytes(b.shots.size)})`:''].filter(Boolean).join(' · ') || 'The first backup isn\'t finished yet', ''); });
+    const here=(STG.saves&&STG.saves.here)||[];
+    if(here.length) h += lkRow('svh','stgSavesHere','check', `${here.length} game save${here.length===1?'':'s'} following your devices`, here.slice(0,4).map(x=>esc(x.title||x.key)).join(', ')+(here.length>4?'…':'')+' · replaced saves are kept too');
+  }
+  // ---- Media
+  if(srv || servers.some(v=>v.media!==false&&(v.shares||[]).length)){
+    h += shead('Media');
+    if(srv) h += stgSw('media','Play from shared folders','Videos and music in the shared folders play on your other devices');
+    servers.filter(v=>v.media!==false&&(v.shares||[]).length).forEach((v,i)=>{ h += lkRow('md'+i,'stgBrowse','play', `Play from ${esc(v.name)}`, 'Videos and music play here in Hearth Player as they come', undefined, ` data-id="${esc(v.id)}"`); });
+  }
+  // ---- Downloads & updates (link.storage.cache.*, link.storage.updates.*)
+  if(srv || servers.length){
+    h += shead('Downloads & updates');
+    // Shown once Hearth Link has answered (and only if it has these: another Hearth Link says it doesn't).
+    const ca=STG.cache||{na:!STG.cache}, up=STG.updates||{na:!STG.updates};
+    if(!ca.na) h += lkRow('cache','stgCache','dl','Keep game downloads on Hearth Storage', ca.enabled?(srv?'On: your devices download a game once, the rest get it from here':'On: games downloaded once are shared through your Hearth Storage'):'Off', `<div class="sw ${ca.enabled?'on':''}"></div>`);
+    if(!up.na) h += sgrid(lkRow('upd','stgUpdates','refresh','Hearth updates through Hearth Storage', up.enabled?'On: an update is downloaded once for all your devices':'Off', `<div class="sw ${up.enabled?'on':''}"></div>`)
+      + (up.enabled ? lkRow('hold','stgHold','clock','Hold updates back', up.holdBack?'On: your other devices wait until one has started with it':'Off: every device updates when it\'s ready', `<div class="sw ${up.holdBack?'on':''}"></div>`) : ''));
+    if(STG.cache&&STG.updates) h += stgOptional(ca.na&&up.na?{na:true}:null, 'Sharing downloads and updates through Hearth Storage');
+    else if(ca.na&&up.na) h += note('Asking…');
+  }
+  // ---- Advanced: away from home, Windows sharing, waking
+  h += lkRow('adv','stgAdv','gear','Advanced', 'Away from home, Windows sharing, sleep and wake', `<div class="rv">${STG.adv?'▴':'▾'}</div>`);
+  if(STG.adv){
+    if(srv){
+      h += sgrid(stgSw('away','Away from home','Your devices can use it when they aren\'t home, over Hearth Link\'s encrypted connection. No port is opened.')
+        + stgSw('smb','Windows sharing (SMB)','The shared folders for Windows PCs on this network. Opens port 445 to this network only.'));
+      if(c.smb) h += lkRow('smbpw','stgSmbPw','lock','Windows sharing password', `From Windows, sign in as ${esc(st.user||'your user name')} with this password`);
+      h += lkRow('sleep','stgSleep','moon','Sleep when idle', c.sleepMinutes ? `After ${c.sleepMinutes} minutes with nothing to do and nobody using it. Your devices wake it from the network.` : 'Never');
+      if(st.wol) h += note('Waking from the network: '+esc(st.wol)+'. The PC\'s firmware settings (BIOS/UEFI) may need Wake on LAN turned on too, and a network cable works best.');
+    }
+    servers.forEach((v,i)=>{ h += lkRow('wk'+i,'stgWake','power', `Wake ${esc(v.name)}`, v.canWake?'Sends it a wake-up over the network (it\'s also woken by itself when needed)':'It learns how the next time both are on', undefined, ` data-id="${esc(v.id)}"`); });
+    if(!srv && !servers.length) h += note('These are for a device that\'s Hearth Storage.');
+  }
+  const jobs=st.jobs||[];
+  if(srv && jobs.length) h += shead('Coming here now') + jobs.map((t,i)=>lkRow('sj'+i,'lkJob','dl', `${esc(t.title)}${t.from?' from '+esc(t.from):''}`, lkJobLine(t), t.state==='copying'&&t.total?`<div class="rv">${Math.floor(100*t.done/t.total)}%</div>`:undefined, ` data-id="${esc(t.id)}"`)).join('');
   h += note('Hearth Storage is Hearth Link: only your paired devices can use it, and everything between them is encrypted end to end.');
   return h;
 }
@@ -5516,6 +5608,57 @@ async function stgMove(){
   if(!list.length) return toast('No games on this device to move');
   openSheet({title:'Move which game?', items:list.slice(0,80).map(g=>({label:`${g.title} · ${LK_STORE[g.store]||g.store}${g.size?' · '+lkBytes(g.size):''}`, icon:'dl', run:()=>stgMoveGame(g.id, g.title)}))});
 }
+function stgDeviceMenu(id){
+  const d=((STG.devices&&STG.devices.devices)||[]).find(x=>x.id===id); if(!d) return;
+  const st=stgS(), c=st.config||{}, v=(st.servers||[]).find(x=>x.id===id), items=[];
+  if(v){
+    if((v.shares||[]).length) items.push({label:'Browse shared folders', icon:'lib', run:()=>stgBrowse(v.id)});
+    if(v.archive!==false) items.push({label:'Games kept there', icon:'dl', run:()=>stgArchiveList(v.id)});
+    items.push({label:c.backupTo===v.id?'Stop backing up to it':'Back up this device to it', icon:'refresh', run:()=>stgCall('storage.set',{backupTo:c.backupTo===v.id?'':v.id}, c.backupTo===v.id?'Backups off':`Backing up to ${v.name}`)});
+    if(v.canWake) items.push({label:'Wake it up', icon:'power', run:()=>stgCall('storage.wake',{server:v.id}, `Sent ${v.name} a wake-up`)});
+  }
+  if(!d.me) items.push({label:'Remove this device…', icon:'trash', run:()=>stgRemove(d)});
+  openSheet({title:d.name, sub:stgHealthLine(d).replace(/&[a-z#0-9]+;/g,"'")||'', items:items.length?items:[{label:'This is the device you\'re using', icon:'info', run:()=>{}}]});
+}
+// Removing a device you don't use anymore: unpaired everywhere this device can reach, and on Hearth Storage its
+// backups and archived games deleted if you ask (how much that frees is said first; nothing's deleted unasked).
+async function stgRemove(d){
+  toast(`Looking at what's kept for ${d.name}…`);
+  let u={backups:0, archive:0, games:[]};
+  try{ u=await call('link.storage.device.usage',{id:d.id},150000)||u; }catch(e){}
+  const both=(u.backups||0)+(u.archive||0), go=(backups, archive, size)=>openSheet({title:`Remove ${d.name}?`,
+      sub:`It's unpaired from your devices${backups||archive?` and ${[backups?'its backups':'', archive?`${(u.games||[]).length} archived game${(u.games||[]).length===1?'':'s'}`:''].filter(Boolean).join(' and ')} are deleted from Hearth Storage, freeing ${lkBytes(size)}. This can't be undone`:''}. It can pair again any time.`,
+      items:[{label:backups||archive?`Remove and delete (frees ${lkBytes(size)})`:'Remove it', icon:'trash', run:()=>call('link.storage.device.remove',{id:d.id, name:d.name, backups, archive},150000)
+        .then(r=>{ toast(`Removed ${d.name}${r&&r.freed?' · freed '+lkBytes(r.freed):''}`); loadLink(); stgRefresh(); }).catch(e=>toast(e.message))}], focus:'sh-x'});
+  const items=[{label:'Remove it, keep what Hearth Storage has of it', icon:'x', run:()=>go(false,false,0)}];
+  if(u.backups) items.push({label:`Remove it and delete its backups · ${lkBytes(u.backups)}`, icon:'trash', run:()=>go(true,false,u.backups)});
+  if(u.archive) items.push({label:`Remove it and delete its archived games · ${lkBytes(u.archive)}`, icon:'trash', run:()=>go(false,true,u.archive)});
+  if(u.backups&&u.archive) items.push({label:`Remove it and delete both · ${lkBytes(both)}`, icon:'trash', run:()=>go(true,true,both)});
+  openSheet({title:`Remove ${d.name}`, sub:both?`Hearth Storage keeps ${lkBytes(both)} for it${(u.games||[]).length?' ('+u.games.slice(0,3).join(', ')+((u.games||[]).length>3?'…':'')+')':''}.`:'Nothing of it is kept on Hearth Storage.', items});
+}
+// Saves follow you: which save to keep when a game's changed here and on another device. Never decided for you;
+// the one you don't pick is kept as a backup. `mod`: the launch it came from (null: from Settings).
+function stgSaveAsk(g, r, mod, fromSettings){
+  const srv=r.save||{}, loc=r.local||{}, there=srv.fromName||r.serverName||'your other device';
+  const after = fromSettings ? ()=>call('link.storage.saves.status',{},20000).then(x=>{ STG.saves=x; lkRedraw(); }).catch(()=>{}) : null;
+  openSheet({title:`Which ${g.title} save?`, sub:`It changed on ${there} and on this device since they last matched. Both are kept: the one you don't pick is kept as a backup.`, items:[
+    {label:`From ${there} · ${stgWhen(srv.at)||'newer there'}`, icon:'dl', run:()=>{ if(!fromSettings) return launch(G(g.id)||g, mod, 'pull');
+      toast(`Getting the save from ${there}…`); call('link.storage.saves.resolve',{game:g.id, keep:'server'},150000).then(()=>{ toast('Done: the other one is backed up'); after(); }).catch(e=>toast(e.message)); }},
+    {label:`This device's · ${stgWhen(loc.at)||'here'}`, icon:'check', run:()=>call('link.storage.saves.resolve',{game:g.id, keep:'local', now:!!fromSettings},150000)
+      .then(()=>{ if(fromSettings){ toast('Kept this device\'s: the other one is backed up'); after(); } else launch(G(g.id)||g, mod, 'skip'); }).catch(e=>{ toast(e.message); if(!fromSettings) launch(G(g.id)||g, mod, 'skip'); })},
+    {label:fromSettings?'Decide later':'Decide later: play with this device\'s', icon:'clock', run:()=>{ if(!fromSettings) launch(G(g.id)||g, mod, 'skip'); }}]});
+}
+// Before a game starts: its newest save from Hearth Storage when that's newer (games without their store's cloud
+// saves). The check answers within a few seconds when the server isn't there; then the game starts as always.
+function stgSavesWanted(g){
+  if(!lkOn() || !g || !['steam','epic','gog','beacon'].includes(g.src) || g.cloud) return false;
+  const c=(LK.s&&LK.s.storage&&LK.s.storage.config)||null;
+  return !c || (!!c.backupTo && c.savesFollow!==false);
+}
+async function stgSavesBefore(g){
+  const r = await Promise.race([call('link.storage.saves.before',{game:g.id, title:g.title},8000), new Promise(res=>setTimeout(()=>res({action:'slow'}), 6000))]).catch(()=>({action:'none'}));
+  return r || {action:'none'};
+}
 function stgAct(a, d){
   const st=stgS(), c=st.config||{};
   switch(a){
@@ -5550,6 +5693,20 @@ function stgAct(a, d){
       return openSheet({title:x.name, sub:x.path, items}); }
     case 'stgSmbPw': return (async()=>{ const p=await openPrompt({title:'Windows sharing password (at least 8 characters)', secret:true, mode:'password'}); if(p==null) return; stgCall('storage.smb.password',{password:p}, 'Password set').catch(()=>{}); })();
     case 'stgSleep': return openSheet({title:'Sleep when idle', sub:'Only when nothing is being copied, no game is running and nobody is using it. Your devices wake it from the network when they need it.', items:[0,15,30,60,120].map(m=>({label:m?`After ${m} minutes`:'Never', icon:c.sleepMinutes===m?'check':'moon', run:()=>stgCall('storage.set',{sleepMinutes:m}).catch(()=>{})}))});
+    case 'stgDevice': return stgDeviceMenu(d.id);
+    case 'stgDevRefresh': stgDevices(); return stgRefresh();
+    case 'stgPair': S.settingsTab='link'; return navigate('settings',{},false);
+    case 'stgBrowse': return stgBrowse(d.id);
+    case 'stgKept': return stgPickServer('Games kept on', sv=>stgArchiveList(sv));
+    case 'stgWake': return stgCall('storage.wake',{server:d.id}, `Sent ${stgServerName(d.id)} a wake-up`).catch(()=>{});
+    case 'stgAdv': STG.adv=!STG.adv; return render(null,true);
+    case 'stgSaveConflict': { const g=((STG.saves&&STG.saves.games)||[]).find(x=>x.id===d.id); if(!g) return;
+      return stgSaveAsk({id:g.id, title:g.title||g.id}, {save:(g.conflict||{}).server||{}, local:(g.conflict||{}).local||{}, serverName:stgServerName(c.backupTo)}, null, true); }
+    case 'stgSavesHere': { const here=(STG.saves&&STG.saves.here)||[];
+      return openSheet({title:'Saves following your devices', sub:'The newest of each game, and the last 5 it replaced (Hearth Storage › Saves › the game › replaced).', items:here.map(x=>({label:`${x.title||x.key} · from ${x.fromName||'a device'} · ${stgWhen(x.at)}`, icon:'check', run:()=>{}}))}); }
+    case 'stgCache': { const ca=STG.cache||{}; return stgCall('storage.cache.set',{enabled:!ca.enabled}).then(stgExtras).catch(()=>{}); }
+    case 'stgUpdates': { const up=STG.updates||{}; return stgCall('storage.updates.set',{enabled:!up.enabled, holdBack:!!up.holdBack}).then(stgExtras).catch(()=>{}); }
+    case 'stgHold': { const up=STG.updates||{}; return stgCall('storage.updates.set',{enabled:!!up.enabled, holdBack:!up.holdBack}).then(stgExtras).catch(()=>{}); }
     case 'stgHereGame': { const g=(STG.here||[]).find(x=>x.id===d.id); if(!g) return;
       return openSheet({title:`Remove ${g.title} from Hearth Storage?`, sub:'Its files here are deleted. Copies on your devices stay.', items:[{label:'Remove', icon:'trash', run:()=>stgCall('storage.archive.remove',{server:LK.s.me.id, game:g.id}, 'Removed').then(()=>stgRefresh()).catch(()=>{})}]}); }
   }
@@ -9472,7 +9629,8 @@ function hideLaunch(){
   renderFooter();
 }
 // mod (Beacon's games, Play with…): a mod id to play with this time, '@none' without mods; left out: Beacon's choice.
-function launch(g, mod){
+// save: 'skip' (saves follow you already checked), 'pull' (bring Hearth Storage's save first), or left out.
+function launch(g, mod, save){
   if(isFrozen(g)) return quickResume(g.id);
   if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
   let aside=null;
@@ -9493,7 +9651,7 @@ function launch(g, mod){
     launchTimer=setTimeout(()=>{ hideLaunch(); gameStarted(g.id); }, 1700);
     return;
   }
-  call('game.launch',mod?{id:g.id, mod}:{id:g.id}).then(r=>{
+  const start = () => call('game.launch',mod?{id:g.id, mod}:{id:g.id}).then(r=>{
     if(r && r.tracked===false){ // shortcut Nimbus can't watch
       launchTimer=setTimeout(()=>{ hideLaunch(); toast(`Started ${g.title}`); }, 2500);
       return;
@@ -9507,6 +9665,20 @@ function launch(g, mod){
     // It needed the store and the store's sign-in expired: say so, with Sign in again.
     if(STORE_INFO[g.src] && g.src!=='steam' && /sign-in expired/i.test(e.message)){ loadAccounts(true); return expiredSheet(g.src, `${g.title} couldn't start: it needs ${storeName(g.src)} online.`); }
     toast(e.message);
+  });
+  // Saves follow you (Hearth Storage): the newest save first, if it's newer; asked which when both changed.
+  const say = t => { const s=$('#launch .s'); if(s) s.textContent=t; }, orig=($('#launch .s')||{}).textContent||'';
+  const go = () => { say(orig); return start(); };
+  const pull = name => { say(`Getting your latest save${name?' from '+name:''}…`);
+    return call('link.storage.saves.pull',{game:g.id},150000).then(r=>toast(`Your save from ${(r&&r.serverName)||name||'Hearth Storage'} is here`)).catch(e=>toast(e.message)).then(go); };
+  if(save==='pull') return pull('');
+  if(save==='skip' || !stgSavesWanted(g)) return start();
+  say('Checking for a newer save…');
+  stgSavesBefore(g).then(r=>{
+    if(!S.layers.includes('launch')) return;
+    if(r.action==='pull') return pull(r.serverName);
+    if(r.action==='conflict'){ hideLaunch(); return stgSaveAsk(g, r, mod, false); }
+    go();
   });
 }
 // Mantel's Games section (Desktop Mode's launcher) starts a game through here, the same as its Play button: once the
