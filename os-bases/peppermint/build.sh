@@ -411,6 +411,8 @@ for app in hearth-nearby hearth-connect; do
   fi
 done
 chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
+# Hearth Storage's root helper (Windows sharing, waking from the network; 49-hearth-storage.rules).
+chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
 if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then

@@ -1,0 +1,264 @@
+#!/usr/bin/python3
+"""hearth-storage-helper: the few things Hearth Storage (hosts/hearth-link storage.rs) needs root for. Run by
+Hearth Link through pkexec; /usr/share/polkit-1/rules.d/49-hearth-storage.rules lets the person signed in at the
+device (local, active session, in the wheel group) run it without a password prompt.
+
+  hearth-storage-helper smb apply      Windows sharing (Samba) for the shared folders, JSON on stdin:
+                                       {"shares": [{"name", "path", "write"}]}
+  hearth-storage-helper smb off        Hearth's shares taken out of Samba (Samba stopped if Hearth started it)
+  hearth-storage-helper smb-password   the Samba password for the person who ran it, one line on stdin
+  hearth-storage-helper wol IFACE      the network card wakes the PC from the network (magic packet), now and
+                                       after restarts (NetworkManager's connection setting)
+
+The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Shared folders must be that person's:
+in their Home or on a drive (/run/media/USER, /media/USER, /mnt), no hidden folders. Samba only lets that person
+in (valid users), with the password set here. The password goes from stdin straight to smbpasswd and is never
+printed or logged. Nothing here opens the firewall: Hearth Link does that with hearth-link-firewall (port 445,
+local network only).
+One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
+"""
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+
+SMB_CONF = '/etc/samba/smb.conf'
+OUR_CONF = '/etc/samba/hearth-storage.conf'
+INCLUDE = 'include = %s' % OUR_CONF
+MARK = '# Hearth Storage (hearth-storage-helper): its shared folders'
+STARTED = '/etc/samba/.hearth-storage-started'
+NAME_RE = re.compile(r'^[A-Za-z0-9 _\-]{1,40}$')
+IFACE_RE = re.compile(r'^[A-Za-z0-9_.\-]{1,15}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, stdin=None):
+    """(exit code, output). Tests replace this."""
+    try:
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=60)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def which(name):
+    """Tests replace this."""
+    return shutil.which(name)
+
+
+def caller():
+    """(name, home) of the person who ran pkexec."""
+    uid = os.environ.get('PKEXEC_UID', '')
+    if not uid.isdigit():
+        raise Fail('run this through pkexec')
+    try:
+        pw = pwd.getpwuid(int(uid))
+    except KeyError:
+        raise Fail('unknown user')
+    return pw.pw_name, pw.pw_dir
+
+
+def share_ok(path, user, home):
+    """A folder of that person's that may be shared: theirs, nothing hidden on the way."""
+    if not isinstance(path, str) or not path.startswith('/'):
+        return None
+    real = os.path.realpath(path)
+    if not os.path.isdir(real):
+        return None
+    for base in (home, '/run/media/' + user, '/media/' + user, '/mnt'):
+        b = os.path.realpath(base)
+        if real == b or real.startswith(b.rstrip('/') + '/'):
+            rel = os.path.relpath(real, b)
+            if rel != '.' and any(p.startswith('.') for p in rel.split('/')):
+                return None
+            return real
+    return None
+
+
+def clean_name(name, used):
+    n = re.sub(r'[^A-Za-z0-9 _\-]', '-', str(name or ''))[:40].strip() or 'Shared'
+    base, i = n, 2
+    while n.lower() in used or n.lower() in ('global', 'homes', 'printers', 'print$'):
+        n = '%s %d' % (base[:36], i)
+        i += 1
+    used.add(n.lower())
+    return n
+
+
+def conf_text(shares, user, home):
+    out = [MARK, '# Written by Hearth; change it in Settings › Hearth Storage.', '']
+    used = set()
+    for s in shares:
+        p = share_ok(s.get('path'), user, home)
+        if not p:
+            continue
+        out += ['[%s]' % clean_name(s.get('name'), used), '   path = %s' % p, '   valid users = %s' % user,
+                '   force user = %s' % user, '   read only = %s' % ('no' if s.get('write') else 'yes'),
+                '   browseable = yes', '   hide dot files = yes', '   veto files = /.*/', '']
+    return '\n'.join(out)
+
+
+def with_include(text):
+    """smb.conf with our include line at its end (once)."""
+    lines = [l for l in text.splitlines() if l.strip() != INCLUDE and l.strip() != MARK]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines + ['', MARK, INCLUDE]) + '\n'
+
+
+def without_include(text):
+    lines = [l for l in text.splitlines() if l.strip() != INCLUDE and l.strip() != MARK]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines) + '\n'
+
+
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def write(path, text):
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def smb_service():
+    for unit in ('smb', 'smbd'):
+        code, _ = run(['systemctl', 'cat', unit + '.service'])
+        if code == 0:
+            return unit
+    return None
+
+
+def selinux_allow(shares):
+    """Fedora's SELinux keeps Samba out of home folders and drives unless told otherwise."""
+    if not which('getenforce') or run(['getenforce'])[1].strip() != 'Enforcing':
+        return
+    run(['setsebool', '-P', 'samba_enable_home_dirs', 'on'])
+    run(['setsebool', '-P', 'samba_export_all_ro', 'on'])
+    if any(s.get('write') for s in shares):
+        run(['setsebool', '-P', 'samba_export_all_rw', 'on'])
+
+
+def smb_apply(data):
+    user, home = caller()
+    unit = smb_service()
+    if not which('smbd') and not unit:
+        raise Fail("Samba (Windows sharing) isn't installed on this device")
+    shares = data.get('shares') if isinstance(data, dict) else None
+    if not isinstance(shares, list):
+        raise Fail('no shares')
+    write(OUR_CONF, conf_text(shares[:32], user, home))
+    try:
+        cur = read(SMB_CONF)
+    except OSError:
+        cur = '[global]\n   workgroup = WORKGROUP\n   server min protocol = SMB2\n'
+    write(SMB_CONF, with_include(cur))
+    if which('testparm'):
+        code, out = run(['testparm', '-s', SMB_CONF])
+        if code != 0:
+            raise Fail("Samba didn't accept the settings")
+    selinux_allow(shares)
+    if unit:
+        code, _ = run(['systemctl', 'is-active', unit])
+        if code != 0:
+            open(STARTED, 'w').close()
+            run(['systemctl', 'enable', '--now', unit])
+        else:
+            run(['systemctl', 'reload-or-restart', unit])
+    return {'ok': True, 'service': unit}
+
+
+def smb_off():
+    caller()
+    try:
+        write(SMB_CONF, without_include(read(SMB_CONF)))
+    except OSError:
+        pass
+    try:
+        os.remove(OUR_CONF)
+    except OSError:
+        pass
+    unit = smb_service()
+    if unit:
+        if os.path.exists(STARTED):
+            run(['systemctl', 'disable', '--now', unit])
+            os.remove(STARTED)
+        else:
+            run(['systemctl', 'reload-or-restart', unit])
+    return {'ok': True}
+
+
+def smb_password(line):
+    user, _ = caller()
+    pw = (line or '').split('\n')[0]
+    if len(pw) < 8:
+        raise Fail('Use at least 8 characters')
+    if not which('smbpasswd'):
+        raise Fail("Samba (Windows sharing) isn't installed on this device")
+    code, _ = run(['smbpasswd', '-a', '-s', user], stdin='%s\n%s\n' % (pw, pw))
+    if code != 0:
+        raise Fail("Samba didn't take the password")
+    run(['smbpasswd', '-e', user])
+    return {'ok': True}
+
+
+def wol(iface):
+    caller()
+    if not IFACE_RE.match(iface or '') or not os.path.exists('/sys/class/net/%s/device' % iface):
+        raise Fail('not a network card')
+    notes = []
+    if os.path.isdir('/sys/class/net/%s/wireless' % iface):
+        return {'ok': True, 'note': '%s: Wi-Fi (waking over Wi-Fi rarely works: use a cable)' % iface}
+    if which('ethtool'):
+        code, out = run(['ethtool', iface])
+        if 'Supports Wake-on:' in out and 'g' not in out.split('Supports Wake-on:')[1].split('\n')[0]:
+            return {'ok': True, 'note': "%s: this card can't wake the PC" % iface}
+        code, _ = run(['ethtool', '-s', iface, 'wol', 'g'])
+        notes.append('ready' if code == 0 else 'not set')
+    if which('nmcli'):
+        code, out = run(['nmcli', '-g', 'GENERAL.CONNECTION', 'device', 'show', iface])
+        con = out.strip().splitlines()[0] if code == 0 and out.strip() else ''
+        if con and con != '--':
+            code, _ = run(['nmcli', 'connection', 'modify', con, '802-3-ethernet.wake-on-lan', 'magic'])
+            if code == 0:
+                notes.append('kept after restarts')
+    return {'ok': True, 'note': '%s: %s' % (iface, ', '.join(notes) or 'nothing to set it with')}
+
+
+def main(argv):
+    try:
+        a = argv[1:]
+        if a == ['smb', 'apply']:
+            try:
+                data = json.loads(sys.stdin.read(1 << 20) or '{}')
+            except ValueError:
+                raise Fail('the shares must be JSON')
+            res = smb_apply(data)
+        elif a == ['smb', 'off']:
+            res = smb_off()
+        elif a == ['smb-password']:
+            res = smb_password(sys.stdin.readline())
+        elif len(a) == 2 and a[0] == 'wol':
+            res = wol(a[1])
+        else:
+            raise Fail('usage: hearth-storage-helper smb apply|off | smb-password | wol IFACE')
+        print(json.dumps(res))
+        return 0
+    except Fail as e:
+        print(json.dumps({'ok': False, 'error': str(e)}))
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

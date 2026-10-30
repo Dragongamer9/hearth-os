@@ -536,7 +536,8 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
     let files: Vec<Entry> = serde_json::from_value(manifest["files"].clone()).map_err(|e| format!("The game's file list isn't readable: {e}"))?;
     let roots = manifest["roots"].as_array().cloned().unwrap_or_default();
     let game = manifest["game"].clone();
-    let dests = crate::games::destinations(&game, &roots, &job.place)?;
+    // Hearth Storage's copies (an archive, a backup, a shared folder) go into their own folders (storage.rs).
+    let dests = match crate::storage::destinations(&job.store, &game, &roots, &job.place) { Some(d) => d?, None => crate::games::destinations(&game, &roots, &job.place)? };
     // Each file's place, checked: plain relative paths only.
     let mut paths = Vec::with_capacity(files.len());
     for e in &files {
@@ -706,7 +707,11 @@ async fn run_inner(job: &Arc<Job>, conn: &iroh::endpoint::Connection, home: &Pat
 
     job.set_state("finishing");
     let (g2, d2, p2, h2) = (game.clone(), dests.clone(), job.place.clone(), home.to_path_buf());
-    let note = tokio::task::spawn_blocking(move || crate::games::finalize(&h2, &g2, &d2, &p2)).await.map_err(|e| e.to_string())??;
+    let (kind, peer, m2) = (job.store.clone(), job.peer.clone(), manifest.clone());
+    let note = tokio::task::spawn_blocking(move || match crate::storage::finalize(&kind, &peer, &m2, &p2) {
+        Some(r) => r,
+        None => crate::games::finalize(&h2, &g2, &d2, &p2),
+    }).await.map_err(|e| e.to_string())??;
     *crate::lock(&job.note) = Some(note);
     let _ = std::fs::remove_dir_all(&job.dir);
     *crate::lock(&job.state) = "done".into();
