@@ -154,6 +154,8 @@ function spatial() {
         parent: { esModuleURI: "resource://hearth/spatial-parent.sys.mjs" },
         child: { esModuleURI: "resource://hearth/spatial-child.sys.mjs", events },
         allFrames: false,
+        // Web pages, and the pages in Firefox's process for local files (Hearth's start page, data: pages).
+        remoteTypes: ["web", "webIsolated", "webCOOP+COEP", "file"],
       });
       done.push(name);
     } catch (e) { report("actor " + name, e); done.push(name + ": " + e); }
