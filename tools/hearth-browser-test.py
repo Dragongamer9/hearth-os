@@ -144,11 +144,35 @@ CHROME_KEY = r'''
 PAGE = 'data:text/html;charset=utf-8,' + ('<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif">'
                                           '<p>Typed with Hearth Browser\'s keyboard:</p><input id="i" style="font-size:28px;width:80%25"></body>')
 
-# Three links: one at the top in the middle, one under it, one to the right of that.
-SPATIAL_PAGE = ('data:text/html;charset=utf-8,<title>%s</title><body style="background:%%23222;color:%%23eee;font:24px sans-serif;margin:0">'
-                '<a id="top" href="%%23t" style="position:absolute;left:45%%25;top:80px">Top</a>'
-                '<a id="below" href="%%23b" style="position:absolute;left:45%%25;top:260px">Below</a>'
-                '<a id="right" href="%%23r" style="position:absolute;left:75%%25;top:262px">Right</a></body>')
+# Three links: one at the top in the middle, one under it, one to the right of that; served over http from this
+# test (pages from file:// and data: run in Firefox's local-file process; web pages are what the D-pad is for).
+SPATIAL_HTML = ('<!doctype html><title>%s</title><body style="background:#222;color:#eee;font:24px sans-serif;margin:0">'
+                '<a id="top" href="#t" style="position:absolute;left:45%%;top:80px">Top</a>'
+                '<a id="below" href="#b" style="position:absolute;left:45%%;top:260px">Below</a>'
+                '<a id="right" href="#r" style="position:absolute;left:75%%;top:262px">Right</a></body>')
+
+
+def spatial_server():
+    """A local web server for the two test pages; returns its address with %s for the page name."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            name = self.path.strip('/').split('.')[0] or 'one'
+            body = (SPATIAL_HTML % name).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return 'http://127.0.0.1:%d/%%s.html' % srv.server_address[1]
 
 
 def run_mode(ff, out, mode, extras, port):
@@ -280,6 +304,7 @@ def run_mode(ff, out, mode, extras, port):
             m.js('const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); HearthBrowser.keyboardOf(window).close(); return true;')
             # The D-pad in a web page: arrows move between links (spatial-child.sys.mjs), Esc goes back.
             m.context('content')
+            SPATIAL_PAGE = spatial_server()
             m.cmd('WebDriver:Navigate', {'url': SPATIAL_PAGE % 'one'})
             m.js('document.activeElement && document.activeElement.blur(); return true;')
             m.context('chrome')
