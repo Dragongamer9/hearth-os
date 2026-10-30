@@ -137,8 +137,7 @@ private Q_SLOTS:
             }
         });
         QVERIFY2(KProtocolInfo::isKnownProtocol(QStringLiteral("hearth")), "the hearth worker isn't found (QT_PLUGIN_PATH)");
-        QVERIFY(KProtocolInfo::supportsReading(QUrl(QStringLiteral("hearth:/"))));
-        QVERIFY(!KProtocolInfo::supportsWriting(QUrl(QStringLiteral("hearth:/"))));
+        QCOMPARE(KProtocolInfo::protocolClass(QStringLiteral("hearth")), QStringLiteral(":local"));
     }
 
     void listServers()

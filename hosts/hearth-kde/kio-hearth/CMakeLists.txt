@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(QT_MAJOR_VERSION 6)
 set(CMAKE_AUTOMOC ON)
+# The worker is a loadable module (KDECMakeSettings would set this; without it KF6 makes plugins static).
+set(BUILD_SHARED_LIBS ON)
 
 find_package(ECM 6.0 REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
