@@ -12,6 +12,9 @@
 //!   unpair                            the other device unpaired: forget it here too
 //!   storage.*, archive.*, backup.*    Hearth Storage (storage.rs)
 //!   cache.*, updates.*                Hearth Storage's game and update caches (cache.rs)
+//!   handoff.*                         "Continue on this device" (handoff.rs)
+//!   update.*                          update every device at once (fleet.rs)
+//!   ai.*                              local AI over Hearth Link (ai.rs)
 //! A connection from a device that isn't paired is closed at once (except pairing, while a code is showing).
 //!
 //! Pairing (pair.rs) logs every step to the journal ("hearth-link: pairing: ..."), never a code.
@@ -534,6 +537,9 @@ impl Node {
             o if o.starts_with("saves.") => self.clone().saves_answer(peer, op, req).await,
             o if o.starts_with("device.") || o.starts_with("devices.") => self.clone().health_answer(peer, op, req).await,
             o if o.starts_with("bench.") => self.clone().bench_answer(peer, op, req).await,
+            o if o.starts_with("handoff.") => self.clone().handoff_answer(peer, op, req).await,
+            o if o.starts_with("update.") => self.clone().fleet_answer(peer, op, req).await,
+            o if o.starts_with("ai.") => self.clone().ai_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
             _ => Err(format!("Unknown request: {op}")),
         }
@@ -1015,6 +1021,9 @@ impl Node {
             "ticket" => Ok(json!({"ticket": self.ticket()})),
             c if c.starts_with("storage.") => self.storage_command(c, a).await,
             c if c.starts_with("bench.") => self.bench_command(c, a).await,
+            c if c.starts_with("handoff.") => self.handoff_command(c, a).await,
+            c if c.starts_with("fleet.") => self.fleet_command(c, a).await,
+            c if c.starts_with("ai.") => self.ai_command(c, a).await,
             _ => Err(format!("Unknown command: {cmd}")),
         }
     }

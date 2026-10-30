@@ -1393,6 +1393,11 @@ impl Bridge {
                     self.parental_since = now_ms(); self.parental_warned = false;
                     out.extend(self.parental_tick());
                     let id = e["data"]["id"].as_str().unwrap_or("").to_string();
+                    // "Continue on this device": the other paired devices can offer this game.
+                    if crate::link::available() {
+                        let title = self.library.games.get(&id).map(|g| g.title.clone()).unwrap_or_default();
+                        crate::link::now_playing(&crate::link::link_dir(), &id, &title, now_ms());
+                    }
                     let o = crate::game_options::get(&self.library.store, &id);
                     let fps = o["fpsLimit"].as_u64().unwrap_or(0);
                     if fps > 0 {

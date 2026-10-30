@@ -342,7 +342,7 @@ impl Node {
     fn saves_root(&self, c: &crate::storage::StorageConfig) -> PathBuf { c.root(&self.home).join("Saves") }
 
     /// The server this device's saves follow (the one it backs up to), when on.
-    fn save_server(&self) -> Option<String> {
+    pub(crate) fn save_server(&self) -> Option<String> {
         let c = self.st();
         (c.saves_follow && !c.backup_to.is_empty() && crate::lock(&self.peers).is_paired(&c.backup_to)).then_some(c.backup_to)
     }

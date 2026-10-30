@@ -17,7 +17,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
 - [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)
 - [x] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
-- [x] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share (next), wake on network (next)
+- [x] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share (per folder, read-only option, generated sign-in), wake on network (automatic, and a Wake button)
 - [x] Dragonfire look (from the concept art): a darker ember theme for Game Mode and Desktop Mode, fully usable with a controller
   - Game Mode home: big hero for the last game (Play / Details), Continue Playing, Library, Installed Launchers row, bottom bar (Home, Search, Quick Settings, Hearth, Capture, Overlay, Exit)
   - Performance rings (CPU, GPU, RAM, FPS) with temperature, watts, controller battery and the power mode

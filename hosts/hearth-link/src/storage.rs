@@ -60,6 +60,8 @@ pub struct Share {
     pub path: PathBuf,
     /// Windows sharing (SMB) may change files in it. Over Hearth Link shared folders are read-only for now.
     pub write: bool,
+    /// Left out of Windows sharing (each shared folder is in it unless this is set).
+    pub smb_off: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,7 +185,7 @@ impl StorageConfig {
         if self.shares.iter().any(|s| s.path == p) { return Err("That folder is shared already".into()); }
         let mut n: String = name.trim().chars().filter(|c| !c.is_control() && *c != '/').take(40).collect();
         if n.is_empty() { n = p.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "Shared".into()); }
-        let s = Share { id: crate::hex(&crate::random_bytes::<6>()), name: n, path: p, write };
+        let s = Share { id: crate::hex(&crate::random_bytes::<6>()), name: n, path: p, write, smb_off: false };
         self.shares.push(s.clone());
         Ok(s)
     }
@@ -204,7 +206,7 @@ impl StorageConfig {
     pub fn to_json(&self, home: &Path) -> Value {
         let root = self.root(home);
         json!({"server": self.server, "folder": root, "customFolder": self.folder, "free": crate::free_space(&root).unwrap_or(0),
-               "shares": self.shares.iter().map(|s| json!({"id": s.id, "name": s.name, "path": s.path, "write": s.write, "there": s.path.is_dir()})).collect::<Vec<_>>(),
+               "shares": self.shares.iter().map(|s| json!({"id": s.id, "name": s.name, "path": s.path, "write": s.write, "smb": !s.smb_off, "there": s.path.is_dir()})).collect::<Vec<_>>(),
                "archive": self.archive, "backups": self.backups, "media": self.media, "away": self.away, "smb": self.smb, "sleepMinutes": self.sleep_minutes,
                "backupTo": self.backup_to, "backupSaves": self.backup_saves, "backupShots": self.backup_shots, "backupHours": self.backup_hours,
                "lastBackup": self.last_backup, "savesFollow": self.saves_follow, "archived": self.archived,
@@ -635,8 +637,49 @@ fn firewall(action: &str, app: &str) {
 
 fn smb_apply(c: &StorageConfig) -> Result<Value, String> {
     if !c.smb || !c.server { return helper(&["smb", "off"], ""); }
-    let shares: Vec<Value> = c.shares.iter().map(|s| json!({"name": s.name, "path": s.path, "write": s.write})).collect();
+    let shares: Vec<Value> = c.shares.iter().filter(|s| !s.smb_off).map(|s| json!({"name": s.name, "path": s.path, "write": s.write})).collect();
     helper(&["smb", "apply"], &json!({"shares": shares}).to_string())
+}
+
+/// Windows sharing's password: generated here (never typed, never a fixed one), 4 groups of 4 from an alphabet
+/// without look-alike characters (about 95 bits), so it's easy to read off the screen and type on a Windows PC.
+pub fn smb_password_new() -> String {
+    const A: &[u8] = b"abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRTUVWXY346789";
+    let r = crate::random_bytes::<32>();
+    let mut out = String::new();
+    let mut n = 0;
+    for b in r {
+        // Only bytes below the largest multiple of the alphabet's size, so every character is equally likely.
+        if (b as usize) >= 256 - 256 % A.len() { continue; }
+        if n > 0 && n % 4 == 0 { out.push('-'); }
+        out.push(A[b as usize % A.len()] as char);
+        n += 1;
+        if n == 16 { break; }
+    }
+    if n < 16 { return smb_password_new(); }
+    out
+}
+
+/// The password, kept for showing it again on this device only (a 0600 file in Hearth Link's folder; never logged).
+fn smb_password_file(dir: &Path) -> PathBuf { dir.join("smb-password") }
+pub fn smb_password_read(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(smb_password_file(dir)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+fn smb_password_keep(dir: &Path, pw: &str) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let p = smb_password_file(dir);
+    let tmp = p.with_extension("tmp");
+    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).map_err(|e| e.to_string())?;
+    f.write_all(pw.as_bytes()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &p).map_err(|e| e.to_string())
+}
+/// A new password for Windows sharing: set in Samba (through the helper's stdin) and kept to show again.
+fn smb_password_set(dir: &Path) -> Result<String, String> {
+    let pw = smb_password_new();
+    helper(&["smb-password"], &format!("{pw}\n"))?;
+    smb_password_keep(dir, &pw)?;
+    Ok(pw)
 }
 
 /// The person's session has been idle (logind's IdleHint): a server only sleeps then, never under someone using it.
@@ -1020,6 +1063,9 @@ impl Node {
     pub fn storage_start(self: &Arc<Self>) {
         let c = self.st();
         if c.server && c.smb { firewall("open", "smb"); }
+        // Waking from the network set again at every start while it's a server (ethtool's setting doesn't survive
+        // every driver's restart; NetworkManager's does, and setting it again changes nothing).
+        if c.server && std::env::var_os("HEARTH_LINK_NO_FIREWALL").is_none() { self.storage_setup_wake(); }
         let n = self.clone();
         tokio::spawn(async move { n.storage_loop().await });
     }
@@ -1148,8 +1194,12 @@ impl Node {
                 if c.server && !before.server { self.storage_setup_wake(); }
                 let smb_on = c.server && c.smb;
                 if smb_on != (before.server && before.smb) {
-                    let c2 = c.clone();
-                    let r = tokio::task::spawn_blocking(move || smb_apply(&c2)).await.map_err(|e| e.to_string())?;
+                    let (c2, dir) = (c.clone(), self.dir.clone());
+                    let r = tokio::task::spawn_blocking(move || {
+                        // Turned on for the first time: a password is made for it (shown on this device).
+                        if c2.server && c2.smb && smb_password_read(&dir).is_none() { smb_password_set(&dir)?; }
+                        smb_apply(&c2)
+                    }).await.map_err(|e| e.to_string())?;
                     if let Err(e) = r {
                         // Not left saying it's on when it isn't.
                         let mut back = self.st(); back.smb = false; let _ = self.st_save(back);
@@ -1174,6 +1224,7 @@ impl Node {
                 if cmd == "storage.share.remove" { c.shares.retain(|x| x.id != id); }
                 else if let Some(sh) = c.shares.iter_mut().find(|x| x.id == id) {
                     if let Some(w) = a["write"].as_bool() { sh.write = w; }
+                    if let Some(w) = a["smb"].as_bool() { sh.smb_off = !w; }
                     if let Some(n) = a["name"].as_str() { let n: String = n.trim().chars().filter(|c| !c.is_control() && *c != '/').take(40).collect(); if !n.is_empty() { sh.name = n; } }
                 }
                 self.st_save(c.clone())?;
@@ -1181,11 +1232,15 @@ impl Node {
                 Ok(self.storage_status())
             }
             "storage.smb.password" => {
-                // Straight to the helper's stdin; never logged, never kept here.
-                let pw = a["password"].as_str().unwrap_or("").to_string();
-                if pw.chars().count() < 8 || pw.contains('\n') { return Err("Use at least 8 characters".into()); }
-                tokio::task::spawn_blocking(move || helper(&["smb-password"], &(pw + "\n"))).await.map_err(|e| e.to_string())??;
-                Ok(json!({"ok": true}))
+                // A new generated password: to the helper's stdin, kept (0600) to show on this device, never logged.
+                let dir = self.dir.clone();
+                let pw = tokio::task::spawn_blocking(move || smb_password_set(&dir)).await.map_err(|e| e.to_string())??;
+                eprintln!("hearth-link: storage: Windows sharing has a new password");
+                Ok(json!({"user": std::env::var("USER").unwrap_or_default(), "password": pw}))
+            }
+            "storage.smb.show" => {
+                let pw = smb_password_read(&self.dir).ok_or("No password yet: make one")?;
+                Ok(json!({"user": std::env::var("USER").unwrap_or_default(), "password": pw}))
             }
             "storage.ls" => {
                 let server = s("server")?;
@@ -1422,5 +1477,36 @@ mod tests {
             out.extend_from_slice(&wire::open_chunk(&h, b[wire::HEADER..].to_vec()).unwrap());
         }
         assert_eq!(out, data[100..100 + wire::CHUNK as usize + 10].to_vec());
+    }
+
+    #[test]
+    fn windows_sharing_password_is_generated_and_kept_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let a = smb_password_new();
+        assert_eq!(a.len(), 19, "4 groups of 4: {a}");
+        assert_eq!(a.split('-').count(), 4);
+        assert!(a.chars().all(|c| c == '-' || (c.is_ascii_alphanumeric() && !"0O1lIoiB5S2Z".contains(c))), "no look-alikes: {a}");
+        assert_ne!(a, smb_password_new(), "never the same one");
+        let d = tempfile::tempdir().unwrap();
+        assert!(smb_password_read(d.path()).is_none());
+        smb_password_keep(d.path(), &a).unwrap();
+        assert_eq!(smb_password_read(d.path()).as_deref(), Some(a.as_str()));
+        let mode = std::fs::metadata(d.path().join("smb-password")).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "only this user can read it");
+    }
+
+    #[test]
+    fn each_shared_folder_can_be_left_out_of_windows_sharing() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("Films")).unwrap();
+        let mut c = StorageConfig::default();
+        let sh = c.add_share(d.path().join("Films").to_str().unwrap(), "", false, d.path()).unwrap();
+        assert!(!sh.smb_off, "in Windows sharing unless left out");
+        assert_eq!(c.to_json(d.path())["shares"][0]["smb"], true);
+        c.shares[0].smb_off = true;
+        assert_eq!(c.to_json(d.path())["shares"][0]["smb"], false);
+        // A share saved by an older Hearth Link (no smbOff) stays in.
+        let old: Share = serde_json::from_str(r#"{"id":"x","name":"F","path":"/tmp","write":false}"#).unwrap();
+        assert!(!old.smb_off);
     }
 }
