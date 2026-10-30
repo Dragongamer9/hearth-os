@@ -26,7 +26,7 @@
       "scale": 1.5
     },
     "prefs": {
-      "hearth.started": 1793400680,
+      "hearth.started": 1793400857,
       "hearth.keyboard.ready": true,
       "browser.startup.homepage": "file:///C:/Users/runneradmin/AppData/Local/Nimbus/HearthBrowser/firefox/hearth/start.html",
       "media.eme.enabled": true,
@@ -88,10 +88,16 @@
   "spatial-diag": {
     "registered": "HearthSpatial; HearthSpatialBack",
     "last": null,
-    "errors": []
+    "errors": [],
+    "console": [
+      "1793400857848\taddons.xpi\tWARN\tChecking C:\\Users\\runneradmin\\AppData\\Local\\Nimbus\\HearthBrowser\\firefox\\distribution\\extensions for addons",
+      "[JavaScript Warning: \"This page is in Quirks Mode. Page layout may be impacted. For Standards Mode use \u201c<!DOCTYPE html>\u201d.\" {file: \"resource://gfxsanity/sanitytest.html\" line: 0}]",
+      "[JavaScript Warning: \"This page is in Quirks Mode. Page layout may be impacted. For Standards Mode use \u201c<!DOCTYPE html>\u201d.\" {file: \"data:text/html;charset=utf-8,<title>Typing</title><body style=\"background:%23222;color:%23eee;font:24px sans-serif\"><p>Typed with Hearth Browser's keyboard:</p><input id=\"i\" style=\"font-size:28px;width:80%25\"></body>\" line: 0}]"
+    ],
+    "actor": "NotSupportedError: WindowGlobalParent.getActor: Window protocol 'HearthSpatial' doesn't match remote type 'file'"
   },
   "google": {
-    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S604063332:1793400695217489",
+    "url": "https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S-1861678612:1793400872349910",
     "title": "Sign in - Google Accounts",
     "text": "Loading\nSign in\nUse your Google Account\nEmail or phone\nForgot email?\nNot your computer? Use a Private Window to sign in. Learn more about using Guest mode\nNext\nCreate account\nEnglish (United States)\nHelp\nPrivacy\nTerms"
   }
