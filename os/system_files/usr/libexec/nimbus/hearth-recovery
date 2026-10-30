@@ -160,7 +160,9 @@ def act_send_logs(say):
     r = subprocess.run(['curl', '-sS', '-m', '60', '-H', 'X-Hearth-Kind: recovery', '--data-binary', '@-',
                         'https://hearth-counter.game305-cl.workers.dev/v1/logs'],
                        input=head + text, capture_output=True, text=True)
-    say(('Sent. Your code: ' + r.stdout.strip()) if r.returncode == 0 else 'Couldn\'t send: no internet?')
+    # The service answers {"code": "ABCD-EFGH-JK"} (or {"error": ...}): show the code, as Hearth and the USB do.
+    m = re.search(r'"code"\s*:\s*"([^"]+)"', r.stdout or '')
+    say(('Sent. Your code: ' + m.group(1)) if r.returncode == 0 and m else 'Couldn\'t send: no internet?')
 
 
 # ------------------------------------------------------------------ the screen
