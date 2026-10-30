@@ -60,6 +60,7 @@ pub mod signin_handoff;
 // ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
 pub mod signins;
 pub mod space;
+pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
 pub mod steam_owned;

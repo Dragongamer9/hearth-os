@@ -27,6 +27,8 @@ Run by the Hearth app as the signed-in (main) user; the parts that need root go 
   hearth-seats stream-unpair --seat N --uuid UUID
   hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]
                                        split screen: each player's volume, or only player 1's sound
+  hearth-seats share-publish           offer this player's Epic and GOG installs to the other players (the shared
+                                       games list in the shared folder, and read access to the game folders)
 
 Used by the system itself (not by the app):
   hearth-seats session                 an extra player's session (run by hearth-seat@.service as that player)
@@ -85,6 +87,10 @@ MAC_RE = re.compile(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}')
 # "Player N, press A" and Couch Co-op's listener write what they saw here (which controllers, why each was skipped):
 # the bug report shows it.
 PADS_LOG = os.path.expanduser('~/.local/share/nimbus/multiplay.log')
+SHARE_GROUP = 'hearth-games'   # hearth-admin's SEATS_SHARE_GROUP
+NIMBUS_DATA = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus')
+SHARE_STATE = os.path.expanduser('~/.local/state/hearth/shared-folders.json')   # game folders already opened to the group
+SHARE_ID_RE = re.compile(r'^[A-Za-z0-9._-]{1,128}$')
 EV_KEY = 0x01
 INPUT_EVENT = struct.Struct('llHHi')
 
@@ -377,6 +383,142 @@ def config_has(config, *kinds):
 def hosted(config):
     """Does player 1's Game Mode host other players' windows (another screen, or part of player 1's)?"""
     return config_has(config, *HOST_KINDS)
+
+
+# ---------------------------------------------------------------------------------------------- shared games
+# Every player's Hearth lists the Epic and GOG games it installed in <shared folder>/.hearth/library-<user>.json;
+# the others' Hearth reads those lists (hearth-core seat_share.rs). Only what the stores allow is offered: GOG games
+# are DRM-free installs, played from player 1's folder on the same PC; an Epic install is only used by a player
+# whose own Epic account has the game (their Hearth registers the folder with their own Epic sign-in). Steam games
+# are shared by Steam itself (Steam Family) from the shared folder's Steam library.
+def shared_dir(config):
+    """The shared games folder when this set-up has one (made by hearth-admin seats-setup), else None."""
+    c = config or {}
+    d = c.get('shared_dir')
+    if c.get('share_group') != SHARE_GROUP or not isinstance(d, str) or not d.endswith('/hearth-games') or not os.path.isdir(d):
+        return None
+    return d
+
+
+def load_json(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def store_art(data_dir, store, gid):
+    """The cover pictures the store gave for the game (its web addresses only), so the others see them too."""
+    owned = load_json(os.path.join(data_dir, 'cache', '%s-owned.json' % store), {})
+    for g in (owned.get('games') if isinstance(owned, dict) else None) or []:
+        if isinstance(g, dict) and str(g.get('id')) == gid and isinstance(g.get('art'), dict):
+            return {k: v for k, v in g['art'].items() if k in ('cover', 'hero', 'wide', 'logo') and isinstance(v, str)
+                    and v.startswith('https://')}
+    return {}
+
+
+def my_installs(data_dir=None):
+    """The Epic and GOG games Hearth installed for this player: GOG's from library.json "gogInstalls" (each folder
+    must hold GOG's goggame-<id>.info), Epic's from legendary's own record (no DLC)."""
+    data_dir = data_dir or NIMBUS_DATA
+    out = []
+    lib = load_json(os.path.join(data_dir, 'library.json'), {})
+    gog = lib.get('gogInstalls') if isinstance(lib, dict) else None
+    for gid, d in sorted((gog or {}).items()):
+        if not SHARE_ID_RE.fullmatch(str(gid)) or not isinstance(d, str):
+            continue
+        info = load_json(os.path.join(d, 'goggame-%s.info' % gid))
+        if not isinstance(info, dict):
+            continue
+        out.append({'id': 'gog:' + gid, 'store': 'gog', 'title': str(info.get('name') or gid)[:200],
+                    'path': os.path.realpath(d), 'art': store_art(data_dir, 'gog', gid)})
+    legendary = load_json(os.path.join(data_dir, 'legendary', 'installed.json'), {})
+    for app, e in sorted((legendary if isinstance(legendary, dict) else {}).items()):
+        if not SHARE_ID_RE.fullmatch(str(app)) or not isinstance(e, dict) or e.get('is_dlc') is True:
+            continue
+        path = e.get('install_path')
+        if not isinstance(path, str) or not os.path.isdir(path):
+            continue
+        out.append({'id': 'epic:' + app, 'store': 'epic', 'title': str(e.get('title') or app)[:200],
+                    'path': os.path.realpath(path), 'art': store_art(data_dir, 'epic', app)})
+    return out
+
+
+def open_to_group(path, uid, done, shared):
+    """Lets the other players read a game folder of this player's: the group may pass through the folders above it
+    that are this player's (their home included, without seeing what else is in it) and read the game itself; new
+    files the game's updates add get the same. Nothing for folders in the shared folder (its own ACL covers them)
+    or someone else's. Each folder once (`done`). Returns whether the players can get to it."""
+    if path.startswith(shared.rstrip('/') + '/'):
+        # Its default ACL already gives the group read and write; a narrower entry set here would take that away.
+        return True
+    try:
+        if os.stat(path).st_uid != uid:
+            return False
+    except OSError:
+        return False
+    if path in done:
+        return True
+    above = []
+    a = os.path.dirname(path)
+    while a and a != '/':
+        try:
+            if os.stat(a).st_uid != uid:
+                break
+        except OSError:
+            break
+        above.append(a)
+        a = os.path.dirname(a)
+    for d in above:
+        rc, _, _ = RUNNER.run(['setfacl', '-m', 'g:%s:x' % SHARE_GROUP, d], timeout=30)
+        if rc != 0:
+            return False
+    rc, _, _ = RUNNER.run(['setfacl', '-R', '-m', 'g:%s:rX,d:g:%s:rX' % (SHARE_GROUP, SHARE_GROUP), path], timeout=600)
+    if rc != 0:
+        return False
+    done.append(path)
+    return True
+
+
+def share_publish(data_dir=None):
+    """Writes this player's shared games list. Nothing when multi-seat or its shared folder isn't set up."""
+    config = load_config()
+    shared = shared_dir(config)
+    if not shared:
+        return {'ok': True, 'shared': 0, 'reason': 'Multi-seat with shared games isn\'t set up.'}
+    me = main_user()
+    seat = 1 if me['name'] == config.get('main_user') else next(
+        (s.get('seat') for s in config.get('seats', []) if s.get('user') == me['name']), None)
+    if not isinstance(seat, int):
+        return {'ok': True, 'shared': 0, 'reason': 'This account isn\'t one of the players.'}
+    state = load_json(SHARE_STATE, {})
+    done = [p for p in (state.get('opened') if isinstance(state, dict) else None) or [] if isinstance(p, str) and os.path.isdir(p)]
+    games, closed = [], []
+    home = os.path.expanduser('~')
+    for g in my_installs(data_dir):
+        p = g['path']
+        # Never the home folder itself or anything above it; and only this player's own installs (a game another
+        # player shared and this one's Epic registered stays the other player's to offer).
+        if p in ('/', home) or home.startswith(p.rstrip('/') + '/'):
+            continue
+        try:
+            if os.stat(p).st_uid != me['uid']:
+                continue
+        except OSError:
+            continue
+        (games if open_to_group(p, me['uid'], done, shared) else closed).append(g)
+    os.makedirs(os.path.dirname(SHARE_STATE), exist_ok=True)
+    with open(SHARE_STATE + '.tmp', 'w') as f:
+        json.dump({'opened': done}, f)
+    os.replace(SHARE_STATE + '.tmp', SHARE_STATE)
+    target = os.path.join(shared, '.hearth', 'library-%s.json' % me['name'])
+    tmp = target + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'user': me['name'], 'seat': seat, 'updated': int(time.time()), 'games': games}, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, target)
+    return {'ok': True, 'shared': len(games), 'not_shared': [g['title'] for g in closed]}
 
 
 # ---------------------------------------------------------------------------------------------- planning
@@ -1819,6 +1961,8 @@ def main(argv):
                 raise Fail('usage: hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]')
             print(json.dumps(audio_cmd(int(seat) if seat else None, int(vol) if vol else None,
                                        None if only is None else only == 'on')))
+        elif cmd == 'share-publish':
+            print(json.dumps(share_publish()))
         elif cmd == 'stream-run':
             return stream_run()
         elif cmd == 'sunshine':
@@ -1826,7 +1970,7 @@ def main(argv):
         else:
             raise Fail('usage: hearth-seats scan | plan | setup --seats JSON [--start] | start | stop | status | '
                        'pads | assign-pad --pad ID --seat N | remove [--delete-users] | wait-button | stream-info | '
-                       'stream-pair --seat N --pin PIN | stream-unpair --seat N --uuid UUID | audio')
+                       'stream-pair --seat N --pin PIN | stream-unpair --seat N --uuid UUID | audio | share-publish')
     except Fail as e:
         fail(str(e))
     return 0

@@ -24,14 +24,17 @@ play one game together. Multi-seat gives each player a whole Hearth of their own
 | A streamed player's Sunshine (user service) | `os/system_files/usr/lib/systemd/user/hearth-seat-sunshine.service` |
 | Whose virtual controller is it (udev helper, streamed players) | `os/system_files/usr/libexec/nimbus/hearth-seat-input` |
 | Settings › Games › Multi-seat (Beta Experimental) | `ui/index.html` (`seats` tab), bridge `seats.*` in `hosts/hearth-core/src/bridge.rs` |
-| Tests | `hosts/linux/test/test_hearth_seats.py`, the Multi-seat steps in `tools/ui-check.js` |
+| Shared games: each player's list, "In use by …" notes, the library side | `hearth-seats share-publish`, `hosts/hearth-core/src/seat_share.rs`, `library.rs` |
+| Tests | `hosts/linux/test/test_hearth_seats.py`, `seat_share.rs`'s tests, the Multi-seat steps in `tools/ui-check.js` |
 
 Files written at set-up time (all listed in `/etc/hearth/seats.json` and removed by `seats-remove`):
 `/etc/hearth/seats/hearth-pN.env`, `/etc/udev/rules.d/72-hearth-seats.rules`, `/etc/tmpfiles.d/hearth-seats.conf`,
 `/etc/sddm.conf.d/zzz-hearth-seats.conf`, plus the `hearth-pN` accounts and the enabled units. With streamed
 players also `/etc/udev/rules.d/74-hearth-seats-stream.rules`, `/etc/modules-load.d/hearth-seats-stream.conf`,
 `/etc/hearth/seats/hearth-pN.stream.json` (their Sunshine's web login) and the firewall ports it opened
-(`firewall_ports`). At run time: `/run/udev/hearth-seats-input.json` (hearth-seat-input's record).
+(`firewall_ports`). At run time: `/run/udev/hearth-seats-input.json` (hearth-seat-input's record). With shared games
+(see "Sharing games") also the `hearth-games` group, the shared folder and `/run/hearth-seats/in-use`; the group and
+the folder are kept by `seats-remove`, so games installed there stay.
 
 ## The kinds of hardware
 
@@ -280,6 +283,39 @@ Supplementary groups: only `render` and `gamemode` (if they exist). **Not** `inp
 
 If player 1's own account is in `input`, `scan` warns: player 1's games could still see the other players'
 controllers.
+
+## Sharing games
+
+Games are installed once and started from any seat, as far as each store allows:
+
+| Store | What the other players get | Who may play it |
+|---|---|---|
+| GOG | The games another player installed with Hearth (DRM-free), started from that player's folder | One player at a time per copy: a borrowed copy shows "In use by Player N" and waits while its owner, or another borrower, plays it. The owner never waits. |
+| Epic | Another player's Hearth install, only if the player's **own** Epic account has the game | Each player with their own copy: the folder is registered once with that player's Epic sign-in (`legendary import`), which then starts it. Never waits. |
+| Steam | Games in the shared folder's Steam library, installed by any player's Steam | Steam decides (Steam Family). A game another Steam account installed there shows "Shared with you through Steam Family", and "In use by Player N" while another seat plays it; Hearth then says so instead of starting it, and Steam has the last word. |
+
+How it works:
+* **Group and folder.** `seats-setup` makes the `hearth-games` system group and puts player 1 and every extra
+  player's account in it (new accounts get it from `useradd --groups`). It makes `/var/home/hearth-games` (or
+  `/home/hearth-games`): owned by player 1 (so player 1's running session can use it before signing in again picks up
+  the group), group `hearth-games`, setgid, with a default ACL giving the group read and write on everything made in it
+  whatever the program's umask (Steam's is 022). Inside: `Steam/`, `Epic/`, `GOG/`, and `.hearth/` (sticky: each player's
+  list, nobody can replace another's). If the group or the folder can't be made, multi-seat still sets up, without
+  sharing, and says so in its warnings.
+* **New installs.** With shared games, Hearth's Epic and GOG installs go into the shared folder unless a games folder
+  was chosen in Settings. Each player's Hearth adds `Steam/` to its Steam's libraries once Steam is closed (Steam
+  rewrites that list when it closes); Steam then offers it when installing.
+* **Games already installed** in player 1's home: `hearth-seats share-publish` (run by Hearth after a scan, when the
+  player's Epic/GOG installs changed) gives the group pass-through on the folders above each game that are the player's
+  own (home included: the others can't list it, only reach the game) and read access to the game folder, with a default
+  ACL so updates keep it. Read only: other players can't change or delete another player's install, and Hearth refuses
+  to uninstall another player's copy. Each folder is opened once (`~/.local/state/hearth/shared-folders.json`).
+* **Lists.** share-publish writes `<shared folder>/.hearth/library-<user>.json`: the player's own Epic and GOG installs
+  (id, title, folder, store pictures). Each player's Hearth reads the others' lists (only files really written by that
+  player's account, only players in `seats.json`, only folders it can read) and adds those games to its library.
+  Wine prefixes, saves and cloud saves stay each player's own.
+* **"In use by …".** When a game starts, Hearth writes `/run/hearth-seats/in-use/<id>.json` (its own process id); the
+  note goes when the game ends. The folder is sticky and group-writable. A note whose Hearth is gone is ignored.
 
 ## Sessions
 
@@ -540,8 +576,12 @@ iGPU laptop (VAAPI), an AMD dGPU, an Nvidia card (NVENC session limits).
 * **Audio in nested mode** depends on the card profile exposing every HDMI output, and on games honouring
   `PULSE_SINK`/`PIPEWIRE_NODE`. Players 2-4 can technically reach player 1's sound server, including its
   microphone, while the host runs (fine for a household, worth knowing).
-* **Games are downloaded per account.** Each player's Steam has its own library folder. Sharing a library
-  between accounts is a separate feature.
+* **Shared games** (see "Sharing games") need testing on real hardware: two Steam accounts using one library
+  folder (downloads and updates by either, "disk write error" if a file lost its group write access), Steam Family
+  on two seats at once, `legendary import` of another player's read-only folder, GOG games started from another home.
+  Steam games the account doesn't have installed only show in Steam's own library: Hearth doesn't read family
+  libraries from Steam's servers. "In use by" shows in a game's page when the library is loaded (it's read again every
+  10 seconds and when a game starts). The Electron host (hosts/linux) doesn't share games yet.
 * **Setting it up or removing it with a card per player** needs a restart for logind to see the card's new
   tags. Controllers move live in both modes.
 
