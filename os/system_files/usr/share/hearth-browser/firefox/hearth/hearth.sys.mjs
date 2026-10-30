@@ -154,6 +154,9 @@ function spatial() {
         parent: { esModuleURI: "resource://hearth/spatial-parent.sys.mjs" },
         child: { esModuleURI: "resource://hearth/spatial-child.sys.mjs", events },
         allFrames: false,
+        // It runs in web pages' processes on purpose: the child side only reads the page and moves its focus, and
+        // the parent side only keeps what it reports (as plain text) for the console and the CI test.
+        safeForUntrustedWebProcess: true,
       });
       done.push(name);
     } catch (e) { report("actor " + name, e); done.push(name + ": " + e); }
