@@ -138,15 +138,47 @@ remembered from the last time it answered) and waited for up to about a minute. 
 device itself (`http://127.0.0.1:<port>/<random>/<name>`, one link per file, 12 hours) that Hearth Player opens; the
 device fetches the bytes from the server over Hearth Link as the player asks for them.
 
+**Saves follow you** (`saves.rs`, on by default once a device backs up to a server; Backups & saves › Saves follow
+you): before a game starts, Hearth asks the server (at most 2.5 seconds, never waking it; then the game starts as
+always) whether it has a newer save for that game, and if so copies it over the one here first; after the game, the
+save here goes to the server. Only games whose store doesn't sync saves itself: Steam games without Steam Cloud, Epic
+games without Epic's cloud saves, GOG games without GOG's cloud saves (or with Cloud saves turned off for the game),
+Beacon's games. A game's save is its Windows user folder in its own prefix (caches left out). Each device remembers
+the server version it last had and what its save looked like then; when both changed, both are kept and you pick
+(a controller prompt before the game, or the "Pick a save" row): never silently overwritten. What's replaced is kept:
+on the server the last 5 in `Hearth Storage/Saves/<game>/replaced/`, on the device the last 3 in Hearth Link's
+`save-backups/<game>/`. A push copies into `incoming/` and only replaces `current/` when it's all there. A save that
+couldn't reach the server (it was off) is sent later.
+
+**Device health** (`health.rs`): every device reports to its servers every 10 minutes (`device.report`: name, kind,
+edition, Hearth version, battery, free space, last backup, and hearth-boot-guard's state, only read from grubenv's
+`hearth_tries` and `/var/lib/hearth/boot-fallback.json`). Servers & devices lists every paired device: online or
+last seen, battery, free space, last backup, version (behind the newest of your devices?) and whether its last start
+was good. When the server's asleep, a device shows what it knows itself.
+
+**Removing a device** (a device's menu › Remove this device…, from any device or the server): Hearth Link's unpair,
+on this device and on the server; Hearth Storage can also delete that device's backups and the games it archived
+(`devices.usage` says how much that frees first; nothing is deleted if the server doesn't answer).
+
 **Requests** (paired devices only, `storage.rs` lists them): `storage.info`, `storage.ls`, `storage.stat`,
-`storage.read` (chunk frames, like a copy), `archive.offer|list|remove|done`, `backup.offer`. Copies use the usual
-manifest/hashes/chunks requests with the ids `archive:<key>`, `share:<share>:<path>`, `backup:saves|shots`.
+`storage.read` (chunk frames, like a copy), `archive.offer|list|remove|done`, `backup.offer`, `saves.info|offer|done`,
+`device.report`, `devices.list|usage|forget`. Copies use the usual manifest/hashes/chunks requests with the ids
+`archive:<key>`, `share:<share>:<path>`, `backup:saves|shots`, `savedev:<game>` (a device's save, only to its save
+server) and `savesrv:<key>` (the server's kept save).
 
 **The UI's calls** (`hearth-link call storage.…`): `status`, `servers`, `set`, `candidates`, `share.add|remove|set`,
 `smb.password`, `ls`, `get`, `stream`, `archive`, `archived`, `archive.remove|forget|here`, `restore`, `backup.now`,
-`backups`, `wake`.
+`backups`, `wake`, `saves.before|pull|after|resolve|status`, `devices`, `device.usage`, `device.remove`. The page's
+Downloads & updates section uses `storage.cache.status|set` and `storage.updates.status|set` and hides them on a
+Hearth Link without them.
+
+**Settings › Hearth Storage** is one page in sections: This device (server on/off), Servers & devices (health,
+remove), Shared folders, Game archive, Backups & saves, Media, Downloads & updates, and Advanced (away from home,
+Windows sharing, sleep, wake), folded. Mantel's Hearth Link page has the same sections for what it shows.
 
 **Tests:** `cargo test` (storage.rs: shared paths, settings, the archive's layout, where copies land, Wake-on-LAN
-packets, ranges, reading a range), `tests/e2e.py lan` (A as the server: shared folder, media link, a game archived
+packets, ranges, reading a range; saves.rs: the plan never overwrites both, the fingerprint, a push replacing current
+and keeping the old one, stores that sync left alone; health.rs: battery, boot state only read, versions, rows, a
+device's data on the server), `tests/e2e.py lan` (A as the server: shared folder, media link, a game archived
 and copied back, backups, turned off), `hosts/linux/test/test_hearth_storage.py` (Mantel, Hearth Files, wiring),
 `test_hearth_storage_helper.py` (Samba config, the password only on stdin), `test_link_firewall.py` (port 445).

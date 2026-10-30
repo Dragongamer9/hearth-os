@@ -1,5 +1,6 @@
 // Layout audit: draws every experimental and keyboard & mouse layout (Home and Library), and the Dragonfire look
-// (its Home and Settings › Updates & Recovery), at 1280×800, 1920×1080 and 1280×720 with 0, 1, the sample library (~25) and 500 games, takes a screenshot of each, and looks for:
+// (its Home and Settings › Updates & Recovery), Settings › Hearth Storage in both looks (a server, three devices with
+// their health, a save to pick, downloads & updates), at 1280×800, 1920×1080 and 1280×720 with 0, 1, the sample library (~25) and 500 games, takes a screenshot of each, and looks for:
 // script errors, controls pushed off the screen, clipped or overlapping text, low-contrast text, a lost selection,
 // and controls the D-pad can't reach. Writes shots/<size>/<layout>-<w>x<h>.jpg and shots/report.txt.
 //   node tools/layout-audit.js [filter]     (needs playwright, like ui-check.js)
@@ -99,6 +100,35 @@ function inspect(opts) {
   return out;
 }
 
+// Runs in the page: Settings › Hearth Storage with a server, three devices (one behind on updates, one whose start
+// isn't confirmed), a save to pick, downloads & updates, and Advanced open, in the look asked for.
+function storageMock(look) {
+  const me = 'a'.repeat(64), srv = 'b'.repeat(64), ally = 'c'.repeat(64), now = Date.now();
+  const st = { running: true, me: { id: me, name: 'Deck' }, settings: {}, peers: [{ id: srv, name: 'Basement PC', online: true }, { id: ally, name: 'ROG Ally', online: false, lastSeen: now - 864e5 }],
+    transfers: [], offers: [], sending: [], signInHints: [],
+    storage: { config: { server: false, folder: '', free: 2e11, shares: [], archive: true, backups: true, media: true, away: false, smb: false, sleepMinutes: 0, backupTo: srv,
+                         backupSaves: true, backupShots: true, savesFollow: true, backupHours: 6, lastBackup: now - 36e5,
+                         archived: { 'steam:620': { server: srv, title: 'Portal 2', size: 1.2e10, state: 'archived', key: 'aaaaaaaa-steam-620' } } },
+               servers: [{ id: srv, name: 'Basement PC', shares: [{ id: 'c0ffee000001', name: 'Films' }, { id: 'c0ffee000002', name: 'Music' }], archive: true, backups: true, media: true, free: 2e12, usable: true, at: now, canWake: true }],
+               jobs: [], user: 'me' } };
+  window.call = async (m) => {
+    if (m === 'link.status') return st;
+    if (m === 'link.storage.servers') return st.storage;
+    if (m === 'link.storage.updates.status') throw new Error('link.storage.updates.status isn\'t a Hearth Link call');
+    return {};
+  };
+  LK.s = st; closeAll(); S.history = [];
+  STG.devices = { server: srv, serverName: 'Basement PC', devices: [
+    { id: me, name: 'Deck', me: true, online: true, kind: 'handheld', battery: { percent: 64, charging: false }, free: 2e11, total: 5e11, lastBackup: now - 36e5, version: '0.6.56', upToDate: true, newest: '0.6.56', boot: { good: true } },
+    { id: srv, name: 'Basement PC', server: true, online: true, kind: 'desktop', battery: null, free: 2e12, total: 4e12, version: '0.6.56', upToDate: true, newest: '0.6.56', boot: { good: true } },
+    { id: ally, name: 'ROG Ally', online: false, lastSeen: now - 864e5, kind: 'handheld', battery: { percent: 12, charging: false }, free: 3e10, total: 5e11, lastBackup: now - 3 * 864e5, version: '0.6.52', upToDate: false, newest: '0.6.56', boot: { good: false } }] };
+  STG.saves = { follow: true, server: srv, games: [{ id: 'gog:1207658924', title: 'Heroes of Might and Magic 3', conflict: { server: { fromName: 'ROG Ally', at: now - 72e5 }, local: { at: now - 864e5 } } }] };
+  STG.cache = { enabled: true }; STG.updates = { na: true }; STG.adv = true;
+  LOOK.style = look; LOOK.layout = 'shelf'; LOOK.libLayout = ''; saveLook();
+  S.settingsTab = 'storage'; navigate('settings', {}, false); render(null, true);
+  window.__auditView = 'settings';
+}
+
 // Runs in the page: presses up/down/left/right from every control it can reach (breadth first); the ones it
 // never gets to can't be reached with a controller.
 function explore() {
@@ -186,6 +216,34 @@ function explore() {
       }
     }
     await page.close();
+    // Settings › Hearth Storage (Hearth OS only, so drawn as Hearth OS): Classic and Dragonfire, Advanced open.
+    const sjobs = ['look-classic-storage', 'look-dragonfire-storage'].filter(id => (!only || id.includes(only)) && size === 'n25');
+    if (sjobs.length) {
+      const sp = await browser.newPage({ viewport: { width: VIEWS[0][0], height: VIEWS[0][1] } });
+      const serrs = [];
+      sp.on('pageerror', e => serrs.push(e.message));
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(1500);
+      for (const id of sjobs) {
+        for (const [w, h] of VIEWS) {
+          await sp.setViewportSize({ width: w, height: h });
+          const before = serrs.length;
+          try { await sp.evaluate(storageMock, id.split('-')[1]); await sp.waitForTimeout(350); } catch (e) { serrs.push(`draw: ${e.message.split('\n')[0]}`); }
+          const tag = `${size} settings ${id} ${w}x${h}`;
+          const probs = await sp.evaluate(inspect, { games: true }).catch(e => ['inspect failed: ' + e.message.split('\n')[0]]);
+          await sp.screenshot({ path: path.join(OUT, size, `settings-${id}-${w}x${h}.jpg`), type: 'jpeg', quality: 70 });
+          if (w === 1280 && h === 800) {
+            const r = await sp.evaluate(explore).catch(e => ({ error: e.message.split('\n')[0] }));
+            if (r.error) probs.push('controller: ' + r.error);
+            else if (r.missed.length) probs.push(`controller can't reach ${r.missed.length} of ${r.total}: ${r.missed.slice(0, 8).join(', ')}`);
+          }
+          for (const e of serrs.slice(before)) probs.unshift('SCRIPT ERROR ' + e);
+          errorsTotal += serrs.length - before;
+          if (probs.length) { report.push(`${tag}\n  - ${probs.join('\n  - ')}`); counts[id] = (counts[id] || 0) + probs.length; }
+        }
+      }
+      await sp.close();
+    }
   }
   await browser.close();
   const sum = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}: ${v}`).join(', ');

@@ -1798,12 +1798,18 @@ const path = require('path');
           if (m === 'link.status') return st;
           if (m === 'link.storage.servers') return st.storage;
           if (m === 'link.storage.ls') return { share: 'Films', entries: [{ name: 'Holiday', dir: true }, { name: 'clip.mkv', size: 5e8 }] };
+          if (m === 'link.storage.device.usage') return { backups: 3e9, archive: 4e10, games: ['Portal 2'] };
+          if (m === 'link.storage.device.remove') return { freed: 4.3e10 };
+          if (m === 'link.storage.cache.status') throw new Error("link.storage.cache.status isn't a Hearth Link call");
           return {};
         };
         LK.s = st; closeAll(); S.settingsTab = 'storage'; navigate('settings', {}, false); render(null, true); await wait(150);
         const v = () => document.querySelector('#view').textContent;
         out.server = /Basement PC/.test(v()); out.backup = /To Basement PC every 6 hours/.test(v()); out.share = /\/home\/me\/Videos/.test(v());
         out.archived = /Safely in Hearth Storage/.test(v()); out.off = /Windows sharing \(SMB\)/.test(v()) && /Away from home/.test(v());
+        out.advFolded = !document.querySelector('#view [data-k="stg-away"]');
+        act(document.querySelector('#view [data-k="lk-adv"]')); await wait(100);
+        out.off = /Windows sharing \(SMB\)/.test(v()) && /Away from home/.test(v());
         const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
         out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
         act(document.querySelector('#view [data-k="stg-away"]')); await wait(100);
@@ -1814,15 +1820,43 @@ const path = require('path');
         out.browse = sheet && sheet.items.map(i => i.label).join('|');
         out.ls = JSON.stringify((calls.find(c => c[0] === 'link.storage.ls') || [])[1]);
         closeAll();
+        // Servers & devices: health, and removing an old device with its backups and games (how much it frees said).
+        const ally = 'c'.repeat(64);
+        STG.devices = { server: srv, devices: [{ id: st.me.id, name: 'Deck', me: true, online: true, battery: { percent: 64 }, version: '0.6.56', upToDate: true, newest: '0.6.56', boot: { good: true } },
+          { id: ally, name: 'ROG Ally', online: false, lastSeen: Date.now() - 864e5, battery: { percent: 12 }, free: 3e10, version: '0.6.52', upToDate: false, newest: '0.6.56', boot: { fellBack: '2026-10-28T10:00:00' } }] };
+        STG.saves = { games: [{ id: 'gog:1', title: 'Heroes 3', conflict: { server: { fromName: 'ROG Ally', at: Date.now() - 6e5, version: 'v9' }, local: { at: Date.now() - 864e5 } } }] };
+        render(null, true); await wait(100);
+        out.health = /Battery 12%/.test(v()) && /0\.6\.56 is out/.test(v()) && /went back to the previous version/.test(v()) && /Check it/.test(v());
+        out.cacheNa = /Sharing downloads and updates through Hearth Storage comes with the next/.test(v()) || !/Keep game downloads/.test(v());
+        act(document.querySelector('#view [data-k="lk-dv1"]')); await wait(100);
+        out.devSheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(sheet.items.length - 1); await wait(200);
+        out.removeSheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(sheet.items.length - 1); await wait(100);
+        out.confirm = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(0); await wait(100);
+        out.removed = JSON.stringify((calls.find(c => c[0] === 'link.storage.device.remove') || [])[1]);
+        closeAll(); render(null, true); await wait(100);
+        // A save changed on both: asked, never decided for you.
+        act(document.querySelector('#view [data-k="lk-sc0"]')); await wait(100);
+        out.saveSheet = sheet && sheet.items.map(i => i.label).join('|');
+        sheetPick(1); await wait(100);
+        out.resolved = JSON.stringify((calls.find(c => c[0] === 'link.storage.saves.resolve') || [])[1]);
+        closeAll();
         return out;
       });
-      const want = { server: true, backup: true, share: true, archived: true, off: true, set: '{"away":true}' };
+      const want = { server: true, backup: true, share: true, archived: true, off: true, advFolded: true, set: '{"away":true}', health: true, cacheNa: true,
+                     removed: JSON.stringify({ id: 'c'.repeat(64), name: 'ROG Ally', backups: true, archive: true }), resolved: JSON.stringify({ game: 'gog:1', keep: 'local', now: true }) };
       for (const k of Object.keys(want)) if (r[k] !== want[k]) serr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
       if (r.dupKeys.length) serr('two rows with the same key: ' + r.dupKeys.join(', '));
       if (!/^Browse shared folders\|Games kept there\|Stop backing up to it\|Wake it up$/.test(r.sheet || '')) serr('the server\'s menu: ' + r.sheet);
+      if (!/Remove this device…$/.test(r.devSheet || '')) serr('a device\'s menu: ' + r.devSheet);
+      if (!/delete both · 43\.0 GB$/.test(r.removeSheet || '')) serr('removing a device: ' + r.removeSheet);
+      if (!/^Remove and delete \(frees 43\.0 GB\)$/.test(r.confirm || '')) serr('removing, confirmed: ' + r.confirm);
+      if (!/^From ROG Ally · .*\|This device's · .*\|Decide later$/.test(r.saveSheet || '')) serr('picking a save: ' + r.saveSheet);
       if (!/Holiday ›/.test(r.browse || '') || !/clip\.mkv/.test(r.browse || '')) serr('browsing: ' + r.browse);
       if (r.ls !== JSON.stringify({ server: 'b'.repeat(64), share: 'c0ffee000001', path: '' })) serr('listing asked: ' + r.ls);
-      if (!errors.some(e => e.startsWith('Hearth Storage'))) console.log('Hearth Storage: servers, backups, shared folders, switches, browsing ok');
+      if (!errors.some(e => e.startsWith('Hearth Storage'))) console.log('Hearth Storage: servers, backups, shared folders, switches, browsing, device health, removing a device, picking a save ok');
     } catch (e) { serr(e.message.split('\n')[0]); }
     await sp.close();
   }

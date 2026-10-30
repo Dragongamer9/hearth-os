@@ -12,9 +12,13 @@ through `hearth-link call` (its socket, only this user's).
   hearth-link-settings sync
   hearth-link-settings pause|resume|cancel ID   a copy
   hearth-link-settings storage-set KEY on|off Hearth Storage (KEY: server, away, smb, archive, backups, media,
-                                              backupSaves, backupShots)
+                                              backupSaves, backupShots, savesFollow)
   hearth-link-settings share-add PATH | share-remove ID   Hearth Storage's shared folders
   hearth-link-settings backup-now             back this device up to its Hearth Storage now
+  hearth-link-settings devices                every paired device's health (asked of the Hearth Storage server)
+  hearth-link-settings device-remove ID [backups] [archive]
+                                              remove (unpair) a device you don't use anymore; with backups/archive,
+                                              Hearth Storage deletes its backups / archived games too
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import json
@@ -26,7 +30,7 @@ import sys
 BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
 ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
 KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
-STORAGE_KEYS = ('server', 'away', 'smb', 'archive', 'backups', 'media', 'backupSaves', 'backupShots')
+STORAGE_KEYS = ('server', 'away', 'smb', 'archive', 'backups', 'media', 'backupSaves', 'backupShots', 'savesFollow')
 SHARE_RE = re.compile(r'^[0-9a-f]{4,32}$')
 # Short codes (hosts/hearth-link shortcode.rs): no 0/O, 1/I/L; the weighted sum of the 10 (weights 1..10) is 0 mod 31.
 ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
@@ -84,6 +88,12 @@ def request(argv, stdin=''):
         return 'storage.share.remove', {'id': rest[0]}
     if cmd == 'backup-now' and not rest:
         return 'storage.backup.now', {}
+    if cmd == 'devices' and not rest:
+        return 'storage.devices', {}
+    if cmd == 'device-remove' and 1 <= len(rest) <= 3:
+        if not re.fullmatch(r'[0-9a-f]{16,64}', rest[0]) or any(x not in ('backups', 'archive') for x in rest[1:]):
+            raise Fail("That isn't a Hearth device")
+        return 'storage.device.remove', {'id': rest[0], 'backups': 'backups' in rest[1:], 'archive': 'archive' in rest[1:]}
     if cmd == 'set' and len(rest) == 2 and rest[0] in KEYS:
         k, v = rest
         if KEYS[k] is bool:
