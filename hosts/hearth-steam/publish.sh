@@ -10,4 +10,8 @@ if ! dotnet publish "$here/HearthSteam/HearthSteam.csproj" -c Release -o "$out" 
   exit 1
 fi
 test -x "$out/hearth-steam" || { echo "::error title=hearth-steam build::no hearth-steam program in the output"; exit 1; }
+# Not needed to run: the debugger/diagnostics helpers, the LTTng tracing provider and the alternative GCs.
+rm -f "$out"/libmscordaccore.so "$out"/libmscordbi.so "$out"/libcoreclrtraceptprovider.so "$out"/libclrgc.so "$out"/libclrgcexp.so "$out"/createdump
+# Native libraries without their debug symbols (their exported symbols stay).
+command -v strip >/dev/null && find "$out" -maxdepth 1 -name '*.so' -exec strip --strip-debug {} \;
 echo "hearth-steam: $(du -sh "$out" | cut -f1) in $(find "$out" -type f | wc -l) files"
