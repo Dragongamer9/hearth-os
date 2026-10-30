@@ -1,0 +1,28 @@
+{
+    "KDE-KIO-Protocols": {
+        "hearth": {
+            "Class": ":local",
+            "Icon": "network-server",
+            "exec": "kf6/kio/hearth",
+            "input": "none",
+            "listing": [
+                "Name",
+                "Type",
+                "Size",
+                "Date",
+                "Access"
+            ],
+            "maxInstances": 8,
+            "output": "filesystem",
+            "protocol": "hearth",
+            "reading": true,
+            "writing": false,
+            "makedir": false,
+            "deleting": false,
+            "moving": false,
+            "linking": false,
+            "opening": false,
+            "determineMimetypeFromExtension": true
+        }
+    }
+}
