@@ -237,7 +237,7 @@ class Options(unittest.TestCase):
 
     def test_hearth_admin_hands_usb_commands_to_hearth_usb(self):
         text = ADMIN.read_text()
-        self.assertIn("elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-finish'):", text)
+        self.assertIn("elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-ventoy', 'usb-finish'):", text)
         self.assertIn("'hearth-usb'", text)
         self.assertTrue(os.access(PATH, os.X_OK), 'hearth-usb must be executable')
 
@@ -283,6 +283,103 @@ class RawWrite(unittest.TestCase):
                 m.cmd_raw(dev, {'size': 8 * 1024 * 1024}, 0, io.BytesIO(b'y' * (9 * 1024 * 1024)))
         finally:
             m.os.open = real_open
+
+
+def tarball(entries):
+    """A .tar.gz in memory: [(name, bytes or None for a folder, kind)] (kind: file, dir, symlink)."""
+    import tarfile
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode='w:gz') as t:
+        for name, data, kind in entries:
+            ti = tarfile.TarInfo(name)
+            if kind == 'dir':
+                ti.type = tarfile.DIRTYPE
+                ti.mode = 0o755
+                t.addfile(ti)
+            elif kind == 'symlink':
+                ti.type = tarfile.SYMTYPE
+                ti.linkname = '/etc/shadow'
+                t.addfile(ti)
+            else:
+                ti.size = len(data)
+                ti.mode = 0o755
+                t.addfile(ti, io.BytesIO(data))
+    return buf.getvalue()
+
+
+class Ventoy(unittest.TestCase):
+    """Ventoy (multi-ISO): only the pinned release runs, unpacked safely; the drive checks are check_device's."""
+
+    def good(self, m):
+        top = f'./ventoy-{m.VENTOY_VERSION}'
+        return tarball([(top + '/', None, 'dir'), (top + '/Ventoy2Disk.sh', b'#!/bin/sh\nexit 0\n', 'file'),
+                        (top + '/boot/', None, 'dir'), (top + '/boot/boot.img', b'\0' * 512, 'file')])
+
+    def write(self, data):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, 'ventoy.tar.gz')
+        with open(p, 'wb') as f:
+            f.write(data)
+        return p
+
+    def test_only_the_pinned_release_is_accepted(self):
+        m = load()
+        data = self.good(m)
+        p = self.write(data)
+        with self.assertRaisesRegex(m.Refuse, 'as released'):
+            m.ventoy_tarball(p)
+        m.VENTOY_SHA256 = hashlib.sha256(data).hexdigest()
+        self.assertEqual(m.ventoy_tarball(p), data)
+        # A link to it isn't followed; odd paths are refused.
+        link = p + '.link'
+        os.symlink(p, link)
+        with self.assertRaises(m.Refuse):
+            m.ventoy_tarball(link)
+        for bad in ('relative.tar.gz', '/a/../etc/shadow', '/tmp/x;rm', ''):
+            with self.assertRaises(m.Refuse):
+                m.ventoy_tarball(bad)
+
+    def test_unpacks_only_plain_files_inside_its_folder(self):
+        m = load()
+        into = tempfile.mkdtemp()
+        d = m.ventoy_unpack(self.good(m), into)
+        self.assertTrue(os.path.isfile(os.path.join(d, 'Ventoy2Disk.sh')))
+        top = f'ventoy-{m.VENTOY_VERSION}'
+        for bad in ([('../evil', b'x', 'file')], [('/etc/evil', b'x', 'file')], [(top + '/../../evil', b'x', 'file')],
+                    [('other/Ventoy2Disk.sh', b'x', 'file')], [(top + '/link', None, 'symlink')]):
+            with self.assertRaises(m.Refuse, msg=str(bad)):
+                m.ventoy_unpack(tarball(bad), tempfile.mkdtemp())
+        with self.assertRaisesRegex(m.Refuse, 'missing'):
+            m.ventoy_unpack(tarball([(top + '/README', b'x', 'file')]), tempfile.mkdtemp())
+
+    def test_command_line_and_label(self):
+        m = load()
+        self.assertEqual(m.ventoy_args('/dev/sdb', 'Ventoy', False), ['sh', './Ventoy2Disk.sh', '-I', '-L', 'Ventoy', '/dev/sdb'])
+        self.assertEqual(m.ventoy_args('/dev/sdb', 'HEARTH', True)[-2:], ['-g', '/dev/sdb'])
+        self.assertTrue(m.VENTOY_LABEL_RE.match('Hearth-USB_1'))
+        for bad in ('', 'a b', 'x' * 16, 'a;b', '-'):
+            if bad == '-':
+                continue
+            self.assertFalse(m.VENTOY_LABEL_RE.match(bad), bad)
+        dev, o = m.parse(['/dev/sdb', '--expect-size', '8', '--tarball', '/home/a/Downloads/Hearth USB/ventoy.tar.gz', '--gpt'])
+        self.assertEqual(o['--tarball'], '/home/a/Downloads/Hearth USB/ventoy.tar.gz')
+        self.assertTrue(o['--gpt'])
+
+    def test_disks_pins_the_same_release(self):
+        m = load()
+        rs = (ROOT / 'hosts' / 'hearth-disks' / 'src' / 'usb' / 'ventoy.rs').read_text()
+        self.assertIn(f'pub const VERSION: &str = "{m.VENTOY_VERSION}";', rs)
+        self.assertIn(f'pub const SHA256: &str = "{m.VENTOY_SHA256}";', rs)
+        self.assertRegex(m.VENTOY_SHA256, r'^[0-9a-f]{64}$')
+
+    def test_the_real_release_unpacks(self):
+        """With the real tarball next to the test (VENTOY_TARBALL), it passes the pin and unpacks."""
+        p = os.environ.get('VENTOY_TARBALL')
+        if not p:
+            self.skipTest('VENTOY_TARBALL not set')
+        m = load()
+        d = m.ventoy_unpack(m.ventoy_tarball(p), tempfile.mkdtemp())
+        self.assertTrue(os.path.isfile(os.path.join(d, 'tool', 'VentoyWorker.sh')))
 
 
 if __name__ == '__main__':

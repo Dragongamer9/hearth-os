@@ -38,3 +38,24 @@ The unit tests (`cargo test --lib`, in CI: `.github/workflows/disks.yml`) valida
 runs `hearth-disks --usb-catalog-check`: every entry is resolved against the real servers, its signature checked
 with the built-in key, and its image asked for (HEAD). A project that changes its layout or signing key shows up
 there.
+
+## Several ISOs (Ventoy)
+
+Make a bootable USB › **Several ISOs** puts [Ventoy](https://www.ventoy.net/) on the drive and copies the ISOs you
+pick onto it: Hearth OS editions and Hearth Recovery (one button), anything from this catalog, and your own ISOs
+(Windows: download it from Microsoft's page and add it as your own). At start-up Ventoy shows a menu of them.
+
+- Ventoy is the upstream release, pinned: `VERSION` and `SHA256` in `src/usb/ventoy.rs` and `VENTOY_VERSION` /
+  `VENTOY_SHA256` in `os/system_files/usr/libexec/nimbus/hearth-usb` (a test checks they agree). The SHA-256 is
+  Ventoy's own (`sha256.txt` on the GitHub release). To move to a newer Ventoy: change both, from that release's
+  `sha256.txt`, after checking the download yourself.
+- Disks downloads the tarball into ~/Downloads/Hearth USB and checks it; the root helper (`hearth-admin usb-ventoy`)
+  reads it itself (no links), checks the SHA-256 against its own pinned copy, unpacks only plain files under
+  `ventoy-<version>/` into a private folder, and runs Ventoy's `Ventoy2Disk.sh -I` on the drive. The drive is checked
+  exactly as for every other write (a whole USB drive or SD card, never the system's, the same size and serial you
+  confirmed, nothing mounted; internal drives only with "Show all drives", ERASE typed and an administrator's password).
+- Every ISO is downloaded and checked (or, your own, matched against a checksum file beside it or trusted by you)
+  before the drive is touched; each copy is read back and its SHA-256 compared. MBR by default (Ventoy's usual), GPT
+  as an option.
+- CI (`disks.yml`, `tests/usb_write.rs` `g_ventoy_with_two_isos`) puts the real pinned Ventoy on a disk image with
+  two ISOs and checks the partitions and files.

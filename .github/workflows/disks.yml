@@ -5,7 +5,8 @@
 # and its signature checked against the projects' servers (--usb-catalog-check), and whole jobs against a disk
 # image (tests/usb_write.rs): a download from a local server checked against a signed checksum (and refused when
 # it doesn't match or the signature is wrong), a hybrid ISO written raw and read back, a fake Windows 11 ISO
-# written as GPT + FAT32 with install.wim split and autounattend.xml, a UEFI ISO copied with MBR, a .img.zst.
+# written as GPT + FAT32 with install.wim split and autounattend.xml, a UEFI ISO copied with MBR, a .img.zst, and
+# Ventoy (the pinned upstream release, downloaded and checked) with two ISOs copied onto it.
 # Then its screens, driven with the keyboard like a controller, as pictures (notices "SHOT usb-*"). Release builds of it are made by base-*.yml (the Linux images) and release.yml (Ember).
 name: Hearth Disks
 
