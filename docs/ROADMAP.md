@@ -134,6 +134,19 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.57 (released)
+
+- [x] Automatic fallback: two starts in a row that never reach Hearth, and the previous version starts by itself (and stays the default); background updates pause for three days after
+- [x] Hearth Recovery on the device: hold Volume Down (F8, or Select + Start) while starting; opens by itself after a failed start; controller, volume/power buttons or keyboard
+- [x] Hearth Recovery USB: every action works (reinstall keeping files keeps the old versions, factory reset never erases other systems, copy files off, send logs, Desktop Mode)
+- [x] Peppermint keeps the system log across restarts; Wi-Fi power saving off (ROG Ally drops); .deb installs no longer stuck on "Reading the package…"
+- [x] Battle.net (one press, Blizzard games in the Library, Store section) and Xodus Nexus (preinstalled, Xbox PC tab, Stores card, pinned) — needs testing on a device
+- [x] Multi-seat game sharing: player 1's GOG games on every seat, shared Epic installs, Steam Family per seat with "In use by…"
+- [x] Hearth Storage: a spare Hearth PC as a home server — shared folders, game archive, backups, saves follow you, media, download once for every device, Hearth update cache with hold-back, device health, removing old devices, one new settings page
+- [x] Dragonfire look (Settings › Appearance › Look): its own Game Mode Home, performance rings, friends, Updates & Recovery page
+- [x] Steam engines (experimental, off by default): Lightweight (Valve's engine without Steam's window) and Hearth's own open Steam client
+- [x] Hearth Benchmark: processor, memory, storage, graphics, sustained/heat, battery and network tests with history and device compare
+
 ## 0.6.56 (released)
 
 - [x] Quick Access over Steam games no longer puts the game aside by itself (black or frozen games on the ROG Ally)
