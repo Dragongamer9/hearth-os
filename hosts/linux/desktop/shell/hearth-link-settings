@@ -11,6 +11,10 @@ through `hearth-link call` (its socket, only this user's).
   hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
   hearth-link-settings sync
   hearth-link-settings pause|resume|cancel ID   a copy
+  hearth-link-settings storage-set KEY on|off Hearth Storage (KEY: server, away, smb, archive, backups, media,
+                                              backupSaves, backupShots)
+  hearth-link-settings share-add PATH | share-remove ID   Hearth Storage's shared folders
+  hearth-link-settings backup-now             back this device up to its Hearth Storage now
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import json
@@ -22,6 +26,8 @@ import sys
 BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
 ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
 KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
+STORAGE_KEYS = ('server', 'away', 'smb', 'archive', 'backups', 'media', 'backupSaves', 'backupShots')
+SHARE_RE = re.compile(r'^[0-9a-f]{4,32}$')
 # Short codes (hosts/hearth-link shortcode.rs): no 0/O, 1/I/L; the weighted sum of the 10 (weights 1..10) is 0 mod 31.
 ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 
@@ -66,6 +72,18 @@ def request(argv, stdin=''):
         if cmd == 'unpair':
             return 'unpair', {'id': target}
         return 'transfer.' + cmd, {'id': target}
+    if cmd == 'storage-set' and len(rest) == 2 and rest[0] in STORAGE_KEYS:
+        if rest[1] not in ('on', 'off'):
+            raise Fail('on or off')
+        return 'storage.set', {rest[0]: rest[1] == 'on'}
+    if cmd == 'share-add' and len(rest) == 1 and rest[0].startswith('/'):
+        return 'storage.share.add', {'path': rest[0][:4096]}
+    if cmd == 'share-remove' and len(rest) == 1:
+        if not SHARE_RE.match(rest[0]):
+            raise Fail("That isn't a shared folder")
+        return 'storage.share.remove', {'id': rest[0]}
+    if cmd == 'backup-now' and not rest:
+        return 'storage.backup.now', {}
     if cmd == 'set' and len(rest) == 2 and rest[0] in KEYS:
         k, v = rest
         if KEYS[k] is bool:

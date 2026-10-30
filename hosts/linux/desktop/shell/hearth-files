@@ -57,6 +57,10 @@
   hearth-files desktop-launch PATH      start what a .desktop file runs (after Files asked)
   hearth-files open-choice PATH [CHOICE]     remember (or, without CHOICE, forget) what opening this file does
 
+Hearth Storage's shared folders (a paired Hearth device as a home server) are hearth://SERVER/SHARE/PATH: list,
+copy (from them into a folder here, in the background), open (videos and music play from the server) and open-plan
+work with them; anything that would change them says so.
+
 Output is one JSON line; failures print "error: ..." and exit 1. Anything that changes files only works in
 your home folder, on USB drives and SD cards (/run/media/$USER, /media/$USER) and in /tmp; listing,
 reading and copying *from* anywhere is fine. copy/move stop cleanly on SIGTERM (the Cancel button):
@@ -551,6 +555,7 @@ def places():
         out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
                     'kind': 'games', 'section': 'games'})
     out += bookmark_places()
+    out += storage_places()
     out += dl
     out += unmounted_drives()
     tf = os.path.join(home_trash(), 'files')
@@ -2903,6 +2908,145 @@ def appimage_menu_remove(path):
     return {'ok': True, 'removed': removed}
 
 
+# ---------------------------------------------------------------------- Hearth Storage (hearth://)
+# Shared folders on a paired Hearth Storage device (hosts/hearth-link storage.rs), through Hearth Link's own
+# connection: hearth://SERVER/SHARE/PATH. Read-only here: listing, copying to this device (Hearth Link copies in the
+# background, verified, resumable) and opening (videos and music play straight from the server in Hearth Player;
+# other files are copied to Downloads first).
+LINK_BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
+PLAYER_BIN = '/usr/bin/hearth-player'
+REMOTE_RE = re.compile(r'^hearth://([0-9a-f]{16,64})/([0-9a-f]{1,32})(?:/(.*))?$')
+REMOTE_MEDIA = re.compile(r'\.(mp4|m4v|mkv|webm|avi|mov|ts|mp3|flac|ogg|oga|opus|m4a|wav|aac)$', re.I)
+
+
+def is_remote(p):
+    return isinstance(p, str) and p.startswith('hearth://')
+
+
+def link_call(cmd, args, timeout=150):
+    """One request to Hearth Link (`hearth-link call`); Fail with its words when it says no. Tests replace this."""
+    if not os.path.exists(LINK_BIN):
+        raise Fail('Hearth Storage comes with the next Hearth OS update')
+    try:
+        r = subprocess.run([LINK_BIN, 'call', cmd, json.dumps(args)], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise Fail('Hearth Storage took too long to answer')
+    lines = (r.stdout or '').strip().splitlines()
+    try:
+        v = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        v = None
+    if r.returncode != 0 or not isinstance(v, dict) or set(v) == {'error'}:
+        raise Fail(v.get('error') if isinstance(v, dict) and v.get('error') else "Hearth Link didn't answer")
+    return v
+
+
+def parse_remote(p):
+    """(server, share, path in the share) of a hearth:// address, checked: plain parts only, nothing hidden."""
+    m = REMOTE_RE.match(p or '')
+    if not m:
+        raise Fail("That isn't a Hearth Storage folder")
+    rel = (m.group(3) or '').strip('/')
+    if rel and any(x in ('', '.', '..') or x.startswith('.') for x in rel.split('/')):
+        raise Fail("That isn't a Hearth Storage folder")
+    return m.group(1), m.group(2), rel
+
+
+def remote_uri(server, share, rel):
+    return 'hearth://%s/%s/%s' % (server, share, rel)
+
+
+def storage_places():
+    """The paired Hearth Storage devices' shared folders, as places (only what Hearth Link already knows: no waiting)."""
+    if not os.path.exists(LINK_BIN):
+        return []
+    try:
+        st = link_call('storage.status', {}, timeout=5)
+    except (Fail, OSError):
+        return []
+    out = []
+    for sv in st.get('servers') or []:
+        for sh in sv.get('shares') or []:
+            if not isinstance(sh, dict) or not sh.get('id'):
+                continue
+            out.append({'id': 'hstore:%s:%s' % (sv.get('id'), sh['id']), 'label': '%s on %s' % (sh.get('name') or 'Shared', sv.get('name') or 'Hearth Storage'),
+                        'path': remote_uri(sv.get('id'), sh['id'], ''), 'kind': 'network', 'section': 'network'})
+    return out
+
+
+def remote_list(path):
+    server, share, rel = parse_remote(path)
+    r = link_call('storage.ls', {'server': server, 'share': share, 'path': rel})
+    entries = []
+    for e in r.get('entries') or []:
+        name = e.get('name') or ''
+        if not name or '/' in name or name.startswith('.'):
+            continue
+        isdir = bool(e.get('dir'))
+        entries.append({'name': name, 'path': remote_uri(server, share, (rel + '/' + name) if rel else name), 'dir': isdir,
+                        'size': 0 if isdir else int(e.get('size') or 0), 'mtime': int(e.get('mtime') or 0),
+                        'mime': mime_of(name, isdir), 'isLink': False, 'hidden': False, 'remote': True})
+    parent = remote_uri(server, share, rel.rsplit('/', 1)[0] if '/' in rel else '') if rel else None
+    return {'path': remote_uri(server, share, rel), 'name': rel.rsplit('/', 1)[-1] if rel else (r.get('share') or 'Shared folder'),
+            'parent': parent, 'writable': False, 'trash': False, 'entries': entries, 'free': None, 'total': None, 'remote': True}
+
+
+def remote_copy(srcs, dest, move):
+    """Files and folders from Hearth Storage into a folder here: Hearth Link copies them in the background."""
+    if move:
+        raise Fail('Files on Hearth Storage can only be copied from here')
+    if is_remote(dest):
+        raise Fail("Hearth Storage's shared folders can't be changed from here")
+    d = norm(dest)
+    if not os.path.isdir(d):
+        raise Fail("That folder isn't there any more")
+    started = []
+    for s in srcs:
+        server, share, rel = parse_remote(s)
+        link_call('storage.get', {'server': server, 'share': share, 'path': rel, 'place': d})
+        started.append(os.path.join(d, rel.rsplit('/', 1)[-1] if rel else ''))
+    return {'ok': True, 'items': started, 'skipped': [], 'bytes': 0, 'seconds': 0, 'background': True,
+            'note': 'Copying over Hearth Link: Settings › Hearth Link shows how it goes'}
+
+
+def remote_open(path):
+    server, share, rel = parse_remote(path)
+    if not rel:
+        raise Fail('Open the folder to see what is in it')
+    if REMOTE_MEDIA.search(rel):
+        r = link_call('storage.stream', {'server': server, 'share': share, 'path': rel})
+        url = r.get('url') or ''
+        if not url.startswith('http://127.0.0.1:'):
+            raise Fail("Hearth Link gave a link that isn't on this device")
+        spawn([PLAYER_BIN, url] if os.path.exists(PLAYER_BIN) else ['xdg-open', url], cwd=home())
+        return {'ok': True, 'streaming': True}
+    link_call('storage.get', {'server': server, 'share': share, 'path': rel})
+    return {'ok': True, 'note': 'Copying it to Downloads first (Settings › Hearth Link shows how it goes)'}
+
+
+def remote_cmd(c, rest):
+    """A command about hearth:// addresses, or None when it isn't one."""
+    if not any(is_remote(a) for a in rest):
+        return None
+    if c == 'list':
+        return remote_list([a for a in rest if a != '--hidden'][0])
+    if c in ('copy', 'move'):
+        plain = [a for a in rest if not a.startswith('--')]
+        return remote_copy(plain[:-1], plain[-1], c == 'move')
+    if c == 'conflicts':
+        return {'conflicts': [], 'dest': rest[-1]}
+    if c == 'open':
+        return remote_open(rest[0])
+    if c == 'open-plan':
+        return {'path': rest[0], 'name': rest[0].rstrip('/').rsplit('/', 1)[-1], 'kind': 'default', 'executable': False,
+                'text': False, 'editor': False, 'canChmod': False, 'remembered': None}
+    if c == 'thumbs':
+        return thumbs([a for a in rest if not is_remote(a)]) if any(not is_remote(a) for a in rest) else {'ok': True, 'made': []}
+    if c == 'clip-set':
+        return None
+    raise Fail("Hearth Storage's shared folders can't be changed from here: copy what you need to this device")
+
+
 # ---------------------------------------------------------------------- command line
 USAGE = ('usage: hearth-files list PATH [--hidden] | places | mkdir PATH | rename PATH NEWNAME | trash PATH... | '
          'restore PATH... | empty-trash | delete PATH... | copy SRC... DEST | move SRC... DEST | info PATH | '
@@ -2920,6 +3064,10 @@ def cmd(argv):
     args = argv[1:]
     c = args[0] if args else ''
     rest = args[1:]
+    remote = remote_cmd(c, rest)
+    if remote is not None:
+        print(json.dumps(remote), flush=True)
+        return
     if c == 'list' and rest:
         hidden = '--hidden' in rest
         paths = [a for a in rest if a != '--hidden']

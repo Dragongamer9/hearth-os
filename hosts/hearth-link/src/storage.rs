@@ -846,7 +846,7 @@ impl Node {
         }).collect();
         json!({"config": c.to_json(&self.home), "servers": servers, "jobs": jobs, "busy": self.storage.backup_busy.load(Ordering::Relaxed),
                "nics": if c.server { nics().into_iter().map(|n| json!({"name": n.0, "mac": n.1})).collect::<Vec<_>>() } else { vec![] },
-               "wol": crate::lock(&self.storage.wol_note).clone()})
+               "wol": crate::lock(&self.storage.wol_note).clone(), "user": std::env::var("USER").unwrap_or_default()})
     }
 
     /// A copy of something of Hearth Storage finished.
@@ -1132,7 +1132,7 @@ impl Node {
                 let game = self.local_game(&self.me, &gid).await?;
                 let v = self.storage_request(&server, &json!({"op": "archive.offer", "game": game.to_json()})).await?;
                 let mut c = self.st();
-                c.archived.insert(gid.clone(), json!({"server": server, "title": game.title, "size": game.size, "at": crate::now_ms(), "state": "archiving"}));
+                c.archived.insert(gid.clone(), json!({"server": server, "title": game.title, "size": game.size, "at": crate::now_ms(), "state": "archiving", "key": v["key"]}));
                 self.st_save(c)?;
                 Ok(v)
             }
