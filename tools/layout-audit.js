@@ -1,5 +1,5 @@
-// Layout audit: draws every experimental and keyboard & mouse layout (Home and Library) at 1280×800, 1920×1080 and
-// 1280×720 with 0, 1, the sample library (~25) and 500 games, takes a screenshot of each, and looks for:
+// Layout audit: draws every experimental and keyboard & mouse layout (Home and Library), and the Dragonfire look
+// (its Home and Settings › Updates & Recovery), at 1280×800, 1920×1080 and 1280×720 with 0, 1, the sample library (~25) and 500 games, takes a screenshot of each, and looks for:
 // script errors, controls pushed off the screen, clipped or overlapping text, low-contrast text, a lost selection,
 // and controls the D-pad can't reach. Writes shots/<size>/<layout>-<w>x<h>.jpg and shots/report.txt.
 //   node tools/layout-audit.js [filter]     (needs playwright, like ui-check.js)
@@ -148,7 +148,9 @@ function explore() {
       lib: [...(typeof XLIB_LAYOUTS !== 'undefined' ? XLIB_LAYOUTS : []), ...(typeof MKLIB_LAYOUTS !== 'undefined' ? MKLIB_LAYOUTS : [])].map(l => l.id),
     }));
     fs.mkdirSync(path.join(OUT, size), { recursive: true });
-    const jobs = [...sets.home.map(id => ['home', id]), ...sets.lib.map(id => ['library', id])].filter(([, id]) => !only || id.includes(only));
+    // Looks ("look-<id>"): drawn with that look on, the layouts above with the default one.
+    const jobs = [...sets.home.map(id => ['home', id]), ...sets.lib.map(id => ['library', id]), ['home', 'look-dragonfire'], ['settings', 'look-dragonfire-updates']]
+      .filter(([, id]) => !only || id.includes(only));
     for (const [view, id] of jobs) {
       for (const [w, h] of VIEWS) {
         await page.setViewportSize({ width: w, height: h });
@@ -157,8 +159,10 @@ function explore() {
           await page.evaluate(([view, id]) => {
             window.__auditView = view;
             closeAll(); S.history = []; S.tab = 'all'; S.lfilter = ''; S.sort = 'recent';
-            if (view === 'home') { LOOK.layout = id; } else { LOOK.layout = 'shelf'; LOOK.libLayout = id; }
-            saveLook(); navigate(view, {}, false);
+            LOOK.style = 'classic';
+            if (id.startsWith('look-')) { LOOK.style = id.split('-')[1]; LOOK.layout = 'shelf'; LOOK.libLayout = ''; }
+            else if (view === 'home') { LOOK.layout = id; } else { LOOK.layout = 'shelf'; LOOK.libLayout = id; }
+            saveLook(); navigate(view, view === 'settings' ? { settingsTab: 'updates' } : {}, false);
           }, [view, id]);
           await page.waitForTimeout(350);
         } catch (e) { errors.push(`draw: ${e.message.split('\n')[0]}`); }

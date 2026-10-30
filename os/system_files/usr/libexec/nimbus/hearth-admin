@@ -16,6 +16,8 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin rollback              go back to the previous version (bootc's rollback deployment) at the next
                                      restart; run again before restarting, it undoes that. Refused while an update
                                      waits for a restart or when there's no previous version; then the JSON
+  hearth-admin recovery-next-start   open Hearth Recovery (the menu before Hearth starts) at the next start, once
+                                     (hearth-recovery --next-start); then {"ok": true}
   hearth-admin tdp-info              JSON: how this device's power limit can be set, its range and value
                                      (read-only; works without root)
   hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj
@@ -210,6 +212,19 @@ def rollback():
     else:
         run_logged(['bootc', 'rollback'])
     print(json.dumps(bootc_status()))
+
+
+def recovery_next_start():
+    """Settings › Updates & Recovery › Restart into Recovery: hearth-recovery's own --next-start (it sets a one-time
+    flag in GRUB's environment block, which hearth-recovery clears when its menu opens). Nothing else about starting
+    changes, and the next start after that is a normal one."""
+    tool = '/usr/libexec/nimbus/hearth-recovery'
+    if not os.path.exists(tool):
+        fail('this system doesn\'t have Hearth Recovery')
+    r = subprocess.run([tool, '--next-start'], capture_output=True, text=True)
+    if r.returncode != 0:
+        fail((r.stderr or r.stdout).strip() or 'couldn\'t set Hearth Recovery to open at the next start')
+    print(json.dumps({'ok': True}))
 
 
 def run_logged(cmd):
@@ -2583,6 +2598,8 @@ def main(argv):
         update_check()
     elif cmd == 'rollback' and len(argv) == 2:
         rollback()
+    elif cmd == 'recovery-next-start' and len(argv) == 2:
+        recovery_next_start()
     elif cmd == 'update':
         update()
     elif cmd == 'tdp' and len(argv) == 3:

@@ -111,6 +111,24 @@ pub fn battery_watts(root: &Path) -> Option<f64> {
     None
 }
 
+/// A connected controller's battery (the Dragonfire look's performance card): power_supply entries with scope
+/// "Device" are batteries in things plugged in or paired (controllers, mice, headsets); only the ones that name a
+/// controller count, so a wireless mouse's battery isn't shown as the controller's. The lowest one when several
+/// controllers are connected, since that's the one about to run out. None without one.
+pub fn pad_battery(root: &Path) -> Option<Value> {
+    let read = |p: std::path::PathBuf| std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default();
+    let mut best: Option<(u64, bool)> = None;
+    for d in std::fs::read_dir(root).ok()?.flatten().map(|e| e.path()) {
+        if read(d.join("type")) != "Battery" || read(d.join("scope")) != "Device" { continue; }
+        let name = format!("{} {}", d.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default(), read(d.join("model_name")).to_lowercase());
+        if !["controller", "gamepad", "joy-con", "xpadneo", "dualsense", "dualshock"].iter().any(|k| name.contains(k)) { continue; }
+        let Ok(pct) = read(d.join("capacity")).parse::<u64>() else { continue };
+        let charging = read(d.join("status")) == "Charging";
+        if best.map(|(p, _)| pct < p).unwrap_or(true) { best = Some((pct.min(100), charging)); }
+    }
+    best.map(|(pct, charging)| json!({"pct": pct, "charging": charging}))
+}
+
 pub fn sample() -> Value {
     let stat = std::fs::read_to_string("/proc/stat").unwrap_or_default();
     let mem = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
@@ -119,7 +137,7 @@ pub fn sample() -> Value {
     let hw = Path::new("/sys/class/hwmon");
     json!({"cpu": cpu_percent(&stat), "ramUsed": used, "ramTotal": total, "gpu": g, "vramUsed": v,
            "cpuTemp": hwmon_temp(hw, &["k10temp", "zenpower", "coretemp", "cpu_thermal"]), "gpuTemp": hwmon_temp(hw, &["amdgpu", "xe"]),
-           "powerW": battery_watts(Path::new("/sys/class/power_supply"))})
+           "powerW": battery_watts(Path::new("/sys/class/power_supply")), "padBattery": pad_battery(Path::new("/sys/class/power_supply"))})
 }
 
 #[cfg(test)]
@@ -165,5 +183,23 @@ mod tests {
         assert_eq!(battery_watts(&ps), Some(9.1));
         std::fs::write(ps.join("BAT0").join("status"), "Charging").unwrap();
         assert_eq!(battery_watts(&ps), None);
+    }
+    #[test]
+    fn controller_battery() {
+        let dir = tempfile::tempdir().unwrap();
+        let ps = dir.path();
+        let put = |n: &str, f: &str, v: &str| { std::fs::create_dir_all(ps.join(n)).unwrap(); std::fs::write(ps.join(n).join(f), v).unwrap(); };
+        assert_eq!(pad_battery(ps), None);
+        // The device's own battery and a mouse's don't count.
+        put("BAT0", "type", "Battery"); put("BAT0", "capacity", "50");
+        put("hidpp_battery_0", "type", "Battery"); put("hidpp_battery_0", "scope", "Device"); put("hidpp_battery_0", "capacity", "10");
+        assert_eq!(pad_battery(ps), None);
+        put("ps-controller-battery-aa", "type", "Battery"); put("ps-controller-battery-aa", "scope", "Device");
+        put("ps-controller-battery-aa", "capacity", "87\n"); put("ps-controller-battery-aa", "status", "Discharging");
+        assert_eq!(pad_battery(ps), Some(json!({"pct": 87, "charging": false})));
+        // Named only by its model (xpadneo's Xbox controllers): the lower of two.
+        put("gip0", "type", "Battery"); put("gip0", "scope", "Device"); put("gip0", "model_name", "Xbox Wireless Controller");
+        put("gip0", "capacity", "40"); put("gip0", "status", "Charging");
+        assert_eq!(pad_battery(ps), Some(json!({"pct": 40, "charging": true})));
     }
 }

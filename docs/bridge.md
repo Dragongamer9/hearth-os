@@ -92,6 +92,7 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `display.renderer` (Linux) | `{set?: auto\|webkit\|chromium\|qt, once?: web\|webkit\|chromium\|qt}` | `{pick, running, electron, qt, nvidia, qtCrashes, env}`; `set` from the next start, `once` for the next start only ([RENDERERS.md](RENDERERS.md)) |
 | `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available, rollback, rollbackQueued}}`; check and install return at once and push `systemUpdate` |
 | `system.update.rollback` (Hearth OS images) | | the same; makes the previous version (`status.rollback`, bootc's rollback deployment) the one that starts next, and again before restarting undoes it (`hearth-admin rollback`). Refused while an update waits for a restart |
+| `system.recovery.nextStart` (Hearth OS) | | `{ok: true}`; Hearth Recovery's menu opens once at the next start (`hearth-admin recovery-next-start`, which runs `hearth-recovery --next-start`). Settings › Updates & Recovery (Dragonfire look) restarts after it. |
 
 **Game** = `{id, title, source, fav, hidden, minutes, lastPlayed, added, sizeBytes, art:{cover,hero,logo,wide}, path, canRemove, installed, state, cloud, progress, bytesDone, bytesTotal, bytesPerSec?}`
 
