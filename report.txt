@@ -1,0 +1,2 @@
+0 errors, 1 warnings, 8 pages at 390/820/1440 px, 40 links to other sites
+warn  link to another site doesn't answer (fetch failed): https://supertuxkart.net/
