@@ -20,7 +20,12 @@ jobs:
       - name: GRUB's tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq grub-common && which grub-script-check grub-editenv
       - name: Tests
-        run: cd hosts/linux && python3 -m unittest discover -s test -p 'test_hearth_boot_guard.py' -v
+        run: |
+          cd hosts/linux
+          if ! python3 -m unittest discover -s test -p 'test_hearth_boot_guard.py' -v > /tmp/t.txt 2>&1; then
+            grep -v '^$' /tmp/t.txt | tail -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          cat /tmp/t.txt
       - name: Scripts compile, units parse
         run: |
           python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-boot-guard os/system_files/usr/libexec/nimbus/hearth-recovery
