@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Hearth Plasma
+Comment=Hearth OS: Game Mode and the Hearth Plasma desktop (KDE Plasma 6 in Hearth's look). Saved as your desktop; falls back to Hearth Classic if Plasma can't start.
+Exec=/usr/local/bin/nimbus-session --desktop=plasma
+TryExec=startplasma-wayland
+Type=Application
+DesktopNames=Nimbus

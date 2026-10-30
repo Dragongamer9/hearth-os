@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Hearth Classic
+Comment=Hearth OS: Game Mode and the Hearth Classic desktop (labwc + Mantel). Saved as your desktop.
+Exec=/usr/local/bin/nimbus-session --desktop=classic
+TryExec=/usr/local/bin/nimbus-session
+Type=Application
+DesktopNames=Nimbus

@@ -1,0 +1,12 @@
+# Window frames like Hearth Classic's (labwc: rounded, shadows, icon on the left, minimize/maximize/close).
+[Common]
+ShadowSize=ShadowLarge
+ShadowStrength=200
+OutlineIntensity=OutlineOff
+
+[Windeco]
+TitleAlignment=AlignLeft
+ButtonSize=ButtonDefault
+DrawBorderOnMaximizedWindows=false
+DrawTitleBarSeparator=false
+RoundBottomCorners=true

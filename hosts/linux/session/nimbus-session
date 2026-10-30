@@ -11,6 +11,10 @@
 # Settings in ~/.config/nimbus/session.conf (shell syntax):
 #   NIMBUS_START_MODE=desktop             start in Desktop Mode instead of Game Mode
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
+#   HEARTH_DESKTOP=plasma                 Desktop Mode is Hearth Plasma (KDE Plasma 6 in Hearth's look) instead of
+#                                         Hearth Classic (labwc + Mantel); see docs/PLASMA.md
+# `nimbus-session --desktop=classic|plasma` (the login screen's "Hearth Classic" / "Hearth Plasma") saves that choice
+# first, so automatic sign-in keeps it.
 # Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
@@ -25,6 +29,20 @@ mkdir -p "$(dirname "$LOG")"
 # One sign-in's worth of history is plenty: over 2 MB, the log becomes session.log.old (the one before is dropped).
 [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
+
+# ---- Which desktop Desktop Mode is: Hearth Classic (labwc + Mantel, always installed: the fallback) or Hearth
+# Plasma. Picked in Settings › Desktop Mode, or on the login screen (--desktop=...), which saves it in session.conf.
+for a in "$@"; do
+  case "$a" in
+    --desktop=classic|--desktop=plasma)
+      d="${a#--desktop=}"; f="$CONF/session.conf"; mkdir -p "$CONF"; touch "$f"
+      if grep -q '^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=' "$f"; then
+        sed -i "s/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=.*/HEARTH_DESKTOP=$d/" "$f"
+      else echo "HEARTH_DESKTOP=$d" >>"$f"; fi
+      log "desktop: $d (picked on the login screen)" ;;
+  esac
+done
+unset a d f
 
 # gamescope options given to this session by whoever started it (an extra multi-seat player's window size, frame
 # rate and graphics card come from hearth-seats this way): kept, after session.conf's, every Game Mode start.
@@ -95,7 +113,8 @@ fi
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
-can_desktop() { have labwc; }
+can_plasma() { have startplasma-wayland && have kwin_wayland && have plasmashell; }
+can_desktop() { have labwc || can_plasma; }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
 # console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
@@ -243,9 +262,116 @@ end_stopped_games() {
   return 0
 }
 
+# The desktop picked for Desktop Mode, read again at every start (Settings can change it while Game Mode runs).
+desktop_choice() {
+  d=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  case "$d" in plasma) echo plasma ;; *) echo classic ;; esac
+}
+
 run_desktop() {
   log "desktop mode"
   end_stopped_games || true
+  # Hearth Plasma when it's picked and can run; Hearth Classic otherwise, and whenever Plasma didn't come up
+  # (crashed, or no desktop within HEARTH_PLASMA_TIMEOUT seconds): for the rest of this sign-in, so a broken Plasma
+  # can never leave the device without a desktop. Game Mode doesn't change either way.
+  if [ "$(desktop_choice)" = plasma ] && [ -z "$HEARTH_SEAT" ]; then
+    if [ -f /run/hearth/safe-graphics ]; then log "plasma: safe graphics this time, Hearth Classic instead"
+    elif [ -e "$RUN/hearth-plasma-failed" ]; then log "plasma: didn't start earlier this sign-in, Hearth Classic instead"
+    elif ! can_plasma; then log "plasma: not installed (startplasma-wayland, kwin_wayland, plasmashell), Hearth Classic instead"
+    else
+      run_plasma; prc=$?
+      [ "$prc" -ne 200 ] && return "$prc"
+      : >"$RUN/hearth-plasma-failed"
+      log "plasma: didn't start; falling back to Hearth Classic for this sign-in"
+      settle_plasma
+    fi
+    have labwc || return 1
+  fi
+  run_classic
+}
+
+# ---- Hearth Plasma: KDE Plasma 6 with Hearth's look (os/system_files/usr/share/plasma: the look-and-feel package
+# org.hearth.desktop, the Hearth desktop theme, Hearth's widgets; system-wide defaults in /usr/share/hearth-plasma/xdg,
+# put first in XDG_CONFIG_DIRS only for this session, so Plasma sessions outside Hearth keep their own look and your
+# own changes always win). docs/PLASMA.md.
+PLASMA_XDG=/usr/share/hearth-plasma/xdg
+PLASMA_TIMEOUT="${HEARTH_PLASMA_TIMEOUT:-60}"
+# The first time: Plasma settings from another Plasma (the base's own session) would hide Hearth's layout and look:
+# the panel layout and the look-and-feel choice are put aside (kept as *.before-hearth), once.
+plasma_first_run() {
+  cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+  [ -e "$cfg/nimbus/plasma-set-up" ] && return 0
+  mkdir -p "$cfg/nimbus"
+  for f in plasma-org.kde.plasma.desktop-appletsrc plasmashellrc; do
+    [ -f "$cfg/$f" ] && mv -f "$cfg/$f" "$cfg/$f.before-hearth" && log "plasma: your earlier $f kept as $f.before-hearth"
+  done
+  if [ -f "$cfg/kdeglobals" ] && grep -q '^LookAndFeelPackage=' "$cfg/kdeglobals"; then
+    cp -f "$cfg/kdeglobals" "$cfg/kdeglobals.before-hearth"
+    sed -i '/^LookAndFeelPackage=/d' "$cfg/kdeglobals"
+  fi
+  : >"$cfg/nimbus/plasma-set-up"
+}
+# A process of this user by that name that's really running (not a zombie left by one that ended).
+alive() {
+  for p in $(pgrep -u "$(id -u)" -x "$1" 2>/dev/null); do
+    st=$(sed -n 's/^State:[[:space:]]*\([A-Za-z]\).*/\1/p' "/proc/$p/status" 2>/dev/null)
+    [ -n "$st" ] && [ "$st" != Z ] && return 0
+  done
+  return 1
+}
+run_plasma() {
+  log "desktop mode: Hearth Plasma"
+  PLASMA_LOG="$(dirname "$LOG")/plasma.log"
+  [ -f "$PLASMA_LOG" ] && [ "$(wc -c <"$PLASMA_LOG")" -gt 1000000 ] && mv -f "$PLASMA_LOG" "$PLASMA_LOG.old"
+  echo "--- $(date '+%F %T') Hearth Plasma" >>"$PLASMA_LOG"
+  plasma_first_run
+  (
+    # Plasma's own Qt theme and portals, not the ones Hearth Classic and Game Mode ask for.
+    unset QT_QPA_PLATFORMTHEME LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG
+    export HEARTH_DESKTOP=plasma XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma
+    case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$PLASMA_XDG:"*) ;; *) export XDG_CONFIG_DIRS="$PLASMA_XDG:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
+    exec startplasma-wayland
+  ) >>"$PLASMA_LOG" 2>&1 &
+  plasma_pid=$!
+  echo "$plasma_pid" >"$RUN/hearth-plasma.pid"
+  started=$(date +%s); up=0
+  # Up = KWin and the Plasma shell both running for this user.
+  while kill -0 "$plasma_pid" 2>/dev/null; do
+    if alive kwin_wayland && alive plasmashell; then up=1; break; fi
+    [ $(( $(date +%s) - started )) -ge "$PLASMA_TIMEOUT" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && kill -0 "$plasma_pid" 2>/dev/null; then
+    log "plasma: no desktop after ${PLASMA_TIMEOUT}s"
+    kill -TERM "$plasma_pid" 2>/dev/null; sleep 3; kill -KILL "$plasma_pid" 2>/dev/null
+  fi
+  wait "$plasma_pid"; rc=$?
+  rm -f "$RUN/hearth-plasma.pid"
+  if [ "$up" = 0 ]; then log "plasma ended before its desktop came up (code $rc)"; return 200; fi
+  # Up, then gone again within half a minute with an error and without asking for another mode: a crash on start.
+  if [ "$rc" -ne 0 ] && [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 30 ]; then
+    log "plasma crashed right after starting (code $rc)"; return 200
+  fi
+  log "plasma ended (code $rc)"
+  return "$rc"
+}
+# What Plasma leaves behind, so the next mode starts clean: its user services, KWin and the shell, and the
+# session's environment back to Hearth's (startplasma puts KDE's in systemd's and D-Bus's for everything it starts).
+settle_plasma() {
+  have systemctl && timeout 6 systemctl --user stop plasma-workspace.target >/dev/null 2>&1
+  pkill -KILL -u "$(id -u)" -x plasmashell 2>/dev/null; pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null
+  pkill -KILL -u "$(id -u)" -x kwin_wayland_wrapper 2>/dev/null; pkill -KILL -u "$(id -u)" -x startplasma-wayland 2>/dev/null
+  if have systemctl; then
+    timeout 4 systemctl --user unset-environment KDE_FULL_SESSION KDE_SESSION_VERSION KDE_APPLICATIONS_AS_SCOPE HEARTH_DESKTOP DESKTOP_SESSION >/dev/null 2>&1
+    timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_CONFIG_DIRS >/dev/null 2>&1
+  fi
+  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP >/dev/null 2>&1
+  rm -f "$RUN/hearth-plasma.pid"
+  return 0
+}
+
+run_classic() {
+  log "desktop mode: Hearth Classic"
   # Nvidia: wlroots' hardware cursor doesn't show (or doesn't move) on Nvidia's driver, so the pointer draws in
   # software there. Same as every wlroots desktop needs on Nvidia.
   if [ -d /sys/module/nvidia_drm ]; then
@@ -323,6 +449,8 @@ settle() {
   fi
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
+  # Hearth Plasma's KWin and shell, when it was Plasma (only then: nothing of KDE's is touched otherwise).
+  [ "$1" = desktop ] && { [ -e "$RUN/hearth-plasma.pid" ] || pgrep -u "$(id -u)" -x kwin_wayland >/dev/null 2>&1; } && settle_plasma
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   pkill -TERM -u "$(id -u)" -f 'desktop/shell/hearth-pad' 2>/dev/null; pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
@@ -372,7 +500,7 @@ while :; do
   # Desktop Mode's autostart reads the note: if its taskbar can't start either, it stays put instead of asking for
   # Game Mode again (that restarted Desktop Mode about once a minute, forever).
   if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
-  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc missing)"; can_game && mode=game || exit 1; fi
+  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc and Plasma missing)"; can_game && mode=game || exit 1; fi
 
   # The mode this session is in, for programs started outside it: Handheld Daemon's overlay app
   # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick

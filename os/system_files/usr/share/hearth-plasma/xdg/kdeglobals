@@ -1,0 +1,13 @@
+# Hearth Plasma's defaults (nimbus-session puts this folder first in XDG_CONFIG_DIRS for Hearth Plasma only).
+# Your own ~/.config/kdeglobals always wins: change anything in System Settings and it stays changed.
+[KDE]
+LookAndFeelPackage=org.hearth.desktop
+widgetStyle=Breeze
+SingleClick=true
+
+[General]
+ColorScheme=Hearth
+AccentColor=255,138,61
+
+[Icons]
+Theme=breeze-dark

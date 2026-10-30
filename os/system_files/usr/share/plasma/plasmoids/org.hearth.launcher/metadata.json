@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Category": "Application Launchers",
+        "Description": "Hearth's app launcher: your apps and your games from Hearth's library, with search (Super)",
+        "Icon": "hearth",
+        "Id": "org.hearth.launcher",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth Launcher",
+        "Website": "https://hearthos.fun",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-Provides": [
+        "org.kde.plasma.launchermenu"
+    ]
+}

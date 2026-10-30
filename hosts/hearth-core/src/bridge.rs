@@ -994,6 +994,8 @@ impl Bridge {
             "login.get" => Ok(crate::admin::login()),
             "login.setAutologin" => { crate::admin::run(&["autologin", if a["on"] == true { "on" } else { "off" }], None, &mut |_| {})?; Ok(crate::admin::login()) }
             "login.setStartMode" => crate::admin::set_start_mode(&req("mode")?),
+            "login.desktop" => Ok(crate::admin::desktop()),
+            "login.setDesktop" => crate::admin::set_desktop(&req("desktop")?),
             "login.setLockOnWake" => crate::admin::set_lock_on_wake(a["on"] == true),
             "login.setHostname" => { crate::admin::run(&["hostname", req("name")?.trim()], None, &mut |_| {})?; Ok(crate::admin::login()) }
             "login.password" => { crate::admin::run(&["password"], Some(&format!("{}\n", json!({"old": req("old")?, "new": req("new")?}))), &mut |_| {})?; Ok(json!({"ok": true})) }

@@ -1,0 +1,3 @@
+# Like Hearth Classic: a fresh desktop each time (apps aren't reopened), and Game Mode is one step away.
+[General]
+loginMode=emptySession

@@ -1,0 +1,199 @@
+# Hearth Plasma (docs/PLASMA.md): checks Hearth's Plasma files and draws Hearth Plasma for real, next to Hearth Classic.
+#   1. lint: qmlformat must parse every Hearth widget (org.hearth.*), qmllint's findings are shown; every metadata.json
+#      is JSON, the layout script is valid JavaScript, and Plasma's own tools find the look-and-feel package, the
+#      desktop theme and the widgets (kpackagetool6, plasma-apply-lookandfeel); the session's Python tests run.
+#   2. screenshots: KWin on a virtual screen with Plasma's shell and Hearth's defaults (a new user: Hearth's layout),
+#      then the launcher, Quick Access, Hearth Link, Hearth Storage and the lock screen. Errors from Hearth's widgets
+#      in Plasma's log fail the run. Side-by-side pictures with Hearth Classic's (the Desktop Mode test's
+#      ci/desktop-shots-* branch) go to the branch ci/plasma-shots-<branch>.
+# Failures are ::error:: annotations (logs can't always be read).
+name: Hearth Plasma test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, bughunt, 'feature/desktop-plasma']
+    paths: ['os/system_files/usr/share/plasma/**', 'os/system_files/usr/share/hearth-plasma/**', 'hosts/linux/desktop/plasma/**',
+            'hosts/linux/session/**', 'hosts/linux/test/test_hearth_plasma.py', '.github/workflows/plasma-test.yml']
+
+permissions:
+  contents: write    # the screenshots branch
+
+concurrency:
+  group: plasma-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plasma:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install Plasma (the same minimal set as the images) and the checking tools
+        run: |
+          dnf -y install git python3 python3-dbus python3-pillow nodejs ImageMagick procps-ng dbus-daemon dbus-tools \
+            plasma-workspace kwin plasma-desktop plasma-breeze breeze-icon-theme google-noto-sans-fonts \
+            qt6-qtdeclarative-devel kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers >/dev/null
+          dnf -y install --skip-unavailable spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools >/dev/null || true
+          for b in kwin_wayland plasmashell kpackagetool6; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          plasmashell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Put Hearth's Plasma files where the images put them
+        run: |
+          cp -a os/system_files/usr/share/plasma/. /usr/share/plasma/
+          cp -a os/system_files/usr/share/hearth-plasma /usr/share/
+          cp os/system_files/usr/share/applications/hearth-gamemode.desktop /usr/share/applications/
+          install -Dm644 hosts/linux/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
+          install -Dm644 os/branding/wallpapers/hearth-fireside.jpg /usr/share/wallpapers/Hearth-fireside/contents/images/3840x2160.jpg
+          printf '{ "KPlugin": { "Id": "Hearth-fireside", "Name": "Hearth Fireside" } }\n' > /usr/share/wallpapers/Hearth-fireside/metadata.json
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          mkdir -p /usr/share/icons/hicolor/scalable/apps && cp branding/icons/apps/*.svg /usr/share/icons/hicolor/scalable/apps/
+          gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
+
+      - name: Lint (widgets, packages, layout script, session tests)
+        shell: bash
+        run: |
+          fail=0
+          QMLFORMAT=$(command -v qmlformat || ls /usr/lib64/qt6/bin/qmlformat 2>/dev/null | head -1)
+          QMLLINT=$(command -v qmllint || ls /usr/lib64/qt6/bin/qmllint 2>/dev/null | head -1)
+          for f in os/system_files/usr/share/plasma/plasmoids/*/contents/ui/*.qml; do
+            if [ -n "$QMLFORMAT" ]; then
+              "$QMLFORMAT" "$f" >/dev/null 2>/tmp/fmt.err || { echo "::error file=$f,title=QML doesn't parse::$(tr '\n' ' ' </tmp/fmt.err | cut -c1-600)"; fail=1; }
+            fi
+            if [ -n "$QMLLINT" ]; then
+              "$QMLLINT" -I /usr/lib64/qt6/qml "$f" >/tmp/lint.out 2>&1 || true
+              # Imports qmllint can't resolve without a running Plasma are expected; anything else is shown.
+              grep -E "^(Warning|Error|Info)" /tmp/lint.out | grep -viE "unqualified|Could not find property|not found|unresolved|Failed to import|is not a type|was not found" | head -8 | while IFS= read -r l; do echo "::warning file=$f,title=qmllint::$l"; done
+              grep -E "^Error" /tmp/lint.out | grep -iE "syntax|expected token|unexpected" | head -3 | while IFS= read -r l; do echo "::error file=$f,title=qmllint::$l"; done
+            fi
+          done
+          [ -n "$QMLFORMAT" ] || echo "::warning title=qmlformat::not installed, QML parse check skipped"
+          for f in $(find os/system_files/usr/share/plasma -name metadata.json); do
+            python3 -m json.tool "$f" >/dev/null || { echo "::error file=$f,title=metadata.json::not valid JSON"; fail=1; }
+          done
+          node --check os/system_files/usr/share/plasma/look-and-feel/org.hearth.desktop/contents/layouts/org.kde.plasma.desktop-layout.js \
+            2>/tmp/js.err || { echo "::error title=layout script::$(tr '\n' ' ' </tmp/js.err | cut -c1-600)"; fail=1; }
+          kpackagetool6 --type Plasma/LookAndFeel --show org.hearth.desktop >/tmp/kp.out 2>&1 \
+            || { echo "::error title=look-and-feel::kpackagetool6 doesn't find org.hearth.desktop: $(tr '\n' ' ' </tmp/kp.out | cut -c1-400)"; fail=1; }
+          for p in org.hearth.launcher org.hearth.quicksettings org.hearth.link org.hearth.storage org.hearth.gamemode; do
+            kpackagetool6 --type Plasma/Applet --show "$p" >/tmp/kp.out 2>&1 \
+              || { echo "::error title=widget $p::kpackagetool6 doesn't find it: $(tr '\n' ' ' </tmp/kp.out | cut -c1-400)"; fail=1; }
+          done
+          if command -v plasma-apply-lookandfeel >/dev/null; then
+            plasma-apply-lookandfeel --list 2>&1 | grep -q org.hearth.desktop || { echo "::error title=look-and-feel::plasma-apply-lookandfeel --list doesn't show org.hearth.desktop"; fail=1; }
+          fi
+          test -f /usr/share/plasma/desktoptheme/hearth/colors || { echo "::error title=desktop theme::hearth/colors doesn't resolve to the Hearth colour scheme"; fail=1; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_plasma.py' >/tmp/py.out 2>&1 \
+            || { echo "::error title=session tests::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/py.out | head -6 | tr '\n' '|' | cut -c1-900)"; fail=1; }
+          tail -3 /tmp/py.out
+          exit $fail
+
+      - name: Draw Hearth Plasma
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # What nimbus-session's run_plasma gives Plasma.
+          export XDG_CONFIG_DIRS="/usr/share/hearth-plasma/xdg:/etc/xdg" XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE HEARTH_DESKTOP=plasma
+          export KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
+          # The launcher's Games: what Hearth listed last time (no Hearth app here).
+          mkdir -p "$HOME/.cache/hearth"
+          printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
+          kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
+          plasmashell >shots/plasmashell.log 2>&1 &
+          sleep 30
+          # KWin's screenshot API (KWIN_SCREENSHOT_NO_PERMISSION_CHECKS lets this script use it): spectacle, or a few
+          # lines of Python talking to org.kde.KWin.ScreenShot2 straight.
+          cat > /tmp/shot.py <<'PY'
+          import dbus, os, sys
+          from PIL import Image
+          bus = dbus.SessionBus()
+          i = dbus.Interface(bus.get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
+          r, w = os.pipe()
+          res = i.CaptureWorkspace({'native-resolution': True}, dbus.types.UnixFd(w))
+          os.close(w)
+          data = b''
+          while True:
+              c = os.read(r, 1 << 20)
+              if not c:
+                  break
+              data += c
+          W, H, S = int(res['width']), int(res['height']), int(res['stride'])
+          Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
+          PY
+          sed -i 's/^          //' /tmp/shot.py
+          shot() { python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || spectacle -b -n -f -o "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt; sleep 1; }
+          shot plasma-1-desktop
+          qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu 2>/dev/null \
+            || dbus-send --session --type=method_call --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu
+          sleep 5; shot plasma-4-launcher
+          qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu 2>/dev/null || true
+          sleep 2
+          # Hearth's widgets in windows of their own (plasmawindowed): Breeze window frames in Hearth's colours too.
+          n=2
+          for p in quicksettings link storage; do
+            plasmawindowed "org.hearth.$p" >"shots/plasmawindowed-$p.log" 2>&1 &
+            pw=$!; sleep 8; shot "plasma-$n-$p"; kill $pw 2>/dev/null; sleep 1; n=$((n+1)); [ $n = 4 ] && n=5
+          done
+          # The lock screen (its test mode: a window, nothing is locked).
+          for g in /usr/libexec/kscreenlocker_greet /usr/lib/*/libexec/kscreenlocker_greet /usr/lib64/libexec/kscreenlocker_greet; do
+            [ -x "$g" ] || continue
+            "$g" --testing >shots/lockscreen.log 2>&1 & lg=$!; sleep 8; shot plasma-7-lockscreen; kill $lg 2>/dev/null; break
+          done
+          kpackagetool6 --type Plasma/Applet --list 2>/dev/null | grep -i hearth > shots/widgets-found.txt || true
+          # Hearth's widgets must load without errors.
+          bad=$(grep -hE "org\.hearth|hearth-plasma" shots/plasmashell.log shots/plasmawindowed-*.log 2>/dev/null \
+            | grep -iE "error|TypeError|ReferenceError|is not a type|is not installed|Cannot assign|not defined|failed" | sort -u | head -12)
+          if [ -n "$bad" ]; then
+            echo "::error title=Hearth widgets::$(printf '%s' "$bad" | cut -c1-300 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+            touch shots/FAILED
+          fi
+          ls shots/*.png >/dev/null 2>&1 || { echo "::error title=screenshots::none were taken: $(head -c 600 shots/shot-errors.txt 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; }
+
+      - name: Side by side with Hearth Classic
+        if: always()
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$PWD"
+          mkdir -p shots/classic shots/compare
+          for b in ci/desktop-shots-bughunt ci/desktop-shots; do
+            git fetch -q --depth 1 origin "$b" 2>/dev/null || continue
+            for f in 1-desktop 2-quick-access 4-launcher; do git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"; done
+            ls shots/classic/*.png >/dev/null 2>&1 && { echo "Hearth Classic pictures from $b"; break; }
+          done
+          pair() {
+            [ -f "shots/classic/$1.png" ] && [ -f "shots/$2.png" ] || return 0
+            magick "shots/classic/$1.png" -resize 960x "shots/$2.png" -resize 960x +append "shots/compare/$3.png" 2>/dev/null \
+              || convert "shots/classic/$1.png" -resize 960x "shots/$2.png" -resize 960x +append "shots/compare/$3.png" || true
+          }
+          pair 1-desktop plasma-1-desktop desktop
+          pair 2-quick-access plasma-2-quicksettings quick-access
+          pair 4-launcher plasma-4-launcher launcher
+          printf '# Hearth Classic (left) and Hearth Plasma (right)\n\n' > shots/README.md
+          for f in shots/compare/*.png; do [ -f "$f" ] && printf '## %s\n\n![%s](compare/%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> shots/README.md; done
+          printf '## Hearth Plasma\n\n' >> shots/README.md
+          for f in shots/plasma-*.png; do [ -f "$f" ] && printf '![%s](%s)\n\n' "$(basename "$f")" "$(basename "$f")" >> shots/README.md; done
+
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          to="ci/plasma-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          cd shots && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Plasma screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+
+      - name: Fail if Hearth's widgets had problems
+        if: always()
+        run: test ! -e shots/FAILED

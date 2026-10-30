@@ -606,6 +606,11 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
+# The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
+# Plasma (hidden by its TryExec where Plasma isn't installed).
+for s in hearth-classic hearth-plasma; do
+  sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
+done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
@@ -695,6 +700,19 @@ fi
 # The move's first start (hearth-clean-install) reads Lutris' database with Python's sqlite3, and the controller
 # on the login screen needs evdev (above).
 python3 -c 'import sqlite3, json'
+
+# ------------------------------------------------------------------ Hearth Plasma (docs/PLASMA.md)
+# KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
+# /usr/share/hearth-plasma). Only the workspace: no KDE app bundle (Dolphin and the rest come with Anatase or not at
+# all). Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
+dnf5 -y install --setopt=install_weak_deps=False plasma-workspace kwin plasma-desktop
+dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False plasma-nm plasma-pa powerdevil kscreen kscreenlocker \
+  bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme kde-cli-tools plasma-systemsettings \
+  kf6-kirigami plasma-workspace-wayland spectacle || true
+for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/null || { echo "::error title=Hearth Plasma::$b is missing"; exit 1; }; done
+# What Plasma's packages may switch on that Hearth doesn't want: the login screen stays Anatase's (Plasma Login
+# Manager, Hearth's autologin), nothing else becomes the display manager.
+echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || echo none)"
 
 # ------------------------------------------------------------------ Steam
 # As on the Bazzite-based Hearth OS: Steam installed in the system, its games in ~/.local/share/Steam. Anatase's

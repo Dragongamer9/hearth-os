@@ -58,6 +58,7 @@ InputPlumber.
   3 times in 10 minutes). The main window's panel is a last resort, logged `overlay: LAST RESORT`.
 - **Plasma Login Manager.** `nimbus-autologin` writes the `[Autologin]` section of `/etc/plasmalogin.conf` when
   Plasma Login Manager is installed, and `hearth-greeter-pad` recognises its greeter.
+- **Hearth Plasma.** KDE Plasma 6 (the workspace only) is installed as Desktop Mode's second desktop, in Hearth's look; Hearth Classic (labwc + Mantel) stays and is the fallback. See docs/PLASMA.md.
 - **Which edition this is** is in `/usr/share/nimbus/image-info.json` (`{"base": "anatase", ...}`), read by
   `bridge.rs` `edition()`. The Bazzite-based image has `/usr/share/ublue-os/image-info.json` instead.
 

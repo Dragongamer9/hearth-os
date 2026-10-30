@@ -1,0 +1,3 @@
+# Super+G: back to Game Mode (hearth-gamemode.desktop), as in Hearth Classic.
+[services][hearth-gamemode.desktop]
+_launch=Meta+G

@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Category": "Windows and Tasks",
+        "Description": "Back to Hearth's Game Mode (Super+G)",
+        "Icon": "input-gamepad",
+        "Id": "org.hearth.gamemode",
+        "License": "GPL-3.0-or-later",
+        "Name": "Game Mode",
+        "Website": "https://hearthos.fun",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

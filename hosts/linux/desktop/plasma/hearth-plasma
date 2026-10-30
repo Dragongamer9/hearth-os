@@ -1,0 +1,317 @@
+#!/usr/bin/python3
+"""hearth-plasma: what Hearth's Plasma widgets (os/system_files/usr/share/plasma/plasmoids/org.hearth.*) ask for, on top
+of the backends Hearth Classic (Mantel) already uses. Nothing here is new logic: apps come from the same .desktop
+reading as Hearth Files (hearth-files), games from hearth-games, the power mode from hearth-power, sound from
+PipeWire's wpctl, brightness from brightnessctl and Wi-Fi from nmcli, as in Mantel's Quick Access.
+
+  hearth-plasma apps              JSON: [{"id", "name", "generic", "icon", "path", "keywords", "system"}] A-Z, the
+                                  launcher's Apps (Hearth's own apps and yours first; "system" ones go in the System
+                                  apps folder, as in Mantel's launcher)
+  hearth-plasma launch ID|PATH    start an app from its .desktop file (in the background)
+  hearth-plasma games [fresh]     the launcher's Games: hearth-games cached (fresh: hearth-games list)
+  hearth-plasma play ID           play a game through Hearth (hearth-games play)
+  hearth-plasma quick             JSON: {"volume": 0-150|null, "muted", "brightness": 0-100|null, "wifi": true|false|null,
+                                  "profile": "power-saver|balanced|performance"|""}
+  hearth-plasma quick-set KEY VAL volume N | mute on|off|toggle | brightness N | wifi on|off | profile NAME
+  hearth-plasma desktop           JSON: {"desktop": "classic|plasma", "plasma": installed?, "fellBack": bool}
+  hearth-plasma desktop-set NAME  classic | plasma (Settings' desktop choice; Hearth Classic is always there)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+SHELL = os.path.join(os.path.dirname(HERE), 'shell')
+OURS_RE = re.compile(r'^(hearth|nimbus|beacon|xodus-nexus$|io\.github\.kolunmi\.Bazaar$)', re.I)
+HIDE_IDS = {'qt5ct', 'qt6ct'}
+ID_RE = re.compile(r'^[A-Za-z0-9._+-]{1,200}$')
+GAME_ID_RE = re.compile(r'^[A-Za-z0-9:._@/+-]{1,300}$')
+PROFILES = ('power-saver', 'balanced', 'performance')
+DESKTOPS = ('classic', 'plasma')
+PLASMA_LNF = '/usr/share/plasma/look-and-feel/org.hearth.desktop'
+
+
+class Fail(Exception):
+    pass
+
+
+def module(name):
+    path = os.path.join(SHELL, name)
+    loader = importlib.machinery.SourceFileLoader(name.replace('-', '_'), path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def shown_in_plasma(fields):
+    """The .desktop spec's OnlyShowIn / NotShowIn for Plasma (KDE), and NoDisplay."""
+    if fields.get('NoDisplay', '').lower() == 'true':
+        return False
+    only = [x for x in fields.get('OnlyShowIn', '').split(';') if x]
+    if only and 'KDE' not in only:
+        return False
+    return 'KDE' not in [x for x in fields.get('NotShowIn', '').split(';') if x]
+
+
+def added_apps():
+    """Apps added with apt on the Debian editions count as yours (Mantel's launcher does the same)."""
+    try:
+        with open('/var/lib/hearth/layer/added-apps', encoding='utf-8') as f:
+            return {l.strip().removesuffix('.desktop') for l in f if l.strip()}
+    except OSError:
+        return set()
+
+
+def apps():
+    files = module('hearth-files')
+    added = added_apps()
+    out = []
+    for did, (path, fields) in files.desktop_entries().items():
+        app_id = did.removesuffix('.desktop')
+        if app_id in HIDE_IDS or not files.usable(fields) or not shown_in_plasma(fields):
+            continue
+        name = fields.get('Name') or app_id
+        ours = bool(OURS_RE.match(app_id)) or name.startswith('Hearth')
+        system = not ours and app_id not in added and path.startswith('/usr/share/applications/')
+        out.append({'id': app_id, 'name': name, 'generic': fields.get('GenericName', ''), 'icon': fields.get('Icon', ''),
+                    'path': path, 'keywords': [k for k in fields.get('Keywords', '').split(';') if k], 'system': system})
+    out.sort(key=lambda a: a['name'].casefold())
+    return out
+
+
+def find_app(target):
+    if target.startswith('/'):
+        if not target.endswith('.desktop') or not os.path.isfile(target):
+            raise Fail('not an app: ' + target)
+        return target
+    if not ID_RE.match(target):
+        raise Fail('not an app id: ' + target)
+    for a in apps():
+        if a['id'] == target.removesuffix('.desktop'):
+            return a['path']
+    raise Fail('no such app: ' + target)
+
+
+def exec_argv(path):
+    """The app's Exec line without its field codes (%f, %U...), for when neither kioclient nor gtk-launch is there."""
+    fields = module('hearth-files').parse_desktop(path) or {}
+    try:
+        argv = shlex.split(fields.get('Exec', ''))
+    except ValueError:
+        argv = []
+    argv = [a for a in argv if not re.fullmatch(r'%[fFuUdDnNickvm]', a)]
+    if not argv:
+        raise Fail('the app has nothing to start')
+    return argv
+
+
+def launch(target):
+    path = find_app(target)
+    if shutil.which('kioclient'):
+        argv = ['kioclient', 'exec', path]
+    elif shutil.which('gtk-launch'):
+        argv = ['gtk-launch', os.path.basename(path)]
+    else:
+        argv = exec_argv(path)
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, cwd=home())
+    return {'ok': True, 'path': path}
+
+
+def games(fresh=False):
+    r = subprocess.run([sys.executable, os.path.join(SHELL, 'hearth-games'), 'list' if fresh else 'cached'],
+                       capture_output=True, text=True, timeout=60)
+    lines = [l for l in r.stdout.splitlines() if l.strip()]
+    try:
+        g = json.loads(lines[-1]) if lines else []
+    except ValueError:
+        g = []
+    return g if isinstance(g, list) else []
+
+
+def play(game_id):
+    if not GAME_ID_RE.match(game_id or ''):
+        raise Fail('not a game id')
+    subprocess.Popen([sys.executable, os.path.join(SHELL, 'hearth-games'), 'play', game_id], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return {'ok': True}
+
+
+def run(argv, timeout=6):
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ''
+
+
+def parse_wpctl(text):
+    """`wpctl get-volume @DEFAULT_AUDIO_SINK@`: "Volume: 0.45 [MUTED]" → (45, True)."""
+    m = re.search(r'Volume:\s*([0-9.]+)', text or '')
+    if not m:
+        return None, False
+    return round(float(m.group(1)) * 100), '[MUTED]' in text
+
+
+def parse_brightness(text):
+    """`brightnessctl -m -c backlight`: "intel_backlight,backlight,400,40%,1000" → 40."""
+    f = (text or '').strip().splitlines()[0].split(',') if (text or '').strip() else []
+    if len(f) >= 4 and f[3].endswith('%'):
+        try:
+            return int(f[3][:-1])
+        except ValueError:
+            return None
+    return None
+
+
+def quick():
+    out = {'volume': None, 'muted': False, 'brightness': None, 'wifi': None, 'profile': ''}
+    if shutil.which('wpctl'):
+        rc, t = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
+        if rc == 0:
+            out['volume'], out['muted'] = parse_wpctl(t)
+    if shutil.which('brightnessctl'):
+        rc, t = run(['brightnessctl', '-m', '-c', 'backlight'])
+        if rc == 0:
+            out['brightness'] = parse_brightness(t)
+    if shutil.which('nmcli'):
+        rc, t = run(['nmcli', 'radio', 'wifi'])
+        if rc == 0 and t.strip():
+            out['wifi'] = t.strip() == 'enabled'
+    rc, t = run([sys.executable, os.path.join(SHELL, 'hearth-power'), 'status'], timeout=20)
+    try:
+        mode = json.loads(t.strip().splitlines()[-1]).get('mode') or {}
+        out['profile'] = mode.get('active', '') if mode.get('supported') else ''
+    except (ValueError, IndexError, AttributeError):
+        pass
+    return out
+
+
+def quick_set(key, val):
+    if key == 'volume':
+        n = max(0, min(150, int(val)))
+        argv = ['wpctl', 'set-volume', '-l', '1.5', '@DEFAULT_AUDIO_SINK@', '%d%%' % n]
+    elif key == 'mute':
+        if val not in ('on', 'off', 'toggle'):
+            raise Fail('mute is on, off or toggle')
+        argv = ['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', {'on': '1', 'off': '0', 'toggle': 'toggle'}[val]]
+    elif key == 'brightness':
+        argv = ['brightnessctl', '-q', '-c', 'backlight', 'set', '%d%%' % max(1, min(100, int(val)))]
+    elif key == 'wifi':
+        if val not in ('on', 'off'):
+            raise Fail('wifi is on or off')
+        argv = ['nmcli', 'radio', 'wifi', val]
+    elif key == 'profile':
+        if val not in PROFILES:
+            raise Fail('profile is one of ' + ', '.join(PROFILES))
+        argv = [sys.executable, os.path.join(SHELL, 'hearth-power'), 'mode', val]
+    else:
+        raise Fail('unknown setting: ' + key)
+    rc, _ = run(argv, timeout=20)
+    if rc != 0:
+        raise Fail('could not change ' + key)
+    return {'ok': True}
+
+
+# ---- the desktop choice (the same session.conf line nimbus-session reads: HEARTH_DESKTOP=classic|plasma)
+def session_conf():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'session.conf')
+
+
+CONF_RE = re.compile(r'^\s*(export\s+)?HEARTH_DESKTOP=')
+
+
+def read_desktop(text):
+    val = 'classic'
+    for line in text.splitlines():
+        if CONF_RE.match(line):
+            v = line.split('=', 1)[1].strip().strip('"\'')
+            val = 'plasma' if v == 'plasma' else 'classic'
+    return val
+
+
+def write_desktop(text, name):
+    line = 'HEARTH_DESKTOP=' + name
+    lines = text.splitlines()
+    if any(CONF_RE.match(l) for l in lines):
+        return '\n'.join(line if CONF_RE.match(l) else l for l in lines) + '\n'
+    return text + ('' if not text or text.endswith('\n') else '\n') + line + '\n'
+
+
+def plasma_installed():
+    return all(shutil.which(b) for b in ('startplasma-wayland', 'kwin_wayland', 'plasmashell')) and os.path.isdir(PLASMA_LNF)
+
+
+def desktop():
+    try:
+        with open(session_conf(), encoding='utf-8') as f:
+            text = f.read()
+    except OSError:
+        text = ''
+    run_dir = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    return {'desktop': read_desktop(text), 'plasma': plasma_installed(),
+            'fellBack': os.path.exists(os.path.join(run_dir, 'hearth-plasma-failed'))}
+
+
+def desktop_set(name):
+    if name not in DESKTOPS:
+        raise Fail('the desktop is classic or plasma')
+    if name == 'plasma' and not plasma_installed():
+        raise Fail("Hearth Plasma isn't installed on this system")
+    p = session_conf()
+    try:
+        with open(p, encoding='utf-8') as f:
+            text = f.read()
+    except OSError:
+        text = ''
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(write_desktop(text, name))
+    os.replace(tmp, p)
+    return desktop()
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'apps':
+        return apps()
+    if c == 'launch' and len(a) == 1:
+        return launch(a[0])
+    if c == 'games':
+        return games(fresh=a[:1] == ['fresh'])
+    if c == 'play' and len(a) == 1:
+        return play(a[0])
+    if c == 'quick':
+        return quick()
+    if c == 'quick-set' and len(a) == 2:
+        try:
+            return quick_set(a[0], a[1])
+        except ValueError:
+            raise Fail('not a number: ' + a[1])
+    if c == 'desktop':
+        return desktop()
+    if c == 'desktop-set' and len(a) == 1:
+        return desktop_set(a[0])
+    raise Fail('usage: hearth-plasma apps|launch|games|play|quick|quick-set|desktop|desktop-set')
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv)))
+    except Fail as e:
+        print('error: ' + str(e))
+        sys.exit(1)

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Game Mode
+Comment=Back to Hearth's Game Mode (Super+G)
+Exec=nimbus-mode game
+Icon=hearth
+Type=Application
+Categories=Game;
+Keywords=game;mode;hearth;controller;big picture;
+OnlyShowIn=KDE;
+X-KDE-Shortcuts=Meta+G

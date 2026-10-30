@@ -1,4 +1,5 @@
-// Hearth Settings › Sign-in: start in Game or Desktop Mode, sign in automatically, password and the
+// Hearth Settings › Sign-in: start in Game or Desktop Mode, which desktop Desktop Mode is (Hearth Classic or Hearth
+// Plasma, through desktop/plasma/hearth-plasma desktop / desktop-set), sign in automatically, password and the
 // device's name. The parts that need root go through hearth-admin (pkexec; Hearth's polkit rule lets the
 // person at the device do this without a prompt).
 import QtQuick
@@ -14,13 +15,35 @@ SetPage {
     property bool canAdmin: false
     property bool autologin: true
     property string startMode: "game"
+    property var desk: ({ desktop: "classic", plasma: false, fellBack: false })   // hearth-plasma desktop
+    readonly property string deskHelper: decodeURIComponent(Qt.resolvedUrl("../plasma/hearth-plasma").toString().replace(/^file:\/\//, ""))
     property string hostname: ""
     property string busy: ""
     property string message: ""
     property bool messageBad: false
 
     function say(t, bad) { message = t; messageBad = !!bad; }
-    function load() { info.running = true; }
+    function load() { info.running = true; deskRead.running = true; }
+    Process {
+        id: deskRead
+        command: ["python3", page.deskHelper, "desktop"]
+        stdout: StdioCollector { onStreamFinished: { try { const d = JSON.parse(text.trim().split("\n").pop()); if (d && d.desktop) page.desk = d; } catch (e) {} } }
+    }
+    Process {
+        id: deskWrite
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const l = text.trim().split("\n").pop() || "";
+                if (l.startsWith("error: ")) page.say(l.slice(7), true);
+                else { try { page.desk = JSON.parse(l); page.say((page.desk.desktop === "plasma" ? "Hearth Plasma" : "Hearth Classic") + " opens the next time Desktop Mode starts."); } catch (e) {} }
+            }
+        }
+    }
+    function setDesktop(d) {
+        if (deskWrite.running || d === desk.desktop) return;
+        deskWrite.command = ["python3", deskHelper, "desktop-set", d];
+        deskWrite.running = true;
+    }
     Component.onCompleted: load()
     Process {
         id: info
@@ -66,6 +89,16 @@ SetPage {
         options: [{ value: "game", label: "Game Mode" }, { value: "desktop", label: "Desktop Mode" }]
         current: page.startMode
         onChosen: v => page.setStartMode(v)
+    }
+    SetChoice {
+        title: "Desktop"
+        sub: page.desk.fellBack ? "Hearth Plasma didn't start this time, so Hearth Classic opened instead."
+             : "Which desktop Desktop Mode opens. Your files and settings stay the same; Game Mode doesn't change. Hearth Classic always stays installed as the fallback."
+        options: [{ value: "classic", label: "Hearth Classic" },
+                  { value: "plasma", label: "Hearth Plasma", disabled: !page.desk.plasma },
+                  { value: "gnome", label: "Hearth GNOME (coming later)", disabled: true }]
+        current: page.desk.desktop
+        onChosen: v => page.setDesktop(v)
     }
     SetSwitch {
         visible: page.canAdmin
