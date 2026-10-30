@@ -1112,7 +1112,8 @@ impl Node {
                     Some(p) => { let p = PathBuf::from(p); if !p.is_absolute() || !p.is_dir() || !place_ok(&p, &home) { return Err("Pick a folder in Home or on a drive".into()); } p }
                     None => { let d = home.join("Downloads"); std::fs::create_dir_all(&d).map_err(|e| e.to_string())?; d }
                 };
-                self.storage_reach(&server).await?;
+                // Asked first, so a path that isn't there (or isn't shared) is said now rather than by a failed copy.
+                self.storage_request(&server, &json!({"op": "storage.stat", "share": share, "path": rel})).await?;
                 let title = rel.rsplit('/').next().filter(|x| !x.is_empty()).unwrap_or("Shared folder").to_string();
                 let job = self.start_job(&server, &json!({"id": format!("share:{share}:{rel}"), "title": title, "store": "share"}), place, false)?;
                 Ok(job.to_json())
