@@ -161,6 +161,8 @@ def run_mode(ff, out, mode, extras, port):
     env = dict(os.environ)
     for k in ('HEARTH_BROWSER_GAME', 'HEARTH_BROWSER_BIG', 'HEARTH_BROWSER_SCALE', 'HEARTH_BROWSER_ACCENT'):
         env.pop(k, None)
+    # Newer Firefox wants this as well as -remote-allow-system-access before Marionette may use the chrome context.
+    env['MOZ_REMOTE_ALLOW_SYSTEM_ACCESS'] = '1'
     env.update({'MOZ_HEADLESS': '1', 'MOZ_HEADLESS_WIDTH': '1920' if game else '1280', 'MOZ_HEADLESS_HEIGHT': '1080' if game else '800'})
     if game:
         env.update({'HEARTH_BROWSER_GAME': '1', 'HEARTH_BROWSER_BIG': '1', 'HEARTH_BROWSER_SCALE': '1.5'})
