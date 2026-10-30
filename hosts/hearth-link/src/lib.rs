@@ -29,6 +29,8 @@
 //! - xfer.rs: copying a game: chunked, content-addressed (BLAKE3), parallel streams, compression where it helps,
 //!   resumable, verified while it's written
 //! - sync.rs: the data that's kept in sync, and merging it
+//! - storage.rs: Hearth Storage, a Hearth device as a home server for the others (shared folders, a game archive,
+//!   backups of saves and screenshots, media, waking it from the network)
 //! - node.rs: the service: connections, the requests from other devices and from the UI
 //! - ipc.rs: the UI's (and `hearth-link call`'s) way in: a Unix socket only this user can open
 
@@ -41,6 +43,7 @@ pub mod node;
 pub mod pair;
 pub mod shortcode;
 pub mod state;
+pub mod storage;
 pub mod sync;
 pub mod wire;
 pub mod xfer;

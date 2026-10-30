@@ -167,8 +167,32 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         "games" | "local.games" | "send" | "sync.now" | "unpair" => call(cmd, a, 60),
         "pair.close" | "pair.check" | "peer.set" | "settings.set" | "places" | "get" | "offer.accept" | "offer.decline"
         | "transfer.pause" | "transfer.resume" | "transfer.cancel" | "transfer.clear" | "ticket" => call(cmd, a, 15),
+        // Hearth Storage: anything that asks the server may first have to wake it (up to about a minute and a half),
+        // so it's answered from another thread like pairing.
+        "storage.play" => { let a = a.clone(); br.later(move || storage_play(&a)) }
+        "storage.servers" | "storage.ls" | "storage.get" | "storage.stream" | "storage.archive" | "storage.archived" | "storage.restore"
+        | "storage.backup.now" | "storage.archive.remove" | "storage.set" | "storage.share.add" | "storage.share.remove" | "storage.share.set"
+        | "storage.smb.password" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
+        "storage.status" | "storage.candidates" | "storage.backups" | "storage.archive.here" | "storage.archive.forget" | "storage.wake" => call(cmd, a, 15),
         _ => Err(format!("{method} isn't a Hearth Link call")),
     }
+}
+
+/// A video or song from a Hearth Storage server, in Hearth Player: Hearth Link makes a link for it on this device
+/// (127.0.0.1 only, for that one file), and the player opens it like any web address.
+fn storage_play(a: &Value) -> Result<Value, String> {
+    let v = call("storage.stream", a, 150)?;
+    let url = v["url"].as_str().unwrap_or("").to_string();
+    if !url.starts_with("http://127.0.0.1:") { return Err("Hearth Link gave a link that isn't on this device".into()); }
+    const PLAYER: &str = "/usr/bin/hearth-player";
+    let mut c = if Path::new(PLAYER).exists() {
+        let mut c = std::process::Command::new(PLAYER);
+        if crate::gamescope::inside() { c.arg("--fullscreen"); }
+        c
+    } else { std::process::Command::new("xdg-open") };
+    c.arg(&url);
+    c.spawn().map(crate::procs::detach).map_err(|e| format!("Couldn't open the player: {e}"))?;
+    Ok(v)
 }
 
 #[cfg(test)]
