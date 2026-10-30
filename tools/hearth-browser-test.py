@@ -292,7 +292,9 @@ def run_mode(ff, out, mode, extras, port):
                 m.context('chrome')
             report['spatial'] = seen
             diag = m.js('const { SpatialLog } = ChromeUtils.importESModule("resource://hearth/spatial-parent.sys.mjs"); '
-                        'return {registered: Services.prefs.getStringPref("hearth.spatial", ""), last: SpatialLog.last, errors: SpatialLog.errors};')
+                        'const con = Services.console.getMessageArray().map(m => String(m.message || m.errorMessage || m)).filter(t => /hearth|spatial|actor|JSWindowActor|resource:/i.test(t)).slice(-8); '
+                        'return {registered: Services.prefs.getStringPref("hearth.spatial", ""), last: SpatialLog.last, errors: SpatialLog.errors, console: con, '
+                        'actor: (() => { try { return !!gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("HearthSpatial"); } catch (e) { return String(e); } })()};')
             report['spatial-diag'] = diag
             ok(seen == ['top', 'below', 'right', 'below', 'top'], '[game] D-pad moves between links: down, down, right, left, up (got %s; %s)' % (seen, diag))
             m.shot(os.path.join(out, 'game-4-dpad.png'))
