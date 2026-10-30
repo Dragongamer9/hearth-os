@@ -1,0 +1,11 @@
+# The boot entries change while the system runs (bootc rollback, kernel options): the snippet follows.
+[Unit]
+Description=Hearth: watch the boot entries for the automatic fallback
+
+[Path]
+PathChanged=/boot/loader
+PathChanged=/boot/loader/entries
+Unit=hearth-boot-guard-refresh.service
+
+[Install]
+WantedBy=multi-user.target

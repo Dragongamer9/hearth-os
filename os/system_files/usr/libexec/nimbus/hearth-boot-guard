@@ -1,0 +1,293 @@
+#!/usr/bin/python3
+"""Hearth's automatic fallback: when a new version fails to start twice in a row, the previous version starts by
+itself (no keyboard needed), and stays the one that starts once it has.
+
+How (Hearth OS on Anatase and Peppermint, both started by bootupd's GRUB menu):
+  - GRUB counts starts in its environment block (/boot/grub2/grubenv, `hearth_tries`) before it starts Hearth.
+    `write` (at start, whenever ostree's boot entries change, and at shutdown after an update is finalized) puts the
+    counting into /boot/grub2/hearth-fallback.cfg, which custom.cfg sources (bootupd's 41_custom.cfg reads custom.cfg
+    after the boot entries are in the menu).
+  - Once Hearth is up (Game Mode, Desktop Mode or the login screen, for 45 seconds), `watch` calls `good`, which
+    sets the count back to 0. Two starts in a row that never got there: GRUB's third start is the previous version.
+  - If that start was the fallback, `good` makes the previous version the default (`bootc rollback`; the new one stays
+    in the menu) and pauses background updates for three days, so the same update isn't put back right away.
+  - The entry that's started first also gets `fallback=1`: a version GRUB can't even load (its kernel missing:
+    the ROG Ally after 0.6.53) goes straight to the previous version.
+
+Safety rules (MILESTONES.md: an update must never stop a device from starting):
+  - Only with two or more boot entries (otherwise entry 1 would be "UEFI Firmware Settings"), checked again on
+    every change.
+  - Counting only where GRUB can save its environment (ext2/3/4 or FAT /boot); elsewhere just `fallback=1`.
+  - After going back once, the count starts over: a guard that never says "good" (a bug, or a previous version
+    without this tool) can't keep the device on the old version for good, it only costs a restart.
+  - Off: sudo touch /etc/hearth/no-boot-guard (the menu is then exactly as before).
+"""
+import datetime
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+BOOT = os.environ.get('HEARTH_BOOT', '/boot')
+STATE = os.environ.get('HEARTH_STATE', '/var/lib/hearth')
+OFF = os.environ.get('HEARTH_GUARD_OFF', '/etc/hearth/no-boot-guard')
+ENV_SIZE = 1024
+ENV_HEAD = b'# GRUB Environment Block\n'
+SNIPPET = 'hearth-fallback.cfg'
+BEGIN = '### Hearth: automatic fallback (hearth-boot-guard) ###'
+END = '### end Hearth fallback ###'
+SAVE_FS = {'ext2', 'ext3', 'ext4', 'vfat', 'msdos', 'fat'}
+UP_PROCS = ('gamescope', 'gamescope-wl', 'labwc', 'sddm-greeter', 'sddm-greeter-qt6', 'plasmashell',
+            'kwin_wayland', 'cinnamon', 'gnome-shell')
+UP_SECONDS = 45
+PAUSE_DAYS = 3
+
+
+def log(msg):
+    print(f'hearth-boot-guard: {msg}', flush=True)
+
+
+def grub_dir(boot=None):
+    boot = boot or BOOT
+    for d in ('grub2', 'boot/grub2'):
+        if os.path.isfile(os.path.join(boot, d, 'grub.cfg')):
+            return os.path.join(boot, d)
+    return None
+
+
+# ------------------------------------------------------------------ GRUB environment block
+def parse_env(data):
+    out = {}
+    for line in data.decode('utf-8', 'replace').split('\n'):
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        k, v = line.split('=', 1)
+        out[k] = v.replace('\\n', '\n').replace('\\\\', '\\')
+    return out
+
+
+def render_env(env):
+    body = ENV_HEAD
+    for k, v in env.items():
+        v = str(v).replace('\\', '\\\\').replace('\n', '\\n')
+        body += f'{k}={v}\n'.encode()
+    if len(body) > ENV_SIZE:
+        raise ValueError('GRUB environment block full')
+    return body + b'#' * (ENV_SIZE - len(body))
+
+
+def read_env(path):
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+    except FileNotFoundError:
+        return {}
+    return parse_env(data) if data.startswith(ENV_HEAD) else {}
+
+
+def write_env(path, changes):
+    """Sets (value) or removes (None) variables, keeping everything else. Rewritten in place: GRUB's save_env writes
+    into the file's own blocks, so the file keeps them."""
+    env = read_env(path)
+    for k, v in changes.items():
+        if v is None:
+            env.pop(k, None)
+        else:
+            env[k] = v
+    data = render_env(env)
+    if os.path.isfile(path) and os.path.getsize(path) == ENV_SIZE:
+        with open(path, 'r+b') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    else:
+        tmp = path + '.hearth-tmp'
+        with open(tmp, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+
+
+# ------------------------------------------------------------------ the menu snippet
+def entry_count(boot=None):
+    return len(glob.glob(os.path.join(boot or BOOT, 'loader', 'entries', '*.conf')))
+
+
+def snippet(has_prev, can_save, off=False):
+    lines = ['# Written by /usr/libexec/nimbus/hearth-boot-guard: don\'t edit, it\'s rewritten whenever the boot entries',
+             '# change. Two starts in a row that never reached Hearth: the previous version starts (entry 1).']
+    if off or not has_prev:
+        lines.append('# Off (no previous version in the menu, or /etc/hearth/no-boot-guard).')
+        return '\n'.join(lines) + '\n'
+    lines += ['set fallback=1']
+    if can_save:
+        lines += [
+            'set hearth_go_back=0',
+            'if [ "${hearth_tries}" = "2" ]; then set hearth_go_back=1; fi',
+            'if [ "${hearth_go_back}" = "1" ]; then',
+            '  set default=1',
+            '  set fallback=0',
+            '  set hearth_fellback=1',
+            '  set hearth_tries=0',
+            'elif [ "${hearth_tries}" = "1" ]; then',
+            '  set hearth_tries=2',
+            'else',
+            '  set hearth_tries=1',
+            'fi',
+            'save_env hearth_tries hearth_fellback',
+        ]
+    return '\n'.join(lines) + '\n'
+
+
+def custom_with_block(text):
+    """custom.cfg (the installer's Windows/SteamOS entries, maybe) with the line that sources the snippet at the top."""
+    text = re.sub(re.escape(BEGIN) + r'.*?' + re.escape(END) + r'\n?', '', text, flags=re.S)
+    block = f'{BEGIN}\nif [ -f $prefix/{SNIPPET} ]; then\n  source $prefix/{SNIPPET}\nfi\n{END}\n'
+    return block + text
+
+
+def fstype(path):
+    r = subprocess.run(['findmnt', '-no', 'FSTYPE', '-T', path], capture_output=True, text=True)
+    return r.stdout.strip().splitlines()[0] if r.returncode == 0 and r.stdout.strip() else ''
+
+
+class Writable:
+    """/boot read-only (some ostree systems mount it so): writable for the change, then back."""
+
+    def __init__(self, path):
+        self.path, self.remounted = path, False
+
+    def __enter__(self):
+        if not os.access(self.path, os.W_OK) or subprocess.run(
+                ['findmnt', '-no', 'OPTIONS', '-T', self.path], capture_output=True, text=True).stdout.startswith('ro'):
+            mp = subprocess.run(['findmnt', '-no', 'TARGET', '-T', self.path], capture_output=True, text=True).stdout.strip()
+            if mp and subprocess.run(['mount', '-o', 'remount,rw', mp]).returncode == 0:
+                self.remounted, self.mp = True, mp
+        return self
+
+    def __exit__(self, *a):
+        os.sync()
+        if self.remounted:
+            subprocess.run(['mount', '-o', 'remount,ro', self.mp])
+
+
+def atomic_write(path, text):
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def cmd_write():
+    g = grub_dir()
+    if not g:
+        log(f'no GRUB menu in {BOOT}/grub2: nothing to do')
+        return 0
+    has_prev = entry_count() >= 2
+    can_save = fstype(g) in SAVE_FS
+    off = os.path.exists(OFF)
+    with Writable(g):
+        atomic_write(os.path.join(g, SNIPPET), snippet(has_prev, can_save, off))
+        custom = os.path.join(g, 'custom.cfg')
+        old = open(custom).read() if os.path.exists(custom) else ''
+        new = custom_with_block(old)
+        if new != old:
+            atomic_write(custom, new)
+        env = os.path.join(g, 'grubenv')
+        if can_save and not os.path.isfile(env):
+            write_env(env, {})
+    log(f'menu: {"off" if off else "previous version " + ("ready" if has_prev else "not there yet")}'
+        f'{"" if can_save else ", no counting (GRUB cannot save on this /boot)"}')
+    return 0
+
+
+# ------------------------------------------------------------------ after a good start
+def booted_is_default(status_text):
+    """`ostree admin status`: deployments, the default first; the booted one is marked with '*'. None if unknown."""
+    for line in status_text.splitlines():
+        m = re.match(r'^(\*| ) \S+ [0-9a-f]{64}\.\d+', line)
+        if m:
+            return m.group(1) == '*'
+    return None
+
+
+def cmd_good():
+    g = grub_dir()
+    if not g:
+        return 0
+    env_path = os.path.join(g, 'grubenv')
+    env = read_env(env_path)
+    fell_back = env.get('hearth_fellback') == '1'
+    if fell_back:
+        st = subprocess.run(['ostree', 'admin', 'status'], capture_output=True, text=True).stdout
+        if booted_is_default(st) is False:
+            log('the new version didn\'t start twice, the previous one did: making it the default (bootc rollback)')
+            r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True)
+            ok = r.returncode == 0
+            log('done' if ok else f'bootc rollback failed: {(r.stderr or r.stdout).strip()}')
+            os.makedirs(STATE, exist_ok=True)
+            until = time.time() + PAUSE_DAYS * 86400
+            with open(os.path.join(STATE, 'boot-fallback.json'), 'w') as f:
+                json.dump({'when': datetime.datetime.now().isoformat(timespec='seconds'), 'rolled_back': ok,
+                           'updates_paused_until': int(until)}, f)
+    with Writable(g):
+        if os.path.isfile(env_path) and (env.get('hearth_tries', '0') != '0' or fell_back):
+            write_env(env_path, {'hearth_tries': '0', 'hearth_fellback': '0'})
+    return 0
+
+
+def up_now():
+    return any(subprocess.run(['pgrep', '-x', p], capture_output=True).returncode == 0 for p in UP_PROCS)
+
+
+def cmd_watch(limit=1200):
+    """Waits (up to 20 minutes) until Hearth has been up for UP_SECONDS in a row, then `good`."""
+    since, start = None, time.monotonic()
+    while time.monotonic() - start < limit:
+        if up_now():
+            since = since or time.monotonic()
+            if time.monotonic() - since >= UP_SECONDS:
+                log('Hearth is up: this start counts as good')
+                return cmd_good()
+        else:
+            since = None
+        time.sleep(5)
+    log('Hearth never came up: this start counts as failed')
+    return 0
+
+
+def cmd_may_update():
+    """ExecCondition for background updates: paused for a few days after the fallback undid an update."""
+    try:
+        with open(os.path.join(STATE, 'boot-fallback.json')) as f:
+            until = json.load(f).get('updates_paused_until', 0)
+    except (OSError, ValueError):
+        return 0
+    if time.time() < until:
+        log('background updates paused: the last update didn\'t start and Hearth went back to the previous version')
+        return 1
+    return 0
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd in ('write', 'good', 'watch', 'may-update'):
+        if os.path.exists(OFF) and cmd in ('good', 'watch'):
+            return 0
+        try:
+            return {'write': cmd_write, 'good': cmd_good, 'watch': cmd_watch, 'may-update': cmd_may_update}[cmd]()
+        except Exception as e:  # never in the way of starting or stopping
+            log(f'{cmd}: {e}')
+            return 0
+    print('usage: hearth-boot-guard write|good|watch|may-update', file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

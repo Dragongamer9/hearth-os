@@ -1122,6 +1122,7 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase
 # (and SDDM's file, harmless when SDDM isn't there).
 systemctl enable nimbus-autologin.service
+systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 systemctl enable hearth-greeter-pad.service   # the controller on the login screen
 systemctl enable hearth-boot-first.service    # Hearth stays first in the boot order
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)

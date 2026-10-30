@@ -1,0 +1,301 @@
+#!/usr/bin/python3
+"""Hearth Recovery on the device: a menu on the text screen, before Hearth starts, that works with a controller, the
+volume and power buttons (handhelds) or a keyboard, and needs nothing that might be broken (no graphics driver,
+no Hearth app).
+
+It opens when:
+  - Volume Down is held while the device starts (or F8 on a keyboard, or Select + Start on a controller)
+  - the start before this one never reached Hearth (closes by itself after 15 s: Continue)
+  - Hearth just went back to the previous version by itself (hearth-boot-guard; also closes after 15 s)
+  - asked for: `sudo hearth-recovery --next-start` (Settings › System › Restart into Recovery), or the kernel
+    option hearth.recovery
+
+Choices: Continue · Go back to the previous version · Desktop Mode this time · Safe graphics this time · Reset the
+screen settings · Send logs to the developer · Restart · Turn off.
+"""
+import fcntl
+import glob
+import os
+import re
+import select
+import struct
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, '/usr/libexec/nimbus')
+BOOT = os.environ.get('HEARTH_BOOT', '/boot')
+RUN = '/run/hearth'
+TTY = '/dev/tty1'
+
+# Linux input codes
+EV_KEY, EV_ABS = 1, 3
+KEY_ESC, KEY_ENTER, KEY_UP, KEY_DOWN, KEY_F8 = 1, 28, 103, 108, 66
+KEY_VOLUMEDOWN, KEY_VOLUMEUP, KEY_POWER = 114, 115, 116
+BTN_SOUTH, BTN_EAST, BTN_SELECT, BTN_START = 304, 305, 314, 315
+BTN_DPAD_UP, BTN_DPAD_DOWN = 544, 545
+ABS_Y, ABS_HAT0Y = 1, 17
+EVIOCGKEY = (2 << 30) | (96 << 16) | (ord('E') << 8) | 0x18
+EVENT = struct.Struct('llHHi')
+
+
+def guard():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader('hbg', '/usr/libexec/nimbus/hearth-boot-guard')
+    spec = importlib.util.spec_from_loader('hbg', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def held_keys(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return set()
+    try:
+        buf = bytearray(96)
+        fcntl.ioctl(fd, EVIOCGKEY, buf)
+    except OSError:
+        return set()
+    finally:
+        os.close(fd)
+    return {i for i in range(len(buf) * 8) if buf[i // 8] >> (i % 8) & 1}
+
+
+def asked_with_buttons(window=1.5):
+    """Volume Down (or F8, or Select + Start) held during the first seconds; input devices still appearing."""
+    end = time.monotonic() + window
+    while time.monotonic() < end:
+        for dev in glob.glob('/dev/input/event*'):
+            k = held_keys(dev)
+            if KEY_VOLUMEDOWN in k or KEY_F8 in k or {BTN_SELECT, BTN_START} <= k:
+                return True
+        time.sleep(0.2)
+    return False
+
+
+def reasons():
+    """(open?, why, auto-continue seconds or None)."""
+    g = guard()
+    gd = g.grub_dir()
+    env = g.read_env(os.path.join(gd, 'grubenv')) if gd else {}
+    if 'hearth.recovery' in open('/proc/cmdline').read().split():
+        return True, 'Recovery was asked for.', None
+    if env.get('hearth_recovery') == '1':
+        try:
+            g.write_env(os.path.join(gd, 'grubenv'), {'hearth_recovery': None})
+        except OSError:
+            pass
+        return True, 'Recovery was asked for.', None
+    if asked_with_buttons():
+        return True, 'Volume Down was held.', None
+    if env.get('hearth_fellback') == '1':
+        return True, ('The update didn\'t start twice, so Hearth started the previous version. '
+                      'It will stay on this version.'), 15
+    if env.get('hearth_tries') == '2':
+        return True, 'The last start didn\'t reach Hearth.', 15
+    return False, '', None
+
+
+# ------------------------------------------------------------------ actions
+def users_homes():
+    out = []
+    for line in open('/etc/passwd'):
+        p = line.split(':')
+        if len(p) > 6 and p[2].isdigit() and 1000 <= int(p[2]) < 60000 and os.path.isdir(p[5]):
+            out.append((int(p[2]), int(p[3]), p[5]))
+    return out
+
+
+def deployments():
+    st = subprocess.run(['ostree', 'admin', 'status'], capture_output=True, text=True).stdout
+    return [l for l in st.splitlines() if re.match(r'^(\*| ) \S+ [0-9a-f]{64}\.\d+', l)]
+
+
+def can_go_back():
+    d = deployments()
+    return len(d) >= 2 and d[0].startswith('*')
+
+
+def act_back(say):
+    say('Going back to the previous version…')
+    r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True)
+    if r.returncode != 0:
+        say('Couldn\'t: ' + (r.stderr or r.stdout).strip()[-200:])
+        return False
+    say('Done. Restarting…')
+    time.sleep(2)
+    subprocess.run(['systemctl', 'reboot'])
+    return True
+
+
+def flag(name):
+    os.makedirs(RUN, exist_ok=True)
+    open(os.path.join(RUN, name), 'w').close()
+
+
+def act_reset_screen(say):
+    rx = re.compile(r'(^|[\s"])(-[WHr]\s+|--(output-width|output-height|nested-refresh)[=\s]+)[^\s"]+')
+    n = 0
+    for uid, gid, home in users_homes():
+        p = os.path.join(home, '.config', 'nimbus', 'session.conf')
+        if not os.path.isfile(p):
+            continue
+        lines = open(p).read().splitlines(True)
+        new = [rx.sub(r'\1', l) if re.match(r'\s*(export\s+)?NIMBUS_GAMESCOPE_ARGS=', l) else l for l in lines]
+        if new != lines:
+            open(p, 'w').writelines(new)
+            os.chown(p, uid, gid)
+            n += 1
+    say(f'Screen settings back to the screen\'s own mode ({n} account{"s" if n != 1 else ""}).')
+
+
+def act_send_logs(say):
+    say('Sending the logs (needs the internet)…')
+    text = subprocess.run(['sh', '-c', 'journalctl -b -1 --no-pager 2>/dev/null | tail -n 2500; echo; echo "== this start"; '
+                           'journalctl -b --no-pager | tail -n 1500'], capture_output=True, text=True).stdout
+    head = f'Hearth logs · Recovery on the device · {time.strftime("%F %H:%M")}\n\n'
+    r = subprocess.run(['curl', '-sS', '-m', '60', '-H', 'X-Hearth-Kind: recovery', '--data-binary', '@-',
+                        'https://hearth-counter.game305-cl.workers.dev/v1/logs'],
+                       input=head + text, capture_output=True, text=True)
+    say(('Sent. Your code: ' + r.stdout.strip()) if r.returncode == 0 else 'Couldn\'t send: no internet?')
+
+
+# ------------------------------------------------------------------ the screen
+class Screen:
+    def __init__(self):
+        self.f = open(TTY, 'w')
+        subprocess.run(['chvt', '1'], capture_output=True)
+        subprocess.run(['setfont', '-d'], stdin=open(TTY), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.msg = ''
+
+    def draw(self, title, why, items, sel, left=None):
+        w = self.f
+        w.write('\033[2J\033[H\033[?25l')
+        w.write(f'\n  \033[1;33mHearth Recovery\033[0m\n\n  {why}\n\n')
+        for i, (label, _) in enumerate(items):
+            mark = '\033[7m > ' if i == sel else '   '
+            w.write('  ' + mark + label + '\033[0m\n')
+        w.write('\n  Up/Down: D-pad, stick or Volume · Choose: A, Enter or Power\n')
+        if left is not None:
+            w.write(f'\n  Continuing in {left} s…\n')
+        if self.msg:
+            w.write(f'\n  {self.msg}\n')
+        w.flush()
+
+    def close(self):
+        self.f.write('\033[2J\033[H\033[?25h')
+        self.f.flush()
+
+
+class Input:
+    def __init__(self):
+        self.fds, self.seen = {}, set()
+        self.rescan()
+
+    def rescan(self):
+        for p in glob.glob('/dev/input/event*'):
+            if p not in self.seen:
+                self.seen.add(p)
+                try:
+                    self.fds[os.open(p, os.O_RDONLY | os.O_NONBLOCK)] = p
+                except OSError:
+                    pass
+
+    def read(self, timeout):
+        """'up', 'down', 'ok' or None."""
+        r, _, _ = select.select(list(self.fds), [], [], timeout)
+        for fd in r:
+            try:
+                data = os.read(fd, EVENT.size * 64)
+            except OSError:
+                continue
+            for i in range(0, len(data) - EVENT.size + 1, EVENT.size):
+                _, _, t, code, val = EVENT.unpack_from(data, i)
+                if t == EV_KEY and val == 1:
+                    if code in (KEY_UP, KEY_VOLUMEUP, BTN_DPAD_UP):
+                        return 'up'
+                    if code in (KEY_DOWN, KEY_VOLUMEDOWN, BTN_DPAD_DOWN):
+                        return 'down'
+                    if code in (KEY_ENTER, KEY_POWER, BTN_SOUTH):
+                        return 'ok'
+                if t == EV_ABS and code == ABS_HAT0Y and val:
+                    return 'up' if val < 0 else 'down'
+                if t == EV_ABS and code == ABS_Y and abs(val) > 20000:
+                    return 'up' if val < 0 else 'down'
+        self.rescan()
+        return None
+
+
+def menu(why, auto):
+    items = [('Continue starting Hearth', 'continue')]
+    if can_go_back():
+        items.append(('Go back to the previous version', 'back'))
+    items += [('Desktop Mode this time', 'desktop'), ('Safe graphics this time', 'safe'),
+              ('Reset the screen settings (resolution, refresh rate)', 'screen'),
+              ('Send logs to the developer', 'logs'), ('Restart', 'reboot'), ('Turn off', 'off')]
+    scr, inp = Screen(), Input()
+    say = lambda m: (setattr(scr, 'msg', m), scr.draw('', why, items, sel))
+    sel, deadline = 0, (time.monotonic() + auto) if auto else None
+    try:
+        while True:
+            left = max(0, int(deadline - time.monotonic() + 0.99)) if deadline else None
+            scr.draw('', why, items, sel, left)
+            if deadline and left == 0:
+                return
+            k = inp.read(0.5)
+            if k:
+                deadline = None
+            if k == 'up':
+                sel = (sel - 1) % len(items)
+            elif k == 'down':
+                sel = (sel + 1) % len(items)
+            elif k == 'ok':
+                a = items[sel][1]
+                if a == 'continue':
+                    return
+                if a == 'back':
+                    act_back(say)
+                elif a == 'desktop':
+                    flag('start-desktop'); say('Desktop Mode this time.'); time.sleep(1); return
+                elif a == 'safe':
+                    flag('safe-graphics'); say('Safe graphics this time.'); time.sleep(1); return
+                elif a == 'screen':
+                    act_reset_screen(say)
+                elif a == 'logs':
+                    act_send_logs(say)
+                elif a == 'reboot':
+                    subprocess.run(['systemctl', 'reboot']); return
+                elif a == 'off':
+                    subprocess.run(['systemctl', 'poweroff']); return
+    finally:
+        scr.close()
+
+
+def main(argv):
+    if '--next-start' in argv:
+        g = guard()
+        gd = g.grub_dir()
+        if not gd:
+            print('No GRUB menu found', file=sys.stderr)
+            return 1
+        with g.Writable(gd):
+            g.write_env(os.path.join(gd, 'grubenv'), {'hearth_recovery': '1'})
+        print('Hearth Recovery opens at the next start.')
+        return 0
+    if os.path.exists('/etc/hearth-live'):
+        return 0
+    try:
+        show, why, auto = reasons()
+        if show or '--show' in argv:
+            subprocess.run(['plymouth', 'quit'], capture_output=True)
+            menu(why or 'Recovery.', auto)
+    except Exception as e:  # never in the way of starting Hearth
+        print(f'hearth-recovery: {e}', file=sys.stderr)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

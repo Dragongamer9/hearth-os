@@ -1213,6 +1213,7 @@ chmod 755 /usr/lib/systemd/system-sleep/hearth-resumed
 systemctl enable NetworkManager.service bluetooth.service systemd-resolved.service systemd-timesyncd.service \
   fstrim.timer bootc-fetch-apply-updates.timer sddm.service
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # power-profiles-daemon only runs when HHD is switched off (its drop-in says so); enabled so it can then.
 systemctl enable power-profiles-daemon.service 2>/dev/null || true
 # Printing starts when something prints (Settings › Printers).
