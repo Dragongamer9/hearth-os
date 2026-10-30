@@ -147,12 +147,20 @@ function spatial() {
     `@-moz-document url-prefix("http:"), url-prefix("https:"), url-prefix("file:") {
        :focus-visible { outline: 3px solid ${ring} !important; outline-offset: 2px !important; }
      }`));
+  const done = [];
   const reg = (name, events) => {
-    try { ChromeUtils.registerWindowActor(name, { child: { esModuleURI: "resource://hearth/spatial-child.sys.mjs", events }, allFrames: false }); }
-    catch (e) { report("actor " + name, e); }
+    try {
+      ChromeUtils.registerWindowActor(name, {
+        parent: { esModuleURI: "resource://hearth/spatial-parent.sys.mjs" },
+        child: { esModuleURI: "resource://hearth/spatial-child.sys.mjs", events },
+        allFrames: false,
+      });
+      done.push(name);
+    } catch (e) { report("actor " + name, e); done.push(name + ": " + e); }
   };
   reg("HearthSpatial", { keydown: { capture: true } });
   reg("HearthSpatialBack", { keydown: { mozSystemGroup: true } });
+  try { Services.prefs.setStringPref("hearth.spatial", done.join("; ")); } catch (e) {}
 }
 
 // ------------------------------------------------------------------ the on-screen keyboard

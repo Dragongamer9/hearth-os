@@ -291,7 +291,10 @@ def run_mode(ff, out, mode, extras, port):
                 seen.append(m.js('return document.activeElement ? (document.activeElement.id || document.activeElement.localName) : "";'))
                 m.context('chrome')
             report['spatial'] = seen
-            ok(seen == ['top', 'below', 'right', 'below', 'top'], '[game] D-pad moves between links: down, down, right, left, up (got %s)' % seen)
+            diag = m.js('const { SpatialLog } = ChromeUtils.importESModule("resource://hearth/spatial-parent.sys.mjs"); '
+                        'return {registered: Services.prefs.getStringPref("hearth.spatial", ""), last: SpatialLog.last, errors: SpatialLog.errors};')
+            report['spatial-diag'] = diag
+            ok(seen == ['top', 'below', 'right', 'below', 'top'], '[game] D-pad moves between links: down, down, right, left, up (got %s; %s)' % (seen, diag))
             m.shot(os.path.join(out, 'game-4-dpad.png'))
             m.context('content')
             m.cmd('WebDriver:Navigate', {'url': SPATIAL_PAGE % 'two'})

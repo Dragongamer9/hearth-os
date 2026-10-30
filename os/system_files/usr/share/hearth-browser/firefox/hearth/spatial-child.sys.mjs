@@ -74,7 +74,7 @@ export class HearthSpatialChild extends JSWindowActorChild {
       if (e.key in DIRS) return this.move(e, DIRS[e.key], win, doc);
       if (e.key === "Enter" && !e.shiftKey) return this.press(e, doc);
     } catch (err) {
-      try { Cu.reportError("Hearth Browser (spatial): " + err); } catch (_) {}
+      try { Cu.reportError("Hearth Browser (spatial): " + err); this.sendAsyncMessage("Hearth:Error", { error: String(err) }); } catch (_) {}
     }
   }
 
@@ -85,7 +85,7 @@ export class HearthSpatialChild extends JSWindowActorChild {
     const doc = this.document, win = this.contentWindow;
     if (!doc || doc.fullscreenElement || editable(doc.activeElement)) return;
     if (doc.querySelector("dialog[open]")) return;
-    if (win.history.length > 1) { e.preventDefault(); win.history.back(); }
+    if (win.history.length > 1) { e.preventDefault(); win.history.back(); try { this.sendAsyncMessage("Hearth:Back", {}); } catch (_) {} }
   }
 
   move(e, dir, win, doc) {
@@ -120,6 +120,7 @@ export class HearthSpatialChild extends JSWindowActorChild {
     e.stopPropagation();
     try { next.el.focus({ focusVisible: true, preventScroll: true }); } catch (_) { next.el.focus(); }
     next.el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    try { this.sendAsyncMessage("Hearth:Moved", { dir, to: next.el.id || next.el.localName }); } catch (_) {}
   }
 
   press(e, doc) {
