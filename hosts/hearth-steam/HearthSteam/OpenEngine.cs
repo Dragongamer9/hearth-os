@@ -632,7 +632,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         acf.BytesDownloaded = acf.BytesToDownload;
         acf.LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         acf.Save(lib);
-        try { Directory.Delete(OpenPaths.Staging(lib, j.AppId), true); } catch (IOException) { } catch (DirectoryNotFoundException) { }
+        try { Directory.Delete(OpenPaths.Staging(lib, j.AppId), true); } catch (IOException) { }
     }
 
     public JsonObject Downloads()
