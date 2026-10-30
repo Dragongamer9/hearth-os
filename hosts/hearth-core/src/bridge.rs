@@ -407,13 +407,18 @@ impl Bridge {
                 io(self.library.store.update(|d| { d.insert("steamOnDemand".into(), json!(on)); }))
             }
             // Settings › Library › Steam engine (steam_engine.rs). Lightweight starts hosts/hearth-steam; Classic stops it.
+            // {engine: "classic"|"lightweight"|"open"}, or the older {lightweight: bool}. Open is Hearth's own Steam client.
             "steam.engine.set" => {
-                let on = a["lightweight"] == true;
-                io(self.library.store.update(|d| { d.insert("steamEngine".into(), json!(if on { "lightweight" } else { "classic" })); }))?;
-                std::thread::spawn(move || crate::steam_engine::set(on));
-                Ok(json!({"lightweight": on}))
+                let mode = match a["engine"].as_str() {
+                    Some(e) => crate::steam_engine::Mode::from_setting(&json!(e)),
+                    None if a["lightweight"] == true => crate::steam_engine::Mode::Lightweight,
+                    None => crate::steam_engine::Mode::Classic,
+                };
+                io(self.library.store.update(|d| { d.insert("steamEngine".into(), json!(mode.name())); }))?;
+                std::thread::spawn(move || crate::steam_engine::set(mode));
+                Ok(json!({"engine": mode.name(), "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}))
             }
-            "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_lightweight())),
+            "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
             // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
             "steam.engine.signIn" => crate::steam_engine::sign_in(a),
             "library.setSteamBackground" => {
@@ -510,12 +515,12 @@ impl Bridge {
                     let app: u32 = app.parse().map_err(|_| "That isn't a Steam game.".to_string())?;
                     let title = self.library.games.get(&id).map(|g| g.title.clone()).unwrap_or_else(|| "the game".into());
                     let (home, on_demand) = (self.library.home.clone(), self.library.steam_on_demand());
-                    let lightweight = self.library.steam_lightweight();
+                    let mode = self.library.steam_engine_mode();
                     crate::space::answer_later(self.cur_id.clone(), move || {
                         // Lightweight engine: Steam's engine removes it itself; otherwise as below, with the normal client's files.
-                        if crate::steam_engine::uninstall(lightweight, app) {
+                        if crate::steam_engine::uninstall(mode, app) {
                             crate::stores::notify(json!({"type": "internal", "what": "rescan", "reply": null}));
-                            return Ok(json!({"steam": true, "silent": true, "lightweight": true}));
+                            return Ok(json!({"steam": true, "silent": true, "lightweight": true, "engine": mode.name()}));
                         }
                         let was_running = crate::steam_ctl::uninstall(&home, app, &title)?;
                         // Steam was closed for it: back hidden, unless it only runs when needed.

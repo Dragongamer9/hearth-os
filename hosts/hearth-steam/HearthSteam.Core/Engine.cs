@@ -45,3 +45,14 @@ public interface IEngine
     /// <summary>Lets go of Steam (the normal client is about to start): the service exits after answering.</summary>
     void Release();
 }
+
+/// <summary>What only the Open engine (SteamKit2, no steamclient) answers on top of IEngine.</summary>
+public interface IOpenEngine : IEngine
+{
+    /// <summary>How a first direct start went: remembered, so a game that failed always starts through Valve's client.</summary>
+    JsonObject LaunchResult(uint appId, bool ok);
+    /// <summary>Checks every file of an installed game against its manifest and fixes what's wrong.</summary>
+    JsonObject Verify(uint appId);
+    /// <summary>Stops a queued or running download (what's done is kept; it can be resumed).</summary>
+    JsonObject Cancel(uint appId);
+}

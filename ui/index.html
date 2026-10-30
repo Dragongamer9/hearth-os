@@ -7346,8 +7346,9 @@ function oskSettingAct(a, d){
     {label:'Clear', icon:'trash', run:()=>{ HearthOSK.clearLearned(); if(host) call('osk.clear').catch(()=>{}); toast('Learned words cleared'); render('kb-clear'); }}]});
   if(a==='oskTry') return openPrompt({title:'Try the keyboard', osk:true, placeholder:'Type something'}).then(()=>{});
 }
-// Settings › Library › Steam engine: Classic (the normal Steam client, default) or Lightweight (experimental,
-// hosts/hearth-steam). Anything Lightweight can't do is done by the normal client (steam_engine.rs).
+// Settings › Library › Steam engine: Classic (the normal Steam client, default), Lightweight (experimental,
+// hosts/hearth-steam with Valve's steamclient) or Open (experimental: Hearth's own Steam client on SteamKit2, same
+// service). Anything they can't do is done by the normal client (steam_engine.rs).
 const SENG={st:null, qr:null, watching:0};
 function steamEngRefresh(){ if(!host) return Promise.resolve(); return call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
 function steamEngLine(e){
@@ -7356,15 +7357,16 @@ function steamEngLine(e){
   if(e.classicRunning) return 'The normal Steam client is running, so it does the work for now';
   if(s.engine==='bootstrapping') return 'Getting Steam\'s engine from Valve'+(s.progress?` · ${esc(s.progress.text)} (${s.progress.percent}%)`:'');
   if(s.engine==='starting') return 'Starting…';
-  if(s.engine==='ready') return s.signedIn?`Ready · signed in as ${esc(s.account||'')}`:'Ready · sign in below. Until then the normal Steam client is used';
+  if(s.engine==='ready') return s.signedIn?`Ready · signed in as ${esc(s.account||'')}`+(s.libraryLoading?' · reading your library':''):'Ready · sign in below. Until then the normal Steam client is used';
   if(s.engine==='unavailable'||s.engine==='error') return 'Not available: '+esc(s.reason||'it didn\'t start')+'. The normal Steam client is used';
   return 'Off right now · the normal Steam client is used';
 }
 function steamEngineRows(){
-  const on=!!S.set.steamLight, e=SENG.st||{}, s=e.status||{};
-  let h=`<button class="row" data-f data-k="s-steamLight" data-act="toggle" data-key="steamLight"><div class="rt"><b>Lightweight Steam engine (experimental)</b><small>${on?steamEngLine(e):'Off: the normal Steam client does everything (Classic). On: Steam\'s own engine runs with no Steam window; anything it can\'t do (VAC games, errors) still uses the normal client'}</small></div><div class="sw ${on?'on':''}"></div></button>`;
+  const light=!!S.set.steamLight, open=!!S.set.steamOpen, on=light||open, e=SENG.st||{}, s=e.status||{};
+  let h=`<button class="row" data-f data-k="s-steamLight" data-act="toggle" data-key="steamLight"><div class="rt"><b>Lightweight Steam engine (experimental)</b><small>${light?steamEngLine(e):'Off: the normal Steam client does everything (Classic). On: Steam\'s own engine runs with no Steam window; anything it can\'t do (VAC games, errors) still uses the normal client'}</small></div><div class="sw ${light?'on':''}"></div></button>`;
+  h+=`<button class="row" data-f data-k="s-steamOpen" data-act="toggle" data-key="steamOpen"><div class="rt"><b>Open Steam client (experimental)</b><small>${open?steamEngLine(e):'Hearth\'s own open-source Steam client: your library, installs and updates without Steam running. DRM-free games start directly; Steamworks and VAC games, and anything it can\'t do, still use the normal Steam client'}</small></div><div class="sw ${open?'on':''}"></div></button>`;
   if(on && SENG.qr) h+=`<div class="mfqr"><div class="mfqrcode" role="img" aria-label="QR code to sign in to Steam">${SENG.qr}</div><div class="rt"><h2>Sign in with the Steam app</h2><p>Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code. Hearth finishes by itself.</p><div class="mfbtns"><button class="btn" data-f data-k="s-steamEngQrX" data-act="steamEngCancel">${I.x}Cancel</button></div></div></div>`;
-  else if(on && s.engine==='ready') h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>${s.signedIn?'Steam: '+esc(s.account||'signed in'):'Sign in to Steam'}</b><small>${s.signedIn?'Sign out of the lightweight engine':'For the lightweight engine: with the Steam app on your phone, or your name and password. Hearth doesn\'t keep what you type'}</small></div><div class="rv">›</div></button>`;
+  else if(on && s.engine==='ready') h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>${s.signedIn?'Steam: '+esc(s.account||'signed in'):'Sign in to Steam'}</b><small>${s.signedIn?(open?'Sign out of the open Steam client':'Sign out of the lightweight engine'):(open?'For the open Steam client':'For the lightweight engine')+': with the Steam app on your phone, or your name and password. Hearth doesn\'t keep what you type'}</small></div><div class="rv">›</div></button>`;
   return h;
 }
 function steamEngWatch(){
@@ -9306,7 +9308,8 @@ function act(el){
       if(host && /^src/.test(k)) setSources(undo);
       else if(host && k==='steamBg') call('library.setSteamBackground',{on}).catch(undo);
       else if(host && k==='steamOnDemand') call('library.setSteamOnDemand',{on}).catch(undo);
-      else if(host && k==='steamLight') call('steam.engine.set',{lightweight:on}).then(()=>{ toast(on?'Lightweight Steam engine on (experimental)':'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(undo);
+      else if(host && (k==='steamLight'||k==='steamOpen')){ const other=k==='steamLight'?'steamOpen':'steamLight', was=S.set[other]; if(on) S.set[other]=false;
+        call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Open Steam client on (experimental)':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
       else send({type:'setting',key:d.key,value:S.set[d.key]});
       if(S.layers.includes('qam')){ renderQam(); setFocus($(`#qam [data-k="q-${d.key}"]`),true); } else render('s-'+d.key);
       return; }
@@ -11520,7 +11523,7 @@ async function loadLibrary(rescan, announce){
     if(lib.quickResume) applyQuick({list:lib.quickResume.list, on:lib.quickResume.on});
     S.set.steamBg = lib.steamBackground!==false;
     S.set.steamOnDemand = lib.steamOnDemand!==false;
-    S.set.steamLight = lib.steamLightweight===true; if(LINUX) steamEngRefresh();
+    S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; if(LINUX) steamEngRefresh();
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
   }catch(e){ toast("Couldn't load your library: "+e.message); }
