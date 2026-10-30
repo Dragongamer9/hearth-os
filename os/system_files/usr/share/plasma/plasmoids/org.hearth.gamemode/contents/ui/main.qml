@@ -12,7 +12,8 @@ PlasmoidItem {
     Plasmoid.icon: "input-gamepad"
     toolTipMainText: "Game Mode"
     toolTipSubText: "Back to Hearth's Game Mode (Super+G)"
-    preferredRepresentation: compactRepresentation
+    // Shown as it is on the panel (no popup): the pill below is the whole widget.
+    preferredRepresentation: fullRepresentation
 
     P5Support.DataSource {
         id: exec
@@ -22,7 +23,7 @@ PlasmoidItem {
     }
 
     // Mantel's pill: "Game Mode" on the accent colour.
-    compactRepresentation: MouseArea {
+    fullRepresentation: MouseArea {
         id: area
         hoverEnabled: true
         Accessible.name: "Game Mode"
@@ -30,6 +31,7 @@ PlasmoidItem {
         Layout.minimumWidth: label.implicitWidth + Kirigami.Units.largeSpacing * 2
         Layout.preferredWidth: Layout.minimumWidth
         Layout.minimumHeight: Kirigami.Units.gridUnit
+        Layout.maximumWidth: Layout.minimumWidth
         onClicked: exec.connectSource("nimbus-mode game")
         Rectangle {
             anchors.centerIn: parent

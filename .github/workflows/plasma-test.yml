@@ -162,6 +162,10 @@ jobs:
           sed -i 's/^          //' /tmp/shot.py
           shot() { [ -n "$OUTER" ] && WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/$1.png" 2>>shots/shot-errors.txt && { sleep 1; return; }; timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || timeout 20 spectacle -b -n -f -o "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt; sleep 1; }
           shot plasma-1-desktop
+          # Which widgets the panel really has (Hearth's layout script).
+          timeout 10 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+            'print(panels().map(function(p){return p.widgets().map(function(w){return w.type}).join(",")}).join(" | "))' > shots/panel-widgets.txt 2>&1
+          echo "::notice title=Panel widgets::$(tr '\n' ' ' < shots/panel-widgets.txt | cut -c1-600)"
           timeout 10 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu 2>/dev/null \
             || timeout 10 dbus-send --session --type=method_call --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu
           sleep 5; shot plasma-4-launcher
