@@ -1,5 +1,7 @@
 //! Hearth's host logic in Rust, without a window: the Tauri app (hosts/hearth-rs) puts the UI on screen and
 //! passes its messages here. Replaces the Electron host (hosts/linux) a part at a time; see docs/RUST.md.
+/// Hearth's version (this crate's, which the owner sets with Hearth's): Hearth Link reports it for device health.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod access;   // Settings › Accessibility (desktop/shell/hearth-access)
 pub mod admin;
 pub mod appid;
