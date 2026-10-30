@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
 
 const UI = path.join(__dirname, '..', 'ui');
 const OUT = path.join(__dirname, '..', 'shots', 'pages');
-const APPS = ['disk-usage', 'system-info', 'logs', 'network', 'passwords', 'printers', 'welcome'];
+const APPS = ['disk-usage', 'system-info', 'logs', 'network', 'passwords', 'printers', 'welcome', 'benchmark'].filter(a => !process.env.ONLY || process.env.ONLY.split(',').includes(a));
 
 // The pages fetch help.json, which needs http (not file://): a tiny server for ui/.
 function serve() {
@@ -44,6 +44,21 @@ function serve() {
       if (!blank) errors.push(`${app}${t ? ' / ' + t : ''}: the page is empty`);
     }
     await page.keyboard.press('Escape');
+    if (app === 'benchmark') {
+      // A Quick test on the sample data: the on-battery warning, the live view, then B (Escape) stops it.
+      await page.click('[data-tab="run"]'); await page.waitForTimeout(300);
+      await page.click('[data-run="full"]'); await page.waitForTimeout(300);
+      if (!(await page.$('.dlg'))) errors.push('benchmark: no on-battery warning before a Full test');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      await page.click('[data-run="quick"]'); await page.waitForTimeout(1500);
+      await page.screenshot({ path: path.join(OUT, 'benchmark-running.png') });
+      if (!(await page.$('#stop'))) errors.push('benchmark: the live view didn\'t show');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      if (await page.$('#stop')) errors.push('benchmark: B didn\'t stop the run');
+      await page.click('[data-run="quick"]'); await page.waitForTimeout(6500);
+      if (!(await page.$('.score'))) errors.push('benchmark: no results after a run');
+      await page.screenshot({ path: path.join(OUT, 'benchmark-done.png') });
+    }
   }
   await browser.close();
   srv.close();

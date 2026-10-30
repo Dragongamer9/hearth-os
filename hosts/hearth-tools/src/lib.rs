@@ -1,5 +1,5 @@
-//! Hearth Tools: Hearth OS's everyday system tools, seven apps in one program (`hearth-tools --app <name>`):
-//! Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers & Scanner, Welcome & Tips.
+//! Hearth Tools: Hearth OS's everyday system tools, eight apps in one program (`hearth-tools --app <name>`):
+//! Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers & Scanner, Welcome & Tips, Benchmark.
 //! One program because they share everything but their page: the window (Tauri: WebKitGTK), the look and
 //! controller handling (ui/common.*), and the helpers here; one build instead of seven. Each app has its own
 //! menu entry, icon and window (its own .desktop file runs it with --app).
@@ -7,6 +7,8 @@
 //! The page calls `call(method, args)` for quick answers and `start(job, args)` for long work that reports as it
 //! goes (scans, the speed test, ping...). Both land in `call` / `job` below.
 
+#[cfg(target_os = "linux")]
+pub mod benchmark;
 pub mod diskusage;
 pub mod logs;
 pub mod network;
@@ -20,7 +22,7 @@ use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
 
 /// The apps: (--app name, window title, page).
-pub const APPS: [(&str, &str, &str); 7] = [
+pub const APPS: [(&str, &str, &str); 8] = [
     ("disk-usage", "Disk Usage", "disk-usage.html"),
     ("system-info", "System Info", "system-info.html"),
     ("logs", "Logs", "logs.html"),
@@ -28,6 +30,7 @@ pub const APPS: [(&str, &str, &str); 7] = [
     ("passwords", "Passwords & Keys", "passwords.html"),
     ("printers", "Printers & Scanner", "printers.html"),
     ("welcome", "Welcome & Tips", "welcome.html"),
+    ("benchmark", "Hearth Benchmark", "benchmark.html"),
 ];
 
 pub fn app(name: &str) -> Option<(&'static str, &'static str, &'static str)> { APPS.iter().copied().find(|a| a.0 == name) }
@@ -82,6 +85,15 @@ pub fn call(method: &str, args: &Value) -> Result<Value, String> {
         "scan.save" => printers::save(args),
         "scan.openFolder" => diskusage::open(&util::user_dir("DOCUMENTS", "Documents").join("Scans").to_string_lossy()),
 
+        #[cfg(target_os = "linux")]
+        "bench.state" => benchmark::state(),
+        #[cfg(target_os = "linux")]
+        "bench.history" => benchmark::history(),
+        #[cfg(target_os = "linux")]
+        "bench.compare" => benchmark::compare(args),
+        #[cfg(target_os = "linux")]
+        "bench.delete" => benchmark::delete(args),
+
         "app.info" => welcome::info(),
         "welcome.done" => welcome::done(),
         "app.open" => welcome::open(args),
@@ -105,6 +117,10 @@ pub fn job(name: &str, args: &Value, cancel: &AtomicBool, emit: &(dyn Fn(Value) 
         "scan.devices" => printers::devices(),
         "print.discover" => printers::discover(),
         "sys.overview" => sysinfo::overview(),
+        #[cfg(target_os = "linux")]
+        "bench.run" => benchmark::run(args, cancel, emit),
+        #[cfg(target_os = "linux")]
+        "bench.devices" => benchmark::devices(),
         _ => Err(format!("unknown job {name}")),
     }
 }

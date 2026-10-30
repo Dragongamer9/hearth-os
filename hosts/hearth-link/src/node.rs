@@ -533,6 +533,7 @@ impl Node {
             "ping" => Ok(json!({"ok": true})),
             o if o.starts_with("saves.") => self.clone().saves_answer(peer, op, req).await,
             o if o.starts_with("device.") || o.starts_with("devices.") => self.clone().health_answer(peer, op, req).await,
+            o if o.starts_with("bench.") => self.clone().bench_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
             _ => Err(format!("Unknown request: {op}")),
         }
@@ -1013,6 +1014,7 @@ impl Node {
             }
             "ticket" => Ok(json!({"ticket": self.ticket()})),
             c if c.starts_with("storage.") => self.storage_command(c, a).await,
+            c if c.starts_with("bench.") => self.bench_command(c, a).await,
             _ => Err(format!("Unknown command: {cmd}")),
         }
     }

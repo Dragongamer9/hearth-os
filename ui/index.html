@@ -3897,6 +3897,7 @@ function pageSystem(){
     h += `<div class="row"><span class="ricon">${I.dl}</span><div class="rt"><b>Storage</b><small>${gb(st.freeBytes)} free of ${gb(st.totalBytes)}</small><div class="storage"><i style="width:${pct}%"></i></div></div><div class="rv">${pct}% used</div></div>`;
   }
   if(LINUX) h += oldFilesRows();
+  if(feat('benchmark')) h += benchRow();   // Hearth Benchmark (Hearth Tools)
   const tz=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return ''; } })();
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX || WINHOST) h += browserRows();
@@ -10286,8 +10287,12 @@ function gameOptionItems(g){
 function gamingLabRow(){
   return `<button class="row" data-f data-k="ctl-lab" data-act="gamingApp" data-v="controller-lab"><span class="ricon">${I.pad}</span><div class="rt"><b>Controller Lab</b><small>Test every button, stick, trigger, gyro and rumble; measure stick drift; calibrate</small></div><div class="rv">›</div></button>`;
 }
+// Hearth Benchmark (Hearth Tools' benchmark app, host.info feature "benchmark"): Settings › System, full screen in Game Mode.
+function benchRow(){
+  return `<button class="row" data-f data-k="sy-bench" data-act="gamingApp" data-v="benchmark"><span class="ricon">${I.sliders}</span><div class="rt"><b>Benchmark this device</b><small>Processor, memory, storage, graphics, heat over time, battery and network, with scores, history and your other devices</small></div><div class="rv">›</div></button>`;
+}
 function gamingOpen(app, id){
-  const names = {'controller-lab':'Controller Lab', saves:'Saves', mods:'Mods'};
+  const names = {'controller-lab':'Controller Lab', saves:'Saves', mods:'Mods', benchmark:'Hearth Benchmark'};
   closeAll();
   return call('gamingApps.open',{app, game:id||''},15000).then(()=>toast(`Opening ${names[app]||app}…`)).catch(e=>toast(e.message));
 }

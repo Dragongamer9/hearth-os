@@ -588,6 +588,17 @@ if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -m644 /ctx/nimbus-app/hearth-tools/hearth-*.desktop /usr/share/applications/
 fi
 # ---- end Hearth Tools
+# ---- Hearth Benchmark (Hearth Tools' --app benchmark): the programs its tests run. 7-Zip (processor), fio (storage;
+# only its libaio engine, without the weak dependencies that pull in Ceph and RDMA), glmark2 (OpenGL and the
+# game-style scenes) and vkmark (Vulkan). Each is optional: a missing one is a warning here and a skipped test in the
+# app, never a failed image.
+dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False 7zip fio fio-engine-libaio glmark2 vkmark \
+  || echo "warning: Hearth Benchmark: some benchmark programs couldn't be installed"
+command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null \
+  || dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False p7zip p7zip-plugins || true
+for p in fio glmark2 vkmark; do command -v "$p" >/dev/null || echo "warning: Hearth Benchmark: $p isn't installed (its test will be skipped)"; done
+command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null || echo "warning: Hearth Benchmark: 7-Zip isn't installed (the processor tests will be skipped)"
+# ---- end Hearth Benchmark
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session

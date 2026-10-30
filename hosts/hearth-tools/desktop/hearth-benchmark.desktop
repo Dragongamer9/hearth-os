@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Hearth Benchmark
+GenericName=Benchmark
+Comment=How fast this device is: processor, memory, storage, graphics, heat over time, battery and network, with scores and history
+Exec=/usr/bin/hearth-tools --app benchmark
+TryExec=/usr/bin/hearth-tools
+Icon=hearth-benchmark
+Type=Application
+Categories=System;Utility;Monitor;
+Keywords=benchmark;performance;speed;test;score;cpu;gpu;fps;thermal;temperature;battery;stress;
+StartupWMClass=io.github.dragongamer9.hearth.benchmark
