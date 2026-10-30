@@ -1,5 +1,5 @@
 failed:
-[game] D-pad moves between links: down, down, right, left, up (got ['body', 'body', 'body', 'body', 'body']; {'registered': 'HearthSpatial; HearthSpatialBack', 'last': None, 'errors': []})
+[game] D-pad moves between links: down, down, right, left, up (got ['body', 'body', 'body', 'body', 'body']; {'registered': 'HearthSpatial; HearthSpatialBack', 'last': None, 'errors': [], 'console': ['[JavaScript Warning: "This page is in Quirks Mode. Page layout may be impacted. For Standards Mode use “<!DOCTYPE html>”." {file: "data:text/html;charset=utf-8,<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif"><p>Typed with Hearth Browser\'s keyboard:</p><input id="i" style="font-size:28px;width:80%25"></body>" line: 0}]'], 'actor': "NotSupportedError: WindowGlobalParent.getActor: Window protocol 'HearthSpatial' doesn't match remote type 'file'"})
 [game] B (Esc) goes back to the previous page (title 'two')
 warnings:
 
