@@ -76,6 +76,32 @@ pub struct Running {
 pub const QUICK_RESUME_MAX: usize = 5;
 fn quick_file() -> PathBuf { PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-quick-resume.json") }
 fn proc_root() -> &'static std::path::Path { std::path::Path::new("/proc") }
+
+/// Open engine: a game's first direct start is a test. Still running after 20 seconds (or having run that long) means
+/// it works and it starts directly from now on; gone sooner means it needs Valve's client (Steam's DRM, a launcher):
+/// that's remembered and it's started again through Valve's client right away.
+fn first_run_watch(track: crate::procs::Track, app: u32, home: std::path::PathBuf, uri: String) {
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let me = std::process::id();
+        let alive = |t: &crate::procs::Track| {
+            let snap = crate::procs::snapshot(proc_root());
+            let direct = crate::procs::Track { steam_app_id: None, ..t.clone() };
+            !crate::procs::game_processes(&direct, &snap, me).is_empty()
+        };
+        while start.elapsed() < std::time::Duration::from_secs(20) && alive(&track) { std::thread::sleep(std::time::Duration::from_millis(500)); }
+        let ok = steam_open_first_run_ok(start.elapsed(), alive(&track));
+        crate::steam_engine::launch_result(app, ok);
+        if !ok {
+            crate::bridge::log(&format!("steam (open): {app} stopped at once when started directly; starting it through Valve's client"));
+            steam::ensure_running_silent(&home);
+            if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
+        }
+    });
+}
+
+/// Same rule as the engine's LaunchPolicy.FirstRunOk (pure, for the tests).
+pub fn steam_open_first_run_ok(ran: std::time::Duration, still_running: bool) -> bool { still_running || ran >= std::time::Duration::from_secs(20) }
 fn pids_of(track: &crate::procs::Track) -> Vec<u32> { crate::procs::game_processes(track, &crate::procs::snapshot(proc_root()), std::process::id()) }
 fn rec(r: &Running) -> Value {
     json!({"id": r.id, "pid": r.track.pid, "dirs": r.track.dirs, "steamAppId": r.track.steam_app_id, "appId": r.app_id, "launchedAt": r.launched_at, "startedAt": r.started_at,
@@ -460,10 +486,11 @@ impl Library {
         let app: u32 = id.strip_prefix("steam:").and_then(|a| a.parse().ok()).ok_or("That isn't a Steam game.")?;
         if !steam::client_installed(&self.home) { return Err("Steam isn't installed on this device.".into()); }
         let lib = self.steam_library().ok_or("Steam isn't set up yet. Open Steam once, then try again.")?;
-        // Lightweight engine: Steam's engine takes the install up itself (its records show progress as usual).
-        if crate::steam_engine::install(self.steam_lightweight(), app, &lib).is_some() {
+        // Lightweight or Open engine: it takes the install up itself (its records show progress as usual).
+        let mode = self.steam_engine_mode();
+        if crate::steam_engine::install(mode, app, &lib).is_some() {
             if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = None; }
-            return Ok(json!({"silent": true, "waiting": false, "lightweight": true}));
+            return Ok(json!({"silent": true, "waiting": false, "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}));
         }
         let r = crate::steam_ctl::install(&self.home, app, &g.title, &lib)?;
         if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = Some("Waiting for Steam".into()); }
@@ -680,11 +707,29 @@ impl Library {
                 let uri = g.launch_uri.clone().unwrap_or_default();
                 crate::steam_ctl::touch();
                 let app_num: u32 = id.trim_start_matches("steam:").parse().unwrap_or(0);
-                if self.steam_lightweight() && app_num > 0 && !steam::client_running() {
+                let mode = self.steam_engine_mode();
+                // Open engine: a DRM-free game is started by Hearth itself (natively or with Proton through umu); everything
+                // else (Steamworks, VAC, a failed first start…) starts through Valve's client below.
+                let direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
+                if let Some(info) = direct {
+                    let opts = crate::game_options::get(&self.store, id);
+                    match crate::steam_engine::launch_direct(&info, &opts, app_num, app_id) {
+                        Ok(pid) => {
+                            let dirs = info["dir"].as_str().map(|d| vec![d.to_string()]).unwrap_or_default();
+                            let track = crate::procs::Track { pid: Some(pid), dirs, steam_app_id: Some(app_num.to_string()), app_id: Some(app_id) };
+                            if info["firstRun"] == true { first_run_watch(track.clone(), app_num, self.home.clone(), uri.clone()); }
+                            crate::bridge::log(&format!("launch: {id} as id {app_id} (steam, started directly by Hearth, process {pid})"));
+                            self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id });
+                            return Ok(json!({"tracked": true, "direct": true}));
+                        }
+                        Err(e) => crate::bridge::log(&format!("steam (open): {app_num} couldn't start directly ({e}); using Valve's client")),
+                    }
+                }
+                if mode == crate::steam_engine::Mode::Lightweight && app_num > 0 && !steam::client_running() {
                     // Lightweight engine first; anything it can't do starts with the normal client instead.
                     let home = self.home.clone();
                     std::thread::spawn(move || {
-                        if crate::steam_engine::launch(true, app_num) { return; }
+                        if crate::steam_engine::launch(crate::steam_engine::Mode::Lightweight, app_num) { return; }
                         steam::ensure_running_silent(&home);
                         if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
                     });
@@ -810,7 +855,7 @@ impl Library {
         let mut events = self.beacon_tick();
         // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
         if self.store.source_on("steam") {
-            crate::steam_engine::tick(self.steam_lightweight());
+            crate::steam_engine::tick(self.steam_engine_mode());
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
             events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
         }
@@ -1119,7 +1164,9 @@ impl Library {
     /// "Start Steam only when needed" (Settings › Library, on by default).
     pub fn steam_on_demand(&self) -> bool { self.store.data["steamOnDemand"] != false }
     /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
-    pub fn steam_lightweight(&self) -> bool { self.store.data["steamEngine"] == "lightweight" }
+    pub fn steam_lightweight(&self) -> bool { self.steam_engine_mode() == crate::steam_engine::Mode::Lightweight }
+    /// Settings › Library › Steam engine: Classic (default), Lightweight or Open (both experimental).
+    pub fn steam_engine_mode(&self) -> crate::steam_engine::Mode { crate::steam_engine::Mode::from_setting(&self.store.data["steamEngine"]) }
 
     pub fn get(&mut self, rescan: bool) -> Value {
         if rescan || self.games.is_empty() { self.scan(); }
@@ -1128,13 +1175,21 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamLightweight": self.steam_lightweight(), "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn steam_open_first_start_rule() {
+        use std::time::Duration;
+        assert!(steam_open_first_run_ok(Duration::from_secs(20), true));
+        assert!(steam_open_first_run_ok(Duration::from_secs(25), false));
+        assert!(!steam_open_first_run_ok(Duration::from_secs(4), false));
+    }
     #[test]
     fn downloads_with_a_queued_store_game_answers() {
         let dir = tempfile::tempdir().unwrap();

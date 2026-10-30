@@ -27,12 +27,16 @@
     <PackageReference Include="OpenSteamworks.Messaging" Version="1.2.0" />
     <PackageReference Include="OpenSteamworks.Messaging.SharedConnection" Version="1.2.0" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
+    <!-- LGPL-2.1 (SteamRE/SteamKit): the Open engine's Steam protocol library, used unmodified as a library
+         (its own assembly, replaceable). See LICENSE.SteamKit2. -->
+    <PackageReference Include="SteamKit2" Version="3.4.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../HearthSteam.Core/HearthSteam.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../LICENSE.OpenSteamClient" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../LICENSE.SteamKit2" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../hearth-steam-engine.service" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
