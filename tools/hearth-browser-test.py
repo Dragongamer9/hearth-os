@@ -144,6 +144,12 @@ CHROME_KEY = r'''
 PAGE = 'data:text/html;charset=utf-8,' + ('<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif">'
                                           '<p>Typed with Hearth Browser\'s keyboard:</p><input id="i" style="font-size:28px;width:80%25"></body>')
 
+# Three links: one at the top in the middle, one under it, one to the right of that.
+SPATIAL_PAGE = ('data:text/html;charset=utf-8,<title>%s</title><body style="background:%%23222;color:%%23eee;font:24px sans-serif;margin:0">'
+                '<a id="top" href="%%23t" style="position:absolute;left:45%%25;top:80px">Top</a>'
+                '<a id="below" href="%%23b" style="position:absolute;left:45%%25;top:260px">Below</a>'
+                '<a id="right" href="%%23r" style="position:absolute;left:75%%25;top:262px">Right</a></body>')
+
 
 def run_mode(ff, out, mode, extras, port):
     game = mode == 'game'
@@ -270,6 +276,31 @@ def run_mode(ff, out, mode, extras, port):
             ok(auto is True, '[game] the keyboard comes up with the address bar')
             m.shot(os.path.join(out, 'game-3-address-bar.png'))
             m.js('const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); HearthBrowser.keyboardOf(window).close(); return true;')
+            # The D-pad in a web page: arrows move between links (spatial-child.sys.mjs), Esc goes back.
+            m.context('content')
+            m.cmd('WebDriver:Navigate', {'url': SPATIAL_PAGE % 'one'})
+            m.js('document.activeElement && document.activeElement.blur(); return true;')
+            m.context('chrome')
+            m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
+            seen = []
+            for key in (('ArrowDown', 'ArrowDown', 40), ('ArrowDown', 'ArrowDown', 40), ('ArrowRight', 'ArrowRight', 39), ('ArrowLeft', 'ArrowLeft', 37), ('ArrowUp', 'ArrowUp', 38)):
+                m.js(CHROME_KEY, key[0], key[1], key[2], False)
+                m.context('content')
+                seen.append(m.js('return document.activeElement ? (document.activeElement.id || document.activeElement.localName) : "";'))
+                m.context('chrome')
+            report['spatial'] = seen
+            ok(seen == ['top', 'below', 'right', 'below', 'top'], '[game] D-pad moves between links: down, down, right, left, up (got %s)' % seen)
+            m.shot(os.path.join(out, 'game-4-dpad.png'))
+            m.context('content')
+            m.cmd('WebDriver:Navigate', {'url': SPATIAL_PAGE % 'two'})
+            m.context('chrome')
+            m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
+            m.js(CHROME_KEY, 'Escape', 'Escape', 27, False)
+            m.js('await new Promise(r => setTimeout(r, 1200)); return true;')
+            m.context('content')
+            t = m.cmd('WebDriver:GetTitle').get('value')
+            m.context('chrome')
+            ok(t == 'one', '[game] B (Esc) goes back to the previous page (title %r)' % t)
 
         # Google's sign-in page.
         m.context('content')
