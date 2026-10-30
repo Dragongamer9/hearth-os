@@ -243,8 +243,13 @@ pub fn file_name(id: &str) -> Result<String, String> {
     Ok(out + ".json")
 }
 
-/// The layout a game has before you choose one: Off, or "Strategy (RTS)" for Beacon's strategy games.
-pub fn default_layout(id: &str) -> &'static str { if crate::beacon::rts_by_default(id) && template("rts").is_some() { "rts" } else { "off" } }
+/// The layout a game has before you choose one: Off, "Strategy (RTS)" for Beacon's strategy games, or "Mouse only"
+/// for launchers' own windows (Xodus Nexus, Battle.net), which are made for a mouse. Their games start Off.
+pub fn default_layout(id: &str) -> &'static str {
+    if crate::beacon::rts_by_default(id) && template("rts").is_some() { "rts" }
+    else if (crate::xodus::pointer_by_default(id) || id == crate::battlenet::APP_ID) && template("mouse").is_some() { "mouse" }
+    else { "off" }
+}
 
 /// A game's saved choice, checked: {"layout", "custom", "prefs"}. No file: the game's default (default_layout).
 /// Broken files are Off.
@@ -553,6 +558,20 @@ mod tests {
         // Changing only the Quick Access settings keeps the default layout.
         let c = save_in(&dir, "beacon:bfme1", None, None, Some(&json!({"sensitivity": 1.5}))).unwrap();
         assert_eq!(c["layout"], "rts");
+    }
+
+    #[test]
+    fn launcher_windows_start_with_the_mouse() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().to_path_buf();
+        assert_eq!(load_in(&dir, "xodus:nexus")["layout"], "mouse");
+        assert_eq!(load_in(&dir, "battlenet:app")["layout"], "mouse");
+        assert_eq!(resolve(&load_in(&dir, "battlenet:app")).unwrap()["name"], "Mouse only");
+        // Their games have controller support of their own.
+        assert_eq!(load_in(&dir, "battlenet:overwatch")["layout"], "off");
+        assert_eq!(load_in(&dir, "xodus:game:forza-horizon-5")["layout"], "off");
+        save_in(&dir, "xodus:nexus", Some("off"), None, None).unwrap();
+        assert_eq!(load_in(&dir, "xodus:nexus")["layout"], "off");
     }
 
     #[test]

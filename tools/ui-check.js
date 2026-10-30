@@ -190,6 +190,28 @@ const path = require('path');
     S.layers = []; await loadAccounts(); navigate('stores', {}, false);
     if (!document.querySelector('#view [data-k="sa-beacon-open"]')) throw new Error('no Beacon card');
   });
+  // Xodus Nexus and Battle.net: their cards in Library › Stores (like Beacon's), Battle.net's section in Game Mode ›
+  // Store, and the Mouse only layout their own windows start with.
+  await step('launcher stores cards', async () => {
+    S.layers = []; await loadAccounts(); navigate('stores', {}, false);
+    if (!document.querySelector('#view [data-k="sa-xodus-open"]') || !/Comes with Hearth OS/.test(document.querySelector('#view').textContent)) throw new Error('no Xodus Nexus card');
+    if (!document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Set up Battle.net');
+    const was = ACC.battlenet; ACC.battlenet = {installed: true, busy: false, games: 2, error: null}; render(null, true);
+    const ok = ['sa-bnet-open', 'sa-bnet-sign', 'sa-bnet-show', 'sa-bnet-rm'].every(k => document.querySelector(`#view [data-k="${k}"]`));
+    ACC.battlenet = was; render(null, true);
+    if (!ok) throw new Error("Battle.net's card is missing a button once set up");
+  });
+  await step('store battle.net section', async () => {
+    S.layers = []; S.history = []; SHOP.page = null; navigate('shop', {}, false); shopTab('battlenet');
+    await new Promise(r => setTimeout(r, 300));
+    if (!document.querySelector('#view [data-k="sf-t-battlenet"].on') || !document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Battle.net section in the Store');
+    input('rb'); if (SHOP.store !== 'steam') throw new Error('RB from Battle.net did not go round to Steam: ' + SHOP.store);
+  });
+  await step('launcher windows start with the mouse', async () => {
+    imLoadTables(); imLoad('battlenet:app', true); imLoad('xodus:nexus', true);
+    await new Promise(r => setTimeout(r, 200));
+    if (IM.games['battlenet:app'].layout !== 'mouse' || IM.games['xodus:nexus'].layout !== 'mouse') throw new Error("a launcher's window doesn't start with Mouse only");
+  });
   await step('beacon leave', () => { S.layers = []; S.tab = 'inst'; navigate('home', {}, false); });
   // ---- Hearth's gaming apps (with the host's "gamingApps" feature): Settings › Controls › Controller Lab, and a
   // game's ⋯ menu › Back up saves / Mods (Beacon's games keep only Beacon's own Mods).

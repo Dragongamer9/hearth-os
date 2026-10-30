@@ -17,6 +17,7 @@ pub struct Bridge {
     pub emit: system::bt_scan::Emit,
     pub updates: crate::admin::Updates,
     pub xodus: crate::xodus::Xodus,
+    pub battlenet: crate::battlenet::Battlenet,
     pub profiles: crate::profiles::Profiles,
     /// The parental-controls PIN unlocks managing profiles for a few minutes.
     pub pin_until: std::time::Instant,
@@ -100,7 +101,7 @@ impl Bridge {
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
-        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), profiles, pin_until: std::time::Instant::now(),
+        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), battlenet: crate::battlenet::Battlenet::new(), profiles, pin_until: std::time::Instant::now(),
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
@@ -254,7 +255,13 @@ impl Bridge {
         let bs = &self.library.beacon;
         let beacon = json!({"installed": bs.cli.is_some(), "app": bs.app.is_some(), "via": bs.cli.as_ref().map(|c| c.via()),
             "games": bs.games.len(), "setUp": bs.games.iter().filter(|g| g.installed).count(), "error": bs.error});
-        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy(), "beacon": beacon})
+        // Launchers with a card of their own in Library › Stores, like Beacon's: Xodus Nexus (Hearth OS ships it) and
+        // Battle.net (set up with one press). Quick: only files are looked at, never the network.
+        let xs = self.xodus.status(false);
+        let xodus = json!({"installed": xs["installed"], "preinstalled": xs["preinstalled"], "version": xs["version"], "games": xs["games"],
+            "busy": xs["busy"], "error": xs["error"]});
+        json!({"accounts": accounts, "installRoot": self.library.install_root().to_string_lossy(), "beacon": beacon, "xodus": xodus,
+               "battlenet": self.battlenet.status()})
     }
 
     /// Signs in to a store: the sign-in page opens in its own window, and the answer comes later (this call is
@@ -980,6 +987,14 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
+            // Battle.net (battlenet.rs): one-press setup in its own Proton prefix; you sign in in Battle.net's own window.
+            "battlenet.status" => Ok(self.battlenet.status()),
+            "battlenet.install" => Ok(self.battlenet.install(self.emit.clone())),
+            "battlenet.signInDesktop" => { crate::battlenet::open_in_desktop()?; Ok(json!({})) }
+            "battlenet.remove" => {
+                if self.battlenet.state.lock().unwrap()["busy"] == true { return Err("Battle.net is still being set up".into()); }
+                crate::battlenet::remove()?; self.library.scan(); Ok(self.battlenet.status())
+            }
             // Which engine draws Hearth: Chromium (the Electron window app; automatic on Nvidia) or WebKit (renderer.rs).
             "display.renderer" => {
                 if let Some(v) = a["set"].as_str() { crate::renderer::set(v)?; }
@@ -1748,7 +1763,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet"];
     // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
     f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }
