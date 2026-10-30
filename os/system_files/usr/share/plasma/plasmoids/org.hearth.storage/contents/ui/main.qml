@@ -71,7 +71,7 @@ PlasmoidItem {
                 d.lastBackup ? "Backed up " + new Date(d.lastBackup).toLocaleDateString() : ""].filter(x => x).join(" · ");
     }
     Component.onCompleted: refresh()
-    onExpandedChanged: if (expanded) { message = ""; refresh(); }
+    onExpandedChanged: if (root.expanded) { message = ""; refresh(); }
     Timer { interval: root.expanded ? 10000 : 120000; running: true; repeat: true; onTriggered: root.refresh() }
 
     fullRepresentation: ColumnLayout {

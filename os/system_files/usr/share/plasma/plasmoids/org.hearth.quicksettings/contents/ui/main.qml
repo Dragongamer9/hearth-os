@@ -45,7 +45,7 @@ PlasmoidItem {
     function refresh() { exec.run("python3 " + helper + " quick", out => { const s = lastJson(out, null); if (s) root.st = s; }); }
     function set(key, val) { exec.run("python3 " + helper + " quick-set " + key + " " + val, () => refresh()); }
     function action(cmd) { exec.run(cmd); root.expanded = false; }
-    onExpandedChanged: if (expanded) refresh()
+    onExpandedChanged: if (root.expanded) refresh()
     Component.onCompleted: refresh()
 
     fullRepresentation: ColumnLayout {

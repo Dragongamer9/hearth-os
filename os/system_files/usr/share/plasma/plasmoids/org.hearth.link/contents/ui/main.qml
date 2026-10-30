@@ -57,7 +57,7 @@ PlasmoidItem {
         });
     }
     Component.onCompleted: refresh()
-    onExpandedChanged: if (expanded) { message = ""; refresh(); }
+    onExpandedChanged: if (root.expanded) { message = ""; refresh(); }
     Timer { interval: root.expanded ? 3000 : 60000; running: true; repeat: true; onTriggered: root.refresh() }
 
     fullRepresentation: ColumnLayout {

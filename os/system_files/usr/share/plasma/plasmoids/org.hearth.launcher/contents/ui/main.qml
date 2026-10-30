@@ -61,7 +61,7 @@ PlasmoidItem {
         });
     }
     Component.onCompleted: refresh()
-    onExpandedChanged: if (expanded) { query = ""; folderOpen = false; refresh(); }
+    onExpandedChanged: if (root.expanded) { query = ""; folderOpen = false; refresh(); }
 
     function matches(a, t) {
         return [a.name, a.generic, a.id].concat(a.keywords || []).some(x => String(x || "").toLowerCase().indexOf(t) >= 0);

@@ -33,7 +33,7 @@ jobs:
           dnf -y install git python3 python3-dbus python3-pillow nodejs ImageMagick procps-ng dbus-daemon dbus-tools \
             plasma-workspace kwin plasma-desktop plasma-breeze breeze-icon-theme google-noto-sans-fonts \
             qt6-qtdeclarative-devel kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers >/dev/null
-          dnf -y install --skip-unavailable spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools >/dev/null || true
+          dnf -y install --skip-unavailable spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools kactivitymanagerd labwc grim wlr-randr >/dev/null || true
           for b in kwin_wayland plasmashell kpackagetool6; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
           plasmashell --version || true
 
@@ -112,10 +112,24 @@ jobs:
           printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
           # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
-          /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          # A headless labwc (as in the Desktop Mode test) holds KWin as a 1920x1080 window, so grim takes the
+          # pictures the same way as Hearth Classic's; KWin's own screenshot API is the fallback.
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
+            labwc >shots/outer.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          if [ -n "$OUTER" ]; then
+            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          else
+            /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          fi
           for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
           [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
           export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
+          # Without systemd nothing starts Plasma's activity manager over D-Bus here; plasmashell won't load without it.
+          for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >shots/kamd.log 2>&1 & break; }; done
+          sleep 3
           plasmashell >shots/plasmashell.log 2>&1 &
           sleep 30
           # KWin's screenshot API (KWIN_SCREENSHOT_NO_PERMISSION_CHECKS lets this script use it): spectacle, or a few
@@ -146,7 +160,7 @@ jobs:
           Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
           PY
           sed -i 's/^          //' /tmp/shot.py
-          shot() { timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || timeout 20 spectacle -b -n -f -o "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt; sleep 1; }
+          shot() { [ -n "$OUTER" ] && WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/$1.png" 2>>shots/shot-errors.txt && { sleep 1; return; }; timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || timeout 20 spectacle -b -n -f -o "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt; sleep 1; }
           shot plasma-1-desktop
           timeout 10 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu 2>/dev/null \
             || timeout 10 dbus-send --session --type=method_call --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu
@@ -175,7 +189,7 @@ jobs:
           ls shots/*.png >/dev/null 2>&1 || { echo "::error title=screenshots::none were taken: $(head -c 600 shots/shot-errors.txt 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; }
           head -c 1500 shots/shot-errors.txt 2>/dev/null | tr '\n' '|' | sed 's/^/::notice title=screenshot messages::/'; echo
           # Plasma and KWin end here, so nothing keeps the step open.
-          pkill plasmawindowed; pkill plasmashell; pkill -f /tmp/kwin_wayland; pkill -f kscreenlocker_greet; pkill dbus-daemon
+          pkill plasmawindowed; pkill plasmashell; pkill -f /tmp/kwin_wayland; pkill -f kscreenlocker_greet; pkill -f kactivitymanagerd; pkill labwc; pkill dbus-daemon
           sleep 2; pkill -9 plasmashell; pkill -9 -f /tmp/kwin_wayland; true
 
       - name: Side by side with Hearth Classic
