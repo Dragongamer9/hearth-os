@@ -287,6 +287,22 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- end hearthfetch
+# ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its
+# user service (hearth-steam-engine.service, not enabled) only while Settings › Library › Steam engine is Lightweight.
+# Not in this build, or it doesn't install: skipped with a warning (Hearth then always uses the normal Steam client).
+if [ -x /ctx/nimbus-app/hearth-steam/hearth-steam ] && [ -f /ctx/nimbus-app/hearth-steam/hearth-steam-engine.service ]; then
+  if mkdir -p /usr/lib/hearth-steam && cp -a /ctx/nimbus-app/hearth-steam/. /usr/lib/hearth-steam/ \
+     && install -Dm644 /usr/lib/hearth-steam/hearth-steam-engine.service /usr/lib/systemd/user/hearth-steam-engine.service; then
+    chmod 755 /usr/lib/hearth-steam/hearth-steam
+    echo "hearth-steam installed: $(du -sh /usr/lib/hearth-steam | cut -f1)"
+  else
+    echo "warning: hearth-steam didn't install; this image goes without the lightweight Steam engine"
+    rm -rf /usr/lib/hearth-steam /usr/lib/systemd/user/hearth-steam-engine.service
+  fi
+else
+  echo "warning: hearth-steam isn't in this build; this image goes without the lightweight Steam engine"
+fi
+# ---- end hearth-steam
 
 # ------------------------------------------------------------------ SVG icons for GTK (librsvg's gdk-pixbuf loader)
 # Without it GTK can't draw an SVG icon and aborts the whole program the first time it needs one (Hearth's Game Mode

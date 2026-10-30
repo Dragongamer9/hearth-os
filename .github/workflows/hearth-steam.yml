@@ -1,0 +1,80 @@
+# hearth-steam (hosts/hearth-steam): Hearth's lightweight Steam engine (experimental). Tests the parts that don't need
+# Steam (the socket API, finding the client, Steam's files), builds the self-contained program, starts it once
+# with no Steam installed to check it comes up and answers, and keeps the build as a download.
+name: hearth-steam
+
+on:
+  push:
+    branches: [linux-host, main, 'feature/hearth-steam']
+    paths: ['hosts/hearth-steam/**', '.github/workflows/hearth-steam.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  hearth-steam:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Tests
+        working-directory: hosts/hearth-steam
+        run: |
+          set -o pipefail
+          if ! dotnet test HearthSteam.Tests/HearthSteam.Tests.csproj -c Release --logger "console;verbosity=normal" 2>&1 | tee test.log; then
+            grep -E ': error |\[FAIL\]|Assert\.|Expected:|Actual:' test.log | sort -u | head -25 | sed 's/^/::error title=hearth-steam tests::/'
+            exit 1
+          fi
+          echo "::notice title=hearth-steam tests::$(grep -E 'Passed!|Failed!|Total tests' test.log | tr '\n' ' ')"
+      - name: Build (self-contained, linux-x64)
+        run: |
+          bash hosts/hearth-steam/publish.sh "$RUNNER_TEMP/hearth-steam"
+          echo "::notice title=hearth-steam size::$(du -sh "$RUNNER_TEMP/hearth-steam" | cut -f1) unpacked, $(tar -C "$RUNNER_TEMP/hearth-steam" -czf - . | wc -c | numfmt --to=iec) gzipped"
+          echo "::notice title=hearth-steam biggest files::$(cd "$RUNNER_TEMP/hearth-steam" && du -k * | sort -rn | head -15 | tr "\n" " ")"
+      # No Steam here: it must come up, say why it can't run Steam (after reading OpenSteamworks' pinned client
+      # build), and exit cleanly when told to let go.
+      - name: Starts and answers with no Steam
+        run: |
+          set -o pipefail
+          export HOME="$RUNNER_TEMP/home" XDG_RUNTIME_DIR="$RUNNER_TEMP/run" HEARTH_STEAM_NO_BOOTSTRAP=1
+          mkdir -p "$HOME/.local/share/Steam/steamapps" "$XDG_RUNTIME_DIR"
+          "$RUNNER_TEMP/hearth-steam/hearth-steam" > "$RUNNER_TEMP/hs.log" 2>&1 &
+          pid=$!
+          python3 - "$XDG_RUNTIME_DIR/hearth-steam.sock" <<'PY' || { sed 's/^/::error title=hearth-steam smoke::/' "$RUNNER_TEMP/hs.log" | head -20; exit 1; }
+          import json, os, socket, sys, time
+          path = sys.argv[1]
+          for _ in range(100):
+              if os.path.exists(path): break
+              time.sleep(0.1)
+          def ask(o):
+              s = socket.socket(socket.AF_UNIX); s.connect(path); s.sendall((json.dumps(o) + "\n").encode())
+              r = s.makefile().readline(); s.close(); return json.loads(r)
+          st = {}
+          for _ in range(50):
+              st = ask({"id": 1, "cmd": "status"})
+              if st.get("engine") == "unavailable": break
+              time.sleep(0.2)
+          print(st)
+          assert st["ok"] and st["engine"] == "unavailable", st
+          assert st["build"] > 1700000000, "pinned client build not read"
+          assert "isn't build" in st["reason"], st["reason"]
+          r = ask({"id": 2, "cmd": "launch", "appid": 440})
+          assert r["ok"] is False and r["code"] == "not_ready", r
+          assert ask({"id": 3, "cmd": "release"})["released"]
+          print("::notice title=hearth-steam smoke::" + st["reason"])
+          PY
+          for i in $(seq 50); do kill -0 $pid 2>/dev/null || break; sleep 0.1; done
+          if kill -0 $pid 2>/dev/null; then echo "::error title=hearth-steam smoke::didn't exit after release"; kill $pid; exit 1; fi
+          test ! -e "$XDG_RUNTIME_DIR/hearth-steam.sock"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-steam-linux-x64
+          path: ${{ runner.temp }}/hearth-steam

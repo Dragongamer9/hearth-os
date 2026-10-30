@@ -792,6 +792,8 @@ pub fn client_installed(home: &Path) -> bool {
 
 /// Hands Steam a URL or option, detached (no output kept).
 pub fn spawn(home: &Path, arg: &str) -> Result<(), String> {
+    // The lightweight engine (steam_engine.rs) lets go first: two Steam clients never run at once.
+    crate::steam_engine::release();
     let (cmd, args) = command(home, arg);
     std::process::Command::new(&cmd).args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
         .spawn().map(|c| { crate::procs::detach(c); }).map_err(|e| format!("Couldn't start Steam: {e}"))
@@ -809,6 +811,19 @@ pub fn is_running() -> bool {
         if matches!(comm.trim(), "steam" | "steamwebhelper") { return true; }
         let cmd = std::fs::read(e.path().join("cmdline")).unwrap_or_default();
         running_by_cmdline(comm.trim(), &cmd)
+    })
+}
+/// Is the normal Steam client itself running (not counting games: a game the lightweight engine started runs under
+/// Steam's reaper too)?
+pub fn client_running() -> bool {
+    let Ok(dir) = std::fs::read_dir("/proc") else { return false };
+    dir.flatten().any(|e| {
+        let n = e.file_name();
+        if !n.to_string_lossy().chars().all(|c| c.is_ascii_digit()) { return false; }
+        let comm = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default();
+        if matches!(comm.trim(), "steam" | "steamwebhelper") { return true; }
+        let cmd = std::fs::read(e.path().join("cmdline")).unwrap_or_default();
+        comm.trim() != "reaper" && running_by_cmdline(comm.trim(), &cmd)
     })
 }
 /// A process's command line (NUL-separated) that is Steam's client, or a game Steam is running.

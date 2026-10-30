@@ -10,10 +10,11 @@ sight. All of it uses the **real Steam client** and only its public surfaces:
   written the way Steam writes them;
 - the public Steam Community games page of the signed-in account.
 
-Hearth never loads `steamclient.so`, never speaks Steam's network protocol, needs no Web API key, and **never
+With the default Steam engine (Classic), Hearth never loads `steamclient.so`, never speaks Steam's network protocol, needs no Web API key, and **never
 signs in to Steam itself**. It never sees, types or stores a password or token. Signing in always happens in
 Steam's own window, which you use; Hearth only brings that window in front and reads Steam's files to notice
-when you're done.
+when you're done. (The experimental Lightweight engine, section 7, is different: there you sign in on a Hearth screen,
+and what you type is passed straight to Valve's steamclient, never kept or logged.)
 
 The code lives in `hosts/hearth-core/src`:
 
@@ -142,13 +143,49 @@ Library › Stores › Sign in to Steam (also in Game Mode):
    `registry.vdf`, after the sign-in began. Then Hearth comes back in front, says who's signed in, and fetches
    that account's games.
 
+## 7. Lightweight engine (experimental)
+
+Settings › Library › **Lightweight Steam engine** (off by default; off is *Classic*, everything above). On, Hearth
+runs `hosts/hearth-steam`: a small background service with no window that loads **Valve's own `steamclient.so`**
+through [OpenSteamworks](https://github.com/OpenSteamClient/OpenSteamworks) (from OpenSteamClient's `c#-remake`,
+MIT, credited in `hosts/hearth-steam/LICENSE.OpenSteamClient`). Licences, DRM, downloads, cloud saves and Proton are
+steamclient's own doing; Steam's web UI never runs. This is the one place Hearth loads `steamclient.so`.
+
+- **Client build.** OpenSteamworks only works with the exact Steam client build it was made for (its embedded
+  manifest; 1.2.0 pins build 1745623383). The service uses the user's Steam folder if it has that build, otherwise it
+  downloads that build's packages (Valve's own files, SHA-256 checked) from Valve's update server into
+  `~/.local/share/hearth-steam/client`, without Steam's UI, browser or runtimes. The user's `steamapps`, Steam runtime
+  and `compatibilitytools.d` are linked in, so games and Proton builds are shared.
+- **Never two clients at once.** The service doesn't start while the normal Steam client runs, and lets go (exits)
+  within 5 seconds if it starts. Hearth tells it to let go before it starts the normal client for anything.
+  `~/.steam/sdk32`, `sdk64` and `steam.pid` point at the engine while it runs and are put back when it exits.
+- **API.** One JSON object per line on `$XDG_RUNTIME_DIR/hearth-steam.sock` (mode 600): `status`, `signin.password`,
+  `signin.code`, `signin.qr`, `signin.cancel`, `signout`, `library`, `install`, `uninstall`, `update`, `downloads`,
+  `launch`, `running`, `release`. Errors carry a code (`not_ready`, `classic_running`, `signed_out`, `vac`,
+  `steam_error`, `unsupported`, `bad_request`, `busy`).
+- **Signing in.** Hearth's own screen (QR code for the Steam app, or name, password and Steam Guard code). What's
+  typed goes from the page to the service to Steam's servers through steamclient; neither Hearth nor the service
+  stores or logs it. steamclient remembers the sign-in itself; the service keeps only the account name and SteamID
+  (`~/.local/state/hearth-steam/last-user.json`) to sign in again.
+- **Fallback.** `steam_engine.rs` decides per action (launch, install, uninstall): Lightweight only when the setting
+  is on, the service is installed and answering, its engine is ready and signed in, and the normal client isn't
+  running. Anything else, and any error from the service (VAC-secured games always answer `vac`), does the action with
+  the normal Steam client exactly as Classic would, after telling the service to let go. It is started again
+  5 minutes later if the normal client isn't running. Proton: the user's per-game choices from the normal client's
+  `config/config.vdf` are handed to steamclient after signing in.
+- **Service.** `/usr/lib/hearth-steam` (self-contained .NET, no runtime package needed), user unit
+  `hearth-steam-engine.service` (not enabled: Hearth starts and stops it). Built by `.github/workflows/hearth-steam.yml`
+  and by the image builds, where a failed build only leaves it out.
+
 ## Tests
 
 `cargo test` in `hosts/hearth-core` covers: reading the games XML and page (with private profiles), the cache
 rules, reading `appinfo.vdf` in versions 27, 28 and 29, `StateFlags` decoding, the install record Hearth writes
 (it reads back as Steam's format), when a record counts as taken up / gone / timed out, picking the library,
 reading `content_log.txt`, removing files only inside a library (links, `..`, records outside a library),
-when Steam may be closed, and noticing a sign-in from Steam's files.
+when Steam may be closed, and noticing a sign-in from Steam's files, and the Lightweight engine's fallback decisions
+(`steam_engine.rs`). `hearth-steam.yml` runs hearth-steam's own tests (socket API, secrets never logged, client build
+matching, Steam's files) and starts the built program once with no Steam to check it answers and exits when released.
 
 What needs a real Steam account and device (it can't run in CI): Steam actually taking up a Hearth-written
 record, the fallback window, the Community page answers for a real profile, the sign-in window in gamescope,

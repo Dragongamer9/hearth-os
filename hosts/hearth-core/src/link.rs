@@ -146,6 +146,14 @@ pub fn ui_sync(a: &Value) -> Result<Value, String> {
     })
 }
 
+/// A game closed: Hearth Link sends its save to the Hearth Storage server when saves follow you (it decides; nothing
+/// happens when it isn't running or the game's store keeps its saves itself). In the background.
+pub fn game_closed(id: &str) {
+    if !available() || id.is_empty() { return; }
+    let id = id.to_string();
+    std::thread::spawn(move || { if let Err(e) = call("storage.saves.after", &json!({"game": id}), 60) { if !e.contains("isn't running") { crate::bridge::log(&format!("hearth link: saves: {e}")); } } });
+}
+
 /// The bridge's "link.*" calls.
 pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> Result<Value, String> {
     let cmd = method.trim_start_matches("link.");
@@ -177,6 +185,10 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         // Download once for every device (hearth-link's cache.rs): the status asks the server what it keeps.
         "storage.cache.status" | "storage.updates.status" | "storage.cache.get" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
         "storage.cache.set" | "storage.updates.set" | "storage.cache.remove" => call(cmd, a, 15),
+        // Saves follow you: the check before a game answers within a few seconds (the server isn't woken for it);
+        // pulling a save, the health list (asks the server) and removing a device take longer.
+        "storage.saves.before" | "storage.saves.pull" | "storage.saves.resolve" | "storage.saves.status" | "storage.devices" | "storage.device.usage"
+        | "storage.device.remove" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
         _ => Err(format!("{method} isn't a Hearth Link call")),
     }
 }

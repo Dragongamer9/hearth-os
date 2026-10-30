@@ -406,6 +406,16 @@ impl Bridge {
                 if !on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
                 io(self.library.store.update(|d| { d.insert("steamOnDemand".into(), json!(on)); }))
             }
+            // Settings › Library › Steam engine (steam_engine.rs). Lightweight starts hosts/hearth-steam; Classic stops it.
+            "steam.engine.set" => {
+                let on = a["lightweight"] == true;
+                io(self.library.store.update(|d| { d.insert("steamEngine".into(), json!(if on { "lightweight" } else { "classic" })); }))?;
+                std::thread::spawn(move || crate::steam_engine::set(on));
+                Ok(json!({"lightweight": on}))
+            }
+            "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_lightweight())),
+            // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
+            "steam.engine.signIn" => crate::steam_engine::sign_in(a),
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
                 if on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
@@ -500,7 +510,13 @@ impl Bridge {
                     let app: u32 = app.parse().map_err(|_| "That isn't a Steam game.".to_string())?;
                     let title = self.library.games.get(&id).map(|g| g.title.clone()).unwrap_or_else(|| "the game".into());
                     let (home, on_demand) = (self.library.home.clone(), self.library.steam_on_demand());
+                    let lightweight = self.library.steam_lightweight();
                     crate::space::answer_later(self.cur_id.clone(), move || {
+                        // Lightweight engine: Steam's engine removes it itself; otherwise as below, with the normal client's files.
+                        if crate::steam_engine::uninstall(lightweight, app) {
+                            crate::stores::notify(json!({"type": "internal", "what": "rescan", "reply": null}));
+                            return Ok(json!({"steam": true, "silent": true, "lightweight": true}));
+                        }
                         let was_running = crate::steam_ctl::uninstall(&home, app, &title)?;
                         // Steam was closed for it: back hidden, unless it only runs when needed.
                         if was_running && !on_demand { crate::steam::ensure_running_silent(&home); }

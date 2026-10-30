@@ -85,6 +85,9 @@ pub struct StorageConfig {
     pub backup_shots: bool,
     pub backup_hours: u64,
     pub last_backup: u64,
+    /// Saves follow you (saves.rs): games without their store's own cloud saves get their newest save from the
+    /// backup server before they start, and send theirs back after.
+    pub saves_follow: bool,
     /// What each server said about itself last (name, network cards for waking it): kept, because a sleeping
     /// server can't say it again.
     pub servers: HashMap<String, Value>,
@@ -112,7 +115,7 @@ impl Default for StorageConfig {
     fn default() -> Self {
         StorageConfig {
             server: false, folder: String::new(), shares: Vec::new(), archive: true, backups: true, media: true, away: false, smb: false,
-            sleep_minutes: 0, backup_to: String::new(), backup_saves: true, backup_shots: true, backup_hours: 6, last_backup: 0,
+            sleep_minutes: 0, backup_to: String::new(), backup_saves: true, backup_shots: true, backup_hours: 6, last_backup: 0, saves_follow: true,
             servers: HashMap::new(), archived: HashMap::new(),
             cache: false, cache_use: true, updates: false, updates_use: true, hold_back: true, update_hold: Value::Null, reported_good: 0,
         }
@@ -150,6 +153,7 @@ impl StorageConfig {
         if let Some(v) = b("updates") { self.updates = v; }
         if let Some(v) = b("updatesUse") { self.updates_use = v; }
         if let Some(v) = b("holdBack") { self.hold_back = v; }
+        if let Some(v) = b("savesFollow") { self.saves_follow = v; }
         if let Some(m) = a.get("sleepMinutes").and_then(Value::as_u64) { self.sleep_minutes = m.min(720); }
         if let Some(h) = a.get("backupHours").and_then(Value::as_u64) { self.backup_hours = h.clamp(1, 168); }
         if let Some(t) = a.get("backupTo").and_then(Value::as_str) {
@@ -203,7 +207,7 @@ impl StorageConfig {
                "shares": self.shares.iter().map(|s| json!({"id": s.id, "name": s.name, "path": s.path, "write": s.write, "there": s.path.is_dir()})).collect::<Vec<_>>(),
                "archive": self.archive, "backups": self.backups, "media": self.media, "away": self.away, "smb": self.smb, "sleepMinutes": self.sleep_minutes,
                "backupTo": self.backup_to, "backupSaves": self.backup_saves, "backupShots": self.backup_shots, "backupHours": self.backup_hours,
-               "lastBackup": self.last_backup, "archived": self.archived,
+               "lastBackup": self.last_backup, "savesFollow": self.saves_follow, "archived": self.archived,
                "cache": self.cache, "cacheUse": self.cache_use, "updates": self.updates, "updatesUse": self.updates_use, "holdBack": self.hold_back})
     }
 }
@@ -259,7 +263,10 @@ pub fn list_dir(dir: &Path) -> Result<Vec<Value>, String> {
 // ------------------------------------------------------------------ the games and folders copied with xfer.rs
 
 /// Ids that aren't a store's game but something of Hearth Storage.
-pub fn is_special(id: &str) -> bool { id.starts_with("archive:") || id.starts_with("share:") || id.starts_with("backup:") || id.starts_with("cache:") }
+pub fn is_special(id: &str) -> bool {
+    id.starts_with("archive:") || id.starts_with("share:") || id.starts_with("backup:") || id.starts_with("savedev:") || id.starts_with("savesrv:")
+        || id.starts_with("cache:")
+}
 
 fn static_store(s: &str) -> Option<&'static str> {
     match s { "steam" => Some("steam"), "epic" => Some("epic"), "gog" => Some("gog"), "beacon" => Some("beacon"), "xodus" => Some("xodus"), _ => None }
@@ -329,7 +336,7 @@ pub fn share_game(full: &Path, share: &str, rel: &str, share_name: &str) -> Loca
 }
 
 /// Inside a user folder of a Wine/Proton prefix: what isn't a save (caches, temporary files).
-const PREFIX_SKIP: &[&str] = &["Temp", "AppData/Local/Temp", "AppData/Local/Microsoft", "AppData/Local/D3DSCache", "AppData/Local/NVIDIA",
+pub const PREFIX_SKIP: &[&str] = &["Temp", "AppData/Local/Temp", "AppData/Local/Microsoft", "AppData/Local/D3DSCache", "AppData/Local/NVIDIA",
     "AppData/Local/AMD", "AppData/Local/CEF", "AppData/LocalLow/Microsoft", "AppData/Roaming/Microsoft"];
 
 /// This device's game saves or screenshots, as something its backup server copies: (label, folder, skip).
@@ -400,6 +407,8 @@ pub fn destinations(kind: &str, game: &Value, roots: &[Value], place: &Path) -> 
             }
             Ok(out)
         })()),
+        // A game's save (saves.rs): into the incoming folder on the server, over the save folder on the device.
+        "savedev" | "savesrv" => Some(if roots.len() == 1 { Ok(vec![Some(place.to_path_buf())]) } else { Err("Not a save".to_string()) }),
         "share" => Some((|| -> Result<Vec<Option<PathBuf>>, String> {
             if roots.len() != 1 { return Err("Not a shared file or folder".to_string()); }
             let f = game["meta"]["folder"].as_str().and_then(crate::games::safe_folder).ok_or("That name can't be used here")?;
@@ -421,6 +430,8 @@ pub fn finalize(kind: &str, peer: &str, manifest: &Value, place: &Path) -> Optio
         "backup" => Some(crate::write_atomic(&place.join("backup.json"), json!({"size": size, "files": files, "at": crate::now_ms()}).to_string().as_bytes())
             .map(|_| "Backed up".to_string())),
         "share" => Some(Ok(format!("Copied to {}", place.display()))),
+        "savedev" => Some(crate::saves::finalize_push(place, manifest)),
+        "savesrv" => Some(Ok("Save updated".to_string())),
         _ => None,
     }
 }
@@ -579,6 +590,8 @@ pub struct Storage {
     /// When this device last offered its games to a server's cache, and what it offered: id → (build, when).
     pub seed_at: AtomicU64,
     pub offered: Mutex<HashMap<String, (String, u64)>>,
+    /// On a server: what each paired device last reported about itself (health.rs), kept in devices.json.
+    pub reports: Mutex<HashMap<String, Value>>,
 }
 
 impl Storage {
@@ -589,6 +602,7 @@ impl Storage {
             backup_busy: AtomicBool::new(false), wol_note: Mutex::new(None), backup_try: AtomicU64::new(0),
             upd: Mutex::new(()), fetching: AtomicBool::new(false), fetch_at: AtomicU64::new(0), seed_at: AtomicU64::new(crate::now_ms()),
             offered: Mutex::new(HashMap::new()),
+            reports: Mutex::new(std::fs::read(dir.join("devices.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()),
         }
     }
     pub fn touch(&self) { self.activity.store(crate::now_ms(), Ordering::Relaxed); }
@@ -653,6 +667,7 @@ impl Node {
 
     /// Something of Hearth Storage that a copy asks for (archive:, share:, backup:), checked for `peer`.
     pub(crate) fn storage_find(&self, peer: &str, id: &str) -> Result<LocalGame, String> {
+        if id.starts_with("savedev:") || id.starts_with("savesrv:") { return self.saves_find(peer, id); }
         if let Some(key) = id.strip_prefix("archive:") {
             let c = self.storage_allowed(peer)?;
             if !c.archive { return Err("The game archive is off on that device".into()); }
@@ -925,6 +940,7 @@ impl Node {
                 eprintln!("hearth-link: storage: {} is in the game cache", job.title);
                 crate::lock(&self.jobs).retain(|j| j.id != job.id);
             }
+            "savedev" | "savesrv" => self.saves_job_done(job).await,
             _ => {}
         }
     }
@@ -960,6 +976,7 @@ impl Node {
     pub async fn storage_loop(self: Arc<Self>) {
         let mut last_tick = Instant::now();
         let mut last_refresh: Option<Instant> = None;
+        let mut last_report: Option<Instant> = None;
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             // Back from sleep (the minute took much longer): count that as activity, or it would sleep again at once.
@@ -970,6 +987,12 @@ impl Node {
                 let _ = self.storage_refresh(None).await;
             }
             self.cache_tick().await;
+            // Device health to the servers, and saves that didn't reach the server after their game.
+            if !crate::game_running() && last_report.map(|t| t.elapsed() > Duration::from_millis(crate::health::REPORT_EVERY_MS)).unwrap_or(true) {
+                last_report = Some(Instant::now());
+                self.health_send().await;
+                self.saves_retry().await;
+            }
             let c = self.st();
             let now = crate::now_ms();
             let due = !c.backup_to.is_empty() && (c.backup_saves || c.backup_shots) && now.saturating_sub(c.last_backup) > c.backup_hours * 3_600_000
@@ -1107,6 +1130,8 @@ impl Node {
 
     /// The UI's storage.* commands.
     pub async fn storage_command(self: &Arc<Self>, cmd: &str, a: &Value) -> Result<Value, String> {
+        if cmd.starts_with("storage.saves.") { return self.saves_command(cmd, a).await; }
+        if cmd == "storage.devices" || cmd.starts_with("storage.device.") { return self.health_command(cmd, a).await; }
         let s = |k: &str| a[k].as_str().filter(|x| !x.is_empty()).map(str::to_string).ok_or(format!("Missing '{k}'"));
         let home = self.home.clone();
         match cmd {
