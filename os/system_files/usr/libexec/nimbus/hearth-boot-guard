@@ -122,6 +122,7 @@ def snippet(has_prev, can_save, off=False):
              '# change. Two starts in a row that never reached Hearth: the previous version starts (entry 1).']
     if off or not has_prev:
         lines.append('# Off (no previous version in the menu, or /etc/hearth/no-boot-guard).')
+        lines.append('set hearth_guard=off')
         return '\n'.join(lines) + '\n'
     lines += ['set fallback=1']
     if can_save:
