@@ -38,6 +38,7 @@ jobs:
         run: |
           bash hosts/hearth-steam/publish.sh "$RUNNER_TEMP/hearth-steam"
           echo "::notice title=hearth-steam size::$(du -sh "$RUNNER_TEMP/hearth-steam" | cut -f1) unpacked, $(tar -C "$RUNNER_TEMP/hearth-steam" -czf - . | wc -c | numfmt --to=iec) gzipped"
+          echo "::notice title=hearth-steam biggest files::$(cd "$RUNNER_TEMP/hearth-steam" && du -k * | sort -rn | head -15 | tr "\n" " ")"
       # No Steam here: it must come up, say why it can't run Steam (after reading OpenSteamworks' pinned client
       # build), and exit cleanly when told to let go.
       - name: Starts and answers with no Steam

@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**']
+    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -372,9 +372,33 @@ jobs:
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
           node ui-check.js
 
+  # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
+  # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
+  # build, the image is made without it and Hearth always uses the normal Steam client.
+  hearth-steam:
+    name: Build hearth-steam (lightweight Steam engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        continue-on-error: true
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        continue-on-error: true
+        run: |
+          if bash hosts/hearth-steam/publish.sh /tmp/hearth-steam; then tar -C /tmp/hearth-steam -cf hearth-steam.tar .
+          else echo "::warning title=hearth-steam::it didn't build, so this image is made without the lightweight Steam engine"; fi
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('hearth-steam.tar') != ''
+        continue-on-error: true
+        with:
+          name: hearth-steam-anatase
+          path: hearth-steam.tar
+  # ---- end hearth-steam
   image:
     name: Build the OS image (hearth-os on Anatase)
-    needs: [app, ui]
+    needs: [app, ui, hearth-steam]
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
@@ -393,11 +417,18 @@ jobs:
         with:
           name: hearth-app-anatase
 
+      # hearth-steam: only when it built (see the hearth-steam job). Missing: the image goes without it.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-steam-anatase
+
       - name: Unpack Hearth into the build context
         run: |
           mkdir -p os/nimbus-app
           tar -C os/nimbus-app -xf hearth-app.tar
           ls -la os/nimbus-app
+          if [ -f hearth-steam.tar ]; then mkdir -p os/nimbus-app/hearth-steam && tar -C os/nimbus-app/hearth-steam -xf hearth-steam.tar || rm -rf os/nimbus-app/hearth-steam; fi
           test -x os/nimbus-app/hearth
 
       - name: Build

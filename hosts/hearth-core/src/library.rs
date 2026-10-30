@@ -460,6 +460,11 @@ impl Library {
         let app: u32 = id.strip_prefix("steam:").and_then(|a| a.parse().ok()).ok_or("That isn't a Steam game.")?;
         if !steam::client_installed(&self.home) { return Err("Steam isn't installed on this device.".into()); }
         let lib = self.steam_library().ok_or("Steam isn't set up yet. Open Steam once, then try again.")?;
+        // Lightweight engine: Steam's engine takes the install up itself (its records show progress as usual).
+        if crate::steam_engine::install(self.steam_lightweight(), app, &lib).is_some() {
+            if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = None; }
+            return Ok(json!({"silent": true, "waiting": false, "lightweight": true}));
+        }
         let r = crate::steam_ctl::install(&self.home, app, &g.title, &lib)?;
         if let Some(x) = self.games.get_mut(id) { x.state = "queued"; x.stage = Some("Waiting for Steam".into()); }
         Ok(r)
@@ -674,9 +679,16 @@ impl Library {
             "steam" => {
                 let uri = g.launch_uri.clone().unwrap_or_default();
                 crate::steam_ctl::touch();
-                // Started cold by the game's URL, Steam shows its update and main windows over everything.
-                // Started hidden first (-silent), it only starts the game.
-                if steam::is_running() {
+                let app_num: u32 = id.trim_start_matches("steam:").parse().unwrap_or(0);
+                if self.steam_lightweight() && app_num > 0 && !steam::client_running() {
+                    // Lightweight engine first; anything it can't do starts with the normal client instead.
+                    let home = self.home.clone();
+                    std::thread::spawn(move || {
+                        if crate::steam_engine::launch(true, app_num) { return; }
+                        steam::ensure_running_silent(&home);
+                        if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
+                    });
+                } else if steam::is_running() {
                     steam::spawn(&self.home, &uri)?;
                 } else {
                     if !steam::client_installed(&self.home) { return Err("Couldn't start Steam: it isn't installed.".into()); }
@@ -798,6 +810,7 @@ impl Library {
         let mut events = self.beacon_tick();
         // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
         if self.store.source_on("steam") {
+            crate::steam_engine::tick(self.steam_lightweight());
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
             events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
         }
@@ -1103,6 +1116,8 @@ impl Library {
 
     /// "Start Steam only when needed" (Settings › Library, on by default).
     pub fn steam_on_demand(&self) -> bool { self.store.data["steamOnDemand"] != false }
+    /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
+    pub fn steam_lightweight(&self) -> bool { self.store.data["steamEngine"] == "lightweight" }
 
     pub fn get(&mut self, rescan: bool) -> Value {
         if rescan || self.games.is_empty() { self.scan(); }
@@ -1111,7 +1126,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamLightweight": self.steam_lightweight(), "quickResume": self.quick_state() })
     }
 }
 

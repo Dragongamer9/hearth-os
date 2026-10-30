@@ -7346,11 +7346,65 @@ function oskSettingAct(a, d){
     {label:'Clear', icon:'trash', run:()=>{ HearthOSK.clearLearned(); if(host) call('osk.clear').catch(()=>{}); toast('Learned words cleared'); render('kb-clear'); }}]});
   if(a==='oskTry') return openPrompt({title:'Try the keyboard', osk:true, placeholder:'Type something'}).then(()=>{});
 }
+// Settings › Library › Steam engine: Classic (the normal Steam client, default) or Lightweight (experimental,
+// hosts/hearth-steam). Anything Lightweight can't do is done by the normal client (steam_engine.rs).
+const SENG={st:null, qr:null, watching:0};
+function steamEngRefresh(){ if(!host) return Promise.resolve(); return call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
+function steamEngLine(e){
+  const s=e.status||{};
+  if(e.installed===false) return 'Not part of this build of Hearth OS: Steam games use the normal Steam client';
+  if(e.classicRunning) return 'The normal Steam client is running, so it does the work for now';
+  if(s.engine==='bootstrapping') return 'Getting Steam\'s engine from Valve'+(s.progress?` · ${esc(s.progress.text)} (${s.progress.percent}%)`:'');
+  if(s.engine==='starting') return 'Starting…';
+  if(s.engine==='ready') return s.signedIn?`Ready · signed in as ${esc(s.account||'')}`:'Ready · sign in below. Until then the normal Steam client is used';
+  if(s.engine==='unavailable'||s.engine==='error') return 'Not available: '+esc(s.reason||'it didn\'t start')+'. The normal Steam client is used';
+  return 'Off right now · the normal Steam client is used';
+}
+function steamEngineRows(){
+  const on=!!S.set.steamLight, e=SENG.st||{}, s=e.status||{};
+  let h=`<button class="row" data-f data-k="s-steamLight" data-act="toggle" data-key="steamLight"><div class="rt"><b>Lightweight Steam engine (experimental)</b><small>${on?steamEngLine(e):'Off: the normal Steam client does everything (Classic). On: Steam\'s own engine runs with no Steam window; anything it can\'t do (VAC games, errors) still uses the normal client'}</small></div><div class="sw ${on?'on':''}"></div></button>`;
+  if(on && SENG.qr) h+=`<div class="mfqr"><div class="mfqrcode" role="img" aria-label="QR code to sign in to Steam">${SENG.qr}</div><div class="rt"><h2>Sign in with the Steam app</h2><p>Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code. Hearth finishes by itself.</p><div class="mfbtns"><button class="btn" data-f data-k="s-steamEngQrX" data-act="steamEngCancel">${I.x}Cancel</button></div></div></div>`;
+  else if(on && s.engine==='ready') h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>${s.signedIn?'Steam: '+esc(s.account||'signed in'):'Sign in to Steam'}</b><small>${s.signedIn?'Sign out of the lightweight engine':'For the lightweight engine: with the Steam app on your phone, or your name and password. Hearth doesn\'t keep what you type'}</small></div><div class="rv">›</div></button>`;
+  return h;
+}
+function steamEngWatch(){
+  const n=++SENG.watching, until=Date.now()+5*60000;
+  const step=()=>{ if(n!==SENG.watching) return;
+    call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; const s=r.status||{}, si=s.signIn||{};
+      if(s.signedIn){ SENG.qr=null; SENG.watching++; toast('Signed in to Steam as '+(s.account||'you')); }
+      else if(si.state==='failed'){ SENG.qr=null; SENG.watching++; toast(si.error||'Steam didn\'t sign you in'); }
+      else { if(si.qrSvg) SENG.qr=si.qrSvg; if(Date.now()<until) setTimeout(step,2000); else { SENG.qr=null; call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); } }
+      if(S.view==='settings') render(null,true);
+    }).catch(()=>{ if(Date.now()<until) setTimeout(step,3000); }); };
+  step();
+}
+async function steamEngPassword(){
+  const user=await openPrompt({title:'Steam account name', mode:'text', placeholder:'Account name', osk:true}); if(!user||!user.trim()) return;
+  const password=await openPrompt({title:'Steam password', secret:true, osk:true}); if(!password) return;
+  try{
+    const r=await call('steam.engine.signIn',{method:'password', user:user.trim(), password, remember:true},45000);
+    if(r.needs==='device'||r.needs==='email'){
+      const code=await openPrompt({title:r.needs==='email'?'Code from Steam\'s email':'Steam Guard code from the Steam app', mode:'text', placeholder:'Code', osk:true});
+      if(!code||!code.trim()){ call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); return; }
+      await call('steam.engine.signIn',{method:'code', code:code.trim(), kind:r.needs},45000);
+    } else if(r.needs==='confirm') toast('Approve the sign-in in the Steam app on your phone');
+    toast('Signing in to Steam…'); steamEngWatch();
+  }catch(e){ toast(e.message); }
+}
+function steamEngSignIn(){
+  const s=((SENG.st||{}).status)||{};
+  if(s.signedIn) return openSheet({title:'Sign out of Steam?', sub:'The lightweight engine signs out. Games start with the normal Steam client until you sign in again.', items:[
+    {label:'Sign out', icon:'x', run:()=>call('steam.engine.signIn',{method:'signout'}).then(steamEngRefresh).catch(e=>toast(e.message))}]});
+  openSheet({title:'Sign in to Steam', sub:'For the lightweight engine. What you type goes to Steam only.', items:[
+    {label:'Use the Steam app on my phone', icon:'layout', run:()=>call('steam.engine.signIn',{method:'qr'},45000).then(r=>{ SENG.qr=r.qrSvg||null; steamEngWatch(); }).catch(e=>toast(e.message))},
+    {label:'Type my name and password', icon:'kbd', run:()=>setTimeout(steamEngPassword,50)}]});
+}
 function pageSources(){
   const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
   const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
   return sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
     +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
+    +(LINUX&&host?steamEngineRows():'')
     +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
     +swRow('srcGog','GOG',(LINUX?'Your GOG account and games installed by '+APP+' or Heroic':'Your GOG account and games installed by '+APP+', GOG Galaxy or GOG installers')+n('gog'))
     +swRow('srcXbox',LINUX?'Xbox Cloud Gaming':'Xbox / Game Pass',(LINUX?'Stream Game Pass games (needs Game Pass Ultimate)':'PC games installed with the Xbox app, and games you\'ve played on Xbox')+(LINUX&&host?` · ${LIB.counts.xbox??0} cloud games`:n('xbox')))
@@ -9252,6 +9306,7 @@ function act(el){
       if(host && /^src/.test(k)) setSources(undo);
       else if(host && k==='steamBg') call('library.setSteamBackground',{on}).catch(undo);
       else if(host && k==='steamOnDemand') call('library.setSteamOnDemand',{on}).catch(undo);
+      else if(host && k==='steamLight') call('steam.engine.set',{lightweight:on}).then(()=>{ toast(on?'Lightweight Steam engine on (experimental)':'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(undo);
       else send({type:'setting',key:d.key,value:S.set[d.key]});
       if(S.layers.includes('qam')){ renderQam(); setFocus($(`#qam [data-k="q-${d.key}"]`),true); } else render('s-'+d.key);
       return; }
@@ -9325,6 +9380,8 @@ function act(el){
     case 'pfPick': return pickProfileImage(d.kind);
     case 'addManual': return addManual();
     case 'rescan': return loadLibrary(true, true);
+    case 'steamEngSignIn': return steamEngSignIn();
+    case 'steamEngCancel': SENG.qr=null; SENG.watching++; call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); return render('s-steamEngSign');
     case 'xodusGet': return (XO.s&&XO.s.installed) ? call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-up',true); }).catch(e=>toast(e.message)) : xodusPick(true);
     case 'xodusFolder': return xodusPick(false);
     case 'xodusSignIn': return call('xodus.signInDesktop',{},10000).then(()=>{ toast('Opening Desktop Mode… Nexus opens there in a moment'); setTimeout(()=>power('desktop',true),800); }).catch(e=>toast(e.message));
@@ -11463,6 +11520,7 @@ async function loadLibrary(rescan, announce){
     if(lib.quickResume) applyQuick({list:lib.quickResume.list, on:lib.quickResume.on});
     S.set.steamBg = lib.steamBackground!==false;
     S.set.steamOnDemand = lib.steamOnDemand!==false;
+    S.set.steamLight = lib.steamLightweight===true; if(LINUX) steamEngRefresh();
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
   }catch(e){ toast("Couldn't load your library: "+e.message); }
