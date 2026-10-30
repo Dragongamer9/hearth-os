@@ -132,7 +132,7 @@ internal sealed class AuthSession : IDisposable
                 Thread.Sleep((int)(interval * 1000));
             }
         }
-        catch (Exception) { polling = false; Failed?.Invoke(EResult.Fail); }
+        catch (Exception) { polling = false; Failed?.Invoke(EResult.Failure); }
     }
 
     public void Dispose()

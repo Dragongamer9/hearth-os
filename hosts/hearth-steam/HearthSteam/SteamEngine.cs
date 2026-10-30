@@ -206,7 +206,7 @@ public sealed class SteamEngine : IEngine, IDisposable
     {
         if (auth == null) throw new EngineException(Codes.BadRequest, "No sign-in is waiting for a code.");
         var r = await auth.SubmitCode(code.Trim(), kind);
-        if (r != EResult.OK) throw new EngineException(Codes.SteamError, r == EResult.InvalidLoginAuthCode || r == EResult.TwoFactorCodeMismatch ? "That code didn't work." : $"Steam said no ({r}).");
+        if (r != EResult.OK) throw new EngineException(Codes.SteamError, r == EResult.InvalidLoginAuthCode || r == EResult.TwofactorCodeMismatch ? "That code didn't work." : $"Steam said no ({r}).");
         SetSignIn("waiting");
         return new JsonObject();
     }
