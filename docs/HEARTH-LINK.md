@@ -147,7 +147,9 @@ Beacon's games. A game's save is its Windows user folder in its own prefix (cach
 the server version it last had and what its save looked like then; when both changed, both are kept and you pick
 (a controller prompt before the game, or the "Pick a save" row): never silently overwritten. What's replaced is kept:
 on the server the last 5 in `Hearth Storage/Saves/<game>/replaced/`, on the device the last 3 in Hearth Link's
-`save-backups/<game>/`. A push copies into `incoming/` and only replaces `current/` when it's all there. A save that
+`save-backups/<game>/`. A pull goes into a staging folder next to the save, is checked against the server's file
+count and size, and is swapped in with renames; one that fails, times out or comes in short is deleted and the save
+here isn't touched. A push copies into `incoming/` and only replaces `current/` when it's all there. A save that
 couldn't reach the server (it was off) is sent later.
 
 **Device health** (`health.rs`): every device reports to its servers every 10 minutes (`device.report`: name, kind,

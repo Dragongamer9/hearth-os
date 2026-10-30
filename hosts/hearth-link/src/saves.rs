@@ -12,6 +12,9 @@
 //! - What's replaced is kept: on the server the old version moves to "Saves/<game>/replaced/<when> <device>" (the
 //!   last 5), on the device the save that's pulled over goes to Hearth Link's "save-backups/<game>/<when>" (the
 //!   last 3) first.
+//! - A pull never leaves half a save: it's copied into a staging folder next to the save (same file system), checked
+//!   against what the server says it has (files and bytes), and only then swapped in with renames (the old save to
+//!   save-backups). A pull that fails, times out or comes in short is deleted; the save here isn't touched.
 //! - Never in the way of playing: the check before a game asks the server for at most CHECK (it isn't woken: a
 //!   sleeping server would take a minute), then the game starts with the save that's here.
 //!
@@ -220,7 +223,8 @@ pub fn finalize_push(place: &Path, manifest: &Value) -> Result<String, String> {
     let mut have = Vec::new();
     crate::manifest::walk(place, 0, &[], &mut have).map_err(|e| e.to_string())?;
     for e in have.iter().filter(|e| e.k != "d" && !keep.contains(&e.p)) { let _ = std::fs::remove_file(place.join(&e.p)); }
-    let (files, size) = (keep.len(), manifest["size"].as_u64().unwrap_or(0));
+    let files = manifest["files"].as_array().map(|f| f.iter().filter(|e| e["k"] == "f").count()).unwrap_or(0);
+    let size = manifest["size"].as_u64().unwrap_or(0);
     if dir.join("current").is_dir() {
         let from = info(dir)["fromName"].as_str().unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-').take(30).collect::<String>();
         let rep = dir.join("replaced");
@@ -234,6 +238,90 @@ pub fn finalize_push(place: &Path, manifest: &Value) -> Result<String, String> {
     crate::write_atomic(&dir.join("save.json"), s.to_string().as_bytes())?;
     let _ = std::fs::remove_file(dir.join("pending.json"));
     Ok("Save kept".into())
+}
+
+// ------------------------------------------------------------------ pulling, safely (the device's side)
+
+/// The staging folder for a pull: next to the save, so the swap is a rename on the same file system.
+pub fn staging_of(live: &Path) -> PathBuf {
+    live.with_file_name(format!(".{}.hearth-pull", live.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()))
+}
+fn old_of(live: &Path) -> PathBuf {
+    live.with_file_name(format!(".{}.hearth-old", live.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()))
+}
+
+/// A folder moved into `to` (a rename; copied and removed when it's on another drive).
+fn move_dir(from: &Path, to: &Path) -> Result<(), String> {
+    if let Some(p) = to.parent() { std::fs::create_dir_all(p).map_err(|e| e.to_string())?; }
+    if std::fs::rename(from, to).is_ok() { return Ok(()); }
+    copy_tree(from, to)?;
+    std::fs::remove_dir_all(from).map_err(|e| e.to_string())
+}
+
+/// A complete pull in `staging`, checked against the server's save.json (files and bytes) and swapped in: what isn't
+/// a save (caches, Temp: PREFIX_SKIP) moves over from the save here, the save here goes to `backups/<when>`, staging
+/// becomes the save. Anything wrong before the swap: an error, and the save here is as it was.
+pub fn verify_and_swap(live: &Path, staging: &Path, expect: &Value, backups: &Path) -> Result<(), String> {
+    let (_, size, files, _) = digest(staging)?;
+    if let (Some(f), Some(sz)) = (expect["files"].as_u64(), expect["size"].as_u64()) {
+        if files as u64 != f || size != sz {
+            return Err(format!("The save that came over isn't complete ({files} of {f} files, {size} of {sz} bytes): the one here is used"));
+        }
+    }
+    // What isn't a save stays as it is here (a Proton prefix needs its folders).
+    let mut moved: Vec<String> = Vec::new();
+    let undo = |moved: &[String]| { for rel in moved { let _ = std::fs::rename(staging.join(rel), live.join(rel)); } };
+    for rel in PREFIX_SKIP {
+        if live.join(rel).exists() && !staging.join(rel).exists() {
+            if let Some(p) = staging.join(rel).parent() { let _ = std::fs::create_dir_all(p); }
+            if let Err(e) = std::fs::rename(live.join(rel), staging.join(rel)) { undo(&moved); return Err(format!("Couldn't swap the save in: {e}")); }
+            moved.push(rel.to_string());
+        }
+    }
+    let old = old_of(live);
+    if old.exists() { let _ = move_dir(&old, &backups.join(format!("{} left over", stamp()))); }
+    let had = live.exists();
+    if had { if let Err(e) = std::fs::rename(live, &old) { undo(&moved); return Err(format!("Couldn't swap the save in: {e}")); } }
+    if let Err(e) = std::fs::rename(staging, live) {
+        if had { let _ = std::fs::rename(&old, live); }
+        undo(&moved);
+        return Err(format!("Couldn't swap the save in: {e}"));
+    }
+    if had {
+        if let Err(e) = move_dir(&old, &backups.join(stamp())) { eprintln!("hearth-link: saves: the replaced save stays in {} ({e})", old.display()); }
+        prune(backups, KEEP_LOCAL);
+    }
+    Ok(())
+}
+
+/// Waits for a pull's copy (`job`: its state, whether it's still running, its error), up to `max`; then swaps it in
+/// (verify_and_swap) or, when it failed, timed out (it's cancelled with `cancel` and waited for) or came in short,
+/// deletes the staging folder. The save here is only changed by a complete, checked pull.
+pub async fn settle_pull<F: Fn() -> (String, bool, Option<String>), C: FnOnce()>(job: F, cancel: C, max: Duration, poll: Duration,
+        live: &Path, staging: &Path, expect: &Value, backups: &Path) -> Result<(), String> {
+    let t = Instant::now();
+    let r: Result<(), String> = loop {
+        tokio::time::sleep(poll).await;
+        let (state, _, err) = job();
+        match state.as_str() {
+            "done" => break Ok(()),
+            "error" | "cancelled" => break Err(format!("The save didn't come over ({}): the one here is used", err.unwrap_or_else(|| "it didn't arrive".into()))),
+            _ if t.elapsed() > max => {
+                cancel();
+                // Nothing may still be writing into staging when it's deleted.
+                let t2 = Instant::now();
+                while job().1 && t2.elapsed() < Duration::from_secs(15) { tokio::time::sleep(poll).await; }
+                break Err("The save took too long to come over: the one here is used".into());
+            }
+            _ => {}
+        }
+    };
+    let (l, s, e, b) = (live.to_path_buf(), staging.to_path_buf(), expect.clone(), backups.to_path_buf());
+    tokio::task::spawn_blocking(move || {
+        let r = r.and_then(|_| verify_and_swap(&l, &s, &e, &b));
+        if r.is_err() { let _ = std::fs::remove_dir_all(&s); }
+        r
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// The saves kept on this server: [{key, title, from, at, size, replaced}].
@@ -409,36 +497,24 @@ impl Node {
         let srv = self.saves_server_info(&server, gid, Duration::from_secs(8)).await.map_err(|e| if e == "offline" { format!("{} isn't answering", self.server_name(&server)) } else { e })?;
         let version = srv["version"].as_str().ok_or("There's no save for it there yet")?.to_string();
         let key = save_key(gid);
-        // What's here now is kept first.
-        let (r2, bk) = (root.clone(), self.dir.join("save-backups").join(&key));
-        tokio::task::spawn_blocking(move || -> Result<(), String> {
-            if digest(&r2)?.2 == 0 { return Ok(()); }
-            copy_tree(&r2, &bk.join(stamp()))?;
-            prune(&bk, KEEP_LOCAL);
-            Ok(())
-        }).await.map_err(|e| e.to_string())??;
+        // Into a staging folder next to the save; swapped in only when it's all there (settle_pull).
+        let staging = staging_of(&root);
+        let s2 = staging.clone();
+        tokio::task::spawn_blocking(move || { let _ = std::fs::remove_dir_all(&s2); std::fs::create_dir_all(&s2) }).await.map_err(|e| e.to_string())?.map_err(|e| format!("Couldn't make room for the save: {e}"))?;
         let title = load_state(&self.dir)["games"][gid]["title"].as_str().unwrap_or("Game").to_string();
         let gid_job = format!("savesrv:{key}");
         crate::lock(&self.jobs).retain(|j| !(j.game_id == gid_job && matches!(j.state().as_str(), "done" | "cancelled" | "error")));
-        let job = self.start_job(&server, &json!({"id": gid_job, "title": format!("{title} (save)"), "store": "savesrv"}), root.clone(), false)?;
-        let t = Instant::now();
-        loop {
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            match job.state().as_str() {
-                "done" => break,
-                "error" | "cancelled" => {
-                    let e = crate::lock(&job.error).clone().unwrap_or_else(|| "It didn't arrive".into());
-                    crate::lock(&self.jobs).retain(|j| j.id != job.id);
-                    return Err(format!("The save didn't come over ({e}): the one here is used"));
-                }
-                _ if t.elapsed() > PULL_MAX => {
-                    job.cancel.store(true, std::sync::atomic::Ordering::SeqCst); job.stop.store(true, std::sync::atomic::Ordering::SeqCst);
-                    return Err("The save took too long to come over: the one here is used (the one that was here is backed up)".into());
-                }
-                _ => {}
-            }
-        }
+        let job = match self.start_job(&server, &json!({"id": gid_job, "title": format!("{title} (save)"), "store": "savesrv"}), staging.clone(), false) {
+            Ok(j) => j,
+            Err(e) => { let _ = std::fs::remove_dir_all(&staging); return Err(e); }
+        };
+        use std::sync::atomic::Ordering::SeqCst;
+        let (j1, j2) = (job.clone(), job.clone());
+        let r = settle_pull(move || (j1.state(), j1.running.load(SeqCst), crate::lock(&j1.error).clone()),
+                            move || { j2.cancel.store(true, SeqCst); j2.stop.store(true, SeqCst); },
+                            PULL_MAX, Duration::from_millis(300), &root, &staging, &srv, &self.dir.join("save-backups").join(&key)).await;
         crate::lock(&self.jobs).retain(|j| j.id != job.id);
+        r?;
         let r2 = root.clone();
         let (d, ..) = tokio::task::spawn_blocking(move || digest(&r2)).await.map_err(|e| e.to_string())??;
         let gid_s = gid.to_string();
@@ -625,6 +701,67 @@ mod tests {
         assert!(epic_cloud(d.path(), "A"));
         assert!(!epic_cloud(d.path(), "B"));
         assert_eq!(target(d.path(), "xodus:Halo", None), Target::Skip("Hearth doesn't follow this game's saves".into()));
+    }
+
+    fn save_here(d: &Path) -> PathBuf {
+        let live = d.join("users/steamuser");
+        std::fs::create_dir_all(live.join("AppData/Roaming/Game")).unwrap();
+        std::fs::create_dir_all(live.join("Temp")).unwrap();
+        std::fs::write(live.join("AppData/Roaming/Game/save1"), b"mine").unwrap();
+        std::fs::write(live.join("Temp/cache"), b"c").unwrap();
+        live
+    }
+
+    #[tokio::test]
+    async fn a_pull_that_times_out_leaves_the_save_here_alone() {
+        let d = tempfile::tempdir().unwrap();
+        let live = save_here(d.path());
+        let staging = staging_of(&live);
+        assert_eq!(staging, d.path().join("users/.steamuser.hearth-pull"));
+        // Half of it arrived, then nothing more.
+        std::fs::create_dir_all(staging.join("AppData/Roaming/Game")).unwrap();
+        std::fs::write(staging.join("AppData/Roaming/Game/save1"), b"the").unwrap();
+        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (c1, c2) = (cancelled.clone(), cancelled.clone());
+        let r = settle_pull(move || ("copying".to_string(), !c1.load(std::sync::atomic::Ordering::SeqCst), None),
+                            move || c2.store(true, std::sync::atomic::Ordering::SeqCst),
+                            Duration::from_millis(60), Duration::from_millis(10), &live, &staging, &json!({"files": 1, "size": 6}), &d.path().join("bk")).await;
+        assert!(r.unwrap_err().contains("took too long"));
+        assert!(cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!staging.exists());
+        assert_eq!(std::fs::read(live.join("AppData/Roaming/Game/save1")).unwrap(), b"mine");
+        assert!(live.join("Temp/cache").exists());
+        assert!(!d.path().join("bk").exists());
+    }
+
+    #[tokio::test]
+    async fn a_failed_or_short_pull_is_deleted_and_a_complete_one_swapped_in() {
+        let d = tempfile::tempdir().unwrap();
+        let live = save_here(d.path());
+        let staging = staging_of(&live);
+        let bk = d.path().join("bk");
+        // The copy failed.
+        std::fs::create_dir_all(&staging).unwrap();
+        let r = settle_pull(|| ("error".to_string(), false, Some("lost".to_string())), || {}, Duration::from_secs(5), Duration::from_millis(5), &live, &staging, &json!({}), &bk).await;
+        assert!(r.unwrap_err().contains("lost"));
+        assert!(!staging.exists());
+        // Done, but short of what the server has.
+        std::fs::create_dir_all(staging.join("AppData/Roaming/Game")).unwrap();
+        std::fs::write(staging.join("AppData/Roaming/Game/save1"), b"theirs").unwrap();
+        let r = settle_pull(|| ("done".to_string(), false, None), || {}, Duration::from_secs(5), Duration::from_millis(5), &live, &staging, &json!({"files": 2, "size": 12}), &bk).await;
+        assert!(r.unwrap_err().contains("isn't complete"));
+        assert!(!staging.exists());
+        assert_eq!(std::fs::read(live.join("AppData/Roaming/Game/save1")).unwrap(), b"mine");
+        // Complete: swapped in, caches kept, the old save backed up.
+        std::fs::create_dir_all(staging.join("AppData/Roaming/Game")).unwrap();
+        std::fs::write(staging.join("AppData/Roaming/Game/save1"), b"theirs").unwrap();
+        settle_pull(|| ("done".to_string(), false, None), || {}, Duration::from_secs(5), Duration::from_millis(5), &live, &staging, &json!({"files": 1, "size": 6}), &bk).await.unwrap();
+        assert_eq!(std::fs::read(live.join("AppData/Roaming/Game/save1")).unwrap(), b"theirs");
+        assert!(live.join("Temp/cache").exists());
+        assert!(!staging.exists() && !old_of(&live).exists());
+        let kept: Vec<_> = std::fs::read_dir(&bk).unwrap().flatten().collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(std::fs::read(kept[0].path().join("AppData/Roaming/Game/save1")).unwrap(), b"mine");
     }
 
     #[test]
