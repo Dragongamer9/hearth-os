@@ -47,6 +47,10 @@ pub struct Game {
     pub beacon: Option<crate::beacon::BeaconGame>,
     /// Steam downloads: what Steam is doing now ("Verifying", "Waiting for Steam", "Stopped: Disk write failure").
     pub stage: Option<String>,
+    /// Multi-seat (seat_share.rs): another player's Epic or GOG install, played from their folder ("Player 1").
+    pub shared_from: Option<String>,
+    /// Multi-seat: a Steam game another Steam account installed in the shared library (Steam Family lends it).
+    pub borrowed: bool,
 }
 
 /// The game that's running: what to watch, and its times (ms since 1970).
@@ -138,6 +142,12 @@ pub struct Library {
     beacon_next: Arc<Mutex<Option<crate::beacon::Snapshot>>>,
     beacon_busy: Arc<std::sync::atomic::AtomicBool>,
     beacon_checked: u64,
+    /// Multi-seat (seat_share.rs): games running on the other seats (id → "Player 2"), and when that was read;
+    /// what this player last offered the others; whether Steam has the shared library yet.
+    in_use: HashMap<String, String>,
+    in_use_checked: u64,
+    share_sig: Option<String>,
+    steam_share_done: bool,
 }
 
 fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect() }
@@ -146,7 +156,8 @@ impl Library {
     pub fn new(store: Store, home: PathBuf) -> Library {
         Library { running: None, store, games: BTreeMap::new(), counts: BTreeMap::new(), home, queue: Arc::new(Mutex::new(stores::Queue::new())),
                   accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new(), frozen: vec![], quick_saved: String::new(),
-                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0 }
+                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0,
+                  in_use: HashMap::new(), in_use_checked: 0, share_sig: None, steam_share_done: false }
     }
 
     /// Games you added yourself (kept in library.json "manual").
@@ -188,8 +199,17 @@ impl Library {
     pub fn scan(&mut self) {
         let mut all = BTreeMap::new();
         let mut counts = BTreeMap::new();
+        // Multi-seat with shared games: its shared folder (seat_share.rs).
+        let share = crate::seat_share::active();
         if self.store.source_on("steam") {
-            let list: Vec<Game> = steam::scan(&self.home).into_iter().map(Game::from).collect();
+            // A game in the shared folder's Steam library that another Steam account installed is lent by Steam Family.
+            let me64 = share.as_ref().and_then(|_| steam::steam_path(&self.home)).and_then(|s| steam::find_account(&self.home, &s, false).ok()).map(|(id, _)| id);
+            let list: Vec<Game> = steam::scan(&self.home).into_iter().map(|sg| {
+                let lent = share.as_ref().is_some_and(|(_, d)| sg.install_path.starts_with(d)) && sg.owner != 0 && me64.is_some_and(|m| m != sg.owner);
+                let mut g = Game::from(sg);
+                g.borrowed = lent;
+                g
+            }).collect();
             counts.insert("steam".to_string(), list.iter().filter(|g| g.installed).count());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
@@ -209,6 +229,7 @@ impl Library {
             counts.insert("gog".to_string(), list.len());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
+        if let Some((cfg, dir)) = &share { self.add_shared(&mut all, cfg, dir); }
         if self.store.source_on("xbox") {
             let list = xcloud::scan();
             counts.insert("xbox".to_string(), list.len().saturating_sub(1));
@@ -270,15 +291,96 @@ impl Library {
         }
         self.games = all;
         self.counts = counts;
+        if let Some((_, dir)) = &share { self.share_mine(dir); }
+        self.refresh_in_use();
         self.steam_stages(None);
         if !self.queue_restored { self.queue_restored = true; self.restore_queue(); }
         self.download_sig = self.signature();
     }
 
+    // ------------------------------------------------------------------ multi-seat shared games (seat_share.rs)
+
+    /// The other players' Epic and GOG installs, in this player's library. GOG games start from the other player's
+    /// folder (DRM-free); an Epic install only shows for a player whose own Epic account has the game.
+    fn add_shared(&self, all: &mut BTreeMap<String, Game>, cfg: &Value, dir: &std::path::Path) {
+        let me = crate::seat_share::me();
+        let epic_owned = Owned::load(epic::CACHE);
+        let gog_owned = Owned::load(gog::CACHE);
+        for s in crate::seat_share::shared_games(dir, &me, cfg, &crate::seat_share::uid_of) {
+            if !self.store.source_on(&s.store) { continue; }
+            if let Some(g) = all.get_mut(&s.id) {
+                // Already in this player's library: their own copy stays theirs; the shared folder their Epic
+                // registered earlier is still the other player's.
+                if g.install_path.as_deref() == Some(s.path.as_path()) { g.shared_from = Some(s.from.clone()); g.can_uninstall = false; }
+                continue;
+            }
+            let mut g = match s.store.as_str() {
+                "gog" => {
+                    let mut rec = serde_json::Map::new();
+                    rec.insert(s.id.trim_start_matches("gog:").to_string(), json!(s.path.to_string_lossy()));
+                    let Some(mut g) = gog::installed(&Value::Object(rec), &gog_owned).pop() else { continue };
+                    if g.art.is_empty() { g.art = stores::art_of(&s.art); }
+                    g
+                }
+                "epic" => {
+                    if !stores::signed_in("epic") { continue; }
+                    let Some(o) = epic_owned.find(s.id.trim_start_matches("epic:")) else { continue };
+                    stores::game(s.id.clone(), &s.title, "epic", &s.path.to_string_lossy(), None, stores::art_of(&o["art"]), true)
+                }
+                _ => continue,
+            };
+            g.shared_from = Some(s.from);
+            g.can_uninstall = false;
+            all.insert(g.id.clone(), g);
+        }
+    }
+
+    /// Offers this player's own Epic and GOG installs to the others (hearth-seats share-publish) when they changed,
+    /// and adds the shared folder's Steam library to this player's Steam once Steam is closed (Steam rewrites its
+    /// list of libraries when it closes, so it isn't changed under a running Steam).
+    fn share_mine(&mut self, dir: &std::path::Path) {
+        let mut mine: Vec<String> = self.games.values().filter(|g| matches!(g.source, "epic" | "gog") && g.installed && g.shared_from.is_none())
+            .map(|g| format!("{}={}", g.id, g.install_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default())).collect();
+        mine.sort();
+        let sig = mine.join("\n");
+        if self.share_sig.as_deref() != Some(sig.as_str()) {
+            self.share_sig = Some(sig);
+            std::thread::spawn(|| match crate::multiplay::ask(crate::multiplay::SEATS, &["share-publish"]) {
+                Ok(v) => crate::bridge::log(&format!("multi-seat: shared {} games with the other players{}", v["shared"].as_u64().unwrap_or(0),
+                    v["not_shared"].as_array().filter(|a| !a.is_empty()).map(|a| format!(" (couldn't share {})", a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", "))).unwrap_or_default())),
+                Err(e) => crate::bridge::log(&format!("multi-seat: couldn't share games: {e}")),
+            });
+        }
+        if !self.steam_share_done && self.store.source_on("steam") && !steam::is_running() {
+            self.steam_share_done = true;
+            let (home, lib) = (self.home.clone(), dir.join("Steam"));
+            std::thread::spawn(move || {
+                let Some(s) = steam::steam_path(&home) else { return };
+                if steam::libraries(&s).iter().any(|l| *l == lib) { return; }
+                match steam::add_library(&home, &lib) {
+                    Ok(_) => crate::bridge::log("multi-seat: the shared games folder is one of Steam's libraries now"),
+                    Err(e) => crate::bridge::log(&format!("multi-seat: Steam's shared library: {e}")),
+                }
+            });
+        }
+    }
+
+    /// What's running on the other seats.
+    fn refresh_in_use(&mut self) {
+        self.in_use_checked = now_ms();
+        self.in_use = match crate::seat_share::active() {
+            Some((cfg, _)) => crate::seat_share::in_use(std::path::Path::new(crate::seat_share::IN_USE), &crate::seat_share::me(), &cfg, &crate::seat_share::uid_of, &crate::procs::alive),
+            None => HashMap::new(),
+        };
+    }
+
     // ------------------------------------------------------------------ installs (Epic, GOG) and downloads
 
     pub fn install_root(&self) -> PathBuf {
-        self.store.data["installRoot"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or_else(|| self.home.join("Games"))
+        // Multi-seat with shared games: new installs go in the shared folder, so every player can start them.
+        self.store.data["installRoot"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from)
+            .or_else(|| crate::seat_share::active().map(|(_, d)| d))
+            .unwrap_or_else(|| self.home.join("Games"))
     }
 
     fn start_install(&mut self, id: &str, title: &str, uri: &str, paused: bool) -> Result<(), String> {
@@ -401,6 +503,7 @@ impl Library {
     pub fn uninstall(&mut self, id: &str) -> Result<(), String> {
         let g = self.games.get(id).cloned().ok_or("That game isn't in the library anymore.")?;
         if self.running.as_ref().map(|r| r.id == id).unwrap_or(false) { return Err(format!("Exit {} first.", g.title)); }
+        if let Some(who) = &g.shared_from { return Err(format!("This is {who}'s copy of {}. Only {who} can delete it.", g.title)); }
         if !g.can_uninstall { return Err(format!("Uninstall {} from its store app.", g.title)); }
         match g.source {
             "epic" => epic::uninstall(id.trim_start_matches("epic:"))?,
@@ -511,6 +614,7 @@ impl Library {
             "bytesDone": g.bytes_done, "bytesTotal": g.bytes_total, "canUninstall": g.can_uninstall, "note": g.note,
             "installKind": match g.install_uri.as_deref() { None => None, Some(u) if u.starts_with("nimbus-") => Some("nimbus"), Some(u) if u.starts_with("steam:") => Some("steam"), Some(u) if u.starts_with("beacon:") => Some("beacon"), Some(_) => Some("store") },
             "system": g.system, "frozen": self.frozen.iter().any(|f| f.id == g.id), "stage": g.stage,
+            "sharedFrom": g.shared_from, "borrowed": g.borrowed, "inUse": self.in_use.get(&g.id),
         });
         if let Some(b) = &g.beacon {
             out["beacon"] = json!({"family": b.family, "short": b.short, "ready": b.ready, "blocker": b.blocker(), "edition": b.edition, "viaSteam": b.via_steam, "custom": b.custom,
@@ -548,6 +652,13 @@ impl Library {
             return Ok(json!({"tracked": true, "stream": g.stream_url, "title": g.title}));
         }
         if !g.installed { return Err(format!("{} isn't installed yet.", g.title)); }
+        // Multi-seat: a copy another player has right now waits for them (seat_share.rs).
+        self.refresh_in_use();
+        if let Some(who) = self.in_use.get(id) {
+            if crate::seat_share::must_wait(g.source, g.shared_from.as_deref(), g.borrowed) {
+                return Err(format!("{} is in use by {who}. {}", g.title, if g.source == "steam" { "Steam Family lets one player at a time play a lent game." } else { "One player at a time can play this copy." }));
+            }
+        }
         let track = match g.source {
             "steam" => {
                 let uri = g.launch_uri.clone().unwrap_or_default();
@@ -580,8 +691,14 @@ impl Library {
                 let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home, app_id)?;
                 crate::procs::Track { pid: Some(pid), app_id: Some(app_id), ..Default::default() }
             }
-            "epic" | "gog" if g.can_uninstall => {
+            "epic" | "gog" if g.can_uninstall || g.shared_from.is_some() => {
                 // Installed by Hearth: started directly with Proton, so Hearth can watch it.
+                if g.source == "epic" && g.shared_from.is_some() && !epic::installed(&Owned::default()).iter().any(|x| x.id == id) {
+                    // Another player's Epic install: registered once with this player's own Epic sign-in, which then
+                    // starts it with this player's copy of the game.
+                    let dir = g.install_path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                    epic::import_game(id.trim_start_matches("epic:"), &dir)?;
+                }
                 let opts = crate::game_options::get(&self.store, id);
                 let pid = if g.source == "epic" { epic::launch(id.trim_start_matches("epic:"), &opts, app_id)? } else { gog::launch(&g, &opts, app_id)? };
                 let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
@@ -606,6 +723,8 @@ impl Library {
             _ => "started".to_string(),
         }));
         self.running = Some(Running { id: id.to_string(), track, launched_at: now_ms(), started_at: 0, gone_since: 0, paused_at: 0, paused_ms: 0, closing: false, cloud: false, frozen_at: 0, app_id });
+        // Multi-seat: the other players see "In use by …" (nothing on a PC without shared games).
+        if let Err(e) = crate::seat_share::take(std::path::Path::new(crate::seat_share::IN_USE), id, &crate::seat_share::me(), std::process::id()) { crate::bridge::log(&format!("multi-seat: couldn't note {id} as in use: {e}")); }
         // Started without the store (its sign-in expired): the page says cloud saves and online play wait for Sign in again.
         let expired = matches!(g.source, "epic" | "gog") && stores::expiry::is_expired(g.source);
         Ok(serde_json::json!({"tracked": true, "expired": if expired { Some(g.source) } else { None }}))
@@ -662,6 +781,7 @@ impl Library {
             events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
         }
         events.extend(self.tick_running());
+        if now_ms().saturating_sub(self.in_use_checked) > 10_000 { self.refresh_in_use(); }
         let mut q = self.quick_tick();
         // The list only goes to the page when it changed.
         if self.frozen.len() == before && q.last().map(|e| e["name"] == "quickResume").unwrap_or(false) { q.pop(); }
@@ -752,6 +872,7 @@ impl Library {
 
     /// A game is over (or a Quick Resume game was closed): play time saved, Epic saves uploaded. Returns its dto.
     fn finish(&mut self, r: Running) -> Value {
+        crate::seat_share::release(std::path::Path::new(crate::seat_share::IN_USE), &r.id, &crate::seat_share::me());
         // Epic cloud saves go up once the game has closed.
         // GOG cloud saves go up once the game has closed.
         if let Some(gid) = r.id.strip_prefix("gog:") {

@@ -30,6 +30,8 @@ pub struct SteamGame {
     pub bytes_done: Option<u64>,
     pub bytes_total: Option<u64>,
     pub art: Vec<(&'static str, String)>,
+    /// The Steam account that installed or last updated it (the manifest's LastOwner; 0 when it doesn't say).
+    pub owner: u64,
 }
 
 /// Steam Flatpaks whose folders Hearth knows: Flathub's, and Anatase's own (hearth-steam-launch starts either).
@@ -339,6 +341,8 @@ pub fn add_library(home: &Path, folder: &Path) -> Result<bool, String> {
     let _ = getrandom::getrandom(&mut id);
     let contentid = u64::from_le_bytes(id) >> 1;
     let marker = folder.join("libraryfolder.vdf");
+    // A library another account's Steam made already (multi-seat's shared folder) keeps its own id.
+    let contentid = vdf::load(&marker).and_then(|k| k.str(&["libraryfolder", "contentid"]).and_then(|c| c.parse::<u64>().ok())).unwrap_or(contentid);
     if !marker.exists() {
         let text = format!("\"libraryfolder\"\n{{\n\t\"contentid\"\t\t\"{contentid}\"\n\t\"label\"\t\t\"\"\n}}\n");
         std::fs::write(&marker, text).map_err(|e| format!("Couldn't write to the drive ({e})."))?;
@@ -546,7 +550,7 @@ pub fn scan_with(home: &Path, per_account: bool) -> Vec<SteamGame> {
             let added = meta.map(|m| { let b = millis(m.created()); if b > 0 { b } else { millis(m.modified()) } }).unwrap_or(0);
             games.push(SteamGame {
                 art: find_art(&app_id, grid.as_deref(), &cache),
-                app_id, title: name, install_path: dir,
+                app_id, title: name, install_path: dir, owner,
                 size_bytes: if size > 0 { Some(size) } else { None }, added, minutes, last_played: last, installed, state,
                 bytes_done: if to_dl > 0 { Some(dl) } else { None }, bytes_total: if to_dl > 0 { Some(to_dl) } else { None },
             });

@@ -3979,7 +3979,15 @@ function lAbout(g){
   if(g.system) return `A ${esc(g.system)} game from your ROMs folder, played with RetroArch.`;
   if(g.src==='beacon' && typeof beaconAbout==='function') return beaconAbout(g);
   if(g.note) return esc(g.note)+'.';
+  if(g.inst && sharedAbout(g)) return sharedAbout(g);
   return g.inst ? `Installed through ${esc(lSrc(g))}.` : `In your ${esc(lSrc(g))} library.`;
+}
+// Multi-seat: a game another player installed, and who's playing it now (docs/MULTI-SEAT.md, "Sharing games").
+function sharedAbout(g){
+  const busy = g.inUse ? ` In use by ${esc(g.inUse)} right now.` : '';
+  if(g.sharedFrom) return (g.src==='epic' ? `${esc(g.sharedFrom)}'s install, played with your own Epic copy.` : `${esc(g.sharedFrom)}'s copy, shared on this PC.`) + busy;
+  if(g.borrowed) return `Shared with you through Steam Family.${busy}`;
+  return busy.trim();
 }
 // Play / Resume / Install, as on the game's page.
 function lPlay(g, k){
@@ -4642,6 +4650,7 @@ function viewGame(){
     : g.cloud ? `Streams with Xbox Cloud Gaming. Needs Game Pass Ultimate; sign in with your Xbox account the first time. Hold View + Menu to leave the stream.`
     : g.system ? `A ${esc(g.system)} game from your ROMs folder, played with RetroArch.`
     : g.src==='beacon' ? beaconAbout(g)
+    : g.inst && sharedAbout(g) ? sharedAbout(g)
     : g.inst ? `Installed through ${SOURCES[g.src]}.`
     : isActive(g) ? (g.installKind==='nimbus' ? `${APP} is installing this game into your games folder.` : `${SOURCES[g.src]} is installing this game.`)
     : g.note ? `In your ${SOURCES[g.src]} library. ${esc(g.note)}, so ${APP} can't install it.`
@@ -4666,6 +4675,7 @@ function viewGame(){
         <div class="gstat"><div class="k">Last played</div><div class="v">${ago(g.last)}</div></div>
         <div class="gstat"><div class="k">Play time</div><div class="v">${g.hrs?hrs(g.hrs):'—'}</div></div>
         <div class="gstat"><div class="k">${g.system?'System':'Source'}</div><div class="v">${esc(g.system||SOURCES[g.src])}</div></div>
+        ${g.inUse?`<div class="gstat"><div class="k">On this PC</div><div class="v">In use by ${esc(g.inUse)}</div></div>`:''}
         ${g.beacon&&g.inst?`<div class="gstat"><div class="k">Mod</div><div class="v">${esc(beaconModName(g))}</div></div>`:''}
         ${pdb?`<div class="gstat" title="${esc(pdb.text)} · ProtonDB, ${pdb.reports||0} reports"><div class="k">On Linux</div><div class="v"><span class="pdb" style="--c:${PDB_COLORS[pdb.tier]||'#7f8b99'}">${esc(pdb.label)}</span></div></div>`:''}
         <div class="gstat"><div class="k">Size</div><div class="v">${g.size||'—'}</div></div>
@@ -10945,7 +10955,8 @@ function fromHost(d){
           hrs:(d.minutes||0)/60, last:d.lastPlayed||0, added:d.added||0, size:fmtSize(d.sizeBytes),
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
           inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
-          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null, beacon:d.beacon||null, stage:d.stage||null};
+          canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null, beacon:d.beacon||null, stage:d.stage||null,
+          sharedFrom:d.sharedFrom||null, borrowed:!!d.borrowed, inUse:d.inUse||null};
 }
 async function loadLibrary(rescan, announce){
   if(!host) return;
