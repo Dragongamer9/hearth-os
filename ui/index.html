@@ -1294,6 +1294,88 @@ body.menu-dock #search.over-dock .kbtop{border-radius:0 0 18px 18px}
 .setc .sgrid{display:contents}
 @media (min-width:1700px){.setc .sgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}}
 @media (max-width:900px){.sc-body{flex-direction:column;align-items:stretch}.sc-side{width:auto;position:static}.sc-head .sc-lbrb{display:none}}
+/* ---------- Dragonfire look (Settings › Appearance › Look): a darker ember theme and its own Home ----------
+   The colours are set on body, so they win over the profile's accent and background (set on :root) while the look
+   is on, and come straight back with Classic. */
+body.look-df{--bg:#0b0806;--bg2:#120c09;--panel:#1a110d;--panel2:#251812;--panel3:#35231a;--line:#3d291e;
+  --text:#f6ece2;--dim:#bba292;--faint:#8a7262;--accent:#ff8a3d;--accent2:#e5642a;--accentInk:#1c0b02;
+  background:radial-gradient(120% 80% at 70% -10%,#3a1608 0%,rgba(58,22,8,0) 55%),radial-gradient(90% 60% at 0% 110%,#2a0f06 0%,rgba(42,15,6,0) 60%),#0b0806}
+body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent),0 0 26px rgba(255,138,61,.35)}
+#view>.df-home{height:100%;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px}
+.df-scroll{overflow-y:auto;overflow-x:hidden;scrollbar-width:none;display:grid;grid-template-columns:minmax(0,1fr) clamp(250px,24vw,350px);gap:18px;align-items:start;padding:2px 2px 6px}
+.df-scroll::-webkit-scrollbar{display:none}
+.df-main{min-width:0}
+.df-main h2{color:var(--text);text-transform:none;letter-spacing:0;font-size:17px;margin:14px 0 2px}
+.df-main .shelf{padding-bottom:18px}
+.df-hero{position:relative;border-radius:18px;overflow:hidden;min-height:clamp(190px,36vh,400px);display:flex;align-items:flex-end;background:var(--panel);border:1px solid rgba(255,138,61,.18)}
+.df-hero>.art,.df-hero>.img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.df-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(11,8,6,.92) 0%,rgba(11,8,6,.6) 45%,rgba(11,8,6,.1) 100%),linear-gradient(0deg,rgba(11,8,6,.85) 0%,transparent 55%)}
+.df-hin{position:relative;z-index:1;padding:clamp(18px,3vw,36px);max-width:min(620px,92%)}
+.df-k{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#ffb27a}
+.df-title{font-size:clamp(28px,4.2vw,54px);font-weight:800;line-height:1.05;margin:6px 0 8px;text-shadow:0 4px 30px rgba(0,0,0,.7);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.df-meta{color:var(--dim);font-size:14px;margin-bottom:18px}
+.df-acts{display:flex;gap:12px;flex-wrap:wrap}
+.df-acts .play{background:linear-gradient(180deg,#ffa25a,#f0702c);box-shadow:0 6px 24px rgba(240,112,44,.35)}
+.df-btn{display:flex;align-items:center;gap:8px;padding:13px 20px;border-radius:8px;background:rgba(26,17,13,.78);border:1px solid var(--line);font-weight:600}
+.df-side{display:flex;flex-direction:column;gap:14px;min-width:0}
+.df-card{background:rgba(26,17,13,.86);border:1px solid var(--line);border-radius:16px;padding:14px 16px;width:100%;display:block}
+.df-card h3{font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.df-card h3 small{font-size:12px;font-weight:500;color:var(--dim)}
+.df-rings{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;text-align:center}
+.df-ring{position:relative;width:100%;max-width:70px;aspect-ratio:1;margin:0 auto}
+.df-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.df-ring circle{fill:none;stroke-width:6}
+.df-ring .bgc{stroke:var(--panel3)}
+.df-ring .fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .6s var(--ease)}
+.df-ring.hot .fg{stroke:#ff5d3d}
+.df-ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;font-variant-numeric:tabular-nums}
+.df-rl{font-size:12px;font-weight:700;margin-top:4px}
+.df-rs{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.df-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.df-stat{display:flex;flex-direction:column;min-width:0}
+.df-stat b{font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.df-stat small{font-size:11px;color:var(--dim)}
+.df-fr{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border-radius:10px}
+.df-fr .av{width:34px;height:34px;border-radius:50%;background:var(--panel3);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none;position:relative}
+.df-fr .av i{position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:#5fd068;border:2px solid var(--panel)}
+.df-fr .rt{min-width:0}.df-fr .rt b,.df-fr .rt small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.df-fr .rt small{font-size:12px;color:var(--dim)}
+.df-all{font-size:12px;color:var(--dim);padding:4px 8px;border-radius:6px}
+.df-launch{display:flex;gap:12px;overflow-x:auto;padding:10px 14px 14px;margin:0 -14px;scrollbar-width:none}
+.df-launch::-webkit-scrollbar{display:none}
+.df-ln{flex:none;width:92px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:12px;background:rgba(26,17,13,.7);border:1px solid var(--line)}
+.df-ln .lg{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:20px;background:linear-gradient(160deg,#3d2418,#22140e);color:#ffb27a}
+.df-ln .lg svg{width:24px;height:24px}
+.df-ln span{font-size:12px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.df-bar{display:flex;justify-content:center;align-items:center;gap:clamp(2px,1vw,10px);padding:6px 14px;margin:0 auto;border-radius:22px;background:rgba(18,12,9,.92);border:1px solid var(--line);max-width:100%;overflow-x:auto;scrollbar-width:none}
+.df-bar::-webkit-scrollbar{display:none}
+.df-b{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px clamp(6px,1vw,12px);border-radius:12px;color:var(--dim);flex:none}
+.df-b span{font-size:11px;white-space:nowrap}
+.df-b.cur{color:var(--accent)}
+.df-b.focus{color:var(--text)}
+.df-b.hm svg{width:40px;height:40px}
+.df-b.hm{width:58px;height:58px;padding:7px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#3b1d0e,#160c07);border:1px solid rgba(255,138,61,.45);box-shadow:0 0 22px rgba(255,138,61,.25)}
+.df-empty{padding:clamp(18px,3vw,36px);position:relative;z-index:1}
+@media (max-width:900px){.df-scroll{grid-template-columns:minmax(0,1fr)}.df-b span{display:none}}
+.df-main .tile.l{height:clamp(120px,17vh,168px)}
+.df-main .tile.l .ct{font-size:clamp(16px,1.5vw,22px)}
+.df-main .tile.p{width:clamp(92px,8.6vw,136px)}
+.df-allg{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--panel);border:1px solid var(--line);color:var(--dim);font-size:13px;text-align:center;padding:8px}
+.df-allg svg{width:28px;height:28px}
+/* Settings › Updates & Recovery */
+.df-tl{position:relative;margin:4px 0 6px 10px;padding-left:18px;border-left:2px solid var(--line)}
+.df-tl .row{position:relative;margin-bottom:6px}
+.df-tl .row:before{content:"";position:absolute;left:-26px;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:var(--panel3);border:2px solid var(--bg)}
+.df-tl .row.now:before{background:var(--accent);box-shadow:0 0 10px rgba(255,138,61,.6)}
+.df-tl .row.next:before{background:#ffd166}
+/* Settings › Appearance › Look */
+.df-looks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.df-lprev{height:86px;border-radius:8px;position:relative;overflow:hidden}
+.df-lprev.classic{background:linear-gradient(135deg,#0c1016,#273140)}
+.df-lprev.dragonfire{background:radial-gradient(90% 90% at 75% 0%,#7a2c0c,#1a0d07 60%,#0b0806)}
+.df-lprev i{position:absolute;border-radius:4px;background:rgba(255,255,255,.14)}
+.df-lprev.dragonfire i.a{background:#ff8a3d}
+.df-lprev.classic i.a{background:#3fd0b8}
 </style>
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <script src="osk/hearth-osk.js"></script>
@@ -1626,7 +1708,7 @@ const MOCK = (()=>{
     'power.get':async()=>({...st.battery,mode:st.powerMode,modes:['efficiency','balanced','performance'],modeSupported:true,tdp:{supported:true,watts:st.tdp||15,min:7,max:30}}),
     'power.setMode':async({mode})=>{ st.powerMode=mode; return {...st.battery,mode}; },
     'perf.stats':async(a)=>({gamePower:S.running?{id:S.running,saved:!!(MOCKOPT[S.running]&&MOCKOPT[S.running].powerLabel),label:(MOCKOPT[S.running]||{}).powerLabel||'',tdp:(MOCKOPT[S.running]||{}).tdp||0}:null,
-      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,cpuTemp:68,gpuTemp:61,powerW:st.battery&&st.battery.charging?null:18.4,battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
+      cpu:Math.round(20+Math.random()*30),gpu:Math.round(55+Math.random()*35),ramUsed:9.4,ramTotal:16,vramUsed:5.2,cpuTemp:68,gpuTemp:61,powerW:st.battery&&st.battery.charging?null:18.4,padBattery:{pct:87,charging:false},battery:st.battery,runningId:null,runningSince:null,canFpsLimit:true,fpsLimit:MOCKFPS,canOverlay:true,perfOverlay:MOCKPO,powerMode:st.powerMode,tdp:{supported:true,watts:st.tdp||15,min:7,max:30,via:'steamos-manager'},
       ...(a&&a.hhd?{powerMode:null,powerModes:[],tdp:{supported:false}}:{})}),
     'perf.setTdp':async({watts})=>{ st.tdp=watts; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); S2.tdp.unified.tdp.mode='custom'; S2.tdp.unified.tdp.custom.tdp=watts; return {supported:true,watts,min:7,max:30}; },
     'perf.setFpsLimit':async({fps,game})=>{ if(game&&S.running){ MOCKOPT[S.running]=Object.assign(MOCKOPT[S.running]||{},{fpsLimit:fps,perfSaved:true}); return {fpsLimit:fps,game:S.running}; } MOCKFPS=fps; return {fpsLimit:fps}; },
@@ -1875,7 +1957,7 @@ const HEARTH_MARK = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512
 // =====================================================================
 // Appearance: layout, text size, motion, top bar (kept per device in localStorage)
 // =====================================================================
-const LOOK = {layout:'shelf', textSize:'normal', reduceMotion:false, clock24:false, battPct:true, soundPack:'soft'};
+const LOOK = {layout:'shelf', textSize:'normal', reduceMotion:false, clock24:false, battPct:true, soundPack:'soft', style:'classic'};
 try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}')); }catch(e){}
 const LAYOUTS = [
   {id:'shelf', name:'Shelf', desc:'Big shelves of your games under the art of the last one you played, with the menu at the side.'},
@@ -1900,13 +1982,25 @@ const XLAYOUTS = [
 const MK_LAYOUTS = [];
 const MK_NOTE = `<b>Experimental · Keyboard &amp; mouse</b> Made for a mouse and keyboard: hover a game for Play, right-click it for everything else, Enter plays, Space shows details, F favorites, Ctrl+K or just typing searches. A controller still works. Upvote the ones you'd like to see finished.`;
 const isX = id => XLAYOUTS.some(l=>l.id===id) || MK_LAYOUTS.some(l=>l.id===id);
+// Settings › Appearance › Look: Classic (the layouts above) or Dragonfire (its own darker ember theme and Home).
+const LOOKS = [{id:'classic', name:'Classic', desc:'Hearth as you know it, with the Home layout and theme you pick below.'},
+  {id:'dragonfire', name:'Dragonfire', desc:'A darker ember theme: your last game big, Continue playing, your library and launchers, live performance rings and a bar of shortcuts.'}];
+const dfOn = () => LOOK.style==='dragonfire';
+const homeLayoutName = () => dfOn() ? 'Dragonfire' : (LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name;
+// Settings › Updates is Updates & Recovery in the Dragonfire look on Hearth OS (checked at each draw: whether this
+// is the OS install is only known once the host has answered).
+const dfRecoveryPage = () => dfOn() && ((LINUX && HOSTINFO.system && !HOSTINFO.live) || !host);
+function dfSyncLabels(){ const ut=STABS.find(x=>x[0]==='updates'); if(ut) ut[2]=dfRecoveryPage()?'Updates & Recovery':'Updates'; }
 const TEXT_SIZES = [['small','Small',0.9],['normal','Default',1],['large','Large',1.15],['xl','Extra large',1.3]];
 function applyLook(){
   if(!LAYOUTS.some(l=>l.id===LOOK.layout) && !isX(LOOK.layout)) LOOK.layout='shelf';
   const b=document.body;
   // Experimental layouts use Spotlight's frame (the menu along the top) plus their own class.
-  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id), ...MK_LAYOUTS.map(l=>'X-'+l.id));
-  if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
+  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id), ...MK_LAYOUTS.map(l=>'X-'+l.id), 'look-df');
+  // The Dragonfire look has its own Home in Spotlight's frame (the menu along the top); the Home layout picked
+  // for Classic is kept for when you go back to it.
+  if(dfOn()) b.classList.add('L-spotlight','look-df');
+  else if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
   b.classList.toggle('no-battpct', !LOOK.battPct);
@@ -3417,6 +3511,165 @@ function homeX(V){
   return '';
 }
 
+// ---------- The Dragonfire look (Settings › Appearance › Look) ----------
+// From the concept art: your last game big (Play / Details), Continue playing, your library, the launchers (the
+// stores Hearth has your games from), live performance rings, friends (only when a store gives Hearth a friends
+// list) and a bar of shortcuts along the bottom. The art is your own library's (cached from your stores on this
+// device); Hearth ships no game pictures. Everything is a normal control ([data-f]), so the D-pad reaches it all.
+const DG = {timer:null, fr:false};
+const DG_IC = {
+  camera:'<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  layers:'<svg viewBox="0 0 24 24"><path d="M12 4l9 5-9 5-9-5z"/><path d="M3 14l9 5 9-5"/></svg>',
+  exit:'<svg viewBox="0 0 24 24"><path d="M14 4h5v16h-5"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/></svg>',
+  plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+};
+function homeDf(V){
+  const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last);
+  const g=recent[0] || [...V].sort((a,b)=>(b.added||0)-(a.added||0))[0];
+  const all=visible().sort((a,b)=>(b.last||0)-(a.last||0) || a.title.localeCompare(b.title));
+  dgWatch();
+  const hero = g ? `<div class="df-hero"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}<div class="df-hin">
+      <div class="df-k">${S.running===g.id?'Playing now':g.last?'Continue your adventure':'Ready to play'}</div>
+      <div class="df-title">${esc(g.title)}</div><div class="df-meta">${esc(xMeta(g))}</div>
+      <div class="df-acts">${xPlay(g,'dg-play')}<button class="df-btn" data-f data-k="dg-details" data-act="game" data-id="${esc(g.id)}">${I.info}Details</button></div></div></div>`
+    : `<div class="df-hero"><div class="df-empty"><div class="df-k">Welcome</div><div class="df-title">${LIB.loading?'Loading your games…':'No games yet'}</div>
+      <div class="df-meta">${LIB.loading?'':LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':'Install a game in one of your stores, or add one yourself.'}</div>
+      ${LIB.loading?'':`<div class="df-acts"><button class="play" data-f data-k="dg-add" data-act="addManual">＋ Add a game</button></div>`}</div></div>`;
+  const cont = recent.slice(0,10);
+  const srcs = Object.keys(SOURCES).filter(k=>GAMES.some(x=>x.src===k && !x.hidden));
+  const launch = srcs.map(k=>`<button class="df-ln" data-f data-k="dg-ln-${k}" data-act="xLib" data-tab="${k}"><span class="lg">${esc(SOURCES[k][0])}</span><span>${esc(SOURCES[k])}</span></button>`).join('')
+    + (ANDROID?'':`<button class="df-ln" data-f data-k="dg-ln-add" data-act="nav" data-view="stores"><span class="lg">${DG_IC.plus}</span><span>Stores</span></button>`);
+  return `<div class="df-home"><div class="df-scroll"><div class="df-main">${hero}
+      ${cont.length?`<h2>Continue playing</h2><div class="shelf">${cont.map(x=>tile(x,'l','dg-c-'+x.id)).join('')}</div>`:''}
+      ${all.length?`<h2>Your library</h2><div class="shelf">${all.slice(0,16).map(x=>tile(x,'p','dg-l-'+x.id)).join('')}<button class="tile p df-allg" data-f data-k="dg-l-all" data-act="nav" data-view="library">${I.lib}<span>All ${all.length} games</span></button></div>`:''}
+      ${launch?`<h2>Installed launchers</h2><div class="df-launch">${launch}</div>`:''}</div>
+    <div class="df-side"><button class="df-card" data-f data-k="dg-perf" data-act="qam" data-tab="perf" aria-label="System and performance: open Quick Access"><h3>System &amp; performance<small id="dgPmode">${esc(dgPmode(PERF.s))}</small></h3><div id="dgPerf">${dgPerfInner(PERF.s)}</div></button>${dgFriends()}</div></div>
+    ${dgBar()}</div>`;
+}
+// The bar of shortcuts: Home, Search, Quick settings, the Hearth menu, Capture, the performance overlay, leaving
+// Game Mode. No window buttons: Game Mode has no windows to close.
+function dgBar(){
+  const b=(k,ic,label,attrs,cls='')=>`<button class="df-b ${cls}" data-f data-k="dg-b-${k}" ${attrs} aria-label="${esc(label)}">${ic}${cls.includes('hm')?'':`<span>${label}</span>`}</button>`;
+  return `<nav class="df-bar" aria-label="Shortcuts">${[
+    b('home', I.home, 'Home', 'data-act="nav" data-view="home"', S.view==='home'?'cur':''),
+    b('search', I.search, 'Search', 'data-act="search"'),
+    b('quick', I.sliders, 'Quick settings', 'data-act="qam" data-tab="quick"'),
+    b('hearth', HEARTH_MARK, 'Hearth menu', 'data-act="menu"', 'hm'),
+    LINUX ? b('capture', DG_IC.camera, 'Capture', 'data-act="qam" data-tab="capture"') : hasFeat('screenshots') ? b('capture', DG_IC.camera, 'Screenshots', 'data-act="shots"') : '',
+    LINUX || (PERF.s && PERF.s.canOverlay) ? b('overlay', DG_IC.layers, 'Overlay', 'data-act="dgfOverlay"') : '',
+    ANDROID ? '' : b('exit', DG_IC.exit, LINUX?'Exit Game Mode':'Desktop Mode', 'data-act="pwr" data-p="desktop"'),
+  ].join('')}</nav>`;
+}
+function dgRing(pct, val, label, sub, hot){
+  const C=2*Math.PI*26, p=pct==null||isNaN(pct)?0:Math.max(0,Math.min(100,pct));
+  return `<div><div class="df-ring${hot?' hot':''}"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="bgc" cx="32" cy="32" r="26"/><circle class="fg" cx="32" cy="32" r="26" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C*(1-p/100)).toFixed(1)}"/></svg><b>${val}</b></div>
+    <div class="df-rl">${label}</div><div class="df-rs">${sub||'&nbsp;'}</div></div>`;
+}
+function dgPmode(p){
+  if(!p) return '';
+  const m=PMODES.find(x=>x[0]===p.powerMode);
+  return m ? m[1] : p.tdp && p.tdp.supported && p.tdp.watts ? `${p.tdp.watts} W limit` : '';
+}
+// perf.stats (hearth-core perf.rs and the Windows host): CPU and GPU busy, memory, temperatures, battery draw,
+// the controller's battery (padBattery) and the power mode. FPS only while a game runs and the host can see it.
+function dgPerfInner(p){
+  if(!p) return `<div class="df-rs" style="padding:18px 0;text-align:center">Reading the numbers…</div>`;
+  const pc=v=>v==null?'—':Math.round(v)+'%';
+  const ram=p.ramTotal?p.ramUsed/p.ramTotal*100:null;
+  const hz=(S.sys.display&&S.sys.display.refreshRate)||60;
+  const temp=Math.max(p.cpuTemp||0, p.gpuTemp||0) || null;
+  const pad=p.padBattery, bat=p.battery||S.sys.battery;
+  const watts=p.powerW!=null ? `${p.powerW} W` : bat && bat.present!==false && bat.pct!=null ? (bat.charging?'Charging':'Plugged in') : 'Plugged in';
+  const stat=(v,l)=>`<div class="df-stat"><b>${esc(v)}</b><small>${l}</small></div>`;
+  return `<div class="df-rings">${dgRing(p.cpu, pc(p.cpu), 'CPU', p.cpuTemp?p.cpuTemp+'°C':'', p.cpu>=95)
+      + dgRing(p.gpu, pc(p.gpu), 'GPU', p.gpuTemp?p.gpuTemp+'°C':'', p.gpu>=95)
+      + dgRing(ram, pc(ram), 'RAM', p.ramTotal?`${p.ramUsed} / ${p.ramTotal} GB`:'', ram>=92)
+      + dgRing(p.fps?p.fps/hz*100:0, p.fps?Math.round(p.fps):'—', 'FPS', p.fps?(p.fpsLimit?'limit '+p.fpsLimit:'in game'):'no game')}</div>
+    <div class="df-stats">${stat(temp?temp+'°C':'—','Temperature')+stat(watts,'Power draw')
+      + stat(pad?pad.pct+'%'+(pad.charging?' ⚡':''):'—','Controller battery')+stat(dgPmode(p)||'—','Power mode')}</div>`;
+}
+// Live while Home is on screen: every 2 seconds, drawn in place (the selection stays where it is).
+function dgWatch(){
+  if(DG.timer) return;
+  DG.timer=setInterval(dgTick, 2000); setTimeout(dgTick, 0);
+}
+function dgTick(){
+  if(S.view!=='home' || !dfOn()){ clearInterval(DG.timer); DG.timer=null; return; }
+  if(document.hidden) return;
+  call('perf.stats',{},8000).then(r=>{ PERF.s=Object.assign({}, PERF.s||{}, r);
+    const el=$('#dgPerf'); if(el) el.innerHTML=dgPerfInner(PERF.s);
+    const m=$('#dgPmode'); if(m) m.textContent=dgPmode(PERF.s); }).catch(()=>{});
+}
+// Friends & Party: only with a real friends list from a store you're signed in to (Steam, Xbox, Epic); left out
+// otherwise. Selecting a friend opens Friends.
+function dgFriends(){
+  if(!friendsOn()) return '';
+  if(!FR.s && !DG.fr){ DG.fr=true; setTimeout(()=>{ if(!host) return loadFriends();
+    call('steam.friends',{},30000).then(r=>{ FR.s=r; if(S.view==='home' && dfOn()) render(null,true); }).catch(()=>{}); }, 0); }
+  if(!FR.s) return '';
+  const signed=frPlatforms(FR.s).filter(p=>p.signedIn); if(!signed.length) return '';
+  const on=f=>['ingame','online','away','snooze','busy'].includes(f.state);
+  const list=signed.flatMap(p=>p.friends||[]).filter(on).sort((a,b)=>(b.state==='ingame')-(a.state==='ingame')).slice(0,5);
+  return `<div class="df-card"><h3>Friends<button class="df-all" data-f data-k="dg-fr-all" data-act="nav" data-view="friends">See all ›</button></h3>
+    ${list.length?list.map((f,i)=>`<button class="df-fr" data-f data-k="dg-fr-${i}" data-act="nav" data-view="friends"><span class="av">${esc(initials(f.name))}<i></i></span><span class="rt"><b>${esc(f.name)}</b><small>${frLine(f)}</small></span></button>`).join('')
+      :'<div class="df-rs" style="padding:6px 8px">No one\'s online right now</div>'}</div>`;
+}
+
+// ---------- Settings › Updates & Recovery (the Dragonfire look on Hearth OS) ----------
+// The update itself is Settings › Updates' (pageSystemUpdate); added here: a timeline of the versions bootc knows
+// (available, downloaded, running, the one before), the snapshot from before the last update with Restore
+// (hearth-admin rollback, the same as Go back), Restart into Recovery (hearth-admin recovery-next-start: Hearth
+// Recovery's menu opens once at the next start) and how to reinstall keeping your files (the Recovery USB).
+// bootc keeps one version before this one; there's no making snapshots by hand, so the page doesn't offer it.
+const DG_DEMO_UPD = {state:'idle', error:null, status:{booted:{version:'Preview 2', timestamp:'2026-10-20T18:00:00Z'}, staged:null,
+  available:{version:'Preview 3', timestamp:'2026-10-28T09:00:00Z'}, rollback:{version:'Preview 1', timestamp:'2026-10-02T18:00:00Z'}, rollbackQueued:false}};
+function pageDfUpdates(){
+  if(!host && !SYSUPD.s) SYSUPD.s=JSON.parse(JSON.stringify(DG_DEMO_UPD));   // the browser preview
+  const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?x.version:'';
+  const when=x=>{ const t=x&&x.timestamp&&Date.parse(x.timestamp); return t?new Date(t).toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'}):''; };
+  let h=pageSystemUpdate({df:true});
+  if(!u) return h+dgRecoveryRows();
+  const tl=[];
+  if(st.available && !st.staged) tl.push(['next', `Hearth OS ${v(st.available)}`, 'Available: Update now gets it']);
+  if(st.staged) tl.push(['next', `Hearth OS ${v(st.staged)}`, 'Downloaded: starts at the next restart']);
+  if(st.booted) tl.push(['now', `Hearth OS ${v(st.booted)}`, 'Running now'+(when(st.booted)?' · made '+when(st.booted):'')]);
+  if(st.rollback && v(st.rollback)) tl.push(['', `Hearth OS ${v(st.rollback)}`, 'The version before'+(when(st.rollback)?' · made '+when(st.rollback):'')]);
+  if(tl.length) h += shead('Update timeline') + `<div class="df-tl">${tl.map(([c,t,sub],i)=>`<div class="row ${c}" data-f data-k="dg-tl-${i}"><div class="rt"><b>${esc(t)}</b><small>${esc(sub)}</small></div></div>`).join('')}</div>`;
+  h += shead('Snapshot before the last update');
+  if(host && HOSTINFO.edition==='peppermint') h += note('This edition isn\'t an image, so it has no snapshots to go back to. The Hearth Recovery USB below can still repair it.');
+  else if(st.rollback && v(st.rollback)){
+    h += `<div class="row" data-f data-k="dg-snap"><span class="ricon">${I.clock}</span><div class="rt"><b>Hearth OS ${esc(v(st.rollback))}</b><small>${st.rollbackQueued?'Starts at the next restart':'Kept by itself when the last update came in'}${when(st.rollback)?' · made '+esc(when(st.rollback)):''}</small></div></div>`;
+    if(st.staged) h += note('An update is waiting for a restart. Restart first; if that version has problems, you can go back from there.');
+    else if(st.rollbackQueued) h += `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(st.rollback))}</b><small>Your games and files stay</small></div></button>`
+      + `<button class="row" data-f data-k="su-rollback" data-act="sysRollback" data-undo="1"><span class="ricon">${I.x}</span><div class="rt"><b>Stay on ${esc(v(st.booted))}</b><small>Don't go back after all</small></div></button>`;
+    else h += `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Restore this version</b><small>Restarts into Hearth OS ${esc(v(st.rollback))}. Your games and files stay.</small></div><div class="rv">›</div></button>`;
+  } else h += note('No snapshot yet. Hearth keeps the version before each update by itself, so one appears after the next update.');
+  h += note('Snapshots are of Hearth OS itself: your games, saves and files aren\'t in them and stay whichever version starts.');
+  return h+dgRecoveryRows();
+}
+function dgRecoveryRows(){
+  return shead('Recovery')
+    + `<button class="row" data-f data-k="dg-rec" data-act="dgfRecovery"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart into Recovery</b><small>Hearth Recovery opens once, before Hearth starts: go back to the previous version, Desktop Mode or safe graphics this time, send logs. Works with the controller.</small></div><div class="rv">›</div></button>`
+    + `<button class="row" data-f data-k="dg-reinstall" data-act="dgfReinstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Reinstall, keeping your files</b><small>With the Hearth Recovery USB: a fresh Hearth OS on the drive, your games, files and settings kept</small></div><div class="rv">›</div></button>`
+    + tipRow('dg-rec-tip', 'If Hearth doesn\'t start', 'Hold Volume Down while it starts (F8 on a keyboard, Select + Start on a controller) to open Recovery. After a start that didn\'t reach Hearth, Recovery opens by itself.');
+}
+function dgRecovery(now){
+  if(!host) return toast('Restart into Recovery works on Hearth OS, not in the browser preview.');
+  return call('system.recovery.nextStart',{},60000).then(()=>{ if(now) power('restart', true); else toast('Hearth Recovery opens at the next start'); }).catch(e=>toast(e.message));
+}
+function dgfAct(a, d){
+  if(a==='dgfOverlay'){
+    const p=PERF.s||{};
+    if(host && p.canOverlay===false) return toast('The performance overlay works in Game Mode');
+    return call('perf.setOverlay',{level:p.perfOverlay?0:1}).then(r=>{ PERF.s=Object.assign({}, PERF.s||{}, {perfOverlay:r.perfOverlay}); toast(r.perfOverlay?`Performance overlay: ${PO_LEVELS[r.perfOverlay]}. More levels in Quick Access › Performance`:'Performance overlay off'); }).catch(e=>toast(e.message));
+  }
+  if(a==='dgfRecovery') return openSheet({title:'Restart into Recovery?', sub:'Hearth Recovery opens once at the next start, before Hearth: go back to the previous version, start Desktop Mode or safe graphics this time, reset the screen settings or send logs. Pick Continue there to start Hearth as usual.', items:[
+    {label:'Restart into Recovery now (open games close)', icon:'restart', run:()=>dgRecovery(true)},
+    {label:'Open Recovery at the next start', icon:'clock', run:()=>dgRecovery(false)}]});
+  if(a==='dgfReinstall') return openSheet({title:'Reinstall, keeping your files', sub:'Start this device from a Hearth Recovery USB and pick Update or reinstall Hearth OS: it puts the newest Hearth OS on the drive and keeps your games, files and settings. Make the stick on another Hearth device (Hearth Disks › Make a bootable USB › Hearth Recovery USB) or download it from hearthos.fun/docs/troubleshooting.html#recovery-usb.', items:[
+    {label:'OK', icon:'check', run:()=>{}}]});
+}
+
 // ---------- Settings › Appearance ----------
 // Themes: an accent, a background, a sound pack and (on Hearth OS) the desktop's wallpaper, picked together.
 const THEME_PACKS = [
@@ -3446,7 +3699,13 @@ function pageAppearance(){
   const ts=(TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[1];
   const wl=DESKWALL.v==null?'':(WALLS.find(w=>w[0]===DESKWALL.v)||['','Your picture'])[1];
   const mf=LOOK.madeFor||'auto';
-  return shead('Made for') + `<div class="row"><span class="ricon">${I.kbd}</span><div class="rt"><b>Made for</b><small>${mf==='auto'?`Automatic: mouse &amp; keyboard while you use them (now: <span id="mfNow">${mkOn()?'mouse &amp; keyboard':'controller'}</span>), controller when you pick one up`:mf==='mk'?'Hover actions, right-click menus and key hints. The on-screen keyboard only comes up from a controller':'Big targets and button prompts. The on-screen keyboard comes up for every text field'}</small></div>
+  return shead('Look') + `<div class="df-looks">${LOOKS.map(l=>{ const on=(LOOK.style||'classic')===l.id;
+      return `<button class="lcard ${on?'on':''}" data-f data-k="ap-l-${l.id}" data-act="look" data-key="style" data-v="${l.id}"><div class="df-lprev ${l.id}">${l.id==='dragonfire'
+        ?'<i class="a" style="left:6%;top:12%;width:50%;height:44%;opacity:.55"></i><i style="left:62%;top:12%;width:32%;height:44%"></i><i style="left:6%;top:64%;width:88%;height:12%"></i><i class="a" style="left:40%;top:82%;width:20%;height:12%"></i>'
+        :'<i style="left:0;top:0;width:100%;height:42%"></i><i class="a" style="left:6%;top:50%;width:16%;height:9%"></i><i style="left:6%;top:66%;width:88%;height:22%"></i>'}</div>
+        <b>${l.name}${on?'<em>In use</em>':''}</b><small>${l.desc}</small></button>`; }).join('')}</div>`
+    + (dfOn() ? note('Dragonfire has its own Home and colors. The themes and Home layouts below are for Classic and come back when you switch to it.') : '')
+    + shead('Made for') + `<div class="row"><span class="ricon">${I.kbd}</span><div class="rt"><b>Made for</b><small>${mf==='auto'?`Automatic: mouse &amp; keyboard while you use them (now: <span id="mfNow">${mkOn()?'mouse &amp; keyboard':'controller'}</span>), controller when you pick one up`:mf==='mk'?'Hover actions, right-click menus and key hints. The on-screen keyboard only comes up from a controller':'Big targets and button prompts. The on-screen keyboard comes up for every text field'}</small></div>
       <div class="seg">${MADE_FOR.map(([k,l])=>`<button class="${mf===k?'on':''}" data-f data-k="ap-mf-${k}" data-act="madeFor" data-v="${k}">${l}</button>`).join('')}</div></div>`
     + `<div class="row"><span class="ricon">${I.layout}</span><div class="rt"><b>Menu style</b><small>${dockOn()?'A dock along the bottom with live details. ☰ (Menu) opens it':'The classic menu that slides in from the side'}</small></div>
       <div class="seg">${[['dock','Dock (new)'],['side','Side menu (classic)']].map(([k,l])=>`<button class="${(LOOK.menuStyle||'dock')===k?'on':''}" data-f data-k="ap-ms-${k}" data-act="menuStyle" data-v="${k}">${l}</button>`).join('')}</div></div>`
@@ -3818,6 +4077,7 @@ function pageAbout(){
 
 function viewHome(){
   const V=visible().filter(g=>g.inst || isActive(g) || (g.cloud && (g.last || g.fav)));
+  if(dfOn()) return homeDf(V);
   if(!V.length) return `<div class="empty" style="padding-top:18vh">
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':ANDROID?'Install a game or an emulator on this device, choose your ROMs folder in Settings › Games, or add an app yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
@@ -5631,6 +5891,7 @@ function onUpdate(s){
   refreshUI();
 }
 function pageUpdates(){
+  if(dfRecoveryPage()) return pageDfUpdates();
   if(!host) return note('Updates work in the '+APP+' app, not the browser preview.');
   if(LINUX && HOSTINFO.system) return pageSystemUpdate();
   const s=UPD.status;
@@ -5733,7 +5994,7 @@ function sysUpdCard(u, o={}){
   if(cur==='download' && pts.length) h+=`<div class="su-speed"><div><div class="big">${fmtSpeed(now).replace(/ (\S+)$/,'<small>$1</small>')}</div><div class="sub">Peak ${fmtSpeed(peak)}</div></div>${speedGraph(pts,'sug')}</div>`;
   return h+'</div>';
 }
-function pageSystemUpdate(){
+function pageSystemUpdate(o={}){
   const u=SYSUPD.s;
   let h=shead('System', u&&u.state!=='idle');
   if(!u) return h+note('Checking…');
@@ -5753,7 +6014,7 @@ function pageSystemUpdate(){
     if(st.staged) h += `<button class="row" data-f data-k="su-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to finish updating</b><small>Takes a minute. If something's wrong, the previous version is still in the boot menu.</small></div></button>`;
     h += `<button class="row" data-f data-k="su-install" data-act="sysUpdInstall"><span class="ricon">${I.dl}</span><div class="rt"><b>Update now</b><small>Downloads the newest Hearth (system, drivers, ${APP}) and updates your apps. Keep playing while it downloads.</small></div></button>`;
     h += `<button class="row" data-f data-k="su-check" data-act="sysUpdCheck"><span class="ricon">${I.refresh}</span><div class="rt"><b>Check for updates</b></div></button>`;
-    h += rollbackRows(st);
+    if(!o.df) h += rollbackRows(st);   // Updates & Recovery shows it under Snapshots
   }
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
   return h + newOsRows();
@@ -6922,6 +7183,7 @@ function renderNow(focusKey, quiet){
   const wasInView = !!(focused && v.contains(focused));
   const k = focusKey || (wasInView ? focused.dataset.k : null);
   const top = v.scrollTop;
+  dfSyncLabels();
   v.innerHTML = VIEWS[S.view]();
   if(quiet) v.scrollTop = top;
   else { v.classList.remove('vfade'); void v.offsetWidth; v.classList.add('vfade'); }
@@ -7333,7 +7595,7 @@ function pageSub(k){
   switch(k){
     case 'profile': return `${PROFILE.name||''} · ${PROFILE.status||'Online'}`;
     case 'profiles': return PROF.s && PROF.s.list ? `${PROF.s.list.length} profile${PROF.s.list.length===1?'':'s'} · switch, add, parental limits` : 'Switch, add, parental limits';
-    case 'appearance': return `${(LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name||''} layout · themes · menu style`;
+    case 'appearance': return `${dfOn()?'Dragonfire look':(homeLayoutName()||'')+' layout'} · themes · menu style`;
     case 'liblook': return 'How the Library shows your games';
     case 'access': return 'Zoom, colour filters, screen reader, text';
     case 'signin': return 'Sign in automatically, start mode, device name, password';
@@ -7367,7 +7629,7 @@ const scPreview = () => host ? '' : `<div class="scs">Browser preview: sample va
 function groupCard(g){
   const ic=(SGROUPS.find(x=>x[0]===g)||[])[1]||'gear';
   let L=[];
-  if(g==='you') L=[['Profile',PROFILE.name],['Status',PROFILE.status||'Online'],['Home layout',(LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name],['Made for',(MADE_FOR.find(m=>m[0]===(LOOK.madeFor||'auto'))||[])[1]],['Menu',dockOn()?'Dock':'Side menu']];
+  if(g==='you') L=[['Profile',PROFILE.name],['Status',PROFILE.status||'Online'],['Home layout',homeLayoutName()],['Made for',(MADE_FOR.find(m=>m[0]===(LOOK.madeFor||'auto'))||[])[1]],['Menu',dockOn()?'Dock':'Side menu']];
   if(g==='connect') L=[['Internet',scWifi()],ANDROID?null:['Bluetooth',scBt()],lkOn()?['Hearth Link',scLink()]:null,friendsOn()&&mfOn()&&MF.st?['Friends',MF.st.signedIn?'Signed in'+(MF.st.homeserver?' · '+MF.st.homeserver:''):'Not signed in']:null];
   if(g==='display') L=[['Screen',scDisp()],S.sys.display&&S.sys.display.supported?['Brightness',S.set.bright+'%']:null,['Volume',scVol()],['Output',scOut()]];
   if(g==='controls') L=[['Battery',scBatt()],['Power mode',scPmode()],['Button prompts',{auto:'Automatic',pad:'Controller',kbd:'Keyboard'}[INPUT.mode]||'Automatic'],['A and B',PAD.swapAB?'Swapped':'As labelled']];
@@ -8558,6 +8820,7 @@ function act(el){
   if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
+  if(a.startsWith('dgf')) return dgfAct(a, d);   // the Dragonfire look (block by homeDf)
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts

@@ -1096,6 +1096,9 @@ impl Bridge {
             "system.update.check" => Ok(self.updates.start(false, self.emit.clone())),
             "system.update.install" => Ok(self.updates.start(true, self.emit.clone())),
             "system.update.rollback" => self.updates.rollback(),
+            // Settings › Updates & Recovery (Dragonfire look): Hearth Recovery opens once at the next start
+            // (hearth-admin recovery-next-start, which runs hearth-recovery --next-start); the page restarts after.
+            "system.recovery.nextStart" => { crate::admin::run(&["recovery-next-start"], None, &mut |_| {})?; Ok(json!({"ok": true})) }
             // Profiles and parental controls (switching restarts Hearth; that part comes with the app's restart)
             "profiles.get" => Ok(self.profiles_info()),
             "profiles.create" => { self.need_pin()?; self.profiles.create(a["name"].as_str().unwrap_or(""), a["color"].as_str()) }
