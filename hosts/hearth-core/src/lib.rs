@@ -64,6 +64,7 @@ pub mod space;
 pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
+pub mod steam_engine;   // Settings › Library › Steam engine: Lightweight (hosts/hearth-steam), with fallback to the normal client
 pub mod steam_owned;
 pub mod store;
 // ---- Game Mode › Store (browsing Steam, GOG, Epic and Xbox; buying on their own pages)

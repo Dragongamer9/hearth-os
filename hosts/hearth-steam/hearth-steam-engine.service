@@ -1,0 +1,16 @@
+# Hearth's lightweight Steam engine (hosts/hearth-steam). Not enabled: Hearth starts it only while
+# Settings › Library › Steam engine is "Lightweight", and stops it when that's off or the normal Steam client
+# needs to run. It has no window.
+[Unit]
+Description=Hearth lightweight Steam engine (experimental)
+After=graphical-session.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/hearth-steam/hearth-steam
+# A clean exit means "let go of Steam" (the normal client takes over): don't start again by itself.
+Restart=on-failure
+RestartSec=10
+Nice=5

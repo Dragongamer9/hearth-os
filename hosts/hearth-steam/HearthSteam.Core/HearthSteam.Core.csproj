@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- hearth-steam's parts that don't touch Steam: the socket API, the client finder, VDF reading. No packages, so
+       it builds and is tested on any runner. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsTrimmable>true</IsTrimmable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <RootNamespace>HearthSteam</RootNamespace>
+  </PropertyGroup>
+</Project>
