@@ -230,7 +230,10 @@ impl Node {
         let c = self.connect(id).await?;
         match wire::request(&c, req).await {
             Err(e) if e.starts_with("connection:") && !e.contains("not paired") => {
-                self.drop_conn(id).await;
+                // Only the dead one: another request may have made a new connection meanwhile, and closing that
+                // would break its request ("connection lost").
+                let replaced = c.close_reason().is_some() && self.conns.lock().await.get(id).map(|m| m.close_reason().is_none()).unwrap_or(false);
+                if !replaced { self.drop_conn(id).await; }
                 let c = self.connect(id).await?;
                 wire::request(&c, req).await
             }
