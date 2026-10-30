@@ -1,5 +1,5 @@
 failed:
-[desktop] the test ran (Marionette:SetContext: System access is required. Start Firefox with the "MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1" environment variable set to enable it.)
-[game] the test ran (Marionette:SetContext: System access is required. Start Firefox with the "MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1" environment variable set to enable it.)
+[game] D-pad moves between links: down, down, right, left, up (got ['body', 'body', 'body', 'body', 'body'])
+[game] B (Esc) goes back to the previous page (title 'two')
 warnings:
 
