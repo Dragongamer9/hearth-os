@@ -1,5 +1,5 @@
 failed:
-[game] D-pad moves between links: down, down, right, left, up (got ['body', 'body', 'body', 'body', 'body'])
+[game] D-pad moves between links: down, down, right, left, up (got ['body', 'body', 'body', 'body', 'body']; {'registered': 'HearthSpatial; HearthSpatialBack', 'last': None, 'errors': []})
 [game] B (Esc) goes back to the previous page (title 'two')
 warnings:
 
