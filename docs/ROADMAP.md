@@ -27,9 +27,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
   - No store-owned covers in screenshots, no macOS-style window buttons in Game Mode
 - [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md)
 - [ ] Discord: "Playing X" status and Discord in Quick Access (needs the owner's Discord application ID)
-- [ ] Hearth Link ideas: "Continue on this device", update every device at once (download once shipped in 0.6.57)
+- [x] Hearth Link ideas: "Continue on this device" (Game Mode), update every device at once (download once shipped in 0.6.57)
 - [ ] Ventoy (multi-ISO) mode in the USB maker
-- [ ] Ideas: local AI over Hearth Link, Support page/donations
+- [x] Local AI over Hearth Link (first version: a device's own Ollama/llama-server shared with paired devices; answers come whole, not streamed)
+- [ ] Ideas: Support page/donations
 
 ## Done
 
