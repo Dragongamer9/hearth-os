@@ -217,6 +217,9 @@ def main():
         step('D-pad in the launcher', lambda: pad.press('right'), 'KEY_RIGHT')
         step('B (Esc) closes it', lambda: pad.press('b'), 'KEY_ESC')
         step('View: the controls', lambda: pad.press('view', hold=0.1), None, shot='cosmic-pad-3-controls', wait=1.5)
+        # The companion may still be coming back from the last menu closing (docs/COSMIC.md): give it a moment, so the
+        # controller is on the plain desktop again (not in a menu's keys).
+        time.sleep(3)
         step('View + B closes the window (Super+Q)', lambda: pad.press('view', 'b'), 'KEY_LEFTMETA+KEY_Q')
     with open(os.path.join(outdir, 'pad-%s.txt' % scenario), 'w') as f:
         f.write('\n'.join(lines) + '\n')
