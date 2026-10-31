@@ -36,10 +36,17 @@
 //! - saves.rs: saves follow you (a game's newest save from the Hearth Storage server before it starts, back after)
 //! - health.rs: every paired device's health on the server (battery, space, backups, version, last start), and
 //!   removing a device you don't use anymore
+//! - handoff.rs: "Continue on this device": a game running (or just quit) on one device carries on on another
+//! - fleet.rs: update every device at once (each by its own boot-safety, hold-back, battery and "someone's playing"
+//!   rules; never restarted for you)
+//! - ai.rs: local AI over Hearth Link (a device's own model server, shared with the paired devices; off by default)
 //! - node.rs: the service: connections, the requests from other devices and from the UI
 //! - ipc.rs: the UI's (and `hearth-link call`'s) way in: a Unix socket only this user can open
 
+pub mod ai;
 pub mod discovery;
+pub mod fleet;
+pub mod handoff;
 pub mod games;
 pub mod health;
 pub mod ipc;

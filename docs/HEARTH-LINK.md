@@ -125,16 +125,25 @@ use it, and nothing is opened to the internet unless you turn something on.
   the device stay in the backup.
 - **Away from home** (off by default): the server only answers devices on the local network. On, it also answers
   them over Hearth Link's own connection (direct, or through the relay, end-to-end encrypted). No port is opened.
-- **Windows sharing (SMB)** (off by default): the shared folders for Windows PCs on this network, signed in as your
-  user with a password set on that page. `hearth-storage-helper` (root, through pkexec and 49-hearth-storage.rules)
+- **Windows sharing (SMB)** (off by default): the shared folders for Windows PCs on this network, so a Windows PC
+  can map one as a network drive (File Explorer › This PC › Map network drive, `\\<device>\<folder>`). Each shared
+  folder is in it unless you leave it out (the folder's menu › Leave it out of Windows sharing), read-only for
+  Windows unless you let Windows PCs change it. Signing in: your user name and a **password made on the device**
+  when you first turn it on (4 groups of 4 characters without look-alikes, about 95 bits; never a fixed one, never
+  typed in). Advanced › Windows sharing sign-in shows both on the device, and makes a new password when you want
+  one. It goes to Samba through the helper's stdin and is kept only in Hearth Link's folder (`smb-password`, 0600)
+  to show it again; it's never logged. `hearth-storage-helper` (root, through pkexec and 49-hearth-storage.rules)
   writes Samba's config; the firewall opens TCP 445 to local addresses only (`hearth-link-firewall open smb`), again
-  at every start while it's on. Needs Samba installed on the server.
+  at every start while it's on, and closes it when it's turned off. Needs Samba installed on the server.
 - **Sleep when idle** (off by default): after N minutes with no copies, no game and the session idle (logind), it
   suspends. Turning the server on sets its wired network cards to wake from the network (ethtool, and
-  NetworkManager so it lasts); the PC's firmware may need Wake on LAN turned on too.
+  NetworkManager so it lasts), and again at every start while it's a server; the PC's firmware may need Wake on LAN
+  turned on too.
 
 **On the other devices:** a server that doesn't answer is sent a Wake-on-LAN packet (its cards' addresses are
-remembered from the last time it answered) and waited for up to about a minute. Media plays through a link on the
+remembered from the last time it answered) and waited for up to about a minute, before any Storage operation
+(browsing, copies, backups, the archive, saves). A server that's asleep also gets a **Wake** row next to it in
+Servers & devices (and in its menu, and under Advanced). Media plays through a link on the
 device itself (`http://127.0.0.1:<port>/<random>/<name>`, one link per file, 12 hours) that Hearth Player opens; the
 device fetches the bytes from the server over Hearth Link as the player asks for them.
 
@@ -169,7 +178,7 @@ on this device and on the server; Hearth Storage can also delete that device's b
 server) and `savesrv:<key>` (the server's kept save).
 
 **The UI's calls** (`hearth-link call storage.…`): `status`, `servers`, `set`, `candidates`, `share.add|remove|set`,
-`smb.password`, `ls`, `get`, `stream`, `archive`, `archived`, `archive.remove|forget|here`, `restore`, `backup.now`,
+`smb.password` (a new generated password: `{user, password}`), `smb.show`, `ls`, `get`, `stream`, `archive`, `archived`, `archive.remove|forget|here`, `restore`, `backup.now`,
 `backups`, `wake`, `saves.before|pull|after|resolve|status`, `devices`, `device.usage`, `device.remove`. The page's
 Downloads & updates section uses `storage.cache.status|set` and `storage.updates.status|set` and hides them on a
 Hearth Link without them.
@@ -183,7 +192,9 @@ packets, ranges, reading a range; saves.rs: the plan never overwrites both, the 
 and keeping the old one, stores that sync left alone; health.rs: battery, boot state only read, versions, rows, a
 device's data on the server), `tests/e2e.py lan` (A as the server: shared folder, media link, a game archived
 and copied back, backups, turned off), `hosts/linux/test/test_hearth_storage.py` (Mantel, Hearth Files, wiring),
-`test_hearth_storage_helper.py` (Samba config, the password only on stdin), `test_link_firewall.py` (port 445).
+`test_hearth_storage_helper.py` (Samba config, the password only on stdin), `test_link_firewall.py` (port 445);
+storage.rs also tests the generated password (format, no look-alikes, kept 0600) and leaving a folder out of
+Windows sharing.
 
 ## Download once for every device
 
@@ -266,3 +277,83 @@ the cache's list), `hosts/linux/test/test_hearth_update_mirror.py` (a fake ghcr.
 Hearth Link: the server's fetch, the mirror's pieces only when they check out, 503 without a server, hold-back's
 cap and failing open, the mirror entry written only while a server is used and removed for 7 days after a failed
 background update or "Update now" (retried straight from the registry), the boot guard's note).
+
+# Across your devices
+
+Settings › Hearth Link › **All your devices** (Game Mode), once a device is paired.
+
+## Continue on this device
+
+`hosts/hearth-link/src/handoff.rs`. A game that's running on one of your devices, or was quit there in the last 15
+minutes, shows on the other devices' Home (classic and Tiles looks; a toast on the others) as **Continue here**,
+when it's installed there too.
+
+1. Hearth writes `now-playing.json` in Hearth Link's folder when a game starts (`{game, title, at}`) and adds
+   `quitAt` when it ends (hearth-core link.rs). Devices ask each other `handoff.now` (at most every 15 seconds while
+   Home is open; never while a game runs on the asking device).
+2. **Continue here** (`handoff.take`) asks the other device (`handoff.ask`). A game still running there is never
+   closed from here (that could lose progress): the other device shows "<device> wants to continue <game>" (a
+   prompt in Game Mode and a desktop notification) with **Quit it here** / **Keep playing here**, and this device
+   waits up to 5 minutes.
+3. Once it's quit, the other device sends its save the usual way (saves follow you, to the Hearth Storage server)
+   and this device waits until that's done; then the game starts here the usual way, which brings the newest save
+   first (and asks if both changed). Store cloud saves (Steam Cloud and the like) need nothing more. Without a
+   Hearth Storage server the card asks first, since only store cloud saves come along then.
+
+Requests: `handoff.now`, `handoff.ask {game}`, `handoff.cancel`. UI calls: `handoff.status` (`offers`, `asked`,
+`savesServer`), `handoff.take {peer, game}` (`state`: ready, unsynced, conflict or declined), `handoff.decline {peer}`.
+
+## Update every device at once
+
+`hosts/hearth-link/src/fleet.rs`. **Update every device** starts Hearth OS updates on all your paired Hearth devices
+(and this one, unless you pick "every device but this one"), with each device's progress in the list. Each device
+decides for itself, by the same rules as always, and nothing is forced:
+
+- **Boot safety first** (hearth-boot-guard's files, only read): updates paused after a fallback (the last update
+  didn't start and it went back) stop it, and it says so. While the version it's on isn't confirmed as starting well
+  yet, it waits (staging another now could replace the version it would fall back to).
+- **Someone's playing:** it waits until the game ends. **Battery** below 40% and not charging: it waits for power.
+- **Hold-back** (Hearth Storage): it waits like background updates do (the same answer, at most 3 days, failing
+  open).
+- Then it runs the same update as Settings › Updates › Update now (`pkexec hearth-admin update`): download and
+  stage, with its progress. **It never restarts**: the new version starts at the device's next restart, the previous
+  one stays to go back to, and hearth-boot-guard's fallback and the background services' ExecConditions are
+  untouched. A device that already has an update waiting for a restart says so.
+- A device waits at most a day, and **Stop waiting** stops the ones that haven't started yet.
+
+Requests: `update.start`, `update.status`, `update.cancel`. UI calls: `fleet.update {here?}`, `fleet.status`,
+`fleet.cancel` (each answers `devices: [{id, name, me?, state, pct, desc, error, battery}]`; `state` is one of
+starting, confirming, waitingGame, waitingBattery, heldBack, updating, staged, upToDate, restart, paused, error,
+cancelled, gaveUp, unsupported, offline).
+
+## Local AI over Hearth Link
+
+`hosts/hearth-link/src/ai.rs`, a first version. A device with a strong graphics card shares a model server you
+installed on it yourself (Ollama, llama.cpp's llama-server, or anything speaking Ollama's or OpenAI's HTTP API)
+with your paired devices.
+
+- **On the device with the model** (off by default): Local AI › Share this device's AI. Its server's address must be
+  on that device itself (`http://127.0.0.1:11434`, Ollama's, by default; llama-server is usually `:8080`). Nothing
+  is opened on the network; paired devices reach it over Hearth Link's encrypted connection.
+- **On another device:** Local AI › Use <device>'s AI. Apps on that device then use `http://127.0.0.1:11435` (or the
+  free port it says) as a local Ollama or OpenAI-compatible server; only that device itself can connect to it.
+- Only using models goes through (GET and POST under `/api/` and `/v1/`), never managing them (`/api/pull`, `push`,
+  `delete`, `create`, `copy`, `blobs`). Requests at most 8 MB, answers 32 MB.
+- Not yet: answers come whole (a streamed answer arrives at once, when the model has finished), and nothing picks
+  the device with the strongest card for you (the list shows each one's models, and graphics memory where the
+  driver reports it).
+
+Requests: `ai.info`, `ai.http {method, path, ctype, body}`. UI calls: `ai.status`, `ai.set {serve, backend}`,
+`ai.use {server}`, `ai.stop`.
+
+## Tests
+
+- `cargo test`: handoff.rs (what's offered, the file, the answer once quit), fleet.rs (who may update now: boot
+  safety, playing, battery, hold-back; reading Update now's output; what counts as busy), ai.rs (only this device's
+  own server, only model use, the HTTP pieces including chunked answers, off by default); hearth-core link.rs
+  (now-playing.json).
+- `tests/e2e.py lan` (`extras`): a game running on A offered on B, B waiting while it runs (A asked) and taking it
+  over once quit; A updating B: B waits while a game runs on it, then runs Update now (a stand-in) and stages it,
+  A left out stays as it was; A sharing a fake Ollama (streamed, chunked) used from B through 127.0.0.1 on B, model
+  management refused, nothing shared before it's on or after it's off.
+- `hosts/linux/test/test_hearth_storage.py` (`test_link_extras`): the Game Mode wiring and the bridge's calls.

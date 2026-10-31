@@ -146,10 +146,26 @@ pub fn ui_sync(a: &Value) -> Result<Value, String> {
     })
 }
 
+/// "Continue on this device" (hearth-link's handoff.rs): what's playing here, for the other paired devices to offer:
+/// link/now-playing.json {game, title, at} when a game starts, with quitAt added when it ends.
+pub fn now_playing(dir: &Path, id: &str, title: &str, now: u64) {
+    if id.is_empty() { return; }
+    let _ = crate::paths::write_atomic(&dir.join("now-playing.json"), json!({"game": id, "title": title, "at": now}).to_string().as_bytes());
+}
+pub fn now_quit(dir: &Path, id: &str, now: u64) {
+    let f = dir.join("now-playing.json");
+    let mut v = read_json(&f);
+    if v["game"].as_str() != Some(id) { return; }
+    v["quitAt"] = json!(now);
+    let _ = crate::paths::write_atomic(&f, v.to_string().as_bytes());
+}
+fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
+
 /// A game closed: Hearth Link sends its save to the Hearth Storage server when saves follow you (it decides; nothing
 /// happens when it isn't running or the game's store keeps its saves itself). In the background.
 pub fn game_closed(id: &str) {
     if !available() || id.is_empty() { return; }
+    now_quit(&link_dir(), id, now_ms());
     let id = id.to_string();
     std::thread::spawn(move || { if let Err(e) = call("storage.saves.after", &json!({"game": id}), 60) { if !e.contains("isn't running") { crate::bridge::log(&format!("hearth link: saves: {e}")); } } });
 }
@@ -189,6 +205,12 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         // pulling a save, the health list (asks the server) and removing a device take longer.
         "storage.saves.before" | "storage.saves.pull" | "storage.saves.resolve" | "storage.saves.status" | "storage.devices" | "storage.device.usage"
         | "storage.device.remove" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 150)) }
+        // Continue on this device (handoff.rs): taking a game over waits until it's quit on the other device and its
+        // save has been sent (at most 5 minutes). Update every device (fleet.rs) and local AI (ai.rs) ask every
+        // paired device.
+        "handoff.status" | "fleet.update" | "fleet.status" | "fleet.cancel" | "ai.status" | "ai.use" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 60)) }
+        "handoff.take" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 330)) }
+        "handoff.decline" | "ai.set" | "ai.stop" | "storage.smb.show" => call(cmd, a, 15),
         _ => Err(format!("{method} isn't a Hearth Link call")),
     }
 }
@@ -213,6 +235,18 @@ fn storage_play(a: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn now_playing_for_continue_on_this_device() {
+        let d = std::env::temp_dir().join(format!("hearth-now-playing-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&d);
+        now_playing(&d, "steam:10", "Portal", 1000);
+        now_quit(&d, "gog:2", 2000);
+        assert!(read_json(&d.join("now-playing.json"))["quitAt"].is_null(), "another game's end doesn't count");
+        now_quit(&d, "steam:10", 3000);
+        let v = read_json(&d.join("now-playing.json"));
+        assert_eq!((v["game"].as_str(), v["title"].as_str(), v["at"].as_u64(), v["quitAt"].as_u64()), (Some("steam:10"), Some("Portal"), Some(1000), Some(3000)));
+        let _ = std::fs::remove_dir_all(&d);
+    }
     #[test]
     fn synced_changes_land_in_the_library() {
         let mut d = serde_json::Map::new();

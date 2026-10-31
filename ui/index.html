@@ -3334,7 +3334,7 @@ function quickShelf(){
 // ---------- Home, by layout ----------
 // A game is running (and Hearth is in front): a strip to jump back in, on every layout.
 function nowPlayingBanner(){
-  const g=S.running && G(S.running); if(!g) return '';
+  const g=S.running && G(S.running); if(!g) return handoffBanner();
   return `<div class="np-banner"><div class="art" style="${artBg(g)}"></div><span class="dot"></span>
     <div><small>Now playing</small><b>${esc(g.title)}</b></div><div class="sp"></div>
     <button class="play" data-f data-k="h-resume" data-act="resume" data-id="${esc(g.id)}" style="padding:10px 22px;font-size:15px">${I.play}Resume</button>
@@ -5187,6 +5187,7 @@ function loadLink(){
     // A copy that just finished: the game is in the library now.
     if(had && (had.transfers||[]).some(t=>t.state!=='done' && (r.transfers||[]).some(u=>u.id===t.id && u.state==='done'))){ const t=(r.transfers||[]).find(u=>u.state==='done'); if(t) toast(`${t.title} is here. ${t.note||''}`); loadLibrary(true); }
     if(lkTab()&&!S.layers.length) render(null,true);
+    if(FLEET.devices && S.view==='settings' && S.settingsTab==='link') fleetPoll();
     lkPoll(); }).catch(e=>{ LK.s={running:false, error:e.message}; if(lkTab()) render(null,true); });
 }
 function lkPoll(){
@@ -5303,6 +5304,93 @@ async function lkJoinShort(prev, why){
   if(bad) return lkJoinShort(lkShortFmt(code), bad);
   return lkJoinRun({code: lkShortFmt(code)}, 'the other device', m=>lkJoinShort('', m));
 }
+// ---- All your devices (hearth-link fleet.rs, handoff.rs, ai.rs)
+// Update every device at once: each device updates when its own rules say it's safe (boot guard, someone playing,
+// battery, hold-back) and is never restarted for you; the list shows each one's progress.
+const FLEET={devices:null, at:0, busy:false};
+const FLEET_STATE={idle:'Not asked yet', starting:'Starting', confirming:'Waiting: its last start isn\'t confirmed yet', waitingGame:'Waiting: someone\'s playing on it', waitingBattery:'Waiting: battery low, plug it in', heldBack:'Waiting: held back until one device has started the new version well', updating:'Updating', staged:'Updated: the new version starts when you restart it', upToDate:'Already up to date', restart:'An update is already waiting for a restart', error:'Didn\'t work', paused:'Paused: its last update didn\'t start and it went back, so updates wait a few days', cancelled:'Stopped', gaveUp:'Stopped waiting (try again later)', unsupported:'Can\'t be updated from here yet (needs the next Hearth OS update)', offline:'Off or asleep'};
+function fleetLine(d){
+  let s=FLEET_STATE[d.state]||d.state||'';
+  if(d.state==='updating'&&d.pct!=null) s+=` · ${Math.round(d.pct)}%${d.desc?' · '+d.desc:''}`;
+  if(d.state==='error'&&d.error) s+=': '+d.error;
+  if(d.battery&&d.battery.percent!=null) s+=` · battery ${d.battery.percent}%${d.battery.charging?' (charging)':''}`;
+  return s;
+}
+function fleetPoll(force){
+  if(FLEET.busy || (!force && Date.now()-FLEET.at<3000)) return;
+  FLEET.busy=true;
+  call('link.fleet.status',{},30000).then(r=>{ FLEET.devices=(r&&r.devices)||[]; }).catch(()=>{}).finally(()=>{ FLEET.busy=false; FLEET.at=Date.now(); lkRedraw(); });
+}
+function fleetUpdate(){
+  openSheet({title:'Update every device?', sub:'Each one downloads and installs the update when it\'s safe: never while someone\'s playing, not on a low battery, after hold-back and boot checks. None of them is restarted: the new version starts at its next restart.', items:[
+    {label:'Update every device', icon:'refresh', run:()=>call('link.fleet.update',{},60000).then(r=>{ FLEET.devices=(r&&r.devices)||[]; FLEET.at=Date.now(); toast('Updates started on your devices'); lkRedraw(); }).catch(e=>toast(e.message))},
+    {label:'Every device but this one', icon:'display', run:()=>call('link.fleet.update',{here:false},60000).then(r=>{ FLEET.devices=(r&&r.devices)||[]; FLEET.at=Date.now(); lkRedraw(); }).catch(e=>toast(e.message))}]});
+}
+// Local AI over Hearth Link: a device with a strong graphics card shares its own model server (Ollama,
+// llama-server...) with the paired devices; another device uses it at http://127.0.0.1:11435.
+const AI={s:null, busy:false};
+function aiLoad(){ if(AI.busy) return Promise.resolve(AI.s); AI.busy=true; return call('link.ai.status',{},30000).then(r=>{ AI.s=r; return r; }).catch(e=>{ AI.s={error:e.message}; return AI.s; }).finally(()=>{ AI.busy=false; lkRedraw(); }); }
+function aiLine(){
+  const a=AI.s; if(!a) return 'Use a model on one of your devices from the others. Off unless you turn it on.';
+  if(a.error) return esc(a.error);
+  return [a.serve?'This device shares its AI':'', a.using?`Using ${esc(a.using.name||'another device')}'s AI at ${esc(a.using.url)}`:'', (a.servers||[]).length?`${a.servers.length} device${a.servers.length===1?'':'s'} share${a.servers.length===1?'s':''} theirs`:''].filter(Boolean).join(' · ') || 'Off';
+}
+async function aiMenu(){
+  const a=await aiLoad(); if(!a||a.error) return toast((a&&a.error)||'Hearth Link didn\'t answer');
+  const items=[{label:a.serve?'Stop sharing this device\'s AI':'Share this device\'s AI with my devices', icon:'bolt', run:()=>call('link.ai.set',{serve:!a.serve},15000).then(aiLoad).catch(e=>toast(e.message))},
+    {label:`Its AI server on this device: ${a.backend}`, icon:'kbd', run:async()=>{ const b=await openPrompt({title:'The AI server\'s address on this device (Ollama: http://127.0.0.1:11434, llama-server: http://127.0.0.1:8080)', value:a.backend||'', mode:'url'}); if(b==null) return; call('link.ai.set',{backend:b.trim()},15000).then(aiLoad).catch(e=>toast(e.message)); }}];
+  (a.servers||[]).forEach(v=>items.push({label:`Use ${v.name}'s AI${(v.models||[]).length?' · '+v.models.slice(0,3).join(', '):v.error?' · '+v.error:''}`, icon:'globe', run:()=>call('link.ai.use',{server:v.id},30000).then(r=>{ toast(`Apps on this device can use it at ${r.url}`); aiLoad(); }).catch(e=>toast(e.message))}));
+  if(a.using) items.push({label:`Stop using ${a.using.name||'that device'}'s AI`, icon:'x', run:()=>call('link.ai.stop',{},15000).then(aiLoad).catch(e=>toast(e.message))});
+  const here=a.here&&a.here.models;
+  openSheet({title:'Local AI', sub:(a.using?`Point apps at ${a.using.url} (Ollama- and OpenAI-style). `:'')+(a.serve?(here&&here.length?`Shared here: ${here.slice(0,4).join(', ')}. `:a.here&&a.here.error?`This device's AI server: ${a.here.error}. `:''):'')+'Install the model server and models yourself (Ollama or llama.cpp). Only your paired devices can use it, over Hearth Link\'s encrypted connection; nothing is opened on the network.', items});
+}
+// "Continue on this device": a game running (or just quit) on a paired device is offered on Home; picking it waits
+// for it to be quit there and its save sent, then starts it here the usual way (which brings the newest save).
+const HO={offers:[], asked:[], saves:false, seen:{}, key:'', busy:false, offAt:0};
+function hoTick(){
+  if(!lkOn() || OVERLAY || HO.busy || document.hidden || (HO.offAt && Date.now()-HO.offAt<300000)) return;
+  if(LK.s && (LK.s.running===false || !(LK.s.peers||[]).length)) return;
+  HO.busy=true;
+  call('link.handoff.status',{},30000).then(r=>{
+    HO.offers=((r&&r.offers)||[]).filter(o=>{ const g=G(o.game); return g && g.inst && S.running!==o.game; });
+    HO.asked=(r&&r.asked)||[]; HO.saves=!!(r&&r.savesServer); HO.offAt=0;
+    hoPrompt();
+    const key=JSON.stringify(HO.offers.map(o=>[o.peer,o.game,o.playing]));
+    if(key!==HO.key){ HO.key=key; if(S.view==='home'&&!S.layers.length) render(null,true); }
+  }).catch(()=>{ HO.offAt=Date.now(); }).finally(()=>{ HO.busy=false; });
+}
+setInterval(hoTick, 20000);
+function hoPrompt(){
+  if(S.layers.length) return;
+  for(const a of HO.asked){ const k='a'+a.peer+a.game; if(HO.seen[k]) continue; HO.seen[k]=1;
+    return openSheet({title:`${a.name||'Another device'} wants to continue ${a.title||'your game'}`, sub:'Quit the game here and it carries on there, with your save.', items:[
+      {label:'Quit it here', icon:'stop', run:()=>exitGame()},
+      {label:'Keep playing here', icon:'x', run:()=>call('link.handoff.decline',{peer:a.peer},15000).catch(()=>{})}]}); }
+  for(const o of HO.offers){ const k='o'+o.peer+o.game+(o.quitAt||''); if(HO.seen[k]||S.running) continue; HO.seen[k]=1;
+    toast(`${o.title} ${o.playing?'is running':'was just played'} on ${o.name}: continue it here from Home`); break; }
+}
+function handoffBanner(){
+  const o=HO.offers[0]; if(!o||S.running) return '';
+  const g=G(o.game); if(!g) return '';
+  return `<div class="np-banner"><div class="art" style="${artBg(g)}"></div>
+    <div><small>${o.playing?'Playing on '+esc(o.name):'Just played on '+esc(o.name)}</small><b>${esc(g.title)}</b></div><div class="sp"></div>
+    <button class="play" data-f data-k="h-handoff" data-act="lkHandoff" data-id="${esc(g.id)}" data-peer="${esc(o.peer)}" style="padding:10px 22px;font-size:15px">${I.play}Continue here</button></div>`;
+}
+function hoTake(id, peer){
+  const g=G(id), o=HO.offers.find(x=>x.game===id&&x.peer===peer)||{}; if(!g) return;
+  const name=o.name||'the other device';
+  const go=async()=>{
+    toast(o.playing?`Asking ${name} to quit ${g.title}: your save comes along once it's quit there`:`Getting ${g.title}'s save from ${name}…`);
+    let r; try{ r=await call('link.handoff.take',{peer, game:id},330000); }catch(e){ return toast(e.message); }
+    HO.offers=HO.offers.filter(x=>!(x.game===id&&x.peer===peer)); HO.key='';
+    if(r.state==='declined') return toast(`${name} kept playing ${g.title}`);
+    if(r.state==='conflict') toast(`The save changed here and on ${name}: you'll be asked which to keep`);
+    else if(r.state==='unsynced') toast(`${name} couldn't send the save${r.why?': '+r.why:''}. Starting with the save here.`);
+    launch(g);
+  };
+  if(!HO.saves) return openSheet({title:`Continue ${g.title} here?`, sub:'Without Hearth Storage your save only comes along if the game\'s store syncs it (Steam Cloud and the like).', items:[{label:'Continue here', icon:'play', run:go},{label:'Not now', icon:'x', run:()=>{}}]});
+  go();
+}
 function pageLink(){
   const s=LK.s;
   if(!s) return note('Loading…');
@@ -5322,6 +5410,13 @@ function pageLink(){
     + (jobs.some(t=>t.state==='done'||t.state==='cancelled') ? lkRow('clear','lkClear','trash','Clear finished copies','', '') : '');
   if((s.sending||[]).length) h += shead('Sending') + s.sending.map((x,i)=>lkRow('s'+i,'lkNone','dl', `${esc(x.title)} to ${esc(x.to)}`, lkBytes(x.bytes)+' sent', '')).join('');
   if(peers.length) h += lkRow('get','lkGet','dl','Get a game from another Hearth','Copies it here with its saves and settings: fast on the same network, works over the internet too');
+  if(peers.length){
+    h += shead('All your devices');
+    h += lkRow('fleet','lkFleet','refresh','Update every device','Each one when it\'s safe: not while someone plays, not on a low battery, after hold-back. None is restarted for you.');
+    (FLEET.devices||[]).forEach((d,i)=>{ h += lkRow('fl'+i,'lkNone', d.state==='staged'||d.state==='upToDate'?'check':'refresh', d.me?'This device':esc(d.name||'Device'), esc(fleetLine(d)), d.state==='updating'&&d.pct!=null?`<div class="rv">${Math.round(d.pct)}%</div>`:''); });
+    if((FLEET.devices||[]).some(d=>['starting','confirming','waitingGame','waitingBattery','heldBack'].includes(d.state))) h += lkRow('flc','lkFleetCancel','x','Stop waiting','Devices that haven\'t started updating stop waiting for their turn','');
+    h += lkRow('ai','lkAi','bolt','Local AI', aiLine());
+  }
   (s.signInHints||[]).forEach(x=>{ h += note(esc(x.text)); });
   const st=s.settings||{};
   h += shead('Settings')
@@ -5372,6 +5467,10 @@ function lkAct(a, d){
       {label:'Type the other device\'s long link', icon:'kbd', run:()=>lkAct('lkJoinFar', {})},
       {label:'Show this device\'s long link', icon:'info', run:()=>lkAct('lkTicket', {})}]});
     case 'lkJoinFar': return (async()=>{ const id=await openPrompt({title:'The other device\'s long link', osk:true, mode:'url'}); if(id==null||!id.trim()) return; lkJoinLan(id.trim(), 'the other device'); })();
+    case 'lkFleet': return fleetUpdate();
+    case 'lkFleetCancel': return call('link.fleet.cancel',{},30000).then(r=>{ FLEET.devices=(r&&r.devices)||[]; lkRedraw(); }).catch(e=>toast(e.message));
+    case 'lkAi': return aiMenu();
+    case 'lkHandoff': return hoTake(d.id, d.peer);
     case 'lkTicket': return openSheet({title:'This device\'s long link', sub:(s.me&&s.me.ticket)||'', items:[]});
     case 'lkName': return (async()=>{ const n=await openPrompt({title:'Name for this device', value:(s.settings&&s.settings.customName)||''}); if(n==null) return; lkCall('link.settings.set',{name:n}); })();
     case 'lkSet': { const st=s.settings||{}; return lkCall('link.settings.set',{[d.key]:!st[d.key]}); }
@@ -5479,6 +5578,8 @@ function pageStorage(){
     h += lkRow('dv'+i,'stgDevice', d.kind==='handheld'?'pad':d.kind==='laptop'?'desk':'display', esc(d.name)+(isSrv?' · Hearth Storage':''), stgHealthLine(d), stgHealthTag(d), ` data-id="${esc(d.id)}"`); });
   else if(!(s.peers||[]).length) h += note('No paired devices yet. Pair them in Settings › Hearth Link.');
   else h += note(STG.devLoading?'Asking your devices…':'Your devices show here once one of them is Hearth Storage.');
+  // A server that's asleep: wake it from here (it's also woken by itself before anything needs it).
+  servers.filter(v=>!v.at&&v.canWake).forEach((v,i)=>{ h += lkRow('dw'+i,'stgWake','power', `Wake ${esc(v.name)}`, 'It\'s asleep or off: sends it a wake-up over the network', '', ` data-id="${esc(v.id)}"`); });
   servers.filter(v=>!devs.some(d=>d.id===v.id)).forEach((v,i)=>{ h += lkRow('sv'+i,'stgServer','lib', esc(v.name)+' · Hearth Storage', stgServerLine(v), undefined, ` data-id="${esc(v.id)}"`); });
   if(!servers.length && !srv) h += note('None of your paired devices is Hearth Storage yet. On a spare PC running Hearth, turn on Use this device as Hearth Storage, and pair it with this one.');
   h += sgrid(lkRow('pair','stgPair','refresh','Pair a device','Settings › Hearth Link') + lkRow('devref','stgDevRefresh','restart','Check again','Asks every device how it\'s doing'));
@@ -5487,7 +5588,7 @@ function pageStorage(){
     h += shead('Shared folders');
     servers.filter(v=>(v.shares||[]).length).forEach((v,i)=>{ h += lkRow('br'+i,'stgBrowse','lib', `Browse ${esc(v.name)}`, (v.shares||[]).map(x=>esc(x.name)).join(', '), undefined, ` data-id="${esc(v.id)}"`); });
     if(srv){
-      (c.shares||[]).forEach((x,i)=>{ h += lkRow('sh'+i,'stgShare','lib', esc(x.name), esc(x.path) + (x.there?'':' · not there right now') + (c.smb?(x.write?' · Windows PCs can change it':' · read-only for Windows PCs'):''), undefined, ` data-id="${esc(x.id)}"`); });
+      (c.shares||[]).forEach((x,i)=>{ h += lkRow('sh'+i,'stgShare','lib', esc(x.name), esc(x.path) + (x.there?'':' · not there right now') + (c.smb?(x.smb===false?' · not shared with Windows PCs':x.write?' · Windows PCs can change it':' · read-only for Windows PCs'):''), undefined, ` data-id="${esc(x.id)}"`); });
       h += lkRow('shadd','stgShareAdd','lib','Share a folder','Your devices see it in Hearth Files and here, and can copy and play what\'s in it. Hidden files are never shared.');
     }
   }
@@ -5542,7 +5643,7 @@ function pageStorage(){
     if(srv){
       h += sgrid(stgSw('away','Away from home','Your devices can use it when they aren\'t home, over Hearth Link\'s encrypted connection. No port is opened.')
         + stgSw('smb','Windows sharing (SMB)','The shared folders for Windows PCs on this network. Opens port 445 to this network only.'));
-      if(c.smb) h += lkRow('smbpw','stgSmbPw','lock','Windows sharing password', `From Windows, sign in as ${esc(st.user||'your user name')} with this password`);
+      if(c.smb) h += lkRow('smbpw','stgSmbPw','lock','Windows sharing sign-in', 'The user name and password to type on a Windows PC: made on this device, never a fixed one');
       h += lkRow('sleep','stgSleep','moon','Sleep when idle', c.sleepMinutes ? `After ${c.sleepMinutes} minutes with nothing to do and nobody using it. Your devices wake it from the network.` : 'Never');
       if(st.wol) h += note('Waking from the network: '+esc(st.wol)+'. The PC\'s firmware settings (BIOS/UEFI) may need Wake on LAN turned on too, and a network cable works best.');
     }
@@ -5693,10 +5794,13 @@ function stgAct(a, d){
         .concat([{label:'Type a folder…', icon:'kbd', run:async()=>{ const p=await openPrompt({title:'The folder to share', mode:'url', value:'/run/media/'}); if(p&&p.trim()) stgCall('storage.share.add',{path:p.trim()}, 'Shared').catch(()=>{}); }}])}); }).catch(e=>toast(e.message));
     case 'stgShare': { const x=(c.shares||[]).find(s=>s.id===d.id); if(!x) return;
       const items=[{label:'Rename', icon:'kbd', run:async()=>{ const n=await openPrompt({title:'Its name on your devices', value:x.name}); if(n&&n.trim()) stgCall('storage.share.set',{id:x.id, name:n.trim()}).catch(()=>{}); }}];
-      if(c.smb) items.push({label:x.write?'Windows PCs: read-only':'Windows PCs: can change files', icon:'lock', run:()=>stgCall('storage.share.set',{id:x.id, write:!x.write}).catch(()=>{})});
+      if(c.smb) items.push({label:x.smb===false?'Share it with Windows PCs':'Leave it out of Windows sharing', icon:'display', run:()=>stgCall('storage.share.set',{id:x.id, smb:x.smb===false}).catch(()=>{})});
+      if(c.smb && x.smb!==false) items.push({label:x.write?'Windows PCs: read-only':'Windows PCs: can change files', icon:'lock', run:()=>stgCall('storage.share.set',{id:x.id, write:!x.write}).catch(()=>{})});
       items.push({label:'Stop sharing it', icon:'trash', run:()=>stgCall('storage.share.remove',{id:x.id}, `${x.name} isn't shared anymore`).catch(()=>{})});
       return openSheet({title:x.name, sub:x.path, items}); }
-    case 'stgSmbPw': return (async()=>{ const p=await openPrompt({title:'Windows sharing password (at least 8 characters)', secret:true, mode:'password'}); if(p==null) return; stgCall('storage.smb.password',{password:p}, 'Password set').catch(()=>{}); })();
+    case 'stgSmbPw': { const show=r=>openSheet({title:'Sign in from Windows with', sub:`User name: ${r.user}  ·  Password: ${r.password}  ·  In File Explorer: This PC › Map network drive, folder \\\\${(LK.s&&LK.s.me&&LK.s.me.name)||'this device'}\\<shared folder>`, items:[
+        {label:'Make a new password', icon:'refresh', run:()=>openSheet({title:'Make a new password?', sub:'Windows PCs signed in with the old one have to sign in again.', items:[{label:'Make a new password', icon:'refresh', run:()=>call('link.storage.smb.password',{},60000).then(show).catch(e=>toast(e.message))}]})}]});
+      return call('link.storage.smb.show',{},15000).then(show).catch(()=>call('link.storage.smb.password',{},60000).then(show).catch(e=>toast(e.message))); }
     case 'stgSleep': return openSheet({title:'Sleep when idle', sub:'Only when nothing is being copied, no game is running and nobody is using it. Your devices wake it from the network when they need it.', items:[0,15,30,60,120].map(m=>({label:m?`After ${m} minutes`:'Never', icon:c.sleepMinutes===m?'check':'moon', run:()=>stgCall('storage.set',{sleepMinutes:m}).catch(()=>{})}))});
     case 'stgDevice': return stgDeviceMenu(d.id);
     case 'stgDevRefresh': stgDevices(); return stgRefresh();

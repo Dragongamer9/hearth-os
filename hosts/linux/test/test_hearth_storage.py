@@ -128,8 +128,24 @@ class Wiring(unittest.TestCase):
     def test_game_mode_page(self):
         ui = (ROOT / 'ui' / 'index.html').read_text()
         for needle in ["function pageStorage()", "['storage','lib','Hearth Storage']", "if(/^stg[A-Z]/.test(a)) return stgAct(a, d);",
-                       "'Move to Hearth Storage…'", "call('link.storage.servers'", "case 'stgSmbPw'", "secret:true"]:
+                       "'Move to Hearth Storage…'", "call('link.storage.servers'", "case 'stgSmbPw'", "call('link.storage.smb.show'"]:
             self.assertIn(needle, ui)
+
+    def test_link_extras(self):
+        ui = (ROOT / 'ui' / 'index.html').read_text()
+        core = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'link.rs').read_text()
+        bridge = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'bridge.rs').read_text()
+        # Continue on this device: offered on Home, waits for the other device, then the usual launch (newest save first).
+        for needle in ["call('link.handoff.status'", "call('link.handoff.take'", "call('link.handoff.decline'", "if(!g) return handoffBanner();", "launch(g);\n  };",
+                       # Update every device, Local AI, Windows sharing's generated sign-in and per-folder choice, Wake on the device list.
+                       "call('link.fleet.update'", "call('link.fleet.status'", "call('link.ai.status'", "call('link.ai.use'",
+                       "call('link.storage.smb.password',{}", "storage.share.set',{id:x.id, smb:", "`Wake ${esc(v.name)}`, 'It\\'s asleep"]:
+            self.assertIn(needle, ui)
+        self.assertNotIn("Windows sharing password (at least 8 characters)", ui, 'the password is generated, never typed')
+        for cmd in ['"handoff.status"', '"handoff.take"', '"fleet.update"', '"ai.use"', '"storage.smb.show"']:
+            self.assertIn(cmd, core)
+        self.assertIn('crate::link::now_playing(', bridge)
+        self.assertIn('now_quit(&link_dir(), id, now_ms());', core)
 
     def test_saves_follow_you_and_device_health(self):
         ui = (ROOT / 'ui' / 'index.html').read_text()
