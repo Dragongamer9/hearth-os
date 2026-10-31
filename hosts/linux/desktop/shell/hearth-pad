@@ -30,6 +30,11 @@ Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn
 (osk {open}); while it's open the controller is the keyboard's alone (grabbed: apps don't see the presses) and typing goes
 through this helper's uinput keyboard (KWin has no wtype). The rest of the time it does nothing.
 
+--cosmic: Hearth COSMIC's controller (docs/COSMIC.md), started by desktop/shell/desk-cosmic.qml (which draws the Hearth
+menu, the launcher, Quick Access and the keyboard, as Pad.qml does for Hearth Classic). The same desktop as above, but
+keyboard-first in every window, with COSMIC's own shortcuts and per-app keys for COSMIC Files, Terminal and Edit (the
+shell tells it which app is in front: app {id}): see CosmicPad.
+
 --plasma: Hearth Plasma's controller (started by desktop/shell/osk-plasma.qml, which draws the Hearth menu, the
 controls card and the keyboard over KDE Plasma). Everything Hearth Classic does, through KWin's own shortcuts instead
 of labwc's, all typed through this helper's uinput keyboard (KWin has no wtype):
@@ -61,6 +66,7 @@ import os
 import queue
 import threading
 import select
+import socket
 import sys
 import time
 
@@ -103,6 +109,11 @@ KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
                     'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V', 'KEY_F4', 'KEY_PAGEUP', 'KEY_PAGEDOWN'})
 MODS = {'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT'}
 
+
+# ---- Hearth COSMIC (--cosmic): keys it sends besides the ones above.
+COSMIC_KEYS = ['KEY_F', 'KEY_PAGEUP', 'KEY_PAGEDOWN', 'KEY_F10', 'KEY_G']
+KEYS_USED = sorted(set(KEYS_USED) | set(COSMIC_KEYS))
+# ---- end Hearth COSMIC
 
 # ---- Hearth Plasma (--plasma): KWin's and Plasma's own shortcuts for what labwc's are in Hearth Classic.
 PLASMA_SHORTCUTS = {
@@ -173,13 +184,13 @@ class Pad:
         self.game = game           # --game: Game Mode's controller mouse, nothing else
         self.osk_only = osk_only   # --osk: Hearth Plasma's keyboard only: Guide + X, and the keyboard while it's open
         self.plasma = plasma       # --plasma: Hearth Plasma's whole controller (plasma_* below)
+        self.gnome = gnome         # --gnome: Hearth GNOME (gnome_* below)
+        self.app = ''              # --gnome: the app in front when it has its own keys (files | terminal | text)
+        self.trigger_scroll = {}   # --gnome: LT / RT held in those apps (scrolling)
         self.win = ('', '', False, '')   # --plasma: the window in front (class, title, fullscreen, kind), from KWin
         self.key_overlay = False   # --plasma: the taskbar / Overview / a popup has the keys until a window says otherwise
         self.textfield = False     # --plasma: KWin says a text field has the focus
         self.last_input = -1e9     # when a controller button last went down
-        self.gnome = gnome         # --gnome: Hearth GNOME (gnome_* below)
-        self.app = ''              # --gnome: the app in front when it has its own keys (files | terminal | text)
-        self.trigger_scroll = {}   # --gnome: LT / RT held in those apps (scrolling)
         self.guide_from = None     # what was open when Guide went down (Guide + X closes the keyboard if it was)
         self.done = False          # --game: turned off with View + Menu
         self.mode = 'desk'         # desk | radial | osk
@@ -726,12 +737,248 @@ class Pad:
             self.acc[2] -= n
             self.out.wheel(n, 0)
 
+# ---------------------------------------------------------------------- Hearth COSMIC (--cosmic, docs/COSMIC.md)
+
+POINTER_RECENT = 1.2        # s: A clicks (instead of Enter) when the right stick moved the pointer this recently
+TRIGGER_SCROLL = 10.0       # wheel notches/s while LT / RT is held
+# Per app (the .desktop id the shell reports for the window in front): what A, B, Y, LB / RB send. '' is any other
+# window. Y's keys go first, then the on-screen keyboard opens when 'osk' is set (search fields, the terminal).
+COSMIC_APPS = {
+    '': {'a': ('KEY_ENTER',), 'b': ('KEY_ESC',), 'y': (), 'osk': True, 'tabs': False},
+    # COSMIC Files: B back a folder, Y search, LB / RB tabs.
+    'com.system76.CosmicFiles': {'a': ('KEY_ENTER',), 'b': ('KEY_LEFTALT', 'KEY_LEFT'), 'y': ('KEY_LEFTCTRL', 'KEY_F'),
+                                 'osk': True, 'tabs': True},
+    # COSMIC Terminal: B is Esc (for the program in it), Y the keyboard, LB / RB tabs.
+    'com.system76.CosmicTerm': {'a': ('KEY_ENTER',), 'b': ('KEY_ESC',), 'y': (), 'osk': True, 'tabs': True},
+    # COSMIC Edit: Y find, LB / RB tabs.
+    'com.system76.CosmicEdit': {'a': ('KEY_ENTER',), 'b': ('KEY_ESC',), 'y': ('KEY_LEFTCTRL', 'KEY_F'), 'osk': True, 'tabs': True},
+}
+# View + D-pad: COSMIC's window shortcuts (move left / right), and Hearth's maximize / minimize (Super+Ctrl+Up / Down,
+# desktop/cosmic/hearth-cosmic-defaults adds them).
+COSMIC_SNAP = {'left': ('KEY_LEFTMETA', 'KEY_LEFTSHIFT', 'KEY_LEFT'), 'right': ('KEY_LEFTMETA', 'KEY_LEFTSHIFT', 'KEY_RIGHT'),
+               'up': ('KEY_LEFTMETA', 'KEY_LEFTCTRL', 'KEY_UP'), 'down': ('KEY_LEFTMETA', 'KEY_LEFTCTRL', 'KEY_DOWN')}
+
+
+class CosmicPad(Pad):
+    """Hearth COSMIC: Mantel's controller with COSMIC's shortcuts, keyboard-first in every window.
+      Right stick  pointer (R3 precise)        Left stick  scroll           LT / RT  scroll up / down
+      A            Enter; a click when the pointer was just moved          X        right-click   L3  middle-click
+      B            back: Esc (COSMIC Files: the folder before)             Y        search (Files, Edit) and the keyboard
+      D-pad        arrow keys (moves the selection)                        LB / RB  tabs in COSMIC's apps, else windows
+      View + LB/RB the other one         View + B  close (Super+Q)         View + D-pad  move / maximize / minimize
+      View + Y     search (Ctrl+F) and the keyboard, in any window
+      Menu         Hearth's launcher     Guide     the Hearth menu         Guide + X  the on-screen keyboard"""
+
+    def __init__(self, out):
+        super().__init__(out)
+        self.app = ''              # the window in front (from the shell: app {id})
+        self.ptr_at = -10.0        # when the right stick last moved the pointer
+        self.a_click = False       # A is down as a click
+        self.trig = {'lt': False, 'rt': False}
+        self.tacc = 0.0
+
+    def amap(self):
+        return COSMIC_APPS.get(self.app) or COSMIC_APPS['']
+
+    def release_all(self):
+        super().release_all()
+        self.trig = {'lt': False, 'rt': False}
+        self.a_click = False
+
+    def command(self, m):
+        if m.get('cmd') == 'app':
+            self.app = str(m.get('id') or '').removesuffix('.desktop')
+            return
+        if m.get('cmd') == 'key' and m.get('key') == 'close':     # the Hearth menu's Close window: COSMIC's Super+Q
+            return self.tap('KEY_LEFTMETA', 'KEY_Q')
+        super().command(m)
+
+    def keys_button(self, name, down):
+        """Hearth's menus are open: as in Hearth Classic, and B also tells the shell (back), which closes the menu
+        itself if COSMIC didn't hand it the Esc (a menu that came up without the keyboard focus can't trap you)."""
+        super().keys_button(name, down)
+        if name == 'b' and down:
+            self.out.send({'t': 'back'})
+
+    def switch_window(self, name, now):
+        if not self.alt_until:
+            self.out.press('KEY_LEFTALT', True)
+        self.alt_until = now + ALT_HOLD
+        self.tap(*(['KEY_TAB'] if name == 'rb' else ['KEY_LEFTSHIFT', 'KEY_TAB']))
+
+    def desk_button(self, name, down, now):
+        view = 'view' in self.held
+        am = self.amap()
+        if name == 'a':
+            if down:
+                self.a_click = now - self.ptr_at < POINTER_RECENT
+            if self.a_click:
+                return self.mouse('BTN_LEFT', 'a', down)
+            if down:
+                self.tap(*am['a'])
+            return
+        if name in ('lt', 'rt'):
+            self.trig[name] = bool(down)
+            return
+        if name == 'x':
+            return self.mouse('BTN_RIGHT', 'x', down)
+        if name == 'l3':
+            return self.mouse('BTN_MIDDLE', 'l3', down)
+        if name in ARROWS:
+            if view:
+                if down:
+                    self.view_used = True
+                    self.tap(*COSMIC_SNAP[name])
+                return
+            return self.hold_key(ARROWS[name], down)
+        if name == 'view':
+            if down:
+                self.view_used = False
+                self.view_at = now
+            elif not self.view_used and now - getattr(self, 'view_at', now) < HELP_TAP:
+                self.out.send({'t': 'help'})
+            return
+        if not down:
+            return
+        if name == 'b':
+            if view:
+                self.view_used = True
+                self.tap('KEY_LEFTMETA', 'KEY_Q')
+            else:
+                self.tap(*am['b'])
+        elif name == 'y':
+            if view and not am['y']:
+                # View + Y: search (Ctrl+F) in any window (where the app in front isn't known, Y alone is the keyboard).
+                self.view_used = True
+                self.tap('KEY_LEFTCTRL', 'KEY_F')
+            elif am['y']:
+                self.tap(*am['y'])
+            if am['osk']:
+                self.want_osk()
+        elif name == 'menu':
+            self.out.send({'t': 'launcher'})
+        elif name in ('lb', 'rb'):
+            # COSMIC's apps: LB / RB tabs, View + LB / RB windows. Elsewhere (or when COSMIC doesn't say which app is in
+            # front) the other way round, as in Hearth Classic: LB / RB windows, View + LB / RB tabs.
+            self.view_used = self.view_used or view
+            if view == am['tabs']:
+                self.switch_window(name, now)
+            else:
+                self.tap(*(['KEY_LEFTCTRL', 'KEY_TAB'] if name == 'rb' else ['KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB']))
+        elif name == 'r3':
+            self.precise = not self.precise
+            self.out.send({'t': 'toast', 'text': 'Precise pointer ' + ('on' if self.precise else 'off')})
+
+    def tick(self, now, dt):
+        _, _, rx, ry = self.sticks
+        active = self.mode == 'desk' and not self.paused
+        if active and (abs(rx) >= DEAD or abs(ry) >= DEAD):
+            self.ptr_at = now
+        super().tick(now, dt)
+        t = (1 if self.trig['rt'] else 0) - (1 if self.trig['lt'] else 0)
+        if active and not self.keys_ctx and t:
+            self.tacc += -t * TRIGGER_SCROLL * 120 * dt
+            v = int(self.tacc)
+            self.tacc -= v
+            if v:
+                self.out.wheel(v, 0)
+# ---- end Hearth COSMIC
+
 
 # ---------------------------------------------------------------------- devices (python3-evdev)
 
+SINK = [None]      # --socket: where events go instead of stdout (CosmicLink.send)
+
+
 def emit(obj):
+    if SINK[0]:
+        return SINK[0](obj)
     sys.stdout.write(json.dumps(obj) + '\n')
     sys.stdout.flush()
+
+
+class CosmicLink:
+    """--socket PATH (Hearth COSMIC): the shell talks to hearth-pad over a Unix socket instead of stdin / stdout, so the
+    controller keeps working (pointer, keys) while the shell (desk-cosmic.qml) is restarted; the menus come back
+    with it. One shell at a time; only this user can open the socket."""
+
+    def __init__(self, path):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        old = os.umask(0o177)
+        try:
+            self.srv.bind(path)
+        finally:
+            os.umask(old)
+        self.srv.listen(2)
+        self.cli = None
+        self.buf = ''
+        self.pending = []          # menus asked for while no shell was connected (sent when it comes back)
+        SINK[0] = self.send
+
+    def fds(self):
+        return [self.srv.fileno()] + ([self.cli.fileno()] if self.cli else [])
+
+    def send(self, obj):
+        if not self.cli:
+            # The launcher, the Hearth menu, the keyboard or the controls asked for while the shell restarts: shown as
+            # soon as it's back (a second or two) instead of the press being lost.
+            if obj.get('t') in ('launcher', 'help', 'osk') or (obj.get('t') == 'radial' and obj.get('open')):
+                self.pending = [p for p in self.pending if p.get('t') != obj.get('t')][-3:] + [obj]
+            elif obj.get('t') == 'radial':
+                self.pending = [p for p in self.pending if p.get('t') != 'radial']
+            return
+        try:
+            self.cli.sendall((json.dumps(obj) + '\n').encode())
+        except OSError:
+            self.drop()
+
+    def drop(self):
+        try:
+            self.cli.close()
+        except (OSError, AttributeError):
+            pass
+        self.cli = None
+        self.buf = ''
+
+    def read(self, fd, pad):
+        """Lines from the shell; a new shell (or the shell gone) puts the controller back to the plain desktop."""
+        if fd == self.srv.fileno():
+            c, _ = self.srv.accept()
+            c.settimeout(0.5)
+            self.drop()
+            self.cli = c
+            pending, self.pending = self.pending, []
+            if not any(p.get('t') == 'radial' for p in pending):
+                pad.set_mode('desk')
+            pad.keys_ctx = False
+            note('shell connected')
+            self.send({'t': 'ready'})
+            for p in pending:
+                self.send(p)
+            return []
+        if not self.cli or fd != self.cli.fileno():
+            return []
+        try:
+            data = self.cli.recv(4096)
+        except (BlockingIOError, socket.timeout):
+            return []
+        except OSError:
+            data = b''
+        if not data:
+            note('shell went away; the controller keeps working')
+            self.drop()
+            if pad.mode != 'radial':
+                pad.set_mode('desk')
+            pad.keys_ctx = False
+            return []
+        self.buf += data.decode('utf-8', 'replace')
+        lines = self.buf.split('\n')
+        self.buf = lines.pop()
+        return lines
 
 
 class Output:
@@ -1050,8 +1297,8 @@ def main():
     bmap = button_map(e)
     game = '--game' in sys.argv[1:]
     plasma = '--plasma' in sys.argv[1:]
-    osk_only = '--osk' in sys.argv[1:] and not plasma
     gnome = '--gnome' in sys.argv[1:] and not plasma
+    osk_only = '--osk' in sys.argv[1:] and not plasma
     stats = {'events': 0, 'moved': 0, 'since': time.monotonic()}
     real_move = out.move
 
@@ -1059,7 +1306,7 @@ def main():
         stats['moved'] += abs(dx) + abs(dy)
         real_move(dx, dy)
     out.move = counted_move
-    pad = Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome)
+    pad = CosmicPad(out) if '--cosmic' in sys.argv[1:] else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome)
     if game:
         note('Game Mode controller mouse')
     inbox = queue.Queue()      # --plasma: what KWin says (plasma_bus's thread) for the main loop
@@ -1112,8 +1359,12 @@ def main():
              'up', 'down', 'left', 'right')
     last = time.monotonic()
     next_scan = 0.0
+    link = None
+    if '--socket' in sys.argv[1:] and sys.argv.index('--socket') + 1 < len(sys.argv):
+        link = CosmicLink(sys.argv[sys.argv.index('--socket') + 1])
     emit({'t': 'ready'})
-    os.set_blocking(sys.stdin.fileno(), False)
+    if not link:
+        os.set_blocking(sys.stdin.fileno(), False)
     inbuf = ''
     while True:
         now = time.monotonic()
@@ -1140,11 +1391,19 @@ def main():
                     c.grabbed = pad.wants_grab
         fds = {c.dev.fd: (p, c) for p, c in pads.items()}
         try:
-            ready, _, _ = select.select(list(fds) + [sys.stdin.fileno()], [], [], 0.008)
+            link_fds = set(link.fds()) if link else set()
+            ready, _, _ = select.select(list(fds) + (list(link_fds) if link else [sys.stdin.fileno()]), [], [], 0.008)
         except (OSError, ValueError):
-            ready = []
+            ready, link_fds = [], set()
         for fd in ready:
-            if fd == sys.stdin.fileno():
+            if fd in link_fds:
+                for line in link.read(fd, pad):
+                    try:
+                        pad.command(json.loads(line))
+                    except (ValueError, AttributeError):
+                        pass
+                continue
+            if not link and fd == sys.stdin.fileno():
                 try:
                     chunk = os.read(fd, 4096).decode('utf-8', 'replace')
                 except BlockingIOError:

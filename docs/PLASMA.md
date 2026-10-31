@@ -10,6 +10,8 @@ Desktop Mode can run one of three desktops. Game Mode is the same with either.
 | **Hearth Classic** | labwc + Mantel (Quickshell): today's desktop | always installed, the default and the fallback |
 | **Hearth Plasma** | KDE Plasma 6 in Hearth's look, with Hearth's widgets | picked in Settings or on the login screen |
 | Hearth GNOME | GNOME Shell in Hearth's look, with Hearth's extensions | picked in Settings or on the login screen (docs/GNOME.md) |
+| Hearth COSMIC | System76's COSMIC in Hearth's look (Anatase only) | docs/COSMIC.md |
+| Hearth Deepin | | not available on either edition (docs/DEEPIN.md) |
 
 Switching keeps your files and settings: both desktops use the same home folder, the same apps and the same Hearth
 settings files. Plasma's own settings (`~/.config/kdeglobals`, `plasma-org.kde.plasma.desktop-appletsrc`...) are only

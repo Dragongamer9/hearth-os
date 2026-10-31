@@ -7,7 +7,8 @@ opens files in that app.
 |---|---|---|
 | Hearth Classic (labwc + Mantel) and Game Mode | `Nimbus` | Hearth's own classic apps: Files, Terminal, Text Editor, Calculator, Documents, Task Manager (screenshots: Mantel's own) |
 | Hearth Plasma | `KDE` | the KDE-based ones: Files (Dolphin), Terminal (Konsole), Text Editor (Kate), Reader (Okular), Capture (Spectacle), Calculator (KCalc), Plasma's System Monitor |
-| GNOME, COSMIC, Deepin | `GNOME`, `COSMIC`, `Deepin` / `DDE` | their own apps, once they register them (below) |
+| Hearth COSMIC (Anatase) | `COSMIC` | COSMIC's own Files, Terminal, Edit (text editor) and Screenshot; Hearth's KDE-based Calculator and Reader; the rest as everywhere (docs/COSMIC.md) |
+| GNOME, Deepin | `GNOME`, `Deepin` / `DDE` | their own apps, once they register them (below); Deepin isn't in any image (docs/DEEPIN.md) |
 
 Apps with no other app of their kind (Photos, Player, Office, Maps, Contacts, Calendar, Paint, Camera, Recorder, the
 browser, Bazaar...) show on every desktop, unless a desktop registers its own app of that kind: then that one is used

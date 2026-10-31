@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Hearth Launcher
+Comment=Your apps and games (Super, or Menu on the controller)
+Exec=/usr/share/nimbus/desktop/cosmic/hearth-cosmic launcher
+Icon=hearth
+Type=Application
+Categories=System;
+OnlyShowIn=COSMIC;

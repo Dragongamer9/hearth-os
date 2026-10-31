@@ -93,11 +93,15 @@ SetPage {
     }
     SetChoice {
         title: "Desktop"
-        sub: page.desk.fellBack ? (page.deskNames[page.desk.fellBackFrom] || "Hearth Plasma") + " didn't start this time, so Hearth Classic opened instead."
+        sub: page.desk.cosmicFellBack ? "Hearth COSMIC didn't start this time, so Hearth Classic opened instead."
+             : page.desk.fellBack ? (page.deskNames[page.desk.fellBackFrom] || "Hearth Plasma") + " didn't start this time, so Hearth Classic opened instead."
              : "Which desktop Desktop Mode opens. Your files and settings stay the same; Game Mode doesn't change. Hearth Classic always stays installed as the fallback."
         options: [{ value: "classic", label: "Hearth Classic" },
                   { value: "plasma", label: "Hearth Plasma", disabled: !page.desk.plasma },
-                  { value: "gnome", label: "Hearth GNOME", disabled: !page.desk.gnome }]
+                  { value: "gnome", label: "Hearth GNOME", disabled: !page.desk.gnome },
+                  // Hearth COSMIC: Anatase only (docs/COSMIC.md); Hearth Deepin: no edition has Deepin (docs/DEEPIN.md).
+                  { value: "cosmic", label: page.desk.cosmic ? "Hearth COSMIC" : "Hearth COSMIC (not available on this edition)", disabled: !page.desk.cosmic },
+                  { value: "deepin", label: "Hearth Deepin (not available on this edition)", disabled: true }]
         current: page.desk.desktop
         onChosen: v => page.setDesktop(v)
     }

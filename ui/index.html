@@ -6982,10 +6982,12 @@ function loadShellStatus(){
   if(LINUX) call('login.desktop').then(d=>{ SHELL.desktop=d; refreshUI(); }).catch(()=>{});
 }
 const DESKTOP_NAMES={classic:'Hearth Classic', plasma:'Hearth Plasma', gnome:'Hearth GNOME'};
+DESKTOP_NAMES.cosmic='Hearth COSMIC';   // docs/COSMIC.md (Anatase only)
 function deskRow(){
   const d=SHELL.desktop; if(!d) return '';
   const cur=DESKTOP_NAMES[d.desktop]||'Hearth Classic';
-  const sub = d.fellBack ? (DESKTOP_NAMES[d.fellBackFrom]||'Hearth Plasma')+' didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
+  const sub = d.cosmicFellBack ? 'Hearth COSMIC didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
+    : d.fellBack ? (DESKTOP_NAMES[d.fellBackFrom]||'Hearth Plasma')+' didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
     : 'Hearth Classic (today\'s desktop), Hearth Plasma (KDE Plasma in the same look) or Hearth GNOME (GNOME in Hearth\'s look). Your files and settings stay; Game Mode doesn\'t change. Also on the login screen.';
   return shead('Desktop')
     + `<button class="row" data-f data-k="sh-desk" data-act="deskPick"><span class="ricon">${I.desk}</span><div class="rt"><b>Desktop</b><small>${sub}</small></div><div class="rv">${esc(cur)} ›</div></button>`;
@@ -6993,10 +6995,13 @@ function deskRow(){
 function deskPick(){
   const d=SHELL.desktop||{}; const cur=d.desktop||'classic';
   const pick=desktop=>call('login.setDesktop',{desktop}).then(r=>{ SHELL.desktop=r; refreshUI(); toast(DESKTOP_NAMES[desktop]+' opens the next time you switch to Desktop Mode'); }).catch(e=>toast(e.message));
-  openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if Hearth Plasma or Hearth GNOME can\'t start, Hearth Classic opens instead.', items:[
-    {label:'Hearth Classic', icon:cur!=='plasma'&&cur!=='gnome'?'check':'', run:()=>pick('classic')},
+  openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if another desktop can\'t start, Hearth Classic opens instead.', items:[
+    {label:'Hearth Classic', icon:cur==='classic'?'check':'', run:()=>pick('classic')},
     {label:d.plasma?'Hearth Plasma':'Hearth Plasma (not installed on this system)', icon:cur==='plasma'?'check':'', run:()=>d.plasma?pick('plasma'):toast('Hearth Plasma comes with Hearth OS on Anatase and Peppermint')},
-    {label:d.gnome?'Hearth GNOME':'Hearth GNOME (not installed on this system)', icon:cur==='gnome'?'check':'', run:()=>d.gnome?pick('gnome'):toast('Hearth GNOME comes with Hearth OS on Anatase and Peppermint')}]});
+    {label:d.gnome?'Hearth GNOME':'Hearth GNOME (not installed on this system)', icon:cur==='gnome'?'check':'', run:()=>d.gnome?pick('gnome'):toast('Hearth GNOME comes with Hearth OS on Anatase and Peppermint')},
+    // ---- Hearth COSMIC (docs/COSMIC.md) and Hearth Deepin (docs/DEEPIN.md: no edition can have it)
+    {label:d.cosmic?'Hearth COSMIC':'Hearth COSMIC (not available on this edition)', icon:cur==='cosmic'?'check':'', run:()=>d.cosmic?pick('cosmic'):toast('Hearth COSMIC comes with Hearth OS on Anatase')},
+    {label:'Hearth Deepin (not available on this edition)', icon:'', run:()=>toast('Deepin isn\'t packaged for Anatase (Fedora) or Peppermint (Debian), so Hearth Deepin can\'t be offered')}]});
 }
 function pageShellLinux(){
   const s=SHELL.status;

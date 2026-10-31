@@ -44,7 +44,7 @@ pub fn read_desktop_choice(text: &str) -> &'static str {
         let t = l.trim_start();
         let t = t.strip_prefix("export").map(str::trim_start).unwrap_or(t);
         if let Some(v) = t.strip_prefix("HEARTH_DESKTOP=") {
-            val = match v.trim().trim_matches(|c| c == '"' || c == '\'') { "plasma" => "plasma", "gnome" => "gnome", _ => "classic" };
+            val = match v.trim().trim_matches(|c| c == '"' || c == '\'') { "plasma" => "plasma", "gnome" => "gnome", "cosmic" => "cosmic", _ => "classic" };
         }
     }
     val
@@ -74,6 +74,13 @@ pub fn gnome_installed() -> bool {
     let have = |b: &str| ["/usr/bin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
     have("gnome-shell") && have("gnome-session") && Path::new("/usr/share/gnome-shell/modes/hearth.json").is_file()
 }
+// ---- Hearth COSMIC (docs/COSMIC.md): Anatase only; Hearth Deepin isn't available on any edition (docs/DEEPIN.md).
+/// Whether Hearth COSMIC can run here: COSMIC and Hearth's COSMIC defaults (made at image build time) are installed.
+pub fn cosmic_installed() -> bool {
+    let have = |b: &str| ["/usr/bin", "/usr/sbin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
+    have("start-cosmic") && have("cosmic-comp") && have("cosmic-panel") && Path::new("/usr/share/hearth-cosmic/data/cosmic").is_dir()
+}
+// ---- end Hearth COSMIC
 pub fn desktop() -> Value {
     let run = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     let fell: Vec<&str> = ["plasma", "gnome"].into_iter().filter(|d| Path::new(&run).join(format!("hearth-{d}-failed")).exists()).collect();
@@ -83,10 +90,14 @@ pub fn desktop() -> Value {
         "gnome": gnome_installed(),
         "fellBack": !fell.is_empty(),
         "fellBackFrom": fell.first().copied().unwrap_or(""),
+        "cosmic": cosmic_installed(),
+        "cosmicFellBack": Path::new(&run).join("hearth-cosmic-failed").exists(),
+        "deepin": false,
     })
 }
 pub fn set_desktop(desktop_name: &str) -> Result<Value, String> {
-    if !["classic", "plasma", "gnome"].contains(&desktop_name) { return Err("The desktop is classic, plasma or gnome".into()); }
+    if !["classic", "plasma", "gnome", "cosmic"].contains(&desktop_name) { return Err("The desktop is classic, plasma, gnome or cosmic".into()); }
+    if desktop_name == "cosmic" && !cosmic_installed() { return Err("Hearth COSMIC isn't available on this edition.".into()); }
     if desktop_name == "plasma" && !plasma_installed() { return Err("Hearth Plasma isn't installed on this system.".into()); }
     if desktop_name == "gnome" && !gnome_installed() { return Err("Hearth GNOME isn't installed on this system.".into()); }
     let f = session_conf();
@@ -261,6 +272,8 @@ mod tests {
         assert_eq!(read_desktop_choice("FOO=1\nexport HEARTH_DESKTOP=\"plasma\"\n"), "plasma");
         assert_eq!(read_desktop_choice("HEARTH_DESKTOP=plasma\nHEARTH_DESKTOP=gnome\n"), "gnome");
         assert_eq!(read_desktop_choice("HEARTH_DESKTOP=gnome\nHEARTH_DESKTOP=kde\n"), "classic");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=cosmic\n"), "cosmic");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=deepin\n"), "classic");
         assert_eq!(write_desktop_choice("FOO=1", "plasma"), "FOO=1\nHEARTH_DESKTOP=plasma\n");
         assert_eq!(write_desktop_choice("HEARTH_DESKTOP=plasma\nNIMBUS_START_MODE=game\n", "classic"), "HEARTH_DESKTOP=classic\nNIMBUS_START_MODE=game\n");
         assert_eq!(read_start_mode(""), "game");
