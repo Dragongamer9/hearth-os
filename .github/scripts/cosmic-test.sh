@@ -191,7 +191,7 @@ grep -iE "protocol|error [0-9]|broke|wl_" shots/cosmic-companion.log shots/compa
 # Why the companion ends when one of its windows closes (seen in CI): its Wayland conversation around Quick Access
 # opening and closing.
 pkill -f 'desk-cosmic.qml' ; sleep 2
-WAYLAND_DEBUG=client quickshell -p /src/hosts/linux/desktop/shell/desk-cosmic.qml >/tmp/wl-debug.log 2>&1 &
+QT_IM_MODULE=compose WAYLAND_DEBUG=client quickshell -p /src/hosts/linux/desktop/shell/desk-cosmic.qml >/tmp/wl-debug.log 2>&1 &
 sleep 10
 timeout 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth quick >/dev/null 2>&1; sleep 3
 timeout 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth quick >/dev/null 2>&1; sleep 4

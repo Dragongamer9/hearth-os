@@ -10,6 +10,10 @@ QML="$SHELL_DIR/desk-cosmic.qml"
 # The companion's messages (kept for bug reports; the one before is .old).
 CLOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/cosmic-companion.log"
 mkdir -p "$(dirname "$CLOG")" 2>/dev/null
+# COSMIC's compositor drops the companion's whole connection when Qt sends a text-input (input method) update while
+# one of its windows closes (seen in cosmic-test.yml). Hearth's windows don't need an input method (the on-screen
+# keyboard is Hearth's own), so Qt's plain compose input is used instead.
+export QT_IM_MODULE=compose
 case "$1" in
   launcher|games|quick|link|storage|menu|keyboard|help|close) ;;
   companion)
