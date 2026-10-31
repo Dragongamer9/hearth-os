@@ -11,32 +11,34 @@
   "kinds": {
     "files": {
       "label": "File manager",
-      "required": ["Nimbus", "KDE"],
+      "required": ["Nimbus", "KDE", "COSMIC"],
       "categories": ["FileManager"],
       "mimes": ["inode/directory", "x-directory/normal"],
       "apps": {
         "Nimbus": ["hearth-files.desktop"],
-        "KDE": ["hearth-files-kde.desktop", "org.kde.dolphin.desktop", "hearth-files.desktop"]
+        "KDE": ["hearth-files-kde.desktop", "org.kde.dolphin.desktop", "hearth-files.desktop"],
+        "COSMIC": ["com.system76.CosmicFiles.desktop"]
       },
       "everywhere": [],
       "others": []
     },
     "terminal": {
       "label": "Terminal",
-      "required": ["Nimbus", "KDE"],
+      "required": ["Nimbus", "KDE", "COSMIC"],
       "categories": ["TerminalEmulator"],
       "mimes": ["x-scheme-handler/terminal"],
       "terminal": true,
       "apps": {
         "Nimbus": ["hearth-terminal.desktop", "foot.desktop", "hearth-terminal-kde.desktop"],
-        "KDE": ["hearth-terminal-kde.desktop", "org.kde.konsole.desktop", "hearth-terminal.desktop"]
+        "KDE": ["hearth-terminal-kde.desktop", "org.kde.konsole.desktop", "hearth-terminal.desktop"],
+        "COSMIC": ["com.system76.CosmicTerm.desktop"]
       },
       "everywhere": [],
       "others": ["footclient.desktop", "foot-server.desktop"]
     },
     "text-editor": {
       "label": "Text editor",
-      "required": ["Nimbus", "KDE"],
+      "required": ["Nimbus", "KDE", "COSMIC"],
       "categories": ["TextEditor"],
       "mimes": ["text/plain", "text/x-log", "text/markdown", "text/x-markdown", "text/x-python", "text/x-python3",
                 "application/x-shellscript", "text/x-shellscript", "application/json", "application/x-yaml", "text/x-yaml",
@@ -49,7 +51,8 @@
                 "application/x-powershell", "text/x-dockerfile"],
       "apps": {
         "Nimbus": ["hearth-text.desktop", "hearth-text-kde.desktop"],
-        "KDE": ["hearth-text-kde.desktop", "org.kde.kate.desktop", "hearth-text.desktop"]
+        "KDE": ["hearth-text-kde.desktop", "org.kde.kate.desktop", "hearth-text.desktop"],
+        "COSMIC": ["com.system76.CosmicEdit.desktop"]
       },
       "everywhere": [],
       "others": ["org.kde.kwrite.desktop"]
@@ -60,7 +63,8 @@
       "mimes": [],
       "apps": {
         "Nimbus": ["hearth-calculator.desktop", "hearth-calculator-kde.desktop"],
-        "KDE": ["hearth-calculator-kde.desktop", "org.kde.kcalc.desktop", "hearth-calculator.desktop"]
+        "KDE": ["hearth-calculator-kde.desktop", "org.kde.kcalc.desktop", "hearth-calculator.desktop"],
+        "COSMIC": ["hearth-calculator-kde.desktop", "hearth-calculator.desktop"]
       },
       "everywhere": [],
       "others": []
@@ -71,7 +75,8 @@
                 "application/x-cbz", "application/vnd.comicbook-rar", "application/x-cbr"],
       "apps": {
         "Nimbus": ["hearth-documents.desktop", "hearth-reader.desktop"],
-        "KDE": ["hearth-reader.desktop", "org.kde.okular.desktop", "hearth-documents.desktop"]
+        "KDE": ["hearth-reader.desktop", "org.kde.okular.desktop", "hearth-documents.desktop"],
+        "COSMIC": ["hearth-reader.desktop", "hearth-documents.desktop"]
       },
       "everywhere": [],
       "others": []
@@ -82,7 +87,8 @@
       "mimes": [],
       "apps": {
         "Nimbus": [],
-        "KDE": ["hearth-capture.desktop", "org.kde.spectacle.desktop"]
+        "KDE": ["hearth-capture.desktop", "org.kde.spectacle.desktop"],
+        "COSMIC": ["com.system76.CosmicScreenshot.desktop"]
       },
       "everywhere": [],
       "others": []

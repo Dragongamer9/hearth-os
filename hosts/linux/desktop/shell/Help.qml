@@ -26,7 +26,7 @@ PanelWindow {
     Timer { id: autoHide; interval: 12000; running: root.shown; onTriggered: root.shown = false }
     Timer { id: toastTimer; interval: 1800; onTriggered: root.message = "" }
 
-    // Hearth Plasma (osk-plasma.qml) sets its own list (KWin's shortcuts behind View).
+    // Hearth Plasma (osk-plasma.qml) and Hearth COSMIC (desk-cosmic.qml) set their own lists.
     property var controls: [
         ["Right stick", "Move the pointer (press it in: precise)"],
         ["Left stick", "Scroll"],

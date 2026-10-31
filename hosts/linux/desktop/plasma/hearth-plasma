@@ -13,8 +13,9 @@ PipeWire's wpctl, brightness from brightnessctl and Wi-Fi from nmcli, as in Mant
   hearth-plasma quick             JSON: {"volume": 0-150|null, "muted", "brightness": 0-100|null, "wifi": true|false|null,
                                   "profile": "power-saver|balanced|performance"|""}
   hearth-plasma quick-set KEY VAL volume N | mute on|off|toggle | brightness N | wifi on|off | profile NAME
-  hearth-plasma desktop           JSON: {"desktop": "classic|plasma", "plasma": installed?, "fellBack": bool}
-  hearth-plasma desktop-set NAME  classic | plasma (Settings' desktop choice; Hearth Classic is always there)
+  hearth-plasma desktop           JSON: {"desktop": "classic|plasma|cosmic", "plasma": installed?, "fellBack": bool,
+                                  "cosmic": installed?, "cosmicFellBack": bool, "deepin": false (docs/DEEPIN.md)}
+  hearth-plasma desktop-set NAME  classic | plasma | cosmic (Settings' desktop choice; Hearth Classic is always there)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import importlib.machinery
@@ -35,6 +36,14 @@ ID_RE = re.compile(r'^[A-Za-z0-9._+-]{1,200}$')
 GAME_ID_RE = re.compile(r'^[A-Za-z0-9:._@/+-]{1,300}$')
 PROFILES = ('power-saver', 'balanced', 'performance')
 DESKTOPS = ('classic', 'plasma')
+# ---- Hearth COSMIC (docs/COSMIC.md): Anatase only. Hearth Deepin can't be had on either edition (docs/DEEPIN.md).
+COSMIC_DATA = '/usr/share/hearth-cosmic/data/cosmic'
+EXTRA_DESKTOPS = ('cosmic',)
+
+
+def cosmic_installed():
+    return all(shutil.which(b) for b in ('start-cosmic', 'cosmic-comp', 'cosmic-panel')) and os.path.isdir(COSMIC_DATA)
+# ---- end Hearth COSMIC
 PLASMA_LNF = '/usr/share/plasma/look-and-feel/org.hearth.desktop'
 
 
@@ -238,7 +247,7 @@ def read_desktop(text):
     for line in text.splitlines():
         if CONF_RE.match(line):
             v = line.split('=', 1)[1].strip().strip('"\'')
-            val = 'plasma' if v == 'plasma' else 'classic'
+            val = v if v in DESKTOPS + EXTRA_DESKTOPS else 'classic'
     return val
 
 
@@ -262,12 +271,16 @@ def desktop():
         text = ''
     run_dir = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
     return {'desktop': read_desktop(text), 'plasma': plasma_installed(),
-            'fellBack': os.path.exists(os.path.join(run_dir, 'hearth-plasma-failed'))}
+            'fellBack': os.path.exists(os.path.join(run_dir, 'hearth-plasma-failed')),
+            'cosmic': cosmic_installed(), 'cosmicFellBack': os.path.exists(os.path.join(run_dir, 'hearth-cosmic-failed')),
+            'deepin': False}
 
 
 def desktop_set(name):
-    if name not in DESKTOPS:
-        raise Fail('the desktop is classic or plasma')
+    if name not in DESKTOPS + EXTRA_DESKTOPS:
+        raise Fail('the desktop is classic, plasma or cosmic')
+    if name == 'cosmic' and not cosmic_installed():
+        raise Fail("Hearth COSMIC isn't available on this edition")
     if name == 'plasma' and not plasma_installed():
         raise Fail("Hearth Plasma isn't installed on this system")
     p = session_conf()

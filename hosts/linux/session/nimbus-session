@@ -13,6 +13,8 @@
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
 #   HEARTH_DESKTOP=plasma                 Desktop Mode is Hearth Plasma (KDE Plasma 6 in Hearth's look) instead of
 #                                         Hearth Classic (labwc + Mantel); see docs/PLASMA.md
+#   HEARTH_DESKTOP=cosmic                 Desktop Mode is Hearth COSMIC (System76's COSMIC in Hearth's look, Anatase
+#                                         only); see docs/COSMIC.md
 # `nimbus-session --desktop=classic|plasma` (the login screen's "Hearth Classic" / "Hearth Plasma") saves that choice
 # first, so automatic sign-in keeps it.
 # Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
@@ -40,6 +42,14 @@ for a in "$@"; do
         sed -i "s/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=.*/HEARTH_DESKTOP=$d/" "$f"
       else echo "HEARTH_DESKTOP=$d" >>"$f"; fi
       log "desktop: $d (picked on the login screen)" ;;
+    # ---- Hearth COSMIC (docs/COSMIC.md): the login screen's "Hearth COSMIC"
+    --desktop=cosmic)
+      f="$CONF/session.conf"; mkdir -p "$CONF"; touch "$f"
+      if grep -q '^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=' "$f"; then
+        sed -i "s/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=.*/HEARTH_DESKTOP=cosmic/" "$f"
+      else echo "HEARTH_DESKTOP=cosmic" >>"$f"; fi
+      log "desktop: cosmic (picked on the login screen)" ;;
+    # ---- end Hearth COSMIC
   esac
 done
 unset a d f
@@ -119,7 +129,8 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_plasma() { have startplasma-wayland && have kwin_wayland && have plasmashell; }
-can_desktop() { have labwc || can_plasma; }
+can_cosmic() { have start-cosmic && have cosmic-comp && have cosmic-panel && [ -d /usr/share/hearth-cosmic/data/cosmic ]; }
+can_desktop() { have labwc || can_plasma || can_cosmic; }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
 # console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
@@ -270,7 +281,7 @@ end_stopped_games() {
 # The desktop picked for Desktop Mode, read again at every start (Settings can change it while Game Mode runs).
 desktop_choice() {
   d=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  case "$d" in plasma) echo plasma ;; *) echo classic ;; esac
+  case "$d" in plasma) echo plasma ;; cosmic) echo cosmic ;; *) echo classic ;; esac
 }
 
 run_desktop() {
@@ -292,6 +303,21 @@ run_desktop() {
     fi
     have labwc || return 1
   fi
+  # ---- Hearth COSMIC (docs/COSMIC.md): the same rules as Hearth Plasma's, with its own failure mark.
+  if [ "$(desktop_choice)" = cosmic ] && [ -z "$HEARTH_SEAT" ]; then
+    if [ -f /run/hearth/safe-graphics ]; then log "cosmic: safe graphics this time, Hearth Classic instead"
+    elif [ -e "$RUN/hearth-cosmic-failed" ]; then log "cosmic: didn't start earlier this sign-in, Hearth Classic instead"
+    elif ! can_cosmic; then log "cosmic: not installed (start-cosmic, cosmic-comp, cosmic-panel, Hearth's COSMIC defaults), Hearth Classic instead"
+    else
+      run_cosmic; crc=$?
+      [ "$crc" -ne 200 ] && return "$crc"
+      : >"$RUN/hearth-cosmic-failed"
+      log "cosmic: didn't start; falling back to Hearth Classic for this sign-in"
+      settle_cosmic
+    fi
+    have labwc || return 1
+  fi
+  # ---- end Hearth COSMIC
   run_classic
 }
 
@@ -375,6 +401,68 @@ settle_plasma() {
   return 0
 }
 
+# ---- Hearth COSMIC: System76's COSMIC with Hearth's look (docs/COSMIC.md). Hearth's COSMIC defaults (theme, panel,
+# shortcuts, wallpaper; made at image build time by desktop/cosmic/hearth-cosmic-defaults from COSMIC's own) are in
+# /usr/share/hearth-cosmic/data/cosmic, put first in XDG_DATA_DIRS for this session only, so a plain COSMIC session
+# keeps its own look and your own changes (~/.config/cosmic) always win. Hearth's companion (the launcher, Quick
+# Access, the Hearth menu, the on-screen keyboard and the controller: desktop/shell/desk-cosmic.qml) starts from
+# /usr/share/hearth-cosmic/xdg/autostart, also only in this session.
+COSMIC_DATA=/usr/share/hearth-cosmic/data
+COSMIC_XDG=/usr/share/hearth-cosmic/xdg
+COSMIC_TIMEOUT="${HEARTH_COSMIC_TIMEOUT:-60}"
+run_cosmic() {
+  log "desktop mode: Hearth COSMIC"
+  COSMIC_LOG="$(dirname "$LOG")/cosmic.log"
+  [ -f "$COSMIC_LOG" ] && [ "$(wc -c <"$COSMIC_LOG")" -gt 1000000 ] && mv -f "$COSMIC_LOG" "$COSMIC_LOG.old"
+  echo "--- $(date '+%F %T') Hearth COSMIC" >>"$COSMIC_LOG"
+  (
+    # COSMIC's own Qt theme, portals and desktop name, not the ones Hearth Classic and Game Mode ask for.
+    unset QT_QPA_PLATFORMTHEME LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP
+    export HEARTH_DESKTOP=cosmic DESKTOP_SESSION=cosmic
+    case ":$XDG_DATA_DIRS:" in *":$COSMIC_DATA:"*) ;; *) export XDG_DATA_DIRS="$COSMIC_DATA:$XDG_DATA_DIRS" ;; esac
+    case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$COSMIC_XDG:"*) ;; *) export XDG_CONFIG_DIRS="$COSMIC_XDG:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
+    # start-cosmic re-runs itself in a login shell; the variables above go through it (it only fills in unset ones).
+    exec start-cosmic
+  ) >>"$COSMIC_LOG" 2>&1 &
+  cosmic_pid=$!
+  echo "$cosmic_pid" >"$RUN/hearth-cosmic.pid"
+  started=$(date +%s); up=0
+  # Up = the compositor and the panel both running for this user.
+  while kill -0 "$cosmic_pid" 2>/dev/null; do
+    if alive cosmic-comp && alive cosmic-panel; then up=1; break; fi
+    [ $(( $(date +%s) - started )) -ge "$COSMIC_TIMEOUT" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && kill -0 "$cosmic_pid" 2>/dev/null; then
+    log "cosmic: no desktop after ${COSMIC_TIMEOUT}s"
+    kill -TERM "$cosmic_pid" 2>/dev/null; sleep 3; kill -KILL "$cosmic_pid" 2>/dev/null
+  fi
+  wait "$cosmic_pid"; rc=$?
+  rm -f "$RUN/hearth-cosmic.pid"
+  if [ "$up" = 0 ]; then log "cosmic ended before its desktop came up (code $rc)"; return 200; fi
+  if [ "$rc" -ne 0 ] && [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 30 ]; then
+    log "cosmic crashed right after starting (code $rc)"; return 200
+  fi
+  log "cosmic ended (code $rc)"
+  return "$rc"
+}
+# What COSMIC leaves behind, so the next mode starts clean.
+settle_cosmic() {
+  have systemctl && timeout 6 systemctl --user stop cosmic-session.target >/dev/null 2>&1
+  for p in cosmic-session cosmic-panel cosmic-comp cosmic-bg cosmic-osd cosmic-notifications cosmic-settings-daemon cosmic-idle cosmic-workspaces cosmic-app-library cosmic-launcher; do
+    pkill -KILL -u "$(id -u)" -x "$(printf '%.15s' "$p")" 2>/dev/null    # process names are cut at 15 characters
+  done
+  pkill -TERM -u "$(id -u)" -f 'desktop/shell/desk-cosmic.qml' 2>/dev/null
+  if have systemctl; then
+    timeout 4 systemctl --user unset-environment HEARTH_DESKTOP DESKTOP_SESSION DCONF_PROFILE >/dev/null 2>&1
+    timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_CONFIG_DIRS XDG_DATA_DIRS >/dev/null 2>&1
+  fi
+  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP >/dev/null 2>&1
+  rm -f "$RUN/hearth-cosmic.pid"
+  return 0
+}
+# ---- end Hearth COSMIC
+
 run_classic() {
   log "desktop mode: Hearth Classic"
   # Nvidia: wlroots' hardware cursor doesn't show (or doesn't move) on Nvidia's driver, so the pointer draws in
@@ -456,6 +544,8 @@ settle() {
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
   # Hearth Plasma's KWin and shell, when it was Plasma (only then: nothing of KDE's is touched otherwise).
   [ "$1" = desktop ] && { [ -e "$RUN/hearth-plasma.pid" ] || pgrep -u "$(id -u)" -x kwin_wayland >/dev/null 2>&1; } && settle_plasma
+  # Hearth COSMIC's, likewise only when it was COSMIC.
+  [ "$1" = desktop ] && { [ -e "$RUN/hearth-cosmic.pid" ] || pgrep -u "$(id -u)" -x cosmic-comp >/dev/null 2>&1; } && settle_cosmic
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   pkill -TERM -u "$(id -u)" -f 'desktop/shell/hearth-pad' 2>/dev/null; pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null

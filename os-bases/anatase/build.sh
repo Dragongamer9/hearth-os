@@ -625,6 +625,8 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 for s in hearth-classic hearth-plasma; do
   sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
 done
+# Hearth COSMIC (docs/COSMIC.md), hidden by its TryExec if COSMIC didn't install.
+sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-cosmic.desktop > /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
@@ -727,6 +729,37 @@ for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/
 # What Plasma's packages may switch on that Hearth doesn't want: the login screen stays Anatase's (Plasma Login
 # Manager, Hearth's autologin), nothing else becomes the display manager.
 echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || echo none)"
+
+# ------------------------------------------------------------------ Hearth COSMIC (docs/COSMIC.md)
+# System76's COSMIC as another Desktop Mode desktop, in Hearth's look (desktop/cosmic, desktop/shell/desk-cosmic.qml).
+# COSMIC's workspace with its own Files, Terminal and Edit (each desktop shows one app of each kind; in COSMIC these
+# take the place of Hearth's). Not its store, player, wallpapers or system monitor. Its login screen (greetd +
+# cosmic-greeter) and first-run wizard come with Fedora's cosmic-session but are never used: the display manager stays
+# Anatase's (checked below), the wizard's autostart entry goes. Never fails the image: without COSMIC, Settings says
+# "not available" and Hearth Classic and Plasma are unchanged.
+cosmic_before=$(du -sxm /usr | cut -f1)
+dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+# The list (and what's left out) is desktop/cosmic/fedora-packages, shared with cosmic-test.yml.
+cosmic_pkgs=$(grep -v '^#' /usr/share/nimbus/desktop/cosmic/fedora-packages | grep -v '^-' | tr '\n' ' ')
+cosmic_ex=$(grep '^-' /usr/share/nimbus/desktop/cosmic/fedora-packages | sed 's/^-/--exclude=/' | tr '\n' ' ')
+# shellcheck disable=SC2086
+if dnf5 -y install --setopt=install_weak_deps=False $cosmic_ex $cosmic_pkgs; then
+  chmod 755 /usr/share/nimbus/desktop/cosmic/hearth-cosmic /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults
+  HEARTH_COSMIC_OK=1     # Hearth's COSMIC defaults are made further down, once every app's menu entry is in place
+else
+  echo "::warning title=Hearth COSMIC::COSMIC couldn't be installed; this image goes without Hearth COSMIC"
+fi
+# Hearth COSMIC is the way into COSMIC here (Hearth's look, Game Mode, the fallback): COSMIC's own session entry and
+# first-run wizard stay out, and nothing of COSMIC's becomes the display manager.
+rm -f /usr/share/wayland-sessions/cosmic.desktop /etc/xdg/autostart/com.system76.CosmicInitialSetup.desktop
+systemctl disable cosmic-greeter.service greetd.service >/dev/null 2>&1 || true
+dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+if [ "$dm_after" != "$dm_before" ]; then
+  echo "COSMIC changed the display manager ($dm_before -> $dm_after): put back"
+  if [ -n "$dm_before" ]; then ln -sf "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
+fi
+echo "Hearth COSMIC: $(( $(du -sxm /usr | cut -f1) - cosmic_before )) MB added to /usr"
+# ---- end Hearth COSMIC
 
 # ------------------------------------------------------------------ Steam
 # As on the Bazzite-based Hearth OS: Steam installed in the system, its games in ~/.local/share/Steam. Anatase's
@@ -1215,6 +1248,15 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
 # Calculator stay installed as "… (classic)". Never stops the image build.
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
+
+# ------------------------------------------------------------------ Hearth COSMIC's defaults (docs/COSMIC.md)
+# Made from COSMIC's own now that every Hearth app's menu entry exists (the panel's pinned apps are only the installed
+# ones). Without them, Hearth COSMIC counts as not installed and Hearth Classic opens instead.
+if [ "${HEARTH_COSMIC_OK:-0}" = 1 ]; then
+  python3 /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults /usr/share/cosmic /usr/share/hearth-cosmic/data/cosmic \
+    || { echo "::warning title=Hearth COSMIC::Hearth's COSMIC defaults couldn't be made; Hearth COSMIC is left out"; rm -rf /usr/share/hearth-cosmic/data; }
+fi
+# ---- end Hearth COSMIC's defaults
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
