@@ -663,16 +663,73 @@ impl GameMode {
     }
     /// While the overlay is open the game gets no controller input, and it keeps running: InputPlumber sends every
     /// press to Hearth instead of the game; controllers it doesn't manage are taken by Hearth for the time being.
-    fn hold_game(&self, on: bool) {
+    fn hold_game(self: &Arc<Self>, on: bool) {
         // Hearth Input (a game's controller layout) lets go of the controller before Hearth takes it, and gets it
         // back only after Hearth has let go (input_map.rs: it answers once it has).
         if on { hearth_core::input_map::overlay(true); }
-        // With HHD's overlay app, HHD holds the controllers (the app asks it to while Quick Access is open).
-        if !self.hhd() { self.guide.grab(on); }
+        // With HHD's overlay app, HHD holds the controllers (the app asks it to while Quick Access is open), and
+        // Steam has to keep running under it (steam_while_open).
+        if !self.hhd() { self.guide.grab(on); } else { self.steam_while_open(on); }
         if self.ip.load(Ordering::SeqCst) {
             let _ = on; self.ip_sync();
         }
         if !on { hearth_core::input_map::overlay(false); }
+    }
+
+    /// Quick Access over a game on the HHD editions: HHD stops Steam (SIGSTOP) while it holds the controllers, and a
+    /// Steam game froze with it ("Steam games still freezing when opening the in-game overlay"; see
+    /// hearth_core::steam_thaw). Steam is let go again as soon as HHD stops it, for as long as Quick Access is open
+    /// (HHD stops it again on every new hold, e.g. after a screenshot's peek), and once more after it closes (HHD's
+    /// own SIGCONT never comes if its overlay thread ends meanwhile). Steam's virtual controllers are held by Hearth
+    /// meanwhile, so the game still gets none of the presses meant for Quick Access; they're let go a moment after
+    /// it closes (the B that closed it isn't passed on, as HHD's own 0.25 s wait does).
+    fn steam_while_open(self: &Arc<Self>, on: bool) {
+        if on {
+            self.guide.hold_steam_pads(true);
+            let me = self.clone();
+            let opened = self.shown_at.load(Ordering::SeqCst);
+            std::thread::spawn(move || {
+                let root = std::path::Path::new("/proc");
+                let uid = hearth_core::steam_thaw::uid();
+                let mut steam: Vec<u32> = Vec::new();
+                let mut told = false;
+                let mut tick = 0u64;
+                while me.overlay_on.load(Ordering::SeqCst) && me.shown_at.load(Ordering::SeqCst) == opened {
+                    // Steam's processes looked up once a second; whether they're stopped every 50 ms at first (HHD
+                    // stops Steam right as it takes the controllers), then every 250 ms.
+                    if tick % 20 == 0 { steam = hearth_core::steam_thaw::steam_processes(root, uid); }
+                    let stopped = hearth_core::steam_thaw::stopped(root, &steam);
+                    if !stopped.is_empty() {
+                        let gone = hearth_core::steam_thaw::let_go(&stopped);
+                        if !told || gone.len() != stopped.len() {
+                            told = true;
+                            log(&format!("overlay: Handheld Daemon stopped Steam while Quick Access is open (process {stopped:?}); a Steam game freezes with it, so Steam was let go again ({} of {}); Steam's virtual controllers are held instead", gone.len(), stopped.len()));
+                        }
+                    }
+                    tick += 1;
+                    std::thread::sleep(Duration::from_millis(if tick < 60 { 50 } else { 250 }));
+                }
+            });
+        } else {
+            let me = self.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(300));
+                if !me.overlay_on.load(Ordering::SeqCst) { me.guide.hold_steam_pads(false); }
+                // HHD lets Steam go itself 0.25 s after it gives the controllers back; if it didn't (its overlay thread
+                // ended, or it stopped Steam again), Hearth does.
+                for wait in [400u64, 1500] {
+                    std::thread::sleep(Duration::from_millis(wait));
+                    if me.overlay_on.load(Ordering::SeqCst) { return; }
+                    me.let_steam_run("after Quick Access closed");
+                }
+            });
+        }
+    }
+    /// Steam stopped (by HHD) with Quick Access closed: let go, and said in the log.
+    fn let_steam_run(&self, when: &str) {
+        let gone = hearth_core::steam_thaw::let_steam_run();
+        if !gone.is_empty() { log(&format!("overlay: Steam was still stopped {when} (process {gone:?}; Handheld Daemon stops it while Quick Access holds the controllers); let go again")); }
+        if self.guide.steam_pads_held() && !self.overlay_on.load(Ordering::SeqCst) { self.guide.hold_steam_pads(false); }
     }
 
     /// Hearth Input: tells the mapper (desktop/shell/hearth-input) which game is running, whether it's in front and
@@ -1070,7 +1127,12 @@ impl GameMode {
                     }
                 }
                 tick += 1;
-                if away_since == 0 { away_since = t; }
+                if away_since == 0 {
+                    away_since = t;
+                    // HHD's overlay thread ended (the app crashed, or gamescope did): if Steam was stopped for Quick
+                    // Access then, HHD never lets it go, and Steam and its game stay frozen.
+                    me.let_steam_run("when Handheld Daemon's overlay app went away");
+                }
                 std::thread::sleep(Duration::from_secs(1));
                 let t = now();
                 if t.saturating_sub(away_since) < 6000 || me.waiting.load(Ordering::SeqCst) != 0 { continue; }
