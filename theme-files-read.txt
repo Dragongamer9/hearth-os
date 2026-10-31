@@ -1,0 +1,20 @@
+1985  statx(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTk/v1", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  statx(AT_FDCWD, "/tmp/home/.config/cosmic/com.system76.CosmicTk/v1", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTk/v1/apply_theme_global", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTk/v1/icon_theme", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTk/v1/header_size", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTk/v1/interface_density", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTk/v1/interface_font", O_RDONLY|O_CLOEXEC) = 3
+1985  statx(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Mode/v1", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  statx(AT_FDCWD, "/tmp/home/.config/cosmic/com.system76.CosmicTheme.Mode/v1", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Mode/v1/is_dark", O_RDONLY|O_CLOEXEC) = 3
+1985  statx(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  statx(AT_FDCWD, "/tmp/home/.config/cosmic/com.system76.CosmicTheme.Dark/v2", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  statx(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v1", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  statx(AT_FDCWD, "/tmp/home/.config/cosmic/com.system76.CosmicTheme.Dark/v1", AT_STATX_SYNC_AS_STAT, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFDIR|0755, stx_size=4096, ...}) = 0
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2/name", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2/background", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2/primary", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2/secondary", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2/transparent_background", O_RDONLY|O_CLOEXEC) = 3
+1985  openat(AT_FDCWD, "/usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v2/transparent_primary", O_RDONLY|O_CLOEXEC) = 3

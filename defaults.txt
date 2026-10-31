@@ -1,0 +1,1 @@
+Hearth COSMIC defaults in /usr/share/hearth-cosmic/data/cosmic: com.system76.CosmicAppList, com.system76.CosmicBackground, com.system76.CosmicPanel, com.system76.CosmicPanel.Panel, com.system76.CosmicSettings.Shortcuts, com.system76.CosmicTheme.Dark, com.system76.CosmicTheme.Dark.Builder, com.system76.CosmicTheme.Mode, com.system76.CosmicTk

@@ -1,0 +1,5 @@
+ok COSMIC's size: COSMIC adds 833 MB installed on plain Fedora 45 (Anatase already has some of it). Biggest: cosmic-files 76MB, cosmic-applets 59MB, cosmic-settings 59MB, cosmic-initial-setup 42MB, xdg-desktop-portal-cosmic 39MB, cosmic-edit 39MB, cosmic-term 37MB, cosmic-greeter 36MB, cosmic-app-library 29MB, cosmic-launcher 27MB, cosmic-comp 26MB, cosmic-osk 25MB, 
+ok cosmic-comp: nested on wayland-1
+ok files app id: the companion sees: 
+ok term app id: the companion sees: 
+ok edit app id: the companion sees: 
