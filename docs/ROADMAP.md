@@ -130,6 +130,17 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.58 (released)
+
+- [x] Desktop selector: Hearth Classic, Hearth Plasma (Hearth GNOME later) in Settings and at sign-in; falls back to Hearth Classic by itself when Plasma can't start — needs testing on a device
+- [x] Hearth Plasma (first version): KDE Plasma 6 in Hearth's look with Hearth Launcher, Quick Access, Hearth Link, Hearth Storage and Game Mode widgets; not yet a one-to-one match with Hearth Classic
+- [x] Hearth Files built from KDE Dolphin, and Hearth Storage (hearth:/) in every KDE app's file dialogs; KDE-based Terminal, Text Editor, Reader, Calculator and Capture (Capture on Anatase only for now); the old apps kept as "(classic)"
+- [x] Hearth Link: Windows (SMB) sharing per folder, wake devices over the network, Continue on this device, update every device at once, local AI shared with paired devices
+- [x] Ventoy: several ISOs on one USB stick in Hearth Disks — needs testing on a real stick
+- [x] Browser: move around web pages with the D-pad
+- [x] Discord status and Support page built, hidden until set up
+- [x] Qt renderer: more of phase 2 (notifications, Wi-Fi/Bluetooth, game settings, achievements, Library filters)
+
 ## 0.6.57 (released)
 
 - [x] Automatic fallback: two starts in a row that never reach Hearth, and the previous version starts by itself (and stays the default); background updates pause for three days after
