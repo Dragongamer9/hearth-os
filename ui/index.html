@@ -2163,7 +2163,7 @@ function mfMain(){
   const head = `<div class="mfhead">${mfAv(mfShort(st.userId),'me')}<div class="rt"><b>${esc(st.userId)}</b><small>Your account lives on ${esc(st.lives||st.homeserver)} · ${st.settings&&st.settings.presence==='offline'?'appearing offline':st.settings&&st.settings.presence==='unavailable'?'Away':'Online'}</small></div>
     <button class="btn sm" data-f data-k="mf-add" data-act="mfAdd">${I.user}Add friend</button><button class="btn sm" data-f data-k="mf-code" data-act="mfCode">${I.layout}My code</button></div>
     ${st.error?note(esc(st.error)):''}${!st.synced?note('Catching up with your chats…'):''}${st.keyringOk===false?note('The system keyring isn\'t available, so you\'ll need to sign in again next time.'):''}${mfRecoveryCard()}`;
-  const tabs = `<div class="chips frchips">${[['friends','Friends'],['chats','Chats'],['requests','Requests'+(req.length?` · ${req.length}`:'')],['settings','Settings']].map(([k,l])=>`<button class="chip ${MF.tab===k?'on':''}" data-f data-k="mfb-${k}" data-act="mfTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const tabs = `<div class="chips frchips">${[['friends','Friends'],['chats','Chats'],...(typeof hpActivityTab==='function'?[['activity','Activity']]:[]),['requests','Requests'+(req.length?` · ${req.length}`:'')],['settings','Settings']].map(([k,l])=>`<button class="chip ${MF.tab===k?'on':''}" data-f data-k="mfb-${k}" data-act="mfTab" data-v="${k}">${l}</button>`).join('')}</div>`;
   let body='';
   if(MF.tab==='friends'){
     const fs=MF.friends;
@@ -2186,6 +2186,7 @@ function mfMain(){
       + (req.length ? `<div class="rows">${req.map((r,i)=>mfReqRow(r,i,'req')).join('')}</div>` : note('No requests.'));
   }
   if(MF.tab==='settings') body = mfSettings();
+  if(MF.tab==='activity' && typeof hpActivityTab==='function') body = hpActivityTab();   // hearth-play.js
   return head + tabs + body;
 }
 function mfPreview(m){ return (m.mine?'You: ':'') + (m.kind==='image'?'Picture':m.kind==='game'?`Game invite: ${(m.game&&m.game.title)||''}`:m.kind==='play'?'Play together':m.kind==='locked'?'Encrypted message':(m.body||'')).slice(0,90); }
@@ -3477,7 +3478,7 @@ const xLabel = g => (S.running===g.id || isFrozen(g)) ? 'Resume' : playable(g) ?
 const xMeta = g => [SOURCES[g.src], g.last?'Played '+ago(g.last).toLowerCase():'', g.hrs?hrs(g.hrs):''].filter(Boolean).join(' · ');
 const xBg = g => `<div class="sp-bg" id="xBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>`;
 const xPlay = (g,k='x-play') => `<button class="play" data-f data-k="${k}" data-act="${xAct(g)}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${xLabel(g)}</button>`;
-const xNav = () => `<div class="xnav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const xNav = () => `<div class="xnav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 function xDetail(g){ return g ? `<div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g)}<button class="sq" data-f data-k="x-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button></div>` : ''; }
 // The game you move to fills the detail and background (layouts that follow the selection).
 function xUpdate(id){
@@ -3514,7 +3515,7 @@ function homeX(V){
     const d=new Date(), t=xFocusTime(d);
     return `<div class="x-focus"><div class="xf-clock">${t}</div><div class="xf-date">${longDate(d)}</div>
       ${g?`<div class="xf-card"><div class="xf-th">${cover(g,{badge:false})}</div><div class="rt"><div class="xk">Jump back in</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div>${xPlay(g,'xf-play')}</div>`:''}
-      <div class="xf-btns">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+      <div class="xf-btns">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
   }
   if(id==='x-widgets'){
     const dl=GAMES.find(x=>isActive(x)), b=S.sys.battery||{}, fr=FR.s&&FR.s.friends?FR.s.friends.filter(f=>f.state==='ingame'||f.state==='online').slice(0,4):null;
@@ -4700,7 +4701,7 @@ function mkDesk(ctx){
 function mkEmpty(){
   return `<div class="mk-empty">${LIB.loading?'Loading your games…':MK.q?`Nothing matches “${esc(MK.q)}”. <button class="pill" data-f data-k="mk-clear" data-act="mkClear">Clear the search</button>`:!GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.lfilter?'No games match. Remove the filter to see more.':'Nothing here yet.'}</div>`;
 }
-const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 // A row (Table, and the Desk's list view). Table rows have a checkbox and follow the Shift/Ctrl selection.
 function mkRow(g, k, table){
   const [sc,sl]=lStatus(g), p=mkPdb(g), on=MK.sel.has(g.id);
@@ -5019,7 +5020,7 @@ function viewGame(){
     <div class="gbody">
       <div class="card"><h3>About</h3><div class="muted">${about}</div>
         ${g.path?`<div class="muted" style="margin-top:8px;word-break:break-all">Location: <code>${esc(g.path)}</code></div>`:''}</div>
-      ${g.src==='beacon'?beaconGameCard(g):''}${hmGameCard(g)}${side}
+      ${g.src==='beacon'?beaconGameCard(g):''}${hmGameCard(g)}${side}${typeof hpGameCards==='function'?hpGameCards(g):''}
     </div>
   </div>`;
 }
@@ -5109,6 +5110,7 @@ function viewDownloads(){
       <button class="pill" style="display:inline-flex" data-f data-k="d-lib" data-act="nav" data-view="library">${I.lib} Library</button></div>`;
   if(host && items.some(i=>i.g.src==='steam')) h += note('Steam downloads its games in the background, without its window. To pause or reorder them, use Manage in Steam.');
   if(host && items.some(i=>i.g.installKind==='nimbus')) h += note('Epic and GOG games download one at a time. Paused downloads keep what they have and carry on from there, also after a restart.');
+  if(typeof hpDownloadsSection==='function') h += hpDownloadsSection();   // Other downloads (hearth-play.js)
   return h + '</div>';
 }
 
@@ -7875,7 +7877,7 @@ function bazaarOpen(){
   return call('bazaar.open',{},15000).then(r=>{ if(r && r.mouse) toast('Bazaar: the controller mouse is on (right stick moves, A clicks, View + Menu turns it off)'); }).catch(e=>toast(e.message));
 }
 function renderSideMenu(){
-  const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
+  const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     ${theaterOn()?`<button class="mitem" data-f data-k="m-theater" data-act="theater">${I.theater}Theater</button>`:''}
@@ -7952,6 +7954,7 @@ function dockItems(game){
   add('home','home','Home','data-act="nav" data-view="home"', {cur:cur('home')});
   add('library','lib','Library','data-act="nav" data-view="library"', {cur:cur('library')||cur('game')});
   if(shopOn()) add('shop','shop','Store','data-act="nav" data-view="shop"', {cur:cur('shop')});
+  if(typeof hpDock==='function') hpDock(add, cur);   // Discover (hearth-play.js)
   if(friendsOn()) add('friends','friends','Friends','data-act="nav" data-view="friends"', {cur:cur('friends'), extra:dkBadge(dkUnread())});
   if(!ANDROID){ const d=dkDlNow(); add('downloads','dl','Downloads','data-act="nav" data-view="downloads"', {cur:cur('downloads'), extra:d?dkRing(d.pct||0):''}); }
   if(lkOn()) add('link','link','Hearth Link','data-act="goset" data-tab="link"', {cur:cur('settings')&&S.settingsTab==='link'&&!S.sfront});
@@ -8150,6 +8153,7 @@ function settingsBody(t){
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   if(t==='linux') body = linuxPage();
+  if(typeof hpSettingsBody==='function') body = hpSettingsBody(t, body);   // Integrations, Theme files (hearth-play.js)
   if(ANDROID) body = androidPage(t, body);
   return body;
 }
@@ -9525,6 +9529,7 @@ function act(el){
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   if(/^hm[A-Z]/.test(a)) return hmAct(a, d);   // Hearth Mods in Game Mode (block below)
+  if(/^hy[A-Z]/.test(a)) return hyAct(a, d, el);   // Discover, downloads, pictures, Integrations (hearth-play.js)
   if(a.startsWith('dgf')) return dgfAct(a, d);   // the Dragonfire look (block by homeDf)
   if(a==='theater') return theaterOpen();   // Theater: Hearth Theater, your wall of video sites
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
@@ -13493,5 +13498,7 @@ else { S.qtab='quick'; openLayer('qam'); }
 requestAnimationFrame(pollPads);
 send({type:'ready'});
 </script>
+<!-- Discover, game details, achievements, pictures, other downloads, Find games, Activity, Integrations (docs/HYDRA-FEATURES.md) -->
+<script src="hearth-play.js"></script>
 </body>
 </html>

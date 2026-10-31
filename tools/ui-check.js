@@ -68,6 +68,74 @@ const path = require('path');
       if (document.querySelector('#view [data-k="sf-r-0"]')) throw new Error("Clear left the results");
     });
   } catch (e) { errors.push('store: ' + e.message.split('\n')[0]); }
+  // Hearth's take on Hydra Launcher's features (ui/hearth-play.js, docs/HYDRA-FEATURES.md), with the preview's data:
+  // Discover and its store suggestions, a game's page (details, requirements, time to beat, RetroAchievements,
+  // Change pictures), Other downloads (pause, resume), Get games, Find games in a folder, Integrations (a key typed
+  // with the on-screen keyboard's prompt), and Friends › Activity. Every step with the controller's own actions.
+  const hyErr = m => errors.push('hydra features: ' + m);
+  try {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const has = k => !!document.querySelector(`#view [data-k="${k}"]`);
+      const press = async k => { const el = document.querySelector(`#view [data-k="${k}"]`); if (!el) throw new Error('no ' + k); setFocus(el); act(el); await wait(250); };
+      const text = () => document.querySelector('#view').textContent;
+      const out = [];
+      closeAll(); S.layers = []; S.history = []; navigate('home', {}, false);
+      renderMenu(); if (!document.querySelector('#menu [data-k="m-discover"]')) out.push('Discover is not in the menu');
+      navigate('discover', {}, true); await wait(700);
+      if (!has('dc-surprise')) out.push('Discover has no Surprise me');
+      if (!/Not played yet|Pick up again/.test(text())) out.push('Discover has no shelves from your library');
+      if (!/Because you play/.test(text())) out.push('Discover has no suggestions from what you play');
+      if (!/Free and open-source games/.test(text())) out.push('Discover has no free and open-source games');
+      const card = document.querySelector('#view .sft[data-act="hyShop"]');
+      if (!card) out.push('no store suggestion'); else { setFocus(card); act(card); await wait(400); if (S.view !== 'shop' || !SHOP.page) out.push('a suggestion did not open its store page'); back(); back(); await wait(100); if (S.view !== 'discover') out.push('B did not come back to Discover: ' + S.view); }
+      // A game's page: an emulated game gets its achievements from RetroAchievements (the preview has it connected).
+      const g = GAMES.find(x => x.src === 'emu' && !x.cloud) || GAMES.find(x => !x.cloud);
+      navigate('game', { game: g.id }, true); await wait(500); render(null, true);
+      for (const t of ['More about it', 'System requirements', 'How long to beat', 'Pictures']) if (!text().includes(t)) out.push(`the game's page has no "${t}"`);
+      if (g.src === 'emu' && !/2 of 4 unlocked/.test(text())) out.push('no RetroAchievements on an emulated game: ' + text().slice(0, 80));
+      await press('g-hp-art'); await wait(300); render(null, true);
+      if (S.view !== 'hpart') out.push('Change pictures did not open');
+      if (!/SteamGridDB/.test(text())) out.push('Pictures without SteamGridDB says nothing about it');
+      // Integrations: SteamGridDB is off; a key typed in turns it on (never shown whole).
+      S.settingsTab = 'integrations'; navigate('settings', { sfront: false }, true); await wait(400); render(null, true);
+      if (!has('in-steamgriddb-on') || !has('in-retro-user')) out.push('Integrations is missing its rows');
+      const realPrompt = window.openPrompt; window.openPrompt = async () => 'abcdef123456';
+      await press('in-steamgriddb-key'); await wait(200); window.openPrompt = realPrompt;
+      if (!(HP.keys && HP.keys.steamgriddb.on)) out.push('typing a SteamGridDB key did not turn it on');
+      if (/abcdef/.test(text())) out.push('the whole key is on the screen');
+      navigate('hpart', { game: g.id }, true); HP.art = {}; render(null, true); await wait(500); render(null, true);
+      if (!has('ar-cover-0')) out.push('no covers from SteamGridDB'); else { await press('ar-cover-0'); await wait(300); if (!/^data:/.test((G(g.id).art || {}).cover || '')) out.push('picking a cover did not change it'); }
+      // Other downloads: the queue with Pause, then Resume.
+      navigate('downloads', {}, true); await wait(400); render(null, true);
+      if (!has('hd-url') || !has('hd-limit')) out.push('Downloads has no Other downloads rows');
+      if (!has('hj-hyDlPause-d1')) out.push('the running download has no Pause'); else { await press('hj-hyDlPause-d1'); render(null, true); if (!has('hj-hyDlResume-d1')) out.push('Pause did not pause'); else await press('hj-hyDlResume-d1'); }
+      if (!has('hj-add-d3')) out.push('a downloaded AppImage has no Add to library');
+      // Get games: free and open-source games ask before downloading.
+      navigate('hpget', {}, true); await wait(300); render(null, true);
+      if (!has('hpf-0')) out.push('Get games has no free and open-source games'); else { await press('hpf-0'); if (!S.layers.includes('sheet')) out.push('a free game did not ask first'); closeAll(); }
+      await press('hpg-url'); if (!/repack/.test(text())) out.push('Get games does not say what Hearth will not download');
+      // Find games in a folder: pick one, add it.
+      const n = GAMES.length;
+      navigate('hpfind', {}, true); await wait(400); render(null, true);
+      if (!has('hf-0')) out.push('Find games found nothing'); else { await press('hf-0'); await press('hf-add'); await wait(100); if (GAMES.length !== n + 1) out.push('Find games did not add the game'); }
+      // Friends › Activity.
+      MF.top = 'mx'; MF.tab = 'activity'; MF.room = null; navigate('friends', {}, true); mfLoad(); await wait(600); render(null, true);
+      if (MF.st && MF.st.signedIn) {
+        if (!has('ha-share') || !/Total play time/.test(text())) out.push('Friends › Activity is missing your profile or the share switch');
+        if (!/Stardew Valley/.test(text())) out.push("Friends › Activity has no friends' activity");
+        await press('ha-share'); render(null, true);
+        if (!document.querySelector('#view [data-k="ha-share"] .sw.on')) out.push('Share my activity did not turn on');
+      }
+      MF.tab = 'friends';
+      // Library › Add a game offers Find games in a folder.
+      closeAll(); await addManual(); await wait(100);
+      if (!S.layers.includes('sheet') || !/Find games in a folder/.test(document.querySelector('#sheetBox').textContent)) out.push('Add a game does not offer Find games in a folder');
+      closeAll(); S.history = []; navigate('home', {}, false);
+      return out;
+    });
+    r.forEach(hyErr);
+  } catch (e) { hyErr(e.message.split('\n')[0]); }
   // A game's settings, and its controller layout editor (Hearth Input).
   await step('screen gameset', () => { S.layers = []; navigate('gameset', {game: (GAMES.find(g => !g.cloud) || GAMES[0]).id}, false); });
   await step('screen inputmap', async () => {

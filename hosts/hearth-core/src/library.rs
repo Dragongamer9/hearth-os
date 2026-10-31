@@ -641,7 +641,9 @@ impl Library {
     pub fn dto(&self, g: &Game) -> Value {
         let d = &self.store.data;
         let stats = &d["stats"][&g.id];
-        let art: serde_json::Map<String, Value> = g.art.iter().map(|(k, v)| (k.to_string(), Value::String(art_url(v)))).collect();
+        let mut art: serde_json::Map<String, Value> = g.art.iter().map(|(k, v)| (k.to_string(), Value::String(art_url(v)))).collect();
+        // Pictures you picked for it (play/artwork.rs: SteamGridDB) go over the store's own.
+        if let Some(own) = d["customArt"][&g.id].as_object() { for (k, v) in own { if let Some(p) = v.as_str() { art.insert(k.clone(), Value::String(art_url(p))); } } }
         let cols: Vec<Value> = d["collections"].as_array().map(|a| a.iter()
             .filter(|c| c["games"].as_array().map(|g2| g2.iter().any(|x| x == g.id.as_str())).unwrap_or(false))
             .map(|c| c["id"].clone()).collect()).unwrap_or_default();

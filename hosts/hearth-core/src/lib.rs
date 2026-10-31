@@ -56,6 +56,7 @@ pub mod overlay_link;
 pub mod paths;
 pub mod perf;
 pub mod picker;   // file and folder pickers, off the bridge
+pub mod play;   // Discover, game details, achievements, artwork, profile, downloads (docs/HYDRA-FEATURES.md)
 pub mod power;
 pub mod procs;
 pub mod profile;

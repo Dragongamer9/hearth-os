@@ -43,7 +43,7 @@ fn tier_text(t: &str) -> (&'static str, &'static str) {
         "silver" => ("Silver", "Runs, with some problems"), "bronze" => ("Bronze", "Runs, but badly"), "borked" => ("Borked", "Doesn't run"), _ => ("No rating yet", "Not enough reports") }
 }
 
-fn steam_app_id_for(title: &str) -> u64 {
+pub fn steam_app_id_for(title: &str) -> u64 {
     let k = format!("appid:{}", norm(title));
     if let Some(c) = fresh(&k, 30) { return c["appid"].as_u64().unwrap_or(0); }
     let url = format!("https://store.steampowered.com/api/storesearch/?term={}&l=english&cc=US", title.bytes().map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>());
