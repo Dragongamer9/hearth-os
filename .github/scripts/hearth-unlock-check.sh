@@ -63,9 +63,17 @@ fi
 ic 'touch /run/ostree-booted; mount --bind /usr /usr && mount -o remount,bind,ro /usr' || err "couldn't make /usr read-only"
 ic 'touch /usr/.rw-test 2>/dev/null' && err "/usr is writable before hearth-unlock (the test setup is wrong)"
 
+LAST=""
 start() {   # start VERSION: a restart, then hearth-unlock.service
   ic 'while grep -q " /usr .* - overlay hearth-usr " /proc/self/mountinfo; do umount -l /usr || break; done'
-  x -e HEARTH_UNLOCK_ID="$1" "$NAME" /usr/bin/hearth-unlock --boot 2>&1 | sed 's/^/  /'
+  LAST=$(x -e HEARTH_UNLOCK_ID="$1" "$NAME" /usr/bin/hearth-unlock --boot 2>&1)
+  echo "$LAST" | sed 's/^/  /'
+}
+diag() {   # what a failure needs to be understood (CI logs can't be downloaded: annotations)
+  echo "::error title=hearth-unlock diag::boot said: $(echo "$LAST" | tr '\n' ' ' | cut -c1-400)"
+  echo "::error title=hearth-unlock diag::status: $(st "$1" | cut -c1-600)"
+  echo "::error title=hearth-unlock diag::mounts: $(ic 'grep " /usr " /proc/self/mountinfo | cut -d" " -f5,9- | cut -c1-200' | tr '\n' '|')"
+  echo "::error title=hearth-unlock diag::layer $1: $(ic "cat /var/lib/hearth/unlock/layers/$1/layer.json | tr -d '\n' | cut -c1-300; echo; ls /var/lib/hearth/unlock/layers/$1/upper /var/lib/hearth/unlock/layers/$1/upper/bin /var/lib/hearth/unlock/layers/$1/upper/games 2>&1 | tr '\n' ' ' | cut -c1-300")"
 }
 st() { x -e HEARTH_UNLOCK_ID="$1" "$NAME" /usr/bin/hearth-unlock --status --json 2>/dev/null | tail -n1; }
 field() { python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(eval(sys.argv[2], {}, {'d': d}))" "$1" "$2" 2>/dev/null; }
@@ -122,7 +130,7 @@ sleep 8
 echo "--- start 5 (rollback to version A)"
 start "$A"
 U "$A" 'command -v figlet >/dev/null && test -x /usr/games/sl' && ok "the previous version keeps its own layer, untouched" \
-  || err "the previous version lost its packages"
+  || { err "the previous version lost its packages"; diag "$A"; }
 
 # ---- 6. lock and unlock
 echo "--- lock"
