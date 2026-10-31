@@ -33,6 +33,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Hearth Link ideas: "Continue on this device" (Game Mode), update every device at once (download once shipped in 0.6.57)
 - [x] Ventoy (multi-ISO) mode in the USB maker: Hearth Disks › Make a bootable USB › Several ISOs (pinned upstream Ventoy, checksum-checked; Hearth editions, Recovery, the list, your own ISOs) (needs testing on a real stick)
 - [x] Local AI over Hearth Link (first version: a device's own Ollama/llama-server shared with paired devices; answers come whole, not streamed)
+- [x] Peppermint writable out of the box, bootc kept: apt and .deb files install anywhere and stay across restarts; what you add with apt comes back by itself after an update; updates, going back, the automatic fallback and Recovery keep working, the previous version starts as it was, and a change that stops Hearth from starting gets a safe start without it; lock it again in Settings (Game Mode and Desktop) or `hearth-unlock --lock`; .deb files install on the system instead of the Debian box while unlocked; Anatase stays the immutable edition (needs testing on a device)
 - [ ] Support page/donations: built (Settings › About › Support Hearth OS and the website), hidden until the owner fills in a link in ui/support-links.js and site/support-links.js
 
 ## Done

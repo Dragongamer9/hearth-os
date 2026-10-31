@@ -1574,7 +1574,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1659,10 +1659,10 @@ const MOCK = (()=>{
       {dev:'/dev/sda',size:5e11,model:'Crucial MX500',tran:'sata',live:false,windows:false,tooSmall:false,parts:[]},
       {dev:'/dev/sdb',size:3.2e10,model:'SanDisk Ultra',tran:'usb',live:true,windows:false,tooSmall:true,parts:[{},{}]}],
       image:'ghcr.io/dragongamer9/hearth-os:latest', edition:'anatase', offline:false, secureBoot:true, editions:[
-      {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Starts and updates fast, the same for every PC and handheld.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
+      {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. Starts and updates fast, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on (it has no signed boot loader). Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
+      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
     'osinstall.check':async({part})=>{ await wait(900); return part ? {target:{kind:'linux',name:'SteamOS',part,size:1.9e12,min:6e11,used:5.8e11,freeSpace:0,canGive:1.2e12},problems:[],suggested:512*2**30} : {windows:{size:1e12,min:3.1e11,canGive:6.6e11},target:{kind:'windows',name:'Windows',size:1e12,min:3.1e11,canGive:6.6e11,freeSpace:0},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
     'osinstall.useMantel':async()=>true,
     'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
@@ -1764,10 +1764,10 @@ const MOCK = (()=>{
     'hhd.settings':async()=>{ if(!MOCKHHD) return {running:false}; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); await wait(200); return {running:true, version:HHD_MOCK.state.version, schema:JSON.stringify(HHD_MOCK.settings), sections:clone(HHD_MOCK.sections), state:clone(S2)}; },
     'hhd.state':async()=>{ if(!MOCKHHD) return {running:false}; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); return {running:true, version:S2.version, state:clone(S2)}; },
     'newos.status':async()=>clone(st.newos||{eligible:true,published:true,canAdmin:true,image:'ghcr.io/dragongamer9/hearth-os:latest',state:'idle',error:null,editions:[
-      {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. A smaller system that starts and updates faster, the same for every PC and handheld.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
+      {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. A smaller system that starts and updates faster, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on. Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
+      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
     'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[edition]||'the new Hearth OS';
       st.newos={eligible:true,published:true,canAdmin:true,state:'moving',edition,label,progress:0.3,line:'Downloading',phases:{download:{pct:30,done:1.2e9,total:4e9,bps:3.1e7,eta:90},install:{pct:0}},stage:{phase:'download'},speeds:[]};
       setTimeout(()=>{ st.newos={eligible:true,published:true,canAdmin:true,state:'done',edition,label,line:'Restart to start the new Hearth OS.'}; onSysEvent('newOs',clone(st.newos)); },2500); return clone(st.newos); },
@@ -3653,7 +3653,7 @@ function pageDfUpdates(){
   const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?x.version:'';
   const when=x=>{ const t=x&&x.timestamp&&Date.parse(x.timestamp); return t?new Date(t).toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'}):''; };
   let h=pageSystemUpdate({df:true});
-  if(!u) return h+dgRecoveryRows();
+  if(!u) return h+unlockRows()+dgRecoveryRows();
   const tl=[];
   if(st.available && !st.staged) tl.push(['next', `Hearth OS ${v(st.available)}`, 'Available: Update now gets it']);
   if(st.staged) tl.push(['next', `Hearth OS ${v(st.staged)}`, 'Downloaded: starts at the next restart']);
@@ -3661,8 +3661,7 @@ function pageDfUpdates(){
   if(st.rollback && v(st.rollback)) tl.push(['', `Hearth OS ${v(st.rollback)}`, 'The version before'+(when(st.rollback)?' · made '+when(st.rollback):'')]);
   if(tl.length) h += shead('Update timeline') + `<div class="df-tl">${tl.map(([c,t,sub],i)=>`<div class="row ${c}" data-f data-k="dg-tl-${i}"><div class="rt"><b>${esc(t)}</b><small>${esc(sub)}</small></div></div>`).join('')}</div>`;
   h += shead('Snapshot before the last update');
-  if(host && HOSTINFO.edition==='peppermint') h += note('This edition isn\'t an image, so it has no snapshots to go back to. The Hearth Recovery USB below can still repair it.');
-  else if(st.rollback && v(st.rollback)){
+  if(st.rollback && v(st.rollback)){
     h += `<div class="row" data-f data-k="dg-snap"><span class="ricon">${I.clock}</span><div class="rt"><b>Hearth OS ${esc(v(st.rollback))}</b><small>${st.rollbackQueued?'Starts at the next restart':'Kept by itself when the last update came in'}${when(st.rollback)?' · made '+esc(when(st.rollback)):''}</small></div></div>`;
     if(st.staged) h += note('An update is waiting for a restart. Restart first; if that version has problems, you can go back from there.');
     else if(st.rollbackQueued) h += `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(st.rollback))}</b><small>Your games and files stay</small></div></button>`
@@ -3670,7 +3669,7 @@ function pageDfUpdates(){
     else h += `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Restore this version</b><small>Restarts into Hearth OS ${esc(v(st.rollback))}. Your games and files stay.</small></div><div class="rv">›</div></button>`;
   } else h += note('No snapshot yet. Hearth keeps the version before each update by itself, so one appears after the next update.');
   h += note('Snapshots are of Hearth OS itself: your games, saves and files aren\'t in them and stay whichever version starts.');
-  return h+dgRecoveryRows();
+  return h+unlockRows()+dgRecoveryRows();
 }
 function dgRecoveryRows(){
   return shead('Recovery')
@@ -6447,6 +6446,45 @@ async function loginHost(){
 // ---------- Settings › Updates › System (Hearth, the OS) ----------
 const SYSUPD = {s:null};
 function loadSystemUpdate(){ if(host && LINUX && HOSTINFO.system) call('system.update.status',{},90000).then(r=>{ SYSUPD.s=r; refreshUI(); }).catch(()=>{}); }
+
+// ---------- Settings › Updates & Recovery › Writable system (Hearth OS on Peppermint: hearth-unlock) ----------
+// Peppermint is writable by default: apt and .deb files install anywhere, kept across restarts, and the packages you
+// add come back by themselves after an update. The switch locks it (from the next restart: the system as the image
+// made it; your packages stay saved). A safe start (your changes stopped Hearth from starting) and a reapply that
+// failed show here and as a notification. Anatase has no hearth-unlock ({available:false}): always immutable.
+const UNLOCK = {s:null, told:false};
+function loadUnlock(notify){
+  if(!host){ if(!UNLOCK.s) UNLOCK.s={available:true,state:'unlocked',unlocked:true,writable:true,locked:false,suspended:false,packages:['htop','code'],removed:[],debs:['code'],reapply:{state:'done'},notice:null}; return; }
+  if(!LINUX || HOSTINFO.edition!=='peppermint') return;
+  call('system.unlock.status',{},30000).then(r=>{ UNLOCK.s=r;
+    const n=r&&r.notice; if(notify && n && !UNLOCK.told){ UNLOCK.told=true; NOTIFS.unshift({i:'info', t:n.title||'Hearth OS', s:(n.text||'')+' Select to open Settings › Updates.', go:'updates'}); updateBadge(); toast(n.title); }
+    if(S.view==='settings' && S.settingsTab==='updates') render(null,true); else refreshUI(); }).catch(()=>{});
+}
+function unlockRows(){
+  const u=UNLOCK.s; if(!u || !u.available) return '';
+  const n=(u.packages||[]).length, pk=n?`${n} package${n===1?'':'s'} you added: ${(u.packages||[]).slice(0,6).join(', ')}${n>6?', …':''}`:'Nothing added yet';
+  const sub={unlocked:'apt and .deb files install anywhere, kept across restarts. What you add comes back by itself after an update.',
+    'locks-at-restart':'Locked from the next restart: the system as the image made it. Your packages stay saved.',
+    'unlocks-at-restart':'Writable from the next restart.',
+    suspended:'This start is without your changes (safe start). Turn them back on below.',
+    locked:'The system is as the image made it. Unlock to install with apt again; your saved packages come back.'}[u.state]||'';
+  let h=shead('Writable system');
+  if(u.notice) h += `<div class="row" data-f data-k="ul-note"><span class="ricon">${I.info}</span><div class="rt"><b>${esc(u.notice.title||'')}</b><small>${esc(u.notice.text||'')}</small></div></div>`
+    + `<button class="row" data-f data-k="ul-dismiss" data-act="unlockSet" data-v="dismiss"><span class="ricon">${I.check}</span><div class="rt"><b>OK, hide this</b></div></button>`;
+  h += `<button class="row" data-f data-k="ul-sw" data-act="unlockSet" data-v="${u.unlocked?'off':'on'}"><span class="ricon">${I.lock}</span><div class="rt"><b>Unlocked system</b><small>${esc(sub)}</small></div><div class="sw ${u.unlocked?'on':''}"></div></button>`;
+  if(u.suspended && u.unlocked) h += `<button class="row" data-f data-k="ul-resume" data-act="unlockSet" data-v="resume"><span class="ricon">${I.restart}</span><div class="rt"><b>Turn my changes back on</b><small>Uses the packages you added again, now. If Hearth then doesn't start, it starts without them again by itself.</small></div><div class="rv">›</div></button>`;
+  h += `<div class="row" data-f data-k="ul-pk"><span class="ricon">${I.dl}</span><div class="rt"><b>Your packages</b><small>${esc(pk)}${(u.reapply&&u.reapply.state==='running')?' · putting them back now…':''}</small></div></div>`;
+  if(u.writable && (n || (u.removed||[]).length)) h += `<button class="row" data-f data-k="ul-again" data-act="unlockSet" data-v="reapply"><span class="ricon">${I.refresh}</span><div class="rt"><b>Put my packages back again</b><small>Reinstalls what you added on this version, in the background</small></div><div class="rv">›</div></button>`;
+  return h + note('If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu always starts as it was. Want a system that can\'t be changed at all? That\'s Hearth OS on Anatase.');
+}
+function unlockSet(action){
+  if(!host) return toast('This works on Hearth OS, not in the browser preview.');
+  const go=()=>call('system.unlock.set',{action},120000).then(r=>{ if(r && r.available!==undefined) UNLOCK.s=r; else loadUnlock();
+    toast({on:'Unlocked: apt and .deb files install anywhere', off:'Locked from the next restart', resume:'Your changes are back on', dismiss:'OK', reapply:'Putting your packages back in the background'}[action]); render(null,true); }).catch(e=>toast(e.message));
+  if(action==='off') return openSheet({title:'Lock the system?', sub:'From the next restart the system is as the image made it: apt and .deb files can\'t change it, and the packages you added are off. They stay saved and come back when you unlock again. Updates, going back and Recovery work the same either way.', items:[
+    {label:'Lock from the next restart', icon:'lock', run:go}, {label:'Keep it unlocked', icon:'x', run:()=>{}}]});
+  return go();
+}
 function onSystemUpdate(d){
   const was=SYSUPD.s; SYSUPD.s=d;
   if(was && was.state==='updating' && d.state==='idle') toast(d.error ? d.error : (d.status&&d.status.staged ? 'Update downloaded. Restart to finish.' : 'Everything is up to date'));
@@ -6502,15 +6540,15 @@ function pageSystemUpdate(o={}){
     if(!o.df) h += rollbackRows(st);   // Updates & Recovery shows it under Snapshots
   }
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
-  return h + newOsRows();
+  return h + (o.df ? '' : unlockRows()) + newOsRows();
 }
 
 // ---------- Settings › Updates › Go back to the previous version (Hearth OS images: bootc keeps the version before
 // this one; hearth-admin rollback makes it the one that starts next, and running it again before restarting undoes
-// that). Shown only when the system reports a previous version (not on Peppermint, which isn't an image).
+// that). Shown only when the system reports a previous version.
 function rollbackRows(st){
   const rb=st && st.rollback, v=x=>x&&x.version?x.version:'';
-  if(!LINUX || !HOSTINFO.system || HOSTINFO.edition==='peppermint' || !rb || !v(rb) || st.staged) return '';
+  if(!LINUX || !HOSTINFO.system || !rb || !v(rb) || st.staged) return '';
   if(st.rollbackQueued) return `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(rb))}</b><small>Hearth OS ${esc(v(rb))} starts at the next restart. Your games and files stay.</small></div></button>`
     + `<button class="row" data-f data-k="su-rollback" data-act="sysRollback" data-undo="1"><span class="ricon">${I.x}</span><div class="rt"><b>Stay on ${esc(v(st.booted))}</b><small>Don't go back after all</small></div></button>`;
   return `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Go back to ${esc(v(rb))}</b><small>If something broke after the last update: restarts into the version before this one. Your games and files stay.</small></div><div class="rv">›</div></button>`;
@@ -9492,6 +9530,7 @@ function act(el){
     case 'loginPass': return loginPass();
     case 'loginHost': return loginHost();
     case 'sysRollback': return sysRollback(!!d.undo);
+    case 'unlockSet': return unlockSet(d.v);
     case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'impScan': return call('import.scan',{},6*60e3).then(onImport).catch(e=>toast(e.message));
     case 'impToggle': return impToggle(d.key);
@@ -12020,7 +12059,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='seats') loadSeats();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
-  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); }
+  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); loadUnlock(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
   if(t==='link') loadLink();   // Hearth Link

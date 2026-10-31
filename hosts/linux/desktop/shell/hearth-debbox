@@ -1,5 +1,7 @@
 #!/usr/bin/python3
-"""hearth-debbox: .deb packages on Hearth OS, through Distrobox. The system itself is an image (/usr can't be
+"""hearth-debbox: .deb packages on Hearth OS. On Peppermint while it's unlocked (hearth-unlock: the default), a .deb
+goes on the system itself, like on any Debian (hearth-admin deb-install: apt, an administrator's password, and it
+comes back by itself after an update). Otherwise (Anatase, or Peppermint locked) the system is an image (/usr can't be
 changed), so a .deb goes into "Hearth's Debian box": a Debian 13 (trixie) container made with Distrobox (podman,
 rootless, your home folder shared), and the apps it brings are put in your app menu (distrobox-export). Most desktop
 apps work this way; drivers, system services and kernel modules can't be installed like this.
@@ -46,6 +48,11 @@ DESKTOP_IN_BOX = re.compile(r'^/usr/share/applications/[^/]+\.desktop$')
 # Shown in the window and kept in one place.
 LIMITS = ('The app runs in Hearth\'s Debian box (Debian 13). Most desktop apps work; drivers, system services and '
           'kernel modules can\'t be installed this way.')
+NATIVE_LIMITS = ('Hearth OS on Peppermint is unlocked, so this installs on the system itself, like on any Debian: '
+                 'drivers and services work too, and it comes back by itself after an update.')
+UNLOCK = os.environ.get('HEARTH_UNLOCK_BIN', '/usr/bin/hearth-unlock')
+ADMIN = '/usr/libexec/nimbus/hearth-admin'
+NATIVE_APP_ID = re.compile(r'^[A-Za-z0-9_.+-]{1,200}\.desktop$')
 
 
 class Fail(Exception):
@@ -512,6 +519,31 @@ def create(quiet=False):
     return {'ok': True, 'created': True}
 
 
+def last_json(text):
+    for line in reversed((text or '').splitlines()):
+        if line.startswith('{'):
+            try:
+                return json.loads(line)
+            except ValueError:
+                pass
+    return None
+
+
+def native_ready():
+    """Peppermint unlocked (hearth-unlock): .deb files go on the system itself instead of into the box."""
+    if os.environ.get('HEARTH_DEBBOX_NATIVE') == '0' or not os.access(UNLOCK, os.X_OK):
+        return False
+    code, out = run([UNLOCK, '--status', '--json'], timeout=30)
+    s = last_json(out) if code == 0 else None
+    return bool(s and s.get('writable'))
+
+
+def native_version(package):
+    code, out = run(['dpkg-query', '-W', '-f', '${db:Status-Abbrev}\t${Version}', package], timeout=30)
+    st, _, ver = out.partition('\t')
+    return ver.strip() if code == 0 and st[1:2] == 'i' else ''
+
+
 def inspect(path):
     p = os.path.abspath(os.path.expanduser(path))
     if not os.path.isfile(p):
@@ -519,9 +551,16 @@ def inspect(path):
     info = package_info(read_control(p), os.path.getsize(p))
     if not PKG_NAME.fullmatch(info['package']):
         raise Fail('this .deb file doesn\'t name its package')
+    if native_ready():
+        ver = native_version(info['package'])
+        rec = load_records().get(info['package']) or {}
+        info['warnings'] = [w for w in info['warnings'] if 'Debian box' not in w]
+        info.update({'file': p, 'installed': bool(ver), 'installedVersion': ver, 'native': True,
+                     'apps': rec.get('apps', []) if ver else [], 'limits': NATIVE_LIMITS, 'boxReady': True})
+        return info
     rec = load_records().get(info['package'])
     info.update({'file': p, 'installed': bool(rec), 'installedVersion': (rec or {}).get('version', ''),
-                 'apps': (rec or {}).get('apps', []), 'limits': LIMITS,
+                 'apps': (rec or {}).get('apps', []), 'limits': LIMITS, 'native': False,
                  # a hint, not a fact: reading the package must not sit and wait on the container manager
                  'boxReady': tools()['podman'] and box_exists(5)})
     return info
@@ -557,11 +596,50 @@ def apt_line(line, state):
         state['last'] = line.strip()
 
 
+def native_apps(package):
+    """The apps a package installed on the system brought (they're in the app menu by themselves)."""
+    code, out = run(['sh', '-c', DESKTOPS_SCRIPT, 'sh', package], timeout=60)
+    apps = []
+    for d in parse_desktops(out) if code == 0 else []:
+        if not d['hidden']:
+            apps.append({'id': os.path.basename(d['desktop']), 'name': d['name'] or os.path.basename(d['desktop'])[:-8],
+                         'desktop': d['desktop'], 'exported': d['desktop'], 'icon': d['icon'], 'native': True})
+    return apps
+
+
+def native_cmd(args):
+    """hearth-admin through pkexec (deb-install and deb-remove always ask for an administrator's password)."""
+    return ['pkexec', ADMIN] + list(args)
+
+
+def pass_progress(line):
+    if line.startswith('progress: '):
+        print(line, flush=True)
+
+
+def install_native(p, info):
+    pkg = info['package']
+    progress(2, 'Installing %s %s on the system' % (pkg, info['version']))
+    code, out = stream(native_cmd(['deb-install', p]), pass_progress, timeout=3600)
+    res = last_json(out)
+    if code != 0 or not res:
+        raise Fail('couldn\'t install %s (%s)' % (pkg, last_line(out, 'apt-get failed')))
+    apps = native_apps(pkg)
+    rec = load_records()
+    rec[pkg] = {'version': info['version'], 'summary': info['summary'], 'file': p, 'installed': int(time.time()),
+                'apps': apps, 'native': True}
+    save_records(rec)
+    progress(100, 'Installed')
+    return {'ok': True, 'package': pkg, 'version': info['version'], 'apps': apps, 'native': True}
+
+
 def install(path):
     p = os.path.abspath(os.path.expanduser(path))
     info = inspect(p)
     if not info['installable']:
         raise Fail(info['warnings'][0])
+    if info.get('native'):
+        return install_native(p, info)
     pkg = info['package']
     if not box_exists():
         create()
@@ -621,6 +699,15 @@ def remove(package):
     if not PKG_NAME.fullmatch(package or ''):
         raise Fail('not a package name')
     rec = load_records()
+    if (rec.get(package) or {}).get('native') and native_ready():
+        progress(10, 'Removing %s from the system' % package)
+        code, out = stream(native_cmd(['deb-remove', package]), pass_progress, timeout=1800)
+        if code != 0 and 'is not installed' not in out:
+            raise Fail('couldn\'t remove %s (%s)' % (package, last_line(out, 'apt-get failed')))
+        rec.pop(package, None)
+        save_records(rec)
+        progress(100, 'Removed')
+        return {'ok': True, 'package': package}
     need_tools()
     progress(10, 'Taking its apps out of your menu')
     unexport((rec.get(package) or {}).get('apps'))
@@ -694,8 +781,19 @@ def list_packages():
     return {'packages': rows}
 
 
+def native_app(app_id):
+    """A recorded app of a package installed on the system: its .desktop file."""
+    if not NATIVE_APP_ID.fullmatch(app_id or ''):
+        return None
+    for r in load_records().values():
+        for a in r.get('apps', []) if r.get('native') else []:
+            if a.get('id') == app_id and a.get('desktop', '').startswith('/usr/share/applications/'):
+                return a['desktop']
+    return None
+
+
 def owner(app_id):
-    if not APP_ID.fullmatch(app_id or ''):
+    if not APP_ID.fullmatch(app_id or '') and not native_app(app_id):
         raise Fail('not an app from the Debian box')
     for pkg, r in load_records().items():
         if any(a.get('id') == app_id for a in r.get('apps', [])):
@@ -716,9 +814,9 @@ def exec_argv(text):
 
 
 def open_app(app_id):
-    if not APP_ID.fullmatch(app_id or ''):
+    f = native_app(app_id) if not APP_ID.fullmatch(app_id or '') else os.path.join(APPS_DIR, app_id)
+    if not f:
         raise Fail('not an app from the Debian box')
-    f = os.path.join(APPS_DIR, app_id)
     try:
         with open(f, encoding='utf-8', errors='replace') as fh:
             argv = exec_argv(fh.read())

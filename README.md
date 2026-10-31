@@ -51,10 +51,10 @@
 
 | Edition | Base | Status |
 |---|---|---|
-| **Hearth OS** | [Anatase](https://anatase.org) (Fedora, image-based), one image for AMD, Intel and Nvidia | Main edition |
+| **Hearth OS** | [Anatase](https://anatase.org) (Fedora, image-based): locked and immutable, one image for AMD, Intel and Nvidia | Main edition |
 | Hearth OS on Ubuntu | Ubuntu 26.04 LTS, without snaps | Archived for now |
 | Hearth OS on CachyOS | CachyOS, performance-tuned | Archived for now |
-| Hearth OS on Peppermint | Peppermint OS on Debian 13 | Beta Experimental |
+| Hearth OS on Peppermint | Peppermint OS on Debian 13: a normal writable system (apt and .deb files install anywhere), can be locked in Settings | Beta Experimental |
 | **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
 | Hearth for Android | An app on Android 8.0+ phones, handhelds and TVs | **Archived** (on hold; the code stays in `hosts/android`) |
 

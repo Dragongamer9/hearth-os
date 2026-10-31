@@ -1,6 +1,8 @@
 # Automatic fallback and Hearth Recovery on the device: their tests, with GRUB's own tools checking the menu snippet
 # and the environment block (an update must never stop a device from starting: MILESTONES.md). Also the Hearth
-# Recovery USB's engine on fake drives (reinstall keeps every version, factory reset never erases another system).
+# Recovery USB's engine on fake drives (reinstall keeps every version, factory reset never erases another system),
+# and Peppermint's writable system (hearth-unlock): its tests, then the real thing in a privileged Debian 13
+# container (overlay over a read-only /usr, apt, an update with the reapply, rollback, lock/unlock, safe start).
 name: Boot guard
 on:
   workflow_dispatch:
@@ -15,6 +17,11 @@ on:
       - 'os/recovery/src/**'
       - 'os/live/src/hearth-install'
       - 'hosts/linux/test/test_hearth_recovery_usb.py'
+      - 'os-bases/peppermint/system_files/usr/bin/hearth-unlock'
+      - 'os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-unlock*'
+      - 'os-bases/peppermint/system_files/usr/share/hearth/unlock/**'
+      - 'hosts/linux/test/test_hearth_unlock.py'
+      - '.github/scripts/hearth-unlock-check.sh'
       - '.github/workflows/boot-guard.yml'
 jobs:
   test:
@@ -37,11 +44,34 @@ jobs:
             grep -v -E '^$|\.\.\. ok$' /tmp/r.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
           fi
           cat /tmp/r.txt
+      - name: Writable system tests (hearth-unlock, hearth-admin unlock, the .deb installer going native)
+        run: |
+          cd hosts/linux
+          if ! python3 -m unittest discover -s test -p 'test_hearth_unlock.py' -v > /tmp/u.txt 2>&1; then
+            grep -v -E '^$|\.\.\. ok$' /tmp/u.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          tail -n 3 /tmp/u.txt
+          python3 -m unittest discover -s test -p 'test_hearth_debbox.py' 2>&1 | tail -n 3
+          node --test test/polkit-rules.test.js 2>&1 | tail -n 8
       - name: Scripts compile, units parse
         run: |
+          python3 -m py_compile os-bases/peppermint/system_files/usr/bin/hearth-unlock os/system_files/usr/libexec/nimbus/hearth-admin
+          bash -n .github/scripts/hearth-unlock-check.sh
+          for u in os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-unlock*.service; do
+            systemd-analyze verify --man=no "$u" 2>&1 | grep -v -E 'not found|Failed to|No such file|nimbus-autologin|display-manager|hhd|ostree-remount|hearth-recovery' || true
+          done
           python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-boot-guard os/system_files/usr/libexec/nimbus/hearth-recovery \
             os/recovery/src/hearth-recovery os/recovery/src/recovery-pad
           bash -n os/recovery/src/build.sh
           for u in os/system_files/usr/lib/systemd/system/hearth-boot-*.service os/system_files/usr/lib/systemd/system/hearth-recovery.service; do
             systemd-analyze verify --man=no "$u" 2>&1 | grep -v -E 'not found|Failed to|No such file|nimbus-autologin|display-manager|hhd' || true
           done
+
+  writable:
+    name: Peppermint writable system (real overlay and apt, Debian 13 container)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unlocked by default, apt survives, update + reapply, rollback, lock/unlock, safe start
+        run: bash .github/scripts/hearth-unlock-check.sh docker.io/library/debian:trixie plain

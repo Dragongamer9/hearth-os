@@ -1,5 +1,7 @@
 // Hearth Settings › Updates: the running version, look for an update, download it (with progress). The
 // update is put in place for the next restart. Runs hearth-admin (pkexec).
+// On Peppermint also the writable system (hearth-unlock): the Unlocked switch (locking applies from the next restart),
+// Turn my changes back on after a safe start, Put my packages back again, and the notice Hearth shows.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -25,6 +27,33 @@ SetPage {
         admin.command = ["pkexec", helper, cmd];
         admin.running = true;
     }
+    // ---- the writable system (Hearth OS on Peppermint)
+    property var unlock: null        // hearth-unlock --status --json; null where there's none (Anatase)
+    property string unlockError: ""
+    function unlockLoad() { unlockStatus.running = true; }
+    function unlockSet(action) {
+        if (unlockAdmin.running) return;
+        unlockError = "";
+        unlockAdmin.command = ["pkexec", helper, "unlock", action];
+        unlockAdmin.running = true;
+    }
+    Process {
+        id: unlockStatus
+        running: true
+        command: ["sh", "-c", "[ -x /usr/bin/hearth-unlock ] && exec /usr/bin/hearth-unlock --status --json"]
+        stdout: SplitParser { onRead: l => { if (l.startsWith("{")) { try { page.unlock = JSON.parse(l); } catch (e) {} } } }
+    }
+    Process {
+        id: unlockAdmin
+        stdout: SplitParser {
+            onRead: l => {
+                if (l.startsWith("error: ")) page.unlockError = l.slice(7);
+                else if (l.startsWith("{")) { try { page.unlock = JSON.parse(l); } catch (e) {} }
+            }
+        }
+        onExited: code => { if (code === 126 || code === 127) page.unlockError = "Not allowed (Hearth's polkit rule is missing)."; page.unlockLoad(); }
+    }
+
     Process {
         running: true
         command: ["test", "-x", page.helper]
@@ -121,6 +150,52 @@ SetPage {
         visible: page.error !== ""
         Layout.fillWidth: true
         text: page.error; color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+    SetHeader { visible: !!(page.unlock && page.unlock.available); text: "Writable system" }
+    SetRow {
+        visible: !!(page.unlock && page.unlock.available && page.unlock.notice)
+        interactive: false; chevron: false; icon: "info"
+        title: page.unlock && page.unlock.notice ? page.unlock.notice.title : ""
+        sub: page.unlock && page.unlock.notice ? page.unlock.notice.text : ""
+    }
+    SetRow {
+        visible: !!(page.unlock && page.unlock.available && page.unlock.notice)
+        icon: "check"; chevron: false; title: "OK, hide this"
+        onActivated: page.unlockSet("dismiss")
+    }
+    SetSwitch {
+        visible: !!(page.unlock && page.unlock.available)
+        icon: "lock"; title: "Unlocked system"
+        checked: !!(page.unlock && page.unlock.unlocked)
+        sub: !page.unlock ? "" : page.unlock.state === "unlocked" ? "apt and .deb files install anywhere, kept across restarts. What you add comes back by itself after an update."
+            : page.unlock.state === "locks-at-restart" ? "Locked from the next restart: the system as the image made it. Your packages stay saved."
+            : page.unlock.state === "unlocks-at-restart" ? "Writable from the next restart."
+            : page.unlock.state === "suspended" ? "This start is without your changes (safe start)."
+            : "The system is as the image made it. Unlock to install with apt again; your saved packages come back."
+        onToggled: on => page.unlockSet(on ? "on" : "off")
+    }
+    SetRow {
+        visible: !!(page.unlock && page.unlock.available && page.unlock.suspended && page.unlock.unlocked)
+        icon: "restart"; title: "Turn my changes back on"
+        sub: "Uses the packages you added again, now. If Hearth then doesn't start, it starts without them again by itself."
+        onActivated: page.unlockSet("resume")
+    }
+    SetRow {
+        visible: !!(page.unlock && page.unlock.available)
+        interactive: false; chevron: false; icon: "update"
+        title: "Your packages"
+        sub: !page.unlock ? "" : (page.unlock.packages || []).length ? (page.unlock.packages || []).join(", ") : "Nothing added yet"
+    }
+    SetRow {
+        visible: !!(page.unlock && page.unlock.available && page.unlock.writable && ((page.unlock.packages || []).length || (page.unlock.removed || []).length))
+        icon: "restart"; title: "Put my packages back again"; sub: "Reinstalls what you added on this version, in the background"
+        onActivated: page.unlockSet("reapply")
+    }
+    Text {
+        visible: !!(page.unlock && page.unlock.available)
+        Layout.fillWidth: true
+        text: page.unlockError !== "" ? page.unlockError : "If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu always starts as it was. Want a system that can't be changed at all? That's Hearth OS on Anatase."
+        color: page.unlockError !== "" ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     Text {
         visible: !page.canAdmin
