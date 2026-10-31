@@ -149,6 +149,7 @@ class OverlayProtocol {
     if (msg.type === 'event') {
       switch (msg.name) {
         case 'overlay.shown':
+        case 'overlay.osk':   // the on-screen keyboard over the game (Guide + X): shown and holding the controller the same way
           this.openedAt = this.now();
           this.setState(OPEN.has(this.want) ? this.want : 'qam');
           this.want = 'qam';   // the next open not asked for through HHD (Guide) is the plain one

@@ -6,6 +6,7 @@ import copy
 import importlib.machinery
 import importlib.util
 import json
+import math
 import pathlib
 import unittest
 
@@ -83,11 +84,11 @@ class Layouts(unittest.TestCase):
     def test_strategy_matches_the_plan(self):
         v = hi.validate_layout(TEMPLATES['rts'])
         self.assertEqual(v['name'], 'Strategy (RTS)')
-        b, sb = v['buttons'], v['shift']['buttons']
+        b, sb = v['buttons'], v['layers']['shift']['buttons']
         self.assertEqual(v['sticks']['rs']['mode'], 'mouse')
         self.assertEqual((b['rt']['press'].raw, b['lt']['press'].raw), ('mouse:left', 'mouse:right'))
         self.assertEqual([b[d]['press'].raw for d in ('up', 'down', 'left', 'right')], ['key:UP', 'key:DOWN', 'key:LEFT', 'key:RIGHT'])
-        self.assertEqual(b['lb']['press'].kind, 'shift')
+        self.assertEqual((b['lb']['press'].kind, b['lb']['press'].arg), ('layer', 'shift'))
         self.assertEqual((b['menu']['press'].raw, b['a']['press'].raw, b['rb']['press'].raw), ('key:ESC', 'key:SPACE', 'key:LEFTCTRL'))
         self.assertEqual(b['view']['press'].kind, 'radial')
         self.assertEqual([sb[d]['press'].raw for d in ('up', 'right', 'down', 'left')], ['key:1', 'key:2', 'key:3', 'key:4'])
@@ -125,7 +126,8 @@ class Layouts(unittest.TestCase):
         self.bad(lambda l: l['buttons'].update(a={'press': 'key:A', 'command': 'x'}), 'unknown setting')
         self.bad(lambda l: l['buttons'].update(a={'press': 'key:A', 'threshold': 0.5}), 'unknown setting')
         self.bad(lambda l: l['buttons'].update(a={'press': 'key:A', 'hold': 'key:B', 'turbo': True}), 'turbo')
-        self.bad(lambda l: l['buttons'].update(a={'press': 'shift', 'hold': 'key:B'}), 'tap and hold')
+        self.bad(lambda l: l.update(version=1, buttons={'a': {'press': 'shift', 'hold': 'key:B'}}), 'tap and hold')
+        self.bad(lambda l: l['buttons'].update(a={'press': 'layer:nope'}), "no layer")
         self.bad(lambda l: l['buttons'].update(rt={'press': 'mouse:left', 'threshold': 2}), 'between')
         self.bad(lambda l: l['buttons'].update(rt={'press': 'mouse:left', 'threshold': True}), 'number')
         self.bad(lambda l: l['sticks']['rs'].update(sensitivity=50), 'between')
@@ -134,7 +136,8 @@ class Layouts(unittest.TestCase):
         self.bad(lambda l: l['sticks']['rs'].update(deadzone=0.5, outer=0.55), 'outer')
         self.bad(lambda l: l['sticks'].update(ls={'mode': 'teleport'}), 'mode')
         self.bad(lambda l: l['sticks']['ls'].update(up='radial'), "can't be used here")
-        self.bad(lambda l: l.update(shift={'buttons': {'a': 'shift'}}), "can't be used here")
+        self.bad(lambda l: l.update(version=1, shift={'buttons': {'a': 'shift'}}), "can't be used here")
+        self.bad(lambda l: l.update(shift={'buttons': {}}), 'unknown setting')
         self.bad(lambda l: l.update(radial=['key:A'] * 9), 'up to 8')
         self.bad(lambda l: l.update(radial=['gyro:toggle']), "can't be used here")
         self.bad(lambda l: l.update(name='x' * 61), 'name')
@@ -142,7 +145,7 @@ class Layouts(unittest.TestCase):
         self.bad(lambda l: l.update(base='nope'), 'template')
         self.bad(lambda l: l.update(hold_ms=20), 'between')
         self.bad(lambda l: l.update(hold_ms=300.5), 'whole')
-        self.bad(lambda l: l.update(version=2), 'version')
+        self.bad(lambda l: l.update(version=3), 'version')
         self.bad(lambda l: l.update(script='x'), 'unknown setting')
 
     def test_shorthand_and_defaults(self):
@@ -271,7 +274,7 @@ class Buttons(unittest.TestCase):
         self.assertNotIn(('KEY_C', True), out.log)
 
     def test_mode_shift_layer(self):
-        e, out = engine(buttons={'lb': 'shift', 'a': 'key:SPACE'},
+        e, out = engine(version=1, buttons={'lb': 'shift', 'a': 'key:SPACE'},
                         shift={'buttons': {'a': 'key:J'}, 'sticks': {'ls': {'mode': 'keys', 'up': 'key:UP'}}})
         e.button('a', True, 0.0)
         e.button('a', False, 0.1)
@@ -407,6 +410,183 @@ class Buttons(unittest.TestCase):
         run(e, 0.2, 1.0)
         self.assertEqual(out.down, set())
         self.assertNotIn(('KEY_C', True), out.log)
+
+
+# ---------------------------------------------------------------------- version 2: sets, layers, activators
+
+CASES = json.loads((pathlib.Path(__file__).resolve().parent / 'fixtures' / 'input-layout-cases.json').read_text())
+OLD_RTS = {'version': 1, 'name': 'Strategy (RTS)', 'base': 'rts',
+           'buttons': {'lb': 'shift', 'a': 'key:SPACE', 'rt': {'press': 'mouse:left', 'threshold': 0.3}},
+           'shift': {'buttons': {'up': 'key:1', 'y': 'key:LEFTCTRL+1'}},
+           'radial': ['key:5'], 'hold_ms': 300, 'turbo_hz': 10}
+
+
+class Version2(unittest.TestCase):
+    def test_shared_cases(self):
+        """The same cases input_map.rs checks: both sides accept and refuse the same layouts."""
+        for lay in CASES['good']:
+            hi.validate_layout(copy.deepcopy(lay))
+        for lay, word in CASES['bad']:
+            with self.assertRaises(hi.LayoutError, msg=json.dumps(lay)) as cm:
+                hi.validate_layout(copy.deepcopy(lay))
+            self.assertIn(word, str(cm.exception), json.dumps(lay))
+
+    def test_version_1_files_are_migrated(self):
+        v = hi.validate_layout(copy.deepcopy(OLD_RTS))
+        self.assertEqual(v['layer_order'], ['shift'])
+        self.assertEqual(v['buttons']['lb']['press'].raw, 'layer:shift')
+        self.assertEqual(v['layers']['shift']['buttons']['up']['press'].raw, 'key:1')
+        d = hi.dump_layout(v)
+        self.assertEqual(d['version'], 2)
+        self.assertEqual(d['layers'][0]['id'], 'shift')
+        self.assertNotIn('shift', d)
+        self.assertEqual(hi.dump_layout(hi.validate_layout(d)), d)
+        # A v1 file still behaves the same: LB held, D-pad up is 1.
+        e, out = engine(OLD_RTS)
+        e.button('lb', True, 0); e.button('up', True, 0.1)
+        self.assertEqual(out.down, {'KEY_1'})
+
+    def test_everything_round_trips(self):
+        lay = CASES['good'][3]
+        d = hi.dump_layout(hi.validate_layout(copy.deepcopy(lay)))
+        self.assertEqual(hi.dump_layout(hi.validate_layout(d)), d)
+        self.assertEqual(d['buttons']['a']['chords'][1], {'with': 'rb', 'do': 'mouse:left', 'turbo': True})
+        self.assertEqual(d['buttons']['y'], {'double': 'key:Y'})
+        self.assertTrue(hi.uses_gyro(hi.validate_layout(copy.deepcopy(lay))))
+
+    def test_double_press(self):
+        e, out = engine(buttons={'a': {'press': 'key:A', 'double': 'key:D'}}, double_ms=250)
+        e.button('a', True, 0.0); e.button('a', False, 0.05)
+        run(e, 0.05, 0.2)
+        self.assertEqual(out.log, [])                       # might still be a double
+        run(e, 0.2, 0.4)
+        self.assertEqual(out.log[0], ('KEY_A', True))       # it wasn't: a single tap
+        out.log.clear()
+        e.button('a', True, 1.0); e.button('a', False, 1.05)
+        e.button('a', True, 1.15)
+        self.assertEqual(out.down, {'KEY_D'})               # the second press holds the double
+        run(e, 1.15, 1.6)
+        self.assertNotIn(('KEY_A', True), out.log)
+        e.button('a', False, 1.6)
+        self.assertEqual(out.down, set())
+        # Held past the window: the plain press, held.
+        e.button('a', True, 3.0)
+        run(e, 3.0, 3.4)
+        self.assertEqual(out.down, {'KEY_A'})
+
+    def test_chord_release_toggle(self):
+        e, out = engine(buttons={'lb': 'key:Q', 'a': {'press': 'key:A', 'release': 'key:R', 'chords': [{'with': 'lb', 'do': 'key:C'}]},
+                                 'b': {'press': 'key:B', 'toggle': True}})
+        e.button('lb', True, 0.0)
+        e.button('a', True, 0.1)
+        self.assertEqual(out.down, {'KEY_Q', 'KEY_C'})      # LB held: A's chord, not A
+        e.button('a', False, 0.2); e.button('lb', False, 0.2)
+        run(e, 0.2, 0.4)
+        self.assertNotIn(('KEY_R', True), out.log)          # no release press after a chord
+        e.button('a', True, 1.0); e.button('a', False, 1.1)
+        self.assertIn(('KEY_R', True), out.log)
+        e.button('b', True, 2.0); e.button('b', False, 2.1)
+        self.assertIn('KEY_B', out.down)                    # toggled on, stays down
+        e.button('b', True, 3.0); e.button('b', False, 3.1)
+        self.assertNotIn('KEY_B', out.down)
+
+    def test_long_press_turbo(self):
+        e, out = engine(buttons={'x': {'press': 'key:F', 'hold': 'key:G', 'hold_turbo': True}}, turbo_hz=10, hold_ms=200)
+        e.button('x', True, 0.0)
+        run(e, 0.0, 1.2)
+        self.assertGreaterEqual(len([x for x in out.log if x == ('KEY_G', True)]), 8)
+        e.button('x', False, 1.2)
+        self.assertEqual(out.down, set())
+
+    def test_sets_and_layers(self):
+        lay = copy.deepcopy(CASES['good'][3])
+        e, out = engine(lay)
+        e.button('view', True, 0.0); e.button('view', False, 0.1)     # to the Driving set
+        self.assertEqual(out.osds[-1], 'Action set: Driving')
+        e.set_axes(0.2, rt=1.0)
+        self.assertEqual(out.down, {'KEY_W'})
+        e.set_axes(0.3, rt=0.0)
+        e.button('view', True, 0.4); e.button('view', False, 0.5)     # and back
+        self.assertEqual(e.set_id, 'default')
+        e.button('rb', True, 1.0); e.button('rb', False, 1.1)         # Menus layer on
+        e.button('a', True, 1.2)
+        self.assertEqual(out.down, {'KEY_ENTER'})
+        e.button('a', False, 1.3)
+        e.button('rb', True, 1.4); e.button('rb', False, 1.5)         # ... off again (the layer's own RB)
+        self.assertEqual(e.active_layers(), [])
+        e.button('lb', True, 2.0)                                     # Aiming held: its A switches the set
+        self.assertEqual(e.active_layers(), ['aim'])
+        self.assertEqual(e.stick_binding('rs')['mode'], 'mouse')
+        e.button('lb', False, 2.1)
+        self.assertEqual(e.stick_binding('rs')['mode'], 'flick')
+
+    def test_dpad_wheel_flick(self):
+        e, out = engine(sticks={'ls': {'mode': 'dpad', 'up': 'key:UP', 'right': 'key:RIGHT', 'down': 'key:DOWN', 'left': 'key:LEFT'},
+                                'rs': {'mode': 'wheel', 'threshold': 0.5}})
+        e.set_axes(0.0, lx=0.7, ly=-0.6)                    # a diagonal: only the stronger way
+        e.tick(0.0, 0.01)
+        self.assertEqual(out.down, {'KEY_RIGHT'})
+        # A quarter turn clockwise: a quarter of WHEEL_NOTCHES notches down.
+        for i in range(10):
+            a = math.pi / 2 * i / 9
+            e.set_axes(0.1 + i * 0.01, rx=math.sin(a), ry=-math.cos(a))
+            e.tick(0.1 + i * 0.01, 0.01)
+        self.assertAlmostEqual(out.wheeled[0], -hi.WHEEL_NOTCHES * 120 / 4, delta=2)
+        f, fo = engine(sticks={'rs': {'mode': 'flick', 'turn': 4000, 'threshold': 0.7}, 'ls': {'mode': 'none'}})
+        f.set_axes(0.0, rx=1.0)                             # flicked right: a quarter turn, over FLICK_TIME
+        t = run(f, 0.0, 0.3)
+        self.assertAlmostEqual(fo.moved[0], 1000, delta=2)
+        for i in range(1, 10):                              # then round to straight down: another quarter
+            a = math.pi / 2 + math.pi / 2 * i / 9
+            f.set_axes(t, rx=math.sin(a), ry=-math.cos(a))
+            t = run(f, t, t + 0.01)
+        self.assertAlmostEqual(fo.moved[0], 2000, delta=3)
+        f.set_axes(t)
+        run(f, t, t + 0.1)
+        f.set_axes(t + 0.1, rx=-1.0)                        # flick left from the centre: back a quarter
+        run(f, t + 0.1, t + 0.5)
+        self.assertAlmostEqual(fo.moved[0], 1000, delta=4)
+
+    def test_gyro_modes(self):
+        e, out = engine(gyro={'when': 'always', 'deadzone': 0}, buttons={'l4': 'gyro:ratchet'})
+        e.gyro(0, -10, 0)
+        run(e, 0, 0.5)
+        moved = out.moved[0]
+        self.assertGreater(moved, 0)
+        e.button('l4', True, 0.5)                           # ratchet: off while held
+        run(e, 0.5, 1.0)
+        self.assertEqual(out.moved[0], moved)
+        s, so = engine(gyro={'when': 'stick', 'deadzone': 0, 'axis': 'roll'}, sticks={'rs': {'mode': 'none'}, 'ls': {'mode': 'none'}})
+        s.gyro(0, 0, -10)
+        run(s, 0, 0.5)
+        self.assertEqual(so.moved, [0, 0])                  # not touching the stick
+        s.set_axes(0.5, rx=0.3)
+        run(s, 0.5, 1.0)
+        self.assertGreater(so.moved[0], 0)                  # touching: roll turns
+
+
+class Typing(unittest.TestCase):
+    def test_char_keys(self):
+        self.assertEqual(hi.char_keys('a'), ['KEY_A'])
+        self.assertEqual(hi.char_keys('A'), ['KEY_LEFTSHIFT', 'KEY_A'])
+        self.assertEqual(hi.char_keys('?'), ['KEY_LEFTSHIFT', 'KEY_SLASH'])
+        self.assertEqual(hi.char_keys(' '), ['KEY_SPACE'])
+        self.assertIsNone(hi.char_keys('é'))
+        self.assertEqual(hi.char_keys('z', 'de'), ['KEY_Y'])
+        self.assertEqual(hi.char_keys('Z', 'de'), ['KEY_LEFTSHIFT', 'KEY_Y'])
+        self.assertEqual(hi.char_keys('ü', 'de'), ['KEY_LEFTBRACE'])
+        self.assertEqual(hi.char_keys('@', 'de'), ['KEY_RIGHTALT', 'KEY_Q'])
+        self.assertEqual(hi.char_keys('a', 'fr'), ['KEY_Q'])
+        self.assertEqual(hi.char_keys('1', 'fr'), ['KEY_LEFTSHIFT', 'KEY_1'])
+        self.assertEqual(hi.char_keys('é', 'fr'), ['KEY_2'])
+        self.assertIsNone(hi.char_keys('É', 'fr'))
+        self.assertEqual(hi.char_keys('Å', 'fi'), ['KEY_LEFTSHIFT', 'KEY_LEFTBRACE'])
+        self.assertEqual(hi.keymap_layout('de(nodeadkeys),us')[0], 'de')
+        self.assertEqual(hi.keymap_layout('../etc')[0], 'us')
+        self.assertIsNone(hi.char_keys('?', 'xx') and None)
+        codes = hi.keymap_codes()
+        self.assertIn('KEY_102ND', codes)
+        self.assertIn('KEY_RIGHTALT', codes)
 
 
 # ---------------------------------------------------------------------- when the controller is taken
@@ -624,6 +804,54 @@ class Daemon(unittest.TestCase):
         self.assertEqual(peer.got[-1], {'t': 'guide'})
         d.apply(0.5 + hi.GUIDE_SUSPEND + 0.1)    # Quick Access didn't open: the layout comes back
         self.assertTrue(dev.grabbed)
+
+    def test_guide_x_opens_the_keyboard(self):
+        dev = Dev()
+        d, peer = self.make(dev), Peer()
+        d.clients.append(peer)
+        self.state(d, peer, 0)
+        pad = d.pads['/dev/input/event0']
+        d.engine.button('a', True, 0)                 # Space held when Guide goes down: let go at once
+        pad.handle(Ev(E.EV_KEY, E.BTN_MODE, 1))
+        d.guide_step(0.1, True, False)
+        self.assertTrue(dev.grabbed)                  # still held: X may come
+        self.assertEqual(d.out.kbd.events[-1][2], 0)
+        self.assertEqual(peer.got, [])
+        d.guide_step(0.2, False, True)                # X while Guide is held
+        self.assertEqual(peer.got[-1], {'t': 'osk'})
+        self.assertFalse(dev.grabbed)
+        # Guide alone: Quick Access as before, once it's let go (or held GUIDE_CHORD).
+        d.apply(0.2 + hi.GUIDE_SUSPEND + 0.1)
+        self.assertTrue(dev.grabbed)
+        d.guide_step(5.0, True, False)
+        pad.handle(Ev(E.EV_KEY, E.BTN_MODE, 0))
+        d.guide_step(5.05, False, False)
+        self.assertEqual(peer.got[-1], {'t': 'guide'})
+        self.assertFalse(dev.grabbed)
+        d.apply(10)
+        pad.handle(Ev(E.EV_KEY, E.BTN_MODE, 1))
+        d.guide_step(10.0, True, False)
+        d.guide_step(10.0 + hi.GUIDE_CHORD, False, False)
+        self.assertEqual(peer.got[-1], {'t': 'guide'})
+
+    def test_typing_for_the_keyboard(self):
+        d, peer = self.make(), Peer()
+        r = d.command(peer, {'cmd': 'type', 'text': 'Hi!é', 'layout': 'us'}, 0)
+        self.assertEqual(r, {'ok': True, 'layout': 'us', 'skipped': 'é'})
+        d.type_tick(5)
+        e = E()
+        downs = [c for t, c, v in d.out.kbd.events if v == 1]
+        self.assertEqual(downs, [e.KEY_LEFTSHIFT, e.KEY_H, e.KEY_I, e.KEY_LEFTSHIFT, e.KEY_1])
+        self.assertEqual(len(d.out.kbd.events), 10)
+        self.assertEqual(d.command(peer, {'cmd': 'key', 'key': 'bksp', 'n': 3}, 6), {'ok': True})
+        d.type_tick(10)
+        self.assertEqual(len([1 for t, c, v in d.out.kbd.events if c == e.KEY_BACKSPACE and v == 1]), 3)
+        self.assertFalse(d.command(peer, {'cmd': 'key', 'key': 'rm -rf'}, 11)['ok'])
+        self.assertFalse(d.command(peer, {'cmd': 'type', 'text': 'x' * (hi.TYPE_MAX + 1)}, 11)['ok'])
+        self.assertFalse(d.command(peer, {'cmd': 'type', 'text': 'x', 'mods': ['super']}, 11)['ok'])
+        # A display name that isn't one is ignored (never passed to xdotool).
+        r = d.command(peer, {'cmd': 'type', 'text': 'é', 'display': ':0; reboot'}, 12)
+        self.assertEqual(r['skipped'], 'é')
 
     def test_feed_and_held_buttons(self):
         dev = Dev()

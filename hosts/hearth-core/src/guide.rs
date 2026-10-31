@@ -18,7 +18,6 @@ const BTN_SELECT: u16 = 0x13a;
 /// The Xbox button of an Xbox controller over Bluetooth without xpadneo (hid-generic / hid-microsoft): Guide too.
 const KEY_HOMEPAGE: u16 = 0xac;
 const BTN_SOUTH: usize = 0x130;
-const BTN_NORTH: u16 = 0x133;
 const SONY: &str = "054c";
 /// How long Guide is held before it counts as a hold (Quick Access) rather than a tap (the glance).
 pub const HOLD_MS: u64 = 350;
@@ -134,7 +133,7 @@ pub fn tap_or_hold(down: bool, timed: bool, timing: bool, fired: bool) -> GuideN
 }
 
 /// What the Guide button does: "guide" (pressed, or held with the glance on), "guide-tap" (a short press with the
-/// glance on), "view" (View held a second, if turned on) or "hotkey"; and every
+/// glance on), "osk" (Guide + X: the on-screen keyboard), "view" (View held a second, if turned on) or "hotkey"; and every
 /// button while `buttons` is on (for the overlay).
 pub type OnPress = Arc<dyn Fn(&str) + Send + Sync>;
 pub type OnButton = Arc<dyn Fn(&str, bool) + Send + Sync>;
@@ -159,6 +158,9 @@ fn setup_state(path: &str, fd: i32, state: &mut HashMap<&'static str, i32>) {
         if unsafe { ioctl(fd, eviocgabs(code), info.as_mut_ptr()) } == 0 && info[1] >= 0 && info[2] > info[1] { state.insert(key, info[2]); }
     }
 }
+
+/// Is Guide held down on this device right now?
+pub fn guide_down(fd: i32) -> bool { key_down(fd, BTN_MODE) || key_down(fd, KEY_HOMEPAGE) }
 
 /// Is this key held down on the device right now (EVIOCGKEY)? Works whoever has it grabbed, and whatever we saw.
 pub fn key_down(fd: i32, code: u16) -> bool {
@@ -235,6 +237,7 @@ impl Guide {
         self.fds.lock().unwrap().insert(path.to_string(), f.as_raw_fd());
         // A controller plugged in while the overlay is open is grabbed straight away.
         if self.grabbed.load(Ordering::SeqCst) { unsafe { ioctl(f.as_raw_fd(), EVIOCGRAB, 1i32); } }
+        let fd = f.as_raw_fd();
         let mut buf = [0u8; EVENT_SIZE * 64];
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
@@ -253,17 +256,29 @@ impl Guide {
             rest.extend_from_slice(&buf[..n]);
             let whole = rest.len() - rest.len() % EVENT_SIZE;
             let chunk: Vec<u8> = rest.drain(..whole).collect();
-            let presses = if self.chord_guard.load(Ordering::SeqCst) {
-                // One record at a time, so a press in the same read as Guide's is judged in order.
-                let mut all = Vec::new();
-                for rec in chunk.chunks_exact(EVENT_SIZE) {
-                    let raw = pad_events(rec, &mut state);
-                    if raw.iter().any(|(b, down)| *down && *b == "guide") { mode_chord.store(false, Ordering::SeqCst); }   // a new press of Guide
-                    else if guide_held && raw.iter().any(|(b, down)| *down && *b != "guide") { mode_chord.store(true, Ordering::SeqCst); }
-                    all.extend(chord_filter(raw, &mut guide_held));
+            // One record at a time, so a press in the same read as Guide's is judged in order.
+            let guard = self.chord_guard.load(Ordering::SeqCst);
+            let mut presses = Vec::new();
+            let mut osk = false;
+            for rec in chunk.chunks_exact(EVENT_SIZE) {
+                let raw = pad_events(rec, &mut state);
+                if raw.iter().any(|(b, down)| *down && *b == "guide") { mode_chord.store(false, Ordering::SeqCst); }   // a new press of Guide
+                else if raw.iter().any(|(b, down)| *down && *b == "x") && (guide_held || guide_down(fd)) {
+                    // Guide + X: the on-screen keyboard (like Steam + X). That press of Guide is neither a tap nor a
+                    // hold, and the X goes nowhere else. Guide held is asked from the device too, so it counts when
+                    // Hearth Input had the controller as Guide went down.
+                    mode_chord.store(true, Ordering::SeqCst);
+                    osk = true;
+                    continue;
                 }
-                all
-            } else { pad_events(&chunk, &mut state) };
+                else if guard && guide_held && raw.iter().any(|(b, down)| *down && *b != "guide") { mode_chord.store(true, Ordering::SeqCst); }
+                if guard { presses.extend(chord_filter(raw, &mut guide_held)); }
+                else {
+                    for (b, down) in &raw { if *b == "guide" { guide_held = *down; } }
+                    presses.extend(raw);
+                }
+            }
+            if osk { self.fire("osk", &on_press); }
             if self.buttons.load(Ordering::SeqCst) { for (b, down) in presses { on_button(b, down); } }
             for rec in chunk.chunks_exact(EVENT_SIZE) {
                 let (ty, code, value) = (u16::from_le_bytes([rec[16], rec[17]]), u16::from_le_bytes([rec[18], rec[19]]), i32::from_le_bytes([rec[20], rec[21], rec[22], rec[23]]));

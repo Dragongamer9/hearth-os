@@ -708,6 +708,8 @@ impl Bridge {
             "osk.set" => crate::osk::set(&a["settings"]).map(|_| Value::Null),
             "osk.learn" => crate::osk::learn(&a["data"]).map(|_| Value::Null),
             "osk.clear" => crate::osk::clear().map(|_| Value::Null),
+            // The on-screen keyboard over a game types through Hearth Input's virtual keyboard (input_map.rs).
+            "osk.type" | "osk.key" => crate::input_map::call(method, a, None),
             "access.status" => crate::access::run(&["status"]),
             "access.set" => { let j = crate::access::set_args(a)?; crate::access::run(&["set", &j]) }
             "access.apply" => crate::access::run(&["apply", "game"]),

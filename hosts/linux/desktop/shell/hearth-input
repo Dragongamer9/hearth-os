@@ -39,7 +39,10 @@ Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput, 4 already runni
 import json
 import math
 import os
+import re
 import select
+import shutil
+import subprocess
 import signal
 import socket
 import stat
@@ -49,9 +52,14 @@ import time
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 TABLES_FILE = os.path.join(HERE, 'input-layouts.json')
+KEYMAP_FILE = os.path.join(HERE, 'osk-keymap.json')
 
 HEARTBEAT = 5.0         # s without a state from Hearth before everything is let go
 GUIDE_SUSPEND = 1.5     # s the controller stays released after Guide (Quick Access is opening)
+GUIDE_CHORD = 0.35      # s Guide is held over a layout before it counts as Guide alone (X before then: the keyboard)
+TYPE_HOLD = 0.03        # s each typed key stays down (games that look once a frame miss shorter presses)
+TYPE_GAP = 0.015        # s between typed keys
+TYPE_MAX = 2000         # characters in one type command
 PULSE = 0.06            # s a tap holds its key (games that look once a frame miss a press-and-release)
 SCROLL_REPEAT = (0.35, 0.09)   # a held scroll button: first repeat after, then every
 MOUSE_SPEED = 1800.0    # px/s with the stick fully over, sensitivity 1
@@ -95,14 +103,88 @@ SCROLL_DIRS = {'up': (120, 0), 'down': (-120, 0), 'left': (0, -120), 'right': (0
 ALL_KEY_CODES = ['KEY_' + k for k in TABLES['key_labels']]
 
 
+# ---------------------------------------------------------------------- typing (the on-screen keyboard over a game)
+
+def load_keymap(path=KEYMAP_FILE):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {'letters': 'abcdefghijklmnopqrstuvwxyz', 'layouts': {'us': {}}}
+
+
+KEYMAP = load_keymap()
+TYPE_SPECIAL = {'space': 'KEY_SPACE', 'bksp': 'KEY_BACKSPACE', 'tab': 'KEY_TAB', 'enter': 'KEY_ENTER', 'esc': 'KEY_ESC',
+                'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT', 'home': 'KEY_HOME',
+                'end': 'KEY_END', 'delete': 'KEY_DELETE'}
+TYPE_MODS = {'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT', 'altgr': 'KEY_RIGHTALT'}
+LAYOUT_RE = re.compile(r'^[a-z]{2,3}$')
+DISPLAY_RE = re.compile(r'^:[0-9]{1,3}(\.[0-9])?$')
+
+
+def keymap_layout(name):
+    """The table for an XKB layout name ("de", "fr,us", "de(nodeadkeys)" → its first layout), US if unknown."""
+    name = (name or 'us').split(',')[0].split('(')[0].strip().lower()
+    layouts = KEYMAP.get('layouts', {})
+    t = layouts.get(name) if LAYOUT_RE.match(name) else None
+    if t is None:
+        return 'us', layouts.get('us', {})
+    if '_same' in t:
+        return name, layouts.get(t['_same'], {})
+    return name, t
+
+
+def char_keys(ch, layout='us'):
+    """The keys that type one character on this layout (modifiers first), or None if it can't be typed."""
+    _, table = keymap_layout(layout)
+    special = {' ': 'KEY_SPACE', '\n': 'KEY_ENTER', '\t': 'KEY_TAB'}
+    if ch in special:
+        return [special[ch]]
+    spec, shift = table.get(ch), False
+    if spec is None:
+        low = ch.lower()
+        if len(low) == 1 and low in KEYMAP.get('letters', ''):   # a-z, where this layout has them (A on AZERTY)
+            spec, shift = table.get(low, low.upper()), low != ch
+        else:
+            return None
+        if shift and '+' in spec:                         # the capital of a shifted or AltGr character
+            return None
+    parts = spec.split('+')
+    return (['KEY_LEFTSHIFT'] if shift else []) + [TYPE_MODS[m] for m in parts[:-1]] + ['KEY_' + parts[-1]]
+
+
+def keymap_codes():
+    """Every key the keymap can press (the virtual keyboard must have them all)."""
+    out = set(TYPE_SPECIAL.values()) | set(TYPE_MODS.values()) | {'KEY_' + c.upper() for c in KEYMAP.get('letters', '')}
+    for t in KEYMAP.get('layouts', {}).values():
+        for k, spec in t.items():
+            if not k.startswith('_') and isinstance(spec, str):
+                out.add('KEY_' + spec.split('+')[-1])
+    return out
+
+
 # ---------------------------------------------------------------------- layouts
+#
+# A layout (version 2; version 1 files are migrated, see migrate_v1):
+#   {"version": 2, "name", "base",
+#    "buttons": {control: binding}, "sticks": {"ls"|"rs": stick}, "gyro": {...}      the default action set
+#    "sets":   [{"id", "name", "buttons", "sticks", "gyro"?}]                          more action sets (set:<id>)
+#    "layers": [{"id", "name", "buttons", "sticks"}]                                   on top of the set while
+#                                                                                       held (layer:<id>, a mode
+#                                                                                       shift) or toggled on
+#    "radial": [action], "hold_ms", "double_ms", "turbo_hz"}
+# A binding is an action ("key:SPACE") or {"press", "hold" (long press), "double", "release", "chords": [{"with",
+# "do", "turbo"?}], "turbo", "hold_turbo", "double_turbo", "toggle", "threshold" (triggers)}.
+# Sticks: none, keys (8 ways), dpad (4 ways), mouse, scroll, wheel (turn it round to scroll), flick (flick stick).
+# Gyro: when "button" (gyro:toggle / gyro:hold / gyro:ratchet buttons, or on from the start), "always" or "stick"
+# (while the right stick is touched / moved), turning from "yaw" or "roll".
 
 class LayoutError(ValueError):
     pass
 
 
 class Action:
-    """One thing a control does. kind: none | keys | mouse | scroll | shift | gyro | radial."""
+    """One thing a control does. kind: none | keys | mouse | scroll | gyro | radial | layer | layer_toggle | set."""
     __slots__ = ('kind', 'codes', 'arg', 'raw')
 
     def __init__(self, kind, codes=(), arg=None, raw='none'):
@@ -123,26 +205,45 @@ class Action:
 
 
 NONE = Action('none')
-# Where an action may be used: base-layer buttons take everything; shift-layer buttons not another shift layer or
-# the radial menu; hold actions, stick directions and radial items only press keys, click or scroll.
+SIMPLE = {'none', 'keys', 'mouse', 'scroll'}
+# Where an action may be used: a set's buttons take everything; a layer's buttons not another held layer or the
+# radial menu; long / double / release presses, chords, stick directions and radial items only press keys, click or
+# scroll.
 ALLOW = {
-    'button': {'none', 'keys', 'mouse', 'scroll', 'shift', 'gyro', 'radial'},
-    'shift_button': {'none', 'keys', 'mouse', 'scroll', 'gyro'},
-    'simple': {'none', 'keys', 'mouse', 'scroll'},
+    'button': SIMPLE | {'gyro', 'radial', 'layer', 'layer_toggle', 'set'},
+    'layer_button': SIMPLE | {'gyro', 'layer_toggle', 'set'},
+    'simple': SIMPLE,
     'radial': {'keys', 'mouse', 'scroll'},
 }
+ID_RE = re.compile(r'^[a-z0-9_]{1,20}$')
+STICK_FIELDS = {
+    'none': set(),
+    'keys': {'up', 'down', 'left', 'right', 'threshold'},
+    'dpad': {'up', 'down', 'left', 'right', 'threshold'},
+    'mouse': {'sensitivity', 'deadzone', 'outer', 'curve', 'invert_x', 'invert_y'},
+    'scroll': {'sensitivity', 'deadzone'},
+    'wheel': {'sensitivity', 'threshold'},
+    'flick': {'turn', 'threshold'},
+}
+GYRO_FIELDS = {'sensitivity', 'deadzone', 'invert_x', 'invert_y', 'start_on', 'when', 'axis'}
+GYRO_WHEN = ('button', 'always', 'stick')
+GYRO_AXIS = ('yaw', 'roll')
+BUTTON_FIELDS = {'press', 'hold', 'double', 'release', 'chords', 'turbo', 'hold_turbo', 'double_turbo', 'toggle'}
+TOP_FIELDS = {'version', 'name', 'base', 'buttons', 'sticks', 'gyro', 'sets', 'layers', 'radial', 'hold_ms',
+              'double_ms', 'turbo_hz'}
+V1_FIELDS = {'version', 'name', 'base', 'buttons', 'sticks', 'gyro', 'shift', 'radial', 'hold_ms', 'double_ms', 'turbo_hz'}
 
 
-def parse_action(s, where, path):
+def parse_action(s, where, path, ids=None):
+    """An action string → Action, if it's allowed here. ids: {'layers': set, 'sets': set} it may name."""
     if not isinstance(s, str) or not s or len(s) > 80:
         raise LayoutError('%s: should be an action like "key:SPACE"' % path)
+    ids = ids or {'layers': set(), 'sets': set()}
     if s == 'none':
         a = NONE
-    elif s == 'shift':
-        a = Action('shift', raw=s)
     elif s == 'radial':
         a = Action('radial', raw=s)
-    elif s in ('gyro:toggle', 'gyro:hold'):
+    elif s in ('gyro:toggle', 'gyro:hold', 'gyro:ratchet'):
         a = Action('gyro', arg=s.split(':')[1], raw=s)
     elif s.startswith('key:'):
         names = s[4:].split('+')
@@ -158,6 +259,16 @@ def parse_action(s, where, path):
         a = Action('mouse', [MOUSE_CODES[s[6:]]], raw=s)
     elif s.startswith('scroll:') and s[7:] in SCROLL_DIRS:
         a = Action('scroll', arg=SCROLL_DIRS[s[7:]], raw=s)
+    elif s.startswith('layer:') or s.startswith('layer_toggle:'):
+        kind, _, lid = s.partition(':')
+        if lid not in ids['layers']:
+            raise LayoutError('%s: there\'s no layer %r' % (path, lid[:20]))
+        a = Action(kind, arg=lid, raw=s)
+    elif s.startswith('set:'):
+        sid = s[4:]
+        if sid != 'default' and sid not in ids['sets']:
+            raise LayoutError('%s: there\'s no action set %r' % (path, sid[:20]))
+        a = Action('set', arg=sid, raw=s)
     else:
         raise LayoutError('%s: unknown action %r' % (path, s[:30]))
     if a.kind not in ALLOW[where]:
@@ -168,20 +279,26 @@ def parse_action(s, where, path):
 def action_label(raw):
     if raw == 'none':
         return 'Nothing'
-    if raw == 'shift':
-        return 'Second set (hold)'
     if raw == 'radial':
         return 'Radial menu'
     if raw == 'gyro:toggle':
         return 'Gyro aiming on/off'
     if raw == 'gyro:hold':
         return 'Gyro aiming (hold)'
+    if raw == 'gyro:ratchet':
+        return 'Gyro off while held (ratchet)'
     if raw.startswith('key:'):
         return ' + '.join(TABLES['key_labels'].get(k, k) for k in raw[4:].split('+'))
     if raw.startswith('mouse:'):
         return TABLES['mouse_labels'].get(raw[6:], raw)
     if raw.startswith('scroll:'):
         return TABLES['scroll_labels'].get(raw[7:], raw)
+    if raw.startswith('layer:'):
+        return 'Layer %s (hold)' % raw[6:]
+    if raw.startswith('layer_toggle:'):
+        return 'Layer %s on/off' % raw[13:]
+    if raw.startswith('set:'):
+        return 'Action set %s' % raw[4:]
     return raw
 
 
@@ -211,45 +328,70 @@ def _obj(v, path, allowed):
     return v
 
 
-def _button(ctl, v, layer, path):
-    where = 'button' if layer == 'base' else 'shift_button'
+def _name(v, path, default):
+    v = default if v is None else v
+    if not isinstance(v, str) or not v.strip() or len(v) > LIM['name_len'] or any(ord(c) < 32 for c in v):
+        raise LayoutError('%s: up to %d characters' % (path, LIM['name_len']))
+    return v
+
+
+def empty_button():
+    return {'press': NONE, 'hold': None, 'double': None, 'release': None, 'chords': [], 'turbo': False,
+            'hold_turbo': False, 'double_turbo': False, 'toggle': False, 'threshold': 0.5}
+
+
+def _button(ctl, v, where, path, ids):
     if isinstance(v, str):
         v = {'press': v}
-    allowed = {'press', 'hold', 'turbo'} | ({'threshold'} if ctl in TRIGGERS else set())
-    _obj(v, path, allowed)
-    if 'press' not in v:
-        raise LayoutError('%s: needs "press"' % path)
-    b = {'press': parse_action(v['press'], where, path + '.press'), 'hold': None, 'turbo': False, 'threshold': 0.5}
-    if v.get('hold') is not None:
-        b['hold'] = parse_action(v['hold'], 'simple', path + '.hold')
-        if b['press'].kind not in ALLOW['simple']:
-            raise LayoutError('%s: tap and hold work with keys, clicks and scrolling' % path)
-    if 'turbo' in v:
-        b['turbo'] = _bool(v['turbo'], path + '.turbo')
-        if b['turbo'] and (b['hold'] or b['press'].kind not in ('keys', 'mouse')):
-            raise LayoutError('%s: turbo repeats a key or a click (and can\'t be used with hold)' % path)
+    _obj(v, path, BUTTON_FIELDS | ({'threshold'} if ctl in TRIGGERS else set()))
+    b = empty_button()
+    b['press'] = parse_action(v.get('press', 'none'), where, path + '.press', ids)
+    for k in ('hold', 'double', 'release'):
+        if v.get(k) is not None:
+            b[k] = parse_action(v[k], 'simple', '%s.%s' % (path, k), ids)
+    chords = v.get('chords', [])
+    if not isinstance(chords, list) or len(chords) > LIM['chords']:
+        raise LayoutError('%s.chords: up to %d' % (path, LIM['chords']))
+    seen = set()
+    for i, c in enumerate(chords):
+        cp = '%s.chords.%d' % (path, i)
+        _obj(c, cp, {'with', 'do', 'turbo'})
+        w = c.get('with')
+        if w not in BUTTONS or w == ctl or w in seen:
+            raise LayoutError('%s.with: another button (once each)' % cp)
+        seen.add(w)
+        act = parse_action(c.get('do', 'none'), 'simple', cp + '.do', ids)
+        turbo = _bool(c.get('turbo', False), cp + '.turbo')
+        if turbo and act.kind not in ('keys', 'mouse'):
+            raise LayoutError('%s: turbo repeats a key or a click' % cp)
+        b['chords'].append((w, act, turbo))
+    for k in ('turbo', 'hold_turbo', 'double_turbo', 'toggle'):
+        if k in v:
+            b[k] = _bool(v[k], '%s.%s' % (path, k))
+    extra = b['hold'] or b['double'] or b['release'] or b['chords'] or b['turbo'] or b['toggle']
+    if extra and b['press'].kind not in SIMPLE:
+        raise LayoutError('%s: tap and hold, double presses, chords, turbo and toggle work with keys, clicks and scrolling' % path)
+    if b['turbo'] and (b['hold'] or b['toggle'] or b['press'].kind not in ('keys', 'mouse')):
+        raise LayoutError('%s: turbo repeats a key or a click (and can\'t be used with hold or toggle)' % path)
+    if b['toggle'] and (b['hold'] or b['double'] or b['press'].kind not in ('keys', 'mouse')):
+        raise LayoutError('%s: toggle holds a key or a click (and can\'t be used with hold or a double press)' % path)
+    for k, t in (('hold', 'hold_turbo'), ('double', 'double_turbo')):
+        if b[t] and (b[k] is None or b[k].kind not in ('keys', 'mouse')):
+            raise LayoutError('%s.%s: turbo repeats a key or a click' % (path, t))
     if 'threshold' in v:
         b['threshold'] = _num(v['threshold'], 'threshold', path + '.threshold')
     return b
 
 
-STICK_FIELDS = {
-    'none': set(),
-    'keys': {'up', 'down', 'left', 'right', 'threshold'},
-    'mouse': {'sensitivity', 'deadzone', 'outer', 'curve', 'invert_y'},
-    'scroll': {'sensitivity', 'deadzone'},
-}
-
-
-def _stick(v, path):
+def _stick(v, path, ids):
     if not isinstance(v, dict) or v.get('mode') not in STICK_FIELDS:
-        raise LayoutError('%s: needs a mode: none, keys, mouse or scroll' % path)
+        raise LayoutError('%s: needs a mode: %s' % (path, ', '.join(STICK_FIELDS)))
     mode = v['mode']
     _obj(v, path, STICK_FIELDS[mode] | {'mode'})
     s = {'mode': mode}
-    if mode == 'keys':
+    if mode in ('keys', 'dpad'):
         for d in DPAD:
-            s[d] = parse_action(v[d], 'simple', '%s.%s' % (path, d)) if d in v else NONE
+            s[d] = parse_action(v[d], 'simple', '%s.%s' % (path, d), ids) if d in v else NONE
         s['threshold'] = _num(v.get('threshold', 0.5), 'stick_threshold', path + '.threshold')
     elif mode in ('mouse', 'scroll'):
         s['sensitivity'] = _num(v.get('sensitivity', 1.0), 'sensitivity', path + '.sensitivity')
@@ -257,47 +399,152 @@ def _stick(v, path):
         if mode == 'mouse':
             s['outer'] = _num(v.get('outer', 0.95), 'outer', path + '.outer')
             s['curve'] = _num(v.get('curve', 1.8), 'curve', path + '.curve')
+            s['invert_x'] = _bool(v.get('invert_x', False), path + '.invert_x')
             s['invert_y'] = _bool(v.get('invert_y', False), path + '.invert_y')
             if s['outer'] < s['deadzone'] + 0.1:
                 raise LayoutError('%s: the outer dead zone must be well past the dead zone' % path)
+    elif mode == 'wheel':
+        s['sensitivity'] = _num(v.get('sensitivity', 1.0), 'sensitivity', path + '.sensitivity')
+        s['threshold'] = _num(v.get('threshold', 0.5), 'stick_threshold', path + '.threshold')
+    elif mode == 'flick':
+        s['turn'] = _num(v.get('turn', 3600), 'turn_px', path + '.turn', integer=True)
+        s['threshold'] = _num(v.get('threshold', 0.7), 'stick_threshold', path + '.threshold')
     return s
 
 
+def _gyro(g, path):
+    g = _obj(g, path, GYRO_FIELDS)
+    when, axis = g.get('when', 'button'), g.get('axis', 'yaw')
+    if when not in GYRO_WHEN:
+        raise LayoutError('%s.when: one of %s' % (path, ', '.join(GYRO_WHEN)))
+    if axis not in GYRO_AXIS:
+        raise LayoutError('%s.axis: one of %s' % (path, ', '.join(GYRO_AXIS)))
+    return {'sensitivity': _num(g.get('sensitivity', 1.0), 'gyro_sensitivity', path + '.sensitivity'),
+            'deadzone': _num(g.get('deadzone', 1.0), 'gyro_deadzone', path + '.deadzone'),
+            'invert_x': _bool(g.get('invert_x', False), path + '.invert_x'),
+            'invert_y': _bool(g.get('invert_y', False), path + '.invert_y'),
+            'start_on': _bool(g.get('start_on', False), path + '.start_on'),
+            'when': when, 'axis': axis}
+
+
+def _controls(o, path, where, ids, full):
+    """A set's or layer's buttons and sticks. full: every control (unmapped ones do nothing); else only those given."""
+    pre = path + '.' if path else ''
+    out = {'buttons': {}, 'sticks': {}}
+    buttons = _obj(o.get('buttons', {}), pre + 'buttons', set(BUTTONS))
+    for ctl in BUTTONS:
+        if ctl in buttons:
+            out['buttons'][ctl] = _button(ctl, buttons[ctl], where, '%sbuttons.%s' % (pre, ctl), ids)
+        elif full:
+            out['buttons'][ctl] = empty_button()
+    sticks = _obj(o.get('sticks', {}), pre + 'sticks', set(STICKS))
+    for s in STICKS:
+        if s in sticks:
+            out['sticks'][s] = _stick(sticks[s], '%ssticks.%s' % (pre, s), ids)
+        elif full:
+            out['sticks'][s] = {'mode': 'none'}
+    return out
+
+
+def uses_v1_shift(obj):
+    buttons = obj.get('buttons')
+    return 'shift' in obj or (isinstance(buttons, dict) and any(
+        v == 'shift' or (isinstance(v, dict) and v.get('press') == 'shift') for v in buttons.values()))
+
+
+def migrate_v1(obj):
+    """A version 1 layout → version 2. The second set ("shift", used by buttons set to "shift") becomes the layer
+    "shift" (held by those buttons: "layer:shift"). Everything else is the same."""
+    _obj(obj, 'layout', V1_FIELDS)
+    n = {k: obj[k] for k in ('name', 'base', 'buttons', 'sticks', 'gyro', 'radial', 'hold_ms', 'double_ms', 'turbo_hz') if k in obj}
+    n['version'] = 2
+
+    def conv(buttons):
+        if not isinstance(buttons, dict):
+            return buttons
+        out = {}
+        for k, v in buttons.items():
+            if v == 'shift':
+                v = 'layer:shift'
+            elif isinstance(v, dict) and v.get('press') == 'shift':
+                v = dict(v, press='layer:shift')
+            out[k] = v
+        return out
+    if 'buttons' in n:
+        n['buttons'] = conv(n['buttons'])
+    shift = obj.get('shift')
+    uses = isinstance(obj.get('buttons'), dict) and any(v == 'shift' or (isinstance(v, dict) and v.get('press') == 'shift')
+                                                      for v in obj['buttons'].values())
+    if shift is not None or uses:
+        shift = _obj(shift if shift is not None else {}, 'shift', {'buttons', 'sticks'})
+        layer = {'id': 'shift', 'name': 'Second set'}
+        if 'buttons' in shift:
+            layer['buttons'] = conv(shift['buttons'])
+        if 'sticks' in shift:
+            layer['sticks'] = shift['sticks']
+        n['layers'] = [layer]
+    return n
+
+
+def _list(v, path, limit):
+    if not isinstance(v, list) or len(v) > LIM[limit]:
+        raise LayoutError('%s: up to %d' % (path, LIM[limit]))
+    return v
+
+
 def validate_layout(obj):
-    """A layout as Hearth stores it → the normalized form the engine runs. Raises LayoutError."""
-    _obj(obj, 'layout', {'version', 'name', 'base', 'buttons', 'sticks', 'gyro', 'shift', 'radial', 'hold_ms', 'turbo_hz'})
-    if obj.get('version', 1) != 1:
-        raise LayoutError('layout.version: only version 1 is known')
-    name = obj.get('name', 'Custom')
-    if not isinstance(name, str) or not name.strip() or len(name) > LIM['name_len'] or any(ord(c) < 32 for c in name):
-        raise LayoutError('layout.name: up to %d characters' % LIM['name_len'])
+    """A layout as Hearth stores it (version 1 or 2) → the normalized form the engine runs. Raises LayoutError."""
+    if not isinstance(obj, dict):
+        raise LayoutError('layout: should be an object')
+    version = obj.get('version')
+    if version is None:     # files without one: version 1 if they use its second set, else version 2
+        version = 1 if uses_v1_shift(obj) else 2
+    if version not in (1, 2) or isinstance(version, bool):
+        raise LayoutError('layout.version: only versions 1 and 2 are known')
+    if version == 1:
+        obj = migrate_v1(obj)
+    _obj(obj, 'layout', TOP_FIELDS)
+    name = _name(obj.get('name'), 'layout.name', 'Custom')
     base = obj.get('base', '')
     if not isinstance(base, str) or (base and base not in TABLES['template_map']):
         raise LayoutError('layout.base: unknown template')
-    out = {'name': name, 'base': base, 'buttons': {}, 'sticks': {}, 'shift': {'buttons': {}, 'sticks': {}}}
-    buttons = _obj(obj.get('buttons', {}), 'buttons', set(BUTTONS))
-    for ctl in BUTTONS:
-        out['buttons'][ctl] = _button(ctl, buttons[ctl], 'base', 'buttons.' + ctl) if ctl in buttons else \
-            {'press': NONE, 'hold': None, 'turbo': False, 'threshold': 0.5}
-    sticks = _obj(obj.get('sticks', {}), 'sticks', set(STICKS))
-    for s in STICKS:
-        out['sticks'][s] = _stick(sticks[s], 'sticks.' + s) if s in sticks else {'mode': 'none'}
-    shift = _obj(obj.get('shift', {}), 'shift', {'buttons', 'sticks'})
-    for ctl, v in _obj(shift.get('buttons', {}), 'shift.buttons', set(BUTTONS)).items():
-        out['shift']['buttons'][ctl] = _button(ctl, v, 'shift', 'shift.buttons.' + ctl)
-    for s, v in _obj(shift.get('sticks', {}), 'shift.sticks', set(STICKS)).items():
-        out['shift']['sticks'][s] = _stick(v, 'shift.sticks.' + s)
-    g = _obj(obj.get('gyro', {}), 'gyro', {'sensitivity', 'deadzone', 'invert_x', 'invert_y', 'start_on'})
-    out['gyro'] = {'sensitivity': _num(g.get('sensitivity', 1.0), 'gyro_sensitivity', 'gyro.sensitivity'),
-                   'deadzone': _num(g.get('deadzone', 1.0), 'gyro_deadzone', 'gyro.deadzone'),
-                   'invert_x': _bool(g.get('invert_x', False), 'gyro.invert_x'),
-                   'invert_y': _bool(g.get('invert_y', False), 'gyro.invert_y'),
-                   'start_on': _bool(g.get('start_on', False), 'gyro.start_on')}
+    # Ids first, so actions can name layers and sets anywhere.
+    layers_in = _list(obj.get('layers', []), 'layers', 'layers')
+    sets_in = _list(obj.get('sets', []), 'sets', 'sets')
+    ids = {'layers': set(), 'sets': set()}
+    for kind, items in (('layers', layers_in), ('sets', sets_in)):
+        for i, it in enumerate(items):
+            if not isinstance(it, dict) or not isinstance(it.get('id'), str) or not ID_RE.match(it['id']) or it['id'] == 'default':
+                raise LayoutError('%s.%d.id: lower-case letters, digits and _ (not "default")' % (kind, i))
+            if it['id'] in ids[kind]:
+                raise LayoutError('%s.%d.id: %r twice' % (kind, i, it['id']))
+            ids[kind].add(it['id'])
+    out = {'version': 2, 'name': name, 'base': base}
+    out.update(_controls(obj, '', 'button', ids, True))
+    out['gyro'] = _gyro(obj.get('gyro', {}), 'gyro')
+    out['sets'], out['set_order'] = {}, []
+    for i, it in enumerate(sets_in):
+        p = 'sets.%d' % i
+        _obj(it, p, {'id', 'name', 'buttons', 'sticks', 'gyro'})
+        st = _controls(it, p, 'button', ids, True)
+        st['name'] = _name(it.get('name'), p + '.name', it['id'])
+        st['gyro'] = _gyro(it['gyro'], p + '.gyro') if 'gyro' in it else None
+        out['sets'][it['id']] = st
+        out['set_order'].append(it['id'])
+    out['layers'], out['layer_order'] = {}, []
+    for i, it in enumerate(layers_in):
+        p = 'layers.%d' % i
+        _obj(it, p, {'id', 'name', 'buttons', 'sticks'})
+        ly = _controls(it, p, 'layer_button', ids, False)
+        ly['name'] = _name(it.get('name'), p + '.name', it['id'])
+        out['layers'][it['id']] = ly
+        out['layer_order'].append(it['id'])
     radial = obj.get('radial', [])
     if not isinstance(radial, list) or len(radial) > LIM['radial_items']:
         raise LayoutError('radial: up to %d actions' % LIM['radial_items'])
-    out['radial'] = [parse_action(a, 'radial', 'radial.%d' % i) for i, a in enumerate(radial)]
+    out['radial'] = [parse_action(a, 'radial', 'radial.%d' % i, ids) for i, a in enumerate(radial)]
     out['hold_ms'] = _num(obj.get('hold_ms', 300), 'hold_ms', 'hold_ms', integer=True)
+    out['double_ms'] = _num(obj.get('double_ms', 250), 'double_ms', 'double_ms', integer=True)
     out['turbo_hz'] = _num(obj.get('turbo_hz', 10), 'turbo_hz', 'turbo_hz')
     return out
 
@@ -311,9 +558,58 @@ def validate_prefs(p):
             'gyro': _bool(p.get('gyro', False), 'prefs.gyro')}
 
 
+def all_groups(layout):
+    """Every set and layer (their buttons and sticks), the default set first."""
+    return [layout] + [layout['sets'][s] for s in layout['set_order']] + [layout['layers'][l] for l in layout['layer_order']]
+
+
 def uses_gyro(layout):
-    every = list(layout['buttons'].values()) + list(layout['shift']['buttons'].values())
-    return any(b['press'].kind == 'gyro' for b in every)
+    for g in all_groups(layout):
+        if any(b['press'].kind == 'gyro' for b in g['buttons'].values()):
+            return True
+    gyros = [layout['gyro']] + [layout['sets'][s]['gyro'] for s in layout['set_order'] if layout['sets'][s]['gyro']]
+    return any(g['when'] in ('always', 'stick') for g in gyros)
+
+
+def dump_layout(lay):
+    """The normalized layout back as version 2 JSON (actions as their strings)."""
+    def b(ctl, x):
+        o = {}
+        if x['press'] is not NONE or not any(x[k] for k in ('hold', 'double', 'release', 'chords')):
+            o['press'] = x['press'].raw
+        for k in ('hold', 'double', 'release'):
+            if x[k] is not None:
+                o[k] = x[k].raw
+        if x['chords']:
+            o['chords'] = [dict({'with': w, 'do': a.raw}, **({'turbo': True} if t else {})) for w, a, t in x['chords']]
+        for k in ('turbo', 'hold_turbo', 'double_turbo', 'toggle'):
+            if x[k]:
+                o[k] = True
+        if ctl in TRIGGERS:
+            o['threshold'] = x['threshold']
+        return o['press'] if list(o) == ['press'] else o
+
+    def s(x):
+        return {k: (v.raw if isinstance(v, Action) else v) for k, v in x.items()}
+
+    def controls(g):
+        return {'buttons': {k: b(k, v) for k, v in g['buttons'].items()}, 'sticks': {k: s(v) for k, v in g['sticks'].items()}}
+    out = {'version': 2, 'name': lay['name'], 'base': lay['base']}
+    out.update(controls(lay))
+    out['gyro'] = dict(lay['gyro'])
+    if lay['set_order']:
+        out['sets'] = []
+        for sid in lay['set_order']:
+            st = lay['sets'][sid]
+            d = dict({'id': sid, 'name': st['name']}, **controls(st))
+            if st['gyro']:
+                d['gyro'] = dict(st['gyro'])
+            out['sets'].append(d)
+    if lay['layer_order']:
+        out['layers'] = [dict({'id': lid, 'name': lay['layers'][lid]['name']}, **controls(lay['layers'][lid])) for lid in lay['layer_order']]
+    out.update({'radial': [x.raw for x in lay['radial']], 'hold_ms': lay['hold_ms'], 'double_ms': lay['double_ms'],
+                'turbo_hz': lay['turbo_hz']})
+    return out
 
 
 # ---------------------------------------------------------------------- the mapping engine (no devices)
@@ -327,14 +623,18 @@ def stick_curve(mag, deadzone, outer, exponent):
     return t ** exponent
 
 
-def stick_directions(x, y, threshold, held=()):
-    """A stick as up to two of up/down/left/right (8 equal sectors), once it's pushed past the threshold. A
-    direction already held lets go only below threshold x STICK_HYST (no flicker at the edge)."""
+def stick_directions(x, y, threshold, held=(), four=False):
+    """A stick as up to two of up/down/left/right (8 equal sectors; four: only the strongest, like a d-pad), once
+    it's pushed past the threshold. A direction already held lets go only below threshold x STICK_HYST."""
     mag = math.hypot(x, y)
     limit = threshold * STICK_HYST if held else threshold
     if mag < limit or mag == 0:
         return set()
     nx, ny = x / mag, y / mag
+    if four:
+        if abs(nx) >= abs(ny):
+            return {'right' if nx > 0 else 'left'}
+        return {'down' if ny > 0 else 'up'}
     out = set()
     if nx > DIAG:
         out.add('right')
@@ -353,7 +653,15 @@ def radial_index(x, y, n):
     return int(round(ang / (2 * math.pi / n))) % n
 
 
+def wrap_angle(a):
+    """An angle difference into -pi..pi."""
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+
 DPAD_VECTORS = {'up': (0, -1), 'right': (1, 0), 'down': (0, 1), 'left': (-1, 0)}
+FLICK_TIME = 0.1        # s a flick takes to turn
+WHEEL_NOTCHES = 12      # wheel notches for one turn of the stick, sensitivity 1
+GYRO_STICK = 0.12       # the right stick past this counts as touched (gyro "stick")
 
 
 class Engine:
@@ -367,12 +675,18 @@ class Engine:
         self.refs = {}          # output code → sources holding it
         self.src_codes = {}     # source → codes it holds, in press order
         self.held = {}          # button → what its press started
+        self.down = set()       # buttons physically down now (chords look here)
         self.ignored = set()    # buttons already down when the layout started: ignored until let go
         self.pulses = []        # (release time, source)
         self.scroll_next = {}   # source → (next repeat time, action)
-        self.shift_by = set()
+        self.pending = {}       # button → (time, binding): a short press waiting to see if a second one comes
+        self.latched = set()    # buttons whose toggle holds their keys
+        self.set_id = 'default'
+        self.layers_held = {}   # button → layer id it holds (mode shift)
+        self.layers_on = []     # layers toggled on, in order
         self.gyro_on = self.L['gyro']['start_on'] or self.prefs['gyro']
         self.gyro_hold = set()
+        self.gyro_block = set()   # gyro:ratchet buttons held
         self.radial = None      # {'by': button, 'sel': -1}
         # The right stick after the radial menu closes: it does nothing until it's back in the middle, so letting go
         # of the button with the stick still pushed (how a radial menu is used) doesn't then move the pointer.
@@ -380,6 +694,8 @@ class Engine:
         self.axes = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0, 'lt': 0.0, 'rt': 0.0}
         self.trig = {'lt': False, 'rt': False}
         self.stick_held = {}    # (stick, dir) → action
+        self.flick = {}         # stick → {'on', 'last', 'left', 'time'}
+        self.wheel_last = {}    # stick → last angle
         self.rate = (0.0, 0.0, 0.0)
         self.acc = [0.0, 0.0, 0.0, 0.0]
 
@@ -417,27 +733,74 @@ class Engine:
         self.scroll_next.pop(src, None)
         self.pulses.append((now + PULSE, src))
 
-    # ------------------------------------------------------------------ layers
+    def hold(self, src, act, turbo, now):
+        """Press and keep it down (repeating with turbo) until _up(src) / the button lets go."""
+        self.press(src, act, now)
+        if turbo:
+            return {'turbo': act, 'on': True, 'next': now + self._turbo_half()}
+        return {}
+
+    # ------------------------------------------------------------------ sets and layers
+    @property
+    def group(self):
+        return self.L if self.set_id == 'default' else self.L['sets'][self.set_id]
+
+    def active_layers(self):
+        """Layers in force, the one that came last on top."""
+        out = list(self.layers_on)
+        for lid in self.layers_held.values():
+            if lid in out:
+                out.remove(lid)
+            out.append(lid)
+        return out
+
     @property
     def shifted(self):
-        return bool(self.shift_by)
+        return bool(self.layers_held) or bool(self.layers_on)
 
     def binding(self, ctl):
-        if self.shifted and ctl in self.L['shift']['buttons']:
-            return self.L['shift']['buttons'][ctl]
-        return self.L['buttons'][ctl]
+        for lid in reversed(self.active_layers()):
+            b = self.L['layers'][lid]['buttons'].get(ctl)
+            if b is not None:
+                return b
+        return self.group['buttons'][ctl]
 
     def stick_binding(self, s):
-        if self.shifted and s in self.L['shift']['sticks']:
-            return self.L['shift']['sticks'][s]
-        return self.L['sticks'][s]
+        for lid in reversed(self.active_layers()):
+            st = self.L['layers'][lid]['sticks'].get(s)
+            if st is not None:
+                return st
+        return self.group['sticks'][s]
+
+    def gyro_cfg(self):
+        g = self.group.get('gyro') if self.set_id != 'default' else None
+        return g or self.L['gyro']
 
     @property
     def gyro_active(self):
+        if self.gyro_block:
+            return False
+        when = self.gyro_cfg()['when']
+        if when == 'always':
+            return True
+        if when == 'stick':
+            return math.hypot(self.axes['rx'], self.axes['ry']) > GYRO_STICK
         return self.gyro_on or bool(self.gyro_hold)
+
+    def _switch_set(self, sid):
+        if sid == self.set_id:
+            return
+        self.set_id = sid
+        self.layers_on = []
+        name = 'Default' if sid == 'default' else self.L['sets'][sid]['name']
+        self.out.osd('Action set: ' + name)
 
     # ------------------------------------------------------------------ input
     def button(self, name, down, now):
+        if down:
+            self.down.add(name)
+        else:
+            self.down.discard(name)
         if down:
             if name in self.ignored or name in self.held:
                 return
@@ -447,15 +810,27 @@ class Engine:
                 return
             b = self.binding(name)
             act = b['press']
-            if act.kind == 'shift':
-                self.shift_by.add(name)
-                self.held[name] = {'kind': 'shift'}
+            if act.kind == 'layer':
+                self.layers_held[name] = act.arg
+                self.held[name] = {'kind': 'layer'}
+            elif act.kind == 'layer_toggle':
+                if act.arg in self.layers_on:
+                    self.layers_on.remove(act.arg)
+                else:
+                    self.layers_on.append(act.arg)
+                self.out.osd('%s %s' % (self.L['layers'][act.arg]['name'], 'on' if act.arg in self.layers_on else 'off'))
+                self.held[name] = {'kind': 'none'}
+            elif act.kind == 'set':
+                self._switch_set(act.arg)
+                self.held[name] = {'kind': 'none'}
             elif act.kind == 'gyro':
                 if act.arg == 'toggle':
                     self.gyro_on = not self.gyro_on
                     self.out.osd('Gyro aiming ' + ('on' if self.gyro_active else 'off'))
-                else:
+                elif act.arg == 'hold':
                     self.gyro_hold.add(name)
+                else:
+                    self.gyro_block.add(name)
                 self.held[name] = {'kind': 'gyro'}
             elif act.kind == 'radial':
                 self.held[name] = {'kind': 'radial'}
@@ -463,14 +838,8 @@ class Engine:
                     self.radial = {'by': name, 'sel': -1}
                     self._release_stick('rs')
                     self.out.osd('Radial menu: ' + ' · '.join(a.label for a in self.L['radial']))
-            elif b['hold'] is not None:
-                self.held[name] = {'kind': 'holdtap', 't': now, 'b': b, 'phase': 'wait'}
-            elif b['turbo']:
-                self.press(name, act, now)
-                self.held[name] = {'kind': 'turbo', 'act': act, 'on': True, 'next': now + self._turbo_half()}
             else:
-                self.press(name, act, now)
-                self.held[name] = {'kind': 'plain'}
+                self._press_binding(name, b, now)
             return
         if name in self.ignored:
             self.ignored.discard(name)
@@ -479,10 +848,11 @@ class Engine:
         if not h:
             return
         k = h['kind']
-        if k == 'shift':
-            self.shift_by.discard(name)
+        if k == 'layer':
+            self.layers_held.pop(name, None)
         elif k == 'gyro':
             self.gyro_hold.discard(name)
+            self.gyro_block.discard(name)
         elif k == 'radial':
             r = self.radial
             if r and r['by'] == name:
@@ -492,13 +862,46 @@ class Engine:
                     act = self.L['radial'][r['sel']]
                     self.tap('radial', act, now)
                     self.out.osd(act.label)
-        elif k == 'holdtap':
-            if h['phase'] == 'wait':
-                self.tap(name + '#tap', h['b']['press'], now)
+        elif k == 'act':
+            self._release_binding(name, h, now)
+
+    def _press_binding(self, name, b, now):
+        """A press of a button that sends keys, clicks or scrolling: its chord, double, long or plain press."""
+        for w, act, turbo in b['chords']:
+            if w in self.down:
+                self.held[name] = dict(self.hold(name + '#chord', act, turbo, now), kind='act', phase='chord', b=b, src=name + '#chord')
+                return
+        pend = self.pending.pop(name, None)
+        if b['double'] is not None and pend and now - pend[0] <= self.L['double_ms'] / 1000.0:
+            self.held[name] = dict(self.hold(name + '#double', b['double'], b['double_turbo'], now), kind='act', phase='double', b=b, src=name + '#double')
+            return
+        if pend:      # a waiting single press from before: it was a single press after all
+            self.tap(name + '#tap', pend[1]['press'], now)
+        if b['toggle']:
+            if name in self.latched:
+                self.latched.discard(name)
+                self._up(name + '#latch')
             else:
-                self._up(name + '#hold')
-        elif k in ('turbo', 'plain'):
-            self._up(name)
+                self.latched.add(name)
+                self.press(name + '#latch', b['press'], now)
+            self.held[name] = {'kind': 'act', 'phase': 'none', 'b': b}
+            return
+        if b['hold'] is not None or b['double'] is not None:
+            self.held[name] = {'kind': 'act', 'phase': 'wait', 't': now, 'b': b}
+            return
+        self.held[name] = dict(self.hold(name, b['press'], b['turbo'], now), kind='act', phase='press', b=b, src=name)
+
+    def _release_binding(self, name, h, now):
+        b, phase = h['b'], h['phase']
+        if phase == 'wait':
+            if b['double'] is not None:
+                self.pending[name] = (now, b)      # tick taps it if no second press comes in time
+            else:
+                self.tap(name + '#tap', b['press'], now)
+        elif phase in ('press', 'long', 'double', 'chord'):
+            self._up(h['src'])
+        if b['release'] is not None and phase in ('press', 'wait'):
+            self.tap(name + '#release', b['release'], now)
 
     def _turbo_half(self):
         return 0.5 / self.L['turbo_hz']
@@ -533,17 +936,24 @@ class Engine:
         for t, src in [p for p in self.pulses if p[0] <= now]:
             self.pulses.remove((t, src))
             self._up(src)
+        for name, (t, b) in list(self.pending.items()):
+            if now - t > self.L['double_ms'] / 1000.0:
+                del self.pending[name]
+                self.tap(name + '#tap', b['press'], now)
         for name, h in list(self.held.items()):
-            if h['kind'] == 'holdtap' and h['phase'] == 'wait' and now - h['t'] >= self.L['hold_ms'] / 1000.0:
-                h['phase'] = 'held'
-                self.press(name + '#hold', h['b']['hold'], now)
-            elif h['kind'] == 'turbo' and now >= h['next']:
+            if h.get('phase') == 'wait':
+                b, waited = h['b'], now - h['t']
+                if b['hold'] is not None and waited >= self.L['hold_ms'] / 1000.0:
+                    h.update(self.hold(name + '#hold', b['hold'], b['hold_turbo'], now), phase='long', src=name + '#hold')
+                elif b['hold'] is None and waited > self.L['double_ms'] / 1000.0:
+                    h.update(self.hold(name, b['press'], b['turbo'], now), phase='press', src=name)
+            elif 'turbo' in h and now >= h['next']:
                 h['on'] = not h['on']
                 h['next'] = now + self._turbo_half()
                 if h['on']:
-                    self.press(name, h['act'], now)
+                    self.press(h['src'], h['turbo'], now)
                 else:
-                    self._up(name)
+                    self._up(h['src'])
         for src, (t, act) in list(self.scroll_next.items()):
             if now >= t:
                 self._wheel(*act.arg)
@@ -561,11 +971,16 @@ class Engine:
                 self.rs_wait_center = False
             b = self.stick_binding(s)
             mode = b['mode']
-            if mode != 'keys':
+            if mode not in ('keys', 'dpad'):
                 self._release_stick(s)
-            if mode == 'keys':
+            if mode != 'flick':
+                self.flick.pop(s, None)
+            if mode != 'wheel':
+                self.wheel_last.pop(s, None)
+            mag = math.hypot(x, y)
+            if mode in ('keys', 'dpad'):
                 held_dirs = {d for (st, d) in self.stick_held if st == s}
-                want = stick_directions(x, y, b['threshold'], held_dirs)
+                want = stick_directions(x, y, b['threshold'], held_dirs, four=mode == 'dpad')
                 for d in DPAD:
                     act = b[d] if d in want else None
                     cur = self.stick_held.get((s, d))
@@ -577,28 +992,39 @@ class Engine:
                         self.stick_held[(s, d)] = act
                         self.press('%s:%s' % (s, d), act, now)
             elif mode == 'mouse':
-                mag = math.hypot(x, y)
                 f = stick_curve(mag, b['deadzone'], b['outer'], b['curve'])
                 if f > 0:
                     speed = MOUSE_SPEED * b['sensitivity'] * sens * f * dt
-                    self.acc[0] += x / mag * speed
+                    self.acc[0] += x / mag * speed * (-1 if b['invert_x'] else 1)
                     self.acc[1] += (y / mag) * speed * (-1 if b['invert_y'] else 1)
             elif mode == 'scroll':
-                mag = math.hypot(x, y)
                 f = stick_curve(mag, b['deadzone'], 1.0, 1.5)
                 if f > 0:
                     rate = SCROLL_SPEED * 120 * b['sensitivity'] * f * dt
                     self.acc[2] += -y / mag * rate
                     self.acc[3] += x / mag * rate
+            elif mode == 'wheel':
+                # Turned round like a wheel: clockwise scrolls down, a full turn WHEEL_NOTCHES notches.
+                if mag >= b['threshold']:
+                    ang = math.atan2(x, -y)
+                    last = self.wheel_last.get(s)
+                    if last is not None:
+                        self.acc[2] += -wrap_angle(ang - last) / (2 * math.pi) * WHEEL_NOTCHES * 120 * b['sensitivity']
+                    self.wheel_last[s] = ang
+                elif mag < b['threshold'] * STICK_HYST:
+                    self.wheel_last.pop(s, None)
+            elif mode == 'flick':
+                self._flick(s, x, y, mag, b, dt)
 
+        cfg = self.gyro_cfg()
         if self.gyro_active:
-            g = self.L['gyro']
-            dz = g['deadzone']
+            dz = cfg['deadzone']
             soft = lambda r: math.copysign(max(0.0, abs(r) - dz), r)
-            gx, gy, _ = self.rate
-            k = GYRO_SCALE * g['sensitivity'] * sens * dt
-            self.acc[0] += -soft(gy) * k * (-1 if g['invert_x'] else 1)
-            self.acc[1] += -soft(gx) * k * (-1 if g['invert_y'] else 1)
+            gx, gy, gz = self.rate
+            k = GYRO_SCALE * cfg['sensitivity'] * sens * dt
+            turn = gz if cfg['axis'] == 'roll' else gy
+            self.acc[0] += -soft(turn) * k * (-1 if cfg['invert_x'] else 1)
+            self.acc[1] += -soft(gx) * k * (-1 if cfg['invert_y'] else 1)
 
         dx, dy = int(self.acc[0]), int(self.acc[1])
         self.acc[0] -= dx
@@ -611,6 +1037,28 @@ class Engine:
         if v or h:
             self._wheel(v, h)
 
+    def _flick(self, s, x, y, mag, b, dt):
+        """Flick stick: pushing the stick out turns the camera at once to where it points (a full turn is `turn`
+        pixels of mouse movement, the game's own 360°); turning it round while out keeps turning with it."""
+        f = self.flick.setdefault(s, {'on': False, 'last': 0.0, 'left': 0.0, 'time': 0.0})
+        turn = b['turn']
+        if mag >= b['threshold']:
+            ang = math.atan2(x, -y)
+            if not f['on']:
+                f.update(on=True, last=ang, left=f['left'] + ang / (2 * math.pi) * turn, time=FLICK_TIME)
+            else:
+                self.acc[0] += wrap_angle(ang - f['last']) / (2 * math.pi) * turn
+                f['last'] = ang
+        elif mag < b['threshold'] * STICK_HYST:
+            f['on'] = False
+        if f['left']:
+            part = f['left'] if f['time'] <= dt else f['left'] * dt / f['time']
+            f['time'] = max(0.0, f['time'] - dt)
+            f['left'] -= part
+            if abs(f['left']) < 1e-6:
+                f['left'] = 0.0
+            self.acc[0] += part
+
     # ------------------------------------------------------------------ starting and stopping
     def release_all(self):
         """Every key and button up, nothing half-done (no tap fires)."""
@@ -620,8 +1068,13 @@ class Engine:
         self.pulses.clear()
         self.scroll_next.clear()
         self.stick_held.clear()
-        self.shift_by.clear()
+        self.pending.clear()
+        self.latched.clear()
+        self.layers_held.clear()
         self.gyro_hold.clear()
+        self.gyro_block.clear()
+        self.flick.clear()
+        self.wheel_last.clear()
         self.radial = None
         self.trig = {'lt': False, 'rt': False}
         self.acc = [0.0, 0.0, 0.0, 0.0]
@@ -630,6 +1083,7 @@ class Engine:
         """The layout takes over: buttons already down (the A that started the game) do nothing until let go."""
         self.release_all()
         self.ignored = set(held_buttons)
+        self.down = set(held_buttons)
         for t in TRIGGERS:
             if triggers and triggers.get(t, 0.0) >= 0.5:
                 self.ignored.add(t)
@@ -640,6 +1094,10 @@ class Engine:
         self.prefs = prefs
         if prefs['gyro'] != was['gyro']:
             self.gyro_on = prefs['gyro']
+
+    def describe(self):
+        """What's in force, for the preview: the set, the layers, gyro."""
+        return {'set': self.set_id, 'layers': self.active_layers(), 'gyro': self.gyro_active}
 
 
 # ---------------------------------------------------------------------- when the controller is taken
@@ -864,7 +1322,8 @@ class Output:
             rel += [e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES]
         self.ptr = evdev.UInput({e.EV_KEY: [getattr(e, c) for c in MOUSE_CODES.values()], e.EV_REL: rel},
                                 name='Hearth Input mouse')
-        self.kbd = evdev.UInput({e.EV_KEY: [getattr(e, c) for c in ALL_KEY_CODES if hasattr(e, c)]},
+        codes = sorted(set(ALL_KEY_CODES) | keymap_codes())
+        self.kbd = evdev.UInput({e.EV_KEY: sorted({getattr(e, c) for c in codes if hasattr(e, c)})},
                                 name='Hearth Input keyboard')
         self.wheel_acc = [0, 0]
         self.osd_cb = None
@@ -1005,6 +1464,8 @@ class Daemon:
         self.last = time.monotonic()
         self.error = None
         self.out_retry = 0.0
+        self.guide_wait = None   # when Guide went down over a layout: X before GUIDE_CHORD is the keyboard chord
+        self.typing = []         # (time, what) still to do for the on-screen keyboard: (code, down) or ('xdo', text, display)
 
     # ------------------------------------------------------------------ devices
     def scan(self):
@@ -1111,18 +1572,8 @@ class Daemon:
             self.gyro_device()
             log('layout off')
             return
-        if self.out is None:
-            if now < self.out_retry:
-                return
-            try:
-                self.out = Output(self.evdev)
-            except Exception as err:     # no uinput (permissions changed, module unloaded): stay out of the way
-                self.error = 'Can\'t make the virtual keyboard and mouse (%s)' % err
-                self.out_retry = now + 10
-                log(self.error)
-                return
-            self.error = None
-            self.out.osd_cb = lambda text: self.broadcast({'t': 'osd', 'text': text})
+        if not self.ensure_out(now):
+            return
         for p in self.pads.values():
             p.grab(True)
         self.running = want
@@ -1137,6 +1588,101 @@ class Daemon:
                 trig[t] = max(trig[t], p.trigger(t))
         self.engine.start(held, trig)
         log('layout on: %s' % want['name'])
+
+    def ensure_out(self, now):
+        """The virtual keyboard and mouse, made the first time they're needed. False if they can't be."""
+        if self.out is not None:
+            return True
+        if now < self.out_retry:
+            return False
+        try:
+            self.out = Output(self.evdev)
+        except Exception as err:     # no uinput (permissions changed, module unloaded): stay out of the way
+            self.error = 'Can\'t make the virtual keyboard and mouse (%s)' % err
+            self.out_retry = now + 10
+            log(self.error)
+            return False
+        self.error = None
+        self.out.osd_cb = lambda text: self.broadcast({'t': 'osd', 'text': text})
+        return True
+
+    def on_osk(self, now):
+        """Guide + X over a layout: the controller goes to Hearth, which opens its on-screen keyboard over the game."""
+        log('Guide + X: controller back to Hearth for the on-screen keyboard')
+        self.policy.guide(now)
+        self.apply(now)
+        self.broadcast({'t': 'osk'})
+
+    # ------------------------------------------------------------------ typing for the on-screen keyboard
+    def queue_keys(self, keys, now):
+        """One character or key: modifiers and the key down, then up again a moment later, after what's queued."""
+        t = max(now, self.typing[-1][0] + TYPE_GAP) if self.typing else now
+        for k in keys:
+            self.typing.append((t, (k, True)))
+        for k in reversed(keys):
+            self.typing.append((t + TYPE_HOLD, (k, False)))
+
+    def type_text(self, m, now):
+        text = m.get('text')
+        if not isinstance(text, str) or not text or len(text) > TYPE_MAX:
+            return {'ok': False, 'error': 'text: 1 to %d characters' % TYPE_MAX}
+        mods = m.get('mods') or []
+        if not isinstance(mods, list) or any(x not in ('ctrl', 'alt') for x in mods):
+            return {'ok': False, 'error': 'mods: ctrl, alt'}
+        layout = m.get('layout') if isinstance(m.get('layout'), str) else os.environ.get('XKB_DEFAULT_LAYOUT', 'us')
+        display = m.get('display') if isinstance(m.get('display'), str) and DISPLAY_RE.match(m.get('display')) else None
+        xdotool = shutil.which('xdotool') if display else None
+        if not self.ensure_out(now):
+            return {'ok': False, 'error': self.error or 'no virtual keyboard'}
+        skipped, other = '', ''
+        for ch in text:
+            keys = char_keys(ch, layout)
+            if keys is not None:
+                if other:
+                    self.typing.append((self.typing[-1][0] + TYPE_GAP if self.typing else now, ('xdo', other, display)))
+                    other = ''
+                self.queue_keys([TYPE_MODS[x] for x in mods] + keys, now)
+            elif xdotool and not mods:
+                other += ch          # typed through the X server (xdotool remaps a spare key for it)
+            else:
+                skipped += ch
+        if other:
+            self.typing.append((self.typing[-1][0] + TYPE_GAP if self.typing else now, ('xdo', other, display)))
+        return {'ok': True, 'layout': keymap_layout(layout)[0], 'skipped': skipped}
+
+    def type_key(self, m, now):
+        name = m.get('key')
+        mods = m.get('mods') or []
+        if name == 'paste':
+            name, mods = 'v', ['ctrl']
+        code = TYPE_SPECIAL.get(name) or ('KEY_' + name.upper() if isinstance(name, str) and len(name) == 1 and name.isalnum() and name.isascii() else None)
+        if code is None:
+            return {'ok': False, 'error': 'unknown key'}
+        if not isinstance(mods, list) or any(x not in TYPE_MODS for x in mods):
+            return {'ok': False, 'error': 'mods: ctrl, alt, shift'}
+        n = m.get('n', 1)
+        n = max(1, min(200, n)) if isinstance(n, int) and not isinstance(n, bool) else 1
+        if not self.ensure_out(now):
+            return {'ok': False, 'error': self.error or 'no virtual keyboard'}
+        for _ in range(n):
+            self.queue_keys([TYPE_MODS[x] for x in mods] + [code], now)
+        return {'ok': True}
+
+    def type_tick(self, now):
+        while self.typing and self.typing[0][0] <= now:
+            _, what = self.typing.pop(0)
+            if what[0] == 'xdo':
+                try:
+                    subprocess.run(['xdotool', 'type', '--delay', '12', '--', what[1]], timeout=10, check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   env={'DISPLAY': what[2], 'PATH': os.environ.get('PATH', '/usr/bin:/bin')})
+                except (OSError, subprocess.SubprocessError) as err:
+                    log('typing through xdotool: %s' % err)
+                now = time.monotonic()
+                # What's queued after it waits until it's done.
+                self.typing = [(max(t, now), w) for t, w in self.typing]
+            elif self.out is not None:
+                self.out.key(what[0], what[1])
 
     def on_guide(self, now):
         log('Guide pressed: controller back to Hearth')
@@ -1239,6 +1785,10 @@ class Daemon:
             return {'ok': True, 'seconds': round(self.policy.test[1] - now) if self.policy.test else 0}
         if cmd == 'status':
             return self.status(now)
+        if cmd == 'type':
+            return self.type_text(m, now)
+        if cmd == 'key':
+            return self.type_key(m, now)
         return {'ok': False, 'error': 'unknown command'}
 
     def status(self, now):
@@ -1276,11 +1826,11 @@ class Daemon:
                 fds[c.sock.fileno()] = ('client', None, c)
             fds[self.listener.fileno()] = ('listen', None, None)
             try:
-                ready, _, _ = select.select(list(fds), [], [], 0.008 if self.engine else 0.1)
+                ready, _, _ = select.select(list(fds), [], [], 0.008 if self.engine or self.typing else 0.1)
             except (OSError, ValueError):
                 ready = []
             now = time.monotonic()
-            guide = False
+            guide = chord = False
             for fd in ready:
                 kind, path, obj = fds[fd]
                 if kind == 'listen':
@@ -1299,19 +1849,51 @@ class Daemon:
                     try:
                         for ev in obj.dev.read():
                             obj.handle(ev)
-                            if ev.type == e.EV_KEY and obj.bmap.get(ev.code) == 'guide' and ev.value == 1 and obj.grabbed:
-                                guide = True
+                            if ev.type == e.EV_KEY and ev.value == 1 and obj.grabbed:
+                                name = obj.bmap.get(ev.code)
+                                if name == 'guide':
+                                    guide = True
+                                elif name == 'x' and (guide or self.guide_wait is not None):
+                                    chord = True
                     except (BlockingIOError, InterruptedError):
                         pass
                     except OSError:
                         self._drop(path)
-            if guide and self.engine is not None:
-                self.on_guide(now)
+            self.guide_step(now, guide, chord)
+            self.type_tick(now)
             self.feed(now, motion)
+
+    def guide_step(self, now, guide, chord):
+        """Guide over a layout: everything is let go and the controller stays held while Guide is, so X can still
+        come: Guide + X is the on-screen keyboard (Hearth gets {"t": "osk"}), and the game sees neither. Guide alone
+        (let go, or held GUIDE_CHORD) is Guide as always (Quick Access)."""
+        if self.engine is None:
+            self.guide_wait = None
+            return
+        if guide and self.guide_wait is None:
+            self.guide_wait = now
+            self.engine.release_all()
+        if self.guide_wait is None:
+            return
+        if chord:
+            self.guide_wait = None
+            self.on_osk(now)
+            return
+        held = any(p.btn.get('guide') for p in self.pads.values() if p.grabbed and not p.busy)
+        if not held or now - self.guide_wait >= GUIDE_CHORD:
+            self.guide_wait = None
+            self.on_guide(now)
 
     def feed(self, now, motion):
         """This moment's controller state into the running layout."""
         live = [p for p in self.pads.values() if p.grabbed and not p.busy]
+        if self.engine is not None and self.guide_wait is not None:
+            # Guide is held: the layout does nothing (it was let go), the buttons are only kept track of.
+            self.pressed = set()
+            for p in live:
+                self.pressed |= {b for b, v in p.btn.items() if v and b != 'guide'}
+            self.last = now
+            return
         if self.engine is None:
             self.pressed = set()
             self.last = now
@@ -1402,32 +1984,6 @@ def main(argv):
         return 0
     print(__doc__.split('\n\n')[1])
     return 1
-
-
-def dump_layout(lay):
-    """The normalized layout back as JSON (actions as their strings)."""
-    def a(x):
-        return x.raw if isinstance(x, Action) else x
-
-    def b(ctl, x):
-        o = {'press': a(x['press'])}
-        if x['hold'] is not None:
-            o['hold'] = a(x['hold'])
-        if x['turbo']:
-            o['turbo'] = True
-        if ctl in TRIGGERS:
-            o['threshold'] = x['threshold']
-        return o
-
-    def s(x):
-        return {k: a(v) for k, v in x.items()}
-    return {'version': 1, 'name': lay['name'], 'base': lay['base'],
-            'buttons': {k: b(k, v) for k, v in lay['buttons'].items()},
-            'sticks': {k: s(v) for k, v in lay['sticks'].items()},
-            'shift': {'buttons': {k: b(k, v) for k, v in lay['shift']['buttons'].items()},
-                      'sticks': {k: s(v) for k, v in lay['shift']['sticks'].items()}},
-            'gyro': lay['gyro'], 'radial': [a(x) for x in lay['radial']],
-            'hold_ms': lay['hold_ms'], 'turbo_hz': lay['turbo_hz']}
 
 
 if __name__ == '__main__':
