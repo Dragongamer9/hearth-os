@@ -128,7 +128,9 @@
       const label = p.matches('section,[role=region],ul,ol') ? clean(p.getAttribute('aria-label')) : '';
       if (label) return label.slice(0, 60);
       const cands = [...p.querySelectorAll(`:scope > :is(${HEAD}), :scope > header :is(${HEAD}), :scope > :is(div,span):first-child > :is(${HEAD})`)]
-        .filter(h => !h.closest('a') && !h.contains(a) && !(card && card.contains(h)) && (h.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING));
+        .filter(h => !h.closest('a') && !h.contains(a) && !(card && card.contains(h)) && (h.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING)
+          // a heading inside another card (a box with a link or a picture) is that card's name, not the section's
+          && (h.parentElement === p || h.closest('header') || !h.parentElement.querySelector('a[href], img')));
       if (cands.length) { const t = headText(cands[cands.length - 1]); if (t) return t; }
       let s = p.previousElementSibling;
       for (let i = 0; s && i < 2; i++, s = s.previousElementSibling) {
