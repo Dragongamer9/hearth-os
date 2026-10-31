@@ -17,6 +17,15 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [ ] Hearth GNOME: later, themed the same way
 - [x] Fix: Steam games freezing when Quick Access opens over them (HHD editions): Handheld Daemon stopped Steam (SIGSTOP) while Quick Access held the controllers and the game froze with it, and Steam stayed stopped for good when HHD's overlay app died meanwhile; Hearth now lets Steam run again at once, holds Steam's virtual controllers instead so the game still gets no Quick Access presses, and lets Steam go after Quick Access closes and whenever HHD's overlay app goes away (needs testing on a device)
 
+**Input overhaul (Hearth Input; docs/HEARTH-INPUT.md, docs/OSK.md)**
+- [x] Fixes: Sony pads' X and Y swapped on the desktop and in Quick Access; a Bluetooth Xbox controller's Xbox button (KEY_HOMEPAGE) not seen, which also kept a layout's grab with no way to open Quick Access; xpad's d-pad buttons ignored on the desktop; triggers, L3 and R3 not reaching Quick Access (needs testing on a device)
+- [x] Guide + X opens Hearth's on-screen keyboard over any game or app in Game Mode (see-through, the game keeps its focus and gets none of the presses; types through Hearth Input's virtual keyboard for gamescope's layout, xdotool for the rest); B or Guide + X closes it; works whoever holds the controller (Hearth, Hearth Input, InputPlumber) (needs testing on a device)
+- [x] Guide + X in Hearth Classic (Mantel's keyboard) and Hearth Plasma (the same keyboard as a layer-shell window, typing through uinput) (needs testing on a device)
+- [x] Layouts version 2: action sets, layers (hold = mode shift, or toggle), long / double / release presses, chords, turbo and toggle; sticks as d-pad, scroll wheel and flick stick; gyro always, by button with a ratchet, or while touching the right stick, yaw or roll; version 1 files migrated; still only keys, buttons and the mouse (needs testing on a device)
+- [x] The editor with the controller, in Game Mode and in Quick Access over the running game, with an overview and Try it (needs testing on a device)
+- [x] A global layout for games without their own; layouts from your other devices over Hearth Link (pull only, checked again) (needs testing on a device)
+- [ ] Capacitive stick touch for "gyro while touching" (today: while the right stick is moved), and a desktop layout for Hearth Classic's own controller mapping
+
 **After that**
 - [x] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
 - [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)

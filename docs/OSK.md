@@ -146,12 +146,32 @@ is what Ember on Windows uses). Keys: `layouts` (`["auto"]` or layout ids), `sug
 `doubleSpace`, `fast` (`wheel` | `split` | `off`), `shape` (`full` | `split`), `size` (`s` | `m` | `l`), `position`
 (`bottom` | `top`), `theme`, `haptics` (`off` | `light` | `strong`), `trail`.
 
+## Guide + X: the keyboard anywhere
+
+Like Steam + X on a Steam Deck: **Guide + X** opens Hearth's on-screen keyboard wherever you are; **B** (or the hide
+key), or Guide + X again, closes it. Guide alone still does what it always did.
+
+| Where | How it opens | Where the typing goes |
+|---|---|---|
+| Over any game or app in Game Mode (native, Proton/Wine, emulators; with or without a Hearth Input layout) | The chord is caught by whoever holds the controller: Hearth's reader (`guide.rs`; Guide held is asked from the device itself, EVIOCGKEY, so it counts even if Hearth Input had the controller when Guide went down), Hearth Input (`{"t": "osk"}`: it keeps the controller while Guide is held, so the game sees neither press) or InputPlumber (everything after Guide). Hearth (`gamemode.rs osk_chord`) opens the overlay page as just the keyboard (`overlay.osk`): see-through, the game keeps its keyboard focus (gamescope `STEAM_INPUT_FOCUS` 2), and Hearth holds the controller for the keyboard the way it does for Quick Access (the game doesn't get the presses). Quick Access opened by that same Guide press becomes the keyboard. | `osk.type` / `osk.key` → Hearth Input's uinput keyboard: each character becomes the key presses for gamescope's keyboard layout (`hosts/linux/desktop/shell/osk-keymap.json`: us, gb, de, fr, es, it, pt, se, fi, dk, no; `XKB_DEFAULT_LAYOUT`), held 30 ms each so games that look once a frame see them. Characters the layout can't type go through `xdotool type` on gamescope's X display when xdotool is installed; otherwise the keyboard says which it couldn't type. |
+| Hearth Classic (Mantel) | hearth-pad: Guide opens the Hearth menu as before; X while Guide is held closes it again and asks for the keyboard (`osk {open}`) | `Keyboard.qml` as always (wtype, or hearth-pad's uinput keyboard) |
+| Hearth Plasma | `hearth-pad --osk`, started with `osk-plasma.qml` (Quickshell, `/usr/share/hearth-plasma/xdg/autostart/hearth-osk.desktop`): does nothing until Guide + X, then holds the controller for the keyboard (apps don't see the presses) | The same `Keyboard.qml` as a layer-shell window that never takes the keyboard focus, typing through hearth-pad's uinput keyboard (KWin has no wtype). Without quickshell, python3-evdev or /dev/uinput, Plasma simply runs without it. |
+| Hearth's own screen in Game Mode | its page gets `osk.chord` and opens the keyboard for the open search or text prompt | the field |
+
+The keyboard over a game uses the same engine (`ui/osk/hearth-osk.js`) with an adapter of its own (`ovoskAdapter` in
+`ui/index.html`): `insert` → `osk.type`, `deleteBack(n)` → `osk.key bksp n`, `key(name)` → `osk.key` (enter, tab,
+esc, arrows, home, end, paste). A strip above it shows what you've typed since the last Enter (the game's own text box
+can't be read). Over a game the controller reaches the page as Hearth's presses (`pad`), so A, B, X, Y, the bumpers,
+LT / RT, L3 / R3, View and ☰ all work as on the table above.
+
 ## Where it runs
 
 | Where | How |
 |---|---|
 | Game Mode search and text prompts (and so Wi-Fi passwords, sign-ins, renames, "Type into Linux") | `ui/index.html`: one engine (`GOSK`), drawn into the prompt's / search's box; `openPrompt({..., mode})` picks the kind of field |
 | Quick Access over a game | the same page (`?overlay=full`), see-through |
+| Over any game or app (Guide + X) | the overlay page as just the keyboard (`overlay.osk`, `overlayOsk`), typing into the game through Hearth Input (above) |
+| Hearth Plasma (Guide + X) | `osk-plasma.qml`: `Keyboard.qml` with `useWtype: false`, hearth-pad `--osk` (above) |
 | Mantel (Desktop Mode) | `Keyboard.qml` runs the engine, `OskBoard.qml` / `OskKey.qml` draw it; hearth-pad hands it the controller (`oskpad`, `oskaxes`); typing goes through `wtype` (any character, any system layout), or hearth-pad's uinput keyboard without wtype |
 | Hearth Files' window in Game Mode (the file picker) | `FileManager.qml` draws `OskBoard` inside its window; picker.qml's hearth-pad types |
 | Hearth Time, Maps, Contacts | `HearthOSK.open({target})` on their text fields (their own small keyboards stay only as a fallback) |
@@ -246,7 +266,11 @@ then counted every 10 s (`controller: the same error N more times`).
 - `hosts/linux/test/osk.test.js` (node --test): the engine on its own.
 - `hosts/linux/test/test_hearth_osk.py`: copies, plain-JavaScript rules, word lists, wiring, and no name in Game
   Mode's controller loop declared again in an inner block (0.6.5's `ax` broke the controller on the keyboard).
-- `hosts/linux/test/test_hearth_pad.py`: hearth-pad hands the keyboard its buttons and sticks, types without wtype.
+- `hosts/linux/test/test_hearth_pad.py`: hearth-pad hands the keyboard its buttons and sticks, types without wtype;
+  Guide + X in Hearth Classic and with `--osk` (Hearth Plasma: nothing else, the controller held while it's open).
+- `hosts/linux/test/test_hearth_input.py` and `tools/e2e-hearth-input.py`: Guide + X from Hearth Input, and typing
+  (characters to keys for us and de, Backspace) through its real uinput keyboard. `tools/ui-check.js`: the keyboard
+  over a game opens alone, its presses send `osk.type` / `osk.key`, B closes it.
 - `.github/workflows/desktop-test.yml`: Desktop Mode types into a real app (foot running `cat`) through the keyboard:
   taps, a picked suggestion, X / Y, an accent with A held, an emoji, the Ember Wheel, Enter; pictures `osk-*.png`.
 - `tools/hearth-browser-test.py`: Hearth Browser's keyboard types into a web page.

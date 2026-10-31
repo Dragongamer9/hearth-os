@@ -122,6 +122,7 @@ pub struct GameMode {
     /// The overlay is the on-screen keyboard (Guide + X), not Quick Access: it types into the game, which keeps its
     /// keyboard focus.
     osk_on: AtomicBool,
+    osk_next: AtomicBool,
     last_osk: AtomicU64,
 }
 
@@ -188,7 +189,7 @@ impl GameMode {
             hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false),
             over_launch: AtomicBool::new(false), waiting: AtomicU64::new(0), wait_gen: AtomicU64::new(0), opened_after_wait: AtomicU64::new(0),
             keeper_poked_at: AtomicU64::new(0), app_asks: AtomicU64::new(0), app_first_ask: AtomicU64::new(0), main_aside: AtomicBool::new(false), pads_told: AtomicU64::new(0),
-            osk_on: AtomicBool::new(false), last_osk: AtomicU64::new(0) });
+            osk_on: AtomicBool::new(false), osk_next: AtomicBool::new(false), last_osk: AtomicU64::new(0) });
         let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
         gm.hhd_overlay.store(hhd, Ordering::SeqCst);
         gm
@@ -591,11 +592,11 @@ impl GameMode {
         if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_OVERLAY", 1); }
     }
 
-    pub fn show_overlay(self: &Arc<Self>) -> bool { self.show_overlay_as(false) }
-    /// The overlay as Quick Access, or (osk) as the on-screen keyboard over the game: the same window and page, the
-    /// same hold on the controller (the game doesn't get its presses), but the game keeps its keyboard focus so the
-    /// keys typed through Hearth Input's virtual keyboard reach it.
-    fn show_overlay_as(self: &Arc<Self>, osk: bool) -> bool {
+    /// The overlay as Quick Access, or (osk_next set: Guide + X) as the on-screen keyboard over the game: the same
+    /// window and page, the same hold on the controller (the game doesn't get its presses), but then the game keeps
+    /// its keyboard focus so the keys typed through Hearth Input's virtual keyboard reach it.
+    pub fn show_overlay(self: &Arc<Self>) -> bool {
+        let osk = self.osk_next.swap(false, Ordering::SeqCst);
         if !self.overlay_ready() { return false; }
         let _o = self.overlay_lock.lock().unwrap();
         self.osk_on.store(osk, Ordering::SeqCst);
@@ -659,7 +660,8 @@ impl GameMode {
         }
         if self.hearth_on_screen() { self.ip_sync(); self.to_main(ev("osk.chord", json!({}))); return; }
         log(&format!("osk: Guide + X ({from}): the on-screen keyboard over what's in front"));
-        if !self.show_overlay_as(true) { log("osk: there's no overlay to show the keyboard in"); self.ip_sync(); }
+        self.osk_next.store(true, Ordering::SeqCst);
+        if !self.show_overlay() { log("osk: there's no overlay to show the keyboard in"); self.ip_sync(); }
     }
     /// While the overlay is open the game gets no controller input, and it keeps running: InputPlumber sends every
     /// press to Hearth instead of the game; controllers it doesn't manage are taken by Hearth for the time being.

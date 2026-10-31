@@ -18,7 +18,9 @@ How it fits together
   * The grab is let go, and every key and button released, the moment the layout is off, the game leaves the
     front, Quick Access opens (Hearth asks and waits for the answer before taking the controller itself), Hearth
     stops talking for HEARTBEAT seconds, or the Guide button is pressed. Guide is passed to Hearth over the
-    socket (the grab keeps it from Hearth's own reader), so Quick Access still opens.
+    socket (the grab keeps it from Hearth's own reader), so Quick Access still opens: once Guide is let go or has been
+    held GUIDE_CHORD seconds. X before then is Guide + X, Hearth's on-screen keyboard over the game ({"t": "osk"}); the
+    controller stays held meanwhile, so the game sees neither.
   * Controllers someone else holds (EBUSY: HHD's hidden physical pad) are left alone.
 
 The socket is this user's only: its folder is 0700, the socket 0600, and every connection's other end must be
@@ -27,11 +29,15 @@ this user (SO_PEERCRED). One JSON object per line. Commands (each answered with 
   overlay {on}                                     Quick Access opened/closed: answered after the grab changed
   test {layout, seconds} / test {stop: true}       try a layout for a few seconds, wherever Hearth is
   status                                           devices, grab, gyro, active layout
-Events to subscribers: {"t": "guide"}, {"t": "osd", "text": ...} (gyro on/off, the radial menu).
+  type {text, mods?, layout?, display?}            the on-screen keyboard over a game: type into it (osk-keymap.json
+                                                   for gamescope's layout; xdotool on `display` for the rest)
+  key {key, n?, mods?}                             bksp, enter, tab, esc, arrows, home, end, delete, paste
+Events to subscribers: {"t": "guide"}, {"t": "osk"} (Guide + X), {"t": "osd", "text": ...} (gyro on/off, the radial
+menu, action sets and layers).
 
-Layouts are checked strictly (validate_layout): known controls, keys from input-layouts.json, numbers in
-range, and actions that can only press keys, click, scroll, shift layers, toggle gyro or open the radial menu.
-Nothing in a layout can run a program.
+Layouts (version 2, docs/HEARTH-INPUT.md; version 1 is migrated) are checked strictly (validate_layout): known
+controls, keys from input-layouts.json, numbers in range, and actions that can only press keys, click, scroll, switch
+action sets and layers, toggle gyro or open the radial menu. Nothing in a layout can run a program.
 
 Needs python3-evdev and /dev/uinput (Hearth's udev rule 70-hearth-uinput.rules, the same one hearth-pad uses).
 Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput, 4 already running.

@@ -23,6 +23,7 @@ PanelWindow {
     property var engine: null
     property var vm: null
     property bool hasWtype: false
+    property bool useWtype: true         // Hearth Plasma (osk-plasma.qml): KWin has no wtype, hearth-pad types
     property bool settingsLoaded: false
     property string typedLog: ""         // the last things typed (for the Desktop Mode test)
     signal closeRequested()
@@ -165,7 +166,7 @@ PanelWindow {
     Process {
         id: whichWtype
         command: ["sh", "-c", "command -v wtype"]
-        stdout: SplitParser { onRead: line => { if (line.trim()) root.hasWtype = true; } }
+        stdout: SplitParser { onRead: line => { if (line.trim() && root.useWtype) root.hasWtype = true; } }
     }
 
     // ------------------------------------------------ settings, learned words, word lists, the system's layouts

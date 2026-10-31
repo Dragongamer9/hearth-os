@@ -1374,6 +1374,69 @@ const path = require('path');
     } catch (e) { errors.push(`put aside (${style}): ${e.message.split('\n')[0]}`); }
     await pp.close();
   }
+  // The on-screen keyboard over a game (Guide + X): only the keyboard, its presses type into the game (osk.type /
+  // osk.key to Hearth Input), B closes it. And the controller layout editor in Quick Access over the game (v2: action
+  // sets, layers, activators).
+  {
+    const kp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    kp.on('pageerror', e => errors.push(`keyboard over a game: ${e.message}`));
+    try {
+      await kp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux&overlay=full');
+      await kp.waitForTimeout(1200);
+      const r = await kp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms)), o = {};
+        window.__sent = []; window.send = m => { window.__sent.push(m); };
+        const real = MOCK.call; window.__calls = [];
+        MOCK.call = (m, a) => { if (m === 'osk.type' || m === 'osk.key') { window.__calls.push([m, a]); return Promise.resolve({ ok: true, skipped: '' }); } return real(m, a); };
+        onSysEvent('overlay.osk', {});
+        await wait(300);
+        o.open = OVOSK.on && !!document.querySelector('#ovosk .ovosk-kb *') && document.body.classList.contains('ovosk') && !S.layers.includes('qam');
+        o.visible = getComputedStyle(document.querySelector('#ovosk')).display !== 'none';
+        hostPad('a'); await wait(150);           // the selected key
+        hostPad('y'); await wait(150);           // space
+        hostPad('x'); await wait(150);           // backspace
+        hostPad('start'); await wait(300);       // Enter
+        o.calls = window.__calls.map(c => c[0] + ':' + (c[1].text || c[1].key)).join(' ');
+        hostPad('b'); await wait(100);
+        o.closed = window.__sent.some(m => m.type === 'overlay' && m.action === 'close');
+        onSysEvent('overlay.hidden', {});
+        o.gone = !OVOSK.on && !document.body.classList.contains('ovosk');
+        // Quick Access over the game: the layout editor as a panel there.
+        MOCK.call = real;
+        const id = GAMES.filter(g => !g.cloud)[0].id;
+        S.running = id;
+        await overlayShown();
+        imLoadTables(); imLoad(id, true); await wait(300);
+        imEdit(id); await wait(200);
+        o.editor = S.layers.at(-1) === 'imed' && !!document.querySelector('#imed [data-k="im-b-a"]');
+        // A layer, held by LB, with its own A; a chord and a double press on X; the right stick as a flick stick.
+        const d = IM.draft;
+        d.layers = [{ id: 'aim', name: 'Aim', buttons: { a: 'key:J' } }]; d.buttons.lb = 'layer:aim';
+        d.buttons.x = { press: 'key:R', double: 'key:E', chords: [{ with: 'lb', do: 'key:1' }] };
+        d.sticks.rs = { mode: 'flick', turn: 3600, threshold: 0.7 };
+        IM.edit = 'layer:aim'; imChanged(true); await wait(500);
+        o.layerRow = (document.querySelector('#imed [data-k="im-b-a"]') || {}).textContent || '';
+        o.where = (document.querySelector('#imed [data-k="im-where"]') || {}).textContent || '';
+        IM.edit = 'default'; imRefresh(); await wait(100);
+        o.xRow = (document.querySelector('#imed [data-k="im-b-x"]') || {}).textContent || '';
+        o.saved = JSON.stringify((IM.games[id] || {}).custom || {});
+        imPreview(); await wait(100);
+        o.preview = S.layers.at(-1) === 'sheet' && /Layer: Aim/.test(document.querySelector('#sheet').textContent);
+        closeLayer(); closeLayer();
+        return o;
+      });
+      const kerr = m => errors.push('keyboard over a game: ' + m);
+      if (!r.open || !r.visible) kerr(`it didn't open as just the keyboard (${JSON.stringify(r)})`);
+      if (!/^osk\.type:\S+ .*osk\.key:bksp.* osk\.key:enter$/.test(r.calls)) kerr(`presses didn't type into the game as expected: "${r.calls}"`);
+      if (!r.closed || !r.gone) kerr(`B didn't close it (${JSON.stringify(r)})`);
+      if (!r.editor) errors.push('controller layout editor: it didn\'t open in Quick Access over the game');
+      if (!/J/.test(r.layerRow) || !/Aim/.test(r.where)) errors.push(`controller layout editor: the layer isn't edited (${r.layerRow} / ${r.where})`);
+      if (!/double: E/.test(r.xRow) || !/with LB/.test(r.xRow)) errors.push(`controller layout editor: X's double press / chord not shown (${r.xRow})`);
+      if (!/"layers":\[\{"id":"aim"/.test(r.saved) || !/"flick"/.test(r.saved)) errors.push(`controller layout editor: not saved (${r.saved.slice(0, 300)})`);
+      if (!r.preview) errors.push('controller layout editor: the overview has no layer');
+    } catch (e) { errors.push('keyboard over a game: ' + e.message.split('\n')[0]); }
+    await kp.close();
+  }
   {
     const np = await browser.newPage({ viewport: { width: 420, height: 800 } });
     np.on('pageerror', e => errors.push(`quick access (narrow): ${e.message}`));
