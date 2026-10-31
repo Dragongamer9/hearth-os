@@ -1,0 +1,2 @@
+0 errors, 1 warnings, 8 pages at 390/820/1440 px, 39 links to other sites; front page: 311 KB at first, 605 KB once scrolled through (budgets 1200 / 4096 KB)
+warn  link to another site doesn't answer (fetch failed): https://www.wesnoth.org/
