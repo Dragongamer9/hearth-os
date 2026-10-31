@@ -21,7 +21,7 @@ size() { du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}'; }
 # ------------------------------------------------------------------ 1. GNOME
 if [ "$BASE" = anatase ]; then
   dnf -y install python3 python3-evdev git dbus-daemon dbus-tools glib2 mesa-dri-drivers mesa-libEGL google-noto-sans-fonts \
-    procps-ng nodejs breeze-icon-theme hicolor-icon-theme gtk-update-icon-cache xorg-x11-server-Xwayland >/tmp/tools.log 2>&1 \
+    procps-ng nodejs breeze-icon-theme hicolor-icon-theme gtk-update-icon-cache xorg-x11-server-Xwayland shadow-utils util-linux >/tmp/tools.log 2>&1 \
     || err setup "test tools: $(tail -3 /tmp/tools.log | tr '\n' ' ')"
   before=$(size)
   dnf -y install --setopt=install_weak_deps=False gnome-shell mutter gnome-session gnome-control-center >/tmp/gnome.log 2>&1 \
@@ -96,6 +96,9 @@ for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
   [ -f "$f" ] && { sed -i '/^OnlyShowIn=/d; /^NotShowIn=/d' "$f"; sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nOnlyShowIn=GNOME;/' "$f"; }
 done
 
+# A plain user for the apps that won't run as root (newer GNOME Files): tools/e2e-hearth-gnome.py as_user.
+id tester >/dev/null 2>&1 || useradd -m tester 2>/dev/null
+id tester >/dev/null 2>&1 && export HEARTH_CI_APP_USER=tester
 export HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/xdg
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 command -v dbus-uuidgen >/dev/null && dbus-uuidgen --ensure 2>/dev/null

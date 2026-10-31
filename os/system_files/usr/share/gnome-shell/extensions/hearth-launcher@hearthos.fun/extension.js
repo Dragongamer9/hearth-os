@@ -64,10 +64,13 @@ class Launcher extends PanelMenu.Button {
             style_class: 'hearth-launcher-grid', x_expand: true});
         this._scroll = new St.ScrollView({style_class: 'hearth-launcher-scroll', x_expand: true, y_expand: true,
             hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC});
+        // A ScrollView's child must be scrollable: the grid goes in a box (St.BoxLayout is a viewport).
+        this._gridBox = new St.BoxLayout({vertical: true, x_expand: true});
+        this._gridBox.add_child(this._grid);
         if (this._scroll.set_child)
-            this._scroll.set_child(this._grid);
+            this._scroll.set_child(this._gridBox);
         else
-            this._scroll.add_actor(this._grid);
+            this._scroll.add_actor(this._gridBox);
         col.add_child(this._scroll);
         this._empty = new St.Label({style_class: 'hearth-launcher-empty', text: '', visible: false});
         col.add_child(this._empty);

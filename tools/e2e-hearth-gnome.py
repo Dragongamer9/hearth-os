@@ -460,13 +460,33 @@ def focus():
     return ev("(() => { const w = global.display.get_focus_window(); return JSON.stringify(w ? [w.get_wm_class() || '', w.get_title() || ''] : ['', '']); })()")
 
 
+def as_user(argv):
+    """Newer GNOME Files won't run as root (this test's shell is root): as the container's plain user then, on its own
+    session bus, drawing on the shell's Wayland socket."""
+    user = os.environ.get('HEARTH_CI_APP_USER', '')
+    if os.geteuid() != 0 or not user:
+        return argv
+    rt = os.environ.get('XDG_RUNTIME_DIR', '/tmp/xdg')
+    sock = os.path.join(rt, os.environ.get('WAYLAND_DISPLAY', 'wayland-0'))
+    subprocess.run(['chmod', '711', rt])
+    subprocess.run(['chmod', '666', sock])
+    urt = '/tmp/xdg-' + user
+    os.makedirs(urt, exist_ok=True)
+    subprocess.run(['chown', user, urt])
+    os.chmod(urt, 0o700)
+    return ['runuser', '-u', user, '--', 'env', 'XDG_RUNTIME_DIR=' + urt, 'WAYLAND_DISPLAY=' + sock, 'GDK_BACKEND=wayland',
+            'XDG_CURRENT_DESKTOP=GNOME', 'XDG_DATA_DIRS=' + os.environ.get('XDG_DATA_DIRS', '/usr/share'),
+            'HOME=/home/' + user, 'dbus-run-session', '--'] + argv
+
+
 def apps(pad, br):
     # GNOME Files: open a folder (A), back (B), open a file (A: Text Editor).
-    base = os.path.join(HOME, 'Hearth-test')
+    base = '/tmp/Hearth-test'
     os.makedirs(os.path.join(base, 'Alpha'), exist_ok=True)
     with open(os.path.join(base, 'Alpha', 'note.txt'), 'w') as f:
         f.write('Hello from Hearth GNOME\n')
-    subprocess.Popen(['nautilus', '--new-window', base], stdout=subprocess.DEVNULL, stderr=open(os.path.join(OUT, 'nautilus.log'), 'w'))
+    subprocess.run(['chmod', '-R', 'a+rwX', base])
+    subprocess.Popen(as_user(['nautilus', '--new-window', base]), stdout=subprocess.DEVNULL, stderr=open(os.path.join(OUT, 'nautilus.log'), 'w'))
     if not wait(lambda: 'autilus' in focus()[0], 25):
         warn('GNOME Files did not come up (windows: %s)' % window_titles(), 'apps')
     else:
