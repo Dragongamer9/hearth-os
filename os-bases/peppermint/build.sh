@@ -1323,6 +1323,9 @@ systemctl enable NetworkManager.service bluetooth.service systemd-resolved.servi
   fstrim.timer bootc-fetch-apply-updates.timer sddm.service
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
+# Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
+# packages you added put back after an update, a safe start if your changes stop Hearth from starting.
+systemctl enable hearth-unlock.service hearth-unlock-units.service hearth-unlock-good.service hearth-unlock-reapply.service
 # power-profiles-daemon only runs when HHD is switched off (its drop-in says so); enabled so it can then.
 systemctl enable power-profiles-daemon.service 2>/dev/null || true
 # Printing starts when something prints (Settings › Printers).
@@ -1431,8 +1434,20 @@ cat /usr/lib/sysusers.d/hearth-image.conf
 # the image's /var is left empty. dpkg's database moves to /usr/lib/sysimage/dpkg (linked back from /var/lib/dpkg),
 # so the list of installed packages stays with the packages, read-only. /opt contents move to /usr/lib/opt.
 mkdir -p /usr/lib/sysimage
-mkdir -p /usr/share/hearth && apt-mark showmanual | sort -u > /usr/share/hearth/apt-baseline.list   # hearth-unlock: what the image itself installed
-chmod 755 /usr/bin/hearth-unlock 2>/dev/null || true
+# Writable system (hearth-unlock): what the image itself asked apt for (the start of the record of your packages),
+# and apt's auto/manual marks moved next to dpkg's database, so each version's marks match its own packages. Then
+# apt's and dpkg's hooks and the boot-chain pin (from here on: none of them may run during the build).
+mkdir -p /usr/share/hearth /usr/lib/sysimage/apt
+apt-mark showmanual | sort -u > /usr/share/hearth/apt-baseline.list
+test -s /usr/share/hearth/apt-baseline.list
+if [ -f /var/lib/apt/extended_states ]; then cp -a /var/lib/apt/extended_states /usr/lib/sysimage/apt/extended_states; else : > /usr/lib/sysimage/apt/extended_states; fi
+install -Dm644 /usr/share/hearth/unlock/apt.conf /etc/apt/apt.conf.d/50-hearth-unlock
+install -Dm644 /usr/share/hearth/unlock/dpkg.cfg /etc/dpkg/dpkg.cfg.d/hearth-unlock
+install -Dm644 /usr/share/hearth/unlock/boot-chain.pref /etc/apt/preferences.d/hearth-boot-chain
+chmod 755 /usr/bin/hearth-unlock
+python3 -m py_compile /usr/bin/hearth-unlock && rm -rf /usr/bin/__pycache__
+# The same marks through the new path (a mismatch would put the image's own packages in the record).
+diff <(apt-mark showmanual | sort -u) /usr/share/hearth/apt-baseline.list
 mv /var/lib/dpkg /usr/lib/sysimage/dpkg
 VARCONF=/usr/lib/tmpfiles.d/hearth-var.conf
 : > "$VARCONF"
@@ -1445,6 +1460,15 @@ find /var -mindepth 1 -type d \
   ! -path '/var/lib/flatpak*' \
   -printf 'd /var/%P %m %u %g -\n' | sort >> "$VARCONF"
 echo 'L+ /var/lib/dpkg - - - - /usr/lib/sysimage/dpkg' >> "$VARCONF"
+# apt's own folders (apt makes the rest), for apt on the unlocked system.
+{
+  echo 'd /var/lib/apt/lists 0755 root root -'
+  echo 'd /var/lib/apt/lists/partial 0700 _apt root -'
+  echo 'd /var/cache/apt 0755 root root -'
+  echo 'd /var/cache/apt/archives 0755 root root -'
+  echo 'd /var/cache/apt/archives/partial 0700 _apt root -'
+  echo 'd /var/log/apt 0755 root root -'
+} >> "$VARCONF"
 if [ -d /opt ] && [ -n "$(ls -A /opt 2>/dev/null)" ]; then
   mkdir -p /usr/lib/opt
   for d in /opt/*; do

@@ -48,3 +48,11 @@ test('Make a bootable USB: USB drives need no password, internal drives always a
   assert.strictEqual(decide(cl('usb-raw /dev/sda --allow-internal'), { isInGroup: () => false }), 'auth_admin');
   assert.strictEqual(decide(cl('hostname x')), 'yes');
 });
+
+test('a .deb on the system itself (Peppermint unlocked) always asks; the unlock switch does not', () => {
+  const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
+  assert.strictEqual(decide(cl('deb-install /home/me/Downloads/app.deb')), 'auth_admin');
+  assert.strictEqual(decide(cl('deb-remove app')), 'auth_admin');
+  assert.strictEqual(decide(cl('unlock off')), 'yes');
+  assert.strictEqual(decide(cl('hostname deb-install')), 'yes');
+});
