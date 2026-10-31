@@ -337,8 +337,12 @@ def request(path, cmd, timeout=2.0):
 
 def press_of(layout, ctl, shifted=False):
     b = None
-    if shifted:
-        b = layout.get('shift', {}).get('buttons', {}).get(ctl)
+    if shifted:   # the layer LB holds (version 2's "shift" layer; version 1's second set)
+        for layer in layout.get('layers', []):
+            if layer.get('id') == 'shift':
+                b = layer.get('buttons', {}).get(ctl)
+        if b is None:
+            b = layout.get('shift', {}).get('buttons', {}).get(ctl)
     if b is None:
         b = layout['buttons'].get(ctl, 'none')
     return (b, None) if isinstance(b, str) else (b['press'], b.get('hold'))
