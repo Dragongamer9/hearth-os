@@ -151,7 +151,8 @@ ipc link; shot shots/cosmic-5-hearth-link.png; ipc close
 ipc storage; shot shots/cosmic-6-hearth-storage.png; ipc close
 ipc keyboard; shot shots/cosmic-7-keyboard.png; ipc keyboard
 ipc help; shot shots/cosmic-8-controls.png; ipc close
-RESTARTS=$((RESTARTS + $(grep -c '^--- .* companion$' "$HOME/.local/share/nimbus/cosmic-companion.log" 2>/dev/null || echo 1) - 1))
+starts=$(grep -c '^--- .* companion$' "$HOME/.local/share/nimbus/cosmic-companion.log" 2>/dev/null); starts=${starts:-1}; [ "$starts" -gt 0 ] || starts=1
+RESTARTS=$((RESTARTS + starts - 1))
 [ "$RESTARTS" -gt 0 ] && echo "::warning title=companion::the companion ended $RESTARTS time(s) while its windows were opened (see companion.log, cosmic-comp.log)"
 # Which theme files COSMIC's apps really read (the theme check below).
 timeout -k 3 10 strace -f -e trace=openat,statx,newfstatat,access -o shots/strace-term.txt cosmic-term >/dev/null 2>&1
