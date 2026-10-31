@@ -7,6 +7,13 @@ on:
     branches: ['feature/desktop-cosmic-deepin']
     paths: ['.github/workflows/desktop-probe.yml']
 
+permissions:
+  contents: write
+
+concurrency:
+  group: probe
+  cancel-in-progress: true
+
 jobs:
   anatase:
     runs-on: ubuntu-latest
@@ -52,4 +59,6 @@ jobs:
               print('::notice title=probe %02d::%s' % (n, esc(c)))
           PY
           wc -c /tmp/out.txt
-          cat /tmp/out.txt
+          cd /tmp && rm -rf pr && mkdir pr && cd pr && git init -q -b ci/cosmic-probe && cp /tmp/out.txt probe.txt
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qam probe 2>/dev/null || { git add probe.txt; git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qm probe; }
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" HEAD:ci/cosmic-probe
