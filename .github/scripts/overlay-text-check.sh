@@ -62,6 +62,12 @@ as_hhd() { setpriv --reuid="$uid" --regid="$gid" --init-groups env -i HOME="$hom
 run() {  # run <name> <command...>: the self-test's JSON line and Chromium's font complaints
   local name=$1; shift
   ( sleep 70 | as_hhd timeout 60 "$@" --no-sandbox --disable-gpu "${HEADLESS[@]}" >"/tmp/ov-$name.log" 2>&1 ); echo $? >"/tmp/ov-$name.code"
+  # The virtual screen can go away after it started (seen on the runner: "Missing X server or $DISPLAY" with the
+  # socket still there). Fonts are found and text drawn the same way headless, so then run it once more headless.
+  if [ ${#HEADLESS[@]} = 0 ] && grep -q 'Missing X server' "/tmp/ov-$name.log"; then
+    note "overlay text" "the virtual screen went away ($name); drawing headless instead: $(tail -4 /tmp/xvfb.log 2>/dev/null)"
+    ( sleep 70 | as_hhd timeout 60 "$@" --no-sandbox --disable-gpu --ozone-platform=headless >"/tmp/ov-$name.log" 2>&1 ); echo $? >"/tmp/ov-$name.code"
+  fi
 }
 
 # 1) the way 0.6.5 started it: the Electron alone, no Hearth font setup (reported only).
