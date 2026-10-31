@@ -1,0 +1,3 @@
+
+(kgx:3881): Adwaita-WARNING **: 18:02:54.595: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.
+Gdk-Message: 18:03:04.279: Lost connection to Wayland compositor.

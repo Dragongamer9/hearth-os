@@ -1,0 +1,26 @@
+{
+ "apps": {
+  "app-store": null,
+  "browser": null,
+  "calculator": null,
+  "calendar": null,
+  "camera": null,
+  "contacts": null,
+  "document-viewer": null,
+  "files": "org.gnome.Nautilus.desktop",
+  "image-viewer": null,
+  "maps": null,
+  "music": null,
+  "paint": null,
+  "presentation": null,
+  "screen-recorder": null,
+  "screenshot": null,
+  "spreadsheet": null,
+  "task-manager": null,
+  "terminal": "org.gnome.Console.desktop",
+  "text-editor": "org.gnome.TextEditor.desktop",
+  "video-player": null,
+  "word-processor": null
+ },
+ "present": true
+}
