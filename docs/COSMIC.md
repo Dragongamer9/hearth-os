@@ -72,7 +72,9 @@ and wins.
 
 COSMIC uses its own apps for the kinds it has: **COSMIC Files** (file manager), **COSMIC Terminal** and **COSMIC Edit**
 (text editor), in Hearth's colours and spacing through the theme above. Hearth Files, Hearth Terminal and Hearth Text
-are hidden in COSMIC (by the app-kinds table, docs/APP-KINDS.md). `XDG_CURRENT_DESKTOP` is `COSMIC` (set by
+are hidden in COSMIC, and COSMIC's are hidden in the other desktops (registered in
+`os/system_files/usr/share/hearth/app-kinds.json`, docs/APP-KINDS.md; COSMIC's Screenshot too, and Hearth's KDE-based
+Calculator and Reader for those kinds). `XDG_CURRENT_DESKTOP` is `COSMIC` (set by
 `start-cosmic`). Desktop ids: `com.system76.CosmicFiles.desktop`, `com.system76.CosmicTerm.desktop`,
 `com.system76.CosmicEdit.desktop`; COSMIC's screenshot tool `com.system76.CosmicScreenshot.desktop` and COSMIC Settings
 `com.system76.CosmicSettings.desktop` come with `cosmic-session` too. Not installed: COSMIC's store, player, system

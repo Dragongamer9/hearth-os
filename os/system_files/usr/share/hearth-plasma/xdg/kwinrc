@@ -10,6 +10,8 @@ LayoutName=thumbnail_grid
 [Plugins]
 blurEnabled=true
 contrastEnabled=true
+# The controller (hearth-pad --plasma): KWin says which window is in front (/usr/share/kwin/scripts/hearthpad).
+hearthpadEnabled=true
 
 [Windows]
 Placement=Centered
