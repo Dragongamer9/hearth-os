@@ -352,6 +352,21 @@ class Link(unittest.TestCase):
             self.assertEqual(link.read(link.cli.fileno(), pad), [])
             self.assertIsNone(link.cli)
             m.emit({'t': 'toast'})        # nobody connected: dropped quietly
+            pad.mode = 'radial'                  # Guide while the shell restarts: shown when it's back
+            m.emit({'t': 'radial', 'open': True, 'sel': -1})
+            m.emit({'t': 'launcher'})
+            c2 = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+            c2.connect(path)
+            link.read(link.srv.fileno(), pad)
+            import time as _t
+            _t.sleep(0.1)
+            got = [_json.loads(l) for l in c2.recv(1000).decode().strip().split('\n')]
+            self.assertEqual(got[0], {'t': 'ready'})
+            self.assertIn({'t': 'launcher'}, got)
+            self.assertTrue(any(g.get('t') == 'radial' and g.get('open') for g in got))
+            self.assertNotIn({'t': 'toast'}, got)
+            self.assertEqual(pad.mode, 'radial')
+            c2.close()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

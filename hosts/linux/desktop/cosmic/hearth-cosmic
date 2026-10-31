@@ -39,15 +39,18 @@ case "$1" in
     [ -f "$CLOG" ] && [ "$(wc -c <"$CLOG")" -gt 1000000 ] && mv -f "$CLOG" "$CLOG.old"
     # The controller, in its own process (it outlives a companion restart).
     pgrep -u "$(id -u)" -f 'hearth-pad --cosmic --socket' >/dev/null 2>&1 || setsid "$0" pad >>"$CLOG" 2>&1 </dev/null &
-    # Kept running for the whole Hearth COSMIC session: started again if it ends (the controller with it), but not
-    # more than 5 times within a minute (then COSMIC goes on without it).
-    n=0; t0=$(date +%s)
+    # Kept running for the whole Hearth COSMIC session: started again straight away whenever it ends (COSMIC 1.10
+    # drops its connection when one of its windows closes; the controller is a separate process and keeps working,
+    # and a menu asked for meanwhile opens once it's back). Not again after 5 ends in a row within 3 s of starting
+    # (it can't start here: COSMIC goes on without it).
+    n=0
     while [ "${HEARTH_DESKTOP:-cosmic}" = cosmic ]; do
       echo "--- $(date '+%F %T') companion" >>"$CLOG"
+      t0=$(date +%s)
       quickshell -p "$QML" >>"$CLOG" 2>&1
-      [ $(( $(date +%s) - t0 )) -gt 60 ] && { n=0; t0=$(date +%s); }
-      n=$((n + 1)); [ "$n" -gt 5 ] && { echo "companion ended 5 times within a minute; not started again" >>"$CLOG"; exit 1; }
-      sleep 1
+      if [ $(( $(date +%s) - t0 )) -lt 3 ]; then n=$((n + 1)); else n=0; fi
+      [ "$n" -ge 5 ] && { echo "companion ended 5 times right after starting; not started again" >>"$CLOG"; exit 1; }
+      sleep 0.3
     done
     exit 0 ;;
   *) echo "usage: hearth-cosmic launcher|games|quick|link|storage|menu|keyboard|help|close|companion" >&2; exit 2 ;;
