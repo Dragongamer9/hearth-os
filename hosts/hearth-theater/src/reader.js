@@ -121,6 +121,14 @@
 
   // ------------------------------------------------------------------------------------------- 5. cards
   const HEAD = 'h1,h2,h3,h4';
+  // An element's words with a space between its pieces ("Show 1" + "12 episodes", not "Show 112 episodes").
+  const textOf = el => {
+    if (!el) return '';
+    const w = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const out = []; let n;
+    while ((n = w.nextNode())) if (!n.parentElement?.closest('script,style')) out.push(n.textContent);
+    return clean(out.join(' '));
+  };
   const headText = h => clean(h.textContent).slice(0, 60);
   function sectionName(a, card) {
     let p = a.parentElement;
@@ -166,13 +174,13 @@
       const img = a.querySelector('img') || box.querySelector('img');
       const image = imgSrc(img, base) || bgSrc(a, base) || bgSrc(a.querySelector('[style*="url("]'), base) || bgSrc(box.querySelector?.('[style*="url("]'), base);
       const titleEl = box.querySelector('h1,h2,h3,h4,h5,[class*="title" i],[class*="name" i]');
-      const title = clean(a.getAttribute('title') || a.getAttribute('aria-label') || (titleEl && !titleEl.contains(a) ? titleEl.textContent : '') || a.textContent || img?.getAttribute('alt'));
+      const title = clean(a.getAttribute('title') || a.getAttribute('aria-label') || (titleEl && !titleEl.contains(a) ? textOf(titleEl) : '') || textOf(a) || img?.getAttribute('alt'));
       if (!title || title.length < 2 || title.length > 140) continue;
       seen.add(url);
       const name = sectionName(a, card) || fallback;
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name).push({ title: title.replace(/\s*\d{1,4}\s*(episodes?|eps?\.?)\s*$/i, '').trim() || title, url, image, kind: '',
-        episodes: epCount(box.textContent), year: '', desc: '', linkOnly: !image });
+        episodes: epCount(textOf(box)), year: '', desc: '', linkOnly: !image });
     }
     const rows = [];
     for (const [name, items] of groups) {
