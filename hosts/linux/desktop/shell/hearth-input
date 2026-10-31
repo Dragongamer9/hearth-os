@@ -712,6 +712,9 @@ BTN_NAMES = {   # xpad / HHD's virtual Xbox controller; Sony pads swap X and Y (
     # left), which Handheld Daemon's Xbox Elite emulation copies.
     'BTN_TRIGGER_HAPPY1': 'left', 'BTN_TRIGGER_HAPPY2': 'right', 'BTN_TRIGGER_HAPPY3': 'up', 'BTN_TRIGGER_HAPPY4': 'down',
     'BTN_TRIGGER_HAPPY5': 'r4', 'BTN_TRIGGER_HAPPY6': 'r5', 'BTN_TRIGGER_HAPPY7': 'l4', 'BTN_TRIGGER_HAPPY8': 'l5',
+    # An Xbox controller over Bluetooth without xpadneo sends its Xbox button as KEY_HOMEPAGE: Guide, too (it went
+    # to the layout as nothing, so the controller stayed grabbed and Quick Access couldn't be opened).
+    'KEY_HOMEPAGE': 'guide',
 }
 SONY = 0x054c
 
@@ -1296,7 +1299,7 @@ class Daemon:
                     try:
                         for ev in obj.dev.read():
                             obj.handle(ev)
-                            if ev.type == e.EV_KEY and ev.code == e.BTN_MODE and ev.value == 1 and obj.grabbed:
+                            if ev.type == e.EV_KEY and obj.bmap.get(ev.code) == 'guide' and ev.value == 1 and obj.grabbed:
                                 guide = True
                     except (BlockingIOError, InterruptedError):
                         pass

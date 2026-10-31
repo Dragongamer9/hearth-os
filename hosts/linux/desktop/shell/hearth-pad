@@ -484,15 +484,26 @@ class Output:
                 pass
 
 
-def button_map(e):
-    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y',   # xpad's X/Y codes
+SONY = 0x054c
+
+
+def button_map(e, vendor=0):
+    """Event codes → button names. xpad's X/Y codes (X is BTN_NORTH); Sony pads (hid-playstation) swap them:
+    Triangle (top, Y's place) is BTN_NORTH and Square (left, X's place) BTN_WEST, so Y and X were the wrong way round
+    there (Y opened nothing, X typed a space on the keyboard). The d-pad also comes as BTN_TRIGGER_HAPPY1-4 (xpad's
+    dpad_to_buttons, some wireless dongles), and the Xbox button of an Xbox controller over Bluetooth without xpadneo
+    as KEY_HOMEPAGE: both did nothing before."""
+    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y',
          e.BTN_TL: 'lb', e.BTN_TR: 'rb', e.BTN_TL2: 'lt', e.BTN_TR2: 'rt',
          e.BTN_SELECT: 'view', e.BTN_START: 'menu', e.BTN_MODE: 'guide',
          e.BTN_THUMBL: 'l3', e.BTN_THUMBR: 'r3'}
     for code, name in (('BTN_DPAD_UP', 'up'), ('BTN_DPAD_DOWN', 'down'), ('BTN_DPAD_LEFT', 'left'),
-                       ('BTN_DPAD_RIGHT', 'right')):
+                       ('BTN_DPAD_RIGHT', 'right'), ('BTN_TRIGGER_HAPPY1', 'left'), ('BTN_TRIGGER_HAPPY2', 'right'),
+                       ('BTN_TRIGGER_HAPPY3', 'up'), ('BTN_TRIGGER_HAPPY4', 'down'), ('KEY_HOMEPAGE', 'guide')):
         if hasattr(e, code):
             m[getattr(e, code)] = name
+    if vendor == SONY:
+        m[e.BTN_NORTH], m[e.BTN_WEST] = 'y', 'x'
     return m
 
 
@@ -501,6 +512,7 @@ class Controller:
         self.dev = dev
         self.e = e
         self.btn = {}       # name → pressed (buttons, triggers, hat)
+        self.bmap = None    # this controller's button codes (button_map: Sony pads swap X and Y)
         self.ff_id = None   # its uploaded rumble effect (the on-screen keyboard)
         self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0}
         self.info = {}
@@ -564,6 +576,7 @@ def gamepads(evdev, known):
                 d.close()
                 continue
             found[path] = Controller(d, e)
+            found[path].bmap = button_map(e, getattr(getattr(d, 'info', None), 'vendor', 0))
         except OSError:
             try:
                 d.close()
@@ -730,7 +743,7 @@ def main():
             try:
                 for ev in c.dev.read():
                     stats['events'] += 1
-                    c.handle(ev, bmap)
+                    c.handle(ev, c.bmap or bmap)
             except (BlockingIOError, InterruptedError):
                 pass
             except OSError:          # unplugged

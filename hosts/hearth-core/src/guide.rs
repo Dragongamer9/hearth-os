@@ -15,6 +15,11 @@ const EV_ABS: u16 = 3;
 const BTN_GAMEPAD: usize = 0x130;
 const BTN_MODE: u16 = 0x13c;
 const BTN_SELECT: u16 = 0x13a;
+/// The Xbox button of an Xbox controller over Bluetooth without xpadneo (hid-generic / hid-microsoft): Guide too.
+const KEY_HOMEPAGE: u16 = 0xac;
+const BTN_SOUTH: usize = 0x130;
+const BTN_NORTH: u16 = 0x133;
+const SONY: &str = "054c";
 /// How long Guide is held before it counts as a hold (Quick Access) rather than a tap (the glance).
 pub const HOLD_MS: u64 = 350;
 pub const EVENT_SIZE: usize = 24;   // struct input_event on 64-bit: timeval (16) + type (2) + code (2) + value (4)
@@ -25,6 +30,15 @@ pub fn has_bit(caps: &str, bit: usize) -> bool {
     words.get(bit / 64).and_then(|w| u64::from_str_radix(w, 16).ok()).map(|w| (w >> (bit % 64)) & 1 == 1).unwrap_or(false)
 }
 
+/// A device that has a Guide button: BTN_MODE, or KEY_HOMEPAGE on a controller (an Xbox controller over Bluetooth
+/// without xpadneo: on the controller itself or on its "Consumer Control" device next to it). Keyboards with a Home
+/// page key don't count: the device must have gamepad buttons or be named as a controller.
+pub fn has_guide(caps: &str, name: &str) -> bool {
+    if has_bit(caps, BTN_MODE as usize) { return true; }
+    let named = { let l = name.to_lowercase(); l.contains("controller") || l.contains("gamepad") || l.contains("xbox") };
+    has_bit(caps, KEY_HOMEPAGE as usize) && (has_bit(caps, BTN_SOUTH) || named)
+}
+
 /// Event devices with a Guide button: (path, name)
 pub fn gamepad_devices(sys: &Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
@@ -32,17 +46,26 @@ pub fn gamepad_devices(sys: &Path) -> Vec<(String, String)> {
         let n = e.file_name().to_string_lossy().to_string();
         if !n.starts_with("event") { continue; }
         let Ok(caps) = std::fs::read_to_string(sys.join(&n).join("device/capabilities/key")) else { continue };
-        if !has_bit(&caps, BTN_MODE as usize) { continue; }
         let name = std::fs::read_to_string(sys.join(&n).join("device/name")).map(|s| s.trim().to_string()).ok().filter(|s| !s.is_empty()).unwrap_or(n.clone());
+        if !has_guide(&caps, &name) { continue; }
         out.push((format!("/dev/input/{n}"), name));
     }
     let _ = BTN_GAMEPAD;
     out
 }
 
+/// Button names as Hearth's pages use them. Triggers and stick presses too (the on-screen keyboard over a game uses
+/// LT shift, RT symbols, L3 emoji, R3 layout); the d-pad also as xpad's BTN_TRIGGER_HAPPY1-4.
 fn key_name(code: u16) -> Option<&'static str> {
-    Some(match code { 0x130 => "a", 0x131 => "b", 0x133 => "x", 0x134 => "y", 0x136 => "lb", 0x137 => "rb", 0x13a => "select", 0x13b => "start",
-        0x13c => "guide", 0x220 => "up", 0x221 => "down", 0x222 => "left", 0x223 => "right", _ => return None })
+    Some(match code { 0x130 => "a", 0x131 => "b", 0x133 => "x", 0x134 => "y", 0x136 => "lb", 0x137 => "rb", 0x138 => "lt", 0x139 => "rt",
+        0x13a => "select", 0x13b => "start", 0x13c | KEY_HOMEPAGE => "guide", 0x13d => "l3", 0x13e => "r3",
+        0x220 | 0x2c2 => "up", 0x221 | 0x2c3 => "down", 0x222 | 0x2c0 => "left", 0x223 | 0x2c1 => "right", _ => return None })
+}
+
+/// The name of a key code on this controller: Sony pads (hid-playstation) have Triangle (Y's place) on BTN_NORTH and
+/// Square (X's place) on BTN_WEST, the other way round from xpad (X and Y were swapped in Quick Access).
+pub fn button_for(code: u16, sony: bool) -> Option<&'static str> {
+    match key_name(code)? { "x" if sony => Some("y"), "y" if sony => Some("x"), b => Some(b) }
 }
 
 /// Controller input in raw input_event records: (button, down). The d-pad comes as hat axes or buttons, the
@@ -61,9 +84,18 @@ pub fn pad_events(buf: &[u8], state: &mut HashMap<&'static str, i32>) -> Vec<(&'
         let ty = u16::from_le_bytes([rec[16], rec[17]]);
         let code = u16::from_le_bytes([rec[18], rec[19]]);
         let value = i32::from_le_bytes([rec[20], rec[21], rec[22], rec[23]]);
-        if ty == EV_KEY && value != 2 { if let Some(b) = key_name(code) { out.push((b, value == 1)); } }
+        if ty == EV_KEY && value != 2 { if let Some(b) = button_for(code, state.get("sony") == Some(&1)) { out.push((b, value == 1)); } }
         else if ty == EV_ABS {
             match code {
+                // Analog triggers (only where read_triggers found them: Z/RZ is the right stick on some pads).
+                2 | 5 | 9 | 10 => {
+                    let max_key = match code { 2 => "z_trig", 5 => "rz_trig", 10 => "lt_max", _ => "rt_max" };
+                    let (on_key, name) = if code == 2 || code == 10 { ("lt_on", "lt") } else { ("rt_on", "rt") };
+                    let Some(&max) = state.get(max_key).filter(|m| **m > 0) else { continue };
+                    let was = state.get(on_key) == Some(&1);
+                    let now = if was { value * 10 > max * 4 } else { value * 20 > max * 11 };
+                    if now != was { state.insert(on_key, now as i32); out.push((name, now)); }
+                }
                 16 => dir(&mut out, state, "left", "right", value, "hx"),
                 17 => dir(&mut out, state, "up", "down", value, "hy"),
                 0 | 1 => {
@@ -109,6 +141,31 @@ pub type OnButton = Arc<dyn Fn(&str, bool) + Send + Sync>;
 
 extern "C" { fn ioctl(fd: i32, request: u64, ...) -> i32; }
 const EVIOCGRAB: u64 = 0x4004_4590;   // _IOW('E', 0x90, int)
+const EVIOCGKEY: u64 = 0x8060_4518;   // _IOR('E', 0x18, 96 bytes): the keys held down now
+fn eviocgabs(code: u16) -> u64 { 0x8018_4540 + code as u64 }   // _IOR('E', 0x40 + code, struct input_absinfo)
+
+/// What pad_events needs to know about a device: Sony (X and Y swapped) and which axes are analog triggers, with
+/// their top value. Z/RZ are triggers only when the device also has RX (otherwise they're the right stick: an Xbox
+/// controller over Bluetooth with hid-generic).
+fn setup_state(path: &str, fd: i32, state: &mut HashMap<&'static str, i32>) {
+    let ev = path.rsplit('/').next().unwrap_or("");
+    let dev = Path::new("/sys/class/input").join(ev).join("device");
+    if std::fs::read_to_string(dev.join("id/vendor")).map(|v| v.trim() == SONY).unwrap_or(false) { state.insert("sony", 1); }
+    let abs = std::fs::read_to_string(dev.join("capabilities/abs")).unwrap_or_default();
+    let has_rx = has_bit(&abs, 3);
+    for (code, key) in [(2u16, "z_trig"), (5, "rz_trig"), (10, "lt_max"), (9, "rt_max")] {
+        if !has_bit(&abs, code as usize) || ((code == 2 || code == 5) && !has_rx) { continue; }
+        let mut info = [0i32; 6];
+        if unsafe { ioctl(fd, eviocgabs(code), info.as_mut_ptr()) } == 0 && info[1] >= 0 && info[2] > info[1] { state.insert(key, info[2]); }
+    }
+}
+
+/// Is this key held down on the device right now (EVIOCGKEY)? Works whoever has it grabbed, and whatever we saw.
+pub fn key_down(fd: i32, code: u16) -> bool {
+    let mut bits = [0u8; 96];
+    if unsafe { ioctl(fd, EVIOCGKEY, bits.as_mut_ptr()) } < 0 { return false; }
+    bits.get(code as usize / 8).map(|b| b >> (code % 8) & 1 == 1).unwrap_or(false)
+}
 
 #[derive(Clone)]
 pub struct Guide {
@@ -181,6 +238,7 @@ impl Guide {
         let mut buf = [0u8; EVENT_SIZE * 64];
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
+        setup_state(path, f.as_raw_fd(), &mut state);
         let view_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
         // Guide's own press number: a hold fires when this press is still the latest (not released) after HOLD_MS.
         let mode_gen = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -210,7 +268,7 @@ impl Guide {
             for rec in chunk.chunks_exact(EVENT_SIZE) {
                 let (ty, code, value) = (u16::from_le_bytes([rec[16], rec[17]]), u16::from_le_bytes([rec[18], rec[19]]), i32::from_le_bytes([rec[20], rec[21], rec[22], rec[23]]));
                 if ty != EV_KEY { continue; }
-                if code == BTN_MODE && (value == 0 || value == 1) {
+                if (code == BTN_MODE || code == KEY_HOMEPAGE) && (value == 0 || value == 1) {
                     let g = mode_gen.fetch_add(1, Ordering::SeqCst) + 1;
                     let fired = mode_fired.load(Ordering::SeqCst) || mode_chord.load(Ordering::SeqCst);
                     match tap_or_hold(value == 1, self.tap_hold.load(Ordering::SeqCst) && !self.grabbed.load(Ordering::SeqCst), mode_timed, fired) {
@@ -300,6 +358,30 @@ mod tests {
         let mut st = HashMap::new();
         let mut buf = ev(1, 0x130, 1); buf.extend(ev(3, 17, -1)); buf.extend(ev(3, 17, 0)); buf.extend(ev(3, 0, -30000)); buf.extend(ev(1, 0x130, 2));
         assert_eq!(pad_events(&buf, &mut st), vec![("a", true), ("up", true), ("up", false), ("left", true)]);
+    }
+    #[test]
+    fn more_controllers() {
+        // Sony: BTN_NORTH is Triangle (Y), BTN_WEST Square (X).
+        let mut st = HashMap::new();
+        st.insert("sony", 1);
+        let buf = [ev(1, 0x133, 1), ev(1, 0x134, 1)].concat();
+        assert_eq!(pad_events(&buf, &mut st), vec![("y", true), ("x", true)]);
+        // Triggers, stick presses, xpad's d-pad buttons, an Xbox controller's Guide over Bluetooth.
+        let mut st = HashMap::new();
+        let buf = [ev(1, 0x138, 1), ev(1, 0x13d, 1), ev(1, 0x2c2, 1), ev(1, 0xac, 1)].concat();
+        assert_eq!(pad_events(&buf, &mut st), vec![("lt", true), ("l3", true), ("up", true), ("guide", true)]);
+        // Analog triggers once their range is known (0..1023): down past 55%, up below 40%.
+        st.insert("rz_trig", 1023);
+        let buf = [ev(3, 5, 300), ev(3, 5, 700), ev(3, 5, 500), ev(3, 5, 100)].concat();
+        assert_eq!(pad_events(&buf, &mut st), vec![("rt", true), ("rt", false)]);
+        // Without it (Z/RZ is the right stick there) nothing.
+        let mut st = HashMap::new();
+        assert!(pad_events(&ev(3, 5, 1000), &mut st).is_empty());
+        assert!(has_guide("1000000000000000 0 0 0 0", "x"));
+        let home = "0 100000000000 0 0".to_string();   // bit 0xac (word 2, bit 44)
+        assert!(has_bit(&home, 0xac));
+        assert!(has_guide(&home, "Xbox Wireless Controller Consumer Control"));
+        assert!(!has_guide(&home, "Logitech USB Keyboard Consumer Control"));
     }
     #[test]
     fn guide_tap_or_hold() {

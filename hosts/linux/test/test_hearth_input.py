@@ -665,6 +665,8 @@ class Daemon(unittest.TestCase):
         m = hi.device_buttons(e, hi.SONY)
         self.assertEqual((m[e.BTN_NORTH], m[e.BTN_WEST]), ('y', 'x'))
         self.assertEqual(hi.device_buttons(e)[e.BTN_TRIGGER_HAPPY5], 'r4')
+        # An Xbox controller over Bluetooth without xpadneo: its Xbox button is KEY_HOMEPAGE.
+        self.assertEqual(hi.device_buttons(e)[e.KEY_HOMEPAGE], 'guide')
 
     def test_right_stick_on_z_without_rx(self):
         # hid-generic (an Xbox controller over Bluetooth without xpadneo): right stick Z/RZ, triggers BRAKE/GAS.

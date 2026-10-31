@@ -368,6 +368,27 @@ class BluetoothStickTest(unittest.TestCase):
         self.assertTrue(c.btn.get('lt_axis'))
 
 
+class ButtonMapTest(unittest.TestCase):
+    """Sony pads swap X and Y (Triangle is BTN_NORTH); xpad's d-pad buttons and a Bluetooth Xbox controller's
+    KEY_HOMEPAGE Guide are read too."""
+
+    class E:
+        BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST = 0x130, 0x131, 0x133, 0x134
+        BTN_TL, BTN_TR, BTN_TL2, BTN_TR2 = 0x136, 0x137, 0x138, 0x139
+        BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR = 0x13a, 0x13b, 0x13c, 0x13d, 0x13e
+        BTN_TRIGGER_HAPPY1, BTN_TRIGGER_HAPPY2, BTN_TRIGGER_HAPPY3, BTN_TRIGGER_HAPPY4 = 0x2c0, 0x2c1, 0x2c2, 0x2c3
+        KEY_HOMEPAGE = 0xac
+
+    def test_maps(self):
+        e = self.E
+        m = hp.button_map(e)
+        self.assertEqual((m[e.BTN_NORTH], m[e.BTN_WEST]), ('x', 'y'))
+        self.assertEqual((m[0x2c0], m[0x2c1], m[0x2c2], m[0x2c3]), ('left', 'right', 'up', 'down'))
+        self.assertEqual(m[e.KEY_HOMEPAGE], 'guide')
+        s = hp.button_map(e, hp.SONY)
+        self.assertEqual((s[e.BTN_NORTH], s[e.BTN_WEST]), ('y', 'x'))
+
+
 class HotplugTest(unittest.TestCase):
     """A device that goes away between being opened and being asked what it is (ENODEV) is skipped, not fatal."""
 
