@@ -312,7 +312,9 @@ def main():
                 app.wait(4)
                 closed = True
             except subprocess.TimeoutExpired:
-                closed = False
+                # Some stay running without a window (Spectacle keeps itself for its shortcuts): the window is what counts.
+                pc = probe()
+                closed = bool(pc) and name not in pc.get('cls', '').lower()
                 app.kill()
         check('%s with the controller' % label, front and keys and osk_ok and closed,
               'in front: %r, keys: %s, keyboard: %s, closed with View + B: %s' % (pa and pa.get('cls'), keys, osk_ok, closed))
