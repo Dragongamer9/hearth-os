@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Fixture Films (JSON-LD)</title>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"ItemList","name":"Popular movies","itemListElement":[
+  {"@type":"ListItem","position":1,"item":{"@type":"Movie","name":"Fixture Movie One","url":"/movie/1","image":"/img/movie-1.svg","datePublished":"2019-05-01"}},
+  {"@type":"ListItem","position":2,"item":{"@type":"Movie","name":"Fixture Movie Two","url":"/movie/2","image":{"@type":"ImageObject","url":"/img/movie-2.svg"}}},
+  {"@type":"ListItem","position":3,"item":{"@type":"Movie","name":"Fixture Movie Three","url":"/movie/3","image":["/img/movie-3.svg"]}},
+  {"@type":"ListItem","position":4,"item":{"@type":"Movie","name":"Fixture Movie Four","url":"/movie/4","image":"/img/movie-4.svg"}}]},
+ {"@type":"ItemList","name":"New episodes","itemListElement":[
+  {"@type":"ListItem","position":1,"item":{"@type":"TVEpisode","name":"Episode Alpha","url":"/episode/a","thumbnailUrl":"/img/ep-a.svg"}},
+  {"@type":"ListItem","position":2,"item":{"@type":"TVEpisode","name":"Episode Beta","url":"/episode/b","thumbnailUrl":"/img/ep-b.svg"}},
+  {"@type":"ListItem","position":3,"item":{"@type":"TVEpisode","name":"Episode Gamma","url":"/episode/c","thumbnailUrl":"/img/ep-c.svg"}}]},
+ {"@type":"TVSeries","name":"Lone Fixture Series","url":"/series/lone","image":"/img/series-lone.svg","numberOfEpisodes":24}
+]}
+</script></head>
+<body><h1>Fixture Films</h1><p>Everything here is listed in the page's JSON-LD only.</p></body></html>

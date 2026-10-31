@@ -1,0 +1,34 @@
+# Hearth COSMIC on Anatase (Fedora): what os-bases/anatase/build.sh and cosmic-test.yml install. One package a line;
+# lines starting with "-" are left out (--exclude). docs/COSMIC.md says why each is or isn't here.
+# COSMIC's workspace
+cosmic-session
+cosmic-comp
+cosmic-panel
+cosmic-settings
+cosmic-settings-daemon
+cosmic-launcher
+cosmic-applets
+cosmic-bg
+cosmic-osd
+cosmic-notifications
+cosmic-workspaces
+cosmic-app-library
+cosmic-randr
+cosmic-idle
+cosmic-icon-theme
+xdg-desktop-portal-cosmic
+# COSMIC's own apps for the kinds it has (in COSMIC they take the place of Hearth Files, Terminal and Text)
+cosmic-files
+cosmic-term
+cosmic-edit
+# Fedora's cosmic-session can't be installed without these. They're installed but never used: COSMIC's login screen
+# (cosmic-greeter, greetd) isn't switched on (Anatase's stays; build.sh checks the display manager didn't change), the
+# first-run wizard's autostart entry is removed, and Hearth's on-screen keyboard is the one on the controller.
+cosmic-osk
+cosmic-greeter
+cosmic-initial-setup
+# Left out: apps of kinds Hearth already has, and COSMIC's wallpapers (Hearth's Fireside is used)
+-cosmic-store
+-cosmic-player
+-cosmic-wallpapers
+-cosmic-monitor

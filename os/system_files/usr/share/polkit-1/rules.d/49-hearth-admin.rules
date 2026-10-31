@@ -4,7 +4,7 @@
 // The password change still checks the current password itself.
 // One exception: write-file (Hearth Text's Edit as administrator saving a system file) always asks for an
 // administrator's password, so nothing running as you can change system files without it.
-// The same for Make a bootable USB (Hearth Disks) writing to an internal drive (usb-* --allow-internal, only after
+// The same for .deb files installed on the system (deb-install/deb-remove), and for Make a bootable USB (Hearth Disks) writing to an internal drive (usb-* --allow-internal, only after
 // "Show all drives" and typing ERASE): USB drives and SD cards don't ask, internal drives always do.
 polkit.addRule(function (action, subject) {
     if (action.id == "org.freedesktop.policykit.exec" &&
@@ -15,6 +15,13 @@ polkit.addRule(function (action, subject) {
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
         /^\S+\s+usb-\S+(\s.*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+    // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
+    // root: always an administrator's password, like sudo apt.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+deb-(install|remove)(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
 });

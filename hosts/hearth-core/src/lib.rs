@@ -22,6 +22,8 @@ pub mod emulators;
 pub mod friends;
 // ---- Hearth's gaming apps (Controller Lab, Saves, Mods): opened from Game Mode
 pub mod gaming_apps;
+// ---- Hearth Mods in Game Mode (its worker, over a socket)
+pub mod hearth_mods;
 // ---- end of Hearth's gaming apps
 pub mod game_options;
 pub mod gameinfo;
@@ -69,6 +71,7 @@ pub mod steam;
 pub mod steam_ctl;
 pub mod steam_engine;   // Settings › Library › Steam engine: Lightweight (hosts/hearth-steam), with fallback to the normal client
 pub mod steam_owned;
+pub mod steam_thaw;   // Steam stopped by Handheld Daemon while Quick Access is open over a game: let run again
 pub mod store;
 // ---- Game Mode › Store (browsing Steam, GOG, Epic and Xbox; buying on their own pages)
 pub mod storefront;
@@ -76,6 +79,7 @@ pub mod storefront;
 pub mod stores;
 pub mod system;
 pub mod sysinfo;
+pub mod theater;   // Hearth Theater, your wall of video sites, opened from Game Mode's menu
 pub mod tools;
 pub mod vdf;
 pub mod watchdog;

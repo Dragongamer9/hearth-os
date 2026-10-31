@@ -60,6 +60,10 @@ jobs:
           workspaces: |
             hosts/hearth-core
             hosts/hearth-rs
+      # Quick Access over a Steam game on the HHD editions: Steam kept running under it (HHD stops it), so the game
+      # can't freeze, and closing gives everything back (tools/overlay-freeze-check.py; steam_thaw tests below).
+      - name: Quick Access never freezes Steam games
+        run: python3 tools/overlay-freeze-check.py
       - name: Test hearth-core
         working-directory: hosts/hearth-core
         run: |

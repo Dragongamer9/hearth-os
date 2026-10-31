@@ -1,0 +1,211 @@
+{
+  "_about": "One app of each kind per desktop. Read by /usr/libexec/hearth-app-kinds when the image is built. Format: docs/APP-KINDS.md.",
+  "version": 1,
+  "desktops": {
+    "Nimbus": {"label": "Hearth Classic (and Game Mode)", "names": ["Nimbus"], "session": ["/usr/bin/labwc"]},
+    "KDE": {"label": "Hearth Plasma", "names": ["KDE"], "session": ["/usr/bin/startplasma-wayland"]},
+    "GNOME": {"label": "Hearth GNOME", "names": ["GNOME"], "session": ["/usr/bin/gnome-shell"]},
+    "COSMIC": {"label": "Hearth COSMIC", "names": ["COSMIC"], "session": ["/usr/bin/cosmic-session", "/usr/bin/cosmic-comp"]},
+    "Deepin": {"label": "Hearth Deepin", "names": ["Deepin", "DDE"], "session": ["/usr/bin/startdde"]}
+  },
+  "kinds": {
+    "files": {
+      "label": "File manager",
+      "required": ["Nimbus", "KDE", "GNOME", "COSMIC"],
+      "categories": ["FileManager"],
+      "mimes": ["inode/directory", "x-directory/normal"],
+      "apps": {
+        "Nimbus": ["hearth-files.desktop"],
+        "KDE": ["hearth-files-kde.desktop", "org.kde.dolphin.desktop", "hearth-files.desktop"],
+        "GNOME": ["org.gnome.Nautilus.desktop"],
+        "COSMIC": ["com.system76.CosmicFiles.desktop"]
+      },
+      "everywhere": [],
+      "others": []
+    },
+    "terminal": {
+      "label": "Terminal",
+      "required": ["Nimbus", "KDE", "GNOME", "COSMIC"],
+      "categories": ["TerminalEmulator"],
+      "mimes": ["x-scheme-handler/terminal"],
+      "terminal": true,
+      "apps": {
+        "Nimbus": ["hearth-terminal.desktop", "foot.desktop", "hearth-terminal-kde.desktop"],
+        "KDE": ["hearth-terminal-kde.desktop", "org.kde.konsole.desktop", "hearth-terminal.desktop"],
+        "GNOME": ["org.gnome.Console.desktop"],
+        "COSMIC": ["com.system76.CosmicTerm.desktop"]
+      },
+      "everywhere": [],
+      "others": ["footclient.desktop", "foot-server.desktop"]
+    },
+    "text-editor": {
+      "label": "Text editor",
+      "required": ["Nimbus", "KDE", "GNOME", "COSMIC"],
+      "categories": ["TextEditor"],
+      "mimes": ["text/plain", "text/x-log", "text/markdown", "text/x-markdown", "text/x-python", "text/x-python3",
+                "application/x-shellscript", "text/x-shellscript", "application/json", "application/x-yaml", "text/x-yaml",
+                "application/yaml", "application/toml", "text/x-toml", "text/x-ini", "text/x-csrc", "text/x-chdr",
+                "text/x-c++src", "text/x-c++hdr", "text/x-csharp", "text/x-rust", "text/rust", "text/javascript",
+                "application/javascript", "text/x-typescript", "application/typescript", "text/css", "text/xml",
+                "application/xml", "text/x-makefile", "text/x-cmake", "text/x-diff", "text/x-patch", "text/x-java",
+                "text/x-go", "text/x-lua", "text/x-sql", "application/sql", "text/x-readme", "text/x-changelog",
+                "application/x-zerosize", "text/x-systemd-unit", "application/x-ruby", "text/x-perl", "application/x-perl",
+                "application/x-powershell", "text/x-dockerfile"],
+      "apps": {
+        "Nimbus": ["hearth-text.desktop", "hearth-text-kde.desktop"],
+        "KDE": ["hearth-text-kde.desktop", "org.kde.kate.desktop", "hearth-text.desktop"],
+        "GNOME": ["org.gnome.TextEditor.desktop"],
+        "COSMIC": ["com.system76.CosmicEdit.desktop"]
+      },
+      "everywhere": [],
+      "others": ["org.kde.kwrite.desktop"]
+    },
+    "calculator": {
+      "label": "Calculator",
+      "categories": ["Calculator"],
+      "mimes": [],
+      "apps": {
+        "Nimbus": ["hearth-calculator.desktop", "hearth-calculator-kde.desktop"],
+        "KDE": ["hearth-calculator-kde.desktop", "org.kde.kcalc.desktop", "hearth-calculator.desktop"],
+        "COSMIC": ["hearth-calculator-kde.desktop", "hearth-calculator.desktop"]
+      },
+      "everywhere": [],
+      "others": []
+    },
+    "document-viewer": {
+      "label": "PDF and e-book reader",
+      "mimes": ["application/pdf", "application/x-pdf", "application/epub+zip", "application/vnd.comicbook+zip",
+                "application/x-cbz", "application/vnd.comicbook-rar", "application/x-cbr"],
+      "apps": {
+        "Nimbus": ["hearth-documents.desktop", "hearth-reader.desktop"],
+        "KDE": ["hearth-reader.desktop", "org.kde.okular.desktop", "hearth-documents.desktop"],
+        "COSMIC": ["hearth-reader.desktop", "hearth-documents.desktop"]
+      },
+      "everywhere": [],
+      "others": []
+    },
+    "screenshot": {
+      "label": "Screenshots",
+      "_note": "Hearth Classic takes screenshots itself (Mantel: Print Screen, Quick Access), so it shows none.",
+      "mimes": [],
+      "apps": {
+        "Nimbus": [],
+        "KDE": ["hearth-capture.desktop", "org.kde.spectacle.desktop"],
+        "COSMIC": ["com.system76.CosmicScreenshot.desktop"]
+      },
+      "everywhere": [],
+      "others": []
+    },
+    "task-manager": {
+      "label": "Task manager",
+      "mimes": [],
+      "apps": {
+        "Nimbus": ["hearth-tasks.desktop"],
+        "KDE": ["org.kde.plasma-systemmonitor.desktop"]
+      },
+      "everywhere": [],
+      "others": []
+    },
+    "browser": {
+      "label": "Web browser",
+      "mimes": ["x-scheme-handler/http", "x-scheme-handler/https", "text/html", "application/xhtml+xml"],
+      "apps": {},
+      "everywhere": ["hearth-browser.desktop"],
+      "others": ["firefox.desktop", "org.mozilla.firefox.desktop", "org.kde.konqueror.desktop", "org.kde.falkon.desktop"]
+    },
+    "image-viewer": {
+      "label": "Photos",
+      "mimes": ["image/*"],
+      "apps": {},
+      "everywhere": ["hearth-photos.desktop"],
+      "others": ["org.kde.gwenview.desktop", "eog.desktop"]
+    },
+    "video-player": {
+      "label": "Video",
+      "mimes": ["video/*"],
+      "apps": {},
+      "everywhere": ["hearth-player.desktop"],
+      "others": ["org.kde.haruna.desktop", "org.kde.dragonplayer.desktop"]
+    },
+    "music": {
+      "label": "Music",
+      "mimes": ["audio/*"],
+      "apps": {},
+      "everywhere": ["hearth-player.desktop"],
+      "others": ["org.kde.elisa.desktop", "org.kde.juk.desktop"]
+    },
+    "word-processor": {
+      "label": "Documents",
+      "mimes": ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.oasis.opendocument.text",
+                "application/rtf", "application/msword"],
+      "apps": {},
+      "everywhere": ["hearth-write.desktop"],
+      "others": []
+    },
+    "spreadsheet": {
+      "label": "Spreadsheets",
+      "mimes": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel",
+                "application/vnd.oasis.opendocument.spreadsheet", "text/csv"],
+      "apps": {},
+      "everywhere": ["hearth-sheets.desktop"],
+      "others": []
+    },
+    "presentation": {
+      "label": "Presentations",
+      "mimes": ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.ms-powerpoint",
+                "application/vnd.oasis.opendocument.presentation"],
+      "apps": {},
+      "everywhere": ["hearth-slides.desktop"],
+      "others": []
+    },
+    "calendar": {
+      "label": "Calendar",
+      "mimes": ["text/calendar"],
+      "apps": {},
+      "everywhere": ["hearth-calendar.desktop"],
+      "others": []
+    },
+    "contacts": {
+      "label": "Contacts",
+      "mimes": ["text/vcard", "text/x-vcard"],
+      "apps": {},
+      "everywhere": ["hearth-contacts.desktop"],
+      "others": []
+    },
+    "maps": {
+      "label": "Maps",
+      "mimes": ["x-scheme-handler/geo"],
+      "apps": {},
+      "everywhere": ["hearth-maps.desktop"],
+      "others": []
+    },
+    "paint": {
+      "label": "Paint",
+      "mimes": [],
+      "apps": {},
+      "everywhere": ["hearth-paint.desktop"],
+      "others": []
+    },
+    "camera": {
+      "label": "Camera",
+      "mimes": [],
+      "apps": {},
+      "everywhere": ["hearth-camera.desktop"],
+      "others": []
+    },
+    "screen-recorder": {
+      "label": "Screen recorder",
+      "mimes": [],
+      "apps": {},
+      "everywhere": ["hearth-recorder.desktop"],
+      "others": []
+    },
+    "app-store": {
+      "label": "App store",
+      "mimes": ["x-scheme-handler/appstream"],
+      "apps": {},
+      "everywhere": ["io.github.kolunmi.Bazaar.desktop"],
+      "others": ["org.kde.discover.desktop"]
+    }
+  }
+}

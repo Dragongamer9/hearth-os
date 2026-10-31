@@ -6,5 +6,5 @@ Icon=hearth
 Type=Application
 Categories=Game;
 Keywords=game;mode;hearth;controller;big picture;
-OnlyShowIn=KDE;
+OnlyShowIn=KDE;COSMIC;
 X-KDE-Shortcuts=Meta+G

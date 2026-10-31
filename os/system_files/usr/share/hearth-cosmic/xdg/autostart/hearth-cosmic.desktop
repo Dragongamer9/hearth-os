@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth COSMIC companion
+Comment=Hearth's launcher, Quick Access, Hearth menu, on-screen keyboard and controller in Hearth COSMIC (docs/COSMIC.md)
+Exec=sh -c '[ "$HEARTH_DESKTOP" = cosmic ] || exit 0; exec "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/cosmic/hearth-cosmic" companion'
+OnlyShowIn=COSMIC;
+NoDisplay=true

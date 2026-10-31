@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+"""hearth-gnome: what Hearth GNOME's Shell extensions (os/system_files/usr/share/gnome-shell/extensions/*@hearthos.fun)
+ask for. It is Hearth Plasma's helper (desktop/plasma/hearth-plasma) with GNOME's view of which apps show
+(OnlyShowIn / NotShowIn GNOME instead of KDE), so the Hearth launcher on GNOME lists exactly what Mantel's and Hearth
+Plasma's do, from the same backends (hearth-files' .desktop reading, hearth-games, hearth-power, wpctl, brightnessctl,
+nmcli). docs/GNOME.md.
+
+  hearth-gnome apps | launch ID | games [fresh] | play ID | quick | quick-set KEY VAL | desktop | desktop-set NAME
+                                  the same commands and output as hearth-plasma
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+PLASMA_HELPER = os.path.join(os.path.dirname(HERE), 'plasma', 'hearth-plasma')
+
+
+def load():
+    loader = importlib.machinery.SourceFileLoader('hearth_plasma', PLASMA_HELPER)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def shown_in_gnome(fields):
+    """The .desktop spec's OnlyShowIn / NotShowIn for GNOME, and NoDisplay / Hidden."""
+    if fields.get('NoDisplay', '').lower() == 'true' or fields.get('Hidden', '').lower() == 'true':
+        return False
+    only = [x for x in fields.get('OnlyShowIn', '').split(';') if x]
+    if only and 'GNOME' not in only:
+        return False
+    return 'GNOME' not in [x for x in fields.get('NotShowIn', '').split(';') if x]
+
+
+def main(argv):
+    m = load()
+    m.shown_in_plasma = shown_in_gnome      # apps() asks this for every app
+    try:
+        print(json.dumps(m.main(argv)))
+    except m.Fail as e:
+        print('error: ' + str(e))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -3,12 +3,12 @@
 # (hosts/hearth-gamma, Desktop Mode's inverted colours for Settings › Accessibility). Built and tested on Linux, with
 # screenshots of each window; hearth-gamma is tried against labwc. Windows builds are checked too but not shipped
 # yet (Ember gets these apps later). Release builds are made by base-anatase.yml and base-peppermint.yml.
-name: Hearth Paint, Emoji and Fonts
+name: Hearth Paint, Emoji, Fonts and Theater
 
 on:
   push:
     branches: [apps-create-access, main, linux-host]
-    paths: ['hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/linux/desktop/shell/hearth-access', '.github/workflows/apps-create.yml']
+    paths: ['hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/linux/desktop/shell/hearth-access', '.github/workflows/apps-create.yml']
   workflow_dispatch:
 
 env:
@@ -38,7 +38,7 @@ jobs:
       - name: Unit tests (each app's library, hearth-gamma's ramps, Settings › Accessibility's helper)
         run: |
           set -o pipefail
-          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
             echo "::group::$c"
             if [ "$c" = hearth-gamma ]; then what=--bins; else what=--lib; fi
             (cd hosts/$c && cargo test $what 2>&1 | tee ../../test-$c.log) || { echo "::error title=$c tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
@@ -49,9 +49,70 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
             (cd hosts/$c && cargo build --release 2>&1 | tee ../../build-$c.log) || { echo "::error title=$c build::$(grep -E '^error' -A8 build-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
             echo "::notice title=$c::$(du -h "$CARGO_TARGET_DIR/release/$c" | cut -f1)"
+          done
+      # Hearth Theater's catalogs (docs/THEATER.md): the reader script and the home screen in Chromium against local
+      # test sites (tests/fixtures), then the real app reading those sites in its own hidden web view.
+      - name: Theater - scripts parse; the catalog reader and the home screen in Chromium (local test sites)
+        working-directory: hosts/hearth-theater
+        run: |
+          set -o pipefail
+          node --check src/reader.js && node --check src/viewer.js && node --check ui/hearth.js
+          sed -n '/^<script>$/,/^<\/script>$/p' ui/index.html | sed '1d;$d' > "$RUNNER_TEMP/theater-inline.js" && node --check "$RUNNER_TEMP/theater-inline.js"
+          npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          HEARTH_THEATER_SHOTS="$GITHUB_WORKSPACE/shots/theater-pages" node tests/pages.mjs 2>&1 | tee pages.log \
+            || { echo "::error title=Theater pages::$(grep -v '^::notice' pages.log | tail -c 3500 | tr '\n' '|')"; exit 1; }
+      - name: Theater - the app reads the test sites' catalogs in its own web view; its home screen
+        run: |
+          set -o pipefail
+          mkdir -p shots
+          node hosts/hearth-theater/tests/serve.mjs 8761 > serve.log 2>&1 &
+          sleep 2; cat serve.log
+          export HEARTH_THEATER_DIR="$RUNNER_TEMP/theater"; mkdir -p "$HEARTH_THEATER_DIR"
+          python3 - <<'EOF'
+          import json, os
+          sites = [dict(id=i, name=n, url=f"http://127.0.0.1:{p}/", category=c, art="", icon="", favorite=False, added=k + 1, opened=0, opens=0, hidden=[])
+                   for k, (i, n, p, c) in enumerate([("f1", "Fixture Films", 8761, "Movies"), ("f2", "Fixture OG", 8762, "TV"),
+                                                     ("f3", "Fixture Feed", 8763, "Other"), ("f4", "Fixture Shows", 8764, "Anime")])]
+          json.dump(sites, open(os.environ["HEARTH_THEATER_DIR"] + "/sites.json", "w"))
+          EOF
+          export DISPLAY=:98 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
+          Xvfb :98 -screen 0 1360x860x24 >/dev/null 2>&1 &
+          sleep 2
+          timeout 400 dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" --read-catalogs 2>&1 | tee theater-read.log || true
+          python3 - <<'EOF'
+          import json, os, sys
+          d = os.environ["HEARTH_THEATER_DIR"]
+          want = {"f1": (["Popular movies", "New episodes", "From Fixture Films"], 8), "f2": (["Popular"], 4),
+                  "f3": (["New videos", "From Fixture Feed"], 7), "f4": (["Trending now", "Movies", "Popular"], 12)}
+          bad = []
+          for i, (rows, count) in want.items():
+              try:
+                  c = json.load(open(f"{d}/catalog/{i}.json"))
+              except Exception as e:
+                  bad.append(f"{i}: no catalog ({e})"); continue
+              names = [r["name"] for r in c["rows"]]
+              n = sum(len(r["items"]) for r in c["rows"])
+              posters = sum(1 for r in c["rows"] for it in r["items"] if it.get("art"))
+              print(f"::notice title=Theater app read {i}::rows {names}; {n} titles; {posters} posters saved; search {c.get('search') or 'none'}; sources {c.get('sources')}; error {c.get('error') or 'none'}")
+              if names != rows or n != count: bad.append(f"{i}: rows {names}, {n} titles (expected {rows}, {count}); error {c.get('error')}")
+              if posters < n: bad.append(f"{i}: only {posters} of {n} posters saved")
+          if json.load(open(f"{d}/catalog/f4.json")).get("search") != "http://127.0.0.1:8764/search?q={searchTerms}": bad.append("f4: the search page wasn't found")
+          if bad:
+              print("::error title=Theater app catalogs::" + " | ".join(bad) + " || log: " + open("theater-read.log").read()[-1500:].replace("\n", "|"))
+              sys.exit(1)
+          EOF
+          # The home screen with those catalogs: the real app and its own window.
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" > theater.log 2>&1 &
+          sleep 12; import -window root shots/theater-home.png || true
+          pkill -f release/hearth-theater || true
+          echo "::notice title=Theater app output::$(tail -c 800 theater.log | tr '\n' '|')"
+          to=ci/apps-create-shots
+          if [ "$GITHUB_REF_NAME" != main ] && [ "$GITHUB_REF_NAME" != linux-host ]; then to="ci/apps-create-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"; fi
+          for f in theater-home theater-pages/home-catalogs theater-pages/home-favorite theater-pages/shelf-movies theater-pages/search; do
+            echo "::notice title=Theater screenshot ($f)::https://github.com/${{ github.repository }}/blob/$to/$f.png"
           done
       - name: Fonts lists this machine's fonts; hearth-gamma talks to labwc
         run: |

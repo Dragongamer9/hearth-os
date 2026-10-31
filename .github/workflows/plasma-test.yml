@@ -6,15 +6,19 @@
 #      then the launcher, Quick Access, Hearth Link, Hearth Storage and the lock screen. Errors from Hearth's widgets
 #      in Plasma's log fail the run. Side-by-side pictures with Hearth Classic's (the Desktop Mode test's
 #      ci/desktop-shots-* branch) go to the branch ci/plasma-shots-<branch>.
+#   3. the controller (tools/e2e-plasma-pad.py): a virtual Xbox pad (uinput, read by labwc's libinput and passed on to
+#      KWin) drives the real hearth-pad --plasma: the stick moves the pointer, Menu opens the launcher, the D-pad and A
+#      start an app, the Hearth menu opens Quick Access, View + B closes a window. Pictures: pad-*.png.
 # Failures are ::error:: annotations (logs can't always be read).
 name: Hearth Plasma test
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, bughunt, 'feature/desktop-plasma']
+    branches: [main, bughunt, 'feature/desktop-plasma', 'feature/plasma-mantel']
     paths: ['os/system_files/usr/share/plasma/**', 'os/system_files/usr/share/hearth-plasma/**', 'hosts/linux/desktop/plasma/**',
-            'hosts/linux/session/**', 'hosts/linux/test/test_hearth_plasma.py', '.github/workflows/plasma-test.yml']
+            'os/system_files/usr/share/kwin/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/desktop/shell/osk-plasma.qml',
+            'tools/e2e-plasma-pad.py', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_plasma.py', '.github/workflows/plasma-test.yml']
 
 permissions:
   contents: write    # the screenshots branch
@@ -26,7 +30,10 @@ concurrency:
 jobs:
   plasma:
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:44
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # The controller check: /dev/uinput and the input devices it makes (the host's /dev), the kernel's modules.
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
     steps:
       - name: Install Plasma (the same minimal set as the images) and the checking tools
         run: |
@@ -34,6 +41,9 @@ jobs:
             plasma-workspace kwin plasma-desktop plasma-breeze breeze-icon-theme google-noto-sans-fonts \
             qt6-qtdeclarative-devel kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers >/dev/null
           dnf -y install --skip-unavailable spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools kactivitymanagerd labwc grim wlr-randr >/dev/null || true
+          dnf -y install --skip-unavailable python3-evdev python3-gobject kmod systemd-udev libinput >/dev/null || true
+          # Hearth Plasma's KDE-based apps (Hearth Files, Terminal, Text, Reader, Calculator, Capture) for the controller check.
+          dnf -y install --skip-unavailable --setopt=install_weak_deps=False dolphin konsole kate okular kcalc >/dev/null || true
           for b in kwin_wayland plasmashell kpackagetool6; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
           plasmashell --version || true
 
@@ -44,6 +54,7 @@ jobs:
           cp -a os/system_files/usr/share/plasma/. /usr/share/plasma/
           cp -a os/system_files/usr/share/hearth-plasma /usr/share/
           cp os/system_files/usr/share/applications/hearth-gamemode.desktop /usr/share/applications/
+          mkdir -p /usr/share/kwin && cp -a os/system_files/usr/share/kwin/. /usr/share/kwin/
           install -Dm644 hosts/linux/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
           install -Dm644 os/branding/wallpapers/hearth-fireside.jpg /usr/share/wallpapers/Hearth-fireside/contents/images/3840x2160.jpg
           printf '{ "KPlugin": { "Id": "Hearth-fireside", "Name": "Hearth Fireside" } }\n' > /usr/share/wallpapers/Hearth-fireside/metadata.json
@@ -94,7 +105,7 @@ jobs:
 
       - name: Draw Hearth Plasma
         if: always()
-        timeout-minutes: 10
+        timeout-minutes: 18
         shell: bash
         run: |
           set +e +o pipefail
@@ -112,11 +123,29 @@ jobs:
           printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
           # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          # The controller check's virtual pad and hearth-pad's pointer and keyboard are uinput devices: udev tags them
+          # (ID_INPUT_*) so libinput takes them.
+          modprobe uinput 2>/dev/null; ls -l /dev/uinput || echo "::warning title=controller::no /dev/uinput"
+          for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
+          udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
+          # The launcher's first app, for the controller check (D-pad, A).
+          mkdir -p "$HOME/.local/share/applications" "$HOME/.config/labwc"
+          printf '[Desktop Entry]\nType=Application\nName=Aa Pad Test\nIcon=input-gamepad\nExec=touch /tmp/hearth-pad-launched\n' > "$HOME/.local/share/applications/aa-pad-test.desktop"
+          # labwc only holds KWin: none of its own key bindings (Alt+F4, Alt+Tab... are KWin's).
+          printf '<labwc_config><keyboard><keybind key="W-F12"><action name="Execute" command="true"/></keybind></keyboard></labwc_config>\n' > "$HOME/.config/labwc/rc.xml"
           # A headless labwc (as in the Desktop Mode test) holds KWin as a 1920x1080 window, so grim takes the
-          # pictures the same way as Hearth Classic's; KWin's own screenshot API is the fallback.
-          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
+          # pictures the same way as Hearth Classic's; KWin's own screenshot API is the fallback. With libinput
+          # (no seat manager here: libseat's noop backend) it also passes the uinput pointer and keyboard to KWin.
+          WLR_BACKENDS=headless,libinput LIBSEAT_BACKEND=noop WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
             labwc >shots/outer.log 2>&1 &
-          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          for i in $(seq 1 15); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          if ! ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1; then
+            echo "::warning title=controller::labwc didn't start with libinput: $(tail -4 shots/outer.log | tr '\n' '|' | cut -c1-400)"
+            pkill labwc; sleep 1
+            WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= \
+              labwc >shots/outer.log 2>&1 &
+            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          fi
           OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
           WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
           if [ -n "$OUTER" ]; then
@@ -183,6 +212,24 @@ jobs:
             "$g" --testing >shots/lockscreen.log 2>&1 & lg=$!; sleep 8; shot plasma-7-lockscreen; kill $lg 2>/dev/null; break
           done
           timeout 20 kpackagetool6 --type Plasma/Applet --list 2>/dev/null | grep -i hearth > shots/widgets-found.txt || true
+          # The controller, end to end (tools/e2e-plasma-pad.py; ::notice:: / ::error:: per check).
+          export SHOT_DIR=$PWD/shots OUTER
+          cat > /tmp/padshot.sh <<'SH'
+          cd "$(dirname "$SHOT_DIR")"
+          [ -n "$OUTER" ] && WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/$1.png" 2>>shots/shot-errors.txt && exit 0
+          timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt
+          SH
+          sed -i 's/^          //' /tmp/padshot.sh
+          timeout 480 python3 tools/e2e-plasma-pad.py /usr/share/nimbus/desktop/shell/hearth-pad shots 'bash /tmp/padshot.sh "$1"' > shots/pad-e2e.log 2>&1
+          pad_rc=$?
+          grep -E '^::(notice|error)' shots/pad-e2e.log
+          cp "$HOME/.local/share/nimbus/pad.log" shots/pad.log 2>/dev/null
+          echo "::notice title=pad.log::$(tail -c 1500 shots/pad.log 2>/dev/null | tr '\n' '|')"
+          if [ "$pad_rc" != 0 ]; then
+            echo "::error title=controller::$(grep -vE '^::' shots/pad-e2e.log | tail -8 | tr '\n' '|' | cut -c1-900)"
+            echo "::notice title=libinput (labwc)::$(grep -iE 'libinput|seat|session|input' shots/outer.log | head -8 | tr '\n' '|' | cut -c1-900)"
+            touch shots/FAILED
+          fi
           # Hearth's widgets must load without errors.
           bad=$(grep -hE "org\.hearth|hearth-plasma" shots/plasmashell.log shots/plasmawindowed-*.log 2>/dev/null \
             | grep -iE "error|TypeError|ReferenceError|is not a type|is not installed|Cannot assign|not defined|failed" | sort -u | head -12)
@@ -193,7 +240,7 @@ jobs:
           ls shots/*.png >/dev/null 2>&1 || { echo "::error title=screenshots::none were taken: $(head -c 600 shots/shot-errors.txt 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; }
           head -c 1500 shots/shot-errors.txt 2>/dev/null | tr '\n' '|' | sed 's/^/::notice title=screenshot messages::/'; echo
           # Plasma and KWin end here, so nothing keeps the step open.
-          pkill plasmawindowed; pkill plasmashell; pkill -f /tmp/kwin_wayland; pkill -f kscreenlocker_greet; pkill -f kactivitymanagerd; pkill labwc; pkill dbus-daemon
+          pkill -f hearth-pad; pkill plasmawindowed; pkill plasmashell; pkill -f /tmp/kwin_wayland; pkill -f kscreenlocker_greet; pkill -f kactivitymanagerd; pkill labwc; pkill dbus-daemon
           sleep 2; pkill -9 plasmashell; pkill -9 -f /tmp/kwin_wayland; true
 
       - name: Side by side with Hearth Classic
@@ -205,7 +252,7 @@ jobs:
           mkdir -p shots/classic shots/compare
           for b in ci/desktop-shots-bughunt ci/desktop-shots; do
             git fetch -q --depth 1 origin "$b" 2>/dev/null || continue
-            for f in 1-desktop 2-quick-access 4-launcher; do git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"; done
+            for f in 1-desktop 2-quick-access 4-launcher files-1-icons; do git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"; done
             ls shots/classic/*.png >/dev/null 2>&1 && { echo "Hearth Classic pictures from $b"; break; }
           done
           pair() {
@@ -216,8 +263,13 @@ jobs:
           pair 1-desktop plasma-1-desktop desktop
           pair 2-quick-access plasma-2-quicksettings quick-access
           pair 4-launcher plasma-4-launcher launcher
+          pair files-1-icons app-dolphin-1 files
           printf '# Hearth Classic (left) and Hearth Plasma (right)\n\n' > shots/README.md
           for f in shots/compare/*.png; do [ -f "$f" ] && printf '## %s\n\n![%s](compare/%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> shots/README.md; done
+          printf '## Hearth Plasma with a controller (tools/e2e-plasma-pad.py)\n\n' >> shots/README.md
+          grep -E '^::(notice|error) title=Controller' shots/pad-e2e.log 2>/dev/null | sed 's/^::\([a-z]*\) title=Controller: \([^:]*\)::/- \2: /' >> shots/README.md
+          printf '\n' >> shots/README.md
+          for f in shots/pad-*.png; do [ -f "$f" ] && printf '![%s](%s)\n\n' "$(basename "$f")" "$(basename "$f")" >> shots/README.md; done
           printf '## Hearth Plasma\n\n' >> shots/README.md
           for f in shots/plasma-*.png; do [ -f "$f" ] && printf '![%s](%s)\n\n' "$(basename "$f")" "$(basename "$f")" >> shots/README.md; done
 

@@ -1,0 +1,80 @@
+#!/bin/sh
+# Hearth OS on Peppermint: /etc settings that point into the writable layer must never stop Hearth from starting.
+# systemd runs this generator from the image's own /usr before it loads any unit, which is before the layer of
+# packages you added is mounted over /usr (hearth-unlock.service) — and on starts without it at all: a safe start,
+# hearth.clean, a locked system, the first start of a new version before your packages are back. /etc is the same
+# on all of those (bootc keeps it), so a package's /etc changes can name units and programs that aren't there.
+# What this does, only in /run (nothing in /etc is changed; on a start with the layer, systemd's reload re-runs this
+# and finds everything there, so nothing is overridden):
+#   - display-manager.service (gdm3, lightdm, … repoint it) or default.target pointing at a unit that isn't there:
+#     Hearth's own (sddm.service, graphical.target) for this start, in generator.early (which comes before /etc);
+#     SDDM's check of /etc/X11/default-display-manager is lifted in that case, so it starts
+#   - another unit in /etc (a link or a whole file) that replaces one of the image's and points at something missing:
+#     the image's unit for this start
+#   - a drop-in in /etc whose Exec… program is missing: masked for this start (an empty drop-in of the same name)
+# Never fails (a generator's failure is only logged); writes nothing when everything is there.
+normal=${1:-/tmp} early=${2:-/tmp}
+ETC=${HEARTH_ETC_UNITS:-/etc/systemd/system}
+USRU=${HEARTH_USR_UNITS:-/usr/lib/systemd/system}
+X11DM=${HEARTH_X11_DM:-/etc/X11/default-display-manager}
+DM=sddm.service
+DMBIN=/usr/bin/sddm
+
+missing_exec() {   # a unit file or drop-in: is one of its Exec…= programs (an absolute path) missing?
+  while IFS= read -r line; do
+    case "$line" in
+      Exec*=*)
+        v=${line#*=}
+        while :; do case "$v" in [-@:+!]*) v=${v#?};; *) break;; esac; done
+        p=${v%% *}
+        case "$p" in /*) [ -e "$p" ] || return 0;; esac;;
+    esac
+  done < "$1"
+  return 1
+}
+
+say() { { echo "hearth-etc-guard: $*" >/dev/kmsg; } 2>/dev/null || echo "hearth-etc-guard: $*" >&2; }
+
+dm_fallback=0
+# The display manager and the default target.
+for pair in "display-manager.service:$DM" "default.target:graphical.target"; do
+  name=${pair%%:*}; to=${pair#*:}
+  l="$ETC/$name"
+  if [ -L "$l" ] && [ ! -e "$l" ] && [ -e "$USRU/$to" ]; then
+    mkdir -p "$early" && ln -sfn "$USRU/$to" "$early/$name" && say "$name points at a unit that isn't there: $to this start"
+    [ "$name" = display-manager.service ] && dm_fallback=1
+  fi
+done
+# SDDM (Debian's unit) only starts when /etc/X11/default-display-manager names it: lifted when the display manager
+# fell back to it, or when that file names a program that isn't there.
+if [ -e "$USRU/$DM" ] && [ -f "$X11DM" ]; then
+  cur=$(head -n1 "$X11DM" 2>/dev/null)
+  if [ "$dm_fallback" = 1 ] || { [ "$cur" != "$DMBIN" ] && [ ! -e "$cur" ]; }; then
+    mkdir -p "$early/$DM.d" && printf '[Service]\nExecStartPre=\n' > "$early/$DM.d/50-hearth-etc-guard.conf" \
+      && say "the display manager named in $X11DM isn't there: SDDM starts anyway"
+  fi
+fi
+# Other units in /etc that replace the image's.
+for l in "$ETC"/*.service "$ETC"/*.socket "$ETC"/*.target "$ETC"/*.timer "$ETC"/*.path "$ETC"/*.mount; do
+  [ -e "$l" ] || [ -L "$l" ] || continue
+  name=${l##*/}
+  case "$name" in display-manager.service|default.target) continue;; esac
+  [ -e "$USRU/$name" ] || continue
+  bad=0
+  if [ -L "$l" ]; then
+    [ "$(readlink "$l")" = /dev/null ] && continue   # masked on purpose
+    [ -e "$l" ] || bad=1
+  fi
+  [ "$bad" = 0 ] && [ -f "$l" ] && missing_exec "$l" && bad=1
+  if [ "$bad" = 1 ]; then
+    mkdir -p "$early" && ln -sfn "$USRU/$name" "$early/$name" && say "$name in /etc points at something missing: the image's for this start"
+  fi
+done
+# Drop-ins in /etc.
+for f in "$ETC"/*.d/*.conf; do
+  [ -f "$f" ] || continue
+  missing_exec "$f" || continue
+  d=${f%/*}; d=${d##*/}
+  mkdir -p "$early/$d" && : > "$early/$d/${f##*/}" && say "$d/${f##*/} runs a program that isn't there: left out this start"
+done
+exit 0

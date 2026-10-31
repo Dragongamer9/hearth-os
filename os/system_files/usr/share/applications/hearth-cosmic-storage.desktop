@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Hearth Storage
+Comment=Your home server for paired Hearth devices: shared folders, backups and saves
+Exec=/usr/share/nimbus/desktop/cosmic/hearth-cosmic storage
+Icon=hearth-disks
+Type=Application
+Categories=System;
+OnlyShowIn=COSMIC;

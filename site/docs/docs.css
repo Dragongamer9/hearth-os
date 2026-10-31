@@ -1,10 +1,11 @@
-/* Hearth OS docs (hearthos.fun/docs): the front page's colours and type, laid out for reading.
+/* Hearth OS docs (hearthos.fun/docs): the front page's colours (soot, coal, ember, Hearth's teal focus) and its wide
+   Anybody headings, laid out for reading.
    Dark by the fire or light like daylight on stone, following the system; teal is the focus ring, as in Hearth. */
 @font-face{font-family:"Anybody";src:url(../fonts/anybody.woff2) format("woff2");font-weight:100 900;font-stretch:50% 150%;font-display:swap}
 :root{
-  --bg:#16100d; --bg2:#1c1410; --panel:#231914; --panel2:#2b201a; --line:#3a2c24; --line2:#4f3c31;
-  --text:#f5ede5; --soft:#dccfc3; --muted:#ad9c8f; --ember:#ff7a2f; --ember2:#ff9a52; --flame:#ffc067; --coal:#ff8f80; --ink:#2a1206;
-  --ok:#5bd68a; --focus:#3fd0b8; --code:#0f0a08; --warnbg:#24120f;
+  --bg:#110a07; --bg2:#1a110c; --panel:#1a110c; --panel2:#25180f; --line:#3d2a1e; --line2:#523a2a;
+  --text:#f6ece2; --soft:#d4c3b5; --muted:#a99382; --ember:#ff7a2f; --ember2:#ff9a52; --flame:#ffc067; --coal:#ff8f80; --ink:#2a1206;
+  --ok:#5bd68a; --focus:#3fd0b8; --code:#0b0705; --warnbg:#24120f;
   --display:"Anybody","Arial Black","Segoe UI",system-ui,sans-serif;
   --body:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Cantarell","Noto Sans",Roboto,sans-serif;
   --mono:ui-monospace,"JetBrains Mono","Cascadia Mono",SFMono-Regular,Menlo,Consolas,monospace;
@@ -13,16 +14,16 @@
 }
 @media (prefers-color-scheme:light){
   :root:not([data-theme="dark"]){
-    --bg:#eceeed; --bg2:#e2e5e4; --panel:#f8f9f8; --panel2:#e6e9e8; --line:#cdd2d0; --line2:#b3b9b6;
+    --bg:#f3ece6; --bg2:#ebe1d8; --panel:#fbf7f3; --panel2:#ebe1d8; --line:#d6c8bb; --line2:#cbbbad;
     --text:#1d1714; --soft:#3b312b; --muted:#5d544e; --ember:#b8460c; --ember2:#9c3a08; --flame:#8a4300; --coal:#b3261e; --ink:#fff;
-    --ok:#17773f; --focus:#0b7a69; --code:#f8f9f8; --warnbg:#fbeeec;
+    --ok:#17773f; --focus:#0b7a69; --code:#fbf7f3; --warnbg:#fbeeec;
     color-scheme:light;
   }
 }
 :root[data-theme="light"]{
-  --bg:#eceeed; --bg2:#e2e5e4; --panel:#f8f9f8; --panel2:#e6e9e8; --line:#cdd2d0; --line2:#b3b9b6;
+  --bg:#f3ece6; --bg2:#ebe1d8; --panel:#fbf7f3; --panel2:#ebe1d8; --line:#d6c8bb; --line2:#cbbbad;
   --text:#1d1714; --soft:#3b312b; --muted:#5d544e; --ember:#b8460c; --ember2:#9c3a08; --flame:#8a4300; --coal:#b3261e; --ink:#fff;
-  --ok:#17773f; --focus:#0b7a69; --code:#f8f9f8; --warnbg:#fbeeec;
+  --ok:#17773f; --focus:#0b7a69; --code:#fbf7f3; --warnbg:#fbeeec;
   color-scheme:light;
 }
 /* The top bar stays by the fire in either theme, like the front page. */
@@ -44,7 +45,7 @@ code{font:13.5px/1.5 var(--mono);background:var(--panel2);border:1px solid var(-
 .skip:focus{top:12px}
 
 /* top bar */
-nav.top{position:sticky;top:0;z-index:20;background:rgba(22,16,13,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(79,60,49,.7)}
+nav.top{position:sticky;top:0;z-index:20;background:rgba(17,10,7,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(61,42,30,.8)}
 nav.top .wrap{display:flex;align-items:center;gap:14px;height:62px}
 .brand{display:flex;align-items:center;gap:10px;font:800 18px/1 var(--display);font-stretch:118%;color:var(--text);text-decoration:none;white-space:nowrap}
 .brand img{width:28px;height:28px}
@@ -70,9 +71,10 @@ nav.top .links a.cta:hover{background:var(--ember2)}
 .side .sub a.cur{box-shadow:none;border-color:transparent;background:none;color:var(--text);border-left:2px solid var(--ember);border-radius:0 9px 9px 0}
 main{min-width:0;max-width:780px}
 .crumb{font-size:14px;color:var(--muted);margin-bottom:10px}
-main h1{font:800 clamp(30px,4.2vw,46px)/1.05 var(--display);font-stretch:118%;letter-spacing:-.01em;margin-bottom:14px}
+main h1{font:850 clamp(30px,4.8vw,54px)/1.02 var(--display);font-stretch:128%;letter-spacing:-.015em;margin-bottom:16px;overflow-wrap:anywhere}
+@media (max-width:560px){main h1{font-stretch:112%}}
 .lead{font-size:18px;color:var(--soft);margin-bottom:28px;max-width:38em}
-main h2{font:750 24px/1.2 var(--display);font-stretch:106%;margin:52px 0 14px;padding-top:22px;border-top:1px solid var(--line)}
+main h2{font:800 25px/1.2 var(--display);font-stretch:115%;margin:52px 0 14px;padding-top:22px;border-top:1px solid var(--line)}
 main h2:first-of-type{border-top:0;padding-top:0}
 main h3{font-size:18px;font-weight:700;margin:28px 0 8px}
 .ver{display:inline-block;font-size:12px;font-weight:650;color:var(--flame);border:1px solid color-mix(in srgb,var(--flame) 45%,transparent);border-radius:999px;padding:0 8px;vertical-align:middle;margin-left:6px}

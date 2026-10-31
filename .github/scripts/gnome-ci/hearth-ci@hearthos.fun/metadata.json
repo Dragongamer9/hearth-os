@@ -1,0 +1,6 @@
+{
+  "uuid": "hearth-ci@hearthos.fun",
+  "name": "Hearth CI helper",
+  "description": "gnome-test.yml only, never in the images: lets the test call GNOME Shell's Eval and Screenshot, and passes hearth-pad's uinput keyboard and pointer to the headless shell (a headless GNOME Shell has no input devices of its own).",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"]
+}

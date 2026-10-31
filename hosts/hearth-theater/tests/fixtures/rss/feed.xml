@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>New videos</title><link>/</link>
+<item><title>Feed Video 1</title><link>/video/1</link><pubDate>Mon, 01 Jun 2026 10:00:00 GMT</pubDate><media:thumbnail url="/img/feed-1.svg"/><description>Video number 1</description></item>
+<item><title>Feed Video 2</title><link>/video/2</link><pubDate>Mon, 02 Jun 2026 10:00:00 GMT</pubDate><media:thumbnail url="/img/feed-2.svg"/><description>Video number 2</description></item>
+<item><title>Feed Video 3</title><link>/video/3</link><pubDate>Mon, 03 Jun 2026 10:00:00 GMT</pubDate><media:thumbnail url="/img/feed-3.svg"/><description>Video number 3</description></item>
+<item><title>Feed Video 4</title><link>/video/4</link><pubDate>Mon, 04 Jun 2026 10:00:00 GMT</pubDate><media:thumbnail url="/img/feed-4.svg"/><description>Video number 4</description></item>
+<item><title>Feed Video 5</title><link>/video/5</link><pubDate>Mon, 05 Jun 2026 10:00:00 GMT</pubDate><media:thumbnail url="/img/feed-5.svg"/><description>Video number 5</description></item>
+</channel></rss>

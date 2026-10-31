@@ -2,6 +2,7 @@
 import sys
 sys.dont_write_bytecode = True   # keep desktop/shell clean (it ships as-is)
 import importlib.machinery
+import json
 import importlib.util
 import pathlib
 import unittest
@@ -366,6 +367,282 @@ class BluetoothStickTest(unittest.TestCase):
         self.assertGreater(c.ax['rx'], 0.9)
         c.handle(self.Ev(e.EV_ABS, e.ABS_Z, 255), {})
         self.assertTrue(c.btn.get('lt_axis'))
+
+
+class GuideXTest(unittest.TestCase):
+    """Guide + X opens and closes the on-screen keyboard (Hearth Classic and, with --osk, Hearth Plasma)."""
+
+    def test_classic(self):
+        out = Out()
+        p = hp.Pad(out)
+        p.button('guide', True, 0.0)              # Guide opens the radial menu as always...
+        self.assertEqual(p.mode, 'radial')
+        p.button('x', True, 0.1)                  # ... X while it's held: the keyboard instead
+        self.assertEqual(p.mode, 'desk')
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        self.assertIn({'t': 'radial', 'open': False, 'pick': -1}, out.sent)
+        p.button('x', False, 0.2); p.button('guide', False, 0.2)
+        p.command({'cmd': 'osk', 'open': True})   # the shell opened it
+        p.button('guide', True, 1.0); p.button('x', True, 1.1)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': False})
+        self.assertEqual(p.mode, 'desk')
+
+    def test_plasma_only_the_chord(self):
+        out = Out()
+        p = hp.Pad(out, osk_only=True)
+        p.button('a', True, 0.0); p.button('a', False, 0.1)
+        p.axes(0, 0, 1.0, 0); p.tick(0.2, 0.1)
+        self.assertEqual(out.log, [])             # nothing on the desktop: Plasma's own
+        self.assertEqual(out.moved, [0, 0])
+        self.assertFalse(p.wants_grab)
+        p.button('guide', True, 1.0)
+        self.assertNotEqual(p.mode, 'radial')
+        p.button('x', True, 1.1)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        p.command({'cmd': 'osk', 'open': True})
+        self.assertTrue(p.wants_grab)             # held while it's open
+        p.button('x', False, 1.2); p.button('guide', False, 1.2)
+        p.button('a', True, 2.0)
+        self.assertEqual(out.sent[-1], {'t': 'oskpad', 'b': 'a', 'down': True})
+
+
+class PlasmaKeyboardFilesTest(unittest.TestCase):
+    """Hearth Plasma's keyboard: started by an autostart entry only Hearth Plasma reads, guarded (no quickshell or
+    file: nothing), running the shared Keyboard.qml without wtype and hearth-pad --osk."""
+
+    def test_files(self):
+        root = PATH.parent.parent.parent.parent.parent
+        auto = (root / 'os' / 'system_files' / 'usr' / 'share' / 'hearth-plasma' / 'xdg' / 'autostart' / 'hearth-osk.desktop').read_text()
+        self.assertIn('OnlyShowIn=KDE;', auto)
+        self.assertIn('command -v quickshell', auto)
+        self.assertIn('osk-plasma.qml', auto)
+        self.assertIn('exit 0', auto)
+        qml = (PATH.parent / 'osk-plasma.qml').read_text()
+        self.assertIn('useWtype: false', qml)
+        self.assertIn('"--plasma"', qml)
+        for part in ('RadialMenu {', 'Help {', 'activateLauncherMenu', 'cmd: "plasma", do: "quick"', 'cmd: "plasma", do: "close"'):
+            self.assertIn(part, qml)
+        self.assertIn('property bool useWtype', (PATH.parent / 'Keyboard.qml').read_text())
+        self.assertNotIn('readonly property var controls', (PATH.parent / 'Help.qml').read_text())
+        # KWin's script: on only in Hearth Plasma (its own kwinrc), says what's in front to org.hearth.Pad.
+        kwin = root / 'os' / 'system_files' / 'usr' / 'share' / 'kwin' / 'scripts' / 'hearthpad'
+        meta = json.loads((kwin / 'metadata.json').read_text())
+        self.assertEqual(meta['KPlugin']['Id'], 'hearthpad')
+        self.assertFalse(meta['KPlugin']['EnabledByDefault'])
+        js = (kwin / 'contents' / 'code' / 'main.js').read_text()
+        self.assertIn('"org.hearth.Pad", "/org/hearth/Pad", "org.hearth.Pad", "Window"', js)
+        self.assertIn('hearthpadEnabled=true', (root / 'os' / 'system_files' / 'usr' / 'share' / 'hearth-plasma' / 'xdg' / 'kwinrc').read_text())
+        self.assertTrue(pathlib.Path(hp.PLASMA_REPORT_JS).is_file())
+        for m in ('Window', 'Probe'):
+            self.assertIn('<method name="%s">' % m, hp.PLASMA_XML)
+
+
+class PlasmaTest(unittest.TestCase):
+    """--plasma: Hearth Plasma's whole controller, everything Hearth Classic does, through KWin's shortcuts."""
+
+    def make(self):
+        out = Out()
+        return hp.Pad(out, plasma=True), out
+
+    def test_pointer_clicks_scroll_like_classic(self):
+        pad, out = self.make()
+        pad.axes(0, 0, 1.0, 0); pad.tick(0.1, 0.05)
+        self.assertGreater(out.moved[0], 0)
+        pad.axes(0, -1.0, 0, 0); pad.tick(0.2, 0.05)
+        self.assertGreater(out.wheeled[0], 0)
+        press(pad, 'rt', 1.0); press(pad, 'a', 1.1); press(pad, 'x', 1.2); press(pad, 'lt', 1.3); press(pad, 'l3', 1.4)
+        self.assertEqual([n for n, d in out.log if d], ['BTN_LEFT', 'BTN_LEFT', 'BTN_RIGHT', 'BTN_RIGHT', 'BTN_MIDDLE'])
+
+    def test_guide_menu_and_osk(self):
+        pad, out = self.make()
+        press(pad, 'guide', 0.0)
+        self.assertEqual(out.sent[-1], {'t': 'radial', 'open': True, 'sel': -1})
+        press(pad, 'right', 0.1); press(pad, 'a', 0.2)
+        self.assertEqual(out.sent[-1], {'t': 'radial', 'open': False, 'pick': 2})   # Quick Access
+        pad.button('guide', True, 1.0); pad.button('x', True, 1.1)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        pad.button('x', False, 1.2); pad.button('guide', False, 1.2)
+        pad.command({'cmd': 'osk', 'open': True})
+        self.assertTrue(pad.wants_grab)
+        press(pad, 'a', 2.0)
+        self.assertIn({'t': 'oskpad', 'b': 'a', 'down': True}, out.sent)
+        press(pad, 'y', 3.0, 0.01)
+        pad.command({'cmd': 'osk', 'open': False})
+        self.assertFalse(pad.wants_grab)
+        press(pad, 'y', 4.0)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        press(pad, 'menu', 5.0)
+        self.assertEqual(out.sent[-1], {'t': 'launcher'})
+
+    def test_view_chords_are_kwins(self):
+        pad, out = self.make()
+        pad.button('view', True, 0.0)
+        for b in ('b', 'up', 'down', 'left', 'right', 'a', 'x', 'y'):
+            press(pad, b, 0.1)
+        pad.button('view', False, 0.2)
+        log = [n for n, d in out.log if d]
+        self.assertEqual(log[:2], ['KEY_LEFTALT', 'KEY_F4'])                      # close: Alt+F4, not labwc's Super+Q
+        self.assertNotIn('KEY_Q', log)
+        for k in ('KEY_PAGEUP', 'KEY_PAGEDOWN', 'KEY_LEFT', 'KEY_RIGHT', 'KEY_P', 'KEY_W', 'KEY_V'):
+            self.assertIn(k, log)
+        self.assertNotIn({'t': 'help'}, out.sent)                                 # View was used: no controls card
+        press(pad, 'view', 1.0, 0.1)
+        self.assertEqual(out.sent[-1], {'t': 'help'})
+
+    def test_windows_switch_with_lb_rb(self):
+        pad, out = self.make()
+        press(pad, 'rb', 0.0)
+        self.assertEqual(out.log[:3], [('KEY_LEFTALT', True), ('KEY_TAB', True), ('KEY_TAB', False)])
+        pad.tick(5.0, 0.01)
+        self.assertEqual(out.log[-1], ('KEY_LEFTALT', False))
+
+    def test_menus_take_keys(self):
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'plasmashell', 'caption': '', 'fullscreen': False, 'kind': 'popup'})
+        self.assertTrue(pad.keys_ctx)                    # the launcher / tray / Quick Access popup
+        out.log.clear()
+        press(pad, 'a', 0.0); press(pad, 'down', 0.1); press(pad, 'b', 0.2)
+        self.assertEqual([n for n, d in out.log if d], ['KEY_ENTER', 'KEY_DOWN', 'KEY_ESC'])
+        out.log.clear()
+        press(pad, 'rt', 0.3)                            # RT still clicks
+        self.assertEqual(out.log, [('BTN_LEFT', True), ('BTN_LEFT', False)])
+        pad.command({'cmd': 'window', 'cls': 'plasmashell', 'caption': 'Desktop', 'fullscreen': False, 'kind': 'desktop'})
+        self.assertFalse(pad.keys_ctx)                   # the desktop: A clicks its icons
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal'})
+        self.assertTrue(pad.keys_ctx)
+        pad.command({'cmd': 'window', 'cls': 'firefox', 'caption': 'x', 'fullscreen': False, 'kind': 'normal'})
+        self.assertFalse(pad.keys_ctx)
+
+    def test_taskbar_and_overview_take_keys_until_done(self):
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'firefox', 'caption': 'x', 'fullscreen': False, 'kind': 'normal'})
+        pad.button('view', True, 0.0); press(pad, 'a', 0.1); pad.button('view', False, 0.2)
+        self.assertTrue(pad.keys_ctx)                    # the taskbar has the keyboard focus
+        out.log.clear()
+        press(pad, 'right', 0.3); press(pad, 'a', 0.4)
+        self.assertEqual([n for n, d in out.log if d], ['KEY_RIGHT', 'KEY_ENTER'])
+        self.assertFalse(pad.keys_ctx)                   # A opened it: back to the window's own rules
+        pad.command({'cmd': 'plasma', 'do': 'overview'})
+        self.assertTrue(pad.keys_ctx)
+        press(pad, 'b', 1.0)
+        self.assertFalse(pad.keys_ctx)
+
+    def test_hearth_menu_actions(self):
+        pad, out = self.make()
+        pad.command({'cmd': 'plasma', 'do': 'close'})
+        self.assertEqual(out.log, [('KEY_LEFTALT', True), ('KEY_F4', True), ('KEY_F4', False), ('KEY_LEFTALT', False)])
+        out.log.clear()
+        pad.command({'cmd': 'plasma', 'do': 'quick'})
+        self.assertEqual([n for n, d in out.log if d], ['KEY_LEFTMETA', 'KEY_LEFTALT', 'KEY_A'])
+        out.log.clear()
+        pad.command({'cmd': 'plasma', 'do': 'rm -rf'})  # unknown: nothing
+        self.assertEqual(out.log, [])
+
+    def test_fullscreen_pauses(self):
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'steam_app_570', 'caption': 'Dota 2', 'fullscreen': True, 'kind': 'normal'})
+        self.assertTrue(pad.paused)
+        press(pad, 'a', 0.0)
+        pad.axes(0, 0, 1.0, 0); pad.tick(0.1, 0.05)
+        self.assertEqual((out.log, out.moved), ([], [0, 0]))
+        press(pad, 'guide', 0.2)                         # the Hearth menu still opens
+        self.assertEqual(out.sent[-1]['t'], 'radial')
+        press(pad, 'b', 0.3)
+        pad.command({'cmd': 'window', 'cls': 'plasmashell', 'caption': '', 'fullscreen': True, 'kind': 'desktop'})
+        self.assertFalse(pad.paused)
+
+    def test_keyboard_opens_on_text_fields_after_the_controller(self):
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal'})
+        press(pad, 'a', 10.0)
+        pad.command({'cmd': 'textfield', 'on': True, 'now': 11.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        n = len(out.sent)
+        pad.command({'cmd': 'textfield', 'on': True, 'now': 11.5})   # still the same field: once
+        self.assertEqual(len(out.sent), n)
+        pad.command({'cmd': 'textfield', 'on': False, 'now': 12.0})
+        pad.command({'cmd': 'textfield', 'on': True, 'now': 40.0})  # the mouse and keyboard got there: no
+        self.assertEqual(len(out.sent), n)
+        # Plasma's launcher search: the D-pad works its list, the keyboard waits for Y.
+        pad.command({'cmd': 'textfield', 'on': False, 'now': 41.0})
+        pad.command({'cmd': 'window', 'cls': 'plasmashell', 'caption': '', 'fullscreen': False, 'kind': 'popup'})
+        press(pad, 'menu', 42.0)
+        pad.command({'cmd': 'textfield', 'on': True, 'now': 42.5})
+        self.assertNotIn({'t': 'osk', 'open': True}, out.sent[n:])
+        # KRunner is a search box: it opens the keyboard when the controller brought it up.
+        press(pad, 'a', 50.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.krunner', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 50.5})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+
+    def test_hearth_apps_like_mantels(self):
+        pad, out = self.make()
+        def win(cls):
+            pad.command({'cmd': 'window', 'cls': cls, 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+            out.log.clear()
+        def downs():
+            return [n for n, d in out.log if d]
+        win('org.kde.kate')
+        self.assertTrue(pad.keys_ctx)
+        press(pad, 'rb', 1.0); press(pad, 'rt', 1.1); press(pad, 'y', 1.2); press(pad, 'x', 1.3); press(pad, 'a', 1.4)
+        self.assertEqual(downs(), ['KEY_LEFTCTRL', 'KEY_PAGEDOWN', 'KEY_PAGEDOWN', 'KEY_LEFTCTRL', 'KEY_F', 'KEY_COMPOSE', 'KEY_ENTER'])
+        win('org.kde.okular')
+        press(pad, 'lb', 2.0); press(pad, 'lt', 2.1)
+        self.assertEqual(downs(), ['KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB', 'KEY_PAGEUP'])
+        # Hearth Files (Dolphin) does LB / RB, LT / RT and View itself; Y is its filter (search).
+        win('org.kde.dolphin')
+        press(pad, 'lb', 3.0); press(pad, 'rt', 3.1); press(pad, 'view', 3.2, 0.1)
+        self.assertEqual(out.log, [])
+        self.assertNotIn({'t': 'help'}, out.sent)
+        press(pad, 'y', 3.5)
+        self.assertEqual(downs(), ['KEY_LEFTCTRL', 'KEY_I'])
+        # Konsole: the keyboard opens when the controller brings it up, Y opens it again, LB / RB tabs.
+        press(pad, 'a', 10.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.konsole', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 10.5})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        out.log.clear(); out.sent.clear()
+        press(pad, 'y', 11.0); press(pad, 'rb', 11.1)
+        self.assertEqual(out.sent, [{'t': 'osk', 'open': True}])
+        self.assertEqual(downs(), ['KEY_LEFTSHIFT', 'KEY_RIGHT'])
+        win('org.kde.kcalc')
+        press(pad, 'y', 12.0)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        # View + B still closes any of them.
+        pad.button('view', True, 13.0); press(pad, 'b', 13.1); pad.button('view', False, 13.2)
+        self.assertEqual(downs()[-2:], ['KEY_LEFTALT', 'KEY_F4'])
+        for app in hp.PLASMA_APPS.values():
+            for act in app.values():
+                if isinstance(act, tuple):
+                    self.assertTrue(set(act) <= set(hp.KEYS_USED), act)
+
+    def test_plasma_commands_ignored_elsewhere(self):
+        out = Out()
+        pad = hp.Pad(out)                                # Hearth Classic
+        pad.command({'cmd': 'plasma', 'do': 'close'})
+        pad.command({'cmd': 'window', 'cls': 'plasmashell', 'kind': 'popup'})
+        self.assertEqual(out.log, [])
+        self.assertFalse(pad.keys_ctx)
+        self.assertTrue(set(k for c in hp.PLASMA_SHORTCUTS.values() for k in c) <= set(hp.KEYS_USED))
+
+
+class ButtonMapTest(unittest.TestCase):
+    """Sony pads swap X and Y (Triangle is BTN_NORTH); xpad's d-pad buttons and a Bluetooth Xbox controller's
+    KEY_HOMEPAGE Guide are read too."""
+
+    class E:
+        BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST = 0x130, 0x131, 0x133, 0x134
+        BTN_TL, BTN_TR, BTN_TL2, BTN_TR2 = 0x136, 0x137, 0x138, 0x139
+        BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR = 0x13a, 0x13b, 0x13c, 0x13d, 0x13e
+        BTN_TRIGGER_HAPPY1, BTN_TRIGGER_HAPPY2, BTN_TRIGGER_HAPPY3, BTN_TRIGGER_HAPPY4 = 0x2c0, 0x2c1, 0x2c2, 0x2c3
+        KEY_HOMEPAGE = 0xac
+
+    def test_maps(self):
+        e = self.E
+        m = hp.button_map(e)
+        self.assertEqual((m[e.BTN_NORTH], m[e.BTN_WEST]), ('x', 'y'))
+        self.assertEqual((m[0x2c0], m[0x2c1], m[0x2c2], m[0x2c3]), ('left', 'right', 'up', 'down'))
+        self.assertEqual(m[e.KEY_HOMEPAGE], 'guide')
+        s = hp.button_map(e, hp.SONY)
+        self.assertEqual((s[e.BTN_NORTH], s[e.BTN_WEST]), ('y', 'x'))
 
 
 class HotplugTest(unittest.TestCase):

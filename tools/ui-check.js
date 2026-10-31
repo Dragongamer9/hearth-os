@@ -1374,6 +1374,69 @@ const path = require('path');
     } catch (e) { errors.push(`put aside (${style}): ${e.message.split('\n')[0]}`); }
     await pp.close();
   }
+  // The on-screen keyboard over a game (Guide + X): only the keyboard, its presses type into the game (osk.type /
+  // osk.key to Hearth Input), B closes it. And the controller layout editor in Quick Access over the game (v2: action
+  // sets, layers, activators).
+  {
+    const kp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    kp.on('pageerror', e => errors.push(`keyboard over a game: ${e.message}`));
+    try {
+      await kp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux&overlay=full');
+      await kp.waitForTimeout(1200);
+      const r = await kp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms)), o = {};
+        window.__sent = []; window.send = m => { window.__sent.push(m); };
+        const real = MOCK.call; window.__calls = [];
+        MOCK.call = (m, a) => { if (m === 'osk.type' || m === 'osk.key') { window.__calls.push([m, a]); return Promise.resolve({ ok: true, skipped: '' }); } return real(m, a); };
+        onSysEvent('overlay.osk', {});
+        await wait(300);
+        o.open = OVOSK.on && !!document.querySelector('#ovosk .ovosk-kb *') && document.body.classList.contains('ovosk') && !S.layers.includes('qam');
+        o.visible = getComputedStyle(document.querySelector('#ovosk')).display !== 'none';
+        hostPad('a'); await wait(150);           // the selected key
+        hostPad('y'); await wait(150);           // space
+        hostPad('x'); await wait(150);           // backspace
+        hostPad('start'); await wait(300);       // Enter
+        o.calls = window.__calls.map(c => c[0] + ':' + (c[1].text || c[1].key)).join(' ');
+        hostPad('b'); await wait(100);
+        o.closed = window.__sent.some(m => m.type === 'overlay' && m.action === 'close');
+        onSysEvent('overlay.hidden', {});
+        o.gone = !OVOSK.on && !document.body.classList.contains('ovosk');
+        // Quick Access over the game: the layout editor as a panel there.
+        MOCK.call = real;
+        const id = GAMES.filter(g => !g.cloud)[0].id;
+        S.running = id;
+        await overlayShown();
+        imLoadTables(); imLoad(id, true); await wait(300);
+        imEdit(id); await wait(200);
+        o.editor = S.layers.at(-1) === 'imed' && !!document.querySelector('#imed [data-k="im-b-a"]');
+        // A layer, held by LB, with its own A; a chord and a double press on X; the right stick as a flick stick.
+        const d = IM.draft;
+        d.layers = [{ id: 'aim', name: 'Aim', buttons: { a: 'key:J' } }]; d.buttons.lb = 'layer:aim';
+        d.buttons.x = { press: 'key:R', double: 'key:E', chords: [{ with: 'lb', do: 'key:1' }] };
+        d.sticks.rs = { mode: 'flick', turn: 3600, threshold: 0.7 };
+        IM.edit = 'layer:aim'; imChanged(true); await wait(500);
+        o.layerRow = (document.querySelector('#imed [data-k="im-b-a"]') || {}).textContent || '';
+        o.where = (document.querySelector('#imed [data-k="im-where"]') || {}).textContent || '';
+        IM.edit = 'default'; imRefresh(); await wait(100);
+        o.xRow = (document.querySelector('#imed [data-k="im-b-x"]') || {}).textContent || '';
+        o.saved = JSON.stringify((IM.games[id] || {}).custom || {});
+        imPreview(); await wait(100);
+        o.preview = S.layers.at(-1) === 'sheet' && /Layer: Aim/.test(document.querySelector('#sheet').textContent);
+        closeLayer(); closeLayer();
+        return o;
+      });
+      const kerr = m => errors.push('keyboard over a game: ' + m);
+      if (!r.open || !r.visible) kerr(`it didn't open as just the keyboard (${JSON.stringify(r)})`);
+      if (!/^osk\.type:\S+ .*osk\.key:bksp.* osk\.key:enter$/.test(r.calls)) kerr(`presses didn't type into the game as expected: "${r.calls}"`);
+      if (!r.closed || !r.gone) kerr(`B didn't close it (${JSON.stringify(r)})`);
+      if (!r.editor) errors.push('controller layout editor: it didn\'t open in Quick Access over the game');
+      if (!/J/.test(r.layerRow) || !/Aim/.test(r.where)) errors.push(`controller layout editor: the layer isn't edited (${r.layerRow} / ${r.where})`);
+      if (!/double: E/.test(r.xRow) || !/with LB/.test(r.xRow)) errors.push(`controller layout editor: X's double press / chord not shown (${r.xRow})`);
+      if (!/"layers":\[\{"id":"aim"/.test(r.saved) || !/"flick"/.test(r.saved)) errors.push(`controller layout editor: not saved (${r.saved.slice(0, 300)})`);
+      if (!r.preview) errors.push('controller layout editor: the overview has no layer');
+    } catch (e) { errors.push('keyboard over a game: ' + e.message.split('\n')[0]); }
+    await kp.close();
+  }
   {
     const np = await browser.newPage({ viewport: { width: 420, height: 800 } });
     np.on('pageerror', e => errors.push(`quick access (narrow): ${e.message}`));
@@ -2003,7 +2066,8 @@ const path = require('path');
       await dp.waitForTimeout(300); await dshot('settings-front');
       await dev(() => { S.settingsTab = 'display'; navigate('settings', {}, false); });
       await dp.waitForTimeout(300); await dshot('settings-display');
-      // Go back to the previous version (Hearth OS images only; never on Peppermint or with an update waiting).
+      // Go back to the previous version (Hearth OS images, Peppermint too since it keeps bootc (hearth-unlock); never
+      // with an update waiting).
       st = await dev(() => { const was = [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s]; HOSTINFO.system = true; HOSTINFO.edition = 'anatase';
         const base = { booted: { version: '0.6.51' }, rollback: { version: '0.6.5' }, staged: null };
         SYSUPD.s = { state: 'idle', status: base }; const a = pageSystemUpdate();
@@ -2013,7 +2077,8 @@ const path = require('path');
         [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s] = was;
         return { a: /data-k="su-rollback"/.test(a) && /Go back to 0\.6\.5/.test(a), b: /su-rbgo/.test(b) && /Stay on 0\.6\.51/.test(b), c: /su-rollback/.test(c), d: /su-rollback/.test(d) }; });
       if (!st.a || !st.b) derr('Updates has no Go back row (or its undo): ' + JSON.stringify(st));
-      if (st.c || st.d) derr('Go back shows with an update waiting or on Peppermint: ' + JSON.stringify(st));
+      if (st.c) derr('Go back shows with an update waiting: ' + JSON.stringify(st));
+      if (!st.d) derr('Go back is missing on Peppermint (it keeps the version before through bootc): ' + JSON.stringify(st));
       // The classic side menu (Settings › You › Appearance › Menu style), and back to the dock.
       st = await dev(() => { closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false); act(document.querySelector('#view [data-k="ap-ms-side"]'));
         const body = document.body.classList.contains('menu-dock'); input('start');
@@ -2034,6 +2099,115 @@ const path = require('path');
       await dev(() => { closeAll(); LOOK.madeFor = 'auto'; saveLook(); });
     } catch (e) { derr(e.message.split('\n')[0]); }
     await dp.close();
+  }
+
+  // Hearth Mods in Game Mode (the hm block): a game's mods on its page (Classic, Dragonfire and the keyboard & mouse
+  // Launcher's "Mods & saves" tab), the Mods screens with LB / RB, A, X and B on a pretend controller, Nexus Mods to
+  // a FOMOD installer, downloads with a notification, a modlist's guided "Fetch them", and accounts, all from the
+  // preview's stand-in for Hearth Mods. Pictures in tools/mods-shots (posted by release.yml's ui-shots-mods job).
+  {
+    const modsShots = path.resolve(__dirname, 'mods-shots');
+    require('fs').mkdirSync(modsShots, { recursive: true });
+    let hp; try { hp = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 0.5 }); } catch { hp = await browser.newPage({ viewport: { width: 1280, height: 800 } }); }
+    const herr = m => errors.push('mods: ' + m);
+    hp.on('pageerror', e => herr(e.message));
+    const hshot = async name => { try { await hp.waitForTimeout(250); for (const q of [70, 55, 45, 35, 25, 15]) { const buf = await hp.screenshot({ type: 'jpeg', quality: q }); if (buf.toString('base64').length <= 9 * 3800 || q === 15) { require('fs').writeFileSync(path.join(modsShots, name + '.jpg'), buf); break; } } } catch (e) { herr('picture ' + name + ': ' + e.message); } };
+    const hev = (fn, a) => hp.evaluate(fn, a);
+    const pad = async k => { await hev(k => padPressed(k, 'ui-check'), k); await hp.waitForTimeout(180); };
+    const k = () => hev(() => focused && focused.dataset.k);
+    const focusK = async key => { await hev(key => setFocus(document.querySelector(`#view [data-k="${key}"]`), true), key); };
+    try {
+      await hp.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+      await hp.waitForTimeout(1500);
+      await hev(() => { G('g02').path = '/home/you/Games/Hollow Pines'; S.layers = []; S.history = []; });
+      // The game's page (Classic): the Mods card with its mods, and X / A on them.
+      let r = await hev(async () => { navigate('game', { game: 'g02' }, false); await new Promise(r => setTimeout(r, 400)); render(null, true);
+        return { card: !!document.querySelector('#view [data-k="hm-card-open"]'), names: [...document.querySelectorAll('#view .hm-gcard .hm-mini span')].map(e => e.textContent) }; });
+      if (!r.card || !r.names.includes('SkyUI')) herr("a game's page has no Mods card with its mods: " + JSON.stringify(r));
+      // Dragonfire's game page (its Details) is the same page, in its own colors.
+      await hev(() => { LOOK.style = 'dragonfire'; saveLook(); navigate('game', { game: 'g02' }, false); });
+      await hp.waitForTimeout(300);
+      if (!(await hev(() => !!document.querySelector('#view [data-k="hm-card-open"]')))) herr('no Mods card on the game page in the Dragonfire look');
+      await hshot('hm-dragonfire-game');
+      await hev(() => { LOOK.style = 'classic'; saveLook(); });
+      // The keyboard & mouse Launcher's Mods & saves tab.
+      r = await hev(async () => { LOOK.layout = 'shelf'; LOOK.libLayout = 'mk-lib-launcher'; saveLook(); MK.cur = 'g02'; MK.tab = 'mods'; navigate('library', {}, false); await new Promise(r => setTimeout(r, 300)); mkRender();
+        return { minis: document.querySelectorAll('#view .hm-minis .hm-mini').length, open: document.querySelector('#view [data-k="mkh-mods"]')?.dataset.act }; });
+      if (r.minis < 3 || r.open !== 'hmOpen') herr("the Launcher's Mods & saves tab doesn't show the game's mods: " + JSON.stringify(r));
+      await hev(() => { LOOK.libLayout = ''; saveLook(); MK.tab = 'overview'; });
+      // The game's Mods screen: tabs, the mods, X turns one off, A opens its sheet, Move down.
+      await hev(() => { S.history = []; navigate('library', {}, false); hmOpen('g02'); });
+      await hp.waitForTimeout(500);
+      r = await hev(() => ({ view: S.view, tabs: [...document.querySelectorAll('#view .hm-tabs .tab')].map(e => e.dataset.v), mods: document.querySelectorAll('#view .hm-mod').length, profile: !!document.querySelector('#view [data-k="hm-profile"]'), conflict: /Overridden by HD Textures/.test(document.querySelector('#view').textContent), hint: /On \/ off/.test(document.querySelector('#footer').textContent) }));
+      if (r.view !== 'hmods' || r.tabs.join(',') !== 'installed,plugins,nexus,modlist,downloads,modlists,accounts' || r.mods !== 4 || !r.profile || !r.conflict || !r.hint) herr('the Mods screen: ' + JSON.stringify(r));
+      await hshot('hm-installed');
+      await focusK('hmm-0'); await pad('x'); await hp.waitForTimeout(150);
+      if (await hev(() => HM.sum.g02.mods[0].enabled)) herr('X on a mod did not turn it off');
+      await focusK('hmm-0'); await pad('a');
+      r = await hev(() => ({ layer: S.layers.at(-1), items: (sheet && sheet.items || []).map(i => i.label) }));
+      if (r.layer !== 'sheet' || !r.items.some(l => /Move down/.test(l)) || !r.items.includes('Uninstall')) herr("A on a mod didn't open its sheet: " + JSON.stringify(r));
+      await hev(() => { const it = sheet.items.find(i => /Move down/.test(i.label)); closeAll(); it.run(); });
+      await hp.waitForTimeout(300);
+      if (await hev(() => HM.sum.g02.mods[1].id) !== 'skyui') herr('Move down did not change the load order');
+      // Update checks.
+      await focusK('hm-check'); await pad('a'); await hp.waitForTimeout(300);
+      if (!(await hev(() => !!document.querySelector('#view [data-k="hm-upd"]')))) herr('Check for updates found nothing to show');
+      // RB: Plugins, then Nexus Mods; LB back.
+      await pad('rb'); if (await hev(() => HM.tab) !== 'plugins') herr('RB did not go to Plugins');
+      if ((await hev(() => document.querySelectorAll('#view [data-k^="hmp-"]').length)) !== 4) herr('Plugins: not 4 plugins');
+      await pad('rb'); await hp.waitForTimeout(400);
+      r = await hev(() => ({ tab: HM.tab, cards: document.querySelectorAll('#view .hm-card').length, adult: /Spicy/.test(document.querySelector('#view').textContent) }));
+      if (r.tab !== 'nexus' || r.cards !== 2 || r.adult) herr('Nexus Mods tab: ' + JSON.stringify(r));
+      await hshot('hm-nexus');
+      await pad('lb'); if (await hev(() => HM.tab) !== 'plugins') herr('LB did not go back');
+      await pad('rb'); await hp.waitForTimeout(300);
+      // A mod's page, a file (Premium: downloads, then installs by itself through its FOMOD installer).
+      await hev(() => { const c = [...document.querySelectorAll('#view .hm-card')].find(e => /Sky Lanterns/.test(e.textContent)); setFocus(c, true); });
+      await pad('a'); await hp.waitForTimeout(400);
+      r = await hev(() => ({ view: S.view, files: document.querySelectorAll('#view [data-k^="hmf-"]').length }));
+      if (r.view !== 'hmmod' || r.files !== 2) herr("a Nexus mod's page: " + JSON.stringify(r));
+      await hshot('hm-nexus-mod');
+      const before = await hev(() => NOTIFS.length);
+      await focusK('hmf-0'); await pad('a'); await hp.waitForTimeout(300);
+      for (let i = 0; i < 6 && (await hev(() => S.view)) !== 'hmfomod'; i++) { await hev(() => hmTick()); await hp.waitForTimeout(400); }
+      r = await hev(() => ({ view: S.view, steps: HM.fomod && HM.fomod.steps.length, opts: document.querySelectorAll('#view .hm-opt').length }));
+      if (r.view !== 'hmfomod' || r.steps !== 2 || r.opts !== 4) herr('the download did not go on to the FOMOD installer: ' + JSON.stringify(r));
+      if ((await hev(() => NOTIFS.length)) <= before) herr('no notification for the finished download');
+      await focusK('hmo-1-0'); await pad('a');   // Extras: Fireflies
+      await hshot('hm-fomod');
+      await focusK('hm-fo-next'); await pad('a'); await hp.waitForTimeout(200);
+      if (await hev(() => HM.fomod && HM.fomod.step) !== 1) herr('Next did not go to step 2');
+      await focusK('hm-fo-next'); await pad('a'); await hp.waitForTimeout(400);
+      r = await hev(() => ({ view: S.view, choices: HM_MOCK.fomodChoices, added: HM.sum.g02.mods.some(m => m.id === 'lanterns2') }));
+      if (r.view !== 'hmods' || JSON.stringify(r.choices) !== '[[[0],[0]],[[0]]]' || !r.added) herr('Install in the FOMOD installer: ' + JSON.stringify(r));
+      // The game's modlist, then the Mods section: Downloads, Modlists (guided flow), Accounts.
+      await hev(() => hmTab('modlist')); await hp.waitForTimeout(300);
+      if (!(await hev(() => !!document.querySelector('#view [data-k="hm-j-guide-w1"]')))) herr("the game's Modlist tab doesn't show its modlist");
+      await hev(() => { S.history = []; navigate('home', {}, false); hmGo('downloads'); }); await hp.waitForTimeout(400);
+      r = await hev(() => ({ tabs: [...document.querySelectorAll('#view .hm-tabs .tab')].map(e => e.dataset.v).join(','), rows: document.querySelectorAll('#view [data-k^="hmd-"]').length }));
+      if (r.tabs !== 'games,downloads,modlists,accounts' || r.rows < 1) herr('Mods › Downloads: ' + JSON.stringify(r));
+      await pad('rb'); await hp.waitForTimeout(500);
+      r = await hev(() => ({ tab: HM.tab, guide: document.querySelector('#view [data-k="hm-j-guide-w1"]')?.textContent || '', lists: document.querySelectorAll('#view [data-k^="hml-"]').length }));
+      if (r.tab !== 'modlists' || !/3 of 5 LoversLab files/.test(r.guide) || !/Fetch them/.test(r.guide) || r.lists !== 2) herr('Mods › Modlists: ' + JSON.stringify(r));
+      await hshot('hm-modlists');
+      await focusK('hm-j-guide-w1'); await pad('a');
+      r = await hev(() => ({ layer: S.layers.at(-1), title: sheet && sheet.title, guiding: HM.guiding }));
+      if (r.layer !== 'sheet' || !/3 of 5/.test(r.title || '') || r.guiding !== 'w1') herr('Fetch them did not start the guided flow: ' + JSON.stringify(r));
+      await pad('b');
+      await pad('rb'); await hp.waitForTimeout(300);
+      r = await hev(() => ({ tab: HM.tab, keys: [...document.querySelectorAll('#view [data-k^="hm-ac-"]')].map(e => e.dataset.k) }));
+      if (r.tab !== 'accounts' || !['hm-ac-nexus', 'hm-ac-loverslab', 'hm-ac-mega', 'hm-ac-google'].every(x => r.keys.includes(x))) herr('Mods › Accounts: ' + JSON.stringify(r));
+      await hshot('hm-accounts');
+      // Quick Access: the mod downloads (a running one: pause from there).
+      await hev(() => { HM_MOCK.dls.unshift({ id: 'dq', domain: 'hollowpines', modId: 1, fileId: 2, name: 'Big Texture Pack', size: 9e9, done: 1e9, state: 'paused' }); HM.stAt = 0; LOOK.qaStyle = 'side'; closeAll(); toggleLayer('qam'); S.qtab = 'notif'; renderQam(); });
+      await hp.waitForTimeout(400); await hev(() => renderQam());
+      if (!(await hev(() => !!document.querySelector('#qam [data-k="hmq-all"]')))) herr('Quick Access has no mod downloads');
+      await hev(() => { closeAll(); LOOK.qaStyle = 'dock'; });
+      // The Library's Mods button.
+      await hev(() => { LOOK.libLayout = ''; navigate('library', {}, false); });
+      if (!(await hev(() => !!document.querySelector('#view [data-k="lib-mods"]')))) herr('the Library has no Mods button');
+    } catch (e) { herr(e.message.split('\n')[0]); }
+    await hp.close();
   }
 
   await browser.close();

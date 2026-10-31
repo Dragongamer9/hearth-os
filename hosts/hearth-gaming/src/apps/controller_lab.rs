@@ -37,10 +37,18 @@ mod lab {
         }
         String::from_utf8_lossy(&out).to_string()
     }
+    /// Where a layout keeps sticks: the default set, its layers and action sets (version 2), the old second set.
+    fn stick_paths(custom: &Value) -> Vec<String> {
+        let mut out = vec!["/sticks".to_string(), "/shift/sticks".to_string()];
+        for k in ["layers", "sets"] {
+            for i in 0..custom[k].as_array().map(|a| a.len()).unwrap_or(0) { out.push(format!("/{k}/{i}/sticks")); }
+        }
+        out
+    }
     fn stick_dzs(custom: &Value) -> Vec<f64> {
         let mut v = Vec::new();
-        for path in [&custom["sticks"], &custom["shift"]["sticks"]] {
-            if let Some(m) = path.as_object() { for s in m.values() { if let Some(d) = s["deadzone"].as_f64() { v.push(d); } } }
+        for path in stick_paths(custom) {
+            if let Some(m) = custom.pointer(&path).and_then(Value::as_object) { for s in m.values() { if let Some(d) = s["deadzone"].as_f64() { v.push(d); } } }
         }
         v
     }
@@ -70,8 +78,8 @@ mod lab {
             let id = g["id"].as_str().unwrap_or("").to_string();
             let mut c = hearth_core::input_map::load_in(&dir, &id);
             let mut touched = false;
-            for path in ["/custom/sticks", "/custom/shift/sticks"] {
-                if let Some(m) = c.pointer_mut(path).and_then(|n| n.as_object_mut()) {
+            for path in stick_paths(&c["custom"]).into_iter().map(|p| format!("/custom{p}")) {
+                if let Some(m) = c.pointer_mut(&path).and_then(|n| n.as_object_mut()) {
                     for s in m.values_mut() {
                         if s.get("deadzone").is_some() {
                             s["deadzone"] = json!(dz);

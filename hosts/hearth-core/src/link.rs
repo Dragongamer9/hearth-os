@@ -208,7 +208,7 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         // Continue on this device (handoff.rs): taking a game over waits until it's quit on the other device and its
         // save has been sent (at most 5 minutes). Update every device (fleet.rs) and local AI (ai.rs) ask every
         // paired device.
-        "handoff.status" | "fleet.update" | "fleet.status" | "fleet.cancel" | "ai.status" | "ai.use" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 60)) }
+        "handoff.status" | "fleet.update" | "fleet.status" | "fleet.cancel" | "ai.status" | "ai.use" | "input.peers" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 60)) }
         "handoff.take" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 330)) }
         "handoff.decline" | "ai.set" | "ai.stop" | "storage.smb.show" => call(cmd, a, 15),
         _ => Err(format!("{method} isn't a Hearth Link call")),

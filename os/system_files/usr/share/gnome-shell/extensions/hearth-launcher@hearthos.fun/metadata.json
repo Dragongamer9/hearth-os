@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-launcher@hearthos.fun",
+  "name": "Hearth Launcher",
+  "description": "Hearth's app launcher on the bar: search, Apps (System apps in one folder) and Games from Hearth's library, power actions; the same lists as Mantel's.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

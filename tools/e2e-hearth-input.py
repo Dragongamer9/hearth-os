@@ -337,8 +337,12 @@ def request(path, cmd, timeout=2.0):
 
 def press_of(layout, ctl, shifted=False):
     b = None
-    if shifted:
-        b = layout.get('shift', {}).get('buttons', {}).get(ctl)
+    if shifted:   # the layer LB holds (version 2's "shift" layer; version 1's second set)
+        for layer in layout.get('layers', []):
+            if layer.get('id') == 'shift':
+                b = layer.get('buttons', {}).get(ctl)
+        if b is None:
+            b = layout.get('shift', {}).get('buttons', {}).get(ctl)
     if b is None:
         b = layout['buttons'].get(ctl, 'none')
     return (b, None) if isinstance(b, str) else (b['press'], b.get('hold'))
@@ -747,6 +751,48 @@ def run(proc, pad, sock_path, log_path, extra, recs):
     back = wait_for(lambda: status()['active'], 4)
     check('after Guide: grabbed again once Quick Access isn\'t opening', back and grab_state(pad.path) == 'busy',
           'after %.2f s' % (time.monotonic() - t0))
+
+    # Guide + X: Hearth's on-screen keyboard over the game (like Steam + X). The controller stays held while Guide is,
+    # so the X reaches neither the game nor the layout; Hearth gets {"t": "osk"} (and no Guide of its own).
+    time.sleep(0.3)
+    m = rig.marks()
+    hm = h.mark()
+    spy_m = spy.mark()
+    pad.button('guide', True)
+    time.sleep(0.1)
+    held = grab_state(pad.path) == 'busy'
+    pad.button('x', True)
+    ev = h.wait_event(hm, lambda o: o.get('t') == 'osk', 1.5)
+    pad.button('x', False)
+    pad.button('guide', False)
+    lone_guide = h.wait_event(hm, lambda o: o.get('t') == 'guide', 0.4)
+    game_saw_x = [e for e in spy.since(spy_m) if e[1] == E.EV_KEY and e[2] == E.BTN_NORTH and e[3] == 1]
+    check('Guide + X → {"t": "osk"} to Hearth (the on-screen keyboard), no Guide on its own', ev and not lone_guide,
+          'osk %s, guide %s' % (bool(ev), bool(lone_guide)))
+    check('Guide + X → controller held until X (the game never saw the X), nothing typed, then let go for Hearth',
+          held and not game_saw_x and rig.keylog(m) == 'nothing' and grab_state(pad.path) == 'free',
+          'held %s, game saw X %d times, %s' % (held, len(game_saw_x), rig.keylog(m)))
+    back = wait_for(lambda: status()['active'], 4)
+    check('after Guide + X: grabbed again once nothing opened', back and grab_state(pad.path) == 'busy')
+
+    # The keyboard types into the game: characters → presses of Hearth Input's virtual keyboard (US and German).
+    m = rig.marks()
+    r = request(sock_path, {'cmd': 'type', 'text': 'Hi!', 'layout': 'us'})
+    done = rig.got(m, 'kbd', E.KEY_1, 0, 3)
+    downs = [code_name(c) for _, t, c, v in rig.dev['kbd'].since(m['kbd']) if t == E.EV_KEY and v == 1]
+    check('typing "Hi!" (us) → Shift+H, I, Shift+1 on the virtual keyboard',
+          r.get('ok') and done and downs == ['KEY_LEFTSHIFT', 'KEY_H', 'KEY_I', 'KEY_LEFTSHIFT', 'KEY_1'], '%s %s' % (json.dumps(r), downs))
+    m = rig.marks()
+    r = request(sock_path, {'cmd': 'type', 'text': 'zü@', 'layout': 'de'})
+    done = rig.got(m, 'kbd', E.KEY_Q, 0, 3)
+    downs = [code_name(c) for _, t, c, v in rig.dev['kbd'].since(m['kbd']) if t == E.EV_KEY and v == 1]
+    check('typing "zü@" (de) → Y, [, AltGr+Q', r.get('ok') and done and downs == ['KEY_Y', 'KEY_LEFTBRACE', 'KEY_RIGHTALT', 'KEY_Q'], '%s %s' % (json.dumps(r), downs))
+    m = rig.marks()
+    r = request(sock_path, {'cmd': 'key', 'key': 'bksp', 'n': 2})
+    time.sleep(0.4)
+    n = len([1 for _, t, c, v in rig.dev['kbd'].since(m['kbd']) if t == E.EV_KEY and c == E.KEY_BACKSPACE and v == 1])
+    check('Backspace twice', r.get('ok') and n == 2, '%s, %d presses' % (json.dumps(r), n))
+    check('nothing held after typing', not any(code for code in rig.dev['kbd'].dev.active_keys()), str(rig.dev['kbd'].dev.active_keys()))
 
     # Heartbeat: Hearth stops talking (crashed, stuck) → let go after 5 s.
     time.sleep(0.2)

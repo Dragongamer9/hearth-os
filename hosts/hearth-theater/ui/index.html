@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Theater</title>
+<link rel="stylesheet" href="hearth.css">
+<link rel="stylesheet" href="osk/hearth-osk.css">
+<style>
+  /* Theater's wall: rows of 16:9 tiles, big enough to read from the couch. */
+  header .logo { width:1.7em; height:1.7em; color:var(--ember); }
+  .tabs { overflow-x:auto; scrollbar-width:none; }
+  .tab { display:inline-flex; align-items:center; gap:.35em; white-space:nowrap; }
+  .tab svg { width:1em; height:1em; flex:none; }
+  main.scroll { padding-bottom:2em; }
+  .shelf { margin:.4em 0 1.3em; }
+  .shelf h2 { font-size:1em; font-weight:650; margin:0 0 .55em; display:flex; gap:.5em; align-items:baseline; color:var(--text); }
+  .shelf h2 small { color:var(--faint); font-weight:500; font-size:.8em; }
+  .row-tiles { display:flex; gap:clamp(10px,1.2vw,18px); overflow-x:auto; padding:6px 4px 10px; scrollbar-width:none; scroll-padding:0 40px; }
+  .grid-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(clamp(200px,17vw,300px), 1fr)); gap:clamp(10px,1.2vw,18px); padding:6px 4px; }
+  .tile { position:relative; flex:none; width:clamp(200px,17vw,300px); border-radius:16px; overflow:hidden; background:var(--panel); border:1px solid var(--line); text-align:left; display:flex; flex-direction:column; }
+  .grid-tiles .tile { width:auto; }
+  .tile .pic { position:relative; aspect-ratio:16/9; background:linear-gradient(135deg, var(--panel3), var(--bg2)); display:grid; place-items:center; overflow:hidden; }
+  .tile .pic img.art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .tile .pic .mono { font-size:2.6em; font-weight:700; color:var(--ember); opacity:.85; }
+  .tile .pic img.ico.big { width:28%; height:auto; max-height:55%; object-fit:contain; border-radius:12px; }
+  .tile .meta { display:flex; gap:.55em; align-items:center; padding:.55em .7em .6em; min-width:0; }
+  .tile .meta img.ico { width:1.25em; height:1.25em; border-radius:4px; flex:none; object-fit:contain; }
+  .tile .meta .txt { min-width:0; }
+  .tile .name { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .host { color:var(--muted); font-size:.78em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .fav { position:absolute; top:.45em; right:.5em; color:var(--flame); filter:drop-shadow(0 1px 3px rgba(0,0,0,.8)); }
+  .tile .fav svg { width:1.15em; height:1.15em; }
+  .tile .cat { position:absolute; top:.5em; left:.55em; font-size:.68em; padding:.15em .6em; border-radius:99px; background:rgba(15,11,9,.78); color:var(--muted); }
+  .tile:focus, .tile.focus { transform:scale(1.035); z-index:1; }
+  .tile.add .pic { background:transparent; border-bottom:1px dashed var(--line); }
+  .tile.add .pic svg { width:2.4em; height:2.4em; color:var(--ember); }
+  .hero { display:grid; place-items:center; text-align:center; height:100%; padding:2em; }
+  .hero .inner { max-width:34em; }
+  .hero .big { width:4em; height:4em; color:var(--ember); opacity:.9; }
+  .hero h2 { margin:.4em 0 .3em; font-size:1.5em; }
+  .preview { display:flex; gap:.8em; align-items:center; margin-top:.4em; min-height:1.5em; }
+  .preview img { width:7em; aspect-ratio:16/9; object-fit:cover; border-radius:10px; border:1px solid var(--line); }
+  .spinner { width:1.1em; height:1.1em; border-radius:50%; border:2px solid var(--panel3); border-top-color:var(--ember); animation:sp 1s linear infinite; display:inline-block; vertical-align:-.15em; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .menu-list { display:grid; gap:.45em; }
+  /* Catalog cards: a site's own titles, posters (2:3) for shows and movies, 16:9 for episodes and videos. */
+  .ct { position:relative; flex:none; width:clamp(132px,10.6vw,192px); border-radius:14px; overflow:hidden; background:var(--panel); border:1px solid var(--line); text-align:left; display:flex; flex-direction:column; }
+  .ct.wide { width:clamp(220px,17vw,300px); }
+  .ct .pic { position:relative; aspect-ratio:2/3; background:linear-gradient(160deg, var(--panel3), var(--bg2)); display:grid; place-items:center; overflow:hidden; }
+  .ct.wide .pic { aspect-ratio:16/9; }
+  .ct .pic img.art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; }
+  .ct .pic .mono { font-size:2.2em; font-weight:700; color:var(--ember); opacity:.7; }
+  .ct .fav { position:absolute; top:.4em; right:.45em; z-index:2; color:var(--flame); filter:drop-shadow(0 1px 3px rgba(0,0,0,.8)); }
+  .ct .fav svg { width:1.1em; height:1.1em; }
+  .ct .badge { position:absolute; bottom:.4em; left:.45em; z-index:2; font-size:.66em; padding:.12em .55em; border-radius:99px; background:rgba(15,11,9,.82); color:var(--text); }
+  .ct .cap { padding:.45em .6em .55em; min-width:0; }
+  .ct .name { font-weight:600; font-size:.88em; line-height:1.25; min-height:2.5em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .ct .sub { color:var(--muted); font-size:.72em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ct:focus, .ct.focus { transform:scale(1.05); z-index:1; }
+  .ct.skel { pointer-events:none; animation:pulse 1.4s ease-in-out infinite; }
+  .ct.skel .cap::before { content:""; display:block; height:.8em; width:70%; border-radius:6px; background:var(--panel3); margin:.3em 0 1.2em; }
+  @keyframes pulse { 50% { opacity:.45; } }
+  .shelf h2 .site-ico { width:1.1em; height:1.1em; border-radius:4px; object-fit:contain; align-self:center; }
+  .shelf h2 .state { color:var(--faint); font-weight:500; font-size:.75em; margin-left:auto; display:flex; gap:.4em; align-items:center; }
+  .note { align-self:center; max-width:30em; color:var(--muted); padding:0 1em; font-size:.9em; }
+  .searchbar { display:flex; gap:.6em; margin:.3em 4px 1em; }
+  .searchbar .inp { flex:1; }
+  .grid-cards { display:flex; flex-wrap:wrap; gap:clamp(10px,1.2vw,18px); padding:6px 4px; }
+  .row-switch { display:flex; align-items:center; justify-content:space-between; gap:1em; }
+  .menu-list .btn { justify-content:flex-start; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v11H3zM8 21h8M12 17v4M10 9.5v4l3.5-2z"/></svg>
+    <h1>Theater</h1><span class="sub" id="count"></span>
+    <div class="spacer"></div>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <button class="btn primary f" id="addBtn" data-k="add"></button>
+  </header>
+  <main class="scroll" id="wall"></main>
+  <footer id="hints"></footer>
+</div>
+<div id="layer"></div>
+<script src="hearth.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, icon, invoke, dialog, closeDialog, ask, toast } = H;
+// Theater's home: each site you added shows its own shows, movies and videos as rows of cards (read from the site by
+// Theater itself, with your sign-ins: see src/reader.js), grouped on the Anime, TV, Movies and Other shelves.
+// The icons Theater needs beyond hearth.js's own.
+const EXTRA = {
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.9l-5.3 2.7 1-5.8-4.2-4.1 5.9-.9z',
+  dots: 'M5 12h.01M12 12h.01M19 12h.01', tv: 'M3 6h18v11H3zM8 21h8M12 17v4M10 9.5v4l3.5-2z', paste: 'M9 4h6v3H9zM7 5H5v16h14V5h-2M9 12h6M9 16h4',
+};
+const ic = (n, c = '') => EXTRA[n] ? `<svg class="${c}" viewBox="0 0 24 24" fill="${n === 'star' && c.includes('solid') ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${EXTRA[n]}"/></svg>` : icon(n, c);
+
+let SITES = [], CATS = ['Anime', 'TV', 'Movies', 'Other'], TAB = 'All', FULL = false;
+let CATALOGS = {}, TITLES = [];
+const READING = new Set();
+const CARDS = new Map();   // a card's key → {site, item}
+const ART = new Map();   // file → data: address (or a pending promise)
+const host = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch { return u; } };
+
+// ---------------------------------------------------------------- pictures
+function artFor(file) {
+  if (!file) return Promise.resolve('');
+  if (!ART.has(file)) ART.set(file, invoke('art', { file }).catch(() => ''));
+  return ART.get(file);
+}
+// Saved pictures first; a poster not saved (yet) loads from the site, as the site's own page would show it.
+function fillPictures(root = document) {
+  $$('img[data-file], img[data-src]', root).forEach(img => {
+    const f = img.dataset.file, remote = img.dataset.src || '';
+    img.removeAttribute('data-file'); img.removeAttribute('data-src');
+    img.addEventListener('error', () => img.remove(), { once: true });
+    if (!f) { if (remote) img.src = remote; else img.remove(); return; }
+    artFor(f).then(src => { if (src) img.src = src; else if (remote) img.src = remote; else img.remove(); });
+  });
+}
+
+// ---------------------------------------------------------------- the wall
+function tile(s) {
+  const mono = esc((s.name || host(s.url) || '?').trim().charAt(0).toUpperCase());
+  const pic = s.art ? `<img class="art" data-file="${esc(s.art)}" alt="">`
+    : s.icon ? `<img class="ico big" data-file="${esc(s.icon)}" alt="">` : `<span class="mono">${mono}</span>`;
+  return `<button class="tile f" data-id="${esc(s.id)}" data-k="t-${esc(s.id)}" title="${esc(s.name)}">
+    <div class="pic">${pic}${s.favorite ? `<span class="fav">${ic('star', 'solid')}</span>` : ''}<span class="cat">${esc(s.category)}</span></div>
+    <div class="meta">${s.icon ? `<img class="ico" data-file="${esc(s.icon)}" alt="">` : ''}<div class="txt"><div class="name">${esc(s.name)}</div><div class="host">${esc(host(s.url))}</div></div></div>
+  </button>`;
+}
+const addTile = () => `<button class="tile add f" data-act="add" data-k="t-add"><div class="pic">${icon('plus')}</div><div class="meta"><div class="txt"><div class="name">Add a site</div><div class="host">Paste a link</div></div></div></button>`;
+const shelf = (title, list, extra = '') => list.length || extra ? `<section class="shelf"><h2>${esc(title)} <small>${list.length || ''}</small></h2><div class="row-tiles">${list.map(tile).join('')}${extra}</div></section>` : '';
+
+// ---------------------------------------------------------------- catalog cards
+const hashKey = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+const titleOf = (sid, url) => TITLES.find(t => t.site === sid && t.url === url);
+function card(sid, it, opts = {}) {
+  const k = 'c' + hashKey(sid + '|' + it.url) + (opts.tag || '');
+  CARDS.set(k, { site: sid, item: it });
+  const s = site(sid), t = titleOf(sid, it.url);
+  const wide = it.kind === 'episode' || it.kind === 'video';
+  const eps = it.episodes ? `${it.episodes} episode${it.episodes === 1 ? '' : 's'}` : '';
+  const sub = [opts.showSite && s ? s.name : '', eps, it.year].filter(Boolean).join(' · ');
+  const pic = it.art || it.image ? `<img class="art" ${it.art ? `data-file="${esc(it.art)}"` : ''} data-src="${esc(it.image || '')}" alt="">` : '';
+  const kind = { movie: 'Movie', series: 'Series', episode: 'Episode', video: 'Video' }[it.kind] || '';
+  return `<button class="ct f ${wide ? 'wide' : 'poster'}" data-card="${k}" data-k="${k}" title="${esc(it.title)}">
+    <div class="pic"><span class="mono">${esc((it.title || '?').trim().charAt(0).toUpperCase())}</span>${pic}${t?.favorite ? `<span class="fav">${ic('star', 'solid')}</span>` : ''}${kind && opts.badge !== false ? `<span class="badge">${kind}</span>` : ''}</div>
+    <div class="cap"><div class="name">${esc(it.title)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div></button>`;
+}
+const skeletons = (n = 6) => Array.from({ length: n }, () => '<div class="ct poster skel" aria-hidden="true"><div class="pic"></div><div class="cap"></div></div>').join('');
+const rowName = (s, r) => r.name || `From ${s.name}`;
+function rowHead(s, title, state = '') {
+  return `<h2>${s.icon ? `<img class="site-ico" data-file="${esc(s.icon)}" alt="">` : ''}${esc(title)} <small>${esc(s.name)}</small>${state ? `<span class="state">${state}</span>` : ''}</h2>`;
+}
+// A site's rows on the home screen, or what to show while it's read or when it lists nothing.
+function siteRows(s) {
+  const c = CATALOGS[s.id], hidden = s.hidden || [];
+  const rows = (c?.rows || []).filter(r => r.items?.length && !hidden.includes(rowName(s, r)));
+  const reading = READING.has(s.id);
+  if (rows.length) {
+    return rows.map((r, i) => `<section class="shelf" data-site="${esc(s.id)}">${rowHead(s, rowName(s, r), i === 0 && reading ? '<span class="spinner"></span> Updating' : '')}<div class="row-tiles">${r.items.map(it => card(s.id, it)).join('')}</div></section>`).join('');
+  }
+  if (reading || !c || !c.updated) {
+    return `<section class="shelf" data-site="${esc(s.id)}">${rowHead(s, s.name, reading ? '<span class="spinner"></span> Reading the site…' : 'Waiting to be read')}<div class="row-tiles">${tile(s)}${skeletons()}</div></section>`;
+  }
+  const why = c.signin ? `${s.name} wants you to sign in. Open it, sign in there, then choose Refresh now in its options (Y).`
+    : c.error ? `Theater couldn't read it this time (${c.error}). Open it to browse, or try Refresh now.`
+    : (c.rows || []).length ? 'All its rows are hidden. Show them again in its options (Y).'
+    : "It doesn't list its titles in a way Theater can read. Open it to browse it.";
+  return `<section class="shelf" data-site="${esc(s.id)}">${rowHead(s, s.name)}<div class="row-tiles">${tile(s)}<div class="note">${esc(why)}</div></div></section>`;
+}
+const byOpened = list => [...list].sort((a, b) => (b.opened || 0) - (a.opened || 0) || (a.added || 0) - (b.added || 0));
+// Continue and Favorites hold titles and sites together.
+function mixed(titles, sites) {
+  return [...titles.map(t => ({ at: t.opened || 0, html: card(t.site, t, { showSite: true, tag: 'k' }) })), ...sites.map(s => ({ at: s.opened || 0, html: tile(s) }))]
+    .sort((a, b) => b.at - a.at).map(x => x.html);
+}
+const mixedShelf = (title, items) => items.length ? `<section class="shelf"><h2>${esc(title)} <small>${items.length}</small></h2><div class="row-tiles">${items.join('')}</div></section>` : '';
+
+function render() {
+  if (TAB === 'Search') { renderSearch(); return; }
+  const keep = document.activeElement?.dataset?.k;
+  CARDS.clear();
+  $('#count').textContent = SITES.length ? `${SITES.length} site${SITES.length === 1 ? '' : 's'}` : '';
+  $('#addBtn').innerHTML = `${icon('plus')}Add site`;
+  renderTabs();
+  const wall = $('#wall');
+  if (!SITES.length) {
+    wall.innerHTML = `<div class="hero"><div class="inner">${ic('tv', 'big')}<h2>Your own wall of shows</h2>
+      <p class="muted">Add the video sites you use by pasting their links. Theater lists each site's shows, movies and videos right here, and opens them full screen with a pointer you move with the controller.</p>
+      <div class="row" style="justify-content:center;margin-top:1.2em"><button class="btn primary f" data-act="add" data-k="hero-add">${icon('plus')}Add your first site</button></div></div></div>`;
+  } else if (TAB === 'All') {
+    const recentT = TITLES.filter(t => t.opened), recentS = SITES.filter(s => s.opened);
+    const cont = mixed(recentT, recentS).slice(0, 16);
+    const favs = mixed(TITLES.filter(t => t.favorite), SITES.filter(s => s.favorite));
+    wall.innerHTML = mixedShelf('Continue', cont) + mixedShelf('Favorites', favs)
+      + CATS.map(c => byOpened(SITES.filter(s => s.category === c)).map(siteRows).join('')).join('')
+      + shelf('Your sites', byOpened(SITES), addTile());
+  } else if (TAB === 'Favorites') {
+    const favs = mixed(TITLES.filter(t => t.favorite), SITES.filter(s => s.favorite));
+    wall.innerHTML = favs.length ? `<div class="grid-cards">${favs.join('')}</div>`
+      : `<div class="empty"><span class="big">${ic('star')}</span>No favorites yet. Press <b>X</b> on a title or a site (or right-click it) to make it one.</div>`;
+  } else {
+    const list = byOpened(SITES.filter(s => s.category === TAB));
+    wall.innerHTML = list.map(siteRows).join('')
+      + `<section class="shelf"><h2>${esc(TAB)} sites <small>${list.length || ''}</small></h2><div class="grid-tiles">${list.map(tile).join('')}${addTile()}</div></section>`;
+  }
+  fillPictures(wall);
+  footer();
+  const back = keep && document.querySelector(`[data-k="${CSS.escape(keep)}"]`);
+  if (back) back.focus({ preventScroll: true });
+  else if (!H.dialogOpen()) (wall.querySelector('.ct.f, .tile') || wall.querySelector('.f') || $('#addBtn')).focus({ preventScroll: true });
+}
+function renderTabs() {
+  $('#tabs').innerHTML = tabsList().map(t => `<button class="tab f ${t === TAB ? 'on' : ''}" data-tab="${t}" data-k="tab-${t}" role="tab">${t === 'Search' ? icon('search') : ''}${t}</button>`).join('');
+}
+function footer() {
+  const a = document.activeElement;
+  const on = a?.classList?.contains('tile') && a.dataset.id || a?.dataset?.card;
+  $('#hints').innerHTML = `<span><b>A</b>${on ? 'Watch' : 'Choose'}</span>${on ? '<span><b>X</b>Favorite</span><span><b>Y</b>Options</span>' : ''}<span><b>View</b>Search</span><span><b>Menu</b>Add site</span><span><b>LB</b><b>RB</b>Shelves</span>${TAB !== 'All' ? '<span><b>B</b>Home</span>' : FULL ? '<span><b>B</b>Close Theater</span>' : ''}`;
+}
+document.addEventListener('focusin', () => { footer(); const t = document.activeElement; if (t?.classList?.contains('tile') || t?.classList?.contains('ct')) t.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
+
+function setTab(t) { TAB = t; render(); (TAB === 'Search' ? $('#q') : $('#wall .f'))?.focus(); }
+const site = id => SITES.find(s => s.id === id);
+
+// ---------------------------------------------------------------- opening, favorites, options
+async function watch(id) {
+  try { await invoke('open', { id }); const s = site(id); if (s) { s.opened = Date.now(); s.opens = (s.opens || 0) + 1; } }
+  catch (e) { toast(String(e)); }
+}
+async function toggleFav(id) {
+  const s = site(id); if (!s) return;
+  try { await invoke('favorite', { id, on: !s.favorite }); s.favorite = !s.favorite; toast(s.favorite ? `${s.name} is a favorite` : `${s.name} isn't a favorite now`); render(); }
+  catch (e) { toast(String(e)); }
+}
+function options(id) {
+  const s = site(id); if (!s) return;
+  const d = dialog(`<h2>${esc(s.name)}</h2><p class="muted" style="margin-top:-.4em">${esc(s.url)}</p><div class="menu-list">
+    <button class="btn f" data-o="watch" data-autofocus>${icon('play')}Watch</button>
+    <button class="btn f" data-o="fav">${ic('star')}${s.favorite ? 'Remove from favorites' : 'Add to favorites'}</button>
+    <button class="btn f" data-o="catalog">${icon('refresh')}Refresh now (read its titles again)</button>
+    <button class="btn f" data-o="rows">${icon('list')}Show or hide its rows</button>
+    <button class="btn f" data-o="edit">${icon('edit')}Edit name, link or shelf</button>
+    <button class="btn f" data-o="refresh">${icon('image')}Get its picture again</button>
+    <button class="btn f danger" data-o="remove">${icon('trash')}Remove from Theater</button></div>`);
+  d.addEventListener('click', async e => {
+    const o = e.target.closest('[data-o]')?.dataset.o; if (!o) return;
+    closeDialog();
+    if (o === 'watch') watch(id);
+    else if (o === 'fav') toggleFav(id);
+    else if (o === 'edit') editor(s);
+    else if (o === 'catalog') readCatalog(id, true);
+    else if (o === 'rows') rowsDialog(id);
+    else if (o === 'refresh') refresh(id, true);
+    else if (o === 'remove' && await ask(`Remove ${s.name}?`, 'Its tile and the titles listed from it go from Theater. The site itself and anything you did on it stay as they are.', 'Remove', true)) {
+      try { await invoke('remove', { id }); SITES = SITES.filter(x => x.id !== id); delete CATALOGS[id]; TITLES = TITLES.filter(t => t.site !== id); render(); } catch (err) { toast(String(err)); }
+    }
+  });
+}
+async function refresh(id, say) {
+  try {
+    const s = await invoke('refresh', { id });
+    const i = SITES.findIndex(x => x.id === id); if (i >= 0) SITES[i] = s;
+    [s.art, s.icon].forEach(f => f && ART.delete(f));
+    render();
+    if (say) toast(s.art || s.icon ? 'Picture updated' : "The site doesn't offer a picture");
+  } catch (e) { if (say) toast(String(e)); }
+}
+
+// ---------------------------------------------------------------- catalogs and titles
+async function readCatalog(id, say) {
+  READING.add(id); render();
+  try {
+    const c = await invoke('catalog_refresh', { id });
+    CATALOGS[id] = c;
+    if (say) { const n = (c.rows || []).reduce((a, r) => a + r.items.length, 0); toast(c.error ? String(c.error) : n ? `${n} title${n === 1 ? '' : 's'} listed` : 'Nothing listed'); }
+  } catch (e) { if (say) toast(String(e)); }
+  READING.delete(id); render();
+}
+function rowsDialog(id) {
+  const s = site(id); if (!s) return;
+  const names = [...new Set([...(CATALOGS[id]?.rows || []).map(r => rowName(s, r)), ...(s.hidden || [])])];
+  const draw = () => {
+    const d = dialog(`<h2>${esc(s.name)}: rows</h2>${names.length ? '' : '<p class="muted">No rows yet. Choose Refresh now first.</p>'}<div class="menu-list">
+      ${names.map((n, i) => `<button class="btn f row-switch" data-row="${i}" ${i === 0 ? 'data-autofocus' : ''}><span>${esc(n)}</span><span class="switch ${(s.hidden || []).includes(n) ? '' : 'on'}"></span></button>`).join('')}
+      <button class="btn f" data-row="done">${icon('check')}Done</button></div>`);
+    d.addEventListener('click', async e => {
+      const b = e.target.closest('[data-row]'); if (!b) return;
+      if (b.dataset.row === 'done') { closeDialog(); render(); return; }
+      const n = names[+b.dataset.row], hide = !(s.hidden || []).includes(n);
+      try { const ns = await invoke('hide_row', { id, row: n, hidden: hide }); Object.assign(s, ns); } catch (err) { toast(String(err)); return; }
+      const at = b.dataset.row; draw(); $(`[data-row="${at}"]`)?.focus();
+    });
+    H.onDialogBack = () => { closeDialog(); render(); };
+  };
+  draw();
+}
+const cardOf = k => CARDS.get(k);
+async function watchTitle(k) {
+  const c = cardOf(k); if (!c) return;
+  try {
+    const t = await invoke('open_title', { site: c.site, item: c.item });
+    TITLES = TITLES.filter(x => !(x.site === t.site && x.url === t.url)); TITLES.push(t);
+    const s = site(c.site); if (s) s.opened = Date.now();
+  } catch (e) { toast(String(e)); }
+}
+async function favTitle(k) {
+  const c = cardOf(k); if (!c) return;
+  const on = !titleOf(c.site, c.item.url)?.favorite;
+  try {
+    const t = await invoke('fav_title', { site: c.site, item: c.item, on });
+    TITLES = TITLES.filter(x => !(x.site === t.site && x.url === t.url));
+    if (t.favorite || t.opened) TITLES.push(t);
+    toast(on ? `${c.item.title} is a favorite` : `${c.item.title} isn't a favorite now`);
+    TAB === 'Search' ? renderResults() : render();
+  } catch (e) { toast(String(e)); }
+}
+function titleOptions(k) {
+  const c = cardOf(k); if (!c) return;
+  const s = site(c.site), fav = titleOf(c.site, c.item.url)?.favorite;
+  const d = dialog(`<h2>${esc(c.item.title)}</h2><p class="muted" style="margin-top:-.4em">${esc(s ? s.name : '')}${c.item.desc ? ' · ' + esc(c.item.desc) : ''}</p><div class="menu-list">
+    <button class="btn f" data-o="watch" data-autofocus>${icon('play')}Watch</button>
+    <button class="btn f" data-o="fav">${ic('star')}${fav ? 'Remove from favorites' : 'Add to favorites'}</button>
+    ${s ? `<button class="btn f" data-o="site">${ic('tv')}Open ${esc(s.name)}</button><button class="btn f" data-o="opts">${ic('dots')}${esc(s.name)}'s options</button>` : ''}</div>`);
+  d.addEventListener('click', e => {
+    const o = e.target.closest('[data-o]')?.dataset.o; if (!o) return;
+    closeDialog();
+    if (o === 'watch') watchTitle(k); else if (o === 'fav') favTitle(k);
+    else if (o === 'site') watch(c.site); else if (o === 'opts') options(c.site);
+  });
+}
+
+// ---------------------------------------------------------------- search (all your sites)
+let SQ = '', SGEN = 0, SRES = {}, sTimer = 0, rTimer = 0;
+function renderSearch() {
+  CARDS.clear();
+  renderTabs();
+  $('#wall').innerHTML = `<div class="searchbar"><input class="inp f" id="q" data-k="q" data-enter="1" placeholder="Search all your sites" value="${esc(SQ)}" autocomplete="off" spellcheck="false">
+    <button class="btn primary f" id="qgo" data-k="qgo">${icon('search')}Search</button></div><div id="sres"></div>`;
+  const q = $('#q');
+  q.addEventListener('input', () => {
+    SQ = q.value; clearTimeout(sTimer); clearTimeout(rTimer);
+    sTimer = setTimeout(renderResults, 180);
+    rTimer = setTimeout(searchSites, 1500);   // the sites' own search pages, once typing stops
+  });
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(rTimer); searchSites(); } });
+  $('#qgo').addEventListener('click', () => { clearTimeout(rTimer); searchSites(); });
+  renderResults();
+  footer();
+}
+const words = q => q.toLowerCase().split(/\s+/).filter(Boolean);
+function localMatches(q) {
+  const w = words(q); if (!w.length) return [];
+  const out = [], seen = new Set();
+  for (const s of SITES) for (const r of CATALOGS[s.id]?.rows || []) for (const it of r.items) {
+    const k = s.id + '|' + it.url;
+    if (seen.has(k) || !w.every(x => it.title.toLowerCase().includes(x))) continue;
+    seen.add(k); out.push([s.id, it]);
+  }
+  return out.slice(0, 60);
+}
+function renderResults() {
+  const box = $('#sres'); if (!box) return;
+  const keep = document.activeElement?.closest?.('#sres') ? document.activeElement.dataset.k : null;
+  if (!SQ.trim()) {
+    box.innerHTML = `<div class="empty"><span class="big">${icon('search')}</span>Type what you're looking for. Theater looks through everything your sites list, and asks each site's own search.</div>`;
+    return;
+  }
+  const local = localMatches(SQ);
+  let html = local.length ? `<section class="shelf"><h2>In your sites <small>${local.length}</small></h2><div class="row-tiles">${local.map(([sid, it]) => card(sid, it, { showSite: true, tag: 'l' })).join('')}</div></section>` : '';
+  const none = [];
+  for (const s of SITES) {
+    const r = SRES[s.id]; if (!r) continue;
+    if (r.state === 'nosearch') { none.push(s.name); continue; }
+    if (r.state === 'loading') html += `<section class="shelf">${rowHead(s, `Searching ${s.name}`, '<span class="spinner"></span>')}<div class="row-tiles">${skeletons(4)}</div></section>`;
+    else if (r.items?.length) html += `<section class="shelf">${rowHead(s, `Results from ${s.name}`)}<div class="row-tiles">${r.items.map(it => card(s.id, it, { tag: 's' })).join('')}</div></section>`;
+    else html += `<section class="shelf">${rowHead(s, s.name)}<div class="note">${esc(r.error ? `Couldn't search it (${r.error})` : `Nothing found on ${s.name}`)}</div></section>`;
+  }
+  if (none.length) html += `<p class="muted" style="margin:0 4px">No search page found on ${esc(none.join(', '))}; only what ${none.length === 1 ? 'it lists' : 'they list'} is searched.</p>`;
+  box.innerHTML = html || `<div class="empty">Nothing found for “${esc(SQ)}” yet.</div>`;
+  fillPictures(box);
+  const back = keep && box.querySelector(`[data-k="${CSS.escape(keep)}"]`);
+  if (back) back.focus({ preventScroll: true });
+}
+function searchSites() {
+  const q = SQ.trim(), gen = ++SGEN;
+  SRES = {};
+  if (!q) { renderResults(); return; }
+  for (const s of SITES) {
+    SRES[s.id] = { state: 'loading' };
+    invoke('search_site', { id: s.id, query: q, gen }).then(r => {
+      if (gen !== SGEN) return;
+      SRES[s.id] = r.nosearch ? { state: 'nosearch' } : { state: 'done', items: r.items || [] };
+      renderResults();
+    }, e => { if (gen === SGEN) { SRES[s.id] = { state: 'done', items: [], error: String(e) }; renderResults(); } });
+  }
+  renderResults();
+}
+
+// ---------------------------------------------------------------- adding and editing
+function editor(s) {
+  const adding = !s;
+  s = s || { name: '', url: '', category: TAB !== 'All' && TAB !== 'Favorites' ? TAB : 'Other' };
+  let cat = s.category, named = !!s.name, ask = 0;
+  const d = dialog(`<h2>${adding ? 'Add a site' : 'Edit ' + esc(s.name)}</h2>
+    <div class="field"><label for="u">Link</label><div class="row" style="flex-wrap:nowrap"><input class="inp f" id="u" placeholder="example.com/shows" value="${esc(s.url)}" autocomplete="off" spellcheck="false" ${adding ? 'data-autofocus' : ''}>
+      <button class="btn f" id="paste" title="Paste">${ic('paste')}Paste</button></div>
+      <div class="preview muted" id="pv"></div></div>
+    <div class="field"><label for="n">Name</label><input class="inp f" id="n" placeholder="Filled in from the site" value="${esc(s.name)}" maxlength="80" ${adding ? '' : 'data-autofocus'}></div>
+    <div class="field"><span class="label">Shelf</span><div class="chips">${CATS.map(c => `<button class="chip f ${c === cat ? 'on' : ''}" data-cat="${c}">${c}</button>`).join('')}</div></div>
+    <div class="row end"><button class="btn f" data-a="cancel">Cancel</button><button class="btn primary f" data-a="save">${adding ? 'Add' : 'Save'}</button></div>`, { sticky: true });
+  const u = $('#u', d), n = $('#n', d), pv = $('#pv', d);
+  n.addEventListener('input', () => { named = !!n.value.trim(); });
+  // What the link's page calls itself fills the name in (unless you typed one).
+  let pvTimer = 0;
+  const look = () => {
+    clearTimeout(pvTimer);
+    const v = u.value.trim(); if (!v) { pv.innerHTML = ''; return; }
+    pvTimer = setTimeout(async () => {
+      const mine = ++ask;
+      pv.innerHTML = '<span class="spinner"></span> Looking at the site…';
+      try {
+        const r = await invoke('preview', { url: v });
+        if (mine !== ask) return;
+        pv.innerHTML = `${r.image ? `<img src="${esc(r.image)}" alt="" onerror="this.remove()">` : ''}<span>${esc(r.title || r.host)}</span>`;
+        if (!named && (r.title || r.host)) n.value = r.title || r.host;
+      } catch (e) { if (mine === ask) pv.textContent = String(e); }
+    }, 650);
+  };
+  u.addEventListener('input', look);
+  if (!adding) look();
+  $('#paste', d).addEventListener('click', async () => {
+    try { const t = (await navigator.clipboard.readText()).trim(); if (t) { u.value = t; look(); n.focus(); } else toast('Nothing to paste'); }
+    catch { u.focus(); toast('Press Ctrl+V to paste'); }
+  });
+  d.addEventListener('click', async e => {
+    const c = e.target.closest('[data-cat]');
+    if (c) { cat = c.dataset.cat; $$('[data-cat]', d).forEach(x => x.classList.toggle('on', x === c)); return; }
+    const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
+    if (a === 'cancel') { closeDialog(); return; }
+    try {
+      if (adding) {
+        const ns = await invoke('add', { url: u.value, name: n.value, category: cat });
+        SITES.push(ns); closeDialog(); TAB = TAB === 'Favorites' ? 'All' : TAB; render();
+        document.querySelector(`[data-k="t-${CSS.escape(ns.id)}"]`)?.focus();
+        toast(`${ns.name} added. Reading what it lists…`);
+        refresh(ns.id, false).then(() => readCatalog(ns.id, false));
+      } else {
+        const es = await invoke('edit', { id: s.id, name: n.value, category: cat, url: u.value });
+        const i = SITES.findIndex(x => x.id === s.id); SITES[i] = es; closeDialog(); render();
+        if (es.url !== s.url) refresh(es.id, false).then(() => readCatalog(es.id, false));
+      }
+    } catch (err) { toast(String(err)); }
+  });
+  H.onDialogBack = () => closeDialog();
+}
+
+// ---------------------------------------------------------------- input
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-tab]'); if (t) { setTab(t.dataset.tab); return; }
+  if (e.target.closest('[data-act="add"], #addBtn')) { editor(); return; }
+  const tl = e.target.closest('.tile[data-id]'); if (tl) { watch(tl.dataset.id); return; }
+  const ct = e.target.closest('.ct[data-card]'); if (ct) watchTitle(ct.dataset.card);
+});
+document.addEventListener('contextmenu', e => {
+  const tl = e.target.closest('.tile[data-id]'); if (tl) { e.preventDefault(); options(tl.dataset.id); return; }
+  const ct = e.target.closest('.ct[data-card]'); if (ct) { e.preventDefault(); titleOptions(ct.dataset.card); }
+});
+const focusedId = () => document.activeElement?.classList?.contains('tile') ? document.activeElement.dataset.id : null;
+const focusedCard = () => document.activeElement?.dataset?.card || null;
+H.buttons.x = () => { if (H.dialogOpen()) return; const id = focusedId(), k = focusedCard(); if (id) toggleFav(id); else if (k) favTitle(k); };
+H.buttons.y = () => { if (H.dialogOpen()) return; const id = focusedId(), k = focusedCard(); if (id) options(id); else if (k) titleOptions(k); };
+H.buttons.start = () => { if (!H.dialogOpen()) editor(); };
+H.buttons.select = () => { if (!H.dialogOpen()) setTab('Search'); };
+const tabsList = () => ['All', ...CATS, 'Favorites', 'Search'];
+H.buttons.lb = () => { if (H.dialogOpen()) return; const l = tabsList(); setTab(l[(l.indexOf(TAB) + l.length - 1) % l.length]); };
+H.buttons.rb = () => { if (H.dialogOpen()) return; const l = tabsList(); setTab(l[(l.indexOf(TAB) + 1) % l.length]); };
+H.onBack = async () => { if (TAB !== 'All') { setTab('All'); return; } if (FULL && await ask('Close Theater?', '', 'Close')) invoke('quit'); };
+H.onKey = e => {
+  const id = focusedId(), k = focusedCard();
+  if (id && (e.key === 'f' || e.key === 'F')) { toggleFav(id); return true; }
+  if (k && (e.key === 'f' || e.key === 'F')) { favTitle(k); return true; }
+  if (id && (e.key === 'Delete' || e.key === 'ContextMenu' || e.key === 'o')) { options(id); return true; }
+  if (k && (e.key === 'ContextMenu' || e.key === 'o')) { titleOptions(k); return true; }
+  if (e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'f')) { setTab('Search'); return true; }
+  if ((e.ctrlKey && e.key.toLowerCase() === 'n') || e.key === '+') { editor(); return true; }
+  return false;
+};
+document.addEventListener('paste', e => {
+  if (H.dialogOpen() || ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  const t = e.clipboardData?.getData('text')?.trim(); if (!t) return;
+  e.preventDefault(); editor(); const u = $('#u'); u.value = t; u.dispatchEvent(new Event('input'));
+});
+
+// ---------------------------------------------------------------- start
+(async () => {
+  try {
+    const r = await invoke('init');
+    SITES = r.sites || []; CATS = r.categories || CATS; FULL = !!r.fullscreen;
+    CATALOGS = r.catalogs || {}; TITLES = r.titles || []; (r.reading || []).forEach(id => READING.add(id));
+  } catch { /* preview in a plain browser */ }
+  render();
+  // Re-draws wait while a dialog is open or you're typing a search, so focus isn't pulled away.
+  const later = () => { if (!H.dialogOpen() && TAB !== 'Search') render(); };
+  if (H.T?.event) {
+    // Back from the viewer: Continue has a new first tile.
+    H.T.event.listen('closed', later);
+    // Catalogs read in the background (and their posters) arrive as they're done.
+    H.T.event.listen('catalog-reading', e => { READING.add(e.payload.id); later(); });
+    H.T.event.listen('catalog', e => { READING.delete(e.payload.id); CATALOGS[e.payload.id] = e.payload.catalog; later(); });
+  }
+})();
+
+// In a plain browser (no Tauri): sample sites, so the page can be looked at and checked (tests/pages.mjs). Tests can
+// give their own sites and catalogs (window.__demoSites, window.__demoCatalogs) and see what was opened (__opened).
+window.DEMO = (cmd, a) => {
+  const D = window.__demo ||= { sites: window.__demoSites || [
+    { id: 's1', name: 'Crunchyroll', url: 'https://www.crunchyroll.com/', category: 'Anime', favorite: true, opened: Date.now() - 3600e3, art: '', icon: '' },
+    { id: 's2', name: 'Tubi', url: 'https://tubitv.com/', category: 'Movies', favorite: false, opened: Date.now() - 86400e3, art: '', icon: '' },
+    { id: 's3', name: 'Pluto TV', url: 'https://pluto.tv/', category: 'TV', favorite: false, opened: 0, art: '', icon: '' },
+    { id: 's4', name: 'My Jellyfin', url: 'http://192.168.1.20:8096/', category: 'Other', favorite: true, opened: 0, art: '', icon: '' },
+  ], catalogs: window.__demoCatalogs || {}, titles: [] };
+  const empty = () => ({ updated: Date.now(), rows: [], search: '', signin: false, sources: [], error: '' });
+  const keep = (site, item) => { let t = D.titles.find(x => x.site === site && x.url === item.url); if (!t) D.titles.push(t = { ...item, site, favorite: false, opened: 0, opens: 0 }); return t; };
+  if (cmd === 'init') return { sites: D.sites.map(s => ({ ...s })), categories: ['Anime', 'TV', 'Movies', 'Other'], fullscreen: /full/.test(location.hash),
+    catalogs: Object.fromEntries(D.sites.map(s => [s.id, D.catalogs[s.id] || empty()])), titles: D.titles, reading: [] };
+  if (cmd === 'preview') return { url: a.url, title: 'Sample site', image: '', host: a.url };
+  if (cmd === 'add') { const s = { id: 's' + Date.now(), name: a.name || a.url, url: a.url, category: a.category, favorite: false, opened: 0, art: '', icon: '', hidden: [] }; D.sites.push(s); return { ...s }; }
+  if (cmd === 'refresh') return D.sites.find(s => s.id === a.id);
+  if (cmd === 'catalog_refresh') return D.catalogs[a.id] || empty();
+  if (cmd === 'edit') return Object.assign(D.sites.find(s => s.id === a.id), { name: a.name, url: a.url, category: a.category });
+  if (cmd === 'hide_row') { const s = D.sites.find(x => x.id === a.id); s.hidden = (s.hidden || []).filter(r => r !== a.row).concat(a.hidden ? [a.row] : []); return { ...s }; }
+  if (cmd === 'open_title') { window.__opened = a.item.url; const t = keep(a.site, a.item); t.opened = Date.now(); t.opens++; return { ...t }; }
+  if (cmd === 'fav_title') { const t = keep(a.site, a.item); t.favorite = a.on; return { ...t }; }
+  if (cmd === 'search_site') {
+    const res = window.__demoSearch?.[a.id];
+    return new Promise(r => setTimeout(() => r(res ? { items: res } : { items: [], nosearch: true }), 150));
+  }
+  if (cmd === 'favorite' || cmd === 'remove' || cmd === 'open') return null;
+  return Promise.reject('preview');
+};
+</script>
+<script src="osk/hearth-osk.js"></script>
+</body>
+</html>

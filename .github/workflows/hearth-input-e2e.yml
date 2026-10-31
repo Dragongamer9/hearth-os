@@ -9,6 +9,8 @@ on:
     paths:
       - 'hosts/linux/desktop/shell/hearth-input*'
       - 'hosts/linux/desktop/shell/input-layouts.json'
+      - 'hosts/linux/desktop/shell/osk-keymap.json'
+      - 'hosts/linux/test/fixtures/input-layout-cases.json'
       - 'hosts/linux/test/test_hearth_input.py'
       - 'tools/e2e-hearth-input.py'
       - '.github/workflows/hearth-input-e2e.yml'

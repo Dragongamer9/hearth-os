@@ -1381,6 +1381,29 @@ body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accen
 .df-lprev i{position:absolute;border-radius:4px;background:rgba(255,255,255,.14)}
 .df-lprev.dragonfire i.a{background:#ff8a3d}
 .df-lprev.classic i.a{background:#3fd0b8}
+/* ---------- Hearth Mods in Game Mode (the hm block in the script) ---------- */
+.hm{max-width:980px}
+.hm-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}.hm-head h2{margin:0}
+.hm-tabs{margin:0 0 12px;align-items:center}.hm-lbrb{font-size:11px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:6px;padding:2px 6px;flex:none}
+.hm-mod.off .rt,.hm-mini.off span{opacity:.6}
+.hm-n{min-width:26px;text-align:right;color:var(--faint);font-weight:700;font-variant-numeric:tabular-nums}
+.hm-cf{font-size:11px;border-radius:6px;padding:1px 6px;margin-left:4px;white-space:nowrap}.hm-cf.lose{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}.hm-cf.win{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.hm-chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}.hm-chips .pill.on{background:var(--accent);color:var(--accentInk)}
+.hm-card .thumb img{width:100%;height:100%;object-fit:cover}.hm-sum{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hm-bar{margin-top:6px}.hm-job{display:grid;gap:6px}.hm-jt{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.hm-status{font:12px/1.4 ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hm-err{color:var(--danger)}
+.hm-hero{display:flex;gap:18px;align-items:flex-start;margin-bottom:12px}.hm-hero img{width:min(320px,36vw);aspect-ratio:16/9;object-fit:cover;border-radius:var(--r)}.hm-hero h2{margin:0 0 4px}
+.hm-mini{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:8px;background:var(--panel2);margin-top:6px;text-align:left}.hm-mini span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hm-mini .sw{transform:scale(.8)}
+.hm-minis{margin-top:10px;max-width:640px}
+.hm-tick{width:22px;height:22px;border-radius:6px;border:2px solid var(--dim);display:grid;place-items:center;flex:none}.hm-tick.radio{border-radius:50%}.hm-opt.on .hm-tick{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}.hm-tick svg{width:14px;height:14px}
+.hm-opt.off{opacity:.5}.hm-fo{display:grid;gap:14px}.hm-fopic{max-width:min(420px,60vw);border-radius:var(--r);margin-top:12px}.hm-fonav{margin-top:14px}
+
+/* The on-screen keyboard over a game (Guide + X): only the keyboard, see-through, the game behind it */
+body.ovosk{background:transparent !important}
+body.ovosk > *:not(#ovosk):not(#toasts){visibility:hidden !important}
+#ovosk{display:none}
+body.ovosk #ovosk{display:block;position:fixed;left:0;right:0;bottom:0;z-index:9000;padding:10px clamp(8px,3vw,40px) 14px}
+#ovosk .ovosk-typed{margin:0 auto 8px;max-width:900px;padding:8px 14px;border-radius:12px;background:rgba(10,10,14,.55);backdrop-filter:blur(8px);color:#fff;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+#ovosk .ovosk-hint{text-align:center;font-size:12px;color:rgba(255,255,255,.75);margin-top:6px;text-shadow:0 1px 3px #000}
 </style>
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <script src="osk/hearth-osk.js"></script>
@@ -1431,6 +1454,7 @@ body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accen
 
 // ---------- icons ----------
 const I = {
+  theater:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="11.5" rx="2"/><path d="M10.5 8.6v4.3l3.7-2.15z"/><path d="M8.5 20h7M12 16.5V20"/></svg>',
   home:'<svg viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>',
   lib:'<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
   dl:'<svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5"/><path d="M4.5 19.5h15"/></svg>',
@@ -1574,7 +1598,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1659,10 +1683,10 @@ const MOCK = (()=>{
       {dev:'/dev/sda',size:5e11,model:'Crucial MX500',tran:'sata',live:false,windows:false,tooSmall:false,parts:[]},
       {dev:'/dev/sdb',size:3.2e10,model:'SanDisk Ultra',tran:'usb',live:true,windows:false,tooSmall:true,parts:[{},{}]}],
       image:'ghcr.io/dragongamer9/hearth-os:latest', edition:'anatase', offline:false, secureBoot:true, editions:[
-      {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Starts and updates fast, the same for every PC and handheld.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
+      {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. Starts and updates fast, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on (it has no signed boot loader). Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
+      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
     'osinstall.check':async({part})=>{ await wait(900); return part ? {target:{kind:'linux',name:'SteamOS',part,size:1.9e12,min:6e11,used:5.8e11,freeSpace:0,canGive:1.2e12},problems:[],suggested:512*2**30} : {windows:{size:1e12,min:3.1e11,canGive:6.6e11},target:{kind:'windows',name:'Windows',size:1e12,min:3.1e11,canGive:6.6e11,freeSpace:0},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
     'osinstall.useMantel':async()=>true,
     'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
@@ -1764,10 +1788,10 @@ const MOCK = (()=>{
     'hhd.settings':async()=>{ if(!MOCKHHD) return {running:false}; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); await wait(200); return {running:true, version:HHD_MOCK.state.version, schema:JSON.stringify(HHD_MOCK.settings), sections:clone(HHD_MOCK.sections), state:clone(S2)}; },
     'hhd.state':async()=>{ if(!MOCKHHD) return {running:false}; const S2=st.hhdS=st.hhdS||clone(HHD_MOCK.state); return {running:true, version:S2.version, state:clone(S2)}; },
     'newos.status':async()=>clone(st.newos||{eligible:true,published:true,canAdmin:true,image:'ghcr.io/dragongamer9/hearth-os:latest',state:'idle',error:null,editions:[
-      {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. A smaller system that starts and updates faster, the same for every PC and handheld.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
+      {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. A smaller system that starts and updates faster, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on. Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
+      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
     'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[edition]||'the new Hearth OS';
       st.newos={eligible:true,published:true,canAdmin:true,state:'moving',edition,label,progress:0.3,line:'Downloading',phases:{download:{pct:30,done:1.2e9,total:4e9,bps:3.1e7,eta:90},install:{pct:0}},stage:{phase:'download'},speeds:[]};
       setTimeout(()=>{ st.newos={eligible:true,published:true,canAdmin:true,state:'done',edition,label,line:'Restart to start the new Hearth OS.'}; onSysEvent('newOs',clone(st.newos)); },2500); return clone(st.newos); },
@@ -3653,7 +3677,7 @@ function pageDfUpdates(){
   const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?x.version:'';
   const when=x=>{ const t=x&&x.timestamp&&Date.parse(x.timestamp); return t?new Date(t).toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'}):''; };
   let h=pageSystemUpdate({df:true});
-  if(!u) return h+dgRecoveryRows();
+  if(!u) return h+unlockRows()+dgRecoveryRows();
   const tl=[];
   if(st.available && !st.staged) tl.push(['next', `Hearth OS ${v(st.available)}`, 'Available: Update now gets it']);
   if(st.staged) tl.push(['next', `Hearth OS ${v(st.staged)}`, 'Downloaded: starts at the next restart']);
@@ -3661,8 +3685,7 @@ function pageDfUpdates(){
   if(st.rollback && v(st.rollback)) tl.push(['', `Hearth OS ${v(st.rollback)}`, 'The version before'+(when(st.rollback)?' · made '+when(st.rollback):'')]);
   if(tl.length) h += shead('Update timeline') + `<div class="df-tl">${tl.map(([c,t,sub],i)=>`<div class="row ${c}" data-f data-k="dg-tl-${i}"><div class="rt"><b>${esc(t)}</b><small>${esc(sub)}</small></div></div>`).join('')}</div>`;
   h += shead('Snapshot before the last update');
-  if(host && HOSTINFO.edition==='peppermint') h += note('This edition isn\'t an image, so it has no snapshots to go back to. The Hearth Recovery USB below can still repair it.');
-  else if(st.rollback && v(st.rollback)){
+  if(st.rollback && v(st.rollback)){
     h += `<div class="row" data-f data-k="dg-snap"><span class="ricon">${I.clock}</span><div class="rt"><b>Hearth OS ${esc(v(st.rollback))}</b><small>${st.rollbackQueued?'Starts at the next restart':'Kept by itself when the last update came in'}${when(st.rollback)?' · made '+esc(when(st.rollback)):''}</small></div></div>`;
     if(st.staged) h += note('An update is waiting for a restart. Restart first; if that version has problems, you can go back from there.');
     else if(st.rollbackQueued) h += `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(st.rollback))}</b><small>Your games and files stay</small></div></button>`
@@ -3670,7 +3693,7 @@ function pageDfUpdates(){
     else h += `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Restore this version</b><small>Restarts into Hearth OS ${esc(v(st.rollback))}. Your games and files stay.</small></div><div class="rv">›</div></button>`;
   } else h += note('No snapshot yet. Hearth keeps the version before each update by itself, so one appears after the next update.');
   h += note('Snapshots are of Hearth OS itself: your games, saves and files aren\'t in them and stay whichever version starts.');
-  return h+dgRecoveryRows();
+  return h+unlockRows()+dgRecoveryRows();
 }
 function dgRecoveryRows(){
   return shead('Recovery')
@@ -4232,7 +4255,7 @@ function viewLibrary(){
     <span class="glyph lbrb">RB</span>
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
-    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}${hmLibPill()}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
     ${(HOSTINFO.features||[]).includes('screenshots')?`<button class="pill" data-f data-k="lib-shots" data-act="shots">${I.display}Screenshots</button>`:''}
     ${lkOn()?`<button class="pill" data-f data-k="lib-link" data-act="lkGet">${I.dl}Get from another Hearth</button>`:''}
     ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
@@ -4738,7 +4761,7 @@ function mkHero(g, ctx){
   else if(t==='ach') body = ach ? `<div class="muted">${ach.done} of ${ach.total} unlocked</div><div class="bar" style="margin:10px 0 16px"><i style="width:${(ach.done/ach.total*100).toFixed(0)}%"></i></div><div class="achs">${ach.list.slice(0,24).map(a=>`<div class="ach ${a.done?'':'locked'}"><div><b>${esc(a.hidden&&!a.done?'Hidden':a.name)}</b><small>${esc(a.done?'Unlocked':(a.hidden?'Keep playing to find out':a.desc))}</small></div></div>`).join('')}</div>`
     : g.ach ? `<div class="muted">${g.ach[0]} of ${g.ach[1]} unlocked</div><div class="bar" style="margin-top:10px"><i style="width:${(g.ach[0]/g.ach[1]*100).toFixed(0)}%"></i></div>` : `<div class="muted">${LINUX&&host?'Loading achievements…':'No achievements for this game.'}</div>`;
   else if(t==='shots') body = (HOSTINFO.features||[]).includes('screenshots') ? `<div class="muted" style="margin-bottom:12px">Screenshots you take with the Quick Access button are kept per game.</div><button class="pill" data-f data-k="mkh-shots" data-act="shots">${I.display}Open Screenshots</button>` : '<div class="muted">Screenshots aren\'t available on this device.</div>';
-  else if(t==='mods') body = g.src==='beacon' ? `<button class="pill" data-f data-k="mkh-mods" data-act="mkMods" data-id="${lId(g)}">${I.lib}Mods</button>` : (HOSTINFO.features||[]).includes('gamingApps') ? `<div class="mkl-act-row"><button class="pill" data-f data-k="mkh-saves" data-act="gamingApp" data-v="saves" data-id="${lId(g)}">Saves</button><button class="pill" data-f data-k="mkh-mods" data-act="gamingApp" data-v="mods" data-id="${lId(g)}">Mods</button></div>` : '<div class="muted">Saves and mods for this game are managed by its store.</div>';
+  else if(t==='mods') body = hmHeroTab(g) ?? (g.src==='beacon' ? `<button class="pill" data-f data-k="mkh-mods" data-act="mkMods" data-id="${lId(g)}">${I.lib}Mods</button>` : (HOSTINFO.features||[]).includes('gamingApps') ? `<div class="mkl-act-row"><button class="pill" data-f data-k="mkh-saves" data-act="gamingApp" data-v="saves" data-id="${lId(g)}">Saves</button><button class="pill" data-f data-k="mkh-mods" data-act="gamingApp" data-v="mods" data-id="${lId(g)}">Mods</button></div>` : '<div class="muted">Saves and mods for this game are managed by its store.</div>');
   else if(t==='set') body = host&&(LINUX||hasFeat('gameSettings'))&&!g.cloud ? `<div class="muted" style="margin-bottom:12px">Proton version, launch options, controller layout and more.</div><button class="pill" data-f data-k="mkh-set" data-act="mkGameSet" data-id="${lId(g)}">${I.gear}Open game settings</button>` : `<div class="muted">${g.cloud?'Cloud games have no settings here.':'Game settings are available on Hearth OS.'}</div><button class="pill" data-f data-k="mkh-page" data-act="game" data-id="${lId(g)}" style="margin-top:12px">${I.info}Game page</button>`;
   return `<div class="mkl-hero"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="mkl-shade"></div>
       <div class="mkl-in"><h1>${esc(g.title)}</h1><div class="mkl-btns">${lPlay(g,'mkh-play')}
@@ -4996,7 +5019,7 @@ function viewGame(){
     <div class="gbody">
       <div class="card"><h3>About</h3><div class="muted">${about}</div>
         ${g.path?`<div class="muted" style="margin-top:8px;word-break:break-all">Location: <code>${esc(g.path)}</code></div>`:''}</div>
-      ${g.src==='beacon'?beaconGameCard(g):''}${side}
+      ${g.src==='beacon'?beaconGameCard(g):''}${hmGameCard(g)}${side}
     </div>
   </div>`;
 }
@@ -6447,6 +6470,46 @@ async function loginHost(){
 // ---------- Settings › Updates › System (Hearth, the OS) ----------
 const SYSUPD = {s:null};
 function loadSystemUpdate(){ if(host && LINUX && HOSTINFO.system) call('system.update.status',{},90000).then(r=>{ SYSUPD.s=r; refreshUI(); }).catch(()=>{}); }
+
+// ---------- Settings › Updates & Recovery › Writable system (Hearth OS on Peppermint: hearth-unlock) ----------
+// Peppermint is writable by default: apt and .deb files install anywhere, kept across restarts, and the packages you
+// add come back by themselves after an update. The switch locks it (from the next restart: the system as the image
+// made it; your packages stay saved). A safe start (your changes stopped Hearth from starting) and a reapply that
+// failed show here and as a notification. Anatase has no hearth-unlock ({available:false}): always immutable.
+const UNLOCK = {s:null, told:false};
+function loadUnlock(notify){
+  if(!host){ if(!UNLOCK.s) UNLOCK.s={available:true,state:'unlocked',unlocked:true,writable:true,locked:false,suspended:false,packages:['htop','code'],removed:[],debs:['code'],reapply:{state:'done'},notice:null}; return; }
+  if(!LINUX || HOSTINFO.edition!=='peppermint') return;
+  call('system.unlock.status',{},30000).then(r=>{ UNLOCK.s=r;
+    const n=r&&r.notice; if(notify && n && !UNLOCK.told){ UNLOCK.told=true; NOTIFS.unshift({i:'info', t:n.title||'Hearth OS', s:(n.text||'')+' Select to open Settings › Updates.', go:'updates'}); updateBadge(); toast(n.title); }
+    if(S.view==='settings' && S.settingsTab==='updates') render(null,true); else refreshUI(); }).catch(()=>{});
+}
+function unlockRows(){
+  const u=UNLOCK.s; if(!u || !u.available) return '';
+  const n=(u.packages||[]).length, pk=n?`${n} package${n===1?'':'s'} you added: ${(u.packages||[]).slice(0,6).join(', ')}${n>6?', …':''}`:'Nothing added yet';
+  const sub={unlocked:'apt and .deb files install anywhere, kept across restarts. What you add comes back by itself after an update.',
+    'locks-at-restart':'Locked from the next restart: the system as the image made it. Your packages stay saved.',
+    'unlocks-at-restart':'Writable from the next restart.',
+    suspended:'This start is without your changes (safe start). Turn them back on below.',
+    repairing:'This start is without your changes while an install that was cut off is finished. The next start has them again.',
+    locked:'The system is as the image made it. Unlock to install with apt again; your saved packages come back.'}[u.state]||'';
+  let h=shead('Writable system');
+  if(u.notice) h += `<div class="row" data-f data-k="ul-note"><span class="ricon">${I.info}</span><div class="rt"><b>${esc(u.notice.title||'')}</b><small>${esc(u.notice.text||'')}</small></div></div>`
+    + `<button class="row" data-f data-k="ul-dismiss" data-act="unlockSet" data-v="dismiss"><span class="ricon">${I.check}</span><div class="rt"><b>OK, hide this</b></div></button>`;
+  h += `<button class="row" data-f data-k="ul-sw" data-act="unlockSet" data-v="${u.unlocked?'off':'on'}"><span class="ricon">${I.lock}</span><div class="rt"><b>Unlocked system</b><small>${esc(sub)}</small></div><div class="sw ${u.unlocked?'on':''}"></div></button>`;
+  if(u.suspended && u.unlocked) h += `<button class="row" data-f data-k="ul-resume" data-act="unlockSet" data-v="resume"><span class="ricon">${I.restart}</span><div class="rt"><b>Turn my changes back on</b><small>Uses the packages you added again, now. If Hearth then doesn't start, it starts without them again by itself.</small></div><div class="rv">›</div></button>`;
+  h += `<div class="row" data-f data-k="ul-pk"><span class="ricon">${I.dl}</span><div class="rt"><b>Your packages</b><small>${esc(pk)}${(u.reapply&&u.reapply.state==='running')?' · putting them back now…':''}</small></div></div>`;
+  if(u.writable && (n || (u.removed||[]).length)) h += `<button class="row" data-f data-k="ul-again" data-act="unlockSet" data-v="reapply"><span class="ricon">${I.refresh}</span><div class="rt"><b>Put my packages back again</b><small>Reinstalls what you added on this version, in the background</small></div><div class="rv">›</div></button>`;
+  return h + note('If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu keeps its own packages. Want a system that can\'t be changed at all? That\'s Hearth OS on Anatase.');
+}
+function unlockSet(action){
+  if(!host) return toast('This works on Hearth OS, not in the browser preview.');
+  const go=()=>call('system.unlock.set',{action},120000).then(r=>{ if(r && r.available!==undefined) UNLOCK.s=r; else loadUnlock();
+    toast({on:'Unlocked: apt and .deb files install anywhere', off:'Locked from the next restart', resume:'Your changes are back on', dismiss:'OK', reapply:'Putting your packages back in the background'}[action]); render(null,true); }).catch(e=>toast(e.message));
+  if(action==='off') return openSheet({title:'Lock the system?', sub:'From the next restart the system is as the image made it: apt and .deb files can\'t change it, and the packages you added are off. They stay saved and come back when you unlock again. Updates, going back and Recovery work the same either way.', items:[
+    {label:'Lock from the next restart', icon:'lock', run:go}, {label:'Keep it unlocked', icon:'x', run:()=>{}}]});
+  return go();
+}
 function onSystemUpdate(d){
   const was=SYSUPD.s; SYSUPD.s=d;
   if(was && was.state==='updating' && d.state==='idle') toast(d.error ? d.error : (d.status&&d.status.staged ? 'Update downloaded. Restart to finish.' : 'Everything is up to date'));
@@ -6502,15 +6565,15 @@ function pageSystemUpdate(o={}){
     if(!o.df) h += rollbackRows(st);   // Updates & Recovery shows it under Snapshots
   }
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
-  return h + newOsRows();
+  return h + (o.df ? '' : unlockRows()) + newOsRows();
 }
 
 // ---------- Settings › Updates › Go back to the previous version (Hearth OS images: bootc keeps the version before
 // this one; hearth-admin rollback makes it the one that starts next, and running it again before restarting undoes
-// that). Shown only when the system reports a previous version (not on Peppermint, which isn't an image).
+// that). Shown only when the system reports a previous version.
 function rollbackRows(st){
   const rb=st && st.rollback, v=x=>x&&x.version?x.version:'';
-  if(!LINUX || !HOSTINFO.system || HOSTINFO.edition==='peppermint' || !rb || !v(rb) || st.staged) return '';
+  if(!LINUX || !HOSTINFO.system || !rb || !v(rb) || st.staged) return '';
   if(st.rollbackQueued) return `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(rb))}</b><small>Hearth OS ${esc(v(rb))} starts at the next restart. Your games and files stay.</small></div></button>`
     + `<button class="row" data-f data-k="su-rollback" data-act="sysRollback" data-undo="1"><span class="ricon">${I.x}</span><div class="rt"><b>Stay on ${esc(v(st.booted))}</b><small>Don't go back after all</small></div></button>`;
   return `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Go back to ${esc(v(rb))}</b><small>If something broke after the last update: restarts into the version before this one. Your games and files stay.</small></div><div class="rv">›</div></button>`;
@@ -6916,25 +6979,30 @@ const SHELL = {status:null};
 function loadShellStatus(){
   if(!host) return;
   call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message));
-  // Which desktop Desktop Mode is (Hearth Classic / Hearth Plasma): HEARTH_DESKTOP in session.conf (admin.rs desktop()).
+  // Which desktop Desktop Mode is (Hearth Classic / Hearth Plasma / Hearth GNOME): HEARTH_DESKTOP in session.conf (admin.rs desktop()).
   if(LINUX) call('login.desktop').then(d=>{ SHELL.desktop=d; refreshUI(); }).catch(()=>{});
 }
-const DESKTOP_NAMES={classic:'Hearth Classic', plasma:'Hearth Plasma'};
+const DESKTOP_NAMES={classic:'Hearth Classic', plasma:'Hearth Plasma', gnome:'Hearth GNOME'};
+DESKTOP_NAMES.cosmic='Hearth COSMIC';   // docs/COSMIC.md (Anatase only)
 function deskRow(){
   const d=SHELL.desktop; if(!d) return '';
   const cur=DESKTOP_NAMES[d.desktop]||'Hearth Classic';
-  const sub = d.fellBack ? 'Hearth Plasma didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in both.'
-    : 'Hearth Classic (today\'s desktop) or Hearth Plasma (KDE Plasma in the same look). Your files and settings stay; Game Mode doesn\'t change. Also on the login screen.';
+  const sub = d.cosmicFellBack ? 'Hearth COSMIC didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
+    : d.fellBack ? (DESKTOP_NAMES[d.fellBackFrom]||'Hearth Plasma')+' didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
+    : 'Hearth Classic (today\'s desktop), Hearth Plasma (KDE Plasma in the same look) or Hearth GNOME (GNOME in Hearth\'s look). Your files and settings stay; Game Mode doesn\'t change. Also on the login screen.';
   return shead('Desktop')
     + `<button class="row" data-f data-k="sh-desk" data-act="deskPick"><span class="ricon">${I.desk}</span><div class="rt"><b>Desktop</b><small>${sub}</small></div><div class="rv">${esc(cur)} ›</div></button>`;
 }
 function deskPick(){
   const d=SHELL.desktop||{}; const cur=d.desktop||'classic';
   const pick=desktop=>call('login.setDesktop',{desktop}).then(r=>{ SHELL.desktop=r; refreshUI(); toast(DESKTOP_NAMES[desktop]+' opens the next time you switch to Desktop Mode'); }).catch(e=>toast(e.message));
-  openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if Hearth Plasma can\'t start, Hearth Classic opens instead.', items:[
-    {label:'Hearth Classic', icon:cur!=='plasma'?'check':'', run:()=>pick('classic')},
+  openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if another desktop can\'t start, Hearth Classic opens instead.', items:[
+    {label:'Hearth Classic', icon:cur==='classic'?'check':'', run:()=>pick('classic')},
     {label:d.plasma?'Hearth Plasma':'Hearth Plasma (not installed on this system)', icon:cur==='plasma'?'check':'', run:()=>d.plasma?pick('plasma'):toast('Hearth Plasma comes with Hearth OS on Anatase and Peppermint')},
-    {label:'Hearth GNOME (coming later)', icon:'', run:()=>toast('Hearth GNOME is coming in a later update')}]});
+    {label:d.gnome?'Hearth GNOME':'Hearth GNOME (not installed on this system)', icon:cur==='gnome'?'check':'', run:()=>d.gnome?pick('gnome'):toast('Hearth GNOME comes with Hearth OS on Anatase and Peppermint')},
+    // ---- Hearth COSMIC (docs/COSMIC.md) and Hearth Deepin (docs/DEEPIN.md: no edition can have it)
+    {label:d.cosmic?'Hearth COSMIC':'Hearth COSMIC (not available on this edition)', icon:cur==='cosmic'?'check':'', run:()=>d.cosmic?pick('cosmic'):toast('Hearth COSMIC comes with Hearth OS on Anatase')},
+    {label:'Hearth Deepin (not available on this edition)', icon:'', run:()=>toast('Deepin isn\'t packaged for Anatase (Fedora) or Peppermint (Debian), so Hearth Deepin can\'t be offered')}]});
 }
 function pageShellLinux(){
   const s=SHELL.status;
@@ -7797,6 +7865,11 @@ function goBack(){
 // Apps in the menu opens Bazaar, Hearth OS's app store for Flathub apps (host.info feature "bazaar"; hearth-core
 // bazaar.rs): full screen in Game Mode, with the controller mouse on. Hearth's own store is archived.
 function bazaarOn(){ return LINUX && !OVERLAY && (hasFeat('bazaar') || !host); }
+function theaterOn(){ return LINUX && !OVERLAY && hasFeat('theater'); }
+function theaterOpen(){
+  closeAll(); toast('Opening Theater…');
+  return call('theater.open',{},15000).catch(e=>toast(e.message));
+}
 function bazaarOpen(){
   closeAll(); toast('Opening Bazaar…');
   return call('bazaar.open',{},15000).then(r=>{ if(r && r.mouse) toast('Bazaar: the controller mouse is on (right stick moves, A clicks, View + Menu turns it off)'); }).catch(e=>toast(e.message));
@@ -7805,6 +7878,7 @@ function renderSideMenu(){
   const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
+    ${theaterOn()?`<button class="mitem" data-f data-k="m-theater" data-act="theater">${I.theater}Theater</button>`:''}
     ${bazaarOn()?`<button class="mitem" data-f data-k="m-bazaar" data-act="bazaar">${I.apps}Apps</button>`:''}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
@@ -7882,6 +7956,7 @@ function dockItems(game){
   if(!ANDROID){ const d=dkDlNow(); add('downloads','dl','Downloads','data-act="nav" data-view="downloads"', {cur:cur('downloads'), extra:d?dkRing(d.pct||0):''}); }
   if(lkOn()) add('link','link','Hearth Link','data-act="goset" data-tab="link"', {cur:cur('settings')&&S.settingsTab==='link'&&!S.sfront});
   if(coopOn()) add('coop','pad','Couch Co-op','data-act="nav" data-view="coop"', {cur:cur('coop')});
+  if(theaterOn()) add('theater','theater','Theater','data-act="theater"');
   if(bazaarOn()) add('bazaar','apps','Apps','data-act="bazaar"');
   sep();
   add('search','search','Search','data-act="search" data-keep="1"', {sm:true});
@@ -7997,6 +8072,7 @@ function dockCard(k){
       + jobs.slice(0,2).map(t=>`<div class="dkq"><div class="qt"><div><span>${esc(t.title)}</span><span>${t.total?Math.floor(100*t.done/t.total)+'%':''}</span></div><div class="bar"><i style="width:${t.total?Math.floor(100*t.done/t.total):0}%"></i></div></div></div>`).join('');
   }
   if(k==='coop') return dkH('Couch Co-op', 'Beta Experimental') + `<div class="dks">Play split-screen with friends on this screen, each with their own controller.</div>`;
+  if(k==='theater') return dkH('Theater') + `<div class="dks">Your own wall of video sites, full screen with a controller pointer.</div>`;
   if(k==='bazaar') return dkH('Apps') + `<div class="dks">Bazaar: apps from Flathub, opened full screen with the controller mouse.</div>`;
   if(k==='search') return dkH('Search') + `<div class="dks">Games, settings, the store and friends. Type with a keyboard, or with the on-screen keyboard.</div>`;
   if(k==='settings'){
@@ -8459,6 +8535,7 @@ function appsBody(){
 const OV = {shown:false};
 function overlayClose(){ send({type:'overlay', action:'close'}); }
 async function overlayShown(){
+  ovoskClose();
   OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
   // Tell Hearth once Quick Access has really been drawn, so it's made visible with something in it (shown
   // before that, gamescope sometimes put up an empty, black overlay over the game).
@@ -8477,7 +8554,65 @@ async function overlayShown(){
   OV.busy=false;
   if(OV.wantPower){ OV.wantPower=false; openLayer('power'); }
 }
-function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
+function overlayHidden(){ ovoskClose(); OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
+
+// ---------- the on-screen keyboard over a game (Guide + X, like Steam + X; docs/OSK.md) ----------
+// Hearth opens the overlay as just the keyboard (overlay.osk): see-through, the game keeps its keyboard focus and keeps
+// running, and Hearth holds the controller for it (the game doesn't get the presses). What's typed goes into the game
+// through Hearth Input's virtual keyboard (osk.type / osk.key), so native, Proton/Wine and emulator games all get it.
+// B, Guide or Guide + X again close it.
+const OVOSK = {on:false, engine:null, view:null, el:null, q:Promise.resolve(), typed:'', raf:0};
+function ovoskMods(m){ return m ? Object.keys(m).filter(k=>m[k] && (k==='ctrl'||k==='alt'||k==='shift')) : []; }
+function ovoskSend(method, args){
+  // One at a time, in order (each waits for Hearth Input's answer).
+  OVOSK.q = OVOSK.q.then(()=>call(method, args, 4000)).then(r=>{ if(r && r.skipped) toast(`Can't type “${r.skipped}” into the game`); })
+    .catch(e=>{ toast(e.message||'Couldn\'t type that'); });
+}
+function ovoskAdapter(){
+  return {
+    insert(text, mods){ OVOSK.typed=(OVOSK.typed+text).slice(-80); ovoskSend('osk.type', {text, mods:ovoskMods(mods).filter(k=>k!=='shift')}); ovoskDraw(); },
+    deleteBack(n){ const g=OSKOK ? HearthOSK.graphemes(OVOSK.typed) : [...OVOSK.typed]; OVOSK.typed=g.slice(0, Math.max(0, g.length-n)).join(''); ovoskSend('osk.key', {key:'bksp', n}); ovoskDraw(); },
+    key(name, mods){ if(name==='enter') OVOSK.typed=''; ovoskSend('osk.key', {key:name, n:1, mods:ovoskMods(mods)}); ovoskDraw(); },
+    context(){ return OVOSK.typed; }
+  };
+}
+function ovoskDraw(){ const t=OVOSK.el && OVOSK.el.querySelector('.ovosk-typed'); if(t) t.textContent = OVOSK.typed || 'Typing into the game'; }
+function overlayOsk(){
+  OV.shown=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
+  while(S.layers.length) closeLayer();
+  if(!OSKOK){ toast('The on-screen keyboard is missing'); return overlayClose(); }
+  if(!OVOSK.el){
+    OVOSK.el=document.createElement('div'); OVOSK.el.id='ovosk';
+    OVOSK.el.innerHTML='<div class="ovosk-typed"></div><div class="ovosk-kb"></div><div class="ovosk-hint">B or Guide + X closes the keyboard</div>';
+    document.body.appendChild(OVOSK.el);
+  }
+  if(!OVOSK.engine) OVOSK.engine=HearthOSK.createEngine({host:'web', mode:'text', enterLabel:'Enter', adapter:ovoskAdapter(),
+    onHide: ()=>overlayClose(), onHaptic: (st,ms)=>{ try{ HearthOSK.rumble(st,ms); }catch(e){} },
+    onSound: k=>{ if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
+  OVOSK.engine.reset('text', 'Enter');
+  if(OVOSK.view) OVOSK.view.destroy();
+  OVOSK.view=HearthOSK.mount(OVOSK.el.querySelector('.ovosk-kb'), OVOSK.engine, {overGame:true});
+  OVOSK.engine.setActive(true); OVOSK.engine.setHints(true);
+  OVOSK.on=true; OVOSK.typed=''; ovoskDraw();
+  document.body.classList.add('ovosk');
+  const tick=()=>{ if(!OVOSK.on) return; try{ OVOSK.engine.tick(); }catch(e){} OVOSK.raf=requestAnimationFrame(tick); };
+  OVOSK.raf=requestAnimationFrame(tick);
+  if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
+  send({type:'log', text:'osk: the keyboard over the game is open (Guide + X)'});
+}
+function ovoskClose(){
+  if(!OVOSK.on) return;
+  OVOSK.on=false; cancelAnimationFrame(OVOSK.raf);
+  if(OVOSK.view){ OVOSK.view.destroy(); OVOSK.view=null; }
+  if(OVOSK.engine) OVOSK.engine.setActive(false);
+  document.body.classList.remove('ovosk');
+}
+/** A controller press while the keyboard is open over the game: all of them are the keyboard's. */
+function ovoskInput(k){
+  if(k==='guide') return overlayClose();
+  if(qaSince() < 250 && k==='x') return;          // the X of the Guide + X that opened it, delivered late
+  OVOSK.engine.handle(k, 'press');
+}
 
 // ==== Hearth Recorder (hosts/hearth-recorder) in Quick Access › Now playing: record the game (or the screen), and
 // instant replay (turn on, save the last stretch). Linux only; the host runs `hearth-recorder --json` (bridge.rs /
@@ -8519,6 +8654,7 @@ function renderQam(){
   if(!QTABS.some(q=>q[0]===S.qtab)) S.qtab = S.running && QTABS.some(q=>q[0]==='now') ? 'now' : 'quick';
   const t=S.qtab; let body='';
   if(t==='notif') body = `<h3>Notifications</h3>${NOTIFS.length?NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%"><div class="ni">${I[n.i]}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')+`<button class="btn" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button>`:'<div class="muted">You\'re all caught up.</div>'}`;
+  if(t==='notif') body += hmQam();   // Hearth Mods: its downloads and installs
   if(t==='quick'){ const w=S.sys.wifi;
     body = `<h3>Quick settings</h3>${S.sys.display.supported?sliderCtl('bright','sun','Brightness'):''}${sliderCtl('vol',S.sys.audio.muted?'mute':'vol','Volume',0,volMax())}
     ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
@@ -8691,6 +8827,7 @@ function qdNow(g){
   if(QTABS.some(q=>q[0]==='apps')) more.push(`<button class="qd-mini" data-f data-k="q-apps" data-act="qdApps">${I.lib}Switch app</button>`);
   more.push(`<button class="qd-mini" data-f data-k="q-home" data-act="ovHome">${I.home}Back to ${APP}</button>`);
   h += `<div class="qd-more">${more.join('')}</div>`;
+  h += hmQam();   // Hearth Mods: its downloads and installs
   return h + qamQuick();
 }
 
@@ -9387,7 +9524,9 @@ function act(el){
   if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
+  if(/^hm[A-Z]/.test(a)) return hmAct(a, d);   // Hearth Mods in Game Mode (block below)
   if(a.startsWith('dgf')) return dgfAct(a, d);   // the Dragonfire look (block by homeDf)
+  if(a==='theater') return theaterOpen();   // Theater: Hearth Theater, your wall of video sites
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^stg[A-Z]/.test(a)) return stgAct(a, d);   // Hearth Storage
@@ -9420,7 +9559,8 @@ function act(el){
     case 'dockPauseAll': return dockPauseAll();
     case 'storeSearch': closeAll(); if(S.view!=='shop') navigate('shop'); return shopDoSearch(SHOP.store||'steam', d.q||'');
     case 'friendOpen': closeAll(); MF.top='mx'; MF.tab='friends'; MF.room=null; FR.plat='all'; return S.view==='friends' ? render(null,true) : navigate('friends');
-    case 'goset': closeAll(); S.settingsTab=d.tab; S.sfront=false;
+    case 'goset': if(/^hm:/.test(d.tab||'')){ const t=d.tab.split(':'); return t[1]==='game' ? hmOpen(t.slice(2).join(':')) : hmGo(t[1]); }   // Hearth Mods' notifications
+      closeAll(); S.settingsTab=d.tab; S.sfront=false;
       if(S.view==='settings'){ render('st-'+d.tab); return onSettingsTab(d.tab); }
       return navigate('settings',{focusKey:'st-'+d.tab});
     case 'radio': return toggleRadio(d.kind);
@@ -9492,6 +9632,7 @@ function act(el){
     case 'loginPass': return loginPass();
     case 'loginHost': return loginHost();
     case 'sysRollback': return sysRollback(!!d.undo);
+    case 'unlockSet': return unlockSet(d.v);
     case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'impScan': return call('import.scan',{},6*60e3).then(onImport).catch(e=>toast(e.message));
     case 'impToggle': return impToggle(d.key);
@@ -9962,23 +10103,28 @@ function viewGameSettings(){
 // A game with a layout gets the controller as a keyboard and mouse while it's in front (desktop/shell/hearth-input
 // does it; hearth-core input_map.rs keeps each game's choice). Off, the default, leaves the game its own controller
 // support. Edits save as you make them, as the game's own layout.
-const IM = {tables:null, games:{}, at:{}, loading:{}, status:null, statusAt:0, draft:null, gid:null, set:'base', test:null, saveT:null, qaGame:null};
+const IM = {tables:null, games:{}, at:{}, loading:{}, status:null, statusAt:0, draft:null, gid:null, edit:'default', test:null, saveT:null, qaGame:null, globalCfg:null};
 const IM_MOCK = (()=>{
-  const lim = {sensitivity:[0.1,5],deadzone:[0,0.5],outer:[0.5,1],curve:[1,3],threshold:[0.05,0.95],stick_threshold:[0.2,0.9],gyro_sensitivity:[0.1,5],gyro_deadzone:[0,5],hold_ms:[150,1000],turbo_hz:[2,30],pref_sensitivity:[0.25,3],name_len:60,combo_keys:4,radial_items:8};
+  const lim = {sensitivity:[0.1,5],deadzone:[0,0.5],outer:[0.5,1],curve:[1,3],threshold:[0.05,0.95],stick_threshold:[0.2,0.9],gyro_sensitivity:[0.1,5],gyro_deadzone:[0,5],hold_ms:[150,1000],turbo_hz:[2,30],pref_sensitivity:[0.25,3],double_ms:[100,600],turn_px:[300,30000],name_len:60,combo_keys:4,radial_items:8,chords:3,layers:8,sets:8};
   const T = {keys:[{group:'Common',keys:[['SPACE','Space'],['ENTER','Enter'],['ESC','Esc'],['TAB','Tab'],['LEFTSHIFT','Shift'],['LEFTCTRL','Ctrl'],['LEFTALT','Alt']]},
       {group:'Arrows',keys:[['UP','Up arrow'],['DOWN','Down arrow'],['LEFT','Left arrow'],['RIGHT','Right arrow']]},
       {group:'Letters',keys:[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(c=>[c,c])},{group:'Numbers',keys:[...'1234567890'].map(c=>[c,c])},{group:'Function keys',keys:[1,2,3,4,5].map(n=>['F'+n,'F'+n])}],
     mouse:[['left','Left click'],['right','Right click'],['middle','Middle click'],['back','Mouse back'],['forward','Mouse forward']], scroll:[['up','Scroll up'],['down','Scroll down'],['left','Scroll left'],['right','Scroll right']],
     buttons:[['a','A'],['b','B'],['x','X'],['y','Y'],['lb','LB'],['rb','RB'],['lt','LT (left trigger)'],['rt','RT (right trigger)'],['view','View'],['menu','Menu'],['l3','Left stick press (L3)'],['r3','Right stick press (R3)'],['up','D-pad up'],['down','D-pad down'],['left','D-pad left'],['right','D-pad right'],['l4','Back button L4'],['r4','Back button R4']],
     sticks:[['ls','Left stick'],['rs','Right stick']], limits:lim,
-    templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:1,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
-      {id:'rts',name:'Strategy (RTS)',blurb:'For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups',layout:{version:1,name:'Strategy (RTS)',base:'rts',buttons:{rt:{press:'mouse:left',threshold:0.3},lt:{press:'mouse:right',threshold:0.3},a:'key:SPACE',b:'key:S',x:'key:Q',y:'key:H',lb:'shift',rb:'key:LEFTCTRL',menu:'key:ESC',view:'radial',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT'},sticks:{ls:{mode:'keys',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT',threshold:0.45},rs:{mode:'mouse',sensitivity:1.2,deadzone:0.1,outer:0.95,curve:2}},shift:{buttons:{up:'key:1',right:'key:2',down:'key:3',left:'key:4',y:'key:LEFTCTRL+1',b:'key:LEFTCTRL+2',a:'key:LEFTCTRL+3',x:'key:LEFTCTRL+4'}},radial:['key:5','key:6','key:7','key:8','key:F1','key:F2','key:F3','key:F4'],hold_ms:300,turbo_hz:10}},
-      {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:1,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
+    templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:2,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
+      {id:'rts',name:'Strategy (RTS)',blurb:'For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups',layout:{version:2,name:'Strategy (RTS)',base:'rts',buttons:{rt:{press:'mouse:left',threshold:0.3},lt:{press:'mouse:right',threshold:0.3},a:'key:SPACE',b:'key:S',x:'key:Q',y:'key:H',lb:'layer:shift',rb:'key:LEFTCTRL',menu:'key:ESC',view:'radial',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT'},sticks:{ls:{mode:'keys',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT',threshold:0.45},rs:{mode:'mouse',sensitivity:1.2,deadzone:0.1,outer:0.95,curve:2}},layers:[{id:'shift',name:'Control groups (hold LB)',buttons:{up:'key:1',right:'key:2',down:'key:3',left:'key:4',y:'key:LEFTCTRL+1',b:'key:LEFTCTRL+2',a:'key:LEFTCTRL+3',x:'key:LEFTCTRL+4'}}],radial:['key:5','key:6','key:7','key:8','key:F1','key:F2','key:F3','key:F4'],hold_ms:300,turbo_hz:10}},
+      {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:2,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
   // Beacon's strategy games start with Strategy (RTS), and launchers' own windows with Mouse only, like input_map.rs's default_layout.
   const store={}, fresh=id=>({layout:/^beacon:/.test(id||'')&&id!=='beacon:conquest'?'rts':['xodus:nexus','battlenet:app'].includes(id)?'mouse':'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
-  const get=id=>Object.assign({game:id}, copy(store[id]||fresh(id)));
+  let glob={enabled:false, layout:null};
+  const get=id=>Object.assign({game:id, global:copy(glob)}, copy(store[id]||fresh(id)));
   return async (m,a)=>{
     if(m==='input.tables') return copy(T);
+    if(m==='input.global.get') return copy(glob);
+    if(m==='input.global.set'){ if(a.layout) glob.layout=copy(a.layout); if(a.enabled!=null){ if(a.enabled && !glob.layout) throw new Error('Make the global layout first'); glob.enabled=!!a.enabled; } return copy(glob); }
+    if(m==='input.validate') return {ok:true, layout:copy(a.layout)};
+    if(m==='link.input.peers') return {devices:[{peer:'p1', name:'Living room PC', layouts:[{game:'_global', name:'Couch mouse', layout:copy(T.templates[2].layout)}]}]};
     if(m==='input.get') return get(a.game);
     if(m==='input.set'){ const c=store[a.game]||fresh(a.game); if(a.custom) c.custom=copy(a.custom); if(a.layout) c.layout=a.layout; if(a.prefs) Object.assign(c.prefs,a.prefs); store[a.game]=c; return get(a.game); }
     if(m==='input.status') return {ok:true, active:false, devices:[], gyro:{available:true, device:'Preview motion sensors', on:false}};
@@ -9989,6 +10135,7 @@ const IM_MOCK = (()=>{
 function imCall(m, a={}){ return host ? call(m, a, 15000) : IM_MOCK(m, a); }
 const imLater = f => setTimeout(f, 0);
 function imRedraw(){
+  if(S.layers.at(-1)==='imed') return renderImEd(focused && focused.dataset.k);
   if(S.layers.includes('qam')) return refreshUI();
   if(!S.layers.length && (S.view==='gameset' || S.view==='inputmap')) render(null, true);
 }
@@ -10000,7 +10147,7 @@ function imLoadTables(){
 function imLoad(id, force){
   if(!id || IM.loading[id] || (!force && IM.games[id] && Date.now()-IM.at[id] < 5000)) return;
   IM.loading[id]=true;
-  imCall('input.get',{game:id}).then(r=>{ IM.games[id]=r; }).catch(e=>{ IM.games[id]={game:id, layout:'off', custom:null, prefs:{sensitivity:1,gyro:false}, error:e.message}; })
+  imCall('input.get',{game:id}).then(r=>{ IM.games[id]=r; if(r && r.global) IM.globalCfg=r.global; }).catch(e=>{ IM.games[id]={game:id, layout:'off', custom:null, prefs:{sensitivity:1,gyro:false}, error:e.message}; })
     .finally(()=>{ IM.at[id]=Date.now(); IM.loading[id]=false; imRedraw(); });
 }
 function imLoadStatus(){
@@ -10016,6 +10163,12 @@ function imActLabel(raw){
   if(raw==='radial') return 'Radial menu';
   if(raw==='gyro:toggle') return 'Gyro aiming on/off';
   if(raw==='gyro:hold') return 'Gyro aiming (hold)';
+  if(raw==='gyro:ratchet') return 'Gyro off while held';
+  const nm = (list, id) => { const x=((IM.draft&&IM.draft[list])||[]).find(y=>y.id===id); return x&&x.name||id; };
+  if(raw.startsWith('layer:')) return 'Hold layer '+nm('layers', raw.slice(6));
+  if(raw.startsWith('layer_toggle:')) return 'Layer '+nm('layers', raw.slice(13))+' on/off';
+  if(raw==='set:default') return 'To the default set';
+  if(raw.startsWith('set:')) return 'To set '+nm('sets', raw.slice(4));
   const i=raw.indexOf(':'), k=raw.slice(0,i), v=raw.slice(i+1), T=IM.tables||{};
   if(k==='key') return v.split('+').map(n=>(IM.keyLabel||{})[n]||n).join(' + ');
   if(k==='mouse') return ((T.mouse||[]).find(m=>m[0]===v)||[0,v])[1];
@@ -10026,6 +10179,7 @@ function imChoiceLabel(c){
   if(!c) return '…';
   if(c.layout==='off') return 'Off';
   if(c.layout==='custom') return (c.custom && c.custom.name) || 'Custom';
+  if(c.layout==='global') return 'Global: '+((c.global && c.global.layout && c.global.layout.name) || 'yours');
   const t=((IM.tables&&IM.tables.templates)||[]).find(t=>t.id===c.layout);
   return t ? t.name : c.layout;
 }
@@ -10046,7 +10200,11 @@ function imPick(id){
   const items=[{label:'Off (the game\'s own controller support)', icon:c.layout==='off'?'check':'', run:()=>set('off')}];
   for(const t of T.templates) items.push({label:t.name, icon:c.layout===t.id?'check':'', run:()=>set(t.id)});
   if(c.custom) items.push({label:(c.custom.name||'Custom')+' (yours)', icon:c.layout==='custom'?'check':'', run:()=>set('custom')});
-  if(!OVERLAY) items.push({label:c.layout==='off' && !c.custom ? 'Make my own…' : 'Edit…', icon:'sliders', run:()=>imEdit(id)});
+  const gl=IM.globalCfg || c.global;
+  if(gl && gl.layout) items.push({label:'Global layout: '+(gl.layout.name||'yours'), icon:c.layout==='global'?'check':'', run:()=>set('global')});
+  items.push({label:c.layout==='off' && !c.custom ? 'Make my own…' : 'Edit…', icon:'sliders', run:()=>imLater(()=>imEdit(id))});
+  if(LINUX) items.push({label:'From your other devices (Hearth Link)…', icon:'pad', run:()=>imLater(()=>imFromDevices(id))});
+  items.push({label:gl && gl.layout ? 'Edit the global layout…' : 'Make a global layout (for every game)…', icon:'sliders', run:()=>imLater(()=>imEdit(IM_GLOBAL))});
   openSheet({title:'Controller layout', sub:'A layout makes the controller act as a keyboard and mouse in this game, for games without controller support.'+(LINUX?'':' Windows can\'t hide the controller from the game, so a game that reads controllers sees both.'), items});
 }
 function imSave(id, patch, announce){
@@ -10058,49 +10216,80 @@ function imSave(id, patch, announce){
   }).catch(e=>{ toast(e.message); });
 }
 
-// The editor (its own screen)
+// The editor: its own screen in Game Mode (Game settings › Controller layout › Edit), and a panel over the game in
+// Quick Access (the controller is Hearth's while Quick Access is open, so the layout can be changed while playing).
+// Layouts are version 2 (docs/HEARTH-INPUT.md): the default action set, more sets, layers (held: a mode shift, or
+// toggled), and per-button activators. Everything is reached with the D-pad and A.
+const IM_GLOBAL = '_global';
 function imEdit(id){
-  const c=IM.games[id], T=IM.tables; if(!c || !T) return;
+  const T=IM.tables; if(!T) return;
   const tpl = tid => ((T.templates.find(t=>t.id===tid)||T.templates[0]||{}).layout) || {};
   let base;
-  if(c.layout==='custom' || (c.layout==='off' && c.custom)) base=c.custom;
-  else {
-    base=JSON.parse(JSON.stringify(tpl(c.layout==='off' ? 'shooter' : c.layout)));
-    base.name=((base.name||'Layout')+' (mine)').slice(0, T.limits.name_len);
+  if(id===IM_GLOBAL){
+    const g=IM.globalCfg||{};
+    base = g.layout || Object.assign(JSON.parse(JSON.stringify(tpl('mouse'))), {name:'My global layout'});
+  } else {
+    const c=IM.games[id]; if(!c) return;
+    if(c.layout==='custom' || (c.layout==='off' && c.custom)) base=c.custom;
+    else if(c.layout==='global' && c.global && c.global.layout) base=Object.assign(JSON.parse(JSON.stringify(c.global.layout)), {name:'Mine'});
+    else {
+      base=JSON.parse(JSON.stringify(tpl(c.layout==='off' ? 'shooter' : c.layout)));
+      base.name=((base.name||'Layout')+' (mine)').slice(0, T.limits.name_len);
+    }
   }
-  IM.draft=JSON.parse(JSON.stringify(base)); IM.gid=id; IM.set='base';
+  IM.draft=JSON.parse(JSON.stringify(base)); IM.draft.version=2; IM.gid=id; IM.edit='default';
   IM.statusAt=0; imLoadStatus();
-  navigate('inputmap', {game:id});
+  if(OVERLAY){ imEdCss(); openLayer('imed'); }
+  else navigate('inputmap', {game:id});
+}
+function imRefresh(keepK){
+  const k = keepK || (focused && focused.dataset.k);
+  if(S.layers.at(-1)==='imed') return renderImEd(k);
+  if(!S.layers.length && S.view==='inputmap') render(k, true);
 }
 function imChanged(redraw){
   clearTimeout(IM.saveT);
   const id=IM.gid, draft=JSON.parse(JSON.stringify(IM.draft));
-  IM.saveT=setTimeout(()=>imSave(id, {layout:'custom', custom:draft}), 350);
-  if(redraw && !S.layers.length && S.view==='inputmap') render(focused && focused.dataset.k, true);
+  IM.saveT=setTimeout(()=> id===IM_GLOBAL ? imSaveGlobal({layout:draft}) : imSave(id, {layout:'custom', custom:draft}), 350);
+  if(redraw) imRefresh();
 }
-function imLayer(){ const d=IM.draft; if(IM.set==='shift'){ d.shift=d.shift||{}; return d.shift; } return d; }
-function imB(ctl){ const v=((imLayer().buttons)||{})[ctl]; return v==null ? null : typeof v==='string' ? {press:v} : Object.assign({}, v); }
+function imSaveGlobal(patch, announce){
+  return imCall('input.global.set', patch).then(r=>{ IM.globalCfg=r; if(announce) toast(r.enabled?'Global layout on for games without their own':'Global layout off'); imRedraw(); return r; }).catch(e=>toast(e.message));
+}
+// What's being edited: 'default' (the default action set), 'set:<id>' or 'layer:<id>'.
+function imWhere(){ const [k,id]=(IM.edit||'default').split(':'); return {kind:id?k:'default', id:id||'default'}; }
+function imLayer(){
+  const d=IM.draft, w=imWhere();
+  if(w.kind==='set') return (d.sets||[]).find(x=>x.id===w.id) || (IM.edit='default', d);
+  if(w.kind==='layer') return (d.layers||[]).find(x=>x.id===w.id) || (IM.edit='default', d);
+  return d;
+}
+const imInLayer = () => imWhere().kind==='layer';
+const imEditName = () => { const w=imWhere(); return w.kind==='default' ? 'Default set' : (imLayer().name || w.id) + (w.kind==='layer' ? ' (layer)' : ' (action set)'); };
+function imB(ctl){ const v=((imLayer().buttons)||{})[ctl]; return v==null ? null : typeof v==='string' ? {press:v} : JSON.parse(JSON.stringify(v)); }
 function imSetB(ctl, b){
   const L=imLayer(); L.buttons=L.buttons||{};
   if(!b) delete L.buttons[ctl];
   else {
-    const o={press:b.press};
-    if(b.hold) o.hold=b.hold;
-    if(b.turbo) o.turbo=true;
+    const o={};
+    for(const k of ['press','hold','double','release']) if(b[k] && !(k==='press' && b[k]==='none' && (b.hold||b.double||b.release||(b.chords||[]).length))) o[k]=b[k];
+    if(b.chords && b.chords.length) o.chords=b.chords;
+    for(const k of ['turbo','hold_turbo','double_turbo','toggle']) if(b[k]) o[k]=true;
     if(b.threshold!=null && (ctl==='lt'||ctl==='rt')) o.threshold=b.threshold;
-    L.buttons[ctl] = Object.keys(o).length===1 ? o.press : o;
+    if(!Object.keys(o).length) o.press='none';
+    L.buttons[ctl] = Object.keys(o).length===1 && o.press ? o.press : o;
   }
   imChanged(true);
 }
 function imS(s){ const v=((imLayer().sticks)||{})[s]; return v ? Object.assign({}, v) : null; }
 function imSetS(s, v){ const L=imLayer(); L.sticks=L.sticks||{}; if(v) L.sticks[s]=v; else delete L.sticks[s]; imChanged(true); }
-// Sliders and switches name what they change: "ls.sensitivity" (a stick, in the set being edited), "gyro.x", "hold_ms", "qa.sens".
+// Sliders and switches name what they change: "ls.sensitivity" (a stick, in what's being edited), "gyro.x", "hold_ms", "qa.sens".
 const IM_SL = {
   sensitivity:{lim:'sensitivity', step:0.05, def:1, fmt:imX}, deadzone:{lim:'deadzone', step:0.01, def:0.12, fmt:imPct},
   outer:{lim:'outer', step:0.01, def:0.95, fmt:imPct}, curve:{lim:'curve', step:0.1, def:1.8, fmt:v=>(+v).toFixed(1)},
-  threshold:{lim:'stick_threshold', step:0.05, def:0.5, fmt:imPct},
+  threshold:{lim:'stick_threshold', step:0.05, def:0.5, fmt:imPct}, turn:{lim:'turn_px', step:100, def:3600, fmt:v=>v+' px'},
   'gyro.sensitivity':{lim:'gyro_sensitivity', step:0.05, def:1, fmt:imX}, 'gyro.deadzone':{lim:'gyro_deadzone', step:0.1, def:1, fmt:v=>(+v).toFixed(1)+'°/s'},
-  hold_ms:{lim:'hold_ms', step:50, def:300, fmt:v=>v+' ms'}, turbo_hz:{lim:'turbo_hz', step:1, def:10, fmt:v=>v+' a second'},
+  hold_ms:{lim:'hold_ms', step:50, def:300, fmt:v=>v+' ms'}, double_ms:{lim:'double_ms', step:25, def:250, fmt:v=>v+' ms'}, turbo_hz:{lim:'turbo_hz', step:1, def:10, fmt:v=>v+' a second'},
   'qa.sens':{lim:'pref_sensitivity', step:0.05, def:1, fmt:imX},
 };
 function imGet(p){
@@ -10119,7 +10308,7 @@ function imSetVal(p, v){
 }
 function imSpec(p){ return IM_SL[p] || IM_SL[p.split('.').pop()]; }
 function imSlider(p, label){
-  const sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim], v=imGet(p) ?? sp.def, pct=(v-min)/(max-min)*100;
+  const sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim]||[0,1], v=imGet(p) ?? sp.def, pct=(v-min)/(max-min)*100;
   return `<div class="ctl" data-f data-k="im-sl-${p}" data-slider="im:${p}" data-min="${min}" data-max="${max}" data-step="${sp.step}" data-unit="">
     <div class="lab">${esc(label)}<span>${esc(sp.fmt(v))}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div></div>`;
 }
@@ -10140,61 +10329,97 @@ function imSlide(el, d){
 function imSwitch(p, label, sub){
   return `<button class="row" data-f data-k="im-t-${p}" data-act="im" data-op="tog" data-p="${p}"><div class="rt"><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="sw ${imGet(p)?'on':''}"></div></button>`;
 }
-function imBtnRow(ctl, label){
-  const b=imB(ctl), shift=IM.set==='shift';
-  const val = !b ? (shift ? 'Same as main set' : 'Nothing') : imActLabel(b.press)+(b.hold?' · held: '+imActLabel(b.hold):'')+(b.turbo?' · turbo':'');
-  return `<button class="row" data-f data-k="im-b-${ctl}" data-act="im" data-op="btn" data-c="${ctl}"><div class="rt"><b>${esc(label)}</b></div><div class="rv" style="${b&&b.press!=='none'?'color:var(--accent)':''}">${esc(val)} ›</div></button>`;
+function imBtnSummary(b){
+  if(!b) return imInLayer() ? 'Same as the set' : 'Nothing';
+  const parts=[];
+  if(b.press && b.press!=='none') parts.push(imActLabel(b.press)+(b.turbo?' (turbo)':'')+(b.toggle?' (toggle)':''));
+  if(b.hold) parts.push('long: '+imActLabel(b.hold));
+  if(b.double) parts.push('double: '+imActLabel(b.double));
+  if(b.release) parts.push('release: '+imActLabel(b.release));
+  for(const c of b.chords||[]) parts.push('with '+imCtlLabel(c.with)+': '+imActLabel(c.do));
+  return parts.join(' · ') || 'Nothing';
 }
+function imBtnRow(ctl, label){
+  const b=imB(ctl);
+  return `<button class="row" data-f data-k="im-b-${ctl}" data-act="im" data-op="btn" data-c="${ctl}"><div class="rt"><b>${esc(label)}</b></div><div class="rv" style="${b&&b.press!=='none'?'color:var(--accent)':''}">${esc(imBtnSummary(b))} ›</div></button>`;
+}
+const IM_MODE_NAMES = {none:'Nothing', keys:'Keys', dpad:'D-pad (4 ways)', mouse:'Mouse', scroll:'Scrolling', wheel:'Scroll wheel', flick:'Flick stick', same:'Same as the set'};
 function imStickRows(s, label){
-  const st=imS(s), shift=IM.set==='shift', mode=st ? st.mode : (shift ? 'same' : 'none');
-  const keysName = !st ? '' : st.up==='key:W'&&st.left==='key:A'&&st.down==='key:S'&&st.right==='key:D' ? 'Keys: W A S D' : st.up==='key:UP'&&st.left==='key:LEFT' ? 'Keys: arrow keys' : 'Keys';
-  const name={none:'Nothing', keys:keysName, mouse:'Mouse', scroll:'Scrolling', same:'Same as main set'}[mode];
-  const sub = mode==='keys' ? ['up','left','down','right'].map(d=>imActLabel(st[d]||'none')).join(' · ') : mode==='mouse' ? 'Moves the pointer' : mode==='scroll' ? 'Scrolls like a mouse wheel' : '';
+  const st=imS(s), mode=st ? st.mode : (imInLayer() ? 'same' : 'none');
+  let name=IM_MODE_NAMES[mode]||mode;
+  if(mode==='keys' && st.up==='key:W' && st.left==='key:A' && st.down==='key:S' && st.right==='key:D') name='Keys: W A S D';
+  else if(mode==='keys' && st.up==='key:UP' && st.left==='key:LEFT') name='Keys: arrow keys';
+  const sub = (mode==='keys'||mode==='dpad') ? ['up','left','down','right'].map(d=>imActLabel(st[d]||'none')).join(' · ')
+    : {mouse:'Moves the pointer', scroll:'Scrolls like a mouse wheel', wheel:'Turn it round to scroll', flick:'Flick to turn the camera at once, turn it round to keep turning'}[mode] || '';
   let h=`<button class="row" data-f data-k="im-s-${s}" data-act="im" data-op="stick" data-c="${s}"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="rv" style="color:var(--accent)">${esc(name)} ›</div></button>`;
   if(mode==='mouse' || mode==='scroll'){
     h += imSlider(s+'.sensitivity','Sensitivity') + imSlider(s+'.deadzone','Dead zone (ignores small movements)');
-    if(mode==='mouse') h += imSlider(s+'.outer','Outer dead zone (full speed from here)') + imSlider(s+'.curve','Curve (higher: finer near the center)') + imSwitch(s+'.invert_y','Invert up and down');
+    if(mode==='mouse') h += imSlider(s+'.outer','Outer dead zone (full speed from here)') + imSlider(s+'.curve','Curve (higher: finer near the center)') + imSwitch(s+'.invert_x','Invert left and right') + imSwitch(s+'.invert_y','Invert up and down');
   }
-  if(mode==='keys') h += imSlider(s+'.threshold','How far to push before a key goes down');
+  if(mode==='keys' || mode==='dpad') h += imSlider(s+'.threshold','How far to push before a key goes down');
+  if(mode==='wheel') h += imSlider(s+'.sensitivity','Notches per turn') + imSlider(s+'.threshold','How far out to turn it');
+  if(mode==='flick') h += imSlider(s+'.turn','One full turn in the game (mouse pixels)') + imSlider(s+'.threshold','How far to flick');
   return h;
 }
 function viewInputMap(){
-  const g=G(S.game), T=IM.tables, d=IM.draft;
-  if(!g || !d || IM.gid!==S.game) return note('Open a game\'s Game settings and choose Controller layout › Edit.');
+  const gid = S.layers.includes('imed') ? IM.gid : S.game;
+  const T=IM.tables, d=IM.draft, glob=IM.gid===IM_GLOBAL, g=glob ? {title:'Global layout'} : G(gid);
+  if(!d || (!glob && (!g || IM.gid!==gid))) return note('Open a game\'s Game settings and choose Controller layout › Edit.');
   if(!T) return note('Loading…');
-  const shift=IM.set==='shift', c=IM.games[g.id];
+  const w=imWhere(), L=imLayer(), c=IM.games[IM.gid];
   let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
-  h += `<button class="row" data-f data-k="im-name" data-act="im" data-op="name"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(d.name||'Custom')}</b><small>${c&&c.layout==='custom'?'This game\'s layout. Acts as a keyboard and mouse while you play.':'Your changes are saved as this game\'s own layout.'}</small></div><div class="rv">Rename ›</div></button>`;
+  h += `<button class="row" data-f data-k="im-name" data-act="im" data-op="name"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(d.name||'Custom')}</b><small>${glob?'For every game without a layout of its own, when it\'s on':c&&c.layout==='custom'?'This game\'s layout. Acts as a keyboard and mouse while you play.':'Your changes are saved as this game\'s own layout.'}</small></div><div class="rv">Rename ›</div></button>`;
+  if(glob) h += `<button class="row" data-f data-k="im-globon" data-act="im" data-op="globOn"><div class="rt"><b>Use for every game without its own layout</b><small>Games you set to Off, and games with their own default, keep theirs</small></div><div class="sw ${IM.globalCfg&&IM.globalCfg.enabled?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="im-test" data-act="im" data-op="test"><span class="ricon">${I.play}</span><div class="rt"><b>${IM.test?'Stop trying':'Try it (20 seconds)'}</b><small>The controller acts as this layout right here, and the keys and clicks it sends show on screen</small></div></button>`;
+  h += `<button class="row" data-f data-k="im-preview" data-act="im" data-op="preview"><span class="ricon">${I.pad}</span><div class="rt"><b>Overview</b><small>What every control does, in every action set and layer</small></div><div class="rv">›</div></button>`;
   h += `<button class="row" data-f data-k="im-reset" data-act="im" data-op="reset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Start over from a template</b><small>${esc(d.base ? 'Based on '+((T.templates.find(t=>t.id===d.base)||{}).name||d.base) : 'Shooter, point-and-click, retro, strategy (RTS) or mouse only')}</small></div></button>`;
-  h += `<div class="row"><div class="rt"><b>Editing</b><small>The second set works while a button set to “Second set while held” is held</small></div><div class="seg"><button class="${shift?'':'on'}" data-f data-k="im-set-base" data-act="im" data-op="set" data-v="base">Main set</button><button class="${shift?'on':''}" data-f data-k="im-set-shift" data-act="im" data-op="set" data-v="shift">Second set</button></div></div>`;
-  h += shead(shift ? 'Buttons (second set)' : 'Buttons');
+  h += `<button class="row" data-f data-k="im-where" data-act="im" data-op="where"><span class="ricon">${I.pad}</span><div class="rt"><b>Editing: ${esc(imEditName())}</b><small>${w.kind==='layer'?'Works on top of the action set while a button holds it (a mode shift) or turns it on; unset controls do what the set says':w.kind==='set'?'A whole set of controls of its own; a button set to “Switch to an action set” changes sets':'Action sets and layers: '+((d.sets||[]).length)+' more sets, '+((d.layers||[]).length)+' layers'}</small></div><div class="rv">Change ›</div></button>`;
+  h += shead('Buttons');
   h += `<button class="row" data-f data-k="im-dpad" data-act="im" data-op="dpad"><div class="rt"><b>D-pad</b><small>Set all four directions at once</small></div><div class="rv">Arrow keys, W A S D… ›</div></button>`;
   h += T.buttons.map(([id,l])=>imBtnRow(id,l)).join('');
-  h += shead(shift ? 'Sticks (second set)' : 'Sticks');
+  h += shead('Sticks');
   h += T.sticks.map(([id,l])=>imStickRows(id,l)).join('');
-  if(!shift){
+  if(w.kind==='default'){
     h += shead('Gyro aiming');
     const gy=IM.status && IM.status.gyro;
-    h += note(gy && gy.available ? `Motion sensors found${gy.device?' ('+esc(gy.device)+')':''}. Set a button to “Gyro aiming on/off” or “Gyro aiming while held”, or turn it on in Quick Access while you play.`
+    h += note(gy && gy.available ? `Motion sensors found${gy.device?' ('+esc(gy.device)+')':''}.`
       : IM.status && IM.status.ok ? 'No motion sensors found right now. On a handheld, turn on Motion controls (gyro) in Settings › Controls › Handheld Daemon.'
       : 'Gyro aiming works in Game Mode, with a controller that has motion sensors.');
+    const gw=(d.gyro||{}).when||'button', ga=(d.gyro||{}).axis||'yaw';
+    h += `<button class="row" data-f data-k="im-gwhen" data-act="im" data-op="gwhen"><div class="rt"><b>Gyro is on</b><small>${{button:'With a button (on/off, while held) or from the start; a ratchet button turns it off while held',always:'Always (a ratchet button turns it off while held, to re-center)',stick:'While you touch or move the right stick'}[gw]}</small></div><div class="rv">${{button:'With a button',always:'Always',stick:'With the right stick'}[gw]} ›</div></button>`;
+    h += `<button class="row" data-f data-k="im-gaxis" data-act="im" data-op="gaxis"><div class="rt"><b>Turning left and right</b><small>Yaw: turn the controller flat. Roll: tilt it like a steering wheel</small></div><div class="rv">${ga==='roll'?'Roll':'Yaw'} ›</div></button>`;
     h += imSlider('gyro.sensitivity','Gyro sensitivity') + imSlider('gyro.deadzone','Gyro dead zone (stops drift)');
-    h += imSwitch('gyro.invert_x','Turn the other way (left and right)') + imSwitch('gyro.invert_y','Turn the other way (up and down)') + imSwitch('gyro.start_on','On from the start','Without pressing a button first');
+    h += imSwitch('gyro.invert_x','Turn the other way (left and right)') + imSwitch('gyro.invert_y','Turn the other way (up and down)');
+    if(gw==='button') h += imSwitch('gyro.start_on','On from the start','Without pressing a button first');
     h += shead('Radial menu');
-    const R=d.radial||[], used=Object.values(d.buttons||{}).some(b=>(typeof b==='string'?b:b&&b.press)==='radial');
+    const R=d.radial||[], used=[d, ...(d.sets||[])].some(x=>Object.values(x.buttons||{}).some(b=>(typeof b==='string'?b:b&&b.press)==='radial'));
     h += note('Extra keys on one button: hold it, point the right stick (or press the D-pad) at a key, and let go.'+(used?'':' Set a button to “Radial menu” to use it.'));
     const dirs=['Up','Up-right','Right','Down-right','Down','Down-left','Left','Up-left'];
     h += R.map((a,i)=>`<button class="row" data-f data-k="im-r-${i}" data-act="im" data-op="radial" data-i="${i}"><div class="rt"><b>${dirs[Math.round(i*8/R.length)%8]}</b></div><div class="rv" style="color:var(--accent)">${esc(imActLabel(a))} ›</div></button>`).join('');
     if(R.length < T.limits.radial_items) h += `<button class="row" data-f data-k="im-r-add" data-act="im" data-op="radial" data-i="-1"><span class="ricon">${I.kbd}</span><div class="rt"><b>Add a key</b></div></button>`;
     h += shead('Timing');
-    h += imSlider('hold_ms','Hold time (for “something else when held”)') + imSlider('turbo_hz','Turbo speed');
+    h += imSlider('hold_ms','Long press (how long to hold)') + imSlider('double_ms','Double press (how quickly)') + imSlider('turbo_hz','Turbo speed');
   }
-  h += '</div>' + note('Saved as you go. The layout is on only while this game is in front: Quick Access, the Guide button and Hearth itself always get the controller back.');
+  h += '</div>' + note('Saved as you go. Layouts only press keys, click and scroll. The layout is on only while this game is in front: Quick Access, the Guide button and Hearth itself always get the controller back.');
   return h;
 }
 VIEWS.inputmap = viewInputMap;
 TITLES.inputmap = 'Controller layout';
+// Over a game (Quick Access): the same editor as a panel.
+function imEdCss(){
+  if($('#imed')) return;
+  document.head.insertAdjacentHTML('beforeend', `<style>
+#imed{top:0;right:0;bottom:0;width:min(720px,100vw);background:var(--panel);padding:18px var(--gut);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:-20px 0 60px rgba(0,0,0,.45);overflow-y:auto;scrollbar-width:none}
+#imed.open{transform:none}
+</style>`);
+  const el=document.createElement('section'); el.className='layer'; el.id='imed'; document.body.appendChild(el);
+}
+function renderImEd(keepK){
+  const el=$('#imed'); if(!el) return;
+  el.innerHTML = `<div class="ptitle">Controller layout</div>` + viewInputMap() + `<button class="btn" data-f data-k="im-done" data-act="back">Done</button>`;
+  const f=keepK && el.querySelector(`[data-k="${CSS.escape(keepK)}"]`); if(f) setFocus(f, true);
+}
+LAYER_RENDER.imed = ()=>renderImEd();
 
 function imPickAction(title, kinds, done){
   const T=IM.tables, items=[];
@@ -10204,44 +10429,67 @@ function imPickAction(title, kinds, done){
   if(kinds.includes('scroll')) items.push({label:'Scrolling…', icon:'mouse', run:()=>imLater(()=>openSheet({title, items:T.scroll.map(([id,l])=>({label:l, run:()=>done('scroll:'+id)}))}))});
   return items;
 }
+const imSimple = p => !p || /^(none$|key:|mouse:|scroll:)/.test(p);
+const imKeyOrClick = p => /^(key:|mouse:)/.test(p||'');
 function imBtnMenu(ctl){
-  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'}, shift=IM.set==='shift';
-  const simple = p => !p || /^(none$|key:|mouse:|scroll:)/.test(p);
-  const setPress = p => { const nb=Object.assign({}, b, {press:p}); if(!simple(p)){ delete nb.hold; delete nb.turbo; } if(nb.turbo && !/^(key:|mouse:)/.test(p)) delete nb.turbo; imSetB(ctl, nb); };
+  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'}, d=IM.draft, inLayer=imInLayer();
+  const setPress = p => { const nb=Object.assign({}, b, {press:p}); if(!imSimple(p)){ for(const k of ['hold','double','release','chords','turbo','toggle','hold_turbo','double_turbo']) delete nb[k]; } if(!imKeyOrClick(p)){ delete nb.turbo; delete nb.toggle; } imSetB(ctl, nb); };
   const items=imPickAction(label, ['key','mouse','scroll'], setPress);
   items.push({label:'Nothing', icon:'x', run:()=>setPress('none')});
-  if(!shift) items.push({label:'Second set while held', icon:'layout', run:()=>setPress('shift')}, {label:'Radial menu of extra keys', icon:'dots', run:()=>setPress('radial')});
-  items.push({label:'Gyro aiming on/off', icon:'pad', run:()=>setPress('gyro:toggle')}, {label:'Gyro aiming while held', icon:'pad', run:()=>setPress('gyro:hold')});
-  if(simple(b.press) && !b.turbo) items.push({label:b.hold ? 'When held: '+imActLabel(b.hold)+'…' : 'Something else when held…', icon:'clock', run:()=>imLater(()=>{
-    const its=imPickAction(label+' when held', ['key','mouse','scroll'], h=>imSetB(ctl, Object.assign({}, imB(ctl)||{press:'none'}, {hold:h, turbo:false})));
-    if(b.hold) its.push({label:'The same when held (no hold action)', icon:'x', run:()=>{ const nb=Object.assign({}, b); delete nb.hold; imSetB(ctl, nb); }});
-    openSheet({title:label+' when held', sub:'A quick press does “'+imActLabel(b.press)+'”; holding it does this instead.', items:its});
-  })});
-  if(/^(key:|mouse:)/.test(b.press) && !b.hold) items.push({label:'Turbo (repeats while held): '+(b.turbo?'on':'off'), icon:'bolt', run:()=>imSetB(ctl, Object.assign({}, b, {turbo:!b.turbo}))});
+  const layers=d.layers||[], sets=d.sets||[];
+  if(!inLayer) for(const l of layers) items.push({label:'Hold layer “'+(l.name||l.id)+'” (mode shift)', icon:'layout', run:()=>setPress('layer:'+l.id)});
+  for(const l of layers) items.push({label:'Turn layer “'+(l.name||l.id)+'” on/off', icon:'layout', run:()=>setPress('layer_toggle:'+l.id)});
+  for(const st of [{id:'default', name:'Default set'}, ...sets]) if(imWhere().id!==st.id || imWhere().kind!=='set') items.push({label:'Switch to action set “'+(st.name||st.id)+'”', icon:'layout', run:()=>setPress('set:'+st.id)});
+  if(!inLayer) items.push({label:'Radial menu of extra keys', icon:'dots', run:()=>setPress('radial')});
+  items.push({label:'Gyro aiming on/off', icon:'pad', run:()=>setPress('gyro:toggle')}, {label:'Gyro aiming while held', icon:'pad', run:()=>setPress('gyro:hold')}, {label:'Gyro off while held (ratchet)', icon:'pad', run:()=>setPress('gyro:ratchet')});
+  if(imSimple(b.press)) items.push({label:'More ways to press: long, double, release, chords…', icon:'clock', run:()=>imLater(()=>imActivators(ctl))});
   if(ctl==='lt' || ctl==='rt'){
     const th=b.threshold ?? 0.5;
-    items.push({label:'How far to press: '+imPct(th)+'…', icon:'sliders', run:()=>imLater(()=>openSheet({title:label, sub:'How far the trigger goes down before it counts', items:[0.1,0.25,0.35,0.5,0.75,0.9].map(v=>({label:imPct(v), icon:Math.abs(th-v)<0.001?'check':'', run:()=>imSetB(ctl, Object.assign({}, b, {threshold:v}))}))}))});
+    items.push({label:'How far to press: '+imPct(th)+'…', icon:'sliders', run:()=>imLater(()=>openSheet({title:label, sub:'How far the trigger goes down before it counts', items:[0.1,0.25,0.35,0.5,0.75,0.9].map(v=>({label:imPct(v), icon:Math.abs(th-v)<0.001?'check':'', run:()=>imSetB(ctl, Object.assign({}, imB(ctl)||{press:'none'}, {threshold:v}))}))}))});
   }
-  if(shift) items.push({label:'Same as main set', icon:'refresh', run:()=>imSetB(ctl, null)});
-  openSheet({title:label, sub:'What should it do?', items});
+  if(inLayer) items.push({label:'Same as the set', icon:'refresh', run:()=>imSetB(ctl, null)});
+  openSheet({title:label, sub:'What should it do? Now: '+imBtnSummary(imB(ctl)), items});
+}
+/** Activators (like Steam Input's): a long press, a double press, a release press, chords, turbo and toggle. */
+function imActivators(ctl){
+  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'};
+  const upd = f => { const nb=imB(ctl)||{press:'none'}; f(nb); imSetB(ctl, nb); imLater(()=>imActivators(ctl)); };
+  const pick = (title, f) => openSheet({title, items:[...imPickAction(title, ['key','mouse','scroll'], a=>upd(nb=>f(nb, a))), {label:'Nothing', icon:'x', run:()=>upd(nb=>f(nb, null))}]});
+  const items=[
+    {label:'Long press: '+(b.hold?imActLabel(b.hold):'nothing')+'…', icon:'clock', run:()=>imLater(()=>pick(label+' held', (nb,a)=>{ if(a){ nb.hold=a; delete nb.turbo; delete nb.toggle; } else { delete nb.hold; delete nb.hold_turbo; } }))},
+    {label:'Double press: '+(b.double?imActLabel(b.double):'nothing')+'…', icon:'clock', run:()=>imLater(()=>pick(label+' pressed twice', (nb,a)=>{ if(a){ nb.double=a; delete nb.toggle; } else { delete nb.double; delete nb.double_turbo; } }))},
+    {label:'When let go: '+(b.release?imActLabel(b.release):'nothing')+'…', icon:'clock', run:()=>imLater(()=>pick(label+' let go', (nb,a)=>{ if(a) nb.release=a; else delete nb.release; }))},
+  ];
+  const chords=b.chords||[];
+  chords.forEach((c,i)=>items.push({label:'With '+imCtlLabel(c.with)+' held: '+imActLabel(c.do)+(c.turbo?' (turbo)':'')+' — remove', icon:'trash', run:()=>upd(nb=>{ nb.chords.splice(i,1); })}));
+  if(chords.length < IM.tables.limits.chords) items.push({label:'Add a chord (while another button is held)…', icon:'layout', run:()=>imLater(()=>openSheet({title:label+' with…', items:IM.tables.buttons.filter(([id])=>id!==ctl && !chords.some(c=>c.with===id)).map(([id,l])=>({label:l, run:()=>imLater(()=>pick(label+' with '+l+' held', (nb,a)=>{ if(a){ nb.chords=(nb.chords||[]).concat([{with:id, do:a}]); } }))}))}))});
+  if(imKeyOrClick(b.press) && !b.hold && !b.toggle) items.push({label:'Turbo (repeats while held): '+(b.turbo?'on':'off'), icon:'bolt', run:()=>upd(nb=>{ nb.turbo=!nb.turbo; })});
+  if(imKeyOrClick(b.hold)) items.push({label:'Turbo on the long press: '+(b.hold_turbo?'on':'off'), icon:'bolt', run:()=>upd(nb=>{ nb.hold_turbo=!nb.hold_turbo; })});
+  if(imKeyOrClick(b.double)) items.push({label:'Turbo on the double press: '+(b.double_turbo?'on':'off'), icon:'bolt', run:()=>upd(nb=>{ nb.double_turbo=!nb.double_turbo; })});
+  if(imKeyOrClick(b.press) && !b.hold && !b.double && !b.turbo) items.push({label:'Toggle (press once to hold, again to let go): '+(b.toggle?'on':'off'), icon:'refresh', run:()=>upd(nb=>{ nb.toggle=!nb.toggle; })});
+  openSheet({title:label+': ways to press', sub:'A quick press does “'+imActLabel(b.press||'none')+'”', items});
 }
 const IM_KEYSETS = {wasd:{up:'key:W', down:'key:S', left:'key:A', right:'key:D'}, arrows:{up:'key:UP', down:'key:DOWN', left:'key:LEFT', right:'key:RIGHT'}};
 function imStickMenu(s){
-  const label=imCtlLabel(s), st=imS(s)||{mode:'none'}, shift=IM.set==='shift';
-  const keys = set => imSetS(s, Object.assign({mode:'keys', threshold:st.mode==='keys' && st.threshold || 0.5}, IM_KEYSETS[set]));
+  const label=imCtlLabel(s), st=imS(s)||{mode:'none'};
+  const keys = (set, mode='keys') => imSetS(s, Object.assign({mode, threshold:(st.mode==='keys'||st.mode==='dpad') && st.threshold || 0.5}, IM_KEYSETS[set]));
   const items=[{label:'Keys: W A S D', icon:'kbd', run:()=>keys('wasd')}, {label:'Keys: arrow keys', icon:'kbd', run:()=>keys('arrows')},
     {label:'Keys: choose each direction…', icon:'kbd', run:()=>imLater(()=>imStickDirs(s))},
+    {label:'D-pad (4 ways, arrow keys)', icon:'kbd', run:()=>keys('arrows', 'dpad')},
     {label:'Mouse (moves the pointer)', icon:'mouse', run:()=>imSetS(s, st.mode==='mouse' ? st : {mode:'mouse', sensitivity:1, deadzone:0.1, outer:0.95, curve:1.8})},
     {label:'Scrolling', icon:'mouse', run:()=>imSetS(s, st.mode==='scroll' ? st : {mode:'scroll', sensitivity:1, deadzone:0.15})},
+    {label:'Scroll wheel (turn it round)', icon:'mouse', run:()=>imSetS(s, {mode:'wheel', sensitivity:1, threshold:0.5})},
+    {label:'Flick stick (camera)', icon:'pad', run:()=>imSetS(s, {mode:'flick', turn:3600, threshold:0.7})},
     {label:'Nothing', icon:'x', run:()=>imSetS(s, {mode:'none'})}];
-  if(shift) items.push({label:'Same as main set', icon:'refresh', run:()=>imSetS(s, null)});
+  if(imInLayer()) items.push({label:'Same as the set', icon:'refresh', run:()=>imSetS(s, null)});
   openSheet({title:label, sub:'What should it do?', items});
 }
 function imStickDirs(s){
-  const st=imS(s), cur=st && st.mode==='keys' ? st : {mode:'keys', threshold:0.5};
+  const st=imS(s), cur=st && (st.mode==='keys'||st.mode==='dpad') ? st : {mode:'keys', threshold:0.5};
   openSheet({title:imCtlLabel(s), sub:'Pick a direction to change', items:['up','down','left','right'].map(dir=>({label:dir[0].toUpperCase()+dir.slice(1)+': '+imActLabel(cur[dir]||'none'), icon:'kbd', run:()=>imLater(()=>{
-    const its=imPickAction(imCtlLabel(s)+' '+dir, ['key','mouse','scroll'], a=>{ const n=Object.assign({}, imS(s)&&imS(s).mode==='keys' ? imS(s) : cur, {[dir]:a}); imSetS(s, n); });
-    its.push({label:'Nothing', icon:'x', run:()=>{ const n=Object.assign({}, imS(s)&&imS(s).mode==='keys' ? imS(s) : cur); delete n[dir]; imSetS(s, n); }});
+    const base = () => { const x=imS(s); return x && (x.mode==='keys'||x.mode==='dpad') ? x : cur; };
+    const its=imPickAction(imCtlLabel(s)+' '+dir, ['key','mouse','scroll'], a=>imSetS(s, Object.assign({}, base(), {[dir]:a})));
+    its.push({label:'Nothing', icon:'x', run:()=>{ const n=Object.assign({}, base()); delete n[dir]; imSetS(s, n); }});
     openSheet({title:imCtlLabel(s)+' '+dir, items:its});
   })}))});
 }
@@ -10253,6 +10501,29 @@ function imDpadMenu(){
     {label:'Scrolling', icon:'mouse', run:()=>set({up:'scroll:up', down:'scroll:down', left:'scroll:left', right:'scroll:right'})},
     {label:'Nothing', icon:'x', run:()=>set({up:'none', down:'none', left:'none', right:'none'})}]});
 }
+// Action sets and layers: pick what to edit, add, rename, remove.
+function imNewId(list, stem){ let i=1; while(list.some(x=>x.id===stem+i)) i++; return stem+i; }
+function imWhereMenu(){
+  const d=IM.draft, T=IM.tables, items=[{label:'Default set', icon:IM.edit==='default'?'check':'', run:()=>{ IM.edit='default'; imRefresh('im-where'); }}];
+  for(const st of d.sets||[]) items.push({label:'Action set: '+(st.name||st.id), icon:IM.edit==='set:'+st.id?'check':'', run:()=>{ IM.edit='set:'+st.id; imRefresh('im-where'); }});
+  for(const l of d.layers||[]) items.push({label:'Layer: '+(l.name||l.id), icon:IM.edit==='layer:'+l.id?'check':'', run:()=>{ IM.edit='layer:'+l.id; imRefresh('im-where'); }});
+  if((d.sets||[]).length < T.limits.sets) items.push({label:'Add an action set (a whole other set of controls)', icon:'layout', run:()=>{ d.sets=d.sets||[]; const id=imNewId(d.sets,'set'); d.sets.push({id, name:'Set '+(d.sets.length+1), buttons:{}, sticks:{}}); IM.edit='set:'+id; imChanged(true); toast('Added. Set a button to “Switch to action set” to use it.'); }});
+  if((d.layers||[]).length < T.limits.layers) items.push({label:'Add a layer (a mode shift on top of a set)', icon:'layout', run:()=>{ d.layers=d.layers||[]; const id=imNewId(d.layers,'layer'); d.layers.push({id, name:'Layer '+(d.layers.length+1), buttons:{}, sticks:{}}); IM.edit='layer:'+id; imChanged(true); toast('Added. Set a button to “Hold layer” or “Turn layer on/off” to use it.'); }});
+  const w=imWhere();
+  if(w.kind!=='default'){
+    items.push({label:'Rename “'+(imLayer().name||w.id)+'”…', icon:'kbd', run:()=>imLater(async()=>{ const t=await openPrompt({title:'Name', value:imLayer().name||''}); if(t && t.trim()){ imLayer().name=t.trim().slice(0,T.limits.name_len); imChanged(true); } })});
+    items.push({label:'Remove “'+(imLayer().name||w.id)+'”', icon:'trash', run:()=>imRemoveGroup(w)});
+  }
+  openSheet({title:'What to edit', sub:'Action sets switch every control; layers change some while held or turned on', items});
+}
+/** Removes a set or layer, and every button that named it (they do nothing then). */
+function imRemoveGroup(w){
+  const d=IM.draft, key=w.kind==='set'?'sets':'layers';
+  d[key]=(d[key]||[]).filter(x=>x.id!==w.id);
+  const gone = a => typeof a==='string' && (w.kind==='set' ? a==='set:'+w.id : (a==='layer:'+w.id || a==='layer_toggle:'+w.id));
+  for(const grp of [d, ...(d.sets||[]), ...(d.layers||[])]) for(const [k,v] of Object.entries(grp.buttons||{})) if(gone(typeof v==='string'?v:v&&v.press)) grp.buttons[k]='none';
+  IM.edit='default'; imChanged(true);
+}
 function imRadial(i){
   const R=IM.draft.radial=IM.draft.radial||[];
   const put = a => { if(i<0) R.push(a); else R[i]=a; imChanged(true); };
@@ -10262,12 +10533,46 @@ function imRadial(i){
 }
 function imReset(){
   openSheet({title:'Start over from a template', sub:'Replaces this layout (its name stays)', items:IM.tables.templates.map(t=>({label:t.name, icon:'', run:()=>{
-    const name=IM.draft.name; IM.draft=JSON.parse(JSON.stringify(t.layout)); IM.draft.name=name||t.name; IM.set='base'; imChanged(true);
+    const name=IM.draft.name; IM.draft=JSON.parse(JSON.stringify(t.layout)); IM.draft.name=name||t.name; IM.edit='default'; imChanged(true);
   }}))});
 }
 async function imRename(){
   const t=await openPrompt({title:'Layout name', value:IM.draft.name||''});
   if(t && t.trim()){ IM.draft.name=t.trim().slice(0, IM.tables.limits.name_len); imChanged(true); }
+}
+/** The overview: what every control does, per action set and layer (the preview screen; Try it runs it). */
+function imPreview(){
+  const d=IM.draft, T=IM.tables, items=[];
+  const groups=[['Default set', d], ...(d.sets||[]).map(s=>['Action set: '+(s.name||s.id), s]), ...(d.layers||[]).map(l=>['Layer: '+(l.name||l.id), l])];
+  for(const [name, grp] of groups){
+    items.push({label:'— '+name+' —', icon:'layout', run:()=>{}});
+    for(const [id,l] of T.buttons){ const v=(grp.buttons||{})[id]; if(v==null || v==='none') continue; items.push({label:l+': '+imBtnSummary(typeof v==='string'?{press:v}:v), icon:'', run:()=>{}}); }
+    for(const [id,l] of T.sticks){ const v=(grp.sticks||{})[id]; if(!v || v.mode==='none') continue; items.push({label:l+': '+(IM_MODE_NAMES[v.mode]||v.mode)+((v.mode==='keys'||v.mode==='dpad')?' ('+['up','left','down','right'].map(x=>imActLabel(v[x]||'none')).join(' ')+')':''), icon:'', run:()=>{}}); }
+  }
+  const gw=(d.gyro||{}).when||'button';
+  items.push({label:'Gyro: '+{button:'with a button',always:'always on',stick:'while touching the right stick'}[gw], icon:'pad', run:()=>{}});
+  items.push({label:IM.test?'Stop trying':'Try it now (20 seconds)', icon:'play', run:()=>imTest()});
+  openSheet({title:'Overview: '+(d.name||'Custom'), sub:'Guide always gives the controller back to Hearth', items});
+}
+// Layouts from your other devices (Hearth Link): their own layouts, checked here before they're used.
+function imFromDevices(id){
+  toast('Asking your other devices…');
+  imCall('link.input.peers', {}).then(r=>{
+    const devs=(r && r.devices)||[];
+    const items=[];
+    for(const dv of devs) for(const l of dv.layouts||[]){
+      const g=l.game===IM_GLOBAL ? null : G(l.game);
+      items.push({label:(l.name||'Layout')+' · '+(l.game===IM_GLOBAL?'global layout':g?g.title:l.game)+' · '+dv.name, icon:'pad', run:()=>imUseShared(id, l.layout)});
+    }
+    if(!items.length) return toast(devs.length ? 'Your other devices have no layouts of their own yet' : 'No other devices answered (Settings › Hearth Link)');
+    openSheet({title:'Layouts on your other devices', sub:'Used here as '+(id===IM_GLOBAL?'the global layout':'this game\'s own layout'), items});
+  }).catch(e=>toast(e.message));
+}
+function imUseShared(id, layout){
+  imCall('input.validate', {layout}).then(r=>{
+    if(id===IM_GLOBAL) return imSaveGlobal({layout:r.layout}).then(()=>toast('Global layout copied from your other device'));
+    return imSave(id, {layout:'custom', custom:r.layout}, true);
+  }).catch(e=>toast(e.message));
 }
 
 // The key picker: an on-screen keyboard (one key, or up to 4 together)
@@ -10354,7 +10659,7 @@ function imTestStart(secs){
     if(host) imCall('input.status').then(s=>{ if(IM.test===t && s && s.ok && !s.test) imTestStop(true); }).catch(()=>{});
   }, 1000);
   imTestDraw();
-  if(S.view==='inputmap' && !S.layers.length) render('im-test', true);
+  imRefresh('im-test');
 }
 function imTestDraw(){
   const t=IM.test, box=$('#imtest'); if(!t || !box) return;
@@ -10375,7 +10680,7 @@ function imTestStop(timedOut){
   IM.test=null;
   imCall('input.test', {stop:true}).catch(()=>{});
   toast(timedOut ? 'Done trying the layout' : 'Stopped trying the layout');
-  if(S.view==='inputmap' && !S.layers.length) render('im-test', true);
+  imRefresh('im-test');
 }
 
 // Quick Access › Now playing: the running game's layout, gyro, sensitivity
@@ -10400,7 +10705,11 @@ function imAct(el, d){
     case 'btn': return imBtnMenu(d.c);
     case 'stick': return imStickMenu(d.c);
     case 'tog': imSetVal(d.p, !imGet(d.p)); return imChanged(true);
-    case 'set': IM.set=d.v; return render('im-set-'+d.v, true);
+    case 'where': return imWhereMenu();
+    case 'preview': return imPreview();
+    case 'gwhen': return openSheet({title:'Gyro is on', items:[['button','With a button (or from the start)'],['always','Always'],['stick','While touching or moving the right stick']].map(([v,l])=>({label:l, icon:((IM.draft.gyro||{}).when||'button')===v?'check':'', run:()=>{ IM.draft.gyro=Object.assign({}, IM.draft.gyro, {when:v}); imChanged(true); }}))});
+    case 'gaxis': IM.draft.gyro=Object.assign({}, IM.draft.gyro, {axis:((IM.draft.gyro||{}).axis||'yaw')==='yaw'?'roll':'yaw'}); return imChanged(true);
+    case 'globOn': { const on=!(IM.globalCfg&&IM.globalCfg.enabled); clearTimeout(IM.saveT); return imSaveGlobal({layout:JSON.parse(JSON.stringify(IM.draft)), enabled:on}, true).then(()=>imRefresh('im-globon')); }
     case 'name': return imRename();
     case 'test': return imTest();
     case 'reset': return imReset();
@@ -10456,9 +10765,589 @@ function gamingOpen(app, id){
 function gamingGameItems(g, items){
   if(!hasFeat('gamingApps') || !g || !g.inst || g.cloud) return;
   items.push({label:'Back up saves',icon:'dl',run:()=>gamingOpen('saves', g.id)});
-  if(g.src!=='beacon') items.push({label:'Mods',icon:'sliders',run:()=>gamingOpen('mods', g.id)});
+  if(g.src!=='beacon') items.push({label:'Mods',icon:'sliders',run:()=>hmOn()&&hmModdable(g) ? hmOpen(g.id) : gamingOpen('mods', g.id)});   // Game Mode's own Mods screens when it has them
 }
 // ---------- end of Hearth's gaming apps ----------
+// ---------- Hearth Mods in Game Mode (host.info feature "mods"; hearth-core hearth_mods.rs) ----------
+// A game's mods (on, off, load order, uninstall, updates), Nexus Mods (popular, search, a mod's files, installing),
+// downloads, Wabbajack modlists (with the guided "N of M files · Fetch them" flow) and accounts, as Game Mode
+// screens for the controller. The work is all Hearth Mods' own (hosts/hearth-gaming), asked through its worker
+// (mods.call), so the Mods window (Desktop Mode, and "Open the Mods window" here) shows the same mods and queue.
+// HMA is the one place these screens get their data. Hearth's Mod Organizer engine (hearth-gaming organizer.rs, being
+// written) adds profiles, Bethesda plugins and FOMOD installers: its calls go in HMA (HMA.org) and the Profile row,
+// the Plugins tab and the FOMOD screen below already draw what it gives. Conflicts come from Hearth Mods today.
+const HM = {tab:'installed', sum:{}, err:{}, upd:{}, st:null, stAt:0, accts:null, acct:undefined, engine:null, gallery:null, galErr:'', nx:{}, q:{}, kind:{}, adult:false, nsfw:false,
+  org:{}, mod:null, fomod:null, seen:null, want:[], guiding:null, guideFile:null, ticks:0, busy:false};
+const hmOn = () => !host || hasFeat('mods');
+const hmModdable = g => !!(g && g.inst && !g.cloud && g.src!=='beacon' && !g.system && !String(g.id).startsWith('modlist:'));
+const HMA = {
+  call(name, args={}, start=true){ return host ? call('mods.call',{name, args, start}, 310000) : Promise.resolve().then(()=>hmMock(name, args)); },
+  mods:id=>HMA.call('mods_of',{id}), toggle:(id,m,on)=>HMA.call('toggle',{id,m,on}), move:(id,m,by)=>HMA.call('move_mod',{id,m,by}), remove:(id,m)=>HMA.call('remove_mod',{id,m}),
+  updates:id=>HMA.call('check_updates',{id}), setNexus:(id,domain)=>HMA.call('set_nexus_game',{id,domain}), deploy:(id,mode)=>HMA.call('set_deploy',{id,mode}),
+  browse:(domain,kind)=>HMA.call('nexus_browse',{domain,kind}), search:(domain,q)=>HMA.call('nexus_search',{domain,q}),
+  modPage:(domain,modId)=>HMA.call('nexus_files',{url:`https://www.nexusmods.com/${domain}/mods/${modId}`}),
+  download:(domain,modId,fileId,game)=>HMA.call('download_file',{domain,modId,fileId,game}), installDownload:(id,gameId)=>HMA.call('install_download',{id,gameId}),
+  status:start=>HMA.call('status',{},start), dlPause:id=>HMA.call('download_pause',{id}), dlResume:id=>HMA.call('download_resume',{id}),
+  dlRemove:(id,deleteFile)=>HMA.call('download_remove',{id,deleteFile}), dlClear:()=>HMA.call('downloads_clear'),
+  engine:()=>HMA.call('wj_engine'), fetchEngine:()=>HMA.call('wj_fetch_engine'), gallery:refresh=>HMA.call('wj_gallery',{refresh:!!refresh}), defaults:(title,game)=>HMA.call('wj_defaults',{title,game}),
+  start:o=>HMA.call('wj_start',o), resume:id=>HMA.call('wj_resume',{id}), cancel:id=>HMA.call('wj_cancel',{id}), skip:(id,file)=>HMA.call('wj_guide_skip',{id,file}),
+  openPage:url=>HMA.call('open_page',{url}), accounts:()=>HMA.call('accounts_list'), acctBegin:id=>HMA.call('account_begin',{id}), acctOut:id=>HMA.call('account_sign_out',{id}),
+  mega:(email,password)=>HMA.call('mega_sign_in',{email,password}), nexusAccount:()=>HMA.call('nexus_account'), nexusIn:key=>HMA.call('nexus_sign_in',{key}), nexusOut:()=>HMA.call('nexus_sign_out'), nexusPages:()=>HMA.call('nexus_pages'),
+  // Hearth Mod Organizer (hearth-gaming organizer/gamemode.rs): a game with an organizer instance answers these
+  // (organizer_game is null for a game without one, and the screens show Hearth Mods' own list).
+  org:true,
+  orgCall(name, args){ return (HMA.org || !host) ? HMA.call(name, args).catch(()=>null) : Promise.resolve(null); },
+  organizer:id=>HMA.orgCall('organizer_game',{id}),   // {profile, profiles:[{id,name}], plugins:[{name,enabled,master}]|null}
+  setProfile:(id,profile)=>HMA.call('organizer_set_profile',{id,profile}), pluginToggle:(id,plugin,on)=>HMA.call('organizer_plugin_toggle',{id,plugin,on}),
+  pluginMove:(id,plugin,by)=>HMA.call('organizer_plugin_move',{id,plugin,by}), fomodFinish:(token,choices)=>HMA.call('organizer_fomod_finish',{token,choices}),
+};
+function hmErr(e){ return (e&&e.message)||String(e||'That didn\'t work'); }
+function hmRedraw(k){
+  if(S.layers.length && !S.layers.includes('qam')) return;
+  if(S.layers.includes('qam')){ if(typeof renderQam==='function'){ const f=focused&&focused.dataset.k; renderQam(); const el=f&&$(`#qam [data-k="${CSS.escape(f)}"]`); if(el) setFocus(el,true); } return; }
+  if(S.view==='library' && typeof mkKind==='function' && mkKind()) return mkRender(k);
+  if(/^hm/.test(S.view) || S.view==='game') render(k||null, true);
+}
+const HM_LOADING = {};
+function hmLoad(id, quiet){
+  if(!id) return Promise.resolve();
+  if(HM_LOADING[id]) return HM_LOADING[id];
+  return HM_LOADING[id] = Promise.all([HMA.mods(id), HMA.organizer(id)]).then(([s,o])=>{ HM.sum[id]=s; HM.org[id]=o||null; delete HM.err[id]; if(!quiet) hmRedraw(); })
+    .catch(e=>{ HM.err[id]=hmErr(e); if(!quiet) hmRedraw(); }).finally(()=>{ delete HM_LOADING[id]; });
+}
+function hmApply(id, r){ if(r && r.summary) HM.sum[id]=r.summary; const p=r&&r.report&&r.report.problems; if(p&&p.length) toast(p[0]); }
+function hmOpen(id, tab){
+  const g=id&&G(id);
+  HM.tab = tab || (g ? 'installed' : 'games');
+  if(g && !HM.sum[id]) hmLoad(id);
+  hmRefresh();
+  closeAll();
+  navigate('hmods',{game:g?g.id:null});
+}
+function hmGo(tab){ hmOpen(null, tab); }
+function hmTabs(){
+  const g=G(S.game), t=[];
+  if(g && S.view==='hmods'){ t.push(['installed','Installed']); if(HM.org[g.id]&&HM.org[g.id].plugins) t.push(['plugins','Plugins']); t.push(['nexus','Nexus Mods'],['modlist','Modlist']); }
+  else t.push(['games','Games']);
+  t.push(['downloads','Downloads'],['modlists','Modlists'],['accounts','Accounts']);
+  return t;
+}
+function hmShiftTab(d){ const T=hmTabs(), i=Math.max(0,T.findIndex(t=>t[0]===HM.tab)); hmTab(T[(i+d+T.length)%T.length][0]); blip(600); }
+function hmTab(t){
+  HM.tab=t; hmRefresh();
+  if(t==='nexus') hmNexusLoad();
+  if(t==='modlists'||t==='modlist') hmModlistsLoad();
+  if(t==='accounts') hmAccountsLoad();
+  render('hmt-'+t);
+}
+// Everything that changes by itself (the queue, installs): asked again now.
+function hmRefresh(){ return HMA.status(true).then(s=>{ if(s){ HM.st=s; HM.stAt=Date.now(); hmNotice(s); } }).catch(()=>{}); }
+const hmRow = (k, act, icon, title, sub, val, extra='') => bcRow(k, act, icon, title, sub, val, extra);
+const hmSize = b => !b ? '' : b>=1e9 ? (b/1e9).toFixed(1)+' GB' : b>=1e6 ? (b/1e6).toFixed(1)+' MB' : Math.max(1,Math.round(b/1e3))+' KB';
+const hmPct = (a,b) => b ? Math.max(0,Math.min(100,Math.round(a/b*100))) : 0;
+
+function viewHMods(){
+  const g=G(S.game), T=hmTabs();
+  if(!T.some(t=>t[0]===HM.tab)) HM.tab=T[0][0];
+  const head = `<div class="hm-head"><h2>${g?esc(g.title)+' · ':''}Mods</h2>${g?`<button class="pill" data-f data-k="hm-saves" data-act="gamingApp" data-v="saves" data-id="${esc(g.id)}">Saves</button>`:''}</div>
+    <div class="tabs hm-tabs"><span class="hm-lbrb">LB</span>${T.map(([k,l])=>`<button class="tab ${HM.tab===k?'on':''}" data-f data-k="hmt-${k}" data-act="hmTab" data-v="${k}">${l}</button>`).join('')}<span class="hm-lbrb">RB</span></div>`;
+  const t=HM.tab;
+  const body = t==='installed' ? hmInstalled(g) : t==='plugins' ? hmPlugins(g) : t==='nexus' ? hmNexus(g) : t==='modlist' ? hmGameModlist(g)
+    : t==='games' ? hmGames() : t==='downloads' ? hmDownloads() : t==='modlists' ? hmModlists() : hmAccounts();
+  return `<div class="hm">${head}${body}</div>`;
+}
+
+// ---- A game's mods
+function hmConflict(m){
+  const by=(m.overriddenBy||[]);
+  if(!m.enabled) return '';
+  return by.length ? `<span class="hm-cf lose" title="Some of its files are replaced">⚠ Overridden by ${esc(by.slice(0,2).join(', '))}${by.length>2?` +${by.length-2}`:''}</span>` : '';
+}
+function hmInstalled(g){
+  if(!g) return note('That game isn\'t in the library anymore.');
+  const s=HM.sum[g.id], o=HM.org[g.id], u=HM.upd[g.id];
+  if(HM.err[g.id]) return `<div class="rows">${note(esc(HM.err[g.id]))}${hmRow('hm-retry','hmReload',I.refresh,'Try again','',null,`data-id="${esc(g.id)}"`)}</div>`;
+  if(!s) return note('Asking Hearth Mods…');
+  const dk=`data-id="${esc(g.id)}"`;
+  let h='<div class="rows">';
+  if(o && o.profiles && o.profiles.length) h+=hmRow('hm-profile','hmProfile',I.user,'Profile',`Each profile has its own mods turned on, load order and plugins`,`${esc((o.profiles.find(p=>p.id===o.profile)||{}).name||o.profile)} ›`,dk);
+  if(u && u.updates && u.updates.length) h+=hmRow('hm-upd','hmUpdates',I.up,`${u.updates.length} update${u.updates.length===1?'':'s'} on Nexus Mods`,u.updates.map(x=>esc(x.name)).join(' · '),'See ›',dk);
+  h+=shead(`${s.mods.length} mod${s.mods.length===1?'':'s'} · ${s.mods.filter(m=>m.enabled).length} on`);
+  s.mods.forEach((m,i)=>{
+    const up=u&&u.updates&&u.updates.find(x=>x.mod===m.id);
+    h+=`<button class="row hm-mod ${m.enabled?'':'off'}" data-f data-k="hmm-${i}" data-act="hmMod" data-hx="hmToggle" ${dk} data-m="${esc(m.id)}"><span class="hm-n">${i+1}</span>
+      <div class="rt"><b>${esc(m.name)}</b><small>${esc(m.targetLabel||m.target||'')}${m.files?` · ${m.files} file${m.files===1?'':'s'}`:''}${m.size?` · ${hmSize(m.size)}`:''}${m.nexus?' · Nexus Mods':''}${up?' · <span class="hm-cf win">Update available</span>':''} ${hmConflict(m)}</small></div><div class="sw ${m.enabled?'on':''}"></div></button>`;
+  });
+  if(!s.mods.length) h+=note('No mods yet. Find some on Nexus Mods (RB), or install a Wabbajack modlist.');
+  h+=shead('More');
+  h+=hmRow('hm-check','hmCheck',I.refresh,'Check for updates','Asks Nexus Mods about the mods that came from there',u&&!u.updates.length?'Up to date':null,dk)
+    + hmRow('hm-find','hmTab',I.search,'Find mods on Nexus Mods','Popular mods, search, and installing with the controller',null,'data-v="nexus"')
+    + hmRow('hm-deploy','hmDeploy',I.sliders,'How mods go in',(s.modes||[]).map(x=>x.label).join(' · '),`${esc(((s.modes||[]).find(x=>x.id===s.deploy)||{}).label||s.deploy||'')} ›`,dk)
+    + (hasFeat('gamingApps')||!host ? hmRow('hm-window','gamingApp',I.desk,'Open the Mods window','Install a mod from a file or folder, and everything else',null,`data-v="mods" ${dk}`) : '');
+  return h+'</div>'+note('A opens a mod (on or off, load order, uninstall). X turns it on or off. Mods lower in the list win when two change the same file.');
+}
+function hmPlugins(g){
+  const o=g&&HM.org[g.id];
+  if(!o || !o.plugins) return note('This game has no plugins.');
+  const dk=`data-id="${esc(g.id)}"`;
+  let h='<div class="rows">'+shead(`Load order · ${o.plugins.filter(p=>p.enabled).length} of ${o.plugins.length} on`);
+  o.plugins.forEach((p,i)=>{ h+=`<button class="row hm-mod ${p.enabled?'':'off'}" data-f data-k="hmp-${i}" data-act="hmPlugin" data-hx="hmPluginToggle" ${dk} data-p="${esc(p.name)}"><span class="hm-n">${i.toString(16).toUpperCase().padStart(2,'0')}</span><div class="rt"><b>${esc(p.name)}</b><small>${p.master?'Master file':'Plugin'}${p.from?` · from ${esc(p.from)}`:''}</small></div><div class="sw ${p.enabled?'on':''}"></div></button>`; });
+  return h+'</div>'+note('The game loads plugins top to bottom. A moves one; X turns it on or off.');
+}
+
+// ---- Nexus Mods
+function hmDomain(g){ return g && HM.sum[g.id] && HM.sum[g.id].nexus || ''; }
+function hmNexusLoad(force){
+  const g=G(S.game), d=hmDomain(g);
+  if(HM.acct===undefined) HMA.nexusAccount().then(a=>{ HM.acct=a||null; hmRedraw(); }).catch(()=>{ HM.acct=null; });
+  if(g && !HM.sum[g.id]) return hmLoad(g.id).then(()=>hmNexusLoad(force));
+  if(!d) return;
+  const key=d+'|'+(HM.q[d]?'q:'+HM.q[d]:HM.kind[d]||'trending');
+  if(HM.nx[key] && !force) return;
+  HM.nx[key]={loading:true};
+  (HM.q[d] ? HMA.search(d, HM.q[d]) : HMA.browse(d, HM.kind[d]||'trending')).then(l=>{ HM.nx[key]={list:l||[]}; hmRedraw(); }).catch(e=>{ HM.nx[key]={error:hmErr(e)}; hmRedraw(); });
+}
+function hmNexus(g){
+  if(!g) return '';
+  if(!HM.sum[g.id]) return note('Asking Hearth Mods…');
+  if(HM.acct===null) return `<div class="rows">${note('Sign in to Nexus Mods to find and install mods here.')}${hmRow('hm-nx-in','hmTab',I.user,'Sign in to Nexus Mods','Accounts: with your personal API key',null,'data-v="accounts"')}</div>`;
+  const d=hmDomain(g), dk=`data-id="${esc(g.id)}"`;
+  if(!d) return `<div class="rows">${note('Hearth doesn\'t know which Nexus Mods game this is.')}${hmRow('hm-nx-dom','hmSetDomain',I.globe,'Choose its Nexus Mods game','The part after nexusmods.com/ in its address, like skyrimspecialedition',null,dk)}</div>`;
+  const kind=HM.kind[d]||'trending', q=HM.q[d]||'';
+  const key=d+'|'+(q?'q:'+q:kind), r=HM.nx[key]||{loading:true};
+  let h=`<div class="hm-chips"><button class="pill ${q?'on':''}" data-f data-k="hm-nx-q" data-act="hmSearch" ${dk}>${I.search}${q?esc(q):'Search'}</button>`
+    + [['trending','Popular'],['latest','New'],['updated','Updated']].map(([k,l])=>`<button class="pill ${!q&&kind===k?'on':''}" data-f data-k="hm-nx-${k}" data-act="hmKind" data-v="${k}" ${dk}>${l}</button>`).join('')
+    + `<button class="pill ${HM.adult?'on':''}" data-f data-k="hm-nx-adult" data-act="hmAdult">Adult mods: ${HM.adult?'shown':'hidden'}</button></div><div class="rows">`;
+  if(r.loading) h+=note('Asking Nexus Mods…');
+  else if(r.error) h+=note(esc(r.error))+hmRow('hm-nx-retry','hmNexusRetry',I.refresh,'Try again','',null);
+  else {
+    const L=r.list.filter(m=>HM.adult||!m.adult);
+    L.forEach((m,i)=>{ h+=`<button class="row hm-card" data-f data-k="hmx-${i}" data-act="hmModPage" data-d="${esc(d)}" data-mod="${m.modId}">${m.picture?`<div class="thumb"><img src="${esc(m.picture)}" alt="" loading="lazy" onerror="this.remove()"></div>`:''}
+      <div class="rt"><b>${esc(m.name)}</b><small>${esc(m.author||'')}${m.version?` · ${esc(m.version)}`:''} · ${(m.endorsements||0).toLocaleString()} endorsements${m.downloads?` · ${m.downloads.toLocaleString()} downloads`:''}</small><small class="hm-sum">${esc(m.summary||'')}</small></div><div class="rv">›</div></button>`; });
+    if(!L.length) h+=note(q?`Nothing on Nexus Mods matches "${esc(q)}".`:'Nothing here.');
+  }
+  return h+'</div>';
+}
+function hmDlFor(domain, fileId){ const it=HM.st&&HM.st.downloads&&HM.st.downloads.items||[]; return it.find(x=>x.domain===domain && x.fileId===fileId); }
+function viewHMod(){
+  const M=HM.mod, g=G(S.game);
+  if(!M) return note('Asking Nexus Mods…');
+  if(M.error) return `<div class="rows">${note(esc(M.error))}</div>`;
+  if(M.loading) return note('Asking Nexus Mods…');
+  const files=(M.files||[]);
+  let h=`<div class="hm hm-page"><div class="hm-hero">${M.picture?`<img src="${esc(M.picture)}" alt="" onerror="this.remove()">`:''}<div><h2>${esc(M.name||'')}</h2>
+    <div class="muted">${esc(M.author||'')}${M.version?` · version ${esc(M.version)}`:''}${M.endorsements!=null?` · ${(+M.endorsements||0).toLocaleString()} endorsements`:''}${g?` · for ${esc(g.title)}`:''}</div>
+    <p class="muted">${esc(M.summary||'')}</p></div></div><div class="rows">`;
+  h+=shead(`Files${M.premium?'':' · free account: each file downloads from its page in Hearth Browser (Mod Manager Download)'}`);
+  files.forEach((f,i)=>{
+    const dl=hmDlFor(M.domain, f.fileId), pct=dl?hmPct(dl.done,dl.size):0;
+    const val = dl ? (dl.state==='done'?'Downloaded':dl.state==='downloading'?pct+'%':dl.state) : (M.premium?'Install ›':'Get it ›');
+    h+=`<button class="row" data-f data-k="hmf-${i}" data-act="hmFile" data-i="${i}"><span class="ricon">${I.dl}</span><div class="rt"><b>${esc(f.name||f.fileName)}</b><small>${esc(f.category||'')}${f.version?` · ${esc(f.version)}`:''}${f.size?` · ${hmSize(f.size)}`:''}${f.primary?' · main file':''}</small>${dl&&dl.state==='downloading'?`<div class="bar hm-bar"><i style="width:${pct}%"></i></div>`:''}</div><div class="rv">${esc(val)}</div></button>`;
+  });
+  if(!files.length) h+=note('This mod has no files to download.');
+  h+=hmRow('hm-mod-page','hmOpenUrl',I.globe,'Open its page in Hearth Browser','Description, requirements, comments',null,`data-url="${esc(M.page||'')}"`);
+  return h+'</div></div>';
+}
+function hmModPage(domain, modId){
+  HM.mod={loading:true, domain, modId};
+  navigate('hmmod',{game:S.game});
+  HMA.modPage(domain, modId).then(m=>{ HM.mod=m; if(S.view==='hmmod') render(null,true); }).catch(e=>{ HM.mod={error:hmErr(e)}; if(S.view==='hmmod') render(null,true); });
+}
+function hmFile(i){
+  const M=HM.mod, f=M&&M.files&&M.files[i], g=G(S.game); if(!f) return;
+  const dl=hmDlFor(M.domain, f.fileId);
+  if(dl && dl.state==='done' && g) return hmInstallDl(dl.id, g.id);
+  if(dl && dl.state!=='failed' && dl.state!=='needs-link') return toast('It\'s in Downloads already');
+  if(g) HM.want.push({domain:M.domain, fileId:f.fileId, game:g.id, name:M.name});
+  if(M.premium) return HMA.download(M.domain, M.modId, f.fileId, g?g.id:'').then(()=>{ toast(`Downloading ${f.name||f.fileName}${g?`: it goes into ${g.title} when it's done`:''}`); hmRefresh().then(()=>hmRedraw()); }).catch(e=>toast(hmErr(e)));
+  // Free accounts: the file's page, where "Mod Manager Download" hands the file to Hearth Mods (nxm link).
+  const url=`https://www.nexusmods.com/${M.domain}/mods/${M.modId}?tab=files&file_id=${f.fileId}&nmm=1`;
+  return HMA.openPage(url).then(()=>toast('Opening its page in Hearth Browser: press Mod Manager Download')).catch(e=>toast(hmErr(e)));
+}
+function hmInstallDl(id, gameId){
+  toast('Installing…');
+  return HMA.installDownload(id, gameId||'').then(r=>{
+    if(r && r.fomod){ HM.fomod=Object.assign({game:gameId, step:0, sel:{}}, r.fomod); return navigate('hmfomod',{game:gameId||S.game}); }
+    const g=G(gameId); if(gameId) hmApply(gameId, r);
+    hmNotify('lib', `Installed into ${g?g.title:'the game'}`, 'Select to see its mods', g?'hm:game:'+g.id:'hm:downloads');
+    hmRedraw();
+  }).catch(e=>{ hmNotify('lib', 'A mod didn\'t install', hmErr(e), 'hm:downloads'); });
+}
+
+// ---- FOMOD installer: steps → groups → options, from the organizer's data
+const HM_GTYPE = {SelectExactlyOne:'Choose one', SelectAtMostOne:'Choose one or none', SelectAtLeastOne:'Choose at least one', SelectAll:'All of these are installed', SelectAny:'Choose any'};
+function hmFomodSel(si, gi){
+  const F=HM.fomod, k=si+':'+gi, grp=F.steps[si].groups[gi];
+  if(!F.sel[k]){
+    const pre=grp.options.map((o,i)=>(o.type==='Required'||o.type==='Recommended'||grp.type==='SelectAll')?i:-1).filter(i=>i>=0);
+    F.sel[k] = pre.length ? (grp.type==='SelectExactlyOne'||grp.type==='SelectAtMostOne' ? [pre[0]] : pre) : (grp.type==='SelectExactlyOne' ? [0] : []);
+  }
+  return F.sel[k];
+}
+function hmFomodOk(si){ const F=HM.fomod; return F.steps[si].groups.every((grp,gi)=>{ const n=hmFomodSel(si,gi).length; return grp.type==='SelectExactlyOne'?n===1 : grp.type==='SelectAtLeastOne'?n>=1 : grp.type==='SelectAtMostOne'?n<=1 : true; }); }
+function viewHFomod(){
+  const F=HM.fomod; if(!F) return note('Nothing to install.');
+  const si=F.step, st=F.steps[si], last=si===F.steps.length-1;
+  let h=`<div class="hm hm-fomod"><div class="hm-head"><h2>${esc(F.name||'Installer')}</h2><span class="muted">Step ${si+1} of ${F.steps.length} · ${esc(st.name||'')}</span></div><div class="bar hm-bar"><i style="width:${hmPct(si+1,F.steps.length)}%"></i></div><div class="hm-fo">`;
+  let pic='';
+  st.groups.forEach((grp,gi)=>{
+    const sel=hmFomodSel(si,gi), one=grp.type==='SelectExactlyOne'||grp.type==='SelectAtMostOne';
+    h+=`<div class="rows">${shead(`${esc(grp.name||'')} · ${HM_GTYPE[grp.type]||''}`)}`;
+    grp.options.forEach((o,oi)=>{ const on=sel.includes(oi), lock=grp.type==='SelectAll'||o.type==='Required'||o.type==='NotUsable';
+      if(on && o.image && !pic) pic=o.image;
+      h+=`<button class="row hm-opt ${on?'on':''} ${o.type==='NotUsable'?'off':''}" data-f data-k="hmo-${gi}-${oi}" data-act="hmOpt" data-g="${gi}" data-o="${oi}" ${lock?'data-lock="1"':''}><span class="hm-tick ${one?'radio':''}">${on?I.check:''}</span><div class="rt"><b>${esc(o.name)}</b>${o.description?`<small>${esc(o.description)}</small>`:''}</div>${o.type==='Recommended'?'<div class="rv">Recommended</div>':''}</button>`; });
+    h+='</div>';
+  });
+  h+=`</div>${pic?`<img class="hm-fopic" src="${esc(pic)}" alt="" onerror="this.remove()">`:''}<div class="rows hm-fonav">`
+    + (si?hmRow('hm-fo-back','hmFoStep',null,'Back','The step before',null,'data-v="-1"'):'')
+    + hmRow('hm-fo-next','hmFoStep',last?I.check:null,last?'Install':'Next',hmFomodOk(si)?(last?'Puts the mod in with what you chose':'The next step'):'Choose what this step asks first',null,'data-v="1"')
+    + '</div></div>';
+  return h;
+}
+function hmFoStep(d){
+  const F=HM.fomod; if(!F) return;
+  if(d<0){ F.step=Math.max(0,F.step-1); return render('hm-fo-next'); }
+  if(!hmFomodOk(F.step)) return toast('Choose what this step asks first');
+  if(F.step<F.steps.length-1){ F.step++; return render('hm-fo-next'); }
+  const choices=F.steps.map((st,si)=>st.groups.map((g,gi)=>hmFomodSel(si,gi)));
+  toast('Installing…');
+  return HMA.fomodFinish(F.token, choices).then(r=>{ const gid=F.game; HM.fomod=null; if(gid) hmApply(gid, r); toast(`${F.name} installed`); if(gid){ HM.tab='installed'; S.history=S.history.filter(h=>!/^hm(mod|fomod)$/.test(h.view)); navigate('hmods',{game:gid},false); } else goBack(); }).catch(e=>toast(hmErr(e)));
+}
+function hmOpt(d){
+  const F=HM.fomod, si=F.step, gi=+d.g, oi=+d.o, grp=F.steps[si].groups[gi], sel=hmFomodSel(si,gi);
+  if(d.lock) return toast(grp.options[oi].type==='NotUsable'?'That can\'t be used with this game':'That one is always installed');
+  const at=sel.indexOf(oi);
+  if(grp.type==='SelectExactlyOne') F.sel[si+':'+gi]=[oi];
+  else if(grp.type==='SelectAtMostOne') F.sel[si+':'+gi]= at>=0 ? [] : [oi];
+  else if(at>=0) sel.splice(at,1); else sel.push(oi);
+  render(`hmo-${gi}-${oi}`, true);
+}
+
+// ---- The game's Wabbajack modlist
+function hmGameJobs(g){
+  const J=(HM.st&&HM.st.jobs)||[], p=(g&&g.path||'').replace(/\/+$/,''), app=g&&/^steam:(\d+)$/.exec(g.id);
+  return J.filter(j=>(p && String(j.gameDir||'').replace(/\/+$/,'')===p) || (app && HM_WJ_APPS[j.game]===+app[1]));
+}
+const HM_WJ_APPS = {SkyrimSpecialEdition:489830, Skyrim:72850, SkyrimVR:611670, Fallout4:377160, Fallout4VR:611660, FalloutNewVegas:22380, Fallout3:22300, Oblivion:22330, OblivionRemastered:2623190, EnderalSpecialEdition:976620, Starfield:1716740, Cyberpunk2077:1091500, BaldursGate3:1086940};
+function hmGameModlist(g){
+  const J=hmGameJobs(g);
+  let h='<div class="rows">';
+  if(!J.length) return h+note('No Wabbajack modlist for this game yet. A modlist is a whole set of mods, already put together and tested.')+hmRow('hm-ml-browse','hmTab',I.lib,'Browse Wabbajack modlists','The gallery, installed here with the controller',null,'data-v="modlists"')+'</div>';
+  J.forEach(j=>{ h+=hmJob(j); });
+  return h+'</div>';
+}
+function hmJobPct(j){ const c=j.step||j.count; return c&&c[1] ? hmPct(c[0],c[1]) : null; }
+function hmJob(j){
+  const pct=hmJobPct(j), jk=`data-job="${esc(j.id)}"`, lib=G('modlist:'+j.id), gd=j.guide;
+  const label={installing:'Installing', manual:'Needs files', 'setting-up':'Setting up', done:'Installed', failed:'Didn\'t finish', cancelled:'Stopped', stopped:'Stopped'}[j.state]||j.state;
+  let h=`<div class="card hm-job"><div class="hm-jt"><b>${esc(j.title)}</b><span class="muted">${esc(label)}${j.phase&&j.state!=='done'?` · ${esc(j.phase)}`:''}</span></div>`
+    + (j.running||j.state==='installing'||j.state==='setting-up' ? `<div class="bar hm-bar"><i style="width:${pct??5}%"></i></div>` : '')
+    + (j.status?`<div class="muted hm-status">${esc(j.status)}</div>`:'') + (j.error?`<div class="muted hm-err">${esc(j.error)}</div>`:'') + '</div>';
+  if(gd && gd.item) h+=hmRow('hm-j-guide-'+j.id,'hmGuide',I.globe,`${esc(gd.label)} to fetch in Hearth Browser`,'Hearth opens each file\'s page; press Download there and it carries on by itself','Fetch them ›',jk);
+  if(lib && j.state==='done') h+=hmRow('hm-j-play-'+j.id,'play',I.play,`Play ${esc(j.title)}`,'Starts the game with this modlist (Mod Organizer 2)',null,`data-id="${esc(lib.id)}"`);
+  if(j.running) h+=hmRow('hm-j-stop-'+j.id,'hmJobStop',I.stop,'Stop installing','Resume carries on where it stopped',null,jk);
+  else if(j.state!=='done') h+=hmRow('hm-j-res-'+j.id,'hmJobResume',I.play,'Resume','Starts the install again; what\'s done stays done',null,jk);
+  return h;
+}
+function hmModlistsLoad(force){
+  if(!HM.engine || force) HMA.engine().then(e=>{ HM.engine=e||{}; if(HM.engine.path && (!HM.gallery||force)) return HMA.gallery(force).then(l=>{ HM.gallery=l||[]; HM.galErr=''; }); }).then(()=>hmRedraw()).catch(e=>{ HM.galErr=hmErr(e); hmRedraw(); });
+}
+function hmModlists(){
+  const J=(HM.st&&HM.st.jobs)||[];
+  let h='<div class="rows">';
+  if(J.length){ h+=shead('Your modlists'); J.forEach(j=>{ h+=hmJob(j); }); }
+  if(!HM.engine) return h+note('Asking Hearth Mods…')+'</div>';
+  if(!HM.engine.path) return h+note('Wabbajack modlists install through the Wabbajack engine (jackify-engine).')+hmRow('hm-wj-engine','hmEngine',I.dl,'Get the Wabbajack engine','Downloads jackify-engine for Linux from its GitHub releases',null)+'</div>';
+  h+=shead('Wabbajack gallery', !HM.gallery && !HM.galErr);
+  if(HM.galErr) h+=note(esc(HM.galErr));
+  h+=`<div class="hm-chips"><button class="pill ${HM.nsfw?'on':''}" data-f data-k="hm-wj-nsfw" data-act="hmNsfw">Adult lists: ${HM.nsfw?'shown':'hidden'}</button><button class="pill" data-f data-k="hm-wj-refresh" data-act="hmGalRefresh">${I.refresh}Refresh</button></div>`;
+  (HM.gallery||[]).filter(m=>(HM.nsfw||!m.nsfw)&&!m.down).forEach((m,i)=>{
+    const inst=G('steam:'+m.steamApp);
+    h+=`<button class="row hm-card" data-f data-k="hml-${i}" data-act="hmList" data-ml="${esc(m.id)}">${m.thumb||m.image?`<div class="thumb"><img src="${esc(m.thumb||m.image)}" alt="" loading="lazy" onerror="this.remove()"></div>`:''}<div class="rt"><b>${esc(m.title)}</b><small>${esc(m.gameName||m.game||'')} · ${esc(m.author||'')}${m.download?` · ${hmSize(m.download)} download, ${hmSize(m.install)} installed`:''}${inst&&inst.inst?'':' · game not installed'}</small><small class="hm-sum">${esc(m.description||'')}</small></div><div class="rv">›</div></button>`;
+  });
+  return h+'</div>';
+}
+async function hmListInstall(id){
+  const m=(HM.gallery||[]).find(x=>x.id===id); if(!m) return;
+  let d; try{ d=await HMA.defaults(m.title, m.game); }catch(e){ return toast(hmErr(e)); }
+  if(!d || !d.gameDir) return toast(`Install ${m.gameName||m.game} first: Wabbajack lists are built on the game's own files.`);
+  const need=(m.download||0)+(m.install||0);
+  openSheet({title:`Install ${m.title}?`, sub:`Into ${d.installDir} (downloads in ${d.downloadsDir}). It needs about ${hmSize(need)}${d.free!=null?`; ${hmSize(d.free)} free there`:''}. Other folders: the Mods window.`, items:[
+    {label:'Install it', icon:'dl', run:()=>HMA.start({title:m.title, list:m.id, game:m.game, gameDir:d.gameDir, installDir:d.installDir, downloadsDir:d.downloadsDir}).then(()=>{ toast(`Installing ${m.title}: follow it here and in Quick Access`); hmRefresh().then(()=>hmRedraw()); }).catch(e=>toast(hmErr(e)))},
+    {label:'Read about it', icon:'globe', run:()=>m.readme?HMA.openPage(m.readme).catch(e=>toast(hmErr(e))):toast('This list has no readme')}]});
+}
+// The guided flow: the file's page in Hearth Browser, then the next one by itself (the worker watches the downloads).
+function hmGuide(jobId){
+  const j=((HM.st&&HM.st.jobs)||[]).find(x=>x.id===jobId), gd=j&&j.guide, m=gd&&gd.item;
+  if(!m){ HM.guiding=null; return toast(gd?'All the files are here. The install carries on by itself.':'Nothing left to fetch.'); }
+  HM.guiding=jobId; HM.guideFile=m.fileName;
+  HMA.openPage(m.url).catch(e=>toast(hmErr(e)));
+  openSheet({title:gd.label, sub:`${m.modName||m.fileName} · ${m.fileName}${m.size?' · '+hmSize(m.size):''}${m.site?' · '+m.site:''}. Its page is open in Hearth Browser: press Download there (sign in first if the site asks). Hearth checks the file and opens the next one.${m.problem?' '+m.problem:''}`, items:[
+    {label:'Open the page again', icon:'globe', run:()=>{ HMA.openPage(m.url).catch(e=>toast(hmErr(e))); setTimeout(()=>hmGuide(jobId),50); }},
+    {label:'Skip this one for now', icon:'x', run:()=>HMA.skip(jobId, m.fileName).then(()=>hmRefresh()).then(()=>hmGuide(jobId)).catch(e=>toast(hmErr(e)))},
+    {label:'Stop', icon:'stop', run:()=>{ HM.guiding=null; }}]});
+}
+
+// ---- Games, downloads, accounts
+function hmGames(){
+  const L=GAMES.filter(hmModdable).sort((a,b)=>(b.last||0)-(a.last||0));
+  let h='<div class="rows">'+shead('Your installed games');
+  L.forEach((g,i)=>{ const s=HM.sum[g.id]; h+=hmRow('hmg-'+i,'hmGame',I.pad,esc(g.title),s?`${s.mods.length} mod${s.mods.length===1?'':'s'}, ${s.mods.filter(m=>m.enabled).length} on`:lSrcSafe(g),'›',`data-id="${esc(g.id)}"`); });
+  if(!L.length) h+=note('No installed games yet.');
+  return h+'</div>';
+}
+const lSrcSafe = g => (typeof SOURCES!=='undefined' && SOURCES[g.src]) || '';
+function hmDlLine(x){
+  const pct=hmPct(x.done,x.size);
+  const st={queued:'Waiting', downloading:`${pct}%${x.speed?` · ${hmSize(x.speed)}/s`:''}`, paused:`Paused at ${pct}%`, done:'Downloaded', failed:'Failed', 'needs-link':'Needs Mod Manager Download on its page'}[x.state]||x.state;
+  return `${st}${x.size?` · ${hmSize(x.size)}`:''}${x.error&&x.state!=='done'?` · ${x.error}`:''}`;
+}
+function hmDownloads(){
+  const d=HM.st&&HM.st.downloads;
+  if(!d) return note('Asking Hearth Mods…');
+  const it=d.items||[];
+  let h='<div class="rows">';
+  if(d.quota&&d.quota.hourly!=null) h+=note(`Nexus Mods requests left: ${d.quota.hourly} this hour, ${d.quota.daily??'—'} today.`);
+  it.forEach((x,i)=>{ const pct=hmPct(x.done,x.size);
+    h+=`<button class="row" data-f data-k="hmd-${i}" data-act="hmDl" data-hx="hmDlToggle" data-dl="${esc(x.id)}"><span class="ricon">${x.state==='done'?I.check:x.state==='paused'?I.pause:I.dl}</span><div class="rt"><b>${esc(x.name||x.fileName)}</b><small>${esc(hmDlLine(x))}</small>${x.state==='downloading'||x.state==='paused'?`<div class="bar hm-bar"><i style="width:${pct}%"></i></div>`:''}</div><div class="rv">›</div></button>`; });
+  if(!it.length) h+=note('Nothing downloading. Mods you get from Nexus Mods, here or with the site\'s Mod Manager Download button, show up here.');
+  if(it.some(x=>x.state==='done')) h+=hmRow('hm-dl-clear','hmDlClear',I.trash,'Clear finished','The files stay where they are',null);
+  return h+'</div>'+note('A for what you can do with one; X pauses or resumes it. Downloads carry on while you play.');
+}
+function hmAccountsLoad(){
+  HMA.nexusAccount().then(a=>{ HM.acct=a||null; return HMA.accounts(); }).then(l=>{ HM.accts=l||[]; hmRedraw(); }).catch(e=>{ HM.accts=HM.accts||[]; toast(hmErr(e)); hmRedraw(); });
+}
+function hmAccounts(){
+  if(HM.accts===null) return note('Asking Hearth Mods…');
+  const a=HM.acct;
+  let h='<div class="rows">'+shead('Nexus Mods');
+  h+= a ? hmRow('hm-ac-nexus','hmNexusOut',I.user,`Signed in as ${esc(a.name)}`,a.premium?'Premium: files download straight from here':'Free account: each file comes from its page in Hearth Browser (Mod Manager Download)','Sign out',null)
+        : hmRow('hm-ac-nexus','hmNexusIn',I.user,'Sign in to Nexus Mods','With your personal API key (typed or pasted with the on-screen keyboard)','Sign in ›',null)
+          + hmRow('hm-ac-keypage','hmKeyPage',I.globe,'Open my API key page','In Hearth Browser: the key is at the bottom of the page',null);
+  h+=shead('For modlists');
+  (HM.accts||[]).forEach(p=>{
+    const sub = p.signedIn ? `Signed in${p.who?' as '+esc(p.who):''}` : p.pending==='waiting' ? 'Waiting for the sign-in in Hearth Browser…' : !p.registered ? 'Not available yet: its files are fetched in Hearth Browser' : p.id==='mega' ? 'Your own quota for MEGA files (without it, MEGA\'s free one)' : 'Sign in in Hearth Browser';
+    h+=hmRow('hm-ac-'+p.id, p.signedIn?'hmAcctOut':p.registered?'hmAcctIn':'hmAcctNa', I.globe, esc(p.name), sub, p.signedIn?'Sign out':p.registered?'Sign in ›':null, `data-p="${esc(p.id)}"`);
+  });
+  return h+'</div>'+note('Sign-ins are kept by Hearth Mods in files only you can read; passwords are never kept.');
+}
+
+// ---- Game pages, the Library and Quick Access
+function hmGameCard(g){
+  if(!hmOn() || !hmModdable(g)) return '';
+  const s=HM.sum[g.id];
+  if(!s && !HM.err[g.id]) hmLoad(g.id);
+  const L=s?s.mods:[];
+  return `<div class="card hm-gcard"><h3>Mods</h3><div class="muted">${HM.err[g.id]?esc(HM.err[g.id]):!s?'Asking Hearth Mods…':L.length?`${L.length} mod${L.length===1?'':'s'}, ${L.filter(m=>m.enabled).length} on`:'No mods yet'}</div>
+    ${L.slice(0,4).map((m,i)=>`<button class="hm-mini ${m.enabled?'':'off'}" data-f data-k="hm-gc-${i}" data-act="hmToggle" data-id="${esc(g.id)}" data-m="${esc(m.id)}"><span>${esc(m.name)}</span><i class="sw ${m.enabled?'on':''}"></i></button>`).join('')}
+    <button class="pill" data-f data-k="hm-card-open" data-act="hmOpen" data-id="${esc(g.id)}" style="margin-top:10px">${I.sliders}${L.length?'All mods, Nexus Mods and modlists':'Find mods'}</button></div>`;
+}
+// The keyboard & mouse Launcher's "Mods & saves" tab.
+function hmHeroTab(g){
+  const saves = `<button class="pill" data-f data-k="mkh-saves" data-act="gamingApp" data-v="saves" data-id="${lId(g)}">Saves</button>`;
+  if(!hmOn() || !hmModdable(g)) return null;
+  const s=HM.sum[g.id]; if(!s && !HM.err[g.id]) hmLoad(g.id);
+  const L=s?s.mods:[];
+  return `<div class="mkl-act-row">${saves}<button class="pill" data-f data-k="mkh-mods" data-act="hmOpen" data-id="${lId(g)}">${I.sliders}All mods, Nexus Mods and modlists</button></div>
+    <div class="hm-minis">${HM.err[g.id]?`<div class="muted">${esc(HM.err[g.id])}</div>`:!s?'<div class="muted">Asking Hearth Mods…</div>':L.length?L.slice(0,8).map((m,i)=>`<button class="hm-mini ${m.enabled?'':'off'}" data-f data-k="mkh-m-${i}" data-act="hmToggle" data-id="${lId(g)}" data-m="${esc(m.id)}"><span>${i+1}. ${esc(m.name)}</span>${hmConflict(m)}<i class="sw ${m.enabled?'on':''}"></i></button>`).join(''):'<div class="muted">No mods yet.</div>'}</div>`;
+}
+function hmLibPill(){ return hmOn() ? `<button class="pill" data-f data-k="lib-mods" data-act="hmOpen">${I.sliders}Mods</button>` : ''; }
+function hmQam(){
+  if(!hmOn()) return '';
+  if(Date.now()-HM.stAt>3000 && !HM.busy){ HM.busy=true; HMA.status(false).then(s=>{ HM.busy=false; const was=JSON.stringify(HM.st); if(s){ HM.st=s; HM.stAt=Date.now(); } if(JSON.stringify(HM.st)!==was && S.layers.includes('qam')) hmRedraw(); }).catch(()=>{ HM.busy=false; }); }
+  const it=((HM.st&&HM.st.downloads&&HM.st.downloads.items)||[]).filter(x=>['downloading','queued','paused'].includes(x.state));
+  const J=((HM.st&&HM.st.jobs)||[]).filter(j=>j.running || (j.guide&&j.guide.item));
+  if(!it.length && !J.length) return '';
+  return `<h4>Mods</h4>` + it.slice(0,3).map((x,i)=>`<button class="notif" data-f data-k="hmq-${i}" data-act="hmDlToggle" data-dl="${esc(x.id)}" style="width:100%"><div class="ni">${x.state==='paused'?I.play:I.pause}</div><div><b>${esc(x.name||x.fileName)}</b><small>${esc(hmDlLine(x))} · select to ${x.state==='paused'?'resume':'pause'}</small></div></button>`).join('')
+    + J.slice(0,2).map((j,i)=>`<button class="notif" data-f data-k="hmq-j${i}" data-act="hmQamGo" data-v="modlists" style="width:100%"><div class="ni">${I.lib}</div><div><b>${esc(j.title)}</b><small>${j.guide&&j.guide.item?esc(j.guide.label)+' to fetch · select to fetch them':esc(j.phase||'Installing')+(hmJobPct(j)!=null?` · ${hmJobPct(j)}%`:'')}</small></div></button>`).join('')
+    + `<button class="notif" data-f data-k="hmq-all" data-act="hmQamGo" data-v="downloads" style="width:100%"><div class="ni">${I.dl}</div><div><b>Mod downloads</b><small>The queue, pause and resume</small></div></button>`;
+}
+
+// ---- Notifications: downloads and installs finished or failed, files to fetch
+function hmNotify(icon, t, s, go){ NOTIFS.unshift({i:icon, t, s, go}); NOTIFS.splice(30); if(typeof updateBadge==='function') updateBadge(); toast(t); }
+function hmNotice(st){
+  const items=(st.downloads&&st.downloads.items)||[], jobs=st.jobs||[];
+  (st.downloads&&st.downloads.notices||[]).forEach(n=>toast(n.text));
+  const now={}; items.forEach(x=>now['d'+x.id]=x.state); jobs.forEach(j=>{ now['j'+j.id]=j.state; now['g'+j.id]=j.guide&&j.guide.item ? j.guide.total-j.guide.done : 0; });
+  const was=HM.seen; HM.seen=now;
+  items.forEach(x=>{ const w=HM.want.findIndex(v=>v.domain===x.domain && v.fileId===x.fileId); if(x.state==='done' && w>=0){ const v=HM.want.splice(w,1)[0]; hmInstallDl(x.id, v.game); } });
+  if(!was || OVERLAY) return;   // the first look only learns what's there; the overlay leaves notices to Hearth's own page
+  items.forEach(x=>{ const p=was['d'+x.id]; if(p===x.state || p===undefined && x.state!=='done' && x.state!=='failed') return;
+    if(x.state==='done') hmNotify('dl', `Downloaded ${x.name||x.fileName}`, 'Select to install it from Mods › Downloads', 'hm:downloads');
+    if(x.state==='failed') hmNotify('dl', `Download failed: ${x.name||x.fileName}`, x.error||'Select to try again from Mods › Downloads', 'hm:downloads');
+    if(x.state==='needs-link' && p!=='needs-link') hmNotify('dl', `${x.name||x.fileName} needs a new link`, 'Press Mod Manager Download on its page again (Mods › Downloads)', 'hm:downloads'); });
+  jobs.forEach(j=>{ const p=was['j'+j.id];
+    if(p!==undefined && p!==j.state){
+      if(j.state==='done') hmNotify('lib', `${j.title} is installed`, 'Select to see it in Mods › Modlists; Play starts it', 'hm:modlists');
+      if(j.state==='failed') hmNotify('lib', `${j.title} didn't install`, j.error||'Select to see why and resume', 'hm:modlists');
+    }
+    const n=now['g'+j.id]; if(n && !(was['g'+j.id]>0)) hmNotify('globe', `${j.title}: ${n} file${n===1?'':'s'} need fetching`, `${j.guide.label}. Select, then Fetch them`, 'hm:modlists');
+  });
+  if(HM.guiding){ const j=jobs.find(x=>x.id===HM.guiding), m=j&&j.guide&&j.guide.item;
+    if(S.layers.at(-1)!=='sheet') HM.guiding=null;
+    else if(!m){ closeAll(); HM.guiding=null; toast('All the files are here. The install carries on by itself.'); }
+    else if(m.fileName!==HM.guideFile){ closeAll(); toast('Got it. Opening the next one'); hmGuide(HM.guiding); } }
+}
+// Every 2 s on the Mods screens and while guiding, else every 10 s, and then only when Hearth Mods is already running.
+function hmTick(){
+  if(!hmOn() || OVERLAY) return;
+  HM.ticks++;
+  const live=/^hm/.test(S.view) || HM.guiding || HM.want.length;
+  if(!live && HM.ticks%5) return;
+  HMA.status(false).then(s=>{ if(!s) return; const was=JSON.stringify([HM.st&&HM.st.downloads&&HM.st.downloads.items, HM.st&&HM.st.jobs]); HM.st=s; HM.stAt=Date.now(); hmNotice(s);
+    if(live && JSON.stringify([s.downloads&&s.downloads.items, s.jobs])!==was && !S.layers.length && /^hm/.test(S.view)) render(null,true); }).catch(()=>{});
+}
+setInterval(hmTick, 2000);
+function hmX(){ const f=focused; if(f && f.dataset.hx) return hmAct(f.dataset.hx, f.dataset); }
+function hmHints(){ return [['tabs','Tabs'],['stores','On / off · pause']]; }
+
+async function hmAct(a, d){
+  const id=d.id, g=id&&G(id);
+  switch(a){
+    case 'hmOpen': return hmOpen(id||null);
+    case 'hmQamGo': return hmGo(d.v);
+    case 'hmGame': return hmOpen(id);
+    case 'hmTab': return hmTab(d.v);
+    case 'hmReload': return hmLoad(id);
+    case 'hmToggle': { const m=(HM.sum[id]?.mods||[]).find(x=>x.id===d.m); if(!m) return;
+      try{ hmApply(id, await HMA.toggle(id, m.id, !m.enabled)); toast(`${m.name}: ${!m.enabled?'on':'off'}`); }catch(e){ toast(hmErr(e)); } return hmRedraw(); }
+    case 'hmMod': { const s=HM.sum[id], i=(s?.mods||[]).findIndex(x=>x.id===d.m), m=s&&s.mods[i]; if(!m) return;
+      const up=HM.upd[id]&&HM.upd[id].updates.find(x=>x.mod===m.id);
+      const mv=by=>HMA.move(id, m.id, by).then(r=>{ hmApply(id,r); render(`hmm-${i+by}`, true); }).catch(e=>toast(hmErr(e)));
+      return openSheet({title:m.name, sub:`${m.targetLabel||''}${m.files?` · ${m.files} files`:''}${(m.overriddenBy||[]).length?` · some files replaced by ${(m.overriddenBy||[]).join(', ')}`:''}`, items:[
+        {label:m.enabled?'Turn off':'Turn on', icon:m.enabled?'x':'check', run:()=>hmAct('hmToggle', d)},
+        ...(i>0?[{label:'Move up (loads earlier)', icon:'up', run:()=>mv(-1)}]:[]),
+        ...(i<s.mods.length-1?[{label:'Move down (wins over the ones above)', icon:'dl', run:()=>mv(1)}]:[]),
+        ...(up?[{label:`Update to ${up.newer.version||'the newest file'}`, icon:'refresh', run:()=>hmUpdateOne(id, up)}]:[]),
+        {label:'Uninstall', icon:'trash', run:()=>openSheet({title:`Uninstall ${m.name}?`, sub:'Its files come out of the game and what it replaced is put back.', items:[
+          {label:'Uninstall', icon:'trash', run:()=>HMA.remove(id, m.id).then(r=>{ hmApply(id,r); toast(`${m.name} uninstalled`); render(`hmm-${Math.max(0,i-1)}`, true); }).catch(e=>toast(hmErr(e)))},
+          {label:'Keep it', icon:'x', run:()=>{}}]})}]}); }
+    case 'hmCheck': toast('Asking Nexus Mods…'); try{ HM.upd[id]=await HMA.updates(id); toast(HM.upd[id].updates.length?`${HM.upd[id].updates.length} update${HM.upd[id].updates.length===1?'':'s'} found`:HM.upd[id].checked?'Everything is up to date':'None of these mods came from Nexus Mods'); }catch(e){ toast(hmErr(e)); } return hmRedraw('hm-check');
+    case 'hmUpdates': { const u=HM.upd[id]; if(!u) return; return openSheet({title:'Updates on Nexus Mods', items:u.updates.map(x=>({label:`${x.name} → ${x.newer.version||x.newer.name||'newer file'}`, icon:'refresh', run:()=>hmUpdateOne(id, x)}))}); }
+    case 'hmDeploy': { const s=HM.sum[id]; if(!s) return; return openSheet({title:'How mods go in', sub:'Switching takes every mod out and puts it back the new way. Close the game first.', items:(s.modes||[]).map(x=>({label:x.label, icon:x.id===s.deploy?'check':'', run:()=>HMA.deploy(id,x.id).then(r=>{ hmApply(id,r); toast(`Mods now go in as ${x.label.toLowerCase()}`); hmRedraw(); }).catch(e=>toast(hmErr(e)))}))}); }
+    case 'hmProfile': { const o=HM.org[id]; if(!o) return; return openSheet({title:'Profile', items:o.profiles.map(p=>({label:p.name, icon:p.id===o.profile?'check':'', run:()=>HMA.setProfile(id,p.id).then(()=>hmLoad(id)).catch(e=>toast(hmErr(e)))}))}); }
+    case 'hmPlugin': { const o=HM.org[id], i=(o?.plugins||[]).findIndex(p=>p.name===d.p), p=o&&o.plugins[i]; if(!p) return;
+      const mv=by=>HMA.pluginMove(id,p.name,by).then(()=>hmLoad(id,true)).then(()=>render(`hmp-${i+by}`,true)).catch(e=>toast(hmErr(e)));
+      return openSheet({title:p.name, items:[{label:p.enabled?'Turn off':'Turn on', icon:p.enabled?'x':'check', run:()=>hmAct('hmPluginToggle', d)}, ...(i>0?[{label:'Move up', icon:'up', run:()=>mv(-1)}]:[]), ...(i<o.plugins.length-1?[{label:'Move down', icon:'dl', run:()=>mv(1)}]:[])]}); }
+    case 'hmPluginToggle': { const p=(HM.org[id]?.plugins||[]).find(x=>x.name===d.p); if(!p) return; try{ await HMA.pluginToggle(id, p.name, !p.enabled); await hmLoad(id,true); }catch(e){ toast(hmErr(e)); } return hmRedraw(); }
+    case 'hmSetDomain': { const v=await openPrompt({title:'Its Nexus Mods game (the part after nexusmods.com/)', placeholder:'skyrimspecialedition', mode:'url', enterLabel:'Save'}); if(!v) return;
+      try{ HM.sum[id]=await HMA.setNexus(id, v.trim().toLowerCase()); hmNexusLoad(); }catch(e){ toast(hmErr(e)); } return hmRedraw(); }
+    case 'hmSearch': { const dm=hmDomain(g); const v=await openPrompt({title:'Search Nexus Mods', value:HM.q[dm]||'', placeholder:'A mod\'s name', enterLabel:'Search'}); if(v===null||v===undefined) return; HM.q[dm]=String(v).trim(); hmNexusLoad(); return render('hm-nx-q'); }
+    case 'hmKind': { const dm=hmDomain(g); HM.q[dm]=''; HM.kind[dm]=d.v; hmNexusLoad(); return render('hm-nx-'+d.v); }
+    case 'hmAdult': HM.adult=!HM.adult; return render('hm-nx-adult');
+    case 'hmNexusRetry': hmNexusLoad(true); return render(null,true);
+    case 'hmModPage': return hmModPage(d.d, +d.mod);
+    case 'hmFile': return hmFile(+d.i);
+    case 'hmOpenUrl': return d.url && HMA.openPage(d.url).then(()=>toast('Opening it in Hearth Browser…')).catch(e=>toast(hmErr(e)));
+    case 'hmOpt': return hmOpt(d);
+    case 'hmFoStep': return hmFoStep(+d.v);
+    case 'hmDl': { const x=((HM.st&&HM.st.downloads&&HM.st.downloads.items)||[]).find(y=>y.id===d.dl); if(!x) return;
+      const items=[];
+      if(x.state==='downloading'||x.state==='queued') items.push({label:'Pause', icon:'pause', run:()=>hmAct('hmDlToggle', d)});
+      if(x.state==='paused'||x.state==='failed') items.push({label:x.state==='failed'?'Try again':'Resume', icon:'play', run:()=>hmAct('hmDlToggle', d)});
+      if(x.state==='needs-link') items.push({label:'Open its page in Hearth Browser', icon:'globe', run:()=>HMA.openPage(x.page).catch(e=>toast(hmErr(e)))});
+      if(x.state==='done' && !x.job) items.push(...GAMES.filter(hmModdable).filter(gg=>!x.game||gg.id===x.game).slice(0,8).map(gg=>({label:`Install into ${gg.title}`, icon:'lib', run:()=>hmInstallDl(x.id, gg.id)})));
+      items.push({label:'Remove from the list', icon:'x', run:()=>HMA.dlRemove(x.id,false).then(()=>hmRefresh()).then(()=>hmRedraw()).catch(e=>toast(hmErr(e)))});
+      if(x.state==='done') items.push({label:'Remove and delete the file', icon:'trash', run:()=>HMA.dlRemove(x.id,true).then(()=>hmRefresh()).then(()=>hmRedraw()).catch(e=>toast(hmErr(e)))});
+      return openSheet({title:x.name||x.fileName, sub:hmDlLine(x), items}); }
+    case 'hmDlToggle': { const x=((HM.st&&HM.st.downloads&&HM.st.downloads.items)||[]).find(y=>y.id===d.dl); if(!x) return;
+      try{ if(x.state==='downloading'||x.state==='queued'){ await HMA.dlPause(x.id); toast('Paused'); } else if(x.state==='paused'||x.state==='failed'){ await HMA.dlResume(x.id); toast('Resumed'); } else return; await hmRefresh(); }catch(e){ toast(hmErr(e)); } return hmRedraw(); }
+    case 'hmDlClear': try{ await HMA.dlClear(); await hmRefresh(); }catch(e){ toast(hmErr(e)); } return hmRedraw();
+    case 'hmEngine': toast('Getting the Wabbajack engine…'); try{ HM.engine=await HMA.fetchEngine(); toast('The Wabbajack engine is ready'); HM.gallery=null; hmModlistsLoad(true); }catch(e){ toast(hmErr(e)); } return hmRedraw();
+    case 'hmNsfw': HM.nsfw=!HM.nsfw; return render('hm-wj-nsfw');
+    case 'hmGalRefresh': HM.gallery=null; hmModlistsLoad(true); return render('hm-wj-refresh');
+    case 'hmList': return hmListInstall(d.ml);
+    case 'hmGuide': return hmGuide(d.job);
+    case 'hmJobStop': try{ await HMA.cancel(d.job); await hmRefresh(); }catch(e){ toast(hmErr(e)); } return hmRedraw();
+    case 'hmJobResume': try{ await HMA.resume(d.job); toast('Carrying on'); await hmRefresh(); }catch(e){ toast(hmErr(e)); } return hmRedraw();
+    case 'hmNexusIn': { const k=await openPrompt({title:'Your Nexus Mods API key', secret:true, mode:'password', enterLabel:'Sign in'}); if(!k) return;
+      toast('Checking the key…'); try{ HM.acct=await HMA.nexusIn(k.trim()); toast(`Signed in as ${HM.acct.name}`); HM.nx={}; }catch(e){ toast(hmErr(e)); } return hmRedraw('hm-ac-nexus'); }
+    case 'hmNexusOut': return openSheet({title:'Sign out of Nexus Mods?', sub:'Hearth forgets the key. Downloads waiting in the queue stop until you sign in again.', items:[{label:'Sign out', icon:'x', run:()=>HMA.nexusOut().then(()=>{ HM.acct=null; hmRedraw('hm-ac-nexus'); }).catch(e=>toast(hmErr(e)))}, {label:'Stay signed in', icon:'check', run:()=>{}}]});
+    case 'hmKeyPage': try{ const p=await HMA.nexusPages(); await HMA.openPage(p.keys); toast('Opening your API keys in Hearth Browser…'); }catch(e){ toast(hmErr(e)); } return;
+    case 'hmAcctIn': if(d.p==='mega'){ const email=await openPrompt({title:'Your MEGA email address', mode:'email', enterLabel:'Next'}); if(!email) return;
+        const pw=await openPrompt({title:'Your MEGA password (Hearth works out MEGA\'s login from it and forgets it)', secret:true, mode:'password', enterLabel:'Sign in'}); if(!pw) return;
+        toast('Signing in to MEGA…'); try{ await HMA.mega(email.trim(), pw); toast('Signed in to MEGA'); }catch(e){ toast(hmErr(e)); } return hmAccountsLoad(); }
+      try{ await HMA.acctBegin(d.p); toast('Sign in in Hearth Browser'); }catch(e){ toast(hmErr(e)); } return hmAccountsLoad();
+    case 'hmAcctOut': return openSheet({title:'Sign out?', sub:'Hearth forgets the sign-in. Files from there are fetched in Hearth Browser again.', items:[{label:'Sign out', icon:'x', run:()=>HMA.acctOut(d.p).then(()=>hmAccountsLoad()).catch(e=>toast(hmErr(e)))}, {label:'Stay signed in', icon:'check', run:()=>{}}]});
+    case 'hmAcctNa': return toast('Hearth isn\'t registered there yet. Its files are fetched in Hearth Browser with the guided flow.');
+  }
+}
+function hmUpdateOne(id, u){
+  const g=G(id);
+  HM.want.push({domain:u.domain, fileId:u.newer.fileId, game:id, name:u.name});
+  if(HM.upd[id] && HM.upd[id].premium) return HMA.download(u.domain, u.modId, u.newer.fileId, id).then(()=>{ toast(`Downloading the update for ${u.name}: it goes into ${g?g.title:'the game'} when it's done`); hmRefresh(); }).catch(e=>toast(hmErr(e)));
+  return HMA.openPage(u.page).then(()=>toast('Opening its page in Hearth Browser: press Mod Manager Download')).catch(e=>toast(hmErr(e)));
+}
+VIEWS.hmods = viewHMods; TITLES.hmods = 'Mods';
+VIEWS.hmmod = viewHMod; TITLES.hmmod = 'Nexus Mods';
+VIEWS.hmfomod = viewHFomod; TITLES.hmfomod = 'Install a mod';
+
+// The browser preview's (and tools/ui-check.js's) stand-in for Hearth Mods: a game with mods, Nexus Mods, a queue,
+// a modlist waiting for LoversLab files, accounts, and the organizer's profiles, plugins and a FOMOD installer.
+const HM_MOCK = {mods:null, dls:[], jobs:null, acct:{name:'You', premium:true}, plugins:[{name:'Skyrim.esm',enabled:true,master:true},{name:'Update.esm',enabled:true,master:true},{name:'SkyUI_SE.esp',enabled:true,from:'SkyUI'},{name:'Lanterns.esp',enabled:false,from:'Sky Lanterns'}]};
+function hmMock(name, a){
+  const M=HM_MOCK;
+  if(!M.mods) M.mods=[{id:'skyui',name:'SkyUI',enabled:true,target:'game',targetLabel:'Game folder',files:42,size:8.2e6,nexus:{domain:'hollowpines',modId:12604,fileId:35407}},
+    {id:'lanterns',name:'Sky Lanterns',enabled:false,target:'game',targetLabel:'Game folder',files:8,size:2.1e6},
+    {id:'hdtex',name:'HD Textures',enabled:true,target:'game',targetLabel:'Game folder',files:310,size:1.4e9,nexus:{domain:'hollowpines',modId:607,fileId:1200}},
+    {id:'fixes',name:'Community Fixes',enabled:true,target:'game',targetLabel:'Game folder',files:12,size:4.0e5}];
+  if(!M.jobs) M.jobs=[{id:'w1',title:'Lantern Night',game:'SkyrimSpecialEdition',gameDir:'/home/you/Games/Hollow Pines',state:'manual',phase:'Downloading',status:'Waiting for 3 LoversLab files',running:true,count:[218,240],
+    guide:{total:5,done:2,current:3,site:'LoversLab',label:'3 of 5 LoversLab files',item:{fileName:'LanternPack.7z',modName:'Lantern Pack',size:5.2e7,site:'LoversLab',url:'https://www.loverslab.com/files/file/1-lantern-pack/'}}}];
+  const sum=id=>{ const L=M.mods.map((m,i)=>Object.assign({}, m, {order:i, overriddenBy: m.id==='skyui'&&M.mods.find(x=>x.id==='hdtex'&&x.enabled)&&M.mods.indexOf(m)<M.mods.findIndex(x=>x.id==='hdtex')?['HD Textures']:[]}));
+    return {game:id, title:(G(id)||{}).title||id, mods:L, nexus:'hollowpines', deploy:'hardlink', modes:[{id:'hardlink',label:'Links'},{id:'copy',label:'Copies'},{id:'overlay',label:'Overlay (Beta Experimental)'}]}; };
+  const ch=id=>({report:{problems:[]}, summary:sum(id)});
+  const find=x=>M.mods.findIndex(m=>m.id===x);
+  switch(name){
+    case 'mods_of': return sum(a.id);
+    case 'toggle': M.mods[find(a.m)].enabled=!!a.on; return ch(a.id);
+    case 'move_mod': { const i=find(a.m), j=i+a.by; if(j>=0&&j<M.mods.length){ const [m]=M.mods.splice(i,1); M.mods.splice(j,0,m); } return ch(a.id); }
+    case 'remove_mod': M.mods.splice(find(a.m),1); return ch(a.id);
+    case 'set_deploy': case 'set_nexus_game': return name==='set_deploy'?ch(a.id):sum(a.id);
+    case 'check_updates': return {checked:2, premium:true, updates:[{mod:'skyui',name:'SkyUI',domain:'hollowpines',modId:12604,fileId:35407,newer:{fileId:35500,version:'5.2.1',name:'Main'},page:'https://www.nexusmods.com/hollowpines/mods/12604?tab=files'}]};
+    case 'nexus_account': return M.acct;
+    case 'nexus_sign_in': M.acct={name:'You',premium:false}; return M.acct;
+    case 'nexus_sign_out': M.acct=null; return null;
+    case 'nexus_pages': return {keys:'https://next.nexusmods.com/settings/api-keys'};
+    case 'nexus_browse': case 'nexus_search': return [{modId:12604,name:'SkyUI',author:'schlangster',version:'5.2',endorsements:91000,downloads:2400000,summary:'A menu made for the PC and the controller.'},
+      {modId:4410,name:'Sky Lanterns',author:'ember',version:'1.1',endorsements:5200,summary:'Floating lanterns over the lake at night. With an installer.'},{modId:999,name:'Spicy Thing',adult:true,summary:'Adult mod'}].filter(m=>!a.q||m.name.toLowerCase().includes(String(a.q).toLowerCase()));
+    case 'nexus_files': { const id=+/mods\/(\d+)/.exec(a.url)[1];
+      return {domain:'hollowpines', modId:id, name:id===4410?'Sky Lanterns':'SkyUI', author:'ember', version:'1.1', summary:'Floating lanterns over the lake at night.', endorsements:5200, premium:M.acct?M.acct.premium:false, page:`https://www.nexusmods.com/hollowpines/mods/${id}`,
+        files:[{fileId:id*10+1,name:'Main file',version:'1.1',category:'MAIN',size:2.1e7,primary:true},{fileId:id*10+2,name:'Optional: brighter',version:'1.1',category:'OPTIONAL',size:1.2e6}]}; }
+    case 'download_file': { const it={id:'d'+a.fileId, domain:a.domain, modId:a.modId, fileId:a.fileId, name:a.modId===4410?'Sky Lanterns · Main file':'SkyUI · Main file', fileName:'mod.7z', size:2.1e7, done:0, state:'downloading', game:a.game, speed:4.2e6, page:''}; M.dls.unshift(it); return it; }
+    case 'status': case 'downloads_list': {
+      M.dls.forEach(x=>{ if(x.state==='downloading'){ x.done=Math.min(x.size, x.done+x.size/2); if(x.done>=x.size){ x.state='done'; x.speed=0; } } });
+      const d={items:M.dls.map(x=>Object.assign({},x)), active:M.dls.filter(x=>x.state==='downloading').length, quota:{hourly:97,daily:19800}, notices:[]};
+      return name==='status' ? {downloads:d, jobs:M.jobs.map(j=>Object.assign({},j))} : d; }
+    case 'download_pause': M.dls.forEach(x=>{ if(x.id===a.id) x.state='paused'; }); return null;
+    case 'download_resume': M.dls.forEach(x=>{ if(x.id===a.id) x.state='downloading'; }); return null;
+    case 'download_remove': M.dls=M.dls.filter(x=>x.id!==a.id); return null;
+    case 'downloads_clear': M.dls=M.dls.filter(x=>x.state!=='done'); return null;
+    case 'install_download': { const x=M.dls.find(y=>y.id===a.id);
+      if(x && x.modId===4410) return {fomod:{token:'fo1', name:'Sky Lanterns', steps:[
+        {name:'Lanterns', groups:[{name:'Colour', type:'SelectExactlyOne', options:[{name:'Warm', description:'Orange light, like a fire.', type:'Recommended'},{name:'Cold', description:'Pale blue light.'}]},
+                                  {name:'Extras', type:'SelectAny', options:[{name:'Fireflies', description:'Small lights in the grass.'},{name:'Lake reflections', description:'Needs a strong graphics card.'}]}]},
+        {name:'Patches', groups:[{name:'Compatibility', type:'SelectAll', options:[{name:'Community Fixes patch', description:'Installed with it.', type:'Required'}]}]}]}};
+      M.mods.push({id:'m'+M.mods.length, name:x?x.name.split(' · ')[0]:'Mod', enabled:true, target:'game', targetLabel:'Game folder', files:5, size:x?x.size:0}); return ch(a.gameId); }
+    case 'organizer_game': return {profile:'default', profiles:[{id:'default',name:'Default'},{id:'survival',name:'Survival'}], plugins:M.plugins.map(p=>Object.assign({},p))};
+    case 'organizer_set_profile': return null;
+    case 'organizer_plugin_toggle': M.plugins.forEach(p=>{ if(p.name===a.plugin) p.enabled=!!a.on; }); return null;
+    case 'organizer_plugin_move': { const i=M.plugins.findIndex(p=>p.name===a.plugin), j=i+a.by; if(j>=0&&j<M.plugins.length){ const [p]=M.plugins.splice(i,1); M.plugins.splice(j,0,p); } return null; }
+    case 'organizer_fomod_finish': M.mods.push({id:'lanterns2', name:'Sky Lanterns (Warm)', enabled:true, target:'game', targetLabel:'Game folder', files:9, size:2.1e7}); M.fomodChoices=a.choices; return ch((HM.fomod&&HM.fomod.game)||'');
+    case 'wj_engine': return {path:'/usr/lib/hearth/jackify-engine/jackify-engine', version:'0.4.1'};
+    case 'wj_fetch_engine': return {path:'/x', version:'0.4.1'};
+    case 'wj_gallery': return [{id:'tag/lantern-night',title:'Lantern Night',author:'ember',game:'SkyrimSpecialEdition',gameName:'Skyrim Special Edition',download:8.4e10,install:1.2e11,steamApp:489830,description:'A cozy, lantern-lit Skyrim.'},
+      {id:'tag/wasteland',title:'Wasteland Remade',author:'ash',game:'Fallout4',gameName:'Fallout 4',download:5.0e10,install:7.0e10,steamApp:377160,description:'Fallout 4, rebuilt.'},{id:'tag/adult',title:'Adult list',nsfw:true}];
+    case 'wj_defaults': return {gameDir:'/home/you/Games/Hollow Pines', installDir:'/home/you/Modlists/'+a.title, downloadsDir:'/home/you/Modlists/Downloads/'+a.title, free:4e11, known:true};
+    case 'wj_start': M.jobs.unshift({id:'w2', title:a.title, game:a.game, gameDir:a.gameDir, state:'installing', phase:'Starting', running:true, step:[0,1]}); return M.jobs[0];
+    case 'wj_resume': case 'wj_cancel': M.jobs.forEach(j=>{ if(j.id===a.id){ j.running=name==='wj_resume'; j.state=j.running?'installing':'stopped'; } }); return null;
+    case 'wj_guide_skip': return null;
+    case 'accounts_list': return [{id:'loverslab',name:'LoversLab',signedIn:false,registered:false},{id:'mega',name:'MEGA',signedIn:false,registered:true},{id:'google',name:'Google',signedIn:false,registered:false}];
+    case 'mega_sign_in': case 'account_begin': case 'account_sign_out': case 'open_page': case 'open_url': return null;
+    case 'ping': return {version:'preview', busy:false};
+  }
+  throw new Error(`Hearth Mods (preview) doesn't know "${name}"`);
+}
+// ---------- end of Hearth Mods in Game Mode ----------
 // ---------- Beacon (BFME, Age of the Ring, LOTR: Conquest…): mods, Play with…, Beacon's window ----------
 // Beacon keeps each game's mod (beacon select-mod); Play starts with it, Play with… picks one for this time only.
 const beaconMods = g => (g&&g.beacon&&g.beacon.mods)||[];
@@ -11951,6 +12840,8 @@ function onSysEvent(name, data){
   if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); qamFresh(); openLayer('qam'); } return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
+  if(name==='overlay.osk') return overlayOsk();
+  if(name==='osk.chord'){ const top=S.layers.at(-1); if(top==='prompt'||top==='search') oskField(top); return; }
   if(name==='overlay.hidden') return overlayHidden();
   if(name==='install.done'){
     const t=data.title||'The game';
@@ -12020,7 +12911,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='seats') loadSeats();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
-  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); }
+  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); loadUnlock(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
   if(t==='link') loadLink();   // Hearth Link
@@ -12212,6 +13103,7 @@ function renderFooter(){
   if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done',top==='search'?'Search':'Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(!top && S.view==='shop') h.push(['tabs','Stores']);
+  if(!top && /^hm/.test(S.view)) h.push(...(S.view==='hmods'?hmHints():[]));   // Hearth Mods in Game Mode
   if(!top && S.view==='settings' && (S.sfront || stabsIn(stabGroup(S.settingsTab)).length>1)) h.push(['tabs',S.sfront?'Groups':'Pages']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
@@ -12228,6 +13120,7 @@ function renderFooter(){
   $('#footer').innerHTML = (typeof miniDock==='function' ? miniDock() : '') + (g?`<div class="running"><span class="dot"></span>${esc(g.title)}</div>`:'') + items.join('');
 }
 function hintAction(id){
+  if(id==='stores' && /^hm/.test(S.view) && !S.layers.length) return hmX();   // Hearth Mods: X
   if(id.startsWith('mk')){ const f=focused && $('#view').contains(focused) ? focused : null, g=f && G(f.dataset.id||f.dataset.mkplay);
     if(id==='mksearch'){ const q=$('#view [data-k="mk-q"]'); return q && setFocus(q); }
     if(!g) return toast('Pick a game first');
@@ -12250,6 +13143,7 @@ function logInput(what){ if(INPUT_LOG) send({type:'log', text:`input ${what} | v
 function input(k){
   logInput(k);
   qaTrace(k);
+  if(OVOSK.on) return ovoskInput(k);
   const top=S.layers.at(-1);
   // A / Enter just after Quick Access (or its Put aside question) opened isn't a choice; neither is a second Guide / View
   // (the press that opened it, delivered twice).
@@ -12285,7 +13179,7 @@ function input(k){
     case 'start': return top==='prompt' ? promptSubmit() : top==='search' ? back() : toggleLayer('menu');
     case 'select': case 'guide': if(top==='prompt'||top==='sheet') return; if(top!=='qam') qamFresh(); return toggleLayer('qam');
     case 'y': return top==='prompt' ? promptKey('space') : top==='search' ? typeKey('space') : (closeAll(), query='', SKB.forceOsk=false, SKB.oskHidden=false, SKB.caret=0, openLayer('search', oskWanted()?'sk-kb':'sk-field'));
-    case 'x': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
+    case 'x': return top==='prompt' ? promptKey('bksp') : top==='search' ? typeKey('bksp') : (/^hm/.test(S.view) && !top ? hmX() : S.view==='game' && !top ? act($('[data-k="g-fav"]')) : S.view==='library' && !top ? navigate('stores') : null);
     case 'lb': case 'rb':
       if(top==='prompt') return promptKey(k==='lb'?'left':'right');
       if(top==='search') return typeKey(k==='lb'?'left':'right');
@@ -12298,6 +13192,7 @@ function shiftTab(d){
   if(top==='qam' && qamTop()){ const T=qdTabs(), i=T.findIndex(t=>t[0]===S.qtab); return qdGo(T[(i+d+T.length)%T.length][0]); }
   if(top==='qam'){ const i=QTABS.findIndex(t=>t[0]===S.qtab); S.qtab=QTABS[(i+d+QTABS.length)%QTABS.length][0]; renderQam(); if(S.qtab==='perf') startPerf(); if(S.qtab==='apps') loadApps(); setFocus($(`#qam [data-k="qt-${S.qtab}"]`),true); return blip(600); }
   if(!top && S.view==='shop') return shopShiftTab(d);
+  if(!top && S.view==='hmods') return hmShiftTab(d);   // Hearth Mods in Game Mode
   if(!top && S.view==='settings'){ setShiftTab(d); return blip(600); }
   if(!top && S.view==='library'){ const T=libTabs(), i=T.findIndex(t=>t[0]===S.tab); S.tab=T[(i+d+T.length)%T.length][0]; if(mkKind()){ MK.sel.clear(); mkRender('mks-'+S.tab); } else render('tab-'+S.tab); return blip(600); }
 }

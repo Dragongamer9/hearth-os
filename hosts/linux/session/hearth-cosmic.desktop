@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Hearth COSMIC
+Comment=Hearth OS: Game Mode and the Hearth COSMIC desktop (System76's COSMIC in Hearth's look). Saved as your desktop; falls back to Hearth Classic if COSMIC can't start.
+Exec=/usr/local/bin/nimbus-session --desktop=cosmic
+TryExec=start-cosmic
+Type=Application
+DesktopNames=Nimbus

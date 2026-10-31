@@ -1,0 +1,73 @@
+#!/bin/sh
+# hearth-cosmic: opens Hearth's pieces in Hearth COSMIC (docs/COSMIC.md), through the companion
+# (desktop/shell/desk-cosmic.qml). Used by the panel's Hearth entries and COSMIC's Super key.
+#   hearth-cosmic launcher | games | quick | link | storage | menu | keyboard | help | close
+#   hearth-cosmic companion       start the companion and the controller (autostart does this when Hearth COSMIC starts)
+#   hearth-cosmic pad             the controller alone: hearth-pad --cosmic on a socket the companion connects to, so
+#                                 the controller keeps working while the companion restarts
+# If the companion isn't running it's started first. Outside Hearth COSMIC (no quickshell), the launcher falls back to
+# COSMIC's own.
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+QML="$SHELL_DIR/desk-cosmic.qml"
+# The companion's messages (kept for bug reports; the one before is .old).
+CLOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/cosmic-companion.log"
+mkdir -p "$(dirname "$CLOG")" 2>/dev/null
+# COSMIC's compositor drops the companion's whole connection when Qt sends a text-input (input method) update while
+# one of its windows closes (seen in cosmic-test.yml). Hearth's windows don't need an input method (the on-screen
+# keyboard is Hearth's own), so Qt's plain compose input is used instead.
+export QT_IM_MODULE=compose
+# The same when a window closes: Qt destroys its fractional-scale and viewport objects after the window's surface,
+# and COSMIC drops the connection (cosmic-test.yml's Wayland check). Whole-number scaling keeps Qt from using them.
+export QT_SCALE_FACTOR_ROUNDING_POLICY=Round
+case "$1" in
+  launcher|games|quick|link|storage|menu|keyboard|help|close) ;;
+  pad)
+    command -v python3 >/dev/null 2>&1 || exit 0
+    SOCK="${XDG_RUNTIME_DIR:-/tmp}/hearth-pad-cosmic.sock"
+    n=0; t0=$(date +%s)
+    while :; do
+      python3 "$SHELL_DIR/hearth-pad" --cosmic --socket "$SOCK"
+      rc=$?
+      # 2: python3-evdev missing, 3: no /dev/uinput (hearth-pad): nothing to retry.
+      [ "$rc" = 2 ] || [ "$rc" = 3 ] && exit 0
+      [ $(( $(date +%s) - t0 )) -gt 60 ] && { n=0; t0=$(date +%s); }
+      n=$((n + 1)); [ "$n" -gt 5 ] && exit 1
+      sleep 1
+    done ;;
+  companion)
+    command -v quickshell >/dev/null 2>&1 && [ -f "$QML" ] || exit 0
+    [ -f "$CLOG" ] && [ "$(wc -c <"$CLOG")" -gt 1000000 ] && mv -f "$CLOG" "$CLOG.old"
+    # The controller, in its own process (it outlives a companion restart).
+    pgrep -u "$(id -u)" -f 'hearth-pad --cosmic --socket' >/dev/null 2>&1 || setsid "$0" pad >>"$CLOG" 2>&1 </dev/null &
+    # Kept running for the whole Hearth COSMIC session: started again straight away whenever it ends (COSMIC 1.10
+    # drops its connection when one of its windows closes; the controller is a separate process and keeps working,
+    # and a menu asked for meanwhile opens once it's back). Not again after 5 ends in a row within 3 s of starting
+    # (it can't start here: COSMIC goes on without it).
+    n=0
+    while [ "${HEARTH_DESKTOP:-cosmic}" = cosmic ]; do
+      echo "--- $(date '+%F %T') companion" >>"$CLOG"
+      t0=$(date +%s)
+      quickshell -p "$QML" >>"$CLOG" 2>&1
+      if [ $(( $(date +%s) - t0 )) -lt 3 ]; then n=$((n + 1)); else n=0; fi
+      [ "$n" -ge 5 ] && { echo "companion ended 5 times right after starting; not started again" >>"$CLOG"; exit 1; }
+      sleep 0.3
+    done
+    exit 0 ;;
+  *) echo "usage: hearth-cosmic launcher|games|quick|link|storage|menu|keyboard|help|close|companion" >&2; exit 2 ;;
+esac
+if ! command -v quickshell >/dev/null 2>&1 || [ ! -f "$QML" ]; then
+  [ "$1" = launcher ] && exec cosmic-launcher
+  exit 1
+fi
+quickshell ipc -p "$QML" call hearth "$1" >/dev/null 2>&1 && exit 0
+# Not running yet (or it ended): start it, then ask again.
+echo "--- $(date '+%F %T') companion (started for $1)" >>"$CLOG"
+setsid quickshell -p "$QML" >>"$CLOG" 2>&1 </dev/null &
+i=0
+while [ $i -lt 20 ]; do
+  sleep 0.5
+  quickshell ipc -p "$QML" call hearth "$1" >/dev/null 2>&1 && exit 0
+  i=$((i + 1))
+done
+[ "$1" = launcher ] && exec cosmic-launcher
+exit 1

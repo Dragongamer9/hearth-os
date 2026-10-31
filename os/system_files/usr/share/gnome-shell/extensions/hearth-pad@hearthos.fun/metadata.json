@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-pad@hearthos.fun",
+  "name": "Hearth controller",
+  "description": "The whole desktop with a controller (hearth-pad --gnome): pointer, clicks, scrolling, focus through GNOME Shell, the Hearth menu on Guide, and Hearth's on-screen keyboard on Guide + X.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

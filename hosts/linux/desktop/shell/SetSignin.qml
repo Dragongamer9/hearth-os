@@ -1,5 +1,5 @@
-// Hearth Settings › Sign-in: start in Game or Desktop Mode, which desktop Desktop Mode is (Hearth Classic or Hearth
-// Plasma, through desktop/plasma/hearth-plasma desktop / desktop-set), sign in automatically, password and the
+// Hearth Settings › Sign-in: start in Game or Desktop Mode, which desktop Desktop Mode is (Hearth Classic, Hearth
+// Plasma or Hearth GNOME, through desktop/plasma/hearth-plasma desktop / desktop-set), sign in automatically, password and the
 // device's name. The parts that need root go through hearth-admin (pkexec; Hearth's polkit rule lets the
 // person at the device do this without a prompt).
 import QtQuick
@@ -15,7 +15,8 @@ SetPage {
     property bool canAdmin: false
     property bool autologin: true
     property string startMode: "game"
-    property var desk: ({ desktop: "classic", plasma: false, fellBack: false })   // hearth-plasma desktop
+    property var desk: ({ desktop: "classic", plasma: false, gnome: false, fellBack: false, fellBackFrom: "" })   // hearth-plasma desktop
+    readonly property var deskNames: ({ classic: "Hearth Classic", plasma: "Hearth Plasma", gnome: "Hearth GNOME" })
     readonly property string deskHelper: decodeURIComponent(Qt.resolvedUrl("../plasma/hearth-plasma").toString().replace(/^file:\/\//, ""))
     property string hostname: ""
     property string busy: ""
@@ -35,7 +36,7 @@ SetPage {
             onStreamFinished: {
                 const l = text.trim().split("\n").pop() || "";
                 if (l.startsWith("error: ")) page.say(l.slice(7), true);
-                else { try { page.desk = JSON.parse(l); page.say((page.desk.desktop === "plasma" ? "Hearth Plasma" : "Hearth Classic") + " opens the next time Desktop Mode starts."); } catch (e) {} }
+                else { try { page.desk = JSON.parse(l); page.say((page.deskNames[page.desk.desktop] || "Hearth Classic") + " opens the next time Desktop Mode starts."); } catch (e) {} }
             }
         }
     }
@@ -92,11 +93,15 @@ SetPage {
     }
     SetChoice {
         title: "Desktop"
-        sub: page.desk.fellBack ? "Hearth Plasma didn't start this time, so Hearth Classic opened instead."
+        sub: page.desk.cosmicFellBack ? "Hearth COSMIC didn't start this time, so Hearth Classic opened instead."
+             : page.desk.fellBack ? (page.deskNames[page.desk.fellBackFrom] || "Hearth Plasma") + " didn't start this time, so Hearth Classic opened instead."
              : "Which desktop Desktop Mode opens. Your files and settings stay the same; Game Mode doesn't change. Hearth Classic always stays installed as the fallback."
         options: [{ value: "classic", label: "Hearth Classic" },
                   { value: "plasma", label: "Hearth Plasma", disabled: !page.desk.plasma },
-                  { value: "gnome", label: "Hearth GNOME (coming later)", disabled: true }]
+                  { value: "gnome", label: "Hearth GNOME", disabled: !page.desk.gnome },
+                  // Hearth COSMIC: Anatase only (docs/COSMIC.md); Hearth Deepin: no edition has Deepin (docs/DEEPIN.md).
+                  { value: "cosmic", label: page.desk.cosmic ? "Hearth COSMIC" : "Hearth COSMIC (not available on this edition)", disabled: !page.desk.cosmic },
+                  { value: "deepin", label: "Hearth Deepin (not available on this edition)", disabled: true }]
         current: page.desk.desktop
         onChosen: v => page.setDesktop(v)
     }

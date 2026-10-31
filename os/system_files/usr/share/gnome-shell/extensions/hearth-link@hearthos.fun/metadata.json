@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-link@hearthos.fun",
+  "name": "Hearth Link",
+  "description": "Hearth Link in Quick Settings: this device, paired devices, a pairing code and sync, through Mantel's hearth-link-settings.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

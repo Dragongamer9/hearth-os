@@ -506,14 +506,14 @@ UNIT
 fi
 # ---- end of Hearth Link
 
-# ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
-# hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
+# ==== Hearth Paint, the emoji picker, Hearth Fonts, Hearth Theater, and Settings › Accessibility (hosts/hearth-paint,
+# hearth-emoji, hearth-fonts, hearth-gamma, hearth-theater, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
 # Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
 # zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries. Colour
 # emoji (Noto) for the picker and the on-screen keyboard's emoji (Desktop Mode draws them with the system's fonts).
 for p in orca speech-dispatcher espeak-ng fontconfig wtype wl-clipboard xprop google-noto-color-emoji-fonts; do dnf5 -y install "$p" || echo "warning: $p isn't available"; done
-for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
@@ -563,6 +563,20 @@ StartupWMClass=hearth-fonts
 DESKTOP
   # Font files open in it (Hearth Files too): its MimeType, made the default with the others (Hearth's default apps, below).
 fi
+if [ -x /usr/bin/hearth-theater ]; then
+  cat > /usr/share/applications/hearth-theater.desktop <<DESKTOP
+[Desktop Entry]
+Name=Theater
+GenericName=Video Sites
+Comment=Your own wall of video sites, full screen and controller-ready
+Exec=/usr/bin/hearth-theater
+Icon=hearth-theater
+Type=Application
+Categories=AudioVideo;Video;
+Keywords=video;tv;movies;anime;shows;watch;streaming;theater;
+StartupWMClass=hearth-theater
+DESKTOP
+fi
 cat > /usr/share/applications/hearth-accessibility.desktop <<DESKTOP
 [Desktop Entry]
 Name=Accessibility
@@ -607,10 +621,12 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 # The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
-# Plasma (hidden by its TryExec where Plasma isn't installed).
-for s in hearth-classic hearth-plasma; do
+# Plasma and Hearth GNOME (hidden by their TryExec where they aren't installed).
+for s in hearth-classic hearth-plasma hearth-gnome; do
   sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
 done
+# Hearth COSMIC (docs/COSMIC.md), hidden by its TryExec if COSMIC didn't install.
+sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-cosmic.desktop > /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
@@ -713,6 +729,60 @@ for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/
 # What Plasma's packages may switch on that Hearth doesn't want: the login screen stays Anatase's (Plasma Login
 # Manager, Hearth's autologin), nothing else becomes the display manager.
 echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || echo none)"
+
+# ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
+# GNOME Shell (Fedora's current release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell
+# extensions (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal, plus GNOME's
+# own apps for the kinds it has (Files, Console, Text Editor: one app of each kind per desktop, through the
+# app-kinds table's GNOME entries below). No GNOME app bundle, no weak dependencies, no GDM: the login screen stays. Hearth Classic stays the
+# fallback whenever GNOME can't start. The size it adds is noted for the image check.
+gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
+dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+dnf5 -y install --setopt=install_weak_deps=False gnome-shell mutter gnome-session gnome-control-center
+dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False xdg-desktop-portal-gnome gnome-settings-daemon \
+  nautilus gnome-console gnome-text-editor || true
+for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
+# Nothing of GNOME's takes the login screen (the display manager is put back if a package changed it) or brings a
+# first-sign-in assistant.
+rpm -q gnome-initial-setup >/dev/null 2>&1 && dnf5 -y remove gnome-initial-setup || true
+rpm -q gnome-tour >/dev/null 2>&1 && dnf5 -y remove gnome-tour || true
+dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+if [ "$dm_before" != "$dm_after" ]; then
+  if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
+fi
+gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
+mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
+echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
+# ------------------------------------------------------------------ Hearth COSMIC (docs/COSMIC.md)
+# System76's COSMIC as another Desktop Mode desktop, in Hearth's look (desktop/cosmic, desktop/shell/desk-cosmic.qml).
+# COSMIC's workspace with its own Files, Terminal and Edit (each desktop shows one app of each kind; in COSMIC these
+# take the place of Hearth's). Not its store, player, wallpapers or system monitor. Its login screen (greetd +
+# cosmic-greeter) and first-run wizard come with Fedora's cosmic-session but are never used: the display manager stays
+# Anatase's (checked below), the wizard's autostart entry goes. Never fails the image: without COSMIC, Settings says
+# "not available" and Hearth Classic and Plasma are unchanged.
+cosmic_before=$(du -sxm /usr | cut -f1)
+dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+# The list (and what's left out) is desktop/cosmic/fedora-packages, shared with cosmic-test.yml.
+cosmic_pkgs=$(grep -v '^#' /usr/share/nimbus/desktop/cosmic/fedora-packages | grep -v '^-' | tr '\n' ' ')
+cosmic_ex=$(grep '^-' /usr/share/nimbus/desktop/cosmic/fedora-packages | sed 's/^-/--exclude=/' | tr '\n' ' ')
+# shellcheck disable=SC2086
+if dnf5 -y install --setopt=install_weak_deps=False $cosmic_ex $cosmic_pkgs; then
+  chmod 755 /usr/share/nimbus/desktop/cosmic/hearth-cosmic /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults
+  HEARTH_COSMIC_OK=1     # Hearth's COSMIC defaults are made further down, once every app's menu entry is in place
+else
+  echo "::warning title=Hearth COSMIC::COSMIC couldn't be installed; this image goes without Hearth COSMIC"
+fi
+# Hearth COSMIC is the way into COSMIC here (Hearth's look, Game Mode, the fallback): COSMIC's own session entry and
+# first-run wizard stay out, and nothing of COSMIC's becomes the display manager.
+rm -f /usr/share/wayland-sessions/cosmic.desktop /etc/xdg/autostart/com.system76.CosmicInitialSetup.desktop
+systemctl disable cosmic-greeter.service greetd.service >/dev/null 2>&1 || true
+dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+if [ "$dm_after" != "$dm_before" ]; then
+  echo "COSMIC changed the display manager ($dm_before -> $dm_after): put back"
+  if [ -n "$dm_before" ]; then ln -sf "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
+fi
+echo "Hearth COSMIC: $(( $(du -sxm /usr | cut -f1) - cosmic_before )) MB added to /usr"
+# ---- end Hearth COSMIC
 
 # ------------------------------------------------------------------ Steam
 # As on the Bazzite-based Hearth OS: Steam installed in the system, its games in ~/.local/share/Steam. Anatase's
@@ -1202,6 +1272,15 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # Calculator stay installed as "… (classic)". Never stops the image build.
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
 
+# ------------------------------------------------------------------ Hearth COSMIC's defaults (docs/COSMIC.md)
+# Made from COSMIC's own now that every Hearth app's menu entry exists (the panel's pinned apps are only the installed
+# ones). Without them, Hearth COSMIC counts as not installed and Hearth Classic opens instead.
+if [ "${HEARTH_COSMIC_OK:-0}" = 1 ]; then
+  python3 /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults /usr/share/cosmic /usr/share/hearth-cosmic/data/cosmic \
+    || { echo "::warning title=Hearth COSMIC::Hearth's COSMIC defaults couldn't be made; Hearth COSMIC is left out"; rm -rf /usr/share/hearth-cosmic/data; }
+fi
+# ---- end Hearth COSMIC's defaults
+
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
 # Desktop Mode's and Game Mode's list (/etc/xdg/nimbus-mimeapps.list, XDG_CURRENT_DESKTOP=Nimbus: it comes before
@@ -1216,6 +1295,19 @@ echo "::notice title=Hearth's default apps::$(cat /tmp/hearth-defaults.json)" ||
 # Lists the base brings that Hearth's session would read after its own (shown, not changed).
 echo "Other default-app lists in the image: $(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
+
+# ------------------------------------------------------------------ one app of each kind per desktop (docs/APP-KINDS.md)
+# >>> app kinds (feature/app-per-desktop)
+# The table /usr/share/hearth/app-kinds.json says which app each desktop shows for each kind (Hearth Classic: Hearth's
+# own; Hearth Plasma: the KDE-based ones; apps with no other of their kind everywhere). hearth-app-kinds writes copies
+# of the menu entries with OnlyShowIn/NotShowIn into /usr/share/hearth/app-kinds/applications (nimbus-session puts it
+# first in XDG_DATA_DIRS, so the packages' own files are never edited), each desktop's default apps
+# (/etc/xdg/<desktop>-mimeapps.list), and stops the build if a desktop would show two apps of one kind or none
+# where one is needed. Runs after Hearth's default apps (above), once every app is in.
+python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.json || { cat /tmp/hearth-app-kinds.json; echo "::error title=app kinds::a desktop would show two apps of one kind, or none (above)"; exit 1; }
+echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)" || true
+chmod 755 /usr/libexec/hearth-app-kinds
+# <<< app kinds
 
 # ------------------------------------------------------------------ boot straight into Hearth
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase

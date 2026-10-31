@@ -1,0 +1,19 @@
+{
+  "parentMode": "user",
+  "showWelcomeDialog": false,
+  "enabledExtensions": [
+    "hearth-theme@hearthos.fun",
+    "hearth-bar@hearthos.fun",
+    "hearth-launcher@hearthos.fun",
+    "hearth-quick@hearthos.fun",
+    "hearth-link@hearthos.fun",
+    "hearth-storage@hearthos.fun",
+    "hearth-gamemode@hearthos.fun",
+    "hearth-pad@hearthos.fun"
+  ],
+  "panel": {
+    "left": ["activities"],
+    "center": [],
+    "right": ["screenRecording", "screenSharing", "dwellClick", "a11y", "keyboard", "quickSettings", "dateMenu"]
+  }
+}

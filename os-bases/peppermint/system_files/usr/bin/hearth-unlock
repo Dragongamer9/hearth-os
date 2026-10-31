@@ -1,0 +1,1051 @@
+#!/usr/bin/python3
+"""hearth-unlock: Hearth OS on Peppermint is a normal writable system. apt and .deb files install anywhere (/usr too),
+kept across restarts, while bootc's updates, rollback, Hearth's automatic fallback and Recovery keep working.
+
+  sudo hearth-unlock                 unlock (the default; also --unlock): writable now and at every start
+  sudo hearth-unlock --lock          locked from the next restart: the system as the image made it (your packages
+                                     stay saved and come back when you unlock again)
+  hearth-unlock --status [--json]    whether it's unlocked, what's saved, the last reapply, a notice for Hearth
+  sudo hearth-unlock --reapply       put your packages back on this version now (done by itself after an update;
+                                     --reapply-later does it in the background)
+  sudo hearth-unlock --resume        use your changes again after a start without them (safe start)
+  sudo hearth-unlock --suspend       start once without your changes next time (Hearth Recovery uses this)
+  sudo hearth-unlock --dismiss       clear the notice Hearth shows
+  sudo hearth-unlock --install-deb FILE.deb | --remove-package NAME
+                                     a .deb on the system itself (the Install Package window); progress lines, JSON
+
+How it works (docs/BASE-PEPPERMINT.md, "Writable system"):
+  - The image's /usr stays read-only underneath. Each OS version (ostree deployment commit) gets its own writable
+    layer, /var/lib/hearth/unlock/layers/<commit>/upper, mounted over /usr as an overlay early at every start
+    (hearth-unlock.service). dpkg's database (/usr/lib/sysimage/dpkg) and apt's auto/manual marks
+    (/usr/lib/sysimage/apt/extended_states) live in /usr, so they always match the files of the same layer.
+  - /etc and /var are what they are on every bootc system: /etc is the machine's own (kept and merged on each
+    update), /var is shared by every version.
+  - An update starts as the clean new image (a new commit has no layer yet). hearth-unlock-reapply.service then puts
+    back what you installed or removed with apt: the record (/var/lib/hearth/unlock/record.json: packages you asked
+    for beyond the image, image packages you removed, copies of .deb files that came from a file) is kept after every
+    dpkg run (dpkg's post-invoke hook, apt's Pre-Install-Pkgs hook). A failure there never blocks starting: it's
+    logged (reapply.log, the journal) and Hearth shows a notice.
+  - The previous version keeps its own layer, untouched by anything done on the new one, so it stays startable as
+    it was: bootc rollback, the automatic fallback (hearth-boot-guard) and Recovery's Go back all reach it.
+  - An install cut off by a power loss or shutdown (dpkg's journal not empty, a package half installed in the layer):
+    that start goes without the layer, and once Hearth is starting it's mounted and dpkg --configure -a / apt-get -f
+    install finish the job (hearth-unlock-reapply.service waits for dpkg at shutdown so this is rare).
+  - What must never run from the layer runs from the image's own /usr (/run/hearth/usr-image, bound before the
+    layer goes over /usr): the boot-menu writers, the automatic fallback, the update's finalizing and background
+    updates, Recovery (BindReadOnlyPaths drop-ins). /etc settings pointing into the layer (a display manager, a unit,
+    a drop-in) are lifted for starts without it by the hearth-etc-guard generator. A safe start does not undo /etc.
+  - A change that stops Hearth from starting: when a start with a layer that holds changes never reached Hearth
+    (Game Mode, Desktop Mode or the login screen for 45 s; hearth-unlock-good.service), the next start leaves the
+    layer off (safe start) and Hearth offers to turn it back on. The kernel option hearth.clean starts once without
+    it, and Hearth Recovery has "Restart without your system changes". Boot-loader packages (GRUB, shim, the kernel,
+    ostree, bootc, dracut) are pinned out of apt (/etc/apt/preferences.d/hearth-boot-chain): the image owns them.
+"""
+import datetime
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+E = os.environ.get
+STATE = E('HEARTH_UNLOCK_STATE', '/var/lib/hearth/unlock')
+LOCKED = E('HEARTH_UNLOCK_LOCKFILE', '/etc/hearth/system-locked')
+USR = E('HEARTH_UNLOCK_USR', '/usr')
+BASELINE = E('HEARTH_UNLOCK_BASELINE', '/usr/share/hearth/apt-baseline.list')
+CMDLINE = E('HEARTH_UNLOCK_CMDLINE', '/proc/cmdline')
+MOUNTINFO = E('HEARTH_UNLOCK_MOUNTINFO', '/proc/self/mountinfo')
+SYSROOT = E('HEARTH_UNLOCK_SYSROOT', '/sysroot')
+DPKG_LOCKS = ('/var/lib/dpkg/lock-frontend', '/var/lib/dpkg/lock')
+ARCHIVES = '/var/cache/apt/archives/'
+SOURCE = 'hearth-usr'
+# The image's own /usr, read-only, for what must never run from the layer: the boot-menu writers, the update's
+# finalizing, Recovery (their drop-ins: BindReadOnlyPaths=-/run/hearth/usr-image:/usr).
+IMAGE_USR = E('HEARTH_UNLOCK_IMAGE_USR', '/run/hearth/usr-image')
+STOP_FLAG = E('HEARTH_UNLOCK_STOP', '/run/hearth/unlock-stop')
+UP_PROCS = ('gamescope', 'gamescope-wl', 'labwc', 'sddm-greeter', 'sddm-greeter-qt6', 'plasmashell',
+            'kwin_wayland', 'cinnamon', 'gnome-shell', 'xfce4-session')
+UP_SECONDS = 45
+PKG = re.compile(r'^[a-z0-9][a-z0-9+.-]{0,99}(:[a-z0-9-]+)?$')
+APT_ENV = {'DEBIAN_FRONTEND': 'noninteractive', 'LC_ALL': 'C', 'APT_LISTCHANGES_FRONTEND': 'none'}
+DPKG_OPTS = ['-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold']
+
+
+class Fail(Exception):
+    pass
+
+
+def log(msg):
+    print(f'hearth-unlock: {msg}', file=sys.stderr, flush=True)
+
+
+def progress(pct, what):
+    print('progress: %d %s' % (max(0, min(100, int(pct))), what), flush=True)
+
+
+def now_iso():
+    return datetime.datetime.now().isoformat(timespec='seconds')
+
+
+# ------------------------------------------------------------------ small file helpers
+def read_json(path, default):
+    try:
+        with open(path) as f:
+            v = json.load(f)
+        return v if isinstance(v, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path, value, mode=0o644):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.hearth-tmp'
+    with open(tmp, 'w') as f:
+        json.dump(value, f, indent=1, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def read_text(path):
+    with open(path) as f:
+        return f.read()
+
+
+def read_lines(path):
+    try:
+        with open(path) as f:
+            return [l.strip() for l in f if l.strip() and not l.startswith('#')]
+    except OSError:
+        return []
+
+
+def run(cmd, timeout=600, env=None, input=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=input,
+                           env=dict(os.environ, **(env or {})))
+        return r.returncode, (r.stdout or '') + (r.stderr or '')
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, str(e)
+
+
+# ------------------------------------------------------------------ which version is running (the layer's name)
+def deploy_from_link(target):
+    """The commit out of an ostree= boot link's target (…/deploy/<os>/deploy/<commit>.<serial>)."""
+    m = re.search(r'/deploy/[^/]+/deploy/([0-9a-f]{64})\.\d+/?$', target or '')
+    return m.group(1) if m else None
+
+
+def booted_from_status(text):
+    """The booted commit from `ostree admin status` (the line marked '*')."""
+    for line in (text or '').splitlines():
+        m = re.match(r'^\* \S+ ([0-9a-f]{64})\.\d+', line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def deployed_from_status(text):
+    """Every commit `ostree admin status` lists (booted, staged, pending, rollback)."""
+    return {m.group(1) for m in re.finditer(r'^[* ] \S+ ([0-9a-f]{64})\.\d+', text or '', re.M)}
+
+
+def layer_id():
+    if E('HEARTH_UNLOCK_ID'):
+        return E('HEARTH_UNLOCK_ID')
+    try:
+        arg = next((a.split('=', 1)[1] for a in read_text(CMDLINE).split() if a.startswith('ostree=')), '')
+    except OSError:
+        arg = ''
+    if arg:
+        try:
+            cid = deploy_from_link(os.path.realpath(SYSROOT + arg))
+            if cid:
+                return cid
+        except OSError:
+            pass
+    code, out = run(['ostree', 'admin', 'status'], timeout=20)
+    return booted_from_status(out) if code == 0 else None
+
+
+def layer_dir(lid):
+    return os.path.join(STATE, 'layers', lid)
+
+
+def load_layer(lid):
+    return read_json(os.path.join(layer_dir(lid), 'layer.json'), {})
+
+
+def save_layer(lid, layer):
+    write_json(os.path.join(layer_dir(lid), 'layer.json'), layer)
+
+
+def update_layer(lid, **changes):
+    """Changes some of a layer's fields, read fresh under a lock: the record (run in the background after every dpkg
+    run), the reapply and the boot step all write layer.json."""
+    os.makedirs(layer_dir(lid), exist_ok=True)
+    with open(os.path.join(STATE, '.layer.lock'), 'w') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        layer = load_layer(lid)
+        layer.update(changes)
+        save_layer(lid, layer)
+    return layer
+
+
+def has_changes(lid):
+    try:
+        with os.scandir(os.path.join(layer_dir(lid), 'upper')) as it:
+            return any(True for _ in it)
+    except OSError:
+        return False
+
+
+# ------------------------------------------------------------------ mounts
+def overlay_on(mountinfo_text, usr=USR):
+    """Whether Hearth's layer is mounted over /usr (mountinfo: … mountpoint … - fstype source options)."""
+    for line in (mountinfo_text or '').splitlines():
+        left, _, right = line.partition(' - ')
+        f, r = left.split(), right.split()
+        if len(f) >= 5 and len(r) >= 2 and f[4] == usr and r[0] == 'overlay' and r[1] == SOURCE:
+            return True
+    return False
+
+
+def mounted():
+    try:
+        return overlay_on(read_text(MOUNTINFO))
+    except OSError:
+        return False
+
+
+def mount_cmd(lid, usr=USR):
+    d = layer_dir(lid)
+    opts = f'lowerdir={usr},upperdir={d}/upper,workdir={d}/work,redirect_dir=off,index=off,metacopy=off'
+    return ['mount', '-t', 'overlay', SOURCE, '-o', opts, usr]
+
+
+def mount_layer(lid):
+    if mounted():
+        return True
+    d = layer_dir(lid)
+    for sub in ('upper', 'work'):
+        os.makedirs(os.path.join(d, sub), mode=0o755, exist_ok=True)
+    os.chmod(d, 0o755)
+    code, out = run(mount_cmd(lid), timeout=20)
+    if code != 0:
+        log(f'couldn\'t mount the writable layer: {out.strip()}')
+        return False
+    return True
+
+
+def locked():
+    return os.path.exists(LOCKED)
+
+
+def clean_asked():
+    try:
+        return 'hearth.clean' in read_text(CMDLINE).split()
+    except OSError:
+        return False
+
+
+# ------------------------------------------------------------------ the record of your apt changes
+def record_path():
+    return os.path.join(STATE, 'record.json')
+
+
+def load_record():
+    r = read_json(record_path(), {})
+    return {'manual': sorted(set(r.get('manual') or [])), 'removed': sorted(set(r.get('removed') or [])),
+            'debs': dict(r.get('debs') or {}), 'updated': r.get('updated', '')}
+
+
+def save_record(rec):
+    rec['updated'] = now_iso()
+    write_json(record_path(), rec)
+
+
+def merge_record(rec, prev, cur, baseline, installed):
+    """One step of the record: `prev` and `cur` are apt's manual packages before and after, `baseline` the image's
+    own manual packages, `installed` what's installed now. Added beyond the image: kept; gone: dropped; an image
+    package taken off: remembered as removed (and forgotten again when it comes back)."""
+    added, gone = cur - prev, prev - cur
+    manual = (set(rec['manual']) | (added - baseline)) - gone
+    removed = set(rec['removed'])
+    removed |= {p for p in gone & baseline if p not in installed}
+    removed -= added
+    removed = {p for p in removed if p not in installed}
+    debs = {k: v for k, v in rec['debs'].items() if k in manual}
+    return {'manual': sorted(manual), 'removed': sorted(removed), 'debs': debs, 'updated': rec.get('updated', '')}
+
+
+def apt_manual():
+    code, out = run(['apt-mark', 'showmanual'], timeout=120)
+    if code != 0:
+        raise Fail('apt-mark showmanual failed: ' + out.strip()[-200:])
+    return {l.strip() for l in out.splitlines() if PKG.match(l.strip())}
+
+
+def installed_set():
+    code, out = run(['dpkg-query', '-W', '-f', '${Package}\t${binary:Package}\t${db:Status-Abbrev}\n'], timeout=120)
+    return parse_installed(out)
+
+
+def parse_installed(text):
+    """dpkg-query lines (name, name:arch, status) → installed names, with and without the architecture."""
+    got = set()
+    for line in (text or '').splitlines():
+        f = line.split('\t')
+        if len(f) == 3 and f[2].strip()[1:2] == 'i':
+            got.update({f[0].strip(), f[1].strip()})
+    return got
+
+
+def lock_free(paths=DPKG_LOCKS):
+    for p in paths:
+        try:
+            fd = os.open(p, os.O_RDWR)
+        except OSError:
+            continue
+        try:
+            fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+        except OSError:
+            return False
+        finally:
+            os.close(fd)
+    return True
+
+
+def cmd_record(wait=900):
+    """After dpkg ran (its post-invoke hook starts this): once apt and dpkg are done, the record follows."""
+    lid = layer_id()
+    if not lid or not mounted():
+        return 0
+    start = time.monotonic()
+    while not lock_free():
+        if time.monotonic() - start > wait:
+            log('apt is still busy: the record waits for the next change')
+            return 0
+        time.sleep(2)
+    os.makedirs(STATE, exist_ok=True)
+    with open(os.path.join(STATE, '.record.lock'), 'w') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        layer = load_layer(lid)
+        cur = apt_manual()
+        baseline = set(read_lines(BASELINE))
+        # A layer seen for the first time starts from the image itself: its manual packages are the baseline.
+        prev = set(layer['seen']) if isinstance(layer.get('seen'), list) else baseline
+        rec = merge_record(load_record(), prev, cur, baseline, installed_set())
+        for name in os.listdir(os.path.join(STATE, 'debs')) if os.path.isdir(os.path.join(STATE, 'debs')) else []:
+            if name not in rec['debs'].values():
+                try:
+                    os.remove(os.path.join(STATE, 'debs', name))
+                except OSError:
+                    pass
+        save_record(rec)
+        update_layer(lid, seen=sorted(cur))
+    return 0
+
+
+def cmd_record_later():
+    """dpkg's post-invoke hook: never fails, never waits (dpkg is still holding its lock)."""
+    try:
+        if not os.path.exists('/run/ostree-booted') or not mounted():
+            return 0
+        if os.path.isdir('/run/systemd/system') and shutil.which('systemd-run'):
+            if run(['systemd-run', '--no-block', '--collect', '--quiet', '--unit=hearth-unlock-record',
+                    '/usr/bin/hearth-unlock', '--record'], timeout=20)[0] == 0:
+                return 0
+        subprocess.Popen([sys.executable, os.path.realpath(__file__), '--record'], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception as e:  # never in dpkg's way
+        log(f'record: {e}')
+    return 0
+
+
+def deb_fields(path):
+    code, out = run(['dpkg-deb', '-f', path, 'Package', 'Version', 'Architecture'], timeout=60)
+    f = {}
+    for line in out.splitlines():
+        k, _, v = line.partition(':')
+        f[k.strip()] = v.strip()
+    return f if code == 0 and PKG.match(f.get('Package', '')) else None
+
+
+def stash_deb(path):
+    """A copy of a .deb that came from a file (not from a repository), so an update can put it back."""
+    p = os.path.realpath(path)
+    debs = os.path.join(STATE, 'debs')
+    if not p.endswith('.deb') or p.startswith(ARCHIVES) or p.startswith(debs + '/') or not os.path.isfile(p):
+        return None
+    f = deb_fields(p)
+    if not f:
+        return None
+    os.makedirs(debs, exist_ok=True)
+    name = f['Package'] + '.deb'
+    tmp = os.path.join(debs, '.' + name + '.tmp')
+    shutil.copyfile(p, tmp)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(debs, name))
+    with open(os.path.join(STATE, '.record.lock'), 'w') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        rec = load_record()
+        rec['debs'][f['Package']] = name
+        save_record(rec)
+    return f['Package']
+
+
+def cmd_stash_debs():
+    """apt's DPkg::Pre-Install-Pkgs hook: the .deb files about to be installed, one per line on stdin."""
+    try:
+        if not os.path.exists('/run/ostree-booted') or not mounted():
+            sys.stdin.read()
+            return 0
+        for line in sys.stdin.read().splitlines():
+            try:
+                stash_deb(line.strip())
+            except Exception as e:
+                log(f'keeping a copy of {line.strip()}: {e}')
+    except Exception as e:  # never in apt's way
+        log(f'stash: {e}')
+    return 0
+
+
+# ------------------------------------------------------------------ notices for Hearth
+def notice_path():
+    return os.path.join(STATE, 'notice.json')
+
+
+def set_notice(kind, title, text, **extra):
+    write_json(notice_path(), dict({'kind': kind, 'title': title, 'text': text, 'at': now_iso()}, **extra))
+
+
+# ------------------------------------------------------------------ at every start
+def mountpoint_in(mountinfo_text, path):
+    return any(len(l.split()) > 4 and l.split()[4] == path for l in (mountinfo_text or '').splitlines())
+
+
+def bind_image_usr():
+    """IMAGE_USR: the image's /usr (before the layer goes over it), read-only and private, so the layer mounted over
+    /usr afterwards doesn't reach it. False if it couldn't be made (those units then run as before)."""
+    try:
+        info = read_text(MOUNTINFO)
+    except OSError:
+        info = ''
+    if mountpoint_in(info, IMAGE_USR):
+        return True
+    if overlay_on(info):
+        return False   # too late: /usr already has the layer
+    os.makedirs(IMAGE_USR, exist_ok=True)
+    for cmd in (['mount', '--bind', USR, IMAGE_USR], ['mount', '--make-private', IMAGE_USR],
+                ['mount', '-o', 'remount,bind,ro', IMAGE_USR]):
+        code, out = run(cmd, timeout=5)
+        if code != 0:
+            log(f'the image\'s /usr for the boot-menu writers: {" ".join(cmd)}: {out.strip()}')
+            if cmd[1] != '--bind':
+                run(['umount', IMAGE_USR], timeout=5)
+            return False
+    return True
+
+
+DPKG_BAD = re.compile(r'^Status: \S+ (reinstreq|\S+ (half-installed|half-configured|unpacked|triggers-awaited))\s*$', re.M)
+
+
+def dpkg_interrupted(upper):
+    """dpkg was stopped half way in this layer (the device turned off during an install): its journal (updates/)
+    isn't empty, or a package is half installed or configured."""
+    d = os.path.join(upper, 'lib', 'sysimage', 'dpkg')
+    try:
+        if any(not n.startswith('tmp.') for n in os.listdir(os.path.join(d, 'updates'))):
+            return True
+    except OSError:
+        pass
+    try:
+        return bool(DPKG_BAD.search(read_text(os.path.join(d, 'status'))))
+    except OSError:
+        return False
+
+
+def boot_decision(lid_known, is_locked, clean, suspended, changes, pending, interrupted=False):
+    """What this start does with the layer: 'mount', or why not."""
+    if not lid_known:
+        return 'unknown'
+    if is_locked:
+        return 'locked'
+    if clean:
+        return 'clean'
+    if suspended:
+        return 'suspended'
+    if interrupted:
+        return 'repair'
+    if changes and pending >= 1:
+        return 'safe-start'
+    return 'mount'
+
+
+def new_layer(lid):
+    rec = load_record()
+    todo = bool(rec['manual'] or rec['removed'])
+    layer = {'created': now_iso(), 'pending': 0, 'suspended': False,
+             'reapply': {'state': 'pending' if todo else 'none'}}
+    save_layer(lid, layer)
+    return layer
+
+
+def cmd_boot():
+    """hearth-unlock.service, early at every start. Never fails the start: at worst the system stays read-only."""
+    try:
+        bind_image_usr()
+        lid = layer_id()
+        layer = (load_layer(lid) or new_layer(lid)) if lid else {}
+        upper = os.path.join(layer_dir(lid), 'upper') if lid else ''
+        d = boot_decision(bool(lid), locked(), clean_asked(), layer.get('suspended', False), bool(lid) and has_changes(lid),
+                          int(layer.get('pending', 0) or 0), bool(lid) and dpkg_interrupted(upper))
+        if d == 'repair':
+            update_layer(lid, repair=True)
+            set_notice('dpkg-interrupted', 'Finishing an interrupted install',
+                       'The device turned off while packages were being installed, so Hearth started without your '
+                       'system changes this time. It finishes the install in the background; the next start has '
+                       'them again.')
+            log('dpkg was interrupted in this layer: starting without it; the install is finished after the start')
+        elif d == 'safe-start':
+            update_layer(lid, suspended=True, pending=0, suspendedAt=now_iso(), suspendedWhy='start')
+            set_notice('safe-start', 'Started without your system changes',
+                       'The last start with the packages you added never reached Hearth, so Hearth started without '
+                       'them this time. Turn them back on in Settings › Updates & Recovery, or keep them off.')
+            log('the last start with your changes never reached Hearth: starting without them (safe start)')
+        elif d == 'mount':
+            if mount_layer(lid):
+                log(f'writable: layer {lid[:12]} over {USR}')
+                if has_changes(lid):   # counted only once it's really there (a failed mount is no reason for a safe start)
+                    update_layer(lid, pending=int(layer.get('pending', 0) or 0) + 1)
+        else:
+            log(f'not mounting the writable layer: {d}')
+        # /etc/ld.so.cache matches the /usr this start has (-X: only the cache, no links written into /usr)
+        run(['ldconfig', '-X'], timeout=20)
+    except Exception as e:
+        log(f'boot: {e}')
+    return 0
+
+
+def wanted_units(upper, etc='/etc/systemd/system'):
+    """Units enabled to start with the system whose unit files your layer brought."""
+    sysd = os.path.join(upper, 'lib', 'systemd', 'system')
+    if not os.path.isdir(sysd):
+        return []
+    have = set(os.listdir(sysd))
+    out = []
+    for t in ('multi-user.target', 'graphical.target', 'default.target', 'timers.target', 'sockets.target',
+              'network-online.target', 'bluetooth.target'):
+        for base in (etc, sysd):
+            w = os.path.join(base, t + '.wants')
+            if os.path.isdir(w):
+                out += [u for u in sorted(os.listdir(w)) if u in have and u not in out]
+    return out
+
+
+def cmd_start_units():
+    """hearth-unlock-units.service, in parallel with the rest of the start: systemd loaded its units before the layer
+    was there, so services, device rules and kernel modules the layer brought are picked up now."""
+    try:
+        lid = layer_id()
+        if not lid or not mounted():
+            return 0
+        upper = os.path.join(layer_dir(lid), 'upper')
+        if os.path.isdir(os.path.join(upper, 'lib', 'modules')):
+            run(['depmod', '-a'], timeout=120)
+            run(['systemctl', 'restart', '--no-block', 'systemd-modules-load.service'], timeout=30)
+        udev = os.path.isdir(os.path.join(upper, 'lib', 'udev'))
+        if udev:
+            run(['udevadm', 'control', '--reload'], timeout=30)
+            run(['udevadm', 'trigger', '--action=change'], timeout=60)   # the layer's rules for devices already there
+        units = wanted_units(upper)
+        if os.path.isdir(os.path.join(upper, 'lib', 'systemd')):
+            run(['systemctl', 'daemon-reload'], timeout=120)
+        for u in units:
+            run(['systemctl', 'start', '--no-block', u], timeout=30)
+        if units:
+            log('started: ' + ' '.join(units))
+    except Exception as e:
+        log(f'units: {e}')
+    return 0
+
+
+def up_now():
+    return any(run(['pgrep', '-x', p], timeout=10)[0] == 0 for p in UP_PROCS)
+
+
+def cmd_watch(limit=1200):
+    """hearth-unlock-good.service: once Hearth has been up for 45 s, this start with the layer counts as good."""
+    lid = layer_id()
+    if not lid:
+        return 0
+    since, start = None, time.monotonic()
+    while time.monotonic() - start < limit:
+        if up_now():
+            since = since or time.monotonic()
+            if time.monotonic() - since >= UP_SECONDS:
+                if load_layer(lid).get('pending') and mounted():
+                    update_layer(lid, pending=0)
+                return 0
+        else:
+            since = None
+        time.sleep(5)
+    return 0
+
+
+def prune_layers(deployed, booted=None, current=None):
+    """Layers of versions ostree no longer has. Only when ostree's answer makes sense: it lists versions, says which
+    one is running, and that's the one running (never on an empty or odd answer)."""
+    if not deployed or not booted or booted not in deployed or (current and booted != current):
+        return []
+    gone = []
+    base = os.path.join(STATE, 'layers')
+    for name in os.listdir(base) if os.path.isdir(base) else []:
+        if re.fullmatch(r'[0-9a-f]{64}', name) and name not in deployed:
+            shutil.rmtree(os.path.join(base, name), ignore_errors=True)
+            gone.append(name)
+    return gone
+
+
+def cmd_after_start():
+    """hearth-unlock-reapply.service, once the network is up: tidy old layers, then (first start of a new version)
+    put your packages back. Never fails the start."""
+    try:
+        try:
+            os.remove(STOP_FLAG)
+        except OSError:
+            pass
+        lid = layer_id()
+        code, out = run(['ostree', 'admin', 'status'], timeout=120)
+        if code == 0:
+            for g in prune_layers(deployed_from_status(out), booted_from_status(out), lid):
+                log(f'removed the layer of a version that is gone ({g[:12]})')
+        if not lid or locked():
+            return 0
+        if load_layer(lid).get('repair'):
+            repair(lid)
+        if not mounted():
+            return 0
+        if (load_layer(lid).get('reapply') or {}).get('state') in ('pending', 'running'):
+            reapply(lid)
+    except Exception as e:
+        log(f'after start: {e}')
+    return 0
+
+
+# ------------------------------------------------------------------ putting your packages back
+def stopping():
+    return os.path.exists(STOP_FLAG)
+
+
+def cmd_stop_wait(limit=270):
+    """hearth-unlock-reapply.service's ExecStop: no new apt step starts, and the one running (dpkg) finishes before
+    the device turns off. A dpkg stopped half way would leave the layer broken (the next start then repairs it)."""
+    try:
+        os.makedirs(os.path.dirname(STOP_FLAG), exist_ok=True)
+        open(STOP_FLAG, 'w').close()
+        start = time.monotonic()
+        while time.monotonic() - start < limit:
+            busy = run(['pgrep', '-x', 'dpkg'], timeout=10)[0] == 0 or run(['pgrep', '-x', 'apt-get'], timeout=10)[0] == 0
+            if not busy and lock_free():
+                return 0
+            time.sleep(2)
+        log('apt is still busy at shutdown')
+    except Exception as e:
+        log(f'stop: {e}')
+    return 0
+
+
+def repair(lid):
+    """After a start without the layer because dpkg was interrupted in it: mount it now (Hearth is starting from the
+    image) and let dpkg and apt finish. Fixed: the next start uses it again. Not fixed: the next start is without it
+    again, with the notice."""
+    upper = os.path.join(layer_dir(lid), 'upper')
+    if locked() or not mount_layer(lid):
+        return False
+    run(['dpkg', '--configure', '-a'] + ['--force-confdef', '--force-confold'], timeout=1800, env=APT_ENV)
+    run(['apt-get', '-f', 'install', '-y'] + DPKG_OPTS, timeout=1800, env=APT_ENV)
+    if dpkg_interrupted(upper):
+        set_notice('dpkg-interrupted', 'An interrupted install couldn\'t be finished',
+                   'The device turned off while packages were being installed and Hearth couldn\'t finish it, so it '
+                   'starts without your system changes. Run sudo dpkg --configure -a in a terminal, or turn them back '
+                   'on in Settings › Updates & Recovery to try again.')
+        log('the interrupted install couldn\'t be finished: the next start is without the layer again')
+        return False
+    update_layer(lid, repair=False)
+    if read_json(notice_path(), {}).get('kind') == 'dpkg-interrupted':
+        os.remove(notice_path())
+    cmd_start_units()
+    log('the interrupted install is finished')
+    return True
+
+
+def apt_install_cmd(names):
+    return ['apt-get', 'install', '-y'] + DPKG_OPTS + list(names)
+
+
+def removes_only(sim_text, pkg):
+    """`apt-get -s remove PKG` output: does it take off only that package?"""
+    gone = {m.group(1).split(':')[0] for m in re.finditer(r'^Remv (\S+)', sim_text or '', re.M)}
+    return gone == {pkg}
+
+
+def plan_reapply(rec, installed, has_candidate, deb_exists):
+    """(to_remove, repo_names, deb_files, missing) for this version."""
+    to_remove = [p for p in rec['removed'] if p in installed]
+    repo, files, missing = [], [], []
+    for p in rec['manual']:
+        if p in installed:
+            continue
+        deb = rec['debs'].get(p)
+        if deb and deb_exists(deb):
+            files.append(os.path.join(STATE, 'debs', deb))
+        elif has_candidate(p):
+            repo.append(p)
+        else:
+            missing.append(p)
+    return to_remove, repo, files, missing
+
+
+def has_candidate(pkg):
+    code, out = run(['apt-cache', 'policy', pkg], timeout=60)
+    m = re.search(r'Candidate:\s*(\S+)', out)
+    return code == 0 and bool(m) and m.group(1) != '(none)'
+
+
+def pause_reapply(lid):
+    r = {'state': 'pending', 'at': now_iso(), 'error': 'shutdown'}
+    update_layer(lid, reapply=r)
+    log('shutting down: the rest of the reapply waits for the next start')
+    return r
+
+
+def reapply(lid, say=progress):
+    if not load_layer(lid):
+        new_layer(lid)
+    update_layer(lid, reapply={'state': 'running', 'at': now_iso()})
+    logf = os.path.join(STATE, 'reapply.log')
+    lines = []
+
+    def note(msg):
+        lines.append(f'{now_iso()} {msg}')
+        log(msg)
+        try:
+            with open(logf, 'w') as f:
+                f.write('\n'.join(lines) + '\n')
+        except OSError:
+            pass
+
+    rec = load_record()
+    say(5, 'Getting Debian\'s list of packages')
+    ok_update = False
+    for attempt in range(8):   # the network may still be coming up (the service doesn't wait for it)
+        if stopping():
+            return pause_reapply(lid)
+        code, out = run(['apt-get', 'update'], timeout=600, env=APT_ENV)
+        if code == 0:
+            ok_update = True
+            break
+        note(f'apt-get update failed (try {attempt + 1}): {out.strip()[-300:]}')
+        time.sleep(20)
+    lists = os.path.isdir('/var/lib/apt/lists') and any(n.endswith('Packages') or 'Packages' in n
+                                                        for n in os.listdir('/var/lib/apt/lists'))
+    if not ok_update and not lists:
+        r = {'state': 'pending', 'at': now_iso(), 'error': 'offline'}
+        update_layer(lid, reapply=r)
+        set_notice('reapply-offline', 'Your packages come back when you\'re online',
+                   'This Hearth OS version started without the packages you added, because Debian couldn\'t be '
+                   'reached. They are put back by themselves at the next start that\'s online.')
+        return r
+    installed = installed_set()
+    to_remove, repo, files, missing = plan_reapply(rec, installed, has_candidate,
+                                                   lambda d: os.path.isfile(os.path.join(STATE, 'debs', d)))
+    failed = list(missing)
+    for p in missing:
+        note(f'{p}: not in any repository now, and no saved .deb')
+    done_rm = []
+    for p in to_remove:
+        if stopping():
+            return pause_reapply(lid)
+        code, out = run(['apt-get', '-s', 'remove', p], timeout=300, env=APT_ENV)
+        if code == 0 and removes_only(out, p):
+            code, out = run(['apt-get', 'remove', '-y'] + DPKG_OPTS + [p], timeout=1800, env=APT_ENV)
+            if code == 0:
+                done_rm.append(p)
+                continue
+        note(f'{p}: left installed (removing it would take more with it on this version, or failed)')
+    want = repo + files
+    say(20, f'Putting back {len(want)} package{"s" if len(want) != 1 else ""}')
+    if want:
+        code, out = run(apt_install_cmd(want), timeout=3600, env=APT_ENV)
+        if code != 0:
+            note('all at once failed; one at a time: ' + out.strip()[-400:])
+            for i, w in enumerate(want):
+                if stopping():
+                    return pause_reapply(lid)
+                say(20 + 75 * i / max(1, len(want)), f'Putting back {os.path.basename(w)}')
+                c, o = run(apt_install_cmd([w]), timeout=1800, env=APT_ENV)
+                if c != 0:
+                    failed.append(os.path.basename(w)[:-4] if w.endswith('.deb') else w)
+                    note(f'{w}: {o.strip()[-300:]}')
+    state = 'failed' if failed else 'done'
+    result = {'state': state, 'at': now_iso(), 'installed': len(want) - (len(failed) - len(missing)),
+              'removed': done_rm, 'failed': sorted(set(failed))}
+    update_layer(lid, reapply=result)
+    note(f'reapply {state}: {len(want)} to install, {len(done_rm)} removed, failed: {", ".join(sorted(set(failed))) or "none"}')
+    if failed:
+        set_notice('reapply-failed', 'Some of your packages didn\'t come back',
+                   f'After the update, Hearth couldn\'t put back: {", ".join(sorted(set(failed)))}. Everything else '
+                   'is back. Details: /var/lib/hearth/unlock/reapply.log; try again with sudo hearth-unlock --reapply.',
+                   failed=sorted(set(failed)))
+    try:
+        cmd_record(wait=60)
+    except Exception as e:
+        log(f'record after reapply: {e}')
+    say(100, 'Done')
+    return result
+
+
+# ------------------------------------------------------------------ status and the switches
+def status():
+    lid = layer_id()
+    layer = load_layer(lid) if lid else {}
+    rec = load_record()
+    is_locked, is_mounted = locked(), mounted()
+    if is_mounted and not is_locked:
+        state = 'unlocked'
+    elif is_mounted and is_locked:
+        state = 'locks-at-restart'
+    elif not is_locked and layer.get('suspended'):
+        state = 'suspended'
+    elif not is_locked and layer.get('repair'):
+        state = 'repairing'
+    elif not is_locked:
+        state = 'unlocks-at-restart' if lid else 'unavailable'
+    else:
+        state = 'locked'
+    return {'available': True, 'state': state, 'unlocked': not is_locked, 'writable': is_mounted, 'locked': is_locked,
+            'suspended': bool(layer.get('suspended')), 'repair': bool(layer.get('repair')), 'version': (lid or '')[:12],
+            'packages': rec['manual'], 'removed': rec['removed'], 'debs': sorted(rec['debs']),
+            'reapply': layer.get('reapply') or {}, 'notice': read_json(notice_path(), {}) or None}
+
+
+def need_root():
+    if os.geteuid() != 0:
+        raise Fail('needs root: run it with sudo')
+
+
+def start_reapply_service():
+    run(['systemctl', 'start', '--no-block', 'hearth-unlock-reapply.service'], timeout=30)
+
+
+def cmd_unlock():
+    need_root()
+    if os.path.exists(LOCKED):
+        os.remove(LOCKED)
+    lid = layer_id()
+    if not lid:
+        raise Fail('this isn\'t a running Hearth OS image')
+    if not load_layer(lid):
+        new_layer(lid)
+    layer = update_layer(lid, suspended=False, pending=0)   # asked for on a running system: this start is a good one
+    n = read_json(notice_path(), {})
+    if n.get('kind') == 'safe-start':
+        os.remove(notice_path())
+    if layer.get('repair'):
+        repair(lid)
+    if not mount_layer(lid):
+        raise Fail('couldn\'t make the system writable now; it will be at the next restart')
+    cmd_start_units()
+    if (layer.get('reapply') or {}).get('state') == 'pending':
+        start_reapply_service()
+    return status()
+
+
+def cmd_lock():
+    need_root()
+    os.makedirs(os.path.dirname(LOCKED), exist_ok=True)
+    with open(LOCKED, 'w') as f:
+        f.write('# Hearth OS (Peppermint): the system starts as the image made it. Remove this file (or run\n'
+                '# sudo hearth-unlock) to make it writable again; your packages are kept until then.\n')
+    return status()
+
+
+def cmd_suspend():
+    need_root()
+    lid = layer_id()
+    if lid:
+        if not load_layer(lid):
+            new_layer(lid)
+        update_layer(lid, suspended=True, pending=0, suspendedAt=now_iso(), suspendedWhy='asked')
+        set_notice('safe-start', 'Started without your system changes',
+                   'You asked Hearth to start without the packages you added. Turn them back on in Settings › '
+                   'Updates & Recovery when you\'re ready.')
+    return status()
+
+
+def cmd_reapply_later():
+    """Settings' Try again: put your packages back in the background (hearth-unlock-reapply.service)."""
+    need_root()
+    need_writable()
+    lid = layer_id()
+    update_layer(lid, reapply={'state': 'pending', 'at': now_iso()})
+    start_reapply_service()
+    return status()
+
+
+def cmd_dismiss():
+    need_root()
+    try:
+        os.remove(notice_path())
+    except FileNotFoundError:
+        pass
+    return status()
+
+
+def need_writable():
+    if not mounted():
+        raise Fail('the system is locked: unlock it first (Settings › Updates & Recovery, or sudo hearth-unlock)')
+
+
+def apt_status_line(line, lo, hi):
+    """apt's Status-Fd lines → (percent, text) for the window."""
+    m = re.match(r'^(dlstatus|pmstatus):[^:]*:([\d.]+):(.*)$', line)
+    if not m:
+        return None
+    pct = float(m.group(2))
+    if m.group(1) == 'dlstatus':
+        return lo + (hi - lo) * 0.4 * pct / 100, 'Downloading'
+    return lo + (hi - lo) * (0.4 + 0.6 * pct / 100), m.group(3).strip()
+
+
+def apt_stream(cmd, lo, hi, timeout=3600):
+    p = subprocess.Popen(cmd + ['-o', 'APT::Status-Fd=1'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, env=dict(os.environ, **APT_ENV))
+    tail = []
+    start = time.monotonic()
+    for line in p.stdout:
+        line = line.rstrip('\n')
+        pr = apt_status_line(line, lo, hi)
+        if pr:
+            progress(*pr)
+        elif line.strip():
+            tail = (tail + [line.strip()])[-8:]
+        if time.monotonic() - start > timeout:
+            p.kill()
+            break
+    return p.wait(), tail
+
+
+def cmd_install_deb(path):
+    need_root()
+    need_writable()
+    p = os.path.realpath(path)
+    if not os.path.isfile(p) or not p.endswith('.deb'):
+        raise Fail('that isn\'t a .deb file')
+    f = deb_fields(p)
+    if not f:
+        raise Fail('this .deb file doesn\'t name its package')
+    progress(3, 'Keeping a copy for updates')
+    stash_deb(p)
+    progress(5, 'Getting Debian\'s list of packages')
+    run(['apt-get', 'update'], timeout=600, env=APT_ENV)
+    code, tail = apt_stream(['apt-get', 'install', '-y'] + DPKG_OPTS + [p], 10, 95)
+    if code != 0:
+        raise Fail(f'couldn\'t install {f["Package"]} ({tail[-1] if tail else "apt-get failed"})')
+    cmd_record(wait=120)
+    progress(100, 'Installed')
+    return {'ok': True, 'package': f['Package'], 'version': f.get('Version', ''), 'native': True}
+
+
+def cmd_remove_package(name):
+    need_root()
+    need_writable()
+    if not PKG.match(name or ''):
+        raise Fail('not a package name')
+    code, tail = apt_stream(['apt-get', 'remove', '-y'] + DPKG_OPTS + [name], 10, 95, timeout=1800)
+    if code != 0:
+        raise Fail(f'couldn\'t remove {name} ({tail[-1] if tail else "apt-get failed"})')
+    cmd_record(wait=120)
+    progress(100, 'Removed')
+    return {'ok': True, 'package': name}
+
+
+def human_status(s):
+    words = {'unlocked': 'Unlocked: apt and .deb files install anywhere, kept across restarts.',
+             'locks-at-restart': 'Writable now; locked from the next restart.',
+             'unlocks-at-restart': 'Unlocked; writable from the next restart.',
+             'suspended': 'Unlocked, but this start is without your changes (safe start). sudo hearth-unlock --resume',
+             'repairing': 'Unlocked; this start is without your changes while an interrupted install is finished.',
+             'locked': 'Locked: the system is as the image made it.',
+             'unavailable': 'Not a running Hearth OS image.'}
+    out = [words.get(s['state'], s['state'])]
+    out.append(f'Your packages: {", ".join(s["packages"]) or "none"}')
+    if s['removed']:
+        out.append(f'Image packages you removed: {", ".join(s["removed"])}')
+    r = s['reapply']
+    if r.get('state') and r.get('state') != 'none':
+        out.append(f'Last reapply on this version: {r.get("state")} {r.get("at", "")}'
+                   + (f' (failed: {", ".join(r["failed"])})' if r.get('failed') else ''))
+    if s['notice']:
+        out.append(f'Notice: {s["notice"].get("title")}: {s["notice"].get("text")}')
+    return '\n'.join(out)
+
+
+def main(argv):
+    a = argv[1:]
+    c = a[0] if a else '--unlock'
+    try:
+        if c == '--boot':
+            return cmd_boot()
+        if c == '--start-units':
+            return cmd_start_units()
+        if c == '--watch':
+            return cmd_watch()
+        if c == '--after-start':
+            return cmd_after_start()
+        if c == '--stop-wait':
+            return cmd_stop_wait()
+        if c == '--record':
+            return cmd_record()
+        if c == '--record-later':
+            return cmd_record_later()
+        if c == '--stash-debs':
+            return cmd_stash_debs()
+        if c == '--status':
+            s = status()
+            print(json.dumps(s) if '--json' in a else human_status(s))
+            return 0
+        if c == '--reapply':
+            need_root()
+            need_writable()
+            lid = layer_id()
+            print(json.dumps(reapply(lid)))
+            return 0
+        if c == '--install-deb' and len(a) == 2:
+            print(json.dumps(cmd_install_deb(a[1])))
+            return 0
+        if c == '--remove-package' and len(a) == 2:
+            print(json.dumps(cmd_remove_package(a[1])))
+            return 0
+        fn = {'--unlock': cmd_unlock, '--resume': cmd_unlock, '--lock': cmd_lock, '--suspend': cmd_suspend,
+              '--dismiss': cmd_dismiss, '--reapply-later': cmd_reapply_later}.get(c)
+        if fn and a[1:] in ([], ['--json']):
+            s = fn()
+            print(json.dumps(s) if '--json' in a or not sys.stdout.isatty() else human_status(s))
+            return 0
+        print(__doc__.split('\n\n')[1])
+        return 2
+    except Fail as e:
+        print(f'error: {e}', flush=True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Hearth Quick Access
+Comment=Volume, brightness, Wi-Fi, performance, the keyboard and Game Mode
+Exec=/usr/share/nimbus/desktop/cosmic/hearth-cosmic quick
+Icon=hearth-settings
+Type=Application
+Categories=System;
+OnlyShowIn=COSMIC;

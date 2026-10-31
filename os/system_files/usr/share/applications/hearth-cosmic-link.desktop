@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Hearth Link
+Comment=Your paired Hearth devices, pairing and Hearth Storage
+Exec=/usr/share/nimbus/desktop/cosmic/hearth-cosmic link
+Icon=hearth-share
+Type=Application
+Categories=System;
+OnlyShowIn=COSMIC;
+Actions=storage;
+
+[Desktop Action storage]
+Name=Hearth Storage
+Exec=/usr/share/nimbus/desktop/cosmic/hearth-cosmic storage

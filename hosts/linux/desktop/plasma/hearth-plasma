@@ -13,8 +13,11 @@ PipeWire's wpctl, brightness from brightnessctl and Wi-Fi from nmcli, as in Mant
   hearth-plasma quick             JSON: {"volume": 0-150|null, "muted", "brightness": 0-100|null, "wifi": true|false|null,
                                   "profile": "power-saver|balanced|performance"|""}
   hearth-plasma quick-set KEY VAL volume N | mute on|off|toggle | brightness N | wifi on|off | profile NAME
-  hearth-plasma desktop           JSON: {"desktop": "classic|plasma", "plasma": installed?, "fellBack": bool}
-  hearth-plasma desktop-set NAME  classic | plasma (Settings' desktop choice; Hearth Classic is always there)
+  hearth-plasma desktop           JSON: {"desktop": "classic|plasma|gnome|cosmic", "plasma": installed?, "gnome": installed?,
+                                  "fellBack": bool, "fellBackFrom": "plasma|gnome|", "cosmic": installed?,
+                                  "cosmicFellBack": bool, "deepin": false (docs/DEEPIN.md)}
+  hearth-plasma desktop-set NAME  classic | plasma | gnome | cosmic (Settings' desktop choice; Hearth Classic is always there)
+Hearth GNOME's Shell extensions use this same helper through desktop/gnome/hearth-gnome (docs/GNOME.md).
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import importlib.machinery
@@ -34,8 +37,17 @@ HIDE_IDS = {'qt5ct', 'qt6ct'}
 ID_RE = re.compile(r'^[A-Za-z0-9._+-]{1,200}$')
 GAME_ID_RE = re.compile(r'^[A-Za-z0-9:._@/+-]{1,300}$')
 PROFILES = ('power-saver', 'balanced', 'performance')
-DESKTOPS = ('classic', 'plasma')
+DESKTOPS = ('classic', 'plasma', 'gnome')
+# ---- Hearth COSMIC (docs/COSMIC.md): Anatase only. Hearth Deepin can't be had on either edition (docs/DEEPIN.md).
+COSMIC_DATA = '/usr/share/hearth-cosmic/data/cosmic'
+EXTRA_DESKTOPS = ('cosmic',)
+
+
+def cosmic_installed():
+    return all(shutil.which(b) for b in ('start-cosmic', 'cosmic-comp', 'cosmic-panel')) and os.path.isdir(COSMIC_DATA)
+# ---- end Hearth COSMIC
 PLASMA_LNF = '/usr/share/plasma/look-and-feel/org.hearth.desktop'
+GNOME_MODE = '/usr/share/gnome-shell/modes/hearth.json'   # Hearth GNOME's session mode (its extensions)
 
 
 class Fail(Exception):
@@ -225,7 +237,7 @@ def quick_set(key, val):
     return {'ok': True}
 
 
-# ---- the desktop choice (the same session.conf line nimbus-session reads: HEARTH_DESKTOP=classic|plasma)
+# ---- the desktop choice (the same session.conf line nimbus-session reads: HEARTH_DESKTOP=classic|plasma|gnome)
 def session_conf():
     return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'session.conf')
 
@@ -238,7 +250,7 @@ def read_desktop(text):
     for line in text.splitlines():
         if CONF_RE.match(line):
             v = line.split('=', 1)[1].strip().strip('"\'')
-            val = 'plasma' if v == 'plasma' else 'classic'
+            val = v if v in DESKTOPS + EXTRA_DESKTOPS else 'classic'
     return val
 
 
@@ -254,6 +266,10 @@ def plasma_installed():
     return all(shutil.which(b) for b in ('startplasma-wayland', 'kwin_wayland', 'plasmashell')) and os.path.isdir(PLASMA_LNF)
 
 
+def gnome_installed():
+    return all(shutil.which(b) for b in ('gnome-shell', 'gnome-session')) and os.path.isfile(GNOME_MODE)
+
+
 def desktop():
     try:
         with open(session_conf(), encoding='utf-8') as f:
@@ -261,15 +277,22 @@ def desktop():
     except OSError:
         text = ''
     run_dir = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
-    return {'desktop': read_desktop(text), 'plasma': plasma_installed(),
-            'fellBack': os.path.exists(os.path.join(run_dir, 'hearth-plasma-failed'))}
+    fell = [d for d in ('plasma', 'gnome') if os.path.exists(os.path.join(run_dir, 'hearth-%s-failed' % d))]
+    return {'desktop': read_desktop(text), 'plasma': plasma_installed(), 'gnome': gnome_installed(),
+            'fellBack': bool(fell), 'fellBackFrom': fell[0] if fell else '',
+            'cosmic': cosmic_installed(), 'cosmicFellBack': os.path.exists(os.path.join(run_dir, 'hearth-cosmic-failed')),
+            'deepin': False}
 
 
 def desktop_set(name):
-    if name not in DESKTOPS:
-        raise Fail('the desktop is classic or plasma')
+    if name not in DESKTOPS + EXTRA_DESKTOPS:
+        raise Fail('the desktop is classic, plasma, gnome or cosmic')
+    if name == 'cosmic' and not cosmic_installed():
+        raise Fail("Hearth COSMIC isn't available on this edition")
     if name == 'plasma' and not plasma_installed():
         raise Fail("Hearth Plasma isn't installed on this system")
+    if name == 'gnome' and not gnome_installed():
+        raise Fail("Hearth GNOME isn't installed on this system")
     p = session_conf()
     try:
         with open(p, encoding='utf-8') as f:

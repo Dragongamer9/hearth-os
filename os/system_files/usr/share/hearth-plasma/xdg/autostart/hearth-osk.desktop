@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth controller
+Comment=Use Hearth Plasma with a controller: pointer, menus, the Hearth menu (Guide) and the on-screen keyboard (Guide + X); docs/PLASMA.md
+Exec=sh -c 'd="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"; command -v quickshell >/dev/null 2>&1 && [ -f "$d/osk-plasma.qml" ] && exec quickshell -p "$d/osk-plasma.qml"; exit 0'
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

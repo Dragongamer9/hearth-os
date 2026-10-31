@@ -182,7 +182,8 @@ class Helper(unittest.TestCase):
         m = self.m
         self.assertEqual(m.read_desktop(''), 'classic')
         self.assertEqual(m.read_desktop('A=1\nexport HEARTH_DESKTOP="plasma"\n'), 'plasma')
-        self.assertEqual(m.read_desktop('HEARTH_DESKTOP=gnome\n'), 'classic')
+        self.assertEqual(m.read_desktop('HEARTH_DESKTOP=gnome\n'), 'gnome')
+        self.assertEqual(m.read_desktop('HEARTH_DESKTOP=kde\n'), 'classic')
         self.assertEqual(m.write_desktop('A=1', 'plasma'), 'A=1\nHEARTH_DESKTOP=plasma\n')
         self.assertEqual(m.write_desktop('HEARTH_DESKTOP=plasma\nB=2\n', 'classic'), 'HEARTH_DESKTOP=classic\nB=2\n')
 
@@ -197,7 +198,10 @@ class Helper(unittest.TestCase):
         r = m.desktop_set('classic')
         self.assertEqual(r['desktop'], 'classic')
         with self.assertRaises(m.Fail):
-            m.desktop_set('gnome')
+            m.desktop_set('kde')
+        if not m.gnome_installed():
+            with self.assertRaises(m.Fail):
+                m.desktop_set('gnome')
         if not m.plasma_installed():
             with self.assertRaises(m.Fail):
                 m.desktop_set('plasma')

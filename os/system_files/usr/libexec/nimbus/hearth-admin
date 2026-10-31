@@ -18,6 +18,14 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      waits for a restart or when there's no previous version; then the JSON
   hearth-admin recovery-next-start   open Hearth Recovery (the menu before Hearth starts) at the next start, once
                                      (hearth-recovery --next-start); then {"ok": true}
+  hearth-admin unlock on|off|resume|dismiss|reapply
+                                     Peppermint's writable system (hearth-unlock): unlocked or locked from the
+                                     next restart, your changes back on after a safe start, the notice cleared,
+                                     your packages put back again; then hearth-unlock's status JSON. Elsewhere
+                                     (Anatase is always immutable): refused
+  hearth-admin deb-install FILE.deb | deb-remove PACKAGE
+                                     a .deb on the system itself (Peppermint unlocked; the Install Package
+                                     window). Always asks for an administrator's password (49-hearth-admin.rules)
   hearth-admin tdp-info              JSON: how this device's power limit can be set, its range and value
                                      (read-only; works without root)
   hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj
@@ -226,6 +234,18 @@ def recovery_next_start():
     if r.returncode != 0:
         fail((r.stderr or r.stdout).strip() or 'couldn\'t set Hearth Recovery to open at the next start')
     print(json.dumps({'ok': True}))
+
+
+UNLOCK = '/usr/bin/hearth-unlock'
+UNLOCK_ACTIONS = {'on': '--unlock', 'off': '--lock', 'resume': '--resume', 'dismiss': '--dismiss',
+                  'reapply': '--reapply-later'}
+
+
+def unlock(args):
+    """Peppermint's writable system: everything is hearth-unlock's own (it checks its input too)."""
+    if not os.access(UNLOCK, os.X_OK):
+        fail('this edition is always locked (Hearth OS on Anatase is the immutable one)')
+    os.execv(UNLOCK, [UNLOCK] + args)
 
 
 def run_logged(cmd):
@@ -2636,6 +2656,14 @@ def main(argv):
         rollback()
     elif cmd == 'recovery-next-start' and len(argv) == 2:
         recovery_next_start()
+    elif cmd == 'unlock' and len(argv) == 3 and argv[2] in UNLOCK_ACTIONS:
+        unlock([UNLOCK_ACTIONS[argv[2]], '--json'])
+    elif cmd == 'deb-install' and len(argv) == 3:
+        caller()
+        unlock(['--install-deb', argv[2]])
+    elif cmd == 'deb-remove' and len(argv) == 3:
+        caller()
+        unlock(['--remove-package', argv[2]])
     elif cmd == 'update':
         update()
     elif cmd == 'tdp' and len(argv) == 3:
@@ -2698,7 +2726,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ...')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ...')
 
 
 if __name__ == '__main__':

@@ -95,6 +95,14 @@ jobs:
           path: tools/overlay-shots
           if-no-files-found: ignore
           retention-days: 14
+      # Hearth Mods in Game Mode (ui-check.js, the preview's stand-in for Hearth Mods): posted by the ui-shots-mods job.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mods-shots
+          path: tools/mods-shots
+          if-no-files-found: ignore
+          retention-days: 14
       # Mantel on Windows (Ember): the taskbar, launcher, menus, clock panel, clipboard history, desktop icons,
       # Hearth Settings and Apps pages, driven through a stand-in for Ember's host.
       - name: Check Mantel's pages
@@ -124,6 +132,29 @@ jobs:
         run: f=shots/settings-front.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-front $i::$part"; done || true
       - name: Picture (settings-display)
         run: f=shots/settings-display.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -10 | while read -r i part; do echo "::notice title=SHOT settings-display $i::$part"; done || true
+
+  # Hearth Mods in Game Mode: a game's Mods screen, a Nexus mod's page, the FOMOD installer, Modlists with the guided
+  # flow and the Dragonfire game page, as notices (title "SHOT <which> <n>", at most 9 a picture so all five fit in 50).
+  ui-shots-mods:
+    needs: ui
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: mods-shots
+          path: shots
+      - name: Picture (hm-installed)
+        run: f=shots/hm-installed.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT hm-installed $i::$part"; done || true
+      - name: Picture (hm-nexus-mod)
+        run: f=shots/hm-nexus-mod.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT hm-nexus-mod $i::$part"; done || true
+      - name: Picture (hm-fomod)
+        run: f=shots/hm-fomod.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT hm-fomod $i::$part"; done || true
+      - name: Picture (hm-modlists)
+        run: f=shots/hm-modlists.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT hm-modlists $i::$part"; done || true
+      - name: Picture (hm-dragonfire-game)
+        run: f=shots/hm-dragonfire-game.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT hm-dragonfire-game $i::$part"; done || true
 
   # Quick Access over a game (the top dock): its pictures as notices (title "SHOT ovl-<which> <n>"), at most 6 a picture
   # (ui-check.js keeps them under 6 x 3800 characters) so all eight fit in a job's 50.

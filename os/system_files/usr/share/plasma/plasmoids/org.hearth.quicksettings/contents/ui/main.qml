@@ -48,8 +48,37 @@ PlasmoidItem {
     onExpandedChanged: if (root.expanded) refresh()
     Component.onCompleted: refresh()
 
+    // With the controller or the keyboard: the D-pad / arrows move between the controls (a slider keeps left / right
+    // for its value), A / Enter presses the one with the focus, B / Esc closes.
+    function step(from, forward) {
+        let it = from ? from.nextItemInFocusChain(forward) : null;
+        if (it) it.forceActiveFocus(forward ? Qt.TabFocusReason : Qt.BacktabFocusReason);
+    }
+    function press(it) {
+        if (!it) return;
+        if (it.checkable !== undefined && it.toggle && it.toggled !== undefined) {
+            if (it.checkable) { it.toggle(); it.toggled(); }
+            it.clicked();
+        } else if (it.clicked) {
+            it.clicked();
+        }
+    }
+
     fullRepresentation: ColumnLayout {
+        id: panel
         Layout.preferredWidth: Kirigami.Units.gridUnit * 22
+        focus: true
+        Keys.onPressed: event => {
+            const it = panel.Window.activeFocusItem;
+            if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) { root.step(it || panel, true); event.accepted = true; }
+            else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) { root.step(it || panel, false); event.accepted = true; }
+            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.press(it); event.accepted = true; }
+            else if (event.key === Qt.Key_Escape) { root.expanded = false; event.accepted = true; }
+        }
+        Connections {
+            target: root
+            function onExpandedChanged() { if (root.expanded) Qt.callLater(() => root.step(panel, true)); }
+        }
         Layout.minimumWidth: Kirigami.Units.gridUnit * 18
         spacing: Kirigami.Units.largeSpacing
 

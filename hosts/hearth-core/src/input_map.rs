@@ -4,7 +4,9 @@
 //! UI (input.* calls), and tells the mapper what's going on over its socket.
 //!
 //! Storage: ~/.config/nimbus/input/<game id>.json, one file per game (this user's own):
-//!   {"version": 1, "layout": "off" | <template id> | "custom", "custom": {layout}, "prefs": {"sensitivity", "gyro"}}
+//!   {"version": 2, "layout": "off" | <template id> | "custom" | "global", "custom": {layout}, "prefs": {"sensitivity", "gyro"}}
+//! and global.json, the layout of your own for every game without one: {"version": 2, "enabled", "layout"}. Files
+//! from before (version 1, and version 1 layouts) are read and migrated (migrate).
 //! No file means Off: the game's own controller support (Beacon's strategy games start with the "Strategy (RTS)"
 //! template instead, see default_layout; choosing Off for them is saved like any choice). The custom layout is kept when you switch to Off or a
 //! template, so switching back doesn't lose your edits.
@@ -21,7 +23,7 @@
 //! hold the controller at the same time.
 
 use serde_json::{json, Map, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -46,7 +48,7 @@ fn keys() -> &'static HashSet<String> {
 }
 
 /// The first column of one of the tables' lists ("buttons", "sticks", "mouse", "scroll").
-fn ids(list: &str) -> Vec<&'static str> {
+fn ids_of(list: &str) -> Vec<&'static str> {
     tables()[list].as_array().into_iter().flatten().filter_map(|x| x[0].as_str()).collect()
 }
 
@@ -61,29 +63,39 @@ pub fn template(id: &str) -> Option<&'static Value> {
 }
 
 // ------------------------------------------------------------------ checking layouts
+//
+// Version 2 (docs/HEARTH-INPUT.md): the default action set (buttons, sticks, gyro), more action sets ("sets"),
+// layers on top of them ("layers": held = mode shift, or toggled), and per-button activators (press, hold = long
+// press, double, release, chords, turbo, toggle). Version 1 files (with the "shift" second set) are migrated
+// (migrate). The same rules as hearth-input's validate_layout; both are tested against
+// hosts/linux/test/fixtures/input-layout-cases.json.
 
 #[derive(Clone, Copy, PartialEq)]
-enum Where { Button, ShiftButton, Simple, Radial }
+enum Where { Button, LayerButton, Simple, Radial }
 
 fn allowed(w: Where, kind: &str) -> bool {
     match w {
         Where::Button => true,
-        Where::ShiftButton => !matches!(kind, "shift" | "radial"),
+        Where::LayerButton => !matches!(kind, "layer" | "radial"),
         Where::Simple => matches!(kind, "none" | "keys" | "mouse" | "scroll"),
         Where::Radial => matches!(kind, "keys" | "mouse" | "scroll"),
     }
 }
+fn simple(kind: &str) -> bool { allowed(Where::Simple, kind) }
 
 fn short(s: &str, n: usize) -> String { s.chars().take(n).collect() }
 
-/// One action string → its kind (none, keys, mouse, scroll, shift, gyro, radial), if it's allowed here.
-fn action_kind(v: &Value, w: Where, path: &str) -> Result<&'static str, String> {
+/// The layer and action set ids a layout has: what its actions may name.
+#[derive(Default)]
+struct Ids { layers: HashSet<String>, sets: HashSet<String> }
+
+/// One action string → its kind (none, keys, mouse, scroll, gyro, radial, layer, layer_toggle, set), if it's allowed here.
+fn action_kind(v: &Value, w: Where, path: &str, ids: &Ids) -> Result<&'static str, String> {
     let s = v.as_str().filter(|s| !s.is_empty() && s.len() <= 80).ok_or_else(|| format!("{path}: should be an action like \"key:SPACE\""))?;
     let kind = match s {
         "none" => "none",
-        "shift" => "shift",
         "radial" => "radial",
-        "gyro:toggle" | "gyro:hold" => "gyro",
+        "gyro:toggle" | "gyro:hold" | "gyro:ratchet" => "gyro",
         _ => {
             if let Some(k) = s.strip_prefix("key:") {
                 let names: Vec<&str> = k.split('+').collect();
@@ -95,10 +107,16 @@ fn action_kind(v: &Value, w: Where, path: &str) -> Result<&'static str, String> 
                     if !keys().contains(*n) { return Err(format!("{path}: unknown key {:?}", short(n, 20))); }
                 }
                 "keys"
-            } else if s.strip_prefix("mouse:").map(|m| ids("mouse").contains(&m)).unwrap_or(false) {
+            } else if s.strip_prefix("mouse:").map(|m| ids_of("mouse").contains(&m)).unwrap_or(false) {
                 "mouse"
-            } else if s.strip_prefix("scroll:").map(|m| ids("scroll").contains(&m)).unwrap_or(false) {
+            } else if s.strip_prefix("scroll:").map(|m| ids_of("scroll").contains(&m)).unwrap_or(false) {
                 "scroll"
+            } else if let Some(l) = s.strip_prefix("layer:").or_else(|| s.strip_prefix("layer_toggle:")) {
+                if !ids.layers.contains(l) { return Err(format!("{path}: there's no layer {:?}", short(l, 20))); }
+                if s.starts_with("layer:") { "layer" } else { "layer_toggle" }
+            } else if let Some(st) = s.strip_prefix("set:") {
+                if st != "default" && !ids.sets.contains(st) { return Err(format!("{path}: there's no action set {:?}", short(st, 20))); }
+                "set"
             } else {
                 return Err(format!("{path}: unknown action {:?}", short(s, 30)));
             }
@@ -124,97 +142,190 @@ fn obj<'a>(v: &'a Value, path: &str, allowed: &[&str]) -> Result<&'a Map<String,
     Ok(m)
 }
 
-fn check_button(ctl: &str, v: &Value, w: Where, path: &str) -> Result<(), String> {
+fn check_name(v: Option<&Value>, path: &str) -> Result<(), String> {
+    if let Some(n) = v {
+        let ok = n.as_str().map(|s| !s.trim().is_empty() && s.chars().count() <= limit_n("name_len") && !s.chars().any(|c| (c as u32) < 32)).unwrap_or(false);
+        if !ok { return Err(format!("{path}: up to {} characters", limit_n("name_len"))); }
+    }
+    Ok(())
+}
+
+const BUTTON_FIELDS: &[&str] = &["press", "hold", "double", "release", "chords", "turbo", "hold_turbo", "double_turbo", "toggle"];
+
+fn check_button(ctl: &str, v: &Value, w: Where, path: &str, ids: &Ids) -> Result<(), String> {
     let owned;
     let v = if v.is_string() { owned = json!({"press": v}); &owned } else { v };
-    let fields: &[&str] = if ctl == "lt" || ctl == "rt" { &["press", "hold", "turbo", "threshold"] } else { &["press", "hold", "turbo"] };
-    let m = obj(v, path, fields)?;
-    let press = m.get("press").ok_or_else(|| format!("{path}: needs \"press\""))?;
-    let pk = action_kind(press, w, &format!("{path}.press"))?;
-    let hold = m.get("hold").filter(|h| !h.is_null());
-    if let Some(h) = hold {
-        action_kind(h, Where::Simple, &format!("{path}.hold"))?;
-        if !allowed(Where::Simple, pk) { return Err(format!("{path}: tap and hold work with keys, clicks and scrolling")); }
+    let mut fields = BUTTON_FIELDS.to_vec();
+    if ctl == "lt" || ctl == "rt" { fields.push("threshold"); }
+    let m = obj(v, path, &fields)?;
+    let pk = match m.get("press") { Some(p) => action_kind(p, w, &format!("{path}.press"), ids)?, None => "none" };
+    let mut kinds: HashMap<&str, &str> = HashMap::new();
+    for k in ["hold", "double", "release"] {
+        if let Some(a) = m.get(k).filter(|a| !a.is_null()) { kinds.insert(k, action_kind(a, Where::Simple, &format!("{path}.{k}"), ids)?); }
     }
-    if let Some(t) = m.get("turbo") {
-        if boolean(t, &format!("{path}.turbo"))? && (hold.is_some() || !matches!(pk, "keys" | "mouse")) {
-            return Err(format!("{path}: turbo repeats a key or a click (and can't be used with hold)"));
-        }
+    let chords = match m.get("chords") { Some(c) => c.as_array().filter(|c| c.len() <= limit_n("chords")).ok_or_else(|| format!("{path}.chords: up to {}", limit_n("chords")))?.clone(), None => vec![] };
+    let mut seen = HashSet::new();
+    for (i, c) in chords.iter().enumerate() {
+        let cp = format!("{path}.chords.{i}");
+        let cm = obj(c, &cp, &["with", "do", "turbo"])?;
+        let with = cm.get("with").and_then(Value::as_str).unwrap_or("");
+        if !ids_of("buttons").contains(&with) || with == ctl || !seen.insert(with.to_string()) { return Err(format!("{cp}.with: another button (once each)")); }
+        let dk = action_kind(cm.get("do").unwrap_or(&json!("none")), Where::Simple, &format!("{cp}.do"), ids)?;
+        if let Some(t) = cm.get("turbo") { if boolean(t, &format!("{cp}.turbo"))? && !matches!(dk, "keys" | "mouse") { return Err(format!("{cp}: turbo repeats a key or a click")); } }
+    }
+    let flag = |k: &str| -> Result<bool, String> { match m.get(k) { Some(b) => boolean(b, &format!("{path}.{k}")), None => Ok(false) } };
+    let (turbo, hold_turbo, double_turbo, toggle) = (flag("turbo")?, flag("hold_turbo")?, flag("double_turbo")?, flag("toggle")?);
+    let extra = !kinds.is_empty() || !chords.is_empty() || turbo || toggle;
+    if extra && !simple(pk) { return Err(format!("{path}: tap and hold, double presses, chords, turbo and toggle work with keys, clicks and scrolling")); }
+    let key_or_click = |k: &str| matches!(k, "keys" | "mouse");
+    if turbo && (kinds.contains_key("hold") || toggle || !key_or_click(pk)) { return Err(format!("{path}: turbo repeats a key or a click (and can't be used with hold or toggle)")); }
+    if toggle && (kinds.contains_key("hold") || kinds.contains_key("double") || !key_or_click(pk)) { return Err(format!("{path}: toggle holds a key or a click (and can't be used with hold or a double press)")); }
+    for (k, t, on) in [("hold", "hold_turbo", hold_turbo), ("double", "double_turbo", double_turbo)] {
+        if on && !kinds.get(k).map(|x| key_or_click(x)).unwrap_or(false) { return Err(format!("{path}.{t}: turbo repeats a key or a click")); }
     }
     if let Some(t) = m.get("threshold") { num(t, "threshold", &format!("{path}.threshold"), false)?; }
     Ok(())
 }
 
-fn check_stick(v: &Value, path: &str) -> Result<(), String> {
-    let mode = v.get("mode").and_then(Value::as_str).filter(|m| ["none", "keys", "mouse", "scroll"].contains(m))
-        .ok_or_else(|| format!("{path}: needs a mode: none, keys, mouse or scroll"))?;
+const STICK_MODES: &[&str] = &["none", "keys", "dpad", "mouse", "scroll", "wheel", "flick"];
+
+fn check_stick(v: &Value, path: &str, ids: &Ids) -> Result<(), String> {
+    let mode = v.get("mode").and_then(Value::as_str).filter(|m| STICK_MODES.contains(m))
+        .ok_or_else(|| format!("{path}: needs a mode: {}", STICK_MODES.join(", ")))?;
     let fields: &[&str] = match mode {
         "none" => &["mode"],
-        "keys" => &["mode", "up", "down", "left", "right", "threshold"],
-        "mouse" => &["mode", "sensitivity", "deadzone", "outer", "curve", "invert_y"],
-        _ => &["mode", "sensitivity", "deadzone"],
+        "keys" | "dpad" => &["mode", "up", "down", "left", "right", "threshold"],
+        "mouse" => &["mode", "sensitivity", "deadzone", "outer", "curve", "invert_x", "invert_y"],
+        "scroll" => &["mode", "sensitivity", "deadzone"],
+        "wheel" => &["mode", "sensitivity", "threshold"],
+        _ => &["mode", "turn", "threshold"],
     };
     let m = obj(v, path, fields)?;
-    match mode {
-        "keys" => {
-            for d in ["up", "down", "left", "right"] { if let Some(a) = m.get(d) { action_kind(a, Where::Simple, &format!("{path}.{d}"))?; } }
-            if let Some(t) = m.get("threshold") { num(t, "stick_threshold", &format!("{path}.threshold"), false)?; }
+    for d in ["up", "down", "left", "right"] { if let Some(a) = m.get(d) { action_kind(a, Where::Simple, &format!("{path}.{d}"), ids)?; } }
+    if let Some(t) = m.get("threshold") { num(t, "stick_threshold", &format!("{path}.threshold"), false)?; }
+    if let Some(s) = m.get("sensitivity") { num(s, "sensitivity", &format!("{path}.sensitivity"), false)?; }
+    if let Some(t) = m.get("turn") { num(t, "turn_px", &format!("{path}.turn"), true)?; }
+    for k in ["invert_x", "invert_y"] { if let Some(i) = m.get(k) { boolean(i, &format!("{path}.{k}"))?; } }
+    if mode == "mouse" || mode == "scroll" {
+        let dz = match m.get("deadzone") { Some(d) => num(d, "deadzone", &format!("{path}.deadzone"), false)?, None => 0.12 };
+        if mode == "mouse" {
+            let outer = match m.get("outer") { Some(o) => num(o, "outer", &format!("{path}.outer"), false)?, None => 0.95 };
+            if let Some(c) = m.get("curve") { num(c, "curve", &format!("{path}.curve"), false)?; }
+            if outer < dz + 0.1 { return Err(format!("{path}: the outer dead zone must be well past the dead zone")); }
         }
-        "mouse" | "scroll" => {
-            if let Some(s) = m.get("sensitivity") { num(s, "sensitivity", &format!("{path}.sensitivity"), false)?; }
-            let dz = match m.get("deadzone") { Some(d) => num(d, "deadzone", &format!("{path}.deadzone"), false)?, None => 0.12 };
-            if mode == "mouse" {
-                let outer = match m.get("outer") { Some(o) => num(o, "outer", &format!("{path}.outer"), false)?, None => 0.95 };
-                if let Some(c) = m.get("curve") { num(c, "curve", &format!("{path}.curve"), false)?; }
-                if let Some(i) = m.get("invert_y") { boolean(i, &format!("{path}.invert_y"))?; }
-                if outer < dz + 0.1 { return Err(format!("{path}: the outer dead zone must be well past the dead zone")); }
-            }
-        }
-        _ => {}
     }
     Ok(())
 }
 
+fn check_gyro(g: &Value, path: &str) -> Result<(), String> {
+    let g = obj(g, path, &["sensitivity", "deadzone", "invert_x", "invert_y", "start_on", "when", "axis"])?;
+    if let Some(v) = g.get("sensitivity") { num(v, "gyro_sensitivity", &format!("{path}.sensitivity"), false)?; }
+    if let Some(v) = g.get("deadzone") { num(v, "gyro_deadzone", &format!("{path}.deadzone"), false)?; }
+    for k in ["invert_x", "invert_y", "start_on"] { if let Some(v) = g.get(k) { boolean(v, &format!("{path}.{k}"))?; } }
+    if let Some(w) = g.get("when") { if !matches!(w.as_str(), Some("button" | "always" | "stick")) { return Err(format!("{path}.when: one of button, always, stick")); } }
+    if let Some(a) = g.get("axis") { if !matches!(a.as_str(), Some("yaw" | "roll")) { return Err(format!("{path}.axis: one of yaw, roll")); } }
+    Ok(())
+}
+
+/// A set's or a layer's buttons and sticks.
+fn check_controls(m: &Map<String, Value>, prefix: &str, w: Where, ids: &Ids) -> Result<(), String> {
+    let pre = if prefix.is_empty() { String::new() } else { format!("{prefix}.") };
+    let (buttons, sticks) = (ids_of("buttons"), ids_of("sticks"));
+    if let Some(b) = m.get("buttons") {
+        for (ctl, v) in obj(b, &format!("{pre}buttons"), &buttons)? { check_button(ctl, v, w, &format!("{pre}buttons.{ctl}"), ids)?; }
+    }
+    if let Some(s) = m.get("sticks") {
+        for (st, v) in obj(s, &format!("{pre}sticks"), &sticks)? { check_stick(v, &format!("{pre}sticks.{st}"), ids)?; }
+    }
+    Ok(())
+}
+
+/// A file without a version is version 1 if it uses version 1's second set, else version 2.
+pub fn uses_v1_shift(l: &Value) -> bool {
+    l.get("shift").is_some() || l["buttons"].as_object().map(|b| b.values().any(|v| v == "shift" || v["press"] == "shift")).unwrap_or(false)
+}
+
+fn version_of(l: &Value) -> Result<u64, String> {
+    match l.get("version") {
+        None => Ok(if uses_v1_shift(l) { 1 } else { 2 }),
+        Some(v) => v.as_f64().filter(|x| *x == 1.0 || *x == 2.0).map(|x| x as u64).ok_or_else(|| "layout.version: only versions 1 and 2 are known".to_string()),
+    }
+}
+
+/// A layout as version 2: version 1's second set ("shift", held by buttons set to "shift") becomes the layer
+/// "shift" (held by "layer:shift"). Version 2 comes back as it is. Doesn't check anything else (validate does).
+pub fn migrate(l: &Value) -> Result<Value, String> {
+    if !l.is_object() { return Err("layout: should be an object".into()); }
+    if version_of(l)? == 2 { return Ok(l.clone()); }
+    let m = obj(l, "layout", &["version", "name", "base", "buttons", "sticks", "gyro", "shift", "radial", "hold_ms", "double_ms", "turbo_hz"])?;
+    let conv = |b: &Value| -> Value {
+        let Some(o) = b.as_object() else { return b.clone() };
+        Value::Object(o.iter().map(|(k, v)| {
+            let v = if v == "shift" { json!("layer:shift") } else if v["press"] == "shift" { let mut x = v.clone(); x["press"] = json!("layer:shift"); x } else { v.clone() };
+            (k.clone(), v)
+        }).collect())
+    };
+    let mut n = Map::new();
+    n.insert("version".into(), json!(2));
+    for k in ["name", "base", "buttons", "sticks", "gyro", "radial", "hold_ms", "double_ms", "turbo_hz"] {
+        if let Some(v) = m.get(k) { n.insert(k.into(), if k == "buttons" { conv(v) } else { v.clone() }); }
+    }
+    if m.contains_key("shift") || uses_v1_shift(l) {
+        let empty = json!({});
+        let sh = obj(m.get("shift").unwrap_or(&empty), "shift", &["buttons", "sticks"])?;
+        let mut layer = json!({"id": "shift", "name": "Second set"});
+        if let Some(b) = sh.get("buttons") { layer["buttons"] = conv(b); }
+        if let Some(s) = sh.get("sticks") { layer["sticks"] = s.clone(); }
+        n.insert("layers".into(), json!([layer]));
+    }
+    Ok(Value::Object(n))
+}
+
+fn id_ok(s: &str) -> bool { !s.is_empty() && s.len() <= 20 && s != "default" && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_') }
+
 /// Is this a layout Hearth Input can run? (The same rules as hearth-input's validate_layout.)
 pub fn validate(l: &Value) -> Result<(), String> {
-    let m = obj(l, "layout", &["version", "name", "base", "buttons", "sticks", "gyro", "shift", "radial", "hold_ms", "turbo_hz"])?;
-    if let Some(v) = m.get("version") { if v.as_f64() != Some(1.0) { return Err("layout.version: only version 1 is known".into()); } }
-    if let Some(n) = m.get("name") {
-        let ok = n.as_str().map(|s| !s.trim().is_empty() && s.chars().count() <= limit_n("name_len") && !s.chars().any(|c| (c as u32) < 32)).unwrap_or(false);
-        if !ok { return Err(format!("layout.name: up to {} characters", limit_n("name_len"))); }
-    }
+    let l = migrate(l)?;
+    let m = obj(&l, "layout", &["version", "name", "base", "buttons", "sticks", "gyro", "sets", "layers", "radial", "hold_ms", "double_ms", "turbo_hz"])?;
+    check_name(m.get("name"), "layout.name")?;
     if let Some(b) = m.get("base") {
         let ok = b.as_str().map(|s| s.is_empty() || template(s).is_some()).unwrap_or(false);
         if !ok { return Err("layout.base: unknown template".into()); }
     }
-    let buttons = ids("buttons");
-    let sticks = ids("sticks");
-    if let Some(b) = m.get("buttons") {
-        for (ctl, v) in obj(b, "buttons", &buttons)? { check_button(ctl, v, Where::Button, &format!("buttons.{ctl}"))?; }
-    }
-    if let Some(s) = m.get("sticks") {
-        for (st, v) in obj(s, "sticks", &sticks)? { check_stick(v, &format!("sticks.{st}"))?; }
-    }
-    if let Some(sh) = m.get("shift") {
-        let sh = obj(sh, "shift", &["buttons", "sticks"])?;
-        if let Some(b) = sh.get("buttons") {
-            for (ctl, v) in obj(b, "shift.buttons", &buttons)? { check_button(ctl, v, Where::ShiftButton, &format!("shift.buttons.{ctl}"))?; }
-        }
-        if let Some(s) = sh.get("sticks") {
-            for (st, v) in obj(s, "shift.sticks", &sticks)? { check_stick(v, &format!("shift.sticks.{st}"))?; }
+    let empty = json!([]);
+    let list = |k: &str| -> Result<Vec<Value>, String> {
+        m.get(k).unwrap_or(&empty).as_array().filter(|a| a.len() <= limit_n(k)).cloned().ok_or_else(|| format!("{k}: up to {}", limit_n(k)))
+    };
+    let (layers, sets) = (list("layers")?, list("sets")?);
+    let mut ids = Ids::default();
+    for (kind, items) in [("layers", &layers), ("sets", &sets)] {
+        for (i, it) in items.iter().enumerate() {
+            let id = it["id"].as_str().filter(|s| id_ok(s)).ok_or_else(|| format!("{kind}.{i}.id: lower-case letters, digits and _ (not \"default\")"))?;
+            let set = if kind == "layers" { &mut ids.layers } else { &mut ids.sets };
+            if !set.insert(id.to_string()) { return Err(format!("{kind}.{i}.id: {id:?} twice")); }
         }
     }
-    if let Some(g) = m.get("gyro") {
-        let g = obj(g, "gyro", &["sensitivity", "deadzone", "invert_x", "invert_y", "start_on"])?;
-        if let Some(v) = g.get("sensitivity") { num(v, "gyro_sensitivity", "gyro.sensitivity", false)?; }
-        if let Some(v) = g.get("deadzone") { num(v, "gyro_deadzone", "gyro.deadzone", false)?; }
-        for k in ["invert_x", "invert_y", "start_on"] { if let Some(v) = g.get(k) { boolean(v, &format!("gyro.{k}"))?; } }
+    check_controls(m, "", Where::Button, &ids)?;
+    if let Some(g) = m.get("gyro") { check_gyro(g, "gyro")?; }
+    for (i, it) in sets.iter().enumerate() {
+        let p = format!("sets.{i}");
+        let sm = obj(it, &p, &["id", "name", "buttons", "sticks", "gyro"])?;
+        check_name(sm.get("name"), &format!("{p}.name"))?;
+        check_controls(sm, &p, Where::Button, &ids)?;
+        if let Some(g) = sm.get("gyro") { check_gyro(g, &format!("{p}.gyro"))?; }
+    }
+    for (i, it) in layers.iter().enumerate() {
+        let p = format!("layers.{i}");
+        let lm = obj(it, &p, &["id", "name", "buttons", "sticks"])?;
+        check_name(lm.get("name"), &format!("{p}.name"))?;
+        check_controls(lm, &p, Where::LayerButton, &ids)?;
     }
     if let Some(r) = m.get("radial") {
         let r = r.as_array().filter(|r| r.len() <= limit_n("radial_items")).ok_or_else(|| format!("radial: up to {} actions", limit_n("radial_items")))?;
-        for (i, a) in r.iter().enumerate() { action_kind(a, Where::Radial, &format!("radial.{i}"))?; }
+        for (i, a) in r.iter().enumerate() { action_kind(a, Where::Radial, &format!("radial.{i}"), &ids)?; }
     }
     if let Some(v) = m.get("hold_ms") { num(v, "hold_ms", "hold_ms", true)?; }
+    if let Some(v) = m.get("double_ms") { num(v, "double_ms", "double_ms", true)?; }
     if let Some(v) = m.get("turbo_hz") { num(v, "turbo_hz", "turbo_hz", false)?; }
     Ok(())
 }
@@ -251,17 +362,48 @@ pub fn default_layout(id: &str) -> &'static str {
     else { "off" }
 }
 
+/// The global layout (Hearth Input's "desktop" layout): {"enabled", "layout"}. When it's on, every game that has no
+/// choice of its own (and would start Off) uses it; any game can also choose it ("global"). Broken: off, none.
+pub const GLOBAL_FILE: &str = "global.json";
+pub fn global_in(dir: &Path) -> Value {
+    let v: Value = std::fs::read_to_string(dir.join(GLOBAL_FILE)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    let layout = migrate(&v["layout"]).ok().filter(|l| l.is_object() && validate(l).is_ok()).unwrap_or(Value::Null);
+    json!({"enabled": v["enabled"] == true && !layout.is_null(), "layout": layout})
+}
+pub fn save_global_in(dir: &Path, enabled: Option<bool>, layout: Option<&Value>) -> Result<Value, String> {
+    let cur = global_in(dir);
+    let layout = match layout.filter(|l| !l.is_null()) { Some(l) => { validate(l)?; migrate(l)? } None => cur["layout"].clone() };
+    let enabled = enabled.unwrap_or(cur["enabled"] == true);
+    if enabled && layout.is_null() { return Err("Make the global layout first".into()); }
+    write_private(dir, GLOBAL_FILE, &json!({"version": 2, "enabled": enabled, "layout": layout}))?;
+    Ok(global_in(dir))
+}
+
+fn write_private(dir: &Path, name: &str, v: &Value) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    }
+    crate::paths::write_atomic(&dir.join(name), serde_json::to_string_pretty(v).unwrap_or_default().as_bytes()).map_err(|e| e.to_string())
+}
+
 /// A game's saved choice, checked: {"layout", "custom", "prefs"}. No file: the game's default (default_layout).
 /// Broken files are Off.
 pub fn load_in(dir: &Path, id: &str) -> Value {
     let off = json!({"layout": "off", "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)});
     let Ok(name) = file_name(id) else { return off };
-    let Ok(text) = std::fs::read_to_string(dir.join(name)) else { return json!({"layout": default_layout(id), "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)}) };
+    let Ok(text) = std::fs::read_to_string(dir.join(name)) else {
+        let d = default_layout(id);
+        let d = if d == "off" && global_in(dir)["enabled"] == true { "global" } else { d };
+        return json!({"layout": d, "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)});
+    };
     let Ok(v) = serde_json::from_str::<Value>(&text) else { return off };
-    let custom = if v["custom"].is_object() && validate(&v["custom"]).is_ok() { v["custom"].clone() } else { Value::Null };
+    let custom = if v["custom"].is_object() && validate(&v["custom"]).is_ok() { migrate(&v["custom"]).unwrap_or(Value::Null) } else { Value::Null };
     let prefs = check_prefs(&v["prefs"]).unwrap_or_else(|_| check_prefs(&Value::Null).unwrap_or(Value::Null));
     let layout = match v["layout"].as_str() {
         Some("custom") if !custom.is_null() => "custom".to_string(),
+        Some("global") if !global_in(dir)["layout"].is_null() => "global".to_string(),
         Some(t) if template(t).is_some() => t.to_string(),
         _ => "off".to_string(),
     };
@@ -274,13 +416,14 @@ pub fn save_in(dir: &Path, id: &str, layout: Option<&str>, custom: Option<&Value
     let name = file_name(id)?;
     let cur = load_in(dir, id);
     let custom = match custom.filter(|c| !c.is_null()) {
-        Some(c) => { validate(c)?; c.clone() }
+        Some(c) => { validate(c)?; migrate(c)? }
         None => cur["custom"].clone(),
     };
     let layout = layout.unwrap_or(cur["layout"].as_str().unwrap_or("off"));
     match layout {
         "off" => {}
         "custom" => if custom.is_null() { return Err("There's no custom layout to use yet".into()); },
+        "global" => if global_in(dir)["layout"].is_null() { return Err("There's no global layout yet".into()); },
         t if template(t).is_some() => {}
         _ => return Err("Unknown layout".into()),
     }
@@ -290,29 +433,62 @@ pub fn save_in(dir: &Path, id: &str, layout: Option<&str>, custom: Option<&Value
         for (k, v) in np { p.insert(k.clone(), v.clone()); }
     }
     let prefs = check_prefs(&Value::Object(p))?;
-    let v = json!({"version": 1, "layout": layout, "custom": custom, "prefs": prefs});
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
-    }
-    crate::paths::write_atomic(&dir.join(name), serde_json::to_string_pretty(&v).unwrap_or_default().as_bytes()).map_err(|e| e.to_string())?;
+    let v = json!({"version": 2, "layout": layout, "custom": custom, "prefs": prefs});
+    write_private(dir, &name, &v)?;
     Ok(load_in(dir, id))
 }
 
-/// The layout a choice runs (None: Off).
-pub fn resolve(choice: &Value) -> Option<Value> {
+/// The layout a choice runs (None: Off), as version 2.
+pub fn resolve_in(dir: &Path, choice: &Value) -> Option<Value> {
     match choice["layout"].as_str()? {
         "off" => None,
         "custom" => Some(choice["custom"].clone()).filter(|c| c.is_object()),
-        t => template(t).cloned(),
+        "global" => Some(global_in(dir)["layout"].clone()).filter(|c| c.is_object()),
+        t => template(t).and_then(|l| migrate(l).ok()),
     }
+}
+pub fn resolve(choice: &Value) -> Option<Value> { resolve_in(&dir(), choice) }
+
+/// This device's own layouts (custom ones and the global one), for your other devices (Hearth Link's
+/// input.layouts): [{game, name, layout}]; the global one has game "_global".
+pub fn own_layouts_in(dir: &Path) -> Vec<Value> {
+    let mut out = Vec::new();
+    let g = global_in(dir);
+    if g["layout"].is_object() { out.push(json!({"game": "_global", "name": g["layout"]["name"].as_str().unwrap_or("Global"), "layout": g["layout"]})); }
+    let mut names: Vec<String> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    names.sort();
+    for n in names {
+        let Some(stem) = n.strip_suffix(".json") else { continue };
+        if n == GLOBAL_FILE { continue; }
+        let id = decode_name(stem);
+        if file_name(&id).ok().as_deref() != Some(n.as_str()) { continue; }
+        let c = load_in(dir, &id);
+        if c["custom"].is_object() { out.push(json!({"game": id, "name": c["custom"]["name"].as_str().unwrap_or("Custom"), "layout": c["custom"]})); }
+        if out.len() >= 200 { break; }
+    }
+    out
+}
+
+/// A file name back to its game id (file_name's %XX undone).
+pub fn decode_name(stem: &str) -> String {
+    let b = stem.as_bytes();
+    let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) { out.push(h * 16 + l); i += 3; continue; }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
 }
 
 /// What the mapper is told: the game, whether it's in front, whether Quick Access is open, and its layout.
 pub fn state_in(dir: &Path, game: Option<&str>, front: bool, overlay: bool) -> Value {
     let choice = game.map(|g| load_in(dir, g));
-    let layout = choice.as_ref().and_then(resolve);
+    let layout = choice.as_ref().and_then(|c| resolve_in(dir, c));
     let prefs = match (&layout, &choice) { (Some(_), Some(c)) => c["prefs"].clone(), _ => Value::Null };
     json!({"cmd": "state", "game": game, "front": front, "overlay": overlay, "layout": layout, "prefs": prefs})
 }
@@ -423,6 +599,31 @@ pub fn start_link(get: GetState, on_event: OnEvent) {
     });
 }
 
+// ------------------------------------------------------------------ typing into the game (the on-screen keyboard)
+
+/// The on-screen keyboard over a game (Guide + X) types through Hearth Input's virtual keyboard: characters become
+/// key presses for gamescope's keyboard layout (XKB_DEFAULT_LAYOUT, as gamescope reads it), so it works in native,
+/// Proton/Wine and emulator games alike. Characters that layout can't type go through xdotool on gamescope's X
+/// display when it's there; the rest come back as `skipped`.
+pub fn type_text(text: &str, mods: &Value) -> Result<Value, String> {
+    if text.is_empty() { return Ok(json!({"ok": true, "skipped": ""})); }
+    let mods: Vec<&str> = mods.as_array().map(|m| m.iter().filter_map(Value::as_str).filter(|m| matches!(*m, "ctrl" | "alt")).collect()).unwrap_or_default();
+    let mut cmd = json!({"cmd": "type", "text": text.chars().take(2000).collect::<String>(), "mods": mods});
+    if let Ok(l) = std::env::var("XKB_DEFAULT_LAYOUT") { cmd["layout"] = json!(l); }
+    if let Ok(d) = std::env::var("DISPLAY") { cmd["display"] = json!(d); }
+    let r = request(&cmd, Duration::from_secs(2)).map_err(|_| "Can't type into the game: Hearth Input isn't running".to_string())?;
+    if r["ok"] == false { return Err(r["error"].as_str().unwrap_or("Couldn't type that").to_string()); }
+    Ok(r)
+}
+/// A key for the keyboard over a game: bksp, enter, tab, esc, arrows, home, end, delete, paste (n times).
+pub fn type_key(key: &str, n: u64, mods: &Value) -> Result<Value, String> {
+    let mods: Vec<&str> = mods.as_array().map(|m| m.iter().filter_map(Value::as_str).filter(|m| matches!(*m, "ctrl" | "alt" | "shift")).collect()).unwrap_or_default();
+    let r = request(&json!({"cmd": "key", "key": key, "n": n.clamp(1, 200), "mods": mods}), Duration::from_secs(2))
+        .map_err(|_| "Can't type into the game: Hearth Input isn't running".to_string())?;
+    if r["ok"] == false { return Err(r["error"].as_str().unwrap_or("Couldn't press that").to_string()); }
+    Ok(r)
+}
+
 // ------------------------------------------------------------------ the UI's calls
 
 fn game_arg(a: &Value, running: &Option<String>) -> Result<String, String> {
@@ -447,8 +648,16 @@ pub fn call_in(dir: &Path, method: &str, a: &Value, running: Option<String>) -> 
             let mut c = load_in(dir, &id);
             c["game"] = Value::String(id.clone());
             c["running"] = json!(running.as_deref() == Some(id.as_str()));
-            c["resolved"] = resolve(&c).unwrap_or(Value::Null);
+            c["resolved"] = resolve_in(dir, &c).unwrap_or(Value::Null);
+            c["global"] = global_in(dir);
             Ok(c)
+        }
+        "input.global.get" => Ok(global_in(dir)),
+        "input.global.set" => save_global_in(dir, a["enabled"].as_bool(), a.get("layout")),
+        "input.validate" => {
+            let l = a.get("layout").ok_or("No layout")?;
+            validate(l)?;
+            Ok(json!({"ok": true, "layout": migrate(l)?}))
         }
         "input.set" => {
             let id = game_arg(a, &running)?;
@@ -465,6 +674,8 @@ pub fn call_in(dir: &Path, method: &str, a: &Value, running: Option<String>) -> 
             Ok(r)
         }
         "input.status" => Ok(request(&json!({"cmd": "status"}), Duration::from_secs(2)).unwrap_or_else(|e| json!({"ok": false, "error": e}))),
+        "osk.type" => type_text(a["text"].as_str().unwrap_or(""), &a["mods"]),
+        "osk.key" => type_key(a["key"].as_str().unwrap_or(""), a["n"].as_u64().unwrap_or(1), &a["mods"]),
         _ => Err(format!("{method} isn't known")),
     }
 }
@@ -504,7 +715,7 @@ mod tests {
         bad(|l| l["buttons"]["a"] = json!({"press": "key:A", "command": "x"}), "unknown setting");
         bad(|l| l["buttons"]["a"] = json!({"press": "key:A", "threshold": 0.5}), "unknown setting");
         bad(|l| l["buttons"]["a"] = json!({"press": "key:A", "hold": "key:B", "turbo": true}), "turbo");
-        bad(|l| l["buttons"]["a"] = json!({"press": "shift", "hold": "key:B"}), "tap and hold");
+        bad(|l| { l["version"] = json!(1); l["buttons"] = json!({"a": {"press": "shift", "hold": "key:B"}}); }, "tap and hold");
         bad(|l| l["buttons"]["rt"] = json!({"press": "mouse:left", "threshold": 2}), "between");
         bad(|l| l["buttons"]["rt"] = json!({"press": "mouse:left", "threshold": true}), "number");
         bad(|l| l["sticks"]["rs"]["sensitivity"] = json!(50), "between");
@@ -512,7 +723,8 @@ mod tests {
         bad(|l| { l["sticks"]["rs"]["deadzone"] = json!(0.5); l["sticks"]["rs"]["outer"] = json!(0.55); }, "outer");
         bad(|l| l["sticks"]["ls"] = json!({"mode": "teleport"}), "mode");
         bad(|l| l["sticks"]["ls"]["up"] = json!("radial"), "can't be used here");
-        bad(|l| l["shift"] = json!({"buttons": {"a": "shift"}}), "can't be used here");
+        bad(|l| { l["version"] = json!(1); l["shift"] = json!({"buttons": {"a": "shift"}}); }, "can't be used here");
+        bad(|l| l["shift"] = json!({"buttons": {}}), "unknown setting");
         bad(|l| l["radial"] = json!(vec!["key:A"; 9]), "up to 8");
         bad(|l| l["radial"] = json!(["gyro:toggle"]), "can't be used here");
         bad(|l| l["name"] = json!("x".repeat(61)), "name");
@@ -520,7 +732,7 @@ mod tests {
         bad(|l| l["base"] = json!("nope"), "template");
         bad(|l| l["hold_ms"] = json!(20), "between");
         bad(|l| l["hold_ms"] = json!(300.5), "whole");
-        bad(|l| l["version"] = json!(2), "version");
+        bad(|l| l["version"] = json!(3), "version");
         bad(|l| l["script"] = json!("x"), "unknown setting");
         assert!(validate(&json!({"buttons": {"a": "key:LEFTCTRL+C"}})).is_ok());
         assert!(validate(&json!({})).is_ok());
@@ -535,14 +747,15 @@ mod tests {
         assert_eq!(r["buttons"]["rt"]["press"], "mouse:left");
         assert_eq!(r["buttons"]["lt"]["press"], "mouse:right");
         assert_eq!([&r["buttons"]["up"], &r["buttons"]["down"], &r["buttons"]["left"], &r["buttons"]["right"]], [&json!("key:UP"), &json!("key:DOWN"), &json!("key:LEFT"), &json!("key:RIGHT")]);
-        assert_eq!(r["buttons"]["lb"], "shift");
+        assert_eq!(r["buttons"]["lb"], "layer:shift");
         assert_eq!(r["buttons"]["menu"], "key:ESC");
         assert_eq!(r["buttons"]["a"], "key:SPACE");
         assert_eq!(r["buttons"]["rb"], "key:LEFTCTRL");
         assert_eq!(r["buttons"]["view"], "radial");
-        assert_eq!(r["shift"]["buttons"]["up"], "key:1");
-        assert_eq!(r["shift"]["buttons"]["left"], "key:4");
-        assert_eq!(r["shift"]["buttons"]["y"], "key:LEFTCTRL+1");
+        assert_eq!(r["layers"][0]["id"], "shift");
+        assert_eq!(r["layers"][0]["buttons"]["up"], "key:1");
+        assert_eq!(r["layers"][0]["buttons"]["left"], "key:4");
+        assert_eq!(r["layers"][0]["buttons"]["y"], "key:LEFTCTRL+1");
         assert_eq!(r["radial"].as_array().unwrap().len(), 8);
         // Beacon's strategy games start with it; Off stays possible (and is kept once chosen); others start Off.
         let d = tempfile::tempdir().unwrap();
@@ -666,6 +879,66 @@ mod tests {
         assert_eq!(g["running"], false);
         assert!(call_in(&dir, "input.test", &json!({"layout": {"buttons": {"a": "key:NOPE"}}}), None).is_err());
         assert!(call_in(&dir, "input.nope", &json!({}), None).is_err());
+    }
+
+    /// The cases hearth-input's tests check too: both sides accept and refuse the same layouts.
+    #[test]
+    fn shared_cases() {
+        let cases: Value = serde_json::from_str(include_str!("../../linux/test/fixtures/input-layout-cases.json")).unwrap();
+        for l in cases["good"].as_array().unwrap() { validate(l).unwrap_or_else(|e| panic!("{l}: {e}")); }
+        for c in cases["bad"].as_array().unwrap() {
+            let e = validate(&c[0]).expect_err(&format!("{} should be refused", c[0]));
+            assert!(e.contains(c[1].as_str().unwrap()), "{}: {e:?} should mention {}", c[0], c[1]);
+        }
+    }
+
+    #[test]
+    fn version_1_files_are_read_and_migrated() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().to_path_buf();
+        let old = json!({"version": 1, "name": "Mine", "buttons": {"lb": "shift", "a": "key:J"}, "shift": {"buttons": {"a": "key:K"}}});
+        std::fs::write(dir.join(file_name("steam:7").unwrap()), json!({"version": 1, "layout": "custom", "custom": old, "prefs": {"sensitivity": 1.5}}).to_string()).unwrap();
+        let c = load_in(&dir, "steam:7");
+        assert_eq!(c["layout"], "custom");
+        assert_eq!(c["custom"]["version"], 2);
+        assert_eq!(c["custom"]["buttons"]["lb"], "layer:shift");
+        assert_eq!(c["custom"]["layers"][0]["buttons"]["a"], "key:K");
+        assert!(c["custom"].get("shift").is_none());
+        assert_eq!(c["prefs"]["sensitivity"], 1.5);
+        // Saved again as version 2.
+        save_in(&dir, "steam:7", None, None, None).unwrap();
+        let raw: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(file_name("steam:7").unwrap())).unwrap()).unwrap();
+        assert_eq!(raw["version"], 2);
+        assert_eq!(raw["custom"]["layers"][0]["id"], "shift");
+        // A layout with no version that uses "shift" is version 1; one without is version 2.
+        assert!(validate(&json!({"buttons": {"lb": "shift"}})).is_ok());
+        assert!(validate(&json!({"buttons": {"lb": "layer:x"}, "layers": [{"id": "x"}]})).is_ok());
+        assert_eq!(migrate(&json!({"buttons": {"lb": "shift"}})).unwrap()["layers"][0]["id"], "shift");
+    }
+
+    #[test]
+    fn global_layout() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().to_path_buf();
+        assert_eq!(global_in(&dir), json!({"enabled": false, "layout": null}));
+        assert!(save_global_in(&dir, Some(true), None).is_err());           // nothing to turn on yet
+        assert!(save_in(&dir, "steam:1", Some("global"), None, None).is_err());
+        let g = save_global_in(&dir, None, Some(template("mouse").unwrap())).unwrap();
+        assert_eq!((g["enabled"].as_bool(), g["layout"]["name"].as_str()), (Some(false), Some("Mouse only")));
+        assert_eq!(load_in(&dir, "steam:1")["layout"], "off");             // not on: games start Off as before
+        save_global_in(&dir, Some(true), None).unwrap();
+        assert_eq!(load_in(&dir, "steam:1")["layout"], "global");          // on: games without a choice use it
+        assert_eq!(state_in(&dir, Some("steam:1"), true, false)["layout"]["name"], "Mouse only");
+        assert_eq!(load_in(&dir, "beacon:rotwk")["layout"], "rts");         // their own default still wins
+        save_in(&dir, "steam:2", Some("off"), None, None).unwrap();
+        assert_eq!(load_in(&dir, "steam:2")["layout"], "off");             // and so does a choice
+        save_in(&dir, "steam:3", Some("global"), None, None).unwrap();
+        assert_eq!(load_in(&dir, "steam:3")["layout"], "global");
+        assert!(save_global_in(&dir, None, Some(&json!({"buttons": {"a": "key:NOPE"}}))).is_err());
+        let own = own_layouts_in(&dir);
+        assert_eq!(own[0]["game"], "_global");
+        assert_eq!(decode_name("steam%3A440"), "steam:440");
+        assert_eq!(decode_name("bad%zz%4"), "bad%zz%4");
     }
 
     #[test]

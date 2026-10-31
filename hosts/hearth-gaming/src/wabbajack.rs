@@ -6,10 +6,14 @@
 //! builds the list's folder (Mod Organizer 2, its mods and profiles). Hearth OS carries the engine
 //! (/usr/lib/hearth/jackify-engine); otherwise Hearth Mods downloads it once from its GitHub releases.
 //!
-//! What Hearth adds around it: the Nexus key from Hearth's sign-in; files the engine can't download itself (a free
-//! Nexus account's files, and "manual" downloads from other sites) go in Hearth's download queue as "needs-link"
-//! items: pressing "Mod Manager Download" on Nexus fills them (downloads.rs), and a file from another site is picked
-//! up from your Downloads folder by its name. When they're all there the engine is told to carry on.
+//! What Hearth adds around it: the Nexus key, and the LoversLab and MEGA sign-ins (accounts.rs), in the engine's
+//! environment. Files the engine can't download itself: a free Nexus account's files go in Hearth's download queue
+//! as "needs-link" items, filled by pressing "Mod Manager Download" (downloads.rs); everything else (LoversLab and
+//! Vector Plexus files, read from the .wabbajack itself, "manual" downloads, files the engine reported failed) goes in
+//! the guided flow (guided.rs): Hearth opens each file's page in Hearth Browser, catches the download, checks name,
+//! size and hash, and moves it into the list's downloads; Google Drive files come with your Google account when
+//! you're signed in. When the engine's own ones are there it is told to carry on; when it had stopped, Hearth starts
+//! it again by itself.
 //! Afterwards Hearth points Mod Organizer at the game and the downloads with Wine's Z: paths, makes the list its
 //! own Proton prefix with the Windows parts these lists need (umu-run winetricks), and writes
 //! mods/modlists/<id>.json, which Hearth's library reads (hearth-core library.rs modlist_games).
@@ -152,7 +156,24 @@ pub fn game_info(game: &str) -> Option<(&'static str, u64, &'static str, &'stati
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Manual { pub file_name: String, pub url: String, pub size: u64, pub nexus: bool, pub domain: String, pub mod_id: u64, pub file_id: u64, pub mod_name: String, pub here: bool, #[serde(default)] pub download: String }
+pub struct Manual {
+    pub file_name: String, pub url: String, pub size: u64, pub nexus: bool, pub domain: String, pub mod_id: u64, pub file_id: u64, pub mod_name: String, pub here: bool,
+    #[serde(default)] pub download: String,
+    /// Wabbajack's xxHash64 of the file (guided::hash_text), when known: a file is only taken when it matches.
+    #[serde(default)] pub hash: String,
+    /// Where it comes from, for the page ("LoversLab", "MEGA", "Google Drive", a web address's host).
+    #[serde(default)] pub site: String,
+    /// Found by Hearth (from the list, or a download the engine reported failed), not by the engine's own manual
+    /// download step: when they're all here the engine is started again rather than told to carry on.
+    #[serde(default)] pub from_list: bool,
+    /// Skipped for now in the guided flow (comes back after the others).
+    #[serde(default)] pub skipped: bool,
+    /// The last problem with it (a wrong file in Downloads, Google refusing it).
+    #[serde(default)] pub problem: String,
+    /// A Google Drive file's id: with a Google sign-in, Hearth downloads it itself.
+    #[serde(default)] pub gdrive: String,
+    #[serde(default)] pub tried_google: bool,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +203,12 @@ pub struct Job {
     pub finished: u64,
     #[serde(default)]
     pub premium_needed: bool,
+    /// The engine is waiting for its manual files (it carries on when told "continue").
+    #[serde(default)]
+    pub waiting: bool,
+    /// Times Hearth started the engine again by itself after fetching files it couldn't (a guard against loops).
+    #[serde(default)]
+    pub auto_resumes: u32,
 }
 impl Job {
     fn file(&self) -> PathBuf { jobs_dir().join(format!("{}.json", self.id)) }
@@ -191,6 +218,7 @@ impl Job {
         let mut v = serde_json::to_value(self).unwrap_or(Value::Null);
         v["log"] = json!(self.log());
         v["running"] = json!(RUN.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&self.id));
+        v["guide"] = guide(&self.manual);
         v
     }
 }
@@ -235,6 +263,9 @@ pub fn free_space(p: &Path) -> Option<u64> {
 
 /// Starts installing a modlist. `list` is a gallery id (repository/name) or a .wabbajack file.
 pub fn start(title: &str, list: &str, game: &str, game_dir: &Path, install_dir: &Path, downloads_dir: &Path) -> Result<Job, String> {
+    start_with(title, list, game, game_dir, install_dir, downloads_dir, 0)
+}
+fn start_with(title: &str, list: &str, game: &str, game_dir: &Path, install_dir: &Path, downloads_dir: &Path, auto_resumes: u32) -> Result<Job, String> {
     load_jobs();
     let eng = engine().ok_or("The Wabbajack engine isn't installed yet.")?;
     if list.trim().is_empty() { return Err("Choose a modlist.".into()); }
@@ -252,7 +283,7 @@ pub fn start(title: &str, list: &str, game: &str, game_dir: &Path, install_dir: 
     let id = existing.unwrap_or_else(|| format!("w{}", util::now_ms()));
     let job = Job { id: id.clone(), title: if title.trim().is_empty() { list.rsplit('/').next().unwrap_or("Modlist").trim_end_matches(".wabbajack").to_string() } else { title.trim().to_string() },
         list: list.into(), game: game.into(), game_dir: game_dir.into(), install_dir: install_dir.into(), downloads_dir: downloads_dir.into(),
-        state: "installing".into(), phase: "Starting".into(), started: util::now_ms(), ..Default::default() };
+        state: "installing".into(), phase: "Starting".into(), started: util::now_ms(), auto_resumes, ..Default::default() };
     job.save();
     JOBS.lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone(), job.clone());
     let j2 = job.clone();
@@ -262,6 +293,11 @@ pub fn start(title: &str, list: &str, game: &str, game_dir: &Path, install_dir: 
 pub fn resume(id: &str) -> Result<Job, String> {
     let j = job(id).ok_or("That install isn't in the list anymore.")?;
     start(&j.title, &j.list, &j.game, &j.game_dir, &j.install_dir, &j.downloads_dir)
+}
+/// Hearth starting the engine again by itself once the files it couldn't fetch are here (at most 3 times in a row).
+fn resume_auto(j: &Job) -> bool {
+    if j.auto_resumes >= 3 { return false; }
+    start_with(&j.title, &j.list, &j.game, &j.game_dir, &j.install_dir, &j.downloads_dir, j.auto_resumes + 1).is_ok()
 }
 pub fn cancel(id: &str) {
     if let Some(l) = RUN.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
@@ -292,6 +328,8 @@ fn run(start_job: Job, eng: PathBuf) {
     if job.list.ends_with(".wabbajack") { cmd.arg("-w").arg(&job.list); } else { cmd.arg("-m").arg(&job.list); }
     cmd.arg("-o").arg(&job.install_dir).arg("-d").arg(&job.downloads_dir).arg("-g").arg(&job.game_dir);
     if let Some(a) = crate::nexus::account() { cmd.env("NEXUS_API_KEY", a.key); }
+    // LoversLab and MEGA sign-ins (accounts.rs), in the engine's environment like the Nexus key.
+    for (k, v) in crate::accounts::engine_env() { cmd.env(k, v); }
     #[cfg(unix)] { use std::os::unix::process::CommandExt; cmd.process_group(0); }
     let log = std::fs::OpenOptions::new().create(true).append(true).open(job.log()).ok().map(|f| Arc::new(Mutex::new(f)));
     let write_log = |s: &str| if let Some(l) = &log { let _ = writeln!(l.lock().unwrap_or_else(|e| e.into_inner()), "{s}"); };
@@ -310,6 +348,9 @@ fn run(start_job: Job, eng: PathBuf) {
     }
     let mut pending: Vec<Manual> = Vec::new();
     let mut last_error = String::new();
+    // The list's archives (read from the .wabbajack once it's there), for files the engine can't or didn't fetch.
+    let mut archives: Option<Vec<ListArchive>> = None;
+    scan_list(&id, &mut archives);
     if let Some(out) = child.stdout.take() {
         // Progress lines end in \r as often as \n.
         let mut r = std::io::BufReader::new(out);
@@ -330,12 +371,14 @@ fn run(start_job: Job, eng: PathBuf) {
                             ask_for(&id, items, &live);
                             continue;
                         }
-                        "manual_download_phase_complete" => { update(&id, |j| { j.state = "installing".into(); j.manual.clear(); }); continue; }
+                        "manual_download_phase_complete" => { update(&id, |j| { j.state = "installing".into(); j.waiting = false; j.manual.retain(|m| m.from_list && !m.here); }); continue; }
                         _ => {}
                     }
                 }
             }
             write_log(&line);
+            if archives.is_none() && line.contains("Missing ") && line.contains(" archives") { scan_list(&id, &mut archives); }
+            if line.contains("Failed to download '") { failed_download(&id, &line, &mut archives); }
             let low = line.to_lowercase();
             if low.contains("error") || low.contains("failed") || low.contains("exception") { last_error = line.clone(); }
             let premium = low.contains("premium") && (low.contains("required") || low.contains("403") || low.contains("non-premium"));
@@ -362,7 +405,21 @@ fn run(start_job: Job, eng: PathBuf) {
                 Err(e) => { update(&id, |j| { j.state = "failed".into(); j.error = format!("Installed, but setting it up didn't work: {e}"); }); }
             }
         }
-        _ => { update(&id, |j| { j.state = "failed".into(); j.error = if last_error.is_empty() { "The Wabbajack engine stopped with a problem. The log has what it said.".into() } else { last_error.chars().take(400).collect() }; }); }
+        _ => {
+            // Files Hearth found the engine couldn't fetch: wait for them (the guided flow), then start again.
+            let j = self::job(&id).unwrap_or(job);
+            let outstanding = j.manual.iter().filter(|m| !m.here).count();
+            let fetched = j.manual.iter().any(|m| m.from_list && m.here);
+            if outstanding > 0 {
+                update(&id, |j| { j.state = "manual".into(); j.phase = "Files to fetch".into(); j.waiting = false; j.error.clear();
+                                   j.status = format!("{outstanding} file{} to fetch; then the install carries on by itself.", if outstanding == 1 { "" } else { "s" }); });
+                watch(&id);
+            } else if fetched && resume_auto(&j) {
+                write_log("--- the files Hearth fetched are here: starting the engine again");
+            } else {
+                update(&id, |j| { j.state = "failed".into(); j.error = if last_error.is_empty() { "The Wabbajack engine stopped with a problem. The log has what it said.".into() } else { last_error.chars().take(400).collect() }; });
+            }
+        }
     }
 }
 
@@ -417,13 +474,15 @@ fn manual_of(ev: &Value) -> Manual {
     }
     if let Some(g) = ev["game_domain"].as_str().or(ev["game"].as_str()) { if domain.is_empty() { domain = g.to_ascii_lowercase(); } }
     let file_id = ev["file_id"].as_u64().or_else(|| crate::nexus::urldecode(&url).split("file_id=").nth(1).and_then(|s| s.split('&').next()).and_then(|s| s.parse().ok())).unwrap_or(0);
-    Manual { file_name: ev["file_name"].as_str().unwrap_or("").to_string(), url, size: ev["expected_size"].as_u64().unwrap_or(0), nexus: nexus_url && file_id > 0 && !domain.is_empty(),
-             domain, mod_id, file_id, mod_name: ev["mod_name"].as_str().unwrap_or("").to_string(), here: false, download: String::new() }
+    let hash = ev["expected_hash"].as_str().and_then(crate::guided::parse_hash).map(crate::guided::hash_text).unwrap_or_default();
+    let site = if nexus_url { "Nexus Mods".to_string() } else { site_of_url(&url) };
+    Manual { file_name: ev["file_name"].as_str().unwrap_or("").to_string(), size: ev["expected_size"].as_u64().unwrap_or(0), nexus: nexus_url && file_id > 0 && !domain.is_empty(),
+             domain, mod_id, file_id, mod_name: ev["mod_name"].as_str().unwrap_or("").to_string(), hash, site, gdrive: gdrive_id(&url), url, ..Default::default() }
 }
 
-/// The engine needs files it can't download itself: they go in Hearth's queue (Nexus) or are looked for in your
-/// Downloads folder (other sites). When they're all in the list's downloads folder, the engine carries on.
-fn ask_for(id: &str, items: Vec<Manual>, live: &Arc<Mutex<Live>>) {
+/// The engine needs files it can't download itself: they go in Hearth's queue (Nexus) or the guided flow (other
+/// sites). When the engine's ones are all in the list's downloads folder, the engine carries on.
+fn ask_for(id: &str, items: Vec<Manual>, _live: &Arc<Mutex<Live>>) {
     let Some(j) = job(id) else { return };
     let mut items = items;
     for m in items.iter_mut() {
@@ -436,27 +495,86 @@ fn ask_for(id: &str, items: Vec<Manual>, live: &Arc<Mutex<Live>>) {
             m.download = d.id;
         }
     }
-    update(id, |jj| { jj.state = "manual".into(); jj.phase = "Files to fetch".into(); jj.manual = items.clone(); });
-    // Look every two seconds until they're all there, or the install stops.
-    let (id, live) = (id.to_string(), live.clone());
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        if live.lock().unwrap_or_else(|e| e.into_inner()).stop || !RUN.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&id) { return; }
-        let Some(j) = job(&id) else { return };
-        if j.state != "manual" { return; }
-        let mut list = j.manual.clone();
-        let mut changed = false;
-        for m in list.iter_mut().filter(|m| !m.here) {
-            if !m.nexus { pick_up_from_downloads(&j.downloads_dir, m); }
-            if present(&j.downloads_dir, m) { m.here = true; changed = true; }
+    update(id, |jj| {
+        // Files Hearth already found from the list stay, once each.
+        let keep: Vec<Manual> = jj.manual.iter().filter(|o| o.from_list && !items.iter().any(|m| m.file_name == o.file_name)).cloned().collect();
+        jj.state = "manual".into(); jj.phase = "Files to fetch".into(); jj.waiting = true;
+        jj.manual = items.clone();
+        jj.manual.extend(keep);
+    });
+    watch(id);
+}
+
+static WATCHING: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+static SEEN: Mutex<Option<std::collections::HashSet<(PathBuf, u64, u64)>>> = Mutex::new(None);
+
+/// Looks every two seconds for the files a job still needs, until they're all there or the install stops.
+fn watch(id: &str) {
+    if !WATCHING.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string()) { return; }
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if !tick(&id) { break; }
         }
-        let all = list.iter().all(|m| m.here);
-        if changed { update(&id, |jj| jj.manual = list.clone()); }
-        if all {
-            if let Some(si) = live.lock().unwrap_or_else(|e| e.into_inner()).stdin.as_mut() { let _ = si.write_all(b"{\"command\":\"continue\"}\n"); let _ = si.flush(); }
-            update(&id, |jj| { jj.state = "installing".into(); jj.phase = "Carrying on".into(); });
-            return;
+        WATCHING.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    });
+}
+
+pub fn want_of(m: &Manual) -> crate::guided::Want {
+    crate::guided::Want { name: m.file_name.clone(), size: m.size, hash: crate::guided::hash_of_text(&m.hash) }
+}
+
+/// One look: picks up downloaded files (checked against the list), starts Google Drive downloads with your Google
+/// account, tells a waiting engine to carry on, or starts it again. Whether to keep looking.
+fn tick(id: &str) -> bool {
+    use crate::guided::{self, PickUp};
+    let Some(j) = job(id) else { return false };
+    if !matches!(j.state.as_str(), "installing" | "manual") { return false; }
+    let running = RUN.lock().unwrap_or_else(|e| e.into_inner()).contains_key(id);
+    let dirs = guided::browser_download_dirs();
+    let google = crate::accounts::signed_in("google");
+    let mut list = j.manual.clone();
+    for m in list.iter_mut().filter(|m| !m.here) {
+        if present(&j.downloads_dir, m) { m.here = true; continue; }
+        if m.nexus { continue; }
+        if google && !m.gdrive.is_empty() && !m.tried_google { m.tried_google = true; fetch_google(id, &j.downloads_dir, m.clone()); continue; }
+        let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+        match guided::pick_up(&dirs, &j.downloads_dir, &want_of(m), seen.get_or_insert_with(Default::default)) {
+            PickUp::Moved(_) => { m.here = true; m.problem.clear(); }
+            PickUp::Wrong(e) => m.problem = e,
+            PickUp::Nothing => {}
         }
+    }
+    // Merged by name: the engine's reader may have added files meanwhile.
+    let j = update(id, |jj| for m in jj.manual.iter_mut() {
+        if let Some(n) = list.iter().find(|n| n.file_name == m.file_name) { m.here |= n.here; m.problem = n.problem.clone(); m.tried_google |= n.tried_google; }
+    }).unwrap_or(j);
+    let all = j.manual.iter().all(|m| m.here);
+    if j.waiting && running && j.manual.iter().filter(|m| !m.from_list).all(|m| m.here) {
+        if let Some(l) = RUN.lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned() {
+            if let Some(si) = l.lock().unwrap_or_else(|e| e.into_inner()).stdin.as_mut() { let _ = si.write_all(b"{\"command\":\"continue\"}\n"); let _ = si.flush(); }
+        }
+        update(id, |jj| { jj.waiting = false; if jj.state == "manual" { jj.state = "installing".into(); jj.phase = "Carrying on".into(); } });
+    }
+    if !running && all && j.state == "manual" {
+        if !resume_auto(&j) { update(id, |jj| { jj.status = "All the files are here. Press Resume to carry on.".into(); }); }
+        return false;
+    }
+    !all
+}
+
+fn fetch_google(id: &str, dir: &Path, m: Manual) {
+    let (id, dir) = (id.to_string(), dir.to_path_buf());
+    std::thread::spawn(move || {
+        let dest = dir.join(&m.file_name);
+        let r = crate::accounts::google_download(&m.gdrive, &dest).and_then(|_| match crate::guided::check(&dest, &want_of(&m)) {
+            crate::guided::Check::Good => Ok(()),
+            _ => { let _ = std::fs::remove_file(&dest); Err("Google Drive gave a different file than the modlist wants.".to_string()) }
+        });
+        update(&id, |jj| if let Some(x) = jj.manual.iter_mut().find(|x| x.file_name == m.file_name) {
+            match &r { Ok(_) => { x.here = true; x.problem.clear(); } Err(e) => x.problem = format!("{e} Fetch it in the browser instead."), }
+        });
     });
 }
 
@@ -466,33 +584,142 @@ fn present(dir: &Path, m: &Manual) -> bool {
     std::fs::metadata(dir.join(&m.file_name)).map(|md| md.is_file() && (m.size == 0 || md.len() == m.size)).unwrap_or(false)
 }
 
-/// A file you downloaded in a browser (from a site that isn't Nexus): found in ~/Downloads by its name (browsers
-/// add " (1)" to names they already have, so those count too) and its size, and moved to the list's downloads.
-fn pick_up_from_downloads(dir: &Path, m: &Manual) {
-    if m.file_name.is_empty() { return; }
-    let dl = user_downloads();
-    let (stem, ext) = match m.file_name.rsplit_once('.') { Some((s, e)) => (s.to_string(), format!(".{e}")), None => (m.file_name.clone(), String::new()) };
-    let Ok(rd) = std::fs::read_dir(&dl) else { return };
-    for e in rd.flatten() {
-        let n = e.file_name().to_string_lossy().to_string();
-        let same = n == m.file_name || (n.starts_with(&format!("{stem} (")) && n.ends_with(&format!("){ext}")));
-        if !same { continue; }
-        let Ok(md) = e.metadata() else { continue };
-        if !md.is_file() || (m.size != 0 && md.len() != m.size) { continue; }
-        let _ = crate::mods::move_file(&e.path(), &dir.join(&m.file_name));
-        return;
+// ------------------------------------------------------------------ the list's own archive list
+
+/// An archive of the list, from the .wabbajack's "modlist" (its Archives).
+#[derive(Debug, Clone, Default)]
+pub struct ListArchive { pub name: String, pub size: u64, pub hash: Option<u64>, pub site: String, pub page: String, pub gdrive: String, pub browser_only: bool }
+
+fn host_of(url: &str) -> String { url.split("://").nth(1).unwrap_or("").split(['/', '?', '#']).next().unwrap_or("").trim_start_matches("www.").to_string() }
+fn site_of_url(url: &str) -> String {
+    let h = host_of(url);
+    match h.as_str() { "loverslab.com" | "api.loverslab.com" => "LoversLab".into(), "mega.nz" | "mega.co.nz" => "MEGA".into(), "drive.google.com" | "drive.usercontent.google.com" => "Google Drive".into(), _ => h }
+}
+/// A Google Drive file id from a drive address (…/file/d/<id>/…, ?id=<id>).
+fn gdrive_id(url: &str) -> String {
+    if !site_of_url(url).eq("Google Drive") { return String::new(); }
+    let id = url.split("/file/d/").nth(1).map(|r| r.split(['/', '?']).next().unwrap_or("").to_string())
+        .or_else(|| url.split(['?', '&']).find_map(|kv| kv.strip_prefix("id=")).map(|s| s.to_string())).unwrap_or_default();
+    if id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') { id } else { String::new() }
+}
+
+/// What Hearth needs of one archive: its page for the browser, and whether only a browser can fetch it (LoversLab and
+/// Vector Plexus: Invision sites whose files need a signed-in account; their page addresses as Wabbajack's own
+/// ManualDownloadUrls makes them).
+pub fn archive_of(a: &Value) -> ListArchive {
+    let st = &a["State"];
+    let ty = st["$type"].as_str().unwrap_or("");
+    let url = st["Url"].as_str().or(st["URL"].as_str()).unwrap_or("").to_string();
+    let ips4 = |base: &str| {
+        let id = st["IPS4Mod"].as_i64().unwrap_or(0);
+        if st["IsAttachment"] == true { format!("{base}/applications/core/interface/file/attachment.php?id={id}") } else { format!("{base}/files/file/{id}/") }
+    };
+    let (site, page, gdrive, browser_only) = if ty.contains("LoversLab") { ("LoversLab".to_string(), ips4("https://www.loverslab.com"), String::new(), true) }
+        else if ty.contains("VectorPlexus") { ("Vector Plexus".to_string(), ips4("https://vectorplexis.com"), String::new(), true) }
+        else if ty.contains("GoogleDrive") { let id = st["Id"].as_str().unwrap_or("").to_string(); ("Google Drive".to_string(), format!("https://drive.google.com/file/d/{id}/view"), id, false) }
+        else if ty.contains("Nexus") || ty.contains("WabbajackCDN") || ty.contains("GameFile") || ty.contains("Bethesda") { (String::new(), String::new(), String::new(), false) }
+        else if url.starts_with("https://") { (site_of_url(&url), url.clone(), gdrive_id(&url), false) }
+        else { (String::new(), String::new(), String::new(), false) };
+    ListArchive { name: a["Name"].as_str().unwrap_or("").to_string(), size: a["Size"].as_u64().unwrap_or(0), hash: a["Hash"].as_str().and_then(crate::guided::parse_hash), site, page, gdrive, browser_only }
+}
+
+/// The archives of a .wabbajack file (a zip with the list as JSON in "modlist").
+pub fn read_modlist(path: &Path) -> Result<Vec<ListArchive>, String> {
+    let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut z = zip::ZipArchive::new(f).map_err(|e| format!("not a .wabbajack file ({e})"))?;
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut z.by_name("modlist").map_err(|e| e.to_string())?, &mut text).map_err(|e| e.to_string())?;
+    let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    Ok(v["Archives"].as_array().map(|a| a.iter().map(archive_of).collect()).unwrap_or_default())
+}
+
+/// Where jackify-engine keeps its data (~/Jackify, or jackify_data_dir in ~/.config/jackify/config.json).
+fn jackify_data_dir() -> PathBuf {
+    util::read_json(&util::home().join(".config/jackify/config.json"))["jackify_data_dir"].as_str().filter(|s| s.starts_with('/')).map(PathBuf::from)
+        .unwrap_or_else(|| util::home().join("Jackify"))
+}
+/// The job's .wabbajack: the file chosen, or the one the engine downloaded for a gallery list.
+pub fn list_file(list: &str) -> PathBuf {
+    if list.ends_with(".wabbajack") { return PathBuf::from(list); }
+    jackify_data_dir().join("downloaded_mod_lists").join(format!("{}.wabbajack", list.replace('/', "_@@_")))
+}
+
+fn add_list_item(id: &str, a: &ListArchive) -> bool {
+    let mut added = false;
+    update(id, |j| if !a.name.is_empty() && !j.manual.iter().any(|m| m.file_name == a.name) {
+        j.manual.push(Manual { file_name: a.name.clone(), url: a.page.clone(), size: a.size, hash: a.hash.map(crate::guided::hash_text).unwrap_or_default(), site: a.site.clone(),
+            mod_name: a.name.clone(), gdrive: a.gdrive.clone(), from_list: true, ..Default::default() });
+        added = true;
+    });
+    added
+}
+
+/// Reads the list once its .wabbajack is there; files only a browser can fetch (LoversLab without a LoversLab
+/// sign-in, Vector Plexus) are put in the guided flow straight away, while the engine fetches the rest.
+fn scan_list(id: &str, archives: &mut Option<Vec<ListArchive>>) {
+    if archives.is_some() { return; }
+    let Some(j) = job(id) else { return };
+    let f = list_file(&j.list);
+    if !f.is_file() { return; }
+    let Ok(list) = read_modlist(&f) else { return };
+    let ll = crate::accounts::signed_in("loverslab");
+    let mut any = false;
+    for a in list.iter().filter(|a| a.browser_only && !(ll && a.site == "LoversLab") && !a.page.is_empty()) {
+        if !present(&j.downloads_dir, &Manual { file_name: a.name.clone(), size: a.size, ..Default::default() }) { any |= add_list_item(id, a); }
+    }
+    *archives = Some(list);
+    if any { watch(id); }
+}
+
+/// "Failed to download 'name'…": a file the engine couldn't get goes in the guided flow when it has a page to fetch
+/// it from (Nexus files have their own way: the engine's manual step).
+fn failed_download(id: &str, line: &str, archives: &mut Option<Vec<ListArchive>>) {
+    scan_list(id, archives);
+    let Some(list) = archives.as_ref() else { return };
+    if let Some(a) = list.iter().find(|a| !a.name.is_empty() && !a.page.is_empty() && line.contains(&format!("'{}'", a.name))) {
+        if add_list_item(id, a) { watch(id); }
     }
 }
 
-fn user_downloads() -> PathBuf {
-    let dirs = std::fs::read_to_string(util::xdg_config().join("user-dirs.dirs")).unwrap_or_default();
-    for l in dirs.lines() {
-        if let Some(v) = l.strip_prefix("XDG_DOWNLOAD_DIR=") {
-            let v = v.trim().trim_matches('"').replace("$HOME", &util::home().to_string_lossy());
-            if !v.is_empty() { return PathBuf::from(v); }
-        }
+// ------------------------------------------------------------------ the guided flow, for the page
+
+/// The next file to fetch in the browser: the first one not here and not skipped, then the skipped ones again.
+pub fn guide_next(list: &[Manual]) -> Option<usize> {
+    let open = |skip_ok: bool| list.iter().position(|m| !m.nexus && !m.here && (skip_ok || !m.skipped));
+    open(false).or_else(|| open(true))
+}
+/// Progress for the page: "3 of 12 LoversLab files" and the file to fetch now.
+pub fn guide(list: &[Manual]) -> Value {
+    let g: Vec<&Manual> = list.iter().filter(|m| !m.nexus).collect();
+    if g.is_empty() { return Value::Null; }
+    let (total, done) = (g.len(), g.iter().filter(|m| m.here).count());
+    let sites: std::collections::BTreeSet<&str> = g.iter().map(|m| m.site.as_str()).collect();
+    let site = if sites.len() == 1 { sites.iter().next().copied().unwrap_or("") } else { "" };
+    let current = (done + 1).min(total);
+    let next = guide_next(list);
+    json!({"total": total, "done": done, "current": current, "site": site,
+           "label": format!("{current} of {total} {}file{}", if site.is_empty() { String::new() } else { format!("{site} ") }, if total == 1 { "" } else { "s" }),
+           "item": next.map(|i| &list[i]), "index": next})
+}
+/// Skips a file for now (it comes back after the others).
+pub fn guide_skip(id: &str, file_name: &str) -> Option<Value> {
+    update(id, |j| if let Some(m) = j.manual.iter_mut().find(|m| m.file_name == file_name) { m.skipped = true; }).map(|j| guide(&j.manual))
+}
+/// A file you chose yourself for one the list needs: checked, then moved into the list's downloads.
+pub fn manual_file(id: &str, file_name: &str, path: &Path) -> Result<Value, String> {
+    use crate::guided::Check;
+    let j = job(id).ok_or("That install isn't in the list anymore.")?;
+    let m = j.manual.iter().find(|m| m.file_name == file_name).ok_or("The modlist doesn't need that file anymore.")?;
+    match crate::guided::check(path, &want_of(m)) {
+        Check::Good => {}
+        Check::Missing => return Err("That file isn't there.".into()),
+        Check::WrongSize(n) => return Err(format!("That file is {n} bytes; the modlist wants {} bytes. It's probably another version.", m.size)),
+        Check::WrongHash => return Err("That isn't the exact file the modlist wants (its hash differs). It's probably another version.".into()),
     }
-    util::home().join("Downloads")
+    crate::mods::move_file(path, &j.downloads_dir.join(&m.file_name)).map_err(|e| format!("Couldn't move it ({e})"))?;
+    let j = update(id, |jj| if let Some(x) = jj.manual.iter_mut().find(|x| x.file_name == file_name) { x.here = true; x.problem.clear(); }).ok_or("gone")?;
+    watch(id);
+    Ok(guide(&j.manual))
 }
 
 // ------------------------------------------------------------------ after the install
@@ -568,6 +795,8 @@ fn set_up(j: &Job) -> Result<Vec<String>, String> {
     util::write_atomic(&desktop, text.as_bytes()).map_err(|e| e.to_string())?;
     util::write_json(&modlists_dir().join(format!("{}.json", j.id)), &json!({"id": j.id, "title": j.title, "launch": desktop, "folder": j.install_dir, "game": j.game,
         "added": util::now_ms(), "note": "Wabbajack modlist (Mod Organizer 2)"}))?;
+    // The Hearth Mod Organizer runs the list natively (Mod Organizer 2 stays as the fallback, per list).
+    notes.push(crate::organizer::adopt_wabbajack(&j.id, &j.title, &j.install_dir, &prefix));
     Ok(notes)
 }
 
@@ -628,6 +857,92 @@ mod tests {
         assert!(present(&dl, &m));
         let wrong = Manual { file_name: "a.zip".into(), size: 4, ..Default::default() };
         assert!(!present(&dl, &wrong));
+    }
+
+    #[test]
+    fn manual_events_carry_the_hash() {
+        let h = crate::guided::xxh64(b"hello");
+        let hex: String = h.to_le_bytes().iter().map(|b| format!("{b:02x}")).collect();
+        let m = manual_of(&json!({"event": "manual_download_required", "nexus_url": "https://drive.google.com/file/d/AbC_12-x/view", "file_name": "x.7z", "expected_hash": hex, "expected_size": 5}));
+        assert_eq!(crate::guided::hash_of_text(&m.hash), Some(h));
+        assert_eq!((m.site.as_str(), m.gdrive.as_str(), m.nexus), ("Google Drive", "AbC_12-x", false));
+    }
+
+    #[test]
+    fn archives_of_a_list() {
+        let ll = archive_of(&json!({"Name": "Body.7z", "Size": 10, "Hash": "menYUTfbRu8=", "State": {"$type": "LoversLabOAuthDownloader, Wabbajack.Lib", "IPS4Mod": 1234, "IPS4File": "Body.7z"}}));
+        assert!(ll.browser_only);
+        assert_eq!((ll.site.as_str(), ll.page.as_str()), ("LoversLab", "https://www.loverslab.com/files/file/1234/"));
+        assert_eq!(ll.hash, Some(0xEF46DB3751D8E999), "the .wabbajack's base64 is the little-endian bytes");
+        let att = archive_of(&json!({"Name": "a.zip", "State": {"$type": "LoversLab", "IPS4Mod": 9, "IsAttachment": true}}));
+        assert_eq!(att.page, "https://www.loverslab.com/applications/core/interface/file/attachment.php?id=9");
+        let vp = archive_of(&json!({"Name": "v.zip", "State": {"$type": "VectorPlexusOAuthDownloader+State, Wabbajack.Lib", "IPS4Mod": 5}}));
+        assert!(vp.browser_only && vp.page == "https://vectorplexis.com/files/file/5/");
+        let gd = archive_of(&json!({"Name": "g.zip", "State": {"$type": "GoogleDriveDownloader, Wabbajack.Lib", "Id": "1abc"}}));
+        assert!(!gd.browser_only && gd.gdrive == "1abc" && gd.page.contains("/file/d/1abc/"));
+        let mega = archive_of(&json!({"Name": "m.zip", "State": {"$type": "MegaDownloader, Wabbajack.Lib", "Url": "https://mega.nz/file/x#y"}}));
+        assert_eq!(mega.site, "MEGA");
+        let cdn = archive_of(&json!({"Name": "c.zip", "State": {"$type": "WabbajackCDNDownloader+State, Wabbajack.Lib", "Url": "https://authored-files.wabbajack.org/c"}}));
+        assert!(cdn.page.is_empty(), "nothing a browser can hand back");
+        assert_eq!(list_file("repo/List Name").file_name().unwrap().to_string_lossy(), "repo_@@_List Name.wabbajack");
+        // A .wabbajack is a zip with the list in "modlist".
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("l.wabbajack");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&f).unwrap());
+        z.start_file("modlist", zip::write::SimpleFileOptions::default()).unwrap();
+        z.write_all(json!({"Archives": [{"Name": "Body.7z", "Size": 10, "State": {"$type": "LoversLab", "IPS4Mod": 1}}]}).to_string().as_bytes()).unwrap();
+        z.finish().unwrap();
+        let l = read_modlist(&f).unwrap();
+        assert_eq!(l.len(), 1);
+        assert!(l[0].browser_only);
+    }
+
+    #[test]
+    fn the_guided_queue_moves_on() {
+        let m = |n: &str, here: bool| Manual { file_name: n.into(), site: "LoversLab".into(), here, ..Default::default() };
+        let mut list = vec![m("a", true), m("b", false), m("c", false), Manual { nexus: true, ..m("n", false) }];
+        let g = guide(&list);
+        assert_eq!(g["label"], "2 of 3 LoversLab files");
+        assert_eq!(g["item"]["fileName"], "b");
+        list[1].skipped = true;
+        assert_eq!(guide_next(&list), Some(2));
+        list[2].here = true;
+        assert_eq!(guide_next(&list), Some(1), "skipped files come back when the rest are done");
+        list[1].here = true;
+        let g = guide(&list);
+        assert!(g["item"].is_null());
+        assert_eq!(g["label"], "3 of 3 LoversLab files");
+        list.push(Manual { file_name: "z".into(), site: "MEGA".into(), ..Default::default() });
+        assert_eq!(guide(&list)["label"], "4 of 4 files");
+    }
+
+    #[test]
+    fn a_waiting_install_picks_up_the_browsers_file() {
+        let t = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", t.path());
+        std::env::set_var("XDG_DATA_HOME", t.path().join("data"));
+        std::env::set_var("XDG_CONFIG_HOME", t.path().join("config"));
+        let (dl, list_dl) = (t.path().join("Downloads"), t.path().join("list-downloads"));
+        std::fs::create_dir_all(&dl).unwrap();
+        std::fs::create_dir_all(&list_dl).unwrap();
+        let want = |n: &str, body: &[u8]| Manual { file_name: n.into(), size: body.len() as u64, hash: crate::guided::hash_text(crate::guided::xxh64(body)), site: "LoversLab".into(), from_list: true, ..Default::default() };
+        let jb = Job { id: "wtest".into(), state: "manual".into(), downloads_dir: list_dl.clone(), manual: vec![want("one.7z", b"first"), want("two.7z", b"second")], ..Default::default() };
+        JOBS.lock().unwrap().insert(jb.id.clone(), jb);
+        assert!(tick("wtest"), "keeps looking while files are missing");
+        std::fs::write(dl.join("one.7z"), b"first").unwrap();
+        std::fs::write(dl.join("two.7z"), b"wrong!").unwrap();
+        assert!(tick("wtest"));
+        let j = job("wtest").unwrap();
+        assert!(j.manual[0].here && list_dl.join("one.7z").is_file());
+        assert!(!j.manual[1].here && !j.manual[1].problem.is_empty(), "a wrong file is reported, not taken");
+        assert_eq!(guide(&j.manual)["label"], "2 of 2 LoversLab files");
+        std::fs::write(dl.join("two (1).7z"), b"second").unwrap();
+        // All here and no engine running: Hearth would start it again (no engine in the test, so it asks for Resume).
+        assert!(!tick("wtest"));
+        let j = job("wtest").unwrap();
+        assert!(j.manual.iter().all(|m| m.here) && list_dl.join("two.7z").is_file());
+        assert!(j.status.contains("Resume"));
+        JOBS.lock().unwrap().remove("wtest");
     }
 
     #[test]

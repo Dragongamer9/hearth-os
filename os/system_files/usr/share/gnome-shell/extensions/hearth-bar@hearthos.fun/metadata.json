@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-bar@hearthos.fun",
+  "name": "Hearth bar",
+  "description": "Mantel's floating bar along the bottom: the panel at the bottom with Hearth's pinned and open apps, and the show-desktop strip at the end.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

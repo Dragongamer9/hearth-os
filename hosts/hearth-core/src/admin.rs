@@ -36,7 +36,7 @@ pub fn write_start_mode(text: &str, mode: &str) -> String {
 }
 
 /// Desktop Mode's desktop (Settings › Desktop Mode › Desktop): HEARTH_DESKTOP in session.conf, read by nimbus-session
-/// at every Desktop Mode start. "classic" (labwc + Mantel, always installed: the fallback) or "plasma". The same rules
+/// at every Desktop Mode start. "classic" (labwc + Mantel, always installed: the fallback), "plasma" or "gnome". The same rules
 /// are in desktop/plasma/hearth-plasma (desktop, desktop-set).
 pub fn read_desktop_choice(text: &str) -> &'static str {
     let mut val = "classic";
@@ -44,7 +44,7 @@ pub fn read_desktop_choice(text: &str) -> &'static str {
         let t = l.trim_start();
         let t = t.strip_prefix("export").map(str::trim_start).unwrap_or(t);
         if let Some(v) = t.strip_prefix("HEARTH_DESKTOP=") {
-            val = if v.trim().trim_matches(|c| c == '"' || c == '\'') == "plasma" { "plasma" } else { "classic" };
+            val = match v.trim().trim_matches(|c| c == '"' || c == '\'') { "plasma" => "plasma", "gnome" => "gnome", "cosmic" => "cosmic", _ => "classic" };
         }
     }
     val
@@ -69,17 +69,37 @@ pub fn plasma_installed() -> bool {
     let have = |b: &str| ["/usr/bin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
     have("startplasma-wayland") && have("kwin_wayland") && have("plasmashell") && Path::new("/usr/share/plasma/look-and-feel/org.hearth.desktop").is_dir()
 }
+/// Whether Hearth GNOME can run here: GNOME Shell, its session and Hearth's session mode (docs/GNOME.md).
+pub fn gnome_installed() -> bool {
+    let have = |b: &str| ["/usr/bin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
+    have("gnome-shell") && have("gnome-session") && Path::new("/usr/share/gnome-shell/modes/hearth.json").is_file()
+}
+// ---- Hearth COSMIC (docs/COSMIC.md): Anatase only; Hearth Deepin isn't available on any edition (docs/DEEPIN.md).
+/// Whether Hearth COSMIC can run here: COSMIC and Hearth's COSMIC defaults (made at image build time) are installed.
+pub fn cosmic_installed() -> bool {
+    let have = |b: &str| ["/usr/bin", "/usr/sbin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
+    have("start-cosmic") && have("cosmic-comp") && have("cosmic-panel") && Path::new("/usr/share/hearth-cosmic/data/cosmic").is_dir()
+}
+// ---- end Hearth COSMIC
 pub fn desktop() -> Value {
     let run = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
+    let fell: Vec<&str> = ["plasma", "gnome"].into_iter().filter(|d| Path::new(&run).join(format!("hearth-{d}-failed")).exists()).collect();
     json!({
         "desktop": read_desktop_choice(&std::fs::read_to_string(session_conf()).unwrap_or_default()),
         "plasma": plasma_installed(),
-        "fellBack": Path::new(&run).join("hearth-plasma-failed").exists(),
+        "gnome": gnome_installed(),
+        "fellBack": !fell.is_empty(),
+        "fellBackFrom": fell.first().copied().unwrap_or(""),
+        "cosmic": cosmic_installed(),
+        "cosmicFellBack": Path::new(&run).join("hearth-cosmic-failed").exists(),
+        "deepin": false,
     })
 }
 pub fn set_desktop(desktop_name: &str) -> Result<Value, String> {
-    if desktop_name != "classic" && desktop_name != "plasma" { return Err("The desktop is classic or plasma".into()); }
+    if !["classic", "plasma", "gnome", "cosmic"].contains(&desktop_name) { return Err("The desktop is classic, plasma, gnome or cosmic".into()); }
+    if desktop_name == "cosmic" && !cosmic_installed() { return Err("Hearth COSMIC isn't available on this edition.".into()); }
     if desktop_name == "plasma" && !plasma_installed() { return Err("Hearth Plasma isn't installed on this system.".into()); }
+    if desktop_name == "gnome" && !gnome_installed() { return Err("Hearth GNOME isn't installed on this system.".into()); }
     let f = session_conf();
     let text = std::fs::read_to_string(&f).unwrap_or_default();
     crate::paths::write_atomic(&f, write_desktop_choice(&text, desktop_name).as_bytes()).map_err(|e| e.to_string())?;
@@ -94,6 +114,24 @@ pub fn parse_helper(out: &str) -> Result<Value, String> {
 }
 
 pub fn can_admin() -> bool { Path::new(HELPER).exists() }
+
+/// Hearth OS on Peppermint's writable system: `hearth-unlock --status --json` (readable without root): unlocked or
+/// locked, this start writable, a safe start, your packages, the last reapply and a notice for Hearth.
+/// `{available: false}` where there's no hearth-unlock (Anatase is always immutable).
+pub const UNLOCK: &str = "/usr/bin/hearth-unlock";
+pub fn unlock_status() -> Value {
+    if !Path::new(UNLOCK).exists() { return json!({"available": false}); }
+    match Command::new(UNLOCK).args(["--status", "--json"]).stdin(Stdio::null()).output() {
+        Ok(o) => match parse_helper(&String::from_utf8_lossy(&o.stdout)) {
+            Ok(v) if v.is_object() => v,
+            Ok(_) => json!({"available": false, "error": "hearth-unlock gave no answer"}),
+            Err(e) => json!({"available": false, "error": e}),
+        },
+        Err(e) => json!({"available": false, "error": e.to_string()}),
+    }
+}
+/// What Settings may ask of hearth-unlock through hearth-admin (`hearth-admin unlock <action>`).
+pub fn unlock_action_ok(action: &str) -> bool { ["on", "off", "resume", "dismiss", "reapply"].contains(&action) }
 
 /// Runs hearth-admin; each output line also goes to `on_line` (progress, stages).
 pub fn run(args: &[&str], input: Option<&str>, on_line: &mut dyn FnMut(&str)) -> Result<Value, String> { run_with(args, input, on_line, &mut |_| {}) }
@@ -223,11 +261,19 @@ impl Updates {
 mod tests {
     use super::*;
     #[test]
+    fn unlock_actions_are_a_fixed_list() {
+        for a in ["on", "off", "resume", "dismiss", "reapply"] { assert!(unlock_action_ok(a)); }
+        for a in ["", "--install-deb", "deb-install", "on off", "lock"] { assert!(!unlock_action_ok(a)); }
+    }
+    #[test]
     fn start_mode_file() {
         assert_eq!(read_start_mode("FOO=1\nNIMBUS_START_MODE=\"desktop\"\n"), "desktop");
         assert_eq!(read_desktop_choice(""), "classic");
         assert_eq!(read_desktop_choice("FOO=1\nexport HEARTH_DESKTOP=\"plasma\"\n"), "plasma");
-        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=plasma\nHEARTH_DESKTOP=gnome\n"), "classic");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=plasma\nHEARTH_DESKTOP=gnome\n"), "gnome");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=gnome\nHEARTH_DESKTOP=kde\n"), "classic");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=cosmic\n"), "cosmic");
+        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=deepin\n"), "classic");
         assert_eq!(write_desktop_choice("FOO=1", "plasma"), "FOO=1\nHEARTH_DESKTOP=plasma\n");
         assert_eq!(write_desktop_choice("HEARTH_DESKTOP=plasma\nNIMBUS_START_MODE=game\n", "classic"), "HEARTH_DESKTOP=classic\nNIMBUS_START_MODE=game\n");
         assert_eq!(read_start_mode(""), "game");

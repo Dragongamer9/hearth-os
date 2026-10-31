@@ -55,6 +55,15 @@ test('QAM asks Hearth; Quick Access opens (stat + grab) only when Hearth says ov
   assert.deepStrictEqual(r.out.slice(-1), ['grab:enable']);   // the grab is renewed while open (HHD drops it after 5 s)
 });
 
+test('the on-screen keyboard over the game (Guide + X) is shown and holds the controller like Quick Access', () => {
+  const r = rig();
+  r.p.fromHearth({ type: 'event', name: 'overlay.osk', data: {} });
+  assert.deepStrictEqual(r.out, ['stat:qam', 'grab:enable']);
+  assert.deepStrictEqual(r.page.map(m => m.name), ['overlay.osk', 'padHost']);
+  r.hidden();
+  assert.deepStrictEqual(r.out.slice(-2), ['stat:closed', 'grab:disable']);
+});
+
 test('controller lines go to the page only while open', () => {
   const r = rig();
   r.p.line('action:a');

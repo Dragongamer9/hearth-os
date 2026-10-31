@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-quick@hearthos.fun",
+  "name": "Hearth Quick Access",
+  "description": "Hearth's additions to Quick Settings: Game Mode, Hearth Settings and the power mode (through hearth-power).",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

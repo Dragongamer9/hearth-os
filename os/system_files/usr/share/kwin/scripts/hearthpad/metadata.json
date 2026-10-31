@@ -1,0 +1,14 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [ { "Name": "Dragongamer9" } ],
+        "Description": "Tells Hearth's controller helper (hearth-pad --plasma) which window is in front, so the controller types keys in menus and pauses over fullscreen games",
+        "EnabledByDefault": false,
+        "Id": "hearthpad",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth controller",
+        "Website": "https://hearthos.fun"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

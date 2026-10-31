@@ -42,3 +42,19 @@
   --dialog-bg-color: #1c1512; --popover-bg-color: #261d18;
   --destructive-bg-color: #e5483b;
 }
+
+/* Hearth GNOME's own apps (GNOME Files, Console, Text Editor; docs/GNOME.md): Mantel's Files / Terminal / Text look,
+   with big, rounded rows and a clear ember focus ring for touch and the controller. Only their windows match these. */
+*:focus-visible { outline-color: #ff8a3d; }
+window.nautilus-window headerbar,
+window.org-gnome-Console headerbar, window.kgx headerbar, window.org-gnome-TextEditor headerbar { min-height: 52px; }
+window.nautilus-window .navigation-sidebar > row,
+window.nautilus-window placessidebar row { min-height: 44px; border-radius: 12px; margin: 2px 8px; }
+window.nautilus-window .navigation-sidebar > row:selected { background-color: alpha(#ff8a3d, 0.24); color: #f4ece3; }
+window.nautilus-window columnview > listview > row { min-height: 44px; border-radius: 10px; }
+window.nautilus-window gridview > child { border-radius: 14px; padding: 10px; }
+window.nautilus-window gridview > child:selected,
+window.nautilus-window columnview > listview > row:selected { background-color: alpha(#ff8a3d, 0.26); }
+window.nautilus-window .path-bar button, window.nautilus-window .linked button { border-radius: 10px; }
+window.org-gnome-TextEditor textview, window.org-gnome-TextEditor .editor { font-size: 11pt; }
+window.org-gnome-Console vte-terminal, window.kgx vte-terminal { padding: 10px; }
