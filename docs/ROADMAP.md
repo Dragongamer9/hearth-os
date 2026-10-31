@@ -60,6 +60,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
   - [ ] Nexus downloads straight into an instance, mod categories, notes and update checks; FOMOD scripts and BAIN wizards
 - [x] Hearth Mods in Game Mode: mods managed and installed from Game Mode itself with the controller, no separate window. A game's page shows its mods (the Mods card; the Launcher's Mods & saves tab) and its Mods screen has Installed (on/off, load order, uninstall, conflicts, update checks), Nexus Mods (popular, new, search, a mod's files, installing with progress), its Wabbajack modlist with Play, plus Downloads (also in Quick Access), Modlists (gallery, install, the guided "N of M files · Fetch them" flow, Resume) and Accounts; notifications when a download or install finishes or fails and when files need fetching. Profiles, Bethesda plugins and FOMOD installer screens are ready for the Mod Organizer engine (docs/MODS.md; needs testing on a device)
 - [ ] Support page/donations: built (Settings › About › Support Hearth OS and the website), hidden until the owner fills in a link in ui/support-links.js and site/support-links.js
+- [x] One app of each kind per desktop: Hearth Classic shows Hearth's classic apps, Hearth Plasma the KDE-based ones, apps with no other of their kind everywhere; each desktop's own default apps; one table for GNOME, COSMIC and Deepin to register their apps in (docs/APP-KINDS.md) (needs testing on a device)
 
 ## Done
 

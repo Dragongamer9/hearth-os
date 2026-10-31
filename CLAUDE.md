@@ -45,7 +45,7 @@ hearthos.fun (`site/`, deployed from main). The owner is Dragongamer9.
 ## Where things are
 
 - `docs/ROADMAP.md`: what's planned, done and released. Keep it current (tick with "(needs testing on a device)"
-  when only CI has proven it). Other docs: `docs/OSK.md` (on-screen keyboard), `docs/PLASMA.md`, `docs/KDE-APPS.md`,
+  when only CI has proven it). Other docs: `docs/OSK.md` (on-screen keyboard), `docs/PLASMA.md`, `docs/KDE-APPS.md`, `docs/APP-KINDS.md`,
   `docs/HEARTH-LINK.md`, `docs/MULTI-SEAT.md`, `docs/STEAM.md`, `docs/RENDERERS.md`, `docs/ARCHIVED.md`.
 - Core: `hosts/hearth-core` (Rust); Game Mode host: `hosts/hearth-rs`; UI: `ui/`; Desktop Mode: `hosts/linux/desktop`;
   shared system files: `os/system_files`; bug-report and counter service: `counter/`.

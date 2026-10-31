@@ -1210,6 +1210,25 @@ echo "::notice title=Hearth's default apps::$(cat /tmp/hearth-defaults.json)" ||
 echo "Other default-app lists in the image: $(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 
+# ------------------------------------------------------------------ one app of each kind per desktop (docs/APP-KINDS.md)
+# >>> app kinds (feature/app-per-desktop)
+# The table /usr/share/hearth/app-kinds.json says which app each desktop shows for each kind (Hearth Classic: Hearth's
+# own; Hearth Plasma: the KDE-based ones; apps with no other of their kind everywhere). hearth-app-kinds writes copies
+# of the menu entries with OnlyShowIn/NotShowIn into /usr/share/hearth/app-kinds/applications (nimbus-session puts it
+# first in XDG_DATA_DIRS, so the packages' own files are never edited), each desktop's default apps
+# (/etc/xdg/<desktop>-mimeapps.list), and stops the build if a desktop would show two apps of one kind or none
+# where one is needed. Runs after Hearth's default apps (above), once every app is in.
+python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.json || { cat /tmp/hearth-app-kinds.json; echo "::error title=app kinds::a desktop would show two apps of one kind, or none (above)"; exit 1; }
+echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)" || true
+chmod 755 /usr/libexec/hearth-app-kinds
+# Writable Peppermint: apt brings new or updated menu entries, so the copies are written again after every apt run
+# (never fails apt; an app you install yourself isn't hidden: --refresh).
+mkdir -p /etc/apt/apt.conf.d
+cat > /etc/apt/apt.conf.d/80-hearth-app-kinds <<'APT'
+DPkg::Post-Invoke { "if [ -x /usr/libexec/hearth-app-kinds ]; then /usr/libexec/hearth-app-kinds apply --refresh >/dev/null 2>&1 || true; fi"; };
+APT
+# <<< app kinds
+
 # ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
 # Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
 # `beacon-app`, its window (beacon.desktop: in Mantel's launcher and pinned to its taskbar). See docs/BEACON.md.

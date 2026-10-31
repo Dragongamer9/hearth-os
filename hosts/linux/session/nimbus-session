@@ -68,6 +68,11 @@ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:
   case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac
 done
 case ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac
+# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds' copies of the menu entries, with the
+# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages' own (same ids).
+if [ -d /usr/share/hearth/app-kinds/applications ]; then
+  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac
+fi
 export XDG_DATA_DIRS="$data_dirs"
 unset data_dirs d
 # <<< data dirs
