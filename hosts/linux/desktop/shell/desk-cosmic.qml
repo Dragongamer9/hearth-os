@@ -65,7 +65,11 @@ ShellRoot {
         readonly property bool keysContext: launcherWin.shown || quickWin.shown || hub.shown
         readonly property bool fullscreenApp: active !== null && active.fullscreen === true
 
-        function send(o) { if (proc.running) proc.write(JSON.stringify(o) + "\n"); }
+        function send(o) {
+            const line = JSON.stringify(o) + "\n";
+            if (sock.connected) { sock.write(line); sock.flush(); }
+            else if (proc.running) proc.write(line);
+        }
         function sync() {
             send({ cmd: "keys", on: keysContext });
             send({ cmd: "pause", on: fullscreenApp });
@@ -82,15 +86,26 @@ ShellRoot {
         function setMouse(on) { mouseOn = on; send({ cmd: "mouse", on: on }); helpWin.toast("Controller mouse " + (on ? "on" : "off")); }
 
         readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-pad").toString().replace(/^file:\/\//, ""))
+        // hearth-cosmic runs hearth-pad --cosmic on its own (it keeps the controller working if this companion has to
+        // restart) and this connects to it; without it (started some other way), hearth-pad runs as a child here.
+        Socket {
+            id: sock
+            path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-pad-cosmic.sock"
+            connected: true
+            parser: SplitParser { onRead: line => pad.handle(line) }
+            onConnectedChanged: if (!connected) sockRetry.start()
+        }
+        Timer { id: sockRetry; interval: 2000; onTriggered: if (!proc.running) sock.connected = true }
+        Timer { interval: 3000; running: true; onTriggered: if (!sock.connected) proc.running = true }
         Process {
             id: proc
             command: ["python3", pad.helper, "--cosmic"]
-            running: true
+            running: false
             stdinEnabled: true
             stdout: SplitParser { onRead: line => pad.handle(line) }
             stderr: SplitParser { onRead: line => console.warn("hearth-pad --cosmic:", line) }
             // 2 and 3 mean something is missing (see hearth-pad): don't keep retrying.
-            onExited: code => { if (code !== 2 && code !== 3) restart.start(); }
+            onExited: code => { if (code !== 2 && code !== 3 && !sock.connected) restart.start(); }
         }
         Timer { id: restart; interval: 3000; onTriggered: proc.running = true }
 

@@ -45,6 +45,7 @@ import math
 import os
 import threading
 import select
+import socket
 import sys
 import time
 
@@ -603,9 +604,86 @@ class CosmicPad(Pad):
 
 # ---------------------------------------------------------------------- devices (python3-evdev)
 
+SINK = [None]      # --socket: where events go instead of stdout (CosmicLink.send)
+
+
 def emit(obj):
+    if SINK[0]:
+        return SINK[0](obj)
     sys.stdout.write(json.dumps(obj) + '\n')
     sys.stdout.flush()
+
+
+class CosmicLink:
+    """--socket PATH (Hearth COSMIC): the shell talks to hearth-pad over a Unix socket instead of stdin / stdout, so the
+    controller keeps working (pointer, keys) while the shell (desk-cosmic.qml) is restarted; the menus come back
+    with it. One shell at a time; only this user can open the socket."""
+
+    def __init__(self, path):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        old = os.umask(0o177)
+        try:
+            self.srv.bind(path)
+        finally:
+            os.umask(old)
+        self.srv.listen(2)
+        self.cli = None
+        self.buf = ''
+        SINK[0] = self.send
+
+    def fds(self):
+        return [self.srv.fileno()] + ([self.cli.fileno()] if self.cli else [])
+
+    def send(self, obj):
+        if not self.cli:
+            return
+        try:
+            self.cli.sendall((json.dumps(obj) + '\n').encode())
+        except OSError:
+            self.drop()
+
+    def drop(self):
+        try:
+            self.cli.close()
+        except (OSError, AttributeError):
+            pass
+        self.cli = None
+        self.buf = ''
+
+    def read(self, fd, pad):
+        """Lines from the shell; a new shell (or the shell gone) puts the controller back to the plain desktop."""
+        if fd == self.srv.fileno():
+            c, _ = self.srv.accept()
+            c.settimeout(0.5)
+            self.drop()
+            self.cli = c
+            pad.set_mode('desk')
+            pad.keys_ctx = False
+            note('shell connected')
+            self.send({'t': 'ready'})
+            return []
+        if not self.cli or fd != self.cli.fileno():
+            return []
+        try:
+            data = self.cli.recv(4096)
+        except (BlockingIOError, socket.timeout):
+            return []
+        except OSError:
+            data = b''
+        if not data:
+            note('shell went away; the controller keeps working')
+            self.drop()
+            pad.set_mode('desk')
+            pad.keys_ctx = False
+            return []
+        self.buf += data.decode('utf-8', 'replace')
+        lines = self.buf.split('\n')
+        self.buf = lines.pop()
+        return lines
 
 
 class Output:
@@ -889,8 +967,12 @@ def main():
              'up', 'down', 'left', 'right')
     last = time.monotonic()
     next_scan = 0.0
+    link = None
+    if '--socket' in sys.argv[1:] and sys.argv.index('--socket') + 1 < len(sys.argv):
+        link = CosmicLink(sys.argv[sys.argv.index('--socket') + 1])
     emit({'t': 'ready'})
-    os.set_blocking(sys.stdin.fileno(), False)
+    if not link:
+        os.set_blocking(sys.stdin.fileno(), False)
     inbuf = ''
     while True:
         now = time.monotonic()
@@ -911,11 +993,19 @@ def main():
                     c.grabbed = pad.wants_grab
         fds = {c.dev.fd: (p, c) for p, c in pads.items()}
         try:
-            ready, _, _ = select.select(list(fds) + [sys.stdin.fileno()], [], [], 0.008)
+            link_fds = set(link.fds()) if link else set()
+            ready, _, _ = select.select(list(fds) + (list(link_fds) if link else [sys.stdin.fileno()]), [], [], 0.008)
         except (OSError, ValueError):
-            ready = []
+            ready, link_fds = [], set()
         for fd in ready:
-            if fd == sys.stdin.fileno():
+            if fd in link_fds:
+                for line in link.read(fd, pad):
+                    try:
+                        pad.command(json.loads(line))
+                    except (ValueError, AttributeError):
+                        pass
+                continue
+            if not link and fd == sys.stdin.fileno():
                 try:
                     chunk = os.read(fd, 4096).decode('utf-8', 'replace')
                 except BlockingIOError:

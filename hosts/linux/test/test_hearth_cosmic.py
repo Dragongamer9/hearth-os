@@ -326,6 +326,36 @@ class CosmicPadKeys(unittest.TestCase):
             self.assertTrue(set(keys) <= used)
 
 
+class Link(unittest.TestCase):
+    def test_socket_link(self):
+        import json as _json
+        import socket as _socket
+        m = load(PAD, 'hearth_pad_link')
+        tmp = tempfile.mkdtemp(prefix='hearth-pad-sock-')
+        try:
+            path = os.path.join(tmp, 's')
+            link = m.CosmicLink(path)
+            self.assertEqual(os.stat(path).st_mode & 0o077, 0)
+            pad = m.CosmicPad(FakeOut())
+            pad.mode = 'radial'
+            c = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+            c.connect(path)
+            self.assertEqual(link.read(link.srv.fileno(), pad), [])
+            self.assertEqual(pad.mode, 'desk')
+            self.assertEqual(_json.loads(c.recv(100).decode().strip()), {'t': 'ready'})
+            m.emit({'t': 'toast', 'text': 'x'})
+            self.assertIn('toast', c.recv(100).decode())
+            c.sendall(b'{"cmd": "app", "id": "com.system76.CosmicTerm"}\n{"cmd"')
+            lines = link.read(link.cli.fileno(), pad)
+            self.assertEqual(lines, ['{"cmd": "app", "id": "com.system76.CosmicTerm"}'])
+            c.close()
+            self.assertEqual(link.read(link.cli.fileno(), pad), [])
+            self.assertIsNone(link.cli)
+            m.emit({'t': 'toast'})        # nobody connected: dropped quietly
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 SAMPLE_ACCENT = '(\n    base: (\n        red: 0.3882353,\n        green: 0.8156863,\n        blue: 0.8745098,\n        alpha: 1.0,\n    ),\n' \
                 '    on: (\n        red: 0.0,\n        green: 0.0,\n        blue: 0.0,\n        alpha: 1.0,\n    ),\n)\n'
 
