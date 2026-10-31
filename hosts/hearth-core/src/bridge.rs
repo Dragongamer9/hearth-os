@@ -458,6 +458,14 @@ impl Bridge {
             "moonlight.install" => crate::remote::install_moonlight().map(|v| json!(v)),
             // ---- Hearth's gaming apps (gaming_apps.rs): Controller Lab, Saves and Mods, opened on a game
             "gamingApps.open" => crate::gaming_apps::open(&req("app")?, a["game"].as_str(), crate::signin_handoff::game_mode()).map(|_| json!({"ok": true})),
+            // ---- Hearth Mods in Game Mode (hearth_mods.rs): Hearth Mods' worker answers, off the bridge (Nexus can be slow)
+            "mods.call" => {
+                let name = req("name")?;
+                if !crate::hearth_mods::allowed(&name) { return Err(format!("Game Mode can't ask Hearth Mods for \"{name}\".")); }
+                let (args, start) = (a["args"].clone(), a["start"].as_bool().unwrap_or(true));
+                crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || crate::hearth_mods::call(&name, &args, start));
+                Ok(json!(DEFERRED))
+            }
             // ---- end of Hearth's gaming apps
             // ---- Bazaar, Hearth OS's app store (bazaar.rs): Game Mode's menu › Apps
             "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
@@ -1811,6 +1819,7 @@ fn features() -> Vec<&'static str> {
     // ---- Hearth's gaming apps: Settings › Controls › Controller Lab, a game's ⋯ › Back up saves / Mods
     if crate::gaming_apps::available() { f.push("gamingApps"); }
     if crate::gaming_apps::benchmark_available() { f.push("benchmark"); }
+    if crate::hearth_mods::available() { f.push("mods"); }
     // ---- Hearth Friends on Matrix (the service is installed)
     if crate::matrix_friends::available() { f.push("mfriends"); }
     // ---- end of Hearth's gaming apps

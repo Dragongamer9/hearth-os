@@ -241,6 +241,59 @@ def mods(bindir, work):
     check('one mod left in the list', len((as_json(r) or {}).get('mods', [])) == 1, r.stdout[-300:])
     files = sorted(os.path.relpath(os.path.join(dp, f), hk) for dp, _, fs in os.walk(hk) for f in fs)
     check('the game folder is exactly as it started', files == ['Data/a.txt', 'hollow_knight.exe', 'hollow_knight_Data/Config.ini'], files)
+    serve(exe, env, g, work)
+
+
+def ask(sock, call, args=None, timeout=60):
+    import socket
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    c.settimeout(timeout)
+    c.connect(sock)
+    c.sendall((json.dumps({'call': call, 'args': args or {}}) + '\n').encode())
+    buf = b''
+    while not buf.endswith(b'\n'):
+        part = c.recv(65536)
+        if not part:
+            break
+        buf += part
+    c.close()
+    return json.loads(buf.decode() or '{}')
+
+
+def serve(exe, env, g, work):
+    """Game Mode's way in (hearth-core hearth_mods.rs): the worker without a window, asked over its socket."""
+    rt = os.path.join(work, 'run')
+    os.makedirs(rt, mode=0o700, exist_ok=True)
+    env = dict(env, XDG_RUNTIME_DIR=rt)
+    sock = os.path.join(rt, 'hearth-mods.sock')
+    p = subprocess.Popen([exe, '--serve'], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        for _ in range(100):
+            if os.path.exists(sock):
+                break
+            time.sleep(0.1)
+        check('the worker opens its socket (only you can use it)', os.path.exists(sock) and (os.stat(sock).st_mode & 0o777) == 0o600)
+        r = ask(sock, 'mods_of', {'id': g})
+        ms = (r.get('value') or {}).get('mods', [])
+        check('Game Mode gets a game\'s mods from the worker', r.get('ok') and len(ms) == 1, r)
+        if ms:
+            r = ask(sock, 'toggle', {'id': g, 'm': ms[0]['id'], 'on': False})
+            check('and turns one off through it', r.get('ok') and r['value']['summary']['mods'][0]['enabled'] is False, r)
+            r = ask(sock, 'toggle', {'id': g, 'm': ms[0]['id'], 'on': True})
+            check('and on again', r.get('ok') and r['value']['summary']['mods'][0]['enabled'] is True, r)
+        r = ask(sock, 'status')
+        check('the queue and installs in one call', r.get('ok') and 'downloads' in r['value'] and 'jobs' in r['value'], r)
+        r = ask(sock, 'nope')
+        check('an unknown call is an error, not a hang', r.get('ok') is False and 'nope' in r.get('error', ''), r)
+        r2 = subprocess.run([exe, '--serve'], env=env, capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+        check('a second worker doesn\'t take over', r2.returncode == 3, r2.returncode)
+        check('the first one still answers', ask(sock, 'ping').get('ok') is True)
+    finally:
+        p.terminate()
+        try:
+            p.wait(10)
+        except Exception:
+            p.kill()
 
 
 # ---------------------------------------------------------------------- Controller Lab

@@ -24,5 +24,7 @@ pub mod guided;
 pub mod accounts;
 pub mod games;
 pub mod browse;
+#[cfg(unix)]
+pub mod service;
 #[cfg(target_os = "linux")]
 pub mod pads;

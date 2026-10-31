@@ -38,6 +38,12 @@ jobs:
       - name: Test the part of Hearth that opens them from Game Mode (hearth-core gaming_apps.rs)
         working-directory: hosts/hearth-core
         run: cargo test gaming_apps 2>&1 | tail -8
+      - name: Test Game Mode's way to Hearth Mods (hearth-core hearth_mods.rs)
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          cargo test --lib hearth_mods 2>&1 | tee hm.log || { echo "::error title=hearth_mods tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 hm.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=hearth_mods tests::$(grep -E '^test result' hm.log | tr '\n' ' ')"
       - name: Unit tests (manifest, finding saves, backup and restore, mods in and out, evdev numbers)
         working-directory: hosts/hearth-gaming
         run: |

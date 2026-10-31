@@ -55,6 +55,9 @@ input.inp.mono { font-family:ui-monospace, monospace; }
 <script>
 'use strict';
 const { $, esc, human, when } = KIT;
+// Every call but the window's own (the file chooser) goes through `call`: answered by this window when it's Hearth
+// Mods' worker, or by the worker that's running (Game Mode's), so both see the same queue and installs.
+{ const direct = KIT.invoke, own = ['info', 'pick_path']; KIT.invoke = (cmd, args = {}) => KIT.live && !own.includes(cmd) ? direct('call', { name: cmd, args }) : direct(cmd, args); }
 const S = { games: [], sel: null, sum: null, loading: true, info: {}, tab: 'games', acct: undefined, dls: { items: [], active: 0, quota: {} }, engine: null, gallery: null, galleryErr: '', jobs: [], filter: 'all', nsfw: false, accts: [] };
 const TABS = ['games', 'downloads', 'modlists', 'accounts'];
 const SRC = { steam: 'Steam', epic: 'Epic', gog: 'GOG', manual: 'Your game', beacon: 'Beacon', 'heroic-epic': 'Heroic (Epic)', 'heroic-gog': 'Heroic (GOG)' };
