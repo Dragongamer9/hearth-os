@@ -152,6 +152,8 @@ PlasmoidItem {
                     Keys.onTabPressed: root.section = root.section === "apps" ? "games" : "apps"
                     Keys.onEscapePressed: root.expanded = false
                     Keys.onUpPressed: event => { if (currentIndex < cols) search.forceActiveFocus(); else event.accepted = false; }
+                    // Down from the last row: Settings, Game Mode and the power buttons (the controller's D-pad gets there too).
+                    Keys.onDownPressed: event => { if (currentIndex + cols >= count) firstAction.forceActiveFocus(); else event.accepted = false; }
                     delegate: MouseArea {
                         id: cell
                         required property var modelData
@@ -210,8 +212,28 @@ PlasmoidItem {
 
             // Like Mantel's launcher: settings, Game Mode and power along the bottom.
             RowLayout {
+                id: actions
                 Layout.fillWidth: true
-                PlasmaComponents.ToolButton { icon.name: "hearth-settings"; text: "Settings"; onClicked: root.action("hearth-settings") }
+                // Left / right along the row, up back to the list, Enter (A on the controller) presses.
+                Keys.onPressed: event => {
+                    const it = full.Window.activeFocusItem;
+                    if (!it) return;
+                    if (event.key === Qt.Key_Right || event.key === Qt.Key_Left) {
+                        const next = it.nextItemInFocusChain(event.key === Qt.Key_Right);
+                        if (next && next.parent === actions) next.forceActiveFocus();
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Up) {
+                        grid.forceActiveFocus();
+                        event.accepted = true;
+                    } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && it.clicked) {
+                        it.clicked();
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Escape) {
+                        root.expanded = false;
+                        event.accepted = true;
+                    }
+                }
+                PlasmaComponents.ToolButton { id: firstAction; icon.name: "hearth-settings"; text: "Settings"; onClicked: root.action("hearth-settings") }
                 PlasmaComponents.ToolButton { icon.name: "input-gamepad"; text: "Game Mode"; onClicked: root.action("nimbus-mode game") }
                 Item { Layout.fillWidth: true }
                 PlasmaComponents.ToolButton { icon.name: "system-lock-screen"; text: "Lock"; onClicked: root.action("loginctl lock-session") }
