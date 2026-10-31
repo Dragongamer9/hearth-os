@@ -1357,7 +1357,9 @@ systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
 # Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
 # packages you added put back after an update, a safe start if your changes stop Hearth from starting.
-systemctl enable hearth-unlock.service hearth-unlock-units.service hearth-unlock-good.service hearth-unlock-reapply.service
+systemctl enable hearth-unlock.service hearth-unlock-units.service hearth-unlock-good.service hearth-unlock-reapply.service hearth-unlock-ldcache.service
+# /etc settings that point into the layer (a display manager, a unit, a drop-in) lifted on starts without it.
+chmod 755 /usr/lib/systemd/system-generators/hearth-etc-guard
 # power-profiles-daemon only runs when HHD is switched off (its drop-in says so); enabled so it can then.
 systemctl enable power-profiles-daemon.service 2>/dev/null || true
 # Printing starts when something prints (Settings › Printers).
@@ -1473,6 +1475,31 @@ mkdir -p /usr/share/hearth /usr/lib/sysimage/apt
 apt-mark showmanual | sort -u > /usr/share/hearth/apt-baseline.list
 test -s /usr/share/hearth/apt-baseline.list
 if [ -f /var/lib/apt/extended_states ]; then cp -a /var/lib/apt/extended_states /usr/lib/sysimage/apt/extended_states; else : > /usr/lib/sysimage/apt/extended_states; fi
+# Nothing apt installs may write /boot or the boot menu (bootc owns them): the initramfs and GRUB-menu tools are
+# no-ops and the kernel's install hooks are gone (kernels come with each version; the kernel packages are pinned).
+for f in /usr/sbin/update-initramfs /usr/sbin/update-grub /usr/sbin/update-grub2 /usr/sbin/grub-mkconfig; do
+  if [ -e "$f" ] && ! dpkg-divert --list "$f" | grep -q .; then dpkg-divert --local --rename --divert "$f.hearth-image" --add "$f"; fi
+  printf '#!/bin/sh\n# Hearth OS (Peppermint): the initramfs and the boot menu come with each Hearth OS version (bootc).\necho "%s: not used on Hearth OS" >&2\nexit 0\n' "${f##*/}" > "$f"
+  chmod 755 "$f"
+done
+rm -f /etc/kernel/postinst.d/* /etc/kernel/postrm.d/* /etc/kernel/preinst.d/* /etc/kernel/prerm.d/*
+ls -la /etc/kernel/*.d 2>/dev/null || true
+# The display manager stays Hearth's when a package brings another (gdm3, lightdm): debconf's answer, kept in the
+# image and copied to /var/cache/debconf at the first start (tmpfiles, below).
+echo "sddm shared/default-x-display-manager select sddm" | debconf-set-selections
+mkdir -p /usr/share/hearth/debconf && cp -a /var/cache/debconf/. /usr/share/hearth/debconf/
+# The core of the system stays at the image's own versions (apt can't swap them under Hearth: systemd, udev, glibc,
+# D-Bus, Mesa), generated from what's installed (systemd-boot is left to the boot-chain pin: never from apt).
+{
+  echo "# Written by os-bases/peppermint/build.sh: the image's own versions of systemd, glibc, D-Bus and Mesa. apt keeps"
+  echo "# them (each Hearth OS version brings its own); a package that needs newer ones can't be installed."
+  echo
+  dpkg-query -W -f '${binary:Package}\t${Version}\t${source:Package}\n' \
+    | awk -F'\t' '$3 ~ /^(systemd|glibc|dbus|dbus-broker|mesa)$/ && $1 !~ /^systemd-boot/ { printf "Package: %s\nPin: version %s\nPin-Priority: 1001\n\n", $1, $2 }'
+} > /etc/apt/preferences.d/hearth-image-core
+grep -c '^Package:' /etc/apt/preferences.d/hearth-image-core
+grep -q '^Package: libc6' /etc/apt/preferences.d/hearth-image-core
+grep -q '^Package: systemd$' /etc/apt/preferences.d/hearth-image-core
 install -Dm644 /usr/share/hearth/unlock/apt.conf /etc/apt/apt.conf.d/50-hearth-unlock
 install -Dm644 /usr/share/hearth/unlock/dpkg.cfg /etc/dpkg/dpkg.cfg.d/hearth-unlock
 install -Dm644 /usr/share/hearth/unlock/boot-chain.pref /etc/apt/preferences.d/hearth-boot-chain
@@ -1500,6 +1527,7 @@ echo 'L+ /var/lib/dpkg - - - - /usr/lib/sysimage/dpkg' >> "$VARCONF"
   echo 'd /var/cache/apt/archives 0755 root root -'
   echo 'd /var/cache/apt/archives/partial 0700 _apt root -'
   echo 'd /var/log/apt 0755 root root -'
+  echo 'C /var/cache/debconf - - - - /usr/share/hearth/debconf'
 } >> "$VARCONF"
 if [ -d /opt ] && [ -n "$(ls -A /opt 2>/dev/null)" ]; then
   mkdir -p /usr/lib/opt

@@ -6491,6 +6491,7 @@ function unlockRows(){
     'locks-at-restart':'Locked from the next restart: the system as the image made it. Your packages stay saved.',
     'unlocks-at-restart':'Writable from the next restart.',
     suspended:'This start is without your changes (safe start). Turn them back on below.',
+    repairing:'This start is without your changes while an install that was cut off is finished. The next start has them again.',
     locked:'The system is as the image made it. Unlock to install with apt again; your saved packages come back.'}[u.state]||'';
   let h=shead('Writable system');
   if(u.notice) h += `<div class="row" data-f data-k="ul-note"><span class="ricon">${I.info}</span><div class="rt"><b>${esc(u.notice.title||'')}</b><small>${esc(u.notice.text||'')}</small></div></div>`
@@ -6499,7 +6500,7 @@ function unlockRows(){
   if(u.suspended && u.unlocked) h += `<button class="row" data-f data-k="ul-resume" data-act="unlockSet" data-v="resume"><span class="ricon">${I.restart}</span><div class="rt"><b>Turn my changes back on</b><small>Uses the packages you added again, now. If Hearth then doesn't start, it starts without them again by itself.</small></div><div class="rv">›</div></button>`;
   h += `<div class="row" data-f data-k="ul-pk"><span class="ricon">${I.dl}</span><div class="rt"><b>Your packages</b><small>${esc(pk)}${(u.reapply&&u.reapply.state==='running')?' · putting them back now…':''}</small></div></div>`;
   if(u.writable && (n || (u.removed||[]).length)) h += `<button class="row" data-f data-k="ul-again" data-act="unlockSet" data-v="reapply"><span class="ricon">${I.refresh}</span><div class="rt"><b>Put my packages back again</b><small>Reinstalls what you added on this version, in the background</small></div><div class="rv">›</div></button>`;
-  return h + note('If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu always starts as it was. Want a system that can\'t be changed at all? That\'s Hearth OS on Anatase.');
+  return h + note('If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu keeps its own packages. Want a system that can\'t be changed at all? That\'s Hearth OS on Anatase.');
 }
 function unlockSet(action){
   if(!host) return toast('This works on Hearth OS, not in the browser preview.');

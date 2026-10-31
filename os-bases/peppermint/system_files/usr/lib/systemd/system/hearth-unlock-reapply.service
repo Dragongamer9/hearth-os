@@ -1,10 +1,10 @@
 # After an update (the first start of a new Hearth OS version), the packages you added or removed with apt are put
-# back, in the background, once the network is up. A failure never blocks anything: it's logged
+# back, in the background (it waits for the network itself; nothing waits for it). An install cut off by a power loss
+# is finished here too. At shutdown the apt step that's running finishes first (ExecStop), so dpkg isn't cut off. A failure never blocks anything: it's logged
 # (/var/lib/hearth/unlock/reapply.log) and Hearth shows a notice. Also tidies the layers of versions that are gone.
 [Unit]
 Description=Hearth: put your packages back after an update
-After=hearth-unlock.service network-online.target
-Wants=network-online.target
+After=hearth-unlock.service
 ConditionPathExists=/run/ostree-booted
 
 [Service]
@@ -12,6 +12,8 @@ Type=simple
 ExecStart=-/usr/bin/hearth-unlock --after-start
 Nice=10
 IOSchedulingClass=idle
+ExecStop=-/usr/bin/hearth-unlock --stop-wait
+TimeoutStopSec=300
 
 [Install]
 WantedBy=multi-user.target

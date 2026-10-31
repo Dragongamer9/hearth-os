@@ -158,6 +158,8 @@ immutable edition.
 | After an update: your packages put back; old layers tidied | `hearth-unlock-reapply.service` (after the network) |
 | apt's and dpkg's hooks, the boot-chain pin | `system_files/usr/share/hearth/unlock/` → `/etc/apt/apt.conf.d/50-hearth-unlock`, `/etc/dpkg/dpkg.cfg.d/hearth-unlock`, `/etc/apt/preferences.d/hearth-boot-chain` (installed at the end of `build.sh`, after the last apt run) |
 | Settings: Game Mode › Updates & Recovery › Writable system; Desktop Settings › Updates | `ui/index.html` (`unlockRows`), `hosts/linux/desktop/shell/SetUpdates.qml`, through `hearth-admin unlock …` |
+| `/etc` that points into the layer, on starts without it | `/usr/lib/systemd/system-generators/hearth-etc-guard` |
+| The boot writers, the update's finalizing and Recovery from the image's `/usr` | `*.service.d/20-hearth-image-usr.conf`, `hearth-unlock-ldcache.service` |
 | Recovery: "Restart without your system changes" | `os/system_files/usr/libexec/nimbus/hearth-recovery` |
 | `.deb` files on the system itself (Install Package window) | `hearth-debbox` → `hearth-admin deb-install` → `hearth-unlock --install-deb` (always asks for an administrator's password) |
 | Tests | `hosts/linux/test/test_hearth_unlock.py`; real overlay + apt: `.github/scripts/hearth-unlock-check.sh` (boot-guard.yml on Debian 13, base-peppermint.yml in the built image) |
@@ -177,7 +179,7 @@ persistent overlay, mounted by an ordinary service after the root is up:
 - **dpkg and apt stay consistent with the files.** dpkg's database is already in `/usr/lib/sysimage/dpkg`; apt's
   auto/manual marks move to `/usr/lib/sysimage/apt/extended_states` (`Dir::State::extended_states`). Both are in
   `/usr`, so they live in the same layer as the files they describe. apt's lists and downloads stay in `/var`.
-- **`/etc` and `/var` as on any bootc system.** `/etc` is the machine's own and merged into each new version
+- **`/etc` and `/var` as on any bootc system** (see "What is shared between versions" below). `/etc` is the machine's own and merged into each new version
   (repositories you add, config files, services you enable are kept), `/var` is shared by every version. At every
   start `ldconfig` refreshes `/etc/ld.so.cache` for the `/usr` that start has.
 - **The record.** After every dpkg run (dpkg's `post-invoke` hook, so `dpkg -i` too), once apt and dpkg let go of
@@ -201,7 +203,14 @@ persistent overlay, mounted by an ordinary service after the root is up:
    (`--force-confold`). Offline: tried again at the next start. A package that can't come back: Hearth shows a
    notice ("Some of your packages didn't come back") and `/var/lib/hearth/unlock/reapply.log` says why. Nothing
    here ever blocks a start.
-4. The previous version keeps its own layer, exactly as it was. Layers of versions ostree no longer has are removed.
+4. The previous version keeps its own layer of `/usr`, untouched by the new version. Layers of versions ostree no
+   longer has are removed (only when `ostree admin status` gives a sensible answer that names the running version).
+
+**What is shared between versions** (not layered, so the previous version sees the current state, not the state it
+had): `/var` as a whole, which includes `/opt` (`/var/opt`: a `.deb` that installs into `/opt` writes there),
+`/usr/local` (`/var/usrlocal`), debconf's answers (`/var/cache/debconf`), apt's lists and downloads, and `/boot`.
+`/etc` is per version (ostree copies and merges it at each update), but within one version it's the same on every
+start, with or without the layer.
 
 ### On a bad update, or a bad change
 
@@ -214,7 +223,38 @@ persistent overlay, mounted by an ordinary service after the root is up:
   back to the previous version as before.
 - **By hand:** Hearth Recovery › Restart without your system changes; or the kernel option `hearth.clean` (one start
   without the layer); or Lock (the image as it was made).
-- An empty layer never triggers a safe start, so people who don't use apt never see one.
+- An empty layer never triggers a safe start, so people who don't use apt never see one; a mount that fails doesn't
+  count towards one either.
+- **A safe start (and `hearth.clean`, Lock, the first start of a new version) doesn't undo `/etc`.** Packages change
+  `/etc` too (services they enable, the display manager, config files). So that those settings can't stop Hearth
+  from starting without the layer, the `hearth-etc-guard` generator (in the image's `/usr`, run before any unit is
+  loaded) lifts them for that start, in `/run` only: a `display-manager.service` or `default.target` pointing at a
+  unit that isn't there falls back to SDDM / `graphical.target` (and SDDM's `/etc/X11/default-display-manager` check
+  is lifted), a unit in `/etc` that replaces one of the image's and runs a missing program falls back to the
+  image's, and a drop-in that runs a missing program is left out. debconf's `shared/default-x-display-manager` is
+  SDDM in the image, so installing gdm3/lightdm/xdm doesn't take the display over in the first place.
+- **The device turns off during an install** (a dpkg cut off half way: its journal isn't empty, or a package is half
+  installed or configured in the layer): that start goes without the layer, with the notice "Finishing an
+  interrupted install"; once Hearth is starting, the layer is mounted and `dpkg --configure -a` and `apt-get -f
+  install` finish the job; the next start has it again. If that fails, starts stay without it until it's fixed
+  (`sudo dpkg --configure -a`). To make this rare, the reapply service lets the running apt step finish at shutdown
+  (ExecStop, up to 5 minutes) and starts no new one.
+- **What must never run from the layer runs from the image.** Before the layer goes over `/usr`, the image's `/usr`
+  is kept read-only at `/run/hearth/usr-image` (a private mount, so the layer doesn't reach it). The boot-menu
+  writers (`hearth-bls-grub` and its refresh, `hearth-boot-guard`, its refresh and `hearth-boot-good`),
+  `ostree-finalize-staged`, `bootc-fetch-apply-updates` and `hearth-recovery` get it as their `/usr`
+  (`BindReadOnlyPaths=-/run/hearth/usr-image:/usr` drop-ins in the image), so a package that breaks `sh`, `sed`,
+  Python or a library can't stop the boot menu or an update from being written. Updates started from Settings (Update
+  now, through `hearth-admin`) still run from the layer: a failure there only means the update isn't staged.
+- **apt can't reach `/boot` or swap the system's core.** `update-initramfs`, `update-grub(2)` and `grub-mkconfig`
+  are diverted to no-ops and the kernel's install hooks (`/etc/kernel/*.d`) are removed in the image. Pinned out
+  of apt (priority -1): GRUB, shim, kernels and headers, ostree, bootc, bootupd, dracut, initramfs-tools,
+  systemd-boot, efibootmgr, DKMS and every `*-dkms` module, microcode, fwupd, mokutil, memtest86+. Held at the
+  image's exact versions (`/etc/apt/preferences.d/hearth-image-core`, generated at build): every package built from
+  systemd (udev, libsystemd-shared…), glibc (libc6, libc-bin…), D-Bus and Mesa; a package that needs newer ones
+  can't be installed (the reapply notice says so after an update).
+- **`/etc/ld.so.cache`** is rebuilt at every start for that start's `/usr`, and from the image's `/usr` just before
+  an update is finalized (`hearth-unlock-ldcache.service`), so a new version never starts with the layer's cache.
 
 ### Locking it again
 

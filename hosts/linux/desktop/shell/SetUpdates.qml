@@ -171,6 +171,7 @@ SetPage {
             : page.unlock.state === "locks-at-restart" ? "Locked from the next restart: the system as the image made it. Your packages stay saved."
             : page.unlock.state === "unlocks-at-restart" ? "Writable from the next restart."
             : page.unlock.state === "suspended" ? "This start is without your changes (safe start)."
+            : page.unlock.state === "repairing" ? "This start is without your changes while an install that was cut off is finished."
             : "The system is as the image made it. Unlock to install with apt again; your saved packages come back."
         onToggled: on => page.unlockSet(on ? "on" : "off")
     }
@@ -194,7 +195,7 @@ SetPage {
     Text {
         visible: !!(page.unlock && page.unlock.available)
         Layout.fillWidth: true
-        text: page.unlockError !== "" ? page.unlockError : "If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu always starts as it was. Want a system that can't be changed at all? That's Hearth OS on Anatase."
+        text: page.unlockError !== "" ? page.unlockError : "If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu keeps its own packages. Want a system that can't be changed at all? That's Hearth OS on Anatase."
         color: page.unlockError !== "" ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     Text {

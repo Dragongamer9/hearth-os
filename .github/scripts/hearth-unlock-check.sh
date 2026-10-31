@@ -49,7 +49,8 @@ if [ "$MODE" = plain ]; then
 else
   # what tmpfiles.d makes at boot on a device
   ic 'mkdir -p /var/lib /var/cache/apt/archives/partial /var/lib/apt/lists/partial /var/log/apt /var/tmp
-      ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg'
+      ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg
+      systemd-tmpfiles --create --prefix=/var/cache/debconf >/dev/null 2>&1 || true'
   for f in /usr/bin/hearth-unlock /etc/apt/apt.conf.d/50-hearth-unlock /etc/dpkg/dpkg.cfg.d/hearth-unlock \
            /etc/apt/preferences.d/hearth-boot-chain /usr/share/hearth/apt-baseline.list /usr/lib/sysimage/apt/extended_states \
            /usr/lib/systemd/system/hearth-unlock.service; do
@@ -161,10 +162,70 @@ U "$A" '/usr/bin/hearth-unlock --resume --json >/dev/null' || err "--resume fail
 s=$(st "$A"); [ "$(field "$s" "d['state']")" = unlocked ] && [ "$(field "$s" "d['notice']")" = None ] \
   && ok "turned back on, notice gone" || err "after --resume: $s"
 
+# ---- 7b. an install cut off by a power loss: that start goes without the layer, then the install is finished
+echo "--- interrupted dpkg"
+U "$A" 'dpkg -s sl | sed "s/^Status: .*/Status: install ok half-configured/" > /usr/lib/sysimage/dpkg/updates/0001' \
+  || err "couldn't fake an interrupted dpkg"
+start "$A"
+s=$(st "$A"); [ "$(field "$s" "d['state']")" = repairing ] && ok "an interrupted dpkg: this start is without the layer" || err "no repair start after an interrupted dpkg: $s"
+[ "$(field "$s" "(d['notice'] or {}).get('kind')")" = dpkg-interrupted ] && ok "Hearth gets the interrupted-install notice" || err "no interrupted-install notice: $s"
+U "$A" 'test -e /usr/games/sl' && err "the half-written layer was mounted" || ok "the half-written layer stays off at start"
+U "$A" '/usr/bin/hearth-unlock --after-start 2>&1 | tail -3' | sed 's/^/  /'
+s=$(st "$A"); [ "$(field "$s" "d['state']")" = unlocked ] && [ "$(field "$s" "d['repair']")" = False ] \
+  && ok "the interrupted install finished after the start (dpkg --configure -a)" || err "repair didn't finish: $s"
+U "$A" 'test -x /usr/games/sl && dpkg -s sl | grep -q "^Status: install ok installed"' && ok "the layer is back and consistent" || err "after the repair: sl isn't right"
+start "$A"
+s=$(st "$A"); [ "$(field "$s" "d['state']")" = unlocked ] && ok "the next start uses the layer again" || err "after the repair, the next start: $s"
+
+# ---- 7c. the boot-menu writers, the update's finalizing and Recovery run from the image's /usr
+echo "--- the image's /usr for the boot writers"
+ic 'grep -q " /run/hearth/usr-image " /proc/self/mountinfo' && ok "the image's /usr is kept at /run/hearth/usr-image" || err "/run/hearth/usr-image isn't mounted"
+ic 'test -e /usr/games/sl && test ! -e /run/hearth/usr-image/games/sl' && ok "/run/hearth/usr-image doesn't see the layer (private mount)" \
+  || err "/run/hearth/usr-image shows the layer's files (or the layer isn't on)"
+# A layer that breaks a tool the boot-menu writer uses: in a mount namespace like BindReadOnlyPaths= gives the units,
+# the image's tool still works.
+U "$A" 'cp -a /usr/bin/sed /tmp/sed.keep && printf "#!/bin/sh\nexit 3\n" > /usr/bin/sed && chmod 755 /usr/bin/sed'
+U "$A" 'sed --version >/dev/null 2>&1' && err "the broken sed wasn't broken (test setup)"
+U "$A" "unshare -m sh -c 'mount --bind /run/hearth/usr-image /usr && sed --version >/dev/null && python3 -c \"import json\" && test ! -e /usr/games/sl'" \
+  && ok "with the image's /usr bound (as the units have it) the tools work despite a broken layer" || err "the image's /usr bound over /usr didn't give working tools"
+U "$A" 'cp -a /tmp/sed.keep /usr/bin/sed'
+if [ "$MODE" = image ]; then
+  for u in hearth-bls-grub hearth-bls-grub-refresh hearth-boot-guard hearth-boot-guard-refresh hearth-boot-good ostree-finalize-staged bootc-fetch-apply-updates hearth-recovery; do
+    ic "grep -q 'BindReadOnlyPaths=-/run/hearth/usr-image:/usr' /usr/lib/systemd/system/$u.service.d/20-hearth-image-usr.conf" || err "$u has no image-/usr drop-in"
+  done
+  ok "the boot writers' drop-ins are in the image"
+  ic 'systemctl is-enabled hearth-unlock-ldcache.service >/dev/null' && ok "the library cache is rebuilt from the image before finalizing" || err "hearth-unlock-ldcache.service isn't enabled"
+
+  # ---- 7d. /etc pointing into the layer: a display manager from a package, on a start without the layer
+  echo "--- /etc guard"
+  ic 'test -x /usr/lib/systemd/system-generators/hearth-etc-guard' && ok "the /etc guard generator is in the image" || err "no hearth-etc-guard generator"
+  echo "::notice title=hearth-unlock sddm::$(ic 'grep -E "^Exec" /usr/lib/systemd/system/sddm.service | tr "\n" " "' | cut -c1-250)"
+  ic 'rm -rf /tmp/g && mkdir -p /tmp/g/etc /tmp/g/early && ln -s /usr/lib/systemd/system/gdm3.service /tmp/g/etc/display-manager.service && echo /usr/sbin/gdm3 > /tmp/g/dm
+      HEARTH_ETC_UNITS=/tmp/g/etc HEARTH_X11_DM=/tmp/g/dm /usr/lib/systemd/system-generators/hearth-etc-guard /tmp/g/n /tmp/g/early /tmp/g/l
+      [ "$(readlink /tmp/g/early/display-manager.service)" = /usr/lib/systemd/system/sddm.service ] && [ -e /usr/lib/systemd/system/sddm.service ] && grep -q "^ExecStartPre=$" /tmp/g/early/sddm.service.d/50-hearth-etc-guard.conf' \
+    && ok "a display manager that isn't there (gdm3 from the layer): Hearth's SDDM starts instead" || err "the /etc guard didn't bring back Hearth's display manager"
+  ic 'systemctl is-enabled nimbus-autologin.service >/dev/null' && ok "Hearth's autologin is on (the session SDDM starts)" || err "nimbus-autologin isn't enabled"
+  ic 'grep -A4 "^Name: shared/default-x-display-manager" /var/cache/debconf/config.dat | grep -q "^Value: sddm"' \
+    && ok "debconf's display manager is SDDM (copied at the first start)" || err "debconf's shared/default-x-display-manager isn't sddm: $(ic 'ls -la /var/cache/debconf /usr/share/hearth/debconf 2>&1; grep -A4 "^Name: shared/default-x-display-manager" /usr/share/hearth/debconf/config.dat' | tr '\n' ' ' | cut -c1-400)"
+  U "$A" 'apt-get install -y -qq xdm >/tmp/xdm.log 2>&1' || echo "::warning title=hearth-unlock::installing xdm failed: $(ic 'tail -2 /tmp/xdm.log' | tr '\n' ' ')"
+  U "$A" '[ "$(cat /etc/X11/default-display-manager)" = /usr/bin/sddm ] && [ "$(readlink -f /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service ]' \
+    && ok "installing another display manager (xdm) leaves Hearth's in place" || err "installing xdm took over the display manager: $(ic 'cat /etc/X11/default-display-manager; readlink /etc/systemd/system/display-manager.service' | tr '\n' ' ')"
+
+  # ---- 7e. nothing from apt reaches /boot or swaps the system's core
+  echo "--- /boot and the core"
+  ic 'grep -q "not used on Hearth OS" /usr/sbin/update-initramfs && grep -q "not used on Hearth OS" /usr/sbin/update-grub' && ok "update-initramfs and update-grub are no-ops" || err "update-initramfs/update-grub aren't Hearth's no-ops"
+  ic '[ -z "$(ls -A /etc/kernel/postinst.d 2>/dev/null)" ]' && ok "no kernel install hooks" || err "kernel install hooks left: $(ic 'ls /etc/kernel/postinst.d' | tr '\n' ' ')"
+  ic '[ -z "$(ls -A /boot 2>/dev/null)" ]' && ok "/boot untouched by the installs" || err "something wrote /boot: $(ic 'ls -A /boot' | tr '\n' ' ')"
+  for p in libc6 systemd udev libsystemd-shared dbus; do
+    ic "apt-cache policy $p | awk '/Installed:/{i=\$2} /Candidate:/{c=\$2} END{exit !(i!=\"\" && i==c)}'" && ok "$p stays at the image's version" || err "$p could be changed by apt: $(ic "apt-cache policy $p | head -3" | tr '\n' ' ')"
+  done
+  echo "::notice title=hearth-unlock dracut triggers::$(ic 'cat /usr/lib/sysimage/dpkg/info/dracut*.triggers 2>/dev/null | tr "\n" " "' | cut -c1-250)"
+fi
+
 # ---- 8. the boot guard's own tests (in this system's Python)
 ic 'cd /src/hosts/linux && python3 -B -m unittest discover -s test -p test_hearth_boot_guard.py 2>&1 | tail -3' | sed 's/^/  /'
 ic 'cd /src/hosts/linux && python3 -B -m unittest discover -s test -p test_hearth_boot_guard.py >/dev/null 2>&1' \
   && ok "boot guard tests pass here" || err "boot guard tests failed in this system"
 
-if [ "$fail" = 0 ]; then echo "::notice title=hearth-unlock ($MODE)::writable by default, apt survives restarts, update + reapply, rollback, lock/unlock, safe start: all ok"; fi
+if [ "$fail" = 0 ]; then echo "::notice title=hearth-unlock ($MODE)::writable by default, apt survives restarts, update + reapply, rollback, lock/unlock, safe start, interrupted dpkg, image /usr for the boot writers$( [ "$MODE" = image ] && echo ", /etc guard, /boot and core pins"): all ok"; fi
 exit "$fail"

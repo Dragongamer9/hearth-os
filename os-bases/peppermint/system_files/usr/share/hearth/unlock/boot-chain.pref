@@ -1,7 +1,8 @@
-# Hearth OS on Peppermint: the boot loader, the kernel and the image tools come with each Hearth OS version, never
+# Hearth OS on Peppermint: the boot loader, the kernel, kernel modules (DKMS), microcode, firmware updates and the
+# image tools come with each Hearth OS version, never
 # from apt. A package here can't be installed or upgraded with apt (it would write the boot menu or the EFI
 # partition outside bootc, which could stop the device from starting). build.sh installs this as
 # /etc/apt/preferences.d/hearth-boot-chain.
-Package: grub* shim* linux-image* linux-headers* linux-signed* linux-kbuild* ostree ostree-boot libostree* bootc bootupd dracut dracut-* initramfs-tools* systemd-boot* efibootmgr
+Package: grub* shim* linux-image* linux-headers* linux-signed* linux-kbuild* ostree ostree-boot libostree* bootc bootupd dracut dracut-* initramfs-tools* systemd-boot* efibootmgr dkms *-dkms amd64-microcode intel-microcode fwupd* mokutil memtest86+
 Pin: version *
 Pin-Priority: -1

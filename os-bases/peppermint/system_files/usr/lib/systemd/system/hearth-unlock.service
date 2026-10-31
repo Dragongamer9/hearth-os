@@ -1,5 +1,6 @@
-# Hearth OS on Peppermint is writable (hearth-unlock, docs/BASE-PEPPERMINT.md): early at every start, this version's
-# own layer goes over the image's read-only /usr. Never in the way of starting: if anything goes wrong the system
+# Hearth OS on Peppermint is writable (hearth-unlock, docs/BASE-PEPPERMINT.md): early at every start, the image's
+# /usr is kept at /run/hearth/usr-image (for the boot-menu writers and Recovery), then this version's own layer goes
+# over the image's read-only /usr. Never in the way of starting: if anything goes wrong the system
 # just starts as the image made it (read-only), and Hearth says so. Skipped when locked (/etc/hearth/system-locked),
 # with the kernel option hearth.clean, and after a start with your changes that never reached Hearth (safe start).
 [Unit]
@@ -16,7 +17,7 @@ ConditionPathExists=!/etc/hearth-live
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=-/usr/bin/hearth-unlock --boot
-TimeoutStartSec=60
+TimeoutStartSec=120
 
 [Install]
 WantedBy=sysinit.target
