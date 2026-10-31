@@ -255,6 +255,18 @@ class CosmicPadKeys(unittest.TestCase):
         self.assertIn('KEY_LEFTMETA+KEY_Q', self.out.combos())
         self.assertNotIn(('send', {'t': 'help'}), self.out.ev)
 
+    def test_unknown_app_view_lb_is_tabs_and_view_y_searches(self):
+        self.press('view', 'rb')
+        self.assertIn('KEY_LEFTCTRL+KEY_TAB', self.out.combos())
+        self.press('view', 'y')
+        self.assertIn('KEY_LEFTCTRL+KEY_F', self.out.combos())
+        self.assertIn(('send', {'t': 'osk', 'open': True}), self.out.ev)
+
+    def test_files_view_rb_switches_windows(self):
+        self.pad.command({'cmd': 'app', 'id': 'com.system76.CosmicFiles'})
+        self.press('view', 'rb')
+        self.assertIn(('press', 'KEY_LEFTALT', True), self.out.ev)
+
     def test_view_dpad_moves_and_maximizes(self):
         self.press('view', 'up')
         self.press('view', 'left')
@@ -329,11 +341,13 @@ class Defaults(unittest.TestCase):
                 ('com.system76.CosmicTheme.Dark', 'background', '(base: (red: 0.10588235, green: 0.10588235, blue: 0.10588235, alpha: 1.0))'),
                 ('com.system76.CosmicTheme.Dark.Builder', 'bg_color', 'Some((red: 0.10588235, green: 0.10588235, blue: 0.10588235, alpha: 1.0))'),
                 ('com.system76.CosmicPanel.Panel', 'name', '"Panel"'),
+                ('com.system76.CosmicTheme.Dark', None, '(\n    base: "#63D0DFFF",\n    hover: "#1B1B1BFF",\n)\n'),
                 ('com.system76.CosmicPanel.Panel', 'anchor', 'Top'),
                 ('com.system76.CosmicSettings.Shortcuts', 'system_actions', '{\n    AppLibrary: "cosmic-app-library",\n    Launcher: "cosmic-launcher",\n}\n'),
             ):
-                os.makedirs(os.path.join(src, cid, 'v1'), exist_ok=True)
-                with open(os.path.join(src, cid, 'v1', key), 'w') as f:
+                ver, key = ('v2', 'accent') if key is None else ('v1', key)
+                os.makedirs(os.path.join(src, cid, ver), exist_ok=True)
+                with open(os.path.join(src, cid, ver, key), 'w') as f:
                     f.write(text)
             dst = os.path.join(tmp, 'dst')
             m.build(src, dst)
@@ -353,6 +367,9 @@ class Defaults(unittest.TestCase):
             self.assertIn('red: 0.090', bg)          # #17110e
             self.assertIn('Hearth-fireside', rd('com.system76.CosmicBackground', 'v1', 'all'))
             self.assertIn('red: 1.0000000', rd('com.system76.CosmicTheme.Dark.Builder', 'v1', 'accent'))
+            v2 = rd('com.system76.CosmicTheme.Dark', 'v2', 'accent')     # COSMIC 1.10's hex colours
+            self.assertNotIn('#63D0DF', v2)
+            self.assertIn('FF"', v2)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

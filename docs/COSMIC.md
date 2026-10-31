@@ -103,8 +103,9 @@ COSMIC as layer-shell windows; the panel gets Hearth's entries as pinned apps.
 | X | right-click (context menu) |
 | Y | COSMIC Files / Edit: search (Ctrl+F) and the on-screen keyboard; Terminal and other windows: the keyboard |
 | D-pad | arrow keys: moves the selection in lists, grids and menus |
-| LB / RB | tabs in COSMIC Files, Terminal and Edit (Ctrl+Tab); other windows: switch windows (Alt+Tab) |
-| View + LB / RB | switch windows (Alt+Tab) |
+| LB / RB | switch windows (Alt+Tab); in COSMIC Files, Terminal and Edit when COSMIC says they're in front: tabs (Ctrl+Tab) |
+| View + LB / RB | the other one: tabs (Ctrl+Tab), or windows in COSMIC's apps |
+| View + Y | search (Ctrl+F) and the on-screen keyboard, in any window |
 | View + B | close the window (Super+Q) |
 | View + D-pad | move the window left / right, maximize, minimize |
 | View (tap) | the controls card |
@@ -113,8 +114,15 @@ COSMIC as layer-shell windows; the panel gets Hearth's entries as pinned apps.
 | Guide + X | Hearth's on-screen keyboard (open / close), typing through hearth-pad's uinput keyboard |
 
 In Hearth's own menus (launcher, Quick Access, Hearth Link card) the controller types arrows / Enter / Esc, as in
-Hearth Classic. A fullscreen game pauses it. Which app is in front comes from Quickshell's toplevel list; where COSMIC
-doesn't report it, every window gets the general keys (B Esc, Y the keyboard, LB / RB windows).
+Hearth Classic. A fullscreen game would pause it.
+
+**Which app is in front:** COSMIC 1.10 doesn't tell other programs which window has the focus (it has no
+wlr-foreign-toplevel protocol, only its own), so in CI the companion sees no app id, and the per-app keys (B back in
+Files, Y search, LB / RB tabs) don't switch on by themselves; every window gets the general keys, and View + LB / RB
+(tabs) and View + Y (search) give the same things by hand. The per-app table is ready in `hearth-pad` (`COSMIC_APPS`)
+for when COSMIC reports it. For the same reason the controller isn't paused automatically by a fullscreen game in
+Hearth COSMIC (Game Mode is where games are meant to run; "Controller mouse: off" in Quick Access or the Hearth menu
+pauses it by hand).
 
 ## What's installed
 

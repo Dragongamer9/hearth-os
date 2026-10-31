@@ -488,7 +488,8 @@ class CosmicPad(Pad):
       A            Enter; a click when the pointer was just moved          X        right-click   L3  middle-click
       B            back: Esc (COSMIC Files: the folder before)             Y        search (Files, Edit) and the keyboard
       D-pad        arrow keys (moves the selection)                        LB / RB  tabs in COSMIC's apps, else windows
-      View + LB/RB windows (Alt+Tab)     View + B  close (Super+Q)         View + D-pad  move / maximize / minimize
+      View + LB/RB the other one         View + B  close (Super+Q)         View + D-pad  move / maximize / minimize
+      View + Y     search (Ctrl+F) and the keyboard, in any window
       Menu         Hearth's launcher     Guide     the Hearth menu         Guide + X  the on-screen keyboard"""
 
     def __init__(self, out):
@@ -562,15 +563,21 @@ class CosmicPad(Pad):
             else:
                 self.tap(*am['b'])
         elif name == 'y':
-            if am['y']:
+            if view and not am['y']:
+                # View + Y: search (Ctrl+F) in any window (where the app in front isn't known, Y alone is the keyboard).
+                self.view_used = True
+                self.tap('KEY_LEFTCTRL', 'KEY_F')
+            elif am['y']:
                 self.tap(*am['y'])
             if am['osk']:
                 self.want_osk()
         elif name == 'menu':
             self.out.send({'t': 'launcher'})
         elif name in ('lb', 'rb'):
-            if view or not am['tabs']:
-                self.view_used = self.view_used or view
+            # COSMIC's apps: LB / RB tabs, View + LB / RB windows. Elsewhere (or when COSMIC doesn't say which app is in
+            # front) the other way round, as in Hearth Classic: LB / RB windows, View + LB / RB tabs.
+            self.view_used = self.view_used or view
+            if view == am['tabs']:
                 self.switch_window(name, now)
             else:
                 self.tap(*(['KEY_LEFTCTRL', 'KEY_TAB'] if name == 'rb' else ['KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB']))

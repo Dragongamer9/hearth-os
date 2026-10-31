@@ -68,7 +68,16 @@ def retint(r, g, b):
     return (r, g, b)
 
 
+HEX_RE = re.compile(r'"#([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?"')
+
+
 def retint_text(text):
+    def subhex(m):
+        h = m.group(1)
+        nr, ng, nb = retint(*(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)))
+        return '"#%02X%02X%02X%s"' % (round(nr * 255), round(ng * 255), round(nb * 255), m.group(2) or '')
+    text = HEX_RE.sub(subhex, text)
+
     def sub(m):
         r, g, b = (float(m.group(i)) for i in (1, 2, 3))
         nr, ng, nb = retint(r, g, b)

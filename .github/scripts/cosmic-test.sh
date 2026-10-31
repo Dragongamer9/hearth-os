@@ -188,6 +188,18 @@ timeout -k 5 150 python3 .github/scripts/cosmic-pad-drive.py desk shots >shots/p
 cp "$HOME/.local/share/nimbus/cosmic-companion.log" shots/ 2>/dev/null
 grep -iE "protocol|error [0-9]|broke|wl_" shots/cosmic-companion.log shots/companion.log 2>/dev/null | sort | uniq -c | head -8 > shots/companion-errors.txt
 [ -s shots/companion-errors.txt ] && echo "::warning title=companion's Wayland errors::$(cut -c1-300 shots/companion-errors.txt | tr '\n' '|')"
+# Why the companion ends when one of its windows closes (seen in CI): its Wayland conversation around Quick Access
+# opening and closing.
+pkill -f 'desk-cosmic.qml' ; sleep 2
+WAYLAND_DEBUG=client quickshell -p /src/hosts/linux/desktop/shell/desk-cosmic.qml >/tmp/wl-debug.log 2>&1 &
+sleep 10
+timeout 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth quick >/dev/null 2>&1; sleep 3
+timeout 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth quick >/dev/null 2>&1; sleep 4
+pgrep -f desk-cosmic.qml >/dev/null && echo "companion still running after Quick Access opened and closed" > shots/wl-debug-result.txt || echo "companion ENDED after Quick Access opened and closed" > shots/wl-debug-result.txt
+grep -nE "error|wl_display|delete_id|zwlr_layer_surface|destroy" /tmp/wl-debug.log | tail -60 > shots/wl-debug-tail.txt
+tail -40 /tmp/wl-debug.log >> shots/wl-debug-tail.txt
+grep -iE "\.error\(" /tmp/wl-debug.log | head -5 > shots/wl-protocol-errors.txt
+echo "::notice title=Wayland check::$(cat shots/wl-debug-result.txt) $(head -c 600 shots/wl-protocol-errors.txt | tr '\n' '|')"
 for f in shots/pad-*.txt; do [ -f "$f" ] && echo "::notice title=$(basename "$f" .txt)::$(head -c 3000 "$f" | sed 's/%/%25/g' | tr '\n' '|')"; done
 ls shots/*.png >/dev/null 2>&1 || fail "screenshots" "none were taken: $(head -c 500 shots/shot-errors.txt 2>/dev/null | tr '\n' '|')"
 pkill -f desk-cosmic.qml; pkill cosmic-panel; pkill cosmic-bg; pkill cosmic-settings; kill $COMP 2>/dev/null; pkill labwc; pkill dbus-daemon
