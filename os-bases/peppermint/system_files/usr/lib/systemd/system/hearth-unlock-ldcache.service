@@ -1,0 +1,19 @@
+# /etc/ld.so.cache is the machine's (bootc carries /etc into each new version) and lists the libraries of the layer
+# of packages you added. Before an update is finalized at shutdown (ostree-finalize-staged.service stops after this,
+# carrying /etc over), it's rebuilt from the image's own /usr, so the new version starts with a cache of real files.
+# Every start rebuilds it again for the /usr that start has (hearth-unlock --boot).
+[Unit]
+Description=Hearth: library cache from the image before an update is finalized
+After=hearth-unlock.service ostree-finalize-staged.service
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=-/bin/sh -c '[ -e /run/ostree/staged-deployment ] || exit 0; [ -d /run/hearth/usr-image/lib ] || exit 0; exec /usr/sbin/ldconfig -X'
+BindReadOnlyPaths=-/run/hearth/usr-image:/usr
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

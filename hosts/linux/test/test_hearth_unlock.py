@@ -25,6 +25,7 @@ RECOVERY = ROOT / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth
 DEBBOX = ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-debbox'
 UNITS = ROOT / 'os-bases' / 'peppermint' / 'system_files' / 'usr' / 'lib' / 'systemd' / 'system'
 CONF = ROOT / 'os-bases' / 'peppermint' / 'system_files' / 'usr' / 'share' / 'hearth' / 'unlock'
+GENERATOR = ROOT / 'os-bases' / 'peppermint' / 'system_files' / 'usr' / 'lib' / 'systemd' / 'system-generators' / 'hearth-etc-guard'
 A = 'a' * 64
 B = 'b' * 64
 
@@ -53,7 +54,10 @@ class Base(unittest.TestCase):
         open(self.mountinfo, 'w').close()
         os.environ.update(HEARTH_UNLOCK_STATE=self.state, HEARTH_UNLOCK_LOCKFILE=self.lockfile,
                           HEARTH_UNLOCK_BASELINE=self.baseline, HEARTH_UNLOCK_CMDLINE=self.cmdline,
-                          HEARTH_UNLOCK_MOUNTINFO=self.mountinfo, HEARTH_UNLOCK_ID=A, HEARTH_UNLOCK_USR='/usr')
+                          HEARTH_UNLOCK_MOUNTINFO=self.mountinfo, HEARTH_UNLOCK_ID=A, HEARTH_UNLOCK_USR='/usr',
+                          HEARTH_UNLOCK_IMAGE_USR=os.path.join(self.tmp, 'run', 'usr-image'),
+                          HEARTH_UNLOCK_STOP=os.path.join(self.tmp, 'run', 'unlock-stop'))
+        self.mount_fails = False
         self.u = load(UNLOCK, 'hearth_unlock')
         self.calls = []
         self.mounted = False
@@ -65,7 +69,9 @@ class Base(unittest.TestCase):
 
     def fake_run(self, cmd, timeout=600, env=None, input=None):
         self.calls.append(list(cmd))
-        if cmd[0] == 'mount':
+        if cmd[:3] == ['mount', '-t', 'overlay']:
+            if self.mount_fails:
+                return 32, 'mount: wrong fs type'
             self.mounted = True
         return 0, ''
 
@@ -298,8 +304,12 @@ class Starting(Base):
     def test_old_layers_are_tidied_but_never_on_an_empty_answer(self):
         for lid in (A, B):
             os.makedirs(os.path.join(self.state, 'layers', lid, 'upper'))
-        self.assertEqual(self.u.prune_layers(set()), [])
-        self.assertEqual(self.u.prune_layers({A}), [B])
+        self.assertEqual(self.u.prune_layers(set(), A, A), [])
+        self.assertEqual(self.u.prune_layers({A}, None, A), [])        # ostree didn't say which one is running
+        self.assertEqual(self.u.prune_layers({B}, A, A), [])           # the running one isn't listed: odd answer
+        self.assertEqual(self.u.prune_layers({A}, A, B), [])           # not the one running here
+        self.assertTrue(os.path.isdir(os.path.join(self.state, 'layers', B)))
+        self.assertEqual(self.u.prune_layers({A}, A, A), [B])
         self.assertTrue(os.path.isdir(os.path.join(self.state, 'layers', A)))
 
     def test_units_the_layer_brought(self):
@@ -438,6 +448,167 @@ class Switch(Base):
         self.assertIn('locked', out.getvalue())
 
 
+
+class BootSafety(Base):
+    """The boot-safety review: an interrupted dpkg, a failed mount, the image's /usr for the boot writers, the stop."""
+
+    def write_status(self, lid, status_line, journal=False):
+        d = os.path.join(self.state, 'layers', lid, 'upper', 'lib', 'sysimage', 'dpkg')
+        os.makedirs(os.path.join(d, 'updates'), exist_ok=True)
+        with open(os.path.join(d, 'status'), 'w') as f:
+            f.write(f'Package: sl\n{status_line}\nVersion: 5\n\nPackage: bash\nStatus: install ok installed\n')
+        if journal:
+            with open(os.path.join(d, 'updates', '0001'), 'w') as f:
+                f.write('Package: sl\nStatus: install ok half-configured\n')
+
+    def test_interrupted_dpkg_is_seen(self):
+        up = os.path.join(self.state, 'layers', A, 'upper')
+        self.assertFalse(self.u.dpkg_interrupted(up))
+        self.write_status(A, 'Status: install ok installed')
+        self.assertFalse(self.u.dpkg_interrupted(up))
+        for st in ('Status: install ok half-installed', 'Status: install ok unpacked', 'Status: install reinstreq half-installed',
+                   'Status: install ok half-configured', 'Status: install ok triggers-awaited'):
+            self.write_status(A, st)
+            self.assertTrue(self.u.dpkg_interrupted(up), st)
+        self.write_status(A, 'Status: install ok installed', journal=True)
+        self.assertTrue(self.u.dpkg_interrupted(up))
+
+    def test_interrupted_dpkg_starts_without_the_layer_once_then_repairs(self):
+        self.touch_upper(A)
+        self.write_status(A, 'Status: install ok half-configured')
+        self.assertFalse(self.boot())
+        self.assertTrue(self.u.load_layer(A)['repair'])
+        self.assertFalse(self.u.load_layer(A).get('suspended'))    # this start only
+        self.assertEqual(self.u.status()['notice']['kind'], 'dpkg-interrupted')
+        self.assertEqual(self.u.status()['state'], 'repairing')
+
+        def fixing_run(cmd, timeout=600, env=None, input=None):
+            r = self.fake_run(cmd, timeout, env, input)
+            if cmd[:2] == ['dpkg', '--configure']:
+                self.write_status(A, 'Status: install ok installed')
+            return r
+        with mock.patch.object(self.u, 'run', side_effect=fixing_run), \
+                mock.patch.object(self.u, 'mounted', side_effect=lambda: self.mounted), \
+                mock.patch.object(self.u, 'reapply'), contextlib.redirect_stderr(io.StringIO()):
+            self.u.cmd_after_start()
+        self.assertIn(['dpkg', '--configure', '-a', '--force-confdef', '--force-confold'], self.calls)
+        self.assertFalse(self.u.load_layer(A)['repair'])
+        self.assertIsNone(self.u.status()['notice'])
+        self.assertTrue(self.boot())
+
+    def test_repair_that_fails_keeps_starting_without_the_layer(self):
+        self.touch_upper(A)
+        self.write_status(A, 'Status: install reinstreq half-installed')
+        self.boot()
+        with mock.patch.object(self.u, 'run', side_effect=self.fake_run), \
+                mock.patch.object(self.u, 'mounted', side_effect=lambda: self.mounted), \
+                mock.patch.object(self.u, 'reapply'), contextlib.redirect_stderr(io.StringIO()):
+            self.u.cmd_after_start()
+        self.assertTrue(self.u.load_layer(A)['repair'])
+        self.assertFalse(self.boot())
+
+    def test_a_failed_mount_is_no_reason_for_a_safe_start(self):
+        self.touch_upper(A)
+        self.mount_fails = True
+        self.assertFalse(self.boot())
+        self.assertEqual(self.u.load_layer(A).get('pending', 0), 0)
+        self.mount_fails = False
+        self.assertTrue(self.boot())
+
+    def test_image_usr_kept_before_the_layer_goes_over(self):
+        self.boot()
+        img = os.environ['HEARTH_UNLOCK_IMAGE_USR']
+        binds = [c for c in self.calls if c[0] == 'mount' and img in c]
+        self.assertEqual(binds[0], ['mount', '--bind', '/usr', img])
+        self.assertIn(['mount', '--make-private', img], binds)     # the layer over /usr mustn't reach it
+        first_overlay = next(i for i, c in enumerate(self.calls) if c[:3] == ['mount', '-t', 'overlay'])
+        self.assertLess(self.calls.index(binds[-1]), first_overlay)
+
+    def test_image_usr_never_bound_from_the_layer(self):
+        with open(self.mountinfo, 'w') as f:
+            f.write('1234 22 0:55 / /usr rw - overlay hearth-usr rw,lowerdir=/usr\n')
+        with mock.patch.object(self.u, 'run', side_effect=self.fake_run):
+            self.assertFalse(self.u.bind_image_usr())
+        self.assertFalse(any(c[:2] == ['mount', '--bind'] for c in self.calls))
+
+    def test_reapply_stops_for_a_shutdown_and_waits_for_the_next_start(self):
+        self.u.save_record({'manual': ['htop'], 'removed': [], 'debs': {}})
+        os.makedirs(os.path.dirname(os.environ['HEARTH_UNLOCK_STOP']), exist_ok=True)
+        open(os.environ['HEARTH_UNLOCK_STOP'], 'w').close()
+        with mock.patch.object(self.u, 'run', side_effect=self.fake_run), contextlib.redirect_stderr(io.StringIO()):
+            r = self.u.reapply(A, say=lambda *a: None)
+        self.assertEqual(r['state'], 'pending')
+        self.assertFalse(any(c[:2] == ['apt-get', 'install'] for c in self.calls))
+
+    def test_stop_waits_for_dpkg(self):
+        busy = iter([0, 0, 1, 1])   # dpkg running twice, then gone
+        with mock.patch.object(self.u, 'run', side_effect=lambda cmd, **k: (next(busy, 1), '')), \
+                mock.patch.object(self.u, 'lock_free', return_value=True), mock.patch.object(self.u.time, 'sleep') as sl:
+            self.u.cmd_stop_wait(limit=60)
+        self.assertTrue(os.path.exists(os.environ['HEARTH_UNLOCK_STOP']))
+        self.assertGreaterEqual(sl.call_count, 1)
+
+
+class EtcGuard(unittest.TestCase):
+    """The generator that lifts /etc settings pointing into the layer on starts without it."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-etc-guard-')
+        self.etc = os.path.join(self.tmp, 'etc')
+        self.usr = os.path.join(self.tmp, 'usr')
+        self.early = os.path.join(self.tmp, 'early')
+        self.x11 = os.path.join(self.tmp, 'default-display-manager')
+        os.makedirs(self.etc)
+        os.makedirs(self.usr)
+        for u in ('sddm.service', 'graphical.target', 'getty@.service'):
+            open(os.path.join(self.usr, u), 'w').close()
+        with open(self.x11, 'w') as f:
+            f.write('/usr/bin/sddm\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def gen(self):
+        env = dict(os.environ, HEARTH_ETC_UNITS=self.etc, HEARTH_USR_UNITS=self.usr, HEARTH_X11_DM=self.x11)
+        r = subprocess.run(['sh', str(GENERATOR), os.path.join(self.tmp, 'n'), self.early, os.path.join(self.tmp, 'l')],
+                           env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r
+
+    def test_nothing_to_do_writes_nothing(self):
+        os.symlink(os.path.join(self.usr, 'sddm.service'), os.path.join(self.etc, 'display-manager.service'))
+        self.gen()
+        self.assertFalse(os.path.exists(self.early) and os.listdir(self.early))
+
+    def test_a_display_manager_from_the_layer_falls_back_to_hearths(self):
+        os.symlink('/usr/lib/systemd/system/gdm3.service', os.path.join(self.etc, 'display-manager.service'))
+        with open(self.x11, 'w') as f:
+            f.write('/usr/sbin/gdm3\n')
+        self.gen()
+        self.assertEqual(os.readlink(os.path.join(self.early, 'display-manager.service')), os.path.join(self.usr, 'sddm.service'))
+        with open(os.path.join(self.early, 'sddm.service.d', '50-hearth-etc-guard.conf')) as f:
+            self.assertIn('ExecStartPre=\n', f.read())
+
+    def test_default_target_and_units_and_drop_ins(self):
+        os.symlink('/usr/lib/systemd/system/kodi.target', os.path.join(self.etc, 'default.target'))
+        with open(os.path.join(self.etc, 'getty@.service'), 'w') as f:
+            f.write('[Service]\nExecStart=-/usr/sbin/layer-agetty %I\n')
+        os.makedirs(os.path.join(self.etc, 'sddm.service.d'))
+        with open(os.path.join(self.etc, 'sddm.service.d', 'x.conf'), 'w') as f:
+            f.write('[Service]\nExecStart=\nExecStart=/usr/bin/not-here\n')
+        with open(os.path.join(self.etc, 'sddm.service.d', 'fine.conf'), 'w') as f:
+            f.write('[Service]\nExecStartPre=/bin/true\nEnvironment=A=1\n')
+        self.gen()
+        self.assertEqual(os.readlink(os.path.join(self.early, 'default.target')), os.path.join(self.usr, 'graphical.target'))
+        self.assertEqual(os.readlink(os.path.join(self.early, 'getty@.service')), os.path.join(self.usr, 'getty@.service'))
+        self.assertEqual(os.path.getsize(os.path.join(self.early, 'sddm.service.d', 'x.conf')), 0)
+        self.assertFalse(os.path.exists(os.path.join(self.early, 'sddm.service.d', 'fine.conf')))
+
+    def test_masked_units_stay_masked(self):
+        os.symlink('/dev/null', os.path.join(self.etc, 'getty@.service'))
+        self.gen()
+        self.assertFalse(os.path.lexists(os.path.join(self.early, 'getty@.service')))
+
 class Files(unittest.TestCase):
     def test_units(self):
         boot = (UNITS / 'hearth-unlock.service').read_text()
@@ -450,6 +621,22 @@ class Files(unittest.TestCase):
             t = (UNITS / (u + '.service')).read_text()
             self.assertIn('Type=simple', t, u)   # nothing in the start waits for these
             self.assertIn('ExecStart=-', t, u)
+        re_ = (UNITS / 'hearth-unlock-reapply.service').read_text()
+        self.assertNotIn('network-online', re_)
+        self.assertIn('ExecStop=-/usr/bin/hearth-unlock --stop-wait', re_)
+        self.assertIn('TimeoutStopSec=', re_)
+        self.assertIn('TimeoutStartSec=120', boot)
+
+    def test_boot_writers_run_from_the_image(self):
+        for u in ('hearth-bls-grub', 'hearth-bls-grub-refresh', 'hearth-boot-guard', 'hearth-boot-guard-refresh',
+                  'hearth-boot-good', 'ostree-finalize-staged', 'bootc-fetch-apply-updates', 'hearth-recovery'):
+            t = (UNITS / (u + '.service.d') / '20-hearth-image-usr.conf').read_text()
+            self.assertIn('BindReadOnlyPaths=-/run/hearth/usr-image:/usr', t, u)
+            self.assertIn('After=hearth-unlock.service', t, u)
+        ld = (UNITS / 'hearth-unlock-ldcache.service').read_text()
+        self.assertIn('After=hearth-unlock.service ostree-finalize-staged.service', ld)   # stops before finalizing
+        self.assertIn('BindReadOnlyPaths=-/run/hearth/usr-image:/usr', ld)
+        self.assertTrue(os.access(GENERATOR, os.X_OK))
 
     def test_hooks_and_pin(self):
         apt = (CONF / 'apt.conf').read_text()
@@ -457,7 +644,8 @@ class Files(unittest.TestCase):
         self.assertIn('--stash-debs || cat >/dev/null || true', apt)
         self.assertIn('--record-later || true', (CONF / 'dpkg.cfg').read_text())
         pin = (CONF / 'boot-chain.pref').read_text()
-        for p in ('grub*', 'shim*', 'linux-image*', 'bootc', 'bootupd', 'dracut', 'ostree'):
+        for p in ('grub*', 'shim*', 'linux-image*', 'bootc', 'bootupd', 'dracut', 'ostree', 'dkms', '*-dkms',
+                  'amd64-microcode', 'intel-microcode', 'fwupd*', 'mokutil', 'memtest86+'):
             self.assertIn(' ' + p, ' ' + pin.split('Package:', 1)[1].split('\n', 1)[0] + ' ')
         self.assertIn('Pin-Priority: -1', pin)
 
@@ -467,6 +655,13 @@ class Files(unittest.TestCase):
         self.assertIn('/etc/apt/apt.conf.d/50-hearth-unlock', b)
         self.assertIn('/etc/dpkg/dpkg.cfg.d/hearth-unlock', b)
         self.assertIn('/etc/apt/preferences.d/hearth-boot-chain', b)
+        self.assertIn('/etc/apt/preferences.d/hearth-image-core', b)
+        self.assertIn('shared/default-x-display-manager select sddm', b)
+        self.assertIn('C /var/cache/debconf', b)
+        for f in ('update-initramfs', 'update-grub', 'grub-mkconfig'):
+            self.assertIn('/usr/sbin/' + f, b)
+        self.assertIn('rm -f /etc/kernel/postinst.d/*', b)
+        self.assertIn('hearth-unlock-ldcache.service', b)
         # the hooks go in only after the last apt run of the build
         self.assertGreater(b.index('/etc/dpkg/dpkg.cfg.d/hearth-unlock'), b.rindex('apt-get clean'))
 

@@ -19,6 +19,11 @@ on:
       - 'hosts/linux/test/test_hearth_recovery_usb.py'
       - 'os-bases/peppermint/system_files/usr/bin/hearth-unlock'
       - 'os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-unlock*'
+      - 'os-bases/peppermint/system_files/usr/lib/systemd/system/*.service.d/20-hearth-image-usr.conf'
+      - 'os-bases/peppermint/system_files/usr/lib/systemd/system-generators/**'
+      - 'os-bases/*/build.sh'
+      - '.github/scripts/check-system-files.py'
+      - '.gitignore'
       - 'os-bases/peppermint/system_files/usr/share/hearth/unlock/**'
       - 'hosts/linux/test/test_hearth_unlock.py'
       - '.github/scripts/hearth-unlock-check.sh'
@@ -57,6 +62,9 @@ jobs:
         run: |
           python3 -m py_compile os-bases/peppermint/system_files/usr/bin/hearth-unlock os/system_files/usr/libexec/nimbus/hearth-admin
           bash -n .github/scripts/hearth-unlock-check.sh
+          sh -n os-bases/peppermint/system_files/usr/lib/systemd/system-generators/hearth-etc-guard
+          # every Hearth file the image builds use is in git (hearth-unlock was once hidden by .gitignore's bin/)
+          python3 .github/scripts/check-system-files.py os-bases/peppermint os-bases/anatase
           for u in os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-unlock*.service; do
             systemd-analyze verify --man=no "$u" 2>&1 | grep -v -E 'not found|Failed to|No such file|nimbus-autologin|display-manager|hhd|ostree-remount|hearth-recovery' || true
           done

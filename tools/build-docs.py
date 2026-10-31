@@ -142,7 +142,7 @@ EDITION_NOTES = (
 <li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul>''')
     + only('peppermint', '''<p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
 <ul>APPS<li>It's a normal writable system: <code>sudo apt install</code> and .deb files (double-click one in Files) install anywhere and are kept across restarts. After an update, the packages you added come back by themselves.</li>
-<li>Updates still come as a whole new version, and the version before stays startable as it was. If something you install stops Hearth from starting, the next start leaves your changes off by itself.</li>
+<li>Updates still come as a whole new version, and the version before stays startable with its own packages. If something you install stops Hearth from starting, the next start leaves your changes off by itself.</li>
 <li>To lock it (the system as the image made it): <b>Settings › Updates &amp; Recovery › Unlocked system</b>, or <code>sudo hearth-unlock --lock</code>.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
 ).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li>')
 
