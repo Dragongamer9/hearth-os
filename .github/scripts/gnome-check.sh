@@ -100,6 +100,9 @@ export HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/xdg
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 command -v dbus-uuidgen >/dev/null && dbus-uuidgen --ensure 2>/dev/null
 [ -s /etc/machine-id ] || cat /var/lib/dbus/machine-id > /etc/machine-id 2>/dev/null
+# A system bus without its activatable services: there's no systemd here, so asking D-Bus to start logind (and the
+# like) fails and GNOME Shell stops at startup; with nothing to activate, its proxies simply have no owner.
+rm -f /usr/share/dbus-1/system-services/*.service
 mkdir -p /run/dbus && dbus-daemon --system --fork 2>/dev/null
 dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"

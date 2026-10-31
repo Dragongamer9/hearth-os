@@ -34,6 +34,7 @@ class TaskButton extends St.Button {
         this.set_child(box);
         this.connect('clicked', (b, button) => this._clicked(button));
         this.connect('popup-menu', () => this._menu());
+        this.connect('destroy', () => this._appMenu?.destroy());
     }
 
     sync(focusApp) {
@@ -94,14 +95,6 @@ class TaskButton extends St.Button {
         }
     }
 
-    _onDestroy() {
-        this._appMenu?.destroy();
-    }
-
-    vfunc_destroy() {
-        this._onDestroy();
-        super.vfunc_destroy();
-    }
 });
 
 const TaskBar = GObject.registerClass(
@@ -118,6 +111,7 @@ class TaskBar extends St.BoxLayout {
             [this._tracker, this._tracker.connect('notify::focus-app', () => this._syncFocus())],
             [global.display, global.display.connect('window-created', () => this._queue())],
         ];
+        this.connect('destroy', () => this._onDestroy());
         this._rebuild();
     }
 
@@ -169,14 +163,13 @@ class TaskBar extends St.BoxLayout {
             b.sync?.(f);
     }
 
-    vfunc_destroy() {
+    _onDestroy() {
         for (const [obj, id] of this._ids)
             obj.disconnect(id);
         this._ids = [];
         if (this._idle)
             GLib.source_remove(this._idle);
         this._idle = 0;
-        super.vfunc_destroy();
     }
 });
 
