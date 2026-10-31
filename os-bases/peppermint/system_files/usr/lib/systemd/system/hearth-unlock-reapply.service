@@ -1,0 +1,17 @@
+# After an update (the first start of a new Hearth OS version), the packages you added or removed with apt are put
+# back, in the background, once the network is up. A failure never blocks anything: it's logged
+# (/var/lib/hearth/unlock/reapply.log) and Hearth shows a notice. Also tidies the layers of versions that are gone.
+[Unit]
+Description=Hearth: put your packages back after an update
+After=hearth-unlock.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=simple
+ExecStart=-/usr/bin/hearth-unlock --after-start
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

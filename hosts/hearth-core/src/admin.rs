@@ -106,6 +106,24 @@ pub fn parse_helper(out: &str) -> Result<Value, String> {
 
 pub fn can_admin() -> bool { Path::new(HELPER).exists() }
 
+/// Hearth OS on Peppermint's writable system: `hearth-unlock --status --json` (readable without root): unlocked or
+/// locked, this start writable, a safe start, your packages, the last reapply and a notice for Hearth.
+/// `{available: false}` where there's no hearth-unlock (Anatase is always immutable).
+pub const UNLOCK: &str = "/usr/bin/hearth-unlock";
+pub fn unlock_status() -> Value {
+    if !Path::new(UNLOCK).exists() { return json!({"available": false}); }
+    match Command::new(UNLOCK).args(["--status", "--json"]).stdin(Stdio::null()).output() {
+        Ok(o) => match parse_helper(&String::from_utf8_lossy(&o.stdout)) {
+            Ok(v) if v.is_object() => v,
+            Ok(_) => json!({"available": false, "error": "hearth-unlock gave no answer"}),
+            Err(e) => json!({"available": false, "error": e}),
+        },
+        Err(e) => json!({"available": false, "error": e.to_string()}),
+    }
+}
+/// What Settings may ask of hearth-unlock through hearth-admin (`hearth-admin unlock <action>`).
+pub fn unlock_action_ok(action: &str) -> bool { ["on", "off", "resume", "dismiss", "reapply"].contains(&action) }
+
 /// Runs hearth-admin; each output line also goes to `on_line` (progress, stages).
 pub fn run(args: &[&str], input: Option<&str>, on_line: &mut dyn FnMut(&str)) -> Result<Value, String> { run_with(args, input, on_line, &mut |_| {}) }
 /// The same, telling `on_spawn` the helper's process id (so it can be stopped).
@@ -233,6 +251,11 @@ impl Updates {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unlock_actions_are_a_fixed_list() {
+        for a in ["on", "off", "resume", "dismiss", "reapply"] { assert!(unlock_action_ok(a)); }
+        for a in ["", "--install-deb", "deb-install", "on off", "lock"] { assert!(!unlock_action_ok(a)); }
+    }
     #[test]
     fn start_mode_file() {
         assert_eq!(read_start_mode("FOO=1\nNIMBUS_START_MODE=\"desktop\"\n"), "desktop");

@@ -805,6 +805,14 @@ jobs:
 
       # The Qt renderer (Experimental) starts in the image and draws every screen: offscreen, against the fake core (and,
       # reported only, the image's own core). Doesn't stop the image: without a working Qt renderer Hearth falls back.
+      # REQUIRED: Peppermint is writable by default (hearth-unlock): in the built image, with real overlay mounts and
+      # apt, starts played out: unlocked by default, an apt install (and a .deb file) survives a restart, an update
+      # starts clean and the reapply puts the packages back, the previous version keeps its own, lock and unlock, a
+      # safe start, the boot-chain pin, and the boot guard's tests in the image's Python.
+      - name: Writable system (hearth-unlock)
+        timeout-minutes: 30
+        run: bash .github/scripts/hearth-unlock-check.sh localhost/hearth-peppermint:latest image
+
       - name: Check the Qt renderer in the image
         continue-on-error: true
         run: |

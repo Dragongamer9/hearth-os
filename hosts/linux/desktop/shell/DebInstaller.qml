@@ -1,7 +1,7 @@
 // Install Package: the window a .deb file opens in (double-click in Files, "Install" in its right-click menu, or any
 // app opening a .deb: hearth-install-package.desktop is the handler for application/vnd.debian.binary-package).
-// Shows what the package is (name, version, description, size, what it needs), installs it into Hearth's Debian box
-// with live progress, then offers to open the apps it brought (they're in the app menu too); Remove and Reinstall
+// Shows what the package is (name, version, description, size, what it needs), installs it (on Peppermint while it's
+// unlocked: on the system itself, like any Debian; otherwise into Hearth's Debian box) with live progress, then offers to open the apps it brought (they're in the app menu too); Remove and Reinstall
 // when it's installed already. Says plainly what the Debian box is and what can't work in it.
 // The work is done by hearth-debbox (Distrobox: a Debian 13 container sharing your home folder).
 // Mouse, touch, keyboard or controller like Hearth Settings: Up/Down pick, A/Enter does it, B/Esc closes.
@@ -158,14 +158,15 @@ Scope {
                         required property var modelData
                         icon: "open"; chevron: false
                         title: "Open " + modelData.name
-                        sub: "From Hearth's Debian box"
+                        sub: modelData.native ? "On the system" : "From Hearth's Debian box"
                         onActivated: inst.openApp(modelData)
                     }
                 }
                 SetRow {
                     visible: !!inst.info && inst.info.installable && !inst.info.installed && inst.phase !== "working" && inst.phase !== "done"
                     icon: "update"; chevron: false; title: "Install"
-                    sub: "Into Hearth's Debian box, for you" + (inst.info && !inst.info.boxReady ? " (the box is set up first: 1–2 minutes)" : "")
+                    sub: inst.info && inst.info.native ? "On the system, for everyone (asks for an administrator's password)"
+                        : "Into Hearth's Debian box, for you" + (inst.info && !inst.info.boxReady ? " (the box is set up first: 1–2 minutes)" : "")
                     onActivated: inst.install()
                 }
                 SetRow {
@@ -197,7 +198,7 @@ Scope {
                 SetRow {
                     visible: !!inst.info
                     icon: "info"; chevron: false; interactive: true
-                    title: "Hearth's Debian box"
+                    title: inst.info && inst.info.native ? "Installs on the system" : "Hearth's Debian box"
                     sub: inst.info ? inst.info.limits : ""
                 }
                 SetBase {

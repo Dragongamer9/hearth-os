@@ -1,0 +1,14 @@
+# systemd read its units before the writable layer was over /usr: the services, device rules and kernel modules the
+# packages you added bring are picked up here, alongside the rest of the start (nothing waits for this).
+[Unit]
+Description=Hearth: start what your added packages bring
+After=hearth-unlock.service basic.target
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=simple
+ExecStart=-/usr/bin/hearth-unlock --start-units
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target
