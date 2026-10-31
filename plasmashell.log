@@ -1,0 +1,58 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member enabled of the object DeclarativeDropArea overrides a member of the base object. Consider renaming it or adding final or override specifier
+Connecting to deprecated signal QDBusConnectionInterface::serviceOwnerChanged(QString,QString,QString)
+kde.plasmashell: Activity added twice "59169707-9b87-43e0-9881-3b695686467b"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+Failed to write to the pipe: Bad file descriptor.
