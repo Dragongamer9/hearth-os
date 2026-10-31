@@ -1,0 +1,13 @@
+app the companion sees: ''
+ok D-pad down moves the selection: expected KEY_DOWN, got keys ['KEY_DOWN'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok D-pad down again: expected KEY_DOWN, got keys ['KEY_DOWN'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok RB: next window: expected KEY_LEFTALT+KEY_TAB, got keys ['KEY_LEFTALT+KEY_TAB'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok Y: search and the keyboard: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok Guide + X closes the keyboard: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok B: back: expected KEY_ESC, got keys ['KEY_ESC'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok A: open: expected KEY_ENTER, got keys ['KEY_ENTER'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok RT scrolls: expected None, got keys [], pointer {'move': 0, 'wheel': -8}, buttons []
+ok Right stick moves the pointer: expected None, got keys [], pointer {'move': 729, 'wheel': 0}, buttons []
+ok A right after moving clicks: expected None, got keys [], pointer {'move': 136, 'wheel': 0}, buttons ['BTN_LEFT']
+ok X: right-click menu: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons ['BTN_RIGHT']
+ok B closes it: expected None, got keys ['KEY_ESC'], pointer {'move': 0, 'wheel': 0}, buttons []

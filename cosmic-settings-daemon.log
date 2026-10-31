@@ -1,0 +1,309 @@
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 0s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mFailed to watch for systemd-localed changes: Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)[0m
+    [2;3mat[0m src/main.rs:670 [2;3mon[0m main
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 0s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 0s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 0s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 1s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 3s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 6s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 12s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 25s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 51s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 102s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mFailed to watch theme Failed to connect to address `unix:path=/var/run/dbus/system_bus_socket`: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2). Will try again in 204s[0m
+    [2;3mat[0m src/main.rs:655 [2;3mon[0m main
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [31mERROR[0m  [31mpipewire service failed. Retrying in 3 seconds, [1;31mwhy[0m[31m: CreationFailed[0m
+    [2;3mat[0m cosmic-pipewire/src/lib.rs:55 [2;3mon[0m 
+
+  [33m WARN[0m  [33mFailed to parse `NameLost` signal: I/O error: failed to read from socket[0m
+    [2;3mat[0m /builddir/build/BUILD/cosmic-settings-daemon-1.10.0-build/cosmic-settings-daemon-epoch-1.10.0/vendor/zbus/src/connection/mod.rs:632 [2;3mon[0m main
+
+  [31mERROR[0m  [31mFailed to watch config message stream: I/O error: failed to read from socket[0m
+    [2;3mat[0m src/main.rs:644 [2;3mon[0m main
+

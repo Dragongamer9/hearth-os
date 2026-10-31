@@ -1,0 +1,225 @@
+--- 2026-10-31 20:25:01 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/w51ppgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:15 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/t813qgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:21 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/5b19qgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:27 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/gc1fqgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:33 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/qd1lqgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:40 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/we1sqgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:46 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/bh1yqgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:52 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/gi14rgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:25:58 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/lj1argsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:26:41 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/nq1hsgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:27:20 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/yt1ktgsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:27:49 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/zw1dugsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:28:05 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/9y1tugsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?
+--- 2026-10-31 20:28:10 companion
+[32m  INFO[0m: Launching config: "/src/hosts/linux/desktop/shell/desk-cosmic.qml"
+[32m  INFO[0m: Shell ID: "5a3f433d4b11017b9f54f0e9cf5cf7b0" Path ID "5a3f433d4b11017b9f54f0e9cf5cf7b0"
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/7z1yugsnt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")

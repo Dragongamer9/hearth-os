@@ -1,0 +1,6 @@
+app the companion sees: ''
+ok Y: the on-screen keyboard: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok A on the keyboard types a key: expected None, got keys ['KEY_Q'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok Guide + X closes it: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok A: Enter: expected KEY_ENTER, got keys ['KEY_ENTER'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok LB: window: expected KEY_LEFTALT+KEY_LEFTSHIFT+KEY_TAB, got keys ['KEY_LEFTALT+KEY_LEFTSHIFT+KEY_TAB'], pointer {'move': 0, 'wheel': 0}, buttons []
