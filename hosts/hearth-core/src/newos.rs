@@ -23,13 +23,13 @@ pub struct Edition { pub id: &'static str, pub label: &'static str, pub repo: &'
 
 pub const EDITIONS: &[Edition] = &[
     Edition { id: "anatase", label: "Hearth OS on Anatase", repo: "dragongamer9/hearth-os", tag: "latest", beta: false,
-              about: "The next Hearth OS. A smaller system that starts and updates faster, the same for every PC and handheld." },
+              about: "The next Hearth OS. Locked and immutable: the system can't be changed and updates in one piece. A smaller system that starts and updates faster, the same for every PC and handheld. Automatic fallback and Recovery included." },
     Edition { id: "ubuntu", label: "Ubuntu", repo: "dragongamer9/hearth-ubuntu", tag: "testing", beta: true,
               about: "Hearth OS built on Ubuntu. Still being tested: some things may not work yet." },
     Edition { id: "cachyos", label: "CachyOS", repo: "dragongamer9/hearth-cachyos", tag: "testing", beta: true,
               about: "Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet." },
     Edition { id: "peppermint", label: "Peppermint", repo: "dragongamer9/hearth-peppermint", tag: "testing", beta: true,
-              about: "Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet." },
+              about: "Hearth OS on Debian 13 (Peppermint OS's base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet." },
 ];
 
 pub fn edition(id: &str) -> Option<&'static Edition> { EDITIONS.iter().find(|e| e.id == id) }

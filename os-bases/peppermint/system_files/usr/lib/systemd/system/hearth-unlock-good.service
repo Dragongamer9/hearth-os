@@ -1,0 +1,14 @@
+# Once Hearth has been up for 45 seconds, this start with your system changes counts as good. Without it, the next
+# start leaves them off (safe start) and Hearth offers to turn them back on. See /usr/bin/hearth-unlock.
+[Unit]
+Description=Hearth: mark this start with your system changes as good once Hearth is up
+After=hearth-unlock.service multi-user.target
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=simple
+ExecStart=-/usr/bin/hearth-unlock --watch
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

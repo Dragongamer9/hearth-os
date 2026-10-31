@@ -1,6 +1,6 @@
 # Hearth Plasma
 
-**Status: Beta Experimental, not tried on a device yet.** Built into Hearth OS on Anatase and Peppermint, checked by
+**Status: Beta Experimental, not tried on a device yet.** Usable entirely with a controller (see "With a controller"). Built into Hearth OS on Anatase and Peppermint, checked by
 CI (`plasma-test.yml`, the image checks in `base-anatase.yml` / `base-peppermint.yml`).
 
 Desktop Mode can run one of three desktops. Game Mode is the same with either.
@@ -85,6 +85,60 @@ Hearth's widgets reuse Hearth Classic's backends instead of new logic: `hearth-l
 `hearth-games`, `hearth-power`, Hearth Files' `.desktop` reading (`hearth-files`), wpctl, brightnessctl and nmcli.
 They call them through Plasma's `executable` engine (`org.kde.plasma.plasma5support`).
 
+## With a controller
+
+Hearth Plasma stays KDE Plasma (its own launcher, panel, tray, notifications and lock screen, in Hearth's theme) and
+can be used entirely with a controller, the same way as Hearth Classic. One helper does it for both desktops:
+`hearth-pad --plasma` (`desktop/shell/hearth-pad`, the `plasma_*` functions), started with
+`desktop/shell/osk-plasma.qml` by `/usr/share/hearth-plasma/xdg/autostart/hearth-osk.desktop` (Hearth Plasma only).
+The QML host draws Mantel's own Hearth menu (`RadialMenu.qml`), controls card and messages (`Help.qml`) and on-screen
+keyboard (`Keyboard.qml`) as layer-shell windows that never take the keyboard focus; everything Plasma gets from the
+controller is typed or pointed through hearth-pad's uinput keyboard and mouse (KWin has no wtype).
+
+| Controller | Hearth Classic | Hearth Plasma |
+|---|---|---|
+| Right stick (R3: precise) | the pointer | the same |
+| A / RT, X / LT, L3 | click (hold to drag), right-click, middle-click | the same |
+| Left stick | scroll | the same |
+| D-pad | arrow keys | arrow keys: Plasma's launcher, tray and Quick Access popups, KRunner, Dolphin, System Settings |
+| A / B / X in a menu | Enter / Esc / Menu key | the same in Plasma's popups, the taskbar and keyboard apps; RT / LT still click there |
+| B | Esc | the same |
+| Y, Guide + X | on-screen keyboard | the same keyboard |
+| Menu ☰ | Hearth's launcher | Plasma's launcher (Hearth Launcher, `activateLauncherMenu`, as Super) |
+| Guide | Hearth menu | the same menu: Apps, Keyboard, Quick Access (Hearth Quick Access, Meta+Alt+A), Close window (Alt+F4), Game Mode, Screenshot (Spectacle), Controller mouse on/off, Controls |
+| LB / RB | switch windows | the same (KWin's Alt+Tab) |
+| View + D-pad | snap left/right, maximize, minimize | KWin: tile left/right (Meta+←/→), maximize (Meta+PgUp), minimize (Meta+PgDn) |
+| View + B | close the window | the same (Alt+F4) |
+| View + A | | the taskbar gets the keys (Meta+Alt+P): the D-pad moves along it (launcher, tasks, tray, Quick Access, the clock, Game Mode), A opens |
+| View + X | | Overview: every window, the D-pad picks one, A brings it up |
+| View + Y | | clipboard history (Klipper, Meta+V) |
+| View | the controls | the controls (Plasma's list) |
+| Text fields | Hearth's own open the keyboard when reached with the controller | KRunner, and any text field KWin reports (`org.kde.kwin.VirtualKeyboard` `active`) within 8 s of using the controller; Plasma's launcher search waits for Y (the D-pad works its list) |
+| A fullscreen game in front | the controller pauses (Guide still works) | the same |
+
+**What's in front.** KWin's script `hearthpad` (`/usr/share/kwin/scripts/hearthpad`, turned on only by Hearth
+Plasma's `kwinrc`) calls `org.hearth.Pad.Window(class, title, fullscreen, kind)` on the session bus whenever the
+active window changes; hearth-pad serves `org.hearth.Pad` with GLib's D-Bus (python3-gi, in both images) in a thread of
+its own and, once at start, runs `desktop/plasma/kwin-report.js` through KWin's scripting for the window already in
+front. Plasma's popups, its taskbar, KRunner, Dolphin, System Settings and the lock screen take the controller as keys;
+the desktop itself doesn't (A clicks its icons).
+
+**Hearth's KDE-based apps** (Hearth Files, Terminal, Text, Reader, Capture, Calculator) get a mapping each, like Mantel's versions: see docs/KDE-APPS.md.
+
+**Hearth's widgets with the D-pad.** Hearth Launcher: the search field, down into the grid, down again to Settings,
+Game Mode and the power buttons (left/right along them, up back). Hearth Quick Access: the D-pad moves between the
+controls (a slider keeps left/right for its value), A presses. Game Mode on the taskbar: A when the taskbar has the
+keys. Hearth Quick Access has the global shortcut Meta+Alt+A (the layout script; hearth-pad gives it to older layouts
+through `evaluateScript` when it has none).
+
+**Safety.** The autostart does nothing without quickshell or the QML file; hearth-pad exits (and isn't restarted)
+without python3-evdev or /dev/uinput; without python3-gi it still works, A just clicks everywhere; the KWin script's
+calls simply fail when hearth-pad isn't running. Game Mode, the session's fallback to Hearth Classic and booting are
+untouched.
+
+Tests: `test_hearth_pad.py` (`PlasmaTest`: every mapping, menus taking the keys, the taskbar and Overview, the Hearth
+menu's actions, fullscreen pause, the keyboard on text fields) and the controller check in `plasma-test.yml`.
+
 ## What's installed
 
 Only Plasma's workspace (no `kde-standard` app bundle, no recommends):
@@ -107,12 +161,22 @@ Only Plasma's workspace (no `kde-standard` app bundle, no recommends):
   screenshots of the desktop, the launcher, Quick Access, Hearth Link, Hearth Storage and the lock screen; errors
   from Hearth's widgets in Plasma's log fail the run. Side-by-side pictures with Hearth Classic's (from the Desktop
   Mode test's `ci/desktop-shots-*` branch) and a README go to the branch `ci/plasma-shots-<branch>`.
+- the controller, end to end (`tools/e2e-plasma-pad.py`): a virtual Xbox 360 pad (uinput; the container gets the
+  host's `/dev`, udev tags the devices, the outer labwc reads them with libinput and passes them to KWin) drives the
+  real `hearth-pad --plasma`, the script standing in for `osk-plasma.qml`. Checked through KWin (a one-line KWin script
+  calling hearth-pad's `Probe`): the right stick moves the pointer, View shows the controls, Guide + X asks for the
+  keyboard, Menu opens Plasma's launcher, the D-pad and A start an app from it, the Hearth menu opens Hearth Quick
+  Access and B closes it, View + B closes a window. Pictures `pad-*.png` on the same branch.
 
 ## Not done yet
 
 - Not tried on a device: the timings (60 s to come up), Nvidia, handhelds, the controller.
-- Controller control of the desktop (Mantel's `hearth-pad`), Mantel's on-screen keyboard and radial menu, the
-  Hearth menu, clipboard history, Hearth Friends on the taskbar: Hearth Classic only for now.
-- The lock screen is Plasma's layout (Hearth's colours and wallpaper), not a port of `Lock.qml`.
+- Controller: the radial menu and the keyboard are drawn by Quickshell over KWin (CI checks hearth-pad and Plasma's
+  side, Hearth Classic's tests check the QML). Text fields in KDE apps open the keyboard by themselves only if KWin
+  reports them without an input method configured (the CI log says what it saw); otherwise Y / Guide + X.
+  Hearth Friends is a Hearth Classic panel (not in Plasma). Plasma's notification popups are reached with the pointer
+  or through the tray (View + A).
+- Plasma keeps its own look for its own parts (launcher popup, lock screen, notifications): by the owner's choice,
+  Hearth Plasma is Plasma in Hearth's theme, not a copy of Mantel.
 - Hearth Files built from Dolphin, Hearth Storage as a KIO plugin, KDE apps rebuilt as Hearth apps (ROADMAP).
 - Hearth GNOME: see docs/GNOME.md.

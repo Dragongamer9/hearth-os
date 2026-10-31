@@ -1,0 +1,505 @@
+#!/usr/bin/env python3
+"""hearth-app-kinds: each desktop shows exactly one app of each kind (docs/APP-KINDS.md).
+
+The table is /usr/share/hearth/app-kinds.json. From it, for every desktop (Hearth Classic = Nimbus, Hearth Plasma = KDE,
+GNOME, COSMIC, Deepin), this:
+  1. writes override copies of the installed .desktop files (OnlyShowIn= / NotShowIn= / NoDisplay=) into
+     /usr/share/hearth/app-kinds/applications, a data folder nimbus-session puts first in XDG_DATA_DIRS (same ids, so
+     they win over the package's files; package updates never undo them, and the apt hook writes them again);
+  2. writes each desktop's default apps: /etc/xdg/<desktop>-mimeapps.list (and <desktop>-xdg-terminals.list);
+  3. checks that no desktop shows two apps of one kind, or none where the table says one is needed.
+
+  hearth-app-kinds apply [--root ROOT] [--refresh]   write overrides and default-app lists, then check (exit 1: problems)
+  hearth-app-kinds check [--root ROOT]               only check (what an image check runs)
+  hearth-app-kinds hidden [DESKTOP]                  ids not shown in this desktop (XDG_CURRENT_DESKTOP), one per line
+  hearth-app-kinds resolve DESKTOP                   JSON: the app of each kind there
+
+--refresh (the apt hook on writable Peppermint): never fails, and only hides apps the image had or the table names, so
+an app you install yourself isn't hidden.
+"""
+import json
+import os
+import re
+import shutil
+import sys
+
+TABLE = 'usr/share/hearth/app-kinds.json'
+OVERRIDE_DIR = 'usr/share/hearth/app-kinds'           # an XDG data dir: its applications/ shadows /usr/share/applications
+STATE = 'usr/share/hearth/app-kinds/state.json'
+APPS = 'usr/share/applications'
+MARK = 'X-Hearth-App-Kinds'
+LIST_NOTE = "# Hearth's default apps for this desktop, one per kind (hearth-app-kinds, docs/APP-KINDS.md)."
+ID_RE = re.compile(r'^[A-Za-z0-9._+-]{1,200}\.desktop$')
+
+
+class Fail(Exception):
+    pass
+
+
+# ---------------------------------------------------------------------- the table
+def load_table(path):
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def mime_match(pattern, mime):
+    return pattern == mime or (pattern.endswith('/*') and mime.startswith(pattern[:-1]))
+
+
+def validate(table):
+    """Mistakes in the table itself: [message]."""
+    errs = []
+    desks = table.get('desktops') or {}
+    if not desks:
+        errs.append('no desktops')
+    for d, info in desks.items():
+        if not info.get('names'):
+            errs.append('desktop %s has no XDG_CURRENT_DESKTOP names' % d)
+    kinds = table.get('kinds') or {}
+    for k, kind in kinds.items():
+        for d in list((kind.get('apps') or {}).keys()) + list(kind.get('required') or []):
+            if d not in desks:
+                errs.append('kind %s names desktop %s, which isn\'t in "desktops"' % (k, d))
+        ids = [i for lst in (kind.get('apps') or {}).values() for i in lst] + list(kind.get('everywhere') or []) \
+            + list(kind.get('others') or [])
+        for i in ids:
+            if not ID_RE.match(i):
+                errs.append('kind %s: %r is not a .desktop id' % (k, i))
+        for d in kind.get('required') or []:
+            if d not in (kind.get('apps') or {}) and not kind.get('everywhere'):
+                errs.append('kind %s needs an app in %s but lists none there' % (k, d))
+    names = list(kinds)
+    for a in range(len(names)):
+        for b in range(a + 1, len(names)):
+            for m in kinds[names[a]].get('mimes') or []:
+                for n in kinds[names[b]].get('mimes') or []:
+                    if mime_match(m, n) or mime_match(n, m):
+                        errs.append('kinds %s and %s both open %s' % (names[a], names[b], m if m == n else m + ' / ' + n))
+    return errs
+
+
+# ---------------------------------------------------------------------- .desktop files
+def parse_desktop(text):
+    """[Desktop Entry]'s keys (first value of each; localized keys kept as they are)."""
+    out, section = {}, None
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('['):
+            section = s
+            continue
+        if section != '[Desktop Entry]' or '=' not in s or s.startswith('#'):
+            continue
+        k, v = s.split('=', 1)
+        out.setdefault(k.strip(), v.strip())
+    return out
+
+
+def read(path, default=''):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def under(root, path):
+    return os.path.join(root, path.lstrip('/'))
+
+
+def usable(fields, root='/'):
+    """Can start: an Application with Exec, not Hidden, TryExec found (under root)."""
+    if fields.get('Type', 'Application') != 'Application' or not fields.get('Exec'):
+        return False
+    if fields.get('Hidden', '').lower() == 'true':
+        return False
+    te = fields.get('TryExec')
+    if te:
+        if te.startswith('/'):
+            return os.path.exists(under(root, te))
+        dirs = ['/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/usr/local/sbin', '/sbin', '/usr/games']
+        if any(os.path.exists(under(root, os.path.join(d, te))) for d in dirs):
+            return True
+        return root in ('/', '') and shutil.which(te) is not None
+    return True
+
+
+def scan(apps_dir):
+    """{id: text} of an applications folder (subfolders give ids with '-', as the spec says)."""
+    out = {}
+    for top, _, files in os.walk(apps_dir):
+        for name in sorted(files):
+            if name.endswith('.desktop'):
+                full = os.path.join(top, name)
+                did = os.path.relpath(full, apps_dir).replace(os.sep, '-')
+                out.setdefault(did, read(full))
+    return out
+
+
+def lst(fields, key):
+    return [x for x in fields.get(key, '').split(';') if x]
+
+
+def shown_in(fields, names):
+    """The desktop entry spec: is this entry shown in a desktop called any of `names` (XDG_CURRENT_DESKTOP's parts)?"""
+    if fields.get('NoDisplay', '').lower() == 'true' or fields.get('Hidden', '').lower() == 'true':
+        return False
+    only = lst(fields, 'OnlyShowIn')
+    if only and not any(n in only for n in names):
+        return False
+    return not any(n in lst(fields, 'NotShowIn') for n in names)
+
+
+def effective(root, extra=()):
+    """{id: fields} as a session sees them: the override folder first, then /usr/local/share, then /usr/share."""
+    out = {}
+    for d in [os.path.join(OVERRIDE_DIR, 'applications'), 'usr/local/share/applications', APPS] + list(extra):
+        for did, text in scan(under(root, d)).items():
+            if did not in out:
+                out[did] = parse_desktop(text)
+    return out
+
+
+# ---------------------------------------------------------------------- who shows where
+def desktop_present(table, d, root):
+    paths = (table['desktops'][d].get('session') or [])
+    return any(os.path.exists(under(root, p)) for p in paths)
+
+
+def members(kind, installed, seen=None):
+    """The installed apps of this kind: every id the table lists, and (by Categories=) any other app of that kind
+    the image has (`seen`: only those, on a refresh)."""
+    ids = set(i for l in (kind.get('apps') or {}).values() for i in l) | set(kind.get('everywhere') or []) \
+        | set(kind.get('others') or [])
+    out = {i for i in ids if i in installed}
+    cats = set(kind.get('categories') or [])
+    if cats:
+        for did, fields in installed.items():
+            if (seen is None or did in seen) and cats & set(lst(fields, 'Categories')):
+                out.add(did)
+    return out
+
+
+def resolve(table, installed, usable_ids):
+    """{kind: {desktop: id or None}}: the first usable app the table lists for the desktop (or 'everywhere')."""
+    out = {}
+    for k, kind in table['kinds'].items():
+        out[k] = {}
+        for d in table['desktops']:
+            cands = (kind.get('apps') or {}).get(d, kind.get('everywhere') or [])
+            out[k][d] = next((i for i in cands if i in usable_ids), None)
+    return out
+
+
+def plan(table, installed, usable_ids, seen=None):
+    """{id: (visible: {desktop: bool}, unknown desktops too: bool, chosen somewhere: bool)}."""
+    desks = list(table['desktops'])
+    chosen = resolve(table, installed, usable_ids)
+    out = {}
+    for k, kind in table['kinds'].items():
+        apps = kind.get('apps') or {}
+        everywhere = set(kind.get('everywhere') or [])
+        listed = set(i for l in apps.values() for i in l)
+        none_wanted = {d for d in desks if d in apps and not apps[d]}
+        for app in members(kind, installed, seen):
+            ch = chosen[k]
+            if app in everywhere:
+                vis = {d: ch[d] == app or (ch[d] is None and d not in none_wanted) for d in desks}
+                unknown = True
+            elif app in listed:
+                vis = {d: ch[d] == app for d in desks}
+                unknown = False
+            else:                       # another app of this kind: only where the table has none
+                vis = {d: ch[d] is None and d not in none_wanted for d in desks}
+                unknown = True
+            picked = any(ch[d] == app for d in desks)
+            if app in out:              # in two kinds (Player: video and music): shown only where both say so
+                v0, u0, p0 = out[app]
+                vis = {d: v0[d] and vis[d] for d in desks}
+                unknown, picked = u0 and unknown, p0 or picked
+            out[app] = (vis, unknown, picked)
+    return out, chosen
+
+
+def with_keys(text, keys):
+    """The .desktop text with these [Desktop Entry] keys set (None: removed); other groups and lines kept."""
+    lines, out, section, done = text.splitlines(), [], None, False
+
+    def flush():
+        for k, v in keys.items():
+            if v is not None:
+                out.append('%s=%s' % (k, v))
+    for line in lines:
+        s = line.strip()
+        if s.startswith('['):
+            if section == '[Desktop Entry]' and not done:
+                while out and not out[-1].strip():
+                    out.pop()
+                flush()
+                out.append('')
+                done = True
+            section = s
+            out.append(line)
+            continue
+        if section == '[Desktop Entry]' and '=' in s and not s.startswith('#') and s.split('=', 1)[0].strip() in keys:
+            continue
+        out.append(line)
+    if section == '[Desktop Entry]' and not done:
+        while out and not out[-1].strip():
+            out.pop()
+        flush()
+    return '\n'.join(out) + '\n'
+
+
+def override_text(table, text, fields, vis, unknown, picked):
+    desks = list(table['desktops'])
+    names = lambda ds: ';'.join(n for d in ds for n in table['desktops'][d]['names']) + ';'
+    shown = [d for d in desks if vis[d]]
+    hidden = [d for d in desks if not vis[d]]
+    keys = {'OnlyShowIn': None, 'NotShowIn': None, MARK: 'true'}
+    nodisplay = fields.get('NoDisplay', '').lower() == 'true'
+    if picked:
+        keys['NoDisplay'] = None        # the table picked it: shown where it's picked
+        nodisplay = False
+    if unknown:
+        if hidden:
+            keys['NotShowIn'] = names(hidden)
+    elif shown:
+        keys['OnlyShowIn'] = names(shown)
+    else:
+        keys['NoDisplay'] = 'true'
+        nodisplay = True
+    if nodisplay and not picked:
+        keys['NoDisplay'] = 'true'
+    return with_keys(text, keys)
+
+
+# ---------------------------------------------------------------------- default apps
+def ml_parse(text):
+    secs = [[None, []]]
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith('[') and s.endswith(']'):
+            secs.append([s, []])
+        else:
+            secs[-1][1].append(line)
+    return secs
+
+
+def ml_key(line):
+    s = line.strip()
+    return None if not s or s.startswith('#') or '=' not in s else s.split('=', 1)[0].strip()
+
+
+def ml_first(line):
+    ids = [x.strip() for x in line.split('=', 1)[1].split(';') if x.strip()]
+    return ids[0] if ids else ''
+
+
+def ml_merge(text, table, drop):
+    """A mimeapps.list with table ({mime: id}) in [Default Applications]; lines for `drop` mimes that name an app in
+    drop[mime] (hidden here) removed; everything else kept."""
+    secs = ml_parse(text)
+    d = next((s for s in secs if s[0] == '[Default Applications]'), None)
+    if d is None:
+        d = ['[Default Applications]', []]
+        secs.append(d)
+    keep = []
+    for line in d[1]:
+        k = ml_key(line)
+        if k in table or (k in drop and ml_first(line) in drop[k]):
+            continue
+        keep.append(line)
+    while keep and not keep[-1].strip():
+        keep.pop()
+    d[1] = keep + ['%s=%s;' % (m, table[m]) for m in table]
+    if not any(LIST_NOTE in l for l in secs[0][1]):
+        secs[0][1] = [LIST_NOTE] + secs[0][1]
+    out = []
+    for head, lines in secs:
+        if head is not None:
+            if out and out[-1].strip():
+                out.append('')
+            out.append(head)
+        out += lines
+    while out and not out[-1].strip():
+        out.pop()
+    return '\n'.join(out) + '\n'
+
+
+def desktop_defaults(table, installed, chosen, kinds_members, d):
+    """({mime: id} for this desktop, {mime: ids hidden here}) from each kind's app there."""
+    out, drop = {}, {}
+    for k, kind in table['kinds'].items():
+        app = chosen[k][d]
+        types = lst(installed[app], 'MimeType') if app else []
+        for pat in kind.get('mimes') or []:
+            for m in ([pat] if not pat.endswith('/*') else []) + [t for t in types if pat.endswith('/*') and mime_match(pat, t)]:
+                if app and m in types:
+                    out.setdefault(m, app)
+                else:
+                    drop.setdefault(m, set()).update(i for i in kinds_members[k] if i != app)
+    return out, drop
+
+
+def mimeapps_lookup(root, names, mime, installed):
+    """The default for a mime in a desktop, as the XDG mime-apps spec finds it (system lists only: a new account)."""
+    dirs = [under(root, 'etc/xdg')] + [under(root, os.path.join(p, 'applications'))
+                                       for p in (OVERRIDE_DIR, 'usr/local/share', 'usr/share')]
+    for dd in dirs:
+        for f in [os.path.join(dd, n.lower() + '-mimeapps.list') for n in names] + [os.path.join(dd, 'mimeapps.list')]:
+            for head, lines in ml_parse(read(f)):
+                if head != '[Default Applications]':
+                    continue
+                for line in lines:
+                    if ml_key(line) == mime:
+                        for i in [x.strip() for x in line.split('=', 1)[1].split(';') if x.strip()]:
+                            if i in installed:
+                                return i
+    return None
+
+
+# ---------------------------------------------------------------------- apply and check
+def gather(root, table, refresh=False):
+    raw = scan(under(root, APPS))
+    installed = {i: parse_desktop(t) for i, t in raw.items()}
+    usable_ids = {i for i, f in installed.items() if usable(f, root)}
+    seen = None
+    if refresh:
+        try:
+            seen = set(json.loads(read(under(root, STATE)) or '{}').get('seen') or [])
+        except ValueError:
+            seen = set()
+    return raw, installed, usable_ids, seen
+
+
+def apply(root='/', refresh=False, table=None):
+    table = table or load_table(under(root, TABLE))
+    errs = validate(table)
+    if errs:
+        raise Fail('the app-kinds table has mistakes: ' + '; '.join(errs))
+    raw, installed, usable_ids, seen = gather(root, table, refresh)
+    p, chosen = plan(table, installed, usable_ids, seen)
+    odir = under(root, os.path.join(OVERRIDE_DIR, 'applications'))
+    os.makedirs(odir, exist_ok=True)
+    for name in os.listdir(odir):
+        if name.endswith('.desktop'):
+            os.unlink(os.path.join(odir, name))
+    written = []
+    for did in sorted(p):
+        vis, unknown, picked = p[did]
+        new = override_text(table, raw[did], installed[did], vis, unknown, picked)
+        with open(os.path.join(odir, did), 'w', encoding='utf-8') as f:
+            f.write(new)
+        written.append(did)
+    km = {k: members(kind, installed, seen) for k, kind in table['kinds'].items()}
+    lists = []
+    for d, info in table['desktops'].items():
+        dflt, drop = desktop_defaults(table, installed, chosen, km, d)
+        for n in info['names']:
+            path = under(root, 'etc/xdg/%s-mimeapps.list' % n.lower())
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            text = ml_merge(read(path), dflt, drop)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            lists.append(path)
+            for k, kind in table['kinds'].items():
+                if kind.get('terminal') and chosen[k][d]:
+                    tpath = under(root, 'etc/xdg/%s-xdg-terminals.list' % n.lower())
+                    old = [l.strip() for l in read(tpath).splitlines()]
+                    head = [l for l in old if l.startswith('#')] or ['# Terminals for xdg-terminal-exec in this desktop (hearth-app-kinds).']
+                    rest = [l for l in old if l.endswith('.desktop') and not l.startswith('#')
+                            and l != chosen[k][d] and l not in km[k]]
+                    with open(tpath, 'w', encoding='utf-8') as f:
+                        f.write('\n'.join(head + [chosen[k][d]] + rest) + '\n')
+    if not refresh:
+        state = {'seen': sorted(installed), 'overrides': written}
+        with open(under(root, STATE), 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=1)
+    rep = check(root, table)
+    rep.update({'overrides': len(written), 'lists': lists})
+    return rep
+
+
+def check(root='/', table=None):
+    """{'ok', 'problems': [...], 'desktops': {desktop: {kind: id}}}: one shown app per kind in each desktop, and the
+    default apps resolve to it."""
+    table = table or load_table(under(root, TABLE))
+    problems = ['table: ' + e for e in validate(table)]
+    raw = scan(under(root, APPS))
+    installed = {i: parse_desktop(t) for i, t in raw.items()}
+    usable_ids = {i for i, f in installed.items() if usable(f, root)}
+    seen = set(json.loads(read(under(root, STATE)) or '{}').get('seen') or []) or None
+    eff = effective(root)
+    _, chosen = plan(table, installed, usable_ids, seen)
+    report, notes = {}, []
+    for d, info in table['desktops'].items():
+        names = info['names']
+        present = desktop_present(table, d, root)
+        report[d] = {'present': present, 'apps': {}}
+        for k, kind in table['kinds'].items():
+            ids = members(kind, eff, seen) | {i for i in members(kind, installed, seen)}
+            shown = sorted(i for i in ids if i in eff and usable(eff[i], root) and shown_in(eff[i], names))
+            report[d]['apps'][k] = shown[0] if len(shown) == 1 else (shown or None)
+            if len(shown) > 1:
+                # A desktop that isn't in this image can't show anything: noted, not a failure (it is once it's in).
+                (problems if present else notes).append('%s shows %d apps of kind %s: %s' % (d, len(shown), k, ', '.join(shown)))
+            if not shown and present and d in (kind.get('required') or []):
+                problems.append('%s shows no %s app (the table needs one there)' % (d, k))
+            want = chosen[k][d]
+            if want and shown and shown != [want] and present:
+                problems.append('%s should show %s for %s, shows %s' % (d, want, k, ', '.join(shown)))
+            if want:
+                types = lst(installed[want], 'MimeType')
+                prim = next((m for pat in kind.get('mimes') or [] for m in ([pat] if not pat.endswith('/*') else
+                             [t for t in types if mime_match(pat, t)]) if m in types), None)
+                if prim:
+                    got = mimeapps_lookup(root, names, prim, installed)
+                    if got != want:
+                        problems.append('%s opens %s in %s, not %s' % (d, prim, got or 'nothing', want))
+    return {'ok': not problems, 'problems': problems, 'notes': notes, 'desktops': report}
+
+
+def hidden(desktop_names, root='/'):
+    eff = effective(root, extra=[os.path.join(d, 'applications') for d in
+                                 (os.environ.get('XDG_DATA_DIRS') or '').split(':') if d.startswith('/')])
+    return sorted(i for i, f in eff.items() if not shown_in(f, desktop_names))
+
+
+def main(argv):
+    args = argv[1:]
+    root = '/'
+    if '--root' in args:
+        i = args.index('--root')
+        root = args[i + 1]
+        del args[i:i + 2]
+    refresh = '--refresh' in args
+    args = [a for a in args if a != '--refresh']
+    cmd = args[0] if args else ''
+    try:
+        if cmd == 'apply':
+            rep = apply(root, refresh)
+        elif cmd == 'check':
+            rep = check(root)
+        elif cmd == 'hidden':
+            names = args[1:] or [n for n in (os.environ.get('XDG_CURRENT_DESKTOP') or '').split(':') if n]
+            for i in hidden(names, root):
+                print(i[:-8] if i.endswith('.desktop') else i)
+            return 0
+        elif cmd == 'resolve' and len(args) == 2:
+            rep = check(root)['desktops'].get(args[1]) or {}
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except (Fail, OSError, ValueError, KeyError) as e:
+        print('::error title=app kinds::%s' % e)
+        return 0 if refresh else 1
+    print(json.dumps(rep, indent=1, sort_keys=True))
+    if cmd in ('apply', 'check') and not rep.get('ok', True):
+        for p in rep['problems']:
+            print('::error title=app kinds::%s' % p)
+        return 0 if refresh else 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

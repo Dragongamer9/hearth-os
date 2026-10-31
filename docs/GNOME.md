@@ -80,22 +80,20 @@ brightnessctl, nmcli and hearth-link-settings.
 ## One app of each kind
 
 GNOME uses its own apps for the kinds it has: **GNOME Files** (Nautilus), **Console** and **Text Editor**. They're
-installed in both images and shown only in Hearth GNOME, because the build adds `OnlyShowIn=GNOME;` to their menu
-entries. Inside Hearth GNOME, the Hearth and KDE apps of those kinds are hidden: `/usr/share/hearth-gnome/applications`
-holds `Hidden=true` entries for hearth-files, hearth-files-kde, hearth-terminal, hearth-terminal-kde, hearth-text,
-hearth-text-kde, Dolphin, Konsole, Kate, KWrite and foot, plus `gnome-mimeapps.list`. That list makes folders open in
-GNOME Files, text in Text Editor and the terminal Console. `run_gnome` puts that folder first in `XDG_DATA_DIRS`, only
-for GNOME. Hearth apps with no GNOME equivalent stay visible. Your own default apps (`~/.config/mimeapps.list`) still
-come first.
+installed in both images and registered as Hearth GNOME's in the app-kinds table
+(`os/system_files/usr/share/hearth/app-kinds.json`, docs/APP-KINDS.md): `GNOME` desktop (`XDG_CURRENT_DESKTOP=GNOME`,
+in the image when `/usr/bin/gnome-shell` is there), and for each kind it's required to have one.
 
-| Kind | GNOME's app (desktop id) | Hidden in GNOME |
+| Kind | Hearth GNOME's app | Hidden in Hearth GNOME |
 |---|---|---|
-| Files | `org.gnome.Nautilus.desktop` | hearth-files, hearth-files-kde, org.kde.dolphin |
-| Terminal | `org.gnome.Console.desktop` | hearth-terminal, hearth-terminal-kde, org.kde.konsole, foot, footclient, foot-server |
-| Text editor | `org.gnome.TextEditor.desktop` | hearth-text, hearth-text-kde, org.kde.kate, org.kde.kwrite |
+| `files` | `org.gnome.Nautilus.desktop` | Hearth Files (classic and KDE), Dolphin |
+| `terminal` | `org.gnome.Console.desktop` | Hearth Terminal (classic and KDE), Konsole, foot |
+| `text-editor` | `org.gnome.TextEditor.desktop` | Hearth Text (classic and KDE), Kate, KWrite |
 
-`XDG_CURRENT_DESKTOP` is `GNOME` in Hearth GNOME. When the shared app-kinds table lands (feature/app-per-desktop,
-docs/APP-KINDS.md), these entries belong in it, and the folder above can then be made from it.
+`hearth-app-kinds` then hides those three everywhere else, hides Hearth's apps of those kinds in GNOME, and writes
+`/etc/xdg/gnome-mimeapps.list` so folders open in GNOME Files, text in Text Editor and the terminal is Console. Hearth
+apps with no GNOME equivalent stay visible. Your own default apps still come first. Hearth's launcher on GNOME lists
+the same entries (`hearth-gnome apps` reads OnlyShowIn / NotShowIn for GNOME).
 
 There's one known gap: "Show in folder" from other apps still goes to Hearth Files. hearth-portal holds
 `org.freedesktop.FileManager1` for the whole Hearth session, in both modes.

@@ -93,6 +93,8 @@ Values are camelCase JSON. "—" means the method returns `null`.
 | `system.update.status` · `.check` · `.install` (Hearth OS) | | `{canAdmin, state: idle\|checking\|updating, line, error, status: {booted, staged, available, rollback, rollbackQueued}}`; check and install return at once and push `systemUpdate` |
 | `system.update.rollback` (Hearth OS images) | | the same; makes the previous version (`status.rollback`, bootc's rollback deployment) the one that starts next, and again before restarting undoes it (`hearth-admin rollback`). Refused while an update waits for a restart |
 | `system.recovery.nextStart` (Hearth OS) | | `{ok: true}`; Hearth Recovery's menu opens once at the next start (`hearth-admin recovery-next-start`, which runs `hearth-recovery --next-start`). Settings › Updates & Recovery (Dragonfire look) restarts after it. |
+| `system.unlock.status` (Peppermint) | | `hearth-unlock --status --json`: `{available, state: unlocked\|locks-at-restart\|unlocks-at-restart\|suspended\|locked, unlocked, writable, locked, suspended, packages, removed, debs, reapply: {state, at, failed}, notice: {kind, title, text, at}\|null}`; `{available: false}` where there's no hearth-unlock (Anatase). |
+| `system.unlock.set` (Peppermint) | `{action: on\|off\|resume\|dismiss\|reapply}` | `hearth-admin unlock <action>`, then the status as above. `on`: writable now and at every start; `off`: locked from the next restart; `resume`: your changes back on after a safe start; `reapply`: your packages put back again, in the background. |
 
 **Game** = `{id, title, source, fav, hidden, minutes, lastPlayed, added, sizeBytes, art:{cover,hero,logo,wide}, path, canRemove, installed, state, cloud, progress, bytesDone, bytesTotal, bytesPerSec?}`
 

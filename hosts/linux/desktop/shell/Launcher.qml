@@ -25,6 +25,7 @@ PanelWindow {
     property double gamesAt: 0                 // when Hearth was last asked (it takes a moment)
     property bool folderOpen: false            // the System apps folder is open
     property var systemIds: ({})               // desktop ids that came with the system image
+    property var hiddenIds: ({})               // not for this desktop (OnlyShowIn/NotShowIn: docs/APP-KINDS.md)
     readonly property string gamesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-games").toString().replace(/^file:\/\//, ""))
     signal settingsRequested()
     // Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml).
@@ -62,7 +63,7 @@ PanelWindow {
 
     // Every app with a .desktop file, A–Z, filtered by what you type.
     readonly property var apps: Array.from(DesktopEntries.applications.values)
-        .filter(a => !a.noDisplay && !/^(qt5ct|qt6ct)$/.test(a.id || ""))
+        .filter(a => !a.noDisplay && !root.hiddenIds[a.id] && !/^(qt5ct|qt6ct)$/.test(a.id || ""))
         .sort((a, b) => a.name.localeCompare(b.name))
     // Hearth's own apps (and Beacon, Xodus Nexus, and Bazaar, the app store Hearth OS picks): never in the folder.
     function ours(a) { return /^(hearth|nimbus|beacon|xodus-nexus$|io\.github\.kolunmi\.Bazaar$)/i.test(a.id || "") || /^Hearth\b/.test(a.name || ""); }
@@ -118,11 +119,15 @@ PanelWindow {
             if (id && l.trim().endsWith(".desktop") && !added[id]) ids[id] = true;
         }
         systemIds = ids;
+        // One app of each kind per desktop: what hearth-app-kinds says this desktop doesn't show.
+        const hid = {};
+        for (const l of (parts[2] || "").split("\n")) { const id = l.trim(); if (id) hid[id] = true; }
+        hiddenIds = hid;
     }
     Process {
         id: systemList
         running: true
-        command: ["sh", "-c", "ls -1 /usr/share/applications 2>/dev/null; printf '\\n---\\n'; cat /var/lib/hearth/layer/added-apps 2>/dev/null; true"]
+        command: ["sh", "-c", "ls -1 /usr/share/applications 2>/dev/null; printf '\\n---\\n'; cat /var/lib/hearth/layer/added-apps 2>/dev/null; printf '\\n---\\n'; python3 /usr/libexec/hearth-app-kinds hidden 2>/dev/null; true"]
         stdout: StdioCollector { onStreamFinished: root.takeSystem(text) }
     }
     Process {

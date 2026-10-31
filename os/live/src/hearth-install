@@ -143,13 +143,13 @@ def check_plan(p):
 # only :testing. The same list as the Hearth app's "Move to a new Hearth OS" (hosts/hearth-core/src/newos.rs).
 EDITIONS = {
     'anatase': {'image': 'ghcr.io/dragongamer9/hearth-os:latest', 'label': 'Hearth OS on Anatase', 'beta': False,
-                'about': 'The new Hearth OS. Starts and updates fast, the same for every PC and handheld.'},
+                'about': 'The new Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. Starts and updates fast, the same for every PC and handheld. Automatic fallback and Recovery included.'},
     'ubuntu': {'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing', 'label': 'Ubuntu', 'beta': True,
                'about': 'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.'},
     'cachyos': {'image': 'ghcr.io/dragongamer9/hearth-cachyos:testing', 'label': 'CachyOS', 'beta': True,
                 'about': 'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.'},
     'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Peppermint', 'beta': True,
-                   'about': 'Hearth OS built on Peppermint OS (Debian). Still being tested: some things may not work yet.'},
+                   'about': 'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.'},
 }
 DEFAULT_EDITION = 'anatase'
 # Archived editions (October 2026): kept in the table so old plans are understood, but never offered or installed.

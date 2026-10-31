@@ -69,14 +69,13 @@ PY
     node --check /tmp/check.mjs 2>/tmp/js.err || err "JavaScript" "$f: $(tr '\n' ' ' </tmp/js.err | cut -c1-600)"
   done
 done
-for t in test_hearth_gnome test_hearth_plasma test_hearth_pad; do
+for t in test_hearth_gnome test_hearth_plasma test_hearth_pad test_app_kinds; do
   timeout 300 python3 -m unittest discover -s hosts/linux/test -p "$t.py" >"$OUT/$t.txt" 2>&1 \
     || err "Python tests" "$t: $(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' "$OUT/$t.txt" | head -6 | tr '\n' '|' | cut -c1-800)"
 done
 
 # ------------------------------------------------------------------ 3. GNOME Shell in Hearth's session mode
 cp -a os/system_files/usr/share/gnome-shell/. /usr/share/gnome-shell/
-cp -a os/system_files/usr/share/hearth-gnome /usr/share/
 cp -a .github/scripts/gnome-ci/hearth-ci@hearthos.fun /usr/share/gnome-shell/extensions/
 python3 - <<'PY'
 import json
@@ -90,10 +89,14 @@ cp os/branding/wallpapers/hearth-fireside.jpg /usr/share/backgrounds/hearth/
 for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
 mkdir -p /usr/share/icons/hicolor/scalable/apps && cp branding/icons/apps/*.svg /usr/share/icons/hicolor/scalable/apps/
 gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null
-# GNOME's own apps only in Hearth GNOME, as the images do.
-for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
-  f="/usr/share/applications/$id.desktop"
-  [ -f "$f" ] && { sed -i '/^OnlyShowIn=/d; /^NotShowIn=/d' "$f"; sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nOnlyShowIn=GNOME;/' "$f"; }
+# One app of each kind, as the images do (docs/APP-KINDS.md): the table's copies of the menu entries and each
+# desktop's default apps. Hearth Classic's own apps aren't in this container, so only GNOME's part is checked here.
+install -Dm644 os/system_files/usr/share/hearth/app-kinds.json /usr/share/hearth/app-kinds.json
+install -Dm755 os/system_files/usr/libexec/hearth-app-kinds /usr/libexec/hearth-app-kinds
+python3 /usr/libexec/hearth-app-kinds apply --root / > "$OUT/app-kinds.json" 2>&1
+python3 /usr/libexec/hearth-app-kinds resolve GNOME > "$OUT/app-kinds-gnome.json" 2>&1
+for a in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
+  grep -q "$a.desktop" "$OUT/app-kinds-gnome.json" || err "app kinds" "$a isn't Hearth GNOME's app of its kind: $(tr '\n' ' ' <"$OUT/app-kinds-gnome.json" | cut -c1-500)"
 done
 
 # A plain user for the apps that won't run as root (newer GNOME Files): tools/e2e-hearth-gnome.py as_user.
@@ -111,7 +114,7 @@ dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 # What nimbus-session's run_gnome gives GNOME (the CI mode adds hearth-ci).
 export XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome HEARTH_DESKTOP=gnome XDG_SESSION_TYPE=wayland \
-  GNOME_SHELL_SESSION_MODE=hearth-ci XDG_DATA_DIRS=/usr/share/hearth-gnome:/usr/local/share:/usr/share \
+  GNOME_SHELL_SESSION_MODE=hearth-ci XDG_DATA_DIRS=/usr/share/hearth/app-kinds:/usr/local/share:/usr/share \
   NIMBUS_SHARE=/usr/share/nimbus LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
 # Hearth's GTK colours (theme/apply.sh writes ~/.config/gtk-4.0/gtk.css), as at every Hearth sign-in.
 sh /usr/share/nimbus/desktop/theme/apply.sh >/dev/null 2>&1

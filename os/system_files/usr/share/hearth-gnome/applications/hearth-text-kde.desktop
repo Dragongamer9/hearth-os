@@ -1,6 +1,0 @@
-[Desktop Entry]
-# Hearth GNOME: GNOME has its own app of this kind (one app of each kind per desktop, docs/GNOME.md).
-# Only read in Hearth GNOME (nimbus-session puts this folder first in XDG_DATA_DIRS there).
-Type=Application
-Name=hearth-text-kde
-Hidden=true

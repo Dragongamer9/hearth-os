@@ -8,6 +8,13 @@ Hearth OS is leaving Bazzite for **Anatase** (`i.anatase.org/anatase:stable`, al
 one image for AMD, Intel and Nvidia graphics, with Handheld Daemon (HHD) for handheld controls instead of
 InputPlumber.
 
+**Anatase is the locked, immutable edition.** The system is one read-only image: it can't be changed in place (no
+dnf), only replaced in one piece by an update (`rpm-ostree` can layer extra packages into a new version), and the
+version before stays on the drive. Apps come from Flathub, `.deb`
+files go into Hearth's Debian box. Peppermint (Debian, `docs/BASE-PEPPERMINT.md`) is the writable one: apt and
+`.deb` files install anywhere there, and it can be locked in Settings. Both editions have the automatic fallback and
+Hearth Recovery.
+
 | Piece | Where |
 |---|---|
 | Image recipe | `os-bases/anatase/Containerfile` |
@@ -72,7 +79,7 @@ Settings › Updates › **Move to a new Hearth OS** (only on the Bazzite-based 
 | Hearth OS on Anatase | `ghcr.io/dragongamer9/hearth-os:latest` (`:testing` with `--testing`) | Recommended |
 | Ubuntu | `ghcr.io/dragongamer9/hearth-ubuntu:testing` | Beta Experimental |
 | CachyOS | `ghcr.io/dragongamer9/hearth-cachyos:testing` | Beta Experimental, x86-64-v3 processors only |
-| Peppermint | `ghcr.io/dragongamer9/hearth-peppermint:testing` | Beta Experimental |
+| Peppermint | `ghcr.io/dragongamer9/hearth-peppermint:testing` | Beta Experimental; writable by default (can be locked in Settings) |
 
 - A choice can be picked only once its image is published (asked anonymously from GitHub's registry, remembered
   for ten minutes per image). Until then it says "Not ready yet".

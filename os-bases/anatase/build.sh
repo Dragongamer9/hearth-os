@@ -731,8 +731,8 @@ echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service
 # ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
 # GNOME Shell (Fedora's current release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell
 # extensions (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal, plus GNOME's
-# own apps for the kinds it has (Files, Console, Text Editor: one app of each kind per desktop; they show only in
-# Hearth GNOME). No GNOME app bundle, no weak dependencies, no GDM: the login screen stays. Hearth Classic stays the
+# own apps for the kinds it has (Files, Console, Text Editor: one app of each kind per desktop, through the
+# app-kinds table's GNOME entries below). No GNOME app bundle, no weak dependencies, no GDM: the login screen stays. Hearth Classic stays the
 # fallback whenever GNOME can't start. The size it adds is noted for the image check.
 gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
 dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
@@ -748,11 +748,6 @@ dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || t
 if [ "$dm_before" != "$dm_after" ]; then
   if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
 fi
-# GNOME's own apps show only in Hearth GNOME (Hearth Classic and Hearth Plasma have Hearth's of the same kind).
-for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
-  f="/usr/share/applications/$id.desktop"
-  [ -f "$f" ] && { sed -i '/^OnlyShowIn=/d; /^NotShowIn=/d' "$f"; sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nOnlyShowIn=GNOME;/' "$f"; }
-done
 gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
 mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
 echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
@@ -1259,6 +1254,19 @@ echo "::notice title=Hearth's default apps::$(cat /tmp/hearth-defaults.json)" ||
 # Lists the base brings that Hearth's session would read after its own (shown, not changed).
 echo "Other default-app lists in the image: $(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
+
+# ------------------------------------------------------------------ one app of each kind per desktop (docs/APP-KINDS.md)
+# >>> app kinds (feature/app-per-desktop)
+# The table /usr/share/hearth/app-kinds.json says which app each desktop shows for each kind (Hearth Classic: Hearth's
+# own; Hearth Plasma: the KDE-based ones; apps with no other of their kind everywhere). hearth-app-kinds writes copies
+# of the menu entries with OnlyShowIn/NotShowIn into /usr/share/hearth/app-kinds/applications (nimbus-session puts it
+# first in XDG_DATA_DIRS, so the packages' own files are never edited), each desktop's default apps
+# (/etc/xdg/<desktop>-mimeapps.list), and stops the build if a desktop would show two apps of one kind or none
+# where one is needed. Runs after Hearth's default apps (above), once every app is in.
+python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.json || { cat /tmp/hearth-app-kinds.json; echo "::error title=app kinds::a desktop would show two apps of one kind, or none (above)"; exit 1; }
+echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)" || true
+chmod 755 /usr/libexec/hearth-app-kinds
+# <<< app kinds
 
 # ------------------------------------------------------------------ boot straight into Hearth
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase

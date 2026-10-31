@@ -120,6 +120,7 @@ class SessionFallback(unittest.TestCase):
         self.assertFalse(self.labwc_ran(), log)
         env = pathlib.Path(self.home, 'gnome-env').read_text()
         self.assertIn('MODE=hearth ', env)
+        self.assertNotIn('/usr/share/hearth-gnome', env)
         self.assertIn('DESKTOP=GNOME', env)
         self.assertIn('HEARTH_DESKTOP=gnome', env)
         self.assertTrue(os.path.exists(os.path.join(self.home, '.config', 'gnome-initial-setup-done')))
@@ -386,16 +387,15 @@ class Files(unittest.TestCase):
         self.assertIn('/desktop/shell/hearth-pad', hearth_js)
 
     def test_one_app_of_each_kind(self):
-        base = SHARE / 'hearth-gnome' / 'applications'
-        for i in ('hearth-terminal', 'hearth-text', 'hearth-files', 'org.kde.dolphin', 'org.kde.konsole'):
-            text = (base / (i + '.desktop')).read_text()
-            self.assertIn('Hidden=true', text)
-        mime = (base / 'gnome-mimeapps.list').read_text()
-        self.assertIn('inode/directory=org.gnome.Nautilus.desktop', mime)
-        self.assertIn('text/plain=org.gnome.TextEditor.desktop', mime)
-        self.assertIn('x-scheme-handler/terminal=org.gnome.Console.desktop', mime)
-        sess = SESSION.read_text()
-        self.assertIn('GNOME_DATA=/usr/share/hearth-gnome', sess)
+        # GNOME's own Files, Console and Text Editor are Hearth GNOME's in the app-kinds table (docs/APP-KINDS.md).
+        t = json.loads((SHARE / 'hearth' / 'app-kinds.json').read_text())
+        self.assertEqual(t['desktops']['GNOME']['names'], ['GNOME'])          # what run_gnome sets
+        self.assertIn('/usr/bin/gnome-shell', t['desktops']['GNOME']['session'])
+        for kind, app in (('files', 'org.gnome.Nautilus.desktop'), ('terminal', 'org.gnome.Console.desktop'),
+                          ('text-editor', 'org.gnome.TextEditor.desktop')):
+            self.assertEqual(t['kinds'][kind]['apps']['GNOME'], [app])
+            self.assertIn('GNOME', t['kinds'][kind]['required'])
+        self.assertIn('XDG_CURRENT_DESKTOP=GNOME', SESSION.read_text())
 
     def test_login_screen_session(self):
         text = (ROOT / 'hosts' / 'linux' / 'session' / 'hearth-gnome.desktop').read_text()

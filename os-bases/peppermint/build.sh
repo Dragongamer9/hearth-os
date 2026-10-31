@@ -227,15 +227,11 @@ for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/
 # GNOME Shell (trixie's release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell extensions
 # (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal (no recommends, no
 # GNOME app bundle, no GDM: SDDM stays), plus GNOME's own apps for the kinds it has (Files, Console, Text Editor: one
-# app of each kind per desktop; they show only in Hearth GNOME). Hearth Classic stays the fallback.
+# app of each kind per desktop, through the app-kinds table's GNOME entries below). Hearth Classic stays the fallback.
 gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
 "${APT[@]}" gnome-shell mutter gnome-session gnome-control-center
 optional xdg-desktop-portal-gnome nautilus gnome-console gnome-text-editor
 for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
-for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
-  f="/usr/share/applications/$id.desktop"
-  [ -f "$f" ] && { sed -i '/^OnlyShowIn=/d; /^NotShowIn=/d' "$f"; sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nOnlyShowIn=GNOME;/' "$f"; }
-done
 gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
 mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
 echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
@@ -1227,6 +1223,25 @@ echo "::notice title=Hearth's default apps::$(cat /tmp/hearth-defaults.json)" ||
 echo "Other default-app lists in the image: $(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 
+# ------------------------------------------------------------------ one app of each kind per desktop (docs/APP-KINDS.md)
+# >>> app kinds (feature/app-per-desktop)
+# The table /usr/share/hearth/app-kinds.json says which app each desktop shows for each kind (Hearth Classic: Hearth's
+# own; Hearth Plasma: the KDE-based ones; apps with no other of their kind everywhere). hearth-app-kinds writes copies
+# of the menu entries with OnlyShowIn/NotShowIn into /usr/share/hearth/app-kinds/applications (nimbus-session puts it
+# first in XDG_DATA_DIRS, so the packages' own files are never edited), each desktop's default apps
+# (/etc/xdg/<desktop>-mimeapps.list), and stops the build if a desktop would show two apps of one kind or none
+# where one is needed. Runs after Hearth's default apps (above), once every app is in.
+python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.json || { cat /tmp/hearth-app-kinds.json; echo "::error title=app kinds::a desktop would show two apps of one kind, or none (above)"; exit 1; }
+echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)" || true
+chmod 755 /usr/libexec/hearth-app-kinds
+# Writable Peppermint: apt brings new or updated menu entries, so the copies are written again after every apt run
+# (never fails apt; an app you install yourself isn't hidden: --refresh).
+mkdir -p /etc/apt/apt.conf.d
+cat > /etc/apt/apt.conf.d/80-hearth-app-kinds <<'APT'
+DPkg::Post-Invoke { "if [ -x /usr/libexec/hearth-app-kinds ]; then /usr/libexec/hearth-app-kinds apply --refresh >/dev/null 2>&1 || true; fi"; };
+APT
+# <<< app kinds
+
 # ------------------------------------------------------------------ Beacon (BFME, Age of the Ring, LOTR: Conquest...)
 # Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
 # `beacon-app`, its window (beacon.desktop: in Mantel's launcher and pinned to its taskbar). See docs/BEACON.md.
@@ -1340,6 +1355,9 @@ systemctl enable NetworkManager.service bluetooth.service systemd-resolved.servi
   fstrim.timer bootc-fetch-apply-updates.timer sddm.service
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
 systemctl enable hearth-boot-guard.service hearth-boot-guard-refresh.path hearth-boot-good.service hearth-recovery.service  # automatic fallback, Recovery on the device to the previous version
+# Writable system (hearth-unlock, docs/BASE-PEPPERMINT.md): each version's own layer over /usr at every start, the
+# packages you added put back after an update, a safe start if your changes stop Hearth from starting.
+systemctl enable hearth-unlock.service hearth-unlock-units.service hearth-unlock-good.service hearth-unlock-reapply.service
 # power-profiles-daemon only runs when HHD is switched off (its drop-in says so); enabled so it can then.
 systemctl enable power-profiles-daemon.service 2>/dev/null || true
 # Printing starts when something prints (Settings › Printers).
@@ -1448,8 +1466,20 @@ cat /usr/lib/sysusers.d/hearth-image.conf
 # the image's /var is left empty. dpkg's database moves to /usr/lib/sysimage/dpkg (linked back from /var/lib/dpkg),
 # so the list of installed packages stays with the packages, read-only. /opt contents move to /usr/lib/opt.
 mkdir -p /usr/lib/sysimage
-mkdir -p /usr/share/hearth && apt-mark showmanual | sort -u > /usr/share/hearth/apt-baseline.list   # hearth-unlock: what the image itself installed
-chmod 755 /usr/bin/hearth-unlock 2>/dev/null || true
+# Writable system (hearth-unlock): what the image itself asked apt for (the start of the record of your packages),
+# and apt's auto/manual marks moved next to dpkg's database, so each version's marks match its own packages. Then
+# apt's and dpkg's hooks and the boot-chain pin (from here on: none of them may run during the build).
+mkdir -p /usr/share/hearth /usr/lib/sysimage/apt
+apt-mark showmanual | sort -u > /usr/share/hearth/apt-baseline.list
+test -s /usr/share/hearth/apt-baseline.list
+if [ -f /var/lib/apt/extended_states ]; then cp -a /var/lib/apt/extended_states /usr/lib/sysimage/apt/extended_states; else : > /usr/lib/sysimage/apt/extended_states; fi
+install -Dm644 /usr/share/hearth/unlock/apt.conf /etc/apt/apt.conf.d/50-hearth-unlock
+install -Dm644 /usr/share/hearth/unlock/dpkg.cfg /etc/dpkg/dpkg.cfg.d/hearth-unlock
+install -Dm644 /usr/share/hearth/unlock/boot-chain.pref /etc/apt/preferences.d/hearth-boot-chain
+chmod 755 /usr/bin/hearth-unlock
+python3 -m py_compile /usr/bin/hearth-unlock && rm -rf /usr/bin/__pycache__
+# The same marks through the new path (a mismatch would put the image's own packages in the record).
+diff <(apt-mark showmanual | sort -u) /usr/share/hearth/apt-baseline.list
 mv /var/lib/dpkg /usr/lib/sysimage/dpkg
 VARCONF=/usr/lib/tmpfiles.d/hearth-var.conf
 : > "$VARCONF"
@@ -1462,6 +1492,15 @@ find /var -mindepth 1 -type d \
   ! -path '/var/lib/flatpak*' \
   -printf 'd /var/%P %m %u %g -\n' | sort >> "$VARCONF"
 echo 'L+ /var/lib/dpkg - - - - /usr/lib/sysimage/dpkg' >> "$VARCONF"
+# apt's own folders (apt makes the rest), for apt on the unlocked system.
+{
+  echo 'd /var/lib/apt/lists 0755 root root -'
+  echo 'd /var/lib/apt/lists/partial 0700 _apt root -'
+  echo 'd /var/cache/apt 0755 root root -'
+  echo 'd /var/cache/apt/archives 0755 root root -'
+  echo 'd /var/cache/apt/archives/partial 0700 _apt root -'
+  echo 'd /var/log/apt 0755 root root -'
+} >> "$VARCONF"
 if [ -d /opt ] && [ -n "$(ls -A /opt 2>/dev/null)" ]; then
   mkdir -p /usr/lib/opt
   for d in /opt/*; do

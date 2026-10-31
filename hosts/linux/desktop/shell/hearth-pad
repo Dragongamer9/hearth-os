@@ -30,6 +30,19 @@ Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn
 (osk {open}); while it's open the controller is the keyboard's alone (grabbed: apps don't see the presses) and typing goes
 through this helper's uinput keyboard (KWin has no wtype). The rest of the time it does nothing.
 
+--plasma: Hearth Plasma's controller (started by desktop/shell/osk-plasma.qml, which draws the Hearth menu, the
+controls card and the keyboard over KDE Plasma). Everything Hearth Classic does, through KWin's own shortcuts instead
+of labwc's, all typed through this helper's uinput keyboard (KWin has no wtype):
+  Menu (☰)       Plasma's launcher (the host asks plasmashell)   View + B       close the window (Alt+F4)
+  View + D-pad   tile left / right, maximize, minimize           View + A       the taskbar: D-pad along it, A opens
+  View + X       Overview (every window: D-pad, A picks one)     View + Y       clipboard history (Meta+V)
+  Guide          Hearth menu (Quick Access there opens Hearth's Quick Access widget, Meta+Alt+A)
+A KWin script (/usr/share/kwin/scripts/hearthpad) says which window is in front over D-Bus (org.hearth.Pad, served
+here with GLib's D-Bus when python3-gi is there): Plasma's popups (the launcher, the tray, Quick Access), the taskbar,
+KRunner, Dolphin, System Settings and the lock screen get the keys (A Enter, B Esc, X the Menu key; RT / LT still
+click), a fullscreen window pauses the controller as in Classic. A text field that KWin reports right after you used
+the controller (KRunner, KDE apps) opens the on-screen keyboard. Without python3-gi it still works, A just clicks.
+
 --gnome: Hearth GNOME (GNOME Shell's hearth-pad@hearthos.fun extension starts it and draws what it asks for;
 docs/GNOME.md). Desktop Mode's controls with GNOME's touches: View (tap) the Activities overview, View + B closes the
 window, View + Menu puts the focus on the bar (the D-pad then walks it); while GNOME Shell itself has the keyboard
@@ -45,6 +58,7 @@ mouse {on: false} and exits. Hearth sends pause {on} while it or its Quick Acces
 import json
 import math
 import os
+import queue
 import threading
 import select
 import sys
@@ -86,8 +100,60 @@ SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RI
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
                    set(OSK_SPECIAL.values()) |
                    {'KEY_LEFTSHIFT', 'KEY_LEFTCTRL', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
-                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V', 'KEY_PAGEUP', 'KEY_PAGEDOWN'})
+                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V', 'KEY_F4', 'KEY_PAGEUP', 'KEY_PAGEDOWN'})
 MODS = {'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT'}
+
+
+# ---- Hearth Plasma (--plasma): KWin's and Plasma's own shortcuts for what labwc's are in Hearth Classic.
+PLASMA_SHORTCUTS = {
+    'close': ('KEY_LEFTALT', 'KEY_F4'),
+    'quick': ('KEY_LEFTMETA', 'KEY_LEFTALT', 'KEY_A'),        # Hearth Quick Access (org.hearth.quicksettings)
+    'panel': ('KEY_LEFTMETA', 'KEY_LEFTALT', 'KEY_P'),        # keyboard focus on the taskbar
+    'clipboard': ('KEY_LEFTMETA', 'KEY_V'),                   # Klipper's history
+    'overview': ('KEY_LEFTMETA', 'KEY_W'),
+    'maximize': ('KEY_LEFTMETA', 'KEY_PAGEUP'),
+    'minimize': ('KEY_LEFTMETA', 'KEY_PAGEDOWN'),
+    'tile-left': ('KEY_LEFTMETA', 'KEY_LEFT'),
+    'tile-right': ('KEY_LEFTMETA', 'KEY_RIGHT'),
+}
+PLASMA_VIEW = {'up': 'maximize', 'down': 'minimize', 'left': 'tile-left', 'right': 'tile-right',
+               'b': 'close', 'a': 'panel', 'x': 'overview', 'y': 'clipboard'}
+# What opens something that takes the keys without a window of its own coming to the front (until one does, or B / A).
+PLASMA_KEY_OVERLAYS = ('panel', 'overview', 'quick', 'clipboard')
+PLASMA_SHELL = ('plasmashell', 'org.kde.plasmashell')
+PLASMA_KEY_APPS = ('krunner', 'org.kde.krunner', 'dolphin', 'org.kde.dolphin', 'systemsettings',
+                   'org.kde.systemsettings', 'kscreenlocker_greet', 'org.kde.kscreenlocker_greet')
+PLASMA_SEARCH = ('krunner', 'org.kde.krunner', 'konsole', 'org.kde.konsole')   # open the keyboard when they come up
+# Hearth Plasma's own apps (the KDE-based Hearth Files, Terminal, Text, Reader, Capture, Calculator), like Mantel's: D-pad
+# moves, A opens, B back, X the context menu, Y search, LB / RB tabs, LT / RT scroll. Only what differs from that per
+# app; None: the app does it itself (Hearth Files from Dolphin reads the controller for those: hearthgamepad.cpp),
+# 'osk': the on-screen keyboard. The window class without "org.kde.".
+PLASMA_APPS = {
+    'dolphin': {'y': ('KEY_LEFTCTRL', 'KEY_I'), 'lb': None, 'rb': None, 'lt': None, 'rt': None, 'view': None},
+    'konsole': {'y': 'osk', 'lb': ('KEY_LEFTSHIFT', 'KEY_LEFT'), 'rb': ('KEY_LEFTSHIFT', 'KEY_RIGHT'),
+                'lt': ('KEY_LEFTSHIFT', 'KEY_PAGEUP'), 'rt': ('KEY_LEFTSHIFT', 'KEY_PAGEDOWN')},
+    'kate': {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
+             'lt': ('KEY_PAGEUP',), 'rt': ('KEY_PAGEDOWN',)},
+    'okular': {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB'), 'rb': ('KEY_LEFTCTRL', 'KEY_TAB'),
+               'lt': ('KEY_PAGEUP',), 'rt': ('KEY_PAGEDOWN',)},
+    'spectacle': {'y': ('KEY_LEFTCTRL', 'KEY_N'), 'lt': ('KEY_PAGEUP',), 'rt': ('KEY_PAGEDOWN',)},
+    'kcalc': {'y': 'osk'},
+}
+
+
+def plasma_app(cls):
+    c = (cls or '').lower()
+    return PLASMA_APPS.get(c[len('org.kde.'):] if c.startswith('org.kde.') else c)
+PLASMA_OSK_RECENT = 8.0      # s: a text field opens the keyboard by itself only this soon after the controller was used
+
+
+def plasma_keys_context(cls, kind):
+    """Does the window in front take the controller as keys (D-pad arrows, A Enter)? Plasma's popups and its
+    taskbar do (not the desktop itself: A clicks its icons), and the KDE apps built for the keyboard."""
+    c = (cls or '').lower()
+    if c in PLASMA_SHELL:
+        return kind not in ('desktop', 'none', '')
+    return c in PLASMA_KEY_APPS or plasma_app(c) is not None
 
 
 def curve(v):
@@ -102,10 +168,15 @@ def curve(v):
 class Pad:
     """What the controller does, without any device code (so it can be tested)."""
 
-    def __init__(self, out, game=False, osk_only=False, gnome=False):
+    def __init__(self, out, game=False, osk_only=False, plasma=False, gnome=False):
         self.out = out             # .move(dx, dy) .wheel(v, h) .press(name, down) .send(obj)
         self.game = game           # --game: Game Mode's controller mouse, nothing else
-        self.osk_only = osk_only   # --osk: Hearth Plasma's keyboard: Guide + X, and the keyboard while it's open
+        self.osk_only = osk_only   # --osk: Hearth Plasma's keyboard only: Guide + X, and the keyboard while it's open
+        self.plasma = plasma       # --plasma: Hearth Plasma's whole controller (plasma_* below)
+        self.win = ('', '', False, '')   # --plasma: the window in front (class, title, fullscreen, kind), from KWin
+        self.key_overlay = False   # --plasma: the taskbar / Overview / a popup has the keys until a window says otherwise
+        self.textfield = False     # --plasma: KWin says a text field has the focus
+        self.last_input = -1e9     # when a controller button last went down
         self.gnome = gnome         # --gnome: Hearth GNOME (gnome_* below)
         self.app = ''              # --gnome: the app in front when it has its own keys (files | terminal | text)
         self.trigger_scroll = {}   # --gnome: LT / RT held in those apps (scrolling)
@@ -224,6 +295,7 @@ class Pad:
     def button(self, name, down, now):
         if down:
             self.held[name] = now
+            self.last_input = now
         else:
             self.held.pop(name, None)
 
@@ -246,6 +318,8 @@ class Pad:
             return self.osk_button(name, down, now)
         if self.paused:
             return
+        if self.plasma:
+            return self.plasma_button(name, down, now)
         if self.gnome:
             return self.gnome_button(name, down, now)
         if self.keys_ctx:
@@ -265,8 +339,8 @@ class Pad:
 
     @property
     def wants_grab(self):
-        """--osk: the controller is the keyboard's alone while it's open."""
-        return self.osk_only and self.mode == 'osk'
+        """--osk / --plasma: the controller is the keyboard's alone while it's open."""
+        return (self.osk_only or self.plasma) and self.mode == 'osk'
 
     def game_button(self, name, down, now):
         if down and name in ('view', 'menu') and 'view' in self.held and 'menu' in self.held:
@@ -463,6 +537,94 @@ class Pad:
                 pass
         elif c == 'radial':
             self.open_radial() if m.get('open') else (self.close_radial() if self.mode == 'radial' else None)
+        elif c == 'plasma' and self.plasma:
+            self.plasma_do(str(m.get('do', '')))
+        elif c == 'window' and self.plasma:
+            self.plasma_window(str(m.get('cls', '')), str(m.get('caption', '')), bool(m.get('fullscreen')),
+                               str(m.get('kind', '')), m.get('now'))
+        elif c == 'textfield' and self.plasma:
+            self.plasma_textfield(bool(m.get('on')), m.get('now'))
+
+    # ------------------------------------------------------------------ Hearth Plasma (--plasma)
+    def plasma_keys(self):
+        return plasma_keys_context(self.win[0], self.win[3]) or self.key_overlay
+
+    def plasma_sync_keys(self):
+        keys = self.plasma_keys()
+        if keys != self.keys_ctx:
+            self.release_all()
+            self.keys_ctx = keys
+
+    def plasma_do(self, action):
+        """A Plasma shortcut by name (PLASMA_SHORTCUTS): from View + a button, or the host (the Hearth menu)."""
+        keys = PLASMA_SHORTCUTS.get(action)
+        if not keys:
+            return
+        self.tap(*keys)
+        if action in PLASMA_KEY_OVERLAYS:
+            self.key_overlay = True
+            self.plasma_sync_keys()
+
+    def plasma_button(self, name, down, now):
+        if name != 'view' and name in PLASMA_VIEW and 'view' in self.held:
+            if down:
+                self.view_used = True
+                self.plasma_do(PLASMA_VIEW[name])
+            return
+        if not self.keys_ctx:
+            return self.desk_button(name, down, now)
+        app = None if self.key_overlay else plasma_app(self.win[0])
+        if app is not None and name in app:
+            act = app[name]
+            if act == 'osk':
+                if down:
+                    self.want_osk()
+            elif act is not None and down:
+                self.tap(*act)
+            return
+        # A menu, the taskbar or a keyboard app has the keys; the triggers still click where the pointer is,
+        # LB / RB still switch windows and View still shows the controls.
+        if name == 'rt':
+            return self.mouse('BTN_LEFT', name, down)
+        if name == 'lt':
+            return self.mouse('BTN_RIGHT', name, down)
+        if name in ('lb', 'rb', 'view', 'l3', 'r3'):
+            return self.desk_button(name, down, now)
+        self.keys_button(name, down)
+        if down and name in ('a', 'b') and self.key_overlay:
+            # Enter picked something, Esc closed it: back to what the window in front wants.
+            self.key_overlay = False
+            self.plasma_sync_keys()
+
+    def plasma_window(self, cls, caption, fullscreen, kind, now=None):
+        """KWin's script: this window is in front now (or none)."""
+        now = time.monotonic() if now is None else now
+        before = self.win
+        self.win = (cls, caption, fullscreen, kind)
+        self.key_overlay = False
+        self.plasma_sync_keys()
+        fs = fullscreen and kind not in ('desktop', 'dock') and cls.lower() not in PLASMA_SHELL
+        if fs != self.fs_pause:
+            self.fs_pause = fs
+            if self.paused and self.mode == 'desk':
+                self.release_all()
+        if (before[0], before[3], before[2]) != (cls, kind, fullscreen):
+            note('in front: %r (%s)%s%s' % (cls, kind or '?', ', fullscreen: paused' if fs else '', ', keys' if self.keys_ctx else ''))
+        if cls.lower() in PLASMA_SEARCH and before[0].lower() not in PLASMA_SEARCH:
+            self.plasma_auto_osk(now)
+
+    def plasma_textfield(self, on, now=None):
+        """KWin: a text field got (or lost) the focus. Like Hearth Classic's own text fields, the keyboard opens by
+        itself when you got there with the controller (not in Plasma's launcher, whose list the D-pad works)."""
+        now = time.monotonic() if now is None else now
+        was = self.textfield
+        self.textfield = on
+        if on and not was and self.win[0].lower() not in PLASMA_SHELL:
+            self.plasma_auto_osk(now)
+
+    def plasma_auto_osk(self, now):
+        if self.mode == 'desk' and not self.paused and now - self.last_input < PLASMA_OSK_RECENT:
+            self.want_osk()
 
 
     # ------------------------------------------------------------------ Hearth GNOME (--gnome)
@@ -779,6 +941,97 @@ def describe_inputs(evdev):
     return out
 
 
+# ---------------------------------------------------------------------- Hearth Plasma's D-Bus side (--plasma)
+
+PLASMA_BUS = 'org.hearth.Pad'
+PLASMA_PATH = '/org/hearth/Pad'
+PLASMA_XML = """<node><interface name="org.hearth.Pad">
+<method name="Window"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="b" direction="in"/><arg type="s" direction="in"/></method>
+<method name="Probe"><arg type="s" direction="in"/></method>
+</interface></node>"""
+# Run once at the start through KWin's scripting: says which window is in front already (hearthpad only says when it changes).
+PLASMA_REPORT_JS = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'plasma', 'kwin-report.js')
+# Hearth Quick Access gets Meta+Alt+A (the Hearth menu's Quick Access types it) where an older layout didn't give it one.
+PLASMA_QUICK_SHORTCUT_JS = ('panels().forEach(function(p){p.widgets("org.hearth.quicksettings").forEach(function(w){'
+                            'if(!w.globalShortcut)w.globalShortcut="Meta+Alt+A";});});')
+
+
+def plasma_bus(inbox):
+    """Serves org.hearth.Pad on the session bus for KWin's hearthpad script (the window in front) and listens for
+    KWin's text fields (org.kde.kwin.VirtualKeyboard active), in a thread of its own with GLib's D-Bus. Everything
+    goes to the main loop through inbox. Without python3-gi (or a session bus) it says so in pad.log and does nothing:
+    the controller still works, just without knowing what's in front."""
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import Gio, GLib
+    except (ImportError, ValueError) as err:
+        note('no python3-gi (%s): the controller can\'t tell which window is in front' % err)
+        return False
+
+    def call(bus, dest, path, iface, method, args=None, reply=None):
+        return bus.call_sync(dest, path, iface, method, args, GLib.VariantType(reply) if reply else None,
+                             Gio.DBusCallFlags.NONE, 3000, None)
+
+    def run():
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            node = Gio.DBusNodeInfo.new_for_xml(PLASMA_XML)
+
+            def on_call(conn, sender, path, iface, method, params, inv):
+                a = params.unpack()
+                if method == 'Window' and len(a) == 4:
+                    inbox.put({'cmd': 'window', 'cls': a[0], 'caption': a[1], 'fullscreen': bool(a[2]), 'kind': a[3]})
+                elif method == 'Probe' and a:
+                    note('probe: ' + str(a[0])[:300])
+                    inbox.put({'cmd': 'probe', 'text': str(a[0])[:2000]})
+                inv.return_value(None)
+            bus.register_object(PLASMA_PATH, node.interfaces[0], on_call, None, None)
+            got = call(bus, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName',
+                       GLib.Variant('(su)', (PLASMA_BUS, 4)), '(u)').unpack()[0]
+            if got not in (1, 4):
+                note('%s is taken (another hearth-pad?): not told which window is in front' % PLASMA_BUS)
+                return
+
+            def text_field(conn, sender, path, iface, signal, params):
+                try:
+                    on = call(bus, 'org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties', 'Get',
+                              GLib.Variant('(ss)', ('org.kde.kwin.VirtualKeyboard', 'active')), '(v)').unpack()[0]
+                    inbox.put({'cmd': 'textfield', 'on': bool(on)})
+                except GLib.Error:
+                    pass
+            bus.signal_subscribe('org.kde.KWin', 'org.kde.kwin.VirtualKeyboard', 'activeChanged', '/VirtualKeyboard',
+                                 None, Gio.DBusSignalFlags.NONE, text_field)
+
+            def first():
+                try:
+                    if os.path.isfile(PLASMA_REPORT_JS):
+                        try:
+                            call(bus, 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'unloadScript',
+                                 GLib.Variant('(s)', ('hearthpad-report',)))
+                        except GLib.Error:
+                            pass
+                        sid = call(bus, 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'loadScript',
+                                   GLib.Variant('(ss)', (PLASMA_REPORT_JS, 'hearthpad-report')), '(i)').unpack()[0]
+                        if sid >= 0:
+                            call(bus, 'org.kde.KWin', '/Scripting/Script%d' % sid, 'org.kde.kwin.Script', 'run')
+                except GLib.Error as err:
+                    note('KWin scripting: %s' % err.message)
+                try:
+                    call(bus, 'org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell', 'evaluateScript',
+                         GLib.Variant('(s)', (PLASMA_QUICK_SHORTCUT_JS,)), '(s)')
+                except GLib.Error as err:
+                    note('Quick Access shortcut: %s' % err.message)
+                return False
+            GLib.timeout_add(1500, first)
+            note('serving %s for KWin' % PLASMA_BUS)
+            GLib.MainLoop().run()
+        except Exception as err:   # never take the controller down with it
+            note('D-Bus side stopped: %r' % err)
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
 def main():
     try:
         import evdev
@@ -796,8 +1049,9 @@ def main():
     e = evdev.ecodes
     bmap = button_map(e)
     game = '--game' in sys.argv[1:]
-    osk_only = '--osk' in sys.argv[1:]
-    gnome = '--gnome' in sys.argv[1:]
+    plasma = '--plasma' in sys.argv[1:]
+    osk_only = '--osk' in sys.argv[1:] and not plasma
+    gnome = '--gnome' in sys.argv[1:] and not plasma
     stats = {'events': 0, 'moved': 0, 'since': time.monotonic()}
     real_move = out.move
 
@@ -805,9 +1059,13 @@ def main():
         stats['moved'] += abs(dx) + abs(dy)
         real_move(dx, dy)
     out.move = counted_move
-    pad = Pad(out, game=game, osk_only=osk_only, gnome=gnome)
+    pad = Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome)
     if game:
         note('Game Mode controller mouse')
+    inbox = queue.Queue()      # --plasma: what KWin says (plasma_bus's thread) for the main loop
+    if plasma:
+        note('Hearth Plasma controller')
+        plasma_bus(inbox)
     pads = {}
 
     def rumble(strength, ms):
@@ -865,7 +1123,13 @@ def main():
             if set(pads) != before:
                 note('controllers: ' + (', '.join('%s %r' % (p, c.dev.name) for p, c in pads.items()) or 'none'))
             next_scan = now + 3
-        if osk_only:
+        while plasma and not inbox.empty():
+            m = inbox.get_nowait()
+            if m.get('cmd') == 'probe':
+                emit({'t': 'probe', 'text': m.get('text', '')})
+            else:
+                pad.command(m)
+        if osk_only or plasma:
             # Hearth Plasma's keyboard: the controller is held while it's open, so apps don't also get the presses.
             for c in pads.values():
                 if getattr(c, 'grabbed', False) != pad.wants_grab:

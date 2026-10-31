@@ -476,6 +476,12 @@ jobs:
         with:
           name: hearth-kde-peppermint
 
+      # One app of each kind per desktop (docs/APP-KINDS.md): the table and hearth-app-kinds, before the long build.
+      - name: App kinds (Python tests)
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_app_kinds.py' -v 2>&1 | tee /tmp/ak-tests.log | tail -25
+          grep -q '^OK' /tmp/ak-tests.log || { echo "::error title=app kinds tests::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/ak-tests.log | head -10 | tr '\n' ' ')"; exit 1; }
+
       - name: Unpack Hearth into the build context
         run: |
           mkdir -p os/nimbus-app/browser
@@ -671,7 +677,7 @@ jobs:
           check "Hearth GNOME: the extensions are made for this GNOME" "v=\$(gnome-shell --version | grep -oE '[0-9]+' | head -1); grep -q \"\\\"\$v\\\"\" /usr/share/gnome-shell/extensions/hearth-pad@hearthos.fun/metadata.json"
           check "Hearth GNOME: the login screen offers it" "grep -q 'nimbus-session --desktop=gnome' /usr/share/wayland-sessions/hearth-gnome.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-gnome.desktop"
           check "Hearth GNOME: falls back to Hearth Classic" "grep -q 'gnome: didn.t start; falling back to Hearth Classic' /usr/bin/nimbus-session"
-          warn "Hearth GNOME: GNOME's own Files, Console and Text Editor, shown only in Hearth GNOME" "for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do grep -q '^OnlyShowIn=GNOME;' /usr/share/applications/\$id.desktop || exit 1; done"
+          check "Hearth GNOME: GNOME's own Files, Console and Text Editor are Hearth GNOME's (app kinds)" "python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.Nautilus.desktop && python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.Console.desktop && python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.TextEditor.desktop && ! python3 /usr/libexec/hearth-app-kinds resolve Nimbus | grep -q org.gnome.Nautilus.desktop"
           warn "Hearth GNOME: GNOME's portal" "test -f /usr/share/xdg-desktop-portal/portals/gnome.portal"
           check "Hearth GNOME: the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
           echo "::notice title=Hearth GNOME size::GNOME adds about $(cat /usr/share/nimbus/hearth-gnome-size-mb 2>/dev/null || echo '?') MB to this image"
@@ -768,6 +774,32 @@ jobs:
           warn "Hearth Friends' user service is there and enabled" "test -f /usr/lib/systemd/user/hearth-friends.service && test -e /etc/systemd/user/default.target.wants/hearth-friends.service"
           warn "the chat's emoji list is installed" "test -s /usr/share/nimbus/emoji-data.js"
           # ---- end of Hearth Friends
+          # >>> app kinds (feature/app-per-desktop)
+          echo "--- one app of each kind per desktop (docs/APP-KINDS.md)"
+          # hearth-app-kinds check: for each desktop (Nimbus, KDE, GNOME, COSMIC, Deepin) reads the menu entries as a
+          # session does (the copies in /usr/share/hearth/app-kinds first), applies the desktop entry spec's NoDisplay,
+          # Hidden, TryExec, OnlyShowIn and NotShowIn, and fails on two shown apps of one kind, none where the table
+          # needs one, or a default app (the XDG mime-apps lists) that isn't that desktop's app.
+          if python3 /usr/libexec/hearth-app-kinds check > /tmp/ak.json 2>&1; then
+            echo "ok: each desktop shows one app of each kind, and opens files in it"
+          else
+            grep '^::error' /tmp/ak.json || tail -20 /tmp/ak.json; fail=1
+          fi
+          echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/ak.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)"
+          check "the menu-entry copies are there and nimbus-session puts them first" "ls /usr/share/hearth/app-kinds/applications/*.desktop && grep -q '/usr/share/hearth/app-kinds' /usr/bin/nimbus-session"
+          # The same with GLib (what GTK apps and the portal use), as a new account in each desktop: a warning only.
+          mkdir -p /tmp/du && chown 65534:65534 /tmp/du
+          akwarn=""
+          for d in Nimbus KDE; do
+            for m in inode/directory text/plain application/pdf; do
+              want=$(python3 -c "import json,sys; d=json.load(open('/tmp/ak.json'))['desktops']['$d']; k={'inode/directory':'files','text/plain':'text-editor','application/pdf':'document-viewer'}['$m']; a=d['apps'].get(k); print(a if d['present'] and isinstance(a, str) else '')" 2>/dev/null)
+              [ -n "$want" ] && command -v gio >/dev/null || continue
+              g=$(setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=$d XDG_DATA_DIRS=/usr/share/hearth/app-kinds:/usr/local/share:/usr/share XDG_CONFIG_DIRS=/etc/xdg gio mime "$m" 2>/dev/null | sed -n 's/^Default application for .*: *//p')
+              [ "$g" = "$want" ] || akwarn="$akwarn $d:$m=${g:-nothing}(want $want)"
+            done
+          done
+          [ -z "$akwarn" ] && echo "ok: GLib agrees" || echo "::warning title=app kinds (gio)::$akwarn"
+          # <<< app kinds
           echo "--- default apps (Hearth's apps open everything, Settings › Default apps changes it)"
           check "Hearth's default apps were written (hearth-system defaults-system)" "grep -q \"^# Hearth's default apps\" /etc/xdg/nimbus-mimeapps.list && grep -q \"^# Hearth's default apps\" /usr/share/applications/mimeapps.list"
           check "xdg-mime is installed" "command -v xdg-mime"
@@ -787,8 +819,9 @@ jobs:
                       font/ttf=hearth-fonts text/vcard=hearth-contacts text/calendar=hearth-calendar x-scheme-handler/webcal=hearth-calendar \
                       x-scheme-handler/geo=hearth-maps x-scheme-handler/terminal=hearth-terminal; do
             m=${pair%%=*}; want=${pair#*=}.desktop
-            # Hearth's KDE-based Terminal and Text Editor are the defaults when they're in (docs/KDE-APPS.md).
-            case "$want" in hearth-text.desktop|hearth-terminal.desktop) [ -f "/usr/share/applications/${want%.desktop}-kde.desktop" ] && want=${want%.desktop}-kde.desktop ;; esac
+            # Hearth Classic and Game Mode keep the classic Terminal and Text Editor (one app of each kind per desktop:
+            # docs/APP-KINDS.md); the KDE-based one only when the classic one isn't in this image.
+            case "$want" in hearth-text.desktop|hearth-terminal.desktop) command -v "${want%.desktop}" >/dev/null || want=${want%.desktop}-kde.desktop ;; esac
             [ -f "/usr/share/applications/$want" ] || { echo "skip: $want isn't in this image ($m)"; continue; }
             got=$(asu xdg-mime query default "$m" 2>/dev/null | tail -1); dn=$((dn+1))
             [ "$got" = "$want" ] || dbad="$dbad $m=${got:-nothing}(want $want)"
@@ -816,6 +849,14 @@ jobs:
 
       # The Qt renderer (Experimental) starts in the image and draws every screen: offscreen, against the fake core (and,
       # reported only, the image's own core). Doesn't stop the image: without a working Qt renderer Hearth falls back.
+      # REQUIRED: Peppermint is writable by default (hearth-unlock): in the built image, with real overlay mounts and
+      # apt, starts played out: unlocked by default, an apt install (and a .deb file) survives a restart, an update
+      # starts clean and the reapply puts the packages back, the previous version keeps its own, lock and unlock, a
+      # safe start, the boot-chain pin, and the boot guard's tests in the image's Python.
+      - name: Writable system (hearth-unlock)
+        timeout-minutes: 30
+        run: bash .github/scripts/hearth-unlock-check.sh localhost/hearth-peppermint:latest image
+
       - name: Check the Qt renderer in the image
         continue-on-error: true
         run: |

@@ -69,6 +69,11 @@ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:
   case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac
 done
 case ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac
+# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds' copies of the menu entries, with the
+# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages' own (same ids).
+if [ -d /usr/share/hearth/app-kinds/applications ]; then
+  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac
+fi
 export XDG_DATA_DIRS="$data_dirs"
 unset data_dirs d
 # <<< data dirs
@@ -394,9 +399,8 @@ settle_plasma() {
 # the look, the floating bar, the launcher, Quick Access, Hearth Link, Hearth Storage, the Game Mode button and the
 # controller). Every one is guarded: a missing or broken one leaves plain GNOME, never no desktop. docs/GNOME.md.
 GNOME_TIMEOUT="${HEARTH_GNOME_TIMEOUT:-60}"
-# Apps of a kind GNOME has its own app for (files, terminal, text) are hidden in Hearth GNOME only, through this
-# folder first in XDG_DATA_DIRS (Hidden= entries and gnome-mimeapps.list; one app of each kind per desktop).
-GNOME_DATA=/usr/share/hearth-gnome
+# One app of each kind: GNOME's Files, Console and Text Editor there, Hearth's of those kinds hidden; that's the
+# app-kinds table's GNOME entries (docs/APP-KINDS.md), read through XDG_CURRENT_DESKTOP=GNOME.
 gnome_first_run() {
   cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   # GNOME's first-sign-in assistant and tour aren't Hearth's (they aren't installed; this keeps them away if a
@@ -416,9 +420,6 @@ run_gnome() {
       XDG_SESSION_TYPE=wayland GNOME_SHELL_SESSION_MODE=hearth
     # KDE-based apps keep Hearth's look (qt6ct with Hearth's palette, as in Hearth Classic).
     if have qt6ct; then export QT_QPA_PLATFORMTHEME=qt6ct; else unset QT_QPA_PLATFORMTHEME; fi
-    if [ -d "$GNOME_DATA" ]; then
-      case ":${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:" in *":$GNOME_DATA:"*) ;; *) export XDG_DATA_DIRS="$GNOME_DATA:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" ;; esac
-    fi
     exec gnome-session
   ) >>"$GNOME_LOG" 2>&1 &
   gnome_pid=$!
