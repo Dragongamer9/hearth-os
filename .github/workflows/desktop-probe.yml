@@ -18,27 +18,26 @@ jobs:
         run: |
           cat >/tmp/p.sh <<'EOF'
           set +e
-          echo "fedora $(rpm -E %fedora)"
-          dnf5 -q makecache >/dev/null 2>&1
-          echo "## cosmic"
-          dnf5 -q repoquery --qf '%{name} %{version}-%{release} %{repoid}\n' 'cosmic*' 'xdg-desktop-portal-cosmic' 2>/dev/null | sort -u
-          echo "## deepin"
-          dnf5 -q repoquery --qf '%{name} %{version}-%{release} %{repoid}\n' 'deepin*' 'dde*' 'startdde' 2>/dev/null | sort -u | head -40
-          echo "## groups"
-          dnf5 -q group list 2>/dev/null | grep -iE 'cosmic|deepin'
-          dnf5 -q environment list 2>/dev/null | grep -iE 'cosmic|deepin'
-          before=$(rpm -qa --qf '%{SIZE}\n' | awk '{s+=$1} END {print int(s/1048576)}')
-          dnf5 -y -q install --setopt=install_weak_deps=False cosmic-session cosmic-comp cosmic-panel cosmic-settings \
+          rpm -qa --qf '%{NAME}\n' | sort >/tmp/before
+          X="cosmic-files cosmic-files-applet cosmic-term cosmic-greeter cosmic-initial-setup cosmic-store cosmic-edit cosmic-player cosmic-wallpapers cosmic-osk cosmic-monitor"
+          ex=""; for x in $X; do ex="$ex --exclude=$x"; done
+          echo "## with excludes"
+          dnf5 -y -q install --setopt=install_weak_deps=False $ex cosmic-session cosmic-comp cosmic-panel cosmic-settings \
             cosmic-settings-daemon cosmic-launcher cosmic-applets cosmic-bg cosmic-osd cosmic-notifications \
             cosmic-workspaces cosmic-app-library cosmic-randr cosmic-idle cosmic-icon-theme xdg-desktop-portal-cosmic >/tmp/i.log 2>&1
-          echo "install rc=$?"; tail -5 /tmp/i.log
-          after=$(rpm -qa --qf '%{SIZE}\n' | awk '{s+=$1} END {print int(s/1048576)}')
-          echo "cosmic adds ${after}-${before} = $((after-before)) MB installed"
-          ls /usr/share/wayland-sessions/ 2>/dev/null; cat /usr/share/wayland-sessions/cosmic.desktop 2>/dev/null
-          for b in cosmic-session start-cosmic cosmic-comp cosmic-panel cosmic-settings-daemon cosmic-launcher; do printf '%s ' "$b"; command -v $b || echo missing; done
-          rpm -q --qf '%{name} %{version}\n' cosmic-session cosmic-comp libcosmic 2>/dev/null
-          ls /usr/share/cosmic 2>/dev/null | head -40
-          ls /usr/bin | grep -i cosmic
+          echo "rc=$?"; grep -iE 'problem|nothing provides|requires|conflict' /tmp/i.log | head -12
+          echo "## requires of cosmic-session"
+          dnf5 -q repoquery --requires cosmic-session 2>/dev/null | tr '\n' ' '; echo
+          echo "## who requires the excluded"
+          for x in $X; do printf '%s <- %s\n' "$x" "$(dnf5 -q repoquery --whatrequires $x --qf '%{name}' 2>/dev/null | sort -u | tr '\n' ' ')"; done
+          echo "## without excludes, new packages by size (MB)"
+          dnf5 -y -q install --setopt=install_weak_deps=False cosmic-session cosmic-comp cosmic-panel cosmic-settings \
+            cosmic-settings-daemon cosmic-launcher cosmic-applets cosmic-bg cosmic-osd cosmic-notifications \
+            cosmic-workspaces cosmic-app-library cosmic-randr cosmic-idle cosmic-icon-theme xdg-desktop-portal-cosmic >/dev/null 2>&1
+          rpm -qa --qf '%{NAME}\n' | sort >/tmp/after
+          for n in $(comm -13 /tmp/before /tmp/after); do rpm -q --qf '%{SIZE} %{NAME}\n' $n; done | sort -rn | awk '{printf "%d %s\n", $1/1048576, $2}' | head -45
+          ls /usr/lib/systemd/system | grep -iE 'cosmic|greet'
+          ls /etc/xdg/autostart /usr/share/cosmic | tr '\n' ' '
           EOF
           img=i.anatase.org/anatase:stable
           docker pull -q "$img" >/dev/null 2>&1 || img=registry.fedoraproject.org/fedora:45
@@ -47,37 +46,3 @@ jobs:
           split -l 25 /tmp/out.txt /tmp/chunk.
           for c in /tmp/chunk.*; do echo "::notice title=anatase $(basename $c)::$(sed 's/%/%25/g' $c | tr '\n' '|' )"; done
 
-  peppermint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Peppermint (Debian trixie) packages
-        shell: bash
-        run: |
-          cat >/tmp/p.sh <<'EOF'
-          set +e
-          export DEBIAN_FRONTEND=noninteractive
-          echo 'deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware' >/etc/apt/sources.list.d/x.list
-          echo 'deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware' >>/etc/apt/sources.list.d/x.list
-          apt-get update -qq >/dev/null 2>&1
-          echo "## cosmic (trixie + backports)"
-          apt-cache search --names-only '^cosmic|libcosmic|xdg-desktop-portal-cosmic' | head -30
-          echo "## dde / deepin names"
-          apt-cache search --names-only '^(dde|startdde|deepin-kwin|deepin-wm|treeland|dtk)' | cut -d' ' -f1 | tr '\n' ' '; echo
-          for p in startdde dde-session dde-session-shell dde-session-ui dde-dock dde-launcher dde-shell dde-control-center dde-daemon deepin-kwin dde-kwin dde-file-manager dde-qt5integration dde-application-manager dde-polkit-agent deepin-desktop-base deepin-desktop-environment treeland; do
-            printf '%s: %s\n' "$p" "$(apt-cache policy $p 2>/dev/null | sed -n 's/^ *Candidate: //p')"
-          done
-          before=$(dpkg-query -W -f '${Installed-Size}\n' | awk '{s+=$1} END {print int(s/1024)}')
-          cand=""; for p in startdde dde-session dde-session-shell dde-session-ui dde-dock dde-launcher dde-shell dde-control-center dde-daemon deepin-kwin dde-application-manager dde-polkit-agent; do
-            [ -n "$(apt-cache policy $p 2>/dev/null | sed -n 's/^ *Candidate: //p' | grep -v none)" ] && cand="$cand $p"; done
-          echo "installing:$cand"
-          apt-get install -y -qq --no-install-recommends $cand >/tmp/i.log 2>&1; echo "install rc=$?"; grep -E '^E:|broken|unmet' /tmp/i.log | head -8
-          after=$(dpkg-query -W -f '${Installed-Size}\n' | awk '{s+=$1} END {print int(s/1024)}')
-          echo "deepin adds $((after-before)) MB installed"
-          ls /usr/share/xsessions /usr/share/wayland-sessions 2>/dev/null
-          cat /usr/share/xsessions/*deepin* 2>/dev/null | grep -E '^(Exec|TryExec)'
-          for b in startdde dde-dock dde-launcher dde-shell kwin_x11 deepin-kwin_x11 dde-session dde-control-center dde-lock; do printf '%s ' "$b"; command -v $b || echo missing; done
-          dpkg -l | awk '/^ii/ && ($2 ~ /^(dde|startdde|deepin|dtk|libdtk)/) {print $2, $3}' | head -40
-          EOF
-          docker run --rm -v /tmp/p.sh:/p.sh:ro docker.io/library/debian:trixie bash /p.sh 2>&1 | tee /tmp/out.txt
-          split -l 25 /tmp/out.txt /tmp/chunk.
-          for c in /tmp/chunk.*; do echo "::notice title=peppermint $(basename $c)::$(sed 's/%/%25/g' $c | tr '\n' '|' )"; done
