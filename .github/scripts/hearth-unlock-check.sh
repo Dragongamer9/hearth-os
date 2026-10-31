@@ -49,7 +49,8 @@ if [ "$MODE" = plain ]; then
 else
   # what tmpfiles.d makes at boot on a device
   ic 'mkdir -p /var/lib /var/cache/apt/archives/partial /var/lib/apt/lists/partial /var/log/apt /var/tmp
-      ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg'
+      ln -sfn /usr/lib/sysimage/dpkg /var/lib/dpkg
+      systemd-tmpfiles --create --prefix=/var/cache/debconf >/dev/null 2>&1 || true'
   for f in /usr/bin/hearth-unlock /etc/apt/apt.conf.d/50-hearth-unlock /etc/dpkg/dpkg.cfg.d/hearth-unlock \
            /etc/apt/preferences.d/hearth-boot-chain /usr/share/hearth/apt-baseline.list /usr/lib/sysimage/apt/extended_states \
            /usr/lib/systemd/system/hearth-unlock.service; do
@@ -204,8 +205,8 @@ if [ "$MODE" = image ]; then
       [ "$(readlink /tmp/g/early/display-manager.service)" = /usr/lib/systemd/system/sddm.service ] && [ -e /usr/lib/systemd/system/sddm.service ] && grep -q "^ExecStartPre=$" /tmp/g/early/sddm.service.d/50-hearth-etc-guard.conf' \
     && ok "a display manager that isn't there (gdm3 from the layer): Hearth's SDDM starts instead" || err "the /etc guard didn't bring back Hearth's display manager"
   ic 'systemctl is-enabled nimbus-autologin.service >/dev/null' && ok "Hearth's autologin is on (the session SDDM starts)" || err "nimbus-autologin isn't enabled"
-  ic 'mkdir -p /var/cache && systemd-tmpfiles --create --prefix=/var/cache/debconf >/dev/null 2>&1; grep -A4 "^Name: shared/default-x-display-manager" /var/cache/debconf/config.dat | grep -q "^Value: sddm"' \
-    && ok "debconf's display manager is SDDM (copied at the first start)" || err "debconf's shared/default-x-display-manager isn't sddm"
+  ic 'grep -A4 "^Name: shared/default-x-display-manager" /var/cache/debconf/config.dat | grep -q "^Value: sddm"' \
+    && ok "debconf's display manager is SDDM (copied at the first start)" || err "debconf's shared/default-x-display-manager isn't sddm: $(ic 'ls -la /var/cache/debconf /usr/share/hearth/debconf 2>&1; grep -A4 "^Name: shared/default-x-display-manager" /usr/share/hearth/debconf/config.dat' | tr '\n' ' ' | cut -c1-400)"
   U "$A" 'apt-get install -y -qq xdm >/tmp/xdm.log 2>&1' || echo "::warning title=hearth-unlock::installing xdm failed: $(ic 'tail -2 /tmp/xdm.log' | tr '\n' ' ')"
   U "$A" '[ "$(cat /etc/X11/default-display-manager)" = /usr/bin/sddm ] && [ "$(readlink -f /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service ]' \
     && ok "installing another display manager (xdm) leaves Hearth's in place" || err "installing xdm took over the display manager: $(ic 'cat /etc/X11/default-display-manager; readlink /etc/systemd/system/display-manager.service' | tr '\n' ' ')"
