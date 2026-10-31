@@ -574,6 +574,46 @@ class PlasmaTest(unittest.TestCase):
         pad.command({'cmd': 'window', 'cls': 'org.kde.krunner', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 50.5})
         self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
 
+    def test_hearth_apps_like_mantels(self):
+        pad, out = self.make()
+        def win(cls):
+            pad.command({'cmd': 'window', 'cls': cls, 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+            out.log.clear()
+        def downs():
+            return [n for n, d in out.log if d]
+        win('org.kde.kate')
+        self.assertTrue(pad.keys_ctx)
+        press(pad, 'rb', 1.0); press(pad, 'rt', 1.1); press(pad, 'y', 1.2); press(pad, 'x', 1.3); press(pad, 'a', 1.4)
+        self.assertEqual(downs(), ['KEY_LEFTCTRL', 'KEY_PAGEDOWN', 'KEY_PAGEDOWN', 'KEY_LEFTCTRL', 'KEY_F', 'KEY_COMPOSE', 'KEY_ENTER'])
+        win('org.kde.okular')
+        press(pad, 'lb', 2.0); press(pad, 'lt', 2.1)
+        self.assertEqual(downs(), ['KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB', 'KEY_PAGEUP'])
+        # Hearth Files (Dolphin) does LB / RB, LT / RT and View itself; Y is its filter (search).
+        win('org.kde.dolphin')
+        press(pad, 'lb', 3.0); press(pad, 'rt', 3.1); press(pad, 'view', 3.2, 0.1)
+        self.assertEqual(out.log, [])
+        self.assertNotIn({'t': 'help'}, out.sent)
+        press(pad, 'y', 3.5)
+        self.assertEqual(downs(), ['KEY_LEFTCTRL', 'KEY_I'])
+        # Konsole: the keyboard opens when the controller brings it up, Y opens it again, LB / RB tabs.
+        press(pad, 'a', 10.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.konsole', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 10.5})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        out.log.clear(); out.sent.clear()
+        press(pad, 'y', 11.0); press(pad, 'rb', 11.1)
+        self.assertEqual(out.sent, [{'t': 'osk', 'open': True}])
+        self.assertEqual(downs(), ['KEY_LEFTSHIFT', 'KEY_RIGHT'])
+        win('org.kde.kcalc')
+        press(pad, 'y', 12.0)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        # View + B still closes any of them.
+        pad.button('view', True, 13.0); press(pad, 'b', 13.1); pad.button('view', False, 13.2)
+        self.assertEqual(downs()[-2:], ['KEY_LEFTALT', 'KEY_F4'])
+        for app in hp.PLASMA_APPS.values():
+            for act in app.values():
+                if isinstance(act, tuple):
+                    self.assertTrue(set(act) <= set(hp.KEYS_USED), act)
+
     def test_plasma_commands_ignored_elsewhere(self):
         out = Out()
         pad = hp.Pad(out)                                # Hearth Classic

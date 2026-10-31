@@ -9,11 +9,14 @@ calls hearth-pad's own org.hearth.Pad Probe (the cursor position and the window 
 
 Checks: the right stick moves the pointer; View shows the controls; Guide + X asks for the keyboard; Menu opens
 Plasma's launcher; the D-pad moves in it and A starts the app picked; the Hearth menu (Guide, D-pad, A) opens Hearth
-Quick Access and B closes it; View + B closes a window. Each is a ::notice:: (passed) or ::error:: (failed) line;
+Quick Access and B closes it; View + B closes a window; then each KDE-based Hearth app that's installed (Hearth Files
+from Dolphin, Konsole, Kate, Okular, KCalc, Spectacle) comes to the front with the controller as keys (hearth-pad's
+per-app mapping), Y does its thing (search / the keyboard), and View + B closes it. Each is a ::notice:: (passed) or ::error:: (failed) line;
 the exit code is the number that failed. Pictures: OUT_DIR/pad-*.png.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -268,6 +271,52 @@ def main():
         closed = False
         win.kill()
     check('View + B closes the window', closed, 'in front before: %r' % pw)
+
+    # Hearth Plasma's own apps, like Mantel's: the controller as keys in each, Y, then View + B closes it.
+    apps = [('Hearth Files (Dolphin)', 'dolphin', ['dolphin', os.environ.get('HOME', '/tmp')]), ('Terminal (Konsole)', 'konsole', ['konsole']),
+            ('Text (Kate)', 'kate', ['kate', '-n']), ('Reader (Okular)', 'okular', ['okular']),
+            ('Calculator (KCalc)', 'kcalc', ['kcalc']), ('Capture (Spectacle)', 'spectacle', ['spectacle', '-f'])]
+    pad_log = os.path.join(os.environ.get('HOME', '/tmp'), '.local', 'share', 'nimbus', 'pad.log')
+    for label, name, argv in apps:
+        if not shutil.which(argv[0]):
+            log('::notice title=Controller: %s::not installed here, skipped' % label)
+            continue
+        press('down', 0.2)                 # the controller was just used (Konsole opens the keyboard then)
+        s = mark()
+        app = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(8)
+        pa = probe()
+        front = bool(pa) and name in pa.get('cls', '').lower()
+        try:
+            with open(pad_log, errors='replace') as f:
+                tail = f.read()[-4000:]
+        except OSError:
+            tail = ''
+        keys = any(name in l.lower() and l.rstrip().endswith('keys') for l in tail.splitlines() if 'in front:' in l)
+        shot('app-%s-1' % name)
+        press('down', 0.3)
+        press('down', 0.3)
+        press('y', 1.2)
+        shot('app-%s-2' % name)
+        osk_ok = True
+        if name in ('konsole', 'kcalc'):
+            osk_ok = bool(wait_event(lambda m: m.get('t') == 'osk' and m.get('open'), 1, s))
+        press('b', 0.5)
+        chord('view', 'b', 0.5)
+        try:
+            app.wait(8)
+            closed = True
+        except subprocess.TimeoutExpired:
+            chord('view', 'b', 0.5)
+            try:
+                app.wait(4)
+                closed = True
+            except subprocess.TimeoutExpired:
+                closed = False
+                app.kill()
+        check('%s with the controller' % label, front and keys and osk_ok and closed,
+              'in front: %r, keys: %s, keyboard: %s, closed with View + B: %s' % (pa and pa.get('cls'), keys, osk_ok, closed))
+        time.sleep(1)
 
 
 try:

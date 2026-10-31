@@ -116,7 +116,27 @@ PLASMA_KEY_OVERLAYS = ('panel', 'overview', 'quick', 'clipboard')
 PLASMA_SHELL = ('plasmashell', 'org.kde.plasmashell')
 PLASMA_KEY_APPS = ('krunner', 'org.kde.krunner', 'dolphin', 'org.kde.dolphin', 'systemsettings',
                    'org.kde.systemsettings', 'kscreenlocker_greet', 'org.kde.kscreenlocker_greet')
-PLASMA_SEARCH = ('krunner', 'org.kde.krunner')
+PLASMA_SEARCH = ('krunner', 'org.kde.krunner', 'konsole', 'org.kde.konsole')   # open the keyboard when they come up
+# Hearth Plasma's own apps (the KDE-based Hearth Files, Terminal, Text, Reader, Capture, Calculator), like Mantel's: D-pad
+# moves, A opens, B back, X the context menu, Y search, LB / RB tabs, LT / RT scroll. Only what differs from that per
+# app; None: the app does it itself (Hearth Files from Dolphin reads the controller for those: hearthgamepad.cpp),
+# 'osk': the on-screen keyboard. The window class without "org.kde.".
+PLASMA_APPS = {
+    'dolphin': {'y': ('KEY_LEFTCTRL', 'KEY_I'), 'lb': None, 'rb': None, 'lt': None, 'rt': None, 'view': None},
+    'konsole': {'y': 'osk', 'lb': ('KEY_LEFTSHIFT', 'KEY_LEFT'), 'rb': ('KEY_LEFTSHIFT', 'KEY_RIGHT'),
+                'lt': ('KEY_LEFTSHIFT', 'KEY_PAGEUP'), 'rt': ('KEY_LEFTSHIFT', 'KEY_PAGEDOWN')},
+    'kate': {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
+             'lt': ('KEY_PAGEUP',), 'rt': ('KEY_PAGEDOWN',)},
+    'okular': {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'lb': ('KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB'), 'rb': ('KEY_LEFTCTRL', 'KEY_TAB'),
+               'lt': ('KEY_PAGEUP',), 'rt': ('KEY_PAGEDOWN',)},
+    'spectacle': {'y': ('KEY_LEFTCTRL', 'KEY_N'), 'lt': ('KEY_PAGEUP',), 'rt': ('KEY_PAGEDOWN',)},
+    'kcalc': {'y': 'osk'},
+}
+
+
+def plasma_app(cls):
+    c = (cls or '').lower()
+    return PLASMA_APPS.get(c[len('org.kde.'):] if c.startswith('org.kde.') else c)
 PLASMA_OSK_RECENT = 8.0      # s: a text field opens the keyboard by itself only this soon after the controller was used
 
 
@@ -126,7 +146,7 @@ def plasma_keys_context(cls, kind):
     c = (cls or '').lower()
     if c in PLASMA_SHELL:
         return kind not in ('desktop', 'none', '')
-    return c in PLASMA_KEY_APPS
+    return c in PLASMA_KEY_APPS or plasma_app(c) is not None
 
 
 def curve(v):
@@ -537,6 +557,15 @@ class Pad:
             return
         if not self.keys_ctx:
             return self.desk_button(name, down, now)
+        app = None if self.key_overlay else plasma_app(self.win[0])
+        if app is not None and name in app:
+            act = app[name]
+            if act == 'osk':
+                if down:
+                    self.want_osk()
+            elif act is not None and down:
+                self.tap(*act)
+            return
         # A menu, the taskbar or a keyboard app has the keys; the triggers still click where the pointer is,
         # LB / RB still switch windows and View still shows the controls.
         if name == 'rt':

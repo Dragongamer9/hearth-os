@@ -124,6 +124,8 @@ its own and, once at start, runs `desktop/plasma/kwin-report.js` through KWin's 
 front. Plasma's popups, its taskbar, KRunner, Dolphin, System Settings and the lock screen take the controller as keys;
 the desktop itself doesn't (A clicks its icons).
 
+**Hearth's KDE-based apps** (Hearth Files, Terminal, Text, Reader, Capture, Calculator) get a mapping each, like Mantel's versions: see docs/KDE-APPS.md.
+
 **Hearth's widgets with the D-pad.** Hearth Launcher: the search field, down into the grid, down again to Settings,
 Game Mode and the power buttons (left/right along them, up back). Hearth Quick Access: the D-pad moves between the
 controls (a slider keeps left/right for its value), A presses. Game Mode on the taskbar: A when the taskbar has the

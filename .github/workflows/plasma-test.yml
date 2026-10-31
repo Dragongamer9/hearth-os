@@ -42,6 +42,8 @@ jobs:
             qt6-qtdeclarative-devel kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers >/dev/null
           dnf -y install --skip-unavailable spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools kactivitymanagerd labwc grim wlr-randr >/dev/null || true
           dnf -y install --skip-unavailable python3-evdev python3-gobject kmod systemd-udev libinput >/dev/null || true
+          # Hearth Plasma's KDE-based apps (Hearth Files, Terminal, Text, Reader, Calculator, Capture) for the controller check.
+          dnf -y install --skip-unavailable --setopt=install_weak_deps=False dolphin konsole kate okular kcalc >/dev/null || true
           for b in kwin_wayland plasmashell kpackagetool6; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
           plasmashell --version || true
 
@@ -103,7 +105,7 @@ jobs:
 
       - name: Draw Hearth Plasma
         if: always()
-        timeout-minutes: 10
+        timeout-minutes: 18
         shell: bash
         run: |
           set +e +o pipefail
@@ -218,7 +220,7 @@ jobs:
           timeout 20 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt
           SH
           sed -i 's/^          //' /tmp/padshot.sh
-          timeout 240 python3 tools/e2e-plasma-pad.py /usr/share/nimbus/desktop/shell/hearth-pad shots 'bash /tmp/padshot.sh "$1"' > shots/pad-e2e.log 2>&1
+          timeout 480 python3 tools/e2e-plasma-pad.py /usr/share/nimbus/desktop/shell/hearth-pad shots 'bash /tmp/padshot.sh "$1"' > shots/pad-e2e.log 2>&1
           pad_rc=$?
           grep -E '^::(notice|error)' shots/pad-e2e.log
           cp "$HOME/.local/share/nimbus/pad.log" shots/pad.log 2>/dev/null
@@ -250,7 +252,7 @@ jobs:
           mkdir -p shots/classic shots/compare
           for b in ci/desktop-shots-bughunt ci/desktop-shots; do
             git fetch -q --depth 1 origin "$b" 2>/dev/null || continue
-            for f in 1-desktop 2-quick-access 4-launcher; do git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"; done
+            for f in 1-desktop 2-quick-access 4-launcher files-1-icons; do git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"; done
             ls shots/classic/*.png >/dev/null 2>&1 && { echo "Hearth Classic pictures from $b"; break; }
           done
           pair() {
@@ -261,6 +263,7 @@ jobs:
           pair 1-desktop plasma-1-desktop desktop
           pair 2-quick-access plasma-2-quicksettings quick-access
           pair 4-launcher plasma-4-launcher launcher
+          pair files-1-icons app-dolphin-1 files
           printf '# Hearth Classic (left) and Hearth Plasma (right)\n\n' > shots/README.md
           for f in shots/compare/*.png; do [ -f "$f" ] && printf '## %s\n\n![%s](compare/%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> shots/README.md; done
           printf '## Hearth Plasma with a controller (tools/e2e-plasma-pad.py)\n\n' >> shots/README.md
