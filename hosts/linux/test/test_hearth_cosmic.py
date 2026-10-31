@@ -308,6 +308,12 @@ class CosmicPadKeys(unittest.TestCase):
         self.press('a')
         self.assertEqual(self.out.combos()[-1], 'KEY_ENTER')
 
+    def test_b_in_menus_also_asks_the_shell(self):
+        self.pad.command({'cmd': 'keys', 'on': True})
+        self.press('b')
+        self.assertEqual(self.out.combos()[-1], 'KEY_ESC')
+        self.assertIn(('send', {'t': 'back'}), self.out.ev)
+
     def test_paused_by_fullscreen_game(self):
         self.pad.command({'cmd': 'pause', 'on': True})
         self.press('a', 'b', 'rb')

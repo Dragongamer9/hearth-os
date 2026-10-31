@@ -678,6 +678,13 @@ class CosmicPad(Pad):
             return self.tap('KEY_LEFTMETA', 'KEY_Q')
         super().command(m)
 
+    def keys_button(self, name, down):
+        """Hearth's menus are open: as in Hearth Classic, and B also tells the shell (back), which closes the menu
+        itself if COSMIC didn't hand it the Esc (a menu that came up without the keyboard focus can't trap you)."""
+        super().keys_button(name, down)
+        if name == 'b' and down:
+            self.out.send({'t': 'back'})
+
     def switch_window(self, name, now):
         if not self.alt_until:
             self.out.press('KEY_LEFTALT', True)

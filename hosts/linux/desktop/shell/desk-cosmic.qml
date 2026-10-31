@@ -123,6 +123,21 @@ ShellRoot {
             case "help": helpWin.toggle(); break;
             case "toast": helpWin.toast(m.text); break;
             case "mouse": mouseOn = m.on; break;
+            case "back": backCheck.snap = pad.menuState(); backCheck.restart(); break;
+            }
+        }
+        // B in one of Hearth's menus: hearth-pad types Esc, which the menu handles itself. If nothing changed shortly
+        // after (COSMIC gave the menu no keyboard focus), the same step back is done here.
+        function menuState() { return [launcherWin.shown, launcherWin.folderOpen, quickWin.shown, hub.shown].join(); }
+        Timer {
+            id: backCheck
+            property string snap: ""
+            interval: 300
+            onTriggered: {
+                if (pad.menuState() !== snap) return;
+                if (hub.shown) hub.shown = false;
+                else if (quickWin.shown) quickWin.shown = false;
+                else if (launcherWin.shown) { if (launcherWin.folderOpen) launcherWin.closeFolder(); else launcherWin.shown = false; }
             }
         }
 
