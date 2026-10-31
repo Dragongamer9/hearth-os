@@ -20,6 +20,8 @@ pub mod mods;
 pub mod nexus;
 pub mod downloads;
 pub mod wabbajack;
+pub mod guided;
+pub mod accounts;
 pub mod games;
 pub mod browse;
 #[cfg(target_os = "linux")]

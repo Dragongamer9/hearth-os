@@ -45,7 +45,7 @@ input.inp.mono { font-family:ui-monospace, monospace; }
   <header>
     <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7l8-4 8 4-8 4z"/><path d="M4 12l8 4 8-4M4 17l8 4 8-4"/></svg>Mods</h1>
     <span class="sub" id="sub"></span>
-    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="games">Games</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="modlists">Modlists</button><button class="tab f" data-tab="nexus">Nexus account</button><span class="lbrb">RB</span></div>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="games">Games</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="modlists">Modlists</button><button class="tab f" data-tab="accounts">Accounts</button><span class="lbrb">RB</span></div>
   </header>
   <main id="main" class="split"></main>
   <footer id="foot"></footer>
@@ -55,8 +55,8 @@ input.inp.mono { font-family:ui-monospace, monospace; }
 <script>
 'use strict';
 const { $, esc, human, when } = KIT;
-const S = { games: [], sel: null, sum: null, loading: true, info: {}, tab: 'games', acct: undefined, dls: { items: [], active: 0, quota: {} }, engine: null, gallery: null, galleryErr: '', jobs: [], filter: 'all', nsfw: false };
-const TABS = ['games', 'downloads', 'modlists', 'nexus'];
+const S = { games: [], sel: null, sum: null, loading: true, info: {}, tab: 'games', acct: undefined, dls: { items: [], active: 0, quota: {} }, engine: null, gallery: null, galleryErr: '', jobs: [], filter: 'all', nsfw: false, accts: [] };
+const TABS = ['games', 'downloads', 'modlists', 'accounts'];
 const SRC = { steam: 'Steam', epic: 'Epic', gog: 'GOG', manual: 'Your game', beacon: 'Beacon', 'heroic-epic': 'Heroic (Epic)', 'heroic-gog': 'Heroic (GOG)' };
 const game = id => S.games.find(g => g.id === id);
 
@@ -86,9 +86,9 @@ function render() {
   const focusKey = document.activeElement?.dataset?.key;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
   if (S.tab !== 'games') {
-    $('#sub').textContent = S.tab === 'downloads' ? (S.dls.active ? `${S.dls.active} downloading` : '') : S.tab === 'nexus' ? (S.acct ? S.acct.name : '') : '';
+    $('#sub').textContent = S.tab === 'downloads' ? (S.dls.active ? `${S.dls.active} downloading` : '') : S.tab === 'accounts' ? `${(S.acct ? 1 : 0) + S.accts.filter(a => a.signedIn).length} signed in` : '';
     $('#main').className = '';
-    $('#main').innerHTML = S.tab === 'downloads' ? downloadsView() : S.tab === 'modlists' ? modlistsView() : nexusView();
+    $('#main').innerHTML = S.tab === 'downloads' ? downloadsView() : S.tab === 'modlists' ? modlistsView() : accountsView();
     footer();
     const back = focusKey && document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
     if (back) back.focus({ preventScroll: true });
@@ -149,15 +149,16 @@ document.addEventListener('click', e => {
 });
 KIT.onBack = () => { if (S.tab !== 'games') return KIT.focusFirst(`.tab[data-tab="${S.tab}"]`); if (!document.activeElement?.dataset?.game) KIT.focusFirst('.item.sel'); };
 KIT.onX = () => {
+  if (KIT.dialogOpen() && document.querySelector('[data-g="file"]')) return document.querySelector('[data-g="file"]').click();
   if (S.tab === 'downloads') { const id = document.activeElement?.dataset?.dl; const d = id && S.dls.items.find(x => x.id === id); if (d) act(['downloading', 'queued'].includes(d.state) ? 'dlPause' : 'dlResume', document.activeElement); return; }
   if (S.tab !== 'games') return;
   const id = document.activeElement?.dataset?.mod; if (id) { const m = S.sum.mods.find(x => x.id === id); toggle(m, !m.enabled); } };
-KIT.onY = () => { if (S.tab === 'downloads') return pasteLink(); if (S.tab === 'games' && game(S.sel) && !game(S.sel).beacon) addMod(); };
+KIT.onY = () => { if (KIT.dialogOpen() && document.querySelector('[data-g="skip"]')) return document.querySelector('[data-g="skip"]').click(); if (S.tab === 'downloads') return pasteLink(); if (S.tab === 'games' && game(S.sel) && !game(S.sel).beacon) addMod(); };
 KIT.onTab = d => setTab(TABS[(TABS.indexOf(S.tab) + d + TABS.length) % TABS.length]);
 function setTab(t) {
   S.tab = t; render(); KIT.focusFirst(`.tab[data-tab="${t}"]`);
   if (t === 'downloads') refreshDownloads();
-  if (t === 'nexus' && S.acct === undefined) loadAccount();
+  if (t === 'accounts') { if (S.acct === undefined) loadAccount(); loadAccounts(); }
   if (t === 'modlists') loadModlists();
 }
 
@@ -276,7 +277,7 @@ async function nexusGet() {
   if (domain) items.push({ id: 'pick', label: `Nexus game: ${domain}`, sub: 'Change which Nexus game this is' });
   const a = await KIT.choose(`${g.title} on Nexus Mods`, items);
   if (a === 'site') return openUrl(`https://www.nexusmods.com/${domain}/mods/`);
-  if (a === 'signin') return setTab('nexus');
+  if (a === 'signin') return setTab('accounts');
   if (a === 'url') return premiumPick(g);
   if (a === 'pick') {
     const v = await ask('Nexus game', 'The name in its Nexus address: nexusmods.com/<b>this part</b>/mods', domain);
@@ -292,6 +293,64 @@ function ask(title, note, value = '', mono = false) {
     $('#kit-layer').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; const v = $('#askv').value; $('#kit-layer').onclick = null; KIT.close(); res(b.dataset.k === 'ok' ? v : null); };
   });
 }
+function askSecret(title, note) {
+  return new Promise(res => {
+    KIT.dialog(`<h2>${esc(title)}</h2>${note ? `<p class="msg small">${esc(note)}</p>` : ''}<div class="field"><input class="inp f" id="asks" type="password" data-osk maxlength="400" spellcheck="false" autocomplete="off" data-autofocus></div>
+      <div class="row"><button class="btn f" data-k="no">Cancel</button><button class="btn primary f" data-k="ok">OK</button></div>`, { wide: true, onBack: () => { $('#kit-layer').onclick = null; KIT.close(); res(null); } });
+    $('#kit-layer').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; const v = $('#asks').value; $('#asks').value = ''; $('#kit-layer').onclick = null; KIT.close(); res(b.dataset.k === 'ok' ? v : null); };
+  });
+}
+
+// The guided flow: one file at a time in Hearth Browser. Hearth opens the file's page, you press Download there, the
+// app checks what lands in Downloads against the list and opens the next page by itself. A (Open again), X (I have it:
+// choose the file), Y (Skip for now), B (Stop).
+async function guideFlow(jobId) {
+  let shown = null, alive = true, gen = 0;
+  const stop = () => { alive = false; $('#kit-layer').onclick = null; KIT.close(); refreshJobs(); };
+  const draw = (j, g) => {
+    const m = g.item;
+    KIT.dialog(`<h2 id="gl">${esc(g.label)}</h2><div class="prog"><i id="gp" style="width:${(g.done / g.total * 100).toFixed(1)}%"></i></div>
+      <p class="msg" style="margin:.7em 0 .2em"><b>${esc(m.modName || m.fileName)}</b></p>
+      <p class="msg small" style="margin:0">${esc(m.fileName)} · ${esc(human(m.size))}${m.site ? ` · ${esc(m.site)}` : ''}</p>
+      <p class="msg small">The page is open in Hearth Browser: press <b>Download</b> for this file (sign in there first if the site asks). Hearth checks it and opens the next one by itself.</p>
+      <p class="warn small" id="gw">${esc(m.problem || '')}</p>
+      <div class="row"><button class="btn f" data-g="stop">Stop</button><button class="btn f" data-g="skip">Skip for now</button><button class="btn f" data-g="file">I have it: choose the file…</button><button class="btn primary f" data-g="open" data-autofocus>Open the page again</button></div>`,
+      { wide: true, onBack: stop });
+    $('#kit-layer').onclick = async e => {
+      const b = e.target.closest('[data-g]'); if (!b) return;
+      const k = b.dataset.g;
+      if (k === 'stop') return stop();
+      if (k === 'open') return KIT.invoke('open_page', { url: m.url }).catch(err => KIT.toast(KIT.err(err)));
+      if (k === 'skip') { await KIT.invoke('wj_guide_skip', { id: jobId, file: m.fileName }); shown = null; return poll(true, ++gen); }
+      if (k === 'file') {
+        gen++;
+        const p = await pick({ title: `Choose ${m.fileName}` });
+        if (p) { try { await KIT.invoke('wj_manual_file', { id: jobId, file: m.fileName, path: p }); } catch (err) { KIT.toast(KIT.err(err)); } }
+        shown = null; return poll(true, ++gen);
+      }
+    };
+  };
+  const poll = async (now, my) => {
+    if (!alive || my !== gen) return;
+    try { S.jobs = await KIT.invoke('wj_jobs'); } catch (e) {}
+    const j = S.jobs.find(x => x.id === jobId), g = j && j.guide;
+    if (!g || !g.item) { alive = false; $('#kit-layer').onclick = null; KIT.close(); KIT.toast(g ? 'All the files are here. The install carries on by itself.' : 'Nothing left to fetch.'); return refreshJobs(); }
+    if (shown !== g.item.fileName) {
+      if (shown !== null && !now) KIT.toast('Got it. Opening the next one');
+      shown = g.item.fileName;
+      draw(j, g);
+      KIT.invoke('open_page', { url: g.item.url }).catch(err => KIT.toast(KIT.err(err)));
+    } else {
+      const gl = $('#gl'), gp = $('#gp'), gw = $('#gw');
+      if (gl) gl.textContent = g.label;
+      if (gp) gp.style.width = `${(g.done / g.total * 100).toFixed(1)}%`;
+      if (gw) gw.textContent = g.item.problem || '';
+    }
+    setTimeout(() => poll(false, my), 1500);
+  };
+  poll(true, gen);
+}
+
 function openUrl(url) { return KIT.invoke('open_url', { url }).then(() => KIT.toast('Opening the page…')).catch(e => KIT.alert('Couldn\'t open it', esc(KIT.err(e)), false)); }
 async function premiumPick(g) {
   const url = await ask('Download from Nexus Mods', 'Paste the mod page\'s address.', '', true);
@@ -378,20 +437,51 @@ async function installDownload(x) {
 }
 
 // ---------------------------------------------------------------- Nexus account
-async function loadAccount() { try { S.acct = await KIT.invoke('nexus_account'); } catch (e) { S.acct = null; } if (S.tab === 'nexus') render(); }
+async function loadAccount() { try { S.acct = await KIT.invoke('nexus_account'); } catch (e) { S.acct = null; } if (S.tab === 'accounts') render(); }
+// ---------------------------------------------------------------- LoversLab, MEGA, Google (accounts.rs)
+let acctTimer = 0;
+async function loadAccounts() {
+  clearTimeout(acctTimer);
+  try { S.accts = await KIT.invoke('accounts_list'); } catch (e) {}
+  if (S.tab === 'accounts' && !KIT.dialogOpen()) render();
+  if (S.accts.some(a => a.pending === 'waiting')) acctTimer = setTimeout(loadAccounts, 1500);
+}
+const ACCT_TEXT = {
+  loverslab: 'Modlists with LoversLab files download them by themselves once you\'re signed in.',
+  mega: 'MEGA files already download without an account, within MEGA\'s free transfer limit; signed in, your account\'s limit applies.',
+  google: 'Google Drive files download without an account until Google says “quota exceeded”; signed in, Hearth then downloads them with your account.',
+};
+function acctPanel(a) {
+  const wait = a.pending === 'waiting';
+  const err = a.pending && !wait ? `<p class="warn small">${esc(a.pending)}</p>` : '';
+  let body;
+  if (a.signedIn) body = `<p class="msg"><span class="badge good">Signed in</span> ${esc(a.who || '')}${a.since ? ` · since ${esc(when(a.since))}` : ''}</p>
+      <div class="acts"><button class="btn danger f" data-key="ao:${a.id}" data-act="acctOut" data-p="${a.id}">Sign out</button></div>`;
+  else if (!a.registered) body = `<p class="msg small"><span class="badge muted">Not available yet</span> Hearth isn't registered with ${esc(a.name)} yet, so it can't sign in there. Until then Hearth opens each file's page in Hearth Browser for you to press Download, and carries on by itself.</p>`;
+  else if (a.id === 'mega') body = `<p class="msg small">Hearth keeps only MEGA's login for the engine (never your password). Accounts with two-step sign-in can't be used by the engine.</p>
+      <div class="acts"><button class="btn primary f" data-key="ai:mega" data-act="megaIn">Sign in to MEGA…</button></div>`;
+  else body = `<p class="msg small">${wait ? 'Finish signing in in the browser window that opened…' : `Sign in yourself in the browser window that opens; ${esc(a.name)} sends you back to Hearth.`}</p>
+      <div class="acts"><button class="btn primary f" data-key="ai:${a.id}" data-act="acctBegin" data-p="${a.id}" ${wait ? 'disabled' : ''}>${wait ? 'Waiting for the browser…' : `Sign in to ${esc(a.name)}…`}</button></div>`;
+  return `<div class="panel"><h2>${esc(a.name)}</h2><p class="msg small" style="margin:.2em 0 .5em">${ACCT_TEXT[a.id] || ''}</p>${err}${body}</div>`;
+}
+function accountsView() {
+  const nx = nexusView();
+  const others = S.accts.map(acctPanel).join('');
+  return `<section class="one"><div class="scroll"><div style="display:grid;gap:.8em">${nx}${others}<p class="msg small">Sign-ins stay on this PC, readable by you only, and go only to their own site and the Wabbajack engine.</p></div></div></section>`;
+}
 function nexusView() {
   const a = S.acct;
-  if (a === undefined) return '<div class="empty" style="grid-column:1/-1">Reading…</div>';
-  if (!a) return `<section class="one"><div class="panel"><h2>Sign in to Nexus Mods</h2>
+  if (a === undefined) return '<div class="panel"><h2>Nexus Mods</h2><p class="msg">Reading…</p></div>';
+  if (!a) return `<div class="panel"><h2>Sign in to Nexus Mods</h2>
       <p class="msg">Hearth Mods signs in with your own Nexus Mods API key. It stays on this PC (only you can read it) and is only sent to Nexus Mods.</p>
       <ol class="msg small"><li>Open your API key page (sign in to Nexus Mods there).</li><li>At the bottom, under <b>Personal API Key</b>, press Request (or copy the key you have).</li><li>Paste it here.</li></ol>
       <div class="acts"><button class="btn f" data-key="kp" data-act="keyPage">Open my API key page</button><button class="btn primary f" data-key="ki" data-act="keyIn" data-autofocus>Paste my key…</button></div>
-      <p class="msg small" style="margin-top:.8em">With a <b>free</b> account, each file is downloaded by pressing <b>Mod Manager Download</b> on the site (Nexus' rule). With <b>Premium</b>, Hearth can download files by itself, which also makes Wabbajack modlists install without clicking.</p></div></section>`;
+      <p class="msg small" style="margin-top:.8em">With a <b>free</b> account, each file is downloaded by pressing <b>Mod Manager Download</b> on the site (Nexus' rule). With <b>Premium</b>, Hearth can download files by itself, which also makes Wabbajack modlists install without clicking.</p></div>`;
   const q = S.dls.quota || {};
-  return `<section class="one"><div class="panel"><h2>${esc(a.name)}</h2>
+  return `<div class="panel"><h2>Nexus Mods · ${esc(a.name)}</h2>
       <p class="msg">${a.premium ? '<span class="badge good">Premium</span> Hearth downloads files by itself, and Wabbajack modlists install without clicking.' : '<span class="badge muted">Free account</span> Files come by pressing “Mod Manager Download” on the site; a Wabbajack modlist lists each file to press it for.'}</p>
       <p class="msg small">Checked ${esc(when(a.checked))}${q.hourly != null ? ` · ${q.hourly} requests left this hour, ${q.daily} today` : ''}</p>
-      <div class="acts"><button class="btn f" data-key="nr" data-act="nexusRefresh">Check again</button><button class="btn f" data-key="ns" data-act="nexusSite">Open Nexus Mods</button><button class="btn danger f" data-key="no" data-act="nexusOut">Sign out</button></div></div></section>`;
+      <div class="acts"><button class="btn f" data-key="nr" data-act="nexusRefresh">Check again</button><button class="btn f" data-key="ns" data-act="nexusSite">Open Nexus Mods</button><button class="btn danger f" data-key="no" data-act="nexusOut">Sign out</button></div></div>`;
 }
 
 // ---------------------------------------------------------------- Modlists (Wabbajack)
@@ -421,8 +511,9 @@ function jobView(j) {
     ${live ? `<div class="msg small">${esc(j.phase)}${j.count ? ` · ${j.count[0]} of ${j.count[1]}` : ''}</div><div class="prog ${pct == null ? 'spin' : ''}"><i ${pct != null ? `style="width:${pct.toFixed(1)}%"` : ''}></i></div><div class="status">${esc(j.status)}</div>` : ''}
     ${j.error ? `<p class="warn small" style="margin:0">${esc(j.error)}</p>` : ''}${j.premiumNeeded && !S.acct?.premium ? '<p class="msg small" style="margin:0">Free Nexus account: the files below need “Mod Manager Download” pressed for each.</p>' : ''}
     ${(j.notes || []).map(n => `<p class="msg small" style="margin:0">${esc(n)}</p>`).join('')}
-    ${j.state === 'manual' && needs.length ? `<div><p class="msg small" style="margin:.2em 0">${needs.length} file${needs.length === 1 ? '' : 's'} to fetch. ${needs.some(m => m.nexus) ? 'For Nexus files press <b>Mod Manager Download</b> on the page that opens.' : ''} ${needs.some(m => !m.nexus) ? 'Files from other sites: download them in the browser; Hearth picks them up from your Downloads folder.' : ''}</p>
-      ${needs.slice(0, 40).map((m, i) => `<div class="need"><span>${esc(m.modName || m.fileName)}</span><button class="btn f" data-key="mn:${esc(j.id)}:${i}" data-act="needOpen" data-job="${esc(j.id)}" data-url="${esc(m.url)}">Open ›</button><span class="m">${esc(m.fileName)} · ${esc(human(m.size))}${m.nexus ? '' : ' · from another site'}</span></div>`).join('')}${needs.length > 40 ? `<p class="msg small">and ${needs.length - 40} more</p>` : ''}</div>` : ''}
+    ${j.guide && j.guide.item ? `<div class="need" style="grid-template-columns:1fr auto"><span><b>${esc(j.guide.label)}</b> to fetch in Hearth Browser: Hearth opens each page, you press Download, it checks the file and opens the next.</span><button class="btn primary f" data-key="gs:${esc(j.id)}" data-act="guideStart" data-job="${esc(j.id)}">Fetch them ›</button></div>` : ''}
+    ${needs.some(m => m.nexus) ? `<div><p class="msg small" style="margin:.2em 0">${needs.filter(m => m.nexus).length} Nexus file${needs.filter(m => m.nexus).length === 1 ? '' : 's'}: press <b>Mod Manager Download</b> on the page that opens.</p>
+      ${needs.filter(m => m.nexus).slice(0, 40).map((m, i) => `<div class="need"><span>${esc(m.modName || m.fileName)}</span><button class="btn f" data-key="mn:${esc(j.id)}:${i}" data-act="needOpen" data-job="${esc(j.id)}" data-url="${esc(m.url)}">Open ›</button><span class="m">${esc(m.fileName)} · ${esc(human(m.size))}</span></div>`).join('')}</div>` : ''}
     <div class="acts">${live ? `<button class="btn f" data-key="jc:${esc(j.id)}" data-act="jobCancel" data-job="${esc(j.id)}">Stop</button>` : ''}${!live && j.state !== 'done' ? `<button class="btn primary f" data-key="jr:${esc(j.id)}" data-act="jobResume" data-job="${esc(j.id)}">Resume</button>` : ''}${j.state === 'done' ? `<button class="btn f" data-key="jp:${esc(j.id)}" data-act="jobRepair" data-job="${esc(j.id)}">Repair its Proton folder</button><button class="btn f" data-key="jf:${esc(j.id)}" data-act="jobFolder" data-job="${esc(j.id)}">Open its folder</button>` : ''}<button class="btn f" data-key="jl:${esc(j.id)}" data-act="jobLog" data-job="${esc(j.id)}">Log</button>${!live ? `<button class="btn danger f" data-key="jx:${esc(j.id)}" data-act="jobForget" data-job="${esc(j.id)}">Remove…</button>` : ''}</div></div>`;
 }
 function modlistsView() {
@@ -451,7 +542,7 @@ async function wjInstall(m) {
       <p class="msg small">${esc(m.author ? 'By ' + m.author + ' · ' : '')}${esc(m.gameName || m.game)} · ${esc(human(m.download))} to download, ${esc(human(m.install))} installed${m.archives ? ` · ${m.archives} files` : ''}${d.free != null ? ` · ${esc(human(d.free))} free there` : ''}</p>
       ${m.description ? `<p class="msg small">${esc(m.description).slice(0, 400)}</p>` : ''}
       ${!d.known ? '<p class="warn small">Hearth doesn\'t know this game yet: the list installs, but its Proton folder may need setting up by hand.</p>' : ''}
-      ${S.acct ? (S.acct.premium ? '' : '<p class="msg small"><b>Free Nexus account:</b> after the list is read, you\'ll press “Mod Manager Download” once for each Nexus file. Premium does it all by itself.</p>') : '<p class="warn small">Sign in to Nexus Mods first (Nexus account tab): nearly every list downloads from it.</p>'}
+      ${S.acct ? (S.acct.premium ? '' : '<p class="msg small"><b>Free Nexus account:</b> after the list is read, you\'ll press “Mod Manager Download” once for each Nexus file. Premium does it all by itself.</p>') : '<p class="warn small">Sign in to Nexus Mods first (Accounts tab): nearly every list downloads from it.</p>'}
       <div class="field"><label>The game</label><button class="btn f" data-k="game">${pick.gameDir ? esc(pick.gameDir) : 'Choose its folder…'}</button>${d.gameTitle ? `<div class="msg small">${esc(d.gameTitle)} from your library</div>` : ''}</div>
       <div class="field"><label>The modlist goes in</label><button class="btn f" data-k="inst">${esc(pick.install)} ›</button></div>
       <div class="field"><label>Its downloads go in</label><button class="btn f" data-k="dls">${esc(pick.downloads)} ›</button></div>
@@ -508,6 +599,16 @@ async function act(a, b) {
       return wjInstall({ id: f, title: name, game, gameName: game });
     }
     if (a === 'needOpen') return openUrl(b.dataset.url);
+    if (a === 'guideStart') return guideFlow(job);
+    if (a === 'acctBegin') { const r = await KIT.invoke('account_begin', { id: b.dataset.p }); KIT.toast('Sign in in the browser window'); S.accts = S.accts.map(x => x.id === r.id ? r : x); render(); return loadAccounts(); }
+    if (a === 'acctOut') { const p = S.accts.find(x => x.id === b.dataset.p); if (!await KIT.confirm({ title: `Sign out of ${p.name}?`, text: '<p>Hearth forgets the sign-in. Files from there are fetched in the browser again.</p>', ok: 'Sign out', danger: true })) return; await KIT.invoke('account_sign_out', { id: p.id }); return loadAccounts(); }
+    if (a === 'megaIn') {
+      const email = await ask('Your MEGA email address', '', '', true); if (!email) return;
+      const pw = await askSecret('Your MEGA password', 'Hearth works out MEGA\'s login from it and forgets the password.'); if (!pw) return;
+      KIT.progress('Signing in to MEGA');
+      try { await KIT.invoke('mega_sign_in', { email: email.trim(), password: pw }); KIT.close(); KIT.toast('Signed in to MEGA'); } catch (e) { KIT.close(); KIT.alert('Couldn\'t sign in', esc(KIT.err(e)), false); }
+      return loadAccounts();
+    }
     if (a === 'jobCancel') { await KIT.invoke('wj_cancel', { id: job }); return refreshJobs(); }
     if (a === 'jobResume') { await KIT.invoke('wj_resume', { id: job }); return refreshJobs(); }
     if (a === 'jobFolder') { const j = S.jobs.find(x => x.id === job); return KIT.invoke('open_folder', { path: j.installDir }); }
@@ -547,9 +648,11 @@ KIT.demo = (cmd, a) => {
     { id: 'd1', name: 'SkyUI · SkyUI 5.2 SE', fileName: 'SkyUI_5_2_SE-12604-5-2SE.7z', size: 5_300_000, done: 2_100_000, speed: 1_800_000, state: 'downloading', path: '/home/you/.local/share/nimbus/mods/downloads/skyrimspecialedition/SkyUI_5_2_SE.7z', page: 'https://www.nexusmods.com/skyrimspecialedition/mods/12604?tab=files' },
     { id: 'd2', name: 'SKSE64', fileName: 'skse64_2_02_06.7z', size: 700_000, done: 0, state: 'needs-link', job: 'w1', error: '', path: '/home/you/Modlists/Downloads/Tuxborn/skse64_2_02_06.7z', page: 'https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files' },
     { id: 'd3', name: 'Unofficial Skyrim SE Patch', fileName: 'USSEP.7z', size: 81_000_000, done: 81_000_000, state: 'done', path: '/home/you/.local/share/nimbus/mods/downloads/skyrimspecialedition/USSEP.7z' }] };
+  if (cmd === 'accounts_list') return [{ id: 'loverslab', name: 'LoversLab', signedIn: false, registered: false }, { id: 'mega', name: 'MEGA', signedIn: true, registered: true, who: 'you@example.com', since: Date.now() - 864e5 }, { id: 'google', name: 'Google', signedIn: false, registered: false }];
   if (cmd === 'wj_engine') return { path: '/usr/lib/hearth/jackify-engine/jackify-engine', version: 'v0.5.2', system: true };
   if (cmd === 'wj_jobs') return [{ id: 'w1', title: 'Tuxborn', state: 'manual', running: true, phase: 'Files to fetch', status: '[00:01:10] Downloading Mod Archives (17/214) - 6.8MB/s', step: [3, 14], count: [17, 214], installDir: '/home/you/Modlists/Tuxborn',
-    manual: [{ fileName: 'skse64_2_02_06.7z', modName: 'SKSE64', size: 700_000, nexus: true, here: false, url: 'https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files&file_id=1' }, { fileName: 'ENB.zip', modName: 'ENB binaries', size: 4_000_000, nexus: false, here: false, url: 'https://enbdev.com/' }] }];
+    manual: [{ fileName: 'skse64_2_02_06.7z', modName: 'SKSE64', size: 700_000, nexus: true, here: false, url: 'https://www.nexusmods.com/skyrimspecialedition/mods/30379?tab=files&file_id=1' }, { fileName: 'ENB.zip', modName: 'ENB binaries', size: 4_000_000, nexus: false, here: false, url: 'https://enbdev.com/', site: 'enbdev.com' }],
+    guide: { total: 12, done: 2, current: 3, label: '3 of 12 LoversLab files', site: 'LoversLab', item: { fileName: 'Example Body.7z', modName: 'Example Body', size: 52_000_000, site: 'LoversLab', url: 'https://www.loverslab.com/files/file/1/' } } }];
   if (cmd === 'wj_gallery') return [
     { id: 'Tuxborn/Tuxborn', title: 'Tuxborn', author: 'Omni', game: 'SkyrimSpecialEdition', gameName: 'Skyrim Special Edition', download: 38e9, install: 61e9, archives: 214, description: 'A Steam Deck friendly Skyrim list.' },
     { id: 'wj/Magnum', title: 'Magnum Opus', author: 'Tuxborn', game: 'Fallout4', gameName: 'Fallout 4', download: 140e9, install: 220e9 },
@@ -568,6 +671,7 @@ KIT.demo = (cmd, a) => {
   loadAccount();
   await load();
   // nxm:// links that opened Hearth Mods land on Downloads; the queue is watched from the start for their notices.
+  if (S.info.page === 'nexus') S.info.page = 'accounts';
   if (TABS.includes(S.info.page)) setTab(S.info.page); else { KIT.focusFirst('.item.sel'); refreshDownloads(); }
 })();
 </script>

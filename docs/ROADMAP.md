@@ -34,6 +34,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Hearth Link ideas: "Continue on this device" (Game Mode), update every device at once (download once shipped in 0.6.57)
 - [x] Ventoy (multi-ISO) mode in the USB maker: Hearth Disks › Make a bootable USB › Several ISOs (pinned upstream Ventoy, checksum-checked; Hearth editions, Recovery, the list, your own ISOs) (needs testing on a real stick)
 - [x] Local AI over Hearth Link (first version: a device's own Ollama/llama-server shared with paired devices; answers come whole, not streamed)
+- [x] Hearth Mods: automatic downloads from more sites for Wabbajack modlists. An Accounts tab (Nexus Mods, LoversLab, MEGA, Google), each signed in by you and with Sign out; MEGA files download on their own (anonymously, or with your MEGA account); LoversLab and Google sign-ins are built and wait for Hearth's own registration with each (docs/MODS.md); everything still not automatic (LoversLab until then, Vector Plexus, manual-download sites, failed files) goes through a guided Hearth Browser flow: Hearth opens each file's page, you press Download, it checks the file against the list and opens the next, "3 of 12 LoversLab files", then the install carries on by itself (needs testing with a real LoversLab account)
 - [ ] Support page/donations: built (Settings › About › Support Hearth OS and the website), hidden until the owner fills in a link in ui/support-links.js and site/support-links.js
 
 ## Done
