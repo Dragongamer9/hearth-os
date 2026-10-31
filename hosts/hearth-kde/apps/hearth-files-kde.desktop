@@ -1,0 +1,20 @@
+[Desktop Entry]
+# Hearth Files: KDE Dolphin with Hearth's changes (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About.
+Name=Files
+GenericName=File Manager
+Comment=Browse, copy and move your files, Hearth Storage, USB drives and SD cards
+Exec=/usr/bin/hearth-files-kde %U
+TryExec=/usr/lib/hearth-files/bin/dolphin
+Icon=hearth-files
+Type=Application
+Categories=Qt;KDE;System;FileManager;Utility;
+MimeType=inode/directory;x-directory/normal;
+Keywords=files;folder;explorer;browse;usb;sd;card;copy;move;dolphin;hearth storage;
+StartupNotify=true
+StartupWMClass=org.kde.dolphin
+X-Hearth-Based-On=org.kde.dolphin.desktop
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New window
+Exec=/usr/bin/hearth-files-kde --new-window

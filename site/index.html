@@ -1019,6 +1019,15 @@ details.art[open] summary::before{content:"\2013"}
   </div>
 </section>
 
+<!-- Support: filled in from support-links.js (the owner's donation links); stays hidden until one is set. -->
+<section id="support" hidden>
+  <div class="wrap">
+    <div class="head"><h2 class="d">Support <em>Hearth OS</em></h2></div>
+    <p class="lede" id="support-msg"></p>
+    <div class="ctas" id="support-links" style="margin-top:16px"></div>
+  </div>
+</section>
+
 <section id="faq">
   <div class="wrap">
     <div class="head"><h2 class="d">Questions</h2></div>
@@ -1094,12 +1103,28 @@ details.art[open] summary::before{content:"\2013"}
     <a href="docs/releases.html">Release notes</a>
     <a href="docs/troubleshooting.html#ask">Report a problem</a>
     <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
+    <a href="#support" id="support-foot" hidden>Support</a>
     <a href="https://anatase.org">Built on Anatase</a>
     <p class="legal">Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft, ASUS, the Matrix.org Foundation or Universal Blue.
       Steam, Epic Games, GOG, Xbox and ROG Ally are trademarks of their owners. Screenshots are of Hearth itself; the people, chats, play times and readings in them are sample data. Game art: SuperTuxKart, 0 A.D., The Battle for Wesnoth, Veloren, OpenTTD and Endless Sky, used under CC BY-SA / GPL; see <a href="#game-art">the credits</a>. The Anybody typeface is under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
   </div>
 </footer>
 
+<script src="support-links.js"></script>
+<script>
+// Support section: only the links the owner filled in (https only); none filled in, it stays hidden.
+(function(){
+  try {
+    var S = window.HEARTH_SUPPORT, L = S && Array.isArray(S.links) ? S.links.filter(function(l){ return l && l.name && typeof l.url === 'string' && /^https:\/\/[^\s"'<>\\]{3,2000}$/.test(l.url); }) : [];
+    if (!L.length) return;
+    var box = document.getElementById('support-links');
+    document.getElementById('support-msg').textContent = S.message || '';
+    L.forEach(function(l){ var a = document.createElement('a'); a.className = 'btn line'; a.href = l.url; a.rel = 'noopener'; a.textContent = l.name; if (l.note) a.title = l.note; box.appendChild(a); });
+    document.getElementById('support').hidden = false;
+    document.getElementById('support-foot').hidden = false;
+  } catch (e) {}
+})();
+</script>
 <script>
 var RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 

@@ -994,6 +994,8 @@ impl Bridge {
             "login.get" => Ok(crate::admin::login()),
             "login.setAutologin" => { crate::admin::run(&["autologin", if a["on"] == true { "on" } else { "off" }], None, &mut |_| {})?; Ok(crate::admin::login()) }
             "login.setStartMode" => crate::admin::set_start_mode(&req("mode")?),
+            "login.desktop" => Ok(crate::admin::desktop()),
+            "login.setDesktop" => crate::admin::set_desktop(&req("desktop")?),
             "login.setLockOnWake" => crate::admin::set_lock_on_wake(a["on"] == true),
             "login.setHostname" => { crate::admin::run(&["hostname", req("name")?.trim()], None, &mut |_| {})?; Ok(crate::admin::login()) }
             "login.password" => { crate::admin::run(&["password"], Some(&format!("{}\n", json!({"old": req("old")?, "new": req("new")?}))), &mut |_| {})?; Ok(json!({"ok": true})) }
@@ -1222,6 +1224,8 @@ impl Bridge {
                 self.open_steam(&u);
                 Ok(Value::Null)
             }
+            "discord.status" => Ok(crate::discord::status()),
+            "discord.set" => crate::discord::set_enabled(a["enabled"] != false),
             "mfriends.discord" => Ok(json!({"installed": crate::matrix_friends::discord_installed(), "flathub": format!("https://flathub.org/apps/{}", crate::matrix_friends::DISCORD)})),
             "mfriends.installDiscord" => self.later(|| {
                 if !crate::system::has("flatpak") { return Err("Flatpak is needed to install Discord.".into()); }
@@ -1390,9 +1394,15 @@ impl Bridge {
                 "steam.window" => (self.host)("showSteam", &json!({"wait": 30, "why": format!("Steam's install window ({})", e["data"]["id"].as_str().unwrap_or("?"))})),
                 "game.started" => {
                     crate::link::set_playing(true);   // Hearth Link stays quiet while you play
+                    if let Some(g) = e["data"]["id"].as_str().and_then(|id| self.library.games.get(id)) { crate::discord::set_playing(Some(&g.title)); }
                     self.parental_since = now_ms(); self.parental_warned = false;
                     out.extend(self.parental_tick());
                     let id = e["data"]["id"].as_str().unwrap_or("").to_string();
+                    // "Continue on this device": the other paired devices can offer this game.
+                    if crate::link::available() {
+                        let title = self.library.games.get(&id).map(|g| g.title.clone()).unwrap_or_default();
+                        crate::link::now_playing(&crate::link::link_dir(), &id, &title, now_ms());
+                    }
                     let o = crate::game_options::get(&self.library.store, &id);
                     let fps = o["fpsLimit"].as_u64().unwrap_or(0);
                     if fps > 0 {
@@ -1404,6 +1414,7 @@ impl Bridge {
                 }
                 "game.exited" => {
                     crate::link::set_playing(false);
+                    crate::discord::set_playing(None);
                     if self.parental_since > 0 {
                         let mins = now_ms().saturating_sub(self.parental_since) as f64 / 60000.0;   // the clock set back (time sync) wrapped to years
                         let active = self.profiles.active();

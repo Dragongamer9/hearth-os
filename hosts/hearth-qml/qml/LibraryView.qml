@@ -19,10 +19,20 @@ Item {
         if (t === "inst") L = L.filter(x => x.inst || App.isActive(x));
         else if (t === "fav") L = L.filter(x => x.fav);
         else if (t !== "all" && t !== "hidden") L = L.filter(x => x.src === t);
+        const f = App.libFilter;
+        if (f === "notinst") L = L.filter(x => !x.inst && !App.isActive(x));
+        else if (f === "unplayed") L = L.filter(x => !x.last && !x.hrs);
+        else if (f === "played") L = L.filter(x => x.last || x.hrs);
+        else if (f === "short") L = L.filter(x => x.hrs < 2);
         if (q) L = L.filter(x => x.title.toLowerCase().indexOf(q) >= 0);
         if (App.libSort === "recent") L.sort((a, b) => (b.last - a.last) || a.title.localeCompare(b.title));
         else L.sort((a, b) => a.title.localeCompare(b.title));
         return L;
+    }
+    readonly property var filters: [["", "Everything"], ["notinst", "Not installed"], ["unplayed", "Never played"], ["played", "Played"], ["short", "Under 2 hours played"]]
+    function filterName() { const f = filters.find(x => x[0] === App.libFilter); return f && f[0] ? "Show: " + f[1] : "Show: everything"; }
+    function pickFilter() {
+        App.openSheet({ title: "Show", items: filters.map(f => ({ label: f[1], icon: App.libFilter === f[0] ? "check" : "lib", on: App.libFilter === f[0], run: () => { App.libFilter = f[0]; page.toTop(); } })) });
     }
     Connections {
         target: App
@@ -62,6 +72,7 @@ Item {
                 }
                 Item { width: Theme.u(12); height: 1 }
                 Chip { text: App.libSort === "alpha" ? "A–Z" : "Recently played"; navKey: "l-sort"; onActivated: App.libSort = App.libSort === "alpha" ? "recent" : "alpha" }
+                Chip { text: lib.filterName(); on: App.libFilter !== ""; navKey: "l-filter"; onActivated: lib.pickFilter() }
                 Chip { text: App.query ? "Search: " + App.query : "Search"; on: App.query !== ""; navKey: "l-search"; onActivated: App.openLayer("search") }
                 Chip { visible: App.query !== ""; text: "Clear search"; navKey: "l-clear"; onActivated: App.query = "" }
             }

@@ -9,7 +9,7 @@ set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 if [ "$1" = "--remove" ]; then
-  rm -f /usr/share/wayland-sessions/nimbus.desktop /usr/local/bin/nimbus-session /usr/local/bin/nimbus-mode
+  rm -f /usr/share/wayland-sessions/nimbus.desktop /usr/share/wayland-sessions/hearth-classic.desktop /usr/share/wayland-sessions/hearth-plasma.desktop /usr/local/bin/nimbus-session /usr/local/bin/nimbus-mode
   rm -rf /usr/local/lib/nimbus /usr/local/share/nimbus
   echo "Hearth session removed"
   exit 0
@@ -19,6 +19,9 @@ install -Dm755 "$HERE/nimbus-session" /usr/local/bin/nimbus-session
 install -Dm755 "$HERE/nimbus-mode" /usr/local/bin/nimbus-mode
 install -Dm755 "$HERE/nimbus-watchdog" /usr/local/lib/nimbus/nimbus-watchdog
 install -Dm644 "$HERE/nimbus.desktop" /usr/share/wayland-sessions/nimbus.desktop
+# The desktop picked on the login screen (saved as your choice): Hearth Classic, and Hearth Plasma where Plasma is installed.
+install -Dm644 "$HERE/hearth-classic.desktop" /usr/share/wayland-sessions/hearth-classic.desktop
+install -Dm644 "$HERE/hearth-plasma.desktop" /usr/share/wayland-sessions/hearth-plasma.desktop
 if [ -d "$HERE/desktop" ]; then
   rm -rf /usr/local/share/nimbus/desktop
   mkdir -p /usr/local/share/nimbus

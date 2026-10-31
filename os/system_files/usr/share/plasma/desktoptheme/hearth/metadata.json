@@ -1,0 +1,11 @@
+{
+    "KPlugin": {
+        "Authors": [ { "Name": "Dragongamer9" } ],
+        "Description": "Hearth's Plasma style: Breeze's shapes in Hearth's warm darks with the ember accent (panels, popups, tooltips)",
+        "Id": "hearth",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth",
+        "Website": "https://hearthos.fun"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

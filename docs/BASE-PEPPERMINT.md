@@ -232,3 +232,5 @@ These aren't made here: those files belong to the main build, the installer and 
 6. **Shared Debian-family pieces**: `hearth-bls-grub`, its units, the `10_blscfg.cfg` override, the wheel polkit
    and sudoers files and the sysusers drop-in exist in both `os-bases/ubuntu` and `os-bases/peppermint`. Once
    both settle, they could move to one shared folder.
+
+**Hearth Plasma.** KDE Plasma 6 (the workspace only, no recommends, plus Dolphin) is installed as Desktop Mode's second desktop, in Hearth's look; Hearth Classic (labwc + Mantel) stays and is the fallback, and SDDM stays the display manager. See docs/PLASMA.md.

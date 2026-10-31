@@ -1,0 +1,23 @@
+[Desktop Entry]
+# Hearth Capture: KDE Spectacle with Hearth's colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About.
+Name=Capture
+GenericName=Screenshot Tool
+Comment=Take screenshots of the screen, a window or an area, and mark them up
+Exec=spectacle
+TryExec=spectacle
+Icon=hearth-capture
+Type=Application
+Categories=Qt;KDE;Utility;Graphics;
+Keywords=screenshot;capture;snip;print screen;screen;window;area;spectacle;
+StartupNotify=true
+StartupWMClass=org.kde.spectacle
+X-Hearth-Based-On=org.kde.spectacle.desktop
+Actions=area;window;
+
+[Desktop Action area]
+Name=Capture an area
+Exec=spectacle --region
+
+[Desktop Action window]
+Name=Capture the window in front
+Exec=spectacle --activewindow

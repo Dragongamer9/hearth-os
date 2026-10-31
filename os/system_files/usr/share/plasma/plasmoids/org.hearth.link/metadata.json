@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Category": "System Services",
+        "Description": "Your Hearth devices: this one, the ones paired with it, pairing codes and syncing",
+        "Icon": "hearth-share",
+        "Id": "org.hearth.link",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth Link",
+        "Website": "https://hearthos.fun",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationArea": "true",
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}

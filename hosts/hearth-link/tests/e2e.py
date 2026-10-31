@@ -8,7 +8,8 @@ home folder, driven over their sockets the way Hearth's UI does (`hearth-link ca
                     picking the device and its 6-digit code (a wrong code first, then retried), a multi-GB synthetic Steam
                     game copied (speed posted), a copy killed halfway and resumed, an update copied as only its
                     changed chunks, every file's hash compared, Hearth data synced both ways, quiet while playing,
-                    unpairing, Hearth Storage (shared folder, media link, game archive there and back, backups)
+                    unpairing, Hearth Storage (shared folder, media link, game archive there and back, backups),
+                    Continue on this device, updating every device at once, local AI over Hearth Link
   e2e.py internet   both devices behind their own NAT, a local iroh relay in between: pairing with a short code
                     (found through a pkarr relay on the "internet" too, nothing else typed), a copy
                     through the relay with direct UDP blocked (speed posted, the copy says it's relayed), then with
@@ -700,6 +701,141 @@ def storage(a, b):
     notice('storage: off', 'turned off on A: B is told so')
 
 
+FAKE_UPDATE = r"""
+import json, sys, time
+# Settings > Updates > Update now's output (hearth-admin update), without updating anything.
+for p in (5, 40, 90):
+    print('progress: %.1f Downloading the system update' % p, flush=True)
+    time.sleep(0.3)
+print('stage: ' + json.dumps({'phase': 'done', 'pct': 100.0, 'desc': 'Done. Restart to finish updating.', 'staged': True}), flush=True)
+print(json.dumps({'booted': 'x'}), flush=True)
+"""
+
+FAKE_OLLAMA = r"""
+import json, sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+    def log_message(self, *a): pass
+    def do_GET(self):
+        if self.path == '/api/tags':
+            b = json.dumps({'models': [{'name': 'tiny:1b'}]}).encode()
+            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b)
+        else:
+            self.send_response(404); self.send_header('Content-Length', '0'); self.end_headers()
+    def do_POST(self):
+        n = int(self.headers.get('Content-Length') or 0)
+        req = json.loads(self.rfile.read(n) or b'{}')
+        if self.path in ('/api/pull', '/api/delete'):
+            # Never reached: Hearth Link doesn't pass model management on.
+            open(sys.argv[2], 'w').write(self.path)
+        # Streamed like Ollama: NDJSON lines, chunked.
+        self.send_response(200); self.send_header('Content-Type', 'application/x-ndjson'); self.send_header('Transfer-Encoding', 'chunked'); self.end_headers()
+        for w in ('echo: ', req.get('prompt', '')):
+            line = (json.dumps({'response': w, 'done': False}) + '\n').encode()
+            self.wfile.write(b'%x\r\n' % len(line) + line + b'\r\n')
+        self.wfile.write(b'0\r\n\r\n')
+HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
+"""
+
+
+def extras(a, b):
+    """The Hearth Link extras: Continue on this device (handoff.rs), update every device at once (fleet.rs), local
+    AI over Hearth Link (ai.rs)."""
+    import threading
+    # ---- Continue on this device: Resume Game is running on A; B offers it, asks, waits until it's quit on A.
+    game = 'steam:1000002'
+    playing = os.path.join(a.run, 'hearth-playing')
+    open(playing, 'w').close()
+    write_json(os.path.join(a.link, 'now-playing.json'), {'game': game, 'title': 'Resume Game', 'at': int(time.time() * 1000)})
+    st = b.call('handoff.status')
+    offer = [o for o in st['offers'] if o['peer'] == a.id]
+    if not offer or offer[0]['game'] != game or offer[0]['playing'] is not True:
+        fail('B does not offer the game running on A: %s' % st)
+    got = {}
+    t = threading.Thread(target=lambda: got.update(r=b.call('handoff.take', {'peer': a.id, 'game': game, 'wait': 90}, timeout=120, ok=False)))
+    t.start()
+    wait_for('A to be asked to hand the game over', lambda: any(x['peer'] == b.id and x['game'] == game for x in a.call('handoff.status')['asked']), 30)
+    time.sleep(4)
+    if 'r' in got:
+        fail('B took the game over while it was still running on A: %s' % got)
+    # Quit on A (Hearth writes quitAt and removes its "playing" file).
+    v = read_json(os.path.join(a.link, 'now-playing.json'))
+    v['quitAt'] = int(time.time() * 1000)
+    write_json(os.path.join(a.link, 'now-playing.json'), v)
+    os.remove(playing)
+    t.join(100)
+    r = got.get('r') or {}
+    if r.get('state') != 'ready' or r.get('name') != 'A':
+        fail('the handoff did not finish once the game was quit on A: %s' % r)
+    if a.call('handoff.status')['asked']:
+        fail('A still shows the ask after the game was handed over')
+    notice('handoff', 'Resume Game running on A offered on B; B waited while it ran (A asked), and took it over once quit on A')
+
+    # ---- Update every device at once: B waits while someone plays, then runs Update now (a stand-in) and stages it.
+    with open(os.path.join(ROOT, 'fake-update.py'), 'w') as f:
+        f.write(FAKE_UPDATE)
+    bplay = os.path.join(b.run, 'hearth-playing')
+    open(bplay, 'w').close()
+    r = a.call('fleet.update', {'here': False})
+    rb = [d for d in r['devices'] if d.get('id') == b.id]
+    if not rb or rb[0].get('state') not in ('starting', 'waitingGame'):
+        fail('B did not take the update: %s' % r)
+    wait_for('B to wait while a game runs on it', lambda: any(d.get('id') == b.id and d.get('state') == 'waitingGame' for d in a.call('fleet.status')['devices']), 30)
+    time.sleep(3)
+    if any(d.get('id') == b.id and d.get('state') != 'waitingGame' for d in a.call('fleet.status')['devices']):
+        fail('B started updating while a game ran on it')
+    os.remove(bplay)
+    done = wait_for('B to stage the update', lambda: [d for d in a.call('fleet.status')['devices'] if d.get('id') == b.id and d.get('state') == 'staged'], 60)
+    me = [d for d in a.call('fleet.status')['devices'] if d.get('me')]
+    if not me or me[0].get('state') != 'idle':
+        fail('A updated itself although it was left out: %s' % me)
+    notice('update every device', 'asked from A: B waited while a game ran, then ran Update now and staged it (%s); A, left out, stayed as it was; nothing restarted' % done[0].get('desc'))
+
+    # ---- Local AI: A shares its model server (a fake Ollama on A only); B uses it at 127.0.0.1 on B.
+    srv_py = os.path.join(ROOT, 'fake-ollama.py')
+    with open(srv_py, 'w') as f:
+        f.write(FAKE_OLLAMA)
+    tripped = os.path.join(ROOT, 'ollama-managed')
+    fake = subprocess.Popen(['ip', 'netns', 'exec', 'hlA', sys.executable, srv_py, '18434', tripped])
+    try:
+        if any(v['id'] == a.id for v in b.call('ai.status')['servers']):
+            fail('A shares its AI before it was turned on')
+        r = a.call('ai.set', {'backend': 'http://192.168.1.9:18434'}, ok=False)
+        if 'error' not in r:
+            fail('A took an AI server address that is not on itself: %s' % r)
+        a.call('ai.set', {'serve': True, 'backend': 'http://127.0.0.1:18434'})
+        sv = wait_for('B to see A sharing its AI', lambda: [v for v in b.call('ai.status')['servers'] if v['id'] == a.id and v.get('models')], 30)
+        if sv[0]['models'] != ['tiny:1b']:
+            fail('the shared models are wrong: %s' % sv)
+        url = b.call('ai.use', {'server': a.id})['url']
+        client = ('import json,sys,urllib.request\n'
+                  'def go(p,body):\n'
+                  '  try:\n'
+                  '    r=urllib.request.urlopen(urllib.request.Request(sys.argv[1]+p,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"}),timeout=60); return r.status, r.read().decode()\n'
+                  '  except urllib.error.HTTPError as e: return e.code, e.read().decode()\n'
+                  'print(json.dumps([go("/api/generate",{"model":"tiny:1b","prompt":"hello hearth"}), go("/api/pull",{"name":"x"})]))\n')
+        out = subprocess.run(['ip', 'netns', 'exec', 'hlB', sys.executable, '-c', client, url], capture_output=True, text=True, timeout=90)
+        try:
+            (gen_st, gen), (pull_st, _) = json.loads(out.stdout.strip().splitlines()[-1])
+        except Exception:
+            fail('the AI request on B did not answer: %r %r' % (out.stdout, out.stderr))
+        words = ''.join(json.loads(l)['response'] for l in gen.splitlines() if l.strip())
+        if gen_st != 200 or words != 'echo: hello hearth':
+            fail('the answer through Hearth Link is wrong: %s %r' % (gen_st, gen))
+        if pull_st != 403 or os.path.exists(tripped):
+            fail('managing models went through Hearth Link: %s' % pull_st)
+        a.call('ai.set', {'serve': False})
+        out = subprocess.run(['ip', 'netns', 'exec', 'hlB', sys.executable, '-c', client, url], capture_output=True, text=True, timeout=90)
+        (gen_st, gen), _ = json.loads(out.stdout.strip().splitlines()[-1])
+        if gen_st == 200:
+            fail('A still answered after it stopped sharing its AI: %r' % gen)
+        b.call('ai.stop')
+        notice('local AI', "A's model server (Ollama-style, streamed) used from B at %s over Hearth Link; model management refused; off by default and refused once turned off" % url)
+    finally:
+        fake.terminate()
+
+
 def lan():
     shutil.rmtree(ROOT, ignore_errors=True)
     os.makedirs(ROOT)
@@ -707,7 +843,9 @@ def lan():
     pk, pk_url = pkarr_relay('hlA', '10.77.0.1')
     env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url}
     a = Dev('A', 'hlA', dict(env, HEARTH_LINK_KIND='desktop', HEARTH_LINK_EDITION='Anatase'))
-    b = Dev('B', 'hlB', dict(env, HEARTH_LINK_KIND='handheld', HEARTH_LINK_EDITION='Peppermint'))
+    # B's "Update now" is a stand-in that only prints what hearth-admin update would (extras()).
+    b = Dev('B', 'hlB', dict(env, HEARTH_LINK_KIND='handheld', HEARTH_LINK_EDITION='Peppermint',
+                             HEARTH_LINK_UPDATE_CMD='%s %s' % (sys.executable, os.path.join(ROOT, 'fake-update.py'))))
     sa = steam_library(a.home)
     steam_library(b.home)
     log('making the synthetic games')
@@ -844,6 +982,7 @@ def lan():
 
     # Hearth Storage: A as a home server for B.
     storage(a, b)
+    extras(a, b)
 
     # 5. Unpairing on one side reaches the other.
     a.call('unpair', {'id': b.id})

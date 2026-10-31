@@ -7,7 +7,7 @@ stores, Beacon, multi-seat, Game Mode, logs) is that program's. Only the drawing
 |---|---|---|---|
 | **WebKit** | the system's WebKitGTK, through Tauri, in the `nimbus` process; the web page ui/index.html | the usual one: AMD and Intel graphics | complete |
 | **Electron** (Chromium) | Hearth's Electron window app (`/usr/lib/hearth-electron`, hosts/electron); the same web page | Nvidia graphics | complete |
-| **Qt** | Hearth's Qt Quick window app (`/usr/lib/hearth-qml`, hosts/hearth-qml); native QML screens | only when chosen | **Experimental** (phase 1) |
+| **Qt** | Hearth's Qt Quick window app (`/usr/lib/hearth-qml`, hosts/hearth-qml); native QML screens | only when chosen | **Experimental** (phase 1, part of phase 2) |
 
 Why Electron: on Nvidia, WebKit's fast drawing path (DMA-BUF/GBM) fails on RTX 50 cards (WebKit bug 303811) and its
 compatible path copies every frame through the processor, which makes Hearth sluggish. Chromium's graphics work
@@ -103,13 +103,22 @@ logs (`Host`). All of Hearth's data and logic stays in the core; App.qml is the 
   could make its static cut.
 - A "Qt renderer · Experimental" mark in the top bar, and a "Not in the Qt renderer yet" card on Home.
 
+### Phase 2 so far
+
+- **Quick Access › Notifications**: what Hearth told you (its messages, newest first), Clear all.
+- **Quick Access › Quick settings**: Wi-Fi on/off and its networks (connect to a saved or open one, disconnect,
+  forget), Bluetooth on/off and the paired devices (remove), airplane mode.
+- **A game's page**: its ProtonDB rating and achievements (`game.info`: how many, the first ones, See all), and
+  **Game settings** (`game.options`): Proton version, MangoHud, GameMode, FSR, frame-rate limit, cloud saves.
+- **Library › Show**: everything, not installed, never played, played, under 2 hours played.
+
 ### What it doesn't have yet
 
 Every one of these says so where you'd look for it (a card, a page, or a sheet with **Open in the web renderer**):
-the Store, Friends, Screenshots, Co-op and Multi-seat, Hearth Link, the other Home and Library layouts, game settings
-(Proton, launch options, mods, saves, achievements, ProtonDB), adding a game yourself, most of Settings (Wi-Fi,
-Bluetooth, sound devices, controllers and Handheld Daemon, keyboard settings, profiles and accounts, updates,
-accessibility...), notifications, the profile picker and lock screen, first-start setup, Quick Resume. What the core
+the Store, Friends, Screenshots, Co-op and Multi-seat, Hearth Link, the other Home and Library layouts, launch options,
+environment variables, mods and saves, adding a game yourself, joining a Wi-Fi network that needs a password, pairing
+Bluetooth devices, most of Settings (sound devices, controllers and Handheld Daemon, keyboard settings, profiles and
+accounts, updates, accessibility...), the profile picker and lock screen, first-start setup, Quick Resume. What the core
 asks for that needs a web page (a store's sign-in window, Xbox Cloud Gaming, a store's own pages, file pickers) is
 answered "closed" at once, so the core never waits, and a sheet offers the web renderer.
 
@@ -132,9 +141,9 @@ sends them all.
 
 ## Roadmap for the Qt renderer
 
-- **Phase 2**: notifications and the notification panel, the profile picker and lock screen, Quick Resume, Wi-Fi,
-  Bluetooth and sound in Quick Access and Settings, controller and Handheld Daemon settings, adding games, game settings
-  (Proton, launch options), achievements and ProtonDB on the game page, the other Library filters.
+- **Phase 2** (part done, see above): still to do: the profile picker and lock screen, Quick Resume, Wi-Fi and
+  Bluetooth in Settings (passwords, pairing), sound devices, controller and Handheld Daemon settings, adding games,
+  launch options; the core's own notifications (beyond Hearth's messages).
 - **Phase 3**: the Store (its own pages through a QtWebEngine window, or the core's store API with native pages),
   sign-ins (a QtWebEngine window, or handing them to Hearth Browser), Friends and chats, Screenshots, Co-op and
   Multi-seat, Hearth Link.

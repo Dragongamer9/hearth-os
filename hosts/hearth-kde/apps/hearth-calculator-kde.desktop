@@ -1,0 +1,14 @@
+[Desktop Entry]
+# Hearth Calculator: KDE KCalc with Hearth's colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About.
+Name=Calculator
+GenericName=Calculator
+Comment=Everyday sums, scientific functions and programmer maths
+Exec=kcalc
+TryExec=kcalc
+Icon=hearth-calculator
+Type=Application
+Categories=Qt;KDE;Utility;Calculator;
+Keywords=calculator;calc;maths;math;scientific;programmer;hex;binary;kcalc;
+StartupNotify=true
+StartupWMClass=org.kde.kcalc
+X-Hearth-Based-On=org.kde.kcalc.desktop

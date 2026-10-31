@@ -43,6 +43,7 @@ QtObject {
     property bool launchWaiting: false
     property string toastText: ""
     property int toastSeq: 0
+    property var notes: []                 // Quick Access › Notifications: what Hearth said (newest first, the last 40)
     property var osd: null
 
     // The overlay window (Quick Access over games; not on the Handheld Daemon editions, where HHD's app shows it)
@@ -189,7 +190,7 @@ QtObject {
     }
 
     // ------------------------------------------------------------------ messages on screen
-    function toast(t) { if (!t) return; toastText = String(t); toastSeq++; hostApp.log("toast: " + toastText); }
+    function toast(t) { if (!t) return; toastText = String(t); toastSeq++; hostApp.log("toast: " + toastText); notes = [{ text: toastText, at: Date.now() }].concat(notes).slice(0, 40); }
     function notHere(what) {
         toast(what + " isn't in the Qt renderer yet. Select Open in the web renderer to use it.");
         missing = what;

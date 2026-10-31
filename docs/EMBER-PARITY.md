@@ -63,7 +63,7 @@ How the audit was done: every `call('…')` in `ui/index.html` (plus the ones ma
 | Remote play (Sunshine/Moonlight) | yes | no | differs: Linux setup only; on Windows, Steam Remote Play / Sunshine's own installer |
 | OS install, OS updates, system migration, grow the drive | Linux | — | differs: Hearth OS only. Ember has Switch to Hearth OS instead |
 | Backup and restore | yes | no | not done this round (UI hides it on Ember; Ember's data is `%LOCALAPPDATA%\Nimbus`) |
-| Web browser (Aloha, Hearth Browser) | Linux | — | differs: Linux only |
+| Web browser (Aloha, Hearth Browser) | Linux | Hearth Browser (Firefox, Services/HearthBrowser.cs) | Hearth Browser on both; Aloha Linux only |
 
 ## Hearth Input on Windows
 

@@ -144,6 +144,36 @@ CHROME_KEY = r'''
 PAGE = 'data:text/html;charset=utf-8,' + ('<title>Typing</title><body style="background:%23222;color:%23eee;font:24px sans-serif">'
                                           '<p>Typed with Hearth Browser\'s keyboard:</p><input id="i" style="font-size:28px;width:80%25"></body>')
 
+# Three links: one at the top in the middle, one under it, one to the right of that; served over http from this
+# test (pages from file:// and data: run in Firefox's local-file process; web pages are what the D-pad is for).
+SPATIAL_HTML = ('<!doctype html><title>%s</title><body style="background:#222;color:#eee;font:24px sans-serif;margin:0">'
+                '<a id="top" href="#t" style="position:absolute;left:45%%;top:80px">Top</a>'
+                '<a id="below" href="#b" style="position:absolute;left:45%%;top:260px">Below</a>'
+                '<a id="right" href="#r" style="position:absolute;left:75%%;top:262px">Right</a></body>')
+
+
+def spatial_server():
+    """A local web server for the two test pages; returns its address with %s for the page name."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            name = self.path.strip('/').split('.')[0] or 'one'
+            body = (SPATIAL_HTML % name).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return 'http://127.0.0.1:%d/%%s.html' % srv.server_address[1]
+
 
 def run_mode(ff, out, mode, extras, port):
     game = mode == 'game'
@@ -155,6 +185,8 @@ def run_mode(ff, out, mode, extras, port):
     env = dict(os.environ)
     for k in ('HEARTH_BROWSER_GAME', 'HEARTH_BROWSER_BIG', 'HEARTH_BROWSER_SCALE', 'HEARTH_BROWSER_ACCENT'):
         env.pop(k, None)
+    # Newer Firefox wants this as well as -remote-allow-system-access before Marionette may use the chrome context.
+    env['MOZ_REMOTE_ALLOW_SYSTEM_ACCESS'] = '1'
     env.update({'MOZ_HEADLESS': '1', 'MOZ_HEADLESS_WIDTH': '1920' if game else '1280', 'MOZ_HEADLESS_HEIGHT': '1080' if game else '800'})
     if game:
         env.update({'HEARTH_BROWSER_GAME': '1', 'HEARTH_BROWSER_BIG': '1', 'HEARTH_BROWSER_SCALE': '1.5'})
@@ -270,6 +302,37 @@ def run_mode(ff, out, mode, extras, port):
             ok(auto is True, '[game] the keyboard comes up with the address bar')
             m.shot(os.path.join(out, 'game-3-address-bar.png'))
             m.js('const { HearthBrowser } = ChromeUtils.importESModule("resource://hearth/hearth.sys.mjs"); HearthBrowser.keyboardOf(window).close(); return true;')
+            # The D-pad in a web page: arrows move between links (spatial-child.sys.mjs), Esc goes back.
+            m.context('content')
+            SPATIAL_PAGE = spatial_server()
+            m.cmd('WebDriver:Navigate', {'url': SPATIAL_PAGE % 'one'})
+            m.js('document.activeElement && document.activeElement.blur(); return true;')
+            m.context('chrome')
+            m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
+            seen = []
+            for key in (('ArrowDown', 'ArrowDown', 40), ('ArrowDown', 'ArrowDown', 40), ('ArrowRight', 'ArrowRight', 39), ('ArrowLeft', 'ArrowLeft', 37), ('ArrowUp', 'ArrowUp', 38)):
+                m.js(CHROME_KEY, key[0], key[1], key[2], False)
+                m.context('content')
+                seen.append(m.js('return document.activeElement ? (document.activeElement.id || document.activeElement.localName) : "";'))
+                m.context('chrome')
+            report['spatial'] = seen
+            diag = m.js('const { SpatialLog } = ChromeUtils.importESModule("resource://hearth/spatial-parent.sys.mjs"); '
+                        'const con = Services.console.getMessageArray().map(m => String(m.message || m.errorMessage || m)).filter(t => /hearth|spatial|actor|JSWindowActor|resource:/i.test(t)).slice(-8); '
+                        'return {registered: Services.prefs.getStringPref("hearth.spatial", ""), last: SpatialLog.last, errors: SpatialLog.errors, console: con, '
+                        'actor: (() => { try { return !!gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor("HearthSpatial"); } catch (e) { return String(e); } })()};')
+            report['spatial-diag'] = diag
+            ok(seen == ['top', 'below', 'right', 'below', 'top'], '[game] D-pad moves between links: down, down, right, left, up (got %s; %s)' % (seen, diag))
+            m.shot(os.path.join(out, 'game-4-dpad.png'))
+            m.context('content')
+            m.cmd('WebDriver:Navigate', {'url': SPATIAL_PAGE % 'two'})
+            m.context('chrome')
+            m.js('gBrowser.selectedBrowser.focus(); await new Promise(r => setTimeout(r, 300)); return true;')
+            m.js(CHROME_KEY, 'Escape', 'Escape', 27, False)
+            m.js('await new Promise(r => setTimeout(r, 1200)); return true;')
+            m.context('content')
+            t = m.cmd('WebDriver:GetTitle').get('value')
+            m.context('chrome')
+            ok(t == 'one', '[game] B (Esc) goes back to the previous page (title %r)' % t)
 
         # Google's sign-in page.
         m.context('content')

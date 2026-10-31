@@ -1,0 +1,20 @@
+[Desktop Entry]
+# Hearth Text: KDE Kate with Hearth's colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About.
+Name=Text Editor
+GenericName=Text Editor
+Comment=Read and change text files, scripts and settings files
+Exec=kate -b %U
+TryExec=kate
+Icon=hearth-text
+Type=Application
+Categories=Qt;KDE;Utility;TextEditor;Development;
+Keywords=text;editor;notepad;edit;plain;code;config;log;script;kate;
+MimeType=text/plain;text/x-log;text/markdown;text/x-markdown;text/x-python;text/x-python3;application/x-shellscript;text/x-shellscript;application/json;application/x-yaml;text/x-yaml;application/yaml;application/toml;text/x-toml;text/x-ini;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-csharp;text/x-rust;text/rust;text/javascript;application/javascript;text/x-typescript;application/typescript;text/css;text/xml;application/xml;text/x-desktop;application/x-desktop;text/x-makefile;text/x-cmake;text/x-diff;text/x-patch;text/x-java;text/x-go;text/x-lua;text/x-sql;application/sql;text/csv;text/tab-separated-values;text/x-readme;text/x-changelog;application/x-zerosize;text/x-systemd-unit;application/x-ruby;text/x-perl;application/x-perl;application/x-powershell;text/x-dockerfile;
+StartupNotify=true
+StartupWMClass=org.kde.kate
+X-Hearth-Based-On=org.kde.kate.desktop
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New window
+Exec=kate -n

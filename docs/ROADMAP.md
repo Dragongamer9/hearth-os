@@ -6,38 +6,34 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Planned
 
-**Next update: safety first** (the owner picks the number)
-- [ ] Automatic fallback: two failed starts in a row → the previous version starts by itself (no keyboard needed)
-- [ ] Hearth Recovery screen on the device: hold Volume Down at the logo → previous version, Desktop Mode, safe graphics, reset renderer, send logs (controller/touch)
-- [ ] Hearth Recovery USB: test and enable the other actions (send logs, reinstall keeping files, Desktop Mode, copy files, factory reset); listed in the USB maker
-- [ ] Peppermint keeps logs across restarts (persistent journal)
-- [ ] ROG Ally Wi-Fi dropping under heavy downloads (power saving off on handhelds + the card's driver fix)
-- [ ] .deb install stuck on "Reading the package…"
-
 **Desktop update (after 0.6.57; the owner picks the number)**
-- [ ] Desktop selector in Settings (and at sign-in): Hearth Classic (today's labwc + Mantel), Hearth Plasma, later Hearth GNOME; switching keeps your files and settings, the old desktop stays selectable as the fallback
+- [x] Desktop selector in Settings (and at sign-in): Hearth Classic (today's labwc + Mantel), Hearth Plasma, later Hearth GNOME; switching keeps your files and settings, the old desktop stays selectable as the fallback (falls back to Hearth Classic by itself when Plasma can't start; see docs/PLASMA.md; needs testing on a device)
 - [ ] Hearth Plasma: KDE Plasma 6 themed one-to-one with today's desktop (every part screenshotted and matched side by side: taskbar/dock, launcher, notifications, quick settings, windows, lock screen); Mantel's best parts (Hearth Link, Hearth Storage, quick settings, launcher) as Plasma widgets
-- [ ] Hearth Files built from Dolphin: everything Dolphin does plus Hearth's own (hearth:// Hearth Storage places, controller navigation, Hearth look); Hearth Storage as a KIO plugin so every KDE app's file dialogs can open files on the home server
+  - [x] Plasma 6 in both images (minimal set), Hearth global theme, desktop theme, defaults and layout; Hearth Launcher, Quick Access, Hearth Link, Hearth Storage and Game Mode widgets; screenshot CI next to Hearth Classic (docs/PLASMA.md; needs testing on a device)
+  - [ ] Still to match: controller control, on-screen keyboard, radial menu, Hearth menu, lock screen layout
+- [x] Hearth Files built from Dolphin: everything Dolphin does plus Hearth's own (hearth:// Hearth Storage places, controller navigation, Hearth look); Hearth Storage as a KIO plugin so every KDE app's file dialogs can open files on the home server (docs/KDE-APPS.md; built and tested in CI on both bases, needs testing on a device)
 - [ ] KDE apps rebuilt as Hearth apps (GPL kept, KDE credited, Hearth names/icons): Hearth Terminal (Konsole), Hearth Text (Kate), document viewer (Okular), Hearth Capture (Spectacle), Hearth Calculator (KCalc); kept as they are: Photos, Contacts, Time, Paint, Office and the other Hearth apps
+  - Done: in both images with Hearth's menu entries, names, icons and colors, the KDE ones the defaults, the old ones kept as "(classic)" (docs/KDE-APPS.md). Not yet: Capture (Spectacle) didn't install on Peppermint in the last image build (Anatase has it); the apps' own window titles and About boxes still say Konsole, Kate, Okular, Spectacle, KCalc (needs each rebuilt the way Dolphin is)
 - [ ] Hearth GNOME: later, themed the same way
 
 **After that**
 - [x] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
 - [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)
-- [ ] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
-- [ ] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share, wake on network
-- [ ] Dragonfire look (from the concept art): a darker ember theme for Game Mode and Desktop Mode, fully usable with a controller
+- [x] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
+- [x] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share (per folder, read-only option, generated sign-in), wake on network (automatic, and a Wake button)
+- [x] Dragonfire look (from the concept art): a darker ember theme for Game Mode and Desktop Mode, fully usable with a controller
   - Game Mode home: big hero for the last game (Play / Details), Continue Playing, Library, Installed Launchers row, bottom bar (Home, Search, Quick Settings, Hearth, Capture, Overlay, Exit)
   - Performance rings (CPU, GPU, RAM, FPS) with temperature, watts, controller battery and the power mode
   - Friends & Party panel (only with real friends lists from the stores)
   - Updates & Recovery page: update timeline, snapshots before updates, restore, reinstall keeping files (ties into "safety first"); any writable mode keeps the previous version startable, like hearth-unlock
   - Desktop Mode: Control Center window, monitor/status side cards, now-playing widget
   - No store-owned covers in screenshots, no macOS-style window buttons in Game Mode
-- [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md)
-- [ ] Discord: "Playing X" status and Discord in Quick Access (needs the owner's Discord application ID)
-- [ ] Hearth Link ideas: download once and share to all devices, "Continue on this device", update every device at once
-- [ ] Ventoy (multi-ISO) mode in the USB maker
-- [ ] Ideas: local AI over Hearth Link, Support page/donations
+- [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md; part of phase 2 done: notifications, Wi-Fi/Bluetooth in Quick Access, game settings, achievements and ProtonDB, Library filters)
+- [ ] Discord: "Playing X" status and Discord in Quick Access: built, hidden until the owner puts the Discord application ID in /etc/hearth/discord.conf (`app_id=…`) or builds with HEARTH_DISCORD_APP_ID; needs testing with a real ID
+- [x] Hearth Link ideas: "Continue on this device" (Game Mode), update every device at once (download once shipped in 0.6.57)
+- [x] Ventoy (multi-ISO) mode in the USB maker: Hearth Disks › Make a bootable USB › Several ISOs (pinned upstream Ventoy, checksum-checked; Hearth editions, Recovery, the list, your own ISOs) (needs testing on a real stick)
+- [x] Local AI over Hearth Link (first version: a device's own Ollama/llama-server shared with paired devices; answers come whole, not streamed)
+- [ ] Support page/donations: built (Settings › About › Support Hearth OS and the website), hidden until the owner fills in a link in ui/support-links.js and site/support-links.js
 
 ## Done
 
@@ -133,6 +129,17 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## 0.2.6 (released)
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
+
+## 0.6.58 (released)
+
+- [x] Desktop selector: Hearth Classic, Hearth Plasma (Hearth GNOME later) in Settings and at sign-in; falls back to Hearth Classic by itself when Plasma can't start — needs testing on a device
+- [x] Hearth Plasma (first version): KDE Plasma 6 in Hearth's look with Hearth Launcher, Quick Access, Hearth Link, Hearth Storage and Game Mode widgets; not yet a one-to-one match with Hearth Classic
+- [x] Hearth Files built from KDE Dolphin, and Hearth Storage (hearth:/) in every KDE app's file dialogs; KDE-based Terminal, Text Editor, Reader, Calculator and Capture (Capture on Anatase only for now); the old apps kept as "(classic)"
+- [x] Hearth Link: Windows (SMB) sharing per folder, wake devices over the network, Continue on this device, update every device at once, local AI shared with paired devices
+- [x] Ventoy: several ISOs on one USB stick in Hearth Disks — needs testing on a real stick
+- [x] Browser: move around web pages with the D-pad
+- [x] Discord status and Support page built, hidden until set up
+- [x] Qt renderer: more of phase 2 (notifications, Wi-Fi/Bluetooth, game settings, achievements, Library filters)
 
 ## 0.6.57 (released)
 
@@ -515,5 +522,5 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Hearth Browser, next
 
-- Controller: move between links with the D-pad in Game Mode
-- Hearth Browser on Windows (Ember)
+- [x] Controller: move between links with the D-pad in Game Mode (A opens, B goes back, Hearth's focus ring)
+- [x] Hearth Browser on Windows (Ember): Ember sets up its own Firefox with Hearth's parts (Services/HearthBrowser.cs; the Electron/CEF browser it replaced isn't packaged)

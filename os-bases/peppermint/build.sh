@@ -210,6 +210,19 @@ if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then
 touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
+# ------------------------------------------------------------------ Hearth Plasma (docs/PLASMA.md)
+# KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
+# /usr/share/hearth-plasma). Only the workspace (no recommends, no kde-standard app bundle) plus Dolphin for folders.
+# Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
+# plasma-workspace needs gdb (its crash handler), whose libdebuginfod has to match the elfutils libraries the newer
+# kernel/Mesa brought from backports: taken from backports too, or apt can't solve it.
+if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
+"${APT[@]}" plasma-workspace kwin-wayland plasma-desktop
+optional plasma-nm plasma-pa powerdevil kscreen kscreenlocker bluedevil polkit-kde-agent-1 xdg-desktop-portal-kde \
+  breeze kde-cli-tools systemsettings plasma-integration qml6-module-org-kde-kirigami libplasma5support6 dolphin \
+  kde-config-screenlocker spectacle qml-module-org-kde-plasma-plasma5support qml6-module-org-kde-plasma-plasma5support
+for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/null || { echo "::error title=Hearth Plasma::$b is missing"; exit 1; }; done
+
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
 # SDDM's login screen itself runs on X (its default), so the X server comes along.
@@ -799,6 +812,11 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
+# The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
+# Plasma (hidden by its TryExec where Plasma isn't installed).
+for s in hearth-classic hearth-plasma; do
+  sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
+done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
@@ -1154,6 +1172,14 @@ fi
 if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/install.sh
 else echo "Hearth Office wasn't built; this image goes without it"; fi
 # ---- end of Hearth Office
+
+# ------------------------------------------------------------------ Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md)
+# Hearth Terminal (Konsole), Hearth Text (Kate), Reader (Okular), Capture (Spectacle) and Hearth Calculator (KCalc), the
+# base's own KDE packages with Hearth's names, icons and colors; Hearth Files built from Dolphin and kio-hearth (hearth:/
+# in every KDE app) from CI's build inside this base (os/nimbus-app/hearth-kde.tar), only when they built, passed their
+# tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
+# Calculator stay installed as "… (classic)". Never stops the image build.
+bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in

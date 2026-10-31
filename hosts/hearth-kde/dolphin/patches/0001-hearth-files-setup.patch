@@ -1,0 +1,16 @@
+From: Dragongamer9 <Dragongamer9@users.noreply.github.com>
+Subject: [PATCH] Hearth Files: call hearthFilesSetup() before the about data is registered
+
+Hearth's name and credits (KDE's are kept), the Hearth look where the desktop doesn't give it, and the controller
+(hosts/hearth-kde/dolphin/hearth, added to the build by hearth.cmake). The only change to Dolphin's own files.
+---
+ src/main.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -80 +80,3 @@
+-    KAboutData::setApplicationData(aboutData);
++    void hearthFilesSetup(KAboutData &); // Hearth Files (hosts/hearth-kde/dolphin/hearth/hearthfiles.h)
++    hearthFilesSetup(aboutData);
++    KAboutData::setApplicationData(aboutData);
