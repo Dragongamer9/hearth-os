@@ -283,12 +283,16 @@ G['hearth-maps'] = (
     + fill('M256 304 C222 262 200 234 200 204 a56 56 0 0 1 112 0 c0 30-22 58-56 100Z', E, SEP)
     + circle(256, 204, 20, INK))
 
+G['hearth-theater'] = (  # Hearth Theater: a screen with a play mark, on a little stand
+    '<rect x="112" y="140" width="288" height="196" rx="36" fill="none" stroke="url(#c)" stroke-width="36"/>'
+    + fill('M228 196 L312 238 L228 280 Z', E, ' stroke="url(#e)" stroke-width="24" stroke-linejoin="round"')
+    + stroke('M196 392 H316 M256 340 V392', C, 32))
 G['hearth-generic-app'] = (  # any app without an icon of its own
     '<rect x="128" y="148" width="256" height="216" rx="40" fill="none" stroke="#c2ae98" stroke-width="32"/>'
     + stroke('M132 214 H380', SHADE, 28) + circle(180, 188, 10, E) + rect(176, 254, 72, 72, 16, SHADE) + stroke('M284 266 H336 M284 314 H320', SHADE, 22))
 
 WINDOW_ICONS = {'hearth-terminal': 'hosts/hearth-terminal/icons/icon.png', 'hearth-disks': 'hosts/hearth-disks/icons/icon.png',
-                'hearth-text': 'hosts/hearth-text/icons/icon.png'}
+                'hearth-text': 'hosts/hearth-text/icons/icon.png', 'hearth-theater': 'hosts/hearth-theater/icons/icon.png'}
 
 ALIASES = {'hearth-task-manager': 'hearth-tasks', 'hearth-claude-get': 'hearth-get-claude', 'hearth-install': 'hearth-installer'}
 

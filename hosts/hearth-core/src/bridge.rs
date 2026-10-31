@@ -461,6 +461,8 @@ impl Bridge {
             // ---- end of Hearth's gaming apps
             // ---- Bazaar, Hearth OS's app store (bazaar.rs): Game Mode's menu › Apps
             "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
+            // ---- Hearth Theater (theater.rs): Game Mode's menu › Theater
+            "theater.open" => crate::theater::open(crate::signin_handoff::game_mode()),
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1816,6 +1818,7 @@ fn features() -> Vec<&'static str> {
     // ---- end of Hearth's gaming apps
     if crate::link::available() { f.push("hearthLink"); }
     if crate::bazaar::available() { f.push("bazaar"); }
+    if crate::theater::available() { f.push("theater"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

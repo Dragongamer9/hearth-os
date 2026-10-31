@@ -16,7 +16,7 @@ on:
   # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh']
+    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -274,7 +274,7 @@ jobs:
         run: |
           set -o pipefail
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
-          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
             sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" hosts/$c/Cargo.toml
             if (cd hosts/$c && cargo build --release); then cp "$CARGO_TARGET_DIR/release/$c" /tmp/app/$c
             else echo "::warning title=$c::it didn't build, so this image is made without it"; fi
@@ -581,6 +581,7 @@ jobs:
           warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
           warn "the emoji picker is installed and finds its libraries" "test -x /usr/bin/hearth-emoji && ! ldd /usr/bin/hearth-emoji | grep -q 'not found'"
           warn "Hearth Fonts is installed and lists the fonts" "test -x /usr/bin/hearth-fonts && HOME=/tmp /usr/bin/hearth-fonts --list | grep -q '\"name\"'"
+          warn "Hearth Theater is installed and finds its libraries" "test -x /usr/bin/hearth-theater && ! ldd /usr/bin/hearth-theater | grep -q 'not found'"
           warn "hearth-gamma (inverted colours in Desktop Mode) is installed" "test -x /usr/bin/hearth-gamma"
           warn "the emoji picker can type and copy (wtype, wl-copy)" "command -v wtype && command -v wl-copy"
           warn "Orca (the screen reader) is installed" "command -v orca"

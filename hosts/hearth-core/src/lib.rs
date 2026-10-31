@@ -77,6 +77,7 @@ pub mod storefront;
 pub mod stores;
 pub mod system;
 pub mod sysinfo;
+pub mod theater;   // Hearth Theater, your wall of video sites, opened from Game Mode's menu
 pub mod tools;
 pub mod vdf;
 pub mod watchdog;
