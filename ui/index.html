@@ -6913,7 +6913,29 @@ function pageSwitch(){
 
 // ---------- Settings › Shell ----------
 const SHELL = {status:null};
-function loadShellStatus(){ if(host) call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message)); }
+function loadShellStatus(){
+  if(!host) return;
+  call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message));
+  // Which desktop Desktop Mode is (Hearth Classic / Hearth Plasma): HEARTH_DESKTOP in session.conf (admin.rs desktop()).
+  if(LINUX) call('login.desktop').then(d=>{ SHELL.desktop=d; refreshUI(); }).catch(()=>{});
+}
+const DESKTOP_NAMES={classic:'Hearth Classic', plasma:'Hearth Plasma'};
+function deskRow(){
+  const d=SHELL.desktop; if(!d) return '';
+  const cur=DESKTOP_NAMES[d.desktop]||'Hearth Classic';
+  const sub = d.fellBack ? 'Hearth Plasma didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in both.'
+    : 'Hearth Classic (today\'s desktop) or Hearth Plasma (KDE Plasma in the same look). Your files and settings stay; Game Mode doesn\'t change. Also on the login screen.';
+  return shead('Desktop')
+    + `<button class="row" data-f data-k="sh-desk" data-act="deskPick"><span class="ricon">${I.desk}</span><div class="rt"><b>Desktop</b><small>${sub}</small></div><div class="rv">${esc(cur)} ›</div></button>`;
+}
+function deskPick(){
+  const d=SHELL.desktop||{}; const cur=d.desktop||'classic';
+  const pick=desktop=>call('login.setDesktop',{desktop}).then(r=>{ SHELL.desktop=r; refreshUI(); toast(DESKTOP_NAMES[desktop]+' opens the next time you switch to Desktop Mode'); }).catch(e=>toast(e.message));
+  openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if Hearth Plasma can\'t start, Hearth Classic opens instead.', items:[
+    {label:'Hearth Classic', icon:cur!=='plasma'?'check':'', run:()=>pick('classic')},
+    {label:d.plasma?'Hearth Plasma':'Hearth Plasma (not installed on this system)', icon:cur==='plasma'?'check':'', run:()=>d.plasma?pick('plasma'):toast('Hearth Plasma comes with Hearth OS on Anatase and Peppermint')},
+    {label:'Hearth GNOME (coming later)', icon:'', run:()=>toast('Hearth GNOME is coming in a later update')}]});
+}
 function pageShellLinux(){
   const s=SHELL.status;
   const state = !s ? 'Checking…'
@@ -6929,6 +6951,7 @@ function pageShellLinux(){
     else
       h += `<button class="row" data-f data-k="sh-make" data-act="shellMake"><span class="ricon">${I.shell}</span><div class="rt"><b>Add the ${APP} session</b><small>Asks for your password${s.gamescope?'':' · gamescope isn\'t installed yet'}</small></div><div class="rv">›</div></button>`;
   }
+  h += deskRow();
   h += shead('If something goes wrong')
     + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to desktop</b><small>${HOSTINFO.session?'Opens Mantel, the desktop (windows, taskbar). Return with the Game Mode menu item or Super+G':'Minimizes '+APP+''}</small></div></button>`
     + note(`Black screen? Press <b>Ctrl+Alt+F3</b> for a text console, sign in, and run <code>loginctl terminate-user $USER</code>. That brings back the login screen. If ${APP} keeps crashing, the session rolls back an update by itself, then gives up and returns to the login screen.`)
@@ -9547,6 +9570,7 @@ function act(el){
     case 'shellReturn': return shellReturn();
     case 'emberStart': return emberStart();
     case 'emberStyle': return emberStyle();
+    case 'deskPick': return deskPick();
     case 'emberWall': return emberWall();
     case 'sheet': return sheetPick(+d.i);
     case 'hint': return hintAction(d.h);

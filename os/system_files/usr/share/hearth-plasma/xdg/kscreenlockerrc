@@ -1,0 +1,11 @@
+# Like Hearth Classic: not locked unless you ask (Super+L) or turn on "Ask for my password after sleep".
+[Daemon]
+Autolock=false
+LockOnResume=false
+
+[Greeter]
+WallpaperPlugin=org.kde.image
+
+[Greeter][Wallpaper][org.kde.image][General]
+Image=/usr/share/wallpapers/Hearth-fireside/
+PreviewImage=/usr/share/wallpapers/Hearth-fireside/

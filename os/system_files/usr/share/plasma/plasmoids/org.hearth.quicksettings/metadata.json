@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Volume, brightness, Wi-Fi, power mode and quick actions, like Quick Access in Hearth Classic and Game Mode",
+        "Icon": "hearth-settings",
+        "Id": "org.hearth.quicksettings",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth Quick Access",
+        "Website": "https://hearthos.fun",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,35 @@
+# Hearth's global theme (System Settings › Colors & Themes › Global Theme › Hearth). The same values are Hearth
+# Plasma's defaults (/usr/share/hearth-plasma/xdg), so picking another theme and coming back restores Hearth's look.
+[kdeglobals][KDE]
+widgetStyle=Breeze
+
+[kdeglobals][General]
+ColorScheme=Hearth
+AccentColor=255,138,61
+
+[kdeglobals][Icons]
+Theme=breeze-dark
+
+[plasmarc][Theme]
+name=hearth
+
+[Wallpaper]
+Image=Hearth-fireside
+
+[kcminputrc][Mouse]
+cursorTheme=breeze_cursors
+
+[kwinrc][WindowSwitcher]
+LayoutName=thumbnail_grid
+
+[kwinrc][DesktopSwitcher]
+LayoutName=org.kde.breeze.desktop
+
+[kwinrc][org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnLeft=
+ButtonsOnRight=IAX
+
+[KSplash]
+Theme=None

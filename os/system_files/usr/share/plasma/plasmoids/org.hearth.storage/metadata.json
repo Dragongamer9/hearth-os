@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Dragongamer9"
+            }
+        ],
+        "Category": "System Services",
+        "Description": "Hearth's home server on Hearth Link: this device's role, your devices' health, shared folders and backups",
+        "Icon": "hearth-disks",
+        "Id": "org.hearth.storage",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth Storage",
+        "Website": "https://hearthos.fun",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationArea": "true",
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}

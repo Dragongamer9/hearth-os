@@ -7,8 +7,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## Planned
 
 **Desktop update (after 0.6.57; the owner picks the number)**
-- [ ] Desktop selector in Settings (and at sign-in): Hearth Classic (today's labwc + Mantel), Hearth Plasma, later Hearth GNOME; switching keeps your files and settings, the old desktop stays selectable as the fallback
+- [x] Desktop selector in Settings (and at sign-in): Hearth Classic (today's labwc + Mantel), Hearth Plasma, later Hearth GNOME; switching keeps your files and settings, the old desktop stays selectable as the fallback (falls back to Hearth Classic by itself when Plasma can't start; see docs/PLASMA.md; needs testing on a device)
 - [ ] Hearth Plasma: KDE Plasma 6 themed one-to-one with today's desktop (every part screenshotted and matched side by side: taskbar/dock, launcher, notifications, quick settings, windows, lock screen); Mantel's best parts (Hearth Link, Hearth Storage, quick settings, launcher) as Plasma widgets
+  - [x] Plasma 6 in both images (minimal set), Hearth global theme, desktop theme, defaults and layout; Hearth Launcher, Quick Access, Hearth Link, Hearth Storage and Game Mode widgets; screenshot CI next to Hearth Classic (docs/PLASMA.md; needs testing on a device)
+  - [ ] Still to match: controller control, on-screen keyboard, radial menu, Hearth menu, lock screen layout
 - [ ] Hearth Files built from Dolphin: everything Dolphin does plus Hearth's own (hearth:// Hearth Storage places, controller navigation, Hearth look); Hearth Storage as a KIO plugin so every KDE app's file dialogs can open files on the home server
 - [ ] KDE apps rebuilt as Hearth apps (GPL kept, KDE credited, Hearth names/icons): Hearth Terminal (Konsole), Hearth Text (Kate), document viewer (Okular), Hearth Capture (Spectacle), Hearth Calculator (KCalc); kept as they are: Photos, Contacts, Time, Paint, Office and the other Hearth apps
 - [ ] Hearth GNOME: later, themed the same way

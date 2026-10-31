@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [ { "Name": "Dragongamer9" } ],
+        "Category": "",
+        "Description": "Hearth OS: the Hearth Classic desktop's look on KDE Plasma (warm firelit darks, ember accent, floating taskbar, Hearth's widgets)",
+        "Id": "org.hearth.desktop",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth",
+        "Website": "https://hearthos.fun"
+    },
+    "X-Plasma-APIVersion": "2"
+}

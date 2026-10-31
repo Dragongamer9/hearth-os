@@ -6,15 +6,16 @@ SetBase {
     id: ch
     property string title
     property string sub
-    property var options: []        // [{value, label}]
+    property var options: []        // [{value, label, disabled}] (a disabled one is shown greyed and can't be picked)
     property var current
     signal chosen(var value)
     usesLeftRight: true
     Layout.fillWidth: true
     implicitHeight: col.implicitHeight + 28
     readonly property int idx: Math.max(0, options.findIndex(o => o.value === current))
-    onAdjusted: d => { const i = Math.max(0, Math.min(options.length - 1, idx + d)); if (options[i]) chosen(options[i].value); }
-    onActivated: { if (options.length) chosen(options[(idx + 1) % options.length].value); }
+    function pickable(i) { return !!options[i] && !options[i].disabled; }
+    onAdjusted: d => { let i = idx + d; while (i >= 0 && i < options.length && !pickable(i)) i += d; if (pickable(i)) chosen(options[i].value); }
+    onActivated: { for (let k = 1; k <= options.length; k++) { const i = (idx + k) % options.length; if (pickable(i)) { if (i !== idx) chosen(options[i].value); return; } } }
 
     ColumnLayout {
         id: col
@@ -35,8 +36,9 @@ SetBase {
                     implicitHeight: 40
                     radius: 10
                     color: lit ? Theme.accent : Theme.panel3
+                    opacity: opt.modelData.disabled ? 0.45 : 1
                     Text { anchors.centerIn: parent; text: opt.modelData.label; color: opt.lit ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: opt.lit ? Font.DemiBold : Font.Normal }
-                    MouseArea { anchors.fill: parent; onClicked: { ch.forceActiveFocus(); ch.chosen(opt.modelData.value); } }
+                    MouseArea { anchors.fill: parent; enabled: !opt.modelData.disabled; onClicked: { ch.forceActiveFocus(); ch.chosen(opt.modelData.value); } }
                 }
             }
         }
