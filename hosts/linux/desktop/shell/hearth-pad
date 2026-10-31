@@ -12,6 +12,7 @@ It reads every connected controller from /dev/input and acts as a mouse and keyb
   Menu (☰)      apps                                Guide        Hearth menu (radial)
   View + D-pad  snap left/right, maximize, minimize View + B     close the window
   View (tap)    show these controls                 L3           middle-click
+  Guide + X     on-screen keyboard (open / close), like Steam + X
 
 Talks to the shell with one JSON object per line: events out on stdout, commands in on stdin.
 Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-screen keyboard), launcher, help,
@@ -24,6 +25,10 @@ In:  pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard 
      mouse {on} (controller mouse on/off), radial {open}.
 While the on-screen keyboard is open the right stick still moves the pointer and RT clicks (into another text field).
 Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn't restart those).
+
+--osk: Hearth Plasma's on-screen keyboard (desktop/shell/osk-plasma.qml): only Guide + X, which asks for the keyboard
+(osk {open}); while it's open the controller is the keyboard's alone (grabbed: apps don't see the presses) and typing goes
+through this helper's uinput keyboard (KWin has no wtype). The rest of the time it does nothing.
 
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
 A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
@@ -90,9 +95,11 @@ def curve(v):
 class Pad:
     """What the controller does, without any device code (so it can be tested)."""
 
-    def __init__(self, out, game=False):
+    def __init__(self, out, game=False, osk_only=False):
         self.out = out             # .move(dx, dy) .wheel(v, h) .press(name, down) .send(obj)
         self.game = game           # --game: Game Mode's controller mouse, nothing else
+        self.osk_only = osk_only   # --osk: Hearth Plasma's keyboard: Guide + X, and the keyboard while it's open
+        self.guide_from = None     # what was open when Guide went down (Guide + X closes the keyboard if it was)
         self.done = False          # --game: turned off with View + Menu
         self.mode = 'desk'         # desk | radial | osk
         self.fs_pause = False      # a fullscreen app (a game) is in front
@@ -214,7 +221,13 @@ class Pad:
             return self.game_button(name, down, now)
         if name == 'guide':
             if down:
-                self.close_radial() if self.mode == 'radial' else self.open_radial()
+                self.guide_from = self.mode
+                if not self.osk_only:
+                    self.close_radial() if self.mode == 'radial' else self.open_radial()
+            return
+        if name == 'x' and down and 'guide' in self.held:
+            return self.osk_chord()
+        if self.osk_only and self.mode != 'osk':
             return
 
         if self.mode == 'radial':
@@ -226,6 +239,22 @@ class Pad:
         if self.keys_ctx:
             return self.keys_button(name, down)
         return self.desk_button(name, down, now)
+
+    def osk_chord(self):
+        """Guide + X: the on-screen keyboard, like Steam + X. The radial menu that Guide's press opened goes away again;
+        the keyboard closes if it was open when Guide went down."""
+        was_open = self.guide_from == 'osk' or self.mode == 'osk'
+        if self.mode == 'radial':
+            self.close_radial()
+        self.out.send({'t': 'osk', 'open': not was_open})
+        if was_open:
+            self.close_osk()
+        self.guide_from = None
+
+    @property
+    def wants_grab(self):
+        """--osk: the controller is the keyboard's alone while it's open."""
+        return self.osk_only and self.mode == 'osk'
 
     def game_button(self, name, down, now):
         if down and name in ('view', 'menu') and 'view' in self.held and 'menu' in self.held:
@@ -363,7 +392,7 @@ class Pad:
                 self.out.send({'t': 'oskaxes', 'lx': round(ax[0], 3), 'ly': round(ax[1], 3), 'rx': round(ax[2], 3), 'ry': round(ax[3], 3)})
             if self.osk_split:
                 return
-        elif self.paused:
+        elif self.paused or self.osk_only:
             return
 
         # Pointer (right stick), in every mode but the radial menu.
@@ -484,15 +513,26 @@ class Output:
                 pass
 
 
-def button_map(e):
-    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y',   # xpad's X/Y codes
+SONY = 0x054c
+
+
+def button_map(e, vendor=0):
+    """Event codes → button names. xpad's X/Y codes (X is BTN_NORTH); Sony pads (hid-playstation) swap them:
+    Triangle (top, Y's place) is BTN_NORTH and Square (left, X's place) BTN_WEST, so Y and X were the wrong way round
+    there (Y opened nothing, X typed a space on the keyboard). The d-pad also comes as BTN_TRIGGER_HAPPY1-4 (xpad's
+    dpad_to_buttons, some wireless dongles), and the Xbox button of an Xbox controller over Bluetooth without xpadneo
+    as KEY_HOMEPAGE: both did nothing before."""
+    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y',
          e.BTN_TL: 'lb', e.BTN_TR: 'rb', e.BTN_TL2: 'lt', e.BTN_TR2: 'rt',
          e.BTN_SELECT: 'view', e.BTN_START: 'menu', e.BTN_MODE: 'guide',
          e.BTN_THUMBL: 'l3', e.BTN_THUMBR: 'r3'}
     for code, name in (('BTN_DPAD_UP', 'up'), ('BTN_DPAD_DOWN', 'down'), ('BTN_DPAD_LEFT', 'left'),
-                       ('BTN_DPAD_RIGHT', 'right')):
+                       ('BTN_DPAD_RIGHT', 'right'), ('BTN_TRIGGER_HAPPY1', 'left'), ('BTN_TRIGGER_HAPPY2', 'right'),
+                       ('BTN_TRIGGER_HAPPY3', 'up'), ('BTN_TRIGGER_HAPPY4', 'down'), ('KEY_HOMEPAGE', 'guide')):
         if hasattr(e, code):
             m[getattr(e, code)] = name
+    if vendor == SONY:
+        m[e.BTN_NORTH], m[e.BTN_WEST] = 'y', 'x'
     return m
 
 
@@ -501,6 +541,7 @@ class Controller:
         self.dev = dev
         self.e = e
         self.btn = {}       # name → pressed (buttons, triggers, hat)
+        self.bmap = None    # this controller's button codes (button_map: Sony pads swap X and Y)
         self.ff_id = None   # its uploaded rumble effect (the on-screen keyboard)
         self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0}
         self.info = {}
@@ -564,6 +605,7 @@ def gamepads(evdev, known):
                 d.close()
                 continue
             found[path] = Controller(d, e)
+            found[path].bmap = button_map(e, getattr(getattr(d, 'info', None), 'vendor', 0))
         except OSError:
             try:
                 d.close()
@@ -638,6 +680,7 @@ def main():
     e = evdev.ecodes
     bmap = button_map(e)
     game = '--game' in sys.argv[1:]
+    osk_only = '--osk' in sys.argv[1:]
     stats = {'events': 0, 'moved': 0, 'since': time.monotonic()}
     real_move = out.move
 
@@ -645,7 +688,7 @@ def main():
         stats['moved'] += abs(dx) + abs(dy)
         real_move(dx, dy)
     out.move = counted_move
-    pad = Pad(out, game=game)
+    pad = Pad(out, game=game, osk_only=osk_only)
     if game:
         note('Game Mode controller mouse')
     pads = {}
@@ -705,6 +748,15 @@ def main():
             if set(pads) != before:
                 note('controllers: ' + (', '.join('%s %r' % (p, c.dev.name) for p, c in pads.items()) or 'none'))
             next_scan = now + 3
+        if osk_only:
+            # Hearth Plasma's keyboard: the controller is held while it's open, so apps don't also get the presses.
+            for c in pads.values():
+                if getattr(c, 'grabbed', False) != pad.wants_grab:
+                    try:
+                        c.dev.grab() if pad.wants_grab else c.dev.ungrab()
+                    except OSError:
+                        pass             # someone else holds it: don't keep trying
+                    c.grabbed = pad.wants_grab
         fds = {c.dev.fd: (p, c) for p, c in pads.items()}
         try:
             ready, _, _ = select.select(list(fds) + [sys.stdin.fileno()], [], [], 0.008)
@@ -730,7 +782,7 @@ def main():
             try:
                 for ev in c.dev.read():
                     stats['events'] += 1
-                    c.handle(ev, bmap)
+                    c.handle(ev, c.bmap or bmap)
             except (BlockingIOError, InterruptedError):
                 pass
             except OSError:          # unplugged

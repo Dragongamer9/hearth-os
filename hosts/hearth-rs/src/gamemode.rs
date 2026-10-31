@@ -119,6 +119,11 @@ pub struct GameMode {
     main_aside: AtomicBool,
     /// What Hearth's page was last told about reading the controller (hostScreen): 0 nothing yet, 1 it may, 2 it may not.
     pads_told: AtomicU64,
+    /// The overlay is the on-screen keyboard (Guide + X), not Quick Access: it types into the game, which keeps its
+    /// keyboard focus.
+    osk_on: AtomicBool,
+    osk_next: AtomicBool,
+    last_osk: AtomicU64,
 }
 
 /// Who asks for something to come to the front.
@@ -167,6 +172,10 @@ pub fn still_aside(main_aside: bool, hearth_on_screen: bool) -> bool { main_asid
 fn focus_is_hearth(label: &str) -> bool { matches!(label, "hearth" | "back to starting screen") }
 
 fn now() -> u64 { hearth_core::library::now_ms() }
+/// gamescope's STEAM_INPUT_FOCUS for the overlay window: 0 the game has the input, 1 the overlay takes it (Quick
+/// Access), 2 the overlay gets touch and the mouse but the keyboard stays the game's (the on-screen keyboard, as
+/// Steam's own keyboard does), so what Hearth Input's virtual keyboard types goes into the game.
+pub fn input_focus(input: bool, osk: bool) -> u64 { if !input { 0 } else if osk { 2 } else { 1 } }
 fn log(t: &str) { hearth_core::bridge::log(t); }
 fn ev(name: &str, data: Value) -> Value { json!({"type": "event", "name": name, "data": data}) }
 fn ev_pad(b: &str) -> Value { ev("pad", json!({"b": b})) }
@@ -179,7 +188,8 @@ impl GameMode {
             repeat_gen: AtomicU64::new(0), last_pad: Mutex::new((String::new(), 0)), xids: Mutex::new(Default::default()), game_wins: Default::default(),
             hhd_overlay: AtomicBool::new(false), win_tags: Default::default(), ids_on: AtomicBool::new(false),
             over_launch: AtomicBool::new(false), waiting: AtomicU64::new(0), wait_gen: AtomicU64::new(0), opened_after_wait: AtomicU64::new(0),
-            keeper_poked_at: AtomicU64::new(0), app_asks: AtomicU64::new(0), app_first_ask: AtomicU64::new(0), main_aside: AtomicBool::new(false), pads_told: AtomicU64::new(0) });
+            keeper_poked_at: AtomicU64::new(0), app_asks: AtomicU64::new(0), app_first_ask: AtomicU64::new(0), main_aside: AtomicBool::new(false), pads_told: AtomicU64::new(0),
+            osk_on: AtomicBool::new(false), osk_next: AtomicBool::new(false), last_osk: AtomicU64::new(0) });
         let hhd = gm.inside() && hearth_core::overlay_link::hhd_hosts_overlay();
         gm.hhd_overlay.store(hhd, Ordering::SeqCst);
         gm
@@ -569,7 +579,7 @@ impl GameMode {
         if self.hhd() { return; }
         if let Some(x) = self.xid(OVERLAY_TITLE) {
             let _ = gs::set_window(x, "_NET_WM_WINDOW_OPACITY", if visible { OPAQUE } else { 0 });
-            let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", if input { 1 } else { 0 });
+            let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", input_focus(input, self.osk_on.load(Ordering::SeqCst)));
         }
     }
     /// On screen, see-through, marked as gamescope's overlay, not taking input: ready to open at once.
@@ -582,9 +592,15 @@ impl GameMode {
         if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_OVERLAY", 1); }
     }
 
+    /// The overlay as Quick Access, or (osk_next set: Guide + X) as the on-screen keyboard over the game: the same
+    /// window and page, the same hold on the controller (the game doesn't get its presses), but then the game keeps
+    /// its keyboard focus so the keys typed through Hearth Input's virtual keyboard reach it.
     pub fn show_overlay(self: &Arc<Self>) -> bool {
+        let osk = self.osk_next.swap(false, Ordering::SeqCst);
         if !self.overlay_ready() { return false; }
         let _o = self.overlay_lock.lock().unwrap();
+        self.osk_on.store(osk, Ordering::SeqCst);
+        let shown = if osk { "overlay.osk" } else { "overlay.shown" };
         self.overlay_on.store(true, Ordering::SeqCst);
         self.shown_at.store(now(), Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
@@ -611,21 +627,41 @@ impl GameMode {
         // hands it the controller's presses.
         if self.hhd() {
             self.to_overlay(ev("padHost", json!({"connected": 1})));
-            self.to_overlay(ev("overlay.shown", json!({})));
+            self.to_overlay(ev(shown, json!({})));
             return true;
         }
         // Not focused: taking the keyboard focus from the game makes some games minimize or stall (a black or
         // frozen screen after). Its buttons come from the controller readers; gamescope sends touch to it.
         if self.has_overlay() { self.host.show("overlay"); }
-        if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_OVERLAY", 1); let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", 1); }
+        if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_OVERLAY", 1); let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", input_focus(true, osk)); }
         // Visible once the page says Quick Access is drawn, or after 300 ms at the latest.
         let r = self.reveal_gen.fetch_add(1, Ordering::SeqCst) + 1;
         let me = self.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(300)); if me.reveal_gen.load(Ordering::SeqCst) == r { me.reveal_overlay(); } });
         let pads = self.guide.connected();
         self.to_overlay(ev("padHost", json!({"connected": if pads > 0 { 1 } else { 0 }})));
-        self.to_overlay(ev("overlay.shown", json!({})));
+        self.to_overlay(ev(shown, json!({})));
         true
+    }
+
+    /// Guide + X (from Hearth's controller reader, Hearth Input or InputPlumber): Hearth's on-screen keyboard over
+    /// whatever is in front, typing into it (docs/OSK.md); Guide + X again (or B) closes it. Quick Access opened by
+    /// that same Guide press becomes the keyboard. Over Hearth's own screen its page's keyboard is used.
+    pub fn osk_chord(self: &Arc<Self>, from: &str) {
+        let t = now();
+        if t.saturating_sub(self.last_osk.swap(t, Ordering::SeqCst)) < 400 { self.ip_sync(); return; }   // the same chord from two readers
+        if self.overlay_on.load(Ordering::SeqCst) {
+            if self.osk_on.load(Ordering::SeqCst) { log(&format!("osk: Guide + X ({from}): closing the keyboard")); self.hide_overlay(); return; }
+            log(&format!("osk: Guide + X ({from}) with Quick Access open: the keyboard instead"));
+            self.osk_on.store(true, Ordering::SeqCst);
+            if !self.hhd() { if let Some(x) = self.xid(OVERLAY_TITLE) { let _ = gs::set_window(x, "STEAM_INPUT_FOCUS", input_focus(true, true)); } }
+            self.to_overlay(ev("overlay.osk", json!({})));
+            return;
+        }
+        if self.hearth_on_screen() { self.ip_sync(); self.to_main(ev("osk.chord", json!({}))); return; }
+        log(&format!("osk: Guide + X ({from}): the on-screen keyboard over what's in front"));
+        self.osk_next.store(true, Ordering::SeqCst);
+        if !self.show_overlay() { log("osk: there's no overlay to show the keyboard in"); self.ip_sync(); }
     }
     /// While the overlay is open the game gets no controller input, and it keeps running: InputPlumber sends every
     /// press to Hearth instead of the game; controllers it doesn't manage are taken by Hearth for the time being.
@@ -718,6 +754,7 @@ impl GameMode {
         });
         let on_event: hearth_core::input_map::OnEvent = Arc::new(move |e: Value| match e["t"].as_str() {
             Some("guide") => { let m = me2.clone(); std::thread::spawn(move || m.guide_pressed("guide")); }
+            Some("osk") => { let m = me2.clone(); std::thread::spawn(move || m.osk_chord("Hearth Input")); }
             Some("osd") => {
                 let text: String = e["text"].as_str().unwrap_or("").chars().take(200).collect();
                 me2.osd(json!({"kind": "msg", "icon": "pad", "text": text, "ms": 1600}));
@@ -743,10 +780,13 @@ impl GameMode {
             let child = std::process::Command::new("gdbus").args(["monitor", "--system", "--dest", "org.shadowblip.InputPlumber"])
                 .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn();
             let Ok(mut child) = child else { return };
+            let mut guide_held = false;
             if let Some(out) = child.stdout.take() {
                 for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
                     let Some((ev, down)) = hearth_core::inputplumber::parse_event(&line) else { continue };
-                    if ev == "ui_guide" { if down { let m = me.clone(); std::thread::spawn(move || m.guide_pressed("guide")); } continue; }
+                    if ev == "ui_guide" { guide_held = down; if down { let m = me.clone(); std::thread::spawn(move || m.guide_pressed("guide")); } continue; }
+                    // Guide + X: the on-screen keyboard (InputPlumber catches everything after Guide).
+                    if down && guide_held && hearth_core::inputplumber::button(&ev) == Some("x") { let m = me.clone(); std::thread::spawn(move || m.osk_chord("InputPlumber")); continue; }
                     if me.overlay_on.load(Ordering::SeqCst) { if let Some(b) = hearth_core::inputplumber::button(&ev) { me.overlay_pad(b, down); } }
                     // Caught presses with Quick Access closed (the service was left catching everything): give the
                     // controller back, and don't lose the press: Hearth's own screen gets it.
@@ -824,6 +864,7 @@ impl GameMode {
             return;
         }
         self.overlay_on.store(false, Ordering::SeqCst);
+        self.osk_on.store(false, Ordering::SeqCst);
         self.sync_main_pads();
         let from_launch = self.over_launch.swap(false, Ordering::SeqCst);
         self.osd_on.store(false, Ordering::SeqCst);
@@ -910,6 +951,7 @@ impl GameMode {
 
     /// Guide (or View held, or Ctrl+Alt+Q): over anything that isn't Hearth, opens the overlay; again closes it.
     pub fn guide_pressed(self: &Arc<Self>, how: &str) {
+        if how == "osk" { return self.osk_chord("controller"); }
         // The same press can come from two places (InputPlumber and the controller itself).
         let t = now();
         // A press ignored as a repeat still made InputPlumber catch everything: put its mode back.
@@ -1407,5 +1449,14 @@ mod tests {
         assert_eq!(game_put_over_quick_access, 0, "the game was put in front of open Quick Access");
         // Back to Hearth (come_back): its page reads the controller again.
         assert!(main_page_reads_pad(false, open));
+    }
+
+    /// The keyboard over a game leaves the game its keyboard focus (gamescope's mode 2); Quick Access takes it.
+    #[test]
+    fn the_keyboard_leaves_the_game_its_focus() {
+        assert_eq!(input_focus(false, false), 0);
+        assert_eq!(input_focus(false, true), 0);
+        assert_eq!(input_focus(true, false), 1);
+        assert_eq!(input_focus(true, true), 2);
     }
 }

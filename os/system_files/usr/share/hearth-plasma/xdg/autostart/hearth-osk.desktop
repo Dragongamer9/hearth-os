@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth on-screen keyboard
+Comment=Guide + X on a controller opens Hearth's on-screen keyboard (docs/OSK.md)
+Exec=sh -c 'd="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"; command -v quickshell >/dev/null 2>&1 && [ -f "$d/osk-plasma.qml" ] && exec quickshell -p "$d/osk-plasma.qml"; exit 0'
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

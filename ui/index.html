@@ -1396,6 +1396,14 @@ body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accen
 .hm-minis{margin-top:10px;max-width:640px}
 .hm-tick{width:22px;height:22px;border-radius:6px;border:2px solid var(--dim);display:grid;place-items:center;flex:none}.hm-tick.radio{border-radius:50%}.hm-opt.on .hm-tick{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}.hm-tick svg{width:14px;height:14px}
 .hm-opt.off{opacity:.5}.hm-fo{display:grid;gap:14px}.hm-fopic{max-width:min(420px,60vw);border-radius:var(--r);margin-top:12px}.hm-fonav{margin-top:14px}
+
+/* The on-screen keyboard over a game (Guide + X): only the keyboard, see-through, the game behind it */
+body.ovosk{background:transparent !important}
+body.ovosk > *:not(#ovosk):not(#toasts){visibility:hidden !important}
+#ovosk{display:none}
+body.ovosk #ovosk{display:block;position:fixed;left:0;right:0;bottom:0;z-index:9000;padding:10px clamp(8px,3vw,40px) 14px}
+#ovosk .ovosk-typed{margin:0 auto 8px;max-width:900px;padding:8px 14px;border-radius:12px;background:rgba(10,10,14,.55);backdrop-filter:blur(8px);color:#fff;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+#ovosk .ovosk-hint{text-align:center;font-size:12px;color:rgba(255,255,255,.75);margin-top:6px;text-shadow:0 1px 3px #000}
 </style>
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <script src="osk/hearth-osk.js"></script>
@@ -8483,6 +8491,7 @@ function appsBody(){
 const OV = {shown:false};
 function overlayClose(){ send({type:'overlay', action:'close'}); }
 async function overlayShown(){
+  ovoskClose();
   OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
   // Tell Hearth once Quick Access has really been drawn, so it's made visible with something in it (shown
   // before that, gamescope sometimes put up an empty, black overlay over the game).
@@ -8501,7 +8510,65 @@ async function overlayShown(){
   OV.busy=false;
   if(OV.wantPower){ OV.wantPower=false; openLayer('power'); }
 }
-function overlayHidden(){ OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
+function overlayHidden(){ ovoskClose(); OV.shown=false; document.body.classList.add('ov-closed'); while(S.layers.length>1) closeLayer(); }
+
+// ---------- the on-screen keyboard over a game (Guide + X, like Steam + X; docs/OSK.md) ----------
+// Hearth opens the overlay as just the keyboard (overlay.osk): see-through, the game keeps its keyboard focus and keeps
+// running, and Hearth holds the controller for it (the game doesn't get the presses). What's typed goes into the game
+// through Hearth Input's virtual keyboard (osk.type / osk.key), so native, Proton/Wine and emulator games all get it.
+// B, Guide or Guide + X again close it.
+const OVOSK = {on:false, engine:null, view:null, el:null, q:Promise.resolve(), typed:'', raf:0};
+function ovoskMods(m){ return m ? Object.keys(m).filter(k=>m[k] && (k==='ctrl'||k==='alt'||k==='shift')) : []; }
+function ovoskSend(method, args){
+  // One at a time, in order (each waits for Hearth Input's answer).
+  OVOSK.q = OVOSK.q.then(()=>call(method, args, 4000)).then(r=>{ if(r && r.skipped) toast(`Can't type “${r.skipped}” into the game`); })
+    .catch(e=>{ toast(e.message||'Couldn\'t type that'); });
+}
+function ovoskAdapter(){
+  return {
+    insert(text, mods){ OVOSK.typed=(OVOSK.typed+text).slice(-80); ovoskSend('osk.type', {text, mods:ovoskMods(mods).filter(k=>k!=='shift')}); ovoskDraw(); },
+    deleteBack(n){ const g=OSKOK ? HearthOSK.graphemes(OVOSK.typed) : [...OVOSK.typed]; OVOSK.typed=g.slice(0, Math.max(0, g.length-n)).join(''); ovoskSend('osk.key', {key:'bksp', n}); ovoskDraw(); },
+    key(name, mods){ if(name==='enter') OVOSK.typed=''; ovoskSend('osk.key', {key:name, n:1, mods:ovoskMods(mods)}); ovoskDraw(); },
+    context(){ return OVOSK.typed; }
+  };
+}
+function ovoskDraw(){ const t=OVOSK.el && OVOSK.el.querySelector('.ovosk-typed'); if(t) t.textContent = OVOSK.typed || 'Typing into the game'; }
+function overlayOsk(){
+  OV.shown=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
+  while(S.layers.length) closeLayer();
+  if(!OSKOK){ toast('The on-screen keyboard is missing'); return overlayClose(); }
+  if(!OVOSK.el){
+    OVOSK.el=document.createElement('div'); OVOSK.el.id='ovosk';
+    OVOSK.el.innerHTML='<div class="ovosk-typed"></div><div class="ovosk-kb"></div><div class="ovosk-hint">B or Guide + X closes the keyboard</div>';
+    document.body.appendChild(OVOSK.el);
+  }
+  if(!OVOSK.engine) OVOSK.engine=HearthOSK.createEngine({host:'web', mode:'text', enterLabel:'Enter', adapter:ovoskAdapter(),
+    onHide: ()=>overlayClose(), onHaptic: (st,ms)=>{ try{ HearthOSK.rumble(st,ms); }catch(e){} },
+    onSound: k=>{ if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
+  OVOSK.engine.reset('text', 'Enter');
+  if(OVOSK.view) OVOSK.view.destroy();
+  OVOSK.view=HearthOSK.mount(OVOSK.el.querySelector('.ovosk-kb'), OVOSK.engine, {overGame:true});
+  OVOSK.engine.setActive(true); OVOSK.engine.setHints(true);
+  OVOSK.on=true; OVOSK.typed=''; ovoskDraw();
+  document.body.classList.add('ovosk');
+  const tick=()=>{ if(!OVOSK.on) return; try{ OVOSK.engine.tick(); }catch(e){} OVOSK.raf=requestAnimationFrame(tick); };
+  OVOSK.raf=requestAnimationFrame(tick);
+  if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
+  send({type:'log', text:'osk: the keyboard over the game is open (Guide + X)'});
+}
+function ovoskClose(){
+  if(!OVOSK.on) return;
+  OVOSK.on=false; cancelAnimationFrame(OVOSK.raf);
+  if(OVOSK.view){ OVOSK.view.destroy(); OVOSK.view=null; }
+  if(OVOSK.engine) OVOSK.engine.setActive(false);
+  document.body.classList.remove('ovosk');
+}
+/** A controller press while the keyboard is open over the game: all of them are the keyboard's. */
+function ovoskInput(k){
+  if(k==='guide') return overlayClose();
+  if(qaSince() < 250 && k==='x') return;          // the X of the Guide + X that opened it, delivered late
+  OVOSK.engine.handle(k, 'press');
+}
 
 // ==== Hearth Recorder (hosts/hearth-recorder) in Quick Access › Now playing: record the game (or the screen), and
 // instant replay (turn on, save the last stretch). Linux only; the host runs `hearth-recorder --json` (bridge.rs /
@@ -9991,23 +10058,28 @@ function viewGameSettings(){
 // A game with a layout gets the controller as a keyboard and mouse while it's in front (desktop/shell/hearth-input
 // does it; hearth-core input_map.rs keeps each game's choice). Off, the default, leaves the game its own controller
 // support. Edits save as you make them, as the game's own layout.
-const IM = {tables:null, games:{}, at:{}, loading:{}, status:null, statusAt:0, draft:null, gid:null, set:'base', test:null, saveT:null, qaGame:null};
+const IM = {tables:null, games:{}, at:{}, loading:{}, status:null, statusAt:0, draft:null, gid:null, edit:'default', test:null, saveT:null, qaGame:null, globalCfg:null};
 const IM_MOCK = (()=>{
-  const lim = {sensitivity:[0.1,5],deadzone:[0,0.5],outer:[0.5,1],curve:[1,3],threshold:[0.05,0.95],stick_threshold:[0.2,0.9],gyro_sensitivity:[0.1,5],gyro_deadzone:[0,5],hold_ms:[150,1000],turbo_hz:[2,30],pref_sensitivity:[0.25,3],name_len:60,combo_keys:4,radial_items:8};
+  const lim = {sensitivity:[0.1,5],deadzone:[0,0.5],outer:[0.5,1],curve:[1,3],threshold:[0.05,0.95],stick_threshold:[0.2,0.9],gyro_sensitivity:[0.1,5],gyro_deadzone:[0,5],hold_ms:[150,1000],turbo_hz:[2,30],pref_sensitivity:[0.25,3],double_ms:[100,600],turn_px:[300,30000],name_len:60,combo_keys:4,radial_items:8,chords:3,layers:8,sets:8};
   const T = {keys:[{group:'Common',keys:[['SPACE','Space'],['ENTER','Enter'],['ESC','Esc'],['TAB','Tab'],['LEFTSHIFT','Shift'],['LEFTCTRL','Ctrl'],['LEFTALT','Alt']]},
       {group:'Arrows',keys:[['UP','Up arrow'],['DOWN','Down arrow'],['LEFT','Left arrow'],['RIGHT','Right arrow']]},
       {group:'Letters',keys:[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(c=>[c,c])},{group:'Numbers',keys:[...'1234567890'].map(c=>[c,c])},{group:'Function keys',keys:[1,2,3,4,5].map(n=>['F'+n,'F'+n])}],
     mouse:[['left','Left click'],['right','Right click'],['middle','Middle click'],['back','Mouse back'],['forward','Mouse forward']], scroll:[['up','Scroll up'],['down','Scroll down'],['left','Scroll left'],['right','Scroll right']],
     buttons:[['a','A'],['b','B'],['x','X'],['y','Y'],['lb','LB'],['rb','RB'],['lt','LT (left trigger)'],['rt','RT (right trigger)'],['view','View'],['menu','Menu'],['l3','Left stick press (L3)'],['r3','Right stick press (R3)'],['up','D-pad up'],['down','D-pad down'],['left','D-pad left'],['right','D-pad right'],['l4','Back button L4'],['r4','Back button R4']],
     sticks:[['ls','Left stick'],['rs','Right stick']], limits:lim,
-    templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:1,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
-      {id:'rts',name:'Strategy (RTS)',blurb:'For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups',layout:{version:1,name:'Strategy (RTS)',base:'rts',buttons:{rt:{press:'mouse:left',threshold:0.3},lt:{press:'mouse:right',threshold:0.3},a:'key:SPACE',b:'key:S',x:'key:Q',y:'key:H',lb:'shift',rb:'key:LEFTCTRL',menu:'key:ESC',view:'radial',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT'},sticks:{ls:{mode:'keys',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT',threshold:0.45},rs:{mode:'mouse',sensitivity:1.2,deadzone:0.1,outer:0.95,curve:2}},shift:{buttons:{up:'key:1',right:'key:2',down:'key:3',left:'key:4',y:'key:LEFTCTRL+1',b:'key:LEFTCTRL+2',a:'key:LEFTCTRL+3',x:'key:LEFTCTRL+4'}},radial:['key:5','key:6','key:7','key:8','key:F1','key:F2','key:F3','key:F4'],hold_ms:300,turbo_hz:10}},
-      {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:1,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
+    templates:[{id:'shooter',name:'Shooter / action',blurb:'Left stick walks (W A S D), right stick aims the mouse, triggers click',layout:{version:2,name:'Shooter / action',base:'shooter',buttons:{a:'key:SPACE',b:{press:'key:C',hold:'key:LEFTCTRL'},rt:{press:'mouse:left',threshold:0.35},lt:{press:'mouse:right',threshold:0.35},menu:'key:ESC',lb:'key:Q',rb:'key:E'},sticks:{ls:{mode:'keys',up:'key:W',down:'key:S',left:'key:A',right:'key:D',threshold:0.45},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},gyro:{sensitivity:1,deadzone:1},radial:['key:M','key:I'],hold_ms:300,turbo_hz:10}},
+      {id:'rts',name:'Strategy (RTS)',blurb:'For BFME-style games: right stick is the mouse, triggers click, D-pad scrolls the map, hold LB for control groups',layout:{version:2,name:'Strategy (RTS)',base:'rts',buttons:{rt:{press:'mouse:left',threshold:0.3},lt:{press:'mouse:right',threshold:0.3},a:'key:SPACE',b:'key:S',x:'key:Q',y:'key:H',lb:'layer:shift',rb:'key:LEFTCTRL',menu:'key:ESC',view:'radial',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT'},sticks:{ls:{mode:'keys',up:'key:UP',down:'key:DOWN',left:'key:LEFT',right:'key:RIGHT',threshold:0.45},rs:{mode:'mouse',sensitivity:1.2,deadzone:0.1,outer:0.95,curve:2}},layers:[{id:'shift',name:'Control groups (hold LB)',buttons:{up:'key:1',right:'key:2',down:'key:3',left:'key:4',y:'key:LEFTCTRL+1',b:'key:LEFTCTRL+2',a:'key:LEFTCTRL+3',x:'key:LEFTCTRL+4'}}],radial:['key:5','key:6','key:7','key:8','key:F1','key:F2','key:F3','key:F4'],hold_ms:300,turbo_hz:10}},
+      {id:'mouse',name:'Mouse only',blurb:'The controller is just a mouse',layout:{version:2,name:'Mouse only',base:'mouse',buttons:{a:'mouse:left',b:'mouse:right'},sticks:{ls:{mode:'scroll',sensitivity:1,deadzone:0.15},rs:{mode:'mouse',sensitivity:1,deadzone:0.1,outer:0.95,curve:1.8}},radial:[],hold_ms:300,turbo_hz:10}}]};
   // Beacon's strategy games start with Strategy (RTS), and launchers' own windows with Mouse only, like input_map.rs's default_layout.
   const store={}, fresh=id=>({layout:/^beacon:/.test(id||'')&&id!=='beacon:conquest'?'rts':['xodus:nexus','battlenet:app'].includes(id)?'mouse':'off', custom:null, prefs:{sensitivity:1, gyro:false}}), copy=o=>JSON.parse(JSON.stringify(o));
-  const get=id=>Object.assign({game:id}, copy(store[id]||fresh(id)));
+  let glob={enabled:false, layout:null};
+  const get=id=>Object.assign({game:id, global:copy(glob)}, copy(store[id]||fresh(id)));
   return async (m,a)=>{
     if(m==='input.tables') return copy(T);
+    if(m==='input.global.get') return copy(glob);
+    if(m==='input.global.set'){ if(a.layout) glob.layout=copy(a.layout); if(a.enabled!=null){ if(a.enabled && !glob.layout) throw new Error('Make the global layout first'); glob.enabled=!!a.enabled; } return copy(glob); }
+    if(m==='input.validate') return {ok:true, layout:copy(a.layout)};
+    if(m==='link.input.peers') return {devices:[{peer:'p1', name:'Living room PC', layouts:[{game:'_global', name:'Couch mouse', layout:copy(T.templates[2].layout)}]}]};
     if(m==='input.get') return get(a.game);
     if(m==='input.set'){ const c=store[a.game]||fresh(a.game); if(a.custom) c.custom=copy(a.custom); if(a.layout) c.layout=a.layout; if(a.prefs) Object.assign(c.prefs,a.prefs); store[a.game]=c; return get(a.game); }
     if(m==='input.status') return {ok:true, active:false, devices:[], gyro:{available:true, device:'Preview motion sensors', on:false}};
@@ -10018,6 +10090,7 @@ const IM_MOCK = (()=>{
 function imCall(m, a={}){ return host ? call(m, a, 15000) : IM_MOCK(m, a); }
 const imLater = f => setTimeout(f, 0);
 function imRedraw(){
+  if(S.layers.at(-1)==='imed') return renderImEd(focused && focused.dataset.k);
   if(S.layers.includes('qam')) return refreshUI();
   if(!S.layers.length && (S.view==='gameset' || S.view==='inputmap')) render(null, true);
 }
@@ -10029,7 +10102,7 @@ function imLoadTables(){
 function imLoad(id, force){
   if(!id || IM.loading[id] || (!force && IM.games[id] && Date.now()-IM.at[id] < 5000)) return;
   IM.loading[id]=true;
-  imCall('input.get',{game:id}).then(r=>{ IM.games[id]=r; }).catch(e=>{ IM.games[id]={game:id, layout:'off', custom:null, prefs:{sensitivity:1,gyro:false}, error:e.message}; })
+  imCall('input.get',{game:id}).then(r=>{ IM.games[id]=r; if(r && r.global) IM.globalCfg=r.global; }).catch(e=>{ IM.games[id]={game:id, layout:'off', custom:null, prefs:{sensitivity:1,gyro:false}, error:e.message}; })
     .finally(()=>{ IM.at[id]=Date.now(); IM.loading[id]=false; imRedraw(); });
 }
 function imLoadStatus(){
@@ -10045,6 +10118,12 @@ function imActLabel(raw){
   if(raw==='radial') return 'Radial menu';
   if(raw==='gyro:toggle') return 'Gyro aiming on/off';
   if(raw==='gyro:hold') return 'Gyro aiming (hold)';
+  if(raw==='gyro:ratchet') return 'Gyro off while held';
+  const nm = (list, id) => { const x=((IM.draft&&IM.draft[list])||[]).find(y=>y.id===id); return x&&x.name||id; };
+  if(raw.startsWith('layer:')) return 'Hold layer '+nm('layers', raw.slice(6));
+  if(raw.startsWith('layer_toggle:')) return 'Layer '+nm('layers', raw.slice(13))+' on/off';
+  if(raw==='set:default') return 'To the default set';
+  if(raw.startsWith('set:')) return 'To set '+nm('sets', raw.slice(4));
   const i=raw.indexOf(':'), k=raw.slice(0,i), v=raw.slice(i+1), T=IM.tables||{};
   if(k==='key') return v.split('+').map(n=>(IM.keyLabel||{})[n]||n).join(' + ');
   if(k==='mouse') return ((T.mouse||[]).find(m=>m[0]===v)||[0,v])[1];
@@ -10055,6 +10134,7 @@ function imChoiceLabel(c){
   if(!c) return '…';
   if(c.layout==='off') return 'Off';
   if(c.layout==='custom') return (c.custom && c.custom.name) || 'Custom';
+  if(c.layout==='global') return 'Global: '+((c.global && c.global.layout && c.global.layout.name) || 'yours');
   const t=((IM.tables&&IM.tables.templates)||[]).find(t=>t.id===c.layout);
   return t ? t.name : c.layout;
 }
@@ -10075,7 +10155,11 @@ function imPick(id){
   const items=[{label:'Off (the game\'s own controller support)', icon:c.layout==='off'?'check':'', run:()=>set('off')}];
   for(const t of T.templates) items.push({label:t.name, icon:c.layout===t.id?'check':'', run:()=>set(t.id)});
   if(c.custom) items.push({label:(c.custom.name||'Custom')+' (yours)', icon:c.layout==='custom'?'check':'', run:()=>set('custom')});
-  if(!OVERLAY) items.push({label:c.layout==='off' && !c.custom ? 'Make my own…' : 'Edit…', icon:'sliders', run:()=>imEdit(id)});
+  const gl=IM.globalCfg || c.global;
+  if(gl && gl.layout) items.push({label:'Global layout: '+(gl.layout.name||'yours'), icon:c.layout==='global'?'check':'', run:()=>set('global')});
+  items.push({label:c.layout==='off' && !c.custom ? 'Make my own…' : 'Edit…', icon:'sliders', run:()=>imLater(()=>imEdit(id))});
+  if(LINUX) items.push({label:'From your other devices (Hearth Link)…', icon:'pad', run:()=>imLater(()=>imFromDevices(id))});
+  items.push({label:gl && gl.layout ? 'Edit the global layout…' : 'Make a global layout (for every game)…', icon:'sliders', run:()=>imLater(()=>imEdit(IM_GLOBAL))});
   openSheet({title:'Controller layout', sub:'A layout makes the controller act as a keyboard and mouse in this game, for games without controller support.'+(LINUX?'':' Windows can\'t hide the controller from the game, so a game that reads controllers sees both.'), items});
 }
 function imSave(id, patch, announce){
@@ -10087,49 +10171,80 @@ function imSave(id, patch, announce){
   }).catch(e=>{ toast(e.message); });
 }
 
-// The editor (its own screen)
+// The editor: its own screen in Game Mode (Game settings › Controller layout › Edit), and a panel over the game in
+// Quick Access (the controller is Hearth's while Quick Access is open, so the layout can be changed while playing).
+// Layouts are version 2 (docs/HEARTH-INPUT.md): the default action set, more sets, layers (held: a mode shift, or
+// toggled), and per-button activators. Everything is reached with the D-pad and A.
+const IM_GLOBAL = '_global';
 function imEdit(id){
-  const c=IM.games[id], T=IM.tables; if(!c || !T) return;
+  const T=IM.tables; if(!T) return;
   const tpl = tid => ((T.templates.find(t=>t.id===tid)||T.templates[0]||{}).layout) || {};
   let base;
-  if(c.layout==='custom' || (c.layout==='off' && c.custom)) base=c.custom;
-  else {
-    base=JSON.parse(JSON.stringify(tpl(c.layout==='off' ? 'shooter' : c.layout)));
-    base.name=((base.name||'Layout')+' (mine)').slice(0, T.limits.name_len);
+  if(id===IM_GLOBAL){
+    const g=IM.globalCfg||{};
+    base = g.layout || Object.assign(JSON.parse(JSON.stringify(tpl('mouse'))), {name:'My global layout'});
+  } else {
+    const c=IM.games[id]; if(!c) return;
+    if(c.layout==='custom' || (c.layout==='off' && c.custom)) base=c.custom;
+    else if(c.layout==='global' && c.global && c.global.layout) base=Object.assign(JSON.parse(JSON.stringify(c.global.layout)), {name:'Mine'});
+    else {
+      base=JSON.parse(JSON.stringify(tpl(c.layout==='off' ? 'shooter' : c.layout)));
+      base.name=((base.name||'Layout')+' (mine)').slice(0, T.limits.name_len);
+    }
   }
-  IM.draft=JSON.parse(JSON.stringify(base)); IM.gid=id; IM.set='base';
+  IM.draft=JSON.parse(JSON.stringify(base)); IM.draft.version=2; IM.gid=id; IM.edit='default';
   IM.statusAt=0; imLoadStatus();
-  navigate('inputmap', {game:id});
+  if(OVERLAY){ imEdCss(); openLayer('imed'); }
+  else navigate('inputmap', {game:id});
+}
+function imRefresh(keepK){
+  const k = keepK || (focused && focused.dataset.k);
+  if(S.layers.at(-1)==='imed') return renderImEd(k);
+  if(!S.layers.length && S.view==='inputmap') render(k, true);
 }
 function imChanged(redraw){
   clearTimeout(IM.saveT);
   const id=IM.gid, draft=JSON.parse(JSON.stringify(IM.draft));
-  IM.saveT=setTimeout(()=>imSave(id, {layout:'custom', custom:draft}), 350);
-  if(redraw && !S.layers.length && S.view==='inputmap') render(focused && focused.dataset.k, true);
+  IM.saveT=setTimeout(()=> id===IM_GLOBAL ? imSaveGlobal({layout:draft}) : imSave(id, {layout:'custom', custom:draft}), 350);
+  if(redraw) imRefresh();
 }
-function imLayer(){ const d=IM.draft; if(IM.set==='shift'){ d.shift=d.shift||{}; return d.shift; } return d; }
-function imB(ctl){ const v=((imLayer().buttons)||{})[ctl]; return v==null ? null : typeof v==='string' ? {press:v} : Object.assign({}, v); }
+function imSaveGlobal(patch, announce){
+  return imCall('input.global.set', patch).then(r=>{ IM.globalCfg=r; if(announce) toast(r.enabled?'Global layout on for games without their own':'Global layout off'); imRedraw(); return r; }).catch(e=>toast(e.message));
+}
+// What's being edited: 'default' (the default action set), 'set:<id>' or 'layer:<id>'.
+function imWhere(){ const [k,id]=(IM.edit||'default').split(':'); return {kind:id?k:'default', id:id||'default'}; }
+function imLayer(){
+  const d=IM.draft, w=imWhere();
+  if(w.kind==='set') return (d.sets||[]).find(x=>x.id===w.id) || (IM.edit='default', d);
+  if(w.kind==='layer') return (d.layers||[]).find(x=>x.id===w.id) || (IM.edit='default', d);
+  return d;
+}
+const imInLayer = () => imWhere().kind==='layer';
+const imEditName = () => { const w=imWhere(); return w.kind==='default' ? 'Default set' : (imLayer().name || w.id) + (w.kind==='layer' ? ' (layer)' : ' (action set)'); };
+function imB(ctl){ const v=((imLayer().buttons)||{})[ctl]; return v==null ? null : typeof v==='string' ? {press:v} : JSON.parse(JSON.stringify(v)); }
 function imSetB(ctl, b){
   const L=imLayer(); L.buttons=L.buttons||{};
   if(!b) delete L.buttons[ctl];
   else {
-    const o={press:b.press};
-    if(b.hold) o.hold=b.hold;
-    if(b.turbo) o.turbo=true;
+    const o={};
+    for(const k of ['press','hold','double','release']) if(b[k] && !(k==='press' && b[k]==='none' && (b.hold||b.double||b.release||(b.chords||[]).length))) o[k]=b[k];
+    if(b.chords && b.chords.length) o.chords=b.chords;
+    for(const k of ['turbo','hold_turbo','double_turbo','toggle']) if(b[k]) o[k]=true;
     if(b.threshold!=null && (ctl==='lt'||ctl==='rt')) o.threshold=b.threshold;
-    L.buttons[ctl] = Object.keys(o).length===1 ? o.press : o;
+    if(!Object.keys(o).length) o.press='none';
+    L.buttons[ctl] = Object.keys(o).length===1 && o.press ? o.press : o;
   }
   imChanged(true);
 }
 function imS(s){ const v=((imLayer().sticks)||{})[s]; return v ? Object.assign({}, v) : null; }
 function imSetS(s, v){ const L=imLayer(); L.sticks=L.sticks||{}; if(v) L.sticks[s]=v; else delete L.sticks[s]; imChanged(true); }
-// Sliders and switches name what they change: "ls.sensitivity" (a stick, in the set being edited), "gyro.x", "hold_ms", "qa.sens".
+// Sliders and switches name what they change: "ls.sensitivity" (a stick, in what's being edited), "gyro.x", "hold_ms", "qa.sens".
 const IM_SL = {
   sensitivity:{lim:'sensitivity', step:0.05, def:1, fmt:imX}, deadzone:{lim:'deadzone', step:0.01, def:0.12, fmt:imPct},
   outer:{lim:'outer', step:0.01, def:0.95, fmt:imPct}, curve:{lim:'curve', step:0.1, def:1.8, fmt:v=>(+v).toFixed(1)},
-  threshold:{lim:'stick_threshold', step:0.05, def:0.5, fmt:imPct},
+  threshold:{lim:'stick_threshold', step:0.05, def:0.5, fmt:imPct}, turn:{lim:'turn_px', step:100, def:3600, fmt:v=>v+' px'},
   'gyro.sensitivity':{lim:'gyro_sensitivity', step:0.05, def:1, fmt:imX}, 'gyro.deadzone':{lim:'gyro_deadzone', step:0.1, def:1, fmt:v=>(+v).toFixed(1)+'°/s'},
-  hold_ms:{lim:'hold_ms', step:50, def:300, fmt:v=>v+' ms'}, turbo_hz:{lim:'turbo_hz', step:1, def:10, fmt:v=>v+' a second'},
+  hold_ms:{lim:'hold_ms', step:50, def:300, fmt:v=>v+' ms'}, double_ms:{lim:'double_ms', step:25, def:250, fmt:v=>v+' ms'}, turbo_hz:{lim:'turbo_hz', step:1, def:10, fmt:v=>v+' a second'},
   'qa.sens':{lim:'pref_sensitivity', step:0.05, def:1, fmt:imX},
 };
 function imGet(p){
@@ -10148,7 +10263,7 @@ function imSetVal(p, v){
 }
 function imSpec(p){ return IM_SL[p] || IM_SL[p.split('.').pop()]; }
 function imSlider(p, label){
-  const sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim], v=imGet(p) ?? sp.def, pct=(v-min)/(max-min)*100;
+  const sp=imSpec(p), [min,max]=IM.tables.limits[sp.lim]||[0,1], v=imGet(p) ?? sp.def, pct=(v-min)/(max-min)*100;
   return `<div class="ctl" data-f data-k="im-sl-${p}" data-slider="im:${p}" data-min="${min}" data-max="${max}" data-step="${sp.step}" data-unit="">
     <div class="lab">${esc(label)}<span>${esc(sp.fmt(v))}</span></div><div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div></div>`;
 }
@@ -10169,61 +10284,97 @@ function imSlide(el, d){
 function imSwitch(p, label, sub){
   return `<button class="row" data-f data-k="im-t-${p}" data-act="im" data-op="tog" data-p="${p}"><div class="rt"><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="sw ${imGet(p)?'on':''}"></div></button>`;
 }
-function imBtnRow(ctl, label){
-  const b=imB(ctl), shift=IM.set==='shift';
-  const val = !b ? (shift ? 'Same as main set' : 'Nothing') : imActLabel(b.press)+(b.hold?' · held: '+imActLabel(b.hold):'')+(b.turbo?' · turbo':'');
-  return `<button class="row" data-f data-k="im-b-${ctl}" data-act="im" data-op="btn" data-c="${ctl}"><div class="rt"><b>${esc(label)}</b></div><div class="rv" style="${b&&b.press!=='none'?'color:var(--accent)':''}">${esc(val)} ›</div></button>`;
+function imBtnSummary(b){
+  if(!b) return imInLayer() ? 'Same as the set' : 'Nothing';
+  const parts=[];
+  if(b.press && b.press!=='none') parts.push(imActLabel(b.press)+(b.turbo?' (turbo)':'')+(b.toggle?' (toggle)':''));
+  if(b.hold) parts.push('long: '+imActLabel(b.hold));
+  if(b.double) parts.push('double: '+imActLabel(b.double));
+  if(b.release) parts.push('release: '+imActLabel(b.release));
+  for(const c of b.chords||[]) parts.push('with '+imCtlLabel(c.with)+': '+imActLabel(c.do));
+  return parts.join(' · ') || 'Nothing';
 }
+function imBtnRow(ctl, label){
+  const b=imB(ctl);
+  return `<button class="row" data-f data-k="im-b-${ctl}" data-act="im" data-op="btn" data-c="${ctl}"><div class="rt"><b>${esc(label)}</b></div><div class="rv" style="${b&&b.press!=='none'?'color:var(--accent)':''}">${esc(imBtnSummary(b))} ›</div></button>`;
+}
+const IM_MODE_NAMES = {none:'Nothing', keys:'Keys', dpad:'D-pad (4 ways)', mouse:'Mouse', scroll:'Scrolling', wheel:'Scroll wheel', flick:'Flick stick', same:'Same as the set'};
 function imStickRows(s, label){
-  const st=imS(s), shift=IM.set==='shift', mode=st ? st.mode : (shift ? 'same' : 'none');
-  const keysName = !st ? '' : st.up==='key:W'&&st.left==='key:A'&&st.down==='key:S'&&st.right==='key:D' ? 'Keys: W A S D' : st.up==='key:UP'&&st.left==='key:LEFT' ? 'Keys: arrow keys' : 'Keys';
-  const name={none:'Nothing', keys:keysName, mouse:'Mouse', scroll:'Scrolling', same:'Same as main set'}[mode];
-  const sub = mode==='keys' ? ['up','left','down','right'].map(d=>imActLabel(st[d]||'none')).join(' · ') : mode==='mouse' ? 'Moves the pointer' : mode==='scroll' ? 'Scrolls like a mouse wheel' : '';
+  const st=imS(s), mode=st ? st.mode : (imInLayer() ? 'same' : 'none');
+  let name=IM_MODE_NAMES[mode]||mode;
+  if(mode==='keys' && st.up==='key:W' && st.left==='key:A' && st.down==='key:S' && st.right==='key:D') name='Keys: W A S D';
+  else if(mode==='keys' && st.up==='key:UP' && st.left==='key:LEFT') name='Keys: arrow keys';
+  const sub = (mode==='keys'||mode==='dpad') ? ['up','left','down','right'].map(d=>imActLabel(st[d]||'none')).join(' · ')
+    : {mouse:'Moves the pointer', scroll:'Scrolls like a mouse wheel', wheel:'Turn it round to scroll', flick:'Flick to turn the camera at once, turn it round to keep turning'}[mode] || '';
   let h=`<button class="row" data-f data-k="im-s-${s}" data-act="im" data-op="stick" data-c="${s}"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</div><div class="rv" style="color:var(--accent)">${esc(name)} ›</div></button>`;
   if(mode==='mouse' || mode==='scroll'){
     h += imSlider(s+'.sensitivity','Sensitivity') + imSlider(s+'.deadzone','Dead zone (ignores small movements)');
-    if(mode==='mouse') h += imSlider(s+'.outer','Outer dead zone (full speed from here)') + imSlider(s+'.curve','Curve (higher: finer near the center)') + imSwitch(s+'.invert_y','Invert up and down');
+    if(mode==='mouse') h += imSlider(s+'.outer','Outer dead zone (full speed from here)') + imSlider(s+'.curve','Curve (higher: finer near the center)') + imSwitch(s+'.invert_x','Invert left and right') + imSwitch(s+'.invert_y','Invert up and down');
   }
-  if(mode==='keys') h += imSlider(s+'.threshold','How far to push before a key goes down');
+  if(mode==='keys' || mode==='dpad') h += imSlider(s+'.threshold','How far to push before a key goes down');
+  if(mode==='wheel') h += imSlider(s+'.sensitivity','Notches per turn') + imSlider(s+'.threshold','How far out to turn it');
+  if(mode==='flick') h += imSlider(s+'.turn','One full turn in the game (mouse pixels)') + imSlider(s+'.threshold','How far to flick');
   return h;
 }
 function viewInputMap(){
-  const g=G(S.game), T=IM.tables, d=IM.draft;
-  if(!g || !d || IM.gid!==S.game) return note('Open a game\'s Game settings and choose Controller layout › Edit.');
+  const gid = S.layers.includes('imed') ? IM.gid : S.game;
+  const T=IM.tables, d=IM.draft, glob=IM.gid===IM_GLOBAL, g=glob ? {title:'Global layout'} : G(gid);
+  if(!d || (!glob && (!g || IM.gid!==gid))) return note('Open a game\'s Game settings and choose Controller layout › Edit.');
   if(!T) return note('Loading…');
-  const shift=IM.set==='shift', c=IM.games[g.id];
+  const w=imWhere(), L=imLayer(), c=IM.games[IM.gid];
   let h=`<h2>${esc(g.title)}</h2><div class="rows">`;
-  h += `<button class="row" data-f data-k="im-name" data-act="im" data-op="name"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(d.name||'Custom')}</b><small>${c&&c.layout==='custom'?'This game\'s layout. Acts as a keyboard and mouse while you play.':'Your changes are saved as this game\'s own layout.'}</small></div><div class="rv">Rename ›</div></button>`;
+  h += `<button class="row" data-f data-k="im-name" data-act="im" data-op="name"><span class="ricon">${I.pad}</span><div class="rt"><b>${esc(d.name||'Custom')}</b><small>${glob?'For every game without a layout of its own, when it\'s on':c&&c.layout==='custom'?'This game\'s layout. Acts as a keyboard and mouse while you play.':'Your changes are saved as this game\'s own layout.'}</small></div><div class="rv">Rename ›</div></button>`;
+  if(glob) h += `<button class="row" data-f data-k="im-globon" data-act="im" data-op="globOn"><div class="rt"><b>Use for every game without its own layout</b><small>Games you set to Off, and games with their own default, keep theirs</small></div><div class="sw ${IM.globalCfg&&IM.globalCfg.enabled?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="im-test" data-act="im" data-op="test"><span class="ricon">${I.play}</span><div class="rt"><b>${IM.test?'Stop trying':'Try it (20 seconds)'}</b><small>The controller acts as this layout right here, and the keys and clicks it sends show on screen</small></div></button>`;
+  h += `<button class="row" data-f data-k="im-preview" data-act="im" data-op="preview"><span class="ricon">${I.pad}</span><div class="rt"><b>Overview</b><small>What every control does, in every action set and layer</small></div><div class="rv">›</div></button>`;
   h += `<button class="row" data-f data-k="im-reset" data-act="im" data-op="reset"><span class="ricon">${I.refresh}</span><div class="rt"><b>Start over from a template</b><small>${esc(d.base ? 'Based on '+((T.templates.find(t=>t.id===d.base)||{}).name||d.base) : 'Shooter, point-and-click, retro, strategy (RTS) or mouse only')}</small></div></button>`;
-  h += `<div class="row"><div class="rt"><b>Editing</b><small>The second set works while a button set to “Second set while held” is held</small></div><div class="seg"><button class="${shift?'':'on'}" data-f data-k="im-set-base" data-act="im" data-op="set" data-v="base">Main set</button><button class="${shift?'on':''}" data-f data-k="im-set-shift" data-act="im" data-op="set" data-v="shift">Second set</button></div></div>`;
-  h += shead(shift ? 'Buttons (second set)' : 'Buttons');
+  h += `<button class="row" data-f data-k="im-where" data-act="im" data-op="where"><span class="ricon">${I.pad}</span><div class="rt"><b>Editing: ${esc(imEditName())}</b><small>${w.kind==='layer'?'Works on top of the action set while a button holds it (a mode shift) or turns it on; unset controls do what the set says':w.kind==='set'?'A whole set of controls of its own; a button set to “Switch to an action set” changes sets':'Action sets and layers: '+((d.sets||[]).length)+' more sets, '+((d.layers||[]).length)+' layers'}</small></div><div class="rv">Change ›</div></button>`;
+  h += shead('Buttons');
   h += `<button class="row" data-f data-k="im-dpad" data-act="im" data-op="dpad"><div class="rt"><b>D-pad</b><small>Set all four directions at once</small></div><div class="rv">Arrow keys, W A S D… ›</div></button>`;
   h += T.buttons.map(([id,l])=>imBtnRow(id,l)).join('');
-  h += shead(shift ? 'Sticks (second set)' : 'Sticks');
+  h += shead('Sticks');
   h += T.sticks.map(([id,l])=>imStickRows(id,l)).join('');
-  if(!shift){
+  if(w.kind==='default'){
     h += shead('Gyro aiming');
     const gy=IM.status && IM.status.gyro;
-    h += note(gy && gy.available ? `Motion sensors found${gy.device?' ('+esc(gy.device)+')':''}. Set a button to “Gyro aiming on/off” or “Gyro aiming while held”, or turn it on in Quick Access while you play.`
+    h += note(gy && gy.available ? `Motion sensors found${gy.device?' ('+esc(gy.device)+')':''}.`
       : IM.status && IM.status.ok ? 'No motion sensors found right now. On a handheld, turn on Motion controls (gyro) in Settings › Controls › Handheld Daemon.'
       : 'Gyro aiming works in Game Mode, with a controller that has motion sensors.');
+    const gw=(d.gyro||{}).when||'button', ga=(d.gyro||{}).axis||'yaw';
+    h += `<button class="row" data-f data-k="im-gwhen" data-act="im" data-op="gwhen"><div class="rt"><b>Gyro is on</b><small>${{button:'With a button (on/off, while held) or from the start; a ratchet button turns it off while held',always:'Always (a ratchet button turns it off while held, to re-center)',stick:'While you touch or move the right stick'}[gw]}</small></div><div class="rv">${{button:'With a button',always:'Always',stick:'With the right stick'}[gw]} ›</div></button>`;
+    h += `<button class="row" data-f data-k="im-gaxis" data-act="im" data-op="gaxis"><div class="rt"><b>Turning left and right</b><small>Yaw: turn the controller flat. Roll: tilt it like a steering wheel</small></div><div class="rv">${ga==='roll'?'Roll':'Yaw'} ›</div></button>`;
     h += imSlider('gyro.sensitivity','Gyro sensitivity') + imSlider('gyro.deadzone','Gyro dead zone (stops drift)');
-    h += imSwitch('gyro.invert_x','Turn the other way (left and right)') + imSwitch('gyro.invert_y','Turn the other way (up and down)') + imSwitch('gyro.start_on','On from the start','Without pressing a button first');
+    h += imSwitch('gyro.invert_x','Turn the other way (left and right)') + imSwitch('gyro.invert_y','Turn the other way (up and down)');
+    if(gw==='button') h += imSwitch('gyro.start_on','On from the start','Without pressing a button first');
     h += shead('Radial menu');
-    const R=d.radial||[], used=Object.values(d.buttons||{}).some(b=>(typeof b==='string'?b:b&&b.press)==='radial');
+    const R=d.radial||[], used=[d, ...(d.sets||[])].some(x=>Object.values(x.buttons||{}).some(b=>(typeof b==='string'?b:b&&b.press)==='radial'));
     h += note('Extra keys on one button: hold it, point the right stick (or press the D-pad) at a key, and let go.'+(used?'':' Set a button to “Radial menu” to use it.'));
     const dirs=['Up','Up-right','Right','Down-right','Down','Down-left','Left','Up-left'];
     h += R.map((a,i)=>`<button class="row" data-f data-k="im-r-${i}" data-act="im" data-op="radial" data-i="${i}"><div class="rt"><b>${dirs[Math.round(i*8/R.length)%8]}</b></div><div class="rv" style="color:var(--accent)">${esc(imActLabel(a))} ›</div></button>`).join('');
     if(R.length < T.limits.radial_items) h += `<button class="row" data-f data-k="im-r-add" data-act="im" data-op="radial" data-i="-1"><span class="ricon">${I.kbd}</span><div class="rt"><b>Add a key</b></div></button>`;
     h += shead('Timing');
-    h += imSlider('hold_ms','Hold time (for “something else when held”)') + imSlider('turbo_hz','Turbo speed');
+    h += imSlider('hold_ms','Long press (how long to hold)') + imSlider('double_ms','Double press (how quickly)') + imSlider('turbo_hz','Turbo speed');
   }
-  h += '</div>' + note('Saved as you go. The layout is on only while this game is in front: Quick Access, the Guide button and Hearth itself always get the controller back.');
+  h += '</div>' + note('Saved as you go. Layouts only press keys, click and scroll. The layout is on only while this game is in front: Quick Access, the Guide button and Hearth itself always get the controller back.');
   return h;
 }
 VIEWS.inputmap = viewInputMap;
 TITLES.inputmap = 'Controller layout';
+// Over a game (Quick Access): the same editor as a panel.
+function imEdCss(){
+  if($('#imed')) return;
+  document.head.insertAdjacentHTML('beforeend', `<style>
+#imed{top:0;right:0;bottom:0;width:min(720px,100vw);background:var(--panel);padding:18px var(--gut);transform:translateX(102%);transition:transform .24s var(--ease),visibility .24s;box-shadow:-20px 0 60px rgba(0,0,0,.45);overflow-y:auto;scrollbar-width:none}
+#imed.open{transform:none}
+</style>`);
+  const el=document.createElement('section'); el.className='layer'; el.id='imed'; document.body.appendChild(el);
+}
+function renderImEd(keepK){
+  const el=$('#imed'); if(!el) return;
+  el.innerHTML = `<div class="ptitle">Controller layout</div>` + viewInputMap() + `<button class="btn" data-f data-k="im-done" data-act="back">Done</button>`;
+  const f=keepK && el.querySelector(`[data-k="${CSS.escape(keepK)}"]`); if(f) setFocus(f, true);
+}
+LAYER_RENDER.imed = ()=>renderImEd();
 
 function imPickAction(title, kinds, done){
   const T=IM.tables, items=[];
@@ -10233,44 +10384,67 @@ function imPickAction(title, kinds, done){
   if(kinds.includes('scroll')) items.push({label:'Scrolling…', icon:'mouse', run:()=>imLater(()=>openSheet({title, items:T.scroll.map(([id,l])=>({label:l, run:()=>done('scroll:'+id)}))}))});
   return items;
 }
+const imSimple = p => !p || /^(none$|key:|mouse:|scroll:)/.test(p);
+const imKeyOrClick = p => /^(key:|mouse:)/.test(p||'');
 function imBtnMenu(ctl){
-  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'}, shift=IM.set==='shift';
-  const simple = p => !p || /^(none$|key:|mouse:|scroll:)/.test(p);
-  const setPress = p => { const nb=Object.assign({}, b, {press:p}); if(!simple(p)){ delete nb.hold; delete nb.turbo; } if(nb.turbo && !/^(key:|mouse:)/.test(p)) delete nb.turbo; imSetB(ctl, nb); };
+  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'}, d=IM.draft, inLayer=imInLayer();
+  const setPress = p => { const nb=Object.assign({}, b, {press:p}); if(!imSimple(p)){ for(const k of ['hold','double','release','chords','turbo','toggle','hold_turbo','double_turbo']) delete nb[k]; } if(!imKeyOrClick(p)){ delete nb.turbo; delete nb.toggle; } imSetB(ctl, nb); };
   const items=imPickAction(label, ['key','mouse','scroll'], setPress);
   items.push({label:'Nothing', icon:'x', run:()=>setPress('none')});
-  if(!shift) items.push({label:'Second set while held', icon:'layout', run:()=>setPress('shift')}, {label:'Radial menu of extra keys', icon:'dots', run:()=>setPress('radial')});
-  items.push({label:'Gyro aiming on/off', icon:'pad', run:()=>setPress('gyro:toggle')}, {label:'Gyro aiming while held', icon:'pad', run:()=>setPress('gyro:hold')});
-  if(simple(b.press) && !b.turbo) items.push({label:b.hold ? 'When held: '+imActLabel(b.hold)+'…' : 'Something else when held…', icon:'clock', run:()=>imLater(()=>{
-    const its=imPickAction(label+' when held', ['key','mouse','scroll'], h=>imSetB(ctl, Object.assign({}, imB(ctl)||{press:'none'}, {hold:h, turbo:false})));
-    if(b.hold) its.push({label:'The same when held (no hold action)', icon:'x', run:()=>{ const nb=Object.assign({}, b); delete nb.hold; imSetB(ctl, nb); }});
-    openSheet({title:label+' when held', sub:'A quick press does “'+imActLabel(b.press)+'”; holding it does this instead.', items:its});
-  })});
-  if(/^(key:|mouse:)/.test(b.press) && !b.hold) items.push({label:'Turbo (repeats while held): '+(b.turbo?'on':'off'), icon:'bolt', run:()=>imSetB(ctl, Object.assign({}, b, {turbo:!b.turbo}))});
+  const layers=d.layers||[], sets=d.sets||[];
+  if(!inLayer) for(const l of layers) items.push({label:'Hold layer “'+(l.name||l.id)+'” (mode shift)', icon:'layout', run:()=>setPress('layer:'+l.id)});
+  for(const l of layers) items.push({label:'Turn layer “'+(l.name||l.id)+'” on/off', icon:'layout', run:()=>setPress('layer_toggle:'+l.id)});
+  for(const st of [{id:'default', name:'Default set'}, ...sets]) if(imWhere().id!==st.id || imWhere().kind!=='set') items.push({label:'Switch to action set “'+(st.name||st.id)+'”', icon:'layout', run:()=>setPress('set:'+st.id)});
+  if(!inLayer) items.push({label:'Radial menu of extra keys', icon:'dots', run:()=>setPress('radial')});
+  items.push({label:'Gyro aiming on/off', icon:'pad', run:()=>setPress('gyro:toggle')}, {label:'Gyro aiming while held', icon:'pad', run:()=>setPress('gyro:hold')}, {label:'Gyro off while held (ratchet)', icon:'pad', run:()=>setPress('gyro:ratchet')});
+  if(imSimple(b.press)) items.push({label:'More ways to press: long, double, release, chords…', icon:'clock', run:()=>imLater(()=>imActivators(ctl))});
   if(ctl==='lt' || ctl==='rt'){
     const th=b.threshold ?? 0.5;
-    items.push({label:'How far to press: '+imPct(th)+'…', icon:'sliders', run:()=>imLater(()=>openSheet({title:label, sub:'How far the trigger goes down before it counts', items:[0.1,0.25,0.35,0.5,0.75,0.9].map(v=>({label:imPct(v), icon:Math.abs(th-v)<0.001?'check':'', run:()=>imSetB(ctl, Object.assign({}, b, {threshold:v}))}))}))});
+    items.push({label:'How far to press: '+imPct(th)+'…', icon:'sliders', run:()=>imLater(()=>openSheet({title:label, sub:'How far the trigger goes down before it counts', items:[0.1,0.25,0.35,0.5,0.75,0.9].map(v=>({label:imPct(v), icon:Math.abs(th-v)<0.001?'check':'', run:()=>imSetB(ctl, Object.assign({}, imB(ctl)||{press:'none'}, {threshold:v}))}))}))});
   }
-  if(shift) items.push({label:'Same as main set', icon:'refresh', run:()=>imSetB(ctl, null)});
-  openSheet({title:label, sub:'What should it do?', items});
+  if(inLayer) items.push({label:'Same as the set', icon:'refresh', run:()=>imSetB(ctl, null)});
+  openSheet({title:label, sub:'What should it do? Now: '+imBtnSummary(imB(ctl)), items});
+}
+/** Activators (like Steam Input's): a long press, a double press, a release press, chords, turbo and toggle. */
+function imActivators(ctl){
+  const label=imCtlLabel(ctl), b=imB(ctl)||{press:'none'};
+  const upd = f => { const nb=imB(ctl)||{press:'none'}; f(nb); imSetB(ctl, nb); imLater(()=>imActivators(ctl)); };
+  const pick = (title, f) => openSheet({title, items:[...imPickAction(title, ['key','mouse','scroll'], a=>upd(nb=>f(nb, a))), {label:'Nothing', icon:'x', run:()=>upd(nb=>f(nb, null))}]});
+  const items=[
+    {label:'Long press: '+(b.hold?imActLabel(b.hold):'nothing')+'…', icon:'clock', run:()=>imLater(()=>pick(label+' held', (nb,a)=>{ if(a){ nb.hold=a; delete nb.turbo; delete nb.toggle; } else { delete nb.hold; delete nb.hold_turbo; } }))},
+    {label:'Double press: '+(b.double?imActLabel(b.double):'nothing')+'…', icon:'clock', run:()=>imLater(()=>pick(label+' pressed twice', (nb,a)=>{ if(a){ nb.double=a; delete nb.toggle; } else { delete nb.double; delete nb.double_turbo; } }))},
+    {label:'When let go: '+(b.release?imActLabel(b.release):'nothing')+'…', icon:'clock', run:()=>imLater(()=>pick(label+' let go', (nb,a)=>{ if(a) nb.release=a; else delete nb.release; }))},
+  ];
+  const chords=b.chords||[];
+  chords.forEach((c,i)=>items.push({label:'With '+imCtlLabel(c.with)+' held: '+imActLabel(c.do)+(c.turbo?' (turbo)':'')+' — remove', icon:'trash', run:()=>upd(nb=>{ nb.chords.splice(i,1); })}));
+  if(chords.length < IM.tables.limits.chords) items.push({label:'Add a chord (while another button is held)…', icon:'layout', run:()=>imLater(()=>openSheet({title:label+' with…', items:IM.tables.buttons.filter(([id])=>id!==ctl && !chords.some(c=>c.with===id)).map(([id,l])=>({label:l, run:()=>imLater(()=>pick(label+' with '+l+' held', (nb,a)=>{ if(a){ nb.chords=(nb.chords||[]).concat([{with:id, do:a}]); } }))}))}))});
+  if(imKeyOrClick(b.press) && !b.hold && !b.toggle) items.push({label:'Turbo (repeats while held): '+(b.turbo?'on':'off'), icon:'bolt', run:()=>upd(nb=>{ nb.turbo=!nb.turbo; })});
+  if(imKeyOrClick(b.hold)) items.push({label:'Turbo on the long press: '+(b.hold_turbo?'on':'off'), icon:'bolt', run:()=>upd(nb=>{ nb.hold_turbo=!nb.hold_turbo; })});
+  if(imKeyOrClick(b.double)) items.push({label:'Turbo on the double press: '+(b.double_turbo?'on':'off'), icon:'bolt', run:()=>upd(nb=>{ nb.double_turbo=!nb.double_turbo; })});
+  if(imKeyOrClick(b.press) && !b.hold && !b.double && !b.turbo) items.push({label:'Toggle (press once to hold, again to let go): '+(b.toggle?'on':'off'), icon:'refresh', run:()=>upd(nb=>{ nb.toggle=!nb.toggle; })});
+  openSheet({title:label+': ways to press', sub:'A quick press does “'+imActLabel(b.press||'none')+'”', items});
 }
 const IM_KEYSETS = {wasd:{up:'key:W', down:'key:S', left:'key:A', right:'key:D'}, arrows:{up:'key:UP', down:'key:DOWN', left:'key:LEFT', right:'key:RIGHT'}};
 function imStickMenu(s){
-  const label=imCtlLabel(s), st=imS(s)||{mode:'none'}, shift=IM.set==='shift';
-  const keys = set => imSetS(s, Object.assign({mode:'keys', threshold:st.mode==='keys' && st.threshold || 0.5}, IM_KEYSETS[set]));
+  const label=imCtlLabel(s), st=imS(s)||{mode:'none'};
+  const keys = (set, mode='keys') => imSetS(s, Object.assign({mode, threshold:(st.mode==='keys'||st.mode==='dpad') && st.threshold || 0.5}, IM_KEYSETS[set]));
   const items=[{label:'Keys: W A S D', icon:'kbd', run:()=>keys('wasd')}, {label:'Keys: arrow keys', icon:'kbd', run:()=>keys('arrows')},
     {label:'Keys: choose each direction…', icon:'kbd', run:()=>imLater(()=>imStickDirs(s))},
+    {label:'D-pad (4 ways, arrow keys)', icon:'kbd', run:()=>keys('arrows', 'dpad')},
     {label:'Mouse (moves the pointer)', icon:'mouse', run:()=>imSetS(s, st.mode==='mouse' ? st : {mode:'mouse', sensitivity:1, deadzone:0.1, outer:0.95, curve:1.8})},
     {label:'Scrolling', icon:'mouse', run:()=>imSetS(s, st.mode==='scroll' ? st : {mode:'scroll', sensitivity:1, deadzone:0.15})},
+    {label:'Scroll wheel (turn it round)', icon:'mouse', run:()=>imSetS(s, {mode:'wheel', sensitivity:1, threshold:0.5})},
+    {label:'Flick stick (camera)', icon:'pad', run:()=>imSetS(s, {mode:'flick', turn:3600, threshold:0.7})},
     {label:'Nothing', icon:'x', run:()=>imSetS(s, {mode:'none'})}];
-  if(shift) items.push({label:'Same as main set', icon:'refresh', run:()=>imSetS(s, null)});
+  if(imInLayer()) items.push({label:'Same as the set', icon:'refresh', run:()=>imSetS(s, null)});
   openSheet({title:label, sub:'What should it do?', items});
 }
 function imStickDirs(s){
-  const st=imS(s), cur=st && st.mode==='keys' ? st : {mode:'keys', threshold:0.5};
+  const st=imS(s), cur=st && (st.mode==='keys'||st.mode==='dpad') ? st : {mode:'keys', threshold:0.5};
   openSheet({title:imCtlLabel(s), sub:'Pick a direction to change', items:['up','down','left','right'].map(dir=>({label:dir[0].toUpperCase()+dir.slice(1)+': '+imActLabel(cur[dir]||'none'), icon:'kbd', run:()=>imLater(()=>{
-    const its=imPickAction(imCtlLabel(s)+' '+dir, ['key','mouse','scroll'], a=>{ const n=Object.assign({}, imS(s)&&imS(s).mode==='keys' ? imS(s) : cur, {[dir]:a}); imSetS(s, n); });
-    its.push({label:'Nothing', icon:'x', run:()=>{ const n=Object.assign({}, imS(s)&&imS(s).mode==='keys' ? imS(s) : cur); delete n[dir]; imSetS(s, n); }});
+    const base = () => { const x=imS(s); return x && (x.mode==='keys'||x.mode==='dpad') ? x : cur; };
+    const its=imPickAction(imCtlLabel(s)+' '+dir, ['key','mouse','scroll'], a=>imSetS(s, Object.assign({}, base(), {[dir]:a})));
+    its.push({label:'Nothing', icon:'x', run:()=>{ const n=Object.assign({}, base()); delete n[dir]; imSetS(s, n); }});
     openSheet({title:imCtlLabel(s)+' '+dir, items:its});
   })}))});
 }
@@ -10282,6 +10456,29 @@ function imDpadMenu(){
     {label:'Scrolling', icon:'mouse', run:()=>set({up:'scroll:up', down:'scroll:down', left:'scroll:left', right:'scroll:right'})},
     {label:'Nothing', icon:'x', run:()=>set({up:'none', down:'none', left:'none', right:'none'})}]});
 }
+// Action sets and layers: pick what to edit, add, rename, remove.
+function imNewId(list, stem){ let i=1; while(list.some(x=>x.id===stem+i)) i++; return stem+i; }
+function imWhereMenu(){
+  const d=IM.draft, T=IM.tables, items=[{label:'Default set', icon:IM.edit==='default'?'check':'', run:()=>{ IM.edit='default'; imRefresh('im-where'); }}];
+  for(const st of d.sets||[]) items.push({label:'Action set: '+(st.name||st.id), icon:IM.edit==='set:'+st.id?'check':'', run:()=>{ IM.edit='set:'+st.id; imRefresh('im-where'); }});
+  for(const l of d.layers||[]) items.push({label:'Layer: '+(l.name||l.id), icon:IM.edit==='layer:'+l.id?'check':'', run:()=>{ IM.edit='layer:'+l.id; imRefresh('im-where'); }});
+  if((d.sets||[]).length < T.limits.sets) items.push({label:'Add an action set (a whole other set of controls)', icon:'layout', run:()=>{ d.sets=d.sets||[]; const id=imNewId(d.sets,'set'); d.sets.push({id, name:'Set '+(d.sets.length+1), buttons:{}, sticks:{}}); IM.edit='set:'+id; imChanged(true); toast('Added. Set a button to “Switch to action set” to use it.'); }});
+  if((d.layers||[]).length < T.limits.layers) items.push({label:'Add a layer (a mode shift on top of a set)', icon:'layout', run:()=>{ d.layers=d.layers||[]; const id=imNewId(d.layers,'layer'); d.layers.push({id, name:'Layer '+(d.layers.length+1), buttons:{}, sticks:{}}); IM.edit='layer:'+id; imChanged(true); toast('Added. Set a button to “Hold layer” or “Turn layer on/off” to use it.'); }});
+  const w=imWhere();
+  if(w.kind!=='default'){
+    items.push({label:'Rename “'+(imLayer().name||w.id)+'”…', icon:'kbd', run:()=>imLater(async()=>{ const t=await openPrompt({title:'Name', value:imLayer().name||''}); if(t && t.trim()){ imLayer().name=t.trim().slice(0,T.limits.name_len); imChanged(true); } })});
+    items.push({label:'Remove “'+(imLayer().name||w.id)+'”', icon:'trash', run:()=>imRemoveGroup(w)});
+  }
+  openSheet({title:'What to edit', sub:'Action sets switch every control; layers change some while held or turned on', items});
+}
+/** Removes a set or layer, and every button that named it (they do nothing then). */
+function imRemoveGroup(w){
+  const d=IM.draft, key=w.kind==='set'?'sets':'layers';
+  d[key]=(d[key]||[]).filter(x=>x.id!==w.id);
+  const gone = a => typeof a==='string' && (w.kind==='set' ? a==='set:'+w.id : (a==='layer:'+w.id || a==='layer_toggle:'+w.id));
+  for(const grp of [d, ...(d.sets||[]), ...(d.layers||[])]) for(const [k,v] of Object.entries(grp.buttons||{})) if(gone(typeof v==='string'?v:v&&v.press)) grp.buttons[k]='none';
+  IM.edit='default'; imChanged(true);
+}
 function imRadial(i){
   const R=IM.draft.radial=IM.draft.radial||[];
   const put = a => { if(i<0) R.push(a); else R[i]=a; imChanged(true); };
@@ -10291,12 +10488,46 @@ function imRadial(i){
 }
 function imReset(){
   openSheet({title:'Start over from a template', sub:'Replaces this layout (its name stays)', items:IM.tables.templates.map(t=>({label:t.name, icon:'', run:()=>{
-    const name=IM.draft.name; IM.draft=JSON.parse(JSON.stringify(t.layout)); IM.draft.name=name||t.name; IM.set='base'; imChanged(true);
+    const name=IM.draft.name; IM.draft=JSON.parse(JSON.stringify(t.layout)); IM.draft.name=name||t.name; IM.edit='default'; imChanged(true);
   }}))});
 }
 async function imRename(){
   const t=await openPrompt({title:'Layout name', value:IM.draft.name||''});
   if(t && t.trim()){ IM.draft.name=t.trim().slice(0, IM.tables.limits.name_len); imChanged(true); }
+}
+/** The overview: what every control does, per action set and layer (the preview screen; Try it runs it). */
+function imPreview(){
+  const d=IM.draft, T=IM.tables, items=[];
+  const groups=[['Default set', d], ...(d.sets||[]).map(s=>['Action set: '+(s.name||s.id), s]), ...(d.layers||[]).map(l=>['Layer: '+(l.name||l.id), l])];
+  for(const [name, grp] of groups){
+    items.push({label:'— '+name+' —', icon:'layout', run:()=>{}});
+    for(const [id,l] of T.buttons){ const v=(grp.buttons||{})[id]; if(v==null || v==='none') continue; items.push({label:l+': '+imBtnSummary(typeof v==='string'?{press:v}:v), icon:'', run:()=>{}}); }
+    for(const [id,l] of T.sticks){ const v=(grp.sticks||{})[id]; if(!v || v.mode==='none') continue; items.push({label:l+': '+(IM_MODE_NAMES[v.mode]||v.mode)+((v.mode==='keys'||v.mode==='dpad')?' ('+['up','left','down','right'].map(x=>imActLabel(v[x]||'none')).join(' ')+')':''), icon:'', run:()=>{}}); }
+  }
+  const gw=(d.gyro||{}).when||'button';
+  items.push({label:'Gyro: '+{button:'with a button',always:'always on',stick:'while touching the right stick'}[gw], icon:'pad', run:()=>{}});
+  items.push({label:IM.test?'Stop trying':'Try it now (20 seconds)', icon:'play', run:()=>imTest()});
+  openSheet({title:'Overview: '+(d.name||'Custom'), sub:'Guide always gives the controller back to Hearth', items});
+}
+// Layouts from your other devices (Hearth Link): their own layouts, checked here before they're used.
+function imFromDevices(id){
+  toast('Asking your other devices…');
+  imCall('link.input.peers', {}).then(r=>{
+    const devs=(r && r.devices)||[];
+    const items=[];
+    for(const dv of devs) for(const l of dv.layouts||[]){
+      const g=l.game===IM_GLOBAL ? null : G(l.game);
+      items.push({label:(l.name||'Layout')+' · '+(l.game===IM_GLOBAL?'global layout':g?g.title:l.game)+' · '+dv.name, icon:'pad', run:()=>imUseShared(id, l.layout)});
+    }
+    if(!items.length) return toast(devs.length ? 'Your other devices have no layouts of their own yet' : 'No other devices answered (Settings › Hearth Link)');
+    openSheet({title:'Layouts on your other devices', sub:'Used here as '+(id===IM_GLOBAL?'the global layout':'this game\'s own layout'), items});
+  }).catch(e=>toast(e.message));
+}
+function imUseShared(id, layout){
+  imCall('input.validate', {layout}).then(r=>{
+    if(id===IM_GLOBAL) return imSaveGlobal({layout:r.layout}).then(()=>toast('Global layout copied from your other device'));
+    return imSave(id, {layout:'custom', custom:r.layout}, true);
+  }).catch(e=>toast(e.message));
 }
 
 // The key picker: an on-screen keyboard (one key, or up to 4 together)
@@ -10383,7 +10614,7 @@ function imTestStart(secs){
     if(host) imCall('input.status').then(s=>{ if(IM.test===t && s && s.ok && !s.test) imTestStop(true); }).catch(()=>{});
   }, 1000);
   imTestDraw();
-  if(S.view==='inputmap' && !S.layers.length) render('im-test', true);
+  imRefresh('im-test');
 }
 function imTestDraw(){
   const t=IM.test, box=$('#imtest'); if(!t || !box) return;
@@ -10404,7 +10635,7 @@ function imTestStop(timedOut){
   IM.test=null;
   imCall('input.test', {stop:true}).catch(()=>{});
   toast(timedOut ? 'Done trying the layout' : 'Stopped trying the layout');
-  if(S.view==='inputmap' && !S.layers.length) render('im-test', true);
+  imRefresh('im-test');
 }
 
 // Quick Access › Now playing: the running game's layout, gyro, sensitivity
@@ -10429,7 +10660,11 @@ function imAct(el, d){
     case 'btn': return imBtnMenu(d.c);
     case 'stick': return imStickMenu(d.c);
     case 'tog': imSetVal(d.p, !imGet(d.p)); return imChanged(true);
-    case 'set': IM.set=d.v; return render('im-set-'+d.v, true);
+    case 'where': return imWhereMenu();
+    case 'preview': return imPreview();
+    case 'gwhen': return openSheet({title:'Gyro is on', items:[['button','With a button (or from the start)'],['always','Always'],['stick','While touching or moving the right stick']].map(([v,l])=>({label:l, icon:((IM.draft.gyro||{}).when||'button')===v?'check':'', run:()=>{ IM.draft.gyro=Object.assign({}, IM.draft.gyro, {when:v}); imChanged(true); }}))});
+    case 'gaxis': IM.draft.gyro=Object.assign({}, IM.draft.gyro, {axis:((IM.draft.gyro||{}).axis||'yaw')==='yaw'?'roll':'yaw'}); return imChanged(true);
+    case 'globOn': { const on=!(IM.globalCfg&&IM.globalCfg.enabled); clearTimeout(IM.saveT); return imSaveGlobal({layout:JSON.parse(JSON.stringify(IM.draft)), enabled:on}, true).then(()=>imRefresh('im-globon')); }
     case 'name': return imRename();
     case 'test': return imTest();
     case 'reset': return imReset();
@@ -12559,6 +12794,8 @@ function onSysEvent(name, data){
   if(name==='overlay.unavailable'){ if(!OVERLAY && S.layers.at(-1)==='launch'){ send({type:'log', text:'overlay: none to show Quick Access in over the starting screen; using this window\'s'}); qamFresh(); openLayer('qam'); } return; }
   if(name==='power.menu'){ if(OVERLAY && OV.busy){ OV.wantPower=true; return; } if(S.layers.at(-1)!=='power'){ if(!OVERLAY) closeAll(); openLayer('power'); } return; }
   if(name==='overlay.shown') return overlayShown();
+  if(name==='overlay.osk') return overlayOsk();
+  if(name==='osk.chord'){ const top=S.layers.at(-1); if(top==='prompt'||top==='search') oskField(top); return; }
   if(name==='overlay.hidden') return overlayHidden();
   if(name==='install.done'){
     const t=data.title||'The game';
@@ -12860,6 +13097,7 @@ function logInput(what){ if(INPUT_LOG) send({type:'log', text:`input ${what} | v
 function input(k){
   logInput(k);
   qaTrace(k);
+  if(OVOSK.on) return ovoskInput(k);
   const top=S.layers.at(-1);
   // A / Enter just after Quick Access (or its Put aside question) opened isn't a choice; neither is a second Guide / View
   // (the press that opened it, delivered twice).

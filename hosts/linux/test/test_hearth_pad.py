@@ -368,6 +368,81 @@ class BluetoothStickTest(unittest.TestCase):
         self.assertTrue(c.btn.get('lt_axis'))
 
 
+class GuideXTest(unittest.TestCase):
+    """Guide + X opens and closes the on-screen keyboard (Hearth Classic and, with --osk, Hearth Plasma)."""
+
+    def test_classic(self):
+        out = Out()
+        p = hp.Pad(out)
+        p.button('guide', True, 0.0)              # Guide opens the radial menu as always...
+        self.assertEqual(p.mode, 'radial')
+        p.button('x', True, 0.1)                  # ... X while it's held: the keyboard instead
+        self.assertEqual(p.mode, 'desk')
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        self.assertIn({'t': 'radial', 'open': False, 'pick': -1}, out.sent)
+        p.button('x', False, 0.2); p.button('guide', False, 0.2)
+        p.command({'cmd': 'osk', 'open': True})   # the shell opened it
+        p.button('guide', True, 1.0); p.button('x', True, 1.1)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': False})
+        self.assertEqual(p.mode, 'desk')
+
+    def test_plasma_only_the_chord(self):
+        out = Out()
+        p = hp.Pad(out, osk_only=True)
+        p.button('a', True, 0.0); p.button('a', False, 0.1)
+        p.axes(0, 0, 1.0, 0); p.tick(0.2, 0.1)
+        self.assertEqual(out.log, [])             # nothing on the desktop: Plasma's own
+        self.assertEqual(out.moved, [0, 0])
+        self.assertFalse(p.wants_grab)
+        p.button('guide', True, 1.0)
+        self.assertNotEqual(p.mode, 'radial')
+        p.button('x', True, 1.1)
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        p.command({'cmd': 'osk', 'open': True})
+        self.assertTrue(p.wants_grab)             # held while it's open
+        p.button('x', False, 1.2); p.button('guide', False, 1.2)
+        p.button('a', True, 2.0)
+        self.assertEqual(out.sent[-1], {'t': 'oskpad', 'b': 'a', 'down': True})
+
+
+class PlasmaKeyboardFilesTest(unittest.TestCase):
+    """Hearth Plasma's keyboard: started by an autostart entry only Hearth Plasma reads, guarded (no quickshell or
+    file: nothing), running the shared Keyboard.qml without wtype and hearth-pad --osk."""
+
+    def test_files(self):
+        root = PATH.parent.parent.parent.parent.parent
+        auto = (root / 'os' / 'system_files' / 'usr' / 'share' / 'hearth-plasma' / 'xdg' / 'autostart' / 'hearth-osk.desktop').read_text()
+        self.assertIn('OnlyShowIn=KDE;', auto)
+        self.assertIn('command -v quickshell', auto)
+        self.assertIn('osk-plasma.qml', auto)
+        self.assertIn('exit 0', auto)
+        qml = (PATH.parent / 'osk-plasma.qml').read_text()
+        self.assertIn('useWtype: false', qml)
+        self.assertIn('"--osk"', qml)
+        self.assertIn('property bool useWtype', (PATH.parent / 'Keyboard.qml').read_text())
+
+
+class ButtonMapTest(unittest.TestCase):
+    """Sony pads swap X and Y (Triangle is BTN_NORTH); xpad's d-pad buttons and a Bluetooth Xbox controller's
+    KEY_HOMEPAGE Guide are read too."""
+
+    class E:
+        BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST = 0x130, 0x131, 0x133, 0x134
+        BTN_TL, BTN_TR, BTN_TL2, BTN_TR2 = 0x136, 0x137, 0x138, 0x139
+        BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR = 0x13a, 0x13b, 0x13c, 0x13d, 0x13e
+        BTN_TRIGGER_HAPPY1, BTN_TRIGGER_HAPPY2, BTN_TRIGGER_HAPPY3, BTN_TRIGGER_HAPPY4 = 0x2c0, 0x2c1, 0x2c2, 0x2c3
+        KEY_HOMEPAGE = 0xac
+
+    def test_maps(self):
+        e = self.E
+        m = hp.button_map(e)
+        self.assertEqual((m[e.BTN_NORTH], m[e.BTN_WEST]), ('x', 'y'))
+        self.assertEqual((m[0x2c0], m[0x2c1], m[0x2c2], m[0x2c3]), ('left', 'right', 'up', 'down'))
+        self.assertEqual(m[e.KEY_HOMEPAGE], 'guide')
+        s = hp.button_map(e, hp.SONY)
+        self.assertEqual((s[e.BTN_NORTH], s[e.BTN_WEST]), ('y', 'x'))
+
+
 class HotplugTest(unittest.TestCase):
     """A device that goes away between being opened and being asked what it is (ENODEV) is skipped, not fatal."""
 

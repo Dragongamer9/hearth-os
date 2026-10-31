@@ -1,0 +1,89 @@
+{
+  "_about": "Characters → keys for typing through a virtual (uinput) keyboard: Hearth's on-screen keyboard over a game (Guide + X, hearth-input's type command) and hearth-pad without wtype. A key press only becomes a character through the keymap of whoever reads it (gamescope uses XKB_DEFAULT_LAYOUT, else US), so each layout lists what it can type: \"KEY\", \"shift+KEY\" or \"altgr+KEY\" (kernel KEY_* names without the prefix). Letters a-z come from \"letters\" unless a layout overrides them; nothing else is taken from US for other layouts (their punctuation is elsewhere). Characters a layout can't type (dead keys, other scripts) go to xdotool when there is one, else they're skipped and said so.",
+  "letters": "abcdefghijklmnopqrstuvwxyz",
+  "layouts": {
+    "us": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "@": "shift+2", "#": "shift+3", "$": "shift+4", "%": "shift+5", "^": "shift+6", "&": "shift+7", "*": "shift+8", "(": "shift+9", ")": "shift+0",
+      "`": "GRAVE", "~": "shift+GRAVE", "-": "MINUS", "_": "shift+MINUS", "=": "EQUAL", "+": "shift+EQUAL",
+      "[": "LEFTBRACE", "{": "shift+LEFTBRACE", "]": "RIGHTBRACE", "}": "shift+RIGHTBRACE", "\\": "BACKSLASH", "|": "shift+BACKSLASH",
+      ";": "SEMICOLON", ":": "shift+SEMICOLON", "'": "APOSTROPHE", "\"": "shift+APOSTROPHE",
+      ",": "COMMA", "<": "shift+COMMA", ".": "DOT", ">": "shift+DOT", "/": "SLASH", "?": "shift+SLASH"
+    },
+    "gb": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "£": "shift+3", "$": "shift+4", "%": "shift+5", "^": "shift+6", "&": "shift+7", "*": "shift+8", "(": "shift+9", ")": "shift+0",
+      "`": "GRAVE", "-": "MINUS", "_": "shift+MINUS", "=": "EQUAL", "+": "shift+EQUAL",
+      "[": "LEFTBRACE", "{": "shift+LEFTBRACE", "]": "RIGHTBRACE", "}": "shift+RIGHTBRACE", "#": "BACKSLASH", "~": "shift+BACKSLASH",
+      ";": "SEMICOLON", ":": "shift+SEMICOLON", "'": "APOSTROPHE", "@": "shift+APOSTROPHE", "\\": "102ND", "|": "shift+102ND",
+      ",": "COMMA", "<": "shift+COMMA", ".": "DOT", ">": "shift+DOT", "/": "SLASH", "?": "shift+SLASH", "€": "altgr+4"
+    },
+    "de": {
+      "y": "Z", "z": "Y",
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "§": "shift+3", "$": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "ß": "MINUS", "?": "shift+MINUS", "ü": "LEFTBRACE", "Ü": "shift+LEFTBRACE", "+": "RIGHTBRACE", "*": "shift+RIGHTBRACE",
+      "ö": "SEMICOLON", "Ö": "shift+SEMICOLON", "ä": "APOSTROPHE", "Ä": "shift+APOSTROPHE", "#": "BACKSLASH", "'": "shift+BACKSLASH",
+      "<": "102ND", ">": "shift+102ND", "|": "altgr+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "@": "altgr+Q", "€": "altgr+E", "{": "altgr+7", "[": "altgr+8", "]": "altgr+9", "}": "altgr+0", "\\": "altgr+MINUS", "~": "altgr+RIGHTBRACE", "°": "shift+GRAVE"
+    },
+    "fr": {
+      "a": "Q", "q": "A", "z": "W", "w": "Z", "m": "SEMICOLON",
+      "1": "shift+1", "2": "shift+2", "3": "shift+3", "4": "shift+4", "5": "shift+5", "6": "shift+6", "7": "shift+7", "8": "shift+8", "9": "shift+9", "0": "shift+0",
+      "&": "1", "é": "2", "\"": "3", "'": "4", "(": "5", "-": "6", "è": "7", "_": "8", "ç": "9", "à": "0", ")": "MINUS", "°": "shift+MINUS", "=": "EQUAL", "+": "shift+EQUAL",
+      "$": "RIGHTBRACE", "£": "shift+RIGHTBRACE", "ù": "APOSTROPHE", "%": "shift+APOSTROPHE", "*": "BACKSLASH", "µ": "shift+BACKSLASH",
+      ",": "M", "?": "shift+M", ";": "COMMA", ".": "shift+COMMA", ":": "DOT", "/": "shift+DOT", "!": "SLASH", "§": "shift+SLASH",
+      "<": "102ND", ">": "shift+102ND", "²": "GRAVE",
+      "#": "altgr+3", "{": "altgr+4", "[": "altgr+5", "|": "altgr+6", "\\": "altgr+8", "@": "altgr+0", "]": "altgr+MINUS", "}": "altgr+EQUAL", "€": "altgr+E"
+    },
+    "es": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "·": "shift+3", "$": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "'": "MINUS", "?": "shift+MINUS", "¡": "EQUAL", "¿": "shift+EQUAL", "+": "RIGHTBRACE", "*": "shift+RIGHTBRACE",
+      "ñ": "SEMICOLON", "Ñ": "shift+SEMICOLON", "ç": "BACKSLASH", "Ç": "shift+BACKSLASH", "º": "GRAVE", "ª": "shift+GRAVE",
+      "<": "102ND", ">": "shift+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "|": "altgr+1", "@": "altgr+2", "#": "altgr+3", "€": "altgr+E", "\\": "altgr+GRAVE"
+    },
+    "it": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "£": "shift+3", "$": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "'": "MINUS", "?": "shift+MINUS", "ì": "EQUAL", "^": "shift+EQUAL", "è": "LEFTBRACE", "é": "shift+LEFTBRACE", "+": "RIGHTBRACE", "*": "shift+RIGHTBRACE",
+      "ò": "SEMICOLON", "ç": "shift+SEMICOLON", "à": "APOSTROPHE", "°": "shift+APOSTROPHE", "ù": "BACKSLASH", "§": "shift+BACKSLASH", "\\": "GRAVE", "|": "shift+GRAVE",
+      "<": "102ND", ">": "shift+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "@": "altgr+SEMICOLON", "#": "altgr+APOSTROPHE", "[": "altgr+LEFTBRACE", "]": "altgr+RIGHTBRACE", "€": "altgr+E"
+    },
+    "pt": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "#": "shift+3", "$": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "'": "MINUS", "?": "shift+MINUS", "«": "EQUAL", "»": "shift+EQUAL", "+": "LEFTBRACE", "*": "shift+LEFTBRACE",
+      "ç": "SEMICOLON", "Ç": "shift+SEMICOLON", "º": "APOSTROPHE", "ª": "shift+APOSTROPHE", "\\": "GRAVE", "|": "shift+GRAVE",
+      "<": "102ND", ">": "shift+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "@": "altgr+2", "€": "altgr+E", "{": "altgr+7", "[": "altgr+8", "]": "altgr+9", "}": "altgr+0"
+    },
+    "se": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "#": "shift+3", "¤": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "+": "MINUS", "?": "shift+MINUS", "å": "LEFTBRACE", "Å": "shift+LEFTBRACE", "ö": "SEMICOLON", "Ö": "shift+SEMICOLON", "ä": "APOSTROPHE", "Ä": "shift+APOSTROPHE",
+      "'": "BACKSLASH", "*": "shift+BACKSLASH", "§": "GRAVE", "½": "shift+GRAVE",
+      "<": "102ND", ">": "shift+102ND", "|": "altgr+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "@": "altgr+2", "£": "altgr+3", "$": "altgr+4", "€": "altgr+E", "{": "altgr+7", "[": "altgr+8", "]": "altgr+9", "}": "altgr+0", "\\": "altgr+MINUS"
+    },
+    "fi": {"_same": "se"},
+    "dk": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "#": "shift+3", "¤": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "+": "MINUS", "?": "shift+MINUS", "å": "LEFTBRACE", "Å": "shift+LEFTBRACE", "æ": "SEMICOLON", "Æ": "shift+SEMICOLON", "ø": "APOSTROPHE", "Ø": "shift+APOSTROPHE",
+      "'": "BACKSLASH", "*": "shift+BACKSLASH", "½": "GRAVE", "§": "shift+GRAVE",
+      "<": "102ND", ">": "shift+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "@": "altgr+2", "£": "altgr+3", "$": "altgr+4", "€": "altgr+E", "{": "altgr+7", "[": "altgr+8", "]": "altgr+9", "}": "altgr+0"
+    },
+    "no": {
+      "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+      "!": "shift+1", "\"": "shift+2", "#": "shift+3", "¤": "shift+4", "%": "shift+5", "&": "shift+6", "/": "shift+7", "(": "shift+8", ")": "shift+9", "=": "shift+0",
+      "+": "MINUS", "?": "shift+MINUS", "å": "LEFTBRACE", "Å": "shift+LEFTBRACE", "ø": "SEMICOLON", "Ø": "shift+SEMICOLON", "æ": "APOSTROPHE", "Æ": "shift+APOSTROPHE",
+      "'": "BACKSLASH", "*": "shift+BACKSLASH", "|": "GRAVE", "§": "shift+GRAVE",
+      "<": "102ND", ">": "shift+102ND", ",": "COMMA", ";": "shift+COMMA", ".": "DOT", ":": "shift+DOT", "-": "SLASH", "_": "shift+SLASH",
+      "@": "altgr+2", "£": "altgr+3", "$": "altgr+4", "€": "altgr+E", "{": "altgr+7", "[": "altgr+8", "]": "altgr+9", "}": "altgr+0"
+    }
+  }
+}
