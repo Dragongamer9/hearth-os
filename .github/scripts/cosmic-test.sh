@@ -43,6 +43,7 @@ if dnf -y install --setopt=install_weak_deps=False $ex $pkgs >/tmp/cosmic-instal
   for x in cosmic-greeter greetd cosmic-initial-setup cosmic-store cosmic-player; do rpm -q "$x" >/dev/null 2>&1 && fail "left out" "$x got installed"; done
 else
   fail "COSMIC install" "$(grep -iE 'problem|nothing provides|requires|error' /tmp/cosmic-install.log | head -5 | tr '\n' ' ' | cut -c1-600)"
+  note "cosmic-session needs" "$(dnf -q repoquery --requires cosmic-session 2>/dev/null | tr '\n' ' ' | cut -c1-1500)"
   exit 1
 fi
 grep -hE '^\s*\((modifiers|description)' /usr/share/cosmic/com.system76.CosmicSettings.Shortcuts/v1/defaults | grep -iE 'Tab|"q"|Maximize|Minimize|"g"|"Up"' | head -20 > shots/cosmic-shortcuts.txt

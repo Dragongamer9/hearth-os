@@ -21,6 +21,8 @@ xdg-desktop-portal-cosmic
 cosmic-files
 cosmic-term
 cosmic-edit
+# cosmic-session needs COSMIC's on-screen keyboard installed; Hearth's is the one used (not on the panel)
+cosmic-osk
 # Left out: COSMIC's login screen (Anatase's stays), first-run wizard, and apps of kinds Hearth already has
 -cosmic-greeter
 -greetd
@@ -28,5 +30,4 @@ cosmic-edit
 -cosmic-store
 -cosmic-player
 -cosmic-wallpapers
--cosmic-osk
 -cosmic-monitor
