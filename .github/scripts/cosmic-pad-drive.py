@@ -60,7 +60,7 @@ class Reader:
                         self.rel['wheel'] += ev.value
             elif ev.type == e.EV_KEY and ev.value in (0, 1):
                 name = e.KEY.get(ev.code) if ev.code in e.KEY else e.BTN.get(ev.code)
-                if isinstance(name, list):
+                if isinstance(name, (list, tuple)):
                     name = name[0]
                 name = str(name)
                 if name.startswith('BTN_'):

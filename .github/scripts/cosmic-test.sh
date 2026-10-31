@@ -164,7 +164,12 @@ find "$HOME/.config/cosmic" "$HOME/.local/state/cosmic" -maxdepth 3 2>/dev/null 
 bad=$(grep -E "qml|QML" shots/companion.log | grep -iE "error|TypeError|ReferenceError|is not a type|not defined|Cannot assign|failed to load" | sort -u | head -10)
 [ -n "$bad" ] && fail "companion QML" "$(printf '%s' "$bad" | cut -c1-300 | tr '\n' '|')"
 grep -iE "hearth-pad" shots/companion.log | head -5 > shots/pad-messages.txt
-pad_problem=$($QS problem 2>/dev/null)
+# What the companion heard from hearth-pad (it may be restarting: asked again a few times).
+for i in 1 2 3 4; do
+  pad_problem=$($QS problem 2>/dev/null); rc=$?
+  [ "$rc" = 0 ] && break
+  pad_problem=""; sleep 3
+done
 [ -n "$pad_problem" ] && fail "hearth-pad" "the companion says: $pad_problem"
 
 APPID="$QS app"
