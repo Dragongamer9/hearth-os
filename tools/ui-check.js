@@ -2078,7 +2078,7 @@ const path = require('path');
         return { a: /data-k="su-rollback"/.test(a) && /Go back to 0\.6\.5/.test(a), b: /su-rbgo/.test(b) && /Stay on 0\.6\.51/.test(b), c: /su-rollback/.test(c), d: /su-rollback/.test(d) }; });
       if (!st.a || !st.b) derr('Updates has no Go back row (or its undo): ' + JSON.stringify(st));
       if (st.c) derr('Go back shows with an update waiting: ' + JSON.stringify(st));
-      if (!st.d) derr('Go back is missing on Peppermint (it keeps bootc's previous version): ' + JSON.stringify(st));
+      if (!st.d) derr('Go back is missing on Peppermint (it keeps the version before through bootc): ' + JSON.stringify(st));
       // The classic side menu (Settings › You › Appearance › Menu style), and back to the dock.
       st = await dev(() => { closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false); act(document.querySelector('#view [data-k="ap-ms-side"]'));
         const body = document.body.classList.contains('menu-dock'); input('start');
