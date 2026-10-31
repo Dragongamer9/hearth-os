@@ -1,0 +1,166 @@
+#!/usr/bin/python3
+"""hearth-cosmic-defaults: makes Hearth COSMIC's system-wide COSMIC settings from COSMIC's own (docs/COSMIC.md).
+
+  hearth-cosmic-defaults SRC DST     SRC: COSMIC's defaults (/usr/share/cosmic), DST: Hearth's
+                                     (/usr/share/hearth-cosmic/data/cosmic)
+
+Run once at image build time (os-bases/anatase/build.sh) and by cosmic-test.yml, so Hearth's settings always match the
+COSMIC that's installed. nimbus-session puts DST's parent first in XDG_DATA_DIRS for Hearth COSMIC only: COSMIC reads
+a component's defaults from the first data folder that has it (cosmic-config's find_data_file), so each component
+Hearth changes is copied whole and then changed, and your own settings (~/.config/cosmic) still win over all of it.
+
+What Hearth changes (the rest stays COSMIC's):
+  - the theme (com.system76.CosmicTheme.Dark and its Builder): every grey becomes Hearth's warm, firelit dark of the
+    same lightness, and COSMIC's accent becomes Hearth's ember (#ff8a3d), keeping each shade's lightness;
+  - the panel: one floating, rounded bar along the bottom like Mantel's (defaults/), with Hearth's entries first;
+  - the wallpaper (Fireside), roomy spacing (bigger rows for a controller), the sans-serif font Mantel uses, Breeze
+    Dark icons with Hearth's own app icons;
+  - shortcuts: Super opens Hearth's launcher, Super+G Game Mode, Super+Ctrl+Up / Down maximize / minimize.
+"""
+import colorsys
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+OVERRIDES = os.path.join(HERE, 'defaults')
+EMBER = (1.0, 0x8a / 255, 0x3d / 255)
+# COSMIC's grey (0-1) → Hearth's palette (desktop/shell/Theme.qml), in between: straight lines.
+RAMP = [
+    (0.000, '#0a0706'), (0.106, '#17110e'), (0.153, '#1c1512'), (0.212, '#261d18'), (0.291, '#33271f'),
+    (0.370, '#3b2e26'), (0.470, '#5a4a3f'), (0.570, '#7d6b5e'), (0.670, '#a69484'), (0.790, '#d9cbbd'),
+    (0.900, '#ece2d8'), (1.000, '#f4ece3'),
+]
+THEMES = ('com.system76.CosmicTheme.Dark', 'com.system76.CosmicTheme.Dark.Builder')
+LAUNCHER = 'hearth-cosmic launcher'
+NUM = r'(-?[0-9.]+(?:[eE][-+]?[0-9]+)?)'
+COLOR_RE = re.compile(r'\(\s*red:\s*' + NUM + r',\s*green:\s*' + NUM + r',\s*blue:\s*' + NUM +
+                      r'(?:,\s*alpha:\s*' + NUM + r')?\s*,?\s*\)')
+
+
+def hexrgb(h):
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
+
+
+RAMP_RGB = [(v, hexrgb(h)) for v, h in RAMP]
+
+
+def warm(level):
+    level = max(0.0, min(1.0, level))
+    for (a, ca), (b, cb) in zip(RAMP_RGB, RAMP_RGB[1:]):
+        if level <= b:
+            t = 0.0 if b == a else (level - a) / (b - a)
+            return tuple(x + (y - x) * t for x, y in zip(ca, cb))
+    return RAMP_RGB[-1][1]
+
+
+def retint(r, g, b):
+    """One colour in Hearth's palette: greys warm up, COSMIC's cyan accent becomes ember, others stay."""
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    if s < 0.12 or max(r, g, b) - min(r, g, b) < 0.03:
+        return warm((r + g + b) / 3)
+    if 0.44 <= h <= 0.56:              # 160-200°: COSMIC's default accent and its shades
+        eh, el, es = colorsys.rgb_to_hls(*EMBER)
+        return colorsys.hls_to_rgb(eh, max(0.0, min(1.0, l * el / 0.63)), max(s, 0.85))
+    return (r, g, b)
+
+
+def retint_text(text):
+    def sub(m):
+        r, g, b = (float(m.group(i)) for i in (1, 2, 3))
+        nr, ng, nb = retint(r, g, b)
+        alpha = m.group(4)
+        return '(red: %.7f, green: %.7f, blue: %.7f%s)' % (nr, ng, nb, (', alpha: ' + alpha) if alpha is not None else '')
+    return COLOR_RE.sub(sub, text)
+
+
+def copy_component(src, dst, cid):
+    s = os.path.join(src, cid)
+    d = os.path.join(dst, cid)
+    if os.path.isdir(s) and not os.path.isdir(d):
+        shutil.copytree(s, d)
+    os.makedirs(os.path.join(d, 'v1'), exist_ok=True)
+    return d
+
+
+def font_family():
+    try:
+        r = subprocess.run(['fc-match', '-f', '%{family[0]}', 'sans-serif'], capture_output=True, text=True, timeout=20)
+        fam = r.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        fam = ''
+    return fam if re.fullmatch(r'[A-Za-z0-9 ._-]{1,60}', fam or '') else ''
+
+
+def build(src, dst):
+    os.makedirs(dst, exist_ok=True)
+    done = []
+    # 1. Hearth's own settings (defaults/<component>/v1/<key>), on top of a whole copy of COSMIC's component.
+    for cid in sorted(os.listdir(OVERRIDES)):
+        d = copy_component(src, dst, cid)
+        for root, _, files in os.walk(os.path.join(OVERRIDES, cid)):
+            for f in files:
+                rel = os.path.relpath(os.path.join(root, f), os.path.join(OVERRIDES, cid))
+                os.makedirs(os.path.dirname(os.path.join(d, rel)), exist_ok=True)
+                shutil.copyfile(os.path.join(root, f), os.path.join(d, rel))
+        done.append(cid)
+    # 2. The theme in Hearth's colours.
+    for cid in THEMES:
+        d = copy_component(src, dst, cid)
+        for root, _, files in os.walk(d):
+            for f in files:
+                p = os.path.join(root, f)
+                with open(p, encoding='utf-8') as fh:
+                    text = fh.read()
+                new = retint_text(text)
+                if new != text:
+                    with open(p, 'w', encoding='utf-8') as fh:
+                        fh.write(new)
+        done.append(cid)
+    # The Builder's accent and window hint, so COSMIC Settings › Appearance starts from Hearth's too.
+    b = os.path.join(dst, 'com.system76.CosmicTheme.Dark.Builder', 'v1')
+    with open(os.path.join(b, 'accent'), 'w') as fh:
+        fh.write('Some((\n    red: %.7f,\n    green: %.7f,\n    blue: %.7f,\n))\n' % EMBER)
+    with open(os.path.join(b, 'window_hint'), 'w') as fh:
+        fh.write('Some((\n    red: %.7f,\n    green: %.7f,\n    blue: %.7f,\n))\n' % EMBER)
+    # 3. Super opens Hearth's launcher (COSMIC's own stays on the App Library).
+    sa = os.path.join(copy_component(src, dst, 'com.system76.CosmicSettings.Shortcuts'), 'v1', 'system_actions')
+    if os.path.isfile(sa):
+        with open(sa, encoding='utf-8') as fh:
+            text = fh.read()
+        text, n = re.subn(r'(\n\s*Launcher:\s*)"[^"]*"', r'\1"%s"' % LAUNCHER, text)
+        if n:
+            with open(sa, 'w', encoding='utf-8') as fh:
+                fh.write(text)
+    # 4. Font and icons as Mantel has them, where installed.
+    tk = os.path.join(copy_component(src, dst, 'com.system76.CosmicTk'), 'v1')
+    fam = font_family()
+    if fam:
+        for key in ('interface_font',):
+            with open(os.path.join(tk, key), 'w') as fh:
+                fh.write('(\n    family: "%s",\n    weight: Normal,\n    stretch: Normal,\n    style: Normal,\n)\n' % fam)
+    for theme in ('breeze-dark', 'Breeze-Dark', 'breeze'):
+        if os.path.isdir(os.path.join('/usr/share/icons', theme)):
+            with open(os.path.join(tk, 'icon_theme'), 'w') as fh:
+                fh.write('"%s"\n' % theme)
+            break
+    return sorted(set(done))
+
+
+def main(argv):
+    if len(argv) != 3:
+        print('usage: hearth-cosmic-defaults SRC DST', file=sys.stderr)
+        return 2
+    src, dst = argv[1], argv[2]
+    if not os.path.isdir(src):
+        print('error: COSMIC defaults not found in ' + src, file=sys.stderr)
+        return 1
+    done = build(src, dst)
+    print('Hearth COSMIC defaults in %s: %s' % (dst, ', '.join(done)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

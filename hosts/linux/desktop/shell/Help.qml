@@ -26,7 +26,7 @@ PanelWindow {
     Timer { id: autoHide; interval: 12000; running: root.shown; onTriggered: root.shown = false }
     Timer { id: toastTimer; interval: 1800; onTriggered: root.message = "" }
 
-    readonly property var controls: [
+    property var controls: [   // desk-cosmic.qml gives Hearth COSMIC's
         ["Right stick", "Move the pointer (press it in: precise)"],
         ["Left stick", "Scroll"],
         ["A  /  RT", "Click (hold to drag)"],

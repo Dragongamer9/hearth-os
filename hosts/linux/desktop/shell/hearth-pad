@@ -30,6 +30,11 @@ Exit codes: 2 python3-evdev missing, 3 no access to /dev/uinput (the shell doesn
 (osk {open}); while it's open the controller is the keyboard's alone (grabbed: apps don't see the presses) and typing goes
 through this helper's uinput keyboard (KWin has no wtype). The rest of the time it does nothing.
 
+--cosmic: Hearth COSMIC's controller (docs/COSMIC.md), started by desktop/shell/desk-cosmic.qml (which draws the Hearth
+menu, the launcher, Quick Access and the keyboard, as Pad.qml does for Hearth Classic). The same desktop as above, but
+keyboard-first in every window, with COSMIC's own shortcuts and per-app keys for COSMIC Files, Terminal and Edit (the
+shell tells it which app is in front: app {id}): see CosmicPad.
+
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
 A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
 View, LB/RB and Y do nothing here (they're the game's and Hearth's). View + Menu together turns it off: it says
@@ -81,6 +86,12 @@ KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
                    {'KEY_LEFTSHIFT', 'KEY_LEFTCTRL', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
                     'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V'})
 MODS = {'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT'}
+
+
+# ---- Hearth COSMIC (--cosmic): keys it sends besides the ones above.
+COSMIC_KEYS = ['KEY_F', 'KEY_PAGEUP', 'KEY_PAGEDOWN', 'KEY_F10', 'KEY_G']
+KEYS_USED = sorted(set(KEYS_USED) | set(COSMIC_KEYS))
+# ---- end Hearth COSMIC
 
 
 def curve(v):
@@ -449,6 +460,140 @@ class Pad:
             self.open_radial() if m.get('open') else (self.close_radial() if self.mode == 'radial' else None)
 
 
+# ---------------------------------------------------------------------- Hearth COSMIC (--cosmic, docs/COSMIC.md)
+
+POINTER_RECENT = 1.2        # s: A clicks (instead of Enter) when the right stick moved the pointer this recently
+TRIGGER_SCROLL = 10.0       # wheel notches/s while LT / RT is held
+# Per app (the .desktop id the shell reports for the window in front): what A, B, Y, LB / RB send. '' is any other
+# window. Y's keys go first, then the on-screen keyboard opens when 'osk' is set (search fields, the terminal).
+COSMIC_APPS = {
+    '': {'a': ('KEY_ENTER',), 'b': ('KEY_ESC',), 'y': (), 'osk': True, 'tabs': False},
+    # COSMIC Files: B back a folder, Y search, LB / RB tabs.
+    'com.system76.CosmicFiles': {'a': ('KEY_ENTER',), 'b': ('KEY_LEFTALT', 'KEY_LEFT'), 'y': ('KEY_LEFTCTRL', 'KEY_F'),
+                                 'osk': True, 'tabs': True},
+    # COSMIC Terminal: B is Esc (for the program in it), Y the keyboard, LB / RB tabs.
+    'com.system76.CosmicTerm': {'a': ('KEY_ENTER',), 'b': ('KEY_ESC',), 'y': (), 'osk': True, 'tabs': True},
+    # COSMIC Edit: Y find, LB / RB tabs.
+    'com.system76.CosmicEdit': {'a': ('KEY_ENTER',), 'b': ('KEY_ESC',), 'y': ('KEY_LEFTCTRL', 'KEY_F'), 'osk': True, 'tabs': True},
+}
+# View + D-pad: COSMIC's window shortcuts (move left / right), and Hearth's maximize / minimize (Super+Ctrl+Up / Down,
+# desktop/cosmic/hearth-cosmic-defaults adds them).
+COSMIC_SNAP = {'left': ('KEY_LEFTMETA', 'KEY_LEFTSHIFT', 'KEY_LEFT'), 'right': ('KEY_LEFTMETA', 'KEY_LEFTSHIFT', 'KEY_RIGHT'),
+               'up': ('KEY_LEFTMETA', 'KEY_LEFTCTRL', 'KEY_UP'), 'down': ('KEY_LEFTMETA', 'KEY_LEFTCTRL', 'KEY_DOWN')}
+
+
+class CosmicPad(Pad):
+    """Hearth COSMIC: Mantel's controller with COSMIC's shortcuts, keyboard-first in every window.
+      Right stick  pointer (R3 precise)        Left stick  scroll           LT / RT  scroll up / down
+      A            Enter; a click when the pointer was just moved          X        right-click   L3  middle-click
+      B            back: Esc (COSMIC Files: the folder before)             Y        search (Files, Edit) and the keyboard
+      D-pad        arrow keys (moves the selection)                        LB / RB  tabs in COSMIC's apps, else windows
+      View + LB/RB windows (Alt+Tab)     View + B  close (Super+Q)         View + D-pad  move / maximize / minimize
+      Menu         Hearth's launcher     Guide     the Hearth menu         Guide + X  the on-screen keyboard"""
+
+    def __init__(self, out):
+        super().__init__(out)
+        self.app = ''              # the window in front (from the shell: app {id})
+        self.ptr_at = -10.0        # when the right stick last moved the pointer
+        self.a_click = False       # A is down as a click
+        self.trig = {'lt': False, 'rt': False}
+        self.tacc = 0.0
+
+    def amap(self):
+        return COSMIC_APPS.get(self.app) or COSMIC_APPS['']
+
+    def release_all(self):
+        super().release_all()
+        self.trig = {'lt': False, 'rt': False}
+        self.a_click = False
+
+    def command(self, m):
+        if m.get('cmd') == 'app':
+            self.app = str(m.get('id') or '').removesuffix('.desktop')
+            return
+        if m.get('cmd') == 'key' and m.get('key') == 'close':     # the Hearth menu's Close window: COSMIC's Super+Q
+            return self.tap('KEY_LEFTMETA', 'KEY_Q')
+        super().command(m)
+
+    def switch_window(self, name, now):
+        if not self.alt_until:
+            self.out.press('KEY_LEFTALT', True)
+        self.alt_until = now + ALT_HOLD
+        self.tap(*(['KEY_TAB'] if name == 'rb' else ['KEY_LEFTSHIFT', 'KEY_TAB']))
+
+    def desk_button(self, name, down, now):
+        view = 'view' in self.held
+        am = self.amap()
+        if name == 'a':
+            if down:
+                self.a_click = now - self.ptr_at < POINTER_RECENT
+            if self.a_click:
+                return self.mouse('BTN_LEFT', 'a', down)
+            if down:
+                self.tap(*am['a'])
+            return
+        if name in ('lt', 'rt'):
+            self.trig[name] = bool(down)
+            return
+        if name == 'x':
+            return self.mouse('BTN_RIGHT', 'x', down)
+        if name == 'l3':
+            return self.mouse('BTN_MIDDLE', 'l3', down)
+        if name in ARROWS:
+            if view:
+                if down:
+                    self.view_used = True
+                    self.tap(*COSMIC_SNAP[name])
+                return
+            return self.hold_key(ARROWS[name], down)
+        if name == 'view':
+            if down:
+                self.view_used = False
+                self.view_at = now
+            elif not self.view_used and now - getattr(self, 'view_at', now) < HELP_TAP:
+                self.out.send({'t': 'help'})
+            return
+        if not down:
+            return
+        if name == 'b':
+            if view:
+                self.view_used = True
+                self.tap('KEY_LEFTMETA', 'KEY_Q')
+            else:
+                self.tap(*am['b'])
+        elif name == 'y':
+            if am['y']:
+                self.tap(*am['y'])
+            if am['osk']:
+                self.want_osk()
+        elif name == 'menu':
+            self.out.send({'t': 'launcher'})
+        elif name in ('lb', 'rb'):
+            if view or not am['tabs']:
+                self.view_used = self.view_used or view
+                self.switch_window(name, now)
+            else:
+                self.tap(*(['KEY_LEFTCTRL', 'KEY_TAB'] if name == 'rb' else ['KEY_LEFTCTRL', 'KEY_LEFTSHIFT', 'KEY_TAB']))
+        elif name == 'r3':
+            self.precise = not self.precise
+            self.out.send({'t': 'toast', 'text': 'Precise pointer ' + ('on' if self.precise else 'off')})
+
+    def tick(self, now, dt):
+        _, _, rx, ry = self.sticks
+        active = self.mode == 'desk' and not self.paused
+        if active and (abs(rx) >= DEAD or abs(ry) >= DEAD):
+            self.ptr_at = now
+        super().tick(now, dt)
+        t = (1 if self.trig['rt'] else 0) - (1 if self.trig['lt'] else 0)
+        if active and not self.keys_ctx and t:
+            self.tacc += -t * TRIGGER_SCROLL * 120 * dt
+            v = int(self.tacc)
+            self.tacc -= v
+            if v:
+                self.out.wheel(v, 0)
+# ---- end Hearth COSMIC
+
+
 # ---------------------------------------------------------------------- devices (python3-evdev)
 
 def emit(obj):
@@ -688,7 +833,7 @@ def main():
         stats['moved'] += abs(dx) + abs(dy)
         real_move(dx, dy)
     out.move = counted_move
-    pad = Pad(out, game=game, osk_only=osk_only)
+    pad = CosmicPad(out) if '--cosmic' in sys.argv[1:] else Pad(out, game=game, osk_only=osk_only)
     if game:
         note('Game Mode controller mouse')
     pads = {}

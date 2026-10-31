@@ -1,0 +1,93 @@
+# Hearth COSMIC (docs/COSMIC.md): COSMIC installed the way the Anatase image does it, drawn for real next to Hearth
+# Classic, and driven with a virtual controller.
+#   - the session's and hearth-pad's Python tests (test_hearth_cosmic.py);
+#   - .github/scripts/cosmic-test.sh in Fedora 45 (Anatase's Fedora): COSMIC from desktop/cosmic/fedora-packages and how
+#     much it adds, Hearth's COSMIC defaults, COSMIC's compositor nested in a headless labwc with its panel and Hearth's
+#     companion, screenshots of the desktop, Hearth's launcher, Quick Access, Hearth menu, Hearth Link / Storage, the
+#     keyboard, COSMIC Files / Terminal / Edit, and controller checks with a virtual Xbox pad (cosmic-pad-drive.py);
+#   - side-by-side pictures with Hearth Classic's (ci/desktop-shots-*) and Mantel's Text (ci/hearth-text-shots-*) and
+#     a README on the branch ci/cosmic-shots-<branch>.
+# Failures are ::error:: annotations (logs can't always be read).
+name: Hearth COSMIC test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, bughunt, 'feature/desktop-cosmic-deepin']
+    paths: ['hosts/linux/desktop/cosmic/**', 'os/system_files/usr/share/hearth-cosmic/**', 'hosts/linux/desktop/shell/desk-cosmic.qml',
+            'hosts/linux/desktop/shell/CosmicHub.qml', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/session/**',
+            'hosts/linux/test/test_hearth_cosmic.py', '.github/scripts/cosmic-*', '.github/workflows/cosmic-test.yml']
+
+permissions:
+  contents: write    # the screenshots branch
+
+concurrency:
+  group: cosmic-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cosmic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Session and controller tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_cosmic.py' >py.out 2>&1 \
+            || { echo "::error title=Python tests::$(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' py.out | head -8 | tr '\n' '|' | cut -c1-900)"; touch py-failed; }
+          tail -3 py.out
+
+      - name: Draw Hearth COSMIC and drive it with a controller
+        timeout-minutes: 35
+        run: |
+          sudo modprobe uinput
+          docker run --rm --privileged -v /dev:/dev -v "$PWD:/src" registry.fedoraproject.org/fedora:45 bash /src/.github/scripts/cosmic-test.sh 2>&1 | tee cosmic-test.log
+          test "${PIPESTATUS[0]}" = 0 || touch cosmic-failed
+          sudo chown -R "$(id -u):$(id -g)" shots || true
+
+      - name: Side by side with Hearth Classic
+        if: always()
+        run: |
+          mkdir -p shots/classic shots/compare
+          for b in ci/desktop-shots-bughunt ci/desktop-shots; do
+            git fetch -q --depth 1 origin "$b" 2>/dev/null || continue
+            for f in 1-desktop 2-quick-access 3-hearth-menu 4-launcher 5-controls files-1-icons; do git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"; done
+            ls shots/classic/*.png >/dev/null 2>&1 && break
+          done
+          for b in ci/hearth-text-shots-main ci/hearth-text-shots-hearth-text; do
+            git fetch -q --depth 1 origin "$b" 2>/dev/null || continue
+            git show "FETCH_HEAD:app/1-new-file.png" > shots/classic/text-1.png 2>/dev/null && break || rm -f shots/classic/text-1.png
+          done
+          pair() {
+            [ -f "shots/classic/$1.png" ] && [ -f "shots/$2.png" ] || return 0
+            convert "shots/classic/$1.png" -resize 960x "shots/$2.png" -resize 960x +append "shots/compare/$3.png" || true
+          }
+          pair 1-desktop cosmic-1-desktop desktop
+          pair 2-quick-access cosmic-2-quick-access quick-access
+          pair 3-hearth-menu cosmic-3-hearth-menu hearth-menu
+          pair 4-launcher cosmic-4-launcher launcher
+          pair 5-controls cosmic-8-controls controls
+          pair files-1-icons cosmic-files-1 files
+          pair text-1 cosmic-edit-1 text
+          {
+            printf '# Hearth Classic / Mantel (left) and Hearth COSMIC (right)\n\n'
+            for f in shots/compare/*.png; do [ -f "$f" ] && printf '## %s\n\n![%s](compare/%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")"; done
+            printf '## Hearth COSMIC\n\n'
+            for f in shots/cosmic-*.png; do [ -f "$f" ] && printf '![%s](%s)\n\n' "$(basename "$f")" "$(basename "$f")"; done
+            printf '## Results\n\n```\n'; cat shots/results.txt shots/pad-*.txt 2>/dev/null; printf '```\n'
+          } > shots/README.md
+
+      - name: Publish screenshots to a branch
+        if: always()
+        run: |
+          to="ci/cosmic-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          cp cosmic-test.log shots/ 2>/dev/null || true
+          cd shots && git init -q -b "$to" && git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qm "Hearth COSMIC screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+
+      - name: Fail if something didn't work
+        if: always()
+        run: test ! -e cosmic-failed && test ! -e py-failed

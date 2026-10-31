@@ -1,0 +1,31 @@
+#!/bin/sh
+# hearth-cosmic: opens Hearth's pieces in Hearth COSMIC (docs/COSMIC.md), through the companion
+# (desktop/shell/desk-cosmic.qml). Used by the panel's Hearth entries and COSMIC's Super key.
+#   hearth-cosmic launcher | games | quick | link | storage | menu | keyboard | help | close
+#   hearth-cosmic companion       start the companion (autostart does this when Hearth COSMIC starts)
+# If the companion isn't running it's started first. Outside Hearth COSMIC (no quickshell), the launcher falls back to
+# COSMIC's own.
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+QML="$SHELL_DIR/desk-cosmic.qml"
+case "$1" in
+  launcher|games|quick|link|storage|menu|keyboard|help|close) ;;
+  companion)
+    command -v quickshell >/dev/null 2>&1 && [ -f "$QML" ] || exit 0
+    exec quickshell -p "$QML" ;;
+  *) echo "usage: hearth-cosmic launcher|games|quick|link|storage|menu|keyboard|help|close|companion" >&2; exit 2 ;;
+esac
+if ! command -v quickshell >/dev/null 2>&1 || [ ! -f "$QML" ]; then
+  [ "$1" = launcher ] && exec cosmic-launcher
+  exit 1
+fi
+quickshell ipc -p "$QML" call hearth "$1" >/dev/null 2>&1 && exit 0
+# Not running yet (or it ended): start it, then ask again.
+setsid quickshell -p "$QML" >/dev/null 2>&1 </dev/null &
+i=0
+while [ $i -lt 20 ]; do
+  sleep 0.5
+  quickshell ipc -p "$QML" call hearth "$1" >/dev/null 2>&1 && exit 0
+  i=$((i + 1))
+done
+[ "$1" = launcher ] && exec cosmic-launcher
+exit 1
