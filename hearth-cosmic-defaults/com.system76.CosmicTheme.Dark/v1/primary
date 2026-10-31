@@ -1,0 +1,20 @@
+(
+    base: (red: 0.1097739, green: 0.0823289, blue: 0.0705642, alpha: 1.0),
+    component: (
+        base: (red: 0.1491544, green: 0.1138292, blue: 0.0941902, alpha: 1.0),
+        hover: (red: 0.1999922, green: 0.1529352, blue: 0.1215645, alpha: 1.0),
+        pressed: (red: 0.2312801, green: 0.1803112, blue: 0.1489387, alpha: 1.0),
+        selected: (red: 0.1999922, green: 0.1529352, blue: 0.1215645, alpha: 1.0),
+        selected_text: (red: 0.9431437, green: 0.5545277, blue: 0.2987718, alpha: 1.0),
+        focus: (red: 0.9431437, green: 0.5545277, blue: 0.2987718, alpha: 1.0),
+        divider: (red: 0.8519028, green: 0.7971950, blue: 0.7424873, alpha: 0.2),
+        on: (red: 0.8519028, green: 0.7971950, blue: 0.7424873, alpha: 1.0),
+        disabled: (red: 0.1491544, green: 0.1138292, blue: 0.0941902, alpha: 0.5),
+        on_disabled: (red: 0.8519028, green: 0.7971950, blue: 0.7424873, alpha: 0.65),
+        border: (red: 0.7729902, green: 0.7119714, blue: 0.6540110, alpha: 1.0),
+        disabled_border: (red: 0.7729902, green: 0.7119714, blue: 0.6540110, alpha: 0.5),
+    ),
+    divider: (red: 0.2103361, green: 0.1619853, blue: 0.1306128, alpha: 1.0),
+    on: (red: 0.9485258, green: 0.9150691, blue: 0.8787328, alpha: 1.0),
+    small_widget: (red: 0.1424566, green: 0.1084751, blue: 0.0901798, alpha: 0.25),
+)

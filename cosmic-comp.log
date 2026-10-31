@@ -1,0 +1,33 @@
+[2m2026-10-31T15:25:51.095030Z[0m [33m WARN[0m [2mcosmic_comp::logger[0m[2m:[0m Failed to init journald logging. [3merr[0m[2m=[0mOs { code: 2, kind: NotFound, message: "No such file or directory" }
+[2m2026-10-31T15:25:51.095217Z[0m [31mERROR[0m [2mi18n_embed::requester[0m[2m:[0m Unable to parse your locale: ParserError(InvalidLanguage)
+[2m2026-10-31T15:25:51.095230Z[0m [32m INFO[0m [2mi18n_embed::requester[0m[2m:[0m Current Locale: []
+[2m2026-10-31T15:25:51.095245Z[0m [32m INFO[0m [2mi18n_embed[0m[2m:[0m Selecting translations for domain "cosmic_comp"
+[2m2026-10-31T15:25:51.098485Z[0m [31mERROR[0m [2mcosmic::theme[0m[2m:[0m error loading system dark theme [3merror[0m[2m=[0mGetKey("list_button", Os { code: 2, kind: NotFound, message: "No such file or directory" })
+[2m2026-10-31T15:25:51.102611Z[0m [31mERROR[0m [2mcosmic::theme[0m[2m:[0m error loading system dark theme [3merror[0m[2m=[0mGetKey("list_button", Os { code: 2, kind: NotFound, message: "No such file or directory" })
+[2m2026-10-31T15:25:51.102638Z[0m [33m WARN[0m [2mcosmic_comp::backend[0m[2m:[0m Initializing X11 Backend failed. [3merr[0m[2m=[0mFailed to initilize X11 backend
+
+Caused by:
+    0: Connecting to the X server failed
+    1: $DISPLAY variable not set and no value was provided explicitly
+[2m2026-10-31T15:25:51.219325Z[0m [33m WARN[0m [2msmithay::backend::egl::error[0m[2m:[0m Erroneous EGL call didn't set EGLError
+[2m2026-10-31T15:25:51.219342Z[0m [33m WARN[0m [2mcosmic_comp::backend::winit[0m[2m:[0m Failed to egl device for display. Unable to initialize bind display to EGL. [3merr[0m[2m=[0mEglExtensionNotSupported(["EGL_EXT_device_drm"])
+[2m2026-10-31T15:25:51.226070Z[0m [31mERROR[0m [2mcosmic_comp::dbus[0m[2m:[0m Failed to initialize system DBus connection: I/O error: No such file or directory (os error 2)
+[2m2026-10-31T15:25:51.226444Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x300d (BAD_SURFACE) eglQuerySurface: eglQuerySurface
+[2m2026-10-31T15:25:51.334130Z[0m [33m WARN[0m [2mcosmic_comp::xwayland[0m[2m:[0m `xrdb` not found, cannot update Xresources.
+[2m2026-10-31T15:25:51.348951Z[0m [33m WARN[0m [2mcosmic_comp::xwayland[0m[2m:[0m `xrdb` not found, cannot update Xresources.
+[2m2026-10-31T15:26:15.479965Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x300d (BAD_SURFACE) eglSwapBuffers: eglSwapBuffers
+[2m2026-10-31T15:26:15.479993Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x3003 (BAD_ALLOC) eglCreatePlatformWindowSurfaceEXT: _eglCreateWindowSurfaceCommon
+[2m2026-10-31T15:26:15.479997Z[0m [31mERROR[0m [2msmithay::backend::egl::surface[0m[2m:[0m [3merror[0m[2m=[0mEGL failed to allocate resources for the requested operation.
+[2m2026-10-31T15:26:15.480002Z[0m [31mERROR[0m [2mcosmic_comp::backend::winit[0m[2m:[0m Failed to render frame. [3merr[0m[2m=[0mFailed to submit buffer for display
+
+Caused by:
+    The context has been lost, it needs to be recreated: EGL failed to allocate resources for the requested operation.
+[2m2026-10-31T15:26:15.480026Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x300d (BAD_SURFACE) eglQuerySurface: eglQuerySurface
+[2m2026-10-31T15:29:32.907917Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x300d (BAD_SURFACE) eglSwapBuffers: eglSwapBuffers
+[2m2026-10-31T15:29:32.907954Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x3003 (BAD_ALLOC) eglCreatePlatformWindowSurfaceEXT: _eglCreateWindowSurfaceCommon
+[2m2026-10-31T15:29:32.907961Z[0m [31mERROR[0m [2msmithay::backend::egl::surface[0m[2m:[0m [3merror[0m[2m=[0mEGL failed to allocate resources for the requested operation.
+[2m2026-10-31T15:29:32.907966Z[0m [31mERROR[0m [2mcosmic_comp::backend::winit[0m[2m:[0m Failed to render frame. [3merr[0m[2m=[0mFailed to submit buffer for display
+
+Caused by:
+    The context has been lost, it needs to be recreated: EGL failed to allocate resources for the requested operation.
+[2m2026-10-31T15:29:32.908006Z[0m [31mERROR[0m [2msmithay::backend::egl::ffi[0m[2m:[0m [EGL] 0x300d (BAD_SURFACE) eglQuerySurface: eglQuerySurface

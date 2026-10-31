@@ -1,0 +1,35 @@
+  [2m2026-10-31T15:27:18.070463Z[0m [31mERROR[0m  [31mUnable to parse your locale: ParserError(InvalidLanguage)[0m
+    [2;3mat[0m /builddir/build/BUILD/cosmic-files-1.10.0-build/cosmic-files-epoch-1.10.0/vendor/i18n-embed/src/requester.rs:293 [2;3mon[0m main
+
+  [2m2026-10-31T15:27:18.138481Z[0m [33m WARN[0m  [33mNo valid locale found in environment, using fallback[0m
+    [2;3mat[0m src/localize.rs:69 [2;3mon[0m main
+
+  [2m2026-10-31T15:27:18.138977Z[0m [33m WARN[0m  [33m`xdg_toplevel_icon_manager_v1` is not supported[0m
+    [2;3mat[0m /builddir/build/BUILD/cosmic-files-1.10.0-build/cosmic-files-epoch-1.10.0/vendor/winit-wayland/src/window/state.rs:1150 [2;3mon[0m main
+
+  [2m2026-10-31T15:27:18.139808Z[0m [33m WARN[0m  [33mcould not find any valid trash bins to watch: Unknown { description: "The 'home trash' either does not exist or is not a directory (or a link pointing to a dir)" }[0m
+    [2;3mat[0m src/app.rs:6858 [2;3mon[0m tokio-rt-worker
+
+  [2m2026-10-31T15:27:18.139911Z[0m [33m WARN[0m  [33mfailed to add recents file `/tmp/home/.local/share/recently-used.xbel` to watcher: No path was found. about ["/tmp/home/.local/share/recently-used.xbel"][0m
+    [2;3mat[0m src/app.rs:6918 [2;3mon[0m tokio-rt-worker
+
+
+(process:2063): GVFS-RemoteVolumeMonitor-WARNING **: 15:27:18.150: remote volume monitor with dbus name org.gtk.vfs.UDisks2VolumeMonitor is not supported
+  [2m2026-10-31T15:27:18.282893Z[0m [33m WARN[0m  [33mRe-initializing Gles context due to Wayland window[0m
+    [2;3mat[0m /builddir/build/BUILD/cosmic-files-1.10.0-build/cosmic-files-epoch-1.10.0/vendor/wgpu-hal/src/gles/egl.rs:1076 [2;3mon[0m main
+
+  [2m2026-10-31T15:27:18.988228Z[0m [33m WARN[0m  [33m/tmp/home/.cache/thumbnails/x-large is not a directory, creating one now[0m
+    [2;3mat[0m src/thumbnail_cacher.rs:36 [2;3mon[0m tokio-rt-worker
+
+  [2m2026-10-31T15:27:18.988251Z[0m [31mERROR[0m  [31m/tmp/home/.cache/thumbnails/x-large failed to create directory, this error can be expected on first run[0m
+    [2;3mat[0m src/thumbnail_cacher.rs:40 [2;3mon[0m tokio-rt-worker
+
+  [2m2026-10-31T15:27:18.988428Z[0m [33m WARN[0m  [33mfailed to read directory /tmp/home/.local/share/thumbnailers: No such file or directory (os error 2)[0m
+    [2;3mat[0m src/thumbnailer.rs:110 [2;3mon[0m tokio-rt-worker
+
+  [2m2026-10-31T15:27:18.988448Z[0m [33m WARN[0m  [33mfailed to read directory /usr/share/hearth-cosmic/data/thumbnailers: No such file or directory (os error 2)[0m
+    [2;3mat[0m src/thumbnailer.rs:110 [2;3mon[0m tokio-rt-worker
+
+  [2m2026-10-31T15:27:18.988466Z[0m [33m WARN[0m  [33mfailed to read directory /usr/local/share/thumbnailers: No such file or directory (os error 2)[0m
+    [2;3mat[0m src/thumbnailer.rs:110 [2;3mon[0m tokio-rt-worker
+
