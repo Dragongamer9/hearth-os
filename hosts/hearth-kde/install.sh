@@ -50,7 +50,11 @@ if [ -x /usr/lib/hearth-files/bin/dolphin ]; then
   fi
 fi
 KIO=$(find /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null | head -1)
+if [ -n "$TAR" ] && [ -f "$TAR" ] && [ -z "$KIO" ]; then
+  echo "::warning title=Hearth's KDE apps::kio-hearth isn't where it was expected; the tar has: $(tar -tf "$TAR" | grep -v hearth-files/ | tr '\n' ' ' | cut -c1-600)"
+fi
 if [ -n "$KIO" ] && ! starts "$KIO"; then
+  echo "::warning title=Hearth's KDE apps::kio-hearth ($KIO) doesn't load here: $(ldd "$KIO" 2>&1 | grep 'not found' | tr '\n' ' ' | cut -c1-600)"
   warn "kio-hearth doesn't load in this image; left out"
   rm -f "$KIO"
   KIO=""

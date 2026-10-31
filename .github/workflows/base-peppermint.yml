@@ -561,7 +561,7 @@ jobs:
           check "xdg-desktop-portal is installed" "test -x /usr/libexec/xdg-desktop-portal || test -x /usr/lib/xdg-desktop-portal"
           check "the backend can use D-Bus (python3 gi)" "python3 -c 'import gi; gi.require_version(\"Gio\", \"2.0\"); from gi.repository import Gio'"
           check "folders open in Hearth Files in Desktop Mode and Game Mode" "grep -q '^inode/directory=hearth-files.desktop' /etc/xdg/nimbus-mimeapps.list && grep -q '^x-directory/normal=hearth-files.desktop' /etc/xdg/nimbus-mimeapps.list"
-          check "folders open in Hearth Files in the system's list" "grep -q '^inode/directory=hearth-files.desktop' /usr/share/applications/mimeapps.list"
+          check "folders open in Hearth Files in the system's list (the Dolphin one when it's in: docs/KDE-APPS.md)" "grep -Eq '^inode/directory=hearth-files(-kde)?.desktop' /usr/share/applications/mimeapps.list"
           check "Hearth Files' menu entry handles folders" "grep -q '^MimeType=inode/directory;x-directory/normal;' /usr/share/applications/hearth-files.desktop"
           check "the session asks GTK apps for the portal and holds FileManager1" "grep -q 'GTK_USE_PORTAL=1' /usr/bin/nimbus-session && grep -q 'hearth-portal\" filemanager1' /usr/bin/nimbus-session"
           check "Hearth Browser's prefs use the portal's file picker" "grep -q 'widget.use-xdg-desktop-portal.file-picker\", 1' /usr/share/hearth-browser/firefox/defaults/pref/hearth-portal.js"
@@ -768,6 +768,8 @@ jobs:
                       font/ttf=hearth-fonts text/vcard=hearth-contacts text/calendar=hearth-calendar x-scheme-handler/webcal=hearth-calendar \
                       x-scheme-handler/geo=hearth-maps x-scheme-handler/terminal=hearth-terminal; do
             m=${pair%%=*}; want=${pair#*=}.desktop
+            # Hearth's KDE-based Terminal and Text Editor are the defaults when they're in (docs/KDE-APPS.md).
+            case "$want" in hearth-text.desktop|hearth-terminal.desktop) [ -f "/usr/share/applications/${want%.desktop}-kde.desktop" ] && want=${want%.desktop}-kde.desktop ;; esac
             [ -f "/usr/share/applications/$want" ] || { echo "skip: $want isn't in this image ($m)"; continue; }
             got=$(asu xdg-mime query default "$m" 2>/dev/null | tail -1); dn=$((dn+1))
             [ "$got" = "$want" ] || dbad="$dbad $m=${got:-nothing}(want $want)"
@@ -775,14 +777,14 @@ jobs:
           done
           if [ -z "$dbad" ]; then echo "ok: xdg-mime says Hearth's app for all $dn kinds of file and link"; else echo "::error title=default apps::xdg-mime as a new user:$dbad"; fail=1; fi
           [ -z "$dgio" ] || echo "::warning title=default apps (gio)::GLib picks another app for:$dgio"
-          check "Settings › Default apps lists Hearth's apps as in use (hearth-system defaults, as a new user)" "setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=Nimbus python3 /usr/share/nimbus/desktop/shell/hearth-system defaults | python3 -c 'import json, sys; k = {x[\"kind\"]: x for x in json.load(sys.stdin)[\"kinds\"]}; sys.exit(0 if k[\"text\"][\"current\"] == \"hearth-text.desktop\" and k[\"browser\"][\"isHearth\"] and not any(x[\"yours\"] for x in k.values()) else 1)'"
+          check "Settings › Default apps lists Hearth's apps as in use (hearth-system defaults, as a new user)" "setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=Nimbus python3 /usr/share/nimbus/desktop/shell/hearth-system defaults | python3 -c 'import json, sys; k = {x[\"kind\"]: x for x in json.load(sys.stdin)[\"kinds\"]}; sys.exit(0 if k[\"text\"][\"current\"] in (\"hearth-text.desktop\", \"hearth-text-kde.desktop\") and k[\"browser\"][\"isHearth\"] and not any(x[\"yours\"] for x in k.values()) else 1)'"
           # Picking another app writes ~/.config/mimeapps.list and wins; Reset to Hearth's defaults brings Hearth's back.
           if [ -f /usr/share/applications/hearth-write.desktop ] && [ -f /usr/share/applications/hearth-text.desktop ]; then
             asu python3 /usr/share/nimbus/desktop/shell/hearth-system default-set text hearth-write.desktop >/dev/null 2>&1
             d1=$(asu xdg-mime query default text/plain 2>/dev/null)
             asu python3 /usr/share/nimbus/desktop/shell/hearth-system default-reset >/dev/null 2>&1
             d2=$(asu xdg-mime query default text/plain 2>/dev/null)
-            if [ "$d1" = hearth-write.desktop ] && [ "$d2" = hearth-text.desktop ]; then echo "ok: a choice in Settings › Default apps wins, and Reset brings Hearth's back"
+            if [ "$d1" = hearth-write.desktop ] && { [ "$d2" = hearth-text.desktop ] || [ "$d2" = hearth-text-kde.desktop ]; }; then echo "ok: a choice in Settings › Default apps wins, and Reset brings Hearth's back"
             else echo "::error title=default apps::picking Hearth Write for text gave '$d1', resetting gave '$d2'"; fail=1; fi
           fi
           echo "::notice title=Default app lists in the image::$(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
