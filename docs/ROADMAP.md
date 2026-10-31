@@ -163,6 +163,19 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.59 (released)
+
+- [x] Hearth GNOME (both editions) and Hearth COSMIC (Anatase only) as new Desktop Mode desktops, in Hearth's look with Hearth's launcher, Quick Settings/Quick Access, Hearth Link, Hearth Storage, Game Mode button and on-screen keyboard; full controller control; falls back to Hearth Classic if they can't start — needs testing on a device
+- [x] Hearth Deepin listed as not available (neither Fedora nor Debian ships the Deepin desktop)
+- [x] One app of each kind per desktop: each desktop shows its own Files, Terminal and Text Editor; apps with no other of their kind show everywhere
+- [x] Hearth Plasma: full controller control, everything Hearth Classic does — needs testing on a device
+- [x] Peppermint writable by default with a lock switch in Settings; boot-safety guards (safe start without the changes, interrupted installs repaired, boot menu written from the image, core packages held) — needs testing on a device
+- [x] Hearth Input overhaul: Guide + X on-screen keyboard over any game and in every desktop, Steam Input-style layouts (action sets, layers, chords, turbo, flick stick, gyro), edited with the controller — needs testing on a device
+- [x] Fix: Steam games freezing when Quick Access opens over them (HHD editions)
+- [x] Hearth Mods: Accounts (Nexus Mods, LoversLab, MEGA, Google), automatic MEGA downloads and a guided flow for the rest; Hearth Mod Organizer (MO2-compatible, native); mods managed and installed from Game Mode
+- [x] Hearth Theater: each site's shows, movies and videos on Theater's home screen, with Search across all sites
+- [x] New website design
+
 ## 0.6.58 (released)
 
 - [x] Desktop selector: Hearth Classic, Hearth Plasma (Hearth GNOME later) in Settings and at sign-in; falls back to Hearth Classic by itself when Plasma can't start — needs testing on a device
