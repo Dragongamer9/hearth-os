@@ -998,10 +998,17 @@ def info(path):
 
 
 # ---------------------------------------------------------------------- apps
+APP_KINDS = '/usr/share/hearth/app-kinds'
+
+
 def data_dirs():
     h = home()
     dirs = [os.environ.get('XDG_DATA_HOME') or os.path.join(h, '.local', 'share')]
     dirs += [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+    # One app of each kind per desktop (docs/APP-KINDS.md): its menu entries win over the packages' (nimbus-session
+    # puts this first in XDG_DATA_DIRS; here too, when something started us without it).
+    if os.path.isdir(os.path.join(APP_KINDS, 'applications')) and APP_KINDS not in dirs:
+        dirs.insert(1, APP_KINDS)
     for f in (os.path.join(h, '.local', 'share', 'flatpak', 'exports', 'share'), '/var/lib/flatpak/exports/share'):
         if f not in dirs:
             dirs.append(f)
@@ -1058,6 +1065,17 @@ def usable(fields):
 
 def desktops():
     return [d.lower() for d in (os.environ.get('XDG_CURRENT_DESKTOP') or '').split(':') if d]
+
+
+def shown_here(fields):
+    """The desktop entry spec's NoDisplay / OnlyShowIn / NotShowIn for this desktop (XDG_CURRENT_DESKTOP)."""
+    if fields.get('NoDisplay', '').lower() == 'true':
+        return False
+    here = [d for d in (os.environ.get('XDG_CURRENT_DESKTOP') or '').split(':') if d]
+    only = [x for x in fields.get('OnlyShowIn', '').split(';') if x]
+    if only and here and not any(d in only for d in here):
+        return False
+    return not any(d in [x for x in fields.get('NotShowIn', '').split(';') if x] for d in here)
 
 
 def mimeapps_files():
@@ -1127,7 +1145,7 @@ def apps(path, everything=False):
         hit = mime in types or major in types or (mime.startswith('text/') and 'text/plain' in types)
         if everything and '%' in fields.get('Exec', '') and re.search(r'%[fFuU]', fields.get('Exec', '')):
             hit = True
-        if hit and (fields.get('NoDisplay', '').lower() != 'true'):
+        if hit and shown_here(fields):
             add(did, fields)
     for a in out:
         a['default'] = a['id'] == default

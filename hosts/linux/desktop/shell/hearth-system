@@ -721,7 +721,8 @@ CATEGORIES = [
 # the old Hearth Terminal and Hearth Text, which stay installed. Hearth Files built from Dolphin comes after the old
 # Hearth Files: Hearth Classic and Game Mode keep their built-in Files (it's only shown there, OnlyShowIn=Nimbus), and
 # every other desktop (Hearth Plasma) opens folders in the Dolphin one, which is the first there. Reader (Okular) after
-# Documents.
+# Documents. Then hearth-app-kinds (docs/APP-KINDS.md) gives each desktop its own app of each kind in
+# /etc/xdg/<desktop>-mimeapps.list: Hearth Classic and Game Mode the classic Terminal, Text Editor and Files.
 HEARTH_RANK = ['hearth-browser.desktop', 'hearth-files.desktop', 'hearth-files-kde.desktop', 'hearth-photos.desktop',
                'hearth-documents.desktop', 'hearth-reader.desktop',
                'hearth-player.desktop', 'hearth-sheets.desktop', 'hearth-slides.desktop', 'hearth-text-kde.desktop', 'hearth-text.desktop',

@@ -31,6 +31,10 @@ tabs, **LT/RT** scroll, **View + B** closes; keyboard and mouse keep working.
 
 `plasma-test.yml` opens each one that's installed with a virtual controller (pictures `app-*.png`).
 
+**Which desktop shows which** (docs/APP-KINDS.md, one app of each kind per desktop): Hearth Plasma shows these KDE-based
+apps; Hearth Classic and Game Mode show the classic Hearth ones (Files, Terminal, Text Editor, Calculator, Documents)
+and open files in them. KDE's own entries and stock KDE duplicates (KWrite, Gwenview, Elisa...) are hidden.
+
 Where it all lives: `hosts/hearth-kde/` (`kio-hearth/`, `dolphin/`, `apps/`, `config/`, `install.sh`,
 `hearth_kde.py`, `hearth-files-kde`, `tests/`), `.github/scripts/hearth-kde-build.sh`, `.github/workflows/kde-apps.yml`,
 the `kde` job in `base-anatase.yml` and `base-peppermint.yml`, and the "Hearth's KDE apps" block in both
@@ -79,10 +83,10 @@ How it's built (so it's easy to keep up with Dolphin):
 Files, and it ran for 10 seconds on an offscreen screen without crashing (the `kde` job), and in the image it links
 every library and starts (install.sh). Otherwise it's left out and nothing changes. When it's in:
 
-- every desktop but Hearth's own session (so Hearth Plasma) opens folders in it (`/usr/share/applications/mimeapps.list`);
-- Hearth Classic and Game Mode keep their built-in Files for folders (`/etc/xdg/nimbus-mimeapps.list`): it's part of
-  the Classic desktop (its desktop icons, the portal's file chooser, Game Mode's file window), and Classic is the
-  fallback desktop. Hearth Files is in Classic's menu too, and Settings › Default apps can pick it.
+- Hearth Plasma shows it and opens folders in it (`/etc/xdg/kde-mimeapps.list`, docs/APP-KINDS.md);
+- Hearth Classic and Game Mode keep their built-in Files, the only file manager they show
+  (`/etc/xdg/nimbus-mimeapps.list`): it's part of the Classic desktop (its desktop icons, the portal's file chooser,
+  Game Mode's file window), and Classic is the fallback desktop. Settings › Default apps can still pick it.
 - The old Hearth Files stays installed either way.
 
 ## Hearth Storage in every KDE app: kio-hearth
@@ -134,9 +138,9 @@ windows, authors and licences are KDE's. Hearth adds:
 - Hearth's colors: `[UiSettings] ColorScheme=Hearth` in `/etc/xdg/konsolerc`, `katerc`, `okularrc`, `kcalcrc`,
   `spectaclerc` (the apps' own color menus can change it), and Konsole's default profile `Hearth.profile` with the
   `Hearth.colorscheme` palette;
-- the old Hearth Terminal, Text Editor and Calculator renamed "… (classic)" and kept. The KDE-based Terminal and Text
-  Editor are the defaults (`hearth-system`'s `HEARTH_RANK`), also in Hearth Classic; Settings › Default apps still
-  offers the classic ones. Places that start the old ones by name (`hearth-terminal -e …`) still do.
+- the old Hearth Terminal, Text Editor and Calculator renamed "… (classic)" and kept. Hearth Plasma shows and uses
+  the KDE-based ones, Hearth Classic and Game Mode the classic ones (docs/APP-KINDS.md); Settings › Default apps
+  offers both. Places that start the old ones by name (`hearth-terminal -e …`) still do.
 
 Not changed: what the apps call themselves inside their windows and About boxes (Konsole, Kate, Okular, Spectacle,
 KCalc). That needs each app rebuilt the way Dolphin is; Hearth Files shows how, if it's wanted later.
