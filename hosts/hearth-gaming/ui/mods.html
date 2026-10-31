@@ -45,7 +45,7 @@ input.inp.mono { font-family:ui-monospace, monospace; }
   <header>
     <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7l8-4 8 4-8 4z"/><path d="M4 12l8 4 8-4M4 17l8 4 8-4"/></svg>Mods</h1>
     <span class="sub" id="sub"></span>
-    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="games">Games</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="modlists">Modlists</button><button class="tab f" data-tab="accounts">Accounts</button><span class="lbrb">RB</span></div>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="games">Games</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="modlists">Modlists</button><button class="tab f" data-tab="organizer">Organizer</button><button class="tab f" data-tab="accounts">Accounts</button><span class="lbrb">RB</span></div>
   </header>
   <main id="main" class="split"></main>
   <footer id="foot"></footer>
@@ -55,8 +55,8 @@ input.inp.mono { font-family:ui-monospace, monospace; }
 <script>
 'use strict';
 const { $, esc, human, when } = KIT;
-const S = { games: [], sel: null, sum: null, loading: true, info: {}, tab: 'games', acct: undefined, dls: { items: [], active: 0, quota: {} }, engine: null, gallery: null, galleryErr: '', jobs: [], filter: 'all', nsfw: false, accts: [] };
-const TABS = ['games', 'downloads', 'modlists', 'accounts'];
+const S = { games: [], sel: null, sum: null, loading: true, info: {}, tab: 'games', acct: undefined, dls: { items: [], active: 0, quota: {} }, engine: null, gallery: null, galleryErr: '', jobs: [], filter: 'all', nsfw: false, accts: [], org: { list: null, sel: null, sum: null, view: 'mods' } };
+const TABS = ['games', 'downloads', 'modlists', 'organizer', 'accounts'];
 const SRC = { steam: 'Steam', epic: 'Epic', gog: 'GOG', manual: 'Your game', beacon: 'Beacon', 'heroic-epic': 'Heroic (Epic)', 'heroic-gog': 'Heroic (GOG)' };
 const game = id => S.games.find(g => g.id === id);
 
@@ -88,7 +88,8 @@ function render() {
   if (S.tab !== 'games') {
     $('#sub').textContent = S.tab === 'downloads' ? (S.dls.active ? `${S.dls.active} downloading` : '') : S.tab === 'accounts' ? `${(S.acct ? 1 : 0) + S.accts.filter(a => a.signedIn).length} signed in` : '';
     $('#main').className = '';
-    $('#main').innerHTML = S.tab === 'downloads' ? downloadsView() : S.tab === 'modlists' ? modlistsView() : accountsView();
+    if (S.tab === 'organizer') $('#sub').textContent = S.org.sum ? `${S.org.sum.instance.title} · ${S.org.sum.instance.profile}` : '';
+    $('#main').innerHTML = S.tab === 'downloads' ? downloadsView() : S.tab === 'modlists' ? modlistsView() : S.tab === 'organizer' ? orgView() : accountsView();
     footer();
     const back = focusKey && document.querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
     if (back) back.focus({ preventScroll: true });
@@ -150,6 +151,7 @@ document.addEventListener('click', e => {
 KIT.onBack = () => { if (S.tab !== 'games') return KIT.focusFirst(`.tab[data-tab="${S.tab}"]`); if (!document.activeElement?.dataset?.game) KIT.focusFirst('.item.sel'); };
 KIT.onX = () => {
   if (KIT.dialogOpen() && document.querySelector('[data-g="file"]')) return document.querySelector('[data-g="file"]').click();
+  if (S.tab === 'organizer') { const el = document.activeElement?.dataset || {}; if (el.om) return orgToggle(el.om); if (el.op) return orgPlugin(el.op, 'toggle'); return; }
   if (S.tab === 'downloads') { const id = document.activeElement?.dataset?.dl; const d = id && S.dls.items.find(x => x.id === id); if (d) act(['downloading', 'queued'].includes(d.state) ? 'dlPause' : 'dlResume', document.activeElement); return; }
   if (S.tab !== 'games') return;
   const id = document.activeElement?.dataset?.mod; if (id) { const m = S.sum.mods.find(x => x.id === id); toggle(m, !m.enabled); } };
@@ -160,6 +162,7 @@ function setTab(t) {
   if (t === 'downloads') refreshDownloads();
   if (t === 'accounts') { if (S.acct === undefined) loadAccount(); loadAccounts(); }
   if (t === 'modlists') loadModlists();
+  if (t === 'organizer') orgLoad();
 }
 
 async function toggle(m, on) {
@@ -630,6 +633,213 @@ document.addEventListener('click', e => {
   if (S.tab !== 'games' && b.dataset.act) return act(b.dataset.act, b);
 });
 
+// ---------------------------------------------------------------- the Hearth Mod Organizer (organizer/ in the library; MO2's design)
+const org = args => KIT.invoke('organizer', { args });
+async function orgLoad(keep) {
+  try { S.org.list = (await org(['instances'])).instances; } catch (e) { S.org.list = []; KIT.toast(KIT.err(e)); }
+  if (!S.org.list.find(i => i.id === S.org.sel)) S.org.sel = S.org.list[0]?.id || null;
+  S.org.sum = null;
+  if (S.org.sel) { try { S.org.sum = await org([S.org.sel]); } catch (e) { KIT.toast(KIT.err(e)); } }
+  if (S.tab === 'organizer') render();
+}
+function orgApply(r) {
+  if (r?.summary) S.org.sum = r.summary;
+  render();
+  const n = [...(r?.notes || []), ...(r?.deployProblem ? [r.deployProblem] : [])];
+  if (n.length) KIT.alert('Done', n.map(esc).join('<br>'));
+}
+async function orgDo(args, label) {
+  try { const r = await org([S.org.sel, ...args]); orgApply(r); if (label) KIT.toast(label); return r; } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+}
+function orgView() {
+  const L = S.org.list;
+  if (L === null) return '<div class="empty" style="grid-column:1/-1">Reading the organizer…</div>';
+  $('#main').className = 'split';
+  const rows = L.map(i => `<button class="item f ${i.id === S.org.sel ? 'sel' : ''}" data-key="oi:${esc(i.id)}" data-oi="${esc(i.id)}"><span class="ico">${esc((i.title || '?')[0].toUpperCase())}</span><span class="n">${esc(i.title)}</span>
+      <span class="end">${i.deployed ? '<span class="badge sky">In the game</span>' : i.modsOn ? `<span class="badge">${i.modsOn} on</span>` : ''}</span><span class="m">${esc(i.gameName || '')}${i.wabbajack ? ' · Wabbajack' : ''}${i.error ? ' · ' + esc(i.error) : ''}</span></button>`).join('');
+  const left = `<div class="scroll"><div class="list">${rows || '<div class="empty">No organizer instances yet.</div>'}
+      <div class="acts" style="margin-top:.6em"><button class="btn primary f" data-key="onew" data-oa="new">New for a game…</button><button class="btn f" data-key="oimp" data-oa="import">Use a Mod Organizer 2 folder…</button></div></div></div>`;
+  return left + `<section class="detail">${orgDetail()}</section>`;
+}
+function orgDetail() {
+  const s = S.org.sum;
+  if (!S.org.sel) return '<div class="panel"><h2>Hearth Mod Organizer</h2><p class="msg">Hearth\'s own mod organizer, made to work like Mod Organizer 2 and with its files: profiles, mod priority, conflicts, plugins, FOMOD installers. The game\'s folder is never changed: the mods are laid over it while you play.</p></div>';
+  if (!s) return '<div class="empty">Reading its mods…</div>';
+  const i = s.instance, d = s.deployed;
+  const tabs = ['mods', 'plugins'].filter(v => v === 'mods' || i.plugins).map(v => `<button class="chip f ${S.org.view === v ? 'on' : ''}" data-key="ov:${v}" data-ov="${v}">${v === 'mods' ? `Mods (${s.mods.length - 1})` : `Plugins (${s.plugins.filter(p => p.active).length}/${s.plugins.length})`}</button>`).join('');
+  const warn = s.warnings.map(w => `<p class="warn small" style="margin:.2em 0">${esc(w)}</p>`).join('');
+  const head = `<div class="panel"><h2>${esc(i.title)}</h2><div class="path">${esc(i.gameDir || '')}</div>${warn}
+      <div class="acts" style="margin-top:.6em"><button class="btn primary f" data-key="oplay" data-oa="play">Play</button><button class="btn f" data-key="oadd" data-oa="add">Install a mod…</button>
+      <button class="btn f" data-key="oprof" data-oa="profile">Profile: ${esc(i.profile)} ›</button><button class="btn f" data-key="odep" data-oa="${d ? 'undeploy' : 'deploy'}">${d ? 'Take mods out of the game' : 'Put mods in the game'}</button>
+      ${i.wabbajack ? `<button class="btn f" data-key="olaunch" data-oa="launcher">Play with: ${i.launcher === 'mo2' ? 'Mod Organizer 2' : 'Hearth'} ›</button>` : ''}<button class="btn f" data-key="ofold" data-oa="folder">Open its folder</button></div>
+      ${d ? `<p class="msg small" style="margin:.5em 0 0"><span class="badge sky">${d.mode === 'overlay' ? 'Overlay' : 'Links'}${d.running ? ' · playing' : ''}</span> The mods are in the game's view now${d.byHand ? ' (until you take them out, or until the next sign-in)' : ''}.</p>` : ''}
+      <div class="chips" style="margin-top:.6em">${tabs}${S.org.view === 'plugins' ? '<button class="chip f" data-key="osort" data-oa="sort">Sort</button>' : ''}</div></div>`;
+  const list = S.org.view === 'plugins' ? s.plugins.map((p, n) => `<button class="mod f ${p.active ? '' : 'off'}" data-key="op:${esc(p.name)}" data-op="${esc(p.name)}">
+      <span class="num">${esc(p.loadIndex || '–')}</span><span class="sw ${p.active ? 'on' : ''}"></span><span class="n">${esc(p.name)}</span><span class="end">${p.light ? 'Light' : p.master ? 'Master' : ''}</span>
+      <span class="m"><span>${esc(p.mod || 'The game')}</span>${p.missing.length ? `<span class="warn">Needs ${esc(p.missing.map(m => m.master).join(', '))}</span>` : ''}${p.implicit ? '<span>Always loaded</span>' : ''}</span></button>`).join('')
+    : s.mods.map(m => m.kind === 'separator' ? `<div class="msg small" style="padding:.5em .2em 0;font-weight:700">${esc(m.name)}</div>`
+      : `<button class="mod f ${m.enabled ? '' : 'off'}" data-key="om:${esc(m.id)}" data-om="${esc(m.id)}"><span class="num">${m.priority + 1}</span><span class="sw ${m.enabled ? 'on' : ''}"></span><span class="n">${esc(m.name)}</span><span class="end">${m.version ? esc(m.version) : ''}</span>
+      <span class="m">${m.kind === 'overwrite' ? '<span>What the game and tools wrote</span>' : m.kind === 'unmanaged' ? '<span>The game\'s own</span>' : ''}${m.files != null ? `<span>${m.files} file${m.files === 1 ? '' : 's'}</span>` : ''}${m.conflicts?.losing ? `<span class="warn">Loses ${m.conflicts.losing} to ${esc(m.conflicts.losesTo.join(', '))}</span>` : ''}${m.conflicts?.winning ? `<span>Wins ${m.conflicts.winning} over ${esc(m.conflicts.winsOver.join(', '))}</span>` : ''}${m.plugins?.length ? `<span>${esc(m.plugins.join(', '))}</span>` : ''}</span></button>`).join('');
+  return head + `<div class="scroll"><div class="list">${list || '<div class="empty">Nothing here yet.</div>'}</div></div>`;
+}
+async function orgToggle(id) {
+  const m = S.org.sum?.mods.find(x => x.id === id); if (!m || m.kind !== 'mod') return;
+  await orgDo([m.enabled ? 'disable' : 'enable', id], `${m.name}: ${m.enabled ? 'off' : 'on'}`);
+}
+async function orgMod(id) {
+  const m = S.org.sum?.mods.find(x => x.id === id); if (!m) return;
+  if (m.kind === 'overwrite') return KIT.invoke('open_folder', { path: S.org.sum.instance.overwriteDir }).catch(e => KIT.toast(KIT.err(e)));
+  if (m.kind !== 'mod') return;
+  const top = S.org.sum.mods.length - 2;
+  const items = [{ id: 'toggle', label: m.enabled ? 'Turn off' : 'Turn on' }];
+  if (m.priority < top) items.push({ id: 'down', label: 'Higher priority', sub: 'Wins over the mods above it' });
+  if (m.priority > 0) items.push({ id: 'up', label: 'Lower priority', sub: 'Loses to the mods below it' });
+  if (m.enabled) items.push({ id: 'conf', label: 'Conflicts…', sub: 'Which of its files win and lose' });
+  items.push({ id: 'open', label: 'Open its files' }, { id: 'remove', label: 'Remove…', sub: 'Deletes the mod\'s folder' });
+  const a = await KIT.choose(m.name, items, m.installedFrom ? `From ${esc(m.installedFrom)}` : '');
+  if (a === 'toggle') return orgToggle(id);
+  if (a === 'up' || a === 'down') { await orgDo(['move', id, '--by', a === 'up' ? '-1' : '1']); return KIT.focusFirst(`[data-key="om:${CSS.escape(id)}"]`); }
+  if (a === 'open') return KIT.invoke('open_folder', { path: `${S.org.sum.instance.modsDir}/${id}` }).catch(e => KIT.toast(KIT.err(e)));
+  if (a === 'conf') {
+    try { const r = await org([S.org.sel, 'conflicts', id]); const f = r.files.filter(x => x.status !== 'alone');
+      KIT.alert(`${m.name}: conflicts`, f.length ? `<div class="status" style="white-space:normal;max-height:55vh;overflow:auto">${f.slice(0, 300).map(x => `${esc(x.path)} — ${x.status === 'wins' ? 'wins over ' + esc(x.over.join(', ')) : x.status === 'loses' ? 'loses to ' + esc(x.to) : 'hidden'}`).join('<br>')}</div>` : 'None of its files are in another mod.'); } catch (e) { KIT.toast(KIT.err(e)); }
+    return;
+  }
+  if (a === 'remove' && await KIT.confirm({ title: `Remove ${m.name}?`, text: '<p>Its folder in the organizer is deleted. The file you installed it from isn\'t touched.</p>', ok: 'Remove', danger: true })) await orgDo(['remove', id], `${m.name} removed`);
+}
+async function orgPlugin(name, how) {
+  const p = S.org.sum?.plugins.find(x => x.name === name); if (!p) return;
+  if (p.implicit) return KIT.toast('The game always loads it.');
+  const idx = S.org.sum.plugins.indexOf(p);
+  const a = how || await KIT.choose(name, [{ id: 'toggle', label: p.active ? 'Turn off' : 'Turn on' }, { id: 'up', label: 'Load earlier' }, { id: 'down', label: 'Load later' }],
+    `${esc(p.mod || 'The game')}${p.masters.length ? `<br>Needs: ${esc(p.masters.join(', '))}` : ''}${p.author ? `<br>By ${esc(p.author)}` : ''}`);
+  if (a === 'toggle') return orgDo([p.active ? 'plugin-disable' : 'plugin-enable', name]);
+  if (a === 'up' || a === 'down') { await orgDo(['plugin-move', name, String(idx + (a === 'up' ? -1 : 1))]); KIT.focusFirst(`[data-key="op:${CSS.escape(name)}"]`); }
+}
+async function orgInstall() {
+  const src = await pick({ title: 'Choose a mod', filters: ['zip', '7z', 'rar', 'tar', 'gz', 'xz', 'zst', 'tgz'], fallback: { files: true, archives: true, folder: true } });
+  if (!src) return;
+  KIT.progress('Unpacking the mod');
+  let r;
+  try { r = await org([S.org.sel, 'install', src]); } catch (e) { KIT.close(); return KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+  KIT.close();
+  if (r.needs === 'fomod') return setTimeout(() => fomodDialog(r), 0);
+  if (r.needs === 'bain') return setTimeout(() => bainDialog(r), 0);
+  orgApply(r); KIT.toast(`${r.installed} installed`);
+}
+/** A FOMOD installer, one step at a time: A picks, the engine says what shows and what's allowed after each pick. */
+function fomodDialog(r) {
+  const f = r.fomod; let ev = r.evaluation; let at = 0;
+  const visible = () => ev.steps.map((s, i) => s.visible ? i : -1).filter(i => i >= 0);
+  const cancel = () => { $('#kit-layer').onclick = null; org([S.org.sel, 'cancel', r.token]).catch(() => {}); KIT.close(); };
+  const draw = () => {
+    const vs = visible(); if (!vs.includes(at)) at = vs[0] ?? 0;
+    const st = f.steps[at], se = ev.steps[at] || { groups: [] };
+    const last = vs.indexOf(at) === vs.length - 1;
+    const groups = (st?.groups || []).map((g, gi) => `<div class="field"><label>${esc(g.name)} <span class="msg small">${({ SelectExactlyOne: 'choose one', SelectAtMostOne: 'one at most', SelectAtLeastOne: 'one or more', SelectAll: 'all of these', SelectAny: 'any' })[g.type] || ''}</span></label>
+      <div class="list">${g.plugins.map((p, pi) => { const on = se.groups[gi]?.selected.includes(pi); const t = se.groups[gi]?.types[pi] || ''; return `<button class="item f ${on ? 'sel' : ''}" data-fg="${gi}" data-fp="${pi}" ${t === 'NotUsable' ? 'disabled' : ''} style="grid-template-columns:auto 1fr auto"><span class="sw ${on ? 'on' : ''}"></span><span class="n">${esc(p.name)}</span><span class="end">${t === 'Recommended' || t === 'Required' ? esc(t) : t === 'NotUsable' ? 'Can\'t be used' : ''}</span>${p.description ? `<span class="m" style="grid-column:2/-1">${esc(p.description.slice(0, 300))}</span>` : ''}</button>`; }).join('')}</div>
+      ${se.groups[gi]?.problem ? `<p class="warn small">${esc(se.groups[gi].problem)}</p>` : ''}</div>`).join('');
+    KIT.dialog(`<h2>${esc(r.name)}${st ? ` · ${esc(st.name)}` : ''}</h2><p class="msg small">Step ${vs.indexOf(at) + 1} of ${vs.length}${f.info?.author ? ` · by ${esc(f.info.author)}` : ''}</p>${groups || '<p class="msg">Nothing to choose: install it.</p>'}
+      ${ev.errors.length && last ? `<p class="warn small">${ev.errors.map(esc).join('<br>')}</p>` : ''}
+      <div class="row"><button class="btn f" data-fd="cancel">Cancel</button>${vs.indexOf(at) > 0 ? '<button class="btn f" data-fd="back">Back</button>' : ''}<button class="btn primary f" data-fd="${last ? 'go' : 'next'}" data-autofocus>${last ? 'Install' : 'Next'}</button></div>`, { wide: true, onBack: cancel });
+    $('#kit-layer').onclick = async e => {
+      const b = e.target.closest('button'); if (!b || b.disabled) return;
+      if (b.dataset.fg != null) {
+        const gi = +b.dataset.fg, pi = +b.dataset.fp, g = f.steps[at].groups[gi];
+        const cur = ev.steps[at].groups[gi].selected;
+        const one = g.type === 'SelectExactlyOne' || g.type === 'SelectAtMostOne';
+        const next = cur.includes(pi) ? (g.type === 'SelectExactlyOne' ? cur : cur.filter(x => x !== pi)) : one ? [pi] : [...cur, pi];
+        const ch = ev.choices.map(s => s.map(x => [...x]));
+        ch[at][gi] = next;
+        try { ev = (await org([S.org.sel, 'fomod-eval', r.token, '--choices', JSON.stringify(ch)])).evaluation; } catch (er) { KIT.toast(KIT.err(er)); }
+        draw(); return document.querySelector(`[data-fg="${gi}"][data-fp="${pi}"]`)?.focus();
+      }
+      const d = b.dataset.fd;
+      if (d === 'cancel') return cancel();
+      if (d === 'back') { at = visible()[visible().indexOf(at) - 1]; return draw(); }
+      if (d === 'next') { at = visible()[visible().indexOf(at) + 1]; return draw(); }
+      if (d === 'go') {
+        $('#kit-layer').onclick = null; KIT.progress(`Installing ${r.name}`);
+        try { const res = await org([S.org.sel, 'install', 'token:' + r.token, '--name', r.name, '--choices', JSON.stringify(ev.choices)]); KIT.close(); orgApply(res); KIT.toast(`${res.installed} installed`); }
+        catch (er) { KIT.close(); KIT.alert('That didn\'t work', esc(KIT.err(er)), false); }
+      }
+    };
+  };
+  draw();
+}
+function bainDialog(r) {
+  const on = new Set(r.packages.filter(p => p.default).map(p => p.name));
+  const cancel = () => { $('#kit-layer').onclick = null; org([S.org.sel, 'cancel', r.token]).catch(() => {}); KIT.close(); };
+  const draw = () => {
+    KIT.dialog(`<h2>${esc(r.name)}</h2><p class="msg small">This package has parts: choose which to install (later ones win).</p><div class="list">${r.packages.map(p => `<button class="item f ${on.has(p.name) ? 'sel' : ''}" data-bp="${esc(p.name)}" style="grid-template-columns:auto 1fr"><span class="sw ${on.has(p.name) ? 'on' : ''}"></span><span class="n">${esc(p.name)}</span></button>`).join('')}</div>
+      <div class="row"><button class="btn f" data-bd="cancel">Cancel</button><button class="btn primary f" data-bd="go" data-autofocus>Install</button></div>`, { onBack: cancel });
+    $('#kit-layer').onclick = async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.bp) { on.has(b.dataset.bp) ? on.delete(b.dataset.bp) : on.add(b.dataset.bp); draw(); return document.querySelector(`[data-bp="${CSS.escape(b.dataset.bp)}"]`)?.focus(); }
+      if (b.dataset.bd === 'cancel') return cancel();
+      if (b.dataset.bd === 'go') {
+        $('#kit-layer').onclick = null; KIT.progress(`Installing ${r.name}`);
+        try { const res = await org([S.org.sel, 'install', r.token, '--name', r.name, '--choices', JSON.stringify([...on])]); KIT.close(); orgApply(res); KIT.toast(`${res.installed} installed`); }
+        catch (er) { KIT.close(); KIT.alert('That didn\'t work', esc(KIT.err(er)), false); }
+      }
+    };
+  };
+  draw();
+}
+async function orgAction(a) {
+  const s = S.org.sum, i = s?.instance;
+  if (a === 'new') {
+    const games = S.games.filter(g => !g.beacon);
+    const id = await KIT.choose('New organizer instance', games.map(g => ({ id: g.id, label: g.title, sub: SRC[g.source] || g.source })), 'Choose the game. Its mods go in their own folders; the game\'s folder isn\'t changed.');
+    if (!id) return;
+    try { const r = await org(['create', id]); S.org.sel = r.created; await orgLoad(); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+    return;
+  }
+  if (a === 'import') {
+    const dir = await pick({ folder: true, title: 'Choose a Mod Organizer 2 folder (with ModOrganizer.ini)' });
+    if (!dir) return;
+    try { const r = await org(['import', dir]); S.org.sel = r.imported; await orgLoad(); if (r.notes?.length) KIT.alert('Imported', r.notes.map(esc).join('<br>')); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+    return;
+  }
+  if (!s) return;
+  if (a === 'add') return orgInstall();
+  if (a === 'sort') return orgDo(['sort'], 'Sorted');
+  if (a === 'folder') return KIT.invoke('open_folder', { path: i.dir }).catch(e => KIT.toast(KIT.err(e)));
+  if (a === 'deploy') return orgDo(['deploy'], 'The mods are in the game');
+  if (a === 'undeploy') return orgDo(['undeploy'], 'The game is as it was');
+  if (a === 'play') {
+    const ex = s.executables.filter(e => e.present);
+    let pickEx = ex[0]?.title;
+    if (ex.length > 1) { pickEx = await KIT.choose('Play', ex.map(e => ({ id: e.title, label: e.title, sub: e.extender ? 'Script extender' : e.from === 'mo2' ? 'From Mod Organizer 2' : '' }))); if (!pickEx) return; }
+    try { await KIT.invoke('organizer_run', { id: S.org.sel, exe: pickEx || null }); KIT.toast('Starting…'); setTimeout(() => orgLoad(), 4000); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+    return;
+  }
+  if (a === 'launcher') {
+    const w = await KIT.choose('What Play starts', [{ id: 'hearth', label: 'Hearth Mod Organizer', sub: 'Native: the game\'s folder is laid over with the mods', end: i.launcher !== 'mo2' ? 'Now' : '' }, { id: 'mo2', label: 'Mod Organizer 2', sub: 'The Windows Mod Organizer 2 under Proton (the fallback)', end: i.launcher === 'mo2' ? 'Now' : '' }]);
+    if (w) { await orgDo(['launcher', w]); await orgLoad(); }
+    return;
+  }
+  if (a === 'profile') {
+    const items = s.profiles.map(p => ({ id: 'p:' + p.name, label: p.name, end: p.active ? 'Now' : '', sub: [p.localSaves ? 'Own saves' : '', p.localInis ? 'Own game settings' : ''].filter(Boolean).join(' · ') }));
+    items.push({ id: 'new', label: 'New profile…', sub: 'A copy of this one' }, { id: 'saves', label: (s.profiles.find(p => p.active)?.localSaves ? 'Share saves with other profiles' : 'Keep this profile\'s own saves') }, { id: 'inis', label: (s.profiles.find(p => p.active)?.localInis ? 'Use the game\'s own settings' : 'Keep this profile\'s own game settings') });
+    const c = await KIT.choose('Profiles', items);
+    if (!c) return;
+    const cur = s.profiles.find(p => p.active) || {};
+    if (c.startsWith('p:')) return orgDo(['profile', c.slice(2)], `Profile: ${c.slice(2)}`);
+    if (c === 'new') { const n = await ask('New profile', 'Its name', ''); if (n) return orgDo(['profile-create', n.trim(), '--from', i.profile]); return; }
+    if (c === 'saves') return orgDo(['profile-settings', '--local-saves', cur.localSaves ? 'off' : 'on']);
+    if (c === 'inis') return orgDo(['profile-settings', '--local-inis', cur.localInis ? 'off' : 'on']);
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled || b.closest('#kit-layer') || KIT.dialogOpen() || S.tab !== 'organizer') return;
+  if (b.dataset.oi) { S.org.sel = b.dataset.oi; S.org.sum = null; render(); org([S.org.sel]).then(r => { S.org.sum = r; render(); }).catch(er => KIT.toast(KIT.err(er))); return; }
+  if (b.dataset.ov) { S.org.view = b.dataset.ov; return render(); }
+  if (b.dataset.om) return orgMod(b.dataset.om);
+  if (b.dataset.op) return orgPlugin(b.dataset.op);
+  if (b.dataset.oa) return orgAction(b.dataset.oa);
+});
+
 // ---------------------------------------------------------------- without the app (opening the page in a browser): sample games
 KIT.demo = (cmd, a) => {
   const games = [
@@ -662,6 +872,14 @@ KIT.demo = (cmd, a) => {
   if (cmd === 'mods_of') return a.id === 'steam:489830' ? sum : { game: a.id, title: game(a.id).title, folder: '/x', targets: [{ id: 'game', label: 'Game folder', path: game(a.id).install }], mods: [] };
   if (cmd === 'places') return [{ label: 'Home', path: '/home/you' }, { label: 'Downloads', path: '/home/you/Downloads' }];
   if (cmd === 'browse') return { path: a.path, parent: '/home/you', entries: [{ name: 'Mods', path: a.path + '/Mods', dir: true }, { name: 'SkyUI_5_2_SE.7z', path: a.path + '/SkyUI_5_2_SE.7z', dir: false, archive: true, size: 5_300_000 }] };
+  if (cmd === 'organizer') {
+    if (a.args[0] === 'instances') return { ok: true, instances: [{ id: 'skyrimse', title: 'Skyrim Special Edition', gameName: 'Skyrim Special Edition', modsOn: 2 }] };
+    return { ok: true, instance: { id: 'skyrimse', title: 'Skyrim Special Edition', gameDir: games[0].install, profile: 'Default', plugins: true, launcher: 'hearth', dir: '/x', modsDir: '/x/mods', overwriteDir: '/x/overwrite' },
+      profiles: [{ name: 'Default', active: true }], warnings: [], deployed: null, executables: [{ title: 'SKSE', present: true, extender: true }],
+      mods: [{ id: 'SkyUI', name: 'SkyUI', kind: 'mod', priority: 0, enabled: true, files: 12, version: '5.2', plugins: ['SkyUI_SE.esp'], conflicts: { winning: 0, losing: 1, winsOver: [], losesTo: ['Patch'] } },
+        { id: 'Patch', name: 'Patch', kind: 'mod', priority: 1, enabled: true, files: 3, conflicts: { winning: 1, losing: 0, winsOver: ['SkyUI'], losesTo: [] } }, { id: 'Overwrite', name: 'Overwrite', kind: 'overwrite', priority: 2, enabled: true, files: 0 }],
+      plugins: [{ name: 'Skyrim.esm', active: true, implicit: true, master: true, loadIndex: '00', masters: [], missing: [] }, { name: 'SkyUI_SE.esp', active: true, mod: 'SkyUI', loadIndex: '01', masters: ['Skyrim.esm'], missing: [] }] };
+  }
   if (cmd === 'stage') return { token: 's1', name: 'SkyUI_5_2_SE', files: 4, size: 5_300_000, top: ['Data/', 'readme.txt'], unwrapped: null, suggestTarget: 'game', suggestSub: '' };
   throw 'This is a preview: open Mods to do that.';
 };

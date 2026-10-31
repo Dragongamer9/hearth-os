@@ -10,7 +10,8 @@ Nexus Mods downloads, a choice of how mods go into a game, and Wabbajack modlist
 |---|---|
 | `src/nexus.rs` | The account (a personal API key in `~/.config/nimbus/nexus.json`, mode 600), the v1 API through curl (address and key on curl's stdin, never its command line), `nxm://` links, the request quota, which Nexus game a library game is |
 | `src/downloads.rs` | The download queue (`mods/downloads.json`): two at a time, resumable (`curl -C -`), survives closing the app; files in `mods/downloads/<nexus game>/` unless a modlist asks for its own folder and file name |
-| `src/mods.rs` | Deploy modes per game: `hardlink` (default), `copy`, `overlay` (Beta Experimental) |
+| `src/mods.rs` | Deploy modes per game: `hardlink` (default), `copy`, `overlay` (Beta Experimental); the link deploy (`sync_files`), unpacking and the fuse-overlayfs mount are shared with the organizer |
+| `src/organizer/` | The Hearth Mod Organizer (below): `mod.rs` instances, profiles, mod list, installers, import, commands; `mo2.rs` MO2's files; `vfs.rs` the merged view, deploy, run; `plugins.rs` Bethesda plugins; `fomod.rs` FOMOD; `kinds.rs` the games it knows |
 | `src/wabbajack.rs` | The modlist gallery, installs through jackify-engine, files it can't fetch (read from the .wabbajack too), MO2's ini, the list's Proton prefix, the library entry |
 | `src/accounts.rs` | LoversLab, MEGA and Google sign-ins (`~/.config/nimbus/{loverslab,mega,google}.json`, made mode 600 before anything is written), OAuth with PKCE through the browser and a loopback address, what the engine gets in its environment |
 | `src/guided.rs` | The guided Hearth Browser flow: Wabbajack's xxHash64, checking a downloaded file against the list, catching it in Hearth Browser's download folder, opening a page in Hearth Browser |
@@ -124,6 +125,118 @@ With a controller: A opens the page again, X "I have it: choose the file…" (ch
   Starfield, Cyberpunk 2077, Baldur's Gate 3. Others install, but their prefix may need setting up by hand.
 - Lists that don't use Mod Organizer 2 aren't set up yet. Collections (nxm://…/collections/…) aren't supported yet.
 
+## Hearth Mod Organizer
+
+Hearth's own mod organizer: a native Linux engine in Rust (`src/organizer/`) that works the way
+**Mod Organizer 2** does and reads and writes MO2's own files, so an instance opens in both. Credit: MO2's design
+and file formats come from [ModOrganizer2](https://github.com/ModOrganizer2) (modorganizer, its game plugins and
+installer_fomod), GPL-3.0 like Hearth; no MO2 code is copied, it's written anew in Rust.
+
+### What it does
+
+- **Instances, MO2's layout.** One per game: `ModOrganizer.ini`, `mods/<mod>/` (each with `meta.ini`),
+  `downloads/`, `profiles/<profile>/` and `overwrite/`; Hearth's own notes in `.hearth/`. New instances live in
+  `~/.local/share/nimbus/mods/organizer/<id>/` (list: `instances.json` there); an existing MO2 folder is used in place.
+- **Profiles**: `modlist.txt` (highest priority first; `+` on, `-` off, `*` the game's own), `plugins.txt` (`*`
+  before active plugins in Skyrim SE / Fallout 4 / Starfield; just the active ones in older games, with
+  `loadorder.txt`), `settings.ini` (`LocalSaves`, `LocalSettings`). Profile inis and saves are used while playing.
+- **The game's folder is never changed.** The enabled mods are merged by priority (higher wins; overwrite on top)
+  matching paths without regard to case, the way Windows and Wine see them (the game's own spelling of its folders
+  wins, so `textures/` and `Textures/` are one folder). The winners are hard-linked into `.hearth/layer` and
+  **fuse-overlayfs** lays it over the game's `Data` folder (the game folder itself for other games), with
+  `overwrite/` as the layer that takes everything the game writes. Without fuse-overlayfs (or when it won't mount)
+  the **links** fallback puts the files in the Data folder, setting aside each game file it replaces, and puts
+  everything back afterwards; anything the game wrote there moves to `overwrite/`, so the folder ends byte-identical.
+- **Profile files in the Proton folder** while it runs: the profile's `plugins.txt` (and `loadorder.txt`) in
+  `AppData/Local/<game>/`, its own inis in `Documents/My Games/<game>/` (copied back to the profile afterwards), its
+  own saves (the `Saves` folder links to the profile's `saves/`). The game's own files are set aside and put back.
+- **Crash-safe.** What's deployed is written first (`.hearth/active.json`); a deploy left by a crash (or by hand) is
+  undone at the next run, and at sign-in by `hearth-mods --remount` (`hearth-mods-remount.service`). Changes wait
+  while the game runs through the organizer. It won't deploy over Hearth Mods' simple list for the same game.
+- **Conflicts**: which mod wins each file, per mod "wins over" / "loses to" with counts and a file list;
+  `.mohidden` files and folders are left out (hide / unhide); each mod's `meta.ini` never reaches the game.
+- **Bethesda plugins**: the TES4 header of each `.esp/.esm/.esl` (master and light flags, masters, author,
+  description; Oblivion's shorter header), the game's own masters and Creation Club plugins always first, masters
+  before the rest, load indexes (`FE:xxx` for light plugins), missing masters (missing, off, or loading after),
+  BSA/BA2 archives with the plugin that loads each. **Sort** keeps your order and only fixes what the game requires
+  (masters first, every plugin after its masters). LOOT's masterlist isn't read yet.
+- **Games**: Skyrim SE/AE, Skyrim (LE), Skyrim VR, Enderal SE, Fallout 4, Fallout 4 VR, New Vegas, Fallout 3,
+  Oblivion, Starfield (after MO2's game plugins); any other game is "generic" (mods into its folder, no plugins).
+- **Installers**: plain archives (the Data folder found through wrapping folders; files meant for the game's own
+  folder, like a script extender's loader, are named in a note, since the organizer doesn't change that folder);
+  **FOMOD** (`fomod/ModuleConfig.xml`, UTF-16 or UTF-8: steps, groups and their types, plugin types fixed or by
+  pattern, condition flags, file/flag dependencies, visible steps, conditional installs, priorities, the mod's own
+  requirements); **BAIN** basics (numbered sub-packages, `00` ones chosen by default).
+- **Wabbajack lists run natively.** When a list finishes installing, `wabbajack.rs` hands its folder to the organizer
+  (import; a list's own "Stock Game"/"Game Root" copy is used when it has one, its Proton folder is the list's
+  `prefixes/wabbajack-<id>/pfx`). The list's library entry then starts `hearth-mods --organizer <id> run`; Windows
+  MO2 stays as the fallback per list (`launcher mo2`). Any MO2 folder can be imported by hand too.
+- **Play.** Each instance has a library entry (`mods/modlists/org-<id>.json` + `.desktop`, or the Wabbajack list's
+  own), so Game Mode's Play button starts `hearth-mods --organizer <id> run`: mount the view, start the program,
+  wait for it (and anything still running in the game's folder) to end, then take the view away. Windows programs
+  start with `umu-run` in the game's Proton folder as Hearth starts Steam games (`GAMEID=umu-<app>`, `STORE=steam`,
+  `PROTONPATH`, default `GE-Proton`, or `$HEARTH_PROTON`); without umu, Steam starts the game (`-applaunch`, no
+  script extender). The executables list is the script extender's loader (SKSE, F4SE...) if it's in the game folder,
+  the game, its launcher, and MO2's `[customExecutables]`. Default: the script extender, else the game.
+
+### Commands (JSON)
+
+`hearth-mods --organizer <args…>` prints one JSON object; errors are `{"ok": false, "error": "…"}` with exit
+code 1. The Desktop Mods app calls the same thing (`invoke('organizer', {args})`; `organizer_run` starts `run` in
+its own process). Game Mode screens can run the command line the same way.
+
+| Command | Answer |
+|---|---|
+| `instances` | `{instances: [instance + {deployed, mods, modsOn}]}` |
+| `games` | the game kinds it knows |
+| `create <library game id> [--kind skyrimse] [--name T]` | a new instance for a library game (or its existing one): `{created, summary}` |
+| `import <folder> [--name T] [--prefix <pfx>] [--wabbajack <job>]` | uses an MO2 folder in place: `{imported, notes, summary}` |
+| `recover` | undoes every deploy left behind: `{recovered: [{id, result or error}]}` |
+| `<inst>` or `<inst> summary` | the summary (below) |
+| `<inst> mods / plugins / archives / executables / profiles / warnings / status` | one part of it: `{instance, <part>}` (`status` is `deployed`) |
+| `<inst> conflicts [<mod>]` | per mod `{name, files, winning, losing, hidden, winsOver, losesTo}`; with a mod, its files `{path, status: wins/loses/alone/hidden, over / to, replacesGameFile}` |
+| `<inst> enable / disable / remove <mod>` | `{summary}` |
+| `<inst> move <mod> <priority>` or `move <mod> --by <±n>` | priority 0 is the lowest; higher wins |
+| `<inst> hide / unhide <mod> <file>` | `.mohidden` |
+| `<inst> plugin-enable / plugin-disable <plugin>`, `plugin-move <plugin> <place>`, `sort` | writes plugins.txt and loadorder.txt |
+| `<inst> profile <name>`, `profile-create <name> [--from P]`, `profile-settings [--local-saves on/off] [--local-inis on/off]` | |
+| `<inst> install <archive or folder or token> [--name N] [--choices JSON or @file] [--off]` | installs, or answers `{needs: "fomod", token, name, fomod, evaluation}` / `{needs: "bain", token, name, packages: [{name, default}]}` |
+| `<inst> fomod <archive>` | unpacks and reads the installer only (same answer as `install` without choices) |
+| `<inst> fomod-eval <token> --choices JSON` | `{evaluation}` for those choices |
+| `<inst> cancel <token>` | throws an unpacked mod away |
+| `<inst> deploy [--links]` / `undeploy` | puts the view in place by hand (overlay, or links) / takes it away |
+| `<inst> run [--exe <title>]` | Play: `{ok, title, mode, exit, undeploy, notes}` once the game has ended |
+| `<inst> launcher hearth/mo2` | what Play starts (mo2: Wabbajack lists only) |
+| `<inst> forget` | takes it out of Hearth's list (its folder stays) |
+
+Every changing command answers `{ok, summary, …}` (and `deployProblem` if a by-hand deploy couldn't be made again).
+
+**Summary**: `instance` `{id, title, dir, game, gameName, gameDir, dataDir, prefix, libraryId, wabbajack, launcher,
+profile, modsDir, downloadsDir, overwriteDir, plugins}`; `profiles` `[{name, active, localSaves, localInis}]`;
+`mods` lowest priority first, then Overwrite: `[{id (the folder name: use it in commands), name, priority, enabled,
+kind: mod/separator/unmanaged/overwrite, version, nexusId, installedFrom, plugins, files, conflicts: {winsOver,
+losesTo, winning, losing}, hidden}]` (files and conflicts are null for mods that are off); `plugins` in load order
+`[{name, active, implicit, master, light, mod, masters, author, description, loadIndex, missing: [{master, why:
+missing/inactive/loadsAfter}], problem}]`; `archives` `[{name, mod, plugin, loaded}]`; `executables` `[{title,
+binary, args, cwd, extender, from: game/mo2, present}]`; `deployed` null or `{mode: overlay/hardlink, target, since,
+profile, running, byHand, mounted, notes}`; `warnings`; `sort: {loot: false, note}`.
+
+**FOMOD for a controller**: `fomod` is `{name, image, info: {name, author, version, website, description}, requires,
+required, steps: [{name, visible, groups: [{name, type: SelectExactlyOne/SelectAtMostOne/SelectAtLeastOne/SelectAll/
+SelectAny, plugins: [{name, description, image, imagePath, files, flags, defaultType, patterns}]}]}], conditional}`
+(steps, groups and plugins already in the installer's order). Choices are `[[[plugin indexes] per group] per step]`;
+`evaluation` is `{steps: [{visible, groups: [{selected, types, problem}]}], flags, errors, files, choices}`: show
+the visible steps one at a time, render each plugin with its current type (NotUsable greyed, Required fixed), send
+each change to `fomod-eval`, and install with `evaluation.choices` when `errors` is empty.
+
+### Not done yet
+
+LOOT's masterlist (the sort helper only fixes what the game requires); files for the game's own folder (MO2's Root
+Builder: a script extender's loader must be put in the game folder by hand, or come with a list's Stock Game); BSA
+invalidation and archive order; Nexus downloads straight into an instance's `downloads/` and its download list;
+mod categories, notes and update checks from `meta.ini`; FOMOD scripts (C# installers) and BAIN wizards; MO2's own
+plugins (tools that run inside MO2) aren't run. Starfield's light/medium plugins need checking.
+
 ## Command line
 
 ```
@@ -134,14 +247,18 @@ hearth-mods --deploy <game> <mode>     hardlink | copy | overlay
 hearth-mods --remount                  overlays back (at sign-in)
 hearth-mods --modlists                 the Wabbajack gallery, as JSON
 hearth-mods --wabbajack-engine         download the engine
-hearth-mods --page downloads           open on a tab (games, downloads, modlists, accounts; nexus opens accounts)
+hearth-mods --page downloads           open on a tab (games, downloads, modlists, organizer, accounts; nexus opens accounts)
+hearth-mods --organizer <args…>        the Hearth Mod Organizer, as JSON (above)
 ```
 
 ## Not tested yet
 
 Written without a Nexus account or a real Wabbajack install to try against (the build machine can't reach Nexus):
 the queue, the engine's event and progress lines (taken from Jackify's own parser), MO2 under umu, and the overlay
-on a real game need testing on Hearth OS. The accounts and the guided flow were written without any LoversLab, MEGA
+on a real game need testing on Hearth OS. The Hearth Mod Organizer is tested in CI on fake games with synthesized
+mods (priority, conflicts, MO2's files, plugin headers, FOMOD, import, a link deploy leaving the game folder
+byte-identical, and the overlay where the runner has fuse-overlayfs); running real games through it (Proton, script
+extenders, Wabbajack lists) needs testing on a device. The accounts and the guided flow were written without any LoversLab, MEGA
 or Google account (CI tests the file checks, the queue, the hashes and that sign-in files are mode 600): the guided
 flow with a real LoversLab account, the MEGA sign-in (the login format the engine reads), anonymous MEGA downloads,
 and the LoversLab and Google sign-ins once registered need testing on a device.

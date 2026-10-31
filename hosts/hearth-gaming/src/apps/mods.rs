@@ -14,6 +14,8 @@
 //   hearth-mods --nexus-key <key> | --downloads     sign in to Nexus Mods | the download queue, as JSON
 //   hearth-mods --remount                           puts the overlays back (at sign-in)
 //   hearth-mods --modlists | --wabbajack-engine     the Wabbajack gallery | download the Wabbajack engine
+//   hearth-mods --organizer <instance> <command…>   the Hearth Mod Organizer, as JSON (docs/MODS.md); `run` is what
+//                                                   the library's Play starts for an organizer instance
 //
 // Accounts (LoversLab, MEGA, Google: accounts.rs) are signed in to from the page only: the browser for LoversLab and
 // Google, the on-screen keyboard for MEGA. Files no account fetches go through the guided flow (guided.rs).
@@ -26,6 +28,7 @@ use hearth_gaming::games::{self, GameEntry};
 use hearth_gaming::nexus;
 use hearth_gaming::wabbajack;
 use hearth_gaming::mods::{self, GameMods, Staged};
+use hearth_gaming::organizer;
 use hearth_gaming::util;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -339,6 +342,27 @@ fn pick_path(app: tauri::AppHandle, folder: bool, title: String, start: Option<S
     picked.and_then(|f| f.into_path().ok()).map(|p| p.to_string_lossy().into_owned())
 }
 
+// The Hearth Mod Organizer: the same commands as `hearth-mods --organizer …`, as JSON.
+#[tauri::command]
+async fn organizer(args: Vec<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if args.iter().any(|a| a == "run") { return Err("Start it with organizer_run.".to_string()); }
+        let _w = WORK.lock().unwrap_or_else(|e| e.into_inner());
+        let ctx = organizer::Ctx::system(if GAMES.lock().unwrap_or_else(|e| e.into_inner()).is_empty() { load_games() } else { GAMES.lock().unwrap_or_else(|e| e.into_inner()).clone() });
+        organizer::command(&ctx, &args)
+    }).await.map_err(|e| e.to_string())?
+}
+/// Plays through the organizer in its own process (it waits for the game, then takes the mods away again).
+#[tauri::command]
+fn organizer_run(id: String, exe: Option<String>) -> Result<(), String> {
+    let me = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hearth-mods"));
+    let mut c = std::process::Command::new(me);
+    c.arg("--organizer").arg(&id).arg("run");
+    if let Some(e) = exe.filter(|e| !e.is_empty()) { c.arg("--exe").arg(e); }
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+        .spawn().map(|mut ch| { std::thread::spawn(move || { let _ = ch.wait(); }); }).map_err(|e| format!("Couldn't start it ({e})"))
+}
+
 #[tauri::command]
 fn open_folder(path: String) -> Result<(), String> { util::open_folder(Path::new(&path)) }
 #[tauri::command]
@@ -394,9 +418,20 @@ fn cli(args: &[String]) -> Option<i32> {
     if util::has_arg(args, "--downloads") { print(&downloads::list()); return Some(0); }
     if util::has_arg(args, "--modlists") { return Some(match wabbajack::gallery(true) { Ok(v) => { print(&v); 0 } Err(e) => { eprintln!("{e}"); 1 } }); }
     if util::has_arg(args, "--wabbajack-engine") { return Some(match wabbajack::fetch_engine() { Ok(v) => { print(&v); 0 } Err(e) => { eprintln!("{e}"); 1 } }); }
+    if let Some(i) = args.iter().position(|a| a == "--organizer") {
+        let rest: Vec<String> = args[i + 1..].to_vec();
+        let ctx = organizer::Ctx::system(load_games());
+        return Some(match organizer::command(&ctx, &rest) {
+            Ok(v) => { print(&v); if v["ok"] == false { 2 } else { 0 } }
+            Err(e) => { print(&json!({"ok": false, "error": e})); 1 }
+        });
+    }
     if util::has_arg(args, "--remount") {
         let mut code = 0;
-        for g in load_games() { if let Err(e) = GameMods::open(&data_root(), &g).remount(&g) { eprintln!("{}: {e}", g.title); code = 2; } }
+        let games = load_games();
+        // Organizer views left by a crash come away first (the game folders back as they were).
+        for (id, r) in organizer::recover_all(&organizer::Ctx::system(games.clone())) { if let Err(e) = r { eprintln!("{id}: {e}"); code = 2; } }
+        for g in games { if let Err(e) = GameMods::open(&data_root(), &g).remount(&g) { eprintln!("{}: {e}", g.title); code = 2; } }
         return Some(code);
     }
     if let Some(v) = pos("--deploy", 2) { load_games(); return Some(done(change(&v[0], |gm, g| gm.set_mode(g, &v[1])))); }
@@ -424,7 +459,7 @@ fn main() {
             set_deploy, set_nexus_game, nexus_account, nexus_sign_in, nexus_refresh, nexus_sign_out, nexus_pages, nexus_files,
             downloads_list, download_nxm, download_file, download_pause, download_resume, download_remove, downloads_clear, stage_download,
             wj_engine, wj_fetch_engine, wj_gallery, wj_jobs, wj_defaults, wj_start, wj_resume, wj_cancel, wj_forget, wj_repair, wj_log, free_space, open_url, pick_path,
-            accounts_list, account_begin, account_sign_out, mega_sign_in, wj_guide_skip, wj_manual_file, open_page])
+            accounts_list, account_begin, account_sign_out, mega_sign_in, wj_guide_skip, wj_manual_file, open_page, organizer, organizer_run])
         .setup(move |app| {
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("mods.html".into()))
                 .title("Mods")
