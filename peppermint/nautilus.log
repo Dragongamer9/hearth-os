@@ -1,0 +1,122 @@
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+** Message: 20:22:09.614: Connecting to org.freedesktop.Tracker3.Miner.Files
+nautilus-application-Message: 20:22:09.614: Failed to initialize display server connection: Cannot invoke method; proxy is for the well-known name org.gnome.Mutter.ServiceChannel without an owner, and proxy was constructed with the G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START flag
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.4' (uid=1000 pid=12294 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.4' (uid=1000 pid=12294 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.4' (uid=1000 pid=12294 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+
+** (xdg-desktop-portal-gnome:12318): WARNING **: 20:22:09.668: Failed to open service channel Wayland connection, portals dialogs may missbehave (Cannot invoke method; proxy is for the well-known name org.gnome.Mutter.ServiceChannel without an owner, and proxy was constructed with the G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START flag).
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.7' (uid=1000 pid=12318 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined")
+
+** (process:12331): WARNING **: 20:22:09.721: Failed to open service channel Wayland connection, portals dialogs may missbehave (Cannot invoke method; proxy is for the well-known name org.gnome.Mutter.ServiceChannel without an owner, and proxy was constructed with the G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START flag).
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+
+(/usr/libexec/xdg-desktop-portal:12294): xdg-desktop-portal-WARNING **: 20:22:09.767: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:12294): xdg-desktop-portal-WARNING **: 20:22:09.767: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:12294): xdg-desktop-portal-WARNING **: 20:22:09.767: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.4' (uid=1000 pid=12294 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:12294): xdg-desktop-portal-WARNING **: 20:22:09.810: Failed connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+
+(org.gnome.Nautilus:12265): Gtk-WARNING **: 20:22:09.840: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'ca.desrt.dconf'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.GPhoto2VolumeMonitor' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.GPhoto2VolumeMonitor'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gnome.OnlineAccounts' requested by ':1.16' (uid=1000 pid=12378 comm="/usr/libexec/gvfs-goa-volume-monitor" label="unconfined")
+goa-daemon-Message: 20:22:09.884: goa-daemon version 3.54.5 starting
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gnome.Identity' requested by ':1.17' (uid=1000 pid=12383 comm="/usr/libexec/goa-daemon" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gnome.Identity'
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.AfcVolumeMonitor' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.AfcVolumeMonitor'
+
+** (org.gnome.Nautilus:12265): WARNING **: 20:22:09.985: Unable to get contents of the bookmarks file: Error opening file /home/tester/.config/gtk-3.0/bookmarks: No such file or directory
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Activating service name='org.freedesktop.Tracker3.Miner.Files' requested by ':1.0' (uid=1000 pid=12265 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &DOWNLOAD. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.061: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &DOWNLOAD. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &DOCUMENTS. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &MUSIC. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &PICTURES. Ignoring this location.
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:10.124: Unable to get XDG user directory path for special directory &VIDEOS. Ignoring this location.
+dbus-daemon[12264]: [session uid=1000 pid=12264 pidfd=5] Successfully activated service 'org.freedesktop.Tracker3.Miner.Files'
+
+** (process:12453): WARNING **: 20:22:10.687: Unable to load /home/tester/.local/share/recently-used.xbel: Failed to open file “/home/tester/.local/share/recently-used.xbel”: No such file or directory
+
+** (process:12475): WARNING **: 20:22:10.715: Failed to spawn the wsdd daemon: Failed to execute child process “wsdd” (No such file or directory)
+
+** (process:12454): WARNING **: 20:22:10.715: Couldn't create directory monitor on wsdd:///. Error: Automount failed: Failed to spawn the underlying wsdd daemon.
+
+(gnome-text-editor:12575): Gtk-WARNING **: 20:22:17.178: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.
+
+(/usr/libexec/xdg-desktop-portal:12294): xdg-desktop-portal-WARNING **: 20:22:17.262: A backend call failed: Inhibiting other than idle not supported
+
+(localsearch-3:12425): Tracker-WARNING **: 20:22:25.125: Could not get file handle for '/home/tester': Operation not supported
+
+(localsearch-extractor-3:12688): Tracker-WARNING **: 20:22:25.165: Locale 'LANG' is not set, defaulting to C locale
+Gdk-Message: 20:22:31.841: Lost connection to Wayland compositor.
+Gdk-Message: 20:22:31.841: Lost connection to Wayland compositor.
+Gdk-Message: 20:22:31.841: Lost connection to Wayland compositor.
+Gdk-Message: 20:22:31.841: Error reading events from display: Broken pipe
+A connection to the bus can't be made
+A connection to the bus can't be made
+A connection to the bus can't be made
+A connection to the bus can't be made
+
+(localsearch-3:12425): GVFS-RemoteVolumeMonitor-WARNING **: 20:22:31.864: Owner of volume monitor org.gtk.vfs.UDisks2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+
+(localsearch-3:12425): GVFS-RemoteVolumeMonitor-WARNING **: 20:22:31.864: Owner of volume monitor org.gtk.vfs.GPhoto2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+
+(localsearch-3:12425): GVFS-RemoteVolumeMonitor-WARNING **: 20:22:31.864: Owner of volume monitor org.gtk.vfs.MTPVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+
+(localsearch-3:12425): GVFS-RemoteVolumeMonitor-WARNING **: 20:22:31.864: Owner of volume monitor org.gtk.vfs.GoaVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+
+(localsearch-3:12425): GVFS-RemoteVolumeMonitor-WARNING **: 20:22:31.864: Owner of volume monitor org.gtk.vfs.AfcVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+A connection to the bus can't be made
