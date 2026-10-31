@@ -1,0 +1,613 @@
+### excludes
+rc=1
+Problem: package cosmic-session-1.10.0-2.fc45.x86_64 from fedora requires cosmic-term >= 1.10.0, but none of the providers can be installed
+  - conflicting requests
+with excludes MB 0
+### cosmic-session requires
+package cosmic-session is not installed 
+### whatrequires
+cosmic-files<-no package requires cosmic-files; cosmic-files-applet<-no package requires cosmic-files-applet; cosmic-term<-no package requires cosmic-term; cosmic-greeter<-no package requires cosmic-greeter; cosmic-initial-setup<-no package requires cosmic-initial-setup; cosmic-store<-no package requires cosmic-store; cosmic-edit<-no package requires cosmic-edit; cosmic-player<-no package requires cosmic-player; cosmic-wallpapers<-no package requires cosmic-wallpapers; cosmic-osk<-no package requires cosmic-osk; cosmic-monitor<-no package requires cosmic-monitor; pop-icon-theme<-no package requires pop-icon-theme; gnome-icon-theme<-no package requires gnome-icon-theme; pop-launcher<-no package requires pop-launcher; 
+### all
+76 cosmic-files, 59 cosmic-applets, 59 cosmic-settings, 42 cosmic-initial-setup, 39 xdg-desktop-portal-cosmic, 37 cosmic-term, 36 cosmic-greeter, 29 cosmic-app-library, 27 cosmic-launcher, 26 cosmic-comp, 25 cosmic-osk, 25 cosmic-workspaces, 21 cosmic-notifications, 21 cosmic-osd, 19 pop-icon-theme, 17 gettext, 16 cosmic-panel, 9 gnome-icon-theme, 8 cosmic-bg, 7 pop-launcher, 7 cosmic-settings-daemon, 4 nm-connection-editor, 4 cosmic-idle, 4 cosmic-session, 4 gvfs-client, 3 fd-find, 3 cosmic-screenshot, 2 open-sans-fonts, 1 gcr-libs, 1 cosmic-randr, 1 greetd, 1 gvfs, 1 jemalloc, 1 adw-gtk3-theme, 1 qalculate, 
+### units
+cosmic-greeter-daemon.service cosmic-greeter.service greetd.service com.system76.CosmicStatusNotifierWatcher.service cosmic-session.target org.freedesktop.impl.portal.desktop.cosmic.service 
+### session
+
+set -e
+
+
+if command -v systemctl >/dev/null; then
+    # robustness: if the previous graphical session left some failed units,
+    # reset them so that they don't break this startup
+    for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f1 -d' '); do
+        partof="$(systemctl --user show -p PartOf --value "$unit")"
+        for target in cosmic-session.target graphical-session.target; do
+            if [ "$partof" = "$target" ]; then
+                systemctl --user reset-failed "$unit"
+                break
+            fi
+        done
+    done
+fi
+
+if [ -n "${SHELL}" ]; then
+    # --in-login-shell: our flag to indicate that we don't need to recurse any further
+    if [ "${1}" != "--in-login-shell" ]; then
+        # `-l`: start $SHELL as a login shell so it sources the user's profile.
+        exec "${SHELL}" -l -c "${0} --in-login-shell"
+    fi
+fi
+
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:=COSMIC}"
+export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:=COSMIC}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:=wayland}"
+export _JAVA_AWT_WM_NONREPARENTING=1
+export GDK_BACKEND=wayland,x11
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="wayland;xcb"
+export QT_AUTO_SCREEN_SCALE_FACTOR=1
+export QT_ENABLE_HIGHDPI_SCALING=1
+export DCONF_PROFILE=/usr/share/dconf/profile/cosmic
+
+if [ -z "$QT_QPA_PLATFORMTHEME" ]; then
+    export QT_QPA_PLATFORMTHEME=cosmic
+    for QT_PLUGIN_PATH in /usr/lib*/qt6/plugins /usr/lib/*/qt6/plugins; do
+        if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
+            # CuteCosmic found, no need for a fallback.
+            export QT_QPA_PLATFORMTHEME=cosmic
+            break
+        elif [ -f "${QT_PLUGIN_PATH}/platformthemes/libqt6ct.so" ] || [ -f "${QT_PLUGIN_PATH}/platformthemes/libqt5ct.so" ]; then
+            # Fallback to qt6ct, but keep looking for CuteCosmic.
+            # Note that "qt5ct" is compatible with both qt5ct and qt6ct.
+            export QT_QPA_PLATFORMTHEME=qt5ct
+        fi
+    done
+fi
+
+if [ -d "$XDG_RUNTIME_DIR/keyring" ]; then
+
+    # Use PATH lookup instead of hardcoding /usr/bin
+    if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+        eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh > /dev/null 2>&1)"
+    else
+        echo "gnome-keyring-daemon not found in PATH" >&2
+    fi
+@@@@
+=== com.system76.CosmicPanel/v1/entries
+["Panel","Dock"]
+=== com.system76.CosmicPanel.Panel/v1/anchor
+Top
+=== com.system76.CosmicPanel.Panel/v1/anchor_gap
+false
+=== com.system76.CosmicPanel.Panel/v1/autohide
+Never
+
+=== com.system76.CosmicPanel.Panel/v1/autohide_behavior
+(
+    wait_time: 1000,
+    transition_time: 200,
+    handle_size: 4,
+    unhide_delay: 200,
+)
+
+=== com.system76.CosmicPanel.Panel/v1/autohover_delay_ms
+Some(500)
+
+=== com.system76.CosmicPanel.Panel/v1/background
+ThemeDefault
+=== com.system76.CosmicPanel.Panel/v1/border_radius
+0
+=== com.system76.CosmicPanel.Panel/v1/exclusive_zone
+true
+=== com.system76.CosmicPanel.Panel/v1/expand_to_edges
+true
+=== com.system76.CosmicPanel.Panel/v1/keyboard_interactivity
+OnDemand
+=== com.system76.CosmicPanel.Panel/v1/layer
+Top
+=== com.system76.CosmicPanel.Panel/v1/margin
+0
+=== com.system76.CosmicPanel.Panel/v1/name
+"Panel"
+=== com.system76.CosmicPanel.Panel/v1/opacity
+1.0
+=== com.system76.CosmicPanel.Panel/v1/output
+All
+=== com.system76.CosmicPanel.Panel/v1/padding
+0
+=== com.system76.CosmicPanel.Panel/v1/plugins_center
+Some(["com.system76.CosmicAppletTime"])
+=== com.system76.CosmicPanel.Panel/v1/plugins_wings
+Some((["com.system76.CosmicPanelWorkspacesButton", "com.system76.CosmicPanelAppButton"],["com.system76.CosmicAppletInputSources","com.system76.CosmicAppletA11y", "com.system76.CosmicAppletStatusArea", "com.system76.CosmicAppletTiling", "com.system76.CosmicAppletAudio", "com.system76.CosmicAppletBluetooth", "com.system76.CosmicAppletNetwork", "com.system76.CosmicAppletBattery", "com.system76.CosmicAppletNotifications", "com.system76.CosmicAppletPower"]))
+
+=== com.system76.CosmicPanel.Panel/v1/size
+XS
+=== com.system76.CosmicPanel.Panel/v1/size_center
+None
+
+=== com.system76.CosmicPanel.Panel/v1/size_wings
+None
+
+=== com.system76.CosmicPanel.Panel/v1/spacing
+0
+=== com.system76.CosmicPanel.Dock/v1/anchor
+Bottom
+=== com.system76.CosmicPanel.Dock/v1/anchor_gap
+true
+=== com.system76.CosmicPanel.Dock/v1/autohide
+Never
+
+=== com.system76.CosmicPanel.Dock/v1/autohide_behavior
+(
+    wait_time: 1000,
+    transition_time: 200,
+    handle_size: 4,
+    unhide_delay: 200,
+)
+
+=== com.system76.CosmicPanel.Dock/v1/autohover_delay_ms
+Some(500)
+
+=== com.system76.CosmicPanel.Dock/v1/background
+ThemeDefault
+=== com.system76.CosmicPanel.Dock/v1/border_radius
+160
+=== com.system76.CosmicPanel.Dock/v1/exclusive_zone
+true
+=== com.system76.CosmicPanel.Dock/v1/expand_to_edges
+false
+=== com.system76.CosmicPanel.Dock/v1/keyboard_interactivity
+OnDemand
+=== com.system76.CosmicPanel.Dock/v1/layer
+Top
+=== com.system76.CosmicPanel.Dock/v1/margin
+4
+=== com.system76.CosmicPanel.Dock/v1/name
+"Dock"
+=== com.system76.CosmicPanel.Dock/v1/opacity
+1.0
+=== com.system76.CosmicPanel.Dock/v1/output
+All
+=== com.system76.CosmicPanel.Dock/v1/padding
+4
+=== com.system76.CosmicPanel.Dock/v1/plugins_center
+Some(["com.system76.CosmicPanelLauncherButton", "com.system76.CosmicPanelWorkspacesButton", "com.system76.CosmicPanelAppButton", "com.system76.CosmicAppList", "com.system76.CosmicAppletMinimize"])
+=== com.system76.CosmicPanel.Dock/v1/plugins_wings
+None
+=== com.system76.CosmicPanel.Dock/v1/size
+L
+=== com.system76.CosmicPanel.Dock/v1/size_center
+None
+
+=== com.system76.CosmicPanel.Dock/v1/size_wings
+None
+
+=== com.system76.CosmicPanel.Dock/v1/spacing
+0
+=== com.system76.CosmicAppList/v1/favorites
+[
+    "org.mozilla.firefox",
+    "com.system76.CosmicFiles",
+    "com.system76.CosmicEdit",
+    "com.system76.CosmicTerm",
+    "com.system76.CosmicStore",
+    "com.system76.CosmicSettings",
+]
+
+=== com.system76.CosmicAppList/v1/filter_top_levels
+None
+=== com.system76.CosmicBackground/v1/all
+(
+    output: "all",
+    source: Path("/usr/share/backgrounds/default-dark.jxl"),
+    filter_by_theme: #true,
+    rotation_frequency: 3600,
+    filter_method: Lanczos,
+    scaling_mode: Zoom,
+    sampling_method: Alphanumeric,
+)
+
+=== com.system76.CosmicBackground/v1/same-on-all
+true
+
+=== com.system76.CosmicComp/v1/autotile_behavior
+PerWorkspace
+=== com.system76.CosmicComp/v1/input_touchpad
+(state:Enabled,click_method:Some(Clickfinger),scroll_config:Some((method:Some(TwoFinger),natural_scroll:None,scroll_button:None,scroll_factor:None)),tap_config:Some((enabled:true,button_map:Some(LeftRightMiddle),drag:true,drag_lock:false)))
+=== com.system76.CosmicComp/v1/workspaces
+(
+    workspace_mode: OutputBound,
+    workspace_layout: Horizontal,
+)
+=== com.system76.CosmicSettings.Shortcuts/v1/defaults
+{
+    (modifiers: [Super, Alt], key: "Escape"): Terminate,
+    (modifiers: [Super, Shift], key: "Escape"): System(LogOut),
+    (modifiers: [Super, Ctrl], key: "Escape"): Debug,
+    (modifiers: [Super], key: "Escape"): System(LockScreen),
+    (modifiers: [Super], key: "q"): Close,
+    (modifiers: [Alt], key: "F4"): Close,
+
+    (modifiers: [Super], key: "Left"): Focus(Left),
+    (modifiers: [Super], key: "Right"): Focus(Right),
+    (modifiers: [Super], key: "Up"): Focus(Up),
+    (modifiers: [Super], key: "Down"): Focus(Down),
+    (modifiers: [Super], key: "h"): Focus(Left),
+    (modifiers: [Super], key: "j"): Focus(Down),
+    (modifiers: [Super], key: "k"): Focus(Up),
+    (modifiers: [Super], key: "l"): Focus(Right),
+    (modifiers: [Super], key: "u"): Focus(Out),
+    (modifiers: [Super], key: "i"): Focus(In),
+    (modifiers: [Super, Shift], key: "Left"): Move(Left),
+    (modifiers: [Super, Shift], key: "Right"): Move(Right),
+    (modifiers: [Super, Shift], key: "Up"): Move(Up),
+    (modifiers: [Super, Shift], key: "Down"): Move(Down),
+    (modifiers: [Super, Shift], key: "h"): Move(Left),
+    (modifiers: [Super, Shift], key: "j"): Move(Down),
+    (modifiers: [Super, Shift], key: "k"): Move(Up),
+    (modifiers: [Super, Shift], key: "l"): Move(Right),
+
+    (modifiers: [Super], key: "1"): Workspace(1),
+    (modifiers: [Super], key: "2"): Workspace(2),
+    (modifiers: [Super], key: "3"): Workspace(3),
+    (modifiers: [Super], key: "4"): Workspace(4),
+    (modifiers: [Super], key: 
+=== com.system76.CosmicSettings.Shortcuts/v1/system_actions
+{
+    /// Opens the application library
+    AppLibrary: "cosmic-app-library",
+    /// Decreases screen brightness
+    BrightnessDown: "busctl --user call com.system76.CosmicSettingsDaemon /com/system76/CosmicSettingsDaemon com.system76.CosmicSettingsDaemon DecreaseDisplayBrightness",
+    /// Increases screen brightness
+    BrightnessUp: "busctl --user call com.system76.CosmicSettingsDaemon /com/system76/CosmicSettingsDaemon com.system76.CosmicSettingsDaemon IncreaseDisplayBrightness",
+    /// Toggles display mode
+    DisplayToggle: "cosmic-osd display",
+    /// Switch between input sources
+    InputSourceSwitch: "busctl --user call com.system76.CosmicSettingsDaemon /com/system76/CosmicSettingsDaemon com.system76.CosmicSettingsDaemon InputSourceSwitch",
+    /// Opens the home folder in a system default file browser
+    HomeFolder: "xdg-open ~",
+    /// Logs out
+    LogOut: "cosmic-osd log-out",
+    /// Decreases keyboard brightness
+    // KeyboardBrightnessDown,
+    /// Increases keyboard brightness
+    // KeyboardBrightnessUp,
+    /// Opens the launcher
+    Launcher: "cosmic-launcher",
+    /// Locks the screen
+    LockScreen: "loginctl lock-session",
+    /// Mutes the active output device
+    Mute: "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    /// Mutes the active microphone
+    MuteMic: "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle",
+    /// Plays and Pauses audio
+    PlayPause: "playerctl play-pause",
+    /// Goes to the next track
+    PlayNext: "playerctl next",
+    //
+=== com.system76.CosmicTheme.Mode/v1/auto_switch
+false
+=== com.system76.CosmicTheme.Mode/v1/is_dark
+true
+=== com.system76.CosmicTk/v1/apply_theme_global
+true
+=== com.system76.CosmicTheme.Dark.Builder/v1/accent
+Some((
+    red: 0.3882353,
+    green: 0.8156863,
+    blue: 0.8745098,
+))
+=== com.system76.CosmicTheme.Dark.Builder/v1/active_hint
+3
+=== com.system76.CosmicTheme.Dark.Builder/v1/bg_color
+Some((
+    red: 0.10588235,
+    green: 0.10588235,
+    blue: 0.10588235,
+    alpha: 1.0,
+))
+=== com.system76.CosmicTheme.Dark.Builder/v1/corner_radii
+(
+    radius_0: (0.0, 0.0, 0.0, 0.0),
+    radius_xs: (4.0, 4.0, 4.0, 4.0),
+    radius_s: (8.0, 8.0, 8.0, 8.0),
+    radius_m: (16.0, 16.0, 16.0, 16.0),
+    radius_l: (32.0, 32.0, 32.0, 32.0),
+    radius_xl: (160.0, 160.0, 160.0, 160.0),
+)
+=== com.system76.CosmicTheme.Dark.Builder/v1/destructive
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/gaps
+(0, 8)
+=== com.system76.CosmicTheme.Dark.Builder/v1/is_frosted
+false
+=== com.system76.CosmicTheme.Dark.Builder/v1/neutral_tint
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/palette
+Dark((
+    name: "cosmic-dark",
+    bright_red: (
+        red: 1.0,
+        green: 0.627451,
+        blue: 0.5647059,
+        alpha: 1.0,
+    ),
+    bright_green: (
+        red: 0.36862746,
+        green: 0.85882354,
+        blue: 0.54901963,
+        alpha: 1.0,
+    ),
+    bright_orange: (
+        red: 1.0,
+        green: 0.6392157,
+        blue: 0.49019608,
+        alpha: 1.0,
+    ),
+    gray_1: (
+        red: 0.105882354,
+        green: 0.105882354,
+        blue: 0.105882354,
+        alpha: 1.0,
+    ),
+    gray_2: (
+        red: 0.14901961,
+        green: 0.14901961,
+        blue: 0.14901961,
+        alpha: 1.0,
+    ),
+    neutral_0: (
+        red: 0.0,
+        green: 0.0,
+        blue: 0.0,
+        alpha: 1.0,
+    ),
+    neutral_1: (
+        red: 0.105882354,
+        green: 0.105882354,
+        blue: 0.105882354,
+        alpha: 1.0,
+    ),
+    neutral_2: (
+        red: 0.1882353,
+        green: 0.1882353,
+        blue: 0.1882353,
+        alpha: 1.0,
+    ),
+    neutral_3: (
+        red: 0.2784314,
+        green: 0.2784314,
+        blue: 0.2784314,
+        alpha: 1.0,
+    ),
+    neutral_4: (
+        red: 0.36862746,
+        green: 0.36862746,
+        blue: 0.36862746,
+        alpha: 1.0,
+    ),
+    neutral_5: (
+        red: 0.46666667,
+        green: 0.46666667,
+        blue: 0.46666667,
+        alpha: 1.0,
+    ),
+    neutral_6: (
+        red: 0.5686275,
+        green: 0.5686275,
+        blue: 0.5686275,
+        alpha: 1.0,
+    ),
+    neutral_7: (
+        red: 0.67058825,
+  
+=== com.system76.CosmicTheme.Dark.Builder/v1/primary_container_bg
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/secondary_container_bg
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/spacing
+(
+    space_none: 0,
+    space_xxxs: 4,
+    space_xxs: 8,
+    space_xs: 12,
+    space_s: 16,
+    space_m: 24,
+    space_l: 32,
+    space_xl: 48,
+    space_xxl: 64,
+    space_xxxl: 128,
+)
+=== com.system76.CosmicTheme.Dark.Builder/v1/success
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/text_tint
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/warning
+None
+=== com.system76.CosmicTheme.Dark.Builder/v1/window_hint
+None
+=== Dark files
+accent accent_button accent_text active_hint background button control_tint corner_radii destructive destructive_button gaps icon_button is_dark is_frosted is_high_contrast link_button list_button name palette primary secondary shade spacing success success_button text_button text_tint warning warning_button window_hint === Dark/accent
+(
+    base: (
+        red: 0.3882353,
+        green: 0.8156863,
+        blue: 0.8745098,
+        alpha: 1.0,
+    ),
+    hover: (
+        red: 0.3883028,
+        green: 0.7302636,
+        blue: 0.7773224,
+        alpha: 1.0,
+    ),
+    pressed: (
+        red: 0.23716976,
+        green: 0.45089525,
+        blue: 0.480307,
+        alpha: 1.0,
+    ),
+    selected: (
+        red: 0.3883028,
+        green: 0.7302636,
+        blue: 0.7773224,
+        alpha: 1.0,
+    ),
+    selected_text: (
+        red: 0.3882353,
+        green: 0.8156863,
+        blue: 0.8745098,
+        alpha: 1.0,
+    ),
+    focus: (
+        red: 0.3882353,
+        green: 0.8156863,
+        blue: 0.8745098,
+        alpha: 1.0,
+    ),
+    divider: (
+        red: 0.0,
+        green: 0.0,
+        blue: 0.0,
+        alpha: 1.0,
+    ),
+    on: (
+        red: 0.0,
+        green: 0.0,
+        blue: 0.0,
+        alpha: 1.0,
+    ),
+    disabled: (
+        red: 0.3882353,
+        green: 0.8156863,
+        blue: 0.8745098,
+        alpha: 1.0,
+    ),
+    on_disabled: (
+        red: 0.19411765,
+        green: 0.40784314,
+        blue: 0.4372549,
+        alpha: 1.0,
+    ),
+    border: (
+        red: 0.3882353,
+        green: 0.815686
+=== Dark/background
+(
+    base: (
+        red: 0.10588235,
+        green: 0.10588235,
+        blue: 0.10588235,
+        alpha: 1.0,
+    ),
+    component: (
+        base: (
+            red: 0.18219745,
+            green: 0.18219745,
+            blue: 0.18219745,
+            alpha: 1.0,
+        ),
+        hover: (
+            red: 0.2639777,
+            green: 0.2639777,
+            blue: 0.2639777,
+            alpha: 1.0,
+        ),
+        pressed: (
+            red: 0.34575796,
+            green: 0.34575796,
+            blue: 0.34575796,
+            alpha: 1.0,
+        ),
+        selected: (
+            red: 0.2639777,
+            green: 0.2639777,
+            blue: 0.2639777,
+            alpha: 1.0,
+        ),
+        selected_text: (
+            red: 0.3882353,
+            green: 0.8156863,
+            blue: 0.8745098,
+            alpha: 1.0,
+        ),
+        focus: (
+            red: 0.3882353,
+            green: 0.8156863,
+            blue: 0.8745098,
+            alpha: 1.0,
+        ),
+        divider: (
+            red: 0.7532969,
+            green: 0.7532969,
+            blue: 0.75329685,
+            alpha: 0.2,
+        ),
+        on: (
+            red: 0.7532969,
+            green: 0.7532969
+=== Dark/primary
+(
+    base: (
+        red: 0.15292811,
+        green: 0.15292811,
+        blue: 0.15292808,
+        alpha: 1.0,
+    ),
+    component: (
+        base: (
+            red: 0.21220893,
+            green: 0.21220893,
+            blue: 0.21220881,
+            alpha: 1.0,
+        ),
+        hover: (
+            red: 0.29098803,
+            green: 0.29098803,
+            blue: 0.2909879,
+            alpha: 1.0,
+        ),
+        pressed: (
+            red: 0.36976713,
+            green: 0.36976713,
+            blue: 0.36976704,
+            alpha: 1.0,
+        ),
+        selected: (
+            red: 0.29098803,
+            green: 0.29098803,
+            blue: 0.2909879,
+            alpha: 1.0,
+        ),
+        selected_text: (
+            red: 0.3882353,
+            green: 0.8156863,
+            blue: 0.8745098,
+            alpha: 1.0,
+        ),
+        focus: (
+            red: 0.3882353,
+            green: 0.8156863,
+            blue: 0.8745098,
+            alpha: 1.0,
+        ),
+        divider: (
+            red: 0.7913618,
+            green: 0.79136187,
+            blue: 0.79136163,
+            alpha: 0.2,
+        ),
+        on: (
+            red: 0.7913618,
+            green: 0.79
+=== Dark/corner_radii
+(
+    radius_0: (0.0, 0.0, 0.0, 0.0),
+    radius_xs: (4.0, 4.0, 4.0, 4.0),
+    radius_s: (8.0, 8.0, 8.0, 8.0),
+    radius_m: (16.0, 16.0, 16.0, 16.0),
+    radius_l: (32.0, 32.0, 32.0, 32.0),
+    radius_xl: (160.0, 160.0, 160.0, 160.0),
+)
+=== applets
+com.system76.CosmicAppLibrary.desktop com.system76.CosmicAppList.desktop com.system76.CosmicAppletA11y.desktop com.system76.CosmicAppletAudio.desktop com.system76.CosmicAppletBattery.desktop com.system76.CosmicAppletBluetooth.desktop com.system76.CosmicAppletInputSources.desktop com.system76.CosmicAppletMinimize.desktop com.system76.CosmicAppletNetwork.desktop com.system76.CosmicAppletNotifications.desktop com.system76.CosmicAppletOsk.desktop com.system76.CosmicAppletPower.desktop com.system76.CosmicAppletStatusArea.desktop com.system76.CosmicAppletTiling.desktop com.system76.CosmicAppletTime.desktop com.system76.CosmicAppletWorkspaces.desktop com.system76.CosmicFiles.desktop com.system76.CosmicInitialSetup.desktop com.system76.CosmicLauncher.desktop com.system76.CosmicPanelAppButton.desktop com.system76.CosmicPanelLauncherButton.desktop com.system76.CosmicPanelWorkspacesButton.desktop com.system76.CosmicScreenshot.desktop com.system76.CosmicSettings.About.desktop com.system76.CosmicSettings.Accessibility.desktop com.system76.CosmicSettings.Appearance.desktop com.system76.CosmicSettings.Applications.desktop com.system76.CosmicSettings.Bluetooth.desktop com.system76.CosmicSettings.DateTime.desktop com.system76.CosmicSettings.DefaultApps.desktop com.system76.CosmicSettings.Desktop.desktop com.system76.CosmicSettings.Displays.desktop com.system76.CosmicSettings.Dock.desktop com.system76.CosmicSettings.Input.desktop com.system76.CosmicSettings.Keyboard.desktop com.system76.CosmicSettings.LegacyApplications.desktop com.system76.CosmicSettings.Mouse.desktop com.system76.CosmicSettings.Network.desktop com.system76.CosmicSettings.Notifications.desktop com.system76.CosmicSettings.Panel.desktop com.system76.CosmicSettings.Power.desktop com.system76.CosmicSettings.RegionLanguage.desktop com.system76.CosmicSettings.Sound.desktop com.system76.CosmicSettings.StartupApps.desktop com.system76.CosmicSettings.System.desktop com.system76.CosmicSettings.Time.desktop com.system76.CosmicSettings.Touchpad.desktop com.system76.CosmicSettings.Users.desktop com.system76.CosmicSettings.Vpn.desktop com.system76.CosmicSettings.Wallpaper.desktop com.system76.CosmicSettings.WindowManagement.desktop com.system76.CosmicSettings.Wired.desktop com.system76.CosmicSettings.Wireless.desktop com.system76.CosmicSettings.Workspaces.desktop com.system76.CosmicSettings.desktop com.system76.CosmicTerm.desktop com.system76.CosmicWorkspaces.desktop cosmic-mimeapps.list 
