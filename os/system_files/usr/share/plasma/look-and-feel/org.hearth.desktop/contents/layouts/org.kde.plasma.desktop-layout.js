@@ -45,7 +45,8 @@ tasks.writeConfig("iconSpacing", "1");
 
 panel.addWidget("org.kde.plasma.marginsseparator");
 panel.addWidget("org.kde.plasma.systemtray");
-panel.addWidget("org.hearth.quicksettings");
+var quick = panel.addWidget("org.hearth.quicksettings");
+quick.globalShortcut = "Meta+Alt+A";   // Mantel's Super+A is Plasma's; the controller's Hearth menu › Quick Access types this
 
 var clock = panel.addWidget("org.kde.plasma.digitalclock");
 clock.currentConfigGroup = ["Appearance"];

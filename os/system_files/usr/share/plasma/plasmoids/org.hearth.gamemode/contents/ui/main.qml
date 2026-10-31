@@ -21,6 +21,13 @@ PlasmoidItem {
         connectedSources: []
         onNewData: (source, data) => disconnectSource(source)
     }
+    function go() { exec.connectSource("nimbus-mode game"); }
+    // From the keyboard or the controller: the taskbar's keyboard focus (View + A on the controller, Meta+Alt+P)
+    // reaches it with the arrows; Enter / Space (A) or its own shortcut runs it.
+    Connections {
+        target: Plasmoid
+        function onActivated() { root.go(); }
+    }
 
     // Mantel's pill: "Game Mode" on the accent colour.
     fullRepresentation: MouseArea {
@@ -32,7 +39,11 @@ PlasmoidItem {
         Layout.preferredWidth: Layout.minimumWidth
         Layout.minimumHeight: Kirigami.Units.gridUnit
         Layout.maximumWidth: Layout.minimumWidth
-        onClicked: exec.connectSource("nimbus-mode game")
+        onClicked: root.go()
+        activeFocusOnTab: true
+        Keys.onReturnPressed: root.go()
+        Keys.onEnterPressed: root.go()
+        Keys.onSpacePressed: root.go()
         Rectangle {
             anchors.centerIn: parent
             width: parent.width
@@ -40,6 +51,8 @@ PlasmoidItem {
             radius: Kirigami.Units.smallSpacing * 2
             color: Kirigami.Theme.highlightColor
             opacity: area.containsMouse ? 0.85 : 1
+            border.width: area.activeFocus ? 2 : 0
+            border.color: Kirigami.Theme.textColor
         }
         PlasmaComponents.Label {
             id: label

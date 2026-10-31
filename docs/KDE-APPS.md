@@ -16,6 +16,21 @@ Hearth Files' About adds what Hearth changed and where to find it.
 
 Kept as they are: Photos, Contacts, Time, Paint, Office and every other Hearth app.
 
+**With a controller in Hearth Plasma** (`hearth-pad --plasma`, `PLASMA_APPS` in `desktop/shell/hearth-pad`; docs/PLASMA.md):
+in every one the D-pad moves, **A** is Enter, **B** Esc, **X** the context menu (Menu key), **Y** search, **LB/RB**
+tabs, **LT/RT** scroll, **View + B** closes; keyboard and mouse keep working.
+
+| App | Y | LB / RB | LT / RT |
+|---|---|---|---|
+| Files (Dolphin) | filter the folder (Ctrl+I) | Hearth Files' own (back / forward) | Hearth Files' own (tabs) |
+| Terminal (Konsole) | on-screen keyboard (it also opens when the controller brings Konsole up) | tabs (Shift+←/→) | scroll back (Shift+PgUp/PgDn) |
+| Text (Kate) | find (Ctrl+F) | tabs (Ctrl+PgUp/PgDn) | PgUp / PgDn |
+| Reader (Okular) | find (Ctrl+F) | tabs (Ctrl+Shift+Tab / Ctrl+Tab) | PgUp / PgDn |
+| Capture (Spectacle) | new screenshot (Ctrl+N) | | PgUp / PgDn |
+| Calculator (KCalc) | on-screen keyboard | | |
+
+`plasma-test.yml` opens each one that's installed with a virtual controller (pictures `app-*.png`).
+
 Where it all lives: `hosts/hearth-kde/` (`kio-hearth/`, `dolphin/`, `apps/`, `config/`, `install.sh`,
 `hearth_kde.py`, `hearth-files-kde`, `tests/`), `.github/scripts/hearth-kde-build.sh`, `.github/workflows/kde-apps.yml`,
 the `kde` job in `base-anatase.yml` and `base-peppermint.yml`, and the "Hearth's KDE apps" block in both
