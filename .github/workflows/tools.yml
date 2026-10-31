@@ -45,6 +45,7 @@ jobs:
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_system_tools.py' -v 2>&1 | tail -15
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_settings_basics.py' 2>&1 | tail -3
+          python3 -m unittest discover -s hosts/linux/test -p 'test_support_links.py' 2>&1 | tail -3
           python3 tools/build-docs.py --help-json - | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["sections"]), "help sections,", len(d["controls"]), "controller buttons")'
       - name: hearthfetch (its detection is now a library System Info uses)
         working-directory: hosts/hearthfetch

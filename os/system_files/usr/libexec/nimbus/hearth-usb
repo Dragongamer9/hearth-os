@@ -13,8 +13,15 @@ four steps need root, and each one writes to one USB drive and nothing else:
   usb-prepare DEVICE --expect-size BYTES [--expect-serial S] --scheme gpt|mbr --label LABEL [--allow-internal]
               erases the drive and makes one FAT32 partition (GPT, or MBR with the boot flag) for Windows' files;
               mounts it at /run/hearth-usb/<drive> owned by you, so Disks copies the files as you. JSON {mount, partition}
+  usb-ventoy  DEVICE --expect-size BYTES [--expect-serial S] --tarball PATH [--label LABEL] [--gpt] [--allow-internal]
+              Ventoy (multi-ISO): installs the pinned upstream Ventoy release (VENTOY_VERSION, its SHA-256 below) on the
+              drive with Ventoy's own Ventoy2Disk.sh, then mounts its exFAT partition at /run/hearth-usb/<drive> owned
+              by you, so Disks copies the ISOs as you. PATH is the release tarball Disks downloaded; root copies it
+              into a private folder and checks its SHA-256 against the one built in here before anything of it runs.
+              JSON {mount, partition, ventoy}
   usb-finish  DEVICE
-              flushes, unmounts /run/hearth-usb/<drive> and checks the FAT32 file system (read only). JSON
+              flushes, unmounts /run/hearth-usb/<drive> and checks its file system (FAT32, or exFAT for Ventoy; read
+              only). JSON
 
 What it writes to is checked every time, from the kernel's own view (/sys, /proc/self/mountinfo), not from what
 Disks says:
@@ -48,6 +55,14 @@ SYSTEM_MOUNTS = ('/', '/sysroot', '/boot', '/boot/efi', '/efi', '/usr', '/var', 
 SYSTEM_PREFIXES = ('/sysroot/', '/ostree/', '/boot/')
 DEVICE_RE = re.compile(r'^/dev/(sd[a-z]{1,2}|mmcblk[0-9]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|loop[0-9]{1,3})$')
 LABEL_RE = re.compile(r'^[A-Z0-9_\-]{1,11}$')
+VENTOY_LABEL_RE = re.compile(r'^[A-Za-z0-9_\-]{1,15}$')
+TARBALL_RE = re.compile(r'^/[A-Za-z0-9 ._+@/\-]{1,4000}$')
+# Ventoy (multi-ISO): the upstream release Hearth installs, pinned. Its SHA-256 is Ventoy's own (sha256.txt on the
+# release) and was checked against the download. Hearth Disks (src/usb/ventoy.rs) pins the same; a test checks they
+# agree (hosts/linux/test/test_hearth_usb.py). Changing the version: both files and the test's copy.
+VENTOY_VERSION = '1.1.06'
+VENTOY_SHA256 = '6176cc1ea7c8b822f5ee11fa5c3c71331aa194c72167a35196d8f1380b2feb17'
+VENTOY_MAX = 64 * 1024 * 1024
 BLOCK = 4 * 1024 * 1024
 BLKFLSBUF = 0x1261
 # CI writes to disk images (loop devices) with this set; pkexec clears the environment, so it can't be set that way.
@@ -456,10 +471,127 @@ def cmd_finish(dev):
     except OSError:
         pass
     progress(60, 'checking the file system')
-    r = subprocess.run(['fsck.vfat', '-n', part], capture_output=True, text=True)
+    fstype = subprocess.run(['blkid', '-o', 'value', '-s', 'TYPE', part], capture_output=True, text=True).stdout.strip()
+    tool = 'fsck.exfat' if fstype == 'exfat' else 'fsck.vfat'
+    try:
+        r = subprocess.run([tool, '-n', part], capture_output=True, text=True)
+        ok, said = r.returncode == 0, (r.stdout + r.stderr)[-1500:]
+    except FileNotFoundError:
+        ok, said = True, f'{tool} isn\'t installed: the file system wasn\'t checked'
     os.sync()
     progress(100, 'done')
-    return {'ok': r.returncode == 0, 'device': dev, 'partition': part, 'fsck': (r.stdout + r.stderr)[-1500:], 'wasMounted': mounted}
+    return {'ok': ok, 'device': dev, 'partition': part, 'fsck': said, 'fstype': fstype or 'vfat', 'wasMounted': mounted}
+
+
+def ventoy_tarball(path):
+    """The Ventoy release tarball Disks downloaded, read by root itself (no links) and checked against the pinned
+    SHA-256. Returns its bytes; raises Refuse."""
+    if not isinstance(path, str) or not TARBALL_RE.match(path) or '/../' in path or path.endswith('/..'):
+        raise Refuse('The Ventoy download\'s path isn\'t a plain file path.')
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as e:
+        raise Refuse(f'The Ventoy download couldn\'t be read: {e.strerror}')
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise Refuse('The Ventoy download isn\'t a regular file.')
+        if st.st_size > VENTOY_MAX:
+            raise Refuse('The Ventoy download is far bigger than Ventoy is.')
+        chunks, n = [], 0
+        while True:
+            b = os.read(fd, BLOCK)
+            if not b:
+                break
+            n += len(b)
+            if n > VENTOY_MAX:
+                raise Refuse('The Ventoy download is far bigger than Ventoy is.')
+            chunks.append(b)
+    finally:
+        os.close(fd)
+    data = b''.join(chunks)
+    got = hashlib.sha256(data).hexdigest()
+    if got != VENTOY_SHA256:
+        raise Refuse(f'The Ventoy download isn\'t Ventoy {VENTOY_VERSION} as released (SHA-256 {got}). Nothing was changed.')
+    return data
+
+
+def ventoy_unpack(data, into):
+    """Unpacks the checked tarball into `into` (root's own folder): only plain files and folders under
+    ventoy-<version>/, nothing absolute, no .., no links or devices. Returns Ventoy's folder."""
+    import io
+    import tarfile
+    top = f'ventoy-{VENTOY_VERSION}'
+    ok = []
+    with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as t:
+        for m in t.getmembers():
+            name = m.name[2:] if m.name.startswith('./') else m.name
+            parts = name.rstrip('/').split('/')
+            if not name or name.startswith('/') or '..' in parts or parts[0] != top:
+                raise Refuse(f'The Ventoy download has an unexpected entry ({m.name}).')
+            if not (m.isfile() or m.isdir()):
+                raise Refuse(f'The Ventoy download has a link or device in it ({m.name}).')
+            m.name = name
+            m.mode &= 0o755
+            m.uid = m.gid = 0
+            m.uname = m.gname = 'root'
+            ok.append(m)
+        if hasattr(tarfile, 'data_filter'):
+            t.extractall(into, members=ok, filter='data')
+        else:
+            t.extractall(into, members=ok)
+    d = os.path.join(into, top)
+    if not os.path.isfile(os.path.join(d, 'Ventoy2Disk.sh')) or not os.path.isfile(os.path.join(d, 'boot', 'boot.img')):
+        raise Refuse('The Ventoy download is missing Ventoy2Disk.sh.')
+    return d
+
+
+def ventoy_args(dev, label, gpt):
+    """Ventoy2Disk.sh's command line: -I installs (even over an older Ventoy); -L names the exFAT partition."""
+    a = ['sh', './Ventoy2Disk.sh', '-I', '-L', label]
+    if gpt:
+        a.append('-g')
+    return a + [dev]
+
+
+def cmd_ventoy(dev, info, tarball, label, gpt):
+    import shutil
+    import tempfile
+    label = label or 'Ventoy'
+    if not VENTOY_LABEL_RE.match(label):
+        raise Refuse('The name must be 1 to 15 letters, digits, - or _.')
+    uid, gid = owner()
+    progress(2, 'checking Ventoy')
+    data = ventoy_tarball(tarball)
+    os.makedirs(RUN_DIR, mode=0o755, exist_ok=True)
+    work = tempfile.mkdtemp(prefix='.ventoy-', dir=RUN_DIR)
+    try:
+        os.chmod(work, 0o700)
+        vdir = ventoy_unpack(data, work)
+        # The drive once more, right before Ventoy writes: nothing on it may have been mounted meanwhile.
+        why = in_use(dev[5:])
+        if why:
+            raise Refuse(f'The drive is in use: {why}. Nothing was changed.')
+        progress(10, f'installing Ventoy {VENTOY_VERSION}')
+        env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
+        # Ventoy2Disk.sh asks twice before it erases the drive; Hearth already asked you (by name and size).
+        r = subprocess.run(ventoy_args(dev, label, gpt), cwd=vdir, input='y\ny\n', capture_output=True, text=True, env=env, timeout=900)
+        said = (r.stdout + r.stderr)
+        if r.returncode != 0:
+            last = [l for l in said.splitlines() if l.strip()][-6:]
+            raise Refuse('Ventoy couldn\'t be installed: ' + ' / '.join(x.strip() for x in last)[-600:])
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    reread(dev)
+    part = part_path(dev)
+    if not wait_for(part):
+        raise Refuse(f'Ventoy\'s partition ({part}) didn\'t show up.')
+    progress(85, 'mounting')
+    target = mount_dir(dev)
+    os.makedirs(target, mode=0o755, exist_ok=True)
+    run(['mount', '-t', 'exfat', '-o', f'uid={uid},gid={gid},umask=022,noatime', part, target])
+    progress(100, 'ready')
+    return {'ok': True, 'device': dev, 'partition': part, 'mount': target, 'ventoy': VENTOY_VERSION, 'scheme': 'gpt' if gpt else 'mbr', 'label': label}
 
 
 def run(argv):
@@ -474,8 +606,8 @@ def parse(args):
     if not args or args[0].startswith('-'):
         raise Refuse('usage: hearth-admin usb-<command> DEVICE --expect-size BYTES ...')
     dev, opts, i = args[0], {}, 1
-    flags = {'--allow-internal'}
-    valued = {'--expect-size', '--expect-serial', '--size', '--scheme', '--label'}
+    flags = {'--allow-internal', '--gpt'}
+    valued = {'--expect-size', '--expect-serial', '--size', '--scheme', '--label', '--tarball'}
     while i < len(args):
         a = args[i]
         if a in flags and a not in opts:
@@ -496,7 +628,7 @@ def parse(args):
 
 def main(argv):
     if len(argv) < 2:
-        fail('usage: hearth-usb check|raw|prepare|finish DEVICE ...')
+        fail('usage: hearth-usb check|raw|prepare|ventoy|finish DEVICE ...')
     cmd, rest = argv[1], argv[2:]
     try:
         dev, o = parse(rest)
@@ -523,8 +655,12 @@ def main(argv):
                 sys.exit(1)
         elif cmd == 'prepare':
             print(json.dumps(cmd_prepare(dev, info, o.get('--scheme', ''), o.get('--label', ''))), flush=True)
+        elif cmd == 'ventoy':
+            if '--tarball' not in o:
+                raise Refuse('--tarball is needed (the Ventoy release Disks downloaded)')
+            print(json.dumps(cmd_ventoy(dev, info, o['--tarball'], o.get('--label', ''), o.get('--gpt', False))), flush=True)
         else:
-            raise Refuse('usage: hearth-usb check|raw|prepare|finish DEVICE ...')
+            raise Refuse('usage: hearth-usb check|raw|prepare|ventoy|finish DEVICE ...')
     except Refuse as e:
         fail(str(e))
     except BrokenPipeError:

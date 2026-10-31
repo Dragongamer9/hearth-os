@@ -1384,6 +1384,7 @@ body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accen
 </style>
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <script src="osk/hearth-osk.js"></script>
+<script src="support-links.js"></script>
 </head>
 <body>
 
@@ -1573,7 +1574,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) loadOverlaySettings(); if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1833,7 +1834,7 @@ const MOCK = (()=>{
     'mfriends.recoveryRestore':async()=>({state:'enabled'}), 'mfriends.recoverySkip':async()=>Object.assign(clone(MFM.st),{askRecovery:false}),
     'mfriends.ptInfo':async()=>({canHost:true,canJoin:true,addresses:['192.168.1.42'],transports:['lan'],port:47989,askToJoin:true}), 'mfriends.ptAskToJoin':async({on})=>({canHost:true,canJoin:true,addresses:['192.168.1.42'],transports:['lan'],port:47989,askToJoin:on}),
     'mfriends.ptAccept':async()=>({waiting:true}), 'mfriends.ptEnd':async()=>({removed:1}), 'mfriends.ptJoin':async()=>({joining:true}), 'mfriends.ptPin':async()=>'1234',
-    'mfriends.openSteam':async()=>null, 'mfriends.discord':async()=>({installed:false,flathub:'https://flathub.org/apps/com.discordapp.Discord'}), 'mfriends.installDiscord':async()=>({installed:true}), 'mfriends.openDiscord':async()=>null,
+    'mfriends.openSteam':async()=>null, 'mfriends.discord':async()=>({installed:false,flathub:'https://flathub.org/apps/com.discordapp.Discord'}), 'mfriends.installDiscord':async()=>({installed:true}), 'mfriends.openDiscord':async()=>null, 'discord.status':async()=>({available:false}), 'discord.set':async()=>({available:false}),
     'mfriends.emoji':async()=>[], 'screenshots.list':H['screenshots.list']||(async()=>({list:[{file:'/tmp/shot.png',url:'',time:Date.now()-3600e3}]})),
   });
   return {call:(m,a)=> H[m] ? H[m](a||{}) : Promise.reject(new Error('Not available in the browser preview: '+m))};
@@ -4073,6 +4074,29 @@ const CREDITS = LINUX
 // Which Hearth OS this is (host.info's edition): only the amd and nvidia editions are built on Bazzite.
 const onBazzite = () => /^(amd|nvidia)$/.test(HOSTINFO.edition||'');
 function osEditionName(){ return {anatase:'Hearth OS on Anatase', ubuntu:'Hearth OS on Ubuntu', cachyos:'Hearth OS on CachyOS', peppermint:'Hearth OS on Peppermint', live:'Hearth OS, from the USB stick'}[HOSTINFO.edition] || (onBazzite()?'Hearth OS, built on Bazzite':'Hearth OS'); }
+// Settings › About › Support Hearth OS: the donation links the owner filled in (support-links.js); hidden without any.
+function supportLinks(){
+  const S0=window.HEARTH_SUPPORT; if(!S0 || !Array.isArray(S0.links)) return [];
+  return S0.links.filter(l=>l && typeof l.url==='string' && /^https:\/\/[^\s"'<>\\]{3,2000}$/.test(l.url) && l.name);
+}
+function openLink(url){
+  if(!host) return window.open(url,'_blank','noopener');
+  if(ANDROID) return call('android.openUrl',{url}).catch(e=>toast(e.message));
+  if(LINUX) return call('beacon.openLink',{url},15000).then(()=>toast('Opening the page in Hearth Browser…')).catch(e=>toast(e.message));
+  return call('browser.hearth',{action:'open',url},15000).then(()=>toast('Opening the page in Hearth Browser…')).catch(e=>toast(e.message));
+}
+// Discord (hearth-core/src/discord.rs): "Playing X" on Discord and Discord in Quick Access, only when the owner set
+// a Discord application ID (/etc/hearth/discord.conf); otherwise discord.status says available:false and none of it shows.
+const DISCORD={s:null};
+function loadDiscord(){ if(!host || !LINUX) return; return call('discord.status',{},8000).then(s=>{ DISCORD.s=s; }).catch(()=>{ DISCORD.s=null; }); }
+function discordQam(mini){
+  const d=DISCORD.s; if(!d || !d.available) return '';
+  const st = d.enabled ? 'on' : 'off';
+  return mini
+    ? `<button class="qd-mini" data-f data-k="q-dc-tg" data-act="discordToggle">${I.user}Discord status: ${esc(st)}</button><button class="qd-mini" data-f data-k="q-dc-open" data-act="mfDiscord">${I.play}Discord</button>`
+    : `<h3 style="margin-top:16px">Discord</h3><button class="btn" data-f data-k="q-dc-tg" data-act="discordToggle">${I.user}"Playing" status: ${esc(st)}</button><button class="btn" data-f data-k="q-dc-open" data-act="mfDiscord">${I.play}Open Discord</button>`;
+}
+
 function pageAbout(){
   const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?(ANDROID&&HOSTINFO.version||'…'):'Browser preview');
   const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
@@ -4094,6 +4118,8 @@ function pageAbout(){
   d += infoRow('host','App engine',!host?'Browser preview':ANDROID?(HOSTINFO.host||'Hearth (Android)')+' · Android WebView':LINUX?(HOSTINFO.host||'Hearth')+(HOSTINFO.session?' in gamescope':''):''+APP+' (WebView2)');
   h += sgrid(d);
   if(COUNTER.stats) h += shead('Hearth OS players') + sgrid(infoRow('ab-count','Playing right now', `🔥 ${COUNTER.stats.now.toLocaleString()}`) + infoRow('ab-count2','In the last 30 days', COUNTER.stats.month.toLocaleString()));
+  if(supportLinks().length) h += shead('Support')
+    + `<button class="row" data-f data-k="ab-support" data-act="support"><span class="ricon">${I.info}</span><div class="rt"><b>Support Hearth OS</b><small>Help keep it going: ${esc(supportLinks().map(l=>l.name).join(', '))}</small></div><div class="rv">›</div></button>`;
   h += shead('Open source')
     + `<button class="row" data-f data-k="ab-credits" data-act="credits"><span class="ricon">${I.info}</span><div class="rt"><b>Built with</b><small>The open-source projects ${APP} uses</small></div><div class="rv">›</div></button>`
     + note(`${APP} is part of Hearth OS, a controller-first game library and system. Game names and art belong to their owners.`);
@@ -8477,7 +8503,7 @@ function renderQam(){
     ${qRadio('air','plane','Airplane mode', '')}
     ${tgCtl('sounds','note','Interface sounds')}
     <div class="two"><button class="btn" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button><button class="btn" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button></div>
-    <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>`; }
+    <button class="btn" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>${discordQam(false)}`; }
   if(t==='friends') body = mfQam();
   if(t==='perf') body = `<h3>Performance</h3>${perfBody()}`;
   if(t==='apps') body = `<h3>Open apps</h3>${appsBody()}`;
@@ -8834,6 +8860,7 @@ function qdQuick(){
   // had (Switch app, the controller mouse, Back to Hearth) and the games put aside.
   const more=[`<button class="qd-mini" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button>`, `<button class="qd-mini" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button>`,
     `<button class="qd-mini" data-f data-k="q-kbd" data-act="search">${I.kbd}Keyboard</button>`];
+  const dc=discordQam(true); if(dc) more.push(dc);
   if(!S.running){
     if(QTABS.some(q=>q[0]==='apps')) more.push(`<button class="qd-mini" data-f data-k="q-apps" data-act="qdApps">${I.lib}Switch app</button>`);
     more.push(`<button class="qd-mini" data-f data-k="q-mouse" data-act="toggleMouse">${I.mouse}Controller mouse: ${PAD.mouseOn?'on':'off'}</button>`);
@@ -9434,6 +9461,8 @@ function act(el){
       return call('logs.send',{},120000).then(r=>{ LOGS.r=r; toast((r.copies||[]).length?'Logs saved to your USB drive too':'Logs saved'); }).catch(e=>toast(e.message)).finally(()=>{ LOGS.busy=false; render('sy-send',true); });
     case 'exportLogs': toast('Saving logs…'); return call('app.exportLogs',{},60000).then(r=>toast(r&&r.path?'Saved to '+r.path:'Saved')).catch(e=>toast(e.message));
     case 'resetLook': Object.assign(LOOK,{libLayout:'covers',layout:'shelf',textSize:'normal',reduceMotion:false,clock24:false,battPct:true}); saveLook(); toast('Appearance reset'); return render('sy-reset');
+    case 'support': { const L=supportLinks(); if(!L.length) return; return openSheet({title:'Support Hearth OS', sub:(window.HEARTH_SUPPORT&&window.HEARTH_SUPPORT.message)||'', items:L.map(l=>({label:l.name+(l.note?' · '+l.note:''), icon:'info', run:()=>openLink(l.url)}))}); }
+    case 'discordToggle': { const d=DISCORD.s; if(!d) return; return call('discord.set',{enabled:!d.enabled}).then(s=>{ DISCORD.s=s; toast(s.enabled?'Discord shows what you\'re playing':'Discord no longer shows what you\'re playing'); renderQam(); }).catch(e=>toast(e.message)); }
     case 'credits': return openSheet({title:'Built with', sub:APP+' stands on these open-source projects. Thank you!', items:CREDITS.filter(([n])=>!/^Bazzite/.test(n) || onBazzite()).map(([n,w])=>({label:n+' — '+w, icon:'', run:()=>{}}))});
     case 'loginAuto': return loginAuto();
     case 'loginStart': return loginStart();

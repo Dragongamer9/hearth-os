@@ -40,6 +40,12 @@ GAMES = [
     game('steam:7', 'Hedgewars', 'steam', 'none', installed=False, state='notInstalled', installKind='steam'),
 ]
 RUNNING = {'id': None}
+OPTIONS = {}
+RADIOS = {'wifi': True, 'bt': True, 'air': False}
+ACH = {'done': 3, 'total': 8, 'list': [{'name': 'First lap', 'desc': 'Finish a race', 'done': True}, {'name': 'Podium', 'desc': 'Finish in the top three', 'done': True},
+       {'name': 'Nitro', 'desc': 'Collect 100 nitro', 'done': True}, {'name': 'Champion', 'desc': 'Win a Grand Prix', 'done': False},
+       {'name': 'Secret', 'desc': '', 'done': False, 'hidden': True}, {'name': 'Drifter', 'desc': 'Drift for 10 s', 'done': False},
+       {'name': 'Collector', 'desc': 'Unlock every kart', 'done': False}, {'name': 'Speedster', 'desc': 'Reach top speed', 'done': False}]}
 
 def by_id(i):
     return next((g for g in GAMES if g['id'] == i), None)
@@ -66,8 +72,32 @@ def call(method, a):
     if method == 'profile.get':
         return {'name': 'Player One', 'accent': '#3fd0b8', 'background': 'default', 'avatar': 'initials'}
     if method == 'sys.status':
-        return {'battery': {'present': True, 'pct': 82, 'charging': False}, 'audio': {'volume': 60, 'muted': False},
-                'display': {'supported': True, 'brightness': 70}, 'wifi': {'available': True, 'on': True, 'ssid': 'Home', 'bars': 3}, 'bt': {'available': True, 'on': True}}
+        return status()
+    if method == 'radios.set':
+        RADIOS[a.get('kind')] = bool(a.get('on'))
+        return status()
+    if method == 'airplane.set':
+        RADIOS['air'] = bool(a.get('on'))
+        return status()
+    if method == 'wifi.scan':
+        return [{'ssid': 'Home', 'connected': True, 'saved': True, 'secure': True, 'signal': 80},
+                {'ssid': 'Cafe', 'connected': False, 'saved': False, 'secure': False, 'signal': 50},
+                {'ssid': 'Neighbours', 'connected': False, 'saved': False, 'secure': True, 'signal': 30}]
+    if method == 'bt.paired':
+        return [{'id': 'AA:BB:CC:DD:EE:01', 'name': 'Xbox Wireless Controller', 'kind': 'pad', 'connected': True, 'paired': True},
+                {'id': 'AA:BB:CC:DD:EE:02', 'name': 'Headphones', 'kind': 'audio-headset', 'connected': False, 'paired': True}]
+    if method == 'game.info':
+        return {'protondb': {'tier': 'gold'} if str(a.get('id', '')).startswith('steam:') else None, 'achievements': ACH if a.get('id') == 'steam:1' else None}
+    if method == 'game.options.get':
+        g = by_id(a.get('id')) or {}
+        kind = 'steam' if g.get('source') == 'steam' else 'proton'
+        o = {'proton': '', 'args': '', 'env': '', 'mangohud': False, 'gamemode': False, 'fsr': False, 'fpsLimit': 0, 'tdp': 0, 'cloudSaves': True}
+        o.update(OPTIONS.get(a.get('id'), {}))
+        return {'id': a.get('id'), 'kind': kind, 'options': o, 'gamemode': True, 'canResetPrefix': False,
+                'protonChoices': [{'id': '', 'label': 'Default', 'sub': 'UMU-Proton'}, {'id': 'GE-Proton', 'label': 'GE-Proton (newest)', 'sub': 'Community build'}] if kind == 'proton' else []}
+    if method == 'game.options.set':
+        OPTIONS.setdefault(a.get('id'), {}).update(a.get('options') or {})
+        return call('game.options.get', {'id': a.get('id')})
     if method == 'perf.stats':
         return {'cpu': 23, 'gpu': 41, 'vramUsed': 2.1, 'ramUsed': 6.4, 'ramTotal': 16, 'battery': {'present': True, 'pct': 82, 'charging': False},
                 'canFpsLimit': True, 'fpsLimit': 60, 'canOverlay': True, 'perfOverlay': 0, 'tdp': {'supported': True, 'min': 5, 'max': 30, 'watts': 15},
@@ -111,6 +141,11 @@ def call(method, a):
         if g: g['fav'] = bool(a.get('on'))
         return None
     return None
+
+def status():
+    return {'battery': {'present': True, 'pct': 82, 'charging': False}, 'audio': {'volume': 60, 'muted': False},
+            'display': {'supported': True, 'brightness': 70}, 'airplane': RADIOS['air'],
+            'wifi': {'available': True, 'on': RADIOS['wifi'], 'ssid': 'Home' if RADIOS['wifi'] else '', 'bars': 3}, 'bt': {'available': True, 'on': RADIOS['bt']}}
 
 def main():
     log('started with %s; art from %s' % (sys.argv[1:], ART))

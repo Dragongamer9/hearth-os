@@ -20,6 +20,7 @@ Window {
         else App.log("overlay window: " + c.errorString());
     }
     function settingsPage() { return viewLoader.item; }
+    function gamePage() { return viewLoader.item; }
     function hostPad(b) { input.press(b, true, "core"); input.press(b, false, "core"); }
 
     onWidthChanged: Theme.base = Math.min(height / 800, width / 1280)

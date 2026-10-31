@@ -554,8 +554,10 @@ load(false).then(() => {
 // (hold A, or type ERASE for an internal drive) → run (download, check, write, read back) → done.
 const U = { step: 'pick', tab: 'linux', catalog: null, entry: null, release: null, resolving: false, file: null, checking: false, drives: [], showAll: false,
   drive: null, scheme: 'gpt', tweaks: { skipChecks: false, skipOnline: false, localAccount: '' }, keep: true, accept: false, progress: null, result: null,
-  watching: 0, found: null, cache: [], log: '', error: '' };
-const USB_TABS = [['linux', 'Linux'], ['windows', 'Windows'], ['hearth', 'Hearth OS'], ['own', 'Your own ISO'], ['cache', 'Downloaded']];
+  watching: 0, found: null, cache: [], log: '', error: '',
+  // Several ISOs (Ventoy, src/usb/ventoy.rs): the ISOs picked for the drive, and whether this job is one.
+  vt: [], ventoy: false, vtInfo: null, vtBusy: '', vtPicker: false };
+const USB_TABS = [['linux', 'Linux'], ['windows', 'Windows'], ['hearth', 'Hearth OS'], ['ventoy', 'Several ISOs'], ['own', 'Your own ISO'], ['cache', 'Downloaded']];
 const FAM_COLOR = { 'Fedora': '#6ea8ff', 'Ubuntu': '#ff8a5c', 'Debian': '#ff6f91', 'Linux Mint': '#8fd66b', 'Pop!_OS': '#6fe0d2', 'Arch Linux': '#5fb6ff',
   'CachyOS': '#4fd8b0', 'Bazzite': '#b08cff', 'openSUSE': '#9be36b', 'Manjaro': '#4fd18b', 'Windows': '#58b4ff', 'Hearth OS': '#ff8a3d' };
 const mono = n => n.replace(/[^A-Za-z0-9 ]/g, '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
@@ -586,6 +588,7 @@ function usbTab(dir) {
   const i = USB_TABS.findIndex(t => t[0] === U.tab);
   U.tab = USB_TABS[(i + dir + USB_TABS.length) % USB_TABS.length][0];
   if (U.tab === 'cache') loadCache();
+  if (U.tab === 'ventoy') loadVentoy();
   renderUsb(); focusFirstUsb(`[data-u="tab"][data-id="${U.tab}"]`);
 }
 async function loadCache() { try { U.cache = (await invoke('usb_cache')).files || []; } catch (e) { U.cache = []; } if (U.step === 'pick' && U.tab === 'cache') renderUsb(true); }
@@ -605,7 +608,7 @@ function usbBack() {
   switch (U.step) {
     case 'pick': closeUsb(); return;
     case 'item': case 'file': U.watching = 0; U.step = 'pick'; break;
-    case 'drive': U.step = U.entry && !U.entry.windows ? 'item' : 'file'; break;
+    case 'drive': U.step = U.ventoy ? 'pick' : U.entry && !U.entry.windows ? 'item' : 'file'; if (U.ventoy) U.tab = 'ventoy'; break;
     case 'options': U.step = 'drive'; loadDrives(); break;
     case 'confirm': U.step = needsOptions() ? 'options' : 'drive'; if (U.step === 'drive') loadDrives(); break;
     case 'run': return;   // Cancel is its own button (X)
@@ -613,7 +616,7 @@ function usbBack() {
   }
   renderUsb(); focusFirstUsb();
 }
-const needsOptions = () => isWindowsJob() || (U.entry && !U.entry.windows);
+const needsOptions = () => U.ventoy || isWindowsJob() || (U.entry && !U.entry.windows);
 
 async function resolveEntry(e) {
   U.release = null; U.resolving = true; U.error = ''; renderUsb(true);
@@ -646,14 +649,16 @@ async function loadDrives() {
 
 function usbClick(b) {
   const u = b.dataset.u, id = b.dataset.id;
-  if (u === 'tab') { U.tab = id; if (id === 'cache') loadCache(); renderUsb(true); return; }
+  if (u === 'tab') { U.tab = id; if (id === 'cache') loadCache(); if (id === 'ventoy') loadVentoy(); renderUsb(true); return; }
+  if (u && u.startsWith('vt-')) { ventoyClick(u, id); return; }
   if (u === 'entry') {
     const e = U.catalog.entries.find(x => x.id === id); if (!e) return;
+    U.ventoy = false;
     U.entry = e; U.file = null; U.step = 'item'; U.watching = 0;
     renderUsb(); if (!e.windows) resolveEntry(e); focusFirstUsb(e.windows ? '[data-u="ms-open"]' : null); return;
   }
-  if (u === 'pick-file') { pickFile(); return; }
-  if (u === 'cached') { U.entry = null; usbCheckFile(id); return; }
+  if (u === 'pick-file') { U.ventoy = false; pickFile(); return; }
+  if (u === 'cached') { U.ventoy = false; U.entry = null; usbCheckFile(id); return; }
   if (u === 'cache-del') { invoke('usb_cache_remove', { path: id }).then(loadCache, err => showResult(false, err)); return; }
   if (u === 'ms-open') { invoke('usb_open_page', { id: U.entry.id }).catch(err => showResult(false, err)); U.watching = Date.now(); renderUsb(true); return; }
   if (u === 'home') { invoke('usb_open_page', { id: U.entry.id }).catch(err => showResult(false, err)); return; }
@@ -674,6 +679,7 @@ function usbClick(b) {
   if (u === 'back') { usbBack(); return; }
 }
 function canPickDrive() {
+  if (U.ventoy) return ventoyReady();
   if (U.entry && !U.entry.windows) return !!U.release;
   const f = U.file; if (!f) return false;
   if (f.mismatch || !f.inspect || f.inspect.mode === 'unknown') return false;
@@ -682,6 +688,71 @@ function canPickDrive() {
 async function pickFile() {
   try { const p = await invoke('usb_pick_file'); if (p) { U.entry = null; await usbCheckFile(p); } }
   catch (e) { showResult(false, e); }
+}
+
+// ---------------------------------------------------------------- Several ISOs (Ventoy)
+// Ventoy goes on the drive and the ISOs picked here are copied onto it; at start-up Ventoy shows a menu of them. Each
+// one is downloaded and checked like a single write (or, your own, checked against a checksum beside it or trusted
+// by you) before the drive is touched. Windows comes from Microsoft's page, so it's added as your own ISO.
+async function loadVentoy() { if (!U.vtInfo) { try { U.vtInfo = await invoke('usb_ventoy'); } catch (e) { U.vtInfo = null; } if (U.tab === 'ventoy') renderUsb(true); } }
+const vtEntries = () => ((U.catalog && U.catalog.entries) || []).filter(e => !e.windows);
+const vtHas = id => U.vt.some(x => x.source === 'catalog' && x.id === id);
+function ventoyReady() { return U.vt.length > 0 && U.vt.every(x => x.source === 'catalog' || x.verified || x.acceptUnverified); }
+async function ventoyClick(u, id) {
+  if (u === 'vt-add-hearth') {
+    for (const e of vtEntries().filter(e => e.group === 'hearth')) if (!vtHas(e.id)) U.vt.push({ source: 'catalog', id: e.id, name: `${e.name} · ${e.flavour}`, size: e.sizeHint || '' });
+    renderUsb(true); return;
+  }
+  if (u === 'vt-list') { U.vtPicker = !U.vtPicker; renderUsb(); focusFirstUsb(U.vtPicker ? '[data-u="vt-entry"]' : '[data-u="vt-list"]'); return; }
+  if (u === 'vt-entry') {
+    const e = vtEntries().find(x => x.id === id); if (!e) return;
+    if (vtHas(id)) U.vt = U.vt.filter(x => !(x.source === 'catalog' && x.id === id));
+    else U.vt.push({ source: 'catalog', id: e.id, name: `${e.name} · ${e.flavour}`, size: e.sizeHint || '' });
+    renderUsb(true); return;
+  }
+  if (u === 'vt-own') {
+    let p = null;
+    try { p = await invoke('usb_pick_file'); } catch (e) { showResult(false, e); return; }
+    if (!p) return;
+    if (U.vt.some(x => x.path === p)) return;
+    U.vtBusy = 'Checking ' + p.split('/').pop() + '…'; renderUsb(true);
+    try {
+      const f = await invoke('usb_check_file', { path: p });
+      if (f.mismatch) showResult(false, `${f.file} doesn't match ${f.against}: it's damaged or isn't the file it should be. It wasn't added.`);
+      else if (!/\.(iso|img|wim|vhdx?|efi)$/i.test(f.file)) showResult(false, `${f.file} isn't something Ventoy starts as it is (ISO, IMG, WIM, VHD or EFI files; unpack compressed images first).`);
+      else U.vt.push({ source: 'file', path: f.path || p, name: f.file, size: human(f.size), verified: !!f.verified, against: f.against || '', acceptUnverified: false });
+    } catch (e) { showResult(false, e); }
+    U.vtBusy = ''; renderUsb(true); return;
+  }
+  if (u === 'vt-trust') { const x = U.vt[Number(id)]; if (x) x.acceptUnverified = !x.acceptUnverified; renderUsb(true); return; }
+  if (u === 'vt-del') { U.vt.splice(Number(id), 1); renderUsb(true); focusFirstUsb('[data-u="vt-add-hearth"]'); return; }
+  if (u === 'vt-go') {
+    if (!ventoyReady()) return;
+    U.ventoy = true; U.entry = null; U.file = null; U.scheme = 'mbr'; U.step = 'drive'; U.drive = null;
+    renderUsb(); loadDrives().then(() => focusFirstUsb('.dcard')); return;
+  }
+}
+function ventoyPane() {
+  const info = U.vtInfo;
+  const items = U.vt.map((x, i) => `<div class="panel" style="display:grid;gap:.35em;padding:.7em .9em">
+      <div style="display:flex;gap:.6em;align-items:center"><span class="mono" style="background:${x.source === 'catalog' ? 'var(--flame)' : '#7a8899'}">ISO</span>
+        <span style="flex:1"><b>${esc(x.name)}</b><br><span class="sub2" style="font-size:.85em">${x.source === 'catalog' ? `Downloaded and checked · ${esc(x.size)}` : x.verified ? `Your file · ${esc(x.size)} · <span class="ok-line">SHA-256 matches ${esc(x.against)}</span>` : `Your file · ${esc(x.size)} · <span class="warn-line">nothing could check it</span>`}</span></span>
+        <button class="btn f danger" data-u="vt-del" data-id="${i}" data-key="vtdel:${i}">Remove</button></div>
+      ${x.source === 'file' && !x.verified ? `<button class="toggle f ${x.acceptUnverified ? 'on' : ''}" data-u="vt-trust" data-id="${i}" data-key="vttrust:${i}"><span class="box"></span><span>I trust this file; copy it anyway<small>A damaged or tampered image may not start, or may harm the PC it's installed on.</small></span></button>` : ''}</div>`).join('');
+  const picker = U.vtPicker ? `<div class="cards" style="margin-top:.6em">${vtEntries().map(e => `<button class="card f ${vtHas(e.id) ? 'sel' : ''}" data-u="vt-entry" data-id="${esc(e.id)}" data-key="vte:${esc(e.id)}">
+      <span class="mono" style="background:${FAM_COLOR[e.family] || 'var(--flame)'}">${esc(mono(e.family))}</span><span class="n">${vtHas(e.id) ? '✓ ' : ''}${esc(e.name)}</span><span class="m">${esc(e.flavour)}</span><span class="m">${esc(e.sizeHint || '')} ${checkBadge(e)}</span></button>`).join('')}</div>` : '';
+  return `<div class="pane"><div><p class="big">Several systems on one USB drive</p>
+      <p class="sub2">Hearth puts <b>Ventoy</b> on the drive and copies the ISOs you pick onto it. When a PC starts from the drive, Ventoy shows a menu of them. Later you can add more ISOs by copying them onto its "Ventoy" partition.</p>
+      <div class="acts" style="justify-content:flex-start;flex-wrap:wrap;margin:.6em 0">
+        <button class="btn f" data-u="vt-add-hearth" data-key="vt-hearth" data-autofocus>Add Hearth OS and Hearth Recovery</button>
+        <button class="btn f" data-u="vt-list" data-key="vt-list">${U.vtPicker ? 'Hide the list' : 'Add from the list…'}</button>
+        <button class="btn f" data-u="vt-own" data-key="vt-own">Add my own ISO…</button></div>
+      ${U.vtBusy ? `<p class="sub2">${esc(U.vtBusy)}</p><div class="prog spin"><i></i></div>` : ''}
+      <div style="display:grid;gap:.5em">${items || '<div class="empty">No ISOs picked yet.</div>'}</div>${picker}
+      <p class="sub2" style="font-size:.8em;margin-top:.8em">Windows: download it from Microsoft (the Windows tab) and add it with "Add my own ISO". Ventoy starts most Linux and Windows ISOs; a few systems don't start from it.</p></div>
+    <div class="panel"><h3>Ventoy</h3><p class="sub2">${info ? `Version ${esc(info.version)}, from Ventoy's own GitHub releases, checked against its SHA-256 before it runs. Open source (${esc(info.license)}), ventoy.net.` : 'From Ventoy\'s own releases, checked against its SHA-256 before it runs.'}</p>
+      <p class="sub2">${U.vt.length} ISO${U.vt.length === 1 ? '' : 's'} picked.</p>
+      <div class="acts"><button class="btn primary f" data-u="vt-go" data-key="vt-go" ${ventoyReady() ? '' : 'disabled'}>Choose the USB drive</button></div></div></div>`;
 }
 
 // Holding A (or Enter, or the button with a finger or the mouse) for 1.5 s starts the job: one press can't erase a drive.
@@ -708,7 +779,10 @@ document.addEventListener('pointerdown', e => { if (e.target.closest && e.target
 
 async function startJob() {
   if (!U.drive) return;
-  const job = {
+  const job = U.ventoy ? {
+    ventoy: true, items: U.vt.map(x => ({ source: x.source, id: x.id || '', path: x.path || '', acceptUnverified: !!x.acceptUnverified })),
+    drive: U.drive.id, expect: U.drive.fingerprint, showAll: U.showAll, typed: U.typed || '', scheme: U.scheme, keep: U.keep,
+  } : {
     source: U.entry && !U.entry.windows ? 'catalog' : 'file', id: U.entry && !U.entry.windows ? U.entry.id : '', path: U.file ? U.file.path : '',
     drive: U.drive.id, expect: U.drive.fingerprint, showAll: U.showAll, typed: U.typed || '', scheme: U.scheme,
     tweaks: win11() ? { skipChecks: U.tweaks.skipChecks, skipOnline: U.tweaks.skipOnline, localAccount: (U.tweaks.localAccount || '').trim() } : {},
@@ -735,7 +809,7 @@ function stageIndex(st) { return STAGES.findIndex(s => s[2].includes(st)); }
 function progressHtml() {
   const p = U.progress || {};
   const at = stageIndex(p.stage);
-  const show = STAGES.filter(s => s[0] !== 'download' || (U.entry && !U.entry.windows));
+  const show = STAGES.filter(s => s[0] !== 'download' || U.ventoy || (U.entry && !U.entry.windows));
   const pct = p.pct != null ? Math.max(0, Math.min(1, p.pct)) : null;
   const nums = [p.done != null ? `${human(p.done)}${p.total ? ` of ${human(p.total)}` : ''}` : '', p.speed ? `${human(p.speed)}/s` : '', p.eta ? `about ${fmtTime(p.eta)} left` : '', pct != null ? `${Math.round(pct * 100)}%` : ''].filter(Boolean);
   return `<div class="stages">${show.map(s => { const i = STAGES.indexOf(s); return `<span class="${i < at ? 'done' : i === at ? 'on' : ''}">${i < at ? '✓ ' : ''}${s[1]}</span>`; }).join('')}</div>
@@ -777,6 +851,8 @@ function renderUsb(keepFocus) {
       const list = c.entries.filter(e => e.group === U.tab);
       inner = `<div class="cards">${list.map(entryCard).join('')}</div>`;
       if (U.tab === 'windows') inner = `<p class="sub2">Microsoft only hands out Windows through its own download page. Hearth opens it in your browser and picks up the ISO when it's downloaded.</p>` + inner;
+    } else if (U.tab === 'ventoy') {
+      inner = ventoyPane();
     } else if (U.tab === 'own') {
       inner = `<div class="panel" style="max-width:40em"><p class="big">Use an ISO I already have</p><p class="sub2">An ISO, or a disk image (.img, .img.xz, .img.zst, .img.gz). Hearth checks it against a checksum file beside it when there is one (SHA256SUMS, name.sha256 …).</p>
         <div class="row" style="justify-content:flex-start"><button class="btn primary f" data-u="pick-file" data-autofocus data-key="usb-pick">Choose an ISO or disk image…</button></div></div>`;
@@ -838,11 +914,18 @@ function renderUsb(keepFocus) {
         <span class="m" style="color:var(--muted);font-size:.82em">${esc(d.connection)}${d.device ? ` · ${esc(d.device)}` : ''}${d.partitions.length ? ` · ${esc(d.partitions.join(' · '))}` : ' · empty'}${d.internal ? ' · <b style="color:var(--danger)">internal drive</b>' : ''}</span></button>`).join('');
     body = `<div class="pane scroll"><div><p class="big">Which USB drive?</p><p class="sub2">Everything on it will be erased. Only USB drives and SD cards are shown; the drive Hearth runs from never is.</p>
         <div style="margin-top:.7em">${list || '<div class="empty">Plug in a USB drive or SD card (8 GB or more is best).</div>'}</div></div>
-      <div class="panel"><h3>Writing</h3><p class="sub2">${esc(U.entry && !U.entry.windows ? `${U.entry.name} ${U.release ? U.release.version : ''}` : (U.file ? U.file.file : ''))}</p>
+      <div class="panel"><h3>Writing</h3><p class="sub2">${esc(U.ventoy ? `Ventoy and ${U.vt.length} ISO${U.vt.length === 1 ? '' : 's'}: ${U.vt.map(x => x.name).join(', ')}` : U.entry && !U.entry.windows ? `${U.entry.name} ${U.release ? U.release.version : ''}` : (U.file ? U.file.file : ''))}</p>
         <button class="toggle f ${U.showAll ? 'on' : ''}" data-u="show-all" data-key="usb-showall"><span class="box"></span><span>Show all drives<small>Internal drives too (never the one Hearth runs from). Writing to one needs ERASE typed and an administrator's password.</small></span></button></div></div>`;
   } else if (U.step === 'options') {
     let opts = '';
-    if (isWindowsJob()) {
+    if (U.ventoy) {
+      opts += `<div class="field"><label>Partition layout</label><div class="chips">
+        <button class="chip f ${U.scheme !== 'gpt' ? 'on' : ''}" data-u="scheme" data-id="mbr" data-key="usb-vmbr">MBR<small>Ventoy's usual: starts on UEFI and older BIOS PCs. Recommended</small></button>
+        <button class="chip f ${U.scheme === 'gpt' ? 'on' : ''}" data-u="scheme" data-id="gpt" data-key="usb-vgpt">GPT<small>For PCs that only start from GPT drives</small></button></div></div>`;
+      if (U.vt.some(x => x.source === 'catalog')) opts += `<div class="field"><label>The downloads, after writing</label><div class="chips">
+        <button class="chip f ${U.keep ? 'on' : ''}" data-u="keep" data-id="yes" data-key="usb-keep">Keep them<small>In Downloads/Hearth USB, for the next stick</small></button>
+        <button class="chip f ${!U.keep ? 'on' : ''}" data-u="keep" data-id="no" data-key="usb-del">Delete them<small>Frees the space</small></button></div></div>`;
+    } else if (isWindowsJob()) {
       opts += `<div class="field"><label>Partition layout</label><div class="chips">
         <button class="chip f ${U.scheme === 'gpt' ? 'on' : ''}" data-u="scheme" data-id="gpt" data-key="usb-gpt">GPT<small>For UEFI PCs (almost every PC since 2012). Recommended</small></button>
         <button class="chip f ${U.scheme === 'mbr' ? 'on' : ''}" data-u="scheme" data-id="mbr" data-key="usb-mbr">MBR<small>For UEFI PCs that don't start from GPT USB drives. Old BIOS-only PCs aren't supported</small></button></div></div>`;
@@ -852,14 +935,14 @@ function renderUsb(keepFocus) {
         <label for="acct" style="display:block;color:var(--muted);font-size:.85em;margin:.6em 0 .3em">Local account name (optional; Windows asks for its password at the first sign-in)</label>
         <input class="inp f" id="acct" data-osk="acct" data-key="usb-acct" maxlength="20" value="${esc(U.tweaks.localAccount || '')}" spellcheck="false" autocomplete="off" placeholder="e.g. Sam"></div>`;
     }
-    if (U.entry && !U.entry.windows) opts += `<div class="field"><label>The download, after writing</label><div class="chips">
+    if (!U.ventoy && U.entry && !U.entry.windows) opts += `<div class="field"><label>The download, after writing</label><div class="chips">
         <button class="chip f ${U.keep ? 'on' : ''}" data-u="keep" data-id="yes" data-key="usb-keep">Keep it<small>In Downloads/Hearth USB, for the next stick</small></button>
         <button class="chip f ${!U.keep ? 'on' : ''}" data-u="keep" data-id="no" data-key="usb-del">Delete it<small>Frees the space</small></button></div></div>`;
     body = `<div class="pane scroll"><div><p class="big">Options</p>${opts}</div><div class="panel"><h3>Next</h3><p class="sub2">Writing to ${esc(U.drive.name)} (${esc(human(U.drive.size))}).</p><div class="acts"><button class="btn primary f" data-u="to-confirm" data-key="usb-toconfirm">Continue</button></div></div></div>`;
   } else if (U.step === 'confirm') {
     const d = U.drive;
-    const what = U.entry && !U.entry.windows ? `${U.entry.name}${U.release ? ` ${U.release.version}` : ''}` : (U.file ? U.file.file : '');
-    const how = isWindowsJob() ? `FAT32, ${U.scheme.toUpperCase()}${win11() && (U.tweaks.skipChecks || U.tweaks.skipOnline || U.tweaks.localAccount) ? ', with your Windows 11 options' : ''}` : (U.file && U.file.inspect && U.file.inspect.mode === 'uefi-copy' ? 'files copied to FAT32' : 'written as it is, then read back');
+    const what = U.ventoy ? U.vt.map(x => x.name).join(', ') : U.entry && !U.entry.windows ? `${U.entry.name}${U.release ? ` ${U.release.version}` : ''}` : (U.file ? U.file.file : '');
+    const how = U.ventoy ? `Ventoy${U.vtInfo ? ' ' + U.vtInfo.version : ''} (${U.scheme === 'gpt' ? 'GPT' : 'MBR'}), then the ISOs copied and checked` : isWindowsJob() ? `FAT32, ${U.scheme.toUpperCase()}${win11() && (U.tweaks.skipChecks || U.tweaks.skipOnline || U.tweaks.localAccount) ? ', with your Windows 11 options' : ''}` : (U.file && U.file.inspect && U.file.inspect.mode === 'uefi-copy' ? 'files copied to FAT32' : 'written as it is, then read back');
     const go = d.internal
       ? `<div class="field"><label for="typed">This is an internal drive. To go ahead, type <b>ERASE</b></label><input class="inp f" id="typed" data-osk="typed" data-key="usb-typed" maxlength="12" value="${esc(U.typed || '')}" spellcheck="false" autocomplete="off" autocapitalize="characters"></div>
          <button class="btn primary danger f" data-u="go-typed" data-key="usb-gotyped" id="goTyped" ${(U.typed || '').trim().toUpperCase() === 'ERASE' ? '' : 'disabled'}>Erase and write</button>`
@@ -926,6 +1009,7 @@ function demoInvoke(cmd, args) {
   if (cmd === 'usb_resolve') return Promise.resolve({ id: args.id, name: 'Fedora Workstation (GNOME)', version: '44', url: 'https://download.fedoraproject.org/pub/fedora/linux/releases/44/Workstation/x86_64/iso/Fedora-Workstation-Live-44-1.7.x86_64.iso', file: 'Fedora-Workstation-Live-44-1.7.x86_64.iso', size: 2851612672, signedBy: 'Fedora (43) … (46) release keys', cached: false });
   if (cmd === 'usb_drives') return Promise.resolve({ busy: false, drives: [{ id: 'usb1', device: '/dev/sdb', name: 'SanDisk Cruzer Blade', size: 32 * 1e9, serial: 'AA00', kind: 'usb', connection: 'USB', internal: false, partitions: ['"STICK" (Files), 32 GB, 1.2 GB used'], fingerprint: 'f' }] });
   if (cmd === 'usb_cache') return Promise.resolve({ files: [] });
+  if (cmd === 'usb_ventoy') return Promise.resolve({ version: '1.1.06', license: 'GPL-3.0', homepage: 'https://www.ventoy.net/' });
   if (cmd === 'usb_log') return Promise.resolve('preview');
   if (cmd.startsWith('usb_')) return Promise.reject('This is a preview: open Disks to write a USB drive.');
   return Promise.reject('unknown');

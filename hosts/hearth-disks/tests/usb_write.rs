@@ -231,3 +231,32 @@ fn f_compressed_disk_image_with_its_checksum_beside_it() {
     assert_eq!(r["summary"]["sha256"].as_str().unwrap(), usb::verify::sha256_bytes(&raw));
     same_bytes(&dev, &fx.join("own/disk.img"));
 }
+
+#[test]
+fn g_ventoy_with_two_isos() {
+    let Some((dev, fx)) = setup() else { return };
+    let d = drive(&dev);
+    let items = vec![
+        usb::ventoy::Item { source: "file".into(), path: fx.join("good/fake-linux-1.iso").to_string_lossy().into(), ..Default::default() },
+        usb::ventoy::Item { source: "file".into(), path: fx.join("uefi/fake-uefi.iso").to_string_lossy().into(), accept_unverified: true, ..Default::default() },
+    ];
+    // Unconfirmed own file: refused before anything is written.
+    let bad = vec![usb::ventoy::Item { source: "file".into(), path: fx.join("uefi/fake-uefi.iso").to_string_lossy().into(), ..Default::default() }];
+    let e = usb::run(&Job { ventoy: true, items: bad, ..job_for(&d) }, emit()).unwrap_err();
+    assert!(e.contains("Confirm"), "{e}");
+    let r = usb::run(&Job { ventoy: true, items, ..job_for(&d) }, emit()).unwrap_or_else(|e| panic!("Ventoy failed: {e}"));
+    eprintln!("{r:#}");
+    assert_eq!(r["summary"]["mode"], "ventoy");
+    assert_eq!(r["summary"]["ventoy"], usb::ventoy::VERSION);
+    assert_eq!(r["summary"]["isos"].as_array().map(|a| a.len()), Some(2));
+    let t = table(&dev);
+    eprintln!("{t:#}");
+    assert_eq!(t["partitions"].as_array().map(|p| p.len()), Some(2), "Ventoy makes two partitions: {t}");
+    let blk = sudo(&["blkid", "-o", "value", "-s", "TYPE", &format!("{dev}p1")]);
+    assert!(blk.contains("exfat"), "the ISO partition is exFAT: {blk}");
+    with_mounted(&dev, |m| {
+        assert!(m.join("fake-linux-1.iso").is_file(), "fake-linux-1.iso on the drive");
+        assert!(m.join("fake-uefi.iso").is_file(), "fake-uefi.iso on the drive");
+        assert_eq!(std::fs::metadata(m.join("fake-uefi.iso")).unwrap().len(), std::fs::metadata(fx.join("uefi/fake-uefi.iso")).unwrap().len());
+    });
+}

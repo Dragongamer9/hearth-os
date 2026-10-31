@@ -14,6 +14,7 @@ pub mod catalog;
 pub mod fetch;
 pub mod image;
 pub mod keys;
+pub mod ventoy;
 pub mod verify;
 pub mod write;
 
@@ -359,6 +360,9 @@ pub struct Job {
     pub keep: bool,
     /// Write your own file even though nothing could check it (the page asked first).
     pub accept_unverified: bool,
+    /// Ventoy (multi-ISO): Ventoy on the drive and these ISOs copied onto it (ventoy.rs); `source`/`id`/`path` unused.
+    pub ventoy: bool,
+    pub items: Vec<ventoy::Item>,
 }
 
 /// A key file's text by name (the built-in keys; tests give their own).
@@ -480,6 +484,7 @@ pub fn run(job: &Job, emit: Emit) -> Result<Value, String> { run_in(job, &catalo
 pub fn run_in(job: &Job, cat: &catalog::Catalog, key_of: KeyFn, emit: Emit) -> Result<Value, String> {
     CANCEL.store(false, Ordering::SeqCst);
     log(&format!("job: {}", serde_json::to_string(job).unwrap_or_default()));
+    if job.ventoy { return ventoy::run(job, cat, key_of, emit); }
     let (_, first) = the_drive(job)?;
     // 1. The image.
     let (path, checked, from_catalog) = match job.source.as_str() {

@@ -117,6 +117,9 @@ mod usb_cmds {
     pub fn usb_find_windows(since: u64) -> Option<Value> { usb::find_windows_iso(since) }
 
     #[tauri::command]
+    pub fn usb_ventoy() -> Value { usb::ventoy::info() }
+
+    #[tauri::command]
     pub fn usb_cache() -> Value { json!({"dir": usb::cache_dir(), "files": usb::cache_list()}) }
 
     #[tauri::command]
@@ -157,7 +160,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     let builder = builder.plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![list, plan, run,
         usb_cmds::usb_catalog, usb_cmds::usb_resolve, usb_cmds::usb_drives, usb_cmds::usb_check_file, usb_cmds::usb_pick_file, usb_cmds::usb_start,
-        usb_cmds::usb_cancel, usb_cmds::usb_open_page, usb_cmds::usb_find_windows, usb_cmds::usb_cache, usb_cmds::usb_cache_remove, usb_cmds::usb_log]);
+        usb_cmds::usb_cancel, usb_cmds::usb_open_page, usb_cmds::usb_find_windows, usb_cmds::usb_cache, usb_cmds::usb_ventoy, usb_cmds::usb_cache_remove, usb_cmds::usb_log]);
     #[cfg(not(target_os = "linux"))]
     let builder = builder.invoke_handler(tauri::generate_handler![list, plan, run]);
     builder

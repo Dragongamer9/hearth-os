@@ -16,6 +16,7 @@ pub mod bridge;
 pub mod defaults;   // Settings › Default apps (desktop/shell/hearth-system)
 pub mod collections;
 pub mod desktop_games;
+pub mod discord;   // Discord: "Playing X" (Rich Presence; needs the owner's application ID, /etc/hearth/discord.conf)
 pub mod display;
 pub mod emulators;
 pub mod friends;

@@ -79,9 +79,10 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      the system journal as JSON lines, for Logs when your account can't read
                                      all of it (read only)
   ---- end system tools
-  hearth-admin usb-check|usb-raw|usb-prepare|usb-finish DEVICE ...
+  hearth-admin usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ...
                                      Hearth Disks' "Make a bootable USB": write an image to a USB drive or SD card,
-                                     or make it one FAT32 partition for Windows' files (see hearth-usb). Only whole
+                                     make it one FAT32 partition for Windows' files, or put Ventoy on it for several
+                                     ISOs (see hearth-usb). Only whole
                                      removable/USB drives, never the drive Hearth runs from; --allow-internal makes
                                      polkit ask for an administrator's password (49-hearth-admin.rules)
   hearth-admin write-file PATH       Hearth Text's Edit as administrator: replace the existing regular file PATH with
@@ -2685,7 +2686,7 @@ def main(argv):
     elif cmd == 'write-file' and len(argv) == 3:
         caller()
         write_file(argv[2])
-    elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-finish'):
+    elif cmd in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-ventoy', 'usb-finish'):
         # Make a bootable USB (Hearth Disks): its own script checks the drive and does the one step.
         caller()
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-usb')
@@ -2697,7 +2698,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | usb-check|usb-raw|usb-prepare|usb-finish DEVICE ...')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ...')
 
 
 if __name__ == '__main__':

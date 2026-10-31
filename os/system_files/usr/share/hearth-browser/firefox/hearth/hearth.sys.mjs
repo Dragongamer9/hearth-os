@@ -9,8 +9,9 @@
  *    Shift+Tab) move between its keys, Enter types the one picked, Alt+Left deletes a letter and Esc closes it; a
  *    click or a tap types a key too, and it suggests words. Keys are typed with Firefox's own text input interface
  *    (nsITextInputProcessor), so they reach web pages like a real keyboard's.
- *  - In Game Mode (HEARTH_BROWSER_GAME=1): the window fills the screen, new windows open as tabs, and the keyboard
- *    opens by itself when the address bar is picked.
+ *  - In Game Mode (HEARTH_BROWSER_GAME=1): the window fills the screen, new windows open as tabs, the keyboard
+ *    opens by itself when the address bar is picked, and the D-pad moves between a page's links, buttons and fields
+ *    with Hearth's focus ring (A opens, B goes back: spatial-child.sys.mjs).
  *
  * The program that starts Firefox (/usr/bin/hearth-browser on Linux, Ember on Windows) says how through these:
  *   HEARTH_BROWSER_GAME=1      Game Mode (or Ember's full-screen Game Mode)
@@ -132,6 +133,37 @@ function styles() {
     const css = `@-moz-document url("${BROWSER_DOC}"), url("${START}") { :root { --hearth-user-accent: ${ACCENT} !important; } }`;
     sheet("data:text/css;charset=utf-8," + encodeURIComponent(css));
   }
+}
+
+// ------------------------------------------------------------------ the D-pad in web pages (Game Mode)
+// spatial-child.sys.mjs, as window actors in each page's process: arrows move the focus between links, buttons and
+// fields (before the page sees them); Esc goes back when the page didn't use it (after the page's own handlers).
+
+function spatial() {
+  if (!GAME) return;
+  const ring = ACCENT || "#ff8a3d";
+  // Hearth's focus ring on whatever the D-pad picked, over the page's own styles (web pages only, not Firefox's window).
+  sheet("data:text/css;charset=utf-8," + encodeURIComponent(
+    `@-moz-document url-prefix("http:"), url-prefix("https:"), url-prefix("file:") {
+       :focus-visible { outline: 3px solid ${ring} !important; outline-offset: 2px !important; }
+     }`));
+  const done = [];
+  const reg = (name, events) => {
+    try {
+      ChromeUtils.registerWindowActor(name, {
+        parent: { esModuleURI: "resource://hearth/spatial-parent.sys.mjs" },
+        child: { esModuleURI: "resource://hearth/spatial-child.sys.mjs", events },
+        allFrames: false,
+        // It runs in web pages' processes on purpose: the child side only reads the page and moves its focus, and
+        // the parent side only keeps what it reports (as plain text) for the console and the CI test.
+        safeForUntrustedWebProcess: true,
+      });
+      done.push(name);
+    } catch (e) { report("actor " + name, e); done.push(name + ": " + e); }
+  };
+  reg("HearthSpatial", { keydown: { capture: true } });
+  reg("HearthSpatialBack", { keydown: { mozSystemGroup: true } });
+  try { Services.prefs.setStringPref("hearth.spatial", done.join("; ")); } catch (e) {}
 }
 
 // ------------------------------------------------------------------ the on-screen keyboard
@@ -299,12 +331,16 @@ class Keyboard {
     if (this.engine) { const sel = this.engine.state.sel; this.engine.reset(this.addressBarFocused() ? "url" : "text", this.addressBarFocused() ? "Go" : ""); this.engine.state.sel = sel; }
     this.render();
     this.button(true);
+    this.told(true);
   }
   close() {
     if (!this.isOpen) return;
     this.box.hidden = true;
     this.button(false);
+    this.told(false);
   }
+  /** Pages' D-pad navigation (spatial-child.sys.mjs) leaves the keys alone while the keyboard is open. */
+  told(open) { try { Services.prefs.setBoolPref("hearth.osk.open", open); } catch (e) {} }
   toggle() { if (this.isOpen) this.close(); else this.open(); }
   button(on) {
     const b = this.doc.getElementById("hearth-keyboard-button");
@@ -401,7 +437,9 @@ export function start() {
   started = true;
   defaults();
   modePrefs();
+  try { Services.prefs.setBoolPref("hearth.osk.open", false); } catch (e) {}
   styles();
+  spatial();
   Services.obs.addObserver(win => setUpWindow(win), "browser-delayed-startup-finished");
   Services.prefs.setIntPref("hearth.started", Math.floor(Date.now() / 1000));
 }

@@ -56,7 +56,7 @@ fn helper_result(out: &str, err: &str, ok: bool) -> Result<Value, String> {
 }
 
 /// Runs a helper command to the end, passing its progress lines on.
-fn helper(args: &[String], stage: &str, emit: &Emit) -> Result<Value, String> {
+pub(super) fn helper(args: &[String], stage: &str, emit: &Emit) -> Result<Value, String> {
     log(&format!("helper: {}", args.join(" ")));
     let mut child = admin().args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
         .map_err(|e| format!("Couldn't start Hearth's system helper ({e})"))?;
@@ -220,7 +220,7 @@ fn tree(root: &Path) -> Result<(Vec<(PathBuf, u64)>, Vec<PathBuf>), String> {
     Ok((files, dirs))
 }
 
-fn copy_file(from: &Path, to: &Path, done: &mut u64, total: u64, started: Instant, last: &mut Instant, emit: &Emit) -> Result<(), String> {
+pub(super) fn copy_file(from: &Path, to: &Path, done: &mut u64, total: u64, started: Instant, last: &mut Instant, emit: &Emit) -> Result<(), String> {
     let mut r = std::fs::File::open(from).map_err(|e| format!("Couldn't read {}: {e}", from.display()))?;
     let mut w = std::fs::File::create(to).map_err(|e| format!("Couldn't write {} on the USB drive: {e}", to.display()))?;
     let mut buf = vec![0u8; 4 << 20];
