@@ -733,9 +733,10 @@ echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service
 # ------------------------------------------------------------------ Hearth COSMIC (docs/COSMIC.md)
 # System76's COSMIC as another Desktop Mode desktop, in Hearth's look (desktop/cosmic, desktop/shell/desk-cosmic.qml).
 # COSMIC's workspace with its own Files, Terminal and Edit (each desktop shows one app of each kind; in COSMIC these
-# take the place of Hearth's). Not its login screen (greetd + cosmic-greeter: Anatase's stays), first-run wizard,
-# store, player, wallpapers, on-screen keyboard (Hearth's is used) or system monitor. Never fails the image: without
-# COSMIC, Settings says "not available" and Hearth Classic and Plasma are unchanged.
+# take the place of Hearth's). Not its store, player, wallpapers or system monitor. Its login screen (greetd +
+# cosmic-greeter) and first-run wizard come with Fedora's cosmic-session but are never used: the display manager stays
+# Anatase's (checked below), the wizard's autostart entry goes. Never fails the image: without COSMIC, Settings says
+# "not available" and Hearth Classic and Plasma are unchanged.
 cosmic_before=$(du -sxm /usr | cut -f1)
 dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
 # The list (and what's left out) is desktop/cosmic/fedora-packages, shared with cosmic-test.yml.
@@ -752,6 +753,7 @@ fi
 # Hearth COSMIC is the way into COSMIC here (Hearth's look, Game Mode, the fallback): COSMIC's own session entry and
 # first-run wizard stay out, and nothing of COSMIC's becomes the display manager.
 rm -f /usr/share/wayland-sessions/cosmic.desktop /etc/xdg/autostart/com.system76.CosmicInitialSetup.desktop
+systemctl disable cosmic-greeter.service greetd.service >/dev/null 2>&1 || true
 dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
 if [ "$dm_after" != "$dm_before" ]; then
   echo "COSMIC changed the display manager ($dm_before -> $dm_after): put back"

@@ -40,7 +40,8 @@ if dnf -y install --setopt=install_weak_deps=False $ex $pkgs >/tmp/cosmic-instal
   note "COSMIC's size" "COSMIC adds ${mb} MB installed on plain Fedora $(rpm -E %fedora) (Anatase already has some of it). Biggest: $top"
   echo "$mb" > shots/cosmic-size-mb.txt
   rpm -q cosmic-session cosmic-comp cosmic-files cosmic-term cosmic-edit >shots/cosmic-version.txt
-  for x in cosmic-greeter greetd cosmic-initial-setup cosmic-store cosmic-player; do rpm -q "$x" >/dev/null 2>&1 && fail "left out" "$x got installed"; done
+  for x in cosmic-store cosmic-player cosmic-wallpapers cosmic-monitor; do rpm -q "$x" >/dev/null 2>&1 && fail "left out" "$x got installed"; done
+  for u in cosmic-greeter.service greetd.service; do systemctl is-enabled "$u" 2>/dev/null | grep -qx enabled && fail "login screen" "$u is switched on"; done
 else
   fail "COSMIC install" "$(grep -iE 'problem|nothing provides|requires|error' /tmp/cosmic-install.log | head -5 | tr '\n' ' ' | cut -c1-600)"
   note "cosmic-session needs" "$(dnf -q repoquery --requires cosmic-session 2>/dev/null | tr '\n' ' ' | cut -c1-1500)"

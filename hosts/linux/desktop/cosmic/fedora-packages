@@ -21,12 +21,13 @@ xdg-desktop-portal-cosmic
 cosmic-files
 cosmic-term
 cosmic-edit
-# cosmic-session needs COSMIC's on-screen keyboard installed; Hearth's is the one used (not on the panel)
+# Fedora's cosmic-session can't be installed without these. They're installed but never used: COSMIC's login screen
+# (cosmic-greeter, greetd) isn't switched on (Anatase's stays; build.sh checks the display manager didn't change), the
+# first-run wizard's autostart entry is removed, and Hearth's on-screen keyboard is the one on the controller.
 cosmic-osk
-# Left out: COSMIC's login screen (Anatase's stays), first-run wizard, and apps of kinds Hearth already has
--cosmic-greeter
--greetd
--cosmic-initial-setup
+cosmic-greeter
+cosmic-initial-setup
+# Left out: apps of kinds Hearth already has, and COSMIC's wallpapers (Hearth's Fireside is used)
 -cosmic-store
 -cosmic-player
 -cosmic-wallpapers
