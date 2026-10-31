@@ -14,7 +14,9 @@ Nexus Mods downloads, a choice of how mods go into a game, and Wabbajack modlist
 | `src/wabbajack.rs` | The modlist gallery, installs through jackify-engine, files it can't fetch (read from the .wabbajack too), MO2's ini, the list's Proton prefix, the library entry |
 | `src/accounts.rs` | LoversLab, MEGA and Google sign-ins (`~/.config/nimbus/{loverslab,mega,google}.json`, made mode 600 before anything is written), OAuth with PKCE through the browser and a loopback address, what the engine gets in its environment |
 | `src/guided.rs` | The guided Hearth Browser flow: Wabbajack's xxHash64, checking a downloaded file against the list, catching it in Hearth Browser's download folder, opening a page in Hearth Browser |
-| `src/apps/mods.rs` | The window's calls and the command line; the nxm inbox |
+| `src/apps/mods.rs` | Every call by name (`dispatch`: the window's and Game Mode's), the command line, the nxm inbox |
+| `src/service.rs` | The worker: one hearth-mods process holds the queue, the installs and the sign-ins and answers the others over a Unix socket |
+| `hearth-core/src/hearth_mods.rs` | Game Mode's way in: `mods.call` asks the worker (starting `hearth-mods --serve` when none runs), only the calls in its list |
 | `ui/mods.html` | The page (preview data when opened in a browser) |
 | `hearth-core/src/library.rs` `modlist_games()` | Installed modlists in Hearth's library (`mods/modlists/<id>.json` + `.desktop`) |
 
@@ -124,6 +126,47 @@ With a controller: A opens the page again, X "I have it: choose the file…" (ch
   Starfield, Cyberpunk 2077, Baldur's Gate 3. Others install, but their prefix may need setting up by hand.
 - Lists that don't use Mod Organizer 2 aren't set up yet. Collections (nxm://…/collections/…) aren't supported yet.
 
+## In Game Mode
+
+Mods are managed and installed from Game Mode itself, with the controller (`ui/index.html`, the "Hearth Mods in Game
+Mode" block; host.info feature `mods`). Desktop Mode keeps the Mods window, and Game Mode can still open it (a game's
+Mods screen › Open the Mods window) for installing from a file or folder.
+
+- **A game's page**: a Mods card with its mods (A on one turns it on or off) on the Classic and Dragonfire game pages,
+  and the keyboard & mouse Launcher's **Mods & saves** tab shows the same list. *All mods, Nexus Mods and modlists*,
+  the game's ⋯ › Mods, or the Library's **Mods** button open the Mods screens.
+- **A game's Mods screen** (LB / RB between tabs): **Installed** (A: turn on or off, move up or down, update,
+  uninstall; X: on or off; conflicts show as "Overridden by …"; Check for updates follows Nexus' file updates;
+  how mods go in), **Plugins** (Bethesda games, once the Mod Organizer engine gives them), **Nexus Mods** (Popular,
+  New, Updated, Search with the on-screen keyboard, adult mods hidden unless shown; A on a mod opens its page with its
+  files; Premium downloads it and installs it into the game when it's done; free accounts get the file's page in
+  Hearth Browser for Mod Manager Download, and the file still goes in by itself when it arrives), **Modlist** (the
+  game's Wabbajack list, its progress, Fetch them, Resume, Play).
+- **The Mods section** (no game): **Games**, **Downloads** (A: pause, resume, install into a game, open its page,
+  remove; X: pause or resume), **Modlists** (the gallery, Install with the default folders, the guided flow: Fetch
+  them opens each file's page in Hearth Browser and moves on by itself; Skip; Stop), **Accounts** (Nexus with the API
+  key typed or pasted on the on-screen keyboard; LoversLab and Google through Hearth Browser once registered; MEGA
+  with email and password on the on-screen keyboard).
+- **Quick Access** shows running mod downloads (select one to pause or resume) and modlists waiting for files.
+- **Notifications**: a download finished, failed or needing a new link; a modlist installed or failed; files that
+  need fetching. Selecting one opens the right Mods tab.
+
+How it's wired: Game Mode calls `mods.call` (hearth-core `hearth_mods.rs`) with a call name from its list; the core
+asks Hearth Mods' worker over `$XDG_RUNTIME_DIR/hearth-mods.sock` (mode 600) and starts `hearth-mods --serve` when no
+worker runs. Whichever hearth-mods starts first is the worker (the Mods window or Game Mode's), and the other hands its
+calls to it, so the queue and installs are never run twice and both show the same. The worker without a window stops
+after 10 minutes with no calls, downloads or installs. Game Mode checks every 10 seconds (every 2 on the Mods screens)
+without starting it, for the notifications. No folder browsing or file paths go through Game Mode.
+
+**Mod Organizer engine** (hearth-gaming `organizer.rs`, on its own branch): the screens already draw its profiles
+(a Profile row), Bethesda plugins (a Plugins tab with order and on/off) and FOMOD installers (a step-by-step screen:
+steps, groups, options with descriptions and pictures; choose one / any / all). `HMA` in the block is the one place the
+screens get their data: when the engine lands, set `HMA.org` and add its calls (`organizer_game`,
+`organizer_set_profile`, `organizer_plugin_toggle`, `organizer_plugin_move`, `organizer_fomod_finish`, and a `fomod`
+answer from `install_download`) to `CALLS` in `hearth_mods.rs`. CI (`tools/ui-check.js`) drives all of it with the
+preview's stand-in for Hearth Mods and a pretend controller, and posts pictures (`SHOT hm-…`, release.yml's
+ui-shots-mods job).
+
 ## Command line
 
 ```
@@ -135,6 +178,7 @@ hearth-mods --remount                  overlays back (at sign-in)
 hearth-mods --modlists                 the Wabbajack gallery, as JSON
 hearth-mods --wabbajack-engine         download the engine
 hearth-mods --page downloads           open on a tab (games, downloads, modlists, accounts; nexus opens accounts)
+hearth-mods --serve                    the worker without a window (Game Mode starts it; it stops after 10 minutes idle)
 ```
 
 ## Not tested yet
@@ -144,4 +188,6 @@ the queue, the engine's event and progress lines (taken from Jackify's own parse
 on a real game need testing on Hearth OS. The accounts and the guided flow were written without any LoversLab, MEGA
 or Google account (CI tests the file checks, the queue, the hashes and that sign-in files are mode 600): the guided
 flow with a real LoversLab account, the MEGA sign-in (the login format the engine reads), anonymous MEGA downloads,
-and the LoversLab and Google sign-ins once registered need testing on a device.
+and the LoversLab and Google sign-ins once registered need testing on a device. The Game Mode screens were tested
+in CI with stand-in data: the worker under gamescope, Nexus search (the v2 API), installing from Nexus into a game,
+and the notifications need testing on a device.

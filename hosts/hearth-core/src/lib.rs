@@ -22,6 +22,8 @@ pub mod emulators;
 pub mod friends;
 // ---- Hearth's gaming apps (Controller Lab, Saves, Mods): opened from Game Mode
 pub mod gaming_apps;
+// ---- Hearth Mods in Game Mode (its worker, over a socket)
+pub mod hearth_mods;
 // ---- end of Hearth's gaming apps
 pub mod game_options;
 pub mod gameinfo;

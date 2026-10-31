@@ -173,7 +173,7 @@ impl GameMods {
                 }
             } }
             json!({"id": m.id, "name": m.name, "enabled": m.enabled, "order": i, "target": m.target, "sub": m.sub, "root": root, "files": m.files.len(),
-                   "size": m.size, "added": m.added, "source": m.source, "overriddenBy": beaten, "winning": wins,
+                   "size": m.size, "added": m.added, "source": m.source, "overriddenBy": beaten, "winning": wins, "nexus": m.nexus,
                    "targetLabel": TARGETS.iter().find(|t| t.0 == m.target).map(|t| t.1).unwrap_or("")})
         }).collect();
         json!({"game": g.id, "title": g.title, "mods": mods, "targets": targets_for(g), "deployed": self.state.deployed.len(), "originals": self.state.originals.len(), "folder": self.dir,

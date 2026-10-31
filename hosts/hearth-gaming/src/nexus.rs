@@ -278,6 +278,57 @@ pub fn urldecode(s: &str) -> String {
     String::from_utf8_lossy(&out).to_string()
 }
 
+// ------------------------------------------------------------------ finding mods (Game Mode's Browse, update checks)
+
+/// One mod for a list (Game Mode's Browse): what the v1 lists and the v2 search both give, in one shape.
+pub fn mod_card(m: &Value) -> Value {
+    let pic = m["picture_url"].as_str().or(m["pictureUrl"].as_str()).or(m["thumbnailUrl"].as_str()).unwrap_or("");
+    json!({"modId": m["mod_id"].as_u64().or(m["modId"].as_u64()).unwrap_or(0), "name": m["name"].as_str().unwrap_or(""), "summary": m["summary"].as_str().unwrap_or(""),
+           "author": m["author"].as_str().unwrap_or(""), "version": m["version"].as_str().unwrap_or(""), "picture": pic,
+           "endorsements": m["endorsement_count"].as_u64().or(m["endorsements"].as_u64()).unwrap_or(0), "downloads": m["mod_downloads"].as_u64().or(m["downloads"].as_u64()).unwrap_or(0),
+           "adult": m["contains_adult_content"].as_bool().or(m["adultContent"].as_bool()).unwrap_or(false)})
+}
+
+/// A game's lists on Nexus: `trending`, `latest_added` or `latest_updated` (the v1 API's own lists).
+pub fn browse(key: &str, domain: &str, kind: &str) -> Result<Value, String> {
+    if !domain_ok(domain) { return Err("That isn't a Nexus game.".into()); }
+    let kind = match kind { "latest" | "latest_added" => "latest_added", "updated" | "latest_updated" => "latest_updated", _ => "trending" };
+    let v = call(key, &format!("/games/{domain}/mods/{kind}.json"))?;
+    Ok(json!(v.as_array().cloned().unwrap_or_default().iter().filter(|m| m["available"] != false).map(mod_card).collect::<Vec<_>>()))
+}
+
+/// The v2 API's search request (GraphQL) for mods of one game whose name has `q`.
+pub fn search_body(domain: &str, q: &str) -> Value {
+    json!({"query": "query HearthSearch($filter: ModsFilter, $count: Int) { mods(filter: $filter, count: $count) { nodes { modId name summary author version pictureUrl thumbnailUrl endorsements downloads adultContent } } }",
+           "variables": {"count": 40, "filter": {"gameDomainName": [{"value": domain, "op": "EQUALS"}], "name": [{"value": q.trim(), "op": "WILDCARD"}]}}})
+}
+pub const API2: &str = "https://api.nexusmods.com/v2/graphql";
+/// Searches a game's mods by name.
+pub fn search(key: &str, domain: &str, q: &str) -> Result<Value, String> {
+    if !domain_ok(domain) { return Err("That isn't a Nexus game.".into()); }
+    if q.trim().is_empty() { return browse(key, domain, "trending"); }
+    let body = serde_json::to_string(&search_body(domain, q)).unwrap_or_default();
+    let (st, text) = crate::accounts::curl_post(API2, &[("apikey", key), ("Content-Type", "application/json"), ("Application-Name", "Hearth"), ("Application-Version", env!("CARGO_PKG_VERSION"))], &body, 30)?;
+    let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    if !(200..300).contains(&st) || v["data"].is_null() {
+        return Err(format!("Nexus Mods' search didn't answer ({st}{}).", v["errors"][0]["message"].as_str().map(|e| format!(": {e}")).unwrap_or_default()));
+    }
+    Ok(json!(v["data"]["mods"]["nodes"].as_array().cloned().unwrap_or_default().iter().map(mod_card).collect::<Vec<_>>()))
+}
+
+/// The newest file that replaces `file_id`, following the files list's `file_updates` (old → new), when there is one.
+pub fn newer_file(files: &Value, file_id: u64) -> Option<Value> {
+    let ups = files["file_updates"].as_array().cloned().unwrap_or_default();
+    let mut cur = file_id;
+    for _ in 0..64 {
+        match ups.iter().filter(|u| u["old_file_id"].as_u64() == Some(cur)).filter_map(|u| u["new_file_id"].as_u64()).max() { Some(n) if n != cur => cur = n, _ => break }
+    }
+    if cur == file_id { return None; }
+    let f = files["files"].as_array().and_then(|l| l.iter().find(|f| f["file_id"].as_u64() == Some(cur)).cloned()).unwrap_or(Value::Null);
+    if f["category_name"].as_str().map(|c| c == "DELETED").unwrap_or(false) { return None; }
+    Some(json!({"fileId": cur, "name": f["name"], "version": f["version"], "fileName": f["file_name"]}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,5 +372,24 @@ mod tests {
         assert_eq!(urlencode("a+b/c"), "a%2Bb%2Fc");
         assert_eq!(curl_quote("a\"b\\c"), "\"a\\\"b\\\\c\"");
         assert!(files_page("fallout4", 1, Some(2)).ends_with("file_id=2&nmm=1"));
+    }
+
+    #[test]
+    fn updates_and_cards() {
+        let files = json!({"files": [{"file_id": 1, "name": "Main", "version": "1.0"}, {"file_id": 5, "name": "Main", "version": "1.2", "file_name": "m-1.2.7z"}],
+                           "file_updates": [{"old_file_id": 1, "new_file_id": 3}, {"old_file_id": 3, "new_file_id": 5}]});
+        let n = newer_file(&files, 1).unwrap();
+        assert_eq!((n["fileId"].as_u64(), n["version"].as_str()), (Some(5), Some("1.2")));
+        assert!(newer_file(&files, 5).is_none());
+        assert!(newer_file(&json!({}), 1).is_none());
+        let loopy = json!({"file_updates": [{"old_file_id": 1, "new_file_id": 2}, {"old_file_id": 2, "new_file_id": 1}]});
+        assert!(newer_file(&loopy, 1).is_some() || newer_file(&loopy, 1).is_none());   // never hangs
+        let c = mod_card(&json!({"mod_id": 7, "name": "SkyUI", "endorsement_count": 9, "picture_url": "https://x/p.jpg"}));
+        assert_eq!((c["modId"].as_u64(), c["endorsements"].as_u64(), c["picture"].as_str()), (Some(7), Some(9), Some("https://x/p.jpg")));
+        let c2 = mod_card(&json!({"modId": 8, "name": "A", "thumbnailUrl": "https://t", "adultContent": true}));
+        assert_eq!((c2["modId"].as_u64(), c2["adult"].as_bool()), (Some(8), Some(true)));
+        let b = search_body("skyrimspecialedition", " sky ");
+        assert_eq!(b["variables"]["filter"]["name"][0]["value"], "sky");
+        assert!(browse("k", "../x", "trending").is_err());
     }
 }
