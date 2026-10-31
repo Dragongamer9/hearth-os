@@ -129,7 +129,9 @@ sleep 8
 # ---- 5. rollback: version A as it was
 echo "--- start 5 (rollback to version A)"
 start "$A"
-U "$A" 'command -v figlet >/dev/null && test -x /usr/games/sl' && ok "the previous version keeps its own layer, untouched" \
+# (dpkg and the files, not `command -v figlet`: figlet's /usr/bin/figlet is an alternative in /etc, which this
+# container shares between versions; on a device each version has its own /etc)
+U "$A" 'dpkg -s figlet >/dev/null && test -x /usr/bin/figlet-figlet && test -x /usr/games/sl' && ok "the previous version keeps its own layer, untouched" \
   || { err "the previous version lost its packages"; diag "$A"; }
 
 # ---- 6. lock and unlock
