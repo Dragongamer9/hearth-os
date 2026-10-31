@@ -16,6 +16,7 @@
 //! entry (mods/modlists/, read by hearth-core library.rs) whose Play runs the game through the organizer.
 
 pub mod fomod;
+pub mod gamemode;
 pub mod kinds;
 pub mod mo2;
 pub mod plugins;
