@@ -1,0 +1,2 @@
+/usr/share/nimbus/desktop/shell/hearth-pad:1236: DeprecationWarning: Gio.DBusConnection.register_object is deprecated
+  bus.register_object(PLASMA_PATH, node.interfaces[0], on_call, None, None)
