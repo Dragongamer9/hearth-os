@@ -7,11 +7,16 @@
 # COSMIC's own.
 SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
 QML="$SHELL_DIR/desk-cosmic.qml"
+# The companion's messages (kept for bug reports; the one before is .old).
+CLOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/cosmic-companion.log"
+mkdir -p "$(dirname "$CLOG")" 2>/dev/null
 case "$1" in
   launcher|games|quick|link|storage|menu|keyboard|help|close) ;;
   companion)
     command -v quickshell >/dev/null 2>&1 && [ -f "$QML" ] || exit 0
-    exec quickshell -p "$QML" ;;
+    [ -f "$CLOG" ] && [ "$(wc -c <"$CLOG")" -gt 1000000 ] && mv -f "$CLOG" "$CLOG.old"
+    echo "--- $(date '+%F %T') companion" >>"$CLOG"
+    exec quickshell -p "$QML" >>"$CLOG" 2>&1 ;;
   *) echo "usage: hearth-cosmic launcher|games|quick|link|storage|menu|keyboard|help|close|companion" >&2; exit 2 ;;
 esac
 if ! command -v quickshell >/dev/null 2>&1 || [ ! -f "$QML" ]; then
@@ -20,7 +25,8 @@ if ! command -v quickshell >/dev/null 2>&1 || [ ! -f "$QML" ]; then
 fi
 quickshell ipc -p "$QML" call hearth "$1" >/dev/null 2>&1 && exit 0
 # Not running yet (or it ended): start it, then ask again.
-setsid quickshell -p "$QML" >/dev/null 2>&1 </dev/null &
+echo "--- $(date '+%F %T') companion (started for $1)" >>"$CLOG"
+setsid quickshell -p "$QML" >>"$CLOG" 2>&1 </dev/null &
 i=0
 while [ $i -lt 20 ]; do
   sleep 0.5

@@ -42,13 +42,15 @@ jobs:
         timeout-minutes: 35
         run: |
           sudo modprobe uinput
-          docker run --rm --privileged -v /dev:/dev -v "$PWD:/src" registry.fedoraproject.org/fedora:45 bash /src/.github/scripts/cosmic-test.sh 2>&1 | tee cosmic-test.log
+          timeout -k 30 1500 docker run --rm --name cosmic-test --privileged -v /dev:/dev -v "$PWD:/src" registry.fedoraproject.org/fedora:45 bash /src/.github/scripts/cosmic-test.sh 2>&1 | tee cosmic-test.log
           test "${PIPESTATUS[0]}" = 0 || touch cosmic-failed
+          docker rm -f cosmic-test >/dev/null 2>&1 || true
           sudo chown -R "$(id -u):$(id -g)" shots || true
 
       - name: Side by side with Hearth Classic
         if: always()
         run: |
+          sudo chown -R "$(id -u):$(id -g)" shots 2>/dev/null || mkdir -p shots
           mkdir -p shots/classic shots/compare
           for b in ci/desktop-shots-bughunt ci/desktop-shots; do
             git fetch -q --depth 1 origin "$b" 2>/dev/null || continue

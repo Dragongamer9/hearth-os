@@ -105,7 +105,7 @@ export XDG_DATA_DIRS="/usr/share/hearth-cosmic/data:/usr/local/share:/usr/share"
 export HEARTH_DESKTOP=cosmic DESKTOP_SESSION=cosmic XDG_CURRENT_DESKTOP=COSMIC XDG_SESSION_DESKTOP=COSMIC XDG_SESSION_TYPE=wayland
 export LIBGL_ALWAYS_SOFTWARE=1 RUST_LOG=warn NIMBUS_SHARE=/src/hosts/linux QT_QUICK_BACKEND=software
 before=$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | sort)
-WAYLAND_DISPLAY=$OUTER cosmic-comp >shots/cosmic-comp.log 2>&1 &
+RUST_LOG=info WAYLAND_DISPLAY=$OUTER cosmic-comp >shots/cosmic-comp.log 2>&1 &
 COMP=$!
 INNER=""
 for i in $(seq 1 40); do
@@ -131,16 +131,17 @@ autostart_exec=$(sed -n 's/^Exec=//p' /usr/share/hearth-cosmic/xdg/autostart/hea
 sh -c "$autostart_exec" >shots/companion.log 2>&1 &
 sleep 10
 pgrep -f desk-cosmic.qml >/dev/null || fail "companion" "desk-cosmic.qml didn't start: $(grep -iE 'error|warn' shots/companion.log | head -6 | tr '\n' ' ' | cut -c1-700)"
-QS="quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth"
+QS="timeout -k 2 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth"
 RESTARTS=0
 # Through hearth-cosmic, as the panel's entries and Super do: it starts the companion again if it has ended.
 ipc() {
   pgrep -f 'quickshell -p .*desk-cosmic.qml' >/dev/null || { RESTARTS=$((RESTARTS + 1)); echo "companion had ended before: $*" >>shots/shot-errors.txt; }
-  hosts/linux/desktop/cosmic/hearth-cosmic "$@" >/dev/null 2>&1 || echo "hearth-cosmic $* failed" >>shots/shot-errors.txt
+  timeout -k 3 25 hosts/linux/desktop/cosmic/hearth-cosmic "$@" >/dev/null 2>&1 || echo "hearth-cosmic $* failed" >>shots/shot-errors.txt
   sleep 3
 }
 
 # ------------------------------------------------------------------ 3. screenshots
+echo "$(date +%T) screenshots" >>shots/progress.txt
 shot shots/cosmic-1-desktop.png
 ipc quick; shot shots/cosmic-2-quick-access.png; ipc close
 ipc menu; shot shots/cosmic-3-hearth-menu.png; ipc close
@@ -152,7 +153,7 @@ ipc keyboard; shot shots/cosmic-7-keyboard.png; ipc keyboard
 ipc help; shot shots/cosmic-8-controls.png; ipc close
 [ "$RESTARTS" -gt 0 ] && echo "::warning title=companion::the companion ended $RESTARTS time(s) while its windows were opened (see companion.log, cosmic-comp.log)"
 # Which theme files COSMIC's apps really read (the theme check below).
-timeout 10 strace -f -e trace=openat,statx,newfstatat,access -o shots/strace-term.txt cosmic-term >/dev/null 2>&1
+timeout -k 3 10 strace -f -e trace=openat,statx,newfstatat,access -o shots/strace-term.txt cosmic-term >/dev/null 2>&1
 grep -E 'CosmicTheme|CosmicTk' shots/strace-term.txt | grep -v ENOENT | head -20 > shots/theme-files-read.txt
 grep -E 'CosmicTheme.Dark/v1' shots/strace-term.txt | head -40 > shots/theme-lookups.txt
 echo "::notice title=theme files COSMIC reads::$(cut -c1-200 shots/theme-files-read.txt | tr '\n' '|' | cut -c1-2500)"
@@ -172,17 +173,21 @@ appshot() {   # appshot NAME CMD...: start an app, picture it, drive it with the
   "$@" >"shots/$name.log" 2>&1 &
   apid=$!
   sleep 12
+  echo "$(date +%T) $name started" >>shots/progress.txt
   shot "shots/cosmic-$name-1.png"
   note "$name app id" "the companion sees: $($QS app 2>/dev/null)"
-  python3 .github/scripts/cosmic-pad-drive.py "$name" shots >"shots/pad-$name.log" 2>&1 || fail "controller in $name" "$(grep FAIL "shots/pad-$name.txt" 2>/dev/null | head -4 | tr '\n' '|' | cut -c1-700)"
+  timeout -k 5 150 python3 .github/scripts/cosmic-pad-drive.py "$name" shots >"shots/pad-$name.log" 2>&1 || fail "controller in $name" "$(grep FAIL "shots/pad-$name.txt" 2>/dev/null | head -4 | tr '\n' '|' | cut -c1-700)"
   kill $apid 2>/dev/null; sleep 2; kill -9 $apid 2>/dev/null
 }
 appshot files cosmic-files "$HOME/Documents"
 appshot term cosmic-term
 appshot edit cosmic-edit "$HOME/Documents/notes.txt"
 ipc close
-python3 .github/scripts/cosmic-pad-drive.py desk shots >shots/pad-desk.log 2>&1 || fail "controller on the desktop" "$(grep FAIL shots/pad-desk.txt 2>/dev/null | head -4 | tr '\n' '|' | cut -c1-700)"
+timeout -k 5 150 python3 .github/scripts/cosmic-pad-drive.py desk shots >shots/pad-desk.log 2>&1 || fail "controller on the desktop" "$(grep FAIL shots/pad-desk.txt 2>/dev/null | head -4 | tr '\n' '|' | cut -c1-700)"
 
+cp "$HOME/.local/share/nimbus/cosmic-companion.log" shots/ 2>/dev/null
+grep -iE "protocol|error [0-9]|broke|wl_" shots/cosmic-companion.log shots/companion.log 2>/dev/null | sort | uniq -c | head -8 > shots/companion-errors.txt
+[ -s shots/companion-errors.txt ] && echo "::warning title=companion's Wayland errors::$(cut -c1-300 shots/companion-errors.txt | tr '\n' '|')"
 for f in shots/pad-*.txt; do [ -f "$f" ] && echo "::notice title=$(basename "$f" .txt)::$(head -c 3000 "$f" | sed 's/%/%25/g' | tr '\n' '|')"; done
 ls shots/*.png >/dev/null 2>&1 || fail "screenshots" "none were taken: $(head -c 500 shots/shot-errors.txt 2>/dev/null | tr '\n' '|')"
 pkill -f desk-cosmic.qml; pkill cosmic-panel; pkill cosmic-bg; pkill cosmic-settings; kill $COMP 2>/dev/null; pkill labwc; pkill dbus-daemon
