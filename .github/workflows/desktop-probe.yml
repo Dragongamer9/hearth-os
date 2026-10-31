@@ -1,10 +1,8 @@
-# Temporary feasibility probe for Hearth COSMIC / Hearth Deepin (docs/COSMIC.md, docs/DEEPIN.md): which packages
-# each base has, whether they install, and how much they add. Results are ::notice:: annotations. Removed again once
-# the answer is in.
-name: Desktop probe (COSMIC, Deepin)
+# Temporary feasibility probe for Hearth COSMIC (docs/COSMIC.md): COSMIC's packages on Anatase, their sizes and
+# default settings files. Results are ::notice:: annotations. Removed again once the answer is in.
+name: Desktop probe (COSMIC)
 
 on:
-  workflow_dispatch:
   push:
     branches: ['feature/desktop-cosmic-deepin']
     paths: ['.github/workflows/desktop-probe.yml']
@@ -13,7 +11,7 @@ jobs:
   anatase:
     runs-on: ubuntu-latest
     steps:
-      - name: Anatase (Fedora 45) packages
+      - name: Anatase (Fedora 45) COSMIC
         shell: bash
         run: |
           cat >/tmp/p.sh <<'EOF'
@@ -21,28 +19,37 @@ jobs:
           rpm -qa --qf '%{NAME}\n' | sort >/tmp/before
           X="cosmic-files cosmic-files-applet cosmic-term cosmic-greeter cosmic-initial-setup cosmic-store cosmic-edit cosmic-player cosmic-wallpapers cosmic-osk cosmic-monitor"
           ex=""; for x in $X; do ex="$ex --exclude=$x"; done
-          echo "## with excludes"
-          dnf5 -y -q install --setopt=install_weak_deps=False $ex cosmic-session cosmic-comp cosmic-panel cosmic-settings \
-            cosmic-settings-daemon cosmic-launcher cosmic-applets cosmic-bg cosmic-osd cosmic-notifications \
-            cosmic-workspaces cosmic-app-library cosmic-randr cosmic-idle cosmic-icon-theme xdg-desktop-portal-cosmic >/tmp/i.log 2>&1
-          echo "rc=$?"; grep -iE 'problem|nothing provides|requires|conflict' /tmp/i.log | head -12
-          echo "## requires of cosmic-session"
-          dnf5 -q repoquery --requires cosmic-session 2>/dev/null | tr '\n' ' '; echo
-          echo "## who requires the excluded"
-          for x in $X; do printf '%s <- %s\n' "$x" "$(dnf5 -q repoquery --whatrequires $x --qf '%{name}' 2>/dev/null | sort -u | tr '\n' ' ')"; done
-          echo "## without excludes, new packages by size (MB)"
-          dnf5 -y -q install --setopt=install_weak_deps=False cosmic-session cosmic-comp cosmic-panel cosmic-settings \
-            cosmic-settings-daemon cosmic-launcher cosmic-applets cosmic-bg cosmic-osd cosmic-notifications \
-            cosmic-workspaces cosmic-app-library cosmic-randr cosmic-idle cosmic-icon-theme xdg-desktop-portal-cosmic >/dev/null 2>&1
+          P="cosmic-session cosmic-comp cosmic-panel cosmic-settings cosmic-settings-daemon cosmic-launcher cosmic-applets cosmic-bg cosmic-osd cosmic-notifications cosmic-workspaces cosmic-app-library cosmic-randr cosmic-idle cosmic-icon-theme xdg-desktop-portal-cosmic"
+          echo "### excludes"
+          dnf5 -y -q install --setopt=install_weak_deps=False $ex $P >/tmp/i.log 2>&1; echo "rc=$?"; grep -iE 'problem|nothing provides|requires|conflict' /tmp/i.log | head -12
+          rpm -qa --qf '%{NAME}\n' | sort >/tmp/mid
+          for n in $(comm -13 /tmp/before /tmp/mid); do rpm -q --qf '%{SIZE}\n' $n; done | awk '{s+=$1} END {print "with excludes MB", int(s/1048576)}'
+          echo "### cosmic-session requires"; rpm -q --requires cosmic-session | tr '\n' ' '; echo
+          echo "### whatrequires"; for x in $X pop-icon-theme gnome-icon-theme pop-launcher; do printf '%s<-%s; ' "$x" "$(rpm -q --whatrequires $x --qf '%{name} ' 2>/dev/null)"; done; echo
+          echo "### all"
+          dnf5 -y -q install --setopt=install_weak_deps=False $P >/dev/null 2>&1
           rpm -qa --qf '%{NAME}\n' | sort >/tmp/after
-          for n in $(comm -13 /tmp/before /tmp/after); do rpm -q --qf '%{SIZE} %{NAME}\n' $n; done | sort -rn | awk '{printf "%d %s\n", $1/1048576, $2}' | head -45
-          ls /usr/lib/systemd/system | grep -iE 'cosmic|greet'
-          ls /etc/xdg/autostart /usr/share/cosmic | tr '\n' ' '
+          for n in $(comm -13 /tmp/before /tmp/after); do rpm -q --qf '%{SIZE} %{NAME}\n' $n; done | sort -rn | awk '$1>1048576 {printf "%d %s, ", $1/1048576, $2}'; echo
+          echo "### units"; ls /usr/lib/systemd/system /usr/lib/systemd/user | grep -iE 'cosmic|greet' | tr '\n' ' '; echo
+          echo "### session"; cat /usr/bin/start-cosmic /usr/sbin/start-cosmic 2>/dev/null | grep -v '^#' | head -60
+          EOF
+          cat >/tmp/c.sh <<'EOF'
+          for d in com.system76.CosmicPanel com.system76.CosmicPanel.Panel com.system76.CosmicPanel.Dock com.system76.CosmicAppList com.system76.CosmicBackground com.system76.CosmicComp com.system76.CosmicSettings.Shortcuts com.system76.CosmicTheme.Mode com.system76.CosmicTk com.system76.CosmicTheme.Dark.Builder; do
+            for f in /usr/share/cosmic/$d/v1/*; do [ -f "$f" ] || continue; echo "=== ${f#/usr/share/cosmic/}"; head -c 1500 "$f"; echo; done
+          done
+          echo "=== Dark files"; ls /usr/share/cosmic/com.system76.CosmicTheme.Dark/v1/ | tr '\n' ' '
+          for k in accent background primary corner_radii; do echo "=== Dark/$k"; head -c 1200 /usr/share/cosmic/com.system76.CosmicTheme.Dark/v1/$k; echo; done
+          echo "=== applets"; ls /usr/share/applications | grep -i cosmic | tr '\n' ' '
           EOF
           img=i.anatase.org/anatase:stable
           docker pull -q "$img" >/dev/null 2>&1 || img=registry.fedoraproject.org/fedora:45
-          echo "image $img"
-          docker run --rm -v /tmp/p.sh:/p.sh:ro "$img" bash /p.sh 2>&1 | tee /tmp/out.txt
-          split -l 25 /tmp/out.txt /tmp/chunk.
-          for c in /tmp/chunk.*; do echo "::notice title=anatase $(basename $c)::$(sed 's/%/%25/g' $c | tr '\n' '|' )"; done
-
+          docker run --rm -v /tmp:/h:ro "$img" bash -c 'bash /h/p.sh; echo "@@@@"; bash /h/c.sh' >/tmp/out.txt 2>&1
+          python3 - <<'PY'
+          t = open('/tmp/out.txt').read()
+          esc = lambda s: s.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+          chunks = [t[i:i+3800] for i in range(0, len(t), 3800)]
+          for n, c in enumerate(chunks[:40]):
+              print('::notice title=probe %02d::%s' % (n, esc(c)))
+          PY
+          wc -c /tmp/out.txt
+          cat /tmp/out.txt
