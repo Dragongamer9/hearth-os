@@ -214,6 +214,9 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 # KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
 # /usr/share/hearth-plasma). Only the workspace (no recommends, no kde-standard app bundle) plus Dolphin for folders.
 # Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
+# plasma-workspace needs gdb (its crash handler), whose libdebuginfod has to match the elfutils libraries the newer
+# kernel/Mesa brought from backports: taken from backports too, or apt can't solve it.
+if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
 "${APT[@]}" plasma-workspace kwin-wayland plasma-desktop
 optional plasma-nm plasma-pa powerdevil kscreen kscreenlocker bluedevil polkit-kde-agent-1 xdg-desktop-portal-kde \
   breeze kde-cli-tools systemsettings plasma-integration qml6-module-org-kde-kirigami libplasma5support6 dolphin \
