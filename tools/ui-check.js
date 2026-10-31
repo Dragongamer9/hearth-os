@@ -205,7 +205,45 @@ const path = require('path');
     S.layers = []; S.history = []; SHOP.page = null; navigate('shop', {}, false); shopTab('battlenet');
     await new Promise(r => setTimeout(r, 300));
     if (!document.querySelector('#view [data-k="sf-t-battlenet"].on') || !document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Battle.net section in the Store');
-    input('rb'); if (SHOP.store !== 'steam') throw new Error('RB from Battle.net did not go round to Steam: ' + SHOP.store);
+    input('rb'); if (SHOP.store !== 'recomps') throw new Error('RB from Battle.net did not go to Recomps: ' + SHOP.store);
+    input('rb'); if (SHOP.store !== 'steam') throw new Error('RB from Recomps did not go round to Steam: ' + SHOP.store);
+  });
+  // Hearth Recomps (Store › Recomps, hearth-core recomps.rs): the catalogue from the preview's data, its filters and
+  // search, an installed port's page (Play, Update, patch notes, your copy checked, the More sheet), one that isn't
+  // installed (Install, "Needs your copy of", a Windows build through Proton), and B back.
+  await step('store recomps section', async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const v = () => document.querySelector('#view');
+    const has = k => !!v().querySelector(`[data-k="${k}"]`);
+    S.layers = []; S.history = []; SHOP.page = null; RC.page = null; navigate('shop', {}, false); shopTab('recomps');
+    await wait(400);
+    if (!has('sf-t-recomps') || !v().querySelector('[data-k="sf-t-recomps"].on')) throw new Error('no Recomps tab in the Store');
+    for (const k of ['rc-c-zelda64', 'rc-c-starship', 'rc-c-skate3', 'rc-c-acgc', 'rc-search', 'rc-con', 'rc-sort', 'rc-add', 'rc-check', 'rc-s-installed', 'rc-s-updates'])
+      if (!has(k)) throw new Error('no ' + k);
+    if (!/Update/.test(v().querySelector('[data-k="rc-c-zelda64"]').textContent)) throw new Error("an installed port with an update doesn't say so");
+    act(v().querySelector('[data-k="rc-s-installed"]')); await wait(100);
+    if (has('rc-c-starship') || !has('rc-c-zelda64')) throw new Error('the Installed filter shows the wrong ports');
+    RC.show = 'all'; RC.con = 'x360'; render(null, true);
+    if (has('rc-c-zelda64') || !has('rc-c-skate3')) throw new Error('the console filter shows the wrong ports');
+    RC.con = 'all'; shopDoSearch('recomps', 'star fox'); await wait(100);
+    if (!has('rc-c-starship') || has('rc-c-skate3')) throw new Error("searching by the game's name didn't find Starship");
+    RC.q = ''; render(null, true);
+    act(v().querySelector('[data-k="rc-c-zelda64"]')); await wait(400);
+    for (const k of ['rc-play', 'rc-update', 'rc-game', 'rc-more']) if (!has(k)) throw new Error("an installed port's page has no " + k);
+    const t = v().textContent;
+    if (!/Saves load again/.test(t) || !/Checked: the right version/.test(t) || !/Linux build/.test(t) || !/Zelda64Recomp\/Zelda64Recomp/.test(t))
+      throw new Error("an installed port's page is missing its patch notes, the copy check, its build or its project");
+    act(v().querySelector('[data-k="rc-more"]')); await wait(100);
+    const sheetText = document.querySelector('#sheetBox').textContent;
+    if (!S.layers.includes('sheet') || !/Uninstall/.test(sheetText) || !/Choose a version/.test(sheetText) || !/Keep this version/.test(sheetText) || !/Desktop Mode menu/.test(sheetText) || !/Back up saves/.test(sheetText))
+      throw new Error('the More sheet is missing something: ' + sheetText.slice(0, 300));
+    closeAll(); await wait(50);
+    back(); if (RC.page) throw new Error("B on a port's page didn't go back to Recomps");
+    act(v().querySelector('[data-k="rc-c-acgc"]')); await wait(400);
+    const t2 = v().textContent;
+    if (!has('rc-install') || !/Needs your copy of Animal Crossing/.test(t2) || !/Windows build via Proton/.test(t2) || !/Early: expect rough edges/.test(t2))
+      throw new Error("a port that isn't installed doesn't offer Install and Needs your copy: " + t2.slice(0, 300));
+    back(); if (RC.page) throw new Error('B did not go back');
   });
   await step('launcher windows start with the mouse', async () => {
     imLoadTables(); imLoad('battlenet:app', true); imLoad('xodus:nexus', true);

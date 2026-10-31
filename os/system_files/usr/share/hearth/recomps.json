@@ -1,0 +1,2044 @@
+{
+ "about": "Hearth Recomps' catalogue: native PC ports of console games (recompilations, decompilations and ports). Each entry's GitHub project was checked to exist with releases. You supply your own game file; Hearth never downloads or hosts games. docs/RECOMPS.md explains every field.",
+ "updated": "2026-10-31",
+ "consoles": {
+  "n64": "Nintendo 64",
+  "gamecube": "GameCube",
+  "wii": "Wii",
+  "x360": "Xbox 360",
+  "ps1": "PlayStation",
+  "ps2": "PlayStation 2",
+  "nds": "Nintendo DS",
+  "3ds": "Nintendo 3DS",
+  "gb": "Game Boy",
+  "gba": "Game Boy Advance",
+  "snes": "Super Nintendo",
+  "nes": "NES",
+  "genesis": "Mega Drive / Genesis",
+  "arcade": "Arcade"
+ },
+ "recomps": [
+  {
+   "id": "zelda64",
+   "title": "Zelda 64: Recompiled",
+   "game": "The Legend of Zelda: Majora's Mask",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "Zelda64Recomp/Zelda64Recomp",
+   "linux": true,
+   "needs": "Majora's Mask (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "Zelda64Recompiled",
+    "gameId": "mm.n64.us.1.0"
+   },
+   "hash": {
+    "xxh3": [
+     "ef18b4a9e2386169"
+    ]
+   },
+   "saves": "~/.config/Zelda64Recompiled/saves",
+   "mods": "~/.config/Zelda64Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/Zelda64Recomp/Zelda64Recomp/HEAD/icons/512.png",
+   "arm64": true,
+   "featured": true
+  },
+  {
+   "id": "banjo",
+   "title": "Banjo: Recompiled",
+   "game": "Banjo-Kazooie",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "BanjoRecomp/BanjoRecomp",
+   "linux": true,
+   "needs": "Banjo-Kazooie (USA, v1.0) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "BanjoRecompiled",
+    "gameId": "bk.n64.us.1.0"
+   },
+   "hash": {
+    "xxh3": [
+     "1b67585d56e07f8c"
+    ]
+   },
+   "saves": "~/.config/BanjoRecompiled/saves",
+   "mods": "~/.config/BanjoRecompiled/mods",
+   "icon": "https://raw.githubusercontent.com/BanjoRecomp/BanjoRecomp/HEAD/icons/app.png",
+   "featured": true
+  },
+  {
+   "id": "blastcorps",
+   "title": "Blast Corps: Recompiled",
+   "game": "Blast Corps",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "SlaveOfIDO/blastcorps-recomp",
+   "linux": true,
+   "needs": "Blast Corps (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "BlastCorpsRecompiled",
+    "gameId": "bc.n64.us"
+   },
+   "hash": {
+    "xxh3": [
+     "d30bc8bd3ec41ee4"
+    ]
+   },
+   "saves": "~/.config/BlastCorpsRecompiled/saves",
+   "mods": "~/.config/BlastCorpsRecompiled/mods",
+   "icon": "https://raw.githubusercontent.com/SlaveOfIDO/blastcorps-recomp/HEAD/icons/512.png",
+   "arm64": true
+  },
+  {
+   "id": "bomberman64",
+   "title": "Bomberman 64: Recompiled",
+   "game": "Bomberman 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "RevoSucks/BM64Recomp",
+   "linux": true,
+   "needs": "Bomberman 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "BM64Recompiled",
+    "gameId": "bm64_us"
+   },
+   "hash": {
+    "xxh3": [
+     "c4c0b74bbb696426"
+    ]
+   },
+   "saves": "~/.config/BM64Recompiled/saves",
+   "mods": "~/.config/BM64Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/RevoSucks/BM64Recomp/HEAD/icons/512.png",
+   "arm64": true
+  },
+  {
+   "id": "bombermanhero",
+   "title": "Bomberman Hero: Recompiled",
+   "game": "Bomberman Hero",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "RevoSucks/BMHeroRecomp",
+   "linux": true,
+   "needs": "Bomberman Hero (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "BMHeroRecompiled",
+    "gameId": "bmhero"
+   },
+   "hash": {
+    "xxh3": [
+     "89134c0e1f16e0f8"
+    ]
+   },
+   "saves": "~/.config/BMHeroRecompiled/saves",
+   "mods": "~/.config/BMHeroRecompiled/mods",
+   "icon": "https://raw.githubusercontent.com/RevoSucks/BMHeroRecomp/HEAD/icons/app.png",
+   "arm64": true
+  },
+  {
+   "id": "dk64",
+   "title": "DK64: Rekongpiled",
+   "game": "Donkey Kong 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "Rainchus/Donkey-Kong-64-Recompiled",
+   "linux": true,
+   "needs": "Donkey Kong 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "DK64Recompiled",
+    "gameId": "DK64"
+   },
+   "hash": {
+    "xxh3": [
+     "4d876060f09b3fc5"
+    ]
+   },
+   "saves": "~/.config/DK64Recompiled/saves",
+   "mods": "~/.config/DK64Recompiled/mods",
+   "arm64": true
+  },
+  {
+   "id": "goemon64",
+   "title": "Goemon 64: Recompiled",
+   "game": "Mystical Ninja Starring Goemon",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "klorfmorf/Goemon64Recomp",
+   "linux": true,
+   "needs": "Mystical Ninja Starring Goemon (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "Goemon64Recompiled",
+    "gameId": "mnsg.us"
+   },
+   "hash": {
+    "xxh3": [
+     "db1bc7ee0e6beba1"
+    ]
+   },
+   "saves": "~/.config/Goemon64Recompiled/saves",
+   "mods": "~/.config/Goemon64Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/klorfmorf/Goemon64Recomp/HEAD/icons/512.png",
+   "arm64": true
+  },
+  {
+   "id": "harvestmoon64",
+   "title": "Harvest Moon 64: Recompiled",
+   "game": "Harvest Moon 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "HarvestMoon64Recomp/HarvestMoon64Recomp",
+   "linux": true,
+   "needs": "Harvest Moon 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "HarvestMoon64Recompiled",
+    "gameId": "harvest_moon_64"
+   },
+   "hash": {
+    "xxh3": [
+     "68b2c3755c527305"
+    ]
+   },
+   "saves": "~/.config/HarvestMoon64Recompiled/saves",
+   "mods": "~/.config/HarvestMoon64Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/HarvestMoon64Recomp/HarvestMoon64Recomp/HEAD/icons/app.png"
+  },
+  {
+   "id": "megaman64",
+   "title": "Mega Man 64: Recompiled",
+   "game": "Mega Man 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "MegaMan64Recomp/MegaMan64Recompiled",
+   "linux": true,
+   "needs": "Mega Man 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "MegaMan64Recompiled",
+    "gameId": "megaman.n64.us.1.0"
+   },
+   "hash": {
+    "xxh3": [
+     "0c74c7489d01643b"
+    ]
+   },
+   "saves": "~/.config/MegaMan64Recompiled/saves",
+   "mods": "~/.config/MegaMan64Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/MegaMan64Recomp/MegaMan64Recompiled/HEAD/icons/icon.png",
+   "arm64": true
+  },
+  {
+   "id": "quest64",
+   "title": "Quest 64: Recompiled",
+   "game": "Quest 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "Rainchus/Quest64-Recomp",
+   "linux": true,
+   "needs": "Quest 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "Quest64Recompiled",
+    "gameId": "quest64_us"
+   },
+   "hash": {
+    "xxh3": [
+     "35335bf69fc6515c"
+    ]
+   },
+   "saves": "~/.config/Quest64Recompiled/saves",
+   "mods": "~/.config/Quest64Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/Rainchus/Quest64-Recomp/HEAD/icons/512.png",
+   "arm64": true
+  },
+  {
+   "id": "snowboardkids",
+   "title": "Snowboard Kids: Recompiled",
+   "game": "Snowboard Kids",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "cdlewis/snowboardkids-recomp",
+   "linux": true,
+   "needs": "Snowboard Kids (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "SnowboardKidsRecompiled",
+    "gameId": "snowboardkids.n64.us"
+   },
+   "hash": {
+    "xxh3": [
+     "f384619787b78d4b"
+    ]
+   },
+   "saves": "~/.config/SnowboardKidsRecompiled/saves",
+   "mods": "~/.config/SnowboardKidsRecompiled/mods",
+   "icon": "https://raw.githubusercontent.com/cdlewis/snowboardkids-recomp/HEAD/assets/logo.png",
+   "arm64": true
+  },
+  {
+   "id": "snowboardkids2",
+   "title": "Snowboard Kids 2: Recompiled",
+   "game": "Snowboard Kids 2",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "cdlewis/snowboardkids2-recomp",
+   "linux": true,
+   "needs": "Snowboard Kids 2 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "SnowboardKids2Recompiled",
+    "gameId": "snowboardkids2.n64.us"
+   },
+   "hash": {
+    "xxh3": [
+     "81f434ff431162eb"
+    ]
+   },
+   "saves": "~/.config/SnowboardKids2Recompiled/saves",
+   "mods": "~/.config/SnowboardKids2Recompiled/mods",
+   "icon": "https://raw.githubusercontent.com/cdlewis/snowboardkids2-recomp/HEAD/assets/logo.png",
+   "arm64": true
+  },
+  {
+   "id": "sssv",
+   "title": "Space Station Silicon Valley: Recompiled",
+   "game": "Space Station Silicon Valley",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "Cellenseres/SSSV_Recomp",
+   "linux": true,
+   "needs": "Space Station Silicon Valley (USA, v1.0) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "SSSVRecompiled",
+    "gameId": "sssv.n64.us.1.0"
+   },
+   "hash": {
+    "xxh3": [
+     "912a068aadb0d0c5"
+    ]
+   },
+   "saves": "~/.config/SSSVRecompiled/saves",
+   "mods": "~/.config/SSSVRecompiled/mods",
+   "icon": "https://raw.githubusercontent.com/Cellenseres/SSSV_Recomp/HEAD/icons/512.png"
+  },
+  {
+   "id": "dinoplanet",
+   "title": "Dinosaur Planet: Recompiled",
+   "game": "Dinosaur Planet",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "DinosaurPlanetRecomp/dino-recomp",
+   "linux": true,
+   "needs": "The Dinosaur Planet prototype ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "n64recomp",
+   "n64": {
+    "programId": "DinoPlanetRecompiled",
+    "gameId": "dino"
+   },
+   "hash": {
+    "xxh3": [
+     "b231a00966be1430"
+    ]
+   },
+   "saves": "~/.config/DinoPlanetRecompiled/saves",
+   "mods": "~/.config/DinoPlanetRecompiled/mods",
+   "icon": "https://raw.githubusercontent.com/DinosaurPlanetRecomp/dino-recomp/HEAD/assets/images/DPLogo.png"
+  },
+  {
+   "id": "chameleontwist",
+   "title": "Chameleon Twist: Recompiled",
+   "game": "Chameleon Twist (Japan)",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "Rainchus/ChameleonTwist1-JP-Recomp",
+   "linux": true,
+   "needs": "Chameleon Twist (Japan) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "xxh3": [
+     "0ff1b3a34ee3fb82"
+    ]
+   },
+   "arm64": true
+  },
+  {
+   "id": "drmario64",
+   "title": "Dr. Mario 64: Recompiled Plus",
+   "game": "Dr. Mario 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "theboy181/drmario64_recomp_plus",
+   "linux": true,
+   "needs": "Dr. Mario 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "xxh3": [
+     "960e3703f29d996d"
+    ]
+   }
+  },
+  {
+   "id": "wcwnwo",
+   "title": "WCW vs. nWo World Tour: Recompiled",
+   "game": "WCW vs. nWo: World Tour",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "jessetbh/WCWvsNWOWorldTourRecomp",
+   "linux": true,
+   "needs": "WCW vs. nWo: World Tour (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "xxh3": [
+     "acfcb4b5e49c6b0d"
+    ],
+    "sha1": [
+     "5ad2d8359058c8bb71f08e3d3433b7a50d3bb645"
+    ]
+   },
+   "icon": "https://raw.githubusercontent.com/jessetbh/WCWvsNWOWorldTourRecomp/HEAD/icons/logo.png"
+  },
+  {
+   "id": "lamborghini",
+   "title": "Automobili Lamborghini: Recompiled",
+   "game": "Automobili Lamborghini",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "alondero/automobililamborghini-recomp",
+   "linux": true,
+   "needs": "Automobili Lamborghini (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "xxh3": [
+     "525201d7279f34e3"
+    ]
+   },
+   "icon": "https://raw.githubusercontent.com/alondero/automobililamborghini-recomp/HEAD/assets/lambo-icon.png",
+   "experimental": true
+  },
+  {
+   "id": "pokemonstadium",
+   "title": "Pokémon Stadium: Recompiled",
+   "game": "Pokémon Stadium",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "mstan/PokemonStadiumRecomp",
+   "linux": true,
+   "needs": "Pokémon Stadium (USA, v1.0) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "xxh3": [
+     "6e46eacf8f27011d"
+    ],
+    "md5": [
+     "ed1378bc12115f71209a77844965ba50"
+    ]
+   },
+   "experimental": true
+  },
+  {
+   "id": "cvlod",
+   "title": "Castlevania: Legacy of Darkness Recompiled",
+   "game": "Castlevania: Legacy of Darkness",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "fliperama86/cvlod_recomp",
+   "linux": true,
+   "needs": "Castlevania: Legacy of Darkness (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "icon": "https://raw.githubusercontent.com/fliperama86/cvlod_recomp/HEAD/assets/lod_icon-iOS-Default-1024x1024@1x.png",
+   "experimental": true
+  },
+  {
+   "id": "troublemakers",
+   "title": "Trouble Makers",
+   "game": "Mischief Makers",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "ThiagoLira/trouble-makers-pc-recomp",
+   "linux": true,
+   "needs": "Mischief Makers (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "xxh3": [
+     "ecb515ae2c898e4f"
+    ]
+   },
+   "icon": "https://raw.githubusercontent.com/ThiagoLira/trouble-makers-pc-recomp/HEAD/assets/launcher/title-logo.png",
+   "experimental": true
+  },
+  {
+   "id": "waverace64",
+   "title": "Wave Race 64: Recompiled",
+   "game": "Wave Race 64",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "elliotttate/wave-race-64-recomp",
+   "linux": null,
+   "needs": "Wave Race 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "sha1": [
+     "508dfc2d4caa42b6f6de5263d0aed5e44ac7966a"
+    ]
+   },
+   "experimental": true
+  },
+  {
+   "id": "dkr",
+   "title": "Diddy Kong Racing Recompiled",
+   "game": "Diddy Kong Racing",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "ThatGuyMcd/DKR-R",
+   "linux": true,
+   "needs": "Diddy Kong Racing (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "goldenballoon",
+   "title": "Golden Balloon",
+   "game": "Diddy Kong Racing",
+   "console": "n64",
+   "kind": "port",
+   "repo": "akratch/goldenballoon",
+   "linux": true,
+   "needs": "Diddy Kong Racing ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "papermariorecut",
+   "title": "Paper Mario ReCut",
+   "game": "Paper Mario",
+   "console": "n64",
+   "kind": "recomp",
+   "repo": "SMCGames/Paper-Mario-ReCut",
+   "linux": false,
+   "needs": "Paper Mario (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "battleship",
+   "title": "BattleShip",
+   "game": "Super Smash Bros.",
+   "console": "n64",
+   "kind": "port",
+   "repo": "JRickey/BattleShip",
+   "linux": true,
+   "needs": "Super Smash Bros. (USA v1.0 or Japan) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "shipwright",
+   "title": "Ship of Harkinian",
+   "game": "The Legend of Zelda: Ocarina of Time",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "harbourmasters/shipwright",
+   "linux": true,
+   "needs": "Ocarina of Time ROM (a supported version: ship.equipment checks yours)",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "saves": "In the port's folder (Save/)",
+   "mods": "mods/ in the port's folder",
+   "featured": true
+  },
+  {
+   "id": "2ship",
+   "title": "2 Ship 2 Harkinian",
+   "game": "The Legend of Zelda: Majora's Mask",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "harbourmasters/2ship2harkinian",
+   "linux": true,
+   "needs": "Majora's Mask ROM (a supported version)",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "saves": "In the port's folder",
+   "mods": "mods/ in the port's folder"
+  },
+  {
+   "id": "ghostship",
+   "title": "Ghostship",
+   "game": "Super Mario 64",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "harbourmasters/ghostship",
+   "linux": true,
+   "needs": "Super Mario 64 (USA or Japan) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "mods": "mods/ in the port's folder",
+   "featured": true
+  },
+  {
+   "id": "spaghettikart",
+   "title": "SpaghettiKart",
+   "game": "Mario Kart 64",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "harbourmasters/spaghettikart",
+   "linux": true,
+   "needs": "Mario Kart 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "hash": {
+    "sha1": [
+     "579c48e211ae952530ffc8738709f078d5dd215e"
+    ]
+   },
+   "mods": "mods/ in the port's folder",
+   "featured": true
+  },
+  {
+   "id": "starship",
+   "title": "Starship",
+   "game": "Star Fox 64",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "harbourmasters/starship",
+   "linux": true,
+   "needs": "Star Fox 64 (USA 1.0 or 1.1) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "mods": "mods/ in the port's folder",
+   "featured": true
+  },
+  {
+   "id": "lighthouse",
+   "title": "Lighthouse",
+   "game": "Banjo-Kazooie",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "HarbourMasters/Lighthouse",
+   "linux": true,
+   "needs": "Banjo-Kazooie ROM (a supported version)",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "mods": "mods/ in the port's folder"
+  },
+  {
+   "id": "paperboat",
+   "title": "PaperBoat",
+   "game": "Paper Mario",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "HarbourMasters/PaperBoat",
+   "linux": true,
+   "needs": "Paper Mario ROM (a supported version)",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "mods": "mods/ in the port's folder"
+  },
+  {
+   "id": "gdiffuser",
+   "title": "G-Diffuser",
+   "game": "F-Zero X",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "Zorkats/G-Diffuser",
+   "linux": true,
+   "needs": "F-Zero X ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "mods": "mods/ in the port's folder"
+  },
+  {
+   "id": "perfectdark",
+   "title": "Perfect Dark",
+   "game": "Perfect Dark",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "fgsfdsfgs/perfect_dark",
+   "linux": true,
+   "needs": "Perfect Dark (USA, Rev 1) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "beside",
+   "besideName": "data/pd.ntsc-final.z64",
+   "hash": {
+    "md5": [
+     "e03b088b6ac9e0080440efed07c1e40f"
+    ]
+   },
+   "saves": "In the port's folder (data/)"
+  },
+  {
+   "id": "sm64coopdx",
+   "title": "sm64coopdx",
+   "game": "Super Mario 64 (online co-op)",
+   "console": "n64",
+   "kind": "decomp",
+   "repo": "coop-deluxe/sm64coopdx",
+   "linux": true,
+   "needs": "Super Mario 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app",
+   "saves": "~/.local/share/sm64coopdx"
+  },
+  {
+   "id": "infinitemario64",
+   "title": "Infinite Mario 64 Ever",
+   "game": "Infinite Mario 64 (fan game on libsm64)",
+   "console": "n64",
+   "kind": "port",
+   "repo": "Brawmario/infinite-mario-64-ever",
+   "linux": true,
+   "needs": "Super Mario 64 (USA) ROM",
+   "files": [
+    ".z64",
+    ".n64",
+    ".v64"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "dusklight",
+   "title": "Dusklight",
+   "game": "The Legend of Zelda: Twilight Princess",
+   "console": "gamecube",
+   "kind": "decomp",
+   "repo": "TwilitRealm/dusklight",
+   "linux": null,
+   "needs": "Twilight Princess (GameCube) disc image",
+   "files": [
+    ".iso",
+    ".rvz",
+    ".gcm"
+   ],
+   "setup": "in-app",
+   "featured": true
+  },
+  {
+   "id": "meleepc",
+   "title": "melee-pc",
+   "game": "Super Smash Bros. Melee",
+   "console": "gamecube",
+   "kind": "decomp",
+   "repo": "999sian/melee-pc",
+   "linux": true,
+   "needs": "Super Smash Bros. Melee (NTSC 1.02) disc image",
+   "files": [
+    ".iso",
+    ".gcm",
+    ".rvz",
+    ".ciso"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "strikers",
+   "title": "Strikers",
+   "game": "Super Mario Strikers",
+   "console": "gamecube",
+   "kind": "decomp",
+   "repo": "new-coke/strikers",
+   "linux": true,
+   "needs": "Super Mario Strikers disc image",
+   "files": [
+    ".iso",
+    ".gcm",
+    ".ciso",
+    ".gcz"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "marioparty4",
+   "title": "Mario Party 4",
+   "game": "Mario Party 4",
+   "console": "gamecube",
+   "kind": "decomp",
+   "repo": "mariopartyrd/marioparty4",
+   "linux": true,
+   "needs": "Mario Party 4 disc image",
+   "files": [
+    ".iso",
+    ".gcm",
+    ".rvz"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "reblue",
+   "title": "re:Blue",
+   "game": "Blue Dragon",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "zolaware/reblue",
+   "linux": true,
+   "needs": "Blue Dragon (Xbox 360), all three disc images",
+   "files": [
+    ".iso"
+   ],
+   "setup": "in-app",
+   "saves": "Kept by re:Blue; updating keeps saves, settings and mods"
+  },
+  {
+   "id": "acgc",
+   "title": "Animal Crossing PC Port",
+   "game": "Animal Crossing",
+   "console": "gamecube",
+   "kind": "decomp",
+   "repo": "flyngmt/ACGC-PC-Port",
+   "linux": false,
+   "needs": "Animal Crossing (GameCube) disc image",
+   "files": [
+    ".iso",
+    ".ciso",
+    ".gcm",
+    ".rvz"
+   ],
+   "setup": "beside",
+   "besideName": "rom/",
+   "experimental": true
+  },
+  {
+   "id": "ringout",
+   "title": "Ring Out",
+   "game": "SoulCalibur II",
+   "console": "gamecube",
+   "kind": "recomp",
+   "repo": "jackpoison-prog/RingOut",
+   "linux": true,
+   "needs": "SoulCalibur II (GameCube) disc image",
+   "files": [
+    ".iso",
+    ".gcm",
+    ".rvz",
+    ".wbfs"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "opennectar",
+   "title": "Open Nectar",
+   "game": "Pikmin",
+   "console": "gamecube",
+   "kind": "port",
+   "repo": "SSunnKing/Open-Nectar---Pikmin-Native-PC-Port",
+   "linux": true,
+   "needs": "Pikmin (GameCube) disc image",
+   "files": [
+    ".iso",
+    ".gcm",
+    ".rvz"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "moderngekko",
+   "title": "Kirby Wii Recomp (ModernGekko)",
+   "game": "Kirby's Return to Dream Land",
+   "console": "wii",
+   "kind": "recomp",
+   "repo": "ExpansionPak/ModernGekko",
+   "linux": null,
+   "needs": "Kirby's Return to Dream Land (Wii) disc image",
+   "files": [
+    ".iso",
+    ".rvz",
+    ".wbfs"
+   ],
+   "setup": "in-app",
+   "mods": "Mods/ beside the program",
+   "experimental": true
+  },
+  {
+   "id": "wiicompiled",
+   "title": "Wiicompiled",
+   "game": "Mario Kart Wii",
+   "console": "wii",
+   "kind": "recomp",
+   "repo": "patchzyy/Wiicompiled",
+   "linux": true,
+   "needs": "Mario Kart Wii disc image (PAL, NTSC-U or NTSC-J)",
+   "files": [
+    ".iso",
+    ".rvz",
+    ".wbfs"
+   ],
+   "setup": "in-app",
+   "arm64": true,
+   "experimental": true
+  },
+  {
+   "id": "reignition",
+   "title": "Project Reignition",
+   "game": "Sonic and the Secret Rings (fan remake)",
+   "console": "wii",
+   "kind": "port",
+   "repo": "kumapauz/project-reignition",
+   "linux": null,
+   "needs": null,
+   "files": [],
+   "setup": "in-app"
+  },
+  {
+   "id": "unleashed",
+   "title": "Unleashed Recompiled",
+   "game": "Sonic Unleashed",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "hedge-dev/UnleashedRecomp",
+   "linux": true,
+   "needs": "Sonic Unleashed (Xbox 360) game files and title update; its own installer takes them",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "featured": true
+  },
+  {
+   "id": "skate3",
+   "title": "Skate: Recompiled",
+   "game": "Skate 3",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "mchughalex/skate3recomp",
+   "linux": true,
+   "needs": "Skate 3 (Xbox 360) disc image",
+   "files": [
+    ".iso"
+   ],
+   "setup": "in-app",
+   "featured": true
+  },
+  {
+   "id": "ac6",
+   "title": "Ace Combat 6 Recomp",
+   "game": "Ace Combat 6: Fires of Liberation",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "sal063/AC6_recomp",
+   "linux": false,
+   "needs": "Ace Combat 6 (Xbox 360) game files, extracted into assets/",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "renut",
+   "title": "Re-NuT",
+   "game": "Banjo-Kazooie: Nuts & Bolts",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "masterspike52/reNut",
+   "linux": true,
+   "needs": "Banjo-Kazooie: Nuts & Bolts (USA) disc image and its title update",
+   "files": [
+    ".iso"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "condemned2",
+   "title": "Condemned2Recomp",
+   "game": "Condemned 2: Bloodshot",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "psxrestore/Condemned2Recomp",
+   "linux": null,
+   "needs": "Condemned 2: Bloodshot (Xbox 360) game files",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "dbz1",
+   "title": "Dragon Ball Z Budokai HD Recompiled",
+   "game": "Dragon Ball Z: Budokai HD",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "WistfulHopes/DBZ1",
+   "linux": false,
+   "needs": "Dragon Ball Z Budokai HD (Xbox 360) game files (the folder is the program's first argument)",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "pgr4",
+   "title": "Project Gotham Racing 4 Recompiled",
+   "game": "Project Gotham Racing 4",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "beatrixzy/PGR4-Recomp",
+   "linux": false,
+   "needs": "Project Gotham Racing 4 (Xbox 360) game files",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "sstennis",
+   "title": "Sega Superstars Tennis ReMatch",
+   "game": "Sega Superstars Tennis",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "m1ndcrap/Sega-Superstars-Tennis-ReMatch",
+   "linux": true,
+   "needs": "Sega Superstars Tennis (Xbox 360) game files, extracted into assets/",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "simpsonsgame",
+   "title": "The Simpsons Game - Recompiled",
+   "game": "The Simpsons Game",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "YesterMester/TheSimpsonsGameRecomp",
+   "linux": true,
+   "needs": "The Simpsons Game (Xbox 360) disc image; its launcher's Install tab takes it",
+   "files": [
+    ".iso"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "tip",
+   "title": "Viva Piñata: Trouble in Paradise Recompiled",
+   "game": "Viva Piñata: Trouble in Paradise",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "SolarCookies/TiP-Recomp",
+   "linux": true,
+   "needs": "Viva Piñata: Trouble in Paradise (Xbox 360) disc image",
+   "files": [
+    ".iso"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "svr07",
+   "title": "WWE SmackDown vs. Raw 2007 Recompiled",
+   "game": "WWE SmackDown vs. Raw 2007",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "HollywoodAkeem/SVR07-Recomp",
+   "linux": false,
+   "needs": "SmackDown vs. Raw 2007 (Xbox 360) game files",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "deadlypremonition",
+   "title": "Deadly Premonition Recompilation",
+   "game": "Deadly Premonition",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "LittleBitUA/DPRecomp",
+   "linux": true,
+   "needs": "Deadly Premonition (Xbox 360, PAL or USA) disc image; its installer extracts it",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "redahm",
+   "title": "ReDahm",
+   "game": "Destroy All Humans! Path of the Furon",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "masterspike52/redahm",
+   "linux": false,
+   "needs": "Path of the Furon (Xbox 360) game files",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "goldeneye",
+   "title": "GoldenEye 007 Recompiled",
+   "game": "GoldenEye 007 (XBLA)",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "SunJaycy/GoldenEye-Recomp",
+   "linux": false,
+   "needs": "Game files, put in the assets folder",
+   "files": [
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "hellsgate",
+   "title": "Hell's Gate",
+   "game": "Dante's Inferno",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "florinp93/hells-gate-recomp",
+   "linux": true,
+   "needs": "Dante's Inferno (Xbox 360) disc image; its installer extracts it",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "kameo",
+   "title": "Kameo: RePowered",
+   "game": "Kameo: Elements of Power",
+   "console": "x360",
+   "kind": "recomp",
+   "repo": "birabittoh/KameoRePowered",
+   "linux": true,
+   "needs": "Kameo (Xbox 360) game files, extracted into assets/",
+   "files": [
+    ".iso",
+    ".xex"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "ctrnative",
+   "title": "CTR Native",
+   "game": "Crash Team Racing",
+   "console": "ps1",
+   "kind": "decomp",
+   "repo": "CTR-tools/ctr-native",
+   "linux": true,
+   "needs": "Crash Team Racing (USA) disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "mikupan",
+   "title": "MikuPan",
+   "game": "Fatal Frame",
+   "console": "ps2",
+   "kind": "decomp",
+   "repo": "Mikompilation/MikuPan",
+   "linux": true,
+   "needs": "IMG_HD.BIN and IMG_BD.BIN from your Fatal Frame disc, in the program's folder",
+   "files": [
+    ".bin",
+    ".iso"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "rageracer",
+   "title": "Rage Racer PC",
+   "game": "Rage Racer",
+   "console": "ps1",
+   "kind": "port",
+   "repo": "khasinski/rage-racer-pc",
+   "linux": true,
+   "needs": "Rage Racer disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "severedchains",
+   "title": "Severed Chains",
+   "game": "The Legend of Dragoon",
+   "console": "ps1",
+   "kind": "port",
+   "repo": "Legend-of-Dragoon-Modding/Severed-Chains",
+   "linux": true,
+   "needs": "The Legend of Dragoon disc images, in its isos folder",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "beside",
+   "besideName": "isos/"
+  },
+  {
+   "id": "sfa3",
+   "title": "Street Fighter Alpha 3 Recompiled",
+   "game": "Street Fighter Alpha 3",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "TechnicallyComputers/Street-Fighter-Alpha-3-Recomp",
+   "linux": false,
+   "needs": "Street Fighter Alpha 3 disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "symphony",
+   "title": "SymphonyRecomp",
+   "game": "Castlevania: Symphony of the Night",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "BlackLabelHQ/SymphonyRecomp",
+   "linux": false,
+   "needs": "Symphony of the Night (USA) disc image, bin/cue or CHD",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "syphonfilter",
+   "title": "Syphon Filter PC",
+   "game": "Syphon Filter",
+   "console": "ps1",
+   "kind": "port",
+   "repo": "Madxbio97/SF-pc-port",
+   "linux": false,
+   "needs": "Syphon Filter disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "apeescape",
+   "title": "Ape Escape Recomp",
+   "game": "Ape Escape",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "mstan/ApeEscapeRecomp",
+   "linux": true,
+   "needs": "Ape Escape disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "bloodyroar2",
+   "title": "Bloody Roar II Recompiled",
+   "game": "Bloody Roar II",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "novapowers0/BloodyRoar2Recomp",
+   "linux": true,
+   "needs": "Bloody Roar II disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "crash1",
+   "title": "Crash Bandicoot Recomp",
+   "game": "Crash Bandicoot",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "Matteo842/CrashBandicoot-Launcher",
+   "linux": true,
+   "needs": "Crash Bandicoot disc image (.chd or .cue)",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "beside",
+   "experimental": true
+  },
+  {
+   "id": "crash2",
+   "title": "Crash Bandicoot 2 Recomp",
+   "game": "Crash Bandicoot 2: Cortex Strikes Back",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "Zumbo06/Crash2Recomp",
+   "linux": false,
+   "needs": "Crash Bandicoot 2 disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "einhander",
+   "title": "Einhänder Recompiled",
+   "game": "Einhänder",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "strider973/Einhander-Recompiled",
+   "linux": false,
+   "needs": "Einhänder disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "klonoa",
+   "title": "Klonoa: Door to Phantomile Recomp",
+   "game": "Klonoa: Door to Phantomile",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "TechnicallyComputers/Klonoa-Door-to-Phantomile",
+   "linux": false,
+   "needs": "Klonoa disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "mmx5",
+   "title": "Mega Man X5 Recomp",
+   "game": "Mega Man X5",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "mstan/MegaManX5Recomp",
+   "linux": false,
+   "needs": "Mega Man X5 (USA) disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "mmx6",
+   "title": "Mega Man X6 Recomp",
+   "game": "Mega Man X6",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "mstan/MegaManX6Recomp",
+   "linux": false,
+   "needs": "Mega Man X6 (USA) disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "silenthill",
+   "title": "Silent Hill Decompilation Project",
+   "game": "Silent Hill",
+   "console": "ps1",
+   "kind": "decomp",
+   "repo": "SlickAmogus/silent-hill-decomp",
+   "linux": true,
+   "needs": "Silent Hill disc image, in its gamedata folder",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "beside",
+   "besideName": "gamedata/",
+   "experimental": true
+  },
+  {
+   "id": "sfexplusalpha",
+   "title": "Street Fighter EX Plus Alpha Recomp",
+   "game": "Street Fighter EX Plus α",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "guimaraf/plusalpha-recomp",
+   "linux": false,
+   "needs": "Street Fighter EX Plus α (USA) disc image and a PlayStation BIOS you dumped",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "sfex2plus",
+   "title": "Street Fighter EX2 Plus Recompiled",
+   "game": "Street Fighter EX2 Plus",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "strider973/Street-Fighter-EX2-Plus-Recompiled",
+   "linux": false,
+   "needs": "Street Fighter EX2 Plus disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "strider2",
+   "title": "Strider 2 Recompiled",
+   "game": "Strider 2",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "strider973/STRIDER-2-Recompiled",
+   "linux": true,
+   "needs": "Strider 2 (USA, SLUS-01163) bin + cue",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "tomba",
+   "title": "Tomba! Recomp",
+   "game": "Tomba!",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "mstan/TombaRecomp",
+   "linux": true,
+   "needs": "Tomba! disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "sha1": [
+     "2505d958b4439d04844cadd3f968fc7432a48e00"
+    ]
+   },
+   "experimental": true
+  },
+  {
+   "id": "valkyrie",
+   "title": "ValkyrieRecomp",
+   "game": "Valkyrie Profile",
+   "console": "ps1",
+   "kind": "recomp",
+   "repo": "Ed1z19/ValkyrieRecomp",
+   "linux": false,
+   "needs": "Valkyrie Profile disc image",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "wipeoutphantom",
+   "title": "WipeOut: Phantom Edition",
+   "game": "Wipeout",
+   "console": "ps1",
+   "kind": "port",
+   "repo": "wipeout-phantom-edition/wipeout-phantom-edition",
+   "linux": null,
+   "needs": "Wipeout (USA) bin + cue",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "redriver2",
+   "title": "REDRIVER2",
+   "game": "Driver 2",
+   "console": "ps1",
+   "kind": "decomp",
+   "repo": "OpenDriver2/REDRIVER2",
+   "linux": true,
+   "needs": "Driver 2 game files from your discs",
+   "files": [
+    ".iso",
+    ".bin",
+    ".cue",
+    ".chd"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "3sx",
+   "title": "3SX",
+   "game": "Street Fighter III: 3rd Strike",
+   "console": "ps2",
+   "kind": "decomp",
+   "repo": "crowded-street/3sx",
+   "linux": true,
+   "needs": "SF33RD.AFS from your 3rd Strike (PS2) disc",
+   "files": [
+    ".iso",
+    ".afs"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "3sxw",
+   "title": "3SXW",
+   "game": "Street Fighter III: 3rd Strike",
+   "console": "ps2",
+   "kind": "decomp",
+   "repo": "guimaraf/3sxw",
+   "linux": true,
+   "needs": "Street Fighter III: 3rd Strike (PS2) disc image (it extracts SF33RD.AFS)",
+   "files": [
+    ".iso",
+    ".afs"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "pokeplatinum",
+   "title": "Pokémon Platinum PC Port",
+   "game": "Pokémon Platinum",
+   "console": "nds",
+   "kind": "decomp",
+   "repo": "cybervisi0n/pokeplatinum",
+   "linux": true,
+   "needs": "Pokémon Platinum (USA, CPUE01) ROM",
+   "files": [
+    ".nds"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "mphunters",
+   "title": "Metroid Prime: Hunters Recomp",
+   "game": "Metroid Prime: Hunters",
+   "console": "nds",
+   "kind": "recomp",
+   "repo": "mstan/MetroidPrimeHuntersRecomp",
+   "linux": true,
+   "needs": "Metroid Prime: Hunters (USA, rev 0) ROM",
+   "files": [
+    ".nds"
+   ],
+   "setup": "beside",
+   "hash": {
+    "sha1": [
+     "90164d1ac127ee5f9815ea4ae7de798c7b5fc629"
+    ]
+   },
+   "experimental": true
+  },
+  {
+   "id": "triaevum",
+   "title": "TriAevum",
+   "game": "The Legend of Zelda: Ocarina of Time 3D",
+   "console": "3ds",
+   "kind": "port",
+   "repo": "coccofresco/TriAevum",
+   "linux": true,
+   "needs": "Ocarina of Time 3D ROM (decrypted)",
+   "files": [
+    ".3ds",
+    ".cci"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "autotmc",
+   "title": "Auto-TMC",
+   "game": "The Legend of Zelda: The Minish Cap",
+   "console": "gba",
+   "kind": "decomp",
+   "repo": "StonedModder/auto-tmc",
+   "linux": true,
+   "needs": "The Minish Cap ROM",
+   "files": [
+    ".gba"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "smw",
+   "title": "smw",
+   "game": "Super Mario World",
+   "console": "snes",
+   "kind": "port",
+   "repo": "snesrev/smw",
+   "linux": null,
+   "needs": "Super Mario World (USA) ROM, named smw.sfc",
+   "files": [
+    ".sfc",
+    ".smc"
+   ],
+   "setup": "beside",
+   "besideName": "smw.sfc"
+  },
+  {
+   "id": "sonic3air",
+   "title": "Sonic 3 A.I.R.",
+   "game": "Sonic 3 & Knuckles",
+   "console": "genesis",
+   "kind": "port",
+   "repo": "Eukaryot/sonic3air",
+   "linux": true,
+   "needs": "The Sonic 3 & Knuckles ROM (from the Steam release)",
+   "files": [
+    ".bin"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "smbremastered",
+   "title": "Super Mario Bros. Remastered",
+   "game": "Super Mario Bros.",
+   "console": "nes",
+   "kind": "port",
+   "repo": "JHDev2006/Super-Mario-Bros.-Remastered-Public",
+   "linux": true,
+   "needs": "Super Mario Bros. (NES) ROM",
+   "files": [
+    ".nes"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "supermetroid",
+   "title": "Super Metroid Launcher",
+   "game": "Super Metroid",
+   "console": "snes",
+   "kind": "port",
+   "repo": "RadzPrower/Super-Metroid-Launcher",
+   "linux": false,
+   "needs": "Super Metroid (USA) ROM",
+   "files": [
+    ".sfc",
+    ".smc"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "sha256": [
+     "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
+    ]
+   }
+  },
+  {
+   "id": "zelda3",
+   "title": "Zelda 3 Launcher",
+   "game": "The Legend of Zelda: A Link to the Past",
+   "console": "snes",
+   "kind": "port",
+   "repo": "RadzPrower/Zelda-3-Launcher",
+   "linux": false,
+   "needs": "A Link to the Past (USA) ROM",
+   "files": [
+    ".sfc",
+    ".smc"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "sha256": [
+     "66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb"
+    ]
+   }
+  },
+  {
+   "id": "mmxsnes",
+   "title": "Mega Man X SNESRecomp",
+   "game": "Mega Man X",
+   "console": "snes",
+   "kind": "recomp",
+   "repo": "mstan/MegaManXSNESRecomp",
+   "linux": true,
+   "needs": "Mega Man X (USA, Rev 1) ROM",
+   "files": [
+    ".sfc",
+    ".smc"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "sha256": [
+     "b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32"
+    ],
+    "sha1": [
+     "c65216760ba99178100a10d98457cf11496c2097"
+    ]
+   }
+  },
+  {
+   "id": "mmx2",
+   "title": "Mega Man X2 Recomp",
+   "game": "Mega Man X2",
+   "console": "snes",
+   "kind": "recomp",
+   "repo": "mstan/MegaManX2Recomp",
+   "linux": false,
+   "needs": "Mega Man X2 (USA) ROM",
+   "files": [
+    ".sfc",
+    ".smc"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "sha256": [
+     "f3246755f608a1e1dc9c848b61da3b824c7853b29b3be40df6fc7f2793a887ed"
+    ]
+   },
+   "experimental": true
+  },
+  {
+   "id": "sonic1forever",
+   "title": "Sonic 1 Forever",
+   "game": "Sonic the Hedgehog",
+   "console": "genesis",
+   "kind": "port",
+   "repo": "ElspethThePict/S1Forever",
+   "linux": null,
+   "needs": "Sonic the Hedgehog game data (Data.rsdk from the 2013 release)",
+   "files": [
+    ".rsdk"
+   ],
+   "setup": "in-app"
+  },
+  {
+   "id": "gen1recomp",
+   "title": "Gen1Recomp++",
+   "game": "Pokémon Red, Blue, Yellow, Gold, Silver and Crystal",
+   "console": "gb",
+   "kind": "recomp",
+   "repo": "bryanthaboi/gen1recomp",
+   "linux": true,
+   "needs": "Your Pokémon Game Boy cartridge dump",
+   "files": [
+    ".gb",
+    ".gbc"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "mksc",
+   "title": "Mario Kart: Super Circuit Recomp",
+   "game": "Mario Kart: Super Circuit",
+   "console": "gba",
+   "kind": "recomp",
+   "repo": "mstan/MarioKartSuperCircuitRecomp",
+   "linux": true,
+   "needs": "Mario Kart: Super Circuit (USA) ROM",
+   "files": [
+    ".gba"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  },
+  {
+   "id": "warioland4",
+   "title": "Wario Land 4",
+   "game": "Wario Land 4",
+   "console": "gba",
+   "kind": "decomp",
+   "repo": "BioRhythmicStudios/warioland4",
+   "linux": true,
+   "needs": "Wario Land 4 (USA/Europe or Japan) ROM",
+   "files": [
+    ".gba"
+   ],
+   "setup": "in-app",
+   "hash": {
+    "md5": [
+     "5fe47355a33e3fabec2a1607af88a404",
+     "99c8ad779a16be513a9fdff502b6f5c2"
+    ]
+   },
+   "experimental": true
+  },
+  {
+   "id": "relive",
+   "title": "R.E.L.I.V.E.",
+   "game": "Oddworld: Abe's Oddysee and Abe's Exoddus",
+   "console": "ps1",
+   "kind": "decomp",
+   "repo": "AliveTeam/alive_reversing",
+   "linux": true,
+   "needs": "Your Abe's Oddysee or Abe's Exoddus game files (PC or PlayStation)",
+   "files": [],
+   "setup": "in-app"
+  },
+  {
+   "id": "cannonball",
+   "title": "CannonBall DX",
+   "game": "OutRun (arcade)",
+   "console": "arcade",
+   "kind": "port",
+   "repo": "Endprodukt/cannonball-dx",
+   "linux": true,
+   "needs": "The OutRun arcade ROM files, in its roms folder",
+   "files": [
+    ".zip"
+   ],
+   "setup": "beside",
+   "besideName": "roms/",
+   "experimental": true
+  },
+  {
+   "id": "initiald3",
+   "title": "Initial D Arcade Stage 3 Recompiled",
+   "game": "Initial D Arcade Stage 3",
+   "console": "arcade",
+   "kind": "recomp",
+   "repo": "distilledorion-sketch/Initial-D-Arcade-Stage-3-Native-SH-4-Recompilation-WIP-",
+   "linux": false,
+   "needs": "Your matching game files, in its 'game files' folder",
+   "files": [
+    ".chd"
+   ],
+   "setup": "in-app",
+   "experimental": true
+  }
+ ]
+}

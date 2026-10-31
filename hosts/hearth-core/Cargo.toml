@@ -13,6 +13,10 @@ getrandom = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sha1_smol = "1"
 regex = "1"
+# Hearth Recomps checks your game file against the hash its project documents (recomps.rs).
+sha2 = "0.10"
+md-5 = "0.10"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [dev-dependencies]
 tempfile = "3"

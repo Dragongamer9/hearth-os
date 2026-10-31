@@ -122,6 +122,13 @@ Xbox PC games show **Open Xodus Nexus**. Nexus is integrated the way Beacon is (
 - **Desktop Mode:** in Mantel's launcher, and pinned to the taskbar (for a new user, and once on an existing taskbar
   the first time it's installed, like Bazaar).
 
+## Recomps
+
+The Store's last section, **Recomps**, is Hearth Recomps: native PC versions of console games (Zelda 64: Recompiled,
+Ship of Harkinian, Unleashed Recompiled and many more), installed and updated from their own GitHub releases. You
+supply your own copy of the game; Hearth checks it and sets it up. Installed ports show in Library › Recomps.
+Everything about it is in docs/RECOMPS.md (`hosts/hearth-core/src/recomps.rs`).
+
 ## Checks
 
 - Rust tests for each store's reader use recorded answers from the real stores

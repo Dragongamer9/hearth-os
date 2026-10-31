@@ -49,6 +49,20 @@ jobs:
         with:
           name: store-live
           path: store-live
+  # Hearth's page (tools/ui-check.js): every screen with the preview's data, the Store with its Recomps section among
+  # them, without a script error.
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

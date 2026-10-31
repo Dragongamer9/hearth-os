@@ -18,6 +18,8 @@ pub struct Bridge {
     pub updates: crate::admin::Updates,
     pub xodus: crate::xodus::Xodus,
     pub battlenet: crate::battlenet::Battlenet,
+    /// Hearth Recomps (recomps.rs): installs, updates and game-file checks in the background.
+    pub recomps: crate::recomps::Recomps,
     pub profiles: crate::profiles::Profiles,
     /// The parental-controls PIN unlocks managing profiles for a few minutes.
     pub pin_until: std::time::Instant,
@@ -101,7 +103,7 @@ impl Bridge {
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
-        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), battlenet: crate::battlenet::Battlenet::new(), profiles, pin_until: std::time::Instant::now(),
+        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), battlenet: crate::battlenet::Battlenet::new(), recomps: crate::recomps::Recomps::new(), profiles, pin_until: std::time::Instant::now(),
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
@@ -1022,6 +1024,26 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
+            // Hearth Recomps (recomps.rs, docs/RECOMPS.md): native PC ports of console games, from their GitHub releases.
+            "recomps.list" => { self.recomps.check_updates(false, self.emit.clone()); Ok(self.recomps.list()) }
+            "recomps.details" => { let (id, fresh) = (req("id")?, a["fresh"] == true); self.later(move || crate::recomps::Recomps::details(&id, fresh)) }
+            "recomps.install" => self.recomps.install(&req("id")?, a["tag"].as_str().map(str::to_string), a["asset"].as_str().map(str::to_string), a["place"].as_str().map(str::to_string), self.emit.clone()),
+            "recomps.cancel" => { self.recomps.cancel(&req("id")?); Ok(json!({})) }
+            "recomps.uninstall" => { let kept = crate::recomps::uninstall(&req("id")?, a["keep"] == true)?; self.library.scan(); Ok(json!({"backup": kept})) }
+            "recomps.places" => Ok(json!(crate::recomps::places())),
+            "recomps.pickGame" => self.pick_later(method, a, crate::picker::Ask::File("Choose your copy of the game (a ROM or disc image you made from your own game)".into())),
+            "recomps.useGame" => self.recomps.set_game(&req("id")?, &req("path")?, a["anyway"] == true, self.emit.clone()),
+            "recomps.adopt" => self.pick_later(method, a, crate::picker::Ask::Folder("Choose the folder the port is in".into(), paths::home().to_string_lossy().to_string())),
+            "recomps.exes" => crate::recomps::exe_choices(&req("id")?),
+            "recomps.setExe" => { let s = crate::recomps::set_exe(&req("id")?, &req("exe")?)?; self.library.scan(); Ok(s) }
+            "recomps.skip" => crate::recomps::set_skip(&req("id")?, a["tag"].as_str()),
+            "recomps.pin" => crate::recomps::set_pin(&req("id")?, a["tag"].as_str()),
+            "recomps.shortcut" => Ok(json!({"on": crate::recomps::set_shortcut(&req("id")?, a["on"] == true)?})),
+            "recomps.backup" => { let id = req("id")?; self.later(move || crate::recomps::backup(&id).map(|f| json!({"file": f}))) }
+            "recomps.hide" => { crate::recomps::set_hidden(&req("id")?, a["on"] == true)?; Ok(json!({})) }
+            "recomps.addCustom" => { let (r, t) = (req("repo")?, a["title"].as_str().map(str::to_string)); self.later(move || crate::recomps::add_custom(&r, t.as_deref())) }
+            "recomps.removeCustom" => { crate::recomps::remove_custom(&req("id")?)?; Ok(json!({})) }
+            "recomps.checkUpdates" => { self.recomps.check_updates(true, self.emit.clone()); Ok(json!({})) }
             // Battle.net (battlenet.rs): one-press setup in its own Proton prefix; you sign in in Battle.net's own window.
             "battlenet.status" => Ok(self.battlenet.status()),
             "battlenet.install" => Ok(self.battlenet.install(self.emit.clone())),
@@ -1308,7 +1330,7 @@ impl Bridge {
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
         let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
         let own_proton = (g.source == "epic" || g.source == "gog") && g.can_uninstall;   // installed by Hearth, started with Proton
-        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
+        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", "recomps" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "recomps" => "native", _ if own_proton => "proton", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
@@ -1334,6 +1356,9 @@ impl Bridge {
                 None => Ok(Value::Null),
             },
             "library.addManual" => match path { Some(f) => self.add_manual(&f), None => Ok(Value::Null) },
+            // Hearth Recomps: your copy of a game (checked in the background), or a folder with the port in it.
+            "recomps.pickGame" => match path { Some(f) => self.recomps.set_game(a["id"].as_str().unwrap_or(""), &f, false, self.emit.clone()).map(|v| { let mut v = v; v["file"] = json!(f); v }), None => Ok(Value::Null) },
+            "recomps.adopt" => match path { Some(d) => { let s = crate::recomps::adopt(a["id"].as_str().unwrap_or(""), &d)?; self.library.scan(); Ok(s) } None => Ok(Value::Null) },
             _ => Err(format!("Nothing waits for a picker in {method}")),
         }
     }
@@ -1818,7 +1843,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet", "recomps"];
     // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
     f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }

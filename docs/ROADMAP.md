@@ -33,6 +33,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [ ] Capacitive stick touch for "gyro while touching" (today: while the right stick is moved), and a desktop layout for Hearth Classic's own controller mapping
 
 **After that**
+- [x] Hearth Recomps: Hearth's own store for native PC ports of console games (N64Recomp, Harbour Masters, Xbox 360 recompilations and more: 107 in the catalogue), installed and updated from their GitHub releases, your own copy of the game checked and set up, Library › Recomps with Play (docs/RECOMPS.md; needs testing on a device)
 - [x] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
 - [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)
 - [x] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs

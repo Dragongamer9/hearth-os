@@ -274,6 +274,12 @@ impl Library {
             counts.insert("battlenet".to_string(), list.len());
             for g in list { all.insert(g.id.clone(), g); }
         }
+        // Hearth Recomps (recomps.rs): each port installed from Game Mode › Store › Recomps.
+        if self.store.source_on("recomps") {
+            let list = crate::recomps::games();
+            counts.insert("recomps".to_string(), list.len());
+            for g in list { all.insert(g.id.clone(), g); }
+        }
         // Beacon's games (BFME, Age of the Ring, LOTR: Conquest...), read again when Beacon's files changed.
         if self.store.source_on("beacon") {
             // Never waits for Beacon here (its program can take a while, or not answer): the last answer is used and a
@@ -763,6 +769,15 @@ impl Library {
                 let opts = crate::game_options::get(&self.store, id);
                 let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
                 let dirs = g.install_path.as_ref().filter(|p| p.starts_with(crate::battlenet::prefix())).map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
+            }
+            // Hearth Recomps: Hearth's start script for a Linux build (in the port's folder), or the Windows build's
+            // .exe, which starts with Proton (umu-run) like any Windows game. The port's folder finds its processes.
+            "recomps" => {
+                let exe = g.exe.clone().unwrap_or_default();
+                let opts = crate::game_options::get(&self.store, id);
+                let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
+                let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
                 crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             "emu" => {
