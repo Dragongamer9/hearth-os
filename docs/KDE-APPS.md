@@ -130,4 +130,8 @@ KCalc). That needs each app rebuilt the way Dolphin is; Hearth Files shows how, 
 
 Measured by install.sh as the growth of `/usr` (a notice on the image build, and `/usr/share/hearth-kde/installed.json`
 in the image). Peppermint (no KDE before) pulls in KDE Frameworks for the five apps and Dolphin; Anatase already has
-most of KDE Frameworks. Hearth Files itself adds about 10 MB on top of the base's Dolphin package.
+most of KDE Frameworks. Hearth Files itself adds about 4 MB on top of the base's Dolphin package.
+
+Last measured (CI image builds, commit fd67dc7): **Anatase +57 MB**, **Peppermint +269 MB** (KDE Frameworks and the
+apps' libraries, which Peppermint didn't have; Hearth Plasma on Peppermint will need most of them anyway). On that
+Peppermint build Capture (Spectacle) didn't install (install.sh warns and goes on); the other five did.
