@@ -97,7 +97,7 @@ pub struct Want { pub dir: Option<PathBuf>, pub file_name: Option<String>, pub g
 /// for a new link (or failed), that one is brought back instead.
 pub fn add_nxm(link: &str, want: Want) -> Result<Item, String> {
     let n = nexus::parse_nxm(link)?;
-    let acct = nexus::account().ok_or("Sign in to Nexus Mods in Hearth Mods first (Nexus account).")?;
+    let acct = nexus::account().ok_or("Sign in to Nexus Mods in Hearth Mods first (Accounts).")?;
     if let (Some(u), true) = (n.user_id, acct.user_id != 0) { if u != acct.user_id { return Err("That link was made by another Nexus account than the one signed in to Hearth Mods.".into()); } }
     if n.key.is_none() && !acct.premium { return Err("That link has no download key. Press \"Mod Manager Download\" on the mod's page.".into()); }
     let url = nexus::download_link(&acct, &n.domain, n.mod_id, n.file_id, n.key.as_deref().zip(n.expires))?;

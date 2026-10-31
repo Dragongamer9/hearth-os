@@ -15,6 +15,8 @@
 //   hearth-mods --remount                           puts the overlays back (at sign-in)
 //   hearth-mods --modlists | --wabbajack-engine     the Wabbajack gallery | download the Wabbajack engine
 //
+// Accounts (LoversLab, MEGA, Google: accounts.rs) are signed in to from the page only: the browser for LoversLab and
+// Google, the on-screen keyboard for MEGA. Files no account fetches go through the guided flow (guided.rs).
 // Nexus Mods and Wabbajack: nexus.rs, downloads.rs and wabbajack.rs. nxm:// links that arrive while the window is
 // open are dropped in mods/nxm-inbox/ by the handler and picked up here within a second.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -182,6 +184,18 @@ async fn nexus_sign_in(key: String) -> Result<Value, String> { tauri::async_runt
 async fn nexus_refresh() -> Result<Value, String> { tauri::async_runtime::spawn_blocking(|| nexus::refresh().map(|a| a.public())).await.map_err(|e| e.to_string())? }
 #[tauri::command]
 fn nexus_sign_out() { nexus::sign_out(); }
+
+// Accounts besides Nexus (accounts.rs): the page never sees a token or a password after it's sent here.
+#[tauri::command]
+fn accounts_list() -> Value { hearth_gaming::accounts::all() }
+#[tauri::command]
+fn account_begin(id: String) -> Result<Value, String> { hearth_gaming::accounts::oauth_begin(&id) }
+#[tauri::command]
+fn account_sign_out(id: String) { hearth_gaming::accounts::sign_out(&id); }
+#[tauri::command]
+async fn mega_sign_in(email: String, password: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || hearth_gaming::accounts::mega_sign_in(&email, &password)).await.map_err(|e| e.to_string())?
+}
 #[tauri::command]
 fn nexus_pages() -> Value { json!({"keys": nexus::KEY_PAGE, "site": nexus::SITE}) }
 /// A mod's files, for Premium accounts downloading from inside Hearth: from a mod page's address or game + id.
@@ -288,6 +302,16 @@ fn wj_log(id: String) -> Result<String, String> {
     let lines: Vec<&str> = t.lines().collect();
     Ok(lines[lines.len().saturating_sub(400)..].join("\n"))
 }
+/// The guided flow: skip a file for now, or hand over a file you chose (checked against the list first).
+#[tauri::command]
+fn wj_guide_skip(id: String, file: String) -> Option<Value> { wabbajack::guide_skip(&id, &file) }
+#[tauri::command]
+async fn wj_manual_file(id: String, file: String, path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || wabbajack::manual_file(&id, &file, Path::new(&path))).await.map_err(|e| e.to_string())?
+}
+/// A file's page for the guided flow, in Hearth Browser (where you're signed in to the site).
+#[tauri::command]
+fn open_page(url: String) -> Result<(), String> { hearth_gaming::guided::open_in_browser(&url) }
 #[tauri::command]
 fn free_space(path: String) -> Value { json!(wabbajack::free_space(Path::new(&path))) }
 
@@ -399,7 +423,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![info, list, mods_of, stage, install, cancel_stage, toggle, move_mod, remove_mod, open_folder, open_beacon, places, browse, target_root,
             set_deploy, set_nexus_game, nexus_account, nexus_sign_in, nexus_refresh, nexus_sign_out, nexus_pages, nexus_files,
             downloads_list, download_nxm, download_file, download_pause, download_resume, download_remove, downloads_clear, stage_download,
-            wj_engine, wj_fetch_engine, wj_gallery, wj_jobs, wj_defaults, wj_start, wj_resume, wj_cancel, wj_forget, wj_repair, wj_log, free_space, open_url, pick_path])
+            wj_engine, wj_fetch_engine, wj_gallery, wj_jobs, wj_defaults, wj_start, wj_resume, wj_cancel, wj_forget, wj_repair, wj_log, free_space, open_url, pick_path,
+            accounts_list, account_begin, account_sign_out, mega_sign_in, wj_guide_skip, wj_manual_file, open_page])
         .setup(move |app| {
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("mods.html".into()))
                 .title("Mods")
