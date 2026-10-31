@@ -81,7 +81,13 @@ else
   fail_with_log "kio-hearth build" /tmp/kio.log
   rc=1
 fi
-[ "$KIO_OK" = true ] || rm -rf "$STAGE/usr/lib64/qt6/plugins/kf6/kio/hearth.so" "$STAGE"/usr/lib/*/qt6/plugins/kf6/kio/hearth.so
+[ "$KIO_OK" = true ] || find "$STAGE" -path "*/kf6/kio/*hearth.so" -delete 2>/dev/null
+# KIO finds the worker by its file name: it must be hearth.so.
+if [ "$KIO_OK" = true ] && ! find "$STAGE" -path "*/kf6/kio/hearth.so" | grep -q .; then
+  echo "::error title=kio-hearth ($BASE)::installed, but not as kf6/kio/hearth.so: $(find "$STAGE" -name "*hearth*.so" | tr "\n" " ")"
+  KIO_OK=false
+  rc=1
+fi
 
 # ------------------------------------------------------------------ Hearth Files: Dolphin + Hearth's patches
 FILES_OK=false

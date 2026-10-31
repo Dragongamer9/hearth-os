@@ -49,7 +49,12 @@ if [ -x /usr/lib/hearth-files/bin/dolphin ]; then
     rm -rf /usr/lib/hearth-files
   fi
 fi
-KIO=$(find /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null | head -1)
+# Qt's plugin folder (it may be reached through a link, which find alone doesn't follow).
+KIO=""
+for d in $(qtpaths6 --plugin-dir 2>/dev/null) $(qtpaths6 -query QT_INSTALL_PLUGINS 2>/dev/null) /usr/lib64/qt6/plugins /usr/lib/x86_64-linux-gnu/qt6/plugins /usr/lib/qt6/plugins; do
+  if [ -f "$d/kf6/kio/hearth.so" ]; then KIO="$d/kf6/kio/hearth.so"; break; fi
+done
+[ -n "$KIO" ] || KIO=$(find -L /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null | head -1)
 if [ -n "$TAR" ] && [ -f "$TAR" ] && [ -z "$KIO" ]; then
   echo "::warning title=Hearth's KDE apps::kio-hearth isn't where it was expected; the tar has: $(tar -tf "$TAR" | grep -v hearth-files/ | tr '\n' ' ' | cut -c1-600)"
 fi

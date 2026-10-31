@@ -37,6 +37,7 @@ set_target_properties(hearthcore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 kcoreaddons_add_plugin(kio_hearth SOURCES src/kio_hearth.cpp INSTALL_NAMESPACE "kf6/kio")
 set_target_properties(kio_hearth PROPERTIES
     OUTPUT_NAME "hearth"
+    PREFIX ""
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/kf6/kio")
 target_link_libraries(kio_hearth PRIVATE hearthcore KF6::KIOCore)
 
