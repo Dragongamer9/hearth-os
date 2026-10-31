@@ -1,0 +1,44 @@
+libmutter-Message: 16:58:40.616: Running GNOME Shell (using mutter 48.7) as a Wayland display server
+libmutter-Message: 16:58:40.617: Enabling experimental feature 'scale-monitor-framebuffer'
+libmutter-Message: 16:58:40.617: Enabling experimental feature 'xwayland-native-scaling'
+libmutter-Message: 16:58:40.691: Created surfaceless renderer without GPU
+libmutter-Message: 16:58:40.709: Added virtual monitor Meta-0
+libmutter-Message: 16:58:40.720: Using Wayland display name 'wayland-0'
+
+(gnome-shell:11798): libmutter-WARNING **: 16:58:40.756: There is no colord server available
+GNOME Shell-Message: 16:58:41.099: Error loading calendars: Error calling StartServiceByName for org.gnome.Shell.CalendarServer: Process org.gnome.Shell.CalendarServer exited with status 1
+GNOME Shell-Message: 16:58:41.108: Failed to launch ibus-daemon: Failed to execute child process ?ibus-daemon? (No such file or directory)
+
+(gnome-shell:11798): GNOME Shell-WARNING **: 16:58:41.111: Failed to inhibit suspend: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.login1 was not provided by any .service files
+
+(gnome-shell:11798): GNOME Shell-CRITICAL **: 16:58:41.115: Could not get a proxy for user 0: Gio.DBusError: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.login1 was not provided by any .service files
+
+Stack trace:
+  asyncCallback@resource:///org/gnome/gjs/modules/core/overrides/Gio.js:114:23
+  @resource:///org/gnome/shell/ui/init.js:21:20
+  
+
+(gnome-shell:11798): GNOME Shell-WARNING **: 16:58:41.115: Failed to start state machine: this._loginUser is null
+GNOME Shell-Message: 16:58:41.214: Error looking up permission: GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for geolocation
+GNOME Shell-Message: 16:58:41.219: Failed to register AuthenticationAgent
+** Message: 16:58:41.281: Failed to start camera monitor
+GNOME Shell-Message: 16:58:41.322: No permission to control network connections: Gio.DBusError: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.PolicyKit1 was not provided by any .service files
+GNOME Shell-Message: 16:58:41.322: Failed to get PolKit permission: Gio.DBusError: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.PolicyKit1 was not provided by any .service files
+GNOME Shell-Message: 16:58:41.323: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.GeoClue2 was not provided by any .service files
+
+(gnome-shell:11798): accountsservice-WARNING **: 16:58:41.329: ActUserManager: user (null) has no username (uid: -1)
+GNOME Shell-Message: 16:58:42.305: GNOME Shell started at Sat Oct 31 2026 16:58:41 GMT+0000 (Coordinated Universal Time)
+GNOME Shell-Message: 16:58:42.308: Registering session with GDM
+GNOME Shell-Message: 16:58:42.310: Error registering session with GDM: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.gnome.DisplayManager was not provided by any .service files
+
+(gnome-shell:11798): libmutter-WARNING **: 16:59:07.918: Unknown/invalid virtual device button 0x21b pressed
+
+(gnome-shell:11798): libmutter-WARNING **: 16:59:08.118: Unknown/invalid virtual device button 0x21b pressed
+
+(gnome-shell:11798): libmutter-WARNING **: 16:59:35.355: Tried to ping window W0 (Alpha) with a bad serial! Not allowed.
+
+(gnome-shell:11798): libmutter-WARNING **: 16:59:35.355: Tried to ping window W1 (note.txt (/tmp/Hearth-test/Alpha) - Text Editor) with a bad serial! Not allowed.
+
+(gnome-shell:11798): libmutter-WARNING **: 16:59:45.609: Tried to ping window W2 (Console) with a bad serial! Not allowed.
+** Message: 16:59:47.151: Shutting down GNOME Shell
+libmutter-Message: 16:59:47.250: Removed virtual monitor Meta-0

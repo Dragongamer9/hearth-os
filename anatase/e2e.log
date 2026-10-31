@@ -1,0 +1,37 @@
+ok: hearth-theme@hearthos.fun active
+ok: hearth-bar@hearthos.fun active
+ok: hearth-launcher@hearthos.fun active
+ok: hearth-quick@hearthos.fun active
+ok: hearth-link@hearthos.fun active
+ok: hearth-storage@hearthos.fun active
+ok: hearth-gamemode@hearthos.fun active
+ok: hearth-pad@hearthos.fun active
+ok: the bar is at the bottom ({'y': 1020, 'height': 60, 'monitorBottom': 1080, 'apps': ['org.gnome.Nautilus.desktop']})
+ok: Super+G is Game Mode
+ok: the launcher lists 4 apps and 2 games
+ok: Hearth's wallpaper is GNOME's background
+ok: hearth-pad --gnome is running ()
+pointer before/after (not replayed): [0, 0] [0, 0]; replaying: True
+ok: the right stick moves the pointer (724 px)
+ok: RT clicks
+ok: Menu opens the Hearth launcher
+ok: hearth-pad knows GNOME Shell has the keyboard
+ok: the D-pad moves in the launcher (arrow keys)
+ok: B closes the launcher
+ok: Guide opens the Hearth menu
+ok: the D-pad picks in the Hearth menu
+ok: B closes the Hearth menu
+ok: View opens the overview
+ok: the D-pad moves in the overview
+ok: Guide + X opens the keyboard
+ok: the keyboard types through uinput ('q ')
+ok: B hides the keyboard
+ok: View + Menu puts the focus on the bar
+ok: GNOME Files is in front: ['org.gnome.Nautilus', 'Hearth-test']
+ok: hearth-pad uses GNOME Files' keys
+ok: A opens a folder in GNOME Files
+ok: B goes back in GNOME Files
+ok: A opens a file (Text Editor)
+ok: Console is in front
+ok: typed into Console through the keyboard: 'qq\n'
+0 failed

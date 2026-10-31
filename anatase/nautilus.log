@@ -1,0 +1,77 @@
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+** Message: 16:59:01.656: Connecting to org.freedesktop.Tracker3.Miner.Files
+nautilus-application-Message: 16:59:01.657: Failed to initialize display server connection: Cannot invoke method; proxy is for the well-known name org.gnome.Mutter.ServiceChannel without an owner, and proxy was constructed with the G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START flag
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.2' (uid=1000 pid=3554 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.2' (uid=1000 pid=3554 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.2' (uid=1000 pid=3554 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+
+** (xdg-desktop-portal-gnome:3576): WARNING **: 16:59:01.711: Failed to open service channel Wayland connection, portals dialogs may missbehave (Cannot invoke method; proxy is for the well-known name org.gnome.Mutter.ServiceChannel without an owner, and proxy was constructed with the G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START flag).
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.5' (uid=1000 pid=3576 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined")
+
+** (process:3586): WARNING **: 16:59:01.802: Failed to open service channel Wayland connection, portal dialogs may misbehave (Cannot invoke method; proxy is for the well-known name org.gnome.Mutter.ServiceChannel without an owner, and proxy was constructed with the G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START flag).
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+
+(/usr/libexec/xdg-desktop-portal:3554): xdg-desktop-portal-WARNING **: 16:59:01.869: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:3554): xdg-desktop-portal-WARNING **: 16:59:01.869: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:3554): xdg-desktop-portal-WARNING **: 16:59:01.869: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.2' (uid=1000 pid=3554 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:3554): xdg-desktop-portal-WARNING **: 16:59:01.924: Failed to connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.secrets' requested by ':1.2' (uid=1000 pid=3554 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+** Message: 16:59:01.934: couldn't access control socket: /tmp/xdg-tester/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'ca.desrt.dconf'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gtk.vfs.GoaVolumeMonitor' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gnome.OnlineAccounts' requested by ':1.14' (uid=1000 pid=3636 comm="/usr/libexec/gvfs-goa-volume-monitor" label="unconfined")
+goa-daemon-Message: 16:59:02.071: goa-daemon version 3.58.1 starting
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gnome.Identity' requested by ':1.15' (uid=1000 pid=3641 comm="/usr/libexec/goa-daemon" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gnome.OnlineAccounts'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gtk.vfs.GoaVolumeMonitor'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gnome.Identity'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.freedesktop.Tracker3.Miner.Files' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.freedesktop.Tracker3.Miner.Files'
+
+(localsearch-3:3679): Tracker-WARNING **: 16:59:02.315: Could not get file handle for '/home/tester': Operation not supported
+
+(localsearch-extractor-3:3700): Tracker-WARNING **: 16:59:02.886: Locale 'LANG' is not set, defaulting to C locale
+dbus-daemon[3627]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3627]: Successfully activated service 'org.a11y.atspi.Registry'
+
+** (process:3708): WARNING **: 16:59:03.117: Unable to load /home/tester/.local/share/recently-used.xbel: Failed to open file “/home/tester/.local/share/recently-used.xbel”: No such file or directory
+2026-10-31 16:59:03,280:wsdd WARNING(pid 3739): no interface given, using all interfaces
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Activating service name='org.gnome.TextEditor' requested by ':1.0' (uid=1000 pid=3534 comm="nautilus --new-window /tmp/Hearth-test" label="unconfined")
+dbus-daemon[3533]: [session uid=1000 pid=3533 pidfd=5] Successfully activated service 'org.gnome.TextEditor'
+
+(/usr/libexec/xdg-desktop-portal:3554): xdg-desktop-portal-WARNING **: 16:59:09.444: A backend call failed: Inhibiting other than idle not supported
+Gdk-Message: 16:59:24.533: Lost connection to Wayland compositor.
+Gdk-Message: 16:59:24.533: Lost connection to Wayland compositor.
+Gdk-Message: 16:59:24.533: Lost connection to Wayland compositor.
+Gdk-Message: 16:59:24.534: Error reading events from display: Broken pipe
+A connection to the bus can't be made
+
+(/usr/libexec/xdg-desktop-portal:3554): xdg-desktop-portal-WARNING **: 16:59:24.559: Failed to close session implementation: The connection is closed
+
+(localsearch-3:3679): GVFS-RemoteVolumeMonitor-WARNING **: 16:59:24.565: Owner of volume monitor org.gtk.vfs.UDisks2VolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+
+(localsearch-3:3679): GVFS-RemoteVolumeMonitor-WARNING **: 16:59:24.565: Owner of volume monitor org.gtk.vfs.GoaVolumeMonitor disconnected from the bus; removing drives/volumes/mounts
+A connection to the bus can't be made
+A connection to the bus can't be made
+A connection to the bus can't be made
+A connection to the bus can't be made
+A connection to the bus can't be made
