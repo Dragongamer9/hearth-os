@@ -4,7 +4,7 @@
 //! devices directly (readable by the signed-in user). Port of hosts/linux/src/guide.js.
 
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,6 +23,13 @@ pub const EVENT_SIZE: usize = 24;   // struct input_event on 64-bit: timeval (16
 pub fn has_bit(caps: &str, bit: usize) -> bool {
     let words: Vec<&str> = caps.split_whitespace().rev().collect();
     words.get(bit / 64).and_then(|w| u64::from_str_radix(w, 16).ok()).map(|w| (w >> (bit % 64)) & 1 == 1).unwrap_or(false)
+}
+
+/// Steam's virtual controllers (Steam Input: vendor 28de, product 11ff), the ones a Steam game reads the controller
+/// through. `sys` is /sys/class/input, `event` an event device's name there ("event21").
+pub fn is_steam_virtual(sys: &Path, event: &str) -> bool {
+    let id = |f: &str| std::fs::read_to_string(sys.join(event).join("device/id").join(f)).map(|s| s.trim().to_ascii_lowercase()).unwrap_or_default();
+    id("vendor") == "28de" && id("product") == "11ff"
 }
 
 /// Event devices with a Guide button: (path, name)
@@ -134,12 +141,16 @@ pub struct Guide {
     grabbed: Arc<AtomicBool>,
     problems: Arc<Mutex<HashMap<String, String>>>,
     last_press: Arc<Mutex<u64>>,
+    /// Steam's virtual controllers among the devices read (is_steam_virtual), and whether they're held now
+    /// (hold_steam_pads).
+    steam_pads: Arc<Mutex<HashSet<String>>>,
+    steam_held: Arc<AtomicBool>,
 }
 
 impl Default for Guide { fn default() -> Self { Self::new() } }
 
 impl Guide {
-    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), tap_hold: Arc::default(), open: Arc::default(), grabbed: Arc::default(), problems: Arc::default(), last_press: Arc::default() } }
+    pub fn new() -> Guide { Guide { fds: Arc::default(), hold_view: Arc::default(), buttons: Arc::default(), chord_guard: Arc::default(), tap_hold: Arc::default(), open: Arc::default(), grabbed: Arc::default(), problems: Arc::default(), last_press: Arc::default(), steam_pads: Arc::default(), steam_held: Arc::default() } }
     /// For Settings › Controls: which devices are watched, and when Guide last came through.
     pub fn status(&self) -> Value {
         json!({"devices": self.open.lock().unwrap().values().cloned().collect::<Vec<_>>(),
@@ -151,6 +162,17 @@ impl Guide {
         self.grabbed.store(on, Ordering::SeqCst);
         for fd in self.fds.lock().unwrap().values() { unsafe { ioctl(*fd, EVIOCGRAB, if on { 1i32 } else { 0i32 }); } }
     }
+    /// Quick Access open over a game on the Handheld Daemon editions: HHD holds the real controllers, and Steam keeps
+    /// running now (steam_thaw.rs; HHD used to stop it), so Steam's virtual controllers are held here meanwhile: a
+    /// Steam game doesn't get the presses meant for Quick Access. Their presses are dropped too (HHD hands Quick
+    /// Access the real controller's; these would be the same presses twice).
+    pub fn hold_steam_pads(&self, on: bool) {
+        self.steam_held.store(on, Ordering::SeqCst);
+        let pads: Vec<String> = self.steam_pads.lock().unwrap().iter().cloned().collect();
+        let fds = self.fds.lock().unwrap();
+        for p in pads { if let Some(fd) = fds.get(&p) { unsafe { ioctl(*fd, EVIOCGRAB, if on { 1i32 } else { 0i32 }); } } }
+    }
+    pub fn steam_pads_held(&self) -> bool { self.steam_held.load(Ordering::SeqCst) }
     pub fn fire(&self, how: &str, on_press: &OnPress) { *self.last_press.lock().unwrap() = crate::library::now_ms(); on_press(how); }
 
     /// Watches controllers as they come and go (looks every 5 seconds).
@@ -178,6 +200,13 @@ impl Guide {
         self.fds.lock().unwrap().insert(path.to_string(), f.as_raw_fd());
         // A controller plugged in while the overlay is open is grabbed straight away.
         if self.grabbed.load(Ordering::SeqCst) { unsafe { ioctl(f.as_raw_fd(), EVIOCGRAB, 1i32); } }
+        // Steam's virtual controller (Steam starts one with each game): held straight away too while Quick Access is
+        // open on the HHD editions (hold_steam_pads).
+        let steam_pad = path.strip_prefix("/dev/input/").map(|e| is_steam_virtual(Path::new("/sys/class/input"), e)).unwrap_or(false);
+        if steam_pad {
+            self.steam_pads.lock().unwrap().insert(path.to_string());
+            if self.steam_held.load(Ordering::SeqCst) { unsafe { ioctl(f.as_raw_fd(), EVIOCGRAB, 1i32); } }
+        }
         let mut buf = [0u8; EVENT_SIZE * 64];
         let mut rest: Vec<u8> = Vec::new();
         let mut state = HashMap::new();
@@ -192,6 +221,8 @@ impl Guide {
         let mut guide_held = false;
         loop {
             let n = match f.read(&mut buf) { Ok(0) | Err(_) => break, Ok(n) => n };
+            // Held for Quick Access (hold_steam_pads): the real controller's presses already reach it through HHD.
+            if steam_pad && self.steam_held.load(Ordering::SeqCst) { rest.clear(); continue; }
             rest.extend_from_slice(&buf[..n]);
             let whole = rest.len() - rest.len() % EVENT_SIZE;
             let chunk: Vec<u8> = rest.drain(..whole).collect();
@@ -238,6 +269,7 @@ impl Guide {
         }
         self.fds.lock().unwrap().remove(path);
         self.open.lock().unwrap().remove(path);
+        if steam_pad { self.steam_pads.lock().unwrap().remove(path); }
     }
 }
 
@@ -293,6 +325,28 @@ pub fn controller_available() -> bool { crate::paths::desktop_dir().join("shell/
 mod tests {
     use super::*;
     fn ev(ty: u16, code: u16, value: i32) -> Vec<u8> { let mut v = vec![0u8; 16]; v.extend(ty.to_le_bytes()); v.extend(code.to_le_bytes()); v.extend(value.to_le_bytes()); v }
+    #[test]
+    fn steam_virtual_controllers() {
+        let sys = std::env::temp_dir().join(format!("hearth-guide-sys-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&sys);
+        for (ev, vendor, product) in [("event21", "28de\n", "11ff\n"), ("event5", "045e\n", "0b13\n"), ("event9", "28DE", "1205")] {
+            let id = sys.join(ev).join("device/id");
+            std::fs::create_dir_all(&id).unwrap();
+            std::fs::write(id.join("vendor"), vendor).unwrap();
+            std::fs::write(id.join("product"), product).unwrap();
+        }
+        assert!(is_steam_virtual(&sys, "event21"));     // Steam Input's virtual gamepad
+        assert!(!is_steam_virtual(&sys, "event5"));     // the Xbox controller itself
+        assert!(!is_steam_virtual(&sys, "event9"));     // a real Steam Deck / Steam Controller: not a virtual one
+        assert!(!is_steam_virtual(&sys, "event77"));    // gone
+        let _ = std::fs::remove_dir_all(&sys);
+        // Held and let go with nothing read: no panic, and the state is kept for devices that come later.
+        let g = Guide::new();
+        g.hold_steam_pads(true);
+        assert!(g.steam_pads_held());
+        g.hold_steam_pads(false);
+        assert!(!g.steam_pads_held());
+    }
     #[test]
     fn reads_controllers() {
         assert!(has_bit("10000000 0 0 0 0", 0x13c) == false);
