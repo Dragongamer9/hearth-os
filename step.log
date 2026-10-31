@@ -1,0 +1,20 @@
+crw------- 1 root root 10, 223 Oct 31 20:24 /dev/uinput
+Starting systemd-udevd version 259.10-1.fc44
+::notice title=Panel widgets::timeout: failed to run command 'qdbus6': No such file or directory 
+::notice title=Controller: KWin answers through hearth-pad (org.hearth.Pad)::passed. first probe: {'x': 959, 'y': 526, 'cls': 'plasmashell', 'caption': '', 'kind': 'desktop'}
+::notice title=Controller: right stick moves the pointer::passed. cursor (959, 526) -> (1070, 1044)
+::notice title=Controller: View shows the controls::passed. 
+::notice title=Controller: Guide + X asks for the on-screen keyboard::passed. events: [{'t': 'radial', 'open': True, 'sel': -1}, {'t': 'radial', 'open': False, 'pick': -1}, {'t': 'osk', 'open': True}]
+::notice title=Controller: Menu opens Plasma's launcher::passed. in front: {'x': 1070, 'y': 1044, 'cls': 'org.kde.plasmashell', 'caption': 'plasmashell', 'kind': 'popup'}
+::notice title=Controller: D-pad and A start an app from the launcher::passed. the test app started; pad.log says what was in front
+::notice title=Controller: the Hearth menu opens Hearth Quick Access::passed. picked: True, in front: {'x': 1070, 'y': 1044, 'cls': 'org.kde.plasmashell', 'caption': 'plasmashell', 'kind': 'popup'}
+::notice title=Controller: B closes it::passed. in front: {'x': 1070, 'y': 1044, 'cls': 'plasmashell', 'caption': '', 'kind': 'desktop'}
+::notice title=Controller: View + B closes the window::passed. in front before: {'x': 1070, 'y': 1044, 'cls': 'org.kde.plasmawindowed', 'caption': 'Hearth Storage', 'kind': 'normal'}
+::notice title=Controller: Hearth Files (Dolphin) with the controller::passed. in front: 'org.kde.dolphin', keys: True, keyboard: True, closed with View + B: True
+::notice title=Controller: Terminal (Konsole) with the controller::passed. in front: 'org.kde.konsole', keys: True, keyboard: True, closed with View + B: True
+::notice title=Controller: Text (Kate) with the controller::passed. in front: 'org.kde.kate', keys: True, keyboard: True, closed with View + B: True
+::notice title=Controller: Reader (Okular) with the controller::passed. in front: 'org.kde.okular', keys: True, keyboard: True, closed with View + B: True
+::notice title=Controller: Calculator (KCalc) with the controller::passed. in front: 'org.kde.kcalc', keys: True, keyboard: True, closed with View + B: True
+::notice title=Controller: Capture (Spectacle) with the controller::passed. in front: 'org.kde.spectacle', keys: True, keyboard: True, closed with View + B: True
+::notice title=pad.log::"org.kde.dolphin","caption":"Home — Dolphin","kind":"normal"}|2026-10-31 20:29:23 in front: 'plasmashell' (desktop)|2026-10-31 20:29:26 in front: 'org.kde.konsole' (normal), keys|2026-10-31 20:29:33 probe: {"x":1070,"y":1044,"cls":"org.kde.konsole","caption":"hearth-os : bash — Konsole","kind":"normal"}|2026-10-31 20:29:36 in front: 'plasmashell' (desktop)|2026-10-31 20:29:39 in front: 'org.kde.kate' (normal), keys|2026-10-31 20:29:47 last 30 s: 56 controller events, pointer moved 0 px|2026-10-31 20:29:47 probe: {"x":1070,"y":1044,"cls":"org.kde.kate","caption":"Welcome — Kate","kind":"normal"}|2026-10-31 20:29:50 in front: 'plasmashell' (desktop)|2026-10-31 20:29:52 in front: 'org.kde.okular' (normal), keys|2026-10-31 20:30:00 probe: {"x":1070,"y":1044,"cls":"org.kde.okular","caption":"Okular","kind":"normal"}|2026-10-31 20:30:03 in front: 'plasmashell' (desktop)|2026-10-31 20:30:05 in front: 'org.kde.kcalc' (normal), keys|2026-10-31 20:30:13 probe: {"x":1070,"y":1044,"cls":"org.kde.kcalc","caption":"KCalc","kind":"normal"}|2026-10-31 20:30:16 in front: 'plasmashell' (desktop)|2026-10-31 20:30:17 last 30 s: 80 controller events, pointer moved 0 px|2026-10-31 20:30:18 in front: 'org.kde.spectacle' (normal), keys|2026-10-31 20:30:26 probe: {"x":1070,"y":1044,"cls":"org.kde.spectacle","caption":"Spectacle","kind":"normal"}|2026-10-31 20:30:27 in front: 'plasmashell' (desktop)|2026-10-31 20:30:42 probe: {"x":1070,"y":1044,"cls":"plasmashell","caption":"","kind":"desktop"}|
+

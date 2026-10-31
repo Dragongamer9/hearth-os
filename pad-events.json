@@ -1,0 +1,116 @@
+[
+ {
+  "t": "ready"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":959,\"y\":526,\"cls\":\"plasmashell\",\"caption\":\"\",\"kind\":\"desktop\"}"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"plasmashell\",\"caption\":\"\",\"kind\":\"desktop\"}"
+ },
+ {
+  "t": "help"
+ },
+ {
+  "t": "radial",
+  "open": true,
+  "sel": -1
+ },
+ {
+  "t": "radial",
+  "open": false,
+  "pick": -1
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "launcher"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.plasmashell\",\"caption\":\"plasmashell\",\"kind\":\"popup\"}"
+ },
+ {
+  "t": "radial",
+  "open": true,
+  "sel": -1
+ },
+ {
+  "t": "radial",
+  "open": true,
+  "sel": 2
+ },
+ {
+  "t": "radial",
+  "open": false,
+  "pick": 2
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.plasmashell\",\"caption\":\"plasmashell\",\"kind\":\"popup\"}"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"plasmashell\",\"caption\":\"\",\"kind\":\"desktop\"}"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.plasmawindowed\",\"caption\":\"Hearth Storage\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.dolphin\",\"caption\":\"Home \u2014 Dolphin\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.konsole\",\"caption\":\"hearth-os : bash \u2014 Konsole\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.kate\",\"caption\":\"Welcome \u2014 Kate\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.okular\",\"caption\":\"Okular\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.kcalc\",\"caption\":\"KCalc\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"org.kde.spectacle\",\"caption\":\"Spectacle\",\"kind\":\"normal\"}"
+ },
+ {
+  "t": "probe",
+  "text": "{\"x\":1070,\"y\":1044,\"cls\":\"plasmashell\",\"caption\":\"\",\"kind\":\"desktop\"}"
+ }
+]
