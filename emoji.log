@@ -1,0 +1,44 @@
+dbus-daemon[17057]: [session uid=1001 pid=17057] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1001 pid=17058 comm="/home/runner/work/hearth-os/hearth-os/target-apps/" label="unconfined")
+dbus-daemon[17057]: [session uid=1001 pid=17057] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1001 pid=17072 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[17057]: [session uid=1001 pid=17057] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.2' (uid=1001 pid=17078 comm="/usr/libexec/xdg-document-portal" label="unconfined")
+dbus-daemon[17057]: [session uid=1001 pid=17057] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[17057]: [session uid=1001 pid=17057] Successfully activated service 'org.freedesktop.portal.Documents'
+fusermount3: failed to access mountpoint /run/user/1001/doc: Permission denied
+error: fuse init failed: Can't mount path /run/user/1001/doc
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:15.996: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:15.996: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
+dbus-daemon[17057]: [session uid=1001 pid=17057] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1001 pid=17072 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[17057]: [session uid=1001 pid=17057] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.027: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.027: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.027: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.RealtimeKit1 was not provided by any .service files
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.027: No skeleton to export
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.027: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.028: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.028: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.029: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.029: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.030: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+[W][00733.455157] pw.conf      | [          conf.c: 1031 try_load_conf()] can't load config client.conf: No such file or directory
+[E][00733.455218] pw.conf      | [          conf.c: 1060 pw_conf_load_conf_for_context()] can't load config client.conf: No such file or directory
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.032: Failed connect to PipeWire: Couldn't create PipeWire context
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.032: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.032: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:17072): xdg-desktop-portal-WARNING **: 20:30:16.033: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[17057]: [session uid=1001 pid=17057] Successfully activated service 'org.freedesktop.portal.Desktop'

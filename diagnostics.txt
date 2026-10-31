@@ -1,0 +1,33 @@
+--- processes
+runner     16387  0.2  0.3 11625376 64484 ?      Sl   20:29   0:00 node hosts/hearth-theater/tests/serve.mjs 8761
+runner     16399  0.2  0.3 207100 65464 ?        S    20:29   0:00 Xvfb :98 -screen 0 1360x860x24
+runner     16708  0.3  0.4 273724 70844 ?        S    20:29   0:00 Xvfb :99 -screen 0 1360x860x24
+runner     16716  0.0  0.0   6520  2752 ?        S    20:29   0:00 dbus-run-session -- /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-paint /home/runner/Pictures/test.png
+runner     16719  1.9  0.8 74184316 140936 ?     Sl   20:29   0:00 /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-paint /home/runner/Pictures/test.png
+runner     16759  0.5  0.3 73598108 49648 ?      SLl  20:29   0:00 /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 1 14
+runner     16763  3.9  1.0 74029808 171600 ?     SLl  20:29   0:00 /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 4 14
+--- windows
+
+xwininfo: Window id: 0x21f (the root window) (has no name)
+
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     4 children:
+     0x200009 (has no name): ()  1x1+-1+-1  +-1+-1
+     0x200003 "test.png – Paint": ("hearth-paint" "Hearth-paint")  1280x820+0+0  +0+0
+     0x400001 "xdg-desktop-portal-gtk": ("xdg-desktop-portal-gtk" "Xdg-desktop-portal-gtk")  10x10+10+10  +10+10
+     0x200001 "hearth-paint": ("hearth-paint" "Hearth-paint")  10x10+10+10  +10+10
+
+--- paint window: 2097155
+--- 10 s later
+
+xwininfo: Window id: 0x21f (the root window) (has no name)
+
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     4 children:
+     0x200009 (has no name): ()  1x1+-1+-1  +-1+-1
+     0x200003 "test.png – Paint": ("hearth-paint" "Hearth-paint")  1280x820+0+0  +0+0
+     0x400001 "xdg-desktop-portal-gtk": ("xdg-desktop-portal-gtk" "Xdg-desktop-portal-gtk")  10x10+10+10  +10+10
+     0x200001 "hearth-paint": ("hearth-paint" "Hearth-paint")  10x10+10+10  +10+10
+
