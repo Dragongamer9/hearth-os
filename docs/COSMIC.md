@@ -86,6 +86,13 @@ Launcher.qml, QuickAccess.qml, RadialMenu.qml (the Hearth menu), Keyboard.qml (t
 controls), plus CosmicHub.qml. `desktop/cosmic/hearth-cosmic launcher|games|quick|link|storage|menu|keyboard` opens
 them (the panel's entries and Super use it), starting the companion first if it isn't running.
 
+**Known COSMIC quirk (seen in CI, to check on a device):** COSMIC 1.10's compositor drops the companion's whole
+Wayland connection whenever one of its windows closes (Qt's layer-shell teardown; Qt's text-input and fractional
+scaling were ruled out). So `hearth-cosmic companion` keeps it running (started again within a second), the
+controller is a separate process (`hearth-cosmic pad`: `hearth-pad --cosmic --socket`) that keeps the pointer and keys
+working meanwhile, and a menu asked for in that second (Guide, Menu, the keyboard) opens as soon as the companion is
+back. The companion's messages are in `~/.local/share/nimbus/cosmic-companion.log`.
+
 Why not COSMIC applets: they're Rust programs on libcosmic, a library whose interface still changes between COSMIC
 releases, and each applet is a separate 30-50 MB program. Mantel's QML is already Hearth's look and logic, and runs on
 COSMIC as layer-shell windows; the panel gets Hearth's entries as pinned apps.
