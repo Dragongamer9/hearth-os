@@ -526,13 +526,13 @@ UNIT
 fi
 # ---- end of Hearth Link
 
-# ==== Hearth Paint, the emoji picker, Hearth Fonts, and Settings › Accessibility (hosts/hearth-paint, hearth-emoji,
-# hearth-fonts, hearth-gamma, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
+# ==== Hearth Paint, the emoji picker, Hearth Fonts, Hearth Theater, and Settings › Accessibility (hosts/hearth-paint,
+# hearth-emoji, hearth-fonts, hearth-gamma, hearth-theater, desktop/shell/hearth-access): built by CI next to the Hearth app and carried in
 # os/nimbus-app (their icons are in the Hearth icon set, installed above). The emoji picker types with wtype and copies with wl-copy; Fonts uses fontconfig;
 # Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
 # zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
 optional orca speech-dispatcher espeak-ng at-spi2-core fontconfig wtype wl-clipboard x11-utils
-for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
@@ -581,6 +581,20 @@ Keywords=font;fonts;typeface;ttf;otf;install;
 StartupWMClass=hearth-fonts
 DESKTOP
   # Font files open in it (Hearth Files too): its MimeType, made the default with the others (Hearth's default apps, below).
+fi
+if [ -x /usr/bin/hearth-theater ]; then
+  cat > /usr/share/applications/hearth-theater.desktop <<DESKTOP
+[Desktop Entry]
+Name=Theater
+GenericName=Video Sites
+Comment=Your own wall of video sites, full screen and controller-ready
+Exec=/usr/bin/hearth-theater
+Icon=hearth-theater
+Type=Application
+Categories=AudioVideo;Video;
+Keywords=video;tv;movies;anime;shows;watch;streaming;theater;
+StartupWMClass=hearth-theater
+DESKTOP
 fi
 cat > /usr/share/applications/hearth-accessibility.desktop <<DESKTOP
 [Desktop Entry]

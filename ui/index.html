@@ -1431,6 +1431,7 @@ body.look-df [data-f].focus{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accen
 
 // ---------- icons ----------
 const I = {
+  theater:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="11.5" rx="2"/><path d="M10.5 8.6v4.3l3.7-2.15z"/><path d="M8.5 20h7M12 16.5V20"/></svg>',
   home:'<svg viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>',
   lib:'<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
   dl:'<svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5"/><path d="M4.5 19.5h15"/></svg>',
@@ -7797,6 +7798,11 @@ function goBack(){
 // Apps in the menu opens Bazaar, Hearth OS's app store for Flathub apps (host.info feature "bazaar"; hearth-core
 // bazaar.rs): full screen in Game Mode, with the controller mouse on. Hearth's own store is archived.
 function bazaarOn(){ return LINUX && !OVERLAY && (hasFeat('bazaar') || !host); }
+function theaterOn(){ return LINUX && !OVERLAY && hasFeat('theater'); }
+function theaterOpen(){
+  closeAll(); toast('Opening Theater…');
+  return call('theater.open',{},15000).catch(e=>toast(e.message));
+}
 function bazaarOpen(){
   closeAll(); toast('Opening Bazaar…');
   return call('bazaar.open',{},15000).then(r=>{ if(r && r.mouse) toast('Bazaar: the controller mouse is on (right stick moves, A clicks, View + Menu turns it off)'); }).catch(e=>toast(e.message));
@@ -7805,6 +7811,7 @@ function renderSideMenu(){
   const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
+    ${theaterOn()?`<button class="mitem" data-f data-k="m-theater" data-act="theater">${I.theater}Theater</button>`:''}
     ${bazaarOn()?`<button class="mitem" data-f data-k="m-bazaar" data-act="bazaar">${I.apps}Apps</button>`:''}
     <button class="mitem" data-f data-k="m-search" data-act="search">${I.search}Search</button>
     <button class="mitem" data-f data-k="m-power" data-act="power">${I.power}Power</button>
@@ -7882,6 +7889,7 @@ function dockItems(game){
   if(!ANDROID){ const d=dkDlNow(); add('downloads','dl','Downloads','data-act="nav" data-view="downloads"', {cur:cur('downloads'), extra:d?dkRing(d.pct||0):''}); }
   if(lkOn()) add('link','link','Hearth Link','data-act="goset" data-tab="link"', {cur:cur('settings')&&S.settingsTab==='link'&&!S.sfront});
   if(coopOn()) add('coop','pad','Couch Co-op','data-act="nav" data-view="coop"', {cur:cur('coop')});
+  if(theaterOn()) add('theater','theater','Theater','data-act="theater"');
   if(bazaarOn()) add('bazaar','apps','Apps','data-act="bazaar"');
   sep();
   add('search','search','Search','data-act="search" data-keep="1"', {sm:true});
@@ -7997,6 +8005,7 @@ function dockCard(k){
       + jobs.slice(0,2).map(t=>`<div class="dkq"><div class="qt"><div><span>${esc(t.title)}</span><span>${t.total?Math.floor(100*t.done/t.total)+'%':''}</span></div><div class="bar"><i style="width:${t.total?Math.floor(100*t.done/t.total):0}%"></i></div></div></div>`).join('');
   }
   if(k==='coop') return dkH('Couch Co-op', 'Beta Experimental') + `<div class="dks">Play split-screen with friends on this screen, each with their own controller.</div>`;
+  if(k==='theater') return dkH('Theater') + `<div class="dks">Your own wall of video sites, full screen with a controller pointer.</div>`;
   if(k==='bazaar') return dkH('Apps') + `<div class="dks">Bazaar: apps from Flathub, opened full screen with the controller mouse.</div>`;
   if(k==='search') return dkH('Search') + `<div class="dks">Games, settings, the store and friends. Type with a keyboard, or with the on-screen keyboard.</div>`;
   if(k==='settings'){
@@ -9388,6 +9397,7 @@ function act(el){
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   if(a.startsWith('dgf')) return dgfAct(a, d);   // the Dragonfire look (block by homeDf)
+  if(a==='theater') return theaterOpen();   // Theater: Hearth Theater, your wall of video sites
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
   if(/^lk[A-Z]/.test(a)) return lkAct(a, d);   // Hearth Link
   if(/^stg[A-Z]/.test(a)) return stgAct(a, d);   // Hearth Storage

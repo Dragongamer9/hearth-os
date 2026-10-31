@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Theater</title>
+<link rel="stylesheet" href="hearth.css">
+<link rel="stylesheet" href="osk/hearth-osk.css">
+<style>
+  /* Theater's wall: rows of 16:9 tiles, big enough to read from the couch. */
+  header .logo { width:1.7em; height:1.7em; color:var(--ember); }
+  .tabs { overflow-x:auto; scrollbar-width:none; }
+  main.scroll { padding-bottom:2em; }
+  .shelf { margin:.4em 0 1.3em; }
+  .shelf h2 { font-size:1em; font-weight:650; margin:0 0 .55em; display:flex; gap:.5em; align-items:baseline; color:var(--text); }
+  .shelf h2 small { color:var(--faint); font-weight:500; font-size:.8em; }
+  .row-tiles { display:flex; gap:clamp(10px,1.2vw,18px); overflow-x:auto; padding:6px 4px 10px; scrollbar-width:none; scroll-padding:0 40px; }
+  .grid-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(clamp(200px,17vw,300px), 1fr)); gap:clamp(10px,1.2vw,18px); padding:6px 4px; }
+  .tile { position:relative; flex:none; width:clamp(200px,17vw,300px); border-radius:16px; overflow:hidden; background:var(--panel); border:1px solid var(--line); text-align:left; display:flex; flex-direction:column; }
+  .grid-tiles .tile { width:auto; }
+  .tile .pic { position:relative; aspect-ratio:16/9; background:linear-gradient(135deg, var(--panel3), var(--bg2)); display:grid; place-items:center; overflow:hidden; }
+  .tile .pic img.art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .tile .pic .mono { font-size:2.6em; font-weight:700; color:var(--ember); opacity:.85; }
+  .tile .pic img.ico.big { width:28%; height:auto; max-height:55%; object-fit:contain; border-radius:12px; }
+  .tile .meta { display:flex; gap:.55em; align-items:center; padding:.55em .7em .6em; min-width:0; }
+  .tile .meta img.ico { width:1.25em; height:1.25em; border-radius:4px; flex:none; object-fit:contain; }
+  .tile .meta .txt { min-width:0; }
+  .tile .name { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .host { color:var(--muted); font-size:.78em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .fav { position:absolute; top:.45em; right:.5em; color:var(--flame); filter:drop-shadow(0 1px 3px rgba(0,0,0,.8)); }
+  .tile .fav svg { width:1.15em; height:1.15em; }
+  .tile .cat { position:absolute; top:.5em; left:.55em; font-size:.68em; padding:.15em .6em; border-radius:99px; background:rgba(15,11,9,.78); color:var(--muted); }
+  .tile:focus, .tile.focus { transform:scale(1.035); z-index:1; }
+  .tile.add .pic { background:transparent; border-bottom:1px dashed var(--line); }
+  .tile.add .pic svg { width:2.4em; height:2.4em; color:var(--ember); }
+  .hero { display:grid; place-items:center; text-align:center; height:100%; padding:2em; }
+  .hero .inner { max-width:34em; }
+  .hero .big { width:4em; height:4em; color:var(--ember); opacity:.9; }
+  .hero h2 { margin:.4em 0 .3em; font-size:1.5em; }
+  .preview { display:flex; gap:.8em; align-items:center; margin-top:.4em; min-height:1.5em; }
+  .preview img { width:7em; aspect-ratio:16/9; object-fit:cover; border-radius:10px; border:1px solid var(--line); }
+  .spinner { width:1.1em; height:1.1em; border-radius:50%; border:2px solid var(--panel3); border-top-color:var(--ember); animation:sp 1s linear infinite; display:inline-block; vertical-align:-.15em; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  .menu-list { display:grid; gap:.45em; }
+  .menu-list .btn { justify-content:flex-start; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v11H3zM8 21h8M12 17v4M10 9.5v4l3.5-2z"/></svg>
+    <h1>Theater</h1><span class="sub" id="count"></span>
+    <div class="spacer"></div>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <button class="btn primary f" id="addBtn" data-k="add"></button>
+  </header>
+  <main class="scroll" id="wall"></main>
+  <footer id="hints"></footer>
+</div>
+<div id="layer"></div>
+<script src="hearth.js"></script>
+<script>
+'use strict';
+const { $, $$, esc, icon, invoke, dialog, closeDialog, ask, toast } = H;
+// The icons Theater needs beyond hearth.js's own.
+const EXTRA = {
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.9l-5.3 2.7 1-5.8-4.2-4.1 5.9-.9z',
+  dots: 'M5 12h.01M12 12h.01M19 12h.01', tv: 'M3 6h18v11H3zM8 21h8M12 17v4M10 9.5v4l3.5-2z', paste: 'M9 4h6v3H9zM7 5H5v16h14V5h-2M9 12h6M9 16h4',
+};
+const ic = (n, c = '') => EXTRA[n] ? `<svg class="${c}" viewBox="0 0 24 24" fill="${n === 'star' && c.includes('solid') ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${EXTRA[n]}"/></svg>` : icon(n, c);
+
+let SITES = [], CATS = ['Anime', 'TV', 'Movies', 'Other'], TAB = 'All', FULL = false;
+const ART = new Map();   // file → data: address (or a pending promise)
+const host = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch { return u; } };
+
+// ---------------------------------------------------------------- pictures
+function artFor(file) {
+  if (!file) return Promise.resolve('');
+  if (!ART.has(file)) ART.set(file, invoke('art', { file }).catch(() => ''));
+  return ART.get(file);
+}
+function fillPictures(root = document) {
+  $$('img[data-file]', root).forEach(img => {
+    const f = img.dataset.file; img.removeAttribute('data-file');
+    artFor(f).then(src => { if (src) img.src = src; else img.remove(); });
+  });
+}
+
+// ---------------------------------------------------------------- the wall
+function tile(s) {
+  const mono = esc((s.name || host(s.url) || '?').trim().charAt(0).toUpperCase());
+  const pic = s.art ? `<img class="art" data-file="${esc(s.art)}" alt="">`
+    : s.icon ? `<img class="ico big" data-file="${esc(s.icon)}" alt="">` : `<span class="mono">${mono}</span>`;
+  return `<button class="tile f" data-id="${esc(s.id)}" data-k="t-${esc(s.id)}" title="${esc(s.name)}">
+    <div class="pic">${pic}${s.favorite ? `<span class="fav">${ic('star', 'solid')}</span>` : ''}<span class="cat">${esc(s.category)}</span></div>
+    <div class="meta">${s.icon ? `<img class="ico" data-file="${esc(s.icon)}" alt="">` : ''}<div class="txt"><div class="name">${esc(s.name)}</div><div class="host">${esc(host(s.url))}</div></div></div>
+  </button>`;
+}
+const addTile = () => `<button class="tile add f" data-act="add" data-k="t-add"><div class="pic">${icon('plus')}</div><div class="meta"><div class="txt"><div class="name">Add a site</div><div class="host">Paste a link</div></div></div></button>`;
+const shelf = (title, list, extra = '') => list.length || extra ? `<section class="shelf"><h2>${esc(title)} <small>${list.length || ''}</small></h2><div class="row-tiles">${list.map(tile).join('')}${extra}</div></section>` : '';
+
+function render() {
+  const keep = document.activeElement?.dataset?.k;
+  $('#count').textContent = SITES.length ? `${SITES.length} site${SITES.length === 1 ? '' : 's'}` : '';
+  $('#addBtn').innerHTML = `${icon('plus')}Add site`;
+  $('#tabs').innerHTML = ['All', ...CATS, 'Favorites'].map(t => `<button class="tab f ${t === TAB ? 'on' : ''}" data-tab="${t}" data-k="tab-${t}" role="tab">${t}</button>`).join('');
+  const wall = $('#wall');
+  if (!SITES.length) {
+    wall.innerHTML = `<div class="hero"><div class="inner">${ic('tv', 'big')}<h2>Your own wall of shows</h2>
+      <p class="muted">Add the video sites you use by pasting their links. Each one becomes a tile here, and opens full screen with a pointer you move with the controller.</p>
+      <div class="row" style="justify-content:center;margin-top:1.2em"><button class="btn primary f" data-act="add" data-k="hero-add">${icon('plus')}Add your first site</button></div></div></div>`;
+  } else if (TAB === 'All') {
+    const recent = SITES.filter(s => s.opened).sort((a, b) => b.opened - a.opened).slice(0, 12);
+    const favs = SITES.filter(s => s.favorite);
+    wall.innerHTML = shelf('Continue', recent) + shelf('Favorites', favs)
+      + CATS.map(c => shelf(c, SITES.filter(s => s.category === c))).join('')
+      + `<section class="shelf"><div class="row-tiles">${addTile()}</div></section>`;
+  } else {
+    const list = TAB === 'Favorites' ? SITES.filter(s => s.favorite) : SITES.filter(s => s.category === TAB);
+    wall.innerHTML = list.length || TAB !== 'Favorites'
+      ? `<div class="grid-tiles">${list.map(tile).join('')}${TAB === 'Favorites' ? '' : addTile()}</div>`
+      : `<div class="empty"><span class="big">${ic('star')}</span>No favorites yet. Press <b>X</b> on a tile (or right-click it) to make it one.</div>`;
+  }
+  fillPictures(wall);
+  footer();
+  const back = keep && document.querySelector(`[data-k="${CSS.escape(keep)}"]`);
+  if (back) back.focus({ preventScroll: true });
+  else if (!H.dialogOpen()) (wall.querySelector('.tile') || wall.querySelector('.f') || $('#addBtn')).focus({ preventScroll: true });
+}
+function footer() {
+  const onTile = document.activeElement?.classList?.contains('tile') && document.activeElement.dataset.id;
+  $('#hints').innerHTML = `<span><b>A</b>${onTile ? 'Watch' : 'Choose'}</span>${onTile ? '<span><b>X</b>Favorite</span><span><b>Y</b>Options</span>' : ''}<span><b>Menu</b>Add site</span><span><b>LB</b><b>RB</b>Shelves</span>${FULL ? '<span><b>B</b>Close Theater</span>' : ''}`;
+}
+document.addEventListener('focusin', () => { footer(); const t = document.activeElement; if (t?.classList?.contains('tile')) t.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
+
+function setTab(t) { TAB = t; render(); $('#wall .f')?.focus(); }
+const site = id => SITES.find(s => s.id === id);
+
+// ---------------------------------------------------------------- opening, favorites, options
+async function watch(id) {
+  try { await invoke('open', { id }); const s = site(id); if (s) { s.opened = Date.now(); s.opens = (s.opens || 0) + 1; } }
+  catch (e) { toast(String(e)); }
+}
+async function toggleFav(id) {
+  const s = site(id); if (!s) return;
+  try { await invoke('favorite', { id, on: !s.favorite }); s.favorite = !s.favorite; toast(s.favorite ? `${s.name} is a favorite` : `${s.name} isn't a favorite now`); render(); }
+  catch (e) { toast(String(e)); }
+}
+function options(id) {
+  const s = site(id); if (!s) return;
+  const d = dialog(`<h2>${esc(s.name)}</h2><p class="muted" style="margin-top:-.4em">${esc(s.url)}</p><div class="menu-list">
+    <button class="btn f" data-o="watch" data-autofocus>${icon('play')}Watch</button>
+    <button class="btn f" data-o="fav">${ic('star')}${s.favorite ? 'Remove from favorites' : 'Add to favorites'}</button>
+    <button class="btn f" data-o="edit">${icon('edit')}Edit name, link or shelf</button>
+    <button class="btn f" data-o="refresh">${icon('refresh')}Get its picture again</button>
+    <button class="btn f danger" data-o="remove">${icon('trash')}Remove from Theater</button></div>`);
+  d.addEventListener('click', async e => {
+    const o = e.target.closest('[data-o]')?.dataset.o; if (!o) return;
+    closeDialog();
+    if (o === 'watch') watch(id);
+    else if (o === 'fav') toggleFav(id);
+    else if (o === 'edit') editor(s);
+    else if (o === 'refresh') refresh(id, true);
+    else if (o === 'remove' && await ask(`Remove ${s.name}?`, 'Its tile goes from Theater. The site itself and anything you did on it stay as they are.', 'Remove', true)) {
+      try { await invoke('remove', { id }); SITES = SITES.filter(x => x.id !== id); render(); } catch (err) { toast(String(err)); }
+    }
+  });
+}
+async function refresh(id, say) {
+  try {
+    const s = await invoke('refresh', { id });
+    const i = SITES.findIndex(x => x.id === id); if (i >= 0) SITES[i] = s;
+    [s.art, s.icon].forEach(f => f && ART.delete(f));
+    render();
+    if (say) toast(s.art || s.icon ? 'Picture updated' : "The site doesn't offer a picture");
+  } catch (e) { if (say) toast(String(e)); }
+}
+
+// ---------------------------------------------------------------- adding and editing
+function editor(s) {
+  const adding = !s;
+  s = s || { name: '', url: '', category: TAB !== 'All' && TAB !== 'Favorites' ? TAB : 'Other' };
+  let cat = s.category, named = !!s.name, ask = 0;
+  const d = dialog(`<h2>${adding ? 'Add a site' : 'Edit ' + esc(s.name)}</h2>
+    <div class="field"><label for="u">Link</label><div class="row" style="flex-wrap:nowrap"><input class="inp f" id="u" placeholder="example.com/shows" value="${esc(s.url)}" autocomplete="off" spellcheck="false" ${adding ? 'data-autofocus' : ''}>
+      <button class="btn f" id="paste" title="Paste">${ic('paste')}Paste</button></div>
+      <div class="preview muted" id="pv"></div></div>
+    <div class="field"><label for="n">Name</label><input class="inp f" id="n" placeholder="Filled in from the site" value="${esc(s.name)}" maxlength="80" ${adding ? '' : 'data-autofocus'}></div>
+    <div class="field"><span class="label">Shelf</span><div class="chips">${CATS.map(c => `<button class="chip f ${c === cat ? 'on' : ''}" data-cat="${c}">${c}</button>`).join('')}</div></div>
+    <div class="row end"><button class="btn f" data-a="cancel">Cancel</button><button class="btn primary f" data-a="save">${adding ? 'Add' : 'Save'}</button></div>`, { sticky: true });
+  const u = $('#u', d), n = $('#n', d), pv = $('#pv', d);
+  n.addEventListener('input', () => { named = !!n.value.trim(); });
+  // What the link's page calls itself fills the name in (unless you typed one).
+  let pvTimer = 0;
+  const look = () => {
+    clearTimeout(pvTimer);
+    const v = u.value.trim(); if (!v) { pv.innerHTML = ''; return; }
+    pvTimer = setTimeout(async () => {
+      const mine = ++ask;
+      pv.innerHTML = '<span class="spinner"></span> Looking at the site…';
+      try {
+        const r = await invoke('preview', { url: v });
+        if (mine !== ask) return;
+        pv.innerHTML = `${r.image ? `<img src="${esc(r.image)}" alt="" onerror="this.remove()">` : ''}<span>${esc(r.title || r.host)}</span>`;
+        if (!named && (r.title || r.host)) n.value = r.title || r.host;
+      } catch (e) { if (mine === ask) pv.textContent = String(e); }
+    }, 650);
+  };
+  u.addEventListener('input', look);
+  if (!adding) look();
+  $('#paste', d).addEventListener('click', async () => {
+    try { const t = (await navigator.clipboard.readText()).trim(); if (t) { u.value = t; look(); n.focus(); } else toast('Nothing to paste'); }
+    catch { u.focus(); toast('Press Ctrl+V to paste'); }
+  });
+  d.addEventListener('click', async e => {
+    const c = e.target.closest('[data-cat]');
+    if (c) { cat = c.dataset.cat; $$('[data-cat]', d).forEach(x => x.classList.toggle('on', x === c)); return; }
+    const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
+    if (a === 'cancel') { closeDialog(); return; }
+    try {
+      if (adding) {
+        const ns = await invoke('add', { url: u.value, name: n.value, category: cat });
+        SITES.push(ns); closeDialog(); TAB = TAB === 'Favorites' ? 'All' : TAB; render();
+        document.querySelector(`[data-k="t-${CSS.escape(ns.id)}"]`)?.focus();
+        toast(`${ns.name} added`);
+        refresh(ns.id, false);
+      } else {
+        const es = await invoke('edit', { id: s.id, name: n.value, category: cat, url: u.value });
+        const i = SITES.findIndex(x => x.id === s.id); SITES[i] = es; closeDialog(); render();
+        if (es.url !== s.url) refresh(es.id, false);
+      }
+    } catch (err) { toast(String(err)); }
+  });
+  H.onDialogBack = () => closeDialog();
+}
+
+// ---------------------------------------------------------------- input
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-tab]'); if (t) { setTab(t.dataset.tab); return; }
+  if (e.target.closest('[data-act="add"], #addBtn')) { editor(); return; }
+  const tl = e.target.closest('.tile[data-id]'); if (tl) watch(tl.dataset.id);
+});
+document.addEventListener('contextmenu', e => { const tl = e.target.closest('.tile[data-id]'); if (tl) { e.preventDefault(); options(tl.dataset.id); } });
+const focusedId = () => document.activeElement?.classList?.contains('tile') ? document.activeElement.dataset.id : null;
+H.buttons.x = () => { const id = focusedId(); if (id && !H.dialogOpen()) toggleFav(id); };
+H.buttons.y = () => { const id = focusedId(); if (id && !H.dialogOpen()) options(id); };
+H.buttons.start = () => { if (!H.dialogOpen()) editor(); };
+const tabsList = () => ['All', ...CATS, 'Favorites'];
+H.buttons.lb = () => { if (H.dialogOpen()) return; const l = tabsList(); setTab(l[(l.indexOf(TAB) + l.length - 1) % l.length]); };
+H.buttons.rb = () => { if (H.dialogOpen()) return; const l = tabsList(); setTab(l[(l.indexOf(TAB) + 1) % l.length]); };
+H.onBack = async () => { if (FULL && await ask('Close Theater?', '', 'Close')) invoke('quit'); };
+H.onKey = e => {
+  const id = focusedId();
+  if (id && (e.key === 'f' || e.key === 'F')) { toggleFav(id); return true; }
+  if (id && (e.key === 'Delete' || e.key === 'ContextMenu' || e.key === 'o')) { options(id); return true; }
+  if ((e.ctrlKey && e.key.toLowerCase() === 'n') || e.key === '+') { editor(); return true; }
+  return false;
+};
+document.addEventListener('paste', e => {
+  if (H.dialogOpen() || ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  const t = e.clipboardData?.getData('text')?.trim(); if (!t) return;
+  e.preventDefault(); editor(); const u = $('#u'); u.value = t; u.dispatchEvent(new Event('input'));
+});
+
+// ---------------------------------------------------------------- start
+(async () => {
+  try {
+    const r = await invoke('init');
+    SITES = r.sites || []; CATS = r.categories || CATS; FULL = !!r.fullscreen;
+  } catch { /* preview in a plain browser */ }
+  render();
+  if (H.T?.event) {
+    // Back from the viewer: Continue has a new first tile.
+    H.T.event.listen('closed', () => { if (!H.dialogOpen()) render(); });
+  }
+})();
+
+// In a plain browser (no Tauri): sample sites, so the page can be looked at and checked (tests/pages.mjs).
+window.DEMO = (cmd, a) => {
+  const D = window.__demo ||= { sites: [
+    { id: 's1', name: 'Crunchyroll', url: 'https://www.crunchyroll.com/', category: 'Anime', favorite: true, opened: Date.now() - 3600e3, art: '', icon: '' },
+    { id: 's2', name: 'Tubi', url: 'https://tubitv.com/', category: 'Movies', favorite: false, opened: Date.now() - 86400e3, art: '', icon: '' },
+    { id: 's3', name: 'Pluto TV', url: 'https://pluto.tv/', category: 'TV', favorite: false, opened: 0, art: '', icon: '' },
+    { id: 's4', name: 'My Jellyfin', url: 'http://192.168.1.20:8096/', category: 'Other', favorite: true, opened: 0, art: '', icon: '' },
+  ] };
+  if (cmd === 'init') return { sites: D.sites.map(s => ({ ...s })), categories: ['Anime', 'TV', 'Movies', 'Other'], fullscreen: /full/.test(location.hash) };
+  if (cmd === 'preview') return { url: a.url, title: 'Sample site', image: '', host: a.url };
+  if (cmd === 'add') { const s = { id: 's' + Date.now(), name: a.name || a.url, url: a.url, category: a.category, favorite: false, opened: 0, art: '', icon: '' }; D.sites.push(s); return { ...s }; }
+  if (cmd === 'refresh') return D.sites.find(s => s.id === a.id);
+  if (cmd === 'edit') return Object.assign(D.sites.find(s => s.id === a.id), { name: a.name, url: a.url, category: a.category });
+  if (cmd === 'favorite' || cmd === 'remove' || cmd === 'open') return null;
+  return Promise.reject('preview');
+};
+</script>
+<script src="osk/hearth-osk.js"></script>
+</body>
+</html>

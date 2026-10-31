@@ -3,12 +3,12 @@
 # (hosts/hearth-gamma, Desktop Mode's inverted colours for Settings › Accessibility). Built and tested on Linux, with
 # screenshots of each window; hearth-gamma is tried against labwc. Windows builds are checked too but not shipped
 # yet (Ember gets these apps later). Release builds are made by base-anatase.yml and base-peppermint.yml.
-name: Hearth Paint, Emoji and Fonts
+name: Hearth Paint, Emoji, Fonts and Theater
 
 on:
   push:
     branches: [apps-create-access, main, linux-host]
-    paths: ['hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/linux/desktop/shell/hearth-access', '.github/workflows/apps-create.yml']
+    paths: ['hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/linux/desktop/shell/hearth-access', '.github/workflows/apps-create.yml']
   workflow_dispatch:
 
 env:
@@ -38,7 +38,7 @@ jobs:
       - name: Unit tests (each app's library, hearth-gamma's ramps, Settings › Accessibility's helper)
         run: |
           set -o pipefail
-          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
             echo "::group::$c"
             if [ "$c" = hearth-gamma ]; then what=--bins; else what=--lib; fi
             (cd hosts/$c && cargo test $what 2>&1 | tee ../../test-$c.log) || { echo "::error title=$c tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 test-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
@@ -49,7 +49,7 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma; do
+          for c in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
             (cd hosts/$c && cargo build --release 2>&1 | tee ../../build-$c.log) || { echo "::error title=$c build::$(grep -E '^error' -A8 build-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
             echo "::notice title=$c::$(du -h "$CARGO_TARGET_DIR/release/$c" | cut -f1)"
           done
