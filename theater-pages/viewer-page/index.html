@@ -1,0 +1,4 @@
+<!doctype html><body style="margin:0;height:3000px;background:#222;color:#fff">
+    <button id=b style="position:absolute;left:600px;top:380px;width:120px;height:60px" onclick="window.clicked=(window.clicked||0)+1">click me</button>
+    <iframe id=f src="frame.html" style="position:absolute;left:40px;top:40px;width:400px;height:260px;border:0"></iframe>
+    <script>addEventListener('message',e=>{ if(e.data==='frame-clicked') window.frameClicked=1; })</script></body>
