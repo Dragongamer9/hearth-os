@@ -1,0 +1,8 @@
+Failed to gain real time thread priority (See CAP_SYS_NICE in the capabilities(7) man page). error: Operation not permitted
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Accepting client connections on sockets: QList("wayland-hearth")
+kwin_wayland_backend: zwp_keyboard_shortcuts_inhibit_manager_v1 isn't supported by the host compositor
+kwin_screencast: Failed to connect PipeWire context
