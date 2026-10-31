@@ -2066,7 +2066,8 @@ const path = require('path');
       await dp.waitForTimeout(300); await dshot('settings-front');
       await dev(() => { S.settingsTab = 'display'; navigate('settings', {}, false); });
       await dp.waitForTimeout(300); await dshot('settings-display');
-      // Go back to the previous version (Hearth OS images only; never on Peppermint or with an update waiting).
+      // Go back to the previous version (Hearth OS images, Peppermint too since it keeps bootc (hearth-unlock); never
+      // with an update waiting).
       st = await dev(() => { const was = [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s]; HOSTINFO.system = true; HOSTINFO.edition = 'anatase';
         const base = { booted: { version: '0.6.51' }, rollback: { version: '0.6.5' }, staged: null };
         SYSUPD.s = { state: 'idle', status: base }; const a = pageSystemUpdate();
@@ -2076,7 +2077,8 @@ const path = require('path');
         [HOSTINFO.system, HOSTINFO.edition, SYSUPD.s] = was;
         return { a: /data-k="su-rollback"/.test(a) && /Go back to 0\.6\.5/.test(a), b: /su-rbgo/.test(b) && /Stay on 0\.6\.51/.test(b), c: /su-rollback/.test(c), d: /su-rollback/.test(d) }; });
       if (!st.a || !st.b) derr('Updates has no Go back row (or its undo): ' + JSON.stringify(st));
-      if (st.c || st.d) derr('Go back shows with an update waiting or on Peppermint: ' + JSON.stringify(st));
+      if (st.c) derr('Go back shows with an update waiting: ' + JSON.stringify(st));
+      if (!st.d) derr('Go back is missing on Peppermint (it keeps bootc's previous version): ' + JSON.stringify(st));
       // The classic side menu (Settings › You › Appearance › Menu style), and back to the dock.
       st = await dev(() => { closeAll(); S.settingsTab = 'appearance'; navigate('settings', {}, false); act(document.querySelector('#view [data-k="ap-ms-side"]'));
         const body = document.body.classList.contains('menu-dock'); input('start');
