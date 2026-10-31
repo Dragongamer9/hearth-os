@@ -1,7 +1,7 @@
 // Website check (the Website workflow runs it on every build): serves site/ locally, opens the front page and every
 // docs page at phone, tablet and desktop width, and looks for what breaks a page for people:
 //   errors (fail the run): script errors, links to pages/files/anchors on the site that don't exist, images that
-//     don't load, a page wider than the window (sideways scrolling on a phone)
+//     don't load, a page wider than the window (sideways scrolling on a phone), a front page over its weight budget
 //   warnings: links to other sites that don't answer, images without alt, buttons/links without a name, text below
 //     WCAG AA contrast, more than one h1, heading levels that skip
 // and takes screenshots: after-<width>.jpg (the front page, whole), docs-<page>-<width>.jpg, and before-<width>.jpg
@@ -16,6 +16,9 @@ const SITE = path.resolve(process.argv[2] || path.join(__dirname, '../site'));
 const BEFORE = process.argv[3] && fs.existsSync(process.argv[3]) ? path.resolve(process.argv[3]) : null;
 const OUT = path.resolve(process.argv[4] || path.join(__dirname, '../site-shots'));
 const WIDTHS = [['phone', 390, 844], ['tablet', 820, 1180], ['desktop', 1440, 900]];
+// Page weight budgets for the front page: before scrolling (lazy images not yet loaded), and in all.
+const FIRST_MAX = 1200 * 1024, ALL_MAX = 4 * 1024 * 1024;
+let weight = '';
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.webp': 'image/webp',
   '.avif': 'image/avif', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain', '.json': 'application/json' };
 
@@ -95,9 +98,20 @@ function inspect() {
         if (scheme === 'light' && p !== 'index.html') continue;
         errs.length = 0;
         await page.goto(`${base}/${p}`, { waitUntil: 'networkidle' });
+        // Page weight (the front page, at desktop width in dark): what loads first, and everything once scrolled.
+        const bytes = () => page.evaluate(() => performance.getEntriesByType('navigation').concat(performance.getEntriesByType('resource'))
+          .reduce((n, e) => n + (e.encodedBodySize || 0), 0));
+        const weigh = p === 'index.html' && wname === 'desktop' && scheme === 'dark';
+        const first = weigh ? await bytes() : 0;
         // Scroll through once so lazy images load, then back up.
         await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * .8) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
         await page.waitForTimeout(400);
+        if (weigh) {
+          const all = await bytes(), kb = n => Math.round(n / 1024);
+          weight = `front page: ${kb(first)} KB at first, ${kb(all)} KB once scrolled through (budgets ${kb(FIRST_MAX)} / ${kb(ALL_MAX)} KB)`;
+          if (first > FIRST_MAX) errors.push(`index.html: ${kb(first)} KB loads before scrolling, over the ${kb(FIRST_MAX)} KB budget`);
+          if (all > ALL_MAX) errors.push(`index.html: ${kb(all)} KB in all, over the ${kb(ALL_MAX)} KB budget`);
+        }
         const r = await page.evaluate(inspect);
         const tag = `${p} ${wname}${scheme === 'light' ? ' light' : ''}`;
         errs.concat(r.err).forEach(e => errors.push(`${tag}: ${e}`));
@@ -153,7 +167,7 @@ function inspect() {
   }
   const uniq = a => [...new Set(a)];
   const E = uniq(errors), Wn = uniq(warns);
-  const lines = [`${E.length} errors, ${Wn.length} warnings, ${pages.length} pages at ${WIDTHS.map(x => x[1]).join('/')} px, ${external.size} links to other sites`, ...E.map(e => 'ERROR ' + e), ...Wn.map(w => 'warn  ' + w)];
+  const lines = [`${E.length} errors, ${Wn.length} warnings, ${pages.length} pages at ${WIDTHS.map(x => x[1]).join('/')} px, ${external.size} links to other sites${weight ? '; ' + weight : ''}`, ...E.map(e => 'ERROR ' + e), ...Wn.map(w => 'warn  ' + w)];
   fs.writeFileSync(path.join(OUT, 'report.txt'), lines.join('\n') + '\n');
   console.log(lines.join('\n'));
   if (process.env.GITHUB_ACTIONS) {
