@@ -156,6 +156,14 @@ G['hearth-documents'] = (  # document viewer: a page with a bookmark ribbon
     page(196, 132, 196, 252, paint=SHADE) + page(140, 112, 212, 280)
     + stroke('M180 270 H312 M180 318 H312 M180 366 H268', INK, 20).replace('d="M180 366', 'd="M180 366')
     + fill('M184 112 V218 L210 198 L236 218 V112 Z', E))
+G['hearth-reader'] = (  # Reader (KDE Okular): an open book with a bookmark ribbon
+    fill('M252 172C212 142 166 134 116 142V368C166 360 212 366 252 394Z', C)
+    + fill('M260 172C300 142 346 134 396 142V368C346 360 300 366 260 394Z', SHADE)
+    + fill('M318 146V236L340 218L362 236V140Z', E))
+G['hearth-capture'] = (  # Capture (KDE Spectacle): a viewfinder around the picture taken
+    stroke('M128 200V164a36 36 0 0 1 36-36H200M312 128H348a36 36 0 0 1 36 36V200'
+           'M384 312V348a36 36 0 0 1-36 36H312M200 384H164a36 36 0 0 1-36-36V312', C, 36)
+    + rect(196, 196, 120, 120, 28, E))
 G['hearth-photos'] = (
     rect(116, 148, 280, 216, 40) + fill('M146 338 L226 246 L276 300 L310 266 L366 338 Z', INK)
     + circle(318, 210, 28, E))

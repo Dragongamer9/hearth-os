@@ -1,0 +1,24 @@
+[Desktop Entry]
+# Hearth Terminal: KDE Konsole with Hearth's profile and colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited.
+Name=Terminal
+GenericName=Terminal
+Comment=Type commands into your system's shell
+Exec=konsole
+TryExec=konsole
+Icon=hearth-terminal
+Type=Application
+Categories=Qt;KDE;System;TerminalEmulator;Utility;
+Keywords=terminal;shell;command;prompt;console;bash;konsole;
+# The default terminal (Settings › Default apps › Terminal) for apps that ask for one this way.
+MimeType=x-scheme-handler/terminal;
+StartupNotify=true
+StartupWMClass=org.kde.konsole
+X-TerminalArgExec=-e
+X-TerminalArgDir=--workdir
+X-ExecArg=-e
+X-Hearth-Based-On=org.kde.konsole.desktop
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New window
+Exec=konsole

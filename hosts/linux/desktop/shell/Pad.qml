@@ -25,8 +25,9 @@ Scope {
     readonly property var active: ToplevelManager.activeToplevel
     // The controller types arrow keys / Enter / Esc instead of moving the pointer in Hearth's own menus
     // and in Hearth Settings when it's the window in front. Hearth Files' windows are "<folder> – Files", and every
-    // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files".
-    readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && active.title === "Task Manager") || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files")))
+    // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files". Hearth Files built from Dolphin
+    // (app id org.kde.dolphin, hosts/hearth-kde) too: it does LB/RB, LT/RT and View itself (hearthgamepad.cpp).
+    readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && active.title === "Task Manager") || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files") || active.appId === "org.kde.dolphin"))
         || SettingsNav.clipShown || SettingsNav.friendsShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel

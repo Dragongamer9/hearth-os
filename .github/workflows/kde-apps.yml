@@ -1,0 +1,59 @@
+# Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md): Hearth Files (Dolphin + Hearth's patches) and kio-hearth
+# (hearth:/ for every KDE app), built and tested inside both Hearth OS bases (Anatase's Fedora image and Debian trixie
+# for Peppermint) by .github/scripts/hearth-kde-build.sh, plus the image-side pieces' Python tests. base-anatase.yml and
+# base-peppermint.yml build the same way for their images. Failures are annotations.
+name: KDE apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: ['ci/**']
+    paths: ['hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh', '.github/workflows/kde-apps.yml']
+
+concurrency:
+  group: kde-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Install script, wrapper and menu entries (Python tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/hearth-kde/tests -v 2>&1 | tee /tmp/py.log || {
+            msg=$(tail -30 /tmp/py.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=hearth-kde python::$msg"; exit 1; }
+          bash -n hosts/hearth-kde/install.sh .github/scripts/hearth-kde-build.sh
+
+  build:
+    name: Build and test (${{ matrix.base }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        base: [peppermint, anatase]
+    steps:
+      - uses: actions/checkout@v4
+      - name: The base image
+        id: base
+        run: |
+          if [ "${{ matrix.base }}" = anatase ]; then img=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          else img=docker.io/library/debian:trixie; fi
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+      - name: Build Hearth Files and kio-hearth, run their tests
+        run: |
+          mkdir -p /tmp/out
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "${{ steps.base.outputs.image }}" bash /src/.github/scripts/hearth-kde-build.sh ${{ matrix.base }} 2>&1 | tail -60
+          rc=${PIPESTATUS[0]}
+          ls -l /tmp/out
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          if-no-files-found: ignore
+          name: hearth-kde-${{ matrix.base }}
+          path: /tmp/out/hearth-kde.tar
+          retention-days: 7
