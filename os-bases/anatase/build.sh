@@ -745,8 +745,7 @@ cosmic_ex=$(grep '^-' /usr/share/nimbus/desktop/cosmic/fedora-packages | sed 's/
 # shellcheck disable=SC2086
 if dnf5 -y install --setopt=install_weak_deps=False $cosmic_ex $cosmic_pkgs; then
   chmod 755 /usr/share/nimbus/desktop/cosmic/hearth-cosmic /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults
-  python3 /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults /usr/share/cosmic /usr/share/hearth-cosmic/data/cosmic \
-    || { echo "::warning title=Hearth COSMIC::Hearth's COSMIC defaults couldn't be made; Hearth COSMIC is left out"; rm -rf /usr/share/hearth-cosmic/data; }
+  HEARTH_COSMIC_OK=1     # Hearth's COSMIC defaults are made further down, once every app's menu entry is in place
 else
   echo "::warning title=Hearth COSMIC::COSMIC couldn't be installed; this image goes without Hearth COSMIC"
 fi
@@ -1249,6 +1248,15 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
 # Calculator stay installed as "… (classic)". Never stops the image build.
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
+
+# ------------------------------------------------------------------ Hearth COSMIC's defaults (docs/COSMIC.md)
+# Made from COSMIC's own now that every Hearth app's menu entry exists (the panel's pinned apps are only the installed
+# ones). Without them, Hearth COSMIC counts as not installed and Hearth Classic opens instead.
+if [ "${HEARTH_COSMIC_OK:-0}" = 1 ]; then
+  python3 /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults /usr/share/cosmic /usr/share/hearth-cosmic/data/cosmic \
+    || { echo "::warning title=Hearth COSMIC::Hearth's COSMIC defaults couldn't be made; Hearth COSMIC is left out"; rm -rf /usr/share/hearth-cosmic/data; }
+fi
+# ---- end Hearth COSMIC's defaults
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in

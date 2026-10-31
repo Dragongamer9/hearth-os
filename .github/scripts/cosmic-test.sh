@@ -10,6 +10,7 @@
 # Results: shots/ (screenshots, logs, results.txt), ::error / ::notice annotations. Exit 1 when something failed.
 set -u
 cd /src
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 mkdir -p shots
 FAILED=0
 fail() { echo "::error title=$1::$2"; echo "FAIL $1: $2" >>shots/results.txt; FAILED=1; }
@@ -18,7 +19,7 @@ note() { echo "::notice title=$1::$2"; echo "ok $1: $2" >>shots/results.txt; }
 # ------------------------------------------------------------------ 1. install
 dnf -y -q install dnf5-plugins >/dev/null 2>&1
 rpm -qa --qf '%{NAME}\n' | sort >/tmp/before
-dnf -y -q install labwc grim wlr-randr wtype python3 python3-evdev dbus-daemon dbus-tools procps-ng ImageMagick git \
+dnf -y -q install strace labwc grim wlr-randr wtype python3 python3-evdev dbus-daemon dbus-tools procps-ng ImageMagick git \
   mesa-dri-drivers mesa-libEGL mesa-libgbm google-noto-sans-fonts breeze-icon-theme hicolor-icon-theme xorg-x11-server-Xwayland \
   qt6-qtsvg qt6-qtdeclarative >/tmp/tools.log 2>&1 || fail "setup" "tools: $(tail -3 /tmp/tools.log | tr '\n' ' ')"
 dnf -y copr enable errornointernet/quickshell >/dev/null 2>&1 && dnf -y -q install quickshell >/dev/null 2>&1 || fail "setup" "Quickshell couldn't be installed"
@@ -41,6 +42,8 @@ if dnf -y install --setopt=install_weak_deps=False $ex $pkgs >/tmp/cosmic-instal
   echo "$mb" > shots/cosmic-size-mb.txt
   rpm -q cosmic-session cosmic-comp cosmic-files cosmic-term cosmic-edit >shots/cosmic-version.txt
   for x in cosmic-store cosmic-player cosmic-wallpapers cosmic-monitor; do rpm -q "$x" >/dev/null 2>&1 && fail "left out" "$x got installed"; done
+  # As os-bases/anatase/build.sh does: Fedora's presets may switch COSMIC's login screen on; Hearth switches it off.
+  systemctl disable cosmic-greeter.service greetd.service >/dev/null 2>&1 || true
   for u in cosmic-greeter.service greetd.service; do systemctl is-enabled "$u" 2>/dev/null | grep -qx enabled && fail "login screen" "$u is switched on"; done
 else
   fail "COSMIC install" "$(grep -iE 'problem|nothing provides|requires|error' /tmp/cosmic-install.log | head -5 | tr '\n' ' ' | cut -c1-600)"
@@ -129,7 +132,13 @@ sh -c "$autostart_exec" >shots/companion.log 2>&1 &
 sleep 10
 pgrep -f desk-cosmic.qml >/dev/null || fail "companion" "desk-cosmic.qml didn't start: $(grep -iE 'error|warn' shots/companion.log | head -6 | tr '\n' ' ' | cut -c1-700)"
 QS="quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth"
-ipc() { $QS "$@" >/dev/null 2>&1 || echo "ipc $* failed" >>shots/shot-errors.txt; sleep 3; }
+RESTARTS=0
+# Through hearth-cosmic, as the panel's entries and Super do: it starts the companion again if it has ended.
+ipc() {
+  pgrep -f 'quickshell -p .*desk-cosmic.qml' >/dev/null || { RESTARTS=$((RESTARTS + 1)); echo "companion had ended before: $*" >>shots/shot-errors.txt; }
+  hosts/linux/desktop/cosmic/hearth-cosmic "$@" >/dev/null 2>&1 || echo "hearth-cosmic $* failed" >>shots/shot-errors.txt
+  sleep 3
+}
 
 # ------------------------------------------------------------------ 3. screenshots
 shot shots/cosmic-1-desktop.png
@@ -141,8 +150,13 @@ ipc link; shot shots/cosmic-5-hearth-link.png; ipc close
 ipc storage; shot shots/cosmic-6-hearth-storage.png; ipc close
 ipc keyboard; shot shots/cosmic-7-keyboard.png; ipc keyboard
 ipc help; shot shots/cosmic-8-controls.png; ipc close
-# hearth-cosmic, as the panel's entries and Super call it.
-hosts/linux/desktop/cosmic/hearth-cosmic launcher && sleep 2 && shot shots/cosmic-9-hearth-cosmic-launcher.png; ipc close
+[ "$RESTARTS" -gt 0 ] && echo "::warning title=companion::the companion ended $RESTARTS time(s) while its windows were opened (see companion.log, cosmic-comp.log)"
+# Which theme files COSMIC's apps really read (the theme check below).
+timeout 10 strace -f -e trace=openat,statx,newfstatat,access -o shots/strace-term.txt cosmic-term >/dev/null 2>&1
+grep -E 'CosmicTheme|CosmicTk' shots/strace-term.txt | grep -v ENOENT | head -20 > shots/theme-files-read.txt
+grep -E 'CosmicTheme.Dark/v1' shots/strace-term.txt | head -40 > shots/theme-lookups.txt
+echo "::notice title=theme files COSMIC reads::$(cut -c1-200 shots/theme-files-read.txt | tr '\n' '|' | cut -c1-2500)"
+find "$HOME/.config/cosmic" "$HOME/.local/state/cosmic" -maxdepth 3 2>/dev/null | head -60 > shots/user-cosmic-config.txt
 # Errors from Hearth's QML in the companion's log fail the run.
 bad=$(grep -E "qml|QML" shots/companion.log | grep -iE "error|TypeError|ReferenceError|is not a type|not defined|Cannot assign|failed to load" | sort -u | head -10)
 [ -n "$bad" ] && fail "companion QML" "$(printf '%s' "$bad" | cut -c1-300 | tr '\n' '|')"
@@ -154,6 +168,7 @@ APPID="$QS app"
 export APPID SHOT=/tmp/shot
 appshot() {   # appshot NAME CMD...: start an app, picture it, drive it with the pad, close it
   name=$1; shift
+  ipc close
   "$@" >"shots/$name.log" 2>&1 &
   apid=$!
   sleep 12
@@ -165,6 +180,7 @@ appshot() {   # appshot NAME CMD...: start an app, picture it, drive it with the
 appshot files cosmic-files "$HOME/Documents"
 appshot term cosmic-term
 appshot edit cosmic-edit "$HOME/Documents/notes.txt"
+ipc close
 python3 .github/scripts/cosmic-pad-drive.py desk shots >shots/pad-desk.log 2>&1 || fail "controller on the desktop" "$(grep FAIL shots/pad-desk.txt 2>/dev/null | head -4 | tr '\n' '|' | cut -c1-700)"
 
 for f in shots/pad-*.txt; do [ -f "$f" ] && echo "::notice title=$(basename "$f" .txt)::$(head -c 3000 "$f" | sed 's/%/%25/g' | tr '\n' '|')"; done

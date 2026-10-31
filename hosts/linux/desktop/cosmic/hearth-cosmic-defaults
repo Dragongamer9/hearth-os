@@ -35,6 +35,7 @@ RAMP = [
 ]
 THEMES = ('com.system76.CosmicTheme.Dark', 'com.system76.CosmicTheme.Dark.Builder')
 LAUNCHER = 'hearth-cosmic launcher'
+APP_DIRS = [d for d in os.environ.get('HEARTH_COSMIC_APP_DIRS', '/usr/share/applications:/var/lib/flatpak/exports/share/applications').split(':') if d]
 NUM = r'(-?[0-9.]+(?:[eE][-+]?[0-9]+)?)'
 COLOR_RE = re.compile(r'\(\s*red:\s*' + NUM + r',\s*green:\s*' + NUM + r',\s*blue:\s*' + NUM +
                       r'(?:,\s*alpha:\s*' + NUM + r')?\s*,?\s*\)')
@@ -106,6 +107,14 @@ def build(src, dst):
                 os.makedirs(os.path.dirname(os.path.join(d, rel)), exist_ok=True)
                 shutil.copyfile(os.path.join(root, f), os.path.join(d, rel))
         done.append(cid)
+    # Pinned apps: only the ones installed (COSMIC shows a blank icon for the others).
+    fav = os.path.join(dst, 'com.system76.CosmicAppList', 'v1', 'favorites')
+    if os.path.isfile(fav):
+        with open(fav, encoding='utf-8') as fh:
+            ids = re.findall(r'"([^"]+)"', fh.read())
+        keep = [i for i in ids if any(os.path.isfile(os.path.join(d, i + '.desktop')) for d in APP_DIRS)]
+        with open(fav, 'w', encoding='utf-8') as fh:
+            fh.write('[\n' + ''.join('    "%s",\n' % i for i in keep) + ']\n')
     # 2. The theme in Hearth's colours.
     for cid in THEMES:
         d = copy_component(src, dst, cid)
