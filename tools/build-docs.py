@@ -137,11 +137,13 @@ def page(slug, title, lead, body):
 
 
 EDITION_NOTES = (
-    only('anatase', '''<p><b>Anatase</b> is Fedora underneath, as an image (bootc). It's the main edition: every change is tested on it first.</p>
+    only('anatase', '''<p><b>Anatase</b> is Fedora underneath, as an image (bootc). It's the main edition: every change is tested on it first. It's locked and immutable: the system can't be changed, only updated in one piece.</p>
 <ul>APPS<li>Steam: from Flathub, installed the first time the device is online.</li>
 <li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul>''')
     + only('peppermint', '''<p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
-<ul>APPS<li><code>apt</code> can't change the system itself: it's a read-only image that updates in one piece.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
+<ul>APPS<li>It's a normal writable system: <code>sudo apt install</code> and .deb files (double-click one in Files) install anywhere and are kept across restarts. After an update, the packages you added come back by themselves.</li>
+<li>Updates still come as a whole new version, and the version before stays startable as it was. If something you install stops Hearth from starting, the next start leaves your changes off by itself.</li>
+<li>To lock it (the system as the image made it): <b>Settings › Updates &amp; Recovery › Unlocked system</b>, or <code>sudo hearth-unlock --lock</code>.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
 ).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li>')
 
 # ------------------------------------------------------------------ Overview
@@ -166,10 +168,10 @@ An update can't half-install, and the version you had before stays on the drive 
 <p>Hearth looks and works the same on every edition. What changes is the Linux underneath it.</p>
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
-<tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The most tested edition, with the best hardware support.</td></tr>
-<tr><td><b>Peppermint</b></td><td>Debian 13</td><td>Beta Experimental</td><td>People who prefer Debian's slower, steady pace.</td></tr>
+<tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The most tested edition, with the best hardware support. Locked and immutable: the system can't be changed.</td></tr>
+<tr><td><b>Peppermint</b></td><td>Debian 13</td><td>Beta Experimental</td><td>People who prefer Debian's slower, steady pace. A normal writable system: apt and .deb files install anywhere; it can be locked in Settings.</td></tr>
 </table></div>
-<p>You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
+<p>Both have the automatic fallback (an update that doesn't start goes back by itself) and Hearth Recovery. You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
 <div class="note"><p><b>Ubuntu and CachyOS are archived for now.</b> The focus is on making Anatase and Peppermint solid; the other
 editions come back after that. Already on one? It gets no more updates: <a href="updates.html#switch">switch to Anatase or Peppermint</a>
 and your games come with you.</p></div>

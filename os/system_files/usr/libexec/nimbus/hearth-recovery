@@ -10,8 +10,9 @@ It opens when:
   - asked for: `sudo hearth-recovery --next-start` (Settings › System › Restart into Recovery), or the kernel
     option hearth.recovery
 
-Choices: Continue · Go back to the previous version · Desktop Mode this time · Safe graphics this time · Reset the
-screen settings · Send logs to the developer · Restart · Turn off.
+Choices: Continue · Go back to the previous version · Desktop Mode this time · Safe graphics this time · Restart
+without your system changes (Peppermint, unlocked) · Reset the screen settings · Send logs to the developer · Restart ·
+Turn off.
 """
 import fcntl
 import glob
@@ -136,6 +137,30 @@ def flag(name):
     open(os.path.join(RUN, name), 'w').close()
 
 
+UNLOCK = '/usr/bin/hearth-unlock'
+
+
+def unlock_on():
+    """Peppermint's writable layer is over /usr this start (hearth-unlock)."""
+    if not os.access(UNLOCK, os.X_OK):
+        return False
+    try:
+        return any(' /usr ' in l and ' - overlay hearth-usr ' in l for l in open('/proc/self/mountinfo'))
+    except OSError:
+        return False
+
+
+def act_without_changes(say):
+    say('The next start leaves your system changes off…')
+    r = subprocess.run([UNLOCK, '--suspend', '--json'], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        say('Couldn\'t: ' + (r.stdout or r.stderr).strip()[-200:])
+        return
+    say('Done. Restarting… (turn them back on in Settings › Updates & Recovery)')
+    time.sleep(2)
+    subprocess.run(['systemctl', 'reboot'])
+
+
 def act_reset_screen(say):
     rx = re.compile(r'(^|[\s"])(-[WHr]\s+|--(output-width|output-height|nested-refresh)[=\s]+)[^\s"]+')
     n = 0
@@ -235,8 +260,13 @@ def menu(why, auto):
     items = [('Continue starting Hearth', 'continue')]
     if can_go_back():
         items.append(('Go back to the previous version', 'back'))
-    items += [('Desktop Mode this time', 'desktop'), ('Safe graphics this time', 'safe'),
-              ('Reset the screen settings (resolution, refresh rate)', 'screen'),
+    items += [('Desktop Mode this time', 'desktop'), ('Safe graphics this time', 'safe')]
+    try:
+        if unlock_on():
+            items.append(('Restart without your system changes (packages you added)', 'clean'))
+    except Exception:
+        pass
+    items += [('Reset the screen settings (resolution, refresh rate)', 'screen'),
               ('Send logs to the developer', 'logs'), ('Restart', 'reboot'), ('Turn off', 'off')]
     scr, inp = Screen(), Input()
     say = lambda m: (setattr(scr, 'msg', m), scr.draw('', why, items, sel))
@@ -269,6 +299,8 @@ def menu(why, auto):
                     flag('start-desktop'); say('Desktop Mode this time.'); time.sleep(1); return
                 elif a == 'safe':
                     flag('safe-graphics'); say('Safe graphics this time.'); time.sleep(1); return
+                elif a == 'clean':
+                    act_without_changes(say)
                 elif a == 'screen':
                     act_reset_screen(say)
                 elif a == 'logs':
