@@ -1,0 +1,118 @@
+# Hearth GNOME (docs/GNOME.md): checks Hearth's GNOME Shell extensions and runs Hearth GNOME for real in each base,
+# next to Hearth Classic. Per base (Anatase: Fedora 44, Peppermint: Debian trixie), in a privileged container with the
+# runner's uinput (.github/scripts/gnome-check.sh):
+#   1. GNOME's minimal set as the images install it, and what it adds;
+#   2. lint (every extension's JavaScript parses, metadata and the session mode are JSON and fit this GNOME) and the
+#      Python tests (test_hearth_gnome.py, test_hearth_plasma.py, test_hearth_pad.py);
+#   3. a headless GNOME Shell in Hearth's session mode: the extensions load without errors, screenshots, and the
+#      controller under a virtual uinput pad (pointer, clicks, launcher, Hearth menu, overview, keyboard, the bar,
+#      GNOME Files and Console) (tools/e2e-hearth-gnome.py).
+# Then side-by-side pictures with Hearth Classic's (the Desktop Mode test's ci/desktop-shots-* branch) and a README go
+# to the branch ci/gnome-shots-<branch>. Failures are ::error:: annotations (logs can't always be read).
+name: Hearth GNOME test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, bughunt, 'feature/desktop-gnome']
+    paths: ['os/system_files/usr/share/gnome-shell/**', 'os/system_files/usr/share/hearth-gnome/**', 'hosts/linux/desktop/gnome/**',
+            'hosts/linux/desktop/plasma/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/session/**',
+            'hosts/linux/test/test_hearth_gnome.py', 'tools/e2e-hearth-gnome.py', '.github/scripts/gnome-check.sh',
+            '.github/scripts/gnome-ci/**', '.github/workflows/gnome-test.yml']
+
+permissions:
+  contents: write    # the screenshots branch
+
+concurrency:
+  group: gnome-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gnome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - base: anatase
+            image: registry.fedoraproject.org/fedora:44
+          - base: peppermint
+            image: docker.io/library/debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uinput on the runner
+        run: |
+          sudo modprobe uinput
+          sudo chmod 666 /dev/uinput
+          ls -l /dev/uinput
+
+      - name: Hearth GNOME in ${{ matrix.base }}
+        timeout-minutes: 35
+        run: |
+          docker run --rm --privileged -v /dev/input:/dev/input -v "$PWD:/src" -w /src "${{ matrix.image }}" \
+            bash .github/scripts/gnome-check.sh "${{ matrix.base }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gnome-shots-${{ matrix.base }}
+          path: shots/${{ matrix.base }}
+          if-no-files-found: warn
+
+  shots:
+    needs: gnome
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gnome-shots-*
+          path: dl
+      - name: Side by side with Hearth Classic
+        shell: bash
+        run: |
+          set +e
+          mkdir -p shots/classic shots/compare
+          for b in anatase peppermint; do [ -d "dl/gnome-shots-$b" ] && cp -a "dl/gnome-shots-$b" "shots/$b"; done
+          command -v convert >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick >/dev/null; }
+          for b in ci/desktop-shots-bughunt ci/desktop-shots; do
+            git fetch -q --depth 1 origin "$b" 2>/dev/null || continue
+            for f in 1-desktop 2-quick-access 3-hearth-menu 4-launcher osk-1-suggestions files-1-icons; do
+              git show "FETCH_HEAD:$f.png" > "shots/classic/$f.png" 2>/dev/null || rm -f "shots/classic/$f.png"
+            done
+            ls shots/classic/*.png >/dev/null 2>&1 && { echo "Hearth Classic pictures from $b"; break; }
+          done
+          pair() {   # classic picture, GNOME picture, name
+            for b in anatase peppermint; do
+              [ -f "shots/classic/$1.png" ] && [ -f "shots/$b/$2.png" ] || continue
+              convert "shots/classic/$1.png" -resize 960x "shots/$b/$2.png" -resize 960x +append "shots/compare/$3-$b.png" || true
+            done
+          }
+          pair 1-desktop gnome-1-desktop desktop
+          pair 2-quick-access gnome-2-quicksettings quick-access
+          pair 4-launcher gnome-4-launcher launcher
+          pair 3-hearth-menu gnome-7-radial hearth-menu
+          pair osk-1-suggestions gnome-8-keyboard keyboard
+          pair files-1-icons gnome-files files
+          {
+            printf '# Hearth Classic (left) and Hearth GNOME (right)\n\n'
+            for f in shots/compare/*.png; do [ -f "$f" ] && printf '## %s\n\n![%s](compare/%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")"; done
+            for b in anatase peppermint; do
+              printf '## Hearth GNOME on %s\n\n' "$b"
+              [ -f "shots/$b/FAILED" ] && printf '**Some checks failed** (see the run'"'"'s annotations and %s/e2e.log).\n\n' "$b"
+              for f in shots/$b/*.png; do [ -f "$f" ] && printf '![%s](%s/%s)\n\n' "$(basename "$f")" "$b" "$(basename "$f")"; done
+            done
+          } > shots/README.md
+      - name: Publish screenshots to a branch
+        shell: bash
+        run: |
+          to="ci/gnome-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          cd shots && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth GNOME screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+      - name: Fail if Hearth GNOME had problems
+        run: test ! -e shots/anatase/FAILED && test ! -e shots/peppermint/FAILED && test -d shots/anatase && test -d shots/peppermint

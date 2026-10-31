@@ -223,6 +223,23 @@ optional plasma-nm plasma-pa powerdevil kscreen kscreenlocker bluedevil polkit-k
   kde-config-screenlocker spectacle qml-module-org-kde-plasma-plasma5support qml6-module-org-kde-plasma-plasma5support
 for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/null || { echo "::error title=Hearth Plasma::$b is missing"; exit 1; }; done
 
+# ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
+# GNOME Shell (trixie's release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell extensions
+# (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal (no recommends, no
+# GNOME app bundle, no GDM: SDDM stays), plus GNOME's own apps for the kinds it has (Files, Console, Text Editor: one
+# app of each kind per desktop; they show only in Hearth GNOME). Hearth Classic stays the fallback.
+gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
+"${APT[@]}" gnome-shell mutter gnome-session gnome-control-center
+optional xdg-desktop-portal-gnome nautilus gnome-console gnome-text-editor
+for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
+for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
+  f="/usr/share/applications/$id.desktop"
+  [ -f "$f" ] && { sed -i '/^OnlyShowIn=/d; /^NotShowIn=/d' "$f"; sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nOnlyShowIn=GNOME;/' "$f"; }
+done
+gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
+mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
+echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
+
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
 # SDDM's login screen itself runs on X (its default), so the X server comes along.
@@ -828,7 +845,7 @@ mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 # The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
 # Plasma (hidden by its TryExec where Plasma isn't installed).
-for s in hearth-classic hearth-plasma; do
+for s in hearth-classic hearth-plasma hearth-gnome; do
   sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop

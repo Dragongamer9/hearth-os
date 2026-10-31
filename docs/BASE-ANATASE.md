@@ -59,6 +59,7 @@ InputPlumber.
 - **Plasma Login Manager.** `nimbus-autologin` writes the `[Autologin]` section of `/etc/plasmalogin.conf` when
   Plasma Login Manager is installed, and `hearth-greeter-pad` recognises its greeter.
 - **Hearth Plasma.** KDE Plasma 6 (the workspace only) is installed as Desktop Mode's second desktop, in Hearth's look; Hearth Classic (labwc + Mantel) stays and is the fallback. See docs/PLASMA.md.
+- **Hearth GNOME.** GNOME Shell (minimal: shell, session, Settings, portal, plus GNOME Files, Console and Text Editor shown only there) is installed as Desktop Mode's third desktop, with Hearth's own Shell extensions; no GDM. See docs/GNOME.md.
 - **Which edition this is** is in `/usr/share/nimbus/image-info.json` (`{"base": "anatase", ...}`), read by
   `bridge.rs` `edition()`. The Bazzite-based image has `/usr/share/ublue-os/image-info.json` instead.
 

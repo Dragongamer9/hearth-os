@@ -9,9 +9,12 @@ RUN="${XDG_RUNTIME_DIR:-/tmp}"
 # Hearth Plasma (Desktop Mode on KDE Plasma, nimbus-session's run_plasma) leaves its process id here while it runs.
 plasma_pid=$(cat "$RUN/hearth-plasma.pid" 2>/dev/null)
 plasma_up() { [ -n "$plasma_pid" ] && kill -0 "$plasma_pid" 2>/dev/null; }
+# Hearth GNOME (nimbus-session's run_gnome) the same way.
+gnome_pid=$(cat "$RUN/hearth-gnome.pid" 2>/dev/null)
+gnome_up() { [ -n "$gnome_pid" ] && kill -0 "$gnome_pid" 2>/dev/null; }
 case "$1" in
   current)
-    if [ -n "$LABWC_PID" ] || plasma_up; then echo desktop; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+    if [ -n "$LABWC_PID" ] || plasma_up || gnome_up; then echo desktop; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
   game|desktop|logout)
     [ "$1" = logout ] && rm -f "$RUN/nimbus-next" || echo "$1" >"$RUN/nimbus-next"
     if [ -n "$LABWC_PID" ]; then
@@ -26,6 +29,14 @@ case "$1" in
         || kill -TERM "$plasma_pid"
       me=$(id -u)
       setsid sh -c "sleep 8; kill -0 $plasma_pid 2>/dev/null || exit 0; pkill -TERM -u $me -x plasmashell; pkill -TERM -u $me -x kwin_wayland; sleep 3; kill -KILL $plasma_pid 2>/dev/null; pkill -KILL -u $me -x kwin_wayland" >/dev/null 2>&1 </dev/null &
+    elif gnome_up; then
+      # GNOME's own sign-out without asking; GNOME Shell and the session are ended by force after 8 seconds.
+      { timeout 5 gnome-session-quit --logout --no-prompt \
+        || timeout 5 gdbus call --session --dest org.gnome.SessionManager --object-path /org/gnome/SessionManager --method org.gnome.SessionManager.Logout 1 \
+        || dbus-send --session --type=method_call --dest=org.gnome.SessionManager /org/gnome/SessionManager org.gnome.SessionManager.Logout uint32:1; } >/dev/null 2>&1 \
+        || kill -TERM "$gnome_pid"
+      me=$(id -u)
+      setsid sh -c "sleep 8; kill -0 $gnome_pid 2>/dev/null || exit 0; pkill -TERM -u $me -x gnome-shell; sleep 3; kill -KILL $gnome_pid 2>/dev/null; pkill -KILL -u $me -x gnome-shell" >/dev/null 2>&1 </dev/null &
     else
       # In Game Mode, Nimbus quits itself after writing the file; this is the fallback for scripts. Run from
       # somewhere that didn't inherit LABWC_PID (an SSH login, a systemd user service, an app started over

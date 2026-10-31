@@ -227,12 +227,7 @@ Rectangle {
                 text: "Start: " + (sessionModel.data(sessionModel.index(root.sessionIndex, 0), Qt.UserRole + 4) || "Hearth") }
             MouseArea { id: sessArea; anchors.fill: parent; hoverEnabled: true; onClicked: root.sessionIndex = (root.sessionIndex + 1) % sessionModel.rowCount() }
         }
-        // The desktops: Hearth Classic and Hearth Plasma are sessions above (the one you pick is saved); GNOME isn't yet.
-        Text {
-            visible: sessionModel.rowCount() > 1
-            text: "Hearth GNOME: coming later"; color: root.muted; opacity: 0.6
-            font.family: root.font; font.pixelSize: 13
-        }
+        // The desktops: Hearth Classic, Hearth Plasma and Hearth GNOME are sessions above (the one you pick is saved).
         Item { Layout.fillWidth: true }
         Repeater {
             id: power

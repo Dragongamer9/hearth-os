@@ -1,0 +1,13 @@
+/* Mantel's Game Mode pill: "Game Mode" on the accent colour. */
+#panel .panel-button.hearth-gamemode { padding: 0 4px; }
+#panel .panel-button.hearth-gamemode:hover,
+#panel .panel-button.hearth-gamemode:focus { background-color: transparent; }
+.hearth-gamemode-pill {
+  background-color: #ff8a3d;
+  color: #2a1206;
+  font-weight: bold;
+  border-radius: 10px;
+  padding: 6px 14px;
+}
+.hearth-gamemode:hover .hearth-gamemode-pill { background-color: #ff9a52; }
+.hearth-gamemode:focus .hearth-gamemode-pill { box-shadow: 0 0 0 2px #ffd166; }

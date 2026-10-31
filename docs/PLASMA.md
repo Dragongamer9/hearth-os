@@ -3,13 +3,13 @@
 **Status: Beta Experimental, not tried on a device yet.** Built into Hearth OS on Anatase and Peppermint, checked by
 CI (`plasma-test.yml`, the image checks in `base-anatase.yml` / `base-peppermint.yml`).
 
-Desktop Mode can run one of two desktops. Game Mode is the same with either.
+Desktop Mode can run one of three desktops. Game Mode is the same with either.
 
 | Desktop | What it is | |
 |---|---|---|
 | **Hearth Classic** | labwc + Mantel (Quickshell): today's desktop | always installed, the default and the fallback |
 | **Hearth Plasma** | KDE Plasma 6 in Hearth's look, with Hearth's widgets | picked in Settings or on the login screen |
-| Hearth GNOME | | coming later (shown greyed out) |
+| Hearth GNOME | GNOME Shell in Hearth's look, with Hearth's extensions | picked in Settings or on the login screen (docs/GNOME.md) |
 
 Switching keeps your files and settings: both desktops use the same home folder, the same apps and the same Hearth
 settings files. Plasma's own settings (`~/.config/kdeglobals`, `plasma-org.kde.plasma.desktop-appletsrc`...) are only
@@ -20,14 +20,13 @@ read by Plasma.
 - **Game Mode › Settings › Desktop Mode › Desktop** (`ui/index.html` `deskRow`/`deskPick`, bridge `login.desktop` /
   `login.setDesktop`, `hosts/hearth-core/src/admin.rs` `desktop()` / `set_desktop()`).
 - **Hearth Classic › Settings › Sign-in › Desktop** (`SetSignin.qml`, through `desktop/plasma/hearth-plasma desktop` /
-  `desktop-set`). Hearth GNOME shows there greyed out (`SetChoice.qml` options can be `disabled`).
+  `desktop-set`). Hearth GNOME is there too (greyed out where it isn't installed; `SetChoice.qml` options can be `disabled`).
 - **The login screen**: "Hearth Classic" and "Hearth Plasma" sessions next to "Hearth"
   (`hosts/linux/session/hearth-classic.desktop`, `hearth-plasma.desktop`; Hearth Plasma is hidden by its `TryExec`
   where Plasma isn't installed). Picking one runs `nimbus-session --desktop=classic|plasma`, which saves the choice,
-  so automatic sign-in (always the "Hearth" session) keeps it. Hearth's own login screen theme notes that Hearth
-  GNOME is coming later.
+  so automatic sign-in (always the "Hearth" session) keeps it. "Hearth GNOME" is there the same way (docs/GNOME.md).
 
-All three write the same line: `HEARTH_DESKTOP=classic|plasma` in `~/.config/nimbus/session.conf`. It's read again
+All three write the same line: `HEARTH_DESKTOP=classic|plasma|gnome` in `~/.config/nimbus/session.conf`. It's read again
 every time Desktop Mode starts, so a change made in Game Mode applies at the next switch.
 
 ## Safety: Plasma can never leave the device without a desktop
@@ -116,4 +115,4 @@ Only Plasma's workspace (no `kde-standard` app bundle, no recommends):
   Hearth menu, clipboard history, Hearth Friends on the taskbar: Hearth Classic only for now.
 - The lock screen is Plasma's layout (Hearth's colours and wallpaper), not a port of `Lock.qml`.
 - Hearth Files built from Dolphin, Hearth Storage as a KIO plugin, KDE apps rebuilt as Hearth apps (ROADMAP).
-- Hearth GNOME.
+- Hearth GNOME: see docs/GNOME.md.

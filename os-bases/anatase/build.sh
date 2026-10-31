@@ -621,8 +621,8 @@ install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 # The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
-# Plasma (hidden by its TryExec where Plasma isn't installed).
-for s in hearth-classic hearth-plasma; do
+# Plasma and Hearth GNOME (hidden by their TryExec where they aren't installed).
+for s in hearth-classic hearth-plasma hearth-gnome; do
   sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
@@ -727,6 +727,35 @@ for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/
 # What Plasma's packages may switch on that Hearth doesn't want: the login screen stays Anatase's (Plasma Login
 # Manager, Hearth's autologin), nothing else becomes the display manager.
 echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || echo none)"
+
+# ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
+# GNOME Shell (Fedora's current release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell
+# extensions (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal, plus GNOME's
+# own apps for the kinds it has (Files, Console, Text Editor: one app of each kind per desktop; they show only in
+# Hearth GNOME). No GNOME app bundle, no weak dependencies, no GDM: the login screen stays. Hearth Classic stays the
+# fallback whenever GNOME can't start. The size it adds is noted for the image check.
+gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
+dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+dnf5 -y install --setopt=install_weak_deps=False gnome-shell mutter gnome-session gnome-control-center
+dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False xdg-desktop-portal-gnome gnome-settings-daemon \
+  nautilus gnome-console gnome-text-editor || true
+for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
+# Nothing of GNOME's takes the login screen (the display manager is put back if a package changed it) or brings a
+# first-sign-in assistant.
+rpm -q gnome-initial-setup >/dev/null 2>&1 && dnf5 -y remove gnome-initial-setup || true
+rpm -q gnome-tour >/dev/null 2>&1 && dnf5 -y remove gnome-tour || true
+dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+if [ "$dm_before" != "$dm_after" ]; then
+  if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
+fi
+# GNOME's own apps show only in Hearth GNOME (Hearth Classic and Hearth Plasma have Hearth's of the same kind).
+for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do
+  f="/usr/share/applications/$id.desktop"
+  [ -f "$f" ] && { sed -i '/^OnlyShowIn=/d; /^NotShowIn=/d' "$f"; sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nOnlyShowIn=GNOME;/' "$f"; }
+done
+gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
+mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
+echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
 
 # ------------------------------------------------------------------ Steam
 # As on the Bazzite-based Hearth OS: Steam installed in the system, its games in ~/.local/share/Steam. Anatase's

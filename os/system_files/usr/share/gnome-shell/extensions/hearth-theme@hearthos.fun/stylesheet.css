@@ -1,0 +1,157 @@
+/* Hearth GNOME: GNOME Shell in Hearth's colours (Mantel's Theme.qml) and font. Loaded on top of GNOME's own theme.
+   bg #0f0b09 · bg2 #17110e · panel #1c1512 · panel2 #261d18 · panel3 #33271f · line #3b2e26
+   text #f4ece3 · muted #a69484 · ember (accent) #ff8a3d · flame #ffd166 · text on the accent #2a1206 */
+
+stage {
+  font-family: "Noto Sans", sans-serif;
+  color: #f4ece3;
+}
+
+/* menus, popovers, the calendar and Quick Settings */
+.popup-menu-content,
+.candidate-popup-content {
+  background-color: #1c1512;
+  color: #f4ece3;
+  border: 1px solid #3b2e26;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.popup-menu-boxpointer,
+.candidate-popup-boxpointer {
+  -arrow-background-color: #1c1512;
+  -arrow-border-color: #3b2e26;
+  -arrow-border-width: 1px;
+}
+.popup-menu-item { border-radius: 10px; }
+.popup-menu-item:hover,
+.popup-menu-item:focus,
+.popup-menu-item:selected {
+  background-color: rgba(255, 138, 61, 0.18);
+  color: #f4ece3;
+}
+.popup-menu-item:active,
+.popup-menu-item:checked { background-color: rgba(255, 138, 61, 0.28); }
+.popup-separator-menu-item .popup-separator-menu-item-separator { background-color: #3b2e26; }
+.popup-sub-menu { background-color: #17110e; }
+
+.quick-settings {
+  background-color: #1c1512;
+  border-radius: 22px;
+  padding: 14px;
+}
+.quick-toggle,
+.quick-menu-toggle .quick-toggle,
+.quick-settings-system-item .icon-button,
+.quick-settings .icon-button {
+  background-color: #261d18;
+  color: #f4ece3;
+}
+.quick-toggle:hover,
+.quick-settings .icon-button:hover { background-color: #33271f; }
+.quick-toggle:focus,
+.quick-settings .icon-button:focus { box-shadow: inset 0 0 0 2px #ff8a3d; }
+.quick-toggle:checked,
+.quick-menu-toggle .quick-toggle:checked,
+.quick-toggle-arrow:checked {
+  background-color: #ff8a3d;
+  color: #2a1206;
+}
+.quick-toggle:checked:hover { background-color: #ff9a52; }
+.quick-toggle-menu {
+  background-color: #261d18;
+  border-radius: 18px;
+}
+.quick-toggle-menu .header .icon {
+  background-color: #ff8a3d;
+  color: #2a1206;
+}
+
+.slider {
+  -barlevel-active-background-color: #ff8a3d;
+  -barlevel-background-color: #33271f;
+  -slider-handle-border-color: #ff8a3d;
+}
+.toggle-switch:checked { background-color: #ff8a3d; }
+
+/* the panel (Hearth's bar extension puts it along the bottom) */
+#panel .panel-button { color: #f4ece3; border-radius: 12px; }
+#panel .panel-button:hover,
+#panel .panel-button:focus { background-color: rgba(255, 138, 61, 0.16); box-shadow: none; }
+#panel .panel-button:active,
+#panel .panel-button:checked { background-color: rgba(255, 138, 61, 0.28); }
+#panel .panel-button .workspace-dot { background-color: #f4ece3; }
+#panel .panel-button.clock-display .clock { color: #f4ece3; }
+
+/* the calendar and notifications */
+.calendar,
+.datemenu-today-button,
+.events-button,
+.world-clocks-button,
+.weather-button,
+.message,
+.notification-banner {
+  background-color: #261d18;
+  color: #f4ece3;
+  border-radius: 14px;
+}
+.message:hover,
+.message:focus { background-color: #33271f; }
+.calendar-day:selected,
+.calendar-today,
+.calendar-today:selected {
+  background-color: #ff8a3d;
+  color: #2a1206;
+}
+.calendar-day:focus { box-shadow: inset 0 0 0 2px #ff8a3d; }
+
+/* the overview, the app grid and search */
+.search-entry {
+  background-color: #1c1512;
+  color: #f4ece3;
+  border: 1px solid #3b2e26;
+  border-radius: 20px;
+}
+.search-entry:focus { border-color: #ff8a3d; box-shadow: inset 0 0 0 1px #ff8a3d; }
+.app-well-app:focus .overview-icon,
+.grid-search-result:focus .overview-icon,
+.show-apps:focus .overview-icon,
+.list-search-result:focus,
+.search-provider-icon:focus {
+  background-color: rgba(255, 138, 61, 0.22);
+  box-shadow: inset 0 0 0 2px #ff8a3d;
+}
+.app-well-app:hover .overview-icon { background-color: rgba(255, 138, 61, 0.14); }
+.app-folder-dialog { background-color: #1c1512; border-radius: 24px; }
+.dash-background { background-color: rgba(28, 21, 18, 0.92); border-radius: 22px; }
+.app-well-app-running-dot { background-color: #ff8a3d; }
+.page-indicator .page-indicator-icon { background-color: #a69484; }
+.page-indicator:checked .page-indicator-icon { background-color: #ff8a3d; }
+
+/* window switcher (Alt+Tab, LB / RB on the controller) */
+.switcher-list {
+  background-color: #1c1512;
+  border: 1px solid #3b2e26;
+  border-radius: 22px;
+}
+.switcher-list .item-box { border-radius: 14px; }
+.switcher-list .item-box:selected { background-color: rgba(255, 138, 61, 0.28); }
+.switcher-list .item-box:hover { background-color: rgba(255, 138, 61, 0.14); }
+
+/* dialogs, OSDs */
+.modal-dialog {
+  background-color: #1c1512;
+  color: #f4ece3;
+  border: 1px solid #3b2e26;
+  border-radius: 22px;
+}
+.modal-dialog-button-box .button,
+.modal-dialog .modal-dialog-button { background-color: #261d18; color: #f4ece3; border-radius: 12px; }
+.modal-dialog-button-box .button:focus { box-shadow: inset 0 0 0 2px #ff8a3d; }
+.modal-dialog-button-box .button:default,
+.button.default { background-color: #ff8a3d; color: #2a1206; }
+.osd-window { background-color: rgba(28, 21, 18, 0.94); color: #f4ece3; border-radius: 18px; }
+.osd-window .level { -barlevel-active-background-color: #ff8a3d; }
+
+/* the lock screen's clock */
+.unlock-dialog-clock-time { color: #f4ece3; }
+.unlock-dialog-clock-date { color: #ffd166; }

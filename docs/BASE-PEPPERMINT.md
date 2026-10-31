@@ -234,3 +234,5 @@ These aren't made here: those files belong to the main build, the installer and 
    both settle, they could move to one shared folder.
 
 **Hearth Plasma.** KDE Plasma 6 (the workspace only, no recommends, plus Dolphin) is installed as Desktop Mode's second desktop, in Hearth's look; Hearth Classic (labwc + Mantel) stays and is the fallback, and SDDM stays the display manager. See docs/PLASMA.md.
+
+**Hearth GNOME.** GNOME Shell (minimal, no recommends: shell, session, Settings, portal, plus GNOME Files, Console and Text Editor shown only there) is installed as Desktop Mode's third desktop, with Hearth's own Shell extensions; SDDM stays the display manager. See docs/GNOME.md.

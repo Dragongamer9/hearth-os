@@ -1,0 +1,40 @@
+/* Hearth GNOME's bar: Mantel's floating rounded bar along the bottom (Bar.qml: a 50 px bar in a 60 px strip). */
+#panelBox.hearth-bar-box { padding: 0 10px 8px 10px; }
+#panel.hearth-bar {
+  height: 50px;
+  background-color: rgba(28, 21, 18, 0.94);
+  border: 1px solid #3b2e26;
+  border-radius: 18px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  padding: 0 6px;
+}
+#panel.hearth-bar:overview,
+#panel.hearth-bar.unlock-screen,
+#panel.hearth-bar.login-screen { background-color: transparent; border-color: transparent; box-shadow: none; }
+
+.hearth-tasks { spacing: 4px; padding: 0 6px; }
+.hearth-task {
+  padding: 4px 8px 2px 8px;
+  border-radius: 12px;
+  min-width: 40px;
+}
+.hearth-task:hover { background-color: rgba(255, 138, 61, 0.14); }
+.hearth-task:focus { background-color: rgba(255, 138, 61, 0.22); box-shadow: inset 0 0 0 2px #ff8a3d; }
+.hearth-task:active { background-color: rgba(255, 138, 61, 0.26); }
+.hearth-task-dot {
+  width: 6px;
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background-color: #a69484;
+}
+.hearth-task.focused .hearth-task-dot { width: 16px; background-color: #ff8a3d; }
+
+.hearth-show-desktop {
+  width: 8px;
+  margin-left: 6px;
+  border-left: 1px solid #3b2e26;
+  border-radius: 0 12px 12px 0;
+}
+.hearth-show-desktop:hover,
+.hearth-show-desktop:focus { background-color: rgba(255, 138, 61, 0.3); }

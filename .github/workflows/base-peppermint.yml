@@ -665,6 +665,17 @@ jobs:
           check "Hearth Plasma: Hearth Classic stays (labwc) and the session falls back to it" "command -v labwc && grep -q 'falling back to Hearth Classic' /usr/bin/nimbus-session"
           warn "Hearth Plasma: Plasma's script engine for widgets (plasma5support QML module)" "ls -d /usr/lib*/qt6/qml/org/kde/plasma/plasma5support /usr/lib/*/qt6/qml/org/kde/plasma/plasma5support 2>/dev/null | grep -q ."
           # ---- end Hearth Plasma
+          # ---- Hearth GNOME (docs/GNOME.md): the third desktop, Hearth Classic kept as the fallback
+          check "Hearth GNOME: GNOME Shell and its session are installed" "command -v gnome-shell && command -v gnome-session"
+          check "Hearth GNOME: Hearth's session mode, extensions and helper" "python3 -m json.tool /usr/share/gnome-shell/modes/hearth.json && for e in theme bar launcher quick link storage gamemode pad; do test -f /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/extension.js && python3 -m json.tool /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/metadata.json >/dev/null || exit 1; done && test -f /usr/share/nimbus/desktop/gnome/hearth-gnome && test -f /usr/share/nimbus/desktop/gnome/hearth.js"
+          check "Hearth GNOME: the extensions are made for this GNOME" "v=\$(gnome-shell --version | grep -oE '[0-9]+' | head -1); grep -q \"\\\"\$v\\\"\" /usr/share/gnome-shell/extensions/hearth-pad@hearthos.fun/metadata.json"
+          check "Hearth GNOME: the login screen offers it" "grep -q 'nimbus-session --desktop=gnome' /usr/share/wayland-sessions/hearth-gnome.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-gnome.desktop"
+          check "Hearth GNOME: falls back to Hearth Classic" "grep -q 'gnome: didn.t start; falling back to Hearth Classic' /usr/bin/nimbus-session"
+          warn "Hearth GNOME: GNOME's own Files, Console and Text Editor, shown only in Hearth GNOME" "for id in org.gnome.Nautilus org.gnome.Console org.gnome.TextEditor; do grep -q '^OnlyShowIn=GNOME;' /usr/share/applications/\$id.desktop || exit 1; done"
+          warn "Hearth GNOME: GNOME's portal" "test -f /usr/share/xdg-desktop-portal/portals/gnome.portal"
+          check "Hearth GNOME: the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
+          echo "::notice title=Hearth GNOME size::GNOME adds about $(cat /usr/share/nimbus/hearth-gnome-size-mb 2>/dev/null || echo '?') MB to this image"
+          # ---- end Hearth GNOME
           echo "--- sleep like SteamOS: the power button suspends, the Ally's controller doesn't wake it, AMD's deep sleep"
           check "the power button sleeps at the sign-in screen too (logind: HandlePowerKey=suspend wins over every other logind setting)" "if command -v systemd-analyze; then systemd-analyze cat-config systemd/logind.conf | grep -E '^[[:space:]]*HandlePowerKey=' | tail -1 | grep -qx 'HandlePowerKey=suspend'; else grep -qx 'HandlePowerKey=suspend' /usr/lib/systemd/logind.conf.d/50-hearth-power.conf && ! grep -rqsE '^[[:space:]]*HandlePowerKey=' /etc/systemd/logind.conf /etc/systemd/logind.conf.d; fi"
           check "the Hearth session takes the power button while it runs (logind's handle-power-key inhibitor: one handler)" "grep -q 'systemd-inhibit --what=handle-power-key' /usr/bin/nimbus-session"

@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-gamemode@hearthos.fun",
+  "name": "Hearth Game Mode button",
+  "description": "Mantel's Game Mode button at the end of the bar, and Super+G: back to Hearth's Game Mode.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}
