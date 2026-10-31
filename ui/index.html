@@ -12810,7 +12810,7 @@ function renderFooter(){
   if(top==='prompt'||top==='search') h.push(['del','Delete'],['space','Space'],['done',top==='search'?'Search':'Done']);
   if(!top && S.view==='library') h.push(['tabs','Tabs'],['stores','Stores']);
   if(!top && S.view==='shop') h.push(['tabs','Stores']);
-  if(!top && /^hm/.test(S.view)) h.push(...(S.view==='hmods'?hmHints():hmHints().slice(1)));   // Hearth Mods in Game Mode
+  if(!top && /^hm/.test(S.view)) h.push(...(S.view==='hmods'?hmHints():[]));   // Hearth Mods in Game Mode
   if(!top && S.view==='settings' && (S.sfront || stabsIn(stabGroup(S.settingsTab)).length>1)) h.push(['tabs',S.sfront?'Groups':'Pages']);
   if(top==='qam') h.push(['tabs','Sections']);
   if(!top) h.push(['search','Search'],['menu','Menu'],['qam','Quick Access']);
