@@ -173,6 +173,18 @@ def save_layer(lid, layer):
     write_json(os.path.join(layer_dir(lid), 'layer.json'), layer)
 
 
+def update_layer(lid, **changes):
+    """Changes some of a layer's fields, read fresh under a lock: the record (run in the background after every dpkg
+    run), the reapply and the boot step all write layer.json."""
+    os.makedirs(layer_dir(lid), exist_ok=True)
+    with open(os.path.join(STATE, '.layer.lock'), 'w') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        layer = load_layer(lid)
+        layer.update(changes)
+        save_layer(lid, layer)
+    return layer
+
+
 def has_changes(lid):
     try:
         with os.scandir(os.path.join(layer_dir(lid), 'upper')) as it:
@@ -325,8 +337,7 @@ def cmd_record(wait=900):
                 except OSError:
                     pass
         save_record(rec)
-        layer['seen'] = sorted(cur)
-        save_layer(lid, layer)
+        update_layer(lid, seen=sorted(cur))
     return 0
 
 
@@ -436,16 +447,14 @@ def cmd_boot():
         d = boot_decision(bool(lid), locked(), clean_asked(), layer.get('suspended', False), bool(lid) and has_changes(lid),
                           int(layer.get('pending', 0) or 0))
         if d == 'safe-start':
-            layer.update(suspended=True, pending=0, suspendedAt=now_iso(), suspendedWhy='start')
-            save_layer(lid, layer)
+            update_layer(lid, suspended=True, pending=0, suspendedAt=now_iso(), suspendedWhy='start')
             set_notice('safe-start', 'Started without your system changes',
                        'The last start with the packages you added never reached Hearth, so Hearth started without '
                        'them this time. Turn them back on in Settings › Updates & Recovery, or keep them off.')
             log('the last start with your changes never reached Hearth: starting without them (safe start)')
         elif d == 'mount':
             if has_changes(lid):
-                layer['pending'] = int(layer.get('pending', 0) or 0) + 1
-                save_layer(lid, layer)
+                update_layer(lid, pending=int(layer.get('pending', 0) or 0) + 1)
             if mount_layer(lid):
                 log(f'writable: layer {lid[:12]} over {USR}')
         else:
@@ -512,10 +521,8 @@ def cmd_watch(limit=1200):
         if up_now():
             since = since or time.monotonic()
             if time.monotonic() - since >= UP_SECONDS:
-                layer = load_layer(lid)
-                if layer.get('pending') and mounted():
-                    layer['pending'] = 0
-                    save_layer(lid, layer)
+                if load_layer(lid).get('pending') and mounted():
+                    update_layer(lid, pending=0)
                 return 0
         else:
             since = None
@@ -589,9 +596,9 @@ def has_candidate(pkg):
 
 
 def reapply(lid, say=progress):
-    layer = load_layer(lid) or new_layer(lid)
-    layer['reapply'] = {'state': 'running', 'at': now_iso()}
-    save_layer(lid, layer)
+    if not load_layer(lid):
+        new_layer(lid)
+    update_layer(lid, reapply={'state': 'running', 'at': now_iso()})
     logf = os.path.join(STATE, 'reapply.log')
     lines = []
 
@@ -617,12 +624,12 @@ def reapply(lid, say=progress):
     lists = os.path.isdir('/var/lib/apt/lists') and any(n.endswith('Packages') or 'Packages' in n
                                                         for n in os.listdir('/var/lib/apt/lists'))
     if not ok_update and not lists:
-        layer['reapply'] = {'state': 'pending', 'at': now_iso(), 'error': 'offline'}
-        save_layer(lid, layer)
+        r = {'state': 'pending', 'at': now_iso(), 'error': 'offline'}
+        update_layer(lid, reapply=r)
         set_notice('reapply-offline', 'Your packages come back when you\'re online',
                    'This Hearth OS version started without the packages you added, because Debian couldn\'t be '
                    'reached. They are put back by themselves at the next start that\'s online.')
-        return layer['reapply']
+        return r
     installed = installed_set()
     to_remove, repo, files, missing = plan_reapply(rec, installed, has_candidate,
                                                    lambda d: os.path.isfile(os.path.join(STATE, 'debs', d)))
@@ -651,10 +658,9 @@ def reapply(lid, say=progress):
                     failed.append(os.path.basename(w)[:-4] if w.endswith('.deb') else w)
                     note(f'{w}: {o.strip()[-300:]}')
     state = 'failed' if failed else 'done'
-    layer = load_layer(lid)
-    layer['reapply'] = {'state': state, 'at': now_iso(), 'installed': len(want) - (len(failed) - len(missing)),
-                        'removed': done_rm, 'failed': sorted(set(failed))}
-    save_layer(lid, layer)
+    result = {'state': state, 'at': now_iso(), 'installed': len(want) - (len(failed) - len(missing)),
+              'removed': done_rm, 'failed': sorted(set(failed))}
+    update_layer(lid, reapply=result)
     note(f'reapply {state}: {len(want)} to install, {len(done_rm)} removed, failed: {", ".join(sorted(set(failed))) or "none"}')
     if failed:
         set_notice('reapply-failed', 'Some of your packages didn\'t come back',
@@ -666,7 +672,7 @@ def reapply(lid, say=progress):
     except Exception as e:
         log(f'record after reapply: {e}')
     say(100, 'Done')
-    return layer['reapply']
+    return result
 
 
 # ------------------------------------------------------------------ status and the switches
@@ -707,9 +713,9 @@ def cmd_unlock():
     lid = layer_id()
     if not lid:
         raise Fail('this isn\'t a running Hearth OS image')
-    layer = load_layer(lid) or new_layer(lid)
-    layer.update(suspended=False, pending=0)   # asked for on a running system: this start is a good one
-    save_layer(lid, layer)
+    if not load_layer(lid):
+        new_layer(lid)
+    layer = update_layer(lid, suspended=False, pending=0)   # asked for on a running system: this start is a good one
     n = read_json(notice_path(), {})
     if n.get('kind') == 'safe-start':
         os.remove(notice_path())
@@ -734,9 +740,9 @@ def cmd_suspend():
     need_root()
     lid = layer_id()
     if lid:
-        layer = load_layer(lid) or new_layer(lid)
-        layer.update(suspended=True, pending=0, suspendedAt=now_iso(), suspendedWhy='asked')
-        save_layer(lid, layer)
+        if not load_layer(lid):
+            new_layer(lid)
+        update_layer(lid, suspended=True, pending=0, suspendedAt=now_iso(), suspendedWhy='asked')
         set_notice('safe-start', 'Started without your system changes',
                    'You asked Hearth to start without the packages you added. Turn them back on in Settings › '
                    'Updates & Recovery when you\'re ready.')
@@ -748,9 +754,7 @@ def cmd_reapply_later():
     need_root()
     need_writable()
     lid = layer_id()
-    layer = load_layer(lid) or new_layer(lid)
-    layer['reapply'] = {'state': 'pending', 'at': now_iso()}
-    save_layer(lid, layer)
+    update_layer(lid, reapply={'state': 'pending', 'at': now_iso()})
     start_reapply_service()
     return status()
 

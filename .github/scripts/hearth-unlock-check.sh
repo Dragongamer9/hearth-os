@@ -98,7 +98,11 @@ done
 for p in sl figlet hearth-hello; do case " $got " in *" $p "*) ok "recorded by the hooks: $p";; *) err "the record has no $p (it has: $got)";; esac; done
 ic 'test -f /var/lib/hearth/unlock/debs/hearth-hello.deb' && ok "a copy of the .deb kept for updates" || err "the .deb from a file wasn't kept"
 case " $got " in *" bash "*|*" apt "*) err "image packages ended up in the record: $got";; esac
-ic 'apt-get install -s -y grub-pc >/dev/null 2>&1' && err "GRUB could be installed with apt (the boot-chain pin isn't working)" || ok "the boot chain can't come from apt"
+# (packages the image doesn't have: one it has is "already the newest version" either way)
+for p in linux-image-rt-amd64 systemd-boot; do
+  ic "apt-get install -s -y $p >/dev/null 2>&1" && err "$p could be installed with apt (the boot-chain pin isn't working)" || ok "the boot chain can't come from apt: $p"
+done
+echo "::notice title=hearth-unlock pin::$(ic 'apt-cache policy shim-signed grub-efi-amd64-signed 2>/dev/null | grep -E "^[a-z]|Installed|Candidate" | tr "\n" " "' | cut -c1-300)"
 
 # ---- 2. restart, same version: everything's still there
 echo "--- start 2 (version A again)"

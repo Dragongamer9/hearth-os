@@ -179,6 +179,23 @@ class Record(Base):
         self.assertEqual(self.u.load_record()['manual'], ['htop'])
         self.assertEqual(sorted(self.u.load_layer(A)['seen']), ['bash', 'htop', 'steam-installer', 'xfce4'])
 
+    def test_record_never_puts_back_an_older_reapply_state(self):
+        # The record runs in the background after each dpkg run, while the reapply writes its result (seen in CI).
+        self.u.save_layer(A, {'reapply': {'state': 'running'}})
+        real_load = self.u.load_layer
+
+        def slow_load(lid):
+            got = real_load(lid)
+            self.u.save_layer(A, dict(real_load(lid), reapply={'state': 'done'}))   # the reapply finishes meanwhile
+            return got
+        with mock.patch.object(self.u, 'mounted', return_value=True), mock.patch.object(self.u, 'lock_free', return_value=True), \
+                mock.patch.object(self.u, 'apt_manual', return_value={'bash', 'htop'}), \
+                mock.patch.object(self.u, 'installed_set', return_value={'bash', 'htop'}), \
+                mock.patch.object(self.u, 'load_layer', side_effect=slow_load):
+            self.u.cmd_record()
+        self.assertEqual(real_load(A)['reapply']['state'], 'done')
+        self.assertEqual(real_load(A)['seen'], ['bash', 'htop'])
+
     def test_record_does_nothing_when_locked(self):
         with mock.patch.object(self.u, 'mounted', return_value=False), \
                 mock.patch.object(self.u, 'apt_manual', side_effect=AssertionError('must not run')):
