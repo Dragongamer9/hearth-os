@@ -275,7 +275,7 @@ def main():
     # Hearth Plasma's own apps, like Mantel's: the controller as keys in each, Y, then View + B closes it.
     apps = [('Hearth Files (Dolphin)', 'dolphin', ['dolphin', os.environ.get('HOME', '/tmp')]), ('Terminal (Konsole)', 'konsole', ['konsole']),
             ('Text (Kate)', 'kate', ['kate', '-n']), ('Reader (Okular)', 'okular', ['okular']),
-            ('Calculator (KCalc)', 'kcalc', ['kcalc']), ('Capture (Spectacle)', 'spectacle', ['spectacle', '-f'])]
+            ('Calculator (KCalc)', 'kcalc', ['kcalc']), ('Capture (Spectacle)', 'spectacle', ['spectacle', '--launchonly'])]
     pad_log = os.path.join(os.environ.get('HOME', '/tmp'), '.local', 'share', 'nimbus', 'pad.log')
     for label, name, argv in apps:
         if not shutil.which(argv[0]):
