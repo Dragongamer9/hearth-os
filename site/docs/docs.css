@@ -71,7 +71,8 @@ nav.top .links a.cta:hover{background:var(--ember2)}
 .side .sub a.cur{box-shadow:none;border-color:transparent;background:none;color:var(--text);border-left:2px solid var(--ember);border-radius:0 9px 9px 0}
 main{min-width:0;max-width:780px}
 .crumb{font-size:14px;color:var(--muted);margin-bottom:10px}
-main h1{font:850 clamp(34px,4.8vw,54px)/1 var(--display);font-stretch:128%;letter-spacing:-.015em;margin-bottom:16px}
+main h1{font:850 clamp(30px,4.8vw,54px)/1.02 var(--display);font-stretch:128%;letter-spacing:-.015em;margin-bottom:16px;overflow-wrap:anywhere}
+@media (max-width:560px){main h1{font-stretch:112%}}
 .lead{font-size:18px;color:var(--soft);margin-bottom:28px;max-width:38em}
 main h2{font:800 25px/1.2 var(--display);font-stretch:115%;margin:52px 0 14px;padding-top:22px;border-top:1px solid var(--line)}
 main h2:first-of-type{border-top:0;padding-top:0}

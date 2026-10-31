@@ -103,8 +103,9 @@ function inspect() {
           .reduce((n, e) => n + (e.encodedBodySize || 0), 0));
         const weigh = p === 'index.html' && wname === 'desktop' && scheme === 'dark';
         const first = weigh ? await bytes() : 0;
-        // Scroll through once so lazy images load, then back up.
-        await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * .8) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+        // Scroll through once (instantly: the page may scroll smoothly) so lazy images load and finish, then back up.
+        await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * .8) { scrollTo({ top: y, behavior: 'instant' }); await new Promise(r => setTimeout(r, 80)); } scrollTo({ top: 0, behavior: 'instant' });
+          await Promise.all([...document.images].map(i => i.complete ? 0 : new Promise(r => { i.addEventListener('load', r); i.addEventListener('error', r); setTimeout(r, 4000); }))); });
         await page.waitForTimeout(400);
         if (weigh) {
           const all = await bytes(), kb = n => Math.round(n / 1024);
@@ -144,7 +145,8 @@ function inspect() {
       const page = await ctx.newPage();
       await page.route(u => !u.href.startsWith(bb), r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
       await page.goto(`${bb}/index.html`, { waitUntil: 'networkidle' }).catch(() => {});
-      await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * .8) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+      await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += innerHeight * .8) { scrollTo({ top: y, behavior: 'instant' }); await new Promise(r => setTimeout(r, 80)); } scrollTo({ top: 0, behavior: 'instant' });
+          await Promise.all([...document.images].map(i => i.complete ? 0 : new Promise(r => { i.addEventListener('load', r); i.addEventListener('error', r); setTimeout(r, 4000); }))); });
       await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(OUT, `before-${wname}.jpg`), fullPage: true, type: 'jpeg', quality: 78 });
       await page.screenshot({ path: path.join(OUT, `before-${wname}-top.png`) });
