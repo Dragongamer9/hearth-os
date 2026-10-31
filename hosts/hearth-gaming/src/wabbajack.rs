@@ -795,6 +795,8 @@ fn set_up(j: &Job) -> Result<Vec<String>, String> {
     util::write_atomic(&desktop, text.as_bytes()).map_err(|e| e.to_string())?;
     util::write_json(&modlists_dir().join(format!("{}.json", j.id)), &json!({"id": j.id, "title": j.title, "launch": desktop, "folder": j.install_dir, "game": j.game,
         "added": util::now_ms(), "note": "Wabbajack modlist (Mod Organizer 2)"}))?;
+    // The Hearth Mod Organizer runs the list natively (Mod Organizer 2 stays as the fallback, per list).
+    notes.push(crate::organizer::adopt_wabbajack(&j.id, &j.title, &j.install_dir, &prefix));
     Ok(notes)
 }
 

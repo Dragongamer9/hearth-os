@@ -14,6 +14,8 @@
 //   hearth-mods --nexus-key <key> | --downloads     sign in to Nexus Mods | the download queue, as JSON
 //   hearth-mods --remount                           puts the overlays back (at sign-in)
 //   hearth-mods --modlists | --wabbajack-engine     the Wabbajack gallery | download the Wabbajack engine
+//   hearth-mods --organizer <instance> <command…>   the Hearth Mod Organizer, as JSON (docs/MODS.md); `run` is what
+//                                                   the library's Play starts for an organizer instance
 //   hearth-mods --serve                             the worker without a window (Game Mode's Mods screens ask it through
 //                                                   its socket: service.rs); stops by itself when idle
 //
@@ -28,6 +30,7 @@ use hearth_gaming::games::{self, GameEntry};
 use hearth_gaming::nexus;
 use hearth_gaming::wabbajack;
 use hearth_gaming::mods::{self, GameMods, Staged};
+use hearth_gaming::organizer;
 use hearth_gaming::util;
 use hearth_gaming::service;
 use serde_json::{json, Value};
@@ -210,6 +213,8 @@ fn busy() -> bool {
 
 fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
     let null = |_: ()| Value::Null;
+    // A game with a Hearth Mod Organizer instance: its mod list is the organizer's (Game Mode's Installed tab too).
+    if let Some(r) = organizer::gamemode::simple_call(&organizer::Ctx::system(Vec::new()), name, a) { let _w = WORK.lock().unwrap_or_else(|e| e.into_inner()); return r; }
     match name {
         "list" => Ok(games_json(&load_games())),
         "mods_of" => game(&s(a, "id")).map(|g| summary(&g)),
@@ -271,6 +276,11 @@ fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
         }
         // Game Mode: a finished download straight into its game, where Hearth suggests, turned on.
         "install_download" => {
+            // Into the game's organizer instance when it has one (a FOMOD answers with its steps for Game Mode).
+            if let Some(d) = downloads::get(&s(a, "id")).filter(|d| d.state == "done") {
+                let gid = if s(a, "gameId").is_empty() { d.game.clone() } else { s(a, "gameId") };
+                if let Some(r) = organizer::gamemode::install_file(&organizer::Ctx::system(Vec::new()), &gid, &d.path(), &d.name) { return r; }
+            }
             let (g, st) = stage_download(&s(a, "id"), &s(a, "gameId"))?;
             let (t, sub, name) = (st.suggest_target.clone(), st.suggest_sub.clone(), st.name.clone());
             let r = change(&g.id, |gm, gg| gm.install(gg, &st, &name, &t, &sub, true));
@@ -304,6 +314,28 @@ fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
         "places" => Ok(hearth_gaming::browse::places()),
         "browse" => hearth_gaming::browse::list(Path::new(&s(a, "path")), b(a, "files"), b(a, "archives"), false),
         "target_root" => { let g = game(&s(a, "id"))?; mods::target_root(&g, &s(a, "target")).map(|p| json!(p)).ok_or_else(|| "This game has no folder for that.".to_string()) }
+        // The Hearth Mod Organizer: the window's Organizer tab (the same commands as `hearth-mods --organizer …`) and
+        // Game Mode's calls (organizer/gamemode.rs).
+        "organizer" => {
+            let args: Vec<String> = a["args"].as_array().map(|x| x.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            if args.iter().any(|x| x == "run") { return Err("Start it with organizer_run.".to_string()); }
+            let _w = WORK.lock().unwrap_or_else(|e| e.into_inner());
+            let games = if GAMES.lock().unwrap_or_else(|e| e.into_inner()).is_empty() { load_games() } else { GAMES.lock().unwrap_or_else(|e| e.into_inner()).clone() };
+            organizer::command(&organizer::Ctx::system(games), &args)
+        }
+        // Plays through the organizer in its own process (it waits for the game, then takes the mods away again).
+        "organizer_run" => {
+            let me = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hearth-mods"));
+            let mut c = std::process::Command::new(me);
+            c.arg("--organizer").arg(s(a, "id")).arg("run");
+            if !s(a, "exe").is_empty() { c.arg("--exe").arg(s(a, "exe")); }
+            c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+                .spawn().map(|mut ch| { std::thread::spawn(move || { let _ = ch.wait(); }); Value::Null }).map_err(|e| format!("Couldn't start it ({e})"))
+        }
+        "organizer_game" | "organizer_set_profile" | "organizer_plugin_toggle" | "organizer_plugin_move" | "organizer_fomod_finish" => {
+            let _w = WORK.lock().unwrap_or_else(|e| e.into_inner());
+            organizer::gamemode::call(&organizer::Ctx::system(Vec::new()), name, a)
+        }
         "ping" => Ok(json!({"version": env!("CARGO_PKG_VERSION"), "busy": busy()})),
         _ => Err(format!("Hearth Mods doesn't know \"{name}\".")),
     }
@@ -400,9 +432,20 @@ fn cli(args: &[String]) -> Option<i32> {
     if util::has_arg(args, "--downloads") { print(&downloads::list()); return Some(0); }
     if util::has_arg(args, "--modlists") { return Some(match wabbajack::gallery(true) { Ok(v) => { print(&v); 0 } Err(e) => { eprintln!("{e}"); 1 } }); }
     if util::has_arg(args, "--wabbajack-engine") { return Some(match wabbajack::fetch_engine() { Ok(v) => { print(&v); 0 } Err(e) => { eprintln!("{e}"); 1 } }); }
+    if let Some(i) = args.iter().position(|a| a == "--organizer") {
+        let rest: Vec<String> = args[i + 1..].to_vec();
+        let ctx = organizer::Ctx::system(load_games());
+        return Some(match organizer::command(&ctx, &rest) {
+            Ok(v) => { print(&v); if v["ok"] == false { 2 } else { 0 } }
+            Err(e) => { print(&json!({"ok": false, "error": e})); 1 }
+        });
+    }
     if util::has_arg(args, "--remount") {
         let mut code = 0;
-        for g in load_games() { if let Err(e) = GameMods::open(&data_root(), &g).remount(&g) { eprintln!("{}: {e}", g.title); code = 2; } }
+        let games = load_games();
+        // Organizer views left by a crash come away first (the game folders back as they were).
+        for (id, r) in organizer::recover_all(&organizer::Ctx::system(games.clone())) { if let Err(e) = r { eprintln!("{id}: {e}"); code = 2; } }
+        for g in games { if let Err(e) = GameMods::open(&data_root(), &g).remount(&g) { eprintln!("{}: {e}", g.title); code = 2; } }
         return Some(code);
     }
     if let Some(v) = pos("--deploy", 2) { load_games(); return Some(done(change(&v[0], |gm, g| gm.set_mode(g, &v[1])))); }

@@ -22,9 +22,11 @@ pub const CALLS: &[&str] = &[
     "downloads_list", "download_nxm", "download_file", "download_pause", "download_resume", "download_remove", "downloads_clear", "install_download",
     "wj_engine", "wj_fetch_engine", "wj_gallery", "wj_jobs", "wj_defaults", "wj_start", "wj_resume", "wj_cancel", "wj_forget", "wj_repair", "wj_guide_skip",
     "open_page", "open_url", "free_space",
+    // The Hearth Mod Organizer (hearth-gaming organizer/gamemode.rs).
+    "organizer_game", "organizer_set_profile", "organizer_plugin_toggle", "organizer_plugin_move", "organizer_fomod_finish",
 ];
 /// Calls that can take a while (Nexus, the gallery, downloading the engine, signing in to MEGA, setting up a prefix).
-const SLOW: &[&str] = &["nexus_files", "nexus_browse", "nexus_search", "nexus_sign_in", "nexus_refresh", "check_updates", "wj_gallery", "wj_fetch_engine", "mega_sign_in", "wj_repair", "download_file", "download_nxm", "install_download", "list"];
+const SLOW: &[&str] = &["nexus_files", "nexus_browse", "nexus_search", "nexus_sign_in", "nexus_refresh", "check_updates", "wj_gallery", "wj_fetch_engine", "mega_sign_in", "wj_repair", "download_file", "download_nxm", "install_download", "list", "organizer_game", "organizer_fomod_finish"];
 
 pub fn allowed(name: &str) -> bool { CALLS.contains(&name) }
 pub fn timeout_for(name: &str) -> Duration { if SLOW.contains(&name) { Duration::from_secs(300) } else { Duration::from_secs(30) } }
@@ -136,7 +138,9 @@ mod tests {
                   "download_pause", "download_resume", "wj_gallery", "wj_start", "wj_resume", "wj_guide_skip", "accounts_list", "account_begin", "mega_sign_in", "status"] {
             assert!(allowed(c), "{c}");
         }
-        for c in ["open_folder", "browse", "places", "stage", "install", "wj_manual_file", "pick_path", "", "../x"] { assert!(!allowed(c), "{c}"); }
+        for c in ["organizer_game", "organizer_set_profile", "organizer_plugin_toggle", "organizer_plugin_move", "organizer_fomod_finish"] { assert!(allowed(c), "{c}"); }
+        // The organizer's full command set takes folders and starts programs: the Mods window's only.
+        for c in ["open_folder", "browse", "places", "stage", "install", "wj_manual_file", "pick_path", "organizer", "organizer_run", "", "../x"] { assert!(!allowed(c), "{c}"); }
         assert!(timeout_for("nexus_search") > timeout_for("toggle"));
         let s = socket_path();
         assert!(s.ends_with("hearth-mods.sock"));

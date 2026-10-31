@@ -39,6 +39,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
 sha2 = "0.10"
 pbkdf2 = "0.12"
+# The Hearth Mod Organizer's FOMOD installers (ModuleConfig.xml).
+roxmltree = "0.20"
 
 # Linux: controllers through evdev (/dev/input), and Hearth's own library (hearth-core) for the games.
 [target.'cfg(target_os = "linux")'.dependencies]

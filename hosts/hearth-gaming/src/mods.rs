@@ -61,13 +61,9 @@ pub struct State {
     pub game: String,
     pub title: String,
     pub mods: Vec<ModRec>,
-    /// Every file a mod has put in place (full path) and what it was when put there.
-    pub deployed: BTreeMap<String, Placed>,
-    /// The game's own files that a mod replaced: full path → kept file in originals/.
-    pub originals: BTreeMap<String, String>,
-    /// Folders made for mods' files (removed again when empty).
-    pub dirs: BTreeSet<String>,
-    pub next: u64,
+    /// What's in place (kept at the top level of state.json, as before).
+    #[serde(flatten)]
+    pub ledger: Ledger,
     /// hardlink (default, also when empty), copy or overlay.
     #[serde(default)]
     pub deploy: String,
@@ -75,6 +71,25 @@ pub struct State {
     #[serde(default)]
     pub nexus: String,
 }
+
+/// What a deploy has put in place. Shared by Hearth Mods' own list and the Hearth Mod Organizer's link deploy
+/// (organizer/vfs.rs), so both put the game's files back the same way.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Ledger {
+    /// Every file a mod has put in place (full path) and what it was when put there.
+    pub deployed: BTreeMap<String, Placed>,
+    /// The game's own files that a mod replaced: full path → kept file in originals/.
+    pub originals: BTreeMap<String, String>,
+    /// Folders made for mods' files (removed again when empty).
+    pub dirs: BTreeSet<String>,
+    pub next: u64,
+}
+
+/// One file a deploy wants in place: which mod (`by`, compared between deploys), its name for messages, the file
+/// to link or copy, and the folder it goes under (folders are only made inside it).
+#[derive(Debug, Clone)]
+pub struct Want { pub by: String, pub label: String, pub src: PathBuf, pub root: PathBuf }
 
 pub const DEPLOY_MODES: [(&str, &str); 3] = [
     ("hardlink", "Links (no extra space; the default)"),
@@ -151,9 +166,7 @@ impl GameMods {
         state.title = g.title.clone();
         GameMods { dir, state }
     }
-    pub fn save(&self) -> Result<(), String> {
-        util::write_atomic(&self.dir.join("state.json"), serde_json::to_string_pretty(&self.state).unwrap_or_default().as_bytes()).map_err(|e| format!("Couldn't save the mod list ({e})"))
-    }
+    pub fn save(&self) -> Result<(), String> { save_state(&self.dir, &self.state) }
     fn files_of(&self, id: &str) -> PathBuf { self.dir.join("files").join(id) }
     pub fn find(&self, id: &str) -> Result<usize, String> { self.state.mods.iter().position(|m| m.id == id).ok_or_else(|| "That mod isn't installed anymore.".to_string()) }
 
@@ -176,7 +189,7 @@ impl GameMods {
                    "size": m.size, "added": m.added, "source": m.source, "overriddenBy": beaten, "winning": wins, "nexus": m.nexus,
                    "targetLabel": TARGETS.iter().find(|t| t.0 == m.target).map(|t| t.1).unwrap_or("")})
         }).collect();
-        json!({"game": g.id, "title": g.title, "mods": mods, "targets": targets_for(g), "deployed": self.state.deployed.len(), "originals": self.state.originals.len(), "folder": self.dir,
+        json!({"game": g.id, "title": g.title, "mods": mods, "targets": targets_for(g), "deployed": self.state.ledger.deployed.len(), "originals": self.state.ledger.originals.len(), "folder": self.dir,
                "deploy": self.mode(), "modes": DEPLOY_MODES.iter().map(|m| json!({"id": m.0, "label": m.1})).collect::<Vec<_>>(), "nexus": self.state.nexus,
                "overlay": if self.mode() == "overlay" { json!({"mounted": overlay::mounted(g.install.as_deref()), "upper": self.dir.join("upper"), "changed": util::tree_size(&self.dir.join("upper"))}) } else { Value::Null }})
     }
@@ -224,7 +237,7 @@ impl GameMods {
         let on: Vec<bool> = self.state.mods.iter().map(|m| m.enabled).collect();
         for m in self.state.mods.iter_mut() { m.enabled = false; }
         let out = self.deploy(g);
-        let stuck = !self.state.deployed.is_empty();
+        let stuck = !self.state.ledger.deployed.is_empty();
         for (m, e) in self.state.mods.iter_mut().zip(on) { m.enabled = e; }
         if stuck || !out.problems.is_empty() {
             self.save()?;
@@ -237,81 +250,28 @@ impl GameMods {
 
     fn place(&mut self, g: &GameEntry) -> Report {
         let linking = self.mode() != "copy";
-        let (want, problems) = self.desired(g);
-        let mut rep = Report { problems, ..Default::default() };
-        let _ = std::fs::create_dir_all(self.dir.join("originals"));
-        // 1. What's in place but no longer wanted (or wanted from another mod) comes out.
-        let current: Vec<(String, Placed)> = self.state.deployed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        for (abs, placed) in current {
-            if want.get(&abs) == Some(&placed.by) && same_file(Path::new(&abs), &placed) { continue; }
-            let p = PathBuf::from(&abs);
-            if let Ok(md) = std::fs::symlink_metadata(&p) {
-                if md.is_file() && (md.len() != placed.size || util::mtime_ms(&md) != placed.mtime) {
-                    // The game changed this file while the mod's copy was there: keep it rather than lose it.
-                    let keep = self.dir.join("changed").join(format!("{}-{}", util::now_ms(), p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
-                    let _ = std::fs::create_dir_all(keep.parent().unwrap());
-                    if move_file(&p, &keep).is_ok() { rep.kept_changed.push(abs.clone()); }
-                } else if md.is_file() || md.file_type().is_symlink() { if std::fs::remove_file(&p).is_ok() { rep.removed += 1; } }
-            }
-            self.state.deployed.remove(&abs);
-            if let Some(o) = self.state.originals.remove(&abs) {
-                match move_file(&self.dir.join("originals").join(&o), &p) {
-                    Ok(()) => rep.restored += 1,
-                    Err(e) => { rep.problems.push(format!("Couldn't put back the game's {abs} ({e}); it's kept in {}", self.dir.join("originals").join(&o).display())); self.state.originals.insert(abs.clone(), o); }
-                }
-            }
-        }
-        let _ = self.save();
-        // 2. What's wanted goes in.
-        for (abs, by) in &want {
-            if self.state.deployed.get(abs).map(|d| &d.by == by).unwrap_or(false) { continue; }
-            let Ok(mi) = self.find(by) else { continue };
-            let m = self.state.mods[mi].clone();
-            let Ok(root) = self.root_of(g, &m) else { continue };
-            let Ok(rel) = Path::new(abs).strip_prefix(&root) else { continue };
+        let (ids, problems) = self.desired(g);
+        let mut want = BTreeMap::new();
+        for (abs, by) in ids {
+            let Ok(mi) = self.find(&by) else { continue };
+            let m = &self.state.mods[mi];
+            let Ok(root) = self.root_of(g, m) else { continue };
+            let Ok(rel) = Path::new(&abs).strip_prefix(&root) else { continue };
             let src = self.files_of(&m.id).join(rel);
-            let p = PathBuf::from(abs);
-            if let Ok(md) = std::fs::symlink_metadata(&p) {
-                if md.is_dir() { rep.problems.push(format!("{}: {abs} is a folder in the game, not a file; left alone", m.name)); continue; }
-                if !self.state.originals.contains_key(abs) {
-                    let name = format!("o{}", self.state.next);
-                    self.state.next += 1;
-                    if let Err(e) = move_file(&p, &self.dir.join("originals").join(&name)) { rep.problems.push(format!("{}: couldn't set aside the game's {abs} ({e}); left alone", m.name)); continue; }
-                    self.state.originals.insert(abs.clone(), name);
-                }
-            }
-            if let Some(parent) = p.parent() { self.make_dirs(parent, &root); }
-            match if linking { link_file(&src, &p) } else { copy_file(&src, &p) } {
-                Ok(md) => { self.state.deployed.insert(abs.clone(), Placed { by: by.clone(), size: md.len(), mtime: util::mtime_ms(&md) }); rep.placed += 1; }
-                Err(e) => rep.problems.push(format!("{}: couldn't copy {} ({e})", m.name, rel.display())),
-            }
+            want.insert(abs, Want { by, label: m.name.clone(), src, root });
         }
-        // 3. Folders made for mods that are empty again go.
-        let mut dirs: Vec<String> = self.state.dirs.iter().cloned().collect();
-        dirs.sort_by_key(|d| std::cmp::Reverse(d.len()));
-        for d in dirs {
-            let p = Path::new(&d);
-            if !p.exists() { self.state.dirs.remove(&d); continue; }
-            let empty = std::fs::read_dir(p).map(|mut r| r.next().is_none()).unwrap_or(false);
-            if empty && std::fs::remove_dir(p).is_ok() { self.state.dirs.remove(&d); }
-        }
+        let mut ledger = std::mem::take(&mut self.state.ledger);
+        let dir = self.dir.clone();
+        let mut rep = {
+            let st = &self.state;
+            sync_files(&dir, &mut ledger, &want, linking, &mut |l: &Ledger| { let mut s = st.clone(); s.ledger = l.clone(); let _ = save_state(&dir, &s); })
+        };
+        self.state.ledger = ledger;
         let _ = self.save();
+        let mut p = problems;
+        p.append(&mut rep.problems);
+        rep.problems = p;
         rep
-    }
-
-    /// Makes the folders up to `dir` that are missing (inside `root` only), remembering them.
-    fn make_dirs(&mut self, dir: &Path, root: &Path) {
-        let mut missing = Vec::new();
-        let mut cur = Some(dir);
-        while let Some(d) = cur {
-            if d.exists() || !d.starts_with(root) { break; }
-            missing.push(d.to_path_buf());
-            cur = d.parent();
-        }
-        if !root.exists() { let _ = std::fs::create_dir_all(root); }
-        for d in missing.iter().rev() {
-            if std::fs::create_dir(d).is_ok() { self.state.dirs.insert(d.to_string_lossy().to_string()); }
-        }
     }
 
     pub fn set_enabled(&mut self, g: &GameEntry, id: &str, on: bool) -> Result<Report, String> {
@@ -335,7 +295,7 @@ impl GameMods {
         let i = self.find(id)?;
         self.state.mods[i].enabled = false;
         let rep = self.deploy(g);
-        if self.state.deployed.values().any(|d| d.by == id) { return Err("Some of its files couldn't be taken out; it's still installed (and off).".into()); }
+        if self.state.ledger.deployed.values().any(|d| d.by == id) { return Err("Some of its files couldn't be taken out; it's still installed (and off).".into()); }
         self.state.mods.remove(i);
         let _ = std::fs::remove_dir_all(self.files_of(id));
         self.save()?;
@@ -346,8 +306,8 @@ impl GameMods {
     pub fn install(&mut self, g: &GameEntry, staged: &Staged, name: &str, target: &str, sub: &str, enable: bool) -> Result<Report, String> {
         if !TARGETS.iter().any(|t| t.0 == target) { return Err("Choose where the mod goes.".into()); }
         if !sub.is_empty() && util::clean_rel(sub).is_none() { return Err("That folder isn't inside the game's folder.".into()); }
-        let id = format!("m{}", self.state.next);
-        self.state.next += 1;
+        let id = format!("m{}", self.state.ledger.next);
+        self.state.ledger.next += 1;
         let dest = self.files_of(&id);
         std::fs::create_dir_all(dest.parent().unwrap()).map_err(|e| e.to_string())?;
         if dest.exists() { let _ = std::fs::remove_dir_all(&dest); }
@@ -368,6 +328,87 @@ impl GameMods {
 
     /// Keeps which Nexus game this is (chosen once, or found from the library).
     pub fn set_nexus_game(&mut self, domain: &str) -> Result<(), String> { self.state.nexus = domain.to_ascii_lowercase(); self.save() }
+}
+
+fn save_state(dir: &Path, s: &State) -> Result<(), String> {
+    util::write_atomic(&dir.join("state.json"), serde_json::to_string_pretty(s).unwrap_or_default().as_bytes()).map_err(|e| format!("Couldn't save the mod list ({e})"))
+}
+
+/// Makes the files in place match `want` (full path → what goes there): what's no longer wanted (or wanted from
+/// another mod) comes out, putting back the game's own file it replaced (a file the game changed since is kept in
+/// `dir/changed/` rather than lost); then what's wanted goes in, setting aside the game's own file it replaces in
+/// `dir/originals/`. Folders made for mods are removed again once empty. `checkpoint` is called once the old files
+/// are out, so a crash in the middle loses nothing.
+pub fn sync_files(dir: &Path, l: &mut Ledger, want: &BTreeMap<String, Want>, linking: bool, checkpoint: &mut dyn FnMut(&Ledger)) -> Report {
+    let mut rep = Report::default();
+    let _ = std::fs::create_dir_all(dir.join("originals"));
+    // 1. What's in place but no longer wanted (or wanted from another mod) comes out.
+    let current: Vec<(String, Placed)> = l.deployed.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    for (abs, placed) in current {
+        if want.get(&abs).map(|w| w.by == placed.by).unwrap_or(false) && same_file(Path::new(&abs), &placed) { continue; }
+        let p = PathBuf::from(&abs);
+        if let Ok(md) = std::fs::symlink_metadata(&p) {
+            if md.is_file() && (md.len() != placed.size || util::mtime_ms(&md) != placed.mtime) {
+                // The game changed this file while the mod's copy was there: keep it rather than lose it.
+                let keep = dir.join("changed").join(format!("{}-{}", util::now_ms(), p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+                let _ = std::fs::create_dir_all(keep.parent().unwrap());
+                if move_file(&p, &keep).is_ok() { rep.kept_changed.push(abs.clone()); }
+            } else if md.is_file() || md.file_type().is_symlink() { if std::fs::remove_file(&p).is_ok() { rep.removed += 1; } }
+        }
+        l.deployed.remove(&abs);
+        if let Some(o) = l.originals.remove(&abs) {
+            match move_file(&dir.join("originals").join(&o), &p) {
+                Ok(()) => rep.restored += 1,
+                Err(e) => { rep.problems.push(format!("Couldn't put back the game's {abs} ({e}); it's kept in {}", dir.join("originals").join(&o).display())); l.originals.insert(abs.clone(), o); }
+            }
+        }
+    }
+    checkpoint(l);
+    // 2. What's wanted goes in.
+    for (abs, w) in want {
+        if l.deployed.get(abs).map(|d| d.by == w.by).unwrap_or(false) { continue; }
+        let p = PathBuf::from(abs);
+        let rel = p.strip_prefix(&w.root).map(|r| r.display().to_string()).unwrap_or_else(|_| abs.clone());
+        if let Ok(md) = std::fs::symlink_metadata(&p) {
+            if md.is_dir() { rep.problems.push(format!("{}: {abs} is a folder in the game, not a file; left alone", w.label)); continue; }
+            if !l.originals.contains_key(abs) {
+                let name = format!("o{}", l.next);
+                l.next += 1;
+                if let Err(e) = move_file(&p, &dir.join("originals").join(&name)) { rep.problems.push(format!("{}: couldn't set aside the game's {abs} ({e}); left alone", w.label)); continue; }
+                l.originals.insert(abs.clone(), name);
+            }
+        }
+        if let Some(parent) = p.parent() { make_dirs(&mut l.dirs, parent, &w.root); }
+        match if linking { link_file(&w.src, &p) } else { copy_file(&w.src, &p) } {
+            Ok(md) => { l.deployed.insert(abs.clone(), Placed { by: w.by.clone(), size: md.len(), mtime: util::mtime_ms(&md) }); rep.placed += 1; }
+            Err(e) => rep.problems.push(format!("{}: couldn't copy {rel} ({e})", w.label)),
+        }
+    }
+    // 3. Folders made for mods that are empty again go.
+    let mut dirs: Vec<String> = l.dirs.iter().cloned().collect();
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.len()));
+    for d in dirs {
+        let p = Path::new(&d);
+        if !p.exists() { l.dirs.remove(&d); continue; }
+        let empty = std::fs::read_dir(p).map(|mut r| r.next().is_none()).unwrap_or(false);
+        if empty && std::fs::remove_dir(p).is_ok() { l.dirs.remove(&d); }
+    }
+    rep
+}
+
+/// Makes the folders up to `dir` that are missing (inside `root` only), remembering them.
+fn make_dirs(made: &mut BTreeSet<String>, dir: &Path, root: &Path) {
+    let mut missing = Vec::new();
+    let mut cur = Some(dir);
+    while let Some(d) = cur {
+        if d.exists() || !d.starts_with(root) { break; }
+        missing.push(d.to_path_buf());
+        cur = d.parent();
+    }
+    if !root.exists() { let _ = std::fs::create_dir_all(root); }
+    for d in missing.iter().rev() {
+        if std::fs::create_dir(d).is_ok() { made.insert(d.to_string_lossy().to_string()); }
+    }
 }
 
 /// fuse-overlayfs over a game's folder: the mods' layer on top, the game's own files under it, the game's own
@@ -409,13 +450,20 @@ pub mod overlay {
         if mounted(Some(game)) { return Ok(()); }
         // Nothing in the layer: nothing to lay over.
         if std::fs::read_dir(layer).map(|mut r| r.next().is_none()).unwrap_or(true) { return Ok(()); }
+        mount_at(game, &[layer.to_path_buf(), game.to_path_buf()], &dir.join("upper"), &dir.join("work"))
+    }
+
+    /// Lays `lowers` (the first on top) over `target`, with what's written there going to `upper`. The Hearth Mod
+    /// Organizer uses it for a game's Data folder with the instance's overwrite folder as `upper`.
+    pub fn mount_at(target: &Path, lowers: &[std::path::PathBuf], upper: &Path, work: &Path) -> Result<(), String> {
+        if mounted(Some(target)) { return Err("Something is already laid over that folder.".into()); }
         if !available() { return Err("The overlay needs fuse-overlayfs (it comes with Hearth OS).".into()); }
-        let (upper, work) = (dir.join("upper"), dir.join("work"));
-        std::fs::create_dir_all(&upper).map_err(|e| e.to_string())?;
-        std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-        let opts = format!("lowerdir={}:{},upperdir={},workdir={}", opt_path(layer), opt_path(game), opt_path(&upper), opt_path(&work));
-        let out = std::process::Command::new("fuse-overlayfs").arg("-o").arg(opts).arg(game).output().map_err(|e| format!("Couldn't start fuse-overlayfs ({e})"))?;
-        if out.status.success() && mounted(Some(game)) { Ok(()) } else { Err(format!("Couldn't lay the mods over the game folder ({})", String::from_utf8_lossy(&out.stderr).trim())) }
+        std::fs::create_dir_all(upper).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(work).map_err(|e| e.to_string())?;
+        let lower: Vec<String> = lowers.iter().map(|p| opt_path(p)).collect();
+        let opts = format!("lowerdir={},upperdir={},workdir={}", lower.join(":"), opt_path(upper), opt_path(work));
+        let out = std::process::Command::new("fuse-overlayfs").arg("-o").arg(opts).arg(target).output().map_err(|e| format!("Couldn't start fuse-overlayfs ({e})"))?;
+        if out.status.success() && mounted(Some(target)) { Ok(()) } else { Err(format!("Couldn't lay the mods over the game folder ({})", String::from_utf8_lossy(&out.stderr).trim())) }
     }
 
     pub fn unmount(game: Option<&Path>) -> Result<(), String> {
@@ -463,7 +511,7 @@ pub fn copy_file(from: &Path, to: &Path) -> std::io::Result<std::fs::Metadata> {
     std::fs::metadata(to)
 }
 
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+pub fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(from)?.flatten() {
         let t = e.file_type()?;
@@ -511,18 +559,7 @@ pub fn stage(data_root: &Path, g: &GameEntry, source: &Path) -> Result<Staged, S
     let dir = base.join(&token);
     let out = dir.join("x");
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    let r = (|| -> Result<(), String> {
-        if source.is_dir() { return copy_tree(source, &out).map_err(|e| format!("Couldn't copy the folder ({e})")); }
-        let lower = source.to_string_lossy().to_lowercase();
-        if lower.ends_with(".zip") { return unzip(source, &out); }
-        if !is_archive(source) { return Err("Choose a .zip, .7z or .rar file, or a folder.".into()); }
-        // 7z, rar and tar files: bsdtar (libarchive, in Hearth OS), or 7z.
-        let ok = std::process::Command::new("bsdtar").arg("-xf").arg(source).arg("-C").arg(&out).status().map(|s| s.success()).unwrap_or(false)
-            || std::process::Command::new("7z").arg("x").arg("-y").arg(format!("-o{}", out.display())).arg(source).stdout(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
-        if ok { Ok(()) } else { Err("Couldn't unpack that file (it needs bsdtar or 7-Zip, and may be damaged).".into()) }
-    })();
-    if let Err(e) = r { let _ = std::fs::remove_dir_all(&dir); return Err(e); }
-    drop_links(&out);
+    if let Err(e) = unpack_to(source, &out) { let _ = std::fs::remove_dir_all(&dir); return Err(e); }
     let game_root = g.install.clone();
     let mut root = out.clone();
     let mut unwrapped = None;
@@ -545,6 +582,24 @@ pub fn stage(data_root: &Path, g: &GameEntry, source: &Path) -> Result<Staged, S
     let (st, ss) = suggest(g, &top);
     Ok(Staged { token, dir: dir.clone(), root, name, source: source.to_string_lossy().into(), files: files.len(), size: files.iter().map(|f| std::fs::metadata(f).map(|m| m.len()).unwrap_or(0)).sum(),
         top, unwrapped, suggest_target: st, suggest_sub: ss, nexus: None })
+}
+
+/// Unpacks a mod (a zip, 7z, rar or tar file, or a folder: copied) into `out`; links in it are dropped.
+pub fn unpack_to(source: &Path, out: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let r = (|| -> Result<(), String> {
+        if source.is_dir() { return copy_tree(source, out).map_err(|e| format!("Couldn't copy the folder ({e})")); }
+        let lower = source.to_string_lossy().to_lowercase();
+        if lower.ends_with(".zip") { return unzip(source, out); }
+        if !is_archive(source) { return Err("Choose a .zip, .7z or .rar file, or a folder.".into()); }
+        // 7z, rar and tar files: bsdtar (libarchive, in Hearth OS), or 7z.
+        let ok = std::process::Command::new("bsdtar").arg("-xf").arg(source).arg("-C").arg(out).status().map(|s| s.success()).unwrap_or(false)
+            || std::process::Command::new("7z").arg("x").arg("-y").arg(format!("-o{}", out.display())).arg(source).stdout(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+        if ok { Ok(()) } else { Err("Couldn't unpack that file (it needs bsdtar or 7-Zip, and may be damaged).".into()) }
+    })();
+    r?;
+    drop_links(out);
+    Ok(())
 }
 
 /// Folder names that mean "these go into the game folder as they are".
@@ -641,7 +696,7 @@ mod tests {
         gm.set_enabled(&g, &id2, false).unwrap();
         assert_eq!(read(&game.join("Data/a.txt")), "original a");
         assert!(!game.join("Data/new").exists(), "the folder made for the mod is gone");
-        assert!(gm.state.originals.is_empty() && gm.state.deployed.is_empty());
+        assert!(gm.state.ledger.originals.is_empty() && gm.state.ledger.deployed.is_empty());
         // On again, then removed for good.
         gm.set_enabled(&g, &id1, true).unwrap();
         assert_eq!(read(&game.join("Data/new/b.txt")), "mod one b");

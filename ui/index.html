@@ -10748,8 +10748,9 @@ const HMA = {
   start:o=>HMA.call('wj_start',o), resume:id=>HMA.call('wj_resume',{id}), cancel:id=>HMA.call('wj_cancel',{id}), skip:(id,file)=>HMA.call('wj_guide_skip',{id,file}),
   openPage:url=>HMA.call('open_page',{url}), accounts:()=>HMA.call('accounts_list'), acctBegin:id=>HMA.call('account_begin',{id}), acctOut:id=>HMA.call('account_sign_out',{id}),
   mega:(email,password)=>HMA.call('mega_sign_in',{email,password}), nexusAccount:()=>HMA.call('nexus_account'), nexusIn:key=>HMA.call('nexus_sign_in',{key}), nexusOut:()=>HMA.call('nexus_sign_out'), nexusPages:()=>HMA.call('nexus_pages'),
-  // Mod Organizer engine (organizer.rs): Null until hearth-gaming has it (HMA.org true and its calls in hearth_mods.rs CALLS).
-  org:false,
+  // Hearth Mod Organizer (hearth-gaming organizer/gamemode.rs): a game with an organizer instance answers these
+  // (organizer_game is null for a game without one, and the screens show Hearth Mods' own list).
+  org:true,
   orgCall(name, args){ return (HMA.org || !host) ? HMA.call(name, args).catch(()=>null) : Promise.resolve(null); },
   organizer:id=>HMA.orgCall('organizer_game',{id}),   // {profile, profiles:[{id,name}], plugins:[{name,enabled,master}]|null}
   setProfile:(id,profile)=>HMA.call('organizer_set_profile',{id,profile}), pluginToggle:(id,plugin,on)=>HMA.call('organizer_plugin_toggle',{id,plugin,on}),

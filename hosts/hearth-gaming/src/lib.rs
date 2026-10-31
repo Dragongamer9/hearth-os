@@ -7,7 +7,9 @@
 //!   (manifest.rs, locate.rs), backs them up as one zip per game, restores them (with a safety copy first), and
 //!   backs up on a schedule. saves.rs.
 //! - Mods (`hearth-mods`): a mod manager: install a mod from a zip or folder into the game's folder or its Proton
-//!   prefix, turn it on and off without losing the files it replaced, load order. mods.rs.
+//!   prefix, turn it on and off without losing the files it replaced, load order. mods.rs. The Hearth Mod Organizer
+//!   (organizer/): Hearth's own Mod Organizer 2-compatible organizer (instances, profiles, plugins, FOMOD, the game's
+//!   Data folder laid over with fuse-overlayfs while it runs).
 //!
 //! games.rs is the game list Saves and Mods share (Hearth's library through hearth-core). util.rs has the small
 //! things all three use. Windows (Ember) comes later: the parts that touch the system are Linux-only for now.
@@ -20,6 +22,7 @@ pub mod mods;
 pub mod nexus;
 pub mod downloads;
 pub mod wabbajack;
+pub mod organizer;
 pub mod guided;
 pub mod accounts;
 pub mod games;
