@@ -92,7 +92,7 @@ figure{margin:0}
 figcaption{font-size:14.5px;color:var(--dust);margin-top:10px}
 
 /* top bar */
-.top{position:sticky;top:0;z-index:30;background:rgba(17,10,7,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid rgba(61,42,30,.8)}
+.top{position:sticky;top:0;z-index:30;background:rgba(17,10,7,.95);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid rgba(61,42,30,.8)}
 .top .wrap{display:flex;align-items:center;gap:8px;height:62px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--ash);text-decoration:none;font:850 19px/1 var(--display);font-stretch:130%;white-space:nowrap;margin-right:auto}
 .brand img{width:30px;height:30px}
@@ -110,10 +110,10 @@ figcaption{font-size:14.5px;color:var(--dust);margin-top:10px}
 @media (max-width:900px){.top nav{display:none}}
 
 /* hero: the Fireside wallpaper, the name set as wide as Anybody goes, and Game Mode rising out of the glow */
-.hero{position:relative;background:#0c0705 url(img/fireside.webp) center 30%/cover no-repeat;overflow:hidden;padding:clamp(56px,9vw,112px) 0 0}
+.hero{position:relative;background:#0c0705 url(img/fireside.webp) center 30%/cover no-repeat;overflow:hidden;padding:clamp(48px,7vw,88px) 0 0}
 .hero::after{content:"";position:absolute;inset:auto 0 0 0;height:30%;background:linear-gradient(transparent,var(--soot));pointer-events:none}
 .hero .wrap{position:relative;z-index:1}
-.mark{font-size:clamp(60px,13.2vw,196px);font-weight:900;font-stretch:150%;line-height:.86;letter-spacing:-.035em;color:#fff4e6;margin:0 0 0 -.04em;
+.mark{font-size:clamp(60px,11.4vw,168px);font-weight:900;font-stretch:150%;line-height:.86;letter-spacing:-.035em;color:#fff4e6;margin:0 0 0 -.04em;
   text-shadow:0 0 60px rgba(255,140,60,.35)}
 .mark span{display:inline-block}
 .hero .say{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:clamp(24px,4vw,64px);align-items:start;margin-top:clamp(22px,3vw,36px)}
@@ -156,7 +156,7 @@ section{padding:clamp(72px,10vw,128px) 0}
 @media (max-width:820px){.new .grid{grid-template-columns:minmax(0,1fr)}}
 
 /* Game Mode layouts: a rail you can scroll or swipe, like the Home screen itself */
-.rail{display:grid;grid-auto-flow:column;grid-auto-columns:min(78vw,560px);gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px var(--gut) 22px;margin:0 calc(-1 * var(--gut));scrollbar-color:var(--rule) transparent;overscroll-behavior-x:contain}
+.rail{display:grid;grid-auto-flow:column;grid-auto-columns:min(78vw,560px);gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--gut);padding:6px var(--gut) 22px;margin:0 calc(-1 * var(--gut));scrollbar-color:var(--rule) transparent;overscroll-behavior-x:contain}
 .rail figure{scroll-snap-align:start}
 .rail figcaption b{font-family:var(--display);font-stretch:112%;font-weight:800;font-size:17px;margin-right:6px}
 .rail:focus-visible{outline-offset:-3px}
