@@ -151,6 +151,7 @@ ipc link; shot shots/cosmic-5-hearth-link.png; ipc close
 ipc storage; shot shots/cosmic-6-hearth-storage.png; ipc close
 ipc keyboard; shot shots/cosmic-7-keyboard.png; ipc keyboard
 ipc help; shot shots/cosmic-8-controls.png; ipc close
+RESTARTS=$((RESTARTS + $(grep -c '^--- .* companion$' "$HOME/.local/share/nimbus/cosmic-companion.log" 2>/dev/null || echo 1) - 1))
 [ "$RESTARTS" -gt 0 ] && echo "::warning title=companion::the companion ended $RESTARTS time(s) while its windows were opened (see companion.log, cosmic-comp.log)"
 # Which theme files COSMIC's apps really read (the theme check below).
 timeout -k 3 10 strace -f -e trace=openat,statx,newfstatat,access -o shots/strace-term.txt cosmic-term >/dev/null 2>&1
@@ -177,7 +178,7 @@ appshot() {   # appshot NAME CMD...: start an app, picture it, drive it with the
   shot "shots/cosmic-$name-1.png"
   note "$name app id" "the companion sees: $($QS app 2>/dev/null)"
   timeout -k 5 150 python3 .github/scripts/cosmic-pad-drive.py "$name" shots >"shots/pad-$name.log" 2>&1 || fail "controller in $name" "$(grep FAIL "shots/pad-$name.txt" 2>/dev/null | head -4 | tr '\n' '|' | cut -c1-700)"
-  kill $apid 2>/dev/null; sleep 2; kill -9 $apid 2>/dev/null
+  kill $apid 2>/dev/null; pkill -x "$(printf '%.15s' "$1")" 2>/dev/null; sleep 2; kill -9 $apid 2>/dev/null
 }
 appshot files cosmic-files "$HOME/Documents"
 appshot term cosmic-term
@@ -191,7 +192,7 @@ grep -iE "protocol|error [0-9]|broke|wl_" shots/cosmic-companion.log shots/compa
 # Why the companion ends when one of its windows closes (seen in CI): its Wayland conversation around Quick Access
 # opening and closing.
 pkill -f 'desk-cosmic.qml' ; sleep 2
-QT_IM_MODULE=compose WAYLAND_DEBUG=client quickshell -p /src/hosts/linux/desktop/shell/desk-cosmic.qml >/tmp/wl-debug.log 2>&1 &
+QT_IM_MODULE=compose QT_SCALE_FACTOR_ROUNDING_POLICY=Round WAYLAND_DEBUG=client quickshell -p /src/hosts/linux/desktop/shell/desk-cosmic.qml >/tmp/wl-debug.log 2>&1 &
 sleep 10
 timeout 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth quick >/dev/null 2>&1; sleep 3
 timeout 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth quick >/dev/null 2>&1; sleep 4

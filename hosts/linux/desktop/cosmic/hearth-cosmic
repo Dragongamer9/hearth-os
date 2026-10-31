@@ -14,13 +14,25 @@ mkdir -p "$(dirname "$CLOG")" 2>/dev/null
 # one of its windows closes (seen in cosmic-test.yml). Hearth's windows don't need an input method (the on-screen
 # keyboard is Hearth's own), so Qt's plain compose input is used instead.
 export QT_IM_MODULE=compose
+# The same when a window closes: Qt destroys its fractional-scale and viewport objects after the window's surface,
+# and COSMIC drops the connection (cosmic-test.yml's Wayland check). Whole-number scaling keeps Qt from using them.
+export QT_SCALE_FACTOR_ROUNDING_POLICY=Round
 case "$1" in
   launcher|games|quick|link|storage|menu|keyboard|help|close) ;;
   companion)
     command -v quickshell >/dev/null 2>&1 && [ -f "$QML" ] || exit 0
     [ -f "$CLOG" ] && [ "$(wc -c <"$CLOG")" -gt 1000000 ] && mv -f "$CLOG" "$CLOG.old"
-    echo "--- $(date '+%F %T') companion" >>"$CLOG"
-    exec quickshell -p "$QML" >>"$CLOG" 2>&1 ;;
+    # Kept running for the whole Hearth COSMIC session: started again if it ends (the controller with it), but not
+    # more than 5 times within a minute (then COSMIC goes on without it).
+    n=0; t0=$(date +%s)
+    while [ "${HEARTH_DESKTOP:-cosmic}" = cosmic ]; do
+      echo "--- $(date '+%F %T') companion" >>"$CLOG"
+      quickshell -p "$QML" >>"$CLOG" 2>&1
+      [ $(( $(date +%s) - t0 )) -gt 60 ] && { n=0; t0=$(date +%s); }
+      n=$((n + 1)); [ "$n" -gt 5 ] && { echo "companion ended 5 times within a minute; not started again" >>"$CLOG"; exit 1; }
+      sleep 1
+    done
+    exit 0 ;;
   *) echo "usage: hearth-cosmic launcher|games|quick|link|storage|menu|keyboard|help|close|companion" >&2; exit 2 ;;
 esac
 if ! command -v quickshell >/dev/null 2>&1 || [ ! -f "$QML" ]; then
