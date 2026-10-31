@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-theme@hearthos.fun",
+  "name": "Hearth look",
+  "description": "Hearth GNOME's look: Hearth's colours, ember accent and fonts for GNOME Shell, and Hearth's defaults (Fireside wallpaper, window buttons, dark style) the first time.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

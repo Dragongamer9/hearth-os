@@ -1,0 +1,42 @@
+/* Hearth GNOME's launcher: Mantel's (Launcher.qml) in GNOME Shell. */
+.hearth-mark { padding: 0 10px; }
+.hearth-mark-icon { icon-size: 30px; }
+.hearth-launcher-menu .popup-menu-content { padding: 12px; }
+.hearth-launcher-item { padding: 0; }
+.hearth-launcher-item:hover, .hearth-launcher-item:focus { background-color: transparent; }
+.hearth-launcher { width: 760px; height: 560px; spacing: 12px; }
+.hearth-launcher-top { spacing: 8px; }
+.hearth-launcher-search {
+  background-color: #261d18;
+  color: #f4ece3;
+  border: 1px solid #3b2e26;
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.hearth-launcher-search:focus { border-color: #ff8a3d; }
+.hearth-launcher-tab {
+  padding: 8px 18px;
+  border-radius: 14px;
+  background-color: #261d18;
+  color: #a69484;
+  font-weight: bold;
+}
+.hearth-launcher-tab:hover { background-color: #33271f; color: #f4ece3; }
+.hearth-launcher-tab:focus { box-shadow: inset 0 0 0 2px #ff8a3d; }
+.hearth-launcher-tab:checked { background-color: #ff8a3d; color: #2a1206; }
+.hearth-launcher-grid { padding: 4px; }
+.hearth-tile {
+  padding: 12px 6px;
+  border-radius: 16px;
+  min-height: 96px;
+}
+.hearth-tile:hover { background-color: rgba(255, 138, 61, 0.14); }
+.hearth-tile:focus { background-color: rgba(255, 138, 61, 0.22); box-shadow: inset 0 0 0 2px #ff8a3d; }
+.hearth-tile-box { spacing: 8px; }
+.hearth-tile-label { font-size: 10pt; color: #f4ece3; max-width: 104px; text-align: center; }
+.hearth-launcher-empty { color: #a69484; padding: 24px; }
+.hearth-launcher-bottom { spacing: 6px; border-top: 1px solid #3b2e26; padding-top: 10px; }
+.hearth-launcher-action { padding: 8px 12px; border-radius: 12px; color: #f4ece3; }
+.hearth-launcher-action-box { spacing: 8px; }
+.hearth-launcher-action:hover { background-color: #33271f; }
+.hearth-launcher-action:focus { box-shadow: inset 0 0 0 2px #ff8a3d; }

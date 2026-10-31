@@ -13,10 +13,11 @@
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
 #   HEARTH_DESKTOP=plasma                 Desktop Mode is Hearth Plasma (KDE Plasma 6 in Hearth's look) instead of
 #                                         Hearth Classic (labwc + Mantel); see docs/PLASMA.md
+#   HEARTH_DESKTOP=gnome                  Desktop Mode is Hearth GNOME (GNOME Shell with Hearth's extensions); docs/GNOME.md
 #   HEARTH_DESKTOP=cosmic                 Desktop Mode is Hearth COSMIC (System76's COSMIC in Hearth's look, Anatase
 #                                         only); see docs/COSMIC.md
-# `nimbus-session --desktop=classic|plasma` (the login screen's "Hearth Classic" / "Hearth Plasma") saves that choice
-# first, so automatic sign-in keeps it.
+# `nimbus-session --desktop=classic|plasma|gnome` (the login screen's "Hearth Classic" / "Hearth Plasma" /
+# "Hearth GNOME") saves that choice first, so automatic sign-in keeps it.
 # Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
@@ -36,7 +37,7 @@ log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 # Plasma. Picked in Settings › Desktop Mode, or on the login screen (--desktop=...), which saves it in session.conf.
 for a in "$@"; do
   case "$a" in
-    --desktop=classic|--desktop=plasma)
+    --desktop=classic|--desktop=plasma|--desktop=gnome)
       d="${a#--desktop=}"; f="$CONF/session.conf"; mkdir -p "$CONF"; touch "$f"
       if grep -q '^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=' "$f"; then
         sed -i "s/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=.*/HEARTH_DESKTOP=$d/" "$f"
@@ -129,8 +130,11 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_plasma() { have startplasma-wayland && have kwin_wayland && have plasmashell; }
+# Hearth GNOME: GNOME Shell and its session, and Hearth's session mode (the list of Hearth's extensions).
+GNOME_MODE_FILE="${HEARTH_GNOME_MODE_FILE:-/usr/share/gnome-shell/modes/hearth.json}"
+can_gnome() { have gnome-session && have gnome-shell && [ -f "$GNOME_MODE_FILE" ]; }
 can_cosmic() { have start-cosmic && have cosmic-comp && have cosmic-panel && [ -d /usr/share/hearth-cosmic/data/cosmic ]; }
-can_desktop() { have labwc || can_plasma || can_cosmic; }
+can_desktop() { have labwc || can_plasma || can_gnome || can_cosmic; }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
 # console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
@@ -281,12 +285,27 @@ end_stopped_games() {
 # The desktop picked for Desktop Mode, read again at every start (Settings can change it while Game Mode runs).
 desktop_choice() {
   d=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  case "$d" in plasma) echo plasma ;; cosmic) echo cosmic ;; *) echo classic ;; esac
+  case "$d" in plasma) echo plasma ;; gnome) echo gnome ;; cosmic) echo cosmic ;; *) echo classic ;; esac
 }
 
 run_desktop() {
   log "desktop mode"
   end_stopped_games || true
+  # Hearth GNOME, the same way as Hearth Plasma below: only when picked and it can run, and Hearth Classic for the
+  # rest of this sign-in whenever it didn't come up (HEARTH_GNOME_TIMEOUT, 60 s) or crashed straight away.
+  if [ "$(desktop_choice)" = gnome ] && [ -z "$HEARTH_SEAT" ]; then
+    if [ -f /run/hearth/safe-graphics ]; then log "gnome: safe graphics this time, Hearth Classic instead"
+    elif [ -e "$RUN/hearth-gnome-failed" ]; then log "gnome: didn't start earlier this sign-in, Hearth Classic instead"
+    elif ! can_gnome; then log "gnome: not installed (gnome-session, gnome-shell, Hearth's session mode), Hearth Classic instead"
+    else
+      run_gnome; grc=$?
+      [ "$grc" -ne 200 ] && return "$grc"
+      : >"$RUN/hearth-gnome-failed"
+      log "gnome: didn't start; falling back to Hearth Classic for this sign-in"
+      settle_gnome
+    fi
+    have labwc || return 1
+  fi
   # Hearth Plasma when it's picked and can run; Hearth Classic otherwise, and whenever Plasma didn't come up
   # (crashed, or no desktop within HEARTH_PLASMA_TIMEOUT seconds): for the rest of this sign-in, so a broken Plasma
   # can never leave the device without a desktop. Game Mode doesn't change either way.
@@ -401,6 +420,69 @@ settle_plasma() {
   return 0
 }
 
+# ---- Hearth GNOME: GNOME Shell (the base's own release) in Hearth's session mode "hearth"
+# (os/system_files/usr/share/gnome-shell/modes/hearth.json: Hearth's in-house extensions *@hearthos.fun, which bring
+# the look, the floating bar, the launcher, Quick Access, Hearth Link, Hearth Storage, the Game Mode button and the
+# controller). Every one is guarded: a missing or broken one leaves plain GNOME, never no desktop. docs/GNOME.md.
+GNOME_TIMEOUT="${HEARTH_GNOME_TIMEOUT:-60}"
+# One app of each kind: GNOME's Files, Console and Text Editor there, Hearth's of those kinds hidden; that's the
+# app-kinds table's GNOME entries (docs/APP-KINDS.md), read through XDG_CURRENT_DESKTOP=GNOME.
+gnome_first_run() {
+  cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+  # GNOME's first-sign-in assistant and tour aren't Hearth's (they aren't installed; this keeps them away if a
+  # package ever brings them in).
+  [ -e "$cfg/gnome-initial-setup-done" ] || { mkdir -p "$cfg" && echo yes >"$cfg/gnome-initial-setup-done"; }
+  return 0
+}
+run_gnome() {
+  log "desktop mode: Hearth GNOME"
+  GNOME_LOG="$(dirname "$LOG")/gnome.log"
+  [ -f "$GNOME_LOG" ] && [ "$(wc -c <"$GNOME_LOG")" -gt 1000000 ] && mv -f "$GNOME_LOG" "$GNOME_LOG.old"
+  echo "--- $(date '+%F %T') Hearth GNOME" >>"$GNOME_LOG"
+  gnome_first_run
+  (
+    unset LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG
+    export HEARTH_DESKTOP=gnome XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome DESKTOP_SESSION=gnome \
+      XDG_SESSION_TYPE=wayland GNOME_SHELL_SESSION_MODE=hearth
+    # KDE-based apps keep Hearth's look (qt6ct with Hearth's palette, as in Hearth Classic).
+    if have qt6ct; then export QT_QPA_PLATFORMTHEME=qt6ct; else unset QT_QPA_PLATFORMTHEME; fi
+    exec gnome-session
+  ) >>"$GNOME_LOG" 2>&1 &
+  gnome_pid=$!
+  echo "$gnome_pid" >"$RUN/hearth-gnome.pid"
+  started=$(date +%s); up=0
+  # Up = GNOME Shell (compositor and shell in one) running for this user.
+  while kill -0 "$gnome_pid" 2>/dev/null; do
+    if alive gnome-shell; then up=1; break; fi
+    [ $(( $(date +%s) - started )) -ge "$GNOME_TIMEOUT" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && kill -0 "$gnome_pid" 2>/dev/null; then
+    log "gnome: no desktop after ${GNOME_TIMEOUT}s"
+    kill -TERM "$gnome_pid" 2>/dev/null; sleep 3; kill -KILL "$gnome_pid" 2>/dev/null
+  fi
+  wait "$gnome_pid"; rc=$?
+  rm -f "$RUN/hearth-gnome.pid"
+  if [ "$up" = 0 ]; then log "gnome ended before its desktop came up (code $rc)"; return 200; fi
+  if [ "$rc" -ne 0 ] && [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 30 ]; then
+    log "gnome crashed right after starting (code $rc)"; return 200
+  fi
+  log "gnome ended (code $rc)"
+  return "$rc"
+}
+# What GNOME leaves behind: its user services and processes, and the session's environment back to Hearth's
+# (gnome-session puts GNOME's in systemd's and D-Bus's for everything it starts).
+settle_gnome() {
+  have systemctl && timeout 6 systemctl --user stop gnome-session-manager.target gnome-session.target org.gnome.Shell@wayland.service >/dev/null 2>&1
+  for p in gnome-shell gnome-session-binary gnome-session-service gnome-session gnome-session-ctl; do pkill -KILL -u "$(id -u)" -x "$p" 2>/dev/null; done
+  if have systemctl; then
+    timeout 4 systemctl --user unset-environment GNOME_SHELL_SESSION_MODE GNOME_SETUP_DISPLAY HEARTH_DESKTOP DESKTOP_SESSION >/dev/null 2>&1
+    timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_DATA_DIRS >/dev/null 2>&1
+  fi
+  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_DATA_DIRS >/dev/null 2>&1
+  rm -f "$RUN/hearth-gnome.pid"
+  return 0
+}
 # ---- Hearth COSMIC: System76's COSMIC with Hearth's look (docs/COSMIC.md). Hearth's COSMIC defaults (theme, panel,
 # shortcuts, wallpaper; made at image build time by desktop/cosmic/hearth-cosmic-defaults from COSMIC's own) are in
 # /usr/share/hearth-cosmic/data/cosmic, put first in XDG_DATA_DIRS for this session only, so a plain COSMIC session
@@ -544,6 +626,8 @@ settle() {
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
   # Hearth Plasma's KWin and shell, when it was Plasma (only then: nothing of KDE's is touched otherwise).
   [ "$1" = desktop ] && { [ -e "$RUN/hearth-plasma.pid" ] || pgrep -u "$(id -u)" -x kwin_wayland >/dev/null 2>&1; } && settle_plasma
+  # Hearth GNOME's shell and session, when it was GNOME.
+  [ "$1" = desktop ] && { [ -e "$RUN/hearth-gnome.pid" ] || pgrep -u "$(id -u)" -x gnome-shell >/dev/null 2>&1; } && settle_gnome
   # Hearth COSMIC's, likewise only when it was COSMIC.
   [ "$1" = desktop ] && { [ -e "$RUN/hearth-cosmic.pid" ] || pgrep -u "$(id -u)" -x cosmic-comp >/dev/null 2>&1; } && settle_cosmic
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
@@ -595,7 +679,7 @@ while :; do
   # Desktop Mode's autostart reads the note: if its taskbar can't start either, it stays put instead of asking for
   # Game Mode again (that restarted Desktop Mode about once a minute, forever).
   if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
-  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc and Plasma missing)"; can_game && mode=game || exit 1; fi
+  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc, Plasma and GNOME missing)"; can_game && mode=game || exit 1; fi
 
   # The mode this session is in, for programs started outside it: Handheld Daemon's overlay app
   # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick

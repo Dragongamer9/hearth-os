@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Hearth GNOME
+Comment=Hearth OS: Game Mode and the Hearth GNOME desktop (GNOME Shell in Hearth's look). Saved as your desktop; falls back to Hearth Classic if GNOME can't start.
+Exec=/usr/local/bin/nimbus-session --desktop=gnome
+TryExec=gnome-shell
+Type=Application
+DesktopNames=Nimbus

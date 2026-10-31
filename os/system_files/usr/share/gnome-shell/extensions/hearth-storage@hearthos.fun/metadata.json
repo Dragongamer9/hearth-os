@@ -1,0 +1,13 @@
+{
+  "uuid": "hearth-storage@hearthos.fun",
+  "name": "Hearth Storage",
+  "description": "Hearth Storage in Quick Settings: use this device as Hearth Storage, servers and devices, back up now.",
+  "shell-version": [
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://hearthos.fun"
+}

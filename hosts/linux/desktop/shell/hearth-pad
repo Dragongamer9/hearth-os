@@ -48,6 +48,13 @@ KRunner, Dolphin, System Settings and the lock screen get the keys (A Enter, B E
 click), a fullscreen window pauses the controller as in Classic. A text field that KWin reports right after you used
 the controller (KRunner, KDE apps) opens the on-screen keyboard. Without python3-gi it still works, A just clicks.
 
+--gnome: Hearth GNOME (GNOME Shell's hearth-pad@hearthos.fun extension starts it and draws what it asks for;
+docs/GNOME.md). Desktop Mode's controls with GNOME's touches: View (tap) the Activities overview, View + B closes the
+window, View + Menu puts the focus on the bar (the D-pad then walks it); while GNOME Shell itself has the keyboard
+(overview, app grid, menus, Quick Settings, notifications) the D-pad moves its focus, A is Enter, B Esc, LB / RB the
+next part. In GNOME Files, Console and Text Editor (app {kind}) the D-pad moves, A opens, B goes back (Files) or is Esc,
+X the context menu, Y search (Files) and the keyboard, LB / RB tabs, LT / RT scroll, L3 clicks.
+
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
 A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
 View, LB/RB and Y do nothing here (they're the game's and Hearth's). View + Menu together turns it off: it says
@@ -172,11 +179,14 @@ def curve(v):
 class Pad:
     """What the controller does, without any device code (so it can be tested)."""
 
-    def __init__(self, out, game=False, osk_only=False, plasma=False):
+    def __init__(self, out, game=False, osk_only=False, plasma=False, gnome=False):
         self.out = out             # .move(dx, dy) .wheel(v, h) .press(name, down) .send(obj)
         self.game = game           # --game: Game Mode's controller mouse, nothing else
         self.osk_only = osk_only   # --osk: Hearth Plasma's keyboard only: Guide + X, and the keyboard while it's open
         self.plasma = plasma       # --plasma: Hearth Plasma's whole controller (plasma_* below)
+        self.gnome = gnome         # --gnome: Hearth GNOME (gnome_* below)
+        self.app = ''              # --gnome: the app in front when it has its own keys (files | terminal | text)
+        self.trigger_scroll = {}   # --gnome: LT / RT held in those apps (scrolling)
         self.win = ('', '', False, '')   # --plasma: the window in front (class, title, fullscreen, kind), from KWin
         self.key_overlay = False   # --plasma: the taskbar / Overview / a popup has the keys until a window says otherwise
         self.textfield = False     # --plasma: KWin says a text field has the focus
@@ -321,6 +331,8 @@ class Pad:
             return
         if self.plasma:
             return self.plasma_button(name, down, now)
+        if self.gnome:
+            return self.gnome_button(name, down, now)
         if self.keys_ctx:
             return self.keys_button(name, down)
         return self.desk_button(name, down, now)
@@ -453,6 +465,8 @@ class Pad:
         self.sticks = (lx, ly, rx, ry)
 
     def tick(self, now, dt):
+        if self.gnome:
+            self.gnome_tick(now, dt)
         lx, ly, rx, ry = self.sticks
         if self.alt_until and now >= self.alt_until:
             self.alt_until = 0.0
@@ -503,6 +517,8 @@ class Pad:
     # ------------------------------------------------------------------ from the shell
     def command(self, m):
         c = m.get('cmd')
+        if self.gnome and self.gnome_command(m):
+            return
         if c == 'pause':
             if bool(m.get('on')) != self.fs_pause:
                 note('paused: a fullscreen window is in front' if m.get('on') else 'resumed')
@@ -621,6 +637,105 @@ class Pad:
         if self.mode == 'desk' and not self.paused and now - self.last_input < PLASMA_OSK_RECENT:
             self.want_osk()
 
+
+    # ------------------------------------------------------------------ Hearth GNOME (--gnome)
+    # Kept apart from the other modes on purpose (Hearth Plasma's mode lives elsewhere): only these functions, the
+    # `gnome` flag and the three calls into them (button, tick, command) are GNOME's.
+    GNOME_APP_KINDS = ('files', 'terminal', 'text')
+
+    def gnome_command(self, m):
+        """From the hearth-pad@hearthos.fun extension: app {kind} (GNOME Files, Console or Text Editor in front)."""
+        if m.get('cmd') != 'app':
+            return False
+        kind = m.get('kind') or ''
+        kind = kind if kind in self.GNOME_APP_KINDS else ''
+        if kind != self.app:
+            self.release_all()
+            self.trigger_scroll.clear()
+            self.app = kind
+        return True
+
+    def gnome_button(self, name, down, now):
+        """Desktop Mode's controls on GNOME; GNOME Shell's own focus while it has the keyboard; the apps' keys."""
+        view = 'view' in self.held
+        shell = self.keys_ctx                       # GNOME Shell has the keyboard: walk its focus
+        app = '' if shell else self.app
+        if name == 'view':
+            if down:
+                self.view_used = False
+                self.view_at = now
+            elif not self.view_used and now - getattr(self, 'view_at', now) < HELP_TAP:
+                self.out.send({'t': 'overview'})
+            return
+        if name in ARROWS:
+            if view:
+                if down:
+                    self.view_used = True
+                    self.tap('KEY_LEFTMETA', SNAP[name])
+                return
+            return self.hold_key(ARROWS[name], down)
+        if name in ('lt', 'rt'):
+            if app:                                 # the apps: the triggers scroll
+                if down:
+                    self.trigger_scroll[name] = True
+                else:
+                    self.trigger_scroll.pop(name, None)
+                return
+            return self.mouse('BTN_LEFT' if name == 'rt' else 'BTN_RIGHT', name, down)
+        if name == 'l3':
+            return self.mouse('BTN_LEFT' if app else 'BTN_MIDDLE', name, down)
+        if name == 'a' and not (shell or app):
+            return self.mouse('BTN_LEFT', name, down)
+        if name == 'x' and not (shell or app):
+            return self.mouse('BTN_RIGHT', name, down)
+        if not down:
+            return
+        if name == 'a':
+            self.tap('KEY_ENTER')                   # open / activate
+        elif name == 'x':
+            self.tap('KEY_COMPOSE')                 # the Menu key: the context menu
+        elif name == 'b':
+            if view:
+                self.view_used = True
+                self.out.send({'t': 'close'})
+            elif app == 'files':
+                self.tap('KEY_LEFTALT', 'KEY_LEFT')  # back
+            else:
+                self.tap('KEY_ESC')
+        elif name == 'y':
+            if app == 'files':
+                self.tap('KEY_LEFTCTRL', 'KEY_F')   # search, with the keyboard for it
+            self.want_osk()
+        elif name == 'menu':
+            if view:
+                self.view_used = True
+                self.out.send({'t': 'barfocus'})
+            else:
+                self.out.send({'t': 'launcher'})
+        elif name in ('lb', 'rb'):
+            if app:
+                self.tap('KEY_LEFTCTRL', 'KEY_PAGEDOWN' if name == 'rb' else 'KEY_PAGEUP')   # tabs
+            elif shell:
+                self.tap(*(['KEY_TAB'] if name == 'rb' else ['KEY_LEFTSHIFT', 'KEY_TAB']))  # the next part
+            else:
+                if not self.alt_until:
+                    self.out.press('KEY_LEFTALT', True)
+                self.alt_until = now + ALT_HOLD
+                self.tap(*(['KEY_TAB'] if name == 'rb' else ['KEY_LEFTSHIFT', 'KEY_TAB']))
+        elif name == 'r3':
+            self.precise = not self.precise
+            self.out.send({'t': 'toast', 'text': 'Precise pointer ' + ('on' if self.precise else 'off')})
+
+    def gnome_tick(self, now, dt):
+        """The triggers scroll in GNOME Files, Console and Text Editor (RT down, LT up)."""
+        if self.mode != 'desk' or self.paused or not self.trigger_scroll:
+            return
+        v = (1 if 'lt' in self.trigger_scroll else 0) - (1 if 'rt' in self.trigger_scroll else 0)
+        self.acc[2] += v * SCROLL_SPEED * 0.6 * 120 * dt
+        n = int(self.acc[2])
+        if n:
+            self.acc[2] -= n
+            self.out.wheel(n, 0)
 
 # ---------------------------------------------------------------------- Hearth COSMIC (--cosmic, docs/COSMIC.md)
 
@@ -1182,6 +1297,7 @@ def main():
     bmap = button_map(e)
     game = '--game' in sys.argv[1:]
     plasma = '--plasma' in sys.argv[1:]
+    gnome = '--gnome' in sys.argv[1:] and not plasma
     osk_only = '--osk' in sys.argv[1:] and not plasma
     stats = {'events': 0, 'moved': 0, 'since': time.monotonic()}
     real_move = out.move
@@ -1190,7 +1306,7 @@ def main():
         stats['moved'] += abs(dx) + abs(dy)
         real_move(dx, dy)
     out.move = counted_move
-    pad = CosmicPad(out) if '--cosmic' in sys.argv[1:] else Pad(out, game=game, osk_only=osk_only, plasma=plasma)
+    pad = CosmicPad(out) if '--cosmic' in sys.argv[1:] else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome)
     if game:
         note('Game Mode controller mouse')
     inbox = queue.Queue()      # --plasma: what KWin says (plasma_bus's thread) for the main loop
