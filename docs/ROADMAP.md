@@ -166,7 +166,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
-## Next (unreleased)
+## 0.6.62 (released)
 
 - [x] Steam Game Mode, the rest of Hearth's Game Mode (Experimental, needs testing on a device): Quick Resume (put the running game aside, resume, close; it carries on by itself when Steam brings it back) and game streaming (Sunshine on/off, pair Moonlight with its PIN) in Quick Access › Hearth, Hearth Friends (read only) and Hearth Link / Hearth Storage (Sync now, Wake) pages, Friends, Hearth Link and Couch Co-op in Steam's main menu, Hearth's keyboard waits behind its button in Hearth's windows opened from Steam, put aside now pauses Flathub Steam's games too, and the in-game page's button goes on to the game's page instead of itself; docs/STEAM-GAME-MODE.md has the table of what's ported
 - [x] Steam Game Mode, multi-seat (Experimental, needs testing on a device): player 1 plays in Steam's Game Mode while the other players keep their own Hearth Game Mode (Steam's gamescope stays on player 1's card, or runs inside the multi-seat host for shared and split screens, falling back to plain Steam Game Mode); Quick Access › Hearth Players › Seats shows each player, their own account and state, starts or stops one extra player and gives a controller to a player, through Hearth's core service. Nothing changes without multi-seat. docs/STEAM-GAME-MODE.md
