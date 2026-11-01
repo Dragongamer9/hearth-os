@@ -12,13 +12,14 @@ import { callable, definePlugin } from "@decky/api";
 import { ReactNode, useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { applyTheme, removeTheme } from "./theme";
-import { Item, play, removeAll, sync } from "./shortcuts";
-import { PARTS, Settings, partOn } from "./model";
+import { Item, play, refreshTargets, removeAll, sync } from "./shortcuts";
+import { PARTS, Settings, UpdateStatus, partOn, updateView } from "./model";
 import { ask, getErrors, getSettings, setSettings } from "./api";
 import { guard, setSettingsLocal, setShortcutMap, settings as liveSettings, useLive } from "./state";
 import { Brand, DownloadsPage, GamePage, LibraryPage, StoragePage, StorePage, setBrand } from "./pages";
 import { addRoutes, patchGamePage, patchHome, patchLibraryTabs, patchMainMenu } from "./patches";
 import { go, setSounds } from "./ui";
+import { HearthRowView } from "./row";
 import { say } from "./actions";
 
 interface Games { ok: boolean; error?: string; games: Item[]; links: Item[] }
@@ -26,10 +27,9 @@ interface Games { ok: boolean; error?: string; games: Item[]; links: Item[] }
 const getGames = callable<[], Games>("get_games");
 const getBrand = callable<[], Brand>("get_brand");
 const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
-const getArt = callable<[ref: string], { data: string; type: string } | null>("get_art");
 const getShortcuts = callable<[], Record<string, number>>("get_shortcuts");
 
-const ACCENT = "#3fd0b8", INK = "#06231e", PANEL = "#1d2531", DIM = "#8d99a8";
+const ACCENT = "#3fd0b8", INK = "#06231e";
 
 let cache: Games | null = null;
 let brand: Brand | null = null;
@@ -62,6 +62,34 @@ async function change(k: keyof Settings, v: boolean) {
   setSettingsLocal(next);
   setSounds(partOn(next, "tkSounds", guard.broken));
   if (k === "theme") { if (v && brand) applyTheme(brand); else removeTheme(); }
+}
+
+const updCheck = callable<[], UpdateStatus>("update_check");
+const updStart = callable<[], UpdateStatus>("update_start");
+const updStatus = callable<[], UpdateStatus>("update_status");
+
+/** Update Hearth OS: the same updater as Steam's Settings › System › Check for updates (hearth-steamos-update). It
+ *  downloads and stages the update; the device never restarts by itself (restart from Steam's power menu). */
+function UpdateRow() {
+  const [u, setU] = useState<UpdateStatus | null>(null);
+  useEffect(() => { updStatus().then(setU).catch(() => {}); }, []);
+  const v = updateView(u);
+  useEffect(() => {
+    if (!v.poll) return;
+    const t = setInterval(() => { updStatus().then(setU).catch(() => {}); }, 1500);
+    return () => clearInterval(t);
+  }, [v.poll]);
+  const act = async () => {
+    if (v.action === "check") { setU({ state: "checking" }); setU(await updCheck().catch((e) => ({ state: "error", message: String(e) }))); }
+    else if (v.action === "start") setU(await updStart().catch((e) => ({ state: "error", message: String(e) })));
+  };
+  return (
+    <PanelSectionRow>
+      {v.line && <div className={staticClasses.Text} style={{ fontSize: 12, marginBottom: 6 }}>{v.line}</div>}
+      {v.pct != null && v.pct < 100 && <div style={{ height: 6, borderRadius: 3, background: "#273140", overflow: "hidden", marginBottom: 6 }}><div style={{ width: `${v.pct}%`, height: "100%", background: ACCENT }} /></div>}
+      {v.button && <ButtonItem layout="below" onClick={act} description="Downloads Hearth OS's update; it finishes when you restart, and the version before stays">{v.button}</ButtonItem>}
+    </PanelSectionRow>
+  );
 }
 
 /** The power mode (Hearth's Quick Access › Performance, through hearth-power), when this device has one. */
@@ -144,6 +172,9 @@ function Panel() {
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
+      <PanelSection title="Hearth OS updates">
+        <UpdateRow />
+      </PanelSection>
       <PanelSection title="Hearth's places">
         {s.takeover && <PanelSectionRow><ButtonItem layout="below" onClick={nav("/library/home")}>Hearth home</ButtonItem></PanelSectionRow>}
         <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/store")}>Hearth Store</ButtonItem></PanelSectionRow>
@@ -190,54 +221,10 @@ function Panel() {
   );
 }
 
-// ---- The older Hearth row over Steam's Home (Hearth's home screen off): a hero with Hearth's wallpaper and logo,
-// then your Hearth games like Hearth's home.
-// Covers as data: addresses (Steam's window can't load files from the disk), read once each.
-const coverCache: Record<string, string> = {};
-function useCovers(list: Item[]): Record<string, string> {
-  const [, bump] = useState(0);
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      for (const g of list.slice(0, 12)) {
-        if (coverCache[g.id] !== undefined || !g.cover) continue;
-        const a = await getArt(g.cover).catch(() => null);
-        coverCache[g.id] = a ? `data:image/${a.type === "png" ? "png" : "jpeg"};base64,${a.data}` : "";
-        if (live) bump((n) => n + 1);
-      }
-    })();
-    return () => { live = false; };
-  }, [list.length]);
-  return coverCache;
-}
+// ---- The older Hearth row over Steam's Home (Hearth's home screen off): row.tsx.
 function HearthRow(props: { children?: ReactNode }) {
   const games = useGames();
-  const list = games?.games ?? [];
-  const covers = useCovers(list);
-  if (!list.length) return <>{props.children}</>;
-  const cover = (g: Item) => covers[g.id] || null;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div style={{ flex: "none", padding: "18px 2.8vw 10px", background: brand?.wallpaper
-          ? `linear-gradient(180deg,rgba(12,16,22,.25),rgba(12,16,22,.95)),url(${brand.wallpaper}) center/cover` : "#121821" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          {brand?.logo && <img src={brand.logo} style={{ width: 30, height: 30 }} />}
-          <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".02em", textTransform: "uppercase", color: DIM }}>From Hearth</div>
-        </div>
-        <Focusable {...({ "flow-children": "horizontal" } as any)} style={{ display: "flex", gap: 14, overflow: "hidden" }}>
-          {list.slice(0, 12).map((g) => (
-            <DialogButton key={g.id} onClick={() => playItem(g)}
-              style={{ flex: "none", width: 120, height: 170, minWidth: 0, padding: 0, borderRadius: 10, overflow: "hidden", position: "relative",
-                background: cover(g) ? `url(${cover(g)}) center/cover` : PANEL }}>
-              {!cover(g) && <div style={{ padding: 10, fontSize: 13, color: "#e9eef4", whiteSpace: "normal" }}>{g.title}</div>}
-              <div style={{ position: "absolute", left: 6, bottom: 6, fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 8, background: ACCENT, color: INK }}>{g.store}</div>
-            </DialogButton>
-          ))}
-        </Focusable>
-      </div>
-      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>{props.children}</div>
-    </div>
-  );
+  return <HearthRowView games={games?.games ?? []} brand={brand} onPlay={playItem}>{props.children}</HearthRowView>;
 }
 
 export default definePlugin(() => {
@@ -250,7 +237,8 @@ export default definePlugin(() => {
     brand = await getBrand().catch(() => null);
     setBrand(brand);
     if (s.theme && brand) { try { applyTheme(brand); } catch (e) { console.warn("Hearth: theme", e); } }
-    loadGames();
+    loadGames().then((g) => (g.ok ? refreshTargets([...g.games, ...g.links]) : 0))
+      .then((n) => { if (n) console.log(`Hearth: ${n} shortcuts brought up to date`); }).catch((e) => console.warn("Hearth: shortcuts", e));
     // Steam's main menu is looked for once Steam's UI has loaded its code (a moment after the plugin starts).
     setTimeout(() => { undo.push(patchMainMenu()); }, 4000);
   })().catch((e) => console.warn("Hearth: start", e));

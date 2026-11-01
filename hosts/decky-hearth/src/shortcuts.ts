@@ -99,3 +99,17 @@ export async function play(item: Item): Promise<void> {
   const gameId = String(overview?.m_gameid ?? appId);
   steam().Apps.RunGame(gameId, "", -1, 100);
 }
+
+/** At every start: Hearth's shortcuts already in Steam get what they run brought up to date (0.6.60's ran Hearth in
+ *  Steam's environment and didn't start; they now run main.py's WRAPPER). Only exe, start folder and options change;
+ *  nothing is added or removed. Returns how many were updated. */
+export async function refreshTargets(items: Item[]): Promise<number> {
+  if (!steam()?.Apps?.SetShortcutExe) return 0;
+  const map = { ...(await getMap()) };
+  let n = 0;
+  for (const it of items) {
+    if (!exists(map[it.id])) continue;
+    try { await ensure(it, map, false); n++; } catch (e) { console.warn("Hearth: couldn't update", it.title, e); }
+  }
+  return n;
+}

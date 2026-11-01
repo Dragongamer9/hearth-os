@@ -179,3 +179,76 @@ export function blipFor(kind: "move" | "ok" | "back"): [number, number, number] 
 export function validId(id: unknown): id is string {
   return typeof id === "string" && id.length > 0 && id.length <= 200 && id.includes(":") && !/["\\\u0000-\u001f\u007f]/.test(id);
 }
+
+// ---- game pictures (the shelves, the old Hearth row, the hero): which pictures to try, in order
+
+/** A Steam game's app id from Hearth's id ("steam:620" → "620"), else "". */
+export function steamAppId(id: string | null | undefined): string {
+  const m = /^steam:(\d+)$/.exec(id || "");
+  return m ? m[1] : "";
+}
+
+export type Shape = "portrait" | "wide" | "hero";
+
+/** The pictures to try for a card, best first: a portrait cover for the shelves (then Steam's own library picture for
+ *  Steam's games, then wide art, cropped), wide art for wide cards and the hero. steam-lib:<appid>:<kind> is Steam's
+ *  picture in its library cache on this device (main.py steam_art_file). No duplicates, no empty ones. */
+export function artCandidates(g: { id?: string; cover?: string | null; wide?: string | null; hero?: string | null } | null | undefined, shape: Shape): string[] {
+  if (!g) return [];
+  const app = steamAppId(g.id);
+  const lib = (k: string) => (app ? `steam-lib:${app}:${k}` : "");
+  const order = shape === "portrait" ? [g.cover, lib("portrait"), g.wide, g.hero, lib("wide")]
+    : shape === "wide" ? [g.wide, g.hero, lib("wide"), lib("hero"), g.cover, lib("portrait")]
+    : [g.hero, g.wide, lib("hero"), lib("wide")];
+  const out: string[] = [];
+  for (const r of order) if (typeof r === "string" && r.trim() && !out.includes(r.trim())) out.push(r.trim());
+  return out;
+}
+
+/** One way of loading a picture: straight into Steam's window (web and data: addresses), or read by the plugin's
+ *  backend (files on this device, Hearth's nimbus-art:// addresses, Steam's library cache; and a web picture that
+ *  didn't load straight, which the backend takes from Hearth's art cache or downloads). */
+export interface Attempt { ref: string; via: "direct" | "backend" }
+export function artAttempts(refs: string[]): Attempt[] {
+  const out: Attempt[] = [];
+  for (const ref of refs) {
+    if (/^data:image\//i.test(ref)) out.push({ ref, via: "direct" });
+    else if (/^https:\/\//i.test(ref)) { out.push({ ref, via: "direct" }); out.push({ ref, via: "backend" }); }
+    else out.push({ ref, via: "backend" });
+  }
+  return out;
+}
+
+/** What kind of reference a picture is, for the plugin's log (never the address or path itself). */
+export function refKind(ref: string | null | undefined): string {
+  const r = ref || "";
+  if (!r) return "none";
+  if (/^https:\/\//i.test(r)) return "web";
+  if (/^http:\/\//i.test(r)) return "plain-http";
+  if (/^data:/i.test(r)) return "data";
+  if (r.startsWith("nimbus-art://cache/")) return "art-cache";
+  if (r.startsWith("nimbus-art://file/")) return "nimbus-file";
+  if (r.startsWith("steam-lib:")) return "steam-library";
+  if (r.startsWith("file://")) return "file-url";
+  if (r.startsWith("~")) return "home-path";
+  if (r.startsWith("/")) return "path";
+  return "other";
+}
+
+// ---- Quick Access › Hearth › Update Hearth OS (main.py update_check / update_start / update_status)
+
+export interface UpdateStatus { state: string; pct?: number | null; message?: string; version?: string }
+/** What the update row shows: its line, its button (or "" for none while it runs) and whether to keep asking. */
+export function updateView(u: UpdateStatus | null | undefined): { line: string; button: string; action: "check" | "start" | ""; poll: boolean; pct: number | null } {
+  const s = u?.state || "idle";
+  const pct = typeof u?.pct === "number" && Number.isFinite(u.pct) ? Math.max(0, Math.min(100, Math.round(u.pct))) : null;
+  switch (s) {
+    case "checking": return { line: "Looking for an update…", button: "", action: "", poll: true, pct: null };
+    case "available": return { line: u?.message || "An update is available", button: "Update Hearth OS", action: "start", poll: false, pct: null };
+    case "running": return { line: `Updating Hearth OS… ${pct ?? 0}%`, button: "", action: "", poll: true, pct: pct ?? 0 };
+    case "ready": return { line: u?.message || "Ready: restart to finish updating", button: "Check again", action: "check", poll: false, pct: 100 };
+    case "none": return { line: "Hearth OS is up to date", button: "Check for Hearth updates", action: "check", poll: false, pct: null };
+    case "error": return { line: u?.message || "The update failed", button: "Try again", action: "check", poll: false, pct: null };
+    default: return { line: "", button: "Check for Hearth updates", action: "check", poll: false, pct: null };
+  }
+}

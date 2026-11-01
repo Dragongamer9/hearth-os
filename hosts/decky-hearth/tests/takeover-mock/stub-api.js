@@ -29,6 +29,13 @@ const games = [
   G("emu:snes:smw", "Super Mario World", "emu", "Emulators", "emu", { added: 5 }),
   G("steam:620", "Portal 2", "steam", "Steam", "steam", { added: 4 }),
   G("epic:fortnite", "Fortnite", "epic", "Epic", "epic", { added: 3 }),
+  // The cases behind 0.6.60's blank cards: a webp from Hearth's art cache (nimbus-art://cache/…), a picture that
+  // doesn't load (the card falls back to its title), a game with no art at all, a Steam game whose only picture is
+  // Steam's own (steam-lib:…, Steam's library cache).
+  G("gog:webp", "Webp Cover Game", "gog", "GOG", "gog", { fav: true, cover: "nimbus-art://cache/0123456789abcdef01234567", wide: null, hero: null }),
+  G("gog:broken", "Broken Picture Game", "gog", "GOG", "gog", { fav: true, cover: "https://broken.invalid/cover.jpg", wide: null, hero: null }),
+  G("battlenet:bnet", "Battle.net", "battlenet", "Battle.net", "battlenet", { fav: true, cover: "", wide: "", hero: "" }),
+  G("steam:440", "Team Fortress 2", "steam", "Steam", "steam", { fav: true, cover: null, wide: null, hero: null }),
 ];
 const byTab = (t) => games.filter((g) => g.tab === t);
 const TABS = [["steam", "Steam"], ["epic", "Epic"], ["gog", "GOG"], ["battlenet", "Battle.net"], ["xbox", "Xbox"], ["beacon", "Beacon"], ["recomps", "Recomps"], ["emu", "Emulators"]];
@@ -54,9 +61,29 @@ const answers = {
   storage: { drives: [{ name: "This device", kind: "internal", mount: "/var", size: 512e9, used: 380e9, free: 132e9, readOnly: false, steamLibs: 1 }] },
   info: { protondb: { label: "Gold" }, achievements: { total: 40, done: 12 } },
 };
+// A real webp, made by the browser (what Hearth's art cache often holds).
+function webp(title) {
+  const c = document.createElement("canvas");
+  c.width = 300; c.height = 450;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 300, 450);
+  g.addColorStop(0, "#0b6e4f"); g.addColorStop(1, "#08415c");
+  x.fillStyle = g; x.fillRect(0, 0, 300, 450);
+  x.fillStyle = "#fff"; x.font = "800 30px sans-serif"; x.fillText("WEBP", 20, 60); x.font = "600 20px sans-serif"; x.fillText(title, 20, 400);
+  return c.toDataURL("image/webp");
+}
+function picture(ref) {
+  if (!ref) return "";
+  if (ref.startsWith("mock:")) return pic(ref);
+  if (ref.startsWith("nimbus-art://cache/")) return webp("from the art cache");
+  if (ref.startsWith("steam-lib:")) return pic(`mock:tall:Steam's own ${ref.split(":")[1]}`);
+  return "";   // the backend couldn't get it either (the broken one)
+}
+export const rowGames = games.filter((g) => g.source !== "steam").map((g) => ({ id: g.id, title: g.title, store: g.store, cover: g.cover, wide: g.wide }))
+  .sort((a, b) => (a.id.startsWith("gog:") || a.id.startsWith("battlenet:") ? -1 : 1) - (b.id.startsWith("gog:") || b.id.startsWith("battlenet:") ? -1 : 1));
 const handlers = {
   hearth_data: (what, arg) => (what === "store" ? stores[arg] || stores.steam : answers[what] || { error: "no mock" }),
-  get_picture: (ref) => (ref && ref.startsWith("mock:") ? pic(ref) : ""),
+  get_picture: picture, art_error: () => null,
   log_error: () => null, get_errors: () => [], get_settings: () => ({}), set_settings: (s) => s, get_shortcuts: () => ({}),
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }

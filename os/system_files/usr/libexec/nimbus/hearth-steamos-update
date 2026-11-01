@@ -1,0 +1,152 @@
+#!/usr/bin/python3
+"""hearth-steamos-update: Hearth OS updates from Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md).
+
+Steam's Settings › System › Check for updates runs `steamos-update` the way SteamOS, Bazzite and ChimeraOS provide it.
+nimbus-session (run_steam_mode) puts a `steamos-update` that runs this program first on Steam Game Mode's Steam's PATH
+($RUN/hearth-steam-bin, only for that run; nothing system-wide is named steamos-update). The Hearth Decky plugin's
+Quick Access › Hearth › Update Hearth OS uses it too. The update itself is Hearth's own (hearth-admin update-check and
+update: bootc, or rpm-ostree on a system with extra packages, then the system's Flatpak apps), through pkexec like
+Hearth's Settings › Updates (49-hearth-admin.rules: no password for the person at the device).
+
+The way Steam calls it (ChimeraOS gamescope-session-steam's steamos-update lists these):
+  steamos-update --supports-duplicate-detection        does nothing (exit 0)
+  steamos-update [--enable-duplicate-detection] check  exit 0: an update is available (or downloaded, waiting for a
+                                                       restart); exit 7: Hearth OS is up to date; other: it failed
+  steamos-update [--enable-duplicate-detection]        downloads and stages the update, printing "NN%" lines Steam
+                                                       shows as its progress bar; exit 0 when it's ready for a
+                                                       restart, 7 when there was nothing new, other when it failed
+
+It never restarts the device: Steam's Restart (or Hearth's) is a normal restart, which starts the new version; the
+version before stays installed (bootc keeps it, Settings › Updates › Go back, and the boot menu's previous entry).
+"""
+import json
+import os
+import subprocess
+import sys
+
+ADMIN = os.environ.get('HEARTH_STEAMOS_UPDATE_ADMIN') or '/usr/libexec/nimbus/hearth-admin'
+# pkexec unless already root; HEARTH_STEAMOS_UPDATE_PKEXEC="" runs hearth-admin directly (tests).
+PKEXEC = os.environ.get('HEARTH_STEAMOS_UPDATE_PKEXEC', 'pkexec')
+UP_TO_DATE = 7
+
+
+def say(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def admin(cmd):
+    """hearth-admin CMD, its output lines as they come."""
+    argv = [ADMIN, cmd]
+    if PKEXEC and os.geteuid() != 0:
+        argv = [PKEXEC, '--disable-internal-agent'] + argv
+    return subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                            stdin=subprocess.DEVNULL)
+
+
+def parse_args(args):
+    """'check', 'apply' or 'nothing' (--supports-duplicate-detection on its own)."""
+    words = [a for a in args if a not in ('--enable-duplicate-detection',)]
+    if 'check' in words:
+        return 'check'
+    if '--supports-duplicate-detection' in words:
+        return 'nothing'
+    return 'apply'
+
+
+def last_json(lines):
+    for line in reversed(lines):
+        line = line.strip()
+        if line.startswith('{'):
+            try:
+                return json.loads(line)
+            except ValueError:
+                continue
+    return None
+
+
+def run(cmd, on_line=None):
+    """Runs hearth-admin CMD: (exit code, its lines, its error message or '')."""
+    try:
+        p = admin(cmd)
+    except OSError as e:
+        return 1, [], "Hearth's updater isn't installed here (%s)" % e
+    lines, err = [], ''
+    for line in p.stdout:
+        line = line.rstrip('\n')
+        lines.append(line)
+        if line.startswith('error: '):
+            err = line[7:]
+        if on_line:
+            on_line(line)
+    code = p.wait()
+    if code == 126 or code == 127:
+        err = err or "couldn't get permission to update (pkexec said no): use Hearth's Settings › Updates"
+    return code, lines, err
+
+
+def has_update(st):
+    return bool(st and (st.get('staged') or st.get('available')))
+
+
+def check():
+    code, lines, err = run('update-check')
+    st = last_json(lines)
+    if code != 0 or st is None:
+        say('Hearth OS: checking for updates failed: ' + (err or 'no answer from hearth-admin'))
+        return 1
+    if st.get('staged'):
+        say('Hearth OS: an update is downloaded and waits for a restart')
+        print('Update available: %s' % ((st['staged'] or {}).get('version') or 'downloaded'), flush=True)
+        return 0
+    if st.get('available'):
+        print('Update available: %s' % ((st['available'] or {}).get('version') or 'newer'), flush=True)
+        return 0
+    say('Hearth OS is up to date')
+    return UP_TO_DATE
+
+
+class Progress:
+    """hearth-admin's "progress: 42.0 Downloading…" lines as Steam's "42%" lines (whole numbers, only when they
+    change, never going back)."""
+    def __init__(self, out=None):
+        self.last = -1
+        self.out = out or sys.stdout
+
+    def line(self, text):
+        if not text.startswith('progress: '):
+            return
+        try:
+            pct = int(float(text.split()[1]))
+        except (IndexError, ValueError):
+            return
+        pct = max(0, min(100, pct))
+        if pct > self.last:
+            self.last = pct
+            print('%d%%' % pct, file=self.out, flush=True)
+
+
+def apply():
+    prog = Progress()
+    code, lines, err = run('update', prog.line)
+    st = last_json(lines)
+    if code != 0 or st is None:
+        say('Hearth OS: the update failed: ' + (err or 'no answer from hearth-admin'))
+        return 1
+    if st.get('staged'):
+        if prog.last < 100:
+            print('100%', flush=True)
+        say('Hearth OS: the update is ready. Restart to finish updating (the version before stays installed).')
+        return 0
+    say('Hearth OS is already up to date')
+    return UP_TO_DATE
+
+
+def main(args):
+    what = parse_args(args)
+    if what == 'nothing':
+        return 0
+    return check() if what == 'check' else apply()
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

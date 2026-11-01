@@ -100,3 +100,43 @@ test("places and stores: Hearth's", () => {
   assert.ok(M.DESTS.every((d) => !!d.route !== !!d.app), "each place is a page or an app");
   assert.ok(M.DESTS.some((d) => d.id === "theater" && d.app === "hearth-app:theater"));
 });
+
+test("art: portrait cover first, then Steam's own picture, then wide art; no blanks or repeats", () => {
+  assert.deepEqual(M.artCandidates({ id: "gog:1", cover: "/c.webp", wide: "https://w", hero: "https://w" }, "portrait"), ["/c.webp", "https://w"]);
+  assert.deepEqual(M.artCandidates({ id: "steam:620", cover: "", wide: null }, "portrait"), ["steam-lib:620:portrait", "steam-lib:620:wide"],
+    "a Steam game without Hearth art uses Steam's library cache");
+  assert.deepEqual(M.artCandidates({ id: "steam:620", cover: "nimbus-art://cache/abc" }, "portrait")[0], "nimbus-art://cache/abc");
+  assert.deepEqual(M.artCandidates({ id: "epic:x", cover: "c", wide: "w", hero: "h" }, "wide"), ["w", "h", "c"]);
+  assert.deepEqual(M.artCandidates({ id: "epic:x", cover: "c", wide: "w", hero: "h" }, "hero"), ["h", "w"]);
+  assert.deepEqual(M.artCandidates({ id: "battlenet:bnet", cover: "  ", wide: "" }, "portrait"), [], "nothing: the card shows the title");
+  assert.deepEqual(M.artCandidates(null, "portrait"), []);
+  assert.equal(M.steamAppId("steam:570"), "570");
+  assert.equal(M.steamAppId("steam:abc"), "");
+  assert.equal(M.steamAppId("gog:570"), "");
+});
+
+test("art: web pictures straight, then through the backend; files only through the backend", () => {
+  assert.deepEqual(M.artAttempts(["https://a/b.jpg", "/home/me/c.png", "data:image/png;base64,x", "nimbus-art://cache/x"]), [
+    { ref: "https://a/b.jpg", via: "direct" }, { ref: "https://a/b.jpg", via: "backend" },
+    { ref: "/home/me/c.png", via: "backend" }, { ref: "data:image/png;base64,x", via: "direct" }, { ref: "nimbus-art://cache/x", via: "backend" },
+  ]);
+  assert.deepEqual(M.artAttempts(["http://plain/x.jpg"]), [{ ref: "http://plain/x.jpg", via: "backend" }], "plain http only from Hearth's cache");
+});
+
+test("art: the log gets the kind of picture, never its address", () => {
+  const kinds = ["https://x/secret", "http://x", "data:image/png;base64,", "nimbus-art://cache/ab", "nimbus-art://file//home/me/a.png",
+    "steam-lib:1:wide", "file:///a", "~/a.png", "/home/me/a.png", "weird", ""].map(M.refKind);
+  assert.deepEqual(kinds, ["web", "plain-http", "data", "art-cache", "nimbus-file", "steam-library", "file-url", "home-path", "path", "other", "none"]);
+});
+
+test("update row: check, update with progress, ready for a restart, errors", () => {
+  assert.deepEqual(M.updateView(null), { line: "", button: "Check for Hearth updates", action: "check", poll: false, pct: null });
+  assert.equal(M.updateView({ state: "available", message: "An update is available (0.6.61)" }).action, "start");
+  const r = M.updateView({ state: "running", pct: 37.6 });
+  assert.deepEqual([r.line, r.button, r.poll, r.pct], ["Updating Hearth OS… 38%", "", true, 38], "no button while it runs; asked again");
+  assert.equal(M.updateView({ state: "running", pct: 400 }).pct, 100);
+  assert.equal(M.updateView({ state: "ready", pct: 100 }).line, "Ready: restart to finish updating");
+  assert.equal(M.updateView({ state: "none" }).line, "Hearth OS is up to date");
+  assert.equal(M.updateView({ state: "error", message: "another update is already running" }).line, "another update is already running");
+  assert.equal(M.updateView({ state: "error" }).button, "Try again");
+});

@@ -2,8 +2,8 @@
 // @decky/ui's Focusable and DialogButton so Steam's own controller navigation moves between them.
 import { DialogButton, Focusable, Navigation } from "@decky/ui";
 import { Component, ReactNode } from "react";
-import { usePic } from "./api";
-import { Game, blipFor } from "./model";
+import { useArt } from "./api";
+import { Game, Shape, artCandidates, blipFor } from "./model";
 
 export const C = { bg: "#0c1016", bg2: "#121821", panel: "#161d27", panel2: "#1d2531", panel3: "#273140", line: "#2a3443", text: "#e9eef4", dim: "#8d99a8", accent: "#3fd0b8", ink: "#06231e" };
 
@@ -66,18 +66,37 @@ export function Page(props: { title?: string; wallpaper?: string; children?: Rea
   );
 }
 
+/** A game card's inside: its picture as an <img> (never a CSS background: Hearth's look over Steam paints buttons'
+ *  backgrounds with !important, which hid every cover in 0.6.60's Hearth row), the title always at the bottom, the
+ *  store's badge. A picture that fails moves on to the next one (artCandidates), and with none the card is the title
+ *  on Hearth's panel colour: never a blank card. Inline styles, so it works on Steam's Home as well as Hearth's pages. */
+export function CoverArt(props: { game: { id?: string; title: string; store?: string; cover?: string | null; wide?: string | null; hero?: string | null };
+                                  shape?: Shape; badge?: "top" | "none"; where: string }) {
+  const g = props.game;
+  const { src, failed } = useArt(artCandidates(g, props.shape || "portrait"), props.where);
+  return (
+    <>
+      {!src && <div className="ht-noart" style={{ position: "absolute", inset: 0, background: `linear-gradient(160deg,${C.panel3},${C.panel2} 55%,${C.panel})` }} />}
+      {src && <img className="ht-art" src={src} onError={failed} alt=""
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+      <div className="ht-name" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: src ? "26px 8px 7px" : "8px 8px 9px", fontSize: src ? 12 : 13,
+           fontWeight: src ? 500 : 600, lineHeight: 1.25, textAlign: "left", whiteSpace: "normal", color: C.text, textShadow: "0 1px 2px rgba(0,0,0,.8)",
+           background: src ? "linear-gradient(transparent,rgba(12,16,22,.92))" : "transparent" }}>{g.title}</div>
+      {props.badge !== "none" && g.store && <div className="ht-badge" style={{ position: "absolute", left: 6, top: 6, fontSize: 10, fontWeight: 700, padding: "2px 6px",
+           borderRadius: 8, background: C.accent, color: C.ink }}>{g.store}</div>}
+    </>
+  );
+}
+
 /** A game's tile (portrait, or wide for Continue playing). */
 export function Tile(props: { game: Game; wide?: boolean; badge?: boolean; onActivate: (g: Game) => void; onMenu?: (g: Game) => void }) {
   const g = props.game;
-  const src = usePic(props.wide ? g.wide || g.hero || g.cover : g.cover || g.wide);
   const w = props.wide ? 300 : 132, h = props.wide ? 150 : 188;
   return (
     <DialogButton className="ht-tile" style={{ width: w, height: h }}
       onClick={() => { blip("ok"); props.onActivate(g); }}
       {...({ onGamepadFocus: onFocus, onSecondaryButton: props.onMenu ? () => props.onMenu!(g) : undefined, onSecondaryActionDescription: props.onMenu ? "Hearth info" : undefined } as any)}>
-      {src && <img src={src} />}
-      {(!src || props.wide) && <div className="ht-name">{g.title}</div>}
-      {props.badge && <div className="ht-badge">{g.store}</div>}
+      <CoverArt game={g} shape={props.wide ? "wide" : "portrait"} badge={props.badge ? "top" : "none"} where="shelf" />
     </DialogButton>
   );
 }

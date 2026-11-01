@@ -776,6 +776,13 @@ run_steam_mode() {
   sbin="$RUN/hearth-steam-bin"; mkdir -p "$sbin"
   printf '#!/bin/sh\n# Hearth (nimbus-session): Steam Game Mode'"'"'s Switch to Desktop / Game Mode\ncase "$1" in gamescope*|game*) exec nimbus-mode game ;; *) exec nimbus-mode desktop ;; esac\n' >"$sbin/steamos-session-select"
   chmod 755 "$sbin/steamos-session-select"
+  # Steam's Settings › System › Check for updates runs steamos-update: Hearth's (hearth-steamos-update) updates Hearth OS
+  # the way Settings › Updates does, never restarts by itself. Only on Steam's PATH for this run, nothing system-wide.
+  supd="${HEARTH_STEAMOS_UPDATE:-/usr/libexec/nimbus/hearth-steamos-update}"
+  if [ -x "$supd" ]; then
+    printf '#!/bin/sh\n# Hearth (nimbus-session): Steam Game Mode'"'"'s OS update check\nexec %s "$@"\n' "$supd" >"$sbin/steamos-update"
+    chmod 755 "$sbin/steamos-update"
+  fi
   # The system's Steam (both editions), unless it's Hearth's stand-in that starts Flathub's (Anatase without RPM Fusion),
   # or Flathub's Steam is the one in use here (its games and sign-in are in its own folder: the system's would show none).
   if have steam && { [ ! -e /usr/share/nimbus/steam-flatpak ] || ! steam_flatpak; } && ! steam_flatpak_in_use; then
@@ -783,6 +790,7 @@ run_steam_mode() {
   else
     # Flathub's Steam: the same through flatpak-spawn --host, given for this run only (no lasting flatpak override).
     printf '#!/bin/sh\nexec flatpak-spawn --host nimbus-mode "$@"\n' >"$sbin/nimbus-mode"; chmod 755 "$sbin/nimbus-mode"
+    [ -f "$sbin/steamos-update" ] && { printf '#!/bin/sh\nexec flatpak-spawn --host %s "$@"\n' "$supd" >"$sbin/steamos-update"; chmod 755 "$sbin/steamos-update"; }
     set -- flatpak run --talk-name=org.freedesktop.Flatpak --filesystem="$sbin:ro" --env=PATH="$sbin:/app/bin:/app/utils/bin:/usr/bin" "$STEAM_FLATPAK"
   fi
   sextra=""

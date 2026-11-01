@@ -54,6 +54,36 @@ pub fn without_dump_details(journal: &str) -> String {
 const DESKTOP_LOGS: [(&str, &str); 4] = [("plasma.log", "Hearth Plasma"), ("gnome.log", "Hearth GNOME"), ("cosmic.log", "Hearth COSMIC"),
                                          ("cosmic-companion.log", "Hearth COSMIC companion")];
 
+/// Steam Game Mode (Decky plugin): whether Decky and its service are installed and running, the Hearth plugin's
+/// state, and the newest lines of the plugin's log (Decky writes each plugin's log to ~/homebrew/logs/<plugin>/, one
+/// file per start; the plugin logs picture failures by reason and count, never paths) and the parts that turned
+/// themselves off (~/homebrew/settings/<plugin>/errors.log). `services` is what systemctl says about the services.
+pub fn decky_report(root: &Path, home: &Path, services: &str) -> String {
+    let st = crate::steam_mode::decky_status(root, home);
+    let mut out = format!("Decky installed: {} (via {}), Hearth plugin: {}, shipped with Hearth: {}, Steam remote debugging: {}\n{}\n",
+        st["installed"], st["via"].as_str().unwrap_or("none"), st["plugin"], st["shipped"], st["cefDebugging"], services.trim_end());
+    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    for dir in ["homebrew/logs/Hearth", "homebrew/logs/decky-hearth"] {
+        for e in std::fs::read_dir(home.join(dir)).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x == "log").unwrap_or(false) {
+                let t = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                if newest.as_ref().map(|(n, _)| t > *n).unwrap_or(true) { newest = Some((t, p)); }
+            }
+        }
+    }
+    match newest.and_then(|(_, p)| std::fs::read_to_string(&p).ok().map(|t| (p, t))) {
+        Some((p, t)) => out.push_str(&format!("\n--- Hearth plugin log ({}):\n{}\n", p.file_name().unwrap_or_default().to_string_lossy(), tail(&t, 300))),
+        None => out.push_str("\n--- Hearth plugin log: none found (the plugin hasn't run in Steam Game Mode yet)\n"),
+    }
+    for dir in ["homebrew/settings/Hearth", "homebrew/settings/decky-hearth"] {
+        if let Ok(t) = std::fs::read_to_string(home.join(dir).join("errors.log")) {
+            if !t.trim().is_empty() { out.push_str(&format!("\n--- Parts that turned themselves off:\n{}\n", tail(&t, 50))); }
+        }
+    }
+    out
+}
+
 fn sh(cmd: &str) -> String {
     crate::system::run_timeout("sh", &["-c", &format!("{cmd} 2>&1")], Duration::from_secs(15)).unwrap_or_else(|e| format!("({e})"))
 }
@@ -341,6 +371,8 @@ pub fn report(version: &str) -> String {
     let steam_on = std::fs::read(data.join("library.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
+    section("Steam Game Mode (Decky plugin)", decky_report(Path::new("/"), &crate::paths::home(),
+        &sh("for u in hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
     section("Storage (drives and space)", crate::diskspace::report());
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
     // "Pressing power turns the screen off but the fans keep running": whether it really slept, how deeply, who
@@ -536,6 +568,28 @@ mod tests {
         let session = include_str!("../../linux/session/nimbus-session");
         for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
+    }
+    #[test]
+    fn decky_plugin_log_is_the_newest_and_says_what_is_installed() {
+        let t = std::env::temp_dir().join(format!("hearth-logs-decky-{}", std::process::id()));
+        let (root, home) = (t.join("root"), t.join("home"));
+        let _ = std::fs::remove_dir_all(&t);
+        let none = decky_report(&root, &home, "hearth-decky.service: inactive");
+        assert!(none.contains("Decky installed: false") && none.contains("none found") && none.contains("hearth-decky.service: inactive"), "{none}");
+        std::fs::create_dir_all(root.join("etc/systemd/system")).unwrap();
+        std::fs::write(root.join(crate::steam_mode::HEARTH_UNIT), "").unwrap();
+        let logs = home.join("homebrew/logs/Hearth");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("2026-10-01.log"), "old start\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(logs.join("2026-11-01.log"), "Hearth plugin ready\nart: not shown (page art: not a picture), 1 so far\n").unwrap();
+        std::fs::create_dir_all(home.join("homebrew/settings/decky-hearth")).unwrap();
+        std::fs::write(home.join("homebrew/settings/decky-hearth/errors.log"), "tkMenu: not found\n").unwrap();
+        let r = decky_report(&root, &home, "");
+        assert!(r.contains("Decky installed: true (via hearth)"), "{r}");
+        assert!(r.contains("art: not shown") && !r.contains("old start"), "the newest start's log: {r}");
+        assert!(r.contains("tkMenu: not found"), "{r}");
+        let _ = std::fs::remove_dir_all(&t);
     }
     #[test]
     fn crash_dumps_shortened() {
