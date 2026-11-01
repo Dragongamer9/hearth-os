@@ -166,7 +166,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
-## Next (unreleased)
+## 0.6.63 (released)
 
 - [x] Steam Game Mode: Steam's games start again (Steam was told to start games on gamescope's second X display, which gamescope was never asked to make, so games never opened; gamescope now makes it, as SteamOS does); the logs now include the game-launch lines of Steam's own logs
 
