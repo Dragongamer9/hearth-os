@@ -51,6 +51,11 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     Timer? yielder;
     Timer? watchdog;
     int reconnectDelay = 5;
+    // Steam's "TryAnotherCM" (that server can't sign you in): the servers that said it, and whether the next
+    // connection must go to another one (switching between TCP and WebSocket each time).
+    readonly HashSet<string> badCms = new();
+    bool otherCm;
+    ProtocolTypes lastProtocol = ProtocolTypes.Tcp;
     public event Action? Released;
 
     public OpenEngine(string home)
@@ -61,7 +66,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         Secrets.EnsurePrivateDir(stateDir);
         secrets = Secrets.Pick(stateDir);
         store = new StateFile(Path.Combine(stateDir, "open-state.json"));
-        client = new SteamClient(SteamConfiguration.Create(b => b.WithConnectionTimeout(TimeSpan.FromSeconds(15))));
+        client = new SteamClient(SteamConfiguration.Create(b => b.WithConnectionTimeout(TimeSpan.FromSeconds(15))
+            .WithProtocolTypes(ProtocolTypes.Tcp | ProtocolTypes.WebSocket)));
         callbacks = new CallbackManager(client);
         user = client.GetHandler<SteamUser>()!;
         apps = client.GetHandler<SteamApps>()!;
@@ -113,8 +119,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     void OnConnected()
     {
         lock (gate) { connected = true; state = "ready"; reason = ""; reconnectDelay = 5; }
-        Log("connected to Steam");
-        var last = store.Data["account"]?.GetValue<string>();
+        Log($"connected to Steam ({client.CurrentEndPoint}, {lastProtocol})");
+        var last = account ?? store.Data["account"]?.GetValue<string>();   // the account just signed in to comes first
         string? token = null;
         if (last != null) { try { token = secrets.Load(last); } catch (Exception) { } }
         if (last != null && token != null) { account = last; LogOn(last, token); }
@@ -129,6 +135,20 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     {
         lock (gate) { connected = false; signedIn = false; if (state == "ready") { state = "starting"; reason = "Reconnecting to Steam"; } }
         if (released || cts.IsCancellationRequested || e.UserInitiated) return;
+        bool other; lock (gate) { other = otherCm; otherCm = false; }
+        if (other)
+        {
+            // Straight to another server (Steam's own list), not the same one again.
+            _ = Task.Run(async () =>
+            {
+                var next = await NextCm();
+                if (cts.IsCancellationRequested || released) return;
+                if (next != null) lastProtocol = next.ProtocolTypes;
+                Log(next != null ? $"trying another Steam server: {next.EndPoint} ({next.ProtocolTypes})" : "trying again (no other Steam server known)");
+                client.Connect(next);
+            });
+            return;
+        }
         var d = reconnectDelay; reconnectDelay = Math.Min(reconnectDelay * 2, 300);
         Log($"disconnected; trying again in {d}s");
         Task.Delay(TimeSpan.FromSeconds(d), cts.Token).ContinueWith(t => { if (!t.IsCanceled) client.Connect(); });
@@ -138,7 +158,14 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     {
         if (e.Result != EResult.OK)
         {
-            Log($"sign-in refused ({e.Result})");
+            Log($"sign-in refused ({e.Result}) by {client.CurrentEndPoint}");
+            if (e.Result is EResult.TryAnotherCM or EResult.ServiceUnavailable)
+            {
+                // Not about your account: that server can't sign anyone in right now. Another one is tried next.
+                var ep = client.CurrentEndPoint?.ToString();
+                lock (gate) { if (ep != null) badCms.Add(ep); otherCm = true; }
+                return;
+            }
             bool forget = e.Result is EResult.InvalidPassword or EResult.AccessDenied or EResult.Expired or EResult.Revoked or EResult.InvalidSignature;
             lock (gate) signedIn = false;
             flow.LoggedOn(SignInError(e.Result), forget, store.Data["account"]?.GetValue<string>() ?? account);
@@ -153,6 +180,22 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         Log("signed in");
         flow.LoggedOn(null, false, account);
         _ = Task.Run(ResumeQueue);
+    }
+
+    /// <summary>A Steam server that hasn't said TryAnotherCM, using the other connection kind (TCP or WebSocket) than
+    /// the last one when it can; null when Steam's list can't be had (SteamKit2 then picks one itself).</summary>
+    async Task<ServerRecord?> NextCm()
+    {
+        try
+        {
+            var all = await SteamDirectory.LoadAsync(client.Configuration, cts.Token);
+            string[] bad; lock (gate) bad = badCms.ToArray();
+            var fresh = all.Where(r => !bad.Contains(r.EndPoint.ToString())).ToList();
+            if (fresh.Count == 0) { lock (gate) badCms.Clear(); fresh = all.ToList(); }
+            var want = lastProtocol.HasFlag(ProtocolTypes.WebSocket) ? ProtocolTypes.Tcp : ProtocolTypes.WebSocket;
+            return fresh.FirstOrDefault(r => r.ProtocolTypes.HasFlag(want)) ?? fresh.FirstOrDefault();
+        }
+        catch (Exception x) when (x is not OperationCanceledException) { Log($"Steam's server list: {x.Message}"); return null; }
     }
 
     static string SignInError(EResult r) => r switch
