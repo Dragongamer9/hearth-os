@@ -17,6 +17,8 @@ regex = "1"
 sha2 = "0.10"
 md-5 = "0.10"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+# Settings › Storage checks a moved game's copy as read back from the drive (posix_fadvise) (diskspace.rs).
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -129,6 +129,15 @@ function storageMock(look) {
   window.__auditView = 'settings';
 }
 
+// Runs in the page: Settings › Storage with the preview's drives and games, and Clean up's list open, in the look asked for.
+function diskspaceMock(look) {
+  closeAll(); S.history = [];
+  LOOK.style = look; LOOK.layout = 'shelf'; LOOK.libLayout = ''; saveLook();
+  DSK.s = JSON.parse(JSON.stringify(DSK.mock)); DSK.clean = dskMockClean(); DSK.sel = new Set(DSK.clean.filter(c => c.selectable && c.on).map(c => c.key));
+  S.settingsTab = 'diskspace'; navigate('settings', {}, false); render(null, true);
+  window.__auditView = 'settings';
+}
+
 // Runs in the page: presses up/down/left/right from every control it can reach (breadth first); the ones it
 // never gets to can't be reached with a controller.
 function explore() {
@@ -217,7 +226,7 @@ function explore() {
     }
     await page.close();
     // Settings › Hearth Storage (Hearth OS only, so drawn as Hearth OS): Classic and Dragonfire, Advanced open.
-    const sjobs = ['look-classic-storage', 'look-dragonfire-storage'].filter(id => (!only || id.includes(only)) && size === 'n25');
+    const sjobs = ['look-classic-storage', 'look-dragonfire-storage', 'look-classic-diskspace', 'look-dragonfire-diskspace'].filter(id => (!only || id.includes(only)) && size === 'n25');
     if (sjobs.length) {
       const sp = await browser.newPage({ viewport: { width: VIEWS[0][0], height: VIEWS[0][1] } });
       const serrs = [];
@@ -228,7 +237,7 @@ function explore() {
         for (const [w, h] of VIEWS) {
           await sp.setViewportSize({ width: w, height: h });
           const before = serrs.length;
-          try { await sp.evaluate(storageMock, id.split('-')[1]); await sp.waitForTimeout(350); } catch (e) { serrs.push(`draw: ${e.message.split('\n')[0]}`); }
+          try { await sp.evaluate(id.endsWith('-diskspace') ? diskspaceMock : storageMock, id.split('-')[1]); await sp.waitForTimeout(350); } catch (e) { serrs.push(`draw: ${e.message.split('\n')[0]}`); }
           const tag = `${size} settings ${id} ${w}x${h}`;
           const probs = await sp.evaluate(inspect, { games: true }).catch(e => ['inspect failed: ' + e.message.split('\n')[0]]);
           await sp.screenshot({ path: path.join(OUT, size, `settings-${id}-${w}x${h}.jpg`), type: 'jpeg', quality: 70 });

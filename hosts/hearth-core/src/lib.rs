@@ -18,6 +18,7 @@ pub mod collections;
 pub mod desktop_games;
 pub mod discord;   // Discord: "Playing X" (Rich Presence; needs the owner's application ID, /etc/hearth/discord.conf)
 pub mod display;
+pub mod diskspace;   // Settings › Storage: drives, games by size, moving games, clean up, low space (docs/STORAGE.md)
 pub mod emulators;
 pub mod friends;
 // ---- Hearth's gaming apps (Controller Lab, Saves, Mods): opened from Game Mode
