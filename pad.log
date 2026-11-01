@@ -1,0 +1,39 @@
+2026-11-01 00:53:50 started; input devices: event0 'AT Translated Set 2 keyboard'; event1 'Microsoft Vmbus HID-compliant Mouse'; event2 'PC Speaker'; event3 'Microsoft X-Box 360 pad' (controller); event4 'Hearth controller pointer'; event5 'Hearth controller keyboard'
+2026-11-01 00:53:50 Hearth Plasma controller
+2026-11-01 00:53:50 serving org.hearth.Pad for KWin
+2026-11-01 00:53:50 controllers: /dev/input/event3 'Microsoft X-Box 360 pad'
+2026-11-01 00:53:52 in front: 'plasmashell' (desktop)
+2026-11-01 00:53:54 probe: {"x":959,"y":526,"cls":"plasmashell","caption":"","kind":"desktop"}
+2026-11-01 00:53:55 probe: {"x":1068,"y":1042,"cls":"plasmashell","caption":"","kind":"desktop"}
+2026-11-01 00:53:57 in front: 'org.kde.plasmashell' (popup), keys
+2026-11-01 00:53:59 probe: {"x":1068,"y":1042,"cls":"org.kde.plasmashell","caption":"plasmashell","kind":"popup"}
+2026-11-01 00:54:00 in front: 'plasmashell' (desktop)
+2026-11-01 00:54:03 in front: 'org.kde.plasmashell' (popup), keys
+2026-11-01 00:54:06 probe: {"x":1068,"y":1042,"cls":"org.kde.plasmashell","caption":"plasmashell","kind":"popup"}
+2026-11-01 00:54:07 in front: 'plasmashell' (desktop)
+2026-11-01 00:54:08 probe: {"x":1068,"y":1042,"cls":"plasmashell","caption":"","kind":"desktop"}
+2026-11-01 00:54:08 in front: 'org.kde.plasmawindowed' (normal)
+2026-11-01 00:54:15 probe: {"x":1068,"y":1042,"cls":"org.kde.plasmawindowed","caption":"Hearth Storage","kind":"normal"}
+2026-11-01 00:54:15 in front: 'plasmashell' (desktop)
+2026-11-01 00:54:16 in front: 'org.kde.dolphin' (normal), keys
+2026-11-01 00:54:20 last 30 s: 62 controller events, pointer moved 1622 px
+2026-11-01 00:54:24 probe: {"x":1068,"y":1042,"cls":"org.kde.dolphin","caption":"Home — Dolphin","kind":"normal"}
+2026-11-01 00:54:27 in front: 'plasmashell' (desktop)
+2026-11-01 00:54:29 in front: 'org.kde.konsole' (normal), keys
+2026-11-01 00:54:37 probe: {"x":1068,"y":1042,"cls":"org.kde.konsole","caption":"hearth-os : bash — Konsole","kind":"normal"}
+2026-11-01 00:54:40 in front: 'plasmashell' (desktop)
+2026-11-01 00:54:43 in front: 'org.kde.kate' (normal), keys
+2026-11-01 00:54:50 last 30 s: 56 controller events, pointer moved 0 px
+2026-11-01 00:54:50 probe: {"x":1068,"y":1042,"cls":"org.kde.kate","caption":"Welcome — Kate","kind":"normal"}
+2026-11-01 00:54:53 in front: 'plasmashell' (desktop)
+2026-11-01 00:54:56 in front: 'org.kde.okular' (normal), keys
+2026-11-01 00:55:03 probe: {"x":1068,"y":1042,"cls":"org.kde.okular","caption":"Okular","kind":"normal"}
+2026-11-01 00:55:06 in front: 'plasmashell' (desktop)
+2026-11-01 00:55:08 in front: 'org.kde.kcalc' (normal), keys
+2026-11-01 00:55:16 probe: {"x":1068,"y":1042,"cls":"org.kde.kcalc","caption":"KCalc","kind":"normal"}
+2026-11-01 00:55:19 in front: 'plasmashell' (desktop)
+2026-11-01 00:55:20 last 30 s: 80 controller events, pointer moved 0 px
+2026-11-01 00:55:22 in front: 'org.kde.spectacle' (normal), keys
+2026-11-01 00:55:29 probe: {"x":1068,"y":1042,"cls":"org.kde.spectacle","caption":"Spectacle","kind":"normal"}
+2026-11-01 00:55:30 in front: 'plasmashell' (desktop)
+2026-11-01 00:55:46 probe: {"x":1068,"y":1042,"cls":"plasmashell","caption":"","kind":"desktop"}
