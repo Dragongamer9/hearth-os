@@ -75,9 +75,78 @@ window doesn't pass the controller into a page inside it (Steam keeps the contro
 couldn't be used with a controller. For the heavy work (buying, installing, Hearth Mods) the plugin opens Hearth's own
 windows instead, where everything works.
 
-Nothing new listens on the device: there's no server or port. Hearth answers only the plugin's backend (running as
-you), one question at a time, and only questions from a fixed list. It reads; the only things it changes are the power
-mode (as Hearth's Quick Access does) and the library's own bookkeeping when Downloads is open.
+Nothing listens on the network: there's no server or port. Hearth answers only the plugin's backend (running as
+you), and only questions from a fixed list: through Hearth's core service while Steam Game Mode runs (below), or one
+question at a time on Hearth's command line when it isn't running. It reads; the only things it changes are what
+Hearth's own Quick Access changes (the power mode, a game's Hearth Input layout, its Proton version, a screenshot,
+recording) and the library's own bookkeeping when Downloads is open.
+
+## Hearth inside Steam's menus, Quick Access and in-game overlay (Experimental)
+
+The next step of moving Hearth into Steam's Game Mode: Hearth's places, power options, Quick Access and the settings
+for the game you're playing now sit inside Steam's own menus. Each has its own switch in **Quick Access › Hearth**
+(under **Hearth takeover**), and each turns itself off on its own if Steam changes the screen under it.
+
+### Hearth's core in Steam Game Mode
+
+When Steam Game Mode starts, Hearth's session also starts **Hearth's core without a window** (`nimbus --core-service`):
+it gives the plugin live answers (the menus and Quick Access no longer start Hearth's program for every question) and
+tells **Hearth Input** which game is in front, so a game's Hearth controller layout works in Steam Game Mode too. It
+stops with Steam (and by itself when Steam Game Mode ends). It's guarded: if it doesn't start, Steam Game Mode carries
+on and the plugin asks Hearth's command line as before.
+
+What it never does: no window, nothing about gamescope's focus (it only reads which game gamescope shows), no pad mouse,
+no keeping Steam ready or closing Steam, no InputPlumber or Handheld Daemon takeover, no controllers of its own. Hearth
+Input holds the controller **only** while a game with a Hearth Input layout is in front: the plugin says every 2 seconds
+which game Steam runs, gamescope says whether it's the one on screen, Hearth's Quick Access tabs pause it while they're
+open, and if the plugin stops saying anything for 6 seconds Hearth Input lets go by itself.
+
+The socket is `$XDG_RUNTIME_DIR/hearth/core.sock` (`/run/user/<you>/hearth`: the folder only you can open, the socket
+0600), and both ends check that the other is you (SO_PEERCRED). Only a fixed list of questions is answered
+(`hosts/hearth-core/src/core_service.rs`, `COMMANDS`); anything else is refused. Put `HEARTH_STEAM_CORE=0` in
+`~/.config/nimbus/session.conf` to leave it (and Hearth Input) out of Steam Game Mode.
+
+### Steam's main menu (the Steam / Xbox button)
+
+Below Steam's own entries (switch: **Hearth in Steam's menu**), in Hearth's look:
+
+- **Now playing** (while a game runs, switch: **Hearth for the game you're playing**): the game, opening its Hearth
+  section (below).
+- **Hearth**: Hearth Home, Hearth Store, Hearth Library, Theater, Hearth Mods, Storage, Downloads. Hearth Home is
+  Steam's Home when Hearth's home screen has it, else a page of its own.
+- **Hearth power**, beside Steam's own Power: **Switch to Hearth Game Mode** and **Desktop Mode** (asks first while a
+  game runs, since Steam closes).
+
+### Hearth's tabs in Quick Access (the … button)
+
+Decky Loader has no way for a plugin to add its own top-level Quick Access tabs: Decky adds its single plug tab to
+Steam's tab list itself. The plugin adds Hearth's tabs **through Decky's own tab list** (the same list Decky's plug tab
+is in), so they sit beside Steam's tabs (switch: **Hearth tabs in Quick Access**). If Decky changes that list, the part
+turns itself off and the same sections stay in Decky's Hearth tab.
+
+| Tab | What's in it |
+| --- | --- |
+| **Hearth** | **This game** (below), **Hearth tools** (Keyboard: Steam's on-screen keyboard, also Steam + X; Screenshot: Hearth's, to Pictures › Screenshots › Hearth; Record: Hearth Recorder), **Switch to Hearth Game Mode**, **Hearth OS updates** |
+| **Hearth Performance** | Hearth's **power mode** (Saver, Balanced, Performance, through hearth-power) and Hearth's **power limit**, read only. The frame limit, refresh rate and TDP stay Steam's own Performance tab's in Steam Game Mode, so the two never fight. |
+| **Hearth Controller** | What Hearth Input is doing now, **Hearth Input in Steam Game Mode** (on/off), the running game's **Hearth Input layout** and **Edit layouts in Hearth** (Hearth's editor in a window). Steam's own layouts stay in Steam's Controller tab: for a game with a Hearth layout, set Steam's to Gamepad or none, or the game gets both. |
+
+### The game you're playing
+
+While a game runs, Steam's main menu (**Now playing**), Quick Access › Hearth (**This game**) and its own page show
+Hearth's section for that game. The game is found from Steam's running app: a Hearth game played through its Steam
+shortcut is that Hearth game, a Steam game is `steam:<app id>`.
+
+- its **Hearth Input layout**: Off, one of Hearth's templates, your own or your layout for every game;
+- its **Proton** for **Play through Hearth** (games Hearth starts with Proton: Epic, GOG, ones you added); Steam's games
+  keep Steam's own Compatibility setting;
+- its **mods in Hearth Mods** (how many, how many on; **Open Hearth Mods**). Shown when Hearth Mods' worker is running;
+- Hearth's facts (ProtonDB rating, achievements) and a page with all of it.
+
+### Still Hearth-only
+
+Hearth's own Quick Access over a game (Quick Resume, Pause, per-game power settings and the frame limit), Hearth's own
+on-screen keyboard (Steam's is used), Hearth's Settings and Hearth Input's editor (they open in Hearth's windows), and
+the rest of "What only Hearth's Game Mode has" below.
 
 ### When Steam updates
 
@@ -234,8 +303,9 @@ pictures inside the card, which the look doesn't touch.
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's
 performance and controller pages, the power limit, Hearth Recorder, Quick Resume, Pause; the power mode is in Quick
 Access › Hearth), buying and installing from Hearth's stores (Hearth Store opens for that), favourites, collections and
-game settings, Hearth Friends, Couch Co-op and multi-seat, Hearth Link's device health, Hearth Input
-controller layouts, parental controls and per-game power settings, Hearth's on-screen keyboard, Discord status, and
+game settings, Hearth Friends, Couch Co-op and multi-seat, Hearth Link's device health, editing Hearth Input
+layouts (choosing one is in Quick Access › Hearth Controller), parental controls and per-game power settings, Hearth's
+on-screen keyboard, Discord status, and
 Hearth's Settings (switch back for those). Xbox Cloud Gaming games aren't added to Steam (they need Hearth's stream
 window).
 
@@ -274,8 +344,10 @@ window).
 | The plugin | `hosts/decky-hearth` (`src/index.tsx` panel and start, `src/shortcuts.ts`, `src/theme.ts`, `main.py`) |
 | The takeover | `src/patches.tsx` (Steam's screens, each guarded), `src/pages.tsx` (Hearth's pages), `src/model.ts` (switches, guard, pure helpers, unit-tested), `src/api.ts`, `src/ui.tsx` |
 | Hearth's answers for the pages | `hearth --steam-mode-data home\|library\|store <s>\|downloads\|storage\|info <id>\|power\|power-mode <m>` (`hosts/hearth-core/src/steam_takeover.rs`) |
+| Hearth's core in Steam Game Mode | `nimbus --core-service --while <running mark>` (`hosts/hearth-core/src/core_service.rs`: socket, `COMMANDS`, `front` for Hearth Input), started by `nimbus-session` (`steam_core_start` / `steam_core_stop`, `steam_input_start`), the plugin's `core_call` (`main.py`) |
+| Steam's main menu, Quick Access tabs, in-game section | `src/patches.tsx` (`HearthMenuItems`), `src/qam.tsx` (`syncQamTabs` through Decky's tab list, the tabs, `ThisGame`), `src/ingame.tsx` (`/hearth/now`, `/hearth/home`), `src/core.ts` (the running game, the 2-second `front`), `src/model.ts` (`menuPlaces`, `runningGame`, `frontMessage`, `qamPlan`) |
 | The look | `hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
-| CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |
+| CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures, and pictures of Steam's main menu, Hearth's Quick Access tabs and the in-game section over static stand-ins, as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |
 
 To try a build of the plugin without a new image: download `decky-hearth` from a run of the Hearth Decky plugin
 workflow, and in Decky's settings turn on Developer mode, then **Install plugin from ZIP**.

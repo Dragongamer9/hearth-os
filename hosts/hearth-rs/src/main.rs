@@ -827,6 +827,9 @@ fn main() {
     if has("--app-use-builtin") {
         match hearth_core::appchannel::use_builtin() { Ok(()) => { println!("Hearth starts its built-in version from the next start"); std::process::exit(0); } Err(e) => { eprintln!("{e}"); std::process::exit(1); } }
     }
+    // Steam's Game Mode: Hearth's core without a window for the Hearth Decky plugin (Hearth in Steam's menus, Quick Access
+    // and in-game overlay), started and stopped with Steam Game Mode by nimbus-session (hearth-core core_service.rs).
+    if has("--core-service") { std::process::exit(hearth_core::core_service::run(&args)); }
     let windowed = has("--windowed");
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }

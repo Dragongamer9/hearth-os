@@ -330,6 +330,109 @@ class Takeover(unittest.TestCase):
         self.assertEqual(front, self.m.DEFAULT_SETTINGS)
 
 
+class CoreService(unittest.TestCase):
+    """Hearth's core service (nimbus --core-service) from the plugin's side: a stand-in listening on a socket in a
+    private folder, the checks before and after connecting, the fallback to the command line."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-core-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+        self.dir = os.path.join(self.tmp, 'run', 'hearth')
+        os.makedirs(self.dir, mode=0o700)
+        os.chmod(self.dir, 0o700)
+        self.path = os.path.join(self.dir, 'core.sock')
+        self.seen = []
+        self.server = None
+
+    def tearDown(self):
+        if self.server:
+            self.server.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def serve(self, reply):
+        import socket, threading
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(self.path)
+        os.chmod(self.path, 0o600)
+        srv.listen(4)
+        self.server = srv
+
+        def loop():
+            while True:
+                try:
+                    c, _ = srv.accept()
+                except OSError:
+                    return
+                with c:
+                    line = c.makefile('rb').readline()
+                    req = json.loads(line)
+                    self.seen.append(req)
+                    c.sendall((json.dumps(reply(req)) + '\n').encode())
+        threading.Thread(target=loop, daemon=True).start()
+
+    def test_commands_match_hearth_core(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        cmds = re.search(r'pub const COMMANDS: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', cmds)), self.m.CORE_COMMANDS)
+        data = re.search(r'pub const DATA: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(set(re.findall(r'"([^"]+)"', data)), set(self.m.DATA))
+
+    def test_answers_from_the_core_and_the_command_line_when_it_is_not_running(self):
+        self.assertIsNone(self.m.core_call('ping', path=self.path), 'not running: None')
+        self.serve(lambda r: {'id': r['id'], 'ok': True, 'data': {'service': 'hearth-core', 'version': '9', 'asked': r}})
+        r = self.m.core_call('ping', path=self.path)
+        self.assertTrue(r['ok'])
+        self.assertEqual(self.seen[-1]['cmd'], 'ping')
+        self.assertEqual(self.m.core_call('exec', path=self.path)['ok'], False, 'not on the list: never sent')
+        self.assertEqual(self.seen[-1]['cmd'], 'ping')
+        # hearth_data asks the core first, with the question checked.
+        d = self.m.hearth_data('store', 'epic', core=lambda c, a, t: self.m.core_call(c, a, t, path=self.path))
+        self.assertEqual(d['asked']['what'], 'store')
+        self.assertEqual(d['asked']['arg'], 'epic')
+        self.assertIn('error', self.m.hearth_data('store', 'evil', core=lambda *a: self.fail('never asked')))
+        # The core not running: the command line, as before.
+        app = os.path.join(self.tmp, 'nimbus')
+        with open(app, 'w') as f:
+            f.write('#!/bin/sh\necho \'{"from":"cli"}\'\n')
+        os.chmod(app, 0o755)
+        self.m.find_program = lambda name: app
+        self.assertEqual(self.m.hearth_data('home', core=lambda *a: None), {'from': 'cli'})
+        self.assertEqual(self.m.core_result({'ok': False, 'error': 'nope'}), {'error': 'nope'})
+        self.assertIn('error', self.m.core_result(None))
+
+    def test_a_socket_that_is_not_this_users_own_is_never_used(self):
+        self.serve(lambda r: {'ok': True, 'data': {}})
+        self.assertTrue(self.m.core_safe(self.path))
+        os.chmod(self.dir, 0o755)
+        self.assertFalse(self.m.core_safe(self.path), 'a folder others can write to')
+        self.assertIsNone(self.m.core_call('ping', path=self.path))
+        os.chmod(self.dir, 0o700)
+        self.assertFalse(self.m.core_safe(self.path, uid=os.getuid() + 1), "another user's socket")
+        plain = os.path.join(self.dir, 'plain')
+        open(plain, 'w').close()
+        self.assertFalse(self.m.core_safe(plain), 'not a socket')
+
+    def test_plugin_calls_check_what_they_send(self):
+        self.serve(lambda r: {'id': r['id'], 'ok': True, 'data': {'cmd': r['cmd'], 'game': r.get('game'), 'appid': r.get('appid'),
+                                                                   'overlay': r.get('overlay'), 'layout': r.get('layout')}})
+        self.m.core_socket_path = lambda: self.path
+        p = self.m.Plugin()
+        f = run(p.hearth_front(3000000000, 'epic:a', 1))
+        self.assertEqual((f['game'], f['appid'], f['overlay']), ('epic:a', 3000000000, True))
+        f = run(p.hearth_front('x', 'bad id', 0))
+        self.assertEqual((f['game'], f['appid']), (None, 0), 'a bad id is no game')
+        self.assertEqual(run(p.hearth_input_set('gog:1', 'shooter'))['layout'], 'shooter')
+        self.assertIn('error', run(p.hearth_input_set('nope', 'shooter')))
+        self.assertIn('error', run(p.hearth_tool('rm')))
+        self.assertEqual(run(p.hearth_tool('screenshot'))['cmd'], 'screenshot')
+        self.assertTrue(run(p.core_status())['running'])
+        self.assertIn('error', run(p.hearth_game('no colon')))
+
+    def test_settings_have_the_new_parts(self):
+        for k in ('tkQam', 'tkInGame', 'tkInput'):
+            self.assertIn(k, self.m.DEFAULT_SETTINGS)
+
+
 class Art(unittest.TestCase):
     """Every kind of picture reference Hearth gives (desktop_games.rs art_for_desktop, artcache.rs, library.rs art_url)
     becomes a picture, safely, in every format the cache keeps (0.6.60's Hearth row showed blank cards)."""

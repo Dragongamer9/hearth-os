@@ -7,8 +7,12 @@ Runs as you (no root flag) inside Decky Loader and only talks to Hearth's own co
   nimbus-mode game         back to Hearth's Game Mode
   nimbus --steam-mode-data WHAT [ARG]
                            what the takeover's pages show (Hearth's home, Store, Library, Downloads, Storage, a game's
-                           facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs). Nothing listens on a
-                           port or socket for this: Decky's own channel to this backend is the only way in.
+                           facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs).
+  Hearth's core service    `nimbus --core-service`, started with Steam Game Mode by Hearth's session (hearth-core
+                           core_service.rs): the same answers, live, over <runtime dir>/hearth/core.sock (this user's
+                           only: the folder 0700, the socket 0600, both ends checked to be this user), plus the game in
+                           front for Hearth Input and the in-game section (its layout, its Proton, its mods). When it
+                           isn't running, the questions above go to the command line as before. Nothing on a port.
 
 Nothing is sent anywhere: game pictures from the web are fetched (when Hearth's art cache hasn't got them) only to hand
 them to Steam as a shortcut's art or to a page that couldn't load them itself.
@@ -20,6 +24,9 @@ import os
 import pwd
 import shlex
 import shutil
+import socket
+import stat
+import struct
 import subprocess
 import threading
 import urllib.parse
@@ -513,7 +520,7 @@ def save_json(name, value):
 
 # The same keys and defaults as src/model.ts DEFAULTS: the takeover (master switch and its parts) is on by default.
 DEFAULT_SETTINGS = {'theme': True, 'homeRow': True, 'takeover': True, 'tkHome': True, 'tkMenu': True, 'tkLibraryTabs': True,
-                    'tkGamePage': True, 'tkSounds': False}
+                    'tkGamePage': True, 'tkSounds': False, 'tkQam': True, 'tkInGame': True, 'tkInput': True}
 
 
 def data_args(what, arg):
@@ -532,11 +539,96 @@ def data_args(what, arg):
     return ['--steam-mode-data', what]
 
 
-def hearth_data(what, arg='', run=subprocess.run):
-    """Asks Hearth one of the takeover's questions. Always a dict: Hearth's answer, or {'error': ...}."""
+# ---- Hearth's core service (hearth-core core_service.rs COMMANDS: the same list, checked by the tests)
+CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record')
+CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3}
+CORE_MAX = 16 * 1024 * 1024
+CORE_IDS = [0]
+
+
+def core_socket_path():
+    return os.path.join(clean_env()['XDG_RUNTIME_DIR'], 'hearth', 'core.sock')
+
+
+def core_safe(path, uid=None):
+    """The socket and its folder are this user's own (nobody else could have put a socket there)."""
+    uid = os.getuid() if uid is None else uid
+    try:
+        d = os.lstat(os.path.dirname(path))
+        s = os.lstat(path)
+    except OSError:
+        return False
+    return (stat.S_ISDIR(d.st_mode) and d.st_uid == uid and not (d.st_mode & 0o077)
+            and stat.S_ISSOCK(s.st_mode) and s.st_uid == uid)
+
+
+def peer_uid(sock):
+    try:
+        pid, uid, gid = struct.unpack('3i', sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+        return uid
+    except (OSError, AttributeError, struct.error):
+        return None
+
+
+def core_call(cmd, args=None, timeout=None, path=None):
+    """One request to Hearth's core service. None when it isn't running (the caller then asks the command line);
+    otherwise its answer, {'ok': True, 'data': ...} or {'ok': False, 'error': ...}."""
+    if cmd not in CORE_COMMANDS:
+        return {'ok': False, 'error': "That isn't something the Hearth plugin asks"}
+    path = path or core_socket_path()
+    if not core_safe(path):
+        return None
+    CORE_IDS[0] += 1
+    req = dict(args or {})
+    req.update({'id': CORE_IDS[0], 'cmd': cmd})
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        s.settimeout(timeout or CORE_TIMEOUTS.get(cmd, 30))
+        s.connect(path)
+        if peer_uid(s) != os.getuid():
+            log('core service: the socket belongs to someone else; not used')
+            return None
+        s.sendall((json.dumps(req) + '\n').encode())
+        buf = b''
+        while b'\n' not in buf:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > CORE_MAX:
+                return {'ok': False, 'error': 'Hearth gave too long an answer'}
+    except (OSError, socket.timeout) as e:
+        if isinstance(e, (ConnectionRefusedError, FileNotFoundError)):
+            return None
+        return {'ok': False, 'error': "Hearth didn't answer (%s)" % e}
+    finally:
+        s.close()
+    try:
+        v = json.loads(buf.split(b'\n', 1)[0].decode('utf-8', 'replace'))
+    except ValueError:
+        return {'ok': False, 'error': 'Hearth gave no answer'}
+    return v if isinstance(v, dict) else {'ok': False, 'error': 'Hearth gave no answer'}
+
+
+def core_result(r, missing="Hearth's core isn't running (it starts with Steam Game Mode)"):
+    """A core answer as the pages take it: the data (a dict), or {'error': ...}."""
+    if r is None:
+        return {'error': missing}
+    if r.get('ok') is True:
+        d = r.get('data')
+        return d if isinstance(d, dict) else {'value': d}
+    return {'error': str(r.get('error') or 'Hearth gave no answer')[:300]}
+
+
+def hearth_data(what, arg='', run=subprocess.run, core=None):
+    """Asks Hearth one of the takeover's questions: its core service when it runs, else the command line. Always a
+    dict: Hearth's answer, or {'error': ...}."""
     args = data_args(what, arg)
     if not args:
         return {'error': "That isn't something the Hearth plugin asks"}
+    r = (core or core_call)('data', {'what': what, 'arg': arg if isinstance(arg, str) else ''}, DATA[what])
+    if r is not None:
+        return core_result(r)
     app = find_program('nimbus')
     if not app:
         return {'error': "Hearth isn't installed here"}
@@ -809,6 +901,59 @@ class Plugin:
             return {'ok': False, 'error': "Hearth's session isn't installed here"}
         log('switching to Hearth Game Mode')
         subprocess.Popen([prog, 'game'], env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return {'ok': True}
+
+    # ---- Hearth in Steam's menus, Quick Access and in-game overlay (through Hearth's core service)
+    async def core_status(self):
+        r = core_call('ping')
+        return {'running': bool(r and r.get('ok')), 'version': ((r or {}).get('data') or {}).get('version', '')}
+
+    async def hearth_front(self, appid, game, overlay):
+        """The game Steam runs now (Hearth's id, or '' for none), for Hearth Input and the in-game section."""
+        game = game if valid_id(game) else None
+        try:
+            appid = max(0, min(int(appid or 0), 0xFFFFFFFF))
+        except (TypeError, ValueError):
+            appid = 0
+        return core_result(core_call('front', {'game': game, 'appid': appid, 'overlay': bool(overlay)}))
+
+    async def hearth_game(self, game):
+        if not valid_id(game):
+            return {'error': "That isn't a game Hearth knows"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('game', {'game': game})))
+
+    async def hearth_input_set(self, game, layout):
+        if not valid_id(game) or not isinstance(layout, str):
+            return {'error': "That isn't a game Hearth knows"}
+        return core_result(core_call('input-set', {'game': game, 'layout': layout}))
+
+    async def hearth_set_proton(self, game, proton):
+        if not valid_id(game) or not isinstance(proton, str):
+            return {'error': "That isn't a game Hearth knows"}
+        return core_result(core_call('set-proton', {'game': game, 'proton': proton}))
+
+    async def hearth_mods(self, game):
+        if not valid_id(game):
+            return {'error': "That isn't a game Hearth knows"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('mods', {'game': game})))
+
+    async def hearth_tool(self, what):
+        """Hearth's screenshot (gamescope's, to Pictures/Screenshots/Hearth) or Hearth Recorder's start/stop."""
+        if what not in ('screenshot', 'record'):
+            return {'error': "That isn't something the Hearth plugin asks"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call(what)))
+
+    async def switch_to_desktop(self):
+        """Hearth's Desktop Mode (the same as Steam's Power › Switch to Desktop: Hearth's session decides)."""
+        prog = find_program('nimbus-mode')
+        if not prog:
+            return {'ok': False, 'error': "Hearth's session isn't installed here"}
+        log('switching to Desktop Mode (Hearth power, Steam main menu)')
+        subprocess.Popen([prog, 'desktop'], env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
         return {'ok': True}
 

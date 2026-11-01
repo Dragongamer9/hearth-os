@@ -166,6 +166,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## Next (unreleased)
+
+- [x] Steam Game Mode, Hearth inside Steam's menus, Quick Access and in-game overlay (Experimental, needs testing on a device): Hearth's core runs without a window next to Steam (started and stopped with Steam Game Mode, guarded, no controllers, gamescope focus, pad mouse or Steam control of its own) and answers the Hearth plugin live over a socket only you can open; Steam's main menu gets Hearth Home, Store, Library, Theater, Mods, Storage, Downloads, "Now playing" and Hearth's power options (Switch to Hearth Game Mode, Desktop Mode) in Hearth's look; Quick Access gets Hearth, Hearth Performance (power mode, Hearth's power limit read only, Steam keeps the frame limit and TDP) and Hearth Controller tabs beside Steam's (through Decky's own tab list); the game you're playing gets a Hearth section (its Hearth Input layout, its Proton for Play through Hearth, its mods in Hearth Mods, Hearth's facts), and Hearth Input layouts work in Steam Game Mode for the game in front. Each part has its own switch and turns itself off if Steam changes. docs/STEAM-GAME-MODE.md (needs testing on a device)
+
 ## 0.6.61 (released)
 
 - [x] Fix: signing in to Hearth's Steam engine was impossible: the Lightweight engine never started (0.6.59's "Cannot marshal 'parameter #2'") and crashed when it let go. It starts again (its restart now passes its settings along too), exits cleanly, CI checks every native call of the built program, and Settings says why sign-in isn't possible and offers to start the engine again instead of showing nothing (needs testing on a device)

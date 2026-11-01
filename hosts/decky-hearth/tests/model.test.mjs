@@ -140,3 +140,67 @@ test("update row: check, update with progress, ready for a restart, errors", () 
   assert.equal(M.updateView({ state: "error", message: "another update is already running" }).line, "another update is already running");
   assert.equal(M.updateView({ state: "error" }).button, "Try again");
 });
+
+test("main menu: Hearth's places in Hearth's order, Home where the takeover has it, power options", () => {
+  const s = { ...M.DEFAULTS };
+  const p = M.menuPlaces(s);
+  assert.deepEqual(p.map((d) => d.title), ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads"]);
+  assert.equal(p[0].route, "/library/home", "Hearth's home is Steam's Home with the takeover");
+  assert.equal(M.menuPlaces({ ...s, tkHome: false })[0].route, "/hearth/home");
+  assert.equal(M.menuPlaces(s, new Set(["tkHome"]))[0].route, "/hearth/home", "turned off by itself: its own page");
+  for (const d of p) assert.ok(d.route || d.app, d.id);
+  assert.deepEqual(M.MENU_POWER.map((x) => x[0]), ["hearth-game", "hearth-desktop"]);
+});
+
+test("the game Steam runs: shortcuts are Hearth's games, Steam's own are steam:<id>", () => {
+  const map = { "epic:alan": 3000000001 };
+  assert.deepEqual(M.runningGame({ appid: "3000000001", display_name: "Alan Wake 2" }, map), { appid: 3000000001, id: "epic:alan", title: "Alan Wake 2", hearth: true });
+  assert.deepEqual(M.runningGame({ appid: 620, display_name: "Portal 2" }, map), { appid: 620, id: "steam:620", title: "Portal 2", hearth: false });
+  assert.equal(M.runningGame({ appid: 3000000009, display_name: "Someone else's shortcut" }, map).id, null);
+  assert.equal(M.runningGame(null, map), null);
+  assert.equal(M.runningGame({ appid: 0 }, map), null);
+});
+
+test("front: Hearth Input only gets a game when it's switched on", () => {
+  const run = { appid: 5, id: "gog:a", title: "A", hearth: true };
+  assert.deepEqual(M.frontMessage(run, M.DEFAULTS, undefined, false), { appid: 5, game: "gog:a", overlay: false });
+  assert.equal(M.frontMessage(run, { ...M.DEFAULTS, tkInput: false }, undefined, false).game, "", "off: no game, the mapper lets go");
+  assert.equal(M.frontMessage(run, { ...M.DEFAULTS, takeover: false }, undefined, false).game, "");
+  assert.equal(M.frontMessage(run, M.DEFAULTS, new Set(["tkInput"]), true).game, "");
+  assert.equal(M.frontMessage(null, M.DEFAULTS, undefined, false).game, "");
+  assert.equal(M.frontMessage({ ...run, id: null }, M.DEFAULTS, undefined, false).game, "");
+});
+
+test("Quick Access tabs: three of Hearth's, added and taken away with the switch", () => {
+  assert.deepEqual(M.QAM_TABS.map((t) => t.key), ["hearth", "perf", "controller"]);
+  for (const t of M.QAM_TABS) assert.ok(t.id > 999, "never one of Steam's or Decky's ids");
+  const ids = M.QAM_TABS.map((t) => t.id);
+  assert.deepEqual(M.qamPlan(M.DEFAULTS, undefined, []), { add: ids, remove: [] });
+  assert.deepEqual(M.qamPlan(M.DEFAULTS, undefined, ids), { add: [], remove: [] });
+  assert.deepEqual(M.qamPlan({ ...M.DEFAULTS, tkQam: false }, undefined, ids), { add: [], remove: ids });
+  assert.deepEqual(M.qamPlan(M.DEFAULTS, new Set(["tkQam"]), [ids[0]]), { add: [], remove: [ids[0]] }, "turned off by itself");
+});
+
+test("in-game section: layout, Hearth Input, Proton and mods lines", () => {
+  const v = { id: "gog:a", title: "A", source: "gog", store: "GOG", kind: "proton", mods: true, proton: "GE-Proton",
+    input: { layout: "shooter", name: "Shooter / action", choices: [{ id: "off", label: "Off" }, { id: "shooter", label: "Shooter / action" }] },
+    protonChoices: [{ id: "", label: "Default" }, { id: "GE-Proton", label: "GE-Proton (newest)" }] };
+  assert.equal(M.layoutLabel(v), "Shooter / action");
+  assert.equal(M.layoutLabel({ ...v, input: { ...v.input, layout: "off" } }), "Off");
+  assert.equal(M.layoutLabel(null), "");
+  assert.equal(M.protonLabel(v), "GE-Proton (newest)");
+  assert.equal(M.protonLabel({ ...v, proton: "" }), "Default");
+  assert.equal(M.protonLabel({ ...v, kind: "steam" }), "", "Steam's games: Steam's own Proton setting");
+  assert.equal(M.inputLine(null, false), "Hearth Input is off in Steam Game Mode");
+  assert.equal(M.inputLine({ game: null }, true), "No game of yours is running");
+  assert.equal(M.inputLine({ game: "gog:a", layout: null }, true), "No Hearth layout: the game gets the controller");
+  assert.equal(M.inputLine({ game: "gog:a", layout: "Shooter", active: true }, true), "Shooter: on");
+  assert.equal(M.inputLine({ game: "gog:a", layout: "Shooter", active: false, overlay: true }, true), "Shooter: on in the game (paused while Quick Access is open)");
+  assert.equal(M.modsLine({ count: 12, enabled: 9 }), "12 mods, 9 on");
+  assert.equal(M.modsLine({ count: 1, enabled: 1 }), "1 mod, 1 on");
+  assert.equal(M.modsLine({ count: 0 }), "No mods yet");
+  assert.equal(M.modsLine({ beacon: true, count: 3 }), "Beacon manages this game's mods");
+  assert.equal(M.tdpLine({ tdp: { supported: true, watts: 15.4, min: 5, max: 30 } }), "Power limit: 15 W (Hearth's, 5–30 W)");
+  assert.equal(M.tdpLine({ tdp: { supported: false } }), "");
+  assert.equal(M.tdpLine(null), "");
+});
