@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -193,6 +194,11 @@ class NimbusModeSteam(unittest.TestCase):
         self.assertEqual(self.mode('current').stdout.strip(), 'steam')
         self.mode('game')
         self.assertEqual(open(os.path.join(self.tmp, 'nimbus-next')).read().strip(), 'game')
+        # setsid runs in the background: wait for it.
+        for _ in range(100):
+            if os.path.exists(self.calls) and 'setsid' in open(self.calls).read():
+                break
+            time.sleep(0.05)
         calls = open(self.calls).read()
         self.assertIn('steam -shutdown', calls)
         self.assertIn('setsid', calls)

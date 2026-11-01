@@ -45,7 +45,7 @@ h3{margin:22px 24px 10px;font-size:14px;letter-spacing:.04em;text-transform:uppe
 .FieldDescription{font-size:12px;color:var(--gpSystemLightGrey);margin-top:3px}
 .Button{display:block;text-align:center;padding:10px;margin-bottom:6px;border-radius:var(--gpCornerMedium);background:var(--gpSystemDarkGrey)}
 .gpfocus{box-shadow:0 0 0 2px #fff}
-.VirtualKeyboardContainer{position:absolute;left:0;right:380px;bottom:0;height:200px;padding:12px;display:grid;grid-template-columns:repeat(10,1fr);gap:6px;background:var(--gpSystemDarkerGrey)}
+.VirtualKeyboardContainer{position:absolute;left:0;right:0;bottom:0;height:200px;padding:12px;display:grid;grid-template-columns:repeat(10,1fr);gap:6px;background:var(--gpSystemDarkerGrey)}
 .Key{display:grid;place-items:center;border-radius:var(--gpCornerSmall);background:var(--gpSystemDarkGrey);font-size:15px}
 .BasicFooter{position:absolute;left:0;right:380px;bottom:0;height:0}
 `;

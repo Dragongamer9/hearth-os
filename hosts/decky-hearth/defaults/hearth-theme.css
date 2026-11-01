@@ -26,7 +26,7 @@ body{background:#0c1016 !important;color:#e9eef4}
 
 /* ---- 3. Steam's components (resolved at run time) */
 /* Library and home: Hearth's wallpaper behind the pages, darkened like Hearth's home */
-.{{GamepadTabbedPage:GamepadTabbedPage}}{background:linear-gradient(180deg,rgba(12,16,22,.55),rgba(12,16,22,.92) 55%,#0c1016),url(%WALLPAPER%) center/cover fixed !important}
+.{{GamepadTabbedPage:GamepadTabbedPage}}{background:linear-gradient(180deg,rgba(12,16,22,.3),rgba(12,16,22,.82) 55%,rgba(12,16,22,.96)),url(%WALLPAPER%) center/cover fixed !important}
 .{{GamepadTabbedPage:TabHeaderRowWrapper}}{background:linear-gradient(#121821,rgba(18,24,33,.6)) !important;border-bottom:1px solid rgba(255,255,255,.03) !important}
 .{{GamepadTabbedPage:Tab}}{border-radius:16px !important;color:#8d99a8 !important;font-weight:600 !important;letter-spacing:.02em}
 .{{GamepadTabbedPage:Tab}}.{{GamepadTabbedPage:Selected}}{background:#3fd0b8 !important;color:#06231e !important}
@@ -41,7 +41,7 @@ body{background:#0c1016 !important;color:#e9eef4}
 .{{QuickAccessMenu:Title}}{color:#e9eef4 !important;font-weight:600 !important;letter-spacing:.02em}
 .{{QuickAccessMenu:Tabs}}{background:#0c1016 !important}
 .{{QuickAccessMenu:Tab}}{border-radius:10px !important}
-.{{QuickAccessMenu:Tab}}.{{QuickAccessMenu:Selected}}{background:#1d2531 !important;box-shadow:inset 3px 0 0 #3fd0b8 !important}
+.{{QuickAccessMenu:Tab}}.{{QuickAccessMenu:Selected}}{background:#1d2531 !important;color:#e9eef4 !important;box-shadow:inset 3px 0 0 #3fd0b8 !important}
 /* Main menu (the Steam button) */
 .{{MainNavMenuContainer:MainNavMenuContainer}}{background:linear-gradient(180deg,#121821,#0c1016) !important;border-right:1px solid #2a3443 !important}
 .{{MainNavMenuContainer:MainNavMenuContainer}} .gpfocus{background:#1d2531 !important;border-radius:10px !important}
