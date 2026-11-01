@@ -54,6 +54,21 @@ done
 mkdir -p /output /src /debs
 fetch() { git clone --depth 1 --branch "$2" "https://github.com/$1" "/src/$3"; }
 
+# ------------------------------------------------------------------ libcomposefs (trixie has no libcomposefs-dev)
+# Built only when Debian doesn't ship it, so ostree (below) gets composefs support. Into / (ostree builds against
+# it) and /output (the image: ostree loads it at run time).
+COMPOSEFS_VER="${COMPOSEFS_VER:-1.0.8}"
+if ! pkg-config --exists composefs; then
+  apt-get install -y --no-install-recommends meson >/dev/null
+  fetch composefs/composefs "v${COMPOSEFS_VER}" composefs
+  meson setup /src/composefs/build /src/composefs --prefix=/usr --libdir="lib/${MULTIARCH}" \
+    -Dfuse=disabled -Dman=disabled
+  ninja -C /src/composefs/build
+  ninja -C /src/composefs/build install
+  DESTDIR=/output ninja -C /src/composefs/build install
+  ldconfig
+fi
+
 # ------------------------------------------------------------------ ostree (newer than trixie's)
 # The release tarball (no autogen needed). Installed twice: into / (bootc builds against it) and into /output
 # (the image). Same library directory as Debian's own package, so nothing else needs to know.
