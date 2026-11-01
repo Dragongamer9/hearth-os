@@ -16,6 +16,12 @@
 // A press while Hearth isn't connected (HHD just restarted this app, or Hearth is restarting) isn't lost: it goes to
 // Hearth when it connects, if that's within PENDING_MS, marked late (Hearth ignores one it caused itself by asking
 // HHD to start this app).
+//
+// The keyboard over the game (overlay.osk, Guide + X): HHD shows this window by giving it gamescope's input focus
+// (STEAM_INPUT_FOCUS 1 in show_hhd), which takes the keyboard focus from the game too, so the keys Hearth Input typed
+// went to this window instead of the game ("In-game keyboard doesn't interact with the game", 0.6.59). While the
+// keyboard is open this window asks for 2 instead (gamescope: touch and mouse here, the keyboard stays with the game,
+// as Steam's own keyboard does), and again every KEYBOARD_EVERY ms, since HHD sets 1 again when Steam pokes at it.
 
 const OPEN = new Set(['qam', 'expanded']);
 const STATES = new Set(['closed', 'qam', 'expanded', 'notification']);
@@ -28,6 +34,7 @@ const GRAB_EVERY = 2000;
 const TOGGLE_GUARD = 600;
 const OSD_MS = 1800;
 const PENDING_MS = 10000;
+const KEYBOARD_EVERY = 250;
 
 const ev = (name, data) => ({ type: 'event', name, data });
 
@@ -41,10 +48,16 @@ class OverlayProtocol {
    * toPage(msg)     a message for the Quick Access page
    * onHost(msg)     Hearth's instructions for the window itself ({type:'overlay-host', ...})
    * connected()     whether Hearth is there to ask
+   * inputFocus(n)   gamescope's STEAM_INPUT_FOCUS for this window: 2 while the keyboard over the game is open (the
+   *                 game keeps the keyboard focus), 1 when Quick Access takes its place while still open, null
+   *                 when the keyboard closed with the window (nothing to set: HHD's hide does it)
    */
   constructor({ out, toHearth, toPage, onHost = () => {}, connected = () => true, now = Date.now,
-                setTimer = setTimeout, clearTimer = clearTimeout, every = setInterval, stopEvery = clearInterval }) {
-    Object.assign(this, { out, toHearth, toPage, onHost, connected, now, setTimer, clearTimer, every, stopEvery });
+                setTimer = setTimeout, clearTimer = clearTimeout, every = setInterval, stopEvery = clearInterval,
+                inputFocus = () => {} }) {
+    Object.assign(this, { out, toHearth, toPage, onHost, connected, now, setTimer, clearTimer, every, stopEvery, inputFocus });
+    this.osk = false;       // the keyboard over the game is what's open
+    this.oskTimer = null;
     this.state = 'closed';
     this.want = 'qam';
     this.preopened = false;
@@ -139,6 +152,22 @@ class OverlayProtocol {
   }
   stopGrab() { if (this.grabTimer) { this.stopEvery(this.grabTimer); this.grabTimer = null; } }
 
+  /** The keyboard over the game opened (on) or gone (off): the game keeps gamescope's keyboard focus meanwhile. */
+  keyboard(on) {
+    if (on) {
+      this.osk = true;
+      this.inputFocus(2);
+      if (!this.oskTimer) this.oskTimer = this.every(() => { if (this.osk && this.isOpen && !this.peeking) this.inputFocus(2); }, KEYBOARD_EVERY);
+      return;
+    }
+    const was = this.osk;
+    this.osk = false;
+    if (this.oskTimer) { this.stopEvery(this.oskTimer); this.oskTimer = null; }
+    // Quick Access in its place, still open: the keyboard focus is this window's again, as HHD gave it. Closed: HHD
+    // takes the input focus away itself (hide_hhd); null only says the keyboard is gone.
+    if (was) this.inputFocus(this.isOpen ? 1 : null);
+  }
+
   /** Hearth went away (or restarted): nothing stays open over the game, and HHD gives the controller back. */
   disconnected() { this.preopened = false; this.setState('closed'); }
 
@@ -153,6 +182,7 @@ class OverlayProtocol {
           this.openedAt = this.now();
           this.setState(OPEN.has(this.want) ? this.want : 'qam');
           this.want = 'qam';   // the next open not asked for through HHD (Guide) is the plain one
+          this.keyboard(msg.name === 'overlay.osk');
           this.toPage(msg);
           // HHD hands us the controller as action: lines: the page mustn't also read it through the browser.
           this.toPage(ev('padHost', { connected: 1 }));
@@ -186,10 +216,11 @@ class OverlayProtocol {
     this.state = s;
     this.peeking = false;
     if (s !== 'notification' && this.osdTimer) { this.clearTimer(this.osdTimer); this.osdTimer = null; }
+    if (!OPEN.has(s) && this.osk) this.keyboard(false);
     this.out(`stat:${s}`);
     if (OPEN.has(s) && (!OPEN.has(was) || peeked)) this.startGrab();
     else if (!OPEN.has(s) && OPEN.has(was)) { this.stopGrab(); this.out('grab:disable'); }
   }
 }
 
-module.exports = { OverlayProtocol, padFor, ACTIONS, GRAB_EVERY, TOGGLE_GUARD, PENDING_MS };
+module.exports = { OverlayProtocol, padFor, ACTIONS, GRAB_EVERY, TOGGLE_GUARD, PENDING_MS, KEYBOARD_EVERY };

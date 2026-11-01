@@ -1498,8 +1498,23 @@ const path = require('path');
         window.__sent = []; window.send = m => { window.__sent.push(m); };
         const real = MOCK.call; window.__calls = [];
         MOCK.call = (m, a) => { if (m === 'osk.type' || m === 'osk.key') { window.__calls.push([m, a]); return Promise.resolve({ ok: true, skipped: '' }); } return real(m, a); };
+        // Quick Access was open over the game before (its panel stays in the page when it closes), and is open again
+        // when Guide + X turns it into the keyboard: the keyboard must stay open, not close itself 50 ms later because
+        // its panel was closed under it (0.6.59: "In-game keyboard doesn't interact with the game").
+        await overlayShown(); await wait(200); overlayHidden();
+        o.leftOpen = S.layers.join(',');
+        window.__sent = [];
         onSysEvent('overlay.osk', {});
-        await wait(300);
+        await wait(400);
+        o.earlyClose = window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').map(m => m.why || '?').join(',');
+        await overlayShown(); await wait(200);
+        window.__sent = [];
+        onSysEvent('overlay.osk', {});
+        await wait(60);
+        hostPad('guide');                        // the Guide of the chord, passed on late: not a close
+        await wait(400);
+        o.earlyClose2 = window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').map(m => m.why || '?').join(',');
+        o.earlyGuide = /Guide/.test(o.earlyClose2);
         o.open = OVOSK.on && !!document.querySelector('#ovosk .ovosk-kb *') && document.body.classList.contains('ovosk') && !S.layers.includes('qam');
         o.visible = getComputedStyle(document.querySelector('#ovosk')).display !== 'none';
         hostPad('a'); await wait(150);           // the selected key
@@ -1508,7 +1523,7 @@ const path = require('path');
         hostPad('start'); await wait(300);       // Enter
         o.calls = window.__calls.map(c => c[0] + ':' + (c[1].text || c[1].key)).join(' ');
         hostPad('b'); await wait(100);
-        o.closed = window.__sent.some(m => m.type === 'overlay' && m.action === 'close');
+        o.closed = window.__sent.some(m => m.type === 'overlay' && m.action === 'close' && /B/.test(m.why || ''));
         onSysEvent('overlay.hidden', {});
         o.gone = !OVOSK.on && !document.body.classList.contains('ovosk');
         // Quick Access over the game: the layout editor as a panel there.
@@ -1536,6 +1551,7 @@ const path = require('path');
         return o;
       });
       const kerr = m => errors.push('keyboard over a game: ' + m);
+      if (r.earlyClose || r.earlyClose2 || r.earlyGuide) kerr(`it closed itself right after opening (after Quick Access: "${r.earlyClose}", over Quick Access: "${r.earlyClose2}", late Guide: ${r.earlyGuide}; panels left: ${r.leftOpen})`);
       if (!r.open || !r.visible) kerr(`it didn't open as just the keyboard (${JSON.stringify(r)})`);
       if (!/^osk\.type:\S+ .*osk\.key:bksp.* osk\.key:enter$/.test(r.calls)) kerr(`presses didn't type into the game as expected: "${r.calls}"`);
       if (!r.closed || !r.gone) kerr(`B didn't close it (${JSON.stringify(r)})`);

@@ -7,13 +7,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
-const { OverlayProtocol, padFor, GRAB_EVERY, PENDING_MS } = require('../src/overlay/protocol');
+const { OverlayProtocol, padFor, GRAB_EVERY, PENDING_MS, KEYBOARD_EVERY } = require('../src/overlay/protocol');
 const { HearthLink, socketPath, splitLines } = require('../src/overlay/link');
 const { artFile } = require('../src/overlay/art');
 
 /** A protocol with fake clocks and timers: everything it says to HHD, Hearth and the page is recorded. */
 function rig({ connected = true } = {}) {
-  const r = { out: [], hearth: [], page: [], host: [], t: 10000, timers: [], repeats: new Set(), connected };
+  const r = { out: [], hearth: [], page: [], host: [], focus: [], t: 10000, timers: [], repeats: new Set(), connected };
   r.p = new OverlayProtocol({
     out: l => r.out.push(l), toHearth: m => r.hearth.push(m), toPage: m => r.page.push(m), onHost: m => r.host.push(m),
     connected: () => r.connected, now: () => r.t,
@@ -21,6 +21,7 @@ function rig({ connected = true } = {}) {
     clearTimer: t => { r.timers = r.timers.filter(x => x !== t); },
     every: (fn, ms) => { const h = { fn, ms }; r.repeats.add(h); return h; },
     stopEvery: h => r.repeats.delete(h),
+    inputFocus: n => r.focus.push(n),
   });
   r.advance = ms => { r.t += ms; for (const t of r.timers.filter(x => x.at <= r.t)) { r.timers = r.timers.filter(x => x !== t); t.fn(); } };
   r.shown = () => r.p.fromHearth({ type: 'event', name: 'overlay.shown', data: {} });
@@ -62,6 +63,38 @@ test('the on-screen keyboard over the game (Guide + X) is shown and holds the co
   assert.deepStrictEqual(r.page.map(m => m.name), ['overlay.osk', 'padHost']);
   r.hidden();
   assert.deepStrictEqual(r.out.slice(-2), ['stat:closed', 'grab:disable']);
+});
+
+test("the keyboard over the game leaves gamescope's keyboard focus with the game (STEAM_INPUT_FOCUS 2), kept while open", () => {
+  // 0.6.59: HHD shows this window with STEAM_INPUT_FOCUS 1, which took the keyboard focus from the game: what the
+  // keyboard typed (Hearth Input's virtual keyboard) went to Quick Access's window instead of the game.
+  const r = rig();
+  r.shown();
+  assert.deepStrictEqual(r.focus, []);                          // plain Quick Access: HHD's 1 stays
+  r.hidden(); r.clear();
+  r.p.fromHearth({ type: 'event', name: 'overlay.osk', data: {} });
+  assert.deepStrictEqual(r.focus, [2]);
+  assert.strictEqual(r.repeats.size, 2);                        // the grab, and the keyboard focus kept at 2
+  const keep = [...r.repeats].find(h => h.ms === KEYBOARD_EVERY);
+  assert.ok(keep, 'kept every KEYBOARD_EVERY ms');
+  keep.fn(); keep.fn();                                         // HHD set 1 again (Steam poked it): 2 again
+  assert.deepStrictEqual(r.focus, [2, 2, 2]);
+  r.p.peek(true); keep.fn();                                    // out of sight for a screenshot: left alone
+  assert.deepStrictEqual(r.focus, [2, 2, 2]);
+  r.p.peek(false);
+  r.hidden();                                                   // closed: HHD's hide takes the focus away itself
+  assert.deepStrictEqual(r.focus, [2, 2, 2, null]);
+  assert.strictEqual(r.repeats.size, 0);
+  // Guide + X with Quick Access open: the keyboard in its place; Quick Access again: the window's focus is 1 again.
+  r.focus.length = 0;
+  r.shown();
+  r.p.fromHearth({ type: 'event', name: 'overlay.osk', data: {} });
+  assert.deepStrictEqual(r.focus, [2]);
+  r.shown();
+  assert.deepStrictEqual(r.focus, [2, 1]);
+  assert.strictEqual(r.repeats.size, 1);                        // only the grab
+  r.hidden();
+  assert.deepStrictEqual(r.focus, [2, 1]);
 });
 
 test('controller lines go to the page only while open', () => {
