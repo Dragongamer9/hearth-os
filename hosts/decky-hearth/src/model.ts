@@ -300,10 +300,11 @@ export function frontMessage(run: Running | null, s: Settings, broken: Set<strin
 // ---- Hearth's tabs in Steam's Quick Access (added through Decky's own tab list, the way Decky adds its tab)
 
 /** Ids far from Steam's own tabs (small numbers) and Decky's (999). */
-export const QAM_TABS: { id: number; key: "hearth" | "perf" | "controller"; title: string }[] = [
+export const QAM_TABS: { id: number; key: "hearth" | "perf" | "controller" | "players"; title: string }[] = [
   { id: 4801, key: "hearth", title: "Hearth" },
   { id: 4802, key: "perf", title: "Hearth Performance" },
   { id: 4803, key: "controller", title: "Hearth Controller" },
+  { id: 4804, key: "players", title: "Hearth Players" },
 ];
 
 /** Which of Hearth's Quick Access tabs to add or take away so the list matches the switches. */
@@ -360,4 +361,34 @@ export function tdpLine(p: { tdp?: { supported?: boolean; watts?: number; min?: 
   const t = p?.tdp;
   if (!t || !t.supported || typeof t.watts !== "number") return "";
   return `Power limit: ${Math.round(t.watts)} W (Hearth's, ${t.min ?? "?"}–${t.max ?? "?"} W)`;
+}
+
+// ---- Couch Co-op in Steam Game Mode (hearth-coop `players`, core_service.rs `coop`)
+
+export interface CoopPad { id: string; name: string; label: string; kind: string; player: number | null; playerName: string; rumble: boolean | null }
+export interface CoopPlayers { pads: CoopPad[]; max: number; running: boolean; game?: { id?: string; title?: string } | null; lastError?: string | null; lastErrorAt?: number | null }
+export const COOP_LAYOUTS: [string, string][] = [["auto", "Auto"], ["vertical", "Side by side"], ["horizontal", "Top and bottom"], ["grid", "2 × 2"]];
+
+/** The order with the controller at `i` moved one place up (-1) or down (+1); unchanged at either end. */
+export function movePad(ids: string[], i: number, dir: -1 | 1): string[] {
+  const out = ids.slice(), j = i + dir;
+  if (i < 0 || i >= out.length || j < 0 || j >= out.length) return out;
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+/** The Players tab's first line: how many play split-screen with the controllers connected now. */
+export function coopLine(p: CoopPlayers | null): string {
+  if (!p) return "Looking for controllers…";
+  const n = p.pads?.length || 0;
+  if (!n) return "No controllers connected.";
+  if (n === 1) return "One controller connected: connect another to play split-screen.";
+  const playing = Math.min(n, p.max || 4);
+  return `${playing} players. In split-screen games each player gets the controller beside their number.` + (n > playing ? ` ${n - playing} more wait${n - playing === 1 ? "s" : ""}.` : "");
+}
+
+/** A failed split-screen start worth showing: the last hour's, while nothing runs. */
+export function coopProblem(p: CoopPlayers | null, now: number): string {
+  if (!p || p.running || !p.lastError) return "";
+  return !p.lastErrorAt || now - p.lastErrorAt < 3600e3 ? p.lastError : "";
 }

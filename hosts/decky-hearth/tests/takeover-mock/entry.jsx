@@ -2,12 +2,13 @@
 // Hearth's parts of Steam's main menu, Quick Access and in-game section (src/patches.tsx, qam.tsx, ingame.tsx) over
 // static stand-ins for Steam's own menu and Quick Access frame.
 import { createRoot } from "react-dom/client";
-import { FaBell, FaCog, FaFire, FaGamepad, FaPlug, FaTachometerAlt, FaUserFriends } from "react-icons/fa";
+import { FaBell, FaCog, FaFire, FaGamepad, FaPlug, FaTachometerAlt, FaUserFriends, FaUsers } from "react-icons/fa";
 import { HearthHome, LibraryPage, StorePage, setBrand } from "../../src/pages";
 import { HearthRowView } from "../../src/row";
 import { HearthMenuItems } from "../../src/patches";
 import { QamPanel } from "../../src/qam";
 import { NowPlayingPage } from "../../src/ingame";
+import { CoopPage } from "../../src/coop";
 import { ModsPage, RecompsPage, StorageManagePage } from "../../src/manage";
 import { startFront } from "../../src/core";
 import { setShortcutMap } from "../../src/state";
@@ -39,8 +40,8 @@ const steamMenu = (
 
 // Steam's Quick Access (the … button), static: its tab icons (Steam's, Decky's plug, Hearth's three) and Hearth's panel.
 function Qam(props) {
-  const icons = [[FaBell], [FaUserFriends], [FaCog], [FaTachometerAlt], [FaGamepad], [FaPlug], [FaFire, "hearth"], [FaTachometerAlt, "perf"], [FaGamepad, "controller"]];
-  const title = { hearth: "Hearth", perf: "Hearth Performance", controller: "Hearth Controller" }[props.which];
+  const icons = [[FaBell], [FaUserFriends], [FaCog], [FaTachometerAlt], [FaGamepad], [FaPlug], [FaFire, "hearth"], [FaTachometerAlt, "perf"], [FaGamepad, "controller"], [FaUsers, "players"]];
+  const title = { hearth: "Hearth", perf: "Hearth Performance", controller: "Hearth Controller", players: "Hearth Players" }[props.which];
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       {game}
@@ -54,8 +55,8 @@ function Qam(props) {
 
 const pages = {
   home: <HearthHome steam={steamHome} />, store: <StorePage />, library: <LibraryPage />, row,
-  "steam-menu": steamMenu, "qam-hearth": <Qam which="hearth" />, "qam-perf": <Qam which="perf" />, "qam-controller": <Qam which="controller" />,
+  "steam-menu": steamMenu, "qam-hearth": <Qam which="hearth" />, "qam-perf": <Qam which="perf" />, "qam-controller": <Qam which="controller" />, "qam-players": <Qam which="players" />,
   ingame: <div style={{ position: "absolute", inset: 0 }}><NowPlayingPage /></div>,
-  mods: <ModsPage />, storage: <StorageManagePage />, recomps: <RecompsPage />,
+  mods: <ModsPage />, storage: <StorageManagePage />, recomps: <RecompsPage />, coop: <CoopPage />,
 };
 createRoot(document.getElementById("root")).render(pages[window.HEARTH_PAGE] || steamHome);

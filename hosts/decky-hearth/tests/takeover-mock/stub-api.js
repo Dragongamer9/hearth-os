@@ -128,7 +128,29 @@ const modsCalls = {
     { id: "fixes", name: "Community Fixes", enabled: true, targetLabel: "Game folder", size: 4e5 }] }),
   downloads_list: () => ({ items: [{ id: "d1", name: "Immersive Weather · Main file", state: "done", game: "steam:489830", size: 5.6e7 }] }),
 };
+// Couch Co-op in Steam Game Mode (coop.tsx): hearth-coop's players in the saved order, and the games it can split.
+const coopPads = [
+  { id: "event30", name: "DualSense Wireless Controller", label: "DualSense Wireless Controller", kind: "physical", player: 1, playerName: "Dragon", rumble: true },
+  { id: "event20", name: "ROG Ally controller", label: "ROG Ally controller (InputPlumber)", kind: "inputplumber", player: 2, playerName: "Player 2", rumble: true },
+  { id: "event34", name: "Xbox Wireless Controller", label: "Xbox Wireless Controller", kind: "physical", player: 3, playerName: "Player 3", rumble: true },
+  { id: "event36", name: "8BitDo Pro 2", label: "8BitDo Pro 2", kind: "physical", player: 4, playerName: "Player 4", rumble: true },
+  { id: "event38", name: "Retro USB Pad", label: "Retro USB Pad", kind: "physical", player: null, playerName: "", rumble: false },
+];
+const coopGames = { games: [
+  { id: "steam:600", title: "Kart Party", source: "steam", canPlay: true, run: "native" },
+  { id: "gog:dungeon-pals", title: "Dungeon Pals", source: "gog", canPlay: true, run: "windows" },
+  { id: "manual:arena", title: "Pixel Arena", source: "manual", canPlay: true, run: "native" },
+  { id: "steam:500", title: "Shooty", source: "steam", canPlay: false, why: "Shooty uses EasyAntiCheat, which doesn't allow several copies or LAN play." },
+] };
+const coopOps = {
+  players: () => ({ pads: coopPads, max: 4, running: false, lastError: null }),
+  games: () => coopGames,
+  order: (pads) => ({ pads: pads.map((id, i) => ({ ...coopPads.find((p) => p.id === id), player: i < 4 ? i + 1 : null })), max: 4, running: false }),
+  identify: () => ({ rumbled: true }),
+};
 const handlers = {
+  coop: (op, pads, pad) => (coopOps[op] ? coopOps[op](pads, pad) : { error: "no mock" }),
+  coop_target: () => ({ ok: true, exe: "/bin/sh", startDir: "/home/you", options: "-c '…' hearth-steam-coop /usr/libexec/nimbus/hearth-coop play --game steam:600" }),
   hearth_call: (m, a) => (calls[m] ? calls[m](a) : { ok: true }),
   hearth_mods_call: (c, a) => (modsCalls[c] ? modsCalls[c](a) : {}),
   hearth_games_disk: (m) => ({ installRoot: m + "/Games", drive: "SD card" }),

@@ -14,6 +14,12 @@ PartyDeck and Nucleus Co-op). The copies find each other over the local network 
   hearth-coop start --game ID --players N --pads id1,id2[,...] [--layout auto|vertical|horizontal|grid]
                     [--width W --height H] [--keyboard-seat N] [--exe PATH] [--stagger S] [--dry-run]
   hearth-coop status                     the running session
+  hearth-coop players                    controllers in the saved player order (player 1..4), for Steam Game Mode
+  hearth-coop order-set --pads id1,id2,...   saves the player order
+  hearth-coop identify --pad ID [--ms N] a short rumble on that controller
+  hearth-coop play --game ID [--players N] [--layout L]
+                                         Steam Game Mode's split-screen shortcut: start with the saved player order,
+                                         stay until everyone has quit (or Steam closes it), then stop cleanly
   hearth-coop stop                       stops every copy cleanly and tidies up
 
 Output: "progress: N text" lines (N = 0-100), then one JSON line. Problems: "error: <plain message>", exit 1.
@@ -1676,6 +1682,178 @@ def container(ctx, session_path, poll=1.0):
     return 0
 
 
+# ---------------------------------------------------------------------- player order, identify, Steam Game Mode
+
+# Steam Input's own virtual pads (Steam Game Mode, while a game runs): Steam's copies of real controllers, not players.
+STEAM_VIRTUAL = ('Steam Virtual Gamepad', 'Microsoft X-Box 360 pad')
+EV_FF, FF_RUMBLE = 0x15, 0x50
+FF_EFFECT = 48                      # sizeof(struct ff_effect) on 64-bit (the union is 8-aligned at offset 16)
+EVIOCSFF = (1 << 30) | (FF_EFFECT << 16) | (ord('E') << 8) | 0x80
+EVIOCRMFF = (1 << 30) | (4 << 16) | (ord('E') << 8) | 0x81
+PAD_ID = re.compile(r'^event\d{1,4}$')
+
+
+def order_file(ctx):
+    return os.path.join(ctx.coop_dir, 'player-order.json')
+
+
+def pad_key(p):
+    """What a controller is remembered by across reconnects (its event number changes): its serial / Bluetooth
+    address, else vendor, product and name (two identical wired pads then keep their plug-in order)."""
+    return p.get('uniq') or '%s:%s:%s' % (p.get('vendor', ''), p.get('product', ''), p.get('name', ''))
+
+
+def steam_virtual(p):
+    return p.get('kind') == 'virtual' and p.get('name', '').startswith(STEAM_VIRTUAL)
+
+
+def saved_order(ctx):
+    return [k for k in (read_json(order_file(ctx), {}) or {}).get('order', []) if isinstance(k, str)][:64]
+
+
+def ordered_pads(ctx):
+    """The controllers players can have, in the saved player order (new ones after, in plug-in order)."""
+    pads = [p for p in list_pads(ctx)['pads'] if not steam_virtual(p)]
+    saved = saved_order(ctx)
+    pads.sort(key=lambda p: saved.index(pad_key(p)) if pad_key(p) in saved else len(saved))
+    return pads
+
+
+def can_rumble(ctx, p):
+    ff = read(os.path.join(ctx.sys_root, 'class', 'input', p['id'], 'device', 'capabilities', 'ff'), None)
+    return None if ff is None else ff.strip().replace(' ', '').strip('0') != ''
+
+
+def players(ctx):
+    """Player 1..4 as they'd get controllers in a split-screen game (Steam Game Mode's Quick Access › Players)."""
+    pads = ordered_pads(ctx)
+    names = profiles(ctx)
+    out = []
+    for i, p in enumerate(pads):
+        out.append({'id': p['id'], 'name': p['name'], 'label': p['label'], 'kind': p['kind'], 'player': i + 1 if i < 4 else None,
+                    'playerName': names[i]['name'] if i < len(names) else '', 'rumble': can_rumble(ctx, p)})
+    s = load_session(ctx)
+    last = last_failure(ctx)
+    return {'pads': out, 'max': 4, 'running': bool(s and session_alive(ctx, s)), 'game': (s or {}).get('game'),
+            'lastError': last.get('error'), 'lastErrorAt': last.get('at')}
+
+
+def order_set(ctx, ids):
+    """Saves the player order: these controllers first, in this order; the others keep theirs after them."""
+    pads = ordered_pads(ctx)
+    by_id = {p['id']: p for p in pads}
+    first = [by_id[i] for i in ids if i in by_id]
+    rest = [p for p in pads if p not in first]
+    keys = []
+    for p in first + rest:
+        if pad_key(p) not in keys:
+            keys.append(pad_key(p))
+    keys += [k for k in saved_order(ctx) if k not in keys]      # controllers not connected now keep their place
+    os.makedirs(ctx.coop_dir, exist_ok=True)
+    write_json(order_file(ctx), {'order': keys[:64]})
+    return players(ctx)
+
+
+def identify(ctx, pad_id, ms=500):
+    """A short rumble on one controller, so the player can tell which one it is. Never fails: says why instead."""
+    import fcntl
+    if not PAD_ID.match(pad_id or '') or pad_id not in {p['id'] for p in list_pads(ctx)['pads']}:
+        raise Fail('That controller is no longer connected.')
+    ms = max(100, min(int(ms), 2000))
+    path = os.path.join(ctx.dev_root, 'input', pad_id)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as e:
+        return {'rumbled': False, 'why': "Hearth can't reach this controller (%s)." % e.strerror}
+    try:
+        eff = bytearray(FF_EFFECT)
+        struct.pack_into('HhHHHHH', eff, 0, FF_RUMBLE, -1, 0, 0, 0, ms, 0)
+        struct.pack_into('HH', eff, 16, 0xc000, 0x9000)
+        try:
+            fcntl.ioctl(fd, EVIOCSFF, eff, True)
+        except OSError:
+            return {'rumbled': False, 'why': "This controller can't rumble."}
+        eid = struct.unpack_from('h', eff, 2)[0]
+        try:
+            os.write(fd, EVENT.pack(0, 0, EV_FF, eid, 1))
+            ctx.sleep(ms / 1000.0)
+            os.write(fd, EVENT.pack(0, 0, EV_FF, eid, 0))       # some pads ignore the length and rumble on
+        finally:
+            try:
+                fcntl.ioctl(fd, EVIOCRMFF, eid)
+            except OSError:
+                pass
+        return {'rumbled': True}
+    except OSError as e:
+        return {'rumbled': False, 'why': "The controller didn't rumble (%s)." % e.strerror}
+    finally:
+        os.close(fd)
+
+
+def steam_focus(ctx, labwc_pid):
+    """Steam Game Mode: gamescope gives the screen to the shortcut's window. It finds it from the window's process
+    (labwc runs under Steam's launcher); STEAM_GAME on labwc's window is set as well where xdotool and xprop are
+    installed, for when that isn't enough. Best effort only."""
+    try:
+        appid = int(ctx.env.get('SteamAppId') or 0) or (int(ctx.env.get('SteamGameId') or 0) >> 32)
+    except ValueError:
+        appid = 0
+    r = ctx.runner
+    if not appid or not labwc_pid or not r.which('xdotool') or not r.which('xprop'):
+        return 0
+    rc, out, _ = r.run(['xdotool', 'search', '--pid', str(labwc_pid)], timeout=5)
+    wins = [w for w in out.split() if w.isdigit()]
+    if not wins:
+        rc, out, _ = r.run(['xdotool', 'search', '--name', '^(labwc|wlroots)'], timeout=5)
+        wins = [w for w in out.split() if w.isdigit()]
+    for w in wins[:4]:
+        r.run(['xprop', '-id', w, '-f', 'STEAM_GAME', '32c', '-set', 'STEAM_GAME', str(appid)], timeout=5)
+    return len(wins[:4])
+
+
+def play(ctx, a):
+    """Steam Game Mode's split-screen shortcut (the Hearth Decky plugin adds it): the same split screen as Hearth's
+    Couch Co-op (nested labwc in Steam's gamescope, a nested gamescope per player), each player getting the controller
+    of the saved player order, and stays until everyone has quit, so Steam shows the game running. Steam closing the
+    game (or any signal) stops every copy cleanly. A failure is kept for Quick Access › Players."""
+    t0 = int(ctx.now() * 1000)
+    try:
+        pads = ordered_pads(ctx)
+        if len(pads) < 2:
+            raise Fail('Split-screen needs at least two controllers (%d connected).' % len(pads))
+        n = a.get('players') or min(4, len(pads))
+        if n > len(pads):
+            raise Fail('%d players need %d controllers (%d connected).' % (n, n, len(pads)))
+        n = max(2, min(4, n))
+        r = start(ctx, {'game': a['game'], 'players': n, 'pads': ','.join(p['id'] for p in pads[:n]),
+                        'layout': a.get('layout') or 'auto'})
+    except Fail as e:
+        if (last_failure(ctx).get('at') or 0) < t0:      # start() didn't keep a fuller reason itself
+            write_json(ctx.last_file, {'error': str(e), 'at': int(ctx.now() * 1000), 'game': {'id': a.get('game')}})
+        ctx.note('steam shortcut (%s): %s' % (a.get('game'), e))
+        raise
+    steam_focus(ctx, r.get('labwcPid'))
+    stopping = {'now': False}
+
+    def on_signal(signum, frame):
+        stopping['now'] = True
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(sig, on_signal)
+        except (ValueError, OSError):
+            pass
+    while not stopping['now']:
+        s = load_session(ctx)
+        if not s or not session_alive(ctx, s):
+            break
+        ctx.runner.reap()
+        ctx.sleep(a.get('poll', 1.0))
+    s = load_session(ctx)
+    if s:
+        stop_session(ctx, s)
+    return {'played': True, 'game': r.get('game'), 'players': len(r.get('players', []))}
+
+
 # ---------------------------------------------------------------------- command line
 
 def parse_opts(argv, spec):
@@ -1738,6 +1916,20 @@ def main(argv=None, ctx=None):
                 raise Fail('Pick a game first.')
             o.setdefault('players', len([x for x in o.get('pads', '').split(',') if x]))
             ctx.emit(start(ctx, o))
+        elif cmd == 'players':
+            ctx.emit(players(ctx))
+        elif cmd == 'order-set':
+            o = parse_opts(rest, {'pads': str})
+            ids = [x for x in o.get('pads', '').split(',') if PAD_ID.match(x)]
+            ctx.emit(order_set(ctx, ids))
+        elif cmd == 'identify':
+            o = parse_opts(rest, {'pad': str, 'ms': int})
+            ctx.emit(identify(ctx, o.get('pad', ''), o.get('ms', 500)))
+        elif cmd == 'play':
+            o = parse_opts(rest, {'game': str, 'players': int, 'layout': str})
+            if not o.get('game'):
+                raise Fail('Pick a game first.')
+            ctx.emit(play(ctx, o))
         elif cmd == 'status':
             ctx.emit(status(ctx))
         elif cmd == 'stop':
@@ -1747,7 +1939,8 @@ def main(argv=None, ctx=None):
             o = parse_opts(rest, {'session': str})
             return container(ctx, o.get('session') or ctx.session_file)
         else:
-            raise Fail('usage: hearth-coop check|pads|wait-button|games|profiles|profile-set|gbe-fetch|start|status|stop')
+            raise Fail('usage: hearth-coop check|pads|wait-button|games|profiles|profile-set|gbe-fetch|start|status|stop|'
+                       'players|order-set|identify|play')
     except Fail as e:
         print('error: %s' % e, file=ctx.out, flush=True)
         return 1

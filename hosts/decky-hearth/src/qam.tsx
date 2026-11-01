@@ -1,5 +1,5 @@
 // Hearth in Steam's Quick Access (the … button) and over the game you're playing:
-//  - Hearth's own tabs beside Steam's (Hearth, Hearth Performance, Hearth Controller), added through Decky Loader's own
+//  - Hearth's own tabs beside Steam's (Hearth, Hearth Performance, Hearth Controller, Hearth Players: coop.tsx), added through Decky Loader's own
 //    Quick Access tab list (window.DeckyPluginLoader.tabsHook: the list Decky adds its plug tab with). Decky has no
 //    plugin API for top-level tabs, so this is guarded like every patch: if Decky's list isn't there or throws, the part
 //    turns itself off (Quick Access › Hearth › Turned off by itself) and the same sections stay in Decky's Hearth tab;
@@ -10,7 +10,7 @@ import { ButtonItem, DialogButton, DropdownItem, Focusable, PanelSection, PanelS
 import { callable } from "@decky/api";
 import * as API from "@decky/api";
 import { ReactNode, useEffect, useState } from "react";
-import { FaFire, FaGamepad, FaTachometerAlt } from "react-icons/fa";
+import { FaFire, FaGamepad, FaTachometerAlt, FaUsers } from "react-icons/fa";
 import { GameView, QAM_TABS, Settings, UpdateStatus, inputLine, layoutLabel, modsLine, partOn, protonLabel, qamPlan, tdpLine, updateView } from "./model";
 import { ask, setSettings } from "./api";
 import { Answer, gameView, inputSet, markShown, modsOf, setProton, tool, useFront } from "./core";
@@ -18,6 +18,7 @@ import { guard, setSettingsLocal, settings, useLive } from "./state";
 import { Boundary, C, go } from "./ui";
 import { openApp, say } from "./actions";
 import { GameInfoLine } from "./pages";
+import { PlayersBody } from "./coop";
 
 const ACCENT = C.accent, INK = C.ink;
 const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
@@ -287,7 +288,7 @@ function Shown(props: { k: string; children?: ReactNode }) {
 }
 
 /** One of Hearth's Quick Access tabs, in Steam's scrolling panel. */
-export function QamPanel(props: { which: "hearth" | "perf" | "controller" }) {
+export function QamPanel(props: { which: "hearth" | "perf" | "controller" | "players" }) {
   const scroll = (DUI as any).scrollClasses || (DUI as any).scrollPanelClasses || {};
   const cls = [(staticClasses as any).TabGroupPanel, scroll.ScrollPanel, scroll.ScrollY].filter(Boolean).join(" ");
   return (
@@ -297,13 +298,14 @@ export function QamPanel(props: { which: "hearth" | "perf" | "controller" }) {
           {props.which === "hearth" && <HearthBody />}
           {props.which === "perf" && <PanelSection title="Hearth Performance"><PerformanceBody /></PanelSection>}
           {props.which === "controller" && <PanelSection title="Hearth Controller"><ControllerBody /></PanelSection>}
+          {props.which === "players" && <PanelSection title="Players"><PlayersBody /></PanelSection>}
         </Boundary>
       </div>
     </Shown>
   );
 }
 
-const ICONS = { hearth: <FaFire />, perf: <FaTachometerAlt />, controller: <FaGamepad /> };
+const ICONS = { hearth: <FaFire />, perf: <FaTachometerAlt />, controller: <FaGamepad />, players: <FaUsers /> };
 let added: number[] = [];
 
 function tabsHook(): any {

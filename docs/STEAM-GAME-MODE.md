@@ -128,6 +128,7 @@ turns itself off and the same sections stay in Decky's Hearth tab.
 | --- | --- |
 | **Hearth** | **This game** (below), **Hearth tools** (Keyboard: Steam's on-screen keyboard, also Steam + X; Screenshot: Hearth's, to Pictures › Screenshots › Hearth; Record: Hearth Recorder), **Switch to Hearth Game Mode**, **Hearth OS updates** |
 | **Hearth Performance** | Hearth's **power mode** (Saver, Balanced, Performance, through hearth-power) and Hearth's **power limit**, read only. The frame limit, refresh rate and TDP stay Steam's own Performance tab's in Steam Game Mode, so the two never fight. |
+| **Hearth Players** | Couch co-op: the controllers connected, as **P1** to **P4** in Hearth's player order, **Move up** / **Move down** and **Rumble** (to tell which controller is which), and **Split-screen games** (below). |
 | **Hearth Controller** | What Hearth Input is doing now, **Hearth Input in Steam Game Mode** (on/off), the running game's **Hearth Input layout** and **Edit layouts in Hearth** (Hearth's editor in a window). Steam's own layouts stay in Steam's Controller tab: for a game with a Hearth layout, set Steam's to Gamepad or none, or the game gets both. |
 
 ### The game you're playing
@@ -168,6 +169,38 @@ Steam's own games are never installed, moved or uninstalled by Hearth here: Hear
 Steam runs this Game Mode. Their buttons open Steam's page or Steam's Settings › Storage instead (the core refuses
 them too). A download Hearth started here stops if you leave Steam Game Mode before it's done; Hearth carries on with
 its queue the next time it runs.
+
+### Couch co-op in Steam Game Mode (Experimental, needs testing on a device)
+
+Hearth's Couch Co-op (docs/COUCH-COOP.md) inside Steam's Game Mode, with the same engine (`hearth-coop`):
+
+- **Quick Access › Hearth Players** (also a **Players** section in Decky's Hearth tab): the controllers connected, in
+  **Hearth's player order**. Players 1 to 4 get the first four; more wait. **Move up** / **Move down** change it,
+  **Rumble** gives one a short rumble. The order is kept by the controller (its serial or Bluetooth address, else its
+  make and name), not by the port it's in, in `~/.local/share/nimbus/coop/player-order.json`. Steam Input's own virtual
+  pads aren't listed (they are copies of real controllers).
+- **Split-screen games** (`/hearth/coop`): how many play (everyone connected, or 2, 3, 4), how the screen is shared
+  (Auto, Side by side, Top and bottom, 2 × 2), then the games Couch Co-op can play (and why others can't, such as
+  anti-cheat). **Play split-screen** or **Add to Steam library** makes **one Steam shortcut** for the game
+  ("<game> (Split-screen)"), which runs `hearth-coop play --game <id>`: Hearth's split screen, a nested labwc that
+  fills Steam's gamescope window, a nested gamescope per player in it, each player's copy seeing only their own
+  controller, given by the player order at that moment. It stays until everyone has quit, so Steam shows it running;
+  Steam's **Exit game** stops every copy cleanly. **Sync to Steam library** leaves these shortcuts alone; **Remove
+  Hearth's shortcuts** removes them too.
+- When it can't start (fewer than two controllers, a game that can't, something missing), the shortcut ends at once
+  and the reason is under Quick Access › Hearth Players (**Last split-screen start**) and in
+  `~/.local/share/nimbus/multiplay.log`.
+
+The list, order and rumble go through Hearth's core service (`coop`, only `players`, `order`, `identify`, `games`,
+`check`, with event nodes as controllers), or `hearth-coop` itself when the core isn't running. Nothing here can start
+a split screen except the game's own Steam shortcut.
+
+Not checked on a device yet (CI can't run Steam): that Steam's gamescope gives the split screen its window (gamescope
+finds it from labwc's process under Steam's launcher; STEAM_GAME is also set on labwc's window when `xdotool` and
+`xprop` are installed); Steam Input on the shortcut (set it off in the game's controller settings, or Steam may also
+move a mouse in the split screen); Flathub's Steam (the shortcut hands the display and Steam's app id to
+`flatpak-spawn --host`, but labwc then isn't under Steam's launcher, so focus relies on STEAM_GAME); rumble while Steam
+holds the controllers; two identical controllers without serial numbers keep their plug-in order only.
 
 ### Still Hearth-only
 
@@ -330,7 +363,8 @@ pictures inside the card, which the look doesn't touch.
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's
 performance and controller pages, the power limit, Hearth Recorder, Quick Resume, Pause; the power mode is in Quick
 Access › Hearth), favourites, collections and
-game settings, Hearth Friends, Couch Co-op and multi-seat, Hearth Link's device health, editing Hearth Input
+game settings, Hearth Friends, Couch Co-op's own setup (player names, choosing controllers by pressing A; Steam Game
+Mode has the player order and split-screen shortcuts, above) and multi-seat, Hearth Link's device health, editing Hearth Input
 layouts (choosing one is in Quick Access › Hearth Controller), parental controls and per-game power settings, Hearth's
 on-screen keyboard, Discord status, and
 Hearth's Settings (switch back for those). Xbox Cloud Gaming games aren't added to Steam (they need Hearth's stream
@@ -372,6 +406,7 @@ window).
 | The takeover | `src/patches.tsx` (Steam's screens, each guarded), `src/pages.tsx` (Hearth's pages), `src/model.ts` (switches, guard, pure helpers, unit-tested), `src/api.ts`, `src/ui.tsx` |
 | Hearth's answers for the pages | `hearth --steam-mode-data home\|library\|store <s>\|downloads\|storage\|info <id>\|power\|power-mode <m>` (`hosts/hearth-core/src/steam_takeover.rs`) |
 | Hearth's core in Steam Game Mode | `nimbus --core-service --while <running mark>` (`hosts/hearth-core/src/core_service.rs`: socket, `COMMANDS`, `front` for Hearth Input), started by `nimbus-session` (`steam_core_start` / `steam_core_stop`, `steam_input_start`), the plugin's `core_call` (`main.py`) |
+| Couch co-op in Steam Game Mode | `src/coop.tsx` (Players tab, `/hearth/coop`), `main.py` (`coop_call`, `coop_shortcut`, `COOP_WRAPPER`), `core_service.rs` (`coop`, `COOP_OPS`), `hearth-coop` (`players`, `order-set`, `identify`, `play`) |
 | Steam's main menu, Quick Access tabs, in-game section | `src/patches.tsx` (`HearthMenuItems`), `src/qam.tsx` (`syncQamTabs` through Decky's tab list, the tabs, `ThisGame`), `src/ingame.tsx` (`/hearth/now`, `/hearth/home`), `src/core.ts` (the running game, the 2-second `front`), `src/model.ts` (`menuPlaces`, `runningGame`, `frontMessage`, `qamPlan`) |
 | The look | `hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
 | CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures, and pictures of Steam's main menu, Hearth's Quick Access tabs and the in-game section over static stand-ins, as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |
