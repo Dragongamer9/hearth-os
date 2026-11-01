@@ -18,6 +18,7 @@ PAGES = [
     ('install', 'Installing', 'Get Hearth OS onto a PC or handheld'),
     ('updates', 'Updates and editions', 'Updates, going back, switching edition'),
     ('using', 'Using Hearth', 'Game Mode, the desktop, buttons'),
+    ('steam', 'Steam Game Mode', 'Hearth inside Steam\'s Game Mode'),
     ('troubleshooting', 'Troubleshooting', 'When something goes wrong'),
     ('requests', 'Requests', 'Ideas, changes and new editions'),
     ('releases', 'Release notes', 'What changed in each version, and what\'s next'),
@@ -104,6 +105,7 @@ def page(slug, title, lead, body):
     <a class="brand" href="../"><img src="../img/logo.svg" alt="">Hearth OS <span>Docs</span></a>
     <div class="links">
       <a href="../">Home</a>
+      <a href="steam.html">Steam Game Mode</a>
       <a class="keep" href="troubleshooting.html">Help</a>
       <a href="requests.html">Requests</a>
       <a href="releases.html">Release notes</a>
@@ -152,6 +154,7 @@ INDEX = f'''
   <a href="install.html"><b>Installing</b><span>Downloads, making the USB stick, installing next to Windows or on its own.</span></a>
   <a href="updates.html"><b>Updates and editions</b><span>How updates work, going back to the last version, switching edition.</span></a>
   <a href="using.html"><b>Using Hearth</b><span>Game Mode, the desktop (Mantel), the keyboard, the power button, sending logs.</span></a>
+  <a href="steam.html"><b>Steam Game Mode</b><span>Hearth built into Steam's own Game Mode, and Hearth's Game Mode as the fallback.</span></a>
   <a href="troubleshooting.html"><b>Troubleshooting</b><span>Fixes for known problems, how to get unstuck, and how to tell us.</span></a>
   <a href="requests.html"><b>Requests</b><span>Ask for a feature, a change, device support or a new edition.</span></a>
 </div>
@@ -301,6 +304,7 @@ a file manager and a terminal.</p>
 <li>Back to Game Mode: the <b>Game Mode</b> button at the bottom right of the desktop.</li>
 <li><b>Settings › You › Sign-in › Start in</b> picks which one you see after signing in.</li>
 </ul>
+<p>Steam's own Game Mode, with Hearth built in, is the other way to play: see <a href="steam.html">Steam Game Mode</a>.</p>
 
 {h2('controller', 'Controller')}
 <div class="tbl"><table>
@@ -399,6 +403,120 @@ Removing keeps your chats (they're in your Claude account) and settings.</p>
 <p>When something goes wrong, <b>Settings › System › Help &amp; logs › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
 before they're sent, and only someone with the code can read them.</p>
+'''
+
+# ------------------------------------------------------------------ Steam Game Mode (from docs/STEAM-GAME-MODE.md)
+STEAM = f'''
+<div class="note"><p><b>Coming in the next update.</b> Hearth OS 0.6.61 already has Steam Game Mode, Hearth's look over it, Hearth's
+home screen and pages, your Hearth games in Steam's library and Start in Steam Game Mode. Everything marked
+<span class="ver">Next update</span> on this page isn't released yet. All of it is Experimental and still needs testing on
+real devices.</p></div>
+
+{h2('what', 'What changes')}
+<p>Steam's own Game Mode is now Hearth's first priority. That's Valve's gamepad screens, full screen, the way SteamOS and
+a Steam Deck run them. Hearth is built right into it through Decky Loader and the <b>Hearth Decky plugin</b>.</p>
+<p>You keep everything that's Steam's: the library, game pages, store, downloads, friends and chat, the overlay, Quick
+Access and the on-screen keyboard. Hearth adds its own stores, pages and tools on top. It doesn't replace Steam's.</p>
+<p>Hearth's own Game Mode stays too. <a href="#hearth-game-mode">More about that below.</a></p>
+
+{h2('menu', 'Hearth in Steam\'s main menu')}
+<p><span class="ver">Next update</span> Press the Steam (or Xbox) button. Below Steam's own entries, in Hearth's look:</p>
+<ul>
+<li><b>Now playing</b>, while a game runs: opens Hearth's section for that game.</li>
+<li><b>Hearth</b>: Hearth Home, Hearth Store, Hearth Library, Theater, Hearth Mods, Storage, Downloads, Hearth Friends,
+Hearth Link and Couch Co-op.</li>
+<li><b>Hearth power</b>, next to Steam's Power: <b>Switch to Hearth Game Mode</b> and <b>Desktop Mode</b>.</li>
+</ul>
+
+{h2('quick-access', 'Hearth tabs in Quick Access')}
+<p><span class="ver">Next update</span> Press the <b>…</b> button. Hearth's tabs sit next to Steam's:</p>
+<div class="tbl"><table>
+<tr><th>Tab</th><th>What's in it</th></tr>
+<tr><td><b>Hearth</b></td><td>This game, Quick Resume, game streaming, Hearth tools (keyboard, screenshot, record), Switch to Hearth Game Mode, Hearth OS updates</td></tr>
+<tr><td><b>Hearth Performance</b></td><td>Hearth's power mode (Saver, Balanced, Performance). Frame limit, refresh rate and TDP stay in Steam's own Performance tab, so the two never fight.</td></tr>
+<tr><td><b>Hearth Controller</b></td><td>What Hearth Input is doing, the running game's Hearth Input layout, and Edit layouts in Hearth</td></tr>
+<tr><td><b>Hearth Players</b></td><td>Couch co-op: your controllers as P1 to P4, move them up or down, rumble one to tell which is which, and split-screen games. Seats for multi-seat.</td></tr>
+</table></div>
+
+{h2('this-game', 'The game you\'re playing')}
+<p><span class="ver">Next update</span> While a game runs, Hearth shows a section for it in Steam's main menu, in Quick Access
+and on its own page:</p>
+<ul>
+<li>its <b>Hearth Input layout</b>;</li>
+<li>its <b>Proton</b> version, for games Hearth starts with Proton (Steam's games keep Steam's own setting);</li>
+<li>its <b>mods in Hearth Mods</b>, with a button to open Hearth Mods;</li>
+<li>its ProtonDB rating and achievements.</li>
+</ul>
+
+{h2('pages', 'Store, Mods, Storage and Recomps')}
+<p>Hearth's home screen, Store, Library, Downloads and Storage pages are already in Steam's Game Mode in 0.6.61.
+<span class="ver">Next update</span> These pages now change things too, not only show them:</p>
+<ul>
+<li><b>Store</b>: open a game's details. <b>Buy</b> opens the store's own page in Steam's browser (Hearth never sees payment
+details or passwords). Install Epic and GOG games with progress, cancel, and Play.</li>
+<li><b>Mods</b>: turn a game's mods on and off, uninstall them, or install ones you downloaded.</li>
+<li><b>Storage</b>: your drives, games by size, <b>Move</b> to another drive, uninstall, clean up, and pick a drive for new games.</li>
+<li><b>Recomps</b>: install a port with progress, play it, uninstall it (saves are backed up).</li>
+</ul>
+<p>Steam's own games are installed, moved and uninstalled by Steam, not by Hearth. Their buttons open Steam's page or Steam's
+storage settings.</p>
+
+{h2('rest', 'Quick Resume, streaming, Friends and Hearth Link')}
+<p><span class="ver">Next update</span></p>
+<ul>
+<li><b>Quick Resume</b>: <b>Put aside</b> pauses the game Steam is running, right where it is, and takes you to Steam's library.
+It carries on when you go back to it. Steam runs one game at a time, so it's one game here.</li>
+<li><b>Game streaming</b>: turn Sunshine on or off, see the Moonlight devices paired, and <b>Pair a device</b> with a number pad
+for Moonlight's 4-digit PIN.</li>
+<li><b>Hearth Friends</b>: who's online and what they're playing. Chats and requests open in Hearth's Friends.</li>
+<li><b>Hearth Link</b>: your paired devices, <b>Sync now</b>, and Hearth Storage devices with <b>Wake it</b>.</li>
+</ul>
+
+{h2('coop', 'Couch co-op and multi-seat')}
+<p><span class="ver">Next update</span> <b>Couch co-op</b>: pick a split-screen game in Quick Access › Hearth Players, choose how
+many play and how the screen is shared, then <b>Play split-screen</b> or <b>Add to Steam library</b>. Either way it becomes
+one Steam shortcut, so Steam shows it running and <b>Exit game</b> closes everyone's copy.</p>
+<p><b>Multi-seat</b>: with multi-seat set up, player 1 can play in Steam's Game Mode while the other players keep their own
+Hearth Game Mode, each on their own account, screen and controllers. Quick Access › Hearth Players › Seats starts and stops
+players and hands out controllers. Setting multi-seat up stays in Hearth's Game Mode.</p>
+
+{h2('your-games', 'Your Hearth games in Steam')}
+<p>Quick Access › Hearth › <b>Sync to Steam library</b> adds your Epic, GOG, Battle.net, Xbox PC, Beacon, emulator and added games
+to Steam's library, with Hearth's cover art. They play through Hearth, so Steam shows them running, gives them the overlay
+and counts the play time. <b>Remove Hearth's shortcuts</b> takes them out again.</p>
+
+{h2('try', 'How to try it')}
+<ol>
+<li>Open <b>Settings › System › Steam Game Mode (Experimental)</b>.</li>
+<li>Optional, once: <b>Decky Loader and the Hearth plugin › Install</b>. It asks for your password. Without it you still get
+Steam's Game Mode, just without Hearth inside it.</li>
+<li><b>Switch to Steam Game Mode</b> (also in the power menu). If Steam isn't signed in yet, sign in on Steam's own screen.</li>
+<li>Want it every time? Turn on <b>Start in Steam Game Mode</b> in the same place. It's off by default and set per device.</li>
+</ol>
+<div class="note warn"><p><b>About Decky:</b> Decky Loader runs as root while Steam Game Mode runs, and it turns on Steam's local
+remote debugging. Only install Decky plugins you trust. <b>Remove</b> in Settings takes it all away again.</p></div>
+
+{h2('hearth-game-mode', 'Hearth\'s Game Mode is still here')}
+<p>Hearth's own Game Mode isn't going away. We'll keep looking after it.</p>
+<ul>
+<li><b>It's the fallback.</b> If Steam's Game Mode can't start (no Steam, safe graphics, or Steam fails in its first 20 seconds),
+Hearth's Game Mode starts instead. If Start in Steam Game Mode keeps failing, it turns itself off.</li>
+<li><b>It's an option for everyone.</b> Prefer it? Keep using it. It's still the default; Steam's Game Mode is something you
+turn on.</li>
+<li><b>It runs the extra seats.</b> In multi-seat, players 2 to 4 always get Hearth's Game Mode.</li>
+<li><b>Some things are only there</b>, for now: Hearth's Settings, editing Hearth Input layouts, favourites and collections,
+parental controls, per-game power settings, chats in Hearth Friends, and setting up couch co-op and multi-seat.</li>
+</ul>
+
+{h2('back', 'Getting back to Hearth\'s Game Mode')}
+<p>All of these work with just a controller:</p>
+<ul>
+<li>Quick Access › Hearth › <b>Switch to Hearth Game Mode</b>.</li>
+<li>Steam's <b>Power › Switch to Desktop</b>, then <b>Return to Game Mode</b>.</li>
+<li>Hold <b>B</b> or <b>Guide</b> while the device starts: Steam's Game Mode is skipped that time.</li>
+<li><b>Hearth Recovery</b> (hold Volume Down while it starts).</li>
+</ul>
+<p>Switching never touches the boot menu or the login screen.</p>
 '''
 
 # ------------------------------------------------------------------ Troubleshooting
@@ -765,12 +883,13 @@ if HELP_JSON:
     sys.exit(0)
 
 os.makedirs(OUT, exist_ok=True)
-for slug, body in [('index', INDEX), ('install', INSTALL), ('updates', UPDATES), ('using', USING), ('troubleshooting', TROUBLE), ('requests', REQUESTS), ('releases', releases_body())]:
+for slug, body in [('index', INDEX), ('install', INSTALL), ('updates', UPDATES), ('using', USING), ('steam', STEAM), ('troubleshooting', TROUBLE), ('requests', REQUESTS), ('releases', releases_body())]:
     t = next(p for p in PAGES if p[0] == slug)
     lead = {'index': 'Everything about installing, updating and using Hearth OS, and what to do when something goes wrong.',
             'install': 'Download Hearth OS, write it to a USB stick, and install it on its own drive or next to Windows.',
             'updates': 'Hearth OS updates itself in one piece. Here is how that works, how to go back, and how to switch edition.',
             'using': 'Game Mode, the desktop, the controller and keyboard, the power button, and sending logs.',
+            'steam': 'Steam\'s own Game Mode is now Hearth\'s first priority, with Hearth built into it. Hearth\'s Game Mode stays as the fallback and as an option.',
             'troubleshooting': 'Fixes for known problems, how to get unstuck, and how to tell us when nothing here helps.',
             'requests': 'Ideas for Hearth OS, changes you\'d like, and editions on other Linux: ask here.',
             'releases': 'What changed in each version of Hearth OS, newest first, and what\'s planned next.'}[slug]

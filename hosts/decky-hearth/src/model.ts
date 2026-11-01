@@ -13,19 +13,26 @@ export interface Settings {
   tkLibraryTabs: boolean;// Hearth's stores as tabs in Steam's Library
   tkGamePage: boolean;   // Hearth's facts and Play through Hearth on a game's page
   tkSounds: boolean;     // Hearth's sounds on Hearth's pages
+  tkQam: boolean;        // Hearth's tabs in Steam's Quick Access (beside Steam's and Decky's)
+  tkInGame: boolean;     // Hearth for the game you're playing (Steam's main menu and Quick Access)
+  tkInput: boolean;      // Hearth Input layouts for the game in front (through Hearth's core service)
 }
 
 export const DEFAULTS: Settings = {
   theme: true, homeRow: true, takeover: true, tkHome: true, tkMenu: true, tkLibraryTabs: true, tkGamePage: true, tkSounds: false,
+  tkQam: true, tkInGame: true, tkInput: true,
 };
 
 /** The takeover's parts: what each switch is called in Quick Access. */
-export type Part = "tkHome" | "tkMenu" | "tkLibraryTabs" | "tkGamePage" | "tkSounds";
+export type Part = "tkHome" | "tkMenu" | "tkLibraryTabs" | "tkGamePage" | "tkSounds" | "tkQam" | "tkInGame" | "tkInput";
 export const PARTS: [Part, string, string][] = [
   ["tkHome", "Hearth home screen", "Hearth's home in place of Steam's Home"],
-  ["tkMenu", "Hearth in Steam's menu", "Hearth Store, Library, Downloads… in Steam's main menu"],
+  ["tkMenu", "Hearth in Steam's menu", "Hearth's places and power options in Steam's main menu"],
   ["tkLibraryTabs", "Hearth tabs in the Library", "Epic, GOG, Battle.net, Xbox… as tabs in Steam's Library"],
   ["tkGamePage", "Hearth on game pages", "ProtonDB and achievements from Hearth, Play through Hearth"],
+  ["tkQam", "Hearth tabs in Quick Access", "Hearth, Hearth Performance and Hearth Controller beside Steam's tabs"],
+  ["tkInGame", "Hearth for the game you're playing", "Its Hearth Input layout, mods and Proton in Steam's menu and Quick Access"],
+  ["tkInput", "Hearth Input layouts", "A game's Hearth controller layout works while it's in front"],
   ["tkSounds", "Hearth sounds", "Hearth's sounds on Hearth's pages (Steam's own stay)"],
 ];
 
@@ -108,8 +115,12 @@ export const DESTS: Dest[] = [
   { id: "library", title: "Hearth Library", route: "/hearth/library" },
   { id: "downloads", title: "Downloads", route: "/hearth/downloads" },
   { id: "theater", title: "Theater", app: "hearth-app:theater" },
-  { id: "mods", title: "Hearth Mods", app: "hearth-app:mods" },
+  { id: "mods", title: "Hearth Mods", route: "/hearth/mods" },
   { id: "storage", title: "Storage", route: "/hearth/storage" },
+  { id: "recomps", title: "Recomps", route: "/hearth/recomps" },
+  { id: "friends", title: "Hearth Friends", route: "/hearth/friends" },
+  { id: "link", title: "Hearth Link", route: "/hearth/link" },
+  { id: "coop", title: "Couch Co-op", route: "/hearth/coop" },
 ];
 
 /** Hearth's Store's tabs, in its order (ui/index.html SHOP_STORES), plus free games. */
@@ -251,4 +262,217 @@ export function updateView(u: UpdateStatus | null | undefined): { line: string; 
     case "error": return { line: u?.message || "The update failed", button: "Try again", action: "check", poll: false, pct: null };
     default: return { line: "", button: "Check for Hearth updates", action: "check", poll: false, pct: null };
   }
+}
+
+// ---- Hearth in Steam's main menu (the Xbox / Steam button)
+
+/** Hearth's places in Steam's main menu, in Hearth's order. Hearth's home is Steam's Home when the takeover has it,
+ *  else a page of its own. */
+export function menuPlaces(s: Settings, broken?: Set<string>): Dest[] {
+  const home: Dest = { id: "home", title: "Hearth Home", route: partOn(s, "tkHome", broken) ? "/library/home" : "/hearth/home" };
+  const by = (id: string) => DESTS.find((d) => d.id === id)!;
+  return [home, by("store"), by("library"), by("theater"), by("mods"), by("storage"), by("downloads"), by("friends"), by("link"), by("coop")];
+}
+
+/** Hearth's power options beside Steam's: back to Hearth's Game Mode, or Hearth's Desktop Mode. */
+export const MENU_POWER: [string, string, string][] = [
+  ["hearth-game", "Switch to Hearth Game Mode", "Steam closes and Hearth's own Game Mode comes back"],
+  ["hearth-desktop", "Desktop Mode", "Hearth's Desktop Mode (Steam closes)"],
+];
+
+// ---- The game Steam is running (Steam's own game, or one of Hearth's played through a shortcut)
+
+export interface Running { appid: number; id: string | null; title: string; hearth: boolean }
+
+/** The running app Steam reports (Router.MainRunningApp: {appid, display_name}) as Hearth sees it, or null. */
+export function runningGame(app: { appid?: number | string; display_name?: string } | null | undefined, map: Record<string, number>): Running | null {
+  if (!app) return null;
+  const appid = Number(app.appid);
+  if (!Number.isFinite(appid) || appid <= 0) return null;
+  const id = hearthIdForApp(map, appid);
+  return { appid, id, title: String(app.display_name || ""), hearth: !!id && !id.startsWith("steam:") };
+}
+
+/** What Hearth's core is told every 2 s (core_service.rs `front`): no game when Hearth Input is switched off, so the
+ *  mapper never holds the controller then. */
+export function frontMessage(run: Running | null, s: Settings, broken: Set<string> | undefined, overlay: boolean): { appid: number; game: string; overlay: boolean } {
+  if (!run || !run.id || !partOn(s, "tkInput", broken)) return { appid: run?.appid || 0, game: "", overlay };
+  return { appid: run.appid, game: run.id, overlay };
+}
+
+// ---- Hearth's tabs in Steam's Quick Access (added through Decky's own tab list, the way Decky adds its tab)
+
+/** Ids far from Steam's own tabs (small numbers) and Decky's (999). */
+export const QAM_TABS: { id: number; key: "hearth" | "perf" | "controller" | "players"; title: string }[] = [
+  { id: 4801, key: "hearth", title: "Hearth" },
+  { id: 4802, key: "perf", title: "Hearth Performance" },
+  { id: 4803, key: "controller", title: "Hearth Controller" },
+  { id: 4804, key: "players", title: "Hearth Players" },
+];
+
+/** Which of Hearth's Quick Access tabs to add or take away so the list matches the switches. */
+export function qamPlan(s: Settings, broken: Set<string> | undefined, have: number[]): { add: number[]; remove: number[] } {
+  const want = partOn(s, "tkQam", broken) ? QAM_TABS.map((t) => t.id) : [];
+  return { add: want.filter((i) => !have.includes(i)), remove: have.filter((i) => !want.includes(i)) };
+}
+
+// ---- The in-game section (core_service.rs `game`)
+
+export interface Choice { id: string; label: string }
+export interface GameView {
+  id: string; title: string; source: string; store: string; kind: string;
+  input: { layout: string; name?: string | null; choices: Choice[] };
+  proton: string; protonChoices: { id: string; label: string; sub?: string }[]; mods: boolean;
+}
+
+/** The layout line: "Shooter / action", "Your own layout", or "Off". */
+export function layoutLabel(v: GameView | null | undefined): string {
+  if (!v) return "";
+  const l = v.input?.layout || "off";
+  if (l === "off") return "Off";
+  return v.input.choices?.find((c) => c.id === l)?.label || v.input.name || l;
+}
+
+/** What the Controller tab says about Hearth Input right now (core_service.rs `front`'s answer). */
+export function inputLine(f: { game?: string | null; front?: boolean; overlay?: boolean; layout?: string | null; active?: boolean } | null | undefined, on: boolean): string {
+  if (!on) return "Hearth Input is off in Steam Game Mode";
+  if (!f || !f.game) return "No game of yours is running";
+  if (!f.layout) return "No Hearth layout: the game gets the controller";
+  if (f.active) return `${f.layout}: on`;
+  return f.overlay ? `${f.layout}: on in the game (paused while Quick Access is open)` : `${f.layout}: paused while Steam is in front`;
+}
+
+/** The Proton line for a game Hearth starts (its choice, or the default). */
+export function protonLabel(v: GameView | null | undefined): string {
+  if (!v || v.kind !== "proton") return "";
+  return v.protonChoices?.find((c) => c.id === (v.proton || ""))?.label || v.proton || "Default";
+}
+
+/** The mods line: "12 mods, 9 on", "No mods yet". */
+export function modsLine(m: { count?: number; enabled?: number; beacon?: boolean } | null | undefined): string {
+  if (!m) return "";
+  if (m.beacon) return "Beacon manages this game's mods";
+  if (!m.count) return "No mods yet";
+  return `${m.count} mod${m.count === 1 ? "" : "s"}, ${m.enabled || 0} on`;
+}
+
+// ---- Quick Access › Hearth Performance: Hearth's power settings, without fighting Steam's own Performance tab
+
+/** The power limit as a read-only line ("Power limit: 15 W (Hearth's)"); Steam's own Performance tab sets the frame
+ *  limit and TDP in Steam Game Mode, so Hearth shows its limit and leaves it there. */
+export function tdpLine(p: { tdp?: { supported?: boolean; watts?: number; min?: number; max?: number } } | null | undefined): string {
+  const t = p?.tdp;
+  if (!t || !t.supported || typeof t.watts !== "number") return "";
+  return `Power limit: ${Math.round(t.watts)} W (Hearth's, ${t.min ?? "?"}–${t.max ?? "?"} W)`;
+}
+
+// ---- Couch Co-op in Steam Game Mode (hearth-coop `players`, core_service.rs `coop`)
+
+export interface CoopPad { id: string; name: string; label: string; kind: string; player: number | null; playerName: string; rumble: boolean | null }
+export interface CoopPlayers { pads: CoopPad[]; max: number; running: boolean; game?: { id?: string; title?: string } | null; lastError?: string | null; lastErrorAt?: number | null }
+export const COOP_LAYOUTS: [string, string][] = [["auto", "Auto"], ["vertical", "Side by side"], ["horizontal", "Top and bottom"], ["grid", "2 × 2"]];
+
+/** The order with the controller at `i` moved one place up (-1) or down (+1); unchanged at either end. */
+export function movePad(ids: string[], i: number, dir: -1 | 1): string[] {
+  const out = ids.slice(), j = i + dir;
+  if (i < 0 || i >= out.length || j < 0 || j >= out.length) return out;
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+/** The Players tab's first line: how many play split-screen with the controllers connected now. */
+export function coopLine(p: CoopPlayers | null): string {
+  if (!p) return "Looking for controllers…";
+  const n = p.pads?.length || 0;
+  if (!n) return "No controllers connected.";
+  if (n === 1) return "One controller connected: connect another to play split-screen.";
+  const playing = Math.min(n, p.max || 4);
+  return `${playing} players. In split-screen games each player gets the controller beside their number.` + (n > playing ? ` ${n - playing} more wait${n - playing === 1 ? "s" : ""}.` : "");
+}
+
+/** A failed split-screen start worth showing: the last hour's, while nothing runs. */
+export function coopProblem(p: CoopPlayers | null, now: number): string {
+  if (!p || p.running || !p.lastError) return "";
+  return !p.lastErrorAt || now - p.lastErrorAt < 3600e3 ? p.lastError : "";
+}
+
+// ---- Multi-seat beside Steam Game Mode (hearth-seats `status` / `pads`, core_service.rs `seats`)
+
+export interface Seat { seat: number; user: string; mode: string; state: string; pads?: string[]; region?: number | null }
+export interface SeatsStatus { configured: boolean; enabled: boolean; mode?: string | null; seats: Seat[]; host?: { running: boolean; paused: boolean } | null }
+export interface SeatPad { id: string | null; name: string; bus: string; seat: number; assignable: boolean }
+export const SEAT_MODES: Record<string, string> = { gpu: "Own graphics card", nested: "Another screen", split: "Part of this screen", stream: "Streamed (Moonlight)", local: "This screen" };
+const SEAT_STATES: Record<string, string> = { running: "Playing (Hearth Game Mode)", starting: "Starting…", waiting: "Waits for its screen", stopped: "Stopped", failed: "Didn't start" };
+
+/** A seat's state in words: player 1 plays here in Steam Game Mode; the others have their own Hearth Game Mode. */
+export function seatState(s: Seat): string {
+  if (s.seat === 1) return "Playing here (Steam Game Mode)";
+  return SEAT_STATES[s.state] || s.state || "Unknown";
+}
+
+/** The account a seat plays as: player 1 is you, the others have their own Linux account (and their own Steam). */
+export function seatAccount(s: Seat): string {
+  return s.seat === 1 ? `${s.user} (you)` : `${s.user} · own account and Steam sign-in`;
+}
+
+/** Can this extra player be started now (Start), or stopped (Stop)? Player 1 never is. */
+export function seatAction(s: Seat): "start" | "stop" | null {
+  if (s.seat < 2 || s.seat > 4) return null;
+  return s.state === "stopped" || s.state === "failed" ? "start" : "stop";
+}
+
+/** The players a controller can be given to: everyone but streamed players (their controllers come from their device). */
+export function seatTargets(st: SeatsStatus | null): number[] {
+  if (!st || !st.configured) return [];
+  return st.seats.filter((s) => s.mode !== "stream").map((s) => s.seat).sort((a, b) => a - b);
+}
+
+/** The Seats section's first line. */
+export function seatsLine(st: (SeatsStatus & { error?: string }) | null): string {
+  if (!st) return "Looking at the seats…";
+  if (st.error) return st.error;
+  if (!st.configured) return "Multi-seat isn't set up. Set it up in Hearth's Game Mode: Settings › Games › Multi-seat.";
+  const on = st.seats.filter((s) => s.seat > 1 && (s.state === "running" || s.state === "starting")).length;
+  const extra = st.seats.length - 1;
+  const paused = st.host?.paused ? " The shared screens are paused after failing to start: start a player again to retry." : "";
+  return (on ? `${on} of ${extra} other player${extra === 1 ? "" : "s"} playing in their own Hearth Game Mode.` : `${extra} other player${extra === 1 ? "" : "s"} set up, none playing now.`) + paused;
+}
+
+/** What to say after starting or stopping one player (hearth-seats' restart_game_mode: their screen needs player 1's
+ *  Game Mode to host it, which Steam Game Mode does when it starts). */
+export function seatDone(op: "start" | "stop", seat: number, r: { restart_game_mode?: boolean } | null): string {
+  if (op === "start") return r?.restart_game_mode ? `Player ${seat}'s screen opens the next time Steam Game Mode starts` : `Player ${seat} is starting`;
+  return r?.restart_game_mode ? `Player ${seat} stopped. Your picture fills the screen again the next time Steam Game Mode starts` : `Player ${seat} stopped`;
+}
+
+// ---- The rest of Hearth's Game Mode (rest.tsx): Quick Resume, Sunshine, Hearth Friends
+
+/** A game put aside: "Portal 2 · put aside 3 min ago". */
+export function asideLine(a: { title?: string; at?: number }, now: number): string {
+  const min = a.at ? Math.max(0, Math.round((now - a.at) / 60000)) : -1;
+  const when = min < 0 ? "" : min < 1 ? " · put aside just now" : min < 60 ? ` · put aside ${min} min ago` : ` · put aside ${Math.round(min / 60)} h ago`;
+  return `${a.title || "A game"}${when}`;
+}
+
+/** One key of the PIN pad: digits up to 4, "del" takes the last one away. */
+export function pinPress(pin: string, key: string): string {
+  if (key === "del") return pin.slice(0, -1);
+  return /^[0-9]$/.test(key) && pin.length < 4 ? pin + key : pin;
+}
+
+/** Sunshine's state in one line (remote.rs status). */
+export function remoteLine(s: { installed?: boolean; on?: boolean; clients?: { name: string }[]; needsLogin?: boolean; addresses?: string[] } | null): string {
+  if (!s) return "Asking Hearth…";
+  if (!s.installed) return "Sunshine isn't on this system. It comes with Hearth OS.";
+  if (!s.on) return "Game streaming is off.";
+  if (s.needsLogin) return "Sunshine is on but has a login Hearth doesn't know: set it up in Hearth's Settings › Remote play.";
+  const n = s.clients?.length || 0;
+  const at = s.addresses?.length ? ` at ${s.addresses[0]}` : "";
+  return `Streaming is on${at}: ${n ? `${n} device${n === 1 ? "" : "s"} paired (${s.clients!.map((c) => c.name).slice(0, 3).join(", ")})` : "no devices paired yet"}.`;
+}
+
+/** A Hearth friend's line: what they're playing, else online or not. */
+export function friendLine(f: { presence?: string; game?: string | null; joinable?: boolean }): string {
+  if (f.game) return `Playing ${f.game}${f.joinable ? " · can be joined (in Hearth)" : ""}`;
+  return f.presence === "online" ? "Online" : f.presence === "unavailable" ? "Away" : "Offline";
 }

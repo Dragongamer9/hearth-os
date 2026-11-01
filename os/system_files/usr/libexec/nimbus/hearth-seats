@@ -12,7 +12,7 @@ Run by the Hearth app as the signed-in (main) user; the parts that need root go 
                                        the current set-up
   hearth-seats plan                    JSON: which kind of multi-seat this PC can do, and a proposed layout
   hearth-seats setup --seats JSON      set it up (JSON: a layout like plan's "layout"); --start to start it too
-  hearth-seats start | stop            start or stop the other players' screens
+  hearth-seats start | stop [--seat N] start or stop the other players' screens (all, or only player N: 2-4)
   hearth-seats status                  JSON: what's set up and what's running
   hearth-seats pads                    JSON: the controllers players can be given, and those left out (and why)
   hearth-seats assign-pad --pad ID --seat N
@@ -802,19 +802,43 @@ def check_layout(layout, info):
         raise Fail('player 1 must be you (%s)' % info['users']['main']['name'])
 
 
-def start():
+def one_seat(c, seat):
+    """Player `seat` (2-4) of the set-up, or Fail."""
+    s = next((s for s in c.get('seats', []) if s.get('seat') == seat), None)
+    if seat not in (2, 3, 4) or not s:
+        raise Fail('there\'s no player %s' % seat)
+    return s
+
+
+def host_running():
+    return os.path.exists(os.path.join(SEAT_RUN, 'host.pid')) and pid_alive(read(os.path.join(SEAT_RUN, 'host.pid')))
+
+
+def start(seat=None):
     c = load_config()
     if not c:
         raise Fail('multi-seat isn\'t set up')
+    if seat is not None:
+        # One player (Steam Game Mode's Quick Access › Hearth Players › Seats): a card of their own or streamed starts
+        # now; a screen of player 1's card opens when player 1's Game Mode hosts the screens, at once if it does now.
+        s = one_seat(c, seat)
+        r = admin(['seats-start', '--seat', str(seat)])
+        reset_host_failures()
+        return dict(r, restart_game_mode=seat_kind(c, s) in HOST_KINDS and not host_running())
     r = admin(['seats-start'])
     reset_host_failures()
     return dict(r, restart_game_mode=hosted(c))
 
 
-def stop():
+def stop(seat=None):
     c = load_config()
     if not c:
         raise Fail('multi-seat isn\'t set up')
+    if seat is not None:
+        s = one_seat(c, seat)
+        r = admin(['seats-stop', '--seat', str(seat)])
+        # Player 1 stays a window the size of their part of a split screen until their Game Mode starts again.
+        return dict(r, restart_game_mode=seat_kind(c, s) == 'split' and host_running())
     r = admin(['seats-stop'])
     return dict(r, restart_game_mode=hosted(c))
 
@@ -879,7 +903,7 @@ def status():
         seats.append(e)
     host = None
     if hosted(c):
-        host = {'running': os.path.exists(os.path.join(SEAT_RUN, 'host.pid')) and pid_alive(read(os.path.join(SEAT_RUN, 'host.pid'))),
+        host = {'running': host_running(),
                 'paused': host_paused()}
     return {'configured': True, 'enabled': bool(c.get('enabled')), 'mode': c.get('mode'), 'seats': seats, 'host': host,
             'split': c.get('split'), 'audio': audio_prefs() if config_has(c, 'split') else None}
@@ -1911,10 +1935,11 @@ def main(argv):
             if not seats:
                 raise Fail('usage: hearth-seats setup --seats JSON [--start]')
             print(json.dumps(setup(seats, start='--start' in argv)))
-        elif cmd == 'start':
-            print(json.dumps(start()))
-        elif cmd == 'stop':
-            print(json.dumps(stop()))
+        elif cmd in ('start', 'stop'):
+            seat = arg(argv, '--seat')
+            if seat is not None and seat not in ('2', '3', '4'):
+                raise Fail('usage: hearth-seats %s [--seat 2-4]' % cmd)
+            print(json.dumps((start if cmd == 'start' else stop)(int(seat) if seat else None)))
         elif cmd == 'status':
             print(json.dumps(status()))
         elif cmd == 'pads':

@@ -25,6 +25,9 @@ pub struct Proc {
     pub tag: Option<u32>,
     /// Steam's reaper for a game ("reaper SteamLaunch AppId=620 -- ..."): that app id.
     pub reaper_app: Option<u32>,
+    /// Steam's SteamAppId in its environment. Flathub's Steam starts a game outside its own process tree (pressure-vessel
+    /// hands it to the Flatpak portal, so it isn't under Steam's reaper): this is then the only number it carries.
+    pub steam_env: Option<u32>,
 }
 
 /// What belongs to a game: its number first (`app_id`), then the guesses: Steam's wrapper with AppId=<id>, a process
@@ -91,7 +94,8 @@ pub fn read_proc(root: &Path, pid: u32) -> Option<Proc> {
         v("WINEPREFIX").or_else(|| v("STEAM_COMPAT_DATA_PATH").map(|p| format!("{}/pfx", p.trim_end_matches('/'))))
     } else { None };
     let reaper_app = reaper_app(&comm, &cmdline);
-    Some(Proc { pid, ppid, cmdline, cwd, prefix, comm, tag, reaper_app })
+    let steam_env = env_value(&environ, "SteamAppId").and_then(|v| v.trim().parse::<u32>().ok()).filter(|n| *n != 0);
+    Some(Proc { pid, ppid, cmdline, cwd, prefix, comm, tag, reaper_app, steam_env })
 }
 
 pub fn snapshot(root: &Path) -> Vec<Proc> {
@@ -100,21 +104,23 @@ pub fn snapshot(root: &Path) -> Vec<Proc> {
 }
 
 /// Which game (by number) a process belongs to: the Steam game whose reaper it runs under, else the HEARTH_GAME_ID
-/// nearest up its parents (itself first). Nothing from Hearth (`me`) up counts, and Steam's own processes belong to
-/// no game (a Steam started from inside a game has that game's environment).
+/// nearest up its parents (itself first), else the nearest SteamAppId (Flathub's Steam's games, outside its reaper).
+/// Nothing from Hearth (`me`) up counts, and Steam's own processes belong to no game (a Steam started from inside a
+/// game has that game's environment).
 fn owner_by(by: &HashMap<u32, &Proc>, pid: u32, me: u32) -> Option<u32> {
     let first = by.get(&pid)?;
     if is_steam_client(&first.comm) { return None; }
-    let mut tag = None;
+    let (mut tag, mut steam) = (None, None);
     let mut cur = pid;
     for _ in 0..64 {
         if cur == me || cur <= 1 { break; }
         let Some(p) = by.get(&cur) else { break };
         if let Some(a) = p.reaper_app { return Some(a); }
         if tag.is_none() { tag = p.tag; }
+        if steam.is_none() { steam = p.steam_env; }
         cur = p.ppid;
     }
-    tag
+    tag.or(steam)
 }
 
 /// Every process that belongs to a game: pid → the game's number.
@@ -272,6 +278,27 @@ mod tests {
         assert_eq!(game_processes(&Track { dirs: vec!["/home/sam/Games/NWN".into()], ..Default::default() }, &procs, 99), vec![20, 21]);
         assert_eq!(game_processes(&Track { dirs: vec!["/home/sam/Games/Thing/".into()], ..Default::default() }, &procs, 99), vec![30]);
         assert_eq!(game_processes(&Track { pid: Some(99), ..Default::default() }, &procs, 99), Vec::<u32>::new());
+    }
+    #[test]
+    fn finds_a_flathub_steam_game_outside_steams_reaper() {
+        // Flathub's Steam: pressure-vessel has the Flatpak portal start the game, so it's under the portal's bwrap, not
+        // Steam's reaper; only SteamAppId says whose it is. Put aside (Quick Resume) used to find nothing to pause.
+        let s = |pid, ppid, cmd: &[&str], env: Option<u32>| Proc { steam_env: env, ..p(pid, ppid, cmd, None, None) };
+        let procs = vec![
+            Proc { reaper_app: Some(620), comm: "reaper".into(), ..s(10, 1, &["reaper", "SteamLaunch", "AppId=620", "--"], None) },
+            s(11, 10, &["pressure-vessel-wrap"], None),
+            s(50, 1, &["flatpak-portal"], None),
+            s(51, 50, &["bwrap"], None),
+            s(52, 51, &["portal2_linux"], Some(620)),
+            s(53, 52, &["portal2_helper"], None),
+            s(60, 1, &["other_game"], Some(440)),
+            s(70, 1, &["hearth_game"], Some(620)),
+            s(99, 1, &["hearth"], None),
+        ];
+        let mut tagged = procs.clone();
+        tagged[7].tag = Some(0x8000_1000);   // HEARTH_GAME_ID comes first: a Hearth game started from Steam's shortcut
+        assert_eq!(game_processes(&Track { steam_app_id: Some("620".into()), ..Default::default() }, &tagged, 99), vec![10, 11, 52, 53]);
+        assert_eq!(game_processes(&Track { steam_app_id: Some("440".into()), ..Default::default() }, &procs, 99), vec![60]);
     }
     #[test]
     fn a_finished_program_isnt_running() {

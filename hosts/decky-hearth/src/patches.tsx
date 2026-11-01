@@ -4,14 +4,17 @@
 // Each wrapper also checks its switch every time it runs, so switching a part off takes effect without a restart.
 import * as DUI from "@decky/ui";
 import { DialogButton, Focusable, afterPatch, findInReactTree } from "@decky/ui";
-import { routerHook } from "@decky/api";
+import { callable, routerHook } from "@decky/api";
 import { ReactNode } from "react";
 import { useAsk } from "./api";
-import { DESTS, Game, extraLibraryTabs, hearthIdForApp, oldRowOn, partOn } from "./model";
+import { Game, MENU_POWER, extraLibraryTabs, hearthIdForApp, menuPlaces, oldRowOn, partOn } from "./model";
 import { Boundary, C, CSS, go, onFocus } from "./ui";
 import { GameInfoLine, HearthHome, LibraryGrid } from "./pages";
-import { openApp } from "./actions";
+import { openApp, say } from "./actions";
+import { switchToDesktop, useFront } from "./core";
 import { guard, settings, shortcutMap, useLive } from "./state";
+
+const switchToHearthMode = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
 
 type Unpatch = () => void;
 
@@ -169,19 +172,55 @@ export function patchGamePage(): Unpatch {
 
 // ---------------------------------------------------------------- 5. Hearth in Steam's main menu
 
-function HearthMenuItems() {
+/** Hearth's part of Steam's main menu, in Hearth's look: the game you're playing (its Hearth section), Hearth's places
+ *  (Home, Store, Library, Theater, Mods, Storage, Downloads) and Hearth's power options beside Steam's. */
+const MENU_CSS = `
+.hearth-menu .hearth-menu-item{display:block;width:100%;text-align:left;background:transparent !important;padding:9px 16px !important;min-width:0 !important;border-radius:8px !important;color:${C.text} !important;font-size:15px}
+.hearth-menu .hearth-menu-item.gpfocus{background:${C.panel3} !important;box-shadow:0 0 0 2px ${C.bg},0 0 0 4px ${C.accent} !important}
+.hearth-menu .hearth-menu-head{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${C.accent};padding:10px 16px 4px}
+.hearth-menu .hearth-menu-now{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:linear-gradient(135deg,rgba(63,208,184,.16),rgba(63,208,184,.04));border:1px solid rgba(63,208,184,.35)}
+`;
+function MenuItem(props: { label: string; sub?: string; onClick: () => void }) {
+  return (
+    <DialogButton className="hearth-menu-item" onClick={props.onClick} {...({ onGamepadFocus: onFocus } as any)}>
+      <div>{props.label}</div>
+      {props.sub && <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{props.sub}</div>}
+    </DialogButton>
+  );
+}
+
+async function hearthPower(id: string) {
+  const r = id === "hearth-game" ? await switchToHearthMode() : await switchToDesktop();
+  if (!r.ok) say(r.error ?? "Couldn't switch");
+}
+function askPower(id: string, label: string, sub: string, gameRunning: boolean) {
+  const show = (DUI as any).showModal, Confirm = (DUI as any).ConfirmModal;
+  if (gameRunning && typeof show === "function" && Confirm) {
+    show(<Confirm strTitle={label} strDescription={`${sub}. The game you're playing closes.`} strOKButtonText={label} onOK={() => hearthPower(id)} />);
+  } else hearthPower(id);
+}
+
+export function HearthMenuItems() {
   const s = useLive();
+  const { run } = useFront();
   if (!partOn(s, "tkMenu", guard.broken)) return null;
+  const inGame = run && partOn(s, "tkInGame", guard.broken);
   return (
     <Boundary part="tkMenu" fallback={null} onError={guard.fail}>
-      <Focusable {...({ "flow-children": "vertical" } as any)} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: C.accent, padding: "0 16px 4px" }}>Hearth</div>
-        {DESTS.map((d) => (
-          <DialogButton key={d.id} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", padding: "8px 16px", minWidth: 0 }}
-            onClick={() => { if (d.route) go(d.route); else if (d.app) openApp(d.app); }} {...({ onGamepadFocus: onFocus } as any)}>
-            {d.title}
-          </DialogButton>
+      <Focusable className="hearth-menu" {...({ "flow-children": "vertical" } as any)} style={{ marginTop: 8, paddingTop: 4, borderTop: `1px solid ${C.line}` }}>
+        <style>{MENU_CSS}</style>
+        {inGame && (
+          <div className="hearth-menu-now">
+            <div className="hearth-menu-head" style={{ padding: "0 6px 2px" }}>{run!.hearth ? "Plays through Hearth" : "Now playing"}</div>
+            <MenuItem label={run!.title || "This game"} sub="Hearth Input layout, mods, Proton" onClick={() => go("/hearth/now")} />
+          </div>
+        )}
+        <div className="hearth-menu-head">Hearth</div>
+        {menuPlaces(s, guard.broken).map((d) => (
+          <MenuItem key={d.id} label={d.title} onClick={() => { if (d.route) go(d.route); else if (d.app) openApp(d.app); }} />
         ))}
+        <div className="hearth-menu-head">Hearth power</div>
+        {MENU_POWER.map(([id, label, sub]) => <MenuItem key={id} label={label} sub={sub} onClick={() => askPower(id, label, sub, !!run)} />)}
       </Focusable>
     </Boundary>
   );

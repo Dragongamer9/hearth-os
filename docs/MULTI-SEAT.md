@@ -36,6 +36,9 @@ players also `/etc/udev/rules.d/74-hearth-seats-stream.rules`, `/etc/modules-loa
 (see "Sharing games") also the `hearth-games` group, the shared folder and `/run/hearth-seats/in-use`; the group and
 the folder are kept by `seats-remove`, so games installed there stay.
 
+Player 1 can also play in **Steam's Game Mode** while the other players keep Hearth's: see docs/STEAM-GAME-MODE.md
+("Multi-seat beside Steam Game Mode"), which also starts, stops (`start|stop --seat N`) and gives controllers to the players.
+
 ## The kinds of hardware
 
 ### a. A graphics card per player (`"mode": "gpu"`)

@@ -766,6 +766,44 @@ decky_ctl() {
   timeout 15 pkexec /usr/libexec/nimbus/hearth-admin "decky-$1" >/dev/null 2>&1 || log "steam game mode: decky-$1 didn't work (Steam Game Mode goes on without Decky)"
   return 0
 }
+# Hearth's core without a window (nimbus --core-service, hearth-core core_service.rs): live answers for the Hearth
+# plugin (Hearth in Steam's main menu, Quick Access and in-game overlay) over a socket only this user can open. It
+# ends by itself when the running mark goes away, and is stopped with Steam. It never controls gamescope's focus,
+# padmouse, Steam or InputPlumber, and has no controllers. Never waited on, never fatal: if it doesn't start, Steam
+# Game Mode goes on and the plugin asks Hearth's command line as before. HEARTH_STEAM_CORE=0 (session.conf) leaves it out.
+STEAM_CORE_PID=""
+steam_core_start() {
+  [ -z "$HEARTH_SEAT" ] && [ "${HEARTH_STEAM_CORE:-1}" != 0 ] && have nimbus || return 0
+  # Only a Hearth that knows --core-service (an older one would open its whole window instead).
+  core_app="$(command -v nimbus)"
+  grep -qaF -- '--core-service' "$core_app" 2>/dev/null || { log "steam game mode: this Hearth has no core service"; return 0; }
+  "$core_app" --core-service --while "$RUN/hearth-steam-mode.pid" >>"${LOG%/*}/core-service.log" 2>&1 </dev/null &
+  STEAM_CORE_PID=$!
+  log "steam game mode: Hearth's core started without a window (pid $STEAM_CORE_PID)"
+  return 0
+}
+steam_core_stop() {
+  [ -n "$STEAM_CORE_PID" ] && kill "$STEAM_CORE_PID" 2>/dev/null
+  STEAM_CORE_PID=""
+  return 0
+}
+# Hearth Input (the same mapper as Hearth's Game Mode, input_start): it holds a controller only while Hearth's core
+# says a game with a Hearth Input layout is in front, and lets go by itself when nobody tells it anything.
+steam_input_start() { [ "${HEARTH_STEAM_CORE:-1}" != 0 ] && command -v input_start >/dev/null 2>&1 && input_start; return 0; }
+steam_input_stop() { command -v input_stop >/dev/null 2>&1 && input_stop; return 0; }
+# Multi-seat beside Steam Game Mode (docs/STEAM-GAME-MODE.md "Multi-seat"): player 1 plays in Steam's Game Mode while the
+# extra players keep their own Hearth Game Mode (their own accounts and sessions, hearth-seat@.service; nothing here starts,
+# stops or waits for them). Only when multi-seat is set up and on, so without it Steam Game Mode starts exactly as before:
+#  * a graphics card per player: player 1's gamescope stays on player 1's card (hearth-seats gamescope-args);
+#  * other screens of player 1's card or a split screen: Steam's gamescope runs inside the same host as Hearth's Game Mode
+#    (hearth-seats host, labwc over every screen), so the others keep their screens; if the host can't start (exit 3, or
+#    it pauses itself after failing twice) Steam Game Mode starts as usual without it. HEARTH_STEAM_SEATS_HOST=0
+#    (session.conf) leaves the host out;
+#  * no performance overlay while multi-seat is on (mangoapp reads the other players' processes and fell over).
+# Every call is time-limited and its failure ignored: none of it can stop Steam Game Mode from starting.
+STEAM_SEATS="${HEARTH_SEATS_HELPER:-/usr/libexec/nimbus/hearth-seats}"
+STEAM_SEATS_CONFIG="${HEARTH_SEATS_CONFIG:-/etc/hearth/seats.json}"
+steam_seats_on() { [ -z "$HEARTH_SEAT" ] && [ -f "$STEAM_SEATS" ] && have python3 && grep -Eq '"enabled": *true' "$STEAM_SEATS_CONFIG" 2>/dev/null; }
 run_steam_mode() {
   log "steam game mode (experimental, this time only)"
   rm -f "$RUN/hearth-steam-mode-failed"
@@ -798,8 +836,18 @@ run_steam_mode() {
   fi
   sextra=""
   have mangoapp && sextra="--mangoapp"
+  sseat=""; shost=""
+  if steam_seats_on; then
+    sextra=""
+    sseat="$(timeout 10 python3 "$STEAM_SEATS" gamescope-args 2>/dev/null)" || sseat=""
+    if [ "${HEARTH_STEAM_SEATS_HOST:-1}" != 0 ] && timeout 10 python3 "$STEAM_SEATS" host-check 2>/dev/null; then
+      shost=1; log "steam game mode: multi-seat: hosting the other players' screens"
+    fi
+  fi
   decky_ctl start
   echo $$ >"$RUN/hearth-steam-mode.pid"
+  steam_core_start
+  steam_input_start
   started=$(date +%s)
   # What gamescope-session-steam (SteamOS, Bazzite, ChimeraOS) tells Steam, in a subshell so nothing stays for later modes.
   # shellcheck disable=SC2086
@@ -807,10 +855,18 @@ run_steam_mode() {
     export STEAM_MULTIPLE_XWAYLANDS=1 STEAM_GAMESCOPE_VRR_SUPPORTED=1 STEAM_ENABLE_VOLUME_HANDLER=1 SRT_URLOPEN_PREFER_STEAM=1 \
       STEAM_DISABLE_MANGOAPP_ATOM_WORKAROUND=1 ENABLE_GAMESCOPE_WSI=1 SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0 HEARTH_STEAM_MODE=1
     if [ -n "$sextra" ]; then export STEAM_USE_MANGOAPP=1 STEAM_MANGOAPP_PRESETS_SUPPORTED=1 MANGOHUD_CONFIGFILE="$RUN/hearth-steam-mangohud.conf"; : >"$MANGOHUD_CONFIGFILE"; fi
-    exec gamescope -e -f $sextra $NIMBUS_GAMESCOPE_ARGS -- "$@" -gamepadui -steamos3 -steampal
+    if [ -n "$shost" ]; then
+      python3 "$STEAM_SEATS" host -- gamescope -e -f $NIMBUS_GAMESCOPE_ARGS -- "$@" -gamepadui -steamos3 -steampal
+      hrc=$?
+      [ "$hrc" -ne 3 ] && exit "$hrc"
+      log "steam game mode: multi-seat host couldn't start; Steam Game Mode without it"
+    fi
+    exec gamescope -e -f $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal
   )
   rc=$?
   rm -f "$RUN/hearth-steam-mode.pid"
+  steam_core_stop
+  steam_input_stop
   decky_ctl stop &
   next_now="$(cat "$NEXT" 2>/dev/null)"
   if [ "$next_now" != game ] && [ "$next_now" != desktop ]; then

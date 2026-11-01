@@ -38,7 +38,7 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      games and files from other drives (see hearth-import)
   hearth-admin takeover-plan|takeover-run
                                      remove other systems from Hearth's drive (see hearth-takeover)
-  hearth-admin seats-setup|seats-remove|seats-acl|seats-start|seats-stop
+  hearth-admin seats-setup|seats-remove|seats-acl|seats-start|seats-stop [--seat N]
                                      multi-seat: several players at once, each on their own screen with their own
                                      account (see hearth-seats and docs/MULTI-SEAT.md)
   hearth-admin space-status          JSON: Hearth's space and what the other systems on its drive could give
@@ -905,7 +905,7 @@ def hibernate_reboot():
 #                                       (each seat may have its own "mode"; see seats_validate)
 #   hearth-admin seats-remove [--delete-users]
 #   hearth-admin seats-acl              stdin: {"pads": {"usb:1-2": 2, "uniq:aa:bb:cc:dd:ee:ff": 1}}
-#   hearth-admin seats-start | seats-stop
+#   hearth-admin seats-start | seats-stop [--seat N]   all the extra players, or only player N (2-4)
 SEATS_CONFIG = '/etc/hearth/seats.json'
 SEATS_ENV_DIR = '/etc/hearth/seats'
 SEATS_RULES = '/etc/udev/rules.d/72-hearth-seats.rules'
@@ -1786,13 +1786,21 @@ def seats_acl():
     print(json.dumps({'ok': True, 'pads': {p: pads.get(p, 1) for p in sorted(set(before) | set(pads))}, 'changed': changed}))
 
 
-def seats_start_stop(on):
+def seats_start_stop(on, only=None):
+    """Start or stop the extra players' sessions: all of them, or only player `only` (2-4; Quick Access › Hearth
+    Players › Seats in Steam Game Mode). Stopping one player leaves the others and "enabled" as they are; starting
+    one turns multi-seat on. Player 1 is never touched."""
     caller()
     config = seats_load()
     if not config:
         fail('multi-seat isn\'t set up')
+    extra = (config.get('seats') or [])[1:]
+    if only is not None:
+        extra = [s for s in extra if s.get('seat') == only]
+        if not extra:
+            fail('there\'s no player %d' % only)
     problems = []
-    for s in config['seats'][1:]:
+    for s in extra:
         unit = seats_unit(config, s)
         if not re.fullmatch(r'hearth-seat@hearth-p[2-4]\.(service|path)', unit):
             continue
@@ -1801,11 +1809,24 @@ def seats_start_stop(on):
             seats_run(['systemctl', 'stop', 'hearth-seat@%s.service' % s['user']])
         if code != 0:
             problems.append('player %d: %s' % (s['seat'], (out.splitlines() or ['failed'])[-1][:200]))
-    config['enabled'] = on
+    if only is None or on:
+        config['enabled'] = on
     seats_atomic_write(SEATS_CONFIG, json.dumps(config, indent=1) + '\n')
     if problems and on:
         fail('some players couldn\'t start (%s)' % '; '.join(problems))
-    print(json.dumps({'ok': True, 'enabled': on, 'mode': config['mode']}))
+    r = {'ok': True, 'enabled': bool(config.get('enabled')), 'mode': config.get('mode')}
+    if only is not None:
+        r['seat'] = only
+    print(json.dumps(r))
+
+
+def seats_one(args):
+    """seats-start/-stop's arguments: nothing (every extra player) or --seat 2..4. False when they're wrong."""
+    if not args:
+        return None
+    if len(args) == 2 and args[0] == '--seat' and args[1] in ('2', '3', '4'):
+        return int(args[1])
+    return False
 
 
 SPACE_DEV_RE = re.compile(r'^/dev/[A-Za-z0-9][A-Za-z0-9/_-]{0,63}$')
@@ -2721,7 +2742,10 @@ def main(argv):
     elif cmd == 'seats-acl':
         seats_acl()
     elif cmd in ('seats-start', 'seats-stop'):
-        seats_start_stop(cmd == 'seats-start')
+        one = seats_one(argv[2:])
+        if one is False:
+            fail('usage: hearth-admin %s [--seat 2-4]' % cmd)
+        seats_start_stop(cmd == 'seats-start', one)
     elif cmd == 'space-grow':
         args = space_args(argv[2:])
         if args is None:

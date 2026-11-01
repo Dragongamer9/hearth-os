@@ -330,6 +330,216 @@ class Takeover(unittest.TestCase):
         self.assertEqual(front, self.m.DEFAULT_SETTINGS)
 
 
+class CoreService(unittest.TestCase):
+    """Hearth's core service (nimbus --core-service) from the plugin's side: a stand-in listening on a socket in a
+    private folder, the checks before and after connecting, the fallback to the command line."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-core-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+        self.dir = os.path.join(self.tmp, 'run', 'hearth')
+        os.makedirs(self.dir, mode=0o700)
+        os.chmod(self.dir, 0o700)
+        self.path = os.path.join(self.dir, 'core.sock')
+        self.seen = []
+        self.server = None
+
+    def tearDown(self):
+        if self.server:
+            self.server.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def serve(self, reply):
+        import socket, threading
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(self.path)
+        os.chmod(self.path, 0o600)
+        srv.listen(4)
+        self.server = srv
+
+        def loop():
+            while True:
+                try:
+                    c, _ = srv.accept()
+                except OSError:
+                    return
+                with c:
+                    line = c.makefile('rb').readline()
+                    req = json.loads(line)
+                    self.seen.append(req)
+                    c.sendall((json.dumps(reply(req)) + '\n').encode())
+        threading.Thread(target=loop, daemon=True).start()
+
+    def test_commands_match_hearth_core(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        cmds = re.search(r'pub const COMMANDS: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', cmds)), self.m.CORE_COMMANDS)
+        data = re.search(r'pub const DATA: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(set(re.findall(r'"([^"]+)"', data)), set(self.m.DATA))
+
+    def test_coop_matches_hearth_core_and_falls_back_to_the_helper(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        ops = re.search(r'pub const COOP_OPS: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', ops)), self.m.COOP_OPS)
+        self.assertEqual(self.m.coop_call('start', ['event1', 'event2']), {'error': "That isn't something the Hearth plugin asks"})
+        self.assertIsNone(self.m.coop_args('identify', pad='../../dev/sda'))
+        self.assertIsNone(self.m.coop_args('order', ['js0']))
+        seen = []
+        core = lambda cmd, a: seen.append((cmd, a)) or {'ok': True, 'data': {'pads': []}}
+        self.assertEqual(self.m.coop_call('order', ['event30', 'bad;rm', 'event20'], core=core), {'pads': []})
+        self.assertEqual(seen, [('coop', {'op': 'order', 'pads': ['event30', 'event20'], 'pad': ''})])
+        # No core: hearth-coop itself answers (same helper), its "error:" line becomes {'error'}.
+        helper = os.path.join(self.tmp, 'hearth-coop')
+        with open(helper, 'w') as f:
+            f.write('#!/bin/sh\n')
+        calls = []
+
+        class P:
+            def __init__(self, out):
+                self.stdout, self.stderr = out, ''
+        run = lambda argv, **k: calls.append(argv) or P('progress: 5 x\n{"pads": [{"id": "event30", "player": 1}]}\n')
+        r = self.m.coop_call('players', core=lambda c, a: None, run=run, helper=helper)
+        self.assertEqual(r['pads'][0]['player'], 1)
+        self.assertEqual(calls[0], [helper, 'players'])
+        run = lambda argv, **k: P('error: That controller is no longer connected.\n')
+        self.assertEqual(self.m.coop_call('identify', pad='event9', core=lambda c, a: None, run=run, helper=helper),
+                         {'error': 'That controller is no longer connected.'})
+        self.assertIn('error', self.m.coop_call('players', core=lambda c, a: None, helper=os.path.join(self.tmp, 'none')))
+
+    def test_seats_match_hearth_core_and_only_read_without_it(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        ops = re.search(r'pub const SEATS_OPS: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', ops)), self.m.SEATS_OPS)
+        admin = (ROOT / 'os/system_files/usr/libexec/nimbus/hearth-admin').read_text()
+        self.assertIn(self.m.SEAT_PAD.pattern, admin, 'the same pad ids as hearth-admin')
+        bad = {'error': "That isn't something the Hearth plugin asks"}
+        for args in (('setup',), ('remove',), ('start', 1), ('stop', 5), ('start', True), ('assign', 2, 'event7'), ('assign', 0, 'usb:1-2'),
+                     ('assign', 2, 'usb:1-2;rm')):
+            self.assertEqual(self.m.seats_call(*args, core=lambda c, a: self.fail('asked')), bad, args)
+        seen = []
+        core = lambda cmd, a: seen.append((cmd, a)) or {'ok': True, 'data': {'ok': True}}
+        self.assertEqual(self.m.seats_call('assign', 3, 'uniq:aa:bb:cc:dd:ee:ff', core=core), {'ok': True})
+        self.assertEqual(self.m.seats_call('stop', 2, 'usb:1-2', core=core), {'ok': True})
+        self.assertEqual(seen, [('seats', {'op': 'assign', 'seat': 3, 'pad': 'uniq:aa:bb:cc:dd:ee:ff'}),
+                                ('seats', {'op': 'stop', 'seat': 2, 'pad': ''})])
+        # No core: reads go to hearth-seats itself; changes never (polkit wouldn't answer for the plugin).
+        helper = os.path.join(self.tmp, 'hearth-seats')
+        open(helper, 'w').close()
+        calls = []
+
+        class P:
+            def __init__(self, out):
+                self.stdout, self.stderr = out, ''
+        run = lambda argv, **k: calls.append(argv) or P('{"configured": true, "seats": []}\n')
+        self.assertTrue(self.m.seats_call('status', core=lambda c, a: None, run=run, helper=helper)['configured'])
+        self.assertEqual(calls, [['python3', helper, 'status']])
+        self.assertEqual(self.m.seats_call('start', 2, core=lambda c, a: None, run=run, helper=helper), {'error': self.m.NO_CORE_SEATS})
+        self.assertEqual(len(calls), 1)
+        self.assertIn('error', self.m.seats_call('pads', core=lambda c, a: None, helper=os.path.join(self.tmp, 'none')))
+
+    def test_quick_resume_friends_link_and_sunshine_match_hearth_core(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        for const, mine in (('ASIDE_OPS', self.m.ASIDE_OPS), ('LINK_OPS', self.m.LINK_OPS), ('REMOTE_OPS', self.m.REMOTE_OPS)):
+            ops = re.search(r'pub const %s: &\[&str\] = &\[(.*?)\];' % const, rs).group(1)
+            self.assertEqual(tuple(re.findall(r'"([^"]+)"', ops)), mine, const)
+        bad = {'error': "That isn't something the Hearth plugin asks"}
+        never = lambda c, a: self.fail('asked')
+        for cmd, op, a in (('aside', 'put', {}), ('aside', 'put', {'appid': True}), ('aside', 'kill', {'appid': 5}), ('link', 'unpair', {'peer': 'a'}),
+                           ('link', 'sync', {'peer': '../x'}), ('remote', 'login', {}), ('remote', 'pair', {'pin': '12345'}), ('seats', 'status', {})):
+            self.assertEqual(self.m.rest_call(cmd, op, a, core=never), bad, (cmd, op, a))
+        seen = []
+        core = lambda c, a: seen.append((c, a)) or {'ok': True, 'data': {'list': []}}
+        self.assertEqual(self.m.rest_call('aside', 'put', {'appid': 620, 'game': 'steam:620', 'title': 'Portal\n2'}, core=core), {'list': []})
+        self.assertEqual(self.m.rest_call('remote', 'pair', {'pin': '0420', 'name': 7}, core=core), {'list': []})
+        self.assertEqual(self.m.rest_call('friends', '', None, core=core), {'list': []})
+        self.assertEqual(seen, [('aside', {'op': 'put', 'appid': 620, 'game': 'steam:620', 'title': 'Portal2'}),
+                                ('remote', {'op': 'pair', 'pin': '0420', 'name': ''}), ('friends', {})])
+        self.assertEqual(self.m.rest_call('link', 'status', core=lambda c, a: None), {'error': self.m.NO_CORE})
+
+    def test_coop_shortcut(self):
+        t = self.m.coop_shortcut("gog:it's", 3, 'grid')
+        self.assertEqual(t['exe'], '/bin/sh')
+        self.assertEqual(shlex.split(t['options']), ['-c', self.m.COOP_WRAPPER, 'hearth-steam-coop', self.m.COOP, 'play', '--game', "gog:it's",
+                                                     '--players', '3', '--layout', 'grid'])
+        self.assertEqual(shlex.split(self.m.coop_shortcut('steam:400')['options'])[-3:], ['play', '--game', 'steam:400'])
+        self.assertIsNone(self.m.coop_shortcut('steam:400', 2, 'sideways'))
+        self.assertIsNone(self.m.coop_shortcut('no-colon'))
+        self.assertIn('--env=SteamAppId=', self.m.COOP_WRAPPER)
+        self.assertIn('-u LD_PRELOAD -u LD_LIBRARY_PATH', self.m.COOP_WRAPPER)
+
+    def test_page_calls_match_hearth_core_and_need_it_running(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        for const, mine in (('BRIDGE_CALLS', self.m.BRIDGE_CALLS), ('MODS_CALLS', self.m.MODS_CALLS)):
+            body = re.search(r'pub const %s: &\[\(&str, &\[&str\]\)\] = &\[(.*?)\];' % const, rs, re.S).group(1)
+            self.assertEqual(tuple(re.findall(r'\("([^"]+)"', body)), mine, const)
+        seen = []
+        ok = lambda c, a: (seen.append((c, a)), {'ok': True, 'data': {'done': True}})[1]
+        self.assertEqual(self.m.page_call('call', 'game.install', {'id': 'gog:1'}, core=ok), {'done': True})
+        self.assertEqual(seen[-1], ('call', {'method': 'game.install', 'args': {'id': 'gog:1'}}))
+        self.assertEqual(self.m.page_call('mods-call', 'toggle', {'id': 'gog:1', 'm': 'a', 'on': True}, core=ok), {'done': True})
+        self.assertEqual(seen[-1][1]['call'], 'toggle')
+        n = len(seen)
+        self.assertIn('error', self.m.page_call('call', 'accounts.signIn', {}, core=ok))
+        self.assertIn('error', self.m.page_call('mods-call', 'nexus_sign_in', {}, core=ok))
+        self.assertEqual(len(seen), n, 'not on the list: never sent')
+        self.assertIn("isn't running", self.m.page_call('call', 'recomps.list', {}, core=lambda c, a: None)['error'])
+
+    def test_answers_from_the_core_and_the_command_line_when_it_is_not_running(self):
+        self.assertIsNone(self.m.core_call('ping', path=self.path), 'not running: None')
+        self.serve(lambda r: {'id': r['id'], 'ok': True, 'data': {'service': 'hearth-core', 'version': '9', 'asked': r}})
+        r = self.m.core_call('ping', path=self.path)
+        self.assertTrue(r['ok'])
+        self.assertEqual(self.seen[-1]['cmd'], 'ping')
+        self.assertEqual(self.m.core_call('exec', path=self.path)['ok'], False, 'not on the list: never sent')
+        self.assertEqual(self.seen[-1]['cmd'], 'ping')
+        # hearth_data asks the core first, with the question checked.
+        d = self.m.hearth_data('store', 'epic', core=lambda c, a, t: self.m.core_call(c, a, t, path=self.path))
+        self.assertEqual(d['asked']['what'], 'store')
+        self.assertEqual(d['asked']['arg'], 'epic')
+        self.assertIn('error', self.m.hearth_data('store', 'evil', core=lambda *a: self.fail('never asked')))
+        # The core not running: the command line, as before.
+        app = os.path.join(self.tmp, 'nimbus')
+        with open(app, 'w') as f:
+            f.write('#!/bin/sh\necho \'{"from":"cli"}\'\n')
+        os.chmod(app, 0o755)
+        self.m.find_program = lambda name: app
+        self.assertEqual(self.m.hearth_data('home', core=lambda *a: None), {'from': 'cli'})
+        self.assertEqual(self.m.core_result({'ok': False, 'error': 'nope'}), {'error': 'nope'})
+        self.assertIn('error', self.m.core_result(None))
+
+    def test_a_socket_that_is_not_this_users_own_is_never_used(self):
+        self.serve(lambda r: {'ok': True, 'data': {}})
+        self.assertTrue(self.m.core_safe(self.path))
+        os.chmod(self.dir, 0o755)
+        self.assertFalse(self.m.core_safe(self.path), 'a folder others can write to')
+        self.assertIsNone(self.m.core_call('ping', path=self.path))
+        os.chmod(self.dir, 0o700)
+        self.assertFalse(self.m.core_safe(self.path, uid=os.getuid() + 1), "another user's socket")
+        plain = os.path.join(self.dir, 'plain')
+        open(plain, 'w').close()
+        self.assertFalse(self.m.core_safe(plain), 'not a socket')
+
+    def test_plugin_calls_check_what_they_send(self):
+        self.serve(lambda r: {'id': r['id'], 'ok': True, 'data': {'cmd': r['cmd'], 'game': r.get('game'), 'appid': r.get('appid'),
+                                                                   'overlay': r.get('overlay'), 'layout': r.get('layout')}})
+        self.m.core_socket_path = lambda: self.path
+        p = self.m.Plugin()
+        f = run(p.hearth_front(3000000000, 'epic:a', 1))
+        self.assertEqual((f['game'], f['appid'], f['overlay']), ('epic:a', 3000000000, True))
+        f = run(p.hearth_front('x', 'bad id', 0))
+        self.assertEqual((f['game'], f['appid']), (None, 0), 'a bad id is no game')
+        self.assertEqual(run(p.hearth_input_set('gog:1', 'shooter'))['layout'], 'shooter')
+        self.assertIn('error', run(p.hearth_input_set('nope', 'shooter')))
+        self.assertIn('error', run(p.hearth_tool('rm')))
+        self.assertEqual(run(p.hearth_tool('screenshot'))['cmd'], 'screenshot')
+        self.assertTrue(run(p.core_status())['running'])
+        self.assertIn('error', run(p.hearth_game('no colon')))
+
+    def test_settings_have_the_new_parts(self):
+        for k in ('tkQam', 'tkInGame', 'tkInput'):
+            self.assertIn(k, self.m.DEFAULT_SETTINGS)
+
+
 class Art(unittest.TestCase):
     """Every kind of picture reference Hearth gives (desktop_games.rs art_for_desktop, artcache.rs, library.rs art_url)
     becomes a picture, safely, in every format the cache keeps (0.6.60's Hearth row showed blank cards)."""

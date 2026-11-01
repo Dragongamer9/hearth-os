@@ -7,8 +7,12 @@ Runs as you (no root flag) inside Decky Loader and only talks to Hearth's own co
   nimbus-mode game         back to Hearth's Game Mode
   nimbus --steam-mode-data WHAT [ARG]
                            what the takeover's pages show (Hearth's home, Store, Library, Downloads, Storage, a game's
-                           facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs). Nothing listens on a
-                           port or socket for this: Decky's own channel to this backend is the only way in.
+                           facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs).
+  Hearth's core service    `nimbus --core-service`, started with Steam Game Mode by Hearth's session (hearth-core
+                           core_service.rs): the same answers, live, over <runtime dir>/hearth/core.sock (this user's
+                           only: the folder 0700, the socket 0600, both ends checked to be this user), plus the game in
+                           front for Hearth Input and the in-game section (its layout, its Proton, its mods). When it
+                           isn't running, the questions above go to the command line as before. Nothing on a port.
 
 Nothing is sent anywhere: game pictures from the web are fetched (when Hearth's art cache hasn't got them) only to hand
 them to Steam as a shortcut's art or to a page that couldn't load them itself.
@@ -18,8 +22,12 @@ import hashlib
 import json
 import os
 import pwd
+import re
 import shlex
 import shutil
+import socket
+import stat
+import struct
 import subprocess
 import threading
 import urllib.parse
@@ -199,6 +207,129 @@ def steam_is_flatpak(proc='/proc'):
 WRAPPER = ('if [ -e /.flatpak-info ]; then exec /usr/bin/flatpak-spawn --host /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"; fi; '
            'exec /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH HEARTH_STEAM_LD_PRELOAD="${LD_PRELOAD:-}" "$@"')
 WRAPPER_NAME = 'hearth-steam'
+
+
+# Couch Co-op's split-screen shortcut (Steam Game Mode): `hearth-coop play --game <id>`, which opens Hearth's split
+# screen (a nested labwc in Steam's gamescope, a nested gamescope per player, each with their controller from the
+# player order) and stays until everyone has quit. Like WRAPPER, but inside Flathub's Steam it also hands on the
+# display and Steam's app id, which flatpak-spawn --host doesn't pass by itself (hearth-coop needs both).
+COOP = '/usr/libexec/nimbus/hearth-coop'
+COOP_WRAPPER = ('if [ -e /.flatpak-info ]; then exec /usr/bin/flatpak-spawn --host --env=DISPLAY="${DISPLAY:-}" '
+                '--env=GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-}" --env=SteamAppId="${SteamAppId:-}" '
+                '--env=SteamGameId="${SteamGameId:-}" /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"; fi; '
+                'exec /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"')
+COOP_LAYOUTS = ('auto', 'vertical', 'horizontal', 'grid')
+COOP_OPS = ('players', 'order', 'identify', 'games', 'check')    # core_service.rs COOP_OPS
+PAD_ID = re.compile(r'^event\d{1,4}$')
+
+
+def coop_shortcut(game_id, players=0, layout='auto', helper=COOP):
+    """The split-screen shortcut for one game: {exe, startDir, options}, or None when it can't be one."""
+    if not valid_id(game_id) or layout not in COOP_LAYOUTS:
+        return None
+    args = ['play', '--game', game_id]
+    try:
+        players = int(players or 0)
+    except (TypeError, ValueError):
+        players = 0
+    if 2 <= players <= 4:
+        args += ['--players', str(players)]
+    if layout != 'auto':
+        args += ['--layout', layout]
+    opts = ['-c', COOP_WRAPPER, WRAPPER_NAME + '-coop', helper] + args
+    return {'exe': '/bin/sh', 'startDir': home(), 'options': ' '.join(shlex.quote(a) for a in opts)}
+
+
+def coop_args(op, pads=None, pad=''):
+    """hearth-coop's command line for one of COOP_OPS (checked: only event nodes as controllers), or None."""
+    if op not in COOP_OPS:
+        return None
+    pads = [p for p in (pads or []) if isinstance(p, str) and PAD_ID.match(p)][:16]
+    if op == 'players':
+        return ['players']
+    if op == 'order':
+        return ['order-set', '--pads', ','.join(pads)] if pads else None
+    if op == 'identify':
+        return ['identify', '--pad', pad] if isinstance(pad, str) and PAD_ID.match(pad) else None
+    return [op]
+
+
+def coop_call(op, pads=None, pad='', core=None, run=subprocess.run, helper=COOP):
+    """Couch Co-op's player order, rumble and games: through Hearth's core service, or hearth-coop itself when the
+    core isn't running (it's the same helper; nothing here starts a split screen). Always a dict, {'error'} on failure."""
+    argv = coop_args(op, pads, pad)
+    if argv is None:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    clean = [p for p in (pads or []) if isinstance(p, str) and PAD_ID.match(p)][:16]
+    r = (core or core_call)('coop', {'op': op, 'pads': clean, 'pad': pad if isinstance(pad, str) else ''})
+    if r is not None:
+        return core_result(r)
+    if not os.path.isfile(helper):
+        return {'error': "Couch Co-op isn't part of this Hearth OS."}
+    try:
+        p = run([helper] + argv, capture_output=True, text=True, timeout=CORE_TIMEOUTS['coop'], env=clean_env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {'error': "Couch Co-op didn't answer (%s)" % e}
+    for line in reversed((p.stdout or '').splitlines()):
+        if line.startswith('error: '):
+            return {'error': line[7:][:300]}
+        if line.startswith('{'):
+            try:
+                v = json.loads(line)
+            except ValueError:
+                break
+            return v if isinstance(v, dict) else {'value': v}
+    return {'error': ((p.stderr or '').strip()[-300:]) or 'Couch Co-op gave no answer'}
+
+
+# Multi-seat beside Steam Game Mode (Quick Access › Hearth Players › Seats): the extra players keep their own Hearth Game
+# Mode while player 1 plays here. Through Hearth's core service (it runs in your session, so hearth-admin's polkit rule
+# can answer for the changes); without it only what's set up and the controllers can be read (hearth-seats itself), and
+# starting, stopping or moving a controller says to open Hearth. Never sets multi-seat up or removes it, never accounts.
+SEATS = '/usr/libexec/nimbus/hearth-seats'
+SEATS_OPS = ('status', 'pads', 'start', 'stop', 'assign')    # core_service.rs SEATS_OPS
+SEAT_PAD = re.compile(r'^(usb:[0-9]{1,3}-[0-9]{1,3}(\.[0-9]{1,3}){0,6}|uniq:[A-Za-z0-9:._-]{4,64})$')   # hearth-admin SEAT_PAD_RE
+NO_CORE_SEATS = "Hearth's core isn't running, so players can't be started, stopped or given a controller from here. Use Hearth's Settings › Multi-seat."
+
+
+def seats_request(op, seat=0, pad=''):
+    """The checked request for one of SEATS_OPS, or None: start/stop only players 2-4, assign only a known pad id."""
+    if op not in SEATS_OPS:
+        return None
+    seat = seat if isinstance(seat, int) and not isinstance(seat, bool) else 0
+    if op in ('start', 'stop'):
+        return {'op': op, 'seat': seat, 'pad': ''} if 2 <= seat <= 4 else None
+    if op == 'assign':
+        return {'op': op, 'seat': seat, 'pad': pad} if 1 <= seat <= 4 and isinstance(pad, str) and SEAT_PAD.match(pad) else None
+    return {'op': op, 'seat': 0, 'pad': ''}
+
+
+def seats_call(op, seat=0, pad='', core=None, run=subprocess.run, helper=SEATS):
+    """Multi-seat for the Seats section: always a dict, {'error'} on failure."""
+    req = seats_request(op, seat, pad)
+    if req is None:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    r = (core or core_call)('seats', req)
+    if r is not None:
+        return core_result(r)
+    if op not in ('status', 'pads'):
+        return {'error': NO_CORE_SEATS}
+    if not os.path.isfile(helper):
+        return {'error': "Multi-seat isn't part of this Hearth OS."}
+    try:
+        p = run(['python3', helper, op], capture_output=True, text=True, timeout=CORE_TIMEOUTS['seats'], env=clean_env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {'error': "Multi-seat didn't answer (%s)" % e}
+    for line in reversed((p.stdout or '').splitlines()):
+        if line.startswith('error: '):
+            return {'error': line[7:][:300]}
+        if line.startswith('{'):
+            try:
+                v = json.loads(line)
+            except ValueError:
+                break
+            return v if isinstance(v, dict) else {'value': v}
+    return {'error': ((p.stderr or '').strip()[-300:]) or 'Multi-seat gave no answer'}
 
 
 def shortcut(program, args, flatpak=None):
@@ -513,7 +644,7 @@ def save_json(name, value):
 
 # The same keys and defaults as src/model.ts DEFAULTS: the takeover (master switch and its parts) is on by default.
 DEFAULT_SETTINGS = {'theme': True, 'homeRow': True, 'takeover': True, 'tkHome': True, 'tkMenu': True, 'tkLibraryTabs': True,
-                    'tkGamePage': True, 'tkSounds': False}
+                    'tkGamePage': True, 'tkSounds': False, 'tkQam': True, 'tkInGame': True, 'tkInput': True}
 
 
 def data_args(what, arg):
@@ -532,11 +663,162 @@ def data_args(what, arg):
     return ['--steam-mode-data', what]
 
 
-def hearth_data(what, arg='', run=subprocess.run):
-    """Asks Hearth one of the takeover's questions. Always a dict: Hearth's answer, or {'error': ...}."""
+# ---- Hearth's core service (hearth-core core_service.rs COMMANDS: the same list, checked by the tests)
+CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record', 'call', 'mods-call',
+                 'games-disk', 'coop', 'seats', 'aside', 'friends', 'link', 'remote')
+CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3,
+                 'call': 120, 'mods-call': 310, 'games-disk': 30, 'coop': 120, 'seats': 120, 'aside': 20, 'friends': 70, 'link': 70,
+                 'remote': 75}
+# The Steam pages' calls (Store installs and downloads, Storage, Recomps; Hearth Mods): the same lists as
+# core_service.rs BRIDGE_CALLS and MODS_CALLS, checked here first so nothing else is ever sent.
+BRIDGE_CALLS = ('library.downloads', 'game.install', 'game.cancelInstall', 'game.pauseInstall', 'game.resumeInstall', 'game.uninstall',
+                'diskspace.status', 'diskspace.move', 'diskspace.cancel', 'diskspace.cleanList', 'diskspace.clean',
+                'recomps.list', 'recomps.install', 'recomps.cancel', 'recomps.uninstall')
+MODS_CALLS = ('list', 'mods_of', 'toggle', 'remove_mod', 'downloads_list', 'install_download')
+NO_CORE = "Hearth's core isn't running (it starts with Steam Game Mode), so this can't be done here. Open Hearth to do it."
+
+# Quick Resume, Hearth Friends, Hearth Link and Sunshine (core_service.rs ASIDE_OPS, LINK_OPS, REMOTE_OPS): only through
+# the running core, only these operations with checked arguments.
+ASIDE_OPS = ('list', 'put', 'resume', 'close')
+LINK_OPS = ('status', 'sync', 'wake')
+REMOTE_OPS = ('status', 'on', 'off', 'pair')
+LINK_ID = re.compile(r'^[A-Za-z0-9._:-]{1,128}$')   # core_service.rs link_id_ok
+PIN = re.compile(r'^[0-9]{4}$')
+
+
+def rest_request(cmd, op, a=None):
+    """The checked request for `aside`, `friends`, `link` or `remote`, or None."""
+    a = a if isinstance(a, dict) else {}
+    if cmd == 'friends':
+        return {}
+    if cmd == 'aside' and op in ASIDE_OPS:
+        appid = a.get('appid')
+        appid = appid if isinstance(appid, int) and not isinstance(appid, bool) and 0 <= appid <= 0xFFFFFFFF else 0
+        if op != 'list' and not appid:
+            return None
+        game = a.get('game') if valid_id(a.get('game')) else None
+        title = ''.join(c for c in str(a.get('title') or '') if c.isprintable())[:120]
+        return {'op': op, 'appid': appid, 'game': game, 'title': title}
+    if cmd == 'link' and op in LINK_OPS:
+        key = {'sync': 'peer', 'wake': 'server'}.get(op)
+        if not key:
+            return {'op': op}
+        v = a.get(key)
+        return {'op': op, key: v} if isinstance(v, str) and LINK_ID.match(v) else None
+    if cmd == 'remote' and op in REMOTE_OPS:
+        if op != 'pair':
+            return {'op': op}
+        pin, name = a.get('pin'), a.get('name')
+        if not (isinstance(pin, str) and PIN.match(pin)):
+            return None
+        return {'op': op, 'pin': pin, 'name': (name if isinstance(name, str) else '')[:40]}
+    return None
+
+
+def rest_call(cmd, op, a=None, core=None):
+    """Always a dict: the core's answer, or {'error'} (not allowed, or the core isn't running)."""
+    req = rest_request(cmd, op, a)
+    if req is None:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    return core_result((core or core_call)(cmd, req), NO_CORE)
+
+
+def page_call(kind, name, args, core=None):
+    """One of the Steam pages' changes, through Hearth's core service: {'error': ...} when it isn't allowed or the core
+    doesn't run (never the command line: these change things, and only the running core keeps their progress)."""
+    allowed = BRIDGE_CALLS if kind == 'call' else MODS_CALLS
+    if name not in allowed:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    args = args if isinstance(args, dict) else {}
+    req = {'method': name, 'args': args} if kind == 'call' else {'call': name, 'args': args}
+    return core_result((core or core_call)(kind, req), NO_CORE)
+CORE_MAX = 16 * 1024 * 1024
+CORE_IDS = [0]
+
+
+def core_socket_path():
+    return os.path.join(clean_env()['XDG_RUNTIME_DIR'], 'hearth', 'core.sock')
+
+
+def core_safe(path, uid=None):
+    """The socket and its folder are this user's own (nobody else could have put a socket there)."""
+    uid = os.getuid() if uid is None else uid
+    try:
+        d = os.lstat(os.path.dirname(path))
+        s = os.lstat(path)
+    except OSError:
+        return False
+    return (stat.S_ISDIR(d.st_mode) and d.st_uid == uid and not (d.st_mode & 0o077)
+            and stat.S_ISSOCK(s.st_mode) and s.st_uid == uid)
+
+
+def peer_uid(sock):
+    try:
+        pid, uid, gid = struct.unpack('3i', sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+        return uid
+    except (OSError, AttributeError, struct.error):
+        return None
+
+
+def core_call(cmd, args=None, timeout=None, path=None):
+    """One request to Hearth's core service. None when it isn't running (the caller then asks the command line);
+    otherwise its answer, {'ok': True, 'data': ...} or {'ok': False, 'error': ...}."""
+    if cmd not in CORE_COMMANDS:
+        return {'ok': False, 'error': "That isn't something the Hearth plugin asks"}
+    path = path or core_socket_path()
+    if not core_safe(path):
+        return None
+    CORE_IDS[0] += 1
+    req = dict(args or {})
+    req.update({'id': CORE_IDS[0], 'cmd': cmd})
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        s.settimeout(timeout or CORE_TIMEOUTS.get(cmd, 30))
+        s.connect(path)
+        if peer_uid(s) != os.getuid():
+            log('core service: the socket belongs to someone else; not used')
+            return None
+        s.sendall((json.dumps(req) + '\n').encode())
+        buf = b''
+        while b'\n' not in buf:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > CORE_MAX:
+                return {'ok': False, 'error': 'Hearth gave too long an answer'}
+    except (OSError, socket.timeout) as e:
+        if isinstance(e, (ConnectionRefusedError, FileNotFoundError)):
+            return None
+        return {'ok': False, 'error': "Hearth didn't answer (%s)" % e}
+    finally:
+        s.close()
+    try:
+        v = json.loads(buf.split(b'\n', 1)[0].decode('utf-8', 'replace'))
+    except ValueError:
+        return {'ok': False, 'error': 'Hearth gave no answer'}
+    return v if isinstance(v, dict) else {'ok': False, 'error': 'Hearth gave no answer'}
+
+
+def core_result(r, missing="Hearth's core isn't running (it starts with Steam Game Mode)"):
+    """A core answer as the pages take it: the data (a dict), or {'error': ...}."""
+    if r is None:
+        return {'error': missing}
+    if r.get('ok') is True:
+        d = r.get('data')
+        return d if isinstance(d, dict) else {'value': d}
+    return {'error': str(r.get('error') or 'Hearth gave no answer')[:300]}
+
+
+def hearth_data(what, arg='', run=subprocess.run, core=None):
+    """Asks Hearth one of the takeover's questions: its core service when it runs, else the command line. Always a
+    dict: Hearth's answer, or {'error': ...}."""
     args = data_args(what, arg)
     if not args:
         return {'error': "That isn't something the Hearth plugin asks"}
+    r = (core or core_call)('data', {'what': what, 'arg': arg if isinstance(arg, str) else ''}, DATA[what])
+    if r is not None:
+        return core_result(r)
     app = find_program('nimbus')
     if not app:
         return {'error': "Hearth isn't installed here"}
@@ -809,6 +1091,97 @@ class Plugin:
             return {'ok': False, 'error': "Hearth's session isn't installed here"}
         log('switching to Hearth Game Mode')
         subprocess.Popen([prog, 'game'], env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return {'ok': True}
+
+    # ---- Hearth in Steam's menus, Quick Access and in-game overlay (through Hearth's core service)
+    async def core_status(self):
+        r = core_call('ping')
+        return {'running': bool(r and r.get('ok')), 'version': ((r or {}).get('data') or {}).get('version', '')}
+
+    async def hearth_front(self, appid, game, overlay):
+        """The game Steam runs now (Hearth's id, or '' for none), for Hearth Input and the in-game section."""
+        game = game if valid_id(game) else None
+        try:
+            appid = max(0, min(int(appid or 0), 0xFFFFFFFF))
+        except (TypeError, ValueError):
+            appid = 0
+        return core_result(core_call('front', {'game': game, 'appid': appid, 'overlay': bool(overlay)}))
+
+    async def hearth_game(self, game):
+        if not valid_id(game):
+            return {'error': "That isn't a game Hearth knows"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('game', {'game': game})))
+
+    async def hearth_input_set(self, game, layout):
+        if not valid_id(game) or not isinstance(layout, str):
+            return {'error': "That isn't a game Hearth knows"}
+        return core_result(core_call('input-set', {'game': game, 'layout': layout}))
+
+    async def hearth_set_proton(self, game, proton):
+        if not valid_id(game) or not isinstance(proton, str):
+            return {'error': "That isn't a game Hearth knows"}
+        return core_result(core_call('set-proton', {'game': game, 'proton': proton}))
+
+    async def hearth_mods(self, game):
+        if not valid_id(game):
+            return {'error': "That isn't a game Hearth knows"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('mods', {'game': game})))
+
+    async def hearth_tool(self, what):
+        """Hearth's screenshot (gamescope's, to Pictures/Screenshots/Hearth) or Hearth Recorder's start/stop."""
+        if what not in ('screenshot', 'record'):
+            return {'error': "That isn't something the Hearth plugin asks"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call(what)))
+
+    # ---- The Steam pages' changes (Store, Mods, Storage, Recomps), through Hearth's core service
+    async def hearth_call(self, method, args=None):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: page_call('call', method, args))
+
+    async def hearth_mods_call(self, call, args=None):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: page_call('mods-call', call, args))
+
+    async def hearth_games_disk(self, mount):
+        if not isinstance(mount, str) or not mount.startswith('/'):
+            return {'error': "That isn't a drive"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('games-disk', {'mount': mount}), NO_CORE))
+
+    # ---- Couch Co-op in Steam Game Mode (Quick Access › Hearth Players, the split-screen page)
+    async def coop(self, op, pads=None, pad=''):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: coop_call(op, pads if isinstance(pads, list) else [], pad))
+
+    async def seats(self, op, seat=0, pad=''):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: seats_call(op, seat, pad))
+
+    async def coop_target(self, game_id, players=0, layout='auto'):
+        if not os.path.isfile(COOP):
+            return {'ok': False, 'error': "Couch Co-op isn't part of this Hearth OS."}
+        t = coop_shortcut(game_id, players, layout)
+        if not t:
+            return {'ok': False, 'error': "That isn't a game Hearth plays split-screen"}
+        t['ok'] = True
+        return t
+
+    # ---- Quick Resume, Hearth Friends, Hearth Link, Sunshine (Quick Access › Hearth, /hearth/friends, /hearth/link)
+    async def hearth_rest(self, cmd, op='', args=None):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: rest_call(cmd, op, args))
+
+    async def switch_to_desktop(self):
+        """Hearth's Desktop Mode (the same as Steam's Power › Switch to Desktop: Hearth's session decides)."""
+        prog = find_program('nimbus-mode')
+        if not prog:
+            return {'ok': False, 'error': "Hearth's session isn't installed here"}
+        log('switching to Desktop Mode (Hearth power, Steam main menu)')
+        subprocess.Popen([prog, 'desktop'], env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
         return {'ok': True}
 
