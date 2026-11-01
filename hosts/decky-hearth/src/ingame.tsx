@@ -25,7 +25,7 @@ export function NowPlayingPage() {
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: C.accent }}>{run.hearth ? "Plays through Hearth" : "Steam game"}</div>
           <div style={{ fontSize: 28, fontWeight: 700, margin: "4px 0 12px" }}>{run.title || "This game"}</div>
           <div className="ht-card" style={{ maxWidth: 560 }}>
-            <PanelSection><ThisGame header={false} /></PanelSection>
+            <PanelSection><ThisGame header={false} onPage /></PanelSection>
           </div>
         </div>
       </div>

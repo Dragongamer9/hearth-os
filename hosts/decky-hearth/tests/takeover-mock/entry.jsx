@@ -7,6 +7,7 @@ import { HearthHome, LibraryPage, StorePage, setBrand } from "../../src/pages";
 import { HearthRowView } from "../../src/row";
 import { HearthMenuItems } from "../../src/patches";
 import { QamPanel } from "../../src/qam";
+import { FriendsPage, LinkPage, QuickResumeBody, StreamingBody } from "../../src/rest";
 import { NowPlayingPage } from "../../src/ingame";
 import { CoopPage, SeatsBody } from "../../src/coop";
 import { PanelSection } from "@decky/ui";
@@ -68,8 +69,25 @@ function SeatsQam() {
   );
 }
 
+// Quick Access › Hearth's Quick Resume and Game streaming sections alone, in the same frame.
+function RestQam() {
+  const icons = [[FaBell], [FaUserFriends], [FaCog], [FaTachometerAlt], [FaGamepad], [FaPlug], [FaFire, "hearth"], [FaTachometerAlt, "perf"], [FaGamepad, "controller"], [FaUsers, "players"]];
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      {game}
+      <div className="qam">
+        <div className="qam-tabs">{icons.map(([I, k], i) => <div key={i} className={"qam-tab" + (k ? " hearth" : "") + (k === "hearth" ? " on" : "")}><I /></div>)}</div>
+        <div className="qam-body"><div className="qam-title">Hearth</div><div className="ScrollPanel">
+          <PanelSection title="Quick Resume"><QuickResumeBody /></PanelSection>
+          <PanelSection title="Game streaming"><StreamingBody /></PanelSection>
+        </div></div>
+      </div>
+    </div>
+  );
+}
+
 const pages = {
-  "qam-seats": <SeatsQam />,
+  "qam-seats": <SeatsQam />, "qam-rest": <RestQam />, friends: <FriendsPage />, link: <LinkPage />,
   home: <HearthHome steam={steamHome} />, store: <StorePage />, library: <LibraryPage />, row,
   "steam-menu": steamMenu, "qam-hearth": <Qam which="hearth" />, "qam-perf": <Qam which="perf" />, "qam-controller": <Qam which="controller" />, "qam-players": <Qam which="players" />,
   ingame: <div style={{ position: "absolute", inset: 0 }}><NowPlayingPage /></div>,

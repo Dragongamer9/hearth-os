@@ -87,11 +87,11 @@ const frame = `.steam-menu{position:absolute;left:0;top:0;bottom:0;width:340px;b
 const running = { appid: 3000000001, display_name: "Alan Wake 2" };
 for (const [name, which, want, focus] of [
   ["steam-menu", "steam-menu", ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Switch to Hearth Game Mode", "Desktop Mode", "Alan Wake 2"], ".hearth-menu-item:nth-of-type(1)"],
-  ["qam-hearth", "qam-hearth", ["This game", "Alan Wake 2", "Hearth Input layout", "Shooter / action", "GE-Proton (newest)", "7 mods, 5 on", "Screenshot", "Switch to Hearth Game Mode"], null],
+  ["qam-hearth", "qam-hearth", ["This game", "Alan Wake 2", "Quick Resume", "Put Alan Wake 2 aside", "Hearth Input layout", "Shooter / action", "GE-Proton (newest)", "7 mods, 5 on", "Screenshot", "Switch to Hearth Game Mode"], null],
   ["qam-performance", "qam-perf", ["Power mode", "Balanced", "Power limit: 15 W", "Steam's own Performance tab"], null],
   ["qam-controller", "qam-controller", ["Shooter / action: on in the game (paused while Quick Access is open)", "Hearth Input in Steam Game Mode", "Edit layouts in Hearth"], null],
   ["qam-players", "qam-players", ["Players", "DualSense Wireless Controller", "P1", "P4", "Dragon", "Move up", "Move down", "Rumble", "Waits (4 players at most)", "1 more waits", "Split-screen games"], null],
-  ["ingame-hearth", "ingame", ["Plays through Hearth", "Alan Wake 2", "Hearth Input layout", "Proton (Play through Hearth)", "Open Hearth Mods"], null],
+  ["ingame-hearth", "ingame", ["Plays through Hearth", "Alan Wake 2", "Hearth Input layout", "Proton (Play through Hearth)", "Open Hearth Mods", "Game details in Hearth"], null],
 ]) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>${theme}</style><style>body{margin:0;width:1280px;height:800px;overflow:hidden;position:relative;background:#0c1016;font-family:"Segoe UI","Noto Sans",sans-serif}
 .DialogButton{border:none;color:#e9eef4;background:rgba(233,238,244,.1);border-radius:6px;font:inherit;cursor:pointer}
@@ -141,6 +141,34 @@ for (const [name, want, clicks, off] of [
   await page.screenshot({ path: join(out, name + ".png") });
   console.log(`drew ${name}${missing.length ? " (missing " + missing.join(", ") + ")" : ""}`);
 }
+// Quick Access › Hearth › Quick Resume and Game streaming (rest.tsx): the game put aside (as Put aside's A would),
+// and Sunshine's PIN pad with a PIN typed.
+for (const [name, want, clicks] of [
+  ["qam-quick-resume", ["Quick Resume", "Alan Wake 2 · put aside 4 min ago", "Resume", "Close", "Game streaming", "Streaming is on at 192.168.1.42", "Living room TV", "Pair a device"], ["Put Alan Wake 2 aside"]],
+  ["qam-streaming-pin", ["Game streaming (Sunshine)", "PIN", "Pair", "Cancel"], ["Pair a device", "4", "2", "0"]],
+]) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${theme}</style><style>body{margin:0;width:1280px;height:800px;overflow:hidden;position:relative;background:#0c1016;font-family:"Segoe UI","Noto Sans",sans-serif}
+.DialogButton{border:none;color:#e9eef4;background:rgba(233,238,244,.1);border-radius:6px;font:inherit;cursor:pointer}
+.DialogButton{background:#1d2531 !important}.DialogButton.gpfocus{background:#3fd0b8 !important;color:#06231e !important}${frame}</style></head>
+<body><div id="root" style="position:absolute;inset:0"></div><script>window.HEARTH_PAGE="qam-rest";window.HEARTH_RUNNING=${JSON.stringify(running)};window.HEARTH_LOGO=${JSON.stringify(logo)};window.HEARTH_WALL=${JSON.stringify(wall)};</script><script>${js}</script></body></html>`;
+  writeFileSync(join(out, name + ".html"), html);
+  await page.setContent(html);
+  await page.waitForTimeout(2500);
+  for (const c of clicks) {
+    const ok = await page.evaluate((t) => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim().startsWith(t)); if (b) b.click(); return !!b; }, c);
+    if (!ok) errors.push(`${name}: no button "${c}" to press`);
+    await page.waitForTimeout(900);
+  }
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".qam-body button")].find((x) => !x.disabled); if (b) b.classList.add("gpfocus"); });
+  await page.waitForTimeout(300);
+  const text = await page.evaluate(() => document.body.innerText);
+  const missing = want.filter((w) => !text.toLowerCase().includes(w.toLowerCase()));
+  if (missing.length) errors.push(`${name}: missing ${missing.join(", ")}`);
+  if (name === "qam-streaming-pin" && !text.includes("420_")) errors.push(`${name}: the PIN typed so far isn't shown`);
+  await page.screenshot({ path: join(out, name + ".png") });
+  console.log(`drew ${name}${missing.length ? " (missing " + missing.join(", ") + ")" : ""}`);
+}
 // The pages that change things (manage.tsx) and the Store's details with a download's progress, taller so the whole
 // page shows. "click": buttons pressed first (by their text), as a controller's A would.
 for (const [name, which, want, clicks, height] of [
@@ -149,6 +177,8 @@ for (const [name, which, want, clicks, height] of [
   ["takeover-storage", "storage", ["Storage", "This device", "SD card", "Use this disk for games", "Move to SD card", "Move in Steam's Storage", "Uninstall in Steam", "Uninstall it in Battle.net.", "Stop", "Portal 2", "Delete 2 items"], ["Find things to clean up"], 1900],
   ["takeover-coop", "coop", ["Split-screen", "Dragon", "Everyone (4)", "Side by side", "2 × 2", "Kart Party", "Play split-screen", "Add to Steam library", "Can't play split-screen", "EasyAntiCheat", "Steam Input"], [], 1250],
   ["takeover-recomps", "recomps", ["Hearth Recomps", "Zelda 64: Recompiled", "Play", "Banjo: Recompiled", "Downloading", "Cancel", "Install"], [], 900],
+  ["takeover-friends", "friends", ["Hearth Friends", "Sarah", "Playing Starfall Drift", "Mike", "Online", "Away", "Offline", "Chats and requests in Hearth"], [], 800],
+  ["takeover-link", "link", ["Hearth Link", "Dragon's Ally", "Living room PC", "Sync now", "Not on right now", "Hades", "4.2 GB of 11.0 GB", "Hearth Storage", "Basement NAS", "1.8 TB free", "Wake it", "Pairing and settings in Hearth"], [], 1100],
 ]) {
   await page.setViewportSize({ width: 1280, height });
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>${theme}</style><style>body{margin:0;width:1280px;height:${height}px;overflow:hidden;position:relative;background:#0c1016;font-family:"Segoe UI","Noto Sans",sans-serif}

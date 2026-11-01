@@ -41,6 +41,18 @@
 //!   seats {op, seat, pad}                 Multi-seat beside Steam Game Mode (hearth-seats): `status`, `pads`, `start` /
 //!                                         `stop` one extra player (seat 2-4), `assign` a controller (its pad id) to a
 //!                                         player (1-4). Never sets multi-seat up or removes it, never touches accounts
+//!   aside {op, appid, game, title}        Quick Resume in Steam Game Mode: `put` the game Steam runs aside (its processes
+//!                                         stopped, kept in memory), `resume` it, `close` it, `list`. Only processes that
+//!                                         carry the game's number (procs::owners); never Steam's own. A game put aside
+//!                                         carries on by itself when it's back in front (Steam's Resume), and everything
+//!                                         still stopped carries on when the service ends
+//!   friends                               Hearth Friends (Matrix), read only: signed in, each friend's name, presence
+//!                                         and game. No chats, no account, no tokens
+//!   link {op, peer, server}               Hearth Link and Hearth Storage: `status` (short: names, online, copies,
+//!                                         servers; never the device's link), `sync` with a paired device, `wake` a
+//!                                         storage server
+//!   remote {op, pin, name}                Sunshine (Settings › Remote play): `status`, `on`, `off`, `pair` with
+//!                                         Moonlight's 4-digit PIN (never logged)
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -51,7 +63,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Every command the service answers; anything else is refused.
-pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk", "coop", "seats"];
+pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk", "coop", "seats", "aside", "friends", "link", "remote"];
 /// Hearth's own calls the Steam pages may make (`call`), each with the arguments it may carry (everything else is dropped).
 pub const BRIDGE_CALLS: &[(&str, &[&str])] = &[
     ("library.downloads", &[]), ("game.install", &["id"]), ("game.cancelInstall", &["id"]), ("game.pauseInstall", &["id"]), ("game.resumeInstall", &["id"]),
@@ -67,6 +79,14 @@ pub const MODS_CALLS: &[(&str, &[&str])] = &[
 pub const COOP_OPS: &[&str] = &["players", "order", "identify", "games", "check"];
 /// A controller as hearth-coop names it: its event node (`event12`), nothing else.
 pub fn pad_id_ok(s: &str) -> bool { s.len() > 5 && s.len() <= 10 && s.starts_with("event") && s[5..].chars().all(|c| c.is_ascii_digit()) }
+/// Quick Resume in Steam Game Mode (`aside`).
+pub const ASIDE_OPS: &[&str] = &["list", "put", "resume", "close"];
+/// Hearth Link's questions and actions the Hearth Link page may make (`link`).
+pub const LINK_OPS: &[&str] = &["status", "sync", "wake"];
+/// Sunshine's (`remote`).
+pub const REMOTE_OPS: &[&str] = &["status", "on", "off", "pair"];
+/// A Hearth Link device or storage server id as hearth-link names them (letters, digits, `.`, `_`, `:`, `-`).
+pub fn link_id_ok(s: &str) -> bool { !s.is_empty() && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-')) }
 /// Multi-seat's questions and changes the Quick Access › Hearth Players › Seats section may make (`seats`).
 pub const SEATS_OPS: &[&str] = &["status", "pads", "start", "stop", "assign"];
 /// A controller as hearth-seats names it (hearth-admin's SEAT_PAD_RE): `usb:1-2` (a USB port path, `usb:3-1.4.2`) or
@@ -105,7 +125,12 @@ pub struct Shared {
     front: Mutex<Option<(Front, Instant)>>,
     focus: Mutex<Option<(Option<u64>, Instant)>>,
     clients: AtomicUsize,
+    aside: Mutex<Vec<Aside>>,
 }
+
+/// A game put aside (Quick Resume in Steam Game Mode): Steam's app id, Hearth's id, the numbers its processes carry.
+#[derive(Clone, Debug)]
+pub struct Aside { pub appid: u32, pub game: Option<String>, pub title: String, pub numbers: Vec<u32>, pub at: Instant, pub at_ms: u64 }
 
 impl Shared {
     pub fn set_front(&self, f: Front) { *self.front.lock().unwrap_or_else(|p| p.into_inner()) = Some((f, Instant::now())); }
@@ -220,6 +245,32 @@ pub fn check(req: &Value) -> Result<(String, Value), String> {
                 _ => {}
             }
             json!({"op": op, "seat": if matches!(op, "start" | "stop" | "assign") { seat } else { 0 }, "pad": if op == "assign" { pad } else { "" }})
+        }
+        "aside" => {
+            let op = req["op"].as_str().filter(|o| ASIDE_OPS.contains(o)).ok_or("That isn't something the Hearth plugin asks")?;
+            let appid = req["appid"].as_u64().unwrap_or(0);
+            if appid > u32::MAX as u64 || (op != "list" && appid == 0) { return Err("That isn't a Steam app id".into()); }
+            let game = if req["game"].is_null() || req["game"] == "" { Value::Null } else { json!(need_game()?) };
+            let title: String = req["title"].as_str().unwrap_or("").chars().filter(|c| !c.is_control()).take(120).collect();
+            json!({"op": op, "appid": appid, "game": game, "title": title})
+        }
+        "link" => {
+            let op = req["op"].as_str().filter(|o| LINK_OPS.contains(o)).ok_or("That isn't something the Hearth plugin asks")?;
+            let id = |k: &str| req[k].as_str().filter(|v| link_id_ok(v)).map(str::to_string).ok_or("That isn't a Hearth Link device");
+            match op {
+                "sync" => json!({"op": op, "peer": id("peer")?}),
+                "wake" => json!({"op": op, "server": id("server")?}),
+                _ => json!({"op": op}),
+            }
+        }
+        "remote" => {
+            let op = req["op"].as_str().filter(|o| REMOTE_OPS.contains(o)).ok_or("That isn't something the Hearth plugin asks")?;
+            if op != "pair" { json!({"op": op}) } else {
+                let pin = req["pin"].as_str().filter(|p| p.len() == 4 && p.chars().all(|c| c.is_ascii_digit())).ok_or("The PIN is the 4 numbers Moonlight shows")?;
+                let mut name: String = req["name"].as_str().unwrap_or("").chars().filter(|c| !c.is_control()).take(40).collect();
+                if name.trim().is_empty() { name = "Moonlight".into(); }
+                json!({"op": op, "pin": pin, "name": name})
+            }
         }
         "set-proton" => {
             let p = req["proton"].as_str().ok_or("No Proton version")?;
@@ -450,6 +501,172 @@ fn seats(a: &Value) -> Result<Value, String> {
     }
 }
 
+// ---------------------------------------------------------------- Quick Resume in Steam Game Mode
+
+fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
+
+/// The numbers a game's processes carry: Steam's app id (its reaper's, a Hearth shortcut's too), a Steam game's own app
+/// id (SteamAppId), and Hearth's number for one of Hearth's games (HEARTH_GAME_ID: inside Flathub's Steam, Hearth's
+/// games run on the system through flatpak-spawn, outside Steam's reaper). Only numbers Hearth already gave out.
+pub fn aside_numbers(appid: u32, game: Option<&str>, known: &Value) -> Vec<u32> {
+    let mut n = vec![appid];
+    if let Some(g) = game {
+        if let Some(a) = crate::appid::steam_app_id(g) { n.push(a); }
+        if let Some(h) = known[g].as_u64().filter(|h| *h > 0 && *h <= u32::MAX as u64) { n.push(h as u32); }
+    }
+    n.retain(|x| *x != 0);
+    n.dedup();
+    n
+}
+
+/// This user's processes that carry one of these numbers (never this service, never Steam's own).
+fn aside_pids(numbers: &[u32]) -> Vec<u32> {
+    let me = std::process::id();
+    let snap = crate::procs::snapshot(Path::new("/proc"));
+    let mut v: Vec<u32> = crate::procs::owners(&snap, me).into_iter().filter(|(p, o)| *p != me && numbers.contains(o)).map(|(p, _)| p).collect();
+    v.sort();
+    v
+}
+
+fn aside_list(sh: &Shared) -> Value {
+    let mut l = sh.aside.lock().unwrap_or_else(|p| p.into_inner());
+    // Closed some other way (Steam's Exit game, it crashed): not aside any more.
+    l.retain(|e| !aside_pids(&e.numbers).is_empty());
+    json!({"list": l.iter().map(|e| json!({"appid": e.appid, "game": e.game, "title": e.title, "at": e.at_ms})).collect::<Vec<_>>()})
+}
+
+fn aside_thaw(e: &Aside, why: &str) {
+    let pids = aside_pids(&e.numbers);
+    let n = crate::procs::signal(&pids, "CONT");
+    crate::bridge::log(&format!("core service: quick resume: {} (app {}) carries on ({why}): {} ({n} resumed)", e.game.as_deref().unwrap_or("steam game"), e.appid, crate::procs::describe(&pids)));
+}
+
+fn aside(sh: &Shared, a: &Value) -> Result<Value, String> {
+    let appid = a["appid"].as_u64().unwrap_or(0) as u32;
+    let game = a["game"].as_str().map(str::to_string);
+    let taken = |sh: &Shared| -> Option<Aside> {
+        let mut l = sh.aside.lock().unwrap_or_else(|p| p.into_inner());
+        l.iter().position(|e| e.appid == appid).map(|i| l.remove(i))
+    };
+    match a["op"].as_str().unwrap_or("") {
+        "put" => {
+            if sh.aside.lock().unwrap_or_else(|p| p.into_inner()).iter().any(|e| e.appid == appid) { return Err("It's already put aside.".into()); }
+            let known = crate::store::Store::open(crate::paths::data_dir().join("library.json")).data["appIds"].clone();
+            let numbers = aside_numbers(appid, game.as_deref(), &known);
+            let pids = aside_pids(&numbers);
+            let stopped = if pids.is_empty() { 0 } else { crate::procs::signal(&pids, "STOP") };
+            if stopped == 0 {
+                crate::bridge::log(&format!("core service: quick resume: couldn't put app {appid} aside: {} found", crate::procs::describe(&pids)));
+                return Err("Couldn't find the game's processes, so it can't be put aside.".into());
+            }
+            crate::bridge::log(&format!("core service: quick resume: {} (app {appid}) put aside: {} ({stopped} paused)", game.as_deref().unwrap_or("steam game"), crate::procs::describe(&pids)));
+            let title = a["title"].as_str().unwrap_or("").to_string();
+            sh.aside.lock().unwrap_or_else(|p| p.into_inner()).insert(0, Aside { appid, game, title, numbers, at: Instant::now(), at_ms: now_ms() });
+            Ok(aside_list(sh))
+        }
+        "resume" => {
+            let e = taken(sh).ok_or("That game isn't put aside any more.")?;
+            aside_thaw(&e, "Resume in Quick Access");
+            Ok(aside_list(sh))
+        }
+        "close" => {
+            let e = taken(sh).ok_or("That game isn't put aside any more.")?;
+            let pids = aside_pids(&e.numbers);
+            crate::bridge::log(&format!("core service: quick resume: closing app {} ({})", e.appid, crate::procs::describe(&pids)));
+            crate::procs::stop(&pids, Duration::from_secs(5));   // woken first: a stopped game only acts on "close" once it runs
+            Ok(aside_list(sh))
+        }
+        _ => Ok(aside_list(sh)),
+    }
+}
+
+/// Every `front`: a game put aside carries on once it's in front again (Steam's Resume, gamescope's focused app) with
+/// Quick Access closed, and is let go when Steam runs another game or none (Steam closed it).
+pub fn aside_follow(sh: &Shared, running: u32, overlay: bool) {
+    if sh.aside.lock().unwrap_or_else(|p| p.into_inner()).is_empty() { return; }
+    let focused = sh.focused_app();
+    let mut l = sh.aside.lock().unwrap_or_else(|p| p.into_inner());
+    let mut keep = Vec::new();
+    for e in l.drain(..) {
+        match aside_step(&e, running, focused, overlay, e.at.elapsed()) {
+            Some(why) => aside_thaw(&e, why),
+            None => keep.push(e),
+        }
+    }
+    *l = keep;
+}
+
+/// Why a game put aside should carry on now, or None to leave it. The first seconds after putting it aside are left
+/// alone (Steam's screen takes a moment to come in front of it).
+pub fn aside_step(e: &Aside, running: u32, focused: Option<u64>, overlay: bool, age: Duration) -> Option<&'static str> {
+    if running != e.appid { return Some("Steam isn't running it any more"); }
+    if age < Duration::from_secs(5) || overlay { return None; }
+    match focused { Some(f) if f == e.appid as u64 => Some("back in front"), _ => None }
+}
+
+/// When the service ends (Steam Game Mode ended): nothing it stopped stays stopped.
+fn aside_release(sh: &Shared) {
+    for e in sh.aside.lock().unwrap_or_else(|p| p.into_inner()).drain(..) { aside_thaw(&e, "Steam Game Mode ended"); }
+}
+
+// ---------------------------------------------------------------- Hearth Friends, Hearth Link, Sunshine
+
+/// Hearth Friends, read only: who's a friend, online, playing what. Never chats, accounts or tokens.
+fn friends() -> Result<Value, String> {
+    let st = crate::matrix_friends::call("status", &json!({}))?;
+    if st["signedIn"] != true { return Ok(json!({"signedIn": false, "friends": []})); }
+    let list = crate::matrix_friends::call("friends", &json!({}))?;
+    Ok(json!({"signedIn": true, "friends": friends_short(&list)}))
+}
+
+/// Friends (not pending requests), online and playing first, only what the page shows.
+pub fn friends_short(list: &Value) -> Vec<Value> {
+    let mut v: Vec<Value> = list.as_array().into_iter().flatten().filter(|f| f["state"] == "friend")
+        .map(|f| json!({"name": f["name"].as_str().or(f["userId"].as_str()).unwrap_or("Friend"), "presence": f["presence"].as_str().unwrap_or("unknown"),
+                        "game": f["game"].as_str(), "joinable": f["joinable"] == true}))
+        .collect();
+    let rank = |f: &Value| (if f["game"].is_string() { 0 } else if f["presence"] == "online" { 1 } else { 2 }, f["name"].as_str().unwrap_or("").to_lowercase());
+    v.sort_by_key(rank);
+    v.truncate(100);
+    v
+}
+
+/// Hearth Link's status, short: never the device's long link (its ticket) or settings.
+pub fn link_short(v: &Value) -> Value {
+    let peers: Vec<Value> = v["peers"].as_array().into_iter().flatten().map(|p| json!({"id": p["id"], "name": p["name"], "online": p["online"] == true})).collect();
+    let copies: Vec<Value> = v["transfers"].as_array().into_iter().flatten().take(10)
+        .map(|t| json!({"title": t["title"], "state": t["state"], "done": t["done"], "total": t["total"], "from": t["from"]})).collect();
+    let servers: Vec<Value> = v["storage"]["servers"].as_array().into_iter().flatten()
+        .map(|s| json!({"id": s["id"], "name": s["name"], "free": s["free"], "usable": s["usable"], "canWake": s["canWake"] == true, "seen": s["at"]})).collect();
+    json!({"running": true, "name": v["me"]["name"], "peers": peers, "copies": copies, "offers": v["offers"].as_array().map(|o| o.len()).unwrap_or(0),
+           "servers": servers, "playing": v["playing"] == true})
+}
+
+fn link(a: &Value) -> Result<Value, String> {
+    match a["op"].as_str().unwrap_or("") {
+        "sync" => crate::link::call("sync.now", &json!({"peer": a["peer"]}), 60).map(|_| json!({"ok": true})),
+        "wake" => crate::link::call("storage.wake", &json!({"server": a["server"]}), 15),
+        _ => Ok(match crate::link::call("status", &json!({}), 8) {
+            Ok(v) => link_short(&v),
+            Err(e) => json!({"running": false, "installed": crate::link::available(), "error": e}),
+        }),
+    }
+}
+
+/// Sunshine: the same as Settings › Remote play (remote.rs).
+fn remote(a: &Value) -> Result<Value, String> {
+    match a["op"].as_str().unwrap_or("") {
+        "on" => crate::remote::set_on(true),
+        "off" => crate::remote::set_on(false),
+        "pair" => {
+            crate::remote::pair(a["pin"].as_str().unwrap_or(""), a["name"].as_str().unwrap_or("Moonlight"))?;
+            crate::bridge::log("core service: remote play: a Moonlight device was paired");
+            Ok(crate::remote::status())
+        }
+        _ => Ok(crate::remote::status()),
+    }
+}
+
 /// One checked command's answer.
 pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
     let game = a["game"].as_str().unwrap_or("");
@@ -460,6 +677,7 @@ pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
         "data" => crate::steam_takeover::answer(a["what"].as_str().unwrap_or(""), a["arg"].as_str().filter(|s| !s.is_empty())),
         "front" => {
             sh.set_front(Front { game: a["game"].as_str().map(str::to_string), appid: a["appid"].as_u64().unwrap_or(0), overlay: a["overlay"] == true });
+            aside_follow(sh, a["appid"].as_u64().unwrap_or(0) as u32, a["overlay"] == true);
             let (g, front, overlay) = sh.input_state();
             let st = crate::input_map::state(g.as_deref(), front, overlay);
             Ok(json!({"game": g, "front": front, "overlay": overlay, "layout": st["layout"]["name"], "active": front && st["layout"].is_object()}))
@@ -484,6 +702,10 @@ pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
         "games-disk" => games_disk(a["mount"].as_str().unwrap_or("")),
         "coop" => coop(a),
         "seats" => seats(a),
+        "aside" => aside(sh, a),
+        "friends" => friends(),
+        "link" => link(a),
+        "remote" => remote(a),
         _ => Err("Unknown command".into()),
     }
 }
@@ -614,6 +836,7 @@ pub fn run(args: &[String]) -> i32 {
         std::thread::sleep(Duration::from_secs(3));
         if let Some(f) = &keep {
             if !f.exists() {
+                aside_release(&sh);
                 let _ = std::fs::remove_file(&path);
                 crate::bridge::log("core service: Steam Game Mode ended; stopping");
                 return 0;
@@ -658,6 +881,18 @@ mod tests {
         assert!(req(json!({"cmd": "call", "method": "game.install", "args": {"id": "steam:620"}})).unwrap_err().contains("Steam's own page"));
         assert!(req(json!({"cmd": "call", "method": "diskspace.move", "args": {"id": "steam:620", "to": "/run/media/a/sd"}})).is_err());
         assert!(req(json!({"cmd": "call", "method": "game.uninstall", "args": {"id": "steam:620"}})).is_err());
+        // Quick Resume, Hearth Link, Sunshine: only their own operations, checked arguments.
+        assert_eq!(req(json!({"cmd": "aside", "op": "put", "appid": 620, "game": "steam:620", "title": "Portal 2\n"})).unwrap().1,
+                   json!({"op": "put", "appid": 620, "game": "steam:620", "title": "Portal 2"}));
+        assert!(req(json!({"cmd": "aside", "op": "put"})).is_err());
+        assert!(req(json!({"cmd": "aside", "op": "kill", "appid": 620})).is_err());
+        assert!(req(json!({"cmd": "aside", "op": "list"})).is_ok());
+        assert!(req(json!({"cmd": "link", "op": "sync", "peer": "abc123"})).is_ok());
+        assert!(req(json!({"cmd": "link", "op": "sync", "peer": "../x y"})).is_err());
+        assert!(req(json!({"cmd": "link", "op": "unpair", "peer": "abc"})).is_err());
+        assert!(req(json!({"cmd": "remote", "op": "pair", "pin": "1234"})).unwrap().1["name"] == "Moonlight");
+        assert!(req(json!({"cmd": "remote", "op": "pair", "pin": "12a4"})).is_err());
+        assert!(req(json!({"cmd": "remote", "op": "login", "user": "x"})).is_err());
         assert!(req(json!({"cmd": "call", "method": "diskspace.move", "args": {"id": "epic:a", "to": "/run/media/a/sd"}})).is_ok());
         assert!(req(json!({"cmd": "call", "method": "accounts.signIn", "args": {"store": "epic"}})).is_err(), "never sign-ins");
         assert!(req(json!({"cmd": "call", "method": "store.web"})).is_err());
@@ -795,5 +1030,38 @@ mod tests {
         let mut c = String::new();
         let _ = BufReader::new(s2).read_line(&mut c);
         assert!(c.contains("Too long"), "{c}");
+    }
+
+    #[test]
+    fn quick_resume_follows_steam() {
+        let e = Aside { appid: 620, game: Some("steam:620".into()), title: "Portal 2".into(), numbers: vec![620], at: Instant::now(), at_ms: 0 };
+        let s5 = Duration::from_secs(6);
+        assert_eq!(aside_step(&e, 620, Some(769), false, s5), None, "Steam's own screen in front: stays aside");
+        assert_eq!(aside_step(&e, 620, Some(620), false, Duration::from_secs(1)), None, "just put aside: Steam's screen still coming");
+        assert_eq!(aside_step(&e, 620, Some(620), true, s5), None, "Quick Access open over it");
+        assert_eq!(aside_step(&e, 620, Some(620), false, s5), Some("back in front"));
+        assert_eq!(aside_step(&e, 620, None, false, s5), None, "focus unknown: only Resume in Quick Access");
+        assert!(aside_step(&e, 0, Some(769), false, s5).is_some(), "Steam closed it");
+        assert!(aside_step(&e, 440, Some(440), false, Duration::ZERO).is_some(), "Steam runs another game");
+        let known = json!({"epic:a": 2147487744u64});
+        assert_eq!(aside_numbers(3000000001, Some("epic:a"), &known), vec![3000000001, 2147487744]);
+        assert_eq!(aside_numbers(620, Some("steam:620"), &known), vec![620]);
+        assert_eq!(aside_numbers(620, Some("gog:new"), &known), vec![620], "only numbers Hearth gave out");
+    }
+
+    #[test]
+    fn friends_and_link_answers_are_short() {
+        let f = friends_short(&json!([{"userId": "@a:x", "name": "Ann", "state": "friend", "presence": "offline", "game": null},
+            {"userId": "@b:x", "name": "Bo", "state": "friend", "presence": "online", "game": "Hades", "joinable": true, "roomId": "!r"},
+            {"userId": "@c:x", "name": "Cy", "state": "pending", "presence": "online"}, {"userId": "@d:x", "name": "Di", "state": "friend", "presence": "online"}]));
+        assert_eq!(f.iter().map(|x| x["name"].as_str().unwrap()).collect::<Vec<_>>(), vec!["Bo", "Di", "Ann"]);
+        assert!(f[0].get("roomId").is_none() && f[0]["joinable"] == true);
+        let l = link_short(&json!({"me": {"name": "Ally", "ticket": "SECRET"}, "settings": {"x": 1}, "peers": [{"id": "p1", "name": "Desk", "online": true, "pairedAt": 1}],
+            "transfers": [{"title": "Hades", "state": "copying", "done": 1, "total": 2}], "offers": [{}], "storage": {"servers": [{"id": "s1", "name": "NAS", "canWake": true}]}}));
+        assert!(!l.to_string().contains("SECRET"));
+        assert_eq!(l["name"], "Ally");
+        assert_eq!(l["peers"][0]["name"], "Desk");
+        assert_eq!(l["servers"][0]["canWake"], true);
+        assert_eq!(l["offers"], 1);
     }
 }

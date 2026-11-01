@@ -665,9 +665,10 @@ def data_args(what, arg):
 
 # ---- Hearth's core service (hearth-core core_service.rs COMMANDS: the same list, checked by the tests)
 CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record', 'call', 'mods-call',
-                 'games-disk', 'coop', 'seats')
+                 'games-disk', 'coop', 'seats', 'aside', 'friends', 'link', 'remote')
 CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3,
-                 'call': 120, 'mods-call': 310, 'games-disk': 30, 'coop': 120, 'seats': 120}
+                 'call': 120, 'mods-call': 310, 'games-disk': 30, 'coop': 120, 'seats': 120, 'aside': 20, 'friends': 70, 'link': 70,
+                 'remote': 75}
 # The Steam pages' calls (Store installs and downloads, Storage, Recomps; Hearth Mods): the same lists as
 # core_service.rs BRIDGE_CALLS and MODS_CALLS, checked here first so nothing else is ever sent.
 BRIDGE_CALLS = ('library.downloads', 'game.install', 'game.cancelInstall', 'game.pauseInstall', 'game.resumeInstall', 'game.uninstall',
@@ -675,6 +676,51 @@ BRIDGE_CALLS = ('library.downloads', 'game.install', 'game.cancelInstall', 'game
                 'recomps.list', 'recomps.install', 'recomps.cancel', 'recomps.uninstall')
 MODS_CALLS = ('list', 'mods_of', 'toggle', 'remove_mod', 'downloads_list', 'install_download')
 NO_CORE = "Hearth's core isn't running (it starts with Steam Game Mode), so this can't be done here. Open Hearth to do it."
+
+# Quick Resume, Hearth Friends, Hearth Link and Sunshine (core_service.rs ASIDE_OPS, LINK_OPS, REMOTE_OPS): only through
+# the running core, only these operations with checked arguments.
+ASIDE_OPS = ('list', 'put', 'resume', 'close')
+LINK_OPS = ('status', 'sync', 'wake')
+REMOTE_OPS = ('status', 'on', 'off', 'pair')
+LINK_ID = re.compile(r'^[A-Za-z0-9._:-]{1,128}$')   # core_service.rs link_id_ok
+PIN = re.compile(r'^[0-9]{4}$')
+
+
+def rest_request(cmd, op, a=None):
+    """The checked request for `aside`, `friends`, `link` or `remote`, or None."""
+    a = a if isinstance(a, dict) else {}
+    if cmd == 'friends':
+        return {}
+    if cmd == 'aside' and op in ASIDE_OPS:
+        appid = a.get('appid')
+        appid = appid if isinstance(appid, int) and not isinstance(appid, bool) and 0 <= appid <= 0xFFFFFFFF else 0
+        if op != 'list' and not appid:
+            return None
+        game = a.get('game') if valid_id(a.get('game')) else None
+        title = ''.join(c for c in str(a.get('title') or '') if c.isprintable())[:120]
+        return {'op': op, 'appid': appid, 'game': game, 'title': title}
+    if cmd == 'link' and op in LINK_OPS:
+        key = {'sync': 'peer', 'wake': 'server'}.get(op)
+        if not key:
+            return {'op': op}
+        v = a.get(key)
+        return {'op': op, key: v} if isinstance(v, str) and LINK_ID.match(v) else None
+    if cmd == 'remote' and op in REMOTE_OPS:
+        if op != 'pair':
+            return {'op': op}
+        pin, name = a.get('pin'), a.get('name')
+        if not (isinstance(pin, str) and PIN.match(pin)):
+            return None
+        return {'op': op, 'pin': pin, 'name': (name if isinstance(name, str) else '')[:40]}
+    return None
+
+
+def rest_call(cmd, op, a=None, core=None):
+    """Always a dict: the core's answer, or {'error'} (not allowed, or the core isn't running)."""
+    req = rest_request(cmd, op, a)
+    if req is None:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    return core_result((core or core_call)(cmd, req), NO_CORE)
 
 
 def page_call(kind, name, args, core=None):
@@ -1123,6 +1169,11 @@ class Plugin:
             return {'ok': False, 'error': "That isn't a game Hearth plays split-screen"}
         t['ok'] = True
         return t
+
+    # ---- Quick Resume, Hearth Friends, Hearth Link, Sunshine (Quick Access › Hearth, /hearth/friends, /hearth/link)
+    async def hearth_rest(self, cmd, op='', args=None):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: rest_call(cmd, op, args))
 
     async def switch_to_desktop(self):
         """Hearth's Desktop Mode (the same as Steam's Power › Switch to Desktop: Hearth's session decides)."""

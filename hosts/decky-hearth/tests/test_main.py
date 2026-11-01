@@ -437,6 +437,25 @@ class CoreService(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn('error', self.m.seats_call('pads', core=lambda c, a: None, helper=os.path.join(self.tmp, 'none')))
 
+    def test_quick_resume_friends_link_and_sunshine_match_hearth_core(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        for const, mine in (('ASIDE_OPS', self.m.ASIDE_OPS), ('LINK_OPS', self.m.LINK_OPS), ('REMOTE_OPS', self.m.REMOTE_OPS)):
+            ops = re.search(r'pub const %s: &\[&str\] = &\[(.*?)\];' % const, rs).group(1)
+            self.assertEqual(tuple(re.findall(r'"([^"]+)"', ops)), mine, const)
+        bad = {'error': "That isn't something the Hearth plugin asks"}
+        never = lambda c, a: self.fail('asked')
+        for cmd, op, a in (('aside', 'put', {}), ('aside', 'put', {'appid': True}), ('aside', 'kill', {'appid': 5}), ('link', 'unpair', {'peer': 'a'}),
+                           ('link', 'sync', {'peer': '../x'}), ('remote', 'login', {}), ('remote', 'pair', {'pin': '12345'}), ('seats', 'status', {})):
+            self.assertEqual(self.m.rest_call(cmd, op, a, core=never), bad, (cmd, op, a))
+        seen = []
+        core = lambda c, a: seen.append((c, a)) or {'ok': True, 'data': {'list': []}}
+        self.assertEqual(self.m.rest_call('aside', 'put', {'appid': 620, 'game': 'steam:620', 'title': 'Portal\n2'}, core=core), {'list': []})
+        self.assertEqual(self.m.rest_call('remote', 'pair', {'pin': '0420', 'name': 7}, core=core), {'list': []})
+        self.assertEqual(self.m.rest_call('friends', '', None, core=core), {'list': []})
+        self.assertEqual(seen, [('aside', {'op': 'put', 'appid': 620, 'game': 'steam:620', 'title': 'Portal2'}),
+                                ('remote', {'op': 'pair', 'pin': '0420', 'name': ''}), ('friends', {})])
+        self.assertEqual(self.m.rest_call('link', 'status', core=lambda c, a: None), {'error': self.m.NO_CORE})
+
     def test_coop_shortcut(self):
         t = self.m.coop_shortcut("gog:it's", 3, 'grid')
         self.assertEqual(t['exe'], '/bin/sh')

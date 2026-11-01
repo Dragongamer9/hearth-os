@@ -9805,7 +9805,7 @@ function oskWanted(){
 const oskShown = t => OSKOK && !!t && !t.oskHidden && (!!t.forceOsk || oskWanted());
 // Instead of the keyboard: what to do, plus buttons for the mouse (and one to bring the keyboard up anyway).
 function kbNone(pre, actName){
-  return `<div class="kbnone"><span class="muted">Type on your keyboard · <b>Enter</b> ${pre==='sk'?'opens the first match':'finishes'} · <b>Esc</b> cancels</span>
+  return `<div class="kbnone"><span class="muted">${HOSTINFO.steamGameMode?'Steam + X: Steam\'s keyboard · ':''}Type on your keyboard · <b>Enter</b> ${pre==='sk'?'opens the first match':'finishes'} · <b>Esc</b> cancels</span>
     ${OSKOK?`<button class="pill" data-f data-k="${pre}-osk" data-act="oskShow" data-v="${pre}">${I.kbd}On-screen keyboard</button>`:''}
     <button class="pill" data-f data-k="${pre}-done" data-act="${actName}" data-c="${pre==='sk'?'enter':'done'}">${pre==='sk'?'Open':'Done'}</button></div>`;
 }
@@ -9893,7 +9893,9 @@ function sheetPick(i){ const it=sheet && sheet.items[i]; if(!it) return; sheet.p
 let prompt=null;
 // o.osk: show the on-screen keyboard even after keyboard or mouse input (it was asked for, e.g. the desktop's keyboard).
 // o.mode: the keyboard's kind ('text', 'password', 'email', 'url', 'number', 'search', 'terminal'): docs/OSK.md.
-function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,show:!o.secret,res,done:false,forceOsk:!!o.osk,oskHidden:false}; openLayer('prompt',oskShown(prompt)?'pk-kb':'pk-field'); }); }
+// In a Hearth window opened from Steam Game Mode, Steam's keyboard (Steam + X) is the one: Hearth's waits behind the
+// prompt's On-screen keyboard button (docs/STEAM-GAME-MODE.md).
+function openPrompt(o){ return new Promise(res=>{ prompt={...o,text:o.value||'',caret:null,show:!o.secret,res,done:false,forceOsk:!!o.osk,oskHidden:!!HOSTINFO.steamGameMode}; openLayer('prompt',oskShown(prompt)?'pk-kb':'pk-field'); }); }
 function renderPrompt(keepK){
   const p=prompt; if(!p) return;
   const osk=oskShown(p);

@@ -118,6 +118,9 @@ export const DESTS: Dest[] = [
   { id: "mods", title: "Hearth Mods", route: "/hearth/mods" },
   { id: "storage", title: "Storage", route: "/hearth/storage" },
   { id: "recomps", title: "Recomps", route: "/hearth/recomps" },
+  { id: "friends", title: "Hearth Friends", route: "/hearth/friends" },
+  { id: "link", title: "Hearth Link", route: "/hearth/link" },
+  { id: "coop", title: "Couch Co-op", route: "/hearth/coop" },
 ];
 
 /** Hearth's Store's tabs, in its order (ui/index.html SHOP_STORES), plus free games. */
@@ -268,7 +271,7 @@ export function updateView(u: UpdateStatus | null | undefined): { line: string; 
 export function menuPlaces(s: Settings, broken?: Set<string>): Dest[] {
   const home: Dest = { id: "home", title: "Hearth Home", route: partOn(s, "tkHome", broken) ? "/library/home" : "/hearth/home" };
   const by = (id: string) => DESTS.find((d) => d.id === id)!;
-  return [home, by("store"), by("library"), by("theater"), by("mods"), by("storage"), by("downloads")];
+  return [home, by("store"), by("library"), by("theater"), by("mods"), by("storage"), by("downloads"), by("friends"), by("link"), by("coop")];
 }
 
 /** Hearth's power options beside Steam's: back to Hearth's Game Mode, or Hearth's Desktop Mode. */
@@ -440,4 +443,36 @@ export function seatsLine(st: (SeatsStatus & { error?: string }) | null): string
 export function seatDone(op: "start" | "stop", seat: number, r: { restart_game_mode?: boolean } | null): string {
   if (op === "start") return r?.restart_game_mode ? `Player ${seat}'s screen opens the next time Steam Game Mode starts` : `Player ${seat} is starting`;
   return r?.restart_game_mode ? `Player ${seat} stopped. Your picture fills the screen again the next time Steam Game Mode starts` : `Player ${seat} stopped`;
+}
+
+// ---- The rest of Hearth's Game Mode (rest.tsx): Quick Resume, Sunshine, Hearth Friends
+
+/** A game put aside: "Portal 2 · put aside 3 min ago". */
+export function asideLine(a: { title?: string; at?: number }, now: number): string {
+  const min = a.at ? Math.max(0, Math.round((now - a.at) / 60000)) : -1;
+  const when = min < 0 ? "" : min < 1 ? " · put aside just now" : min < 60 ? ` · put aside ${min} min ago` : ` · put aside ${Math.round(min / 60)} h ago`;
+  return `${a.title || "A game"}${when}`;
+}
+
+/** One key of the PIN pad: digits up to 4, "del" takes the last one away. */
+export function pinPress(pin: string, key: string): string {
+  if (key === "del") return pin.slice(0, -1);
+  return /^[0-9]$/.test(key) && pin.length < 4 ? pin + key : pin;
+}
+
+/** Sunshine's state in one line (remote.rs status). */
+export function remoteLine(s: { installed?: boolean; on?: boolean; clients?: { name: string }[]; needsLogin?: boolean; addresses?: string[] } | null): string {
+  if (!s) return "Asking Hearth…";
+  if (!s.installed) return "Sunshine isn't on this system. It comes with Hearth OS.";
+  if (!s.on) return "Game streaming is off.";
+  if (s.needsLogin) return "Sunshine is on but has a login Hearth doesn't know: set it up in Hearth's Settings › Remote play.";
+  const n = s.clients?.length || 0;
+  const at = s.addresses?.length ? ` at ${s.addresses[0]}` : "";
+  return `Streaming is on${at}: ${n ? `${n} device${n === 1 ? "" : "s"} paired (${s.clients!.map((c) => c.name).slice(0, 3).join(", ")})` : "no devices paired yet"}.`;
+}
+
+/** A Hearth friend's line: what they're playing, else online or not. */
+export function friendLine(f: { presence?: string; game?: string | null; joinable?: boolean }): string {
+  if (f.game) return `Playing ${f.game}${f.joinable ? " · can be joined (in Hearth)" : ""}`;
+  return f.presence === "online" ? "Online" : f.presence === "unavailable" ? "Away" : "Offline";
 }

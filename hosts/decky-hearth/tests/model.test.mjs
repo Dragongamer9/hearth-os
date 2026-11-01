@@ -144,7 +144,7 @@ test("update row: check, update with progress, ready for a restart, errors", () 
 test("main menu: Hearth's places in Hearth's order, Home where the takeover has it, power options", () => {
   const s = { ...M.DEFAULTS };
   const p = M.menuPlaces(s);
-  assert.deepEqual(p.map((d) => d.title), ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads"]);
+  assert.deepEqual(p.map((d) => d.title), ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Hearth Friends", "Hearth Link", "Couch Co-op"]);
   assert.equal(p[0].route, "/library/home", "Hearth's home is Steam's Home with the takeover");
   assert.equal(M.menuPlaces({ ...s, tkHome: false })[0].route, "/hearth/home");
   assert.equal(M.menuPlaces(s, new Set(["tkHome"]))[0].route, "/hearth/home", "turned off by itself: its own page");
@@ -240,4 +240,22 @@ test("seats: words, actions, who can get a controller", () => {
   assert.equal(M.seatsLine({ error: "x" }), "x");
   assert.match(M.seatDone("start", 2, { restart_game_mode: true }), /next time Steam Game Mode starts/);
   assert.equal(M.seatDone("start", 3, {}), "Player 3 is starting");
+});
+
+test("the rest of Hearth's Game Mode: Quick Resume, Sunshine's PIN and line, Hearth Friends", () => {
+  assert.equal(M.asideLine({ title: "Portal 2", at: 1000 }, 1000 + 3 * 60000), "Portal 2 · put aside 3 min ago");
+  assert.equal(M.asideLine({ title: "Portal 2", at: 1000 }, 1000), "Portal 2 · put aside just now");
+  assert.equal(M.asideLine({}, 5), "A game");
+  let pin = "";
+  for (const k of ["1", "x", "2", "3", "4", "5"]) pin = M.pinPress(pin, k);
+  assert.equal(pin, "1234", "4 digits at most, digits only");
+  assert.equal(M.pinPress(pin, "del"), "123");
+  assert.equal(M.pinPress("", "del"), "");
+  assert.match(M.remoteLine(null), /Asking/);
+  assert.match(M.remoteLine({ installed: false }), /isn't on this system/);
+  assert.equal(M.remoteLine({ installed: true, on: false }), "Game streaming is off.");
+  assert.equal(M.remoteLine({ installed: true, on: true, clients: [{ name: "TV" }], addresses: ["192.168.1.4"] }), "Streaming is on at 192.168.1.4: 1 device paired (TV).");
+  assert.equal(M.friendLine({ presence: "online", game: "Hades", joinable: true }), "Playing Hades · can be joined (in Hearth)");
+  assert.equal(M.friendLine({ presence: "online" }), "Online");
+  assert.equal(M.friendLine({ presence: "offline" }), "Offline");
 });
