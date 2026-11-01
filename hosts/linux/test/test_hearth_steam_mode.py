@@ -260,6 +260,88 @@ class SteamModeSession(unittest.TestCase):
             self.assertNotIn(word, start)
         self.assertIn('--while "$RUN/hearth-steam-mode.pid"', start)
 
+    # ---- multi-seat beside Steam Game Mode (docs/STEAM-GAME-MODE.md "Multi-seat")
+    def seats(self, enabled=True, host_check=1, host_rc=0, gs_args=''):
+        """A stand-in hearth-seats (run through a fake python3) and its seats.json; returns the env for run_mode."""
+        helper = os.path.join(self.tmp, 'hearth-seats')
+        open(helper, 'w').write('# stand-in\n')
+        conf = os.path.join(self.tmp, 'seats.json')
+        with open(conf, 'w') as f:
+            json.dump({'enabled': enabled, 'mode': 'nested', 'seats': []}, f)
+        calls = os.path.join(self.tmp, 'seats-calls')
+        self.fake('python3', 'echo "$*" >>%s\ncase "$2" in gamescope-args) echo "%s" ;; host-check) exit %d ;; '
+                  'host) exit %d ;; esac\nexit 0' % (calls, gs_args, host_check, host_rc))
+        return {'HEARTH_SEATS_HELPER': helper, 'HEARTH_SEATS_CONFIG': conf}
+
+    def seats_calls(self):
+        try:
+            return open(os.path.join(self.tmp, 'seats-calls')).read()
+        except OSError:
+            return ''
+
+    def test_without_multiseat_steam_game_mode_is_unchanged(self):
+        argv = os.path.join(self.tmp, 'argv')
+        self.fake('gamescope', 'for a in "$@"; do echo "$a"; done >%s\nexit 0' % argv)
+        self.fake('steam', 'exit 0')
+        self.fake('mangoapp', 'exit 0')
+        env = self.seats(enabled=False)
+        self.run_mode(env)
+        self.assertEqual(self.seats_calls(), '', 'multi-seat off: hearth-seats is never asked')
+        args = open(argv).read().split('\n')
+        self.assertEqual(args[:3], ['-e', '-f', '--mangoapp'])
+        self.assertEqual(args[3], '--')
+
+    def test_card_per_player_keeps_player_one_on_their_card(self):
+        argv = os.path.join(self.tmp, 'argv')
+        self.fake('gamescope', 'for a in "$@"; do echo "$a"; done >%s\nexit 0' % argv)
+        self.fake('steam', 'exit 0')
+        self.fake('mangoapp', 'exit 0')
+        self.run_mode(self.seats(host_check=1, gs_args='--prefer-vk-device 1002:73bf --prefer-output DP-1'))
+        args = open(argv).read().split('\n')
+        self.assertEqual(args[:args.index('--')], ['-e', '-f', '--prefer-vk-device', '1002:73bf', '--prefer-output', 'DP-1'])
+        self.assertNotIn('--mangoapp', args, 'no performance overlay while other players play')
+        self.assertNotIn(' host ', self.seats_calls())
+        self.assertEqual(self.read('nimbus-next'), 'game')
+
+    def test_shared_screens_run_steam_inside_the_host(self):
+        ran = os.path.join(self.tmp, 'gamescope-ran')
+        self.fake('gamescope', 'echo yes >%s; exit 0' % ran)
+        self.fake('steam', 'exit 0')
+        self.run_mode(self.seats(host_check=0, host_rc=0))
+        host = [l for l in self.seats_calls().splitlines() if ' host ' in l + ' ']
+        self.assertEqual(len(host), 1, self.seats_calls())
+        words = host[0].split()
+        self.assertEqual(words[2:6], ['--', 'gamescope', '-e', '-f'])
+        self.assertIn('-gamepadui', words)
+        self.assertFalse(os.path.exists(ran), "Steam's gamescope ran inside the host only")
+        self.assertIn('hosting the other players', open(os.path.join(self.tmp, 'session.log')).read())
+        self.assertEqual(self.read('nimbus-next'), 'game')
+
+    def test_host_that_cant_start_never_stops_steam_game_mode(self):
+        ran = os.path.join(self.tmp, 'gamescope-ran')
+        self.fake('gamescope', 'echo yes >%s; exit 0' % ran)
+        self.fake('steam', 'exit 0')
+        self.run_mode(self.seats(host_check=0, host_rc=3))
+        self.assertTrue(os.path.exists(ran), 'Steam Game Mode started without the host')
+        self.assertIsNone(self.read('hearth-steam-mode-failed'))
+        self.assertIn("host couldn't start", open(os.path.join(self.tmp, 'session.log')).read())
+
+    def test_host_can_be_left_out(self):
+        ran = os.path.join(self.tmp, 'gamescope-ran')
+        self.fake('gamescope', 'echo yes >%s; exit 0' % ran)
+        self.fake('steam', 'exit 0')
+        env = self.seats(host_check=0)
+        env['HEARTH_STEAM_SEATS_HOST'] = '0'
+        self.run_mode(env)
+        self.assertTrue(os.path.exists(ran))
+        self.assertNotIn('host', self.seats_calls())
+
+    def test_steam_game_mode_never_starts_or_stops_other_players(self):
+        text = block()
+        part = text[text.index('STEAM_SEATS='):text.index('# ---- Start in Steam Game Mode')]
+        for word in ('hearth-seat@', 'systemctl', 'seats-stop', 'seats-start', 'pkill', 'loginctl', 'kill '):
+            self.assertNotIn(word, part)
+
     def test_session_loop_never_starts_or_repeats_steam_mode(self):
         text = SESSION.read_text()
         self.assertIn('[ "$mode" = steam ] && mode=game', text)

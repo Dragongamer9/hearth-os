@@ -110,6 +110,37 @@ for (const [name, which, want, focus] of [
   await page.screenshot({ path: join(out, name + ".png") });
   console.log(`drew ${name}${missing.length ? " (missing " + missing.join(", ") + ")" : ""}`);
 }
+// Quick Access › Hearth Players › Seats (multi-seat beside Steam Game Mode): the players, then the controllers opened
+// with "Assign controllers" (as a controller's A would), and the line shown when multi-seat isn't set up.
+for (const [name, want, clicks, off] of [
+  ["qam-seats", ["Seats", "Player 1 · Playing here (Steam Game Mode)", "Player 2 · Playing (Hearth Game Mode)", "Player 3 · Stopped", "Stop Player 2", "Start Player 3",
+    "hearth-p2 · own account and Steam sign-in", "Streamed (Moonlight)", "Assign controllers", "never sees their Steam sign-in"], [], false],
+  ["qam-seats-controllers", ["Hide controllers", "DualSense Wireless Controller", "Xbox Wireless Controller", "P1", "P2", "Stays with Player 1"], ["Assign controllers"], false],
+  ["qam-seats-off", ["Multi-seat isn't set up", "Settings › Games › Multi-seat"], [], true],
+]) {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${theme}</style><style>body{margin:0;width:1280px;height:1000px;overflow:hidden;position:relative;background:#0c1016;font-family:"Segoe UI","Noto Sans",sans-serif}
+.DialogButton{border:none;color:#e9eef4;background:rgba(233,238,244,.1);border-radius:6px;font:inherit;cursor:pointer}
+.DialogButton{background:#1d2531 !important}.DialogButton.gpfocus{background:#3fd0b8 !important;color:#06231e !important}${frame}</style></head>
+<body><div id="root" style="position:absolute;inset:0"></div><script>window.HEARTH_PAGE="qam-seats";window.HEARTH_SEATS_OFF=${off};window.HEARTH_LOGO=${JSON.stringify(logo)};window.HEARTH_WALL=${JSON.stringify(wall)};</script><script>${js}</script></body></html>`;
+  writeFileSync(join(out, name + ".html"), html);
+  await page.setContent(html);
+  await page.waitForTimeout(1500);
+  for (const c of clicks) {
+    const ok = await page.evaluate((t) => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim().startsWith(t)); if (b) b.click(); return !!b; }, c);
+    if (!ok) errors.push(`${name}: no button "${c}" to press`);
+    await page.waitForTimeout(1200);
+  }
+  // The first enabled button focused, as the controller would have it.
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".qam-body button")].find((x) => !x.disabled); if (b) b.classList.add("gpfocus"); });
+  await page.waitForTimeout(300);
+  const text = await page.evaluate(() => document.body.innerText);
+  const missing = want.filter((w) => !text.toLowerCase().includes(w.toLowerCase()));
+  if (missing.length) errors.push(`${name}: missing ${missing.join(", ")}`);
+  if (/couldn't be shown/i.test(text)) errors.push(`${name}: a Hearth part fell back to its error`);
+  await page.screenshot({ path: join(out, name + ".png") });
+  console.log(`drew ${name}${missing.length ? " (missing " + missing.join(", ") + ")" : ""}`);
+}
 // The pages that change things (manage.tsx) and the Store's details with a download's progress, taller so the whole
 // page shows. "click": buttons pressed first (by their text), as a controller's A would.
 for (const [name, which, want, clicks, height] of [

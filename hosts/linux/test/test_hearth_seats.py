@@ -527,6 +527,29 @@ class AdminCalls(SeatsBase):
                 self.hs.assign_pad('usb:1-2', 3)
         self.assertEqual(json.loads(self.runner.calls[-1][1]), {'pads': {'usb:1-2': 2, 'uniq:aa:bb:cc:dd:ee:ff': 2}})
 
+    def test_start_and_stop_one_player(self):
+        write(self.hs.CONFIG, json.dumps({'enabled': True, 'mode': 'nested', 'seats': [
+            {'seat': 1, 'user': 'bob', 'mode': 'split'}, {'seat': 2, 'user': 'hearth-p2', 'mode': 'split'},
+            {'seat': 3, 'user': 'hearth-p3', 'mode': 'stream'}]}))
+        self.runner.answers = {'pkexec': (0, '{"ok": true, "enabled": true}\n', '')}
+        with mock.patch('os.geteuid', return_value=1000):
+            r = self.hs.start(3)
+            self.assertEqual(self.runner.calls[-1][0], ['pkexec', self.hs.ADMIN, 'seats-start', '--seat', '3'])
+            self.assertFalse(r['restart_game_mode'], 'streamed: starts at once')
+            self.assertTrue(self.hs.start(2)['restart_game_mode'], 'no host running: their screen needs Game Mode again')
+            write(os.path.join(self.hs.SEAT_RUN, 'host.pid'), str(os.getpid()))
+            self.assertFalse(self.hs.start(2)['restart_game_mode'], 'the host is up: their window opens now')
+            self.assertTrue(self.hs.stop(2)['restart_game_mode'], 'player 1 is still a part of the split screen')
+            self.assertEqual(self.runner.calls[-1][0], ['pkexec', self.hs.ADMIN, 'seats-stop', '--seat', '2'])
+            with self.assertRaises(self.hs.Fail):
+                self.hs.stop(4)
+            with self.assertRaises(self.hs.Fail):
+                self.hs.start(1)
+            n = len(self.runner.calls)
+            with mock.patch('sys.stdout', io.StringIO()), self.assertRaises(SystemExit):
+                self.hs.main(['hearth-seats', 'stop', '--seat', '1'])
+            self.assertEqual(len(self.runner.calls), n, 'nothing asked of root')
+
     def test_removing_a_shared_screen_restarts_game_mode(self):
         # Player 1's Game Mode is still inside the host (on a split screen, a window the size of its part).
         self.runner.answers = {'pkexec': (0, '{"ok": true, "restart": false}\n', '')}
@@ -1141,6 +1164,36 @@ class SetupNew(AdminNewBase):
         self.assertEqual(code, 0, lines)
         self.assertFalse(json.loads(lines[-1])['restart'])
 
+
+    def test_one_player_starts_and_stops_alone(self):
+        # Steam Game Mode's Quick Access › Hearth Players › Seats: one extra player at a time, player 1 never touched.
+        write(self.ha.SEATS_CONFIG, json.dumps({'version': 2, 'mode': 'gpu', 'main_user': 'bob', 'enabled': True, 'seats': [
+            {'seat': 1, 'user': 'bob', 'mode': 'gpu'}, {'seat': 2, 'user': 'hearth-p2', 'mode': 'gpu'},
+            {'seat': 3, 'user': 'hearth-p3', 'mode': 'nested'}]}))
+        code, lines = self.run_cmd(self.ha.seats_start_stop, '', False, 3)
+        self.assertEqual(code, 0, lines)
+        self.assertEqual(json.loads(lines[-1]), {'ok': True, 'enabled': True, 'mode': 'gpu', 'seat': 3})
+        cmds = self.runner.cmds()
+        self.assertIn('systemctl disable --now hearth-seat@hearth-p3.path', cmds)
+        self.assertIn('systemctl stop hearth-seat@hearth-p3.service', cmds)
+        self.assertFalse([c for c in cmds if 'hearth-p2' in c or 'bob' in c], 'the others are left alone')
+        self.assertTrue(json.load(open(self.ha.SEATS_CONFIG))['enabled'], 'the other players stay on')
+        self.runner.calls.clear()
+        code, lines = self.run_cmd(self.ha.seats_start_stop, '', True, 2)
+        self.assertEqual(self.runner.cmds(), ['systemctl enable --now hearth-seat@hearth-p2.service'])
+        code, lines = self.run_cmd(self.ha.seats_start_stop, '', True, 4)
+        self.assertEqual(code, 1)
+        self.assertIn('no player 4', lines[-1])
+
+    def test_one_player_args_strict(self):
+        self.assertIsNone(self.ha.seats_one([]))
+        self.assertEqual(self.ha.seats_one(['--seat', '3']), 3)
+        for bad in (['--seat', '1'], ['--seat', '5'], ['--seat'], ['--seat', '2', 'x'], ['--all']):
+            self.assertIs(self.ha.seats_one(bad), False, bad)
+        with mock.patch('os.geteuid', return_value=0):
+            code, lines = self.run_cmd(self.ha.main, '', ['hearth-admin', 'seats-stop', '--seat', '1'])
+        self.assertEqual(code, 1)
+        self.assertTrue(lines[-1].startswith('error: usage'))
 
 class ShareSetup(AdminBase):
     """Shared games: the hearth-games group, the shared folder, the in-use folder (docs/MULTI-SEAT.md)."""

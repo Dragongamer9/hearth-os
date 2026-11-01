@@ -282,6 +282,56 @@ def coop_call(op, pads=None, pad='', core=None, run=subprocess.run, helper=COOP)
     return {'error': ((p.stderr or '').strip()[-300:]) or 'Couch Co-op gave no answer'}
 
 
+# Multi-seat beside Steam Game Mode (Quick Access › Hearth Players › Seats): the extra players keep their own Hearth Game
+# Mode while player 1 plays here. Through Hearth's core service (it runs in your session, so hearth-admin's polkit rule
+# can answer for the changes); without it only what's set up and the controllers can be read (hearth-seats itself), and
+# starting, stopping or moving a controller says to open Hearth. Never sets multi-seat up or removes it, never accounts.
+SEATS = '/usr/libexec/nimbus/hearth-seats'
+SEATS_OPS = ('status', 'pads', 'start', 'stop', 'assign')    # core_service.rs SEATS_OPS
+SEAT_PAD = re.compile(r'^(usb:[0-9]{1,3}-[0-9]{1,3}(\.[0-9]{1,3}){0,6}|uniq:[A-Za-z0-9:._-]{4,64})$')   # hearth-admin SEAT_PAD_RE
+NO_CORE_SEATS = "Hearth's core isn't running, so players can't be started, stopped or given a controller from here. Use Hearth's Settings › Multi-seat."
+
+
+def seats_request(op, seat=0, pad=''):
+    """The checked request for one of SEATS_OPS, or None: start/stop only players 2-4, assign only a known pad id."""
+    if op not in SEATS_OPS:
+        return None
+    seat = seat if isinstance(seat, int) and not isinstance(seat, bool) else 0
+    if op in ('start', 'stop'):
+        return {'op': op, 'seat': seat, 'pad': ''} if 2 <= seat <= 4 else None
+    if op == 'assign':
+        return {'op': op, 'seat': seat, 'pad': pad} if 1 <= seat <= 4 and isinstance(pad, str) and SEAT_PAD.match(pad) else None
+    return {'op': op, 'seat': 0, 'pad': ''}
+
+
+def seats_call(op, seat=0, pad='', core=None, run=subprocess.run, helper=SEATS):
+    """Multi-seat for the Seats section: always a dict, {'error'} on failure."""
+    req = seats_request(op, seat, pad)
+    if req is None:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    r = (core or core_call)('seats', req)
+    if r is not None:
+        return core_result(r)
+    if op not in ('status', 'pads'):
+        return {'error': NO_CORE_SEATS}
+    if not os.path.isfile(helper):
+        return {'error': "Multi-seat isn't part of this Hearth OS."}
+    try:
+        p = run(['python3', helper, op], capture_output=True, text=True, timeout=CORE_TIMEOUTS['seats'], env=clean_env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {'error': "Multi-seat didn't answer (%s)" % e}
+    for line in reversed((p.stdout or '').splitlines()):
+        if line.startswith('error: '):
+            return {'error': line[7:][:300]}
+        if line.startswith('{'):
+            try:
+                v = json.loads(line)
+            except ValueError:
+                break
+            return v if isinstance(v, dict) else {'value': v}
+    return {'error': ((p.stderr or '').strip()[-300:]) or 'Multi-seat gave no answer'}
+
+
 def shortcut(program, args, flatpak=None):
     """What a Steam shortcut runs: {exe, startDir, options}. The exe is /bin/sh with WRAPPER (it exists in the system
     and in Flathub's Steam sandbox); Steam adds the options after the program through a shell, so each argument is
@@ -615,9 +665,9 @@ def data_args(what, arg):
 
 # ---- Hearth's core service (hearth-core core_service.rs COMMANDS: the same list, checked by the tests)
 CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record', 'call', 'mods-call',
-                 'games-disk', 'coop')
+                 'games-disk', 'coop', 'seats')
 CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3,
-                 'call': 120, 'mods-call': 310, 'games-disk': 30, 'coop': 120}
+                 'call': 120, 'mods-call': 310, 'games-disk': 30, 'coop': 120, 'seats': 120}
 # The Steam pages' calls (Store installs and downloads, Storage, Recomps; Hearth Mods): the same lists as
 # core_service.rs BRIDGE_CALLS and MODS_CALLS, checked here first so nothing else is ever sent.
 BRIDGE_CALLS = ('library.downloads', 'game.install', 'game.cancelInstall', 'game.pauseInstall', 'game.resumeInstall', 'game.uninstall',
@@ -1060,6 +1110,10 @@ class Plugin:
     async def coop(self, op, pads=None, pad=''):
         import asyncio
         return await asyncio.get_event_loop().run_in_executor(None, lambda: coop_call(op, pads if isinstance(pads, list) else [], pad))
+
+    async def seats(self, op, seat=0, pad=''):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: seats_call(op, seat, pad))
 
     async def coop_target(self, game_id, players=0, layout='auto'):
         if not os.path.isfile(COOP):

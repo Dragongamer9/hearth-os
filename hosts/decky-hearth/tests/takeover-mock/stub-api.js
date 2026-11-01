@@ -148,7 +148,23 @@ const coopOps = {
   order: (pads) => ({ pads: pads.map((id, i) => ({ ...coopPads.find((p) => p.id === id), player: i < 4 ? i + 1 : null })), max: 4, running: false }),
   identify: () => ({ rumbled: true }),
 };
+// Multi-seat beside Steam Game Mode (coop.tsx SeatsBody): hearth-seats' status and controllers. Player 1 in Steam Game
+// Mode, Player 2 on another screen (running), Player 3 streamed (stopped). window.HEARTH_SEATS_OFF: not set up.
+const seatsStatus = () => (window.HEARTH_SEATS_OFF ? { configured: false, enabled: false, mode: null, seats: [], host: null } : {
+  configured: true, enabled: true, mode: "nested", host: { running: true, paused: false }, seats: [
+    { seat: 1, user: "dragon", mode: "nested", state: "active", pads: ["usb:1-2"] },
+    { seat: 2, user: "hearth-p2", mode: "nested", state: "running", pads: ["uniq:aa:bb:cc:dd:ee:ff"] },
+    { seat: 3, user: "hearth-p3", mode: "stream", state: "stopped", pads: [] }] });
+const seatsOps = {
+  status: seatsStatus,
+  pads: () => ({ pads: [
+    { id: "usb:1-2", name: "DualSense Wireless Controller", bus: "usb", seat: 1, assignable: true },
+    { id: "uniq:aa:bb:cc:dd:ee:ff", name: "Xbox Wireless Controller", bus: "bluetooth", seat: 2, assignable: true },
+    { id: null, name: "Retro USB Pad", bus: "other", seat: 1, assignable: false }], skipped: [] }),
+  start: () => ({ ok: true, restart_game_mode: false }), stop: () => ({ ok: true, restart_game_mode: false }), assign: () => ({ ok: true }),
+};
 const handlers = {
+  seats: (op) => (seatsOps[op] ? seatsOps[op]() : { error: "no mock" }),
   coop: (op, pads, pad) => (coopOps[op] ? coopOps[op](pads, pad) : { error: "no mock" }),
   coop_target: () => ({ ok: true, exe: "/bin/sh", startDir: "/home/you", options: "-c '…' hearth-steam-coop /usr/libexec/nimbus/hearth-coop play --game steam:600" }),
   hearth_call: (m, a) => (calls[m] ? calls[m](a) : { ok: true }),

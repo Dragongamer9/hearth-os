@@ -8,7 +8,8 @@ import { HearthRowView } from "../../src/row";
 import { HearthMenuItems } from "../../src/patches";
 import { QamPanel } from "../../src/qam";
 import { NowPlayingPage } from "../../src/ingame";
-import { CoopPage } from "../../src/coop";
+import { CoopPage, SeatsBody } from "../../src/coop";
+import { PanelSection } from "@decky/ui";
 import { ModsPage, RecompsPage, StorageManagePage } from "../../src/manage";
 import { startFront } from "../../src/core";
 import { setShortcutMap } from "../../src/state";
@@ -53,7 +54,22 @@ function Qam(props) {
   );
 }
 
+// Quick Access › Hearth Players › Seats (multi-seat beside Steam Game Mode), the section alone in the same frame.
+function SeatsQam() {
+  const icons = [[FaBell], [FaUserFriends], [FaCog], [FaTachometerAlt], [FaGamepad], [FaPlug], [FaFire, "hearth"], [FaTachometerAlt, "perf"], [FaGamepad, "controller"], [FaUsers, "players"]];
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      {game}
+      <div className="qam">
+        <div className="qam-tabs">{icons.map(([I, k], i) => <div key={i} className={"qam-tab" + (k ? " hearth" : "") + (k === "players" ? " on" : "")}><I /></div>)}</div>
+        <div className="qam-body"><div className="qam-title">Hearth Players</div><div className="ScrollPanel"><PanelSection title="Seats"><SeatsBody /></PanelSection></div></div>
+      </div>
+    </div>
+  );
+}
+
 const pages = {
+  "qam-seats": <SeatsQam />,
   home: <HearthHome steam={steamHome} />, store: <StorePage />, library: <LibraryPage />, row,
   "steam-menu": steamMenu, "qam-hearth": <Qam which="hearth" />, "qam-perf": <Qam which="perf" />, "qam-controller": <Qam which="controller" />, "qam-players": <Qam which="players" />,
   ingame: <div style={{ position: "absolute", inset: 0 }}><NowPlayingPage /></div>,
