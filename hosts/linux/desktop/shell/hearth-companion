@@ -1,0 +1,150 @@
+#!/bin/sh
+# hearth-companion: starts the controller for Hearth Plasma, Hearth GNOME or Hearth COSMIC, once per desktop, and
+# says in pad.log (and the desktop's own log) what it decided and why. docs/PLASMA.md, docs/GNOME.md, docs/COSMIC.md.
+#   hearth-companion plasma [who]   quickshell osk-plasma.qml, which runs hearth-pad --plasma and draws the Hearth menu
+#                                   and the keyboard
+#   hearth-companion cosmic [who]   hearth-cosmic companion: desk-cosmic.qml and hearth-pad --cosmic
+#   hearth-companion gnome [who]    GNOME Shell's hearth-pad@hearthos.fun extension runs hearth-pad --gnome itself; this
+#                                   only checks it did, says why not if it didn't (GNOME Shell's mode and the
+#                                   extension's state), and then runs hearth-pad --standalone (pointer, clicks, keys)
+#                                   until the extension's own one shows up
+# Started by nimbus-session once the desktop is up (run_plasma / run_gnome / run_cosmic: companion_start). It used to
+# be XDG autostart from /usr/share/hearth-*/xdg, which Plasma 6 and COSMIC never read: they start autostart entries
+# through systemd's xdg-autostart generator, which only sees systemd's own XDG_CONFIG_DIRS, not the session's.
+# The old autostart entries call this too, so whichever comes second finds it running and leaves it.
+# Rules: only when HEARTH_DESKTOP says that desktop (never in a plain Plasma, GNOME or COSMIC session); one at a time
+# (a lock in $XDG_RUNTIME_DIR); runs only while the desktop's compositor does; never fails in a way that matters:
+# without quickshell, python3, the files or a display it says so and ends, and the desktop goes on without a controller.
+desk="$1"; who="${2:-session}"
+SHARE_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}"
+SHELL_DIR="$SHARE_DIR/desktop/shell"
+PAD="$SHELL_DIR/hearth-pad"
+NDIR="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus"
+PAD_LOG="$NDIR/pad.log"
+mkdir -p "$NDIR" 2>/dev/null
+case "$desk" in
+  plasma) DLOG="$NDIR/plasma.log"; COMP=kwin_wayland; NAME="Hearth Plasma" ;;
+  cosmic) DLOG="$NDIR/cosmic.log"; COMP=cosmic-comp; NAME="Hearth COSMIC" ;;
+  gnome) DLOG="$NDIR/gnome.log"; COMP=gnome-shell; NAME="Hearth GNOME" ;;
+  *) echo "usage: hearth-companion plasma|gnome|cosmic [who]" >&2; exit 2 ;;
+esac
+note() {
+  line="$(date '+%F %T') $NAME controller ($who): $*"
+  echo "$line" >>"$PAD_LOG" 2>/dev/null
+  echo "$line" >>"$DLOG" 2>/dev/null
+}
+me=$(id -u)
+# A process of this user by that name that's really running (not a zombie).
+alive() {
+  for p in $(pgrep -u "$me" -x "$1" 2>/dev/null); do
+    st=$(sed -n 's/^State:[[:space:]]*\([A-Za-z]\).*/\1/p' "/proc/$p/status" 2>/dev/null)
+    [ -n "$st" ] && [ "$st" != Z ] && return 0
+  done
+  return 1
+}
+
+if [ "${HEARTH_DESKTOP:-}" != "$desk" ]; then
+  note "not started: this isn't $NAME (HEARTH_DESKTOP=${HEARTH_DESKTOP:-unset})"
+  exit 0
+fi
+if ! alive "$COMP"; then
+  note "not started: $COMP isn't running"
+  exit 0
+fi
+
+# One at a time per desktop. The lock is held by this script only (its children get the descriptor closed).
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/hearth-companion-$desk.lock"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK" || { note "not started: can't open $LOCK"; exit 0; }
+  if ! flock -n 9; then note "already running (started earlier this time): not started twice"; exit 0; fi
+else
+  for p in $(pgrep -u "$me" -f "desktop/shell/hearth-companion $desk" 2>/dev/null); do
+    [ "$p" != "$$" ] && { note "already running (pid $p): not started twice"; exit 0; }
+  done
+fi
+
+CPID=""
+trap '[ -n "$CPID" ] && kill "$CPID" 2>/dev/null; exit 143' TERM INT HUP
+
+# Runs "$@" while the compositor runs: started again when it ends by itself, but not after 5 ends in a row within 5 s
+# of starting (it can't run here). STOP_IF names a check that ends it early (GNOME: the extension's own helper).
+STOP_IF=""
+supervise() {
+  what="$1"; shift
+  n=0
+  while alive "$COMP"; do
+    t0=$(date +%s)
+    "$@" 9>&- </dev/null >>"$DLOG" 2>&1 &
+    CPID=$!
+    while kill -0 "$CPID" 2>/dev/null; do
+      if ! alive "$COMP"; then kill "$CPID" 2>/dev/null; break; fi
+      if [ -n "$STOP_IF" ] && "$STOP_IF"; then kill "$CPID" 2>/dev/null; note "$what stopped: $STOP_REASON"; wait "$CPID" 2>/dev/null; CPID=""; return 0; fi
+      sleep 2
+    done
+    wait "$CPID" 2>/dev/null; rc=$?
+    CPID=""
+    alive "$COMP" || break
+    if [ $(( $(date +%s) - t0 )) -lt 5 ]; then n=$((n + 1)); else n=0; fi
+    if [ "$n" -ge 5 ]; then note "$what ended 5 times right after starting (code $rc): not started again; $NAME goes on without the controller"; return 1; fi
+    note "$what ended (code $rc): starting it again"
+    sleep 1
+  done
+  note "$NAME ended: $what stopped"
+  return 0
+}
+
+case "$desk" in
+  plasma)
+    QML="$SHELL_DIR/osk-plasma.qml"
+    if ! command -v quickshell >/dev/null 2>&1; then note "not started: quickshell isn't installed (it draws the controller's menus and runs hearth-pad --plasma)"; exit 0; fi
+    if ! command -v python3 >/dev/null 2>&1; then note "not started: python3 isn't installed"; exit 0; fi
+    if [ ! -f "$QML" ] || [ ! -f "$PAD" ]; then note "not started: $QML or $PAD is missing"; exit 0; fi
+    note "starting quickshell osk-plasma.qml (hearth-pad --plasma) on ${WAYLAND_DISPLAY:-no display}"
+    unset QT_QPA_PLATFORMTHEME
+    supervise "quickshell osk-plasma.qml" quickshell -p "$QML"
+    pkill -TERM -u "$me" -f 'hearth-pad --plasma' 2>/dev/null
+    ;;
+  cosmic)
+    CS="$SHARE_DIR/desktop/cosmic/hearth-cosmic"
+    if ! command -v quickshell >/dev/null 2>&1; then note "not started: quickshell isn't installed (it draws the companion and runs hearth-pad --cosmic)"; exit 0; fi
+    if ! command -v python3 >/dev/null 2>&1; then note "not started: python3 isn't installed"; exit 0; fi
+    if [ ! -f "$CS" ] || [ ! -f "$SHELL_DIR/desk-cosmic.qml" ] || [ ! -f "$PAD" ]; then note "not started: $CS, desk-cosmic.qml or hearth-pad is missing"; exit 0; fi
+    note "starting hearth-cosmic companion (desk-cosmic.qml, hearth-pad --cosmic) on ${WAYLAND_DISPLAY:-no display}"
+    unset QT_QPA_PLATFORMTHEME
+    supervise "hearth-cosmic companion" sh "$CS" companion
+    pkill -TERM -u "$me" -f 'desktop/shell/desk-cosmic.qml' 2>/dev/null
+    pkill -TERM -u "$me" -f 'desktop/cosmic/hearth-cosmic pad' 2>/dev/null
+    pkill -TERM -u "$me" -f 'hearth-pad --cosmic' 2>/dev/null
+    ;;
+  gnome)
+    ext_pad() { pgrep -u "$me" -f 'hearth-pad --gnome' >/dev/null 2>&1; }
+    wait_s="${HEARTH_COMPANION_WAIT:-30}"
+    i=0
+    while [ "$i" -lt "$wait_s" ]; do
+      if ext_pad; then note "GNOME Shell's hearth-pad@hearthos.fun extension started hearth-pad --gnome"; exit 0; fi
+      alive "$COMP" || exit 0
+      sleep 1; i=$((i + 1))
+    done
+    # Why not: GNOME Shell's session mode (hearth = Hearth's extensions; user = plain GNOME) and the extension's state.
+    why=""
+    if command -v gdbus >/dev/null 2>&1 && { [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; }; then
+      mode=$(timeout 3 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+        --method org.freedesktop.DBus.Properties.Get org.gnome.Shell Mode 2>&1 | tr -d "()<>,'" | head -c 200)
+      info=$(timeout 3 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+        --method org.gnome.Shell.Extensions.GetExtensionInfo hearth-pad@hearthos.fun 2>&1 | grep -oE "'(state|error)': <[^>]*>" | tr '\n' ' ' | head -c 400)
+      why="GNOME Shell's mode: ${mode:-unknown}; the extension: ${info:-unknown to GNOME Shell} (state 1 on, 2 off, 3 error, 4 not for this GNOME, 6 not switched on)"
+    fi
+    for p in $(pgrep -u "$me" -x gnome-shell 2>/dev/null); do
+      m=$(tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | sed -n 's/^GNOME_SHELL_SESSION_MODE=//p' | head -n 1)
+      why="$why; gnome-shell started with GNOME_SHELL_SESSION_MODE=${m:-unset}"
+      break
+    done
+    note "hearth-pad@hearthos.fun didn't start hearth-pad --gnome within ${wait_s} s (${why#; })"
+    if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$PAD" ]; then note "not started: python3 or $PAD is missing"; exit 0; fi
+    note "starting hearth-pad --standalone instead: the pointer, clicks, scrolling and keys work; the Hearth menu and the keyboard need the extension"
+    STOP_IF=ext_pad
+    STOP_REASON="the extension's own hearth-pad --gnome is running now"
+    supervise "hearth-pad --standalone" python3 "$PAD" --standalone
+    ;;
+esac
+exit 0

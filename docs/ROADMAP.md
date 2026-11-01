@@ -163,9 +163,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
-## Next
+## Next (unreleased)
 
 - [x] Battle.net is set up through Faugus Launcher (preinstalled on Anatase and Peppermint): one press, Blizzard games in the Library and Play through Battle.net as before; Battle.net set up before keeps working (needs testing on a device)
+- [x] Fix: the controller did nothing in Hearth Plasma, Hearth GNOME and Hearth COSMIC (Hearth Classic was fine). Plasma and COSMIC never started their controller helper (their autostart folder isn't read on a real sign-in); the session now starts it itself once the desktop is up, once, only in Hearth's desktops. In Hearth GNOME the session mode is handed to GNOME Shell's service, and if Hearth's controller extension still doesn't start, the pointer, clicks and keys work anyway and the reason is logged. Send logs now include plasma.log, gnome.log, cosmic.log and whether Quickshell is installed (needs testing on a device)
 
 ## 0.6.59 (released)
 

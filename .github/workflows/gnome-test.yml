@@ -16,7 +16,7 @@ on:
   push:
     branches: [main, bughunt, 'feature/desktop-gnome']
     paths: ['os/system_files/usr/share/gnome-shell/**', 'os/system_files/usr/share/hearth-gnome/**', 'hosts/linux/desktop/gnome/**',
-            'hosts/linux/desktop/plasma/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/session/**',
+            'hosts/linux/desktop/plasma/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/desktop/shell/hearth-companion', 'hosts/linux/session/**',
             'hosts/linux/test/test_hearth_gnome.py', 'tools/e2e-hearth-gnome.py', '.github/scripts/gnome-check.sh',
             '.github/scripts/gnome-ci/**', '.github/workflows/gnome-test.yml']
 

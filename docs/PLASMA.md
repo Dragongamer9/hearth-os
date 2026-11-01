@@ -92,7 +92,18 @@ They call them through Plasma's `executable` engine (`org.kde.plasma.plasma5supp
 Hearth Plasma stays KDE Plasma (its own launcher, panel, tray, notifications and lock screen, in Hearth's theme) and
 can be used entirely with a controller, the same way as Hearth Classic. One helper does it for both desktops:
 `hearth-pad --plasma` (`desktop/shell/hearth-pad`, the `plasma_*` functions), started with
-`desktop/shell/osk-plasma.qml` by `/usr/share/hearth-plasma/xdg/autostart/hearth-osk.desktop` (Hearth Plasma only).
+`desktop/shell/osk-plasma.qml` (Quickshell) by `desktop/shell/hearth-companion plasma`, which nimbus-session's
+`run_plasma` runs as soon as KWin and the Plasma shell are up (Hearth Plasma only).
+
+It used to be an XDG autostart entry in `/usr/share/hearth-plasma/xdg/autostart`, found through the session's
+`XDG_CONFIG_DIRS`. On a real sign-in Plasma 6 starts autostart entries through systemd's xdg-autostart generator,
+which only sees systemd's own `XDG_CONFIG_DIRS`, so the entry never ran and the controller did nothing (0.6.59; CI
+started Plasma by hand and didn't notice). `hearth-companion` runs once per desktop (a lock in `$XDG_RUNTIME_DIR`),
+only when `HEARTH_DESKTOP=plasma` (never in a plain Plasma session), only while KWin runs (started again if it ends,
+not after 5 quick ends), and writes what it decided and why to `pad.log` and `plasma.log`: started, already running,
+not Hearth Plasma, quickshell not installed. Without it Plasma simply runs without the controller. The old entry is
+still there and just calls `hearth-companion` too, so it can't start a second one. Send logs includes `plasma.log`
+and whether Quickshell is installed.
 The QML host draws Mantel's own Hearth menu (`RadialMenu.qml`), controls card and messages (`Help.qml`) and on-screen
 keyboard (`Keyboard.qml`) as layer-shell windows that never take the keyboard focus; everything Plasma gets from the
 controller is typed or pointed through hearth-pad's uinput keyboard and mouse (KWin has no wtype).

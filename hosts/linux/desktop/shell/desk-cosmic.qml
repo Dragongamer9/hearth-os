@@ -4,7 +4,8 @@
 // keyboard (Guide + X, or Y), all the same QML as Hearth Classic's. The controller: hearth-pad --cosmic (CosmicPad):
 // pointer, clicks, scrolling, the D-pad as arrow keys, window switching and closing through COSMIC's own shortcuts,
 // per-app keys for COSMIC Files, Terminal and Edit. Typing goes through hearth-pad's uinput keyboard.
-// Started by /usr/share/hearth-cosmic/xdg/autostart/hearth-cosmic.desktop (only in Hearth COSMIC):
+// Started by desktop/cosmic/hearth-cosmic companion, which desktop/shell/hearth-companion cosmic runs once nimbus-session
+// sees COSMIC up (only in Hearth COSMIC):
 //   quickshell -p /usr/share/nimbus/desktop/shell/desk-cosmic.qml
 // Called by desktop/cosmic/hearth-cosmic (quickshell ipc ... call hearth launcher|quick|link|storage|menu|keyboard).
 // If quickshell, python3-evdev or /dev/uinput is missing, COSMIC works as usual, just without these.

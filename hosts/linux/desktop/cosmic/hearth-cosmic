@@ -45,6 +45,8 @@ case "$1" in
     # (it can't start here: COSMIC goes on without it).
     n=0
     while [ "${HEARTH_DESKTOP:-cosmic}" = cosmic ]; do
+      # One companion: one started meanwhile for a panel entry or Super (below) is left to run, and watched.
+      if pgrep -u "$(id -u)" -f 'quickshell -p .*desk-cosmic.qml' >/dev/null 2>&1; then sleep 2; continue; fi
       echo "--- $(date '+%F %T') companion" >>"$CLOG"
       t0=$(date +%s)
       quickshell -p "$QML" >>"$CLOG" 2>&1

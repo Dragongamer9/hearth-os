@@ -55,6 +55,10 @@ window, View + Menu puts the focus on the bar (the D-pad then walks it); while G
 next part. In GNOME Files, Console and Text Editor (app {kind}) the D-pad moves, A opens, B goes back (Files) or is Esc,
 X the context menu, Y search (Files) and the keyboard, LB / RB tabs, LT / RT scroll, L3 clicks.
 
+--standalone: nobody reads what this prints or writes commands to it (hearth-companion gnome starts it when GNOME
+Shell's controller extension didn't start hearth-pad --gnome): Desktop Mode's pointer, clicks, scrolling and keys
+without the shell's menus; stdin isn't read, so it doesn't end when stdin closes.
+
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
 A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
 View, LB/RB and Y do nothing here (they're the game's and Hearth's). View + Menu together turns it off: it says
@@ -1307,8 +1311,11 @@ def main():
         real_move(dx, dy)
     out.move = counted_move
     pad = CosmicPad(out) if '--cosmic' in sys.argv[1:] else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome)
+    standalone = '--standalone' in sys.argv[1:]
     if game:
         note('Game Mode controller mouse')
+    if standalone:
+        note('standalone: nobody draws the menus, the controller is a mouse and keyboard')
     inbox = queue.Queue()      # --plasma: what KWin says (plasma_bus's thread) for the main loop
     if plasma:
         note('Hearth Plasma controller')
@@ -1363,7 +1370,7 @@ def main():
     if '--socket' in sys.argv[1:] and sys.argv.index('--socket') + 1 < len(sys.argv):
         link = CosmicLink(sys.argv[sys.argv.index('--socket') + 1])
     emit({'t': 'ready'})
-    if not link:
+    if not link and not standalone:
         os.set_blocking(sys.stdin.fileno(), False)
     inbuf = ''
     while True:
@@ -1392,7 +1399,7 @@ def main():
         fds = {c.dev.fd: (p, c) for p, c in pads.items()}
         try:
             link_fds = set(link.fds()) if link else set()
-            ready, _, _ = select.select(list(fds) + (list(link_fds) if link else [sys.stdin.fileno()]), [], [], 0.008)
+            ready, _, _ = select.select(list(fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], 0.008)
         except (OSError, ValueError):
             ready, link_fds = [], set()
         for fd in ready:
@@ -1403,7 +1410,7 @@ def main():
                     except (ValueError, AttributeError):
                         pass
                 continue
-            if not link and fd == sys.stdin.fileno():
+            if not link and not standalone and fd == sys.stdin.fileno():
                 try:
                     chunk = os.read(fd, 4096).decode('utf-8', 'replace')
                 except BlockingIOError:

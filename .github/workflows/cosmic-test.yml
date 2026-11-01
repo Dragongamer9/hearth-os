@@ -15,7 +15,7 @@ on:
   push:
     branches: [main, bughunt, 'feature/desktop-cosmic-deepin']
     paths: ['hosts/linux/desktop/cosmic/**', 'os/system_files/usr/share/hearth-cosmic/**', 'hosts/linux/desktop/shell/desk-cosmic.qml',
-            'hosts/linux/desktop/shell/CosmicHub.qml', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/session/**',
+            'hosts/linux/desktop/shell/CosmicHub.qml', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/desktop/shell/hearth-companion', 'hosts/linux/session/**',
             'hosts/linux/test/test_hearth_cosmic.py', '.github/scripts/cosmic-*', '.github/workflows/cosmic-test.yml']
 
 permissions:

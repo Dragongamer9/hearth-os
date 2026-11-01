@@ -104,6 +104,16 @@ There's one known gap: "Show in folder" from other apps still goes to Hearth Fil
 GNOME mode lives in its own functions (`gnome_button`, `gnome_tick`, `gnome_command`) so that merges stay easy.
 Typing and the pointer go through hearth-pad's uinput keyboard and mouse.
 
+The extension only runs when GNOME Shell is in Hearth's session mode. GNOME Shell runs as a systemd user service
+(`org.gnome.Shell@wayland`) with systemd's environment, so `run_gnome` puts `GNOME_SHELL_SESSION_MODE=hearth` (and
+`HEARTH_DESKTOP`) there before `gnome-session` and takes the mode out again when GNOME ends, however it ends, so a
+plain GNOME session never comes up in Hearth's mode. On 0.6.59 the controller did nothing in Hearth GNOME and the log
+didn't say why; now `desktop/shell/hearth-companion gnome` (started by `run_gnome` once GNOME Shell is up) checks
+within 30 s that the extension started `hearth-pad --gnome`. If it didn't, it writes why to `pad.log` and `gnome.log`
+(GNOME Shell's mode, the extension's state and error from `org.gnome.Shell.Extensions`, the mode gnome-shell was
+started with) and runs `hearth-pad --standalone`: pointer, clicks, scrolling and keys, without the Hearth menu and
+keyboard, until the extension's own helper shows up. Send logs includes `gnome.log`.
+
 | Button | On the desktop | While GNOME Shell has the keyboard (overview, app grid, menus, Quick Settings, calendar, the bar) | In GNOME Files / Console / Text Editor |
 |---|---|---|---|
 | Right stick | pointer (R3: precise) | pointer | pointer |
