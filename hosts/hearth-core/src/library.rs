@@ -878,10 +878,13 @@ impl Library {
         let mut events = self.beacon_tick();
         // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
         if self.store.source_on("steam") {
-            crate::steam_engine::tick(self.steam_engine_mode());
+            // The Open engine signed in or not decides whether Valve's client is kept ready (steam_launch.rs).
+            if let Some(signed) = crate::steam_engine::tick(self.steam_engine_mode()) {
+                if (self.store.data["steamOpenSignedIn"] == true) != signed { let _ = self.store.update(|d| { d.insert("steamOpenSignedIn".into(), json!(signed)); }); }
+            }
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
             // Kept ready (Settings › Library, on by default): never closed when idle (steam_launch.rs).
-            events.extend(crate::steam_ctl::tick(&self.home, crate::steam_launch::may_close_idle(self.steam_on_demand(), self.steam_keep_ready()), steam_game));
+            events.extend(crate::steam_ctl::tick(&self.home, crate::steam_launch::may_close_idle(self.steam_on_demand(), self.steam_keep_ready_effective()), steam_game));
         }
         events.extend(self.tick_running());
         if now_ms().saturating_sub(self.in_use_checked) > 10_000 { self.refresh_in_use(); }
@@ -1194,9 +1197,14 @@ impl Library {
     /// "Keep Steam ready in the background" (on by default): Steam started hidden when Game Mode comes up, never closed
     /// when idle, so Play hands the game to a running Steam (steam_launch.rs).
     pub fn steam_keep_ready(&self) -> bool { self.store.data["steamKeepReady"] != false }
+    /// Kept ready right now: not while the Open engine is the one in use and signed in (Valve's client then starts only
+    /// for a game that needs it, and closes again when idle).
+    pub fn steam_keep_ready_effective(&self) -> bool {
+        crate::steam_launch::keep_ready_effective(self.steam_keep_ready(), crate::steam_engine::effective(self.steam_engine_mode(), crate::gamescope::inside() && crate::gamescope::steam_mode()), self.store.data["steamOpenSignedIn"] == true)
+    }
     /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
     pub fn steam_lightweight(&self) -> bool { self.steam_engine_mode() == crate::steam_engine::Mode::Lightweight }
-    /// Settings › Library › Steam engine: Classic (default), Lightweight or Open (both experimental).
+    /// Settings › Library › Steam engine: Open (the default), Classic or Lightweight (experimental).
     pub fn steam_engine_mode(&self) -> crate::steam_engine::Mode { crate::steam_engine::Mode::from_setting(&self.store.data["steamEngine"]) }
 
     pub fn get(&mut self, rescan: bool) -> Value {
@@ -1206,7 +1214,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamKeepReadyActive": self.steam_keep_ready_effective(), "steamOpenSignedIn": self.store.data["steamOpenSignedIn"] == true, "steamEngineExplain": self.store.data["steamEngineExplain"] == true, "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 

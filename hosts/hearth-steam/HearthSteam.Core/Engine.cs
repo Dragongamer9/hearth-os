@@ -55,4 +55,7 @@ public interface IOpenEngine : IEngine
     JsonObject Verify(uint appId);
     /// <summary>Stops a queued or running download (what's done is kept; it can be resumed).</summary>
     JsonObject Cancel(uint appId);
+    /// <summary>Valve's client is about to run: stop downloads (kept, resumed when it has closed) and write nothing
+    /// into the libraries meanwhile. The engine stays signed in, so sign-in and the library keep working.</summary>
+    JsonObject Standby();
 }

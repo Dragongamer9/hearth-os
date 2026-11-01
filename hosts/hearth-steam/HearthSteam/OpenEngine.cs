@@ -28,6 +28,9 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     readonly StateFile store;
     string state = "starting", reason = "";
     bool connected, signedIn, released;
+    /// <summary>Valve's client is running: the Open engine stays signed in (sign-in and the library still work) but
+    /// writes nothing into the libraries; its downloads wait and carry on once Valve's client has closed.</summary>
+    bool standby;
     string? account;
     ulong steamId;
     readonly SignInFlow flow;
@@ -48,6 +51,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         public string Name = "", State = "queued", Error = "";
         public long Done, Total, Speed;
         public CancellationTokenSource Cts = new();
+        /// <summary>Stopped for Valve's client (standby): goes back to the front of the queue, not to "cancelled".</summary>
+        public bool Hold;
     }
 
     public OpenEngine(string home)
@@ -76,11 +81,17 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
 
     public void Start()
     {
-        if (SteamFiles.ClassicRunning()) { lock (gate) { state = "unavailable"; reason = "The normal Steam client is running."; } return; }
+        if (SteamFiles.ClassicRunning()) EnterStandby("the normal Steam client is running");
         new Thread(() => { while (!cts.IsCancellationRequested) callbacks.RunWaitCallbacks(TimeSpan.FromSeconds(1)); }) { IsBackground = true, Name = "steamkit-callbacks" }.Start();
         client.Connect();
-        // The normal Steam client started anyway: stop writing into the libraries and let go, as the Lightweight engine does.
-        watchdog = new Timer(_ => { if (SteamFiles.ClassicRunning()) { Log("the normal Steam client started; letting go"); Release(); } }, null, 5000, 5000);
+        // Valve's client started (a game that needs it): stop writing into the libraries until it has closed again.
+        watchdog = new Timer(_ =>
+        {
+            bool classic = SteamFiles.ClassicRunning(), was;
+            lock (gate) was = standby;
+            if (classic && !was) EnterStandby("the normal Steam client started");
+            else if (!classic && was) LeaveStandby();
+        }, null, 5000, 5000);
         _ = Task.Run(Worker);
     }
 
@@ -231,7 +242,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
                 ["account"] = signedIn ? account ?? store.Data["account"]?.GetValue<string>() : null,
                 ["steamId"] = signedIn ? steamId.ToString() : null,
                 ["signIn"] = flow.State(), ["secretStore"] = secrets.Kind, ["libraryApps"] = owned.Count,
-                ["libraryLoading"] = libraryLoading,
+                ["libraryLoading"] = libraryLoading, ["classicRunning"] = standby, ["standby"] = standby,
             };
             if (state == "unavailable") o["code"] = Codes.ClassicRunning;
             return o;
@@ -422,7 +433,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         while (!cts.IsCancellationRequested)
         {
             Job? j;
-            lock (gate) { j = signedIn && queue.Count > 0 ? queue[0] : null; if (j != null) { queue.RemoveAt(0); current = j; } }
+            lock (gate) { j = signedIn && !standby && queue.Count > 0 ? queue[0] : null; if (j != null) { queue.RemoveAt(0); current = j; } }
             if (j == null) { try { await Task.Delay(1000, cts.Token); } catch (OperationCanceledException) { } continue; }
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, j.Cts.Token);
             try
@@ -430,6 +441,12 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
                 await RunJob(j, linked.Token);
                 j.State = "done";
                 Log($"app {j.AppId}: {(j.Verify ? "verified" : "installed")}");
+            }
+            catch (OperationCanceledException) when (j.Hold && !cts.IsCancellationRequested)
+            {
+                // Standby: back to the front of the queue, to carry on when Valve's client has closed.
+                lock (gate) { j.Hold = false; j.Cts = new CancellationTokenSource(); j.State = "waiting"; j.Speed = 0; current = null; queue.Insert(0, j); }
+                continue;
             }
             catch (OperationCanceledException) { j.State = cts.IsCancellationRequested ? "paused" : "cancelled"; }
             catch (Exception e)
@@ -632,6 +649,38 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     }
 
     public JsonObject Running() => new() { ["apps"] = new JsonArray() };
+
+    /// <summary>Valve's client runs (or is about to): downloads stop where they are (kept, resumed later) and nothing
+    /// is written into the libraries; sign-in and the library keep working.</summary>
+    void EnterStandby(string why)
+    {
+        Job? stopping;
+        lock (gate)
+        {
+            if (standby) return;
+            standby = true;
+            stopping = current;
+            if (stopping != null) stopping.Hold = true;
+        }
+        stopping?.Cts.Cancel();
+        Log($"standing by: {why}");
+    }
+
+    void LeaveStandby()
+    {
+        lock (gate) { if (!standby) return; standby = false; }
+        Log("the normal Steam client has closed; carrying on");
+        _ = Task.Run(ResumeQueue);
+    }
+
+    public JsonObject Standby()
+    {
+        EnterStandby("asked to (Valve's client is starting)");
+        // Wait briefly for a running download to stop, so Valve's client never writes the same files at the same time.
+        for (int i = 0; i < 50; i++) { lock (gate) if (current == null) break; Thread.Sleep(100); }
+        bool idle; lock (gate) idle = current == null;
+        return new JsonObject { ["standby"] = true, ["stopped"] = idle };
+    }
 
     public void Release()
     {

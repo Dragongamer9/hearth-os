@@ -25,6 +25,13 @@ pub fn warm_start(keep_ready: bool, on_demand: bool, background: bool, game_mode
     !on_demand && background
 }
 
+/// Is Valve's client kept ready (pure, for the tests)? The setting, except while Hearth's own Steam client (Open) is
+/// in use and signed in: then Valve's client starts only when a game needs it (Steam DRM, VAC, Steamworks) and the
+/// Open engine carries on once it has closed. Not signed in to Open, Classic or Lightweight: the setting as it is.
+pub fn keep_ready_effective(setting: bool, mode: crate::steam_engine::Mode, open_signed_in: bool) -> bool {
+    setting && !(mode == crate::steam_engine::Mode::Open && open_signed_in)
+}
+
 /// May Hearth close an idle Steam it started? Not while it's kept ready.
 pub fn may_close_idle(on_demand: bool, keep_ready: bool) -> bool { on_demand && !keep_ready }
 
@@ -167,6 +174,19 @@ mod tests {
         assert!(!warm_start(false, true, true, true, true, true, false));
         assert!(warm_start(false, false, true, true, true, true, false));
         assert!(!warm_start(false, false, false, true, true, true, false));
+    }
+
+    #[test]
+    fn keep_ready_steps_back_for_a_signed_in_open_engine() {
+        use crate::steam_engine::Mode::*;
+        assert!(!keep_ready_effective(true, Open, true), "Open and signed in: Valve's client only when a game needs it");
+        assert!(keep_ready_effective(true, Open, false), "not signed in to Open: behaves like Classic");
+        assert!(keep_ready_effective(true, Classic, true));
+        assert!(keep_ready_effective(true, Lightweight, true));
+        assert!(!keep_ready_effective(false, Classic, false), "the setting off stays off");
+        // And then Hearth closes an idle Valve's client again ("only when needed", on by default).
+        assert!(may_close_idle(true, keep_ready_effective(true, Open, true)));
+        assert!(!may_close_idle(true, keep_ready_effective(true, Open, false)));
     }
 
     #[test]

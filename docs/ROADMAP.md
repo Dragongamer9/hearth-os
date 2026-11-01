@@ -166,6 +166,11 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## Next (unreleased)
+
+- [x] Fix: signing in to Hearth's Steam engine was impossible: the Lightweight engine never started (0.6.59's "Cannot marshal 'parameter #2'") and crashed when it let go. It starts again (its restart now passes its settings along too), exits cleanly, CI checks every native call of the built program, and Settings says why sign-in isn't possible and offers to start the engine again instead of showing nothing (needs testing on a device)
+- [x] Hearth's own Steam client (Open) is the default: new installs and everyone who never chose an engine (once, with a short explainer in Settings › Library; turn it off any time). Until you sign in to it everything works like before; Settings and the Library offer the sign-in. While it's signed in, Valve's Steam client isn't kept running: it starts only for games that need it (Steam DRM, VAC, Steamworks) and Hearth's client carries on when it has closed. Steam Game Mode (Decky) still uses Valve's client (needs testing on a device)
+
 ## 0.6.60 (released)
 
 - [x] Steam games start faster: "Keep Steam ready in the background" (Settings › Library, on by default) starts Steam hidden when Game Mode comes up, if you've used it here before, and keeps it running, so Play hands the game straight to Steam instead of waiting for Steam to start (needs testing on a device)

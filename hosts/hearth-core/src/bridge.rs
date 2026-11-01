@@ -92,8 +92,15 @@ impl Bridge {
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
         // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
         // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
+        // Hearth's own Steam client (Open) is the default: switched on once for everyone who never chose an
+        // engine, with a short explainer in Settings › Library (steam_engine::migrate).
+        if let Some(writes) = b.library.store.data.as_object().and_then(crate::steam_engine::migrate) {
+            if b.library.store.update(|d| { for (k, v) in writes { d.insert(k.into(), v); } }).is_ok() {
+                crate::bridge::log("steam engine: Hearth's own Steam client is now the default (Settings › Library to turn it off)");
+            }
+        }
         {
-            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
+            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready_effective(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
             let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
             if !seat && (keep || (!on_demand && bg)) {
                 std::thread::spawn(move || {
@@ -433,12 +440,15 @@ impl Bridge {
                 Ok(json!({"engine": mode.name(), "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}))
             }
             "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
+            // The once-only "Hearth's own Steam client is now the default" note in Settings › Library: read.
+            "steam.engine.explained" => io(self.library.store.update(|d| { d.insert("steamEngineExplain".into(), json!(false)); })),
             // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
             "steam.engine.signIn" => crate::steam_engine::sign_in(a),
             "library.setSteamKeepReady" => {
                 let on = a["on"] == true;
-                if on && crate::gamescope::inside() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
-                io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }))
+                let r = io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }));
+                if on && crate::gamescope::inside() && self.library.steam_keep_ready_effective() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                r
             }
             "library.setSteamBackground" => {
                 let on = a["on"] == true;

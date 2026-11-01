@@ -181,10 +181,13 @@ steamclient's own doing; Steam's web UI never runs. This is the one place Hearth
   `hearth-steam-engine.service` (not enabled: Hearth starts and stops it). Built by `.github/workflows/hearth-steam.yml`
   and by the image builds, where a failed build only leaves it out.
 
-## 8. Open engine (experimental)
+## 8. Open engine (the default)
 
-Settings › Library › **Open Steam client** (off by default; turning it on turns Lightweight off and the other way
-round). Hearth's own open-source Steam client: the same `hosts/hearth-steam` service and socket API, started with
+Settings › Library › **Hearth's Steam client** (on by default; turning it on turns Lightweight off and the
+other way round). New installs start with it, and everyone who never chose an engine gets it switched on once, with a
+short explainer in Settings › Library (`steam_engine::migrate`, `steamEngineExplain`); turning it off (Classic) sticks.
+Until the player signs in to it, everything behaves exactly like Classic (Settings › Library and a pill in the Library
+offer to sign in; never forced). Steam's own Game Mode (Decky) always uses Valve's client (`steam_engine::effective`). Hearth's own open-source Steam client: the same `hosts/hearth-steam` service and socket API, started with
 `HEARTH_STEAM_ENGINE=open` (Hearth sets it in the user manager before starting `hearth-steam-engine.service`), but
 **without steamclient**: it speaks Steam's protocol through [SteamKit2](https://github.com/SteamRE/SteamKit) 3.4.0
 (LGPL-2.1, used unmodified as its own assembly; credited in `hosts/hearth-steam/LICENSE.SteamKit2`). It needs no
@@ -195,7 +198,9 @@ Clean-room limits: written from SteamKit2's public API only (DepotDownloader's a
 code or binaries copied, decompiled or disassembled; it never replaces or emulates `steam_api`/`steamclient` for games
 and never touches anti-cheat.
 
-- **Signing in.** Hearth's own screen, as for Lightweight: name + password, then the Steam Guard code from the app or
+- **Signing in.** Hearth's own screen, as for Lightweight (the flow is `HearthSteam.Core/Open/SignIn.cs`, tested end to
+  end against a fake of SteamKit2's authentication; when the engine isn't ready, Settings says why and offers **Start the
+  engine again** instead of hiding the sign-in): name + password, then the Steam Guard code from the app or
   the email (typed with Hearth's keyboard), or the QR code for the Steam app. The password goes into SteamKit2's
   request and is dropped. The refresh token Steam gives back is kept in the user's keyring (Secret Service through
   `secret-tool`, the token on stdin) or, without one, in `~/.local/state/hearth-steam/open-token.json` (0600, folder
@@ -224,8 +229,16 @@ and never touches anti-cheat.
   Valve's.
 - **Fallback.** As for Lightweight (`steam_engine.rs`): Open is used only when it's chosen, installed, running as the
   Open engine (`"kind": "open"` in its status), ready and signed in, and the normal client isn't running; anything else
-  or any error is done with Valve's client. The service lets go (exits) when Valve's client starts (checked every
-  5 seconds, and Hearth tells it to first); downloads stop and resume from the saved queue when it's back.
+  or any error is done with Valve's client. When Valve's client starts (a game that needs it: Steam DRM, VAC,
+  Steamworks; or anything the engine can't do), Hearth first tells the Open engine to **stand by** (`standby`): it
+  stays signed in (sign-in and the library keep working) but stops its downloads and writes nothing into the libraries
+  until Valve's client has closed (checked every 5 seconds), then carries on from the saved queue. The Lightweight
+  engine (which loads Valve's steamclient) still lets go and exits. The Open engine may start while Valve's client runs
+  (it starts standing by), so the player can always sign in.
+- **Valve's client kept ready, reconciled.** While the Open engine is the one in use and signed in, **Keep Steam ready
+  in the background** steps back (`steam_launch::keep_ready_effective`): Valve's client isn't started when Game Mode
+  comes up, starts only when a game needs it, and is closed again when idle ("Start Steam only when needed"). Not
+  signed in to Open, or on Classic or Lightweight: Keep Steam ready works as in section 9.
 - **Not yet.** Beta branches, workshop items, cloud saves (Valve's client syncs them when it runs), pausing and
   reordering downloads from Hearth's Downloads page, automatic updates (Update asks for one).
 
@@ -245,7 +258,8 @@ What made Steam games slow and awkward in Game Mode (0.6.59 logs, Flatpak Steam,
 
 What Hearth does now (`steam_launch.rs`, `gamemode.rs`, `padmouse.rs`):
 
-- **Steam kept ready.** With **Keep Steam ready in the background** on, Hearth starts Steam hidden (`-silent`)
+- **Steam kept ready.** (Not while Hearth's own Steam client is in use and signed in: section 8.) With **Keep Steam
+  ready in the background** on, Hearth starts Steam hidden (`-silent`)
   20 seconds after Game Mode comes up (on its own thread: nothing waits for it), only when Steam has been used on
   this device (an account in `loginusers.vdf`), not on a second seat and not in Steam Game Mode, and it isn't closed
   when idle. Play then hands the game to the running client. Steam isn't started with `nice`: every game Steam starts

@@ -4507,6 +4507,13 @@ function colEdit(id){
     {label:'Delete collection', icon:'trash', run:async()=>{ try{ if(host) await call('library.collection.remove',{id}); COLS=COLS.filter(x=>x.id!==id); GAMES.forEach(g=>{ if(g.cols) g.cols=g.cols.filter(x=>x!==id); }); S.tab='all'; toast(`Deleted ${c.name}. The games are still in your library.`); render(null,true); }catch(e){ toast(e.message); } }}]});
 }
 const SORTS = [['recent','Recently played'],['alpha','A–Z'],['hours','Play time'],['added','Date added']];
+// Library: a gentle prompt to sign in to Hearth's own Steam client (Open, the default) while it isn't; never forced,
+// everything works with Valve's client meanwhile. Gone once signed in or Classic is chosen.
+function steamOpenLibPill(){
+  if(!LINUX||!host||!S.set.steamOpen||S.steamOpenSigned) return '';
+  const st=SENG.st||{}; if(st.installed===false||(st.status||{}).signedIn) return '';
+  return `<button class="pill" data-f data-k="lib-steamOpen" data-act="steamLibSignIn">${I.user}Sign in to Hearth's Steam client</button>`;
+}
 function viewLibrary(){
   if(!libTabs().some(t=>t[0]===S.tab)) S.tab='all';
   if(mkKind()) return mkPage('library');   // Experimental · Keyboard & mouse: their own toolbar and sidebar
@@ -4517,7 +4524,7 @@ function viewLibrary(){
     <span class="glyph lbrb">RB</span>
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
-    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}${hmLibPill()}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}${hmLibPill()}${steamOpenLibPill()}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
     ${(HOSTINFO.features||[]).includes('screenshots')?`<button class="pill" data-f data-k="lib-shots" data-act="shots">${I.display}Screenshots</button>`:''}
     ${lkOn()?`<button class="pill" data-f data-k="lib-link" data-act="lkGet">${I.dl}Get from another Hearth</button>`:''}
     ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
@@ -7996,7 +8003,7 @@ function oskSettingAct(a, d){
 // hosts/hearth-steam with Valve's steamclient) or Open (experimental: Hearth's own Steam client on SteamKit2, same
 // service). Anything they can't do is done by the normal client (steam_engine.rs).
 const SENG={st:null, qr:null, watching:0};
-function steamEngRefresh(){ if(!host) return Promise.resolve(); return call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
+function steamEngRefresh(){ if(!host) return Promise.resolve(); return call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; if(r&&r.open&&r.status&&r.status.kind==='open') S.steamOpenSigned=!!r.status.signedIn; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
 function steamEngLine(e){
   const s=e.status||{};
   if(e.installed===false) return 'Not part of this build of Hearth OS: Steam games use the normal Steam client';
@@ -8021,7 +8028,8 @@ function steamEngNotReady(e){
 function steamEngineRows(){
   const light=!!S.set.steamLight, open=!!S.set.steamOpen, on=light||open, e=SENG.st||{}, s=e.status||{};
   let h=`<button class="row" data-f data-k="s-steamLight" data-act="toggle" data-key="steamLight"><div class="rt"><b>Lightweight Steam engine (experimental)</b><small>${light?steamEngLine(e):'Off: the normal Steam client does everything (Classic). On: Steam\'s own engine runs with no Steam window; anything it can\'t do (VAC games, errors) still uses the normal client'}</small></div><div class="sw ${light?'on':''}"></div></button>`;
-  h+=`<button class="row" data-f data-k="s-steamOpen" data-act="toggle" data-key="steamOpen"><div class="rt"><b>Open Steam client (experimental)</b><small>${open?steamEngLine(e):'Hearth\'s own open-source Steam client: your library, installs and updates without Steam running. DRM-free games start directly; Steamworks and VAC games, and anything it can\'t do, still use the normal Steam client'}</small></div><div class="sw ${open?'on':''}"></div></button>`;
+  if(open && S.steamExplain) h+=`<div class="note" data-k="s-steamExplain">Hearth now uses its own open-source Steam client for installing, updating and checking games and for your library. Games that need Valve's Steam client to start (Steam DRM, VAC, Steamworks) still start through it, and anything Hearth's client can't do falls back to it. Until you sign in below, everything works like before. Turn it off here any time. <button class="pill" data-f data-k="s-steamExplainOk" data-act="steamExplainOk">${I.check}Got it</button></div>`;
+  h+=`<button class="row" data-f data-k="s-steamOpen" data-act="toggle" data-key="steamOpen"><div class="rt"><b>Hearth's Steam client (open source)</b><small>${open?steamEngLine(e):'Hearth\'s own open-source Steam client: your library, installs and updates without Steam running. DRM-free games start directly; Steamworks and VAC games, and anything it can\'t do, still use the normal Steam client'}</small></div><div class="sw ${open?'on':''}"></div></button>`;
   if(on && SENG.qr) h+=`<div class="mfqr"><div class="mfqrcode" role="img" aria-label="QR code to sign in to Steam">${SENG.qr}</div><div class="rt"><h2>Sign in with the Steam app</h2><p>Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code. Hearth finishes by itself.</p><div class="mfbtns"><button class="btn" data-f data-k="s-steamEngQrX" data-act="steamEngCancel">${I.x}Cancel</button></div></div></div>`;
   else if(on && s.engine!=='ready' && SENG.st) h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>Sign in to Steam</b><small>${esc(steamEngNotReady(e))}</small></div><div class="rv">›</div></button>`;
   else if(on && s.engine==='ready') h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>${s.signedIn?'Steam: '+esc(s.account||'signed in'):'Sign in to Steam'}</b><small>${s.signedIn?(open?'Sign out of the open Steam client':'Sign out of the lightweight engine'):(open?'For the open Steam client':'For the lightweight engine')+': with the Steam app on your phone, or your name and password. Hearth doesn\'t keep what you type'}</small></div><div class="rv">›</div></button>`;
@@ -8031,7 +8039,7 @@ function steamEngWatch(){
   const n=++SENG.watching, until=Date.now()+5*60000;
   const step=()=>{ if(n!==SENG.watching) return;
     call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; const s=r.status||{}, si=s.signIn||{};
-      if(s.signedIn){ SENG.qr=null; SENG.watching++; toast('Signed in to Steam as '+(s.account||'you')); }
+      if(s.signedIn){ SENG.qr=null; SENG.watching++; if(s.kind==='open') S.steamOpenSigned=true; toast('Signed in to Steam as '+(s.account||'you')); }
       else if(si.state==='failed'){ SENG.qr=null; SENG.watching++; toast(si.error||'Steam didn\'t sign you in'); }
       else { if(si.qrSvg) SENG.qr=si.qrSvg; if(Date.now()<until) setTimeout(step,2000); else { SENG.qr=null; call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); } }
       if(S.view==='settings') render(null,true);
@@ -8068,7 +8076,7 @@ function pageSources(){
   const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
   const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
   return sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
-    +(LINUX?swRow('steamKeepReady','Keep Steam ready in the background','Steam starts hidden when Game Mode comes up (if you\'ve used it here before) and stays running, so your Steam games start right away'):'')
+    +(LINUX?swRow('steamKeepReady','Keep Steam ready in the background',(S.set.steamOpen&&S.steamOpenSigned&&S.set.steamKeepReady?'Not needed right now: Hearth\'s own Steam client is signed in, so Valve\'s Steam client starts only for games that need it and closes again afterwards. ':'')+'Steam starts hidden when Game Mode comes up (if you\'ve used it here before) and stays running, so your Steam games start right away'):'')
     +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
     +(LINUX&&host?steamEngineRows():'')
     +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
@@ -10064,7 +10072,7 @@ function act(el){
       else if(host && k==='steamOnDemand') call('library.setSteamOnDemand',{on}).catch(undo);
       else if(host && k==='steamKeepReady') call('library.setSteamKeepReady',{on}).catch(undo);
       else if(host && (k==='steamLight'||k==='steamOpen')){ const other=k==='steamLight'?'steamOpen':'steamLight', was=S.set[other]; if(on) S.set[other]=false;
-        call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Open Steam client on (experimental)':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
+        call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Hearth\'s Steam client on':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
       else send({type:'setting',key:d.key,value:S.set[d.key]});
       if(S.layers.includes('qam')){ renderQam(); setFocus($(`#qam [data-k="q-${d.key}"]`),true); } else render('s-'+d.key);
       return; }
@@ -10139,6 +10147,8 @@ function act(el){
     case 'addManual': return addManual();
     case 'rescan': return loadLibrary(true, true);
     case 'steamEngSignIn': return steamEngSignIn();
+    case 'steamLibSignIn': closeAll(); S.settingsTab='sources'; S.sfront=false; navigate('settings'); return setTimeout(steamEngSignIn,150);
+    case 'steamExplainOk': S.steamExplain=false; if(host) call('steam.engine.explained').catch(()=>{}); return render('s-steamOpen');
     case 'steamEngCancel': SENG.qr=null; SENG.watching++; call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); return render('s-steamEngSign');
     case 'xodusGet': return (XO.s&&XO.s.installed) ? call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-up',true); }).catch(e=>toast(e.message)) : xodusPick(true);
     case 'xodusFolder': return xodusPick(false);
@@ -13074,7 +13084,7 @@ async function loadLibrary(rescan, announce){
     S.set.steamBg = lib.steamBackground!==false;
     S.set.steamOnDemand = lib.steamOnDemand!==false;
     S.set.steamKeepReady = lib.steamKeepReady!==false;
-    S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; if(LINUX) steamEngRefresh();
+    S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; S.steamExplain = lib.steamEngineExplain===true; S.steamKeepActive = lib.steamKeepReadyActive!==false; S.steamOpenSigned = lib.steamOpenSignedIn===true; if(LINUX) steamEngRefresh();
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
   }catch(e){ toast("Couldn't load your library: "+e.message); }

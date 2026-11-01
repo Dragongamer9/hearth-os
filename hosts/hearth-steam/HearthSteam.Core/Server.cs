@@ -91,6 +91,7 @@ public sealed class Server
             case "launch.result": return Open().LaunchResult(App(r), r["ok"]?.GetValue<bool>() ?? false);
             case "verify": return Open().Verify(App(r));
             case "cancel": return Open().Cancel(App(r));
+            case "standby": return Open().Standby();
             case "release": Released = true; engine.Release(); return new JsonObject { ["released"] = true };
             default: throw new EngineException(Codes.Unsupported, $"Unknown command {cmd}.");
         }

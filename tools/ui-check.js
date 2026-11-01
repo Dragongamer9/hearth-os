@@ -61,6 +61,12 @@ const path = require('path');
       closeAll();
       SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: false } }; S.set.steamLight = false; S.set.steamOpen = true;
       if (!/Sign in to Steam/.test(steamEngineRows()) || /Can't sign in/.test(steamEngineRows())) throw new Error('a ready engine does not offer the normal sign-in');
+      // Open is the default: a once-only explainer with Got it, and no Library pill without Hearth's host.
+      S.steamExplain = true;
+      if (!/data-k="s-steamExplain"/.test(steamEngineRows()) || !/Turn it off here any time/.test(steamEngineRows())) throw new Error('no explainer for the new default');
+      S.steamExplain = false;
+      if (/s-steamExplain/.test(steamEngineRows())) throw new Error('the explainer stays after Got it');
+      if (steamOpenLibPill() !== '') throw new Error('the Library sign-in pill shows without Hearth');
     } finally { S.set.steamLight = was.light; S.set.steamOpen = was.open; SENG.st = was.st; }
   });
   try {
