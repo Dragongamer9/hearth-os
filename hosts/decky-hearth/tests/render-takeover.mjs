@@ -17,7 +17,9 @@ const b64 = (p, mime) => `data:${mime};base64,${readFileSync(p).toString("base64
 
 const res = await build({
   entryPoints: [join(mock, "entry.jsx")], bundle: true, write: false, format: "iife", jsx: "automatic", target: "es2020",
-  alias: { "@decky/ui": join(mock, "stub-ui.jsx"), "@decky/api": join(mock, "stub-api.js") },
+  // One React for everything (the plugin's own node_modules may hold another, which React can't mix).
+  alias: { "@decky/ui": join(mock, "stub-ui.jsx"), "@decky/api": join(mock, "stub-api.js"), react: join(here, "node_modules/react"),
+           "react-dom": join(here, "node_modules/react-dom"), "react-icons": join(here, "node_modules/react-icons") },
   nodePaths: [join(here, "node_modules")], define: { "process.env.NODE_ENV": '"production"' }, logLevel: "warning",
 });
 const js = res.outputFiles[0].text;
@@ -100,7 +102,8 @@ for (const [name, which, want, focus] of [
   if (focus) await page.evaluate((sel) => { const e = document.querySelector(sel); if (e) e.classList.add("gpfocus"); }, focus);
   await page.waitForTimeout(300);
   const text = await page.evaluate(() => document.body.innerText);
-  const missing = want.filter((w) => !text.includes(w));
+  // innerText follows text-transform (Hearth's headings are upper case): compared without case.
+  const missing = want.filter((w) => !text.toLowerCase().includes(w.toLowerCase()));
   if (missing.length) errors.push(`${name}: missing ${missing.join(", ")}`);
   if (/couldn't be shown/i.test(text)) errors.push(`${name}: a Hearth part fell back to its error`);
   await page.screenshot({ path: join(out, name + ".png") });
