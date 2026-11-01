@@ -684,6 +684,9 @@ fn unpack(archive: &Path, dest: &Path) -> Result<(), String> {
                 _ => return Err(format!("the archive has something that isn't a file ({})", rel.display())),
             }
         }
+        // The tar ends before the stream does (tar pads to a full record): read the rest, so zstd isn't cut off.
+        let mut rest = ar.into_inner();
+        std::io::copy(&mut rest, &mut std::io::sink()).map_err(|e| e.to_string())?;
         Ok(())
     })();
     let st = child.wait().map_err(|e| e.to_string())?;
