@@ -542,7 +542,7 @@ fn start_game_mode(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, window
     {
         // The controller mouse pauses while Hearth or its Quick Access is in front (the controller is Hearth's then).
         let gm2 = gm.clone();
-        hearth_core::padmouse::set_pause_probe(std::sync::Arc::new(move || gm2.overlay_on.load(std::sync::atomic::Ordering::SeqCst) || gm2.hearth_in_front()));
+        hearth_core::padmouse::set_pause_probe(std::sync::Arc::new(move || gm2.hearth_has_controller()));
     }
     let _ = GM.set(gm.clone());
     // Moved from the old Electron AppImage: tidy up once this version has run fine for 5 minutes.

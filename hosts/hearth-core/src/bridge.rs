@@ -90,9 +90,21 @@ impl Bridge {
         b.library.restore_quick();
         // Steam: with "Start Steam only when needed" (Settings › Library, on by default) it starts hidden when you
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
-        if !b.library.steam_on_demand() && b.library.store.data["steamBackground"] != false {
-            let home = b.library.home.clone();
-            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(8)); crate::steam::ensure_running_silent(&home); });
+        // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
+        // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
+        {
+            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
+            let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
+            if !seat && (keep || (!on_demand && bg)) {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(if keep { 20 } else { 8 }));
+                    let game_mode = crate::gamescope::inside() && !crate::gamescope::steam_mode();
+                    if crate::steam_launch::warm_start(keep, on_demand, bg, game_mode, crate::steam::client_installed(&home), crate::steam_launch::used_before(&home), crate::steam::is_running()) {
+                        if keep { crate::bridge::log("steam: keeping it ready in the background (Settings › Library)"); }
+                        crate::steam::ensure_running_silent(&home);
+                    }
+                });
+            }
         }
         // The Steam games on your account (steam_owned.rs), fetched again when older than 12 hours.
         if b.library.store.source_on("steam") {
@@ -423,6 +435,11 @@ impl Bridge {
             "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
             // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
             "steam.engine.signIn" => crate::steam_engine::sign_in(a),
+            "library.setSteamKeepReady" => {
+                let on = a["on"] == true;
+                if on && crate::gamescope::inside() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }))
+            }
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
                 if on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }

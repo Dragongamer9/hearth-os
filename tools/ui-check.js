@@ -668,6 +668,32 @@ const path = require('path');
     const was = S.running; S.running = 'steam:999999';
     try { launch(G('g01')); } finally { S.running = was; closeAll(); }
   });
+  // A Steam game's start, step by step (steam_launch.rs "steam.launch" events): the starting screen says what Steam is
+  // doing, ignores another game's steps, and after the wait offers Keep waiting / Back to Hearth (B goes back).
+  await step('steam launch states', () => {
+    const g = GAMES.find(x => x.src === 'steam') || G('g01');
+    const L = document.querySelector('#launch');
+    closeAll(); L.innerHTML = '<div class="lbox"><div class="spin"></div><div class="t">x</div><div class="s">Starting via Steam…</div></div>';
+    S.launching = g.id; S.layers.push('launch'); L.classList.add('open');
+    try {
+      const line = () => document.querySelector('#launch .s').textContent;
+      const want = { starting: 'Starting Steam…', updating: 'Steam is updating…', asking: "Steam is asking something. It's in front: use the right stick and A", game: 'Starting the game…' };
+      for (const [stage, text] of Object.entries(want)) {
+        onSysEvent('steam.launch', { id: g.id, stage, text });
+        if (line() !== text || L.dataset.stage !== stage) throw new Error(`${stage}: "${line()}" (${L.dataset.stage})`);
+      }
+      onSysEvent('steam.launch', { id: 'steam:1', stage: 'updating', text: 'Steam is updating…' });
+      if (line() !== want.game) throw new Error("another game's step changed the line: " + line());
+      L.dataset.stage = 'asking'; steamLaunchTimeout(g.id);
+      const box = document.querySelector('#launch .lbox').textContent;
+      if (!document.querySelector('#launch [data-k="l-back"]') || !document.querySelector('#launch [data-k="l-wait"]') || !/waiting for an answer/.test(box)) throw new Error('no way back after the wait: ' + box.slice(0, 200));
+      launchWait();
+      if (document.querySelector('#launch [data-k="l-back"]')) throw new Error('Keep waiting left the offer up');
+      steamLaunchTimeout(g.id);
+      padPressed('b', 'ui-check');
+      if (S.layers.includes('launch')) throw new Error('B after the wait did not go back');
+    } finally { clearTimeout(launchTimer); S.layers = S.layers.filter(x => x !== 'launch'); L.classList.remove('open'); S.launching = null; closeAll(); }
+  });
   // Game settings that can't be read: a message with Try again (it said "Loading…" for good).
   await step('game settings not read', async () => {
     const orig = MOCK.call;

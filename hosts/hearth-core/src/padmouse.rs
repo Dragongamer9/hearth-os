@@ -11,6 +11,7 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -22,6 +23,8 @@ struct Running { child: Child, stdin: ChildStdin, paused: bool }
 
 static RUNNING: Mutex<Option<Running>> = Mutex::new(None);
 static PROBE: OnceLock<Arc<dyn Fn() -> bool + Send + Sync>> = OnceLock::new();
+/// Turned on by itself (over a Steam window or a game's launcher, steam_launch.rs), not by you: it goes off by itself.
+static AUTO: AtomicBool = AtomicBool::new(false);
 
 /// The host says how to tell that Hearth (or its Quick Access) is in front, when the helper pauses.
 pub fn set_pause_probe(f: Arc<dyn Fn() -> bool + Send + Sync>) { let _ = PROBE.set(f); }
@@ -45,6 +48,7 @@ fn tell_page(on: bool) { crate::stores::notify(json!({"type": "event", "name": "
 
 /// Turns it off.
 pub fn stop() {
+    AUTO.store(false, Ordering::SeqCst);
     let taken = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).take();
     if let Some(mut run) = taken {
         drop(run.stdin);
@@ -101,10 +105,27 @@ pub fn start() -> Result<(), String> {
     Ok(())
 }
 
-/// Quick Access's button: on ↔ off. Returns whether it's on now.
+/// Quick Access's button: on ↔ off. Returns whether it's on now. Turned on here it's yours: it stays on.
 pub fn toggle() -> Result<bool, String> {
-    if is_on() { stop(); tell_page(false); Ok(false) } else { start()?; tell_page(true); Ok(true) }
+    if is_on() { stop(); tell_page(false); Ok(false) } else { start()?; AUTO.store(false, Ordering::SeqCst); tell_page(true); Ok(true) }
 }
+
+/// On by itself while a window the controller can't drive is in front (a Steam question, a game's launcher).
+/// Does nothing when it's on already (yours or not). Returns whether it turned on now.
+pub fn start_auto(why: &str) -> bool {
+    if is_on() { return false; }
+    match start() {
+        Ok(()) => { AUTO.store(true, Ordering::SeqCst); crate::bridge::log(&format!("pad mouse: on by itself ({why}): right stick moves the pointer, A clicks, View + Menu turns it off")); tell_page(true); true }
+        Err(e) => { crate::bridge::log(&format!("pad mouse: couldn't turn on by itself ({why}): {e}")); false }
+    }
+}
+/// Off again when that window is gone, only if it turned on by itself (one you turned on stays on).
+pub fn stop_auto() {
+    if AUTO.load(Ordering::SeqCst) && is_on() { stop(); crate::bridge::log("pad mouse: off by itself (that window is gone)"); tell_page(false); }
+    AUTO.store(false, Ordering::SeqCst);
+}
+/// Is it on by itself right now?
+pub fn auto_on() -> bool { AUTO.load(Ordering::SeqCst) && is_on() }
 
 #[cfg(test)]
 mod tests {
@@ -114,5 +135,9 @@ mod tests {
         assert_eq!(helper_args(), vec![helper().to_string_lossy().to_string(), "--game".to_string()]);
         assert!(helper_args()[0].ends_with("shell/hearth-pad"));
         assert!(!is_on());
+        // Outside Game Mode it never turns on by itself, and turning "off by itself" leaves nothing behind.
+        assert!(!start_auto("test"));
+        stop_auto();
+        assert!(!auto_on());
     }
 }

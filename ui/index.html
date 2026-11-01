@@ -1566,7 +1566,7 @@ const S = {
   view:'home', game:null, tab:'inst', sort:'recent', settingsTab:'wifi', qtab:'quick',
   history:[], layers:[], running:null,
   set:{bright:70,vol:55,sounds:true,tdp:15,fps:'60',overlay:0,
-       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,steamOnDemand:true,startOnBoot:true,escapeHatch:true},
+       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,steamOnDemand:true,steamKeepReady:true,startOnBoot:true,escapeHatch:true},
   // Live system state, filled from the host (or the browser mock)
   sys:{wifi:{available:true,on:false,ssid:null,bars:0}, bt:{available:true,on:false}, airplane:false,
        battery:null, audio:{volume:55,muted:false,devices:null}, display:{supported:true,brightness:70,resolution:'',scale:''},
@@ -8051,6 +8051,7 @@ function pageSources(){
   const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
   const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
   return sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
+    +(LINUX?swRow('steamKeepReady','Keep Steam ready in the background','Steam starts hidden when Game Mode comes up (if you\'ve used it here before) and stays running, so your Steam games start right away'):'')
     +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
     +(LINUX&&host?steamEngineRows():'')
     +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
@@ -10044,6 +10045,7 @@ function act(el){
       if(host && /^src/.test(k)) setSources(undo);
       else if(host && k==='steamBg') call('library.setSteamBackground',{on}).catch(undo);
       else if(host && k==='steamOnDemand') call('library.setSteamOnDemand',{on}).catch(undo);
+      else if(host && k==='steamKeepReady') call('library.setSteamKeepReady',{on}).catch(undo);
       else if(host && (k==='steamLight'||k==='steamOpen')){ const other=k==='steamLight'?'steamOpen':'steamLight', was=S.set[other]; if(on) S.set[other]=false;
         call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Open Steam client on (experimental)':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
       else send({type:'setting',key:d.key,value:S.set[d.key]});
@@ -10149,6 +10151,8 @@ function act(el){
     case 'andRoms': toast('Pick your ROMs folder'); return call('android.roms.pick',{},600000).then(r=>{ if(r){ AND.s=r; toast('ROMs folder set'); loadLibrary(true,true); } render('an-roms',true); }).catch(e=>toast(e.message));
     case 'andRomsForget': return call('android.roms.forget').then(r=>{ AND.s=r; loadLibrary(true); render('an-roms',true); }).catch(e=>toast(e.message));
     case 'launchShow': return launchShow();
+    case 'launchWait': return launchWait();
+    case 'launchBack': return launchBack();
     case 'toast': return toast(d.text);
   }
 }
@@ -10229,6 +10233,7 @@ function launch(g, mod, save){
   const L=$('#launch');
   L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}${mod?(mod==='@none'?' without mods':' with '+esc(beaconModName(g,mod))):''}…`}</div></div>`;
   closeAll();
+  S.launching=g.id; L.dataset.stage='';
   focusStack.push({el:focused, k:focused?.dataset.k}); S.layers.push('launch'); L.classList.add('open'); renderFooter();
 
   if(!host){ // browser preview: pretend
@@ -10242,7 +10247,10 @@ function launch(g, mod, save){
     }
     // Started without the store (its sign-in expired): it plays offline; cloud saves and online play wait.
     if(r && r.expired) toast(`${g.title} is starting offline: your ${storeName(r.expired)} sign-in expired, so cloud saves didn't sync. Sign in again from Notifications.`);
-    // Stay on the launch screen until the game's process shows up; stores can take a while.
+    // Stay on the launch screen until the game's process shows up; stores can take a while. Steam says what it's
+    // doing ("steam.launch": starting, updating, asking something, starting the game) and only after 2½ minutes
+    // does the screen offer a way back.
+    if(g.src==='steam'){ launchTimer=setTimeout(()=>steamLaunchTimeout(g.id), STEAM_LAUNCH_WAIT); return; }
     launchTimer=setTimeout(()=>{ hideLaunch(); toast(`${g.title} is still starting. The store may be updating it.`); }, 25000);
   }).catch(e=>{
     hideLaunch();
@@ -10287,6 +10295,25 @@ function gameSlow(d){
   box.insertAdjacentHTML('beforeend', `<div class="hint">${d.firstRun?'The first start of a Windows game sets up Proton and can take a few minutes. It comes to the front by itself when it\'s ready.':'Still starting. It comes to the front by itself when it\'s ready.'}</div><button class="btn" data-f data-k="l-show" data-act="launchShow">Show it now</button>`);
   setFocus($('#launch [data-k="l-show"]'));
 }
+// A Steam game's start, step by step (hearth-core steam_launch.rs): the starting screen's line says it.
+const STEAM_LAUNCH_WAIT=150000;
+function steamLaunchStage(d){
+  const L=$('#launch');
+  if(!d || !L || !S.layers.includes('launch') || (S.launching && S.launching!==d.id)) return;
+  L.dataset.stage=d.stage||'';
+  const s=$('#launch .s'); if(s && d.text) s.textContent=d.text;
+}
+// Still nothing after 2½ minutes: say so, with Keep waiting and Back to Hearth (the game may still come up later).
+function steamLaunchTimeout(id){
+  const L=$('#launch'), box=$('#launch .lbox');
+  if(!box || !S.layers.includes('launch') || (S.launching && S.launching!==id) || box.querySelector('.lwait')) return;
+  const g=G(id), stuck={updating:'Steam is still updating.', asking:'Steam is waiting for an answer in its window.'}[L.dataset.stage]||'Steam may still be starting or updating.';
+  box.querySelector('.hint')?.remove(); box.querySelector('[data-k="l-show"]')?.remove();
+  box.insertAdjacentHTML('beforeend', `<div class="hint lwait">${esc(g?g.title:'The game')} hasn't started yet. ${stuck} It comes to the front by itself if it starts.</div><button class="btn" data-f data-k="l-wait" data-act="launchWait">Keep waiting</button><button class="btn" data-f data-k="l-back" data-act="launchBack">Back to ${APP}</button>`);
+  setFocus($('#launch [data-k="l-back"]'));
+}
+function launchWait(){ $('#launch .lwait')?.remove(); $('#launch [data-k="l-wait"]')?.remove(); $('#launch [data-k="l-back"]')?.remove(); const id=S.launching; clearTimeout(launchTimer); launchTimer=setTimeout(()=>steamLaunchTimeout(id), STEAM_LAUNCH_WAIT); }
+function launchBack(){ S.launchWaiting=null; hideLaunch(); toast('Back to '+APP+'. The game still comes up if Steam starts it.'); }
 function launchQam(){
   if(host && !OVERLAY && (HOSTINFO.features||[]).includes('overlayOverLaunch')) return send({type:'overlay', action:'open'});
   qamFresh(); openLayer('qam');
@@ -13029,6 +13056,7 @@ async function loadLibrary(rescan, announce){
     if(lib.quickResume) applyQuick({list:lib.quickResume.list, on:lib.quickResume.on});
     S.set.steamBg = lib.steamBackground!==false;
     S.set.steamOnDemand = lib.steamOnDemand!==false;
+    S.set.steamKeepReady = lib.steamKeepReady!==false;
     S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; if(LINUX) steamEngRefresh();
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
@@ -13076,6 +13104,7 @@ function onSysEvent(name, data){
   if(name==='game.started') return gameStarted(data.id);
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
+  if(name==='steam.launch') return steamLaunchStage(data);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad'){
     if(HOSTSCREEN.picker && !OVERLAY) return;           // a file picker is open: its own controller helper has it
@@ -13436,6 +13465,7 @@ function input(k){
     // when there's none, and this window's own panel opens instead).
     if(k==='select'||k==='guide') return launchQam();
     if(k==='b' && S.launchWaiting) return launchShow();
+    if(k==='b' && document.querySelector('#launch .lwait')) return launchBack();
     if(k==='a' && focused && focused.closest('#launch')) return act(focused);
     return;
   }

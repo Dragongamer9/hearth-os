@@ -49,6 +49,21 @@ fn str_prop(win: u64, name: &str) -> String {
     let out = xprop(&["-id", &win.to_string(), name]);
     out.split_once("= \"").map(|(_, r)| r.trim_end().trim_end_matches('"').to_string()).unwrap_or_default()
 }
+/// A window's title (_NET_WM_NAME, else WM_NAME).
+pub fn title_of(win: u64) -> String {
+    let t = str_prop(win, "_NET_WM_NAME");
+    if t.is_empty() { str_prop(win, "WM_NAME") } else { t }
+}
+/// "xwininfo -id" output → (width, height).
+pub fn parse_size(text: &str) -> (u32, u32) {
+    let num = |k: &str| text.lines().find_map(|l| l.trim().strip_prefix(k).and_then(|r| r.trim().parse::<u32>().ok())).unwrap_or(0);
+    (num("Width:"), num("Height:"))
+}
+/// A window's size ((0, 0) when it's gone).
+pub fn size_of(win: u64) -> (u32, u32) {
+    if win == 0 || !crate::system::has("xwininfo") { return (0, 0); }
+    parse_size(&crate::system::run_timeout("xwininfo", &["-id", &win.to_string()], Duration::from_secs(2)).unwrap_or_default())
+}
 /// A text property on the root window (e.g. GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL), empty when it isn't there.
 pub fn root_str(name: &str) -> String {
     let out = xprop(&["-root", name]);
@@ -353,6 +368,8 @@ pub fn wait_for_window(app_id: u32, pids: &dyn Fn() -> Vec<u32>, exclude: &[u64]
     let start = Instant::now();
     let mut last = 0;
     let mut steam_seen: std::collections::HashMap<u64, Instant> = Default::default();
+    // The game's windows smaller than 640x360 (a small launcher): theirs once they've stayed up a few seconds.
+    let mut small_seen: std::collections::HashMap<u64, Instant> = Default::default();
     let app = app_id as u64;
     while start.elapsed() < timeout {
         if cancelled() { return None; }
@@ -377,10 +394,21 @@ pub fn wait_for_window(app_id: u32, pids: &dyn Fn() -> Vec<u32>, exclude: &[u64]
                 }
             }
         }
+        if game.is_none() && app_id != 0 {
+            for w in wins.iter().filter(|w| !(w.w >= 640 && w.h >= 360)) {
+                let carries = known.get(&w.win).map(|k| k.0) == Some(app) || w.appid == app;
+                if !carries { continue; }
+                let seen = *small_seen.entry(w.win).or_insert_with(Instant::now);
+                if crate::steam_launch::small_window_ready(w.w, w.h, seen.elapsed()) {
+                    crate::bridge::log(&format!("launch: window {:#x} \"{}\" ({}x{}) of id {app_id} stayed up: it's the game's (a small launcher)", w.win, w.title, w.w, w.h));
+                    return Some(Ready::Window(w.win));
+                }
+            }
+        }
         match game { Some(g) if g.win == last => return Some(Ready::Window(g.win)), Some(g) => last = g.win, None => last = 0 }
         for w in &wins {
             let name = proc_name(w.pid);
-            if (name == "steam" || name == "steamwebhelper") && w.w >= 480 && w.h >= 240 && !want.contains(&w.pid) && steam_question(&w.title) {
+            if (crate::procs::is_steam_client(&name) || crate::procs::steam_client_pid(std::path::Path::new("/proc"), w.pid as u32)) && w.w >= 240 && w.h >= 120 && !want.contains(&w.pid) && steam_question(&w.title) {
                 let seen = *steam_seen.entry(w.win).or_insert_with(Instant::now);
                 if game.is_none() && seen.elapsed() > Duration::from_millis(3500) && start.elapsed() > Duration::from_secs(5) { return Some(Ready::Dialog(w.win, w.title.clone())); }
             }
@@ -495,6 +523,12 @@ pub fn delete_screenshot(file: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reads_a_windows_size() {
+        let t = "xwininfo: Window id: 0x4600003 \"Cloud Sync Conflict\"\n\n  Absolute upper-left X:  610\n  Width: 700\n  Height: 400\n  Map State: IsViewable\n";
+        assert_eq!(parse_size(t), (700, 400));
+        assert_eq!(parse_size(""), (0, 0));
+    }
     #[test]
     fn reads_xprop_and_xwininfo() {
         assert_eq!(parse_cardinals("GAMESCOPE_FOCUSABLE_WINDOWS(CARDINAL) = 4194306, 769, 1234, 0x600001, 0, 99"), vec![4194306, 769, 1234, 0x600001, 0, 99]);

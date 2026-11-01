@@ -23,6 +23,7 @@ The code lives in `hosts/hearth-core/src`:
 | `steam.rs` | Finding Steam, its libraries, installed games (records), art, starting Steam hidden |
 | `steam_owned.rs` | Owned games from the Community page, Steam's `appinfo.vdf` (read only), the cache |
 | `steam_ctl.rs` | Silent installs and uninstalls, download progress, Steam only when needed, sign-in watching |
+| `steam_launch.rs` | Steam kept ready in Game Mode, which windows count as a Steam game's launch, the controller mouse over them, the starting screen's steps |
 | `library.rs`, `bridge.rs` | Wiring into the library, the Downloads page and the UI's calls |
 
 Ember (Windows) does the same in C#: `hosts/windows/Nimbus.Host/Library/SteamControl.cs` (owned games from the
@@ -127,6 +128,9 @@ Settings › Library › **Start Steam only when needed** is on by default:
 
 With the setting off, Steam starts hidden when Hearth starts and keeps running, as before.
 
+**Keep Steam ready in the background** (Settings › Library, Hearth OS, on by default) goes first: see section 9.
+While it's on, Hearth never closes an idle Steam.
+
 ## 6. Signing in
 
 Library › Stores › Sign in to Steam (also in Game Mode):
@@ -225,6 +229,47 @@ and never touches anti-cheat.
 - **Not yet.** Beta branches, workshop items, cloud saves (Valve's client syncs them when it runs), pausing and
   reordering downloads from Hearth's Downloads page, automatic updates (Update asks for one).
 
+## 9. Playing Steam games in Game Mode
+
+What made Steam games slow and awkward in Game Mode (0.6.59 logs, Flatpak Steam, Fallout 4):
+
+- Steam started cold on Play (`steam: starting it in the background (-silent)` right after Play), so every first
+  start waited for the Flatpak to come up, often with an update; after 25 seconds the starting screen went away
+  and nothing said what was happening.
+- Steam's own windows before the game (a cloud-save conflict, an EULA, an error, an install step) came up while
+  Hearth's starting screen was in front, and nothing brought them in front until the game's processes existed.
+  The Flatpak's Steam processes can carry other names, so some of its windows were taken for "an app Hearth
+  opened" instead.
+- The controller mouse only turned on from Quick Access (or View + Menu), and it paused whenever Hearth's window
+  still said it was focused, even with a Steam window pinned in front of it.
+
+What Hearth does now (`steam_launch.rs`, `gamemode.rs`, `padmouse.rs`):
+
+- **Steam kept ready.** With **Keep Steam ready in the background** on, Hearth starts Steam hidden (`-silent`)
+  20 seconds after Game Mode comes up (on its own thread: nothing waits for it), only when Steam has been used on
+  this device (an account in `loginusers.vdf`), not on a second seat and not in Steam Game Mode, and it isn't closed
+  when idle. Play then hands the game to the running client. Steam isn't started with `nice`: every game Steam starts
+  would inherit the lower priority. Steam still closes when you switch between Game Mode and Desktop Mode (it
+  belongs to the old mode's display and hangs otherwise, `nimbus-session`'s `settle`); Game Mode starts it again.
+  Handheld Daemon stopping Steam while Quick Access is open is still undone (`steam_thaw.rs`).
+- **Steam's windows in front.** While a Steam game starts or runs, a new Steam window that may need you (its title
+  isn't Steam's main, friends, "Launching…", "Preparing…" or update window, and it's at least 240x120) is pinned in
+  front of the starting screen, and Hearth's page lets go of the controller until it closes. Steam's processes are
+  recognised by command line too (`procs::steam_client_pid`). A game's own window smaller than 640x360 (a small
+  launcher) counts as the game once it has stayed up 4 seconds.
+- **Controller mouse by itself.** Once a second Hearth looks at what's in front: a Steam window, or a window of the
+  running game that's clearly smaller than the screen (a launcher with a Play button, like Bethesda's), turns the
+  controller mouse on by itself (right stick moves the pointer, A / RT click, B is Esc); Hearth, Quick Access or the
+  game filling the screen turns it off again. Turned off with View + Menu over a window, it doesn't come back for that
+  window; one you turned on yourself stays on. It pauses only when Hearth's window is really in front in gamescope.
+- **The starting screen says what's going on**: "Starting Steam…", "Steam is updating…" (Steam's
+  `logs/bootstrap_log.txt` is being written), "Steam is asking something. It's in front…", "Starting the game…"
+  (the page's `steam.launch` event). After 2½ minutes it offers **Keep waiting** and **Back to Hearth** (B); the
+  game still comes to the front by itself if Steam starts it. Hearth watches for a Steam game's processes for 5
+  minutes (3 for other games).
+
+The log says each step: `steam launch: …`, `ids: Steam window … part of it, in front`, `pad mouse: on by itself …`.
+
 ## Tests
 
 `cargo test` in `hosts/hearth-core` covers: reading the games XML and page (with private profiles), the cache
@@ -240,6 +285,10 @@ the game folder), launch rules (Steamworks files, DRM wrapper, VAC, the first-st
 the fallback answers; then starts the Open engine with no account and checks it answers signed out and exits when
 released. `cargo test` covers the Open routes in `steam_engine.rs`, the direct-start command line and reading the
 engine's library.
+
+`steam_launch.rs`'s tests cover when Steam is kept ready, that a Steam kept ready is never closed when idle, the
+starting screen's steps, which windows count as a launch, when the controller mouse turns on by itself and small
+launchers; `tools/ui-check.js` ("steam launch states") checks the starting screen's lines and the way back.
 
 What needs a real Steam account and device (it can't run in CI): Steam actually taking up a Hearth-written
 record, the fallback window, the Community page answers for a real profile, the sign-in window in gamescope,

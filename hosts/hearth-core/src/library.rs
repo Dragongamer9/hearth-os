@@ -118,6 +118,10 @@ fn from_rec(v: &Value) -> Option<Running> {
 
 const EXIT_GRACE_MS: u64 = 10_000;     // a launcher closing and the game starting a moment later is still one game
 const START_TIMEOUT_MS: u64 = 180_000; // Steam may update the game first
+/// A Steam game: Steam may start cold, update itself, then ask something first.
+const STEAM_START_TIMEOUT_MS: u64 = 300_000;
+/// How long Hearth waits for a game's processes before it stops watching.
+fn start_timeout(id: &str) -> u64 { if id.starts_with("steam:") { STEAM_START_TIMEOUT_MS } else { START_TIMEOUT_MS } }
 
 pub fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
@@ -751,6 +755,8 @@ impl Library {
                         if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
                     });
                 }
+                // The starting screen says what Steam is doing ("steam.launch" events) until the game's processes are up.
+                crate::steam_launch::watch(&self.home, id, app_num);
                 crate::procs::Track { steam_app_id: Some(id.trim_start_matches("steam:").to_string()), app_id: Some(app_id), ..Default::default() }
             }
             "manual" => {
@@ -874,7 +880,8 @@ impl Library {
         if self.store.source_on("steam") {
             crate::steam_engine::tick(self.steam_engine_mode());
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
-            events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
+            // Kept ready (Settings › Library, on by default): never closed when idle (steam_launch.rs).
+            events.extend(crate::steam_ctl::tick(&self.home, crate::steam_launch::may_close_idle(self.steam_on_demand(), self.steam_keep_ready()), steam_game));
         }
         events.extend(self.tick_running());
         if now_ms().saturating_sub(self.in_use_checked) > 10_000 { self.refresh_in_use(); }
@@ -897,7 +904,7 @@ impl Library {
         if r.cloud { return events; }
         if r.started_at == 0 {
             if !pids.is_empty() { r.started_at = now; events.push(json!({"type": "event", "name": "game.started", "data": {"id": r.id}})); }
-            else if now - r.launched_at > START_TIMEOUT_MS { events.push(json!({"type": "event", "name": "game.timeout", "data": {"id": r.id}})); self.running = None; }
+            else if now - r.launched_at > start_timeout(&r.id) { events.push(json!({"type": "event", "name": "game.timeout", "data": {"id": r.id}})); self.running = None; }
         } else if pids.is_empty() {
             if r.closing || (r.gone_since > 0 && now - r.gone_since > EXIT_GRACE_MS) { events.push(self.exited()); }
             else if r.gone_since == 0 { r.gone_since = now; events.push(json!({"type": "event", "name": "game.gap", "data": {"id": r.id}})); }
@@ -1184,6 +1191,9 @@ impl Library {
 
     /// "Start Steam only when needed" (Settings › Library, on by default).
     pub fn steam_on_demand(&self) -> bool { self.store.data["steamOnDemand"] != false }
+    /// "Keep Steam ready in the background" (on by default): Steam started hidden when Game Mode comes up, never closed
+    /// when idle, so Play hands the game to a running Steam (steam_launch.rs).
+    pub fn steam_keep_ready(&self) -> bool { self.store.data["steamKeepReady"] != false }
     /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
     pub fn steam_lightweight(&self) -> bool { self.steam_engine_mode() == crate::steam_engine::Mode::Lightweight }
     /// Settings › Library › Steam engine: Classic (default), Lightweight or Open (both experimental).
@@ -1196,7 +1206,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 
