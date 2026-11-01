@@ -341,6 +341,7 @@ pub fn report(version: &str) -> String {
     let steam_on = std::fs::read(data.join("library.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
+    section("Storage (drives and space)", crate::diskspace::report());
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
     // "Pressing power turns the screen off but the fans keep running": whether it really slept, how deeply, who
     // handles the power button and who holds sleep off (SLEEP_SH).

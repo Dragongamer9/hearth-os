@@ -924,6 +924,25 @@ pub fn set_pin(id: &str, tag: Option<&str>) -> Result<Value, String> {
 /// Library ids: "recomp:<id>".
 pub fn id_of(library_id: &str) -> Option<&str> { library_id.strip_prefix("recomp:") }
 
+/// Settings › Storage (diskspace.rs): the folder of a port Hearth installed, which it may move to another drive.
+/// A folder you pointed Hearth at ("I have it already") is yours: Hearth doesn't move it.
+pub fn movable_dir(id: &str) -> Result<PathBuf, String> {
+    let s = installed_state(id).ok_or("It isn't installed")?;
+    let dir = PathBuf::from(s["dir"].as_str().unwrap_or(""));
+    if s["adopted"] == true { return Err("You pointed Hearth at this port's folder, so it stays where you put it. Move it with Files, then choose the folder again.".into()); }
+    if dir == root().join(id).join("app") || (dir.join(MARKER).exists() && dir.ends_with(id)) { Ok(dir) } else { Err("Hearth doesn't recognise this port's folder as one it made.".into()) }
+}
+
+/// After Settings › Storage moved a port: its record, start script and desktop shortcut follow the new folder.
+pub fn relocate(id: &str, new_dir: &Path) -> Result<(), String> {
+    if !id_ok(id) || !new_dir.is_dir() { return Err("The port's new folder isn't there".into()); }
+    let s = update_state(id, |s| { s["dir"] = json!(new_dir.to_string_lossy()); })?;
+    let e = entry(id).unwrap_or(Value::Null);
+    write_run(id, e["title"].as_str().or(s["title"].as_str()).unwrap_or(id), &s, e["args"].as_str().unwrap_or(""))?;
+    if desktop_file(id).exists() { let _ = set_shortcut(id, true); }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

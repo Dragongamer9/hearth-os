@@ -673,6 +673,8 @@ body.L-spotlight .topbar{background:linear-gradient(rgba(6,8,12,.7),transparent)
 .lprev .acc{background:var(--accent)}
 .lprev .glow{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 45%,transparent),transparent)}
 .storage{height:10px;border-radius:5px;background:var(--panel3);overflow:hidden;margin-top:8px}
+.dskbar{display:flex;height:8px;border-radius:4px;background:var(--panel3);overflow:hidden;margin-top:8px}.dskbar i{display:block;height:100%}
+.dskleg{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:6px;font-size:12px;color:var(--dim)}.dskleg span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
 .storage i{display:block;height:100%;background:var(--accent)}
 .about-head{display:flex;align-items:center;gap:18px;padding:18px;background:var(--panel);border-radius:var(--r);max-width:900px}
 .about-head .amark{width:64px;height:64px;flex:none;display:grid;place-items:center;border-radius:16px;background:var(--panel2)}
@@ -5383,7 +5385,7 @@ const SGROUPS = [['you','user','You'],['connect','wifi','Connections'],['display
 const STAB_GROUP = {profile:'you',profiles:'you',appearance:'you',liblook:'you',signin:'you',wifi:'connect',bluetooth:'connect',remote:'connect',
   display:'display',audio:'display',power:'controls',controller:'controls',keyboard:'controls',sources:'games',seats:'games',import:'games',shell:'system',updates:'system',linux:'system',system:'system',help:'system',osinstall:'system',switch:'system',about:'system'};
 const stabGroup = k => STAB_GROUP[k]||'system';
-const stabShown = k => STABS.some(x=>x[0]===k) && (ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
+const stabShown = k => STABS.some(x=>x[0]===k) && (k==='diskspace' ? (!host || hasFeat('diskspace')) : ANDROID ? ANDROID_TABS.includes(k) && (k!=='linux'||lxOn()) : k==='linux' ? false : (k==='profiles'?hasProfiles():k==='remote'?LINUX:k==='osinstall'?(LINUX&&HOSTINFO.live):k==='switch'?!LINUX:k==='seats'?(HOSTINFO.features||[]).includes('seats'):((k!=='signin'&&k!=='import')||LINUX)));
 const stabsIn = g => STABS.filter(([k])=>stabGroup(k)===g && stabShown(k)).sort((a,b)=>SORDER.indexOf(a[0])-SORDER.indexOf(b[0]));
 // ---- Accessibility: its page (pageAccess) in You, on Hearth OS only
 if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='liblook')+1, 0, ['access','text','Accessibility']); STAB_GROUP.access='you'; }
@@ -5395,6 +5397,8 @@ if(LINUX){ STABS.splice(STABS.findIndex(x=>x[0]==='system'), 0, ['defaults','lib
 if(LINUX&&!ANDROID){ STABS.splice(STABS.findIndex(x=>x[0]==='remote')+1, 0, ['link','refresh','Hearth Link']); STAB_GROUP.link='connect'; }
 if(LINUX&&!ANDROID){ STABS.splice(STABS.findIndex(x=>x[0]==='link')+1, 0, ['storage','lib','Hearth Storage']); STAB_GROUP.storage='connect'; }   // Hearth Storage (pageStorage)
 // ---- end Hearth Link
+// ---- Settings › Storage (pageDiskspace, docs/STORAGE.md): Hearth OS only; Ember hides it, like Import (docs/EMBER-PARITY.md)
+if(LINUX&&!ANDROID){ STABS.splice(STABS.findIndex(x=>x[0]==='import'), 0, ['diskspace','dl','Storage']); STAB_GROUP.diskspace='games'; }
 const SLAST = {};
 function swRow(key,label,sub){ return `<button class="row" data-f data-k="s-${key}" data-act="toggle" data-key="${key}"><div class="rt"><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="sw ${S.set[key]?'on':''}"></div></button>`; }
 function infoRow(k,label,val){ return `<button class="row" data-f data-k="s-${k}"><div class="rt"><b>${label}</b></div><div class="rv">${esc(val)}</div></button>`; }
@@ -7183,6 +7187,218 @@ function pageSpace(){
   return h;
 }
 
+// ---------- Settings › Storage (docs/STORAGE.md) ----------
+// Every drive Hearth can put games on with what fills it, every installed game by size, moving a game to another
+// drive (copied, every byte checked, then the original deleted), uninstalling, clean up and the low space warning.
+// The work is hearth-core's diskspace.rs; nothing here deletes anything without the person confirming it.
+const DSK = {s:null, loading:false, err:null, drive:'', sort:'size', clean:null, sel:null, finding:false, cleaning:false, told:new Set(), scan:null};
+const DSK_COLORS = {games:'var(--accent)', prefixes:'#7aa2f7', shader:'#e0af68', downloads:'#9ece6a', other:'#6b7280'};
+const DSK_LABELS = {games:'Games', prefixes:'Proton prefixes', shader:'Shader caches', downloads:'Downloads', other:'Other'};
+if(!host) DSK.mock = {drives:[
+    {id:'/var', name:'This device', kind:'system', mount:'/var', fs:'btrfs', size:512e9, used:388e9, free:124e9, readOnly:false, games:true, steamLibs:['/var/home/me/.local/share/Steam'], parts:{games:230e9, prefixes:21e9, shader:6.4e9, downloads:2.1e9, other:128.5e9}},
+    {id:'/var/mnt/games-SD', name:'SD card (SD)', kind:'sd', mount:'/var/mnt/games-SD', fs:'ext4', size:256e9, used:243e9, free:13e9, readOnly:false, games:true, steamLibs:['/var/mnt/games-SD/SteamLibrary'], parts:{games:221e9, prefixes:9e9, shader:3e9, downloads:0, other:10e9}}],
+  games:[
+    {id:'steam:1091500', title:'Cyberpunk 2077', source:'steam', store:'Steam', folder:'Cyberpunk 2077', drive:'/var', size:92e9, prefix:1.2e9, shader:2.4e9, canMove:true, uninstall:'game'},
+    {id:'epic:Fortnite', title:'Hades', source:'epic', store:'Epic Games', folder:'Hades', drive:'/var', size:15e9, prefix:0.4e9, shader:null, canMove:true, uninstall:'game'},
+    {id:'steam:620', title:'Portal 2', source:'steam', store:'Steam', folder:'Portal 2', drive:'/var/mnt/games-SD', size:12e9, prefix:0.3e9, shader:0.2e9, canMove:true, uninstall:'game'},
+    {id:'gog:1207658924', title:'Heroes of Might and Magic 3', source:'gog', store:'GOG', folder:'HoMM 3 Complete', drive:'/var', size:1.1e9, prefix:0.5e9, shader:null, canMove:true, uninstall:'game'},
+    {id:'battlenet:wow', title:'World of Warcraft', source:'battlenet', store:'Battle.net', folder:'World of Warcraft', drive:'/var', size:110e9, prefix:null, shader:null, canMove:false, moveWhy:"Battle.net keeps its games inside its own Wine prefix: move them with Battle.net itself.", uninstall:null, uninstallWhy:'Uninstall it in Battle.net.'},
+    {id:'recomp:zelda64', title:'Zelda 64: Recompiled', source:'recomps', store:'Recomps', folder:'app', drive:'/var', size:0.2e9, prefix:null, shader:null, canMove:true, uninstall:'recomp'}],
+  scan:{state:'idle', at:Date.now()-6e4}, job:null, warn:{on:true, gb:15}, low:[{name:'SD card (SD)', free:13e9, mount:'/var/mnt/games-SD'}], recovered:null};
+const dskMockClean = () => [
+  {key:'shader:a', kind:'shader', title:'Cyberpunk 2077', where:'~/.local/share/Steam/steamapps/shadercache/1091500', bytes:2.4e9, saves:[], selectable:true, on:true},
+  {key:'gpu:b', kind:'gpu', title:'Mesa shader cache', where:'~/.cache/mesa_shader_cache_db', bytes:0.9e9, saves:[], selectable:true, on:true},
+  {key:'prefix:c', kind:'prefix', title:'Elden Ring', where:'~/.local/share/Steam/steamapps/compatdata/1245620', bytes:0.6e9, saves:['AppData/Roaming/EldenRing'], cloud:true, selectable:true, on:false, confirm:true, why:'Has saves; Steam Cloud has a copy'},
+  {key:'prefix:d', kind:'prefix', title:'Epic game Sugar', where:'~/.local/share/nimbus/prefixes/epic-Sugar', bytes:0.4e9, saves:['Documents/My Games/Sugar'], selectable:false, on:false, why:"Has saves that aren't backed up anywhere Hearth knows"},
+  {key:'tool:e', kind:'tool', title:'GE-Proton8-25', where:'~/.local/share/Steam/compatibilitytools.d/GE-Proton8-25', bytes:1.1e9, saves:[], selectable:true, on:false},
+  {key:'dl:f', kind:'download', title:'Portal 2', where:'/var/mnt/games-SD/SteamLibrary/steamapps/downloading/620', bytes:0.3e9, saves:[], selectable:true, on:true}];
+function dskLoad(scan){
+  DSK.loading=true; DSK.err=null;
+  const p = host ? call('diskspace.status',{scan:!!scan},120000) : new Promise(r=>setTimeout(()=>r(JSON.parse(JSON.stringify(DSK.mock))),200));
+  return p.then(r=>{ DSK.s=r; DSK.loading=false; if(r.recovered) toast(r.recovered); if(dskOn()) render(null,true); })
+    .catch(e=>{ DSK.loading=false; DSK.err=e.message; if(dskOn()) render(null,true); });
+}
+const dskOn = () => S.view==='settings' && S.settingsTab==='diskspace' && !S.sfront;
+const dskDrive = id => ((DSK.s&&DSK.s.drives)||[]).find(d=>d.id===id);
+const dskSize = b => b==null ? '…' : gb(b||0);
+function dskEvent(d){
+  if(!DSK.s) return;
+  if(d.job){
+    const was=DSK.s.job; DSK.s.job=d.job;
+    if(d.job.state!=='moving' && (!was || was.state==='moving')){
+      if(d.job.state==='done') toast(`${d.job.title} is on ${d.job.to} now`);
+      else if(d.job.state==='stopped') toast(`Stopped. ${d.job.title} is where it was.`);
+      else if(d.job.error) toast(d.job.error);
+      dskLoad(false);
+    }
+  }
+  if(d.scan){ DSK.scan=d.scan.state==='scanning'?d.scan:null; if(d.scan.state==='done') return dskLoad(false); }
+  if(dskOn()) render(null,true);
+}
+function dskBar(d){
+  const p=d.parts||{}, size=d.size||1;
+  return `<div class="dskbar">${Object.keys(DSK_LABELS).map(k=>p[k]>0?`<i style="width:${Math.max(.5,p[k]/size*100).toFixed(2)}%;background:${DSK_COLORS[k]}"></i>`:'').join('')}</div>`;
+}
+function dskLegend(d){ const p=d.parts||{}; return `<div class="dskleg">${Object.keys(DSK_LABELS).filter(k=>p[k]>0).map(k=>`<span style="--c:${DSK_COLORS[k]}">${DSK_LABELS[k]} ${gb(p[k])}</span>`).join('')}</div>`; }
+function dskCard(){
+  const s=DSK.s; if(!s) return groupCard('games');
+  return `<div class="sc-card">${scHead('dl','Storage')}${s.drives.map(d=>`<div class="scl"><span>${esc(d.name)}</span><span>${gb(d.free)} free</span></div>${dskBar(d)}`).join('')}
+    <div class="scs" style="margin-top:10px">${s.games.length} game${s.games.length===1?'':'s'} · ${gb(s.games.reduce((a,g)=>a+(g.size||0)+(g.prefix||0)+(g.shader||0),0))}</div></div>`;
+}
+function dskGames(){
+  let L=((DSK.s&&DSK.s.games)||[]).slice();
+  if(DSK.drive) L=L.filter(g=>g.drive===DSK.drive);
+  const tot=g=>(g.size||0)+(g.prefix||0)+(g.shader||0);
+  if(DSK.sort==='name') L.sort((a,b)=>a.title.localeCompare(b.title));
+  else if(DSK.sort==='store') L.sort((a,b)=>a.store.localeCompare(b.store)||tot(b)-tot(a));
+  else L.sort((a,b)=>tot(b)-tot(a));
+  return L;
+}
+function pageDiskspace(){
+  const s=DSK.s;
+  if(!s) return DSK.err ? note(esc(DSK.err))+`<button class="row" data-f data-k="dsk-retry" data-act="dskReload"><span class="ricon">${I.refresh}</span><div class="rt"><b>Try again</b></div></button>`
+    : `<div class="row"><span class="mini-spin"></span><div class="rt"><b>Looking at your drives…</b><small>How full each drive is and what's on it</small></div></div>`;
+  let h='';
+  const j=s.job;
+  if(j && j.state==='moving'){
+    const pct=j.total?Math.min(100,Math.floor(100*(j.done||0)/j.total)):0;
+    const ph={prepare:'Getting ready', steam:'Closing Steam for the move', copy:'Copying', verify:'Checking every file', switch:'Switching over', delete:'Deleting the original'}[j.phase]||'Working';
+    h+=`<div class="su-card"><div class="su-head"><div><b>Moving ${esc(j.title)} to ${esc(j.to)}</b><div class="muted" style="font-size:13px;margin-top:4px">${ph}${j.name?' · '+esc(j.name):''}${j.bps?' · '+gb(j.bps)+'/s':''}</div></div><div class="pc">${pct}%</div></div>
+      <div class="bar" style="height:8px"><i style="width:${pct}%"></i></div></div>`
+      + (['switch','delete'].includes(j.phase) ? note('Almost done: this last part can\'t be stopped.') : `<button class="row" data-f data-k="dsk-stop" data-act="dskStop"><span class="ricon">${I.stop}</span><div class="rt"><b>Stop</b><small>The unfinished copy is removed; the game stays where it was</small></div></button>`);
+  } else if(j && j.state==='error') h+=note(`Moving ${esc(j.title)} didn't work: ${esc(j.error||'')}`);
+  for(const l of (s.low||[])) h+=note(`${esc(l.name)} is low on space: ${gb(l.free)} free. Move a game or clean up below.`);
+  h+=shead('Drives', DSK.loading||!!DSK.scan);
+  if(DSK.scan) h+=`<div class="muted" style="font-size:13px;margin:0 4px 6px">Adding up sizes… ${DSK.scan.total?Math.floor(100*DSK.scan.done/DSK.scan.total)+'%':''}</div>`;
+  h+=s.drives.map((d,i)=>{ const on=DSK.drive===d.id, n=s.games.filter(g=>g.drive===d.id).length;
+    return `<button class="row" data-f data-k="dsk-d-${i}" data-act="dskDrive" data-id="${esc(d.id)}"><span class="ricon">${d.kind==='system'?I.desk:I.dl}</span><div class="rt"><b>${esc(d.name)}${d.readOnly?' · read-only':''}</b>
+      <small>${gb(d.free)} free of ${gb(d.size)} · ${n} game${n===1?'':'s'} · ${esc((d.fs||'').toUpperCase())}</small>${dskBar(d)}${dskLegend(d)}</div><div class="rv">${on?'Showing':''}</div></button>`; }).join('');
+  if(!s.drives.length) h+=note('No drives found.');
+  h+=shead('Games by size');
+  const chip=(k,label,act,on,extra)=>`<button class="chip ${on?'on':''}" data-f data-k="${k}" data-act="${act}" ${extra||''}>${label}</button>`;
+  h+=`<div class="chips">${chip('dsk-s-size','Biggest first','dskSort',DSK.sort==='size','data-v="size"')}${chip('dsk-s-name','Name','dskSort',DSK.sort==='name','data-v="name"')}${chip('dsk-s-store','Store','dskSort',DSK.sort==='store','data-v="store"')}</div>`;
+  if(s.drives.length>1) h+=`<div class="chips">${chip('dsk-f-all','All drives','dskDrive',!DSK.drive,'data-id=""')}${s.drives.map((d,i)=>chip('dsk-f-'+i,esc(d.name),'dskDrive',DSK.drive===d.id,`data-id="${esc(d.id)}"`)).join('')}</div>`;
+  const L=dskGames();
+  if(!L.length) h+=note(DSK.drive?'No games on this drive.':'No installed games yet.');
+  h+=L.map(g=>{ const d=dskDrive(g.drive), parts=[g.store, d?d.name:'', g.prefix?'prefix '+gb(g.prefix):'', g.shader?'shader cache '+gb(g.shader):''].filter(Boolean).join(' · ');
+    return `<button class="row" data-f data-k="dsk-g-${esc(g.id)}" data-act="dskGame" data-id="${esc(g.id)}"><div class="rt"><b>${esc(g.title)}</b><small>${esc(parts)}</small></div><div class="rv">${dskSize(g.size)}</div></button>`; }).join('');
+  h+=shead('Clean up', DSK.finding||DSK.cleaning);
+  if(!DSK.clean) h+=`<button class="row" data-f data-k="dsk-find" data-act="dskFind"><span class="ricon">${I.trash}</span><div class="rt"><b>Find things to clean up</b><small>Shader caches, Proton prefixes of games that are gone, old Proton versions nothing uses, unfinished downloads. Nothing is deleted until you confirm.</small></div><div class="rv">›</div></button>`;
+  else {
+    if(!DSK.clean.length) h+=note('Nothing to clean up.');
+    h+=DSK.clean.map((c,i)=>`<button class="row" data-f data-k="dsk-c-${i}" data-act="dskToggle" data-i="${i}"><div class="rt"><b>${esc(c.title)} · ${esc({shader:'Shader cache',gpu:'Shader cache',prefix:'Proton prefix',tool:'Unused compatibility tool',download:'Unfinished download',leftover:'Unfinished copy'}[c.kind]||c.kind)}</b>
+      <small>${gb(c.bytes)} · ${esc(c.where)}${c.saves&&c.saves.length?' · saves: '+esc(c.saves.slice(0,3).join(', '))+(c.saves.length>3?'…':''):''}${c.why?' · '+esc(c.why):''}</small></div>${c.selectable?`<div class="sw ${DSK.sel.has(c.key)?'on':''}"></div>`:`<div class="rv">Kept</div>`}</button>`).join('');
+    const sel=DSK.clean.filter(c=>DSK.sel.has(c.key)), tot=sel.reduce((a,c)=>a+c.bytes,0);
+    if(DSK.clean.length) h+=`<button class="row" data-f data-k="dsk-clean" data-act="dskClean"><span class="ricon">${I.trash}</span><div class="rt"><b>${sel.length?`Delete ${sel.length} item${sel.length===1?'':'s'} (${gb(tot)})`:'Choose what to delete'}</b><small>Asks before deleting. Shader caches are rebuilt when a game next starts.</small></div></button>`;
+    h+=`<button class="row" data-f data-k="dsk-find2" data-act="dskFind"><span class="ricon">${I.refresh}</span><div class="rt"><b>Look again</b></div></button>`;
+  }
+  h+=shead('Low space warning');
+  h+=`<button class="row" data-f data-k="dsk-warn" data-act="dskWarn"><div class="rt"><b>Warn when a games drive is low on space</b><small>In notifications, and before an install starts</small></div><div class="sw ${s.warn.on?'on':''}"></div></button>`;
+  if(s.warn.on) h+=`<div class="row"><div class="rt"><b>Below ${s.warn.gb} GB free</b></div><div class="seg" style="max-width:200px"><button data-f data-k="dsk-wless" data-act="dskWarnGb" data-d="-1">−</button><button data-f data-k="dsk-wmore" data-act="dskWarnGb" data-d="1">+</button></div></div>`;
+  h+=`<button class="row" data-f data-k="dsk-rescan" data-act="dskRescan"><span class="ricon">${I.refresh}</span><div class="rt"><b>Add up sizes again</b><small>${s.scan&&s.scan.at?'Last time '+dskAgo(s.scan.at):'Not done yet'}</small></div></button>`;
+  h+=note(`${APP} only ever deletes inside game and cache folders it knows, never system files. Moving copies the game, checks every byte, and deletes the original only after that.`);
+  return h;
+}
+function dskAgo(t){ const m=Math.round((Date.now()-t)/60000); return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' h ago'; }
+const DSK_STEPS=[5,10,15,20,30,50,100];
+function dskGameSheet(id){
+  const s=DSK.s, g=s&&s.games.find(x=>x.id===id); if(!g) return;
+  const items=[];
+  if(g.canMove){
+    for(const d of s.drives.filter(d=>d.id!==g.drive && !d.readOnly)){
+      const need=(g.size||0)+(g.prefix||0)+(g.shader||0)+1e9, fits=d.free>=need;
+      items.push({label:`Move to ${d.name} (${gb(d.free)} free)${fits?'':' · not enough space'}`, icon:'dl', run:()=>fits?setTimeout(()=>dskMoveAsk(g,d),250):toast(`Not enough space on ${d.name}`)});
+    }
+  }
+  if(g.uninstall) items.push({label:'Uninstall', icon:'trash', run:()=>setTimeout(()=>dskUninstall(g),250)});
+  const why=[!g.canMove&&g.moveWhy?g.moveWhy:'', !g.uninstall&&g.uninstallWhy?g.uninstallWhy:''].filter(Boolean).join(' ');
+  if(g.canMove && s.drives.filter(d=>d.id!==g.drive && !d.readOnly).length===0) items.push({label:'No other drive to move it to', icon:'info', run:()=>{}});
+  openSheet({title:g.title, sub:`${g.store} · ${dskSize(g.size)} game${g.prefix?' · '+gb(g.prefix)+' Proton prefix':''}${g.shader?' · '+gb(g.shader)+' shader cache':''}${(dskDrive(g.drive)||{}).name?' · on '+dskDrive(g.drive).name:''}.${why?' '+why:''}`,
+    items: items.length?items:[{label:'OK', icon:'check', run:()=>{}}]});
+}
+function dskMoveAsk(g,d){
+  const steam=g.source==='steam';
+  openSheet({title:`Move ${g.title} to ${d.name}?`, sub:`It's copied, every byte of the copy is checked, and only then is the original deleted.${steam?' Steam closes during the move and its Proton prefix and shader cache go along.':(g.source==='epic'||g.source==='gog')?' Its Proton prefix (with saves) stays on this device.':''} You can stop it while it copies.`,
+    items:[{label:'Move it', icon:'dl', run:()=>dskMove(g.id,d.id)}]});
+}
+function dskMove(id,to){
+  if(!host){ DSK.s.job={state:'moving', id, title:(DSK.s.games.find(g=>g.id===id)||{}).title, to:(dskDrive(to)||{}).name, phase:'copy', done:0, total:100}; return render(null,true); }
+  call('diskspace.move',{id,to},180000).then(r=>{ if(r&&r.job) DSK.s.job=r.job; render(null,true); }).catch(e=>toast(e.message));
+}
+function dskUninstall(g){
+  openSheet({title:`Uninstall ${g.title}?`, sub:g.uninstall==='recomp'?'Its folder is deleted; your saves in it are backed up first.':`Deletes the game's files. Your account keeps the game, so you can install it again.${g.source==='steam'?' If Steam is open, it closes for a moment first.':''}`,
+    items:[{label:'Yes, uninstall it', icon:'trash', run:async()=>{
+      if(!host) return toast('The browser preview can\'t uninstall games');
+      toast(`Uninstalling ${g.title}…`);
+      try{
+        if(g.uninstall==='recomp') await call('recomps.uninstall',{id:g.id.replace(/^recomp:/,''), keep:true},10*60e3);
+        else await call('game.uninstall',{id:g.id},15*60e3);
+        toast(`Uninstalled ${g.title}`); await loadLibrary(true); dskLoad(true);
+      }catch(e){ toast(e.message); }
+    }}]});
+}
+function dskCleanAsk(){
+  const sel=DSK.clean.filter(c=>DSK.sel.has(c.key)); if(!sel.length) return toast('Turn on what to delete first');
+  const tot=sel.reduce((a,c)=>a+c.bytes,0), saves=sel.filter(c=>c.confirm);
+  const go=confirmed=>dskCleanRun(sel.map(c=>c.key).filter(k=>!saves.some(c=>c.key===k)||confirmed.includes(k)), confirmed);
+  openSheet({title:`Delete ${sel.length} item${sel.length===1?'':'s'}?`, sub:`Frees about ${gb(tot)}. This can't be undone.`, items:[{label:'Delete', icon:'trash', run:()=>{
+    if(!saves.length) return go([]);
+    setTimeout(()=>openSheet({title:'Some of these have saves', sub:saves.map(c=>`${c.title}: ${c.saves.join(', ')}`).join(' · ')+'. Steam Cloud has a copy of these, but deleting the prefix removes them from this device.',
+      items:[{label:'Delete them too', icon:'trash', run:()=>go(saves.map(c=>c.key))}, {label:'Keep those, delete the rest', icon:'check', run:()=>go([])}]}),250);
+  }}]});
+}
+function dskCleanRun(keys, confirmed){
+  if(!keys.length) return toast('Nothing left to delete');
+  if(!host){ DSK.clean=DSK.clean.filter(c=>!keys.includes(c.key)); toast('Deleted'); return render(null,true); }
+  DSK.cleaning=true; render(null,true);
+  call('diskspace.clean',{keys, confirmed},10*60e3).then(r=>{ DSK.cleaning=false; DSK.clean=null;
+    toast(`Freed ${gb(r.freed||0)}${(r.failed||[]).length?` · ${r.failed.length} kept: ${r.failed[0].why}`:''}`); dskLoad(false); })
+    .catch(e=>{ DSK.cleaning=false; toast(e.message); render(null,true); });
+}
+function dskAct(a, d){
+  switch(a){
+    case 'dskReload': return dskLoad(true);
+    case 'dskRescan': if(!host) return toast('Sizes added up'); return call('diskspace.scan').then(()=>{ DSK.scan={state:'scanning', done:0, total:0}; render(null,true); }).catch(e=>toast(e.message));
+    case 'dskDrive': DSK.drive = DSK.drive===d.id ? '' : (d.id||''); return render(null,true);
+    case 'dskSort': DSK.sort=d.v; return render(null,true);
+    case 'dskGame': return dskGameSheet(d.id);
+    case 'dskStop': if(!host){ DSK.s.job=null; return render(null,true); } return call('diskspace.cancel').then(r=>{ if(r&&r.job) DSK.s.job=r.job; toast('Stopping…'); }).catch(e=>toast(e.message));
+    case 'dskFind':
+      DSK.finding=true; render(null,true);
+      return (host?call('diskspace.cleanList',{},10*60e3):Promise.resolve({items:dskMockClean()})).then(r=>{ DSK.finding=false; DSK.clean=r.items||[]; DSK.sel=new Set(DSK.clean.filter(c=>c.selectable&&c.on).map(c=>c.key)); render(null,true); })
+        .catch(e=>{ DSK.finding=false; toast(e.message); render(null,true); });
+    case 'dskToggle': { const c=DSK.clean&&DSK.clean[+d.i]; if(!c) return; if(!c.selectable) return toast(c.why||'This one is kept');
+      if(DSK.sel.has(c.key)) DSK.sel.delete(c.key); else DSK.sel.add(c.key); return render(null,true); }
+    case 'dskClean': return dskCleanAsk();
+    case 'dskWarn': case 'dskWarnGb': {
+      const w=DSK.s.warn, i=DSK_STEPS.indexOf(w.gb);
+      const on = a==='dskWarn' ? !w.on : w.on;
+      const g = a==='dskWarnGb' ? DSK_STEPS[Math.max(0,Math.min(DSK_STEPS.length-1,(i<0?2:i)+(+d.d)))] : w.gb;
+      DSK.s.warn={on, gb:g}; render(null,true);
+      if(host) call('diskspace.setWarn',{on, gb:g}).catch(e=>toast(e.message));
+      return;
+    }
+  }
+}
+// Low space: looked at a couple of minutes after starting and then every 15 minutes (only free space: quick).
+function dskLowCheck(){
+  if(!host || !LINUX || OVERLAY || !hasFeat('diskspace')) return;
+  call('diskspace.low',{},60000).then(r=>{
+    for(const l of (r&&r.low)||[]){
+      if(DSK.told.has(l.mount)) continue;
+      DSK.told.add(l.mount);
+      NOTIFS.unshift({i:'dl', t:`${l.name} is low on space`, s:`${gb(l.free)} free. Select to open Settings › Storage`, go:'diskspace'}); NOTIFS.splice(30); updateBadge();
+    }
+  }).catch(()=>{});
+}
+setTimeout(()=>{ dskLowCheck(); setInterval(dskLowCheck, 15*60e3); }, 120e3);
+// Before an install: the drive it goes to is low on space.
+function dskLowInstall(g, w){
+  openSheet({title:`Only ${gb(w.free||0)} free`, sub:`${g.title} installs on a drive that's below your warning (${w.gb} GB). Free up space in Settings › Storage first, or install anyway.`,
+    items:[{label:'Install anyway', icon:'dl', run:()=>{ g._spaceOk=true; Promise.resolve(installGame(g)).finally(()=>{ delete g._spaceOk; }); }},
+           {label:'Open Storage', icon:'lib', run:()=>{ S.settingsTab='diskspace'; navigate('settings',{}); }}]});
+}
+
 // ---------- Settings › Switch to Hearth OS (Ember on Windows) ----------
 // Make room on C:, write the installer USB, restart into it. Steps that change the PC ask Windows for an
 // administrator OK (the UAC prompt) and show their progress here.
@@ -8369,7 +8585,7 @@ function miniDock(){
 // S.sfront: the front page (navigate('settings',{sfront:true}): the dock and the menus); a page otherwise (goset).
 // Pages that live elsewhere (Friends' privacy settings, Couch Co-op, …) are links on the front page (SLINKS).
 const SORDER = ['profile','profiles','appearance','liblook','access','signin','wifi','bluetooth','link','storage','remote','display','audio','controller','keyboard','power',
-  'sources','import','seats','updates','system','help','shell','defaults','linux','osinstall','switch','about'];
+  'sources','diskspace','import','seats','updates','system','help','shell','defaults','linux','osinstall','switch','about'];
 const SLINKS = [
   {k:'friends', g:'connect', ic:'user', label:'Friends & privacy', kw:'matrix messages chat blocked status presence', show:()=>friendsOn() && mfOn(),
     sub:()=>MF.st ? (MF.st.signedIn ? 'Signed in · messages, status, blocked people' : 'Not signed in to Hearth Friends') : 'Messages, status, blocked people',
@@ -8408,6 +8624,7 @@ function settingsBody(t){
   if(t==='shell') body = pageShell();
   if(t==='updates') body = pageUpdates();
   if(t==='import') body = pageImport();
+  if(t==='diskspace') body = pageDiskspace();   // Settings › Storage
   if(t==='switch') body = pageSwitch();
   if(t==='osinstall') body = shead('Install Hearth OS')
     + `<button class="row" data-f data-k="osi-open" data-act="osiChoose"><span class="ricon">${I.dl}</span><div class="rt"><b>Install Hearth OS on this PC</b><small>Next to Windows, or on a whole drive. About 10 to 20 minutes, with internet.</small></div><div class="rv">›</div></button>`
@@ -8517,6 +8734,7 @@ function pageSub(k){
     case 'power': return [scBatt(), scPmode()].filter(Boolean).join(' · ') || 'Power mode, power button';
     case 'sources': return `${scSources()}${V.length?` · ${V.length} games`:''}`;
     case 'import': return 'Games and files from other drives and systems';
+    case 'diskspace': return DSK.s && DSK.s.drives.length ? DSK.s.drives.map(d=>`${d.name}: ${gb(d.free)} free`).join(' · ') : 'Drives, games by size, move games, clean up';
     case 'seats': return 'Several players at once, each on their own screen';
     case 'updates': return `${APP} ${scVersion()} · ${scUpdate()}`;
     case 'system': return 'This device, storage, date and time, backup';
@@ -8574,6 +8792,7 @@ function pageCard(t){
       ${t==='updates'&&host?`<div class="scbtns"><button class="pill" data-f data-k="sc-check" data-act="${LINUX&&HOSTINFO.system?'sysUpdCheck':'updCheck'}">${I.refresh}Check now</button></div>`:''}
       ${t==='about'?scLines([['Device',SYSINFO.s&&SYSINFO.s.device],['Processor',SYSINFO.s&&SYSINFO.s.cpu],['Graphics',SYSINFO.s&&SYSINFO.s.gpu]]):''}</div>`;
   }
+  if(t==='diskspace') return dskCard();   // Settings › Storage
   if(t==='profile') return `<div class="sc-card"><div class="scav">${avatarHtml(PROFILE)}</div><h2>${esc(PROFILE.name||'')}</h2><div class="scs">${esc(PROFILE.status||'Online')}</div></div>`;
   return groupCard(stabGroup(t));
 }
@@ -8583,7 +8802,7 @@ const SKW = {wifi:'wireless internet network wlan hotspot', bluetooth:'pair head
   power:'battery sleep tdp power button suspend', controller:'gamepad buttons remap layout mouse gyro test vibration', keyboard:'osk on-screen typing keys',
   appearance:'theme accent layout home dark colors menu dock side quick access panel top', liblook:'library layout covers grid', profile:'name avatar picture account', profiles:'switch user parental limits pin',
   updates:'update upgrade version rollback previous', system:'storage disk time date backup restore browser claude', help:'logs bug report crash restart', about:'version device cpu gpu memory',
-  sources:'steam epic gog xbox emulators roms library refresh rescan', import:'drives windows copy', remote:'stream moonlight sunshine', access:'zoom contrast screen reader accessibility',
+  sources:'steam epic gog xbox emulators roms library refresh rescan', import:'drives windows copy', diskspace:'storage disk space drive sd card free full move games uninstall shader cache prefix proton clean up delete', remote:'stream moonlight sunshine', access:'zoom contrast screen reader accessibility',
   signin:'login password autologin start mode hostname device name', shell:'desktop mantel explorer', defaults:'default apps browser', seats:'multi-seat players'};
 let SIDX = {at:0, list:[]};
 const SEXTRA = ANDROID ? [] : [['display','s-hz','Refresh rate','hz 60 120 144 fps smooth'],['display','s-res','Resolution','4k 1080p 1440p'],['display','s-scale','Scale','size zoom'],
@@ -9797,6 +10016,7 @@ function act(el){
   if(a==='oskSet'||a==='oskLay'||a==='oskClear'||a==='oskTry') return oskSettingAct(a, d);   // Settings › Keyboard
   if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
   if(/^rc[A-Z]/.test(a)) return rcAct(a, d);   // Game Mode › Store › Recomps
+  if(/^dsk[A-Z]/.test(a)) return dskAct(a, d);   // Settings › Storage
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   if(/^hm[A-Z]/.test(a)) return hmAct(a, d);   // Hearth Mods in Game Mode (block below)
@@ -12124,6 +12344,8 @@ async function installGame(g){
   if(!host) return toast(`The browser preview can't install games`);
   if(g.note) return toast(`${g.note}. ${APP} can't install it.`);
   if(INSTALLING.has(g.id)) return;
+  // The drive it goes to is below the low space warning (Settings › Storage): say so first.
+  if(LINUX && hasFeat('diskspace') && !g._spaceOk){ const w=await call('diskspace.check',{id:g.id},8000).catch(()=>null); if(w && w.low) return dskLowInstall(g, w); }
   INSTALLING.add(g.id);
   try{
     const r = await call('game.install',{id:g.id},60000);
@@ -13061,6 +13283,7 @@ function onSysEvent(name, data){
   if(name==='recomps') return onRecomps(data);   // Hearth Recomps
   if(name==='store.webClosed') return shopWebClosed(data);
   if(name==='import') return onImport(data);
+  if(name==='diskspace') return dskEvent(data||{});   // Settings › Storage
   if(name==='osInstall') return onOsInstall(data);
   if(name==='lock') return lockNow();
   if(name==='profiles.changed') return loadProfiles();
@@ -13202,6 +13425,7 @@ function onSettingsTab(t){
   if(t==='access') a11yLoad();   // Accessibility
   if(t==='defaults') dfLoad();   // Default apps
   if(t==='import') loadImport();
+  if(t==='diskspace') dskLoad(true);   // Settings › Storage
   if(t==='switch') loadSwitch();
   if(t==='profiles') loadProfiles();
   if(t==='system' || t==='about') loadSysInfo();

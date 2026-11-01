@@ -142,6 +142,14 @@ impl Bridge {
             }
             "queueChanged" => self.library.save_queue(),
             "importDone" => out.extend(self.import_done(&v["result"])),
+            // Settings › Storage moved a GOG game: its new folder goes in library.json (diskspace.rs waits for this).
+            "diskspaceGog" => {
+                let (gid, dir) = (v["gid"].as_str().unwrap_or("").to_string(), v["dir"].as_str().unwrap_or("").to_string());
+                let r = if gid.is_empty() || dir.is_empty() { Err("Nothing to record".to_string()) } else {
+                    self.library.store.update(|d| { crate::store::object_in(d, "gogInstalls").insert(gid.clone(), json!(dir)); }).map_err(|e| e.to_string())
+                };
+                crate::diskspace::gog_ack(r);
+            }
             "epicImported" => {
                 let arr = |k: &str| v[k].as_array().cloned().unwrap_or_default();
                 let tried = arr("tried");
@@ -632,6 +640,40 @@ impl Bridge {
                 } else { crate::space::grow(&from, gb, self.emit.clone()) }
             }
             "space.clearJournal" => crate::space::clear_journal(),
+            // Settings › Storage (diskspace.rs, docs/STORAGE.md): drives, games by size, moving, clean up, low space.
+            "diskspace.status" => {
+                let (ctx, warn, want) = (crate::diskspace::ctx_from(&self.library), crate::diskspace::warn_settings(&self.library.store.data), a["scan"] == true);
+                self.later(move || Ok(crate::diskspace::status(&ctx, warn, want)))
+            }
+            "diskspace.scan" => Ok(crate::diskspace::scan(crate::diskspace::ctx_from(&self.library))),
+            "diskspace.move" => {
+                let (id, to) = (req("id")?, req("to")?);
+                let (ctx, on_demand) = (crate::diskspace::ctx_from(&self.library), self.library.steam_on_demand());
+                self.later(move || crate::diskspace::start_move(ctx, &id, &to, on_demand))
+            }
+            "diskspace.cancel" => Ok(crate::diskspace::cancel()),
+            "diskspace.cleanList" => { let ctx = crate::diskspace::ctx_from(&self.library); self.later(move || Ok(crate::diskspace::clean_list(&ctx))) }
+            "diskspace.clean" => {
+                let list = |k: &str| a[k].as_array().map(|v| v.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
+                let (keys, confirmed, ctx) = (list("keys"), list("confirmed"), crate::diskspace::ctx_from(&self.library));
+                self.later(move || crate::diskspace::clean(&ctx, &keys, &confirmed))
+            }
+            "diskspace.low" => {
+                let (ctx, warn) = (crate::diskspace::ctx_from(&self.library), crate::diskspace::warn_settings(&self.library.store.data));
+                self.later(move || Ok(crate::diskspace::low(&ctx, warn)))
+            }
+            // Before an install: is the drive it goes to low on space?
+            "diskspace.check" => {
+                let id = req("id")?;
+                let warn = crate::diskspace::warn_settings(&self.library.store.data);
+                let dest = if id.starts_with("steam:") { self.library.steam_library() } else { Some(self.library.install_root()) };
+                match dest { Some(d) => Ok(crate::diskspace::install_check(&d, warn)), None => Ok(json!({"low": false})) }
+            }
+            "diskspace.setWarn" => {
+                let (on, gb) = (a["on"] != false, a["gb"].as_u64().unwrap_or(15).clamp(1, 500));
+                io(self.library.store.update(|d| { d.insert("lowSpace".into(), json!({"on": on, "gb": gb})); }))?;
+                Ok(json!({"on": on, "gb": gb}))
+            }
             "art.status" => Ok(crate::artcache::status()),
             // Steam friends: who's online and what they're playing
             "steam.friends" => Ok(crate::friends::list(&self.library.home)),
@@ -1857,6 +1899,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 
 fn features() -> Vec<&'static str> {
     let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet", "recomps"];
+    f.push("diskspace");   // Settings › Storage (Ember doesn't have it, so the page stays hidden there)
     // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
     f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }
