@@ -397,6 +397,9 @@ impl Bridge {
                 "renderer": crate::renderer::running(),
                 // Multi-seat window: Hearth passes this player's controller on itself (the page doesn't read it).
                 "seatPads": crate::multiplay::seat_hosted(),
+                // Opened from Steam Game Mode (its running mark, nimbus-session run_steam_mode): Steam's keyboard is the one
+                // there, so Hearth's on-screen keyboard waits to be asked for on its prompts.
+                "steamGameMode": crate::overlay_link::runtime_dir().join("hearth-steam-mode.pid").exists(),
                 // Part of Hearth, the OS: the app updates with the system (Settings › Updates shows Update now).
                 "system": system_install(),
                 // Opened just for Settings (from Mantel's taskbar), or for one of its pages (--page hhd: Handheld

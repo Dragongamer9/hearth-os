@@ -163,7 +163,27 @@ const seatsOps = {
     { id: null, name: "Retro USB Pad", bus: "other", seat: 1, assignable: false }], skipped: [] }),
   start: () => ({ ok: true, restart_game_mode: false }), stop: () => ({ ok: true, restart_game_mode: false }), assign: () => ({ ok: true }),
 };
+// The rest of Hearth's Game Mode (rest.tsx): Quick Resume, Sunshine, Hearth Friends, Hearth Link and Storage.
+let asideList = [];
+const restOps = {
+  aside: (op, a) => {
+    if (op === "put") asideList = [{ appid: a.appid, game: a.game, title: a.title, at: Date.now() - 4 * 60000 }];
+    if (op === "resume" || op === "close") asideList = asideList.filter((x) => x.appid !== a.appid);
+    return { list: asideList };
+  },
+  remote: (op) => ({ installed: true, on: op !== "off", clients: [{ name: "Living room TV" }], needsLogin: false, addresses: ["192.168.1.42"] }),
+  friends: () => ({ signedIn: true, friends: [
+    { name: "Sarah", presence: "online", game: "Starfall Drift", joinable: true },
+    { name: "Mike", presence: "online", game: null },
+    { name: "Jo", presence: "unavailable", game: null },
+    { name: "Ana", presence: "offline", game: null }] }),
+  link: (op) => (op !== "status" ? { ok: true } : { running: true, name: "Dragon's Ally", playing: false, offers: 1,
+    peers: [{ id: "p1", name: "Living room PC", online: true }, { id: "p2", name: "Steam Deck", online: false }],
+    copies: [{ title: "Hades", state: "copying", done: 4.2e9, total: 11e9, from: "Living room PC" }],
+    servers: [{ id: "s1", name: "Basement NAS", free: 1.8e12, canWake: false }, { id: "s2", name: "Old desktop", free: null, canWake: true }] }),
+};
 const handlers = {
+  hearth_rest: (cmd, op, a) => (restOps[cmd] ? restOps[cmd](op, a || {}) : { error: "no mock" }),
   seats: (op) => (seatsOps[op] ? seatsOps[op]() : { error: "no mock" }),
   coop: (op, pads, pad) => (coopOps[op] ? coopOps[op](pads, pad) : { error: "no mock" }),
   coop_target: () => ({ ok: true, exe: "/bin/sh", startDir: "/home/you", options: "-c '…' hearth-steam-coop /usr/libexec/nimbus/hearth-coop play --game steam:600" }),

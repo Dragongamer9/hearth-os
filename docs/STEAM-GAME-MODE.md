@@ -112,8 +112,8 @@ Below Steam's own entries (switch: **Hearth in Steam's menu**), in Hearth's look
 
 - **Now playing** (while a game runs, switch: **Hearth for the game you're playing**): the game, opening its Hearth
   section (below).
-- **Hearth**: Hearth Home, Hearth Store, Hearth Library, Theater, Hearth Mods, Storage, Downloads. Hearth Home is
-  Steam's Home when Hearth's home screen has it, else a page of its own.
+- **Hearth**: Hearth Home, Hearth Store, Hearth Library, Theater, Hearth Mods, Storage, Downloads, Hearth Friends,
+  Hearth Link, Couch Co-op. Hearth Home is Steam's Home when Hearth's home screen has it, else a page of its own.
 - **Hearth power**, beside Steam's own Power: **Switch to Hearth Game Mode** and **Desktop Mode** (asks first while a
   game runs, since Steam closes).
 
@@ -126,7 +126,7 @@ turns itself off and the same sections stay in Decky's Hearth tab.
 
 | Tab | What's in it |
 | --- | --- |
-| **Hearth** | **This game** (below), **Hearth tools** (Keyboard: Steam's on-screen keyboard, also Steam + X; Screenshot: Hearth's, to Pictures › Screenshots › Hearth; Record: Hearth Recorder), **Switch to Hearth Game Mode**, **Hearth OS updates** |
+| **Hearth** | **This game** (below), **Quick Resume** and **Game streaming** (below), **Hearth tools** (Keyboard: Steam's on-screen keyboard, also Steam + X; Screenshot: Hearth's, to Pictures › Screenshots › Hearth; Record: Hearth Recorder), **Switch to Hearth Game Mode**, **Hearth OS updates** |
 | **Hearth Performance** | Hearth's **power mode** (Saver, Balanced, Performance, through hearth-power) and Hearth's **power limit**, read only. The frame limit, refresh rate and TDP stay Steam's own Performance tab's in Steam Game Mode, so the two never fight. |
 | **Hearth Players** | Couch co-op: the controllers connected, as **P1** to **P4** in Hearth's player order, **Move up** / **Move down** and **Rumble** (to tell which controller is which), and **Split-screen games** (below). **Seats**: multi-seat beside Steam Game Mode (below). |
 | **Hearth Controller** | What Hearth Input is doing now, **Hearth Input in Steam Game Mode** (on/off), the running game's **Hearth Input layout** and **Edit layouts in Hearth** (Hearth's editor in a window). Steam's own layouts stay in Steam's Controller tab: for a game with a Hearth layout, set Steam's to Gamepad or none, or the game gets both. |
@@ -141,7 +141,8 @@ shortcut is that Hearth game, a Steam game is `steam:<app id>`.
 - its **Proton** for **Play through Hearth** (games Hearth starts with Proton: Epic, GOG, ones you added); Steam's games
   keep Steam's own Compatibility setting;
 - its **mods in Hearth Mods** (how many, how many on; **Open Hearth Mods**). Shown when Hearth Mods' worker is running;
-- Hearth's facts (ProtonDB rating, achievements) and a page with all of it.
+- Hearth's facts (ProtonDB rating, achievements) and a page with all of it (**Hearth's page for this game**; on that
+  page the button goes on to the game's Hearth page, or Steam's page for a Steam game).
 
 ### Store, Mods, Storage and Recomps that work (Experimental, needs testing on a device)
 
@@ -253,11 +254,59 @@ brightness settings with the host, two Steams of different accounts running at o
 attaches only to player 1's, the only one with remote debugging on), and starting or stopping a player from the Seats
 section while Steam holds the controllers (moving a controller reconnects it, which Steam should take in its stride).
 
+### The rest of Hearth's Game Mode (Experimental, needs testing on a device)
+
+Each goes through Hearth's core service (`aside`, `friends`, `link`, `remote` in `core_service.rs`, from `rest_call` in
+the plugin's `main.py`; `src/rest.tsx`), and says so when the core isn't running.
+
+- **Quick Resume** (Quick Access › Hearth, also in Decky's Hearth tab): **Put <game> aside** pauses the game Steam runs
+  where it is (its processes stopped, kept in memory: no processor or graphics use) and goes to Steam's library. It
+  carries on by itself when it's back in front (Steam's **Resume**, with Quick Access closed), or with **Resume** there;
+  **Close** (press twice) closes it. Steam runs one game at a time, so only that game can be put aside: starting another
+  asks Steam to close it, and the core lets it go. Only processes carrying the game's number are paused (Steam's reaper
+  for its app id, Hearth's own HEARTH_GAME_ID, or Steam's SteamAppId), never Steam's own; anything still paused carries
+  on when Steam Game Mode ends.
+- **Game streaming** (Quick Access › Hearth): Sunshine on or off, the address and the Moonlight devices paired, and **Pair
+  a device** with a number pad for Moonlight's 4-digit PIN (Hearth's Settings › Remote play does the same; the PIN is
+  never logged). Moonlight to play another PC stays in Hearth.
+- **Hearth Friends** (`/hearth/friends`, in Steam's main menu): your Hearth Friends (Matrix) friends, online first, and
+  what they're playing. Read only: chats, requests, invites and signing in stay in Hearth's Friends (**Chats and requests
+  in Hearth** opens Hearth's window). Steam's friends are Steam's own Friends & Chat.
+- **Hearth Link** (`/hearth/link`, in Steam's main menu): this device's name, the paired devices (online or not, **Sync
+  now**), copies in progress, games offered, and **Hearth Storage** devices (free space, **Wake it** when it's asleep and
+  this device knows how). Pairing, settings and getting games from another device open Hearth's Settings in a window.
+  The page never shows this device's long link.
+- **On-screen keyboard**: Steam's own (Steam + X; Quick Access › Hearth › Hearth tools › Keyboard) everywhere in Steam.
+  Hearth's keyboard only exists inside Hearth's own windows (Store, Settings, Hearth): opened from Steam Game Mode, it
+  waits behind its prompts' **On-screen keyboard** button (the prompt says "Steam + X: Steam's keyboard"), so the two
+  never come up together.
+
+Put aside used to find nothing to pause for **Flathub Steam's games** (pressure-vessel has the Flatpak portal start the
+game, outside Steam's reaper): Hearth now also knows a game's processes by Steam's SteamAppId (`procs.rs`), in Hearth's
+Game Mode too.
+
+| Hearth Game Mode feature | In Steam Game Mode |
+| --- | --- |
+| Home, Store, Library, Downloads, Storage, Mods, Recomps, game pages | Ported (above) |
+| Couch co-op, multi-seat | Ported (player order, split-screen shortcuts, seats; set-up stays in Hearth) |
+| Hearth menu (Guide button): Home, Library, Store, Friends, Downloads, Hearth Link, Couch Co-op, Theater | Ported: Steam's main menu › Hearth and Quick Access › Hearth |
+| Hearth menu: Search, Discover, Apps (Bazaar), profiles | Not: Steam's own search; Discover, Apps and profiles need Hearth's window |
+| Hearth menu: Settings, Power | Partially: Hearth's Settings opens in a window; Hearth power (back to Hearth, Desktop Mode) beside Steam's Power |
+| Hearth menu over a game: screenshot, record, performance | Ported (Hearth tools, Hearth Performance) |
+| Quick Resume | Partially: the game Steam runs (put aside, resume, close); several games at once can't (Steam runs one) |
+| Pause (without leaving the game) | Not: Put aside does it with Steam's screen in front |
+| On-screen keyboard | Steam's is used; Hearth's only in Hearth's windows, on request |
+| Hearth Friends | Partially: read only (who's online, what they play); chats and requests in Hearth |
+| Hearth Link, Hearth Storage | Partially: status, Sync now, Wake; pairing, settings, copies started from Hearth |
+| Sunshine (game streaming) | Ported: on/off, status, pairing with the PIN; Sunshine's own login set-up in Hearth |
+| Hearth Input | Ported (choosing a layout; the editor opens in Hearth's window) |
+| Per-game power settings, frame limit, TDP | Not: Steam's own Performance tab (so the two never fight) |
+| Parental controls, favourites, collections, Discord status | Not: Hearth's window |
+
 ### Still Hearth-only
 
-Hearth's own Quick Access over a game (Quick Resume, Pause, per-game power settings and the frame limit), Hearth's own
-on-screen keyboard (Steam's is used), Hearth's Settings and Hearth Input's editor (they open in Hearth's windows), and
-the rest of "What only Hearth's Game Mode has" below.
+Hearth's own Quick Access over a game (Pause, per-game power settings and the frame limit), Hearth's Settings and
+Hearth Input's editor (they open in Hearth's windows), and the rest of "What only Hearth's Game Mode has" below.
 
 ### When Steam updates
 
@@ -412,11 +461,11 @@ pictures inside the card, which the look doesn't touch.
 ## What only Hearth's Game Mode has
 
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's
-performance and controller pages, the power limit, Hearth Recorder, Quick Resume, Pause; the power mode is in Quick
-Access › Hearth), favourites, collections and
-game settings, Hearth Friends, Couch Co-op's own setup (player names, choosing controllers by pressing A; Steam Game
+performance and controller pages, the power limit, Hearth Recorder, Pause, Quick Resume for more than the game Steam
+runs; the power mode is in Quick Access › Hearth), favourites, collections and
+game settings, Hearth Friends' chats and requests, Couch Co-op's own setup (player names, choosing controllers by pressing A; Steam Game
 Mode has the player order and split-screen shortcuts, above) and setting multi-seat up (Steam Game Mode starts, stops and
-gives controllers to the players already set up, above), Hearth Link's device health, editing Hearth Input
+gives controllers to the players already set up, above), Hearth Link's device health and pairing, editing Hearth Input
 layouts (choosing one is in Quick Access › Hearth Controller), parental controls and per-game power settings, Hearth's
 on-screen keyboard, Discord status, and
 Hearth's Settings (switch back for those). Xbox Cloud Gaming games aren't added to Steam (they need Hearth's stream
@@ -461,6 +510,7 @@ window).
 | Couch co-op in Steam Game Mode | `src/coop.tsx` (Players tab, `/hearth/coop`), `main.py` (`coop_call`, `coop_shortcut`, `COOP_WRAPPER`), `core_service.rs` (`coop`, `COOP_OPS`), `hearth-coop` (`players`, `order-set`, `identify`, `play`) |
 | Multi-seat beside Steam Game Mode | `nimbus-session` (`steam_seats_on`, the host and `gamescope-args` in `run_steam_mode`), `src/coop.tsx` (`SeatsBody`), `src/model.ts` (`seatState`, `seatAction`, `seatTargets`, `seatsLine`, `seatDone`), `main.py` (`seats_call`, `SEATS_OPS`), `core_service.rs` (`seats`, `SEATS_OPS`, `seat_pad_ok`), `hearth-seats start\|stop --seat N`, `hearth-admin seats-start\|seats-stop --seat N` |
 | Steam's main menu, Quick Access tabs, in-game section | `src/patches.tsx` (`HearthMenuItems`), `src/qam.tsx` (`syncQamTabs` through Decky's tab list, the tabs, `ThisGame`), `src/ingame.tsx` (`/hearth/now`, `/hearth/home`), `src/core.ts` (the running game, the 2-second `front`), `src/model.ts` (`menuPlaces`, `runningGame`, `frontMessage`, `qamPlan`) |
+| Quick Resume, Sunshine, Hearth Friends, Hearth Link | `src/rest.tsx`, `main.py` (`rest_call`, `ASIDE_OPS`, `LINK_OPS`, `REMOTE_OPS`), `core_service.rs` (`aside`, `aside_follow`, `friends`, `link`, `remote`), `procs.rs` (SteamAppId) |
 | The look | `hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
 | CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures, and pictures of Steam's main menu, Hearth's Quick Access tabs and the in-game section over static stand-ins, as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |
 

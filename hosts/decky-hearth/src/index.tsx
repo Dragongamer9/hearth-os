@@ -22,6 +22,7 @@ import { addRoutes, patchGamePage, patchHome, patchLibraryTabs, patchMainMenu } 
 import { ControllerBody, PerformanceBody, SwitchButton, ThisGameSection, ToolsBody, UpdateRow, removeQamTabs, syncQamTabs } from "./qam";
 import { HearthHomePage, NowPlayingPage } from "./ingame";
 import { CoopPage, PlayersBody, SeatsBody } from "./coop";
+import { FriendsPage, LinkPage, QuickResumeBody, StreamingBody } from "./rest";
 import { startFront } from "./core";
 import { Boundary, go, setSounds } from "./ui";
 import { HearthRowView } from "./row";
@@ -140,7 +141,9 @@ function Panel() {
       <PanelSection title="Controller"><ControllerBody /></PanelSection>
       <PanelSection title="Players"><PlayersBody /></PanelSection>
       <PanelSection title="Seats"><Boundary part="seats" fallback={null} onError={guard.fail}><SeatsBody /></Boundary></PanelSection>
+      <PanelSection title="Quick Resume"><Boundary part="aside" fallback={null} onError={guard.fail}><QuickResumeBody /></Boundary></PanelSection>
       <PanelSection title="Hearth tools"><ToolsBody /></PanelSection>
+      <PanelSection title="Game streaming"><Boundary part="remote" fallback={null} onError={guard.fail}><StreamingBody /></Boundary></PanelSection>
       <PanelSection title="Hearth OS updates">
         <UpdateRow />
       </PanelSection>
@@ -152,6 +155,8 @@ function Panel() {
         <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/storage")}>Storage</ButtonItem></PanelSectionRow>
         <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/mods")}>Mods</ButtonItem></PanelSectionRow>
         <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/recomps")}>Recomps</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/friends")}>Hearth Friends</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/link")}>Hearth Link</ButtonItem></PanelSectionRow>
         {[["hearth-app:mods", "Hearth Mods"], ["hearth-app:theater", "Theater"]].map(([id, label]) => {
           const l = link(id);
           return l ? <PanelSectionRow key={id}><ButtonItem layout="below" onClick={() => playItem(l)}>{label}</ButtonItem></PanelSectionRow> : null;
@@ -220,7 +225,7 @@ export default definePlugin(() => {
   undo.push(addRoutes([
     ["/hearth/store", StorePage], ["/hearth/library", LibraryPage], ["/hearth/downloads", DownloadsPage],
     ["/hearth/storage", StorageManagePage], ["/hearth/mods", ModsPage], ["/hearth/recomps", RecompsPage], ["/hearth/game/:id", GamePage], ["/hearth/now", NowPlayingPage], ["/hearth/home", HearthHomePage],
-    ["/hearth/coop", CoopPage],
+    ["/hearth/coop", CoopPage], ["/hearth/friends", FriendsPage], ["/hearth/link", LinkPage],
   ]));
   // The game Steam runs, told to Hearth's core every 2 s (Hearth Input, the in-game section).
   undo.push(startFront());

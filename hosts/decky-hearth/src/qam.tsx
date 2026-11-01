@@ -19,6 +19,7 @@ import { Boundary, C, go } from "./ui";
 import { openApp, say } from "./actions";
 import { GameInfoLine } from "./pages";
 import { PlayersBody, SeatsBody } from "./coop";
+import { QuickResumeBody, StreamingBody } from "./rest";
 
 const ACCENT = C.accent, INK = C.ink;
 const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
@@ -133,8 +134,9 @@ function ModsRow(props: { id: string; v: Answer<GameView> }) {
   );
 }
 
-/** Hearth for the game you're playing. `idle`: say so when nothing runs (the Hearth tab), else draw nothing. */
-export function ThisGame(props: { idle?: boolean; header?: boolean }) {
+/** Hearth for the game you're playing. `idle`: say so when nothing runs (the Hearth tab), else draw nothing. `onPage`:
+ *  drawn on /hearth/now itself, so its button goes on to the game's Hearth page instead of back to the same page. */
+export function ThisGame(props: { idle?: boolean; header?: boolean; onPage?: boolean }) {
   const s = useLive();
   const { run, core } = useFront();
   const id = run?.id || "";
@@ -150,7 +152,9 @@ export function ThisGame(props: { idle?: boolean; header?: boolean }) {
         <ProtonPicker id={id} v={v} reload={reload} />
         <ModsRow id={id} v={v} />
         <PanelSectionRow><div className={staticClasses.Text} style={{ fontSize: 12 }}><GameInfoLine id={id} /></div></PanelSectionRow>
-        <PanelSectionRow><ButtonItem layout="below" onClick={() => go("/hearth/now")}>Hearth's page for this game</ButtonItem></PanelSectionRow>
+        {!props.onPage && <PanelSectionRow><ButtonItem layout="below" onClick={() => go("/hearth/now")}>Hearth's page for this game</ButtonItem></PanelSectionRow>}
+        {props.onPage && v.source !== "steam" && <PanelSectionRow><ButtonItem layout="below" onClick={() => go(`/hearth/game/${encodeURIComponent(id)}`)}>Game details in Hearth</ButtonItem></PanelSectionRow>}
+        {props.onPage && v.source === "steam" && run.appid > 0 && <PanelSectionRow><ButtonItem layout="below" onClick={() => go(`/library/app/${run.appid}`)}>Steam's page for this game</ButtonItem></PanelSectionRow>}
       </>
     );
   return (
@@ -269,7 +273,9 @@ function HearthBody() {
   return (
     <>
       <PanelSection title="This game"><ThisGame idle /></PanelSection>
+      <PanelSection title="Quick Resume"><Boundary part="aside" fallback={null} onError={guard.fail}><QuickResumeBody /></Boundary></PanelSection>
       <PanelSection title="Hearth tools"><ToolsBody /></PanelSection>
+      <PanelSection title="Game streaming"><Boundary part="remote" fallback={null} onError={guard.fail}><StreamingBody /></Boundary></PanelSection>
       <PanelSection title="Hearth"><SwitchButton /></PanelSection>
       <PanelSection title="Hearth OS updates"><UpdateRow /></PanelSection>
     </>
