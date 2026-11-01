@@ -567,8 +567,9 @@ pub fn supervise(app: &Path, args: &[String]) -> Option<i32> {
     let started = now_ms();
     let mut cmd = std::process::Command::new(app);
     cmd.args(&args[1..]);
-    // If this process goes (the session ends, the watchdog stops it), the bundle goes too.
-    unsafe { cmd.pre_exec(|| { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM); Ok(()) }); }
+    // Its own process group (so a stuck start is stopped with everything it started), and if this process goes (the
+    // session ends, the watchdog stops it), the bundle goes too.
+    unsafe { cmd.pre_exec(|| { libc::setpgid(0, 0); libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM); Ok(()) }); }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => { handoff_failed(app, &e.to_string()); return None; }
@@ -594,8 +595,10 @@ pub fn supervise(app: &Path, args: &[String]) -> Option<i32> {
             up = ui_up_since(&root(), &version, started);
             if !up && now_ms().saturating_sub(started) > limit {
                 log(&format!("{version} didn't bring Hearth's screen up within {} s; stopping it (counted as a failed start)", limit / 1000));
-                unsafe { libc::kill(child.id() as i32, libc::SIGTERM); }
+                let pg = -(child.id() as i32);
+                unsafe { libc::kill(pg, libc::SIGTERM); }
                 for _ in 0..10 { if matches!(child.try_wait(), Ok(Some(_))) { break; } std::thread::sleep(std::time::Duration::from_millis(500)); }
+                unsafe { libc::kill(pg, libc::SIGKILL); }
                 let _ = child.kill();
                 let _ = child.wait();
                 return Some(1);
