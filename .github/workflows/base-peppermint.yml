@@ -648,6 +648,7 @@ jobs:
           check "the kernel is trixie-backports' (newer than trixie's 6.12)" "ls /usr/lib/modules | grep -v '^6\\.12\\.'"
           check "the initramfs mounts ostree deployments (ostree-prepare-root)" "lsinitrd \$(ls /usr/lib/modules/*/initramfs.img) > /tmp/i.txt && grep -q ostree-prepare-root /tmp/i.txt"
           check "ostree has composefs support (moving to Hearth OS on Anatase stages a composefs image)" "ostree --version | grep -q -- '- composefs'"
+          check "ostree has SELinux support (moving to Hearth OS on Anatase labels its files)" "ostree --version | grep -q -- '- selinux'"
           check "Peppermint's own deployments keep composefs off (booting unchanged)" "grep -Eq '^enabled *= *no' /usr/lib/ostree/prepare-root.conf"
           check "ostree is new enough for bootc (2025.3 or newer)" "ostree --version | grep -Eq \"Version: '?(2025\\.([3-9]|[1-9][0-9])|20(2[6-9]|[3-9][0-9])\\.)\""
           check "the boot loader for Hearth's installer (signed shim + GRUB for bootupd)" "test -f /usr/lib/bootupd/updates/EFI.json && ls /usr/lib/efi/shim/*/EFI/debian/shimx64.efi && ls /usr/lib/efi/grub2/*/EFI/debian/grubx64.efi"
