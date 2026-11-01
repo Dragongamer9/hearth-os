@@ -239,8 +239,19 @@ and never touches anti-cheat.
   in the background** steps back (`steam_launch::keep_ready_effective`): Valve's client isn't started when Game Mode
   comes up, starts only when a game needs it, and is closed again when idle ("Start Steam only when needed"). Not
   signed in to Open, or on Classic or Lightweight: Keep Steam ready works as in section 9.
-- **Not yet.** Beta branches, workshop items, cloud saves (Valve's client syncs them when it runs), pausing and
-  reordering downloads from Hearth's Downloads page, automatic updates (Update asks for one).
+- **Downloads page.** The engine's queue (`HearthSteam.Core/Open/Queue.cs`) is Hearth's: one game at a time in
+  order; pause / resume one or all, move up / down / to the top, cancel (what's downloaded is kept), speed and time
+  left; kept in `open-state.json` across restarts (paused ones stay paused). A paused, moved-down or cancelled running
+  job stops within a second and carries on later from what it has. Socket commands `pause` / `resume` (`appid` or all),
+  `move` (`to`: up/down/top), `cancel`; hearth-core merges the queue into `library.downloads` (`engine` on each item).
+- **Automatic updates.** Settings › Library › Automatic updates: Off, When no game is running (default) or Always.
+  While signed in (and not standing by), Steam's PICS change number is checked every 20 minutes; installed games
+  (fully installed, owned) whose build on their branch changed get an "auto" job. Never during a game unless Always:
+  an automatic update running when a game starts stops and waits; the player's own installs go ahead. Hearth sends
+  the setting and whether a game runs with `config`.
+- **Speed limit.** Settings › Library › Download speed limit (none, 1 to 50 MB/s): a token bucket in front of every
+  chunk download.
+- **Not yet.** Beta branches, workshop items, cloud saves (Valve's client syncs them when it runs).
 
 ## 9. Playing Steam games in Game Mode
 

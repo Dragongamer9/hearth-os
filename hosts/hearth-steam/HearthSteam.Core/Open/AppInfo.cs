@@ -6,6 +6,10 @@ namespace HearthSteam.Open;
 public sealed record DepotInfo(uint Id, ulong Manifest, ulong Size, string OsList, string OsArch, string Language,
     uint DlcAppId, bool SharedInstall, uint DepotFromApp, bool LowViolence, bool Encrypted);
 
+/// <summary>A branch of the app (PICS depots › branches): "public" and its betas. Password-protected ones need the
+/// beta's password (checked with Steam) before their manifests can be had.</summary>
+public sealed record BranchInfo(string Name, uint BuildId, bool PasswordRequired, string Description, long TimeUpdated);
+
 public sealed record LaunchEntry(string Exe, string Args, string WorkingDir, string OsList, string OsArch, string Type, string BetaKey);
 
 public sealed class AppInfo
@@ -20,6 +24,17 @@ public sealed class AppInfo
     public bool Vac { get; init; }
     public List<DepotInfo> Depots { get; init; } = new();
     public List<LaunchEntry> Launch { get; init; } = new();
+    public List<BranchInfo> Branches { get; init; } = new();
+    /// <summary>The branch these depots' manifests are for.</summary>
+    public string Branch { get; init; } = "public";
+
+    /// <summary>A branch's latest build (0: no such branch). "" is the default branch.</summary>
+    public uint BuildFor(string branch)
+    {
+        if (string.IsNullOrEmpty(branch)) branch = "public";
+        if (branch.Equals(Branch, StringComparison.OrdinalIgnoreCase) && BuildId != 0) return BuildId;
+        return Branches.FirstOrDefault(b => b.Name.Equals(branch, StringComparison.OrdinalIgnoreCase))?.BuildId ?? 0;
+    }
 
     public bool IsGame => Type.Equals("game", StringComparison.OrdinalIgnoreCase) || Type.Equals("demo", StringComparison.OrdinalIgnoreCase);
 
@@ -51,9 +66,13 @@ public sealed class AppInfo
             launch.Add(new LaunchEntry(exe, l.Str("arguments") ?? "", l.Str("workingdir") ?? "", l.Str("config", "oslist") ?? "",
                 l.Str("config", "osarch") ?? "", l.Str("type") ?? "", l.Str("config", "betakey") ?? ""));
         }
+        var branches = new List<BranchInfo>();
+        foreach (var (name, b) in dn?.Get("branches")?.Children ?? new())
+            if (b.Children.Count > 0)
+                branches.Add(new BranchInfo(name, U(b.Str("buildid")), b.Str("pwdrequired") == "1", b.Str("description") ?? "", (long)UL(b.Str("timeupdated"))));
         return new AppInfo
         {
-            AppId = appId,
+            AppId = appId, Branches = branches, Branch = branch,
             Name = app.Str("common", "name") ?? "",
             Type = app.Str("common", "type") ?? "",
             InstallDir = app.Str("config", "installdir") ?? "",

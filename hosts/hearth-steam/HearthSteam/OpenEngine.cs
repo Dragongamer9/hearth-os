@@ -38,22 +38,16 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     readonly Dictionary<uint, AppInfo> owned = new();
     HashSet<uint> ownedApps = new();
     bool libraryLoading;
-    readonly List<Job> queue = new();
-    Job? current;
-    readonly Dictionary<uint, Job> finished = new();
+    readonly DownloadQueue dl = new();
+    CancellationTokenSource? runCts;
+    readonly RateLimiter limiter = new();
+    string autoPolicy = AutoUpdate.Idle;
+    bool gameRunning;
+    DateTime lastUpdateCheck = DateTime.MinValue;
+    Timer? yielder;
     Timer? watchdog;
     int reconnectDelay = 5;
     public event Action? Released;
-
-    sealed class Job
-    {
-        public uint AppId; public string Library = ""; public bool Verify;
-        public string Name = "", State = "queued", Error = "";
-        public long Done, Total, Speed;
-        public CancellationTokenSource Cts = new();
-        /// <summary>Stopped for Valve's client (standby): goes back to the front of the queue, not to "cancelled".</summary>
-        public bool Hold;
-    }
 
     public OpenEngine(string home)
     {
@@ -75,6 +69,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         callbacks.Subscribe<SteamUser.LoggedOffCallback>(e => { Log($"signed off by Steam ({e.Result})"); lock (gate) signedIn = false; });
         callbacks.Subscribe<SteamApps.LicenseListCallback>(OnLicenses);
         flow = new SignInFlow(new SteamAuth(this), secrets, Svg) { Log = Log };
+        autoPolicy = AutoUpdate.Normal(store.Data["autoUpdate"]?.GetValue<string>());
+        limiter.BytesPerSecond = (store.Data["limitKBps"]?.GetValue<long>() ?? 0) * 1024;
     }
 
     static void Log(string s) => Console.Error.WriteLine("hearth-steam (open): " + s);
@@ -92,8 +88,17 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
             if (classic && !was) EnterStandby("the normal Steam client started");
             else if (!classic && was) LeaveStandby();
         }, null, 5000, 5000);
+        // A paused, moved-down or cancelled running job (or standby, or a game starting during an automatic update)
+        // stops within a second; what it downloaded is kept.
+        yielder = new Timer(_ => { if (dl.ShouldYield(Hold(), Volatile.Read(ref gameRunning), AutoUpdate.DuringGame(autoPolicy))) StopRun(); }, null, 1000, 1000);
         _ = Task.Run(Worker);
+        _ = Task.Run(AutoUpdates);
     }
+
+    bool Hold() { lock (gate) return !signedIn || standby; }
+
+    /// <summary>Stops the running job (it may be finishing at the same moment: never throws).</summary>
+    void StopRun() { try { runCts?.Cancel(); } catch (ObjectDisposedException) { } }
 
     // ---------------------------------------------------------------- connection and sign-in
 
@@ -226,7 +231,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         var name = store.Data["account"]?.GetValue<string>();
         if (name != null) { try { secrets.Delete(name); } catch (Exception) { } }
         store.Update(d => { d.Remove("account"); d.Remove("steamId"); });
-        foreach (var j in AllJobs()) j.Cts.Cancel();
+        StopRun();
         try { user.LogOff(); } catch (Exception) { }
         lock (gate) { signedIn = false; account = null; steamId = 0; owned.Clear(); }
         return Task.FromResult(new JsonObject());
@@ -347,16 +352,9 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
 
     // ---------------------------------------------------------------- installing, updating, verifying
 
-    IEnumerable<Job> AllJobs() { lock (gate) return (current != null ? queue.Prepend(current) : queue).ToList(); }
+    void SaveQueue() => store.Update(d => d["queue"] = dl.Save());
 
-    void SaveQueue() => store.Update(d =>
-    {
-        var a = new JsonArray();
-        foreach (var j in AllJobs()) a.Add(new JsonObject { ["appid"] = j.AppId, ["library"] = j.Library, ["verify"] = j.Verify });
-        d["queue"] = a;
-    });
-
-    JsonObject Enqueue(uint appId, string? library, bool verify)
+    JsonObject Enqueue(uint appId, string? library, string kind, string branch = "")
     {
         NeedSignIn();
         if (SteamFiles.ClassicRunning()) throw new EngineException(Codes.ClassicRunning, "The normal Steam client is running.");
@@ -369,29 +367,54 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         if (OpenRules.CanInstall(info, picked, false, true) is { } no) throw new EngineException(no.code, no.why);
         var libs = Libraries();
         var lib = OpenRules.PickLibrary(libs, l => File.Exists(AppManifest.Path(l, appId)), library);
-        lock (gate)
-        {
-            if (current?.AppId == appId || queue.Any(j => j.AppId == appId)) return new JsonObject { ["queued"] = true, ["library"] = lib };
-            queue.Add(new Job { AppId = appId, Library = lib, Verify = verify, Name = info!.Name });
-            finished.Remove(appId);
-        }
+        dl.Add(new QueueItem { AppId = appId, Library = lib, Kind = kind, Name = info!.Name, Branch = branch });
         SaveQueue();
         return new JsonObject { ["queued"] = true, ["library"] = lib, ["os"] = os };
     }
 
-    public JsonObject Install(uint appId, string? library) => Enqueue(appId, library, false);
-    public JsonObject Update(uint appId) => Enqueue(appId, null, false);
-    public JsonObject Verify(uint appId) => Enqueue(appId, null, true);
+    public JsonObject Install(uint appId, string? library) => Enqueue(appId, library, "install");
+    public JsonObject Update(uint appId) => Enqueue(appId, null, "update");
+    public JsonObject Verify(uint appId) => Enqueue(appId, null, "verify");
 
     public JsonObject Cancel(uint appId)
     {
-        lock (gate)
-        {
-            queue.RemoveAll(j => j.AppId == appId);
-            if (current?.AppId == appId) current.Cts.Cancel();
-        }
+        bool running = dl.Current?.AppId == appId;
+        var had = dl.Cancel(appId);
+        if (running) StopRun();
         SaveQueue();
-        return new JsonObject { ["cancelled"] = true };
+        return new JsonObject { ["cancelled"] = had };
+    }
+
+    public JsonObject Pause(uint? appId)
+    {
+        int n = appId is uint a ? (dl.Pause(a) ? 1 : 0) : dl.PauseAll();
+        SaveQueue();
+        return new JsonObject { ["paused"] = n };
+    }
+
+    public JsonObject Resume(uint? appId)
+    {
+        int n = appId is uint a ? (dl.Resume(a) ? 1 : 0) : dl.ResumeAll();
+        SaveQueue();
+        return new JsonObject { ["resumed"] = n };
+    }
+
+    public JsonObject Move(uint appId, string to)
+    {
+        var moved = dl.Move(appId, to);
+        if (moved) SaveQueue();
+        return new JsonObject { ["moved"] = moved };
+    }
+
+    /// <summary>Hearth's settings for the engine (Settings › Library) and whether a game is running, sent by Hearth
+    /// whenever they change.</summary>
+    public JsonObject Config(string? autoUpdate, long? limitKBps, bool? running)
+    {
+        if (autoUpdate != null) autoPolicy = AutoUpdate.Normal(autoUpdate);
+        if (limitKBps is long l) limiter.BytesPerSecond = Math.Max(0, l) * 1024;
+        if (running is bool r) Volatile.Write(ref gameRunning, r);
+        store.Update(d => { d["autoUpdate"] = autoPolicy; d["limitKBps"] = limiter.BytesPerSecond / 1024; });
+        return new JsonObject { ["autoUpdate"] = autoPolicy, ["limitKBps"] = limiter.BytesPerSecond / 1024, ["gameRunning"] = gameRunning };
     }
 
     public JsonObject Uninstall(uint appId)
@@ -399,10 +422,10 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         NeedSignIn();
         if (SteamFiles.ClassicRunning()) throw new EngineException(Codes.ClassicRunning, "The normal Steam client is running.");
         Cancel(appId);
-        lock (gate) if (current?.AppId == appId) throw new EngineException(Codes.Busy, "Still stopping its download.");
+        for (int i = 0; i < 30 && dl.Current?.AppId == appId; i++) Thread.Sleep(100);
+        if (dl.Current?.AppId == appId) throw new EngineException(Codes.Busy, "Still stopping its download.");
         var inst = Installed(appId) ?? throw new EngineException(Codes.Unsupported, "Not installed.");
         OpenRules.Uninstall(inst.lib, appId);
-        lock (gate) finished.Remove(appId);
         return new JsonObject { ["removed"] = true };
     }
 
@@ -415,49 +438,98 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
 
     void ResumeQueue()
     {
-        if (store.Data["queue"] is not JsonArray a) return;
-        foreach (var e in a.ToList())
-        {
-            if (e == null) continue;
-            var id = e["appid"]!.GetValue<uint>();
-            lock (gate) if (current?.AppId == id || queue.Any(j => j.AppId == id)) continue;
-            // Valve's client may have finished it meanwhile.
-            var inst = Installed(id);
-            if (inst?.acf.StateFlags == AppManifest.FullyInstalled && e["verify"]?.GetValue<bool>() != true) continue;
-            lock (gate) queue.Add(new Job { AppId = id, Library = e["library"]?.GetValue<string>() ?? inst?.lib ?? "", Verify = e["verify"]?.GetValue<bool>() == true, Name = inst?.acf.Name ?? "" });
-        }
+        // Valve's client may have finished an install meanwhile (an automatic update or a verify still runs).
+        dl.Load(store.Data["queue"] as JsonArray, i => i.Kind is "install" or "update" && Installed(i.AppId)?.acf.StateFlags == AppManifest.FullyInstalled);
     }
 
     async Task Worker()
     {
         while (!cts.IsCancellationRequested)
         {
-            Job? j;
-            lock (gate) { j = signedIn && !standby && queue.Count > 0 ? queue[0] : null; if (j != null) { queue.RemoveAt(0); current = j; } }
+            var j = dl.Next(Hold(), Volatile.Read(ref gameRunning), AutoUpdate.DuringGame(autoPolicy));
             if (j == null) { try { await Task.Delay(1000, cts.Token); } catch (OperationCanceledException) { } continue; }
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, j.Cts.Token);
+            dl.Started(j);
+            var run = runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
             try
             {
-                await RunJob(j, linked.Token);
-                j.State = "done";
-                Log($"app {j.AppId}: {(j.Verify ? "verified" : "installed")}");
+                await RunJob(j, run.Token);
+                dl.Ended(j, "done");
+                Log($"app {j.AppId}: {(j.Verify ? "verified" : j.Auto ? "updated automatically" : "installed")}");
             }
-            catch (OperationCanceledException) when (j.Hold && !cts.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                // Standby: back to the front of the queue, to carry on when Valve's client has closed.
-                lock (gate) { j.Hold = false; j.Cts = new CancellationTokenSource(); j.State = "waiting"; j.Speed = 0; current = null; queue.Insert(0, j); }
-                continue;
+                // Paused, moved, standby or Hearth stopping: it waits in the queue. Cancelled: it's gone from it.
+                dl.Ended(j, dl.Has(j.AppId) ? "waiting" : "cancelled");
             }
-            catch (OperationCanceledException) { j.State = cts.IsCancellationRequested ? "paused" : "cancelled"; }
+            catch (Exception) when (run.IsCancellationRequested)
+            {
+                // Stopped mid-request (a download error from the stop itself): the same as above.
+                dl.Ended(j, dl.Has(j.AppId) ? "waiting" : "cancelled");
+            }
             catch (Exception e)
             {
-                j.State = "failed";
-                j.Error = e is EngineException ? e.Message : $"{e.GetType().Name}: {e.Message}";
+                dl.Ended(j, "failed", e is EngineException ? e.Message : $"{e.GetType().Name}: {e.Message}");
                 Log($"app {j.AppId}: failed ({e.GetType().Name}); Valve's client can finish it from its record");
             }
-            lock (gate) { current = null; finished[j.AppId] = j; }
+            finally { runCts = null; run.Dispose(); }
             if (!cts.IsCancellationRequested) SaveQueue();
         }
+    }
+
+    /// <summary>Automatic updates (Settings › Library: off / when idle / always): Steam's PICS change numbers are
+    /// checked every 20 minutes while signed in (not during a game unless "always"); installed games whose build
+    /// changed get an "auto" job. Never while Valve's client runs (standby).</summary>
+    async Task AutoUpdates()
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(90), cts.Token); } catch (OperationCanceledException) { return; }
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                if (!Hold() && AutoUpdate.CheckDue(autoPolicy, Volatile.Read(ref gameRunning), lastUpdateCheck, DateTime.UtcNow))
+                {
+                    lastUpdateCheck = DateTime.UtcNow;
+                    await CheckUpdates();
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException) { Log("update check: " + e.GetType().Name); }
+            try { await Task.Delay(TimeSpan.FromSeconds(60), cts.Token); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    async Task CheckUpdates()
+    {
+        uint since = store.Data["changeNumber"]?.GetValue<uint>() ?? 0;
+        var changes = await apps.PICSGetChangesSince(since, true, false);
+        var changed = new HashSet<uint>(changes.AppChanges.Keys);
+        bool full = since == 0 || changes.RequiresFullUpdate || changes.RequiresFullAppUpdate;
+        var installed = new Dictionary<uint, (uint Build, string Branch, bool Installed)>();
+        var where = new Dictionary<uint, string>();
+        HashSet<uint> mine; lock (gate) mine = ownedApps.ToHashSet();
+        foreach (var lib in Libraries())
+        foreach (var f in SafeEnum(Path.Combine(lib, "steamapps"), "appmanifest_*.acf"))
+        {
+            if (!uint.TryParse(Path.GetFileNameWithoutExtension(f)["appmanifest_".Length..], out var app) || !mine.Contains(app)) continue;
+            var m = AppManifest.Load(lib, app);
+            if (m == null || m.StateFlags != AppManifest.FullyInstalled) continue;
+            installed[app] = (m.BuildId, m.BetaKey, true);
+            where[app] = lib;
+        }
+        var want = installed.Keys.Where(a => full || changed.Contains(a)).ToList();
+        var infos = want.Count > 0 ? await AppInfos(want) : new Dictionary<uint, AppInfo>();
+        var need = AutoUpdate.Needing(installed, changed, full, (a, branch) => infos.TryGetValue(a, out var i) ? i.BuildFor(branch) : 0);
+        int added = 0;
+        foreach (var a in need)
+            if (dl.Add(new QueueItem { AppId = a, Library = where[a], Kind = "auto", Name = infos[a].Name, Branch = installed[a].Branch })) added++;
+        store.Update(d => d["changeNumber"] = changes.CurrentChangeNumber);
+        if (added > 0) SaveQueue();
+        Log($"update check: {installed.Count} installed, {want.Count} changed, {added} to update");
+    }
+
+    static IEnumerable<string> SafeEnum(string dir, string pattern)
+    {
+        try { return Directory.Exists(dir) ? Directory.EnumerateFiles(dir, pattern).ToList() : new List<string>(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return new List<string>(); }
     }
 
     async Task<List<SteamKit2.CDN.Server>> Servers()
@@ -504,7 +576,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         catch (Exception e) when (e is not OperationCanceledException) { Log($"depot {depot}: old manifest unknown ({e.GetType().Name}); checking files on disk"); return null; }
     }
 
-    async Task RunJob(Job j, CancellationToken ct)
+    async Task RunJob(QueueItem j, CancellationToken ct)
     {
         j.State = "preparing";
         var info = await FreshInfo(j.AppId) ?? throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
@@ -554,6 +626,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
                     var s = servers[(Volatile.Read(ref serverIndex[0]) + attempt) % servers.Count];
                     try
                     {
+                        await limiter.Wait(c.CompressedLength, t);
                         var buf = new byte[c.Length];
                         var n = await cdn.DownloadDepotChunkAsync(d.Id, new DepotManifest.ChunkData(c.Sha, c.Checksum, c.Offset, c.CompressedLength, c.Length), s, buf, key);
                         return n == buf.Length ? buf : buf[..n];
@@ -594,14 +667,10 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
 
     public JsonObject Downloads()
     {
-        var a = new JsonArray();
-        lock (gate)
-        {
-            IEnumerable<Job> all = (current != null ? new[] { current } : Array.Empty<Job>()).Concat(queue).Concat(finished.Values);
-            foreach (var j in all)
-                a.Add(new JsonObject { ["appid"] = j.AppId, ["name"] = j.Name, ["state"] = j.State, ["done"] = j.Done, ["total"] = j.Total, ["speed"] = j.Speed, ["error"] = j.Error.Length > 0 ? j.Error : null, ["verify"] = j.Verify });
-        }
-        return new JsonObject { ["downloads"] = a };
+        var o = dl.Answer();
+        o["autoUpdate"] = autoPolicy; o["limitKBps"] = limiter.BytesPerSecond / 1024;
+        lock (gate) o["standby"] = standby;
+        return o;
     }
 
     // ---------------------------------------------------------------- launching
@@ -654,15 +723,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     /// is written into the libraries; sign-in and the library keep working.</summary>
     void EnterStandby(string why)
     {
-        Job? stopping;
-        lock (gate)
-        {
-            if (standby) return;
-            standby = true;
-            stopping = current;
-            if (stopping != null) stopping.Hold = true;
-        }
-        stopping?.Cts.Cancel();
+        lock (gate) { if (standby) return; standby = true; }
+        StopRun();
         Log($"standing by: {why}");
     }
 
@@ -677,8 +739,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     {
         EnterStandby("asked to (Valve's client is starting)");
         // Wait briefly for a running download to stop, so Valve's client never writes the same files at the same time.
-        for (int i = 0; i < 50; i++) { lock (gate) if (current == null) break; Thread.Sleep(100); }
-        bool idle; lock (gate) idle = current == null;
+        for (int i = 0; i < 50 && dl.Current != null; i++) Thread.Sleep(100);
+        bool idle = dl.Current == null;
         return new JsonObject { ["standby"] = true, ["stopped"] = idle };
     }
 
@@ -687,6 +749,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         if (released) return;
         released = true;
         watchdog?.Dispose();
+        yielder?.Dispose();
         cts.Cancel();
         try { client.Disconnect(); } catch (Exception) { }
         Released?.Invoke();

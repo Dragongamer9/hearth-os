@@ -620,6 +620,10 @@ impl Library {
             if bps == 0 && clog_fresh && a["state"] == "downloading" { bps = clog.rate.unwrap_or(0); clog_used = true; }
             a["bytesPerSec"] = json!(bps);
         }
+        // Hearth's own Steam client (Open): its queue, with pause / move / cancel on the Downloads page.
+        if let Some(jobs) = crate::steam_engine::engine_downloads() {
+            crate::steam_engine::merge_downloads(&mut active, &jobs, |id| self.games.get(id).map(|g| self.dto(g)));
+        }
         let gone: Vec<String> = self.steam_bytes.keys().filter(|id| !active.iter().any(|a| a["id"] == id.as_str())).cloned().collect();
         for id in gone {
             self.steam_bytes.remove(&id);
@@ -879,6 +883,7 @@ impl Library {
         // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
         if self.store.source_on("steam") {
             // The Open engine signed in or not decides whether Valve's client is kept ready (steam_launch.rs).
+            crate::steam_engine::push_config(json!({"autoUpdate": self.steam_auto_update(), "limitKBps": self.steam_limit_kbps(), "gameRunning": self.running.is_some()}));
             if let Some(signed) = crate::steam_engine::tick(self.steam_engine_mode()) {
                 if (self.store.data["steamOpenSignedIn"] == true) != signed { let _ = self.store.update(|d| { d.insert("steamOpenSignedIn".into(), json!(signed)); }); }
             }
@@ -1197,6 +1202,9 @@ impl Library {
     /// "Keep Steam ready in the background" (on by default): Steam started hidden when Game Mode comes up, never closed
     /// when idle, so Play hands the game to a running Steam (steam_launch.rs).
     pub fn steam_keep_ready(&self) -> bool { self.store.data["steamKeepReady"] != false }
+    /// Hearth's Steam client: automatic updates ("off", "idle", "always") and the download speed limit (KB/s, 0 none).
+    pub fn steam_auto_update(&self) -> &'static str { crate::steam_engine::auto_update_setting(&self.store.data["steamAutoUpdate"]) }
+    pub fn steam_limit_kbps(&self) -> u64 { self.store.data["steamLimitKBps"].as_u64().unwrap_or(0) }
     /// Kept ready right now: not while the Open engine is the one in use and signed in (Valve's client then starts only
     /// for a game that needs it, and closes again when idle).
     pub fn steam_keep_ready_effective(&self) -> bool {
@@ -1214,7 +1222,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamKeepReadyActive": self.steam_keep_ready_effective(), "steamOpenSignedIn": self.store.data["steamOpenSignedIn"] == true, "steamEngineExplain": self.store.data["steamEngineExplain"] == true, "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamKeepReadyActive": self.steam_keep_ready_effective(), "steamOpenSignedIn": self.store.data["steamOpenSignedIn"] == true, "steamEngineExplain": self.store.data["steamEngineExplain"] == true, "steamAutoUpdate": self.steam_auto_update(), "steamLimitKBps": self.steam_limit_kbps(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 

@@ -228,6 +228,80 @@ pub fn owned_games() -> Option<Vec<Value>> {
     }
 }
 
+/// Open: the engine's download queue ({appid, state, paused, position, done, total, speed, eta, kind, auto}), when it's
+/// the engine in use and running. None otherwise.
+pub fn engine_downloads() -> Option<Vec<Value>> {
+    if current_mode() != Mode::Open || !socket_path().exists() { return None; }
+    match ask(&json!({"cmd": "downloads"}), Duration::from_millis(900)) {
+        Answer::Ok(v) => v["downloads"].as_array().cloned(),
+        _ => None,
+    }
+}
+
+/// The Open engine's queue merged into the Downloads page's list (pure, for the tests). Its jobs carry "engine"
+/// {position, paused, eta, kind, auto} (so the page offers pause, move and cancel for them) and its speed and byte
+/// counts; queued jobs without an install record yet are added from `dto` (the game's library entry).
+pub fn merge_downloads(active: &mut Vec<Value>, jobs: &[Value], dto: impl Fn(&str) -> Option<Value>) {
+    for j in jobs {
+        let pos = j["position"].as_i64().unwrap_or(-1);
+        let Some(app) = j["appid"].as_u64() else { continue };
+        if pos < 0 { continue; }
+        let id = format!("steam:{app}");
+        let paused = j["paused"] == true;
+        let i = match active.iter().position(|a| a["id"] == id.as_str()) {
+            Some(i) => i,
+            None => match dto(&id) {
+                Some(mut d) => { d["state"] = json!(if paused { "paused" } else { "queued" }); active.push(d); active.len() - 1 }
+                None => continue,
+            },
+        };
+        let e = &mut active[i];
+        e["engine"] = json!({"position": pos, "paused": paused, "eta": j["eta"], "kind": j["kind"], "auto": j["auto"] == true, "state": j["state"], "error": j["error"]});
+        if paused { e["state"] = json!("paused"); e["bytesPerSec"] = json!(0); }
+        else if matches!(j["state"].as_str(), Some("downloading" | "verifying" | "preparing")) {
+            e["bytesPerSec"] = j["speed"].clone();
+            if e["state"] == "queued" || e["state"] == "paused" { e["state"] = json!(if e["installed"] == true { "updating" } else { "downloading" }); }
+        } else if e["state"] == "downloading" || e["state"] == "updating" { e["state"] = json!("queued"); e["bytesPerSec"] = json!(0); }
+        if let (Some(d), Some(t)) = (j["done"].as_u64(), j["total"].as_u64()) {
+            if t > 0 { e["bytesDone"] = json!(d); e["bytesTotal"] = json!(t); e["progress"] = json!((d as f64 / t as f64).min(1.0)); }
+        }
+    }
+}
+
+/// Open: a Downloads page control for a Steam game ("pause", "resume", "move" with "up"/"down"/"top", "cancel"; no app:
+/// all). Err when the Open engine isn't the one doing it (the caller then does what it did before).
+pub fn download_op(op: &str, app: Option<u32>, to: Option<&str>) -> Result<Value, String> {
+    if current_mode() != Mode::Open { return Err("Hearth's Steam client isn't in use.".into()); }
+    let mut req = json!({"cmd": op});
+    if let Some(a) = app { req["appid"] = json!(a); }
+    if let Some(t) = to { req["to"] = json!(t); }
+    match ask(&req, Duration::from_secs(5)) {
+        Answer::Ok(v) => Ok(v),
+        Answer::No { error, .. } => Err(error),
+        Answer::Down(e) => Err(e),
+    }
+}
+
+/// Open: Hearth's download settings and whether a game runs, sent to the engine when they change (and once a
+/// minute, so a restarted engine has them).
+pub fn push_config(cfg: Value) {
+    if current_mode() != Mode::Open || !socket_path().exists() { return; }
+    static LAST: Mutex<(String, u64)> = Mutex::new((String::new(), 0));
+    let text = cfg.to_string();
+    let t = now();
+    {
+        let mut l = LAST.lock().unwrap_or_else(|p| p.into_inner());
+        if l.0 == text && t.saturating_sub(l.1) < 60_000 { return; }
+        *l = (text, t);
+    }
+    let mut req = cfg;
+    req["cmd"] = json!("config");
+    let _ = ask(&req, Duration::from_secs(2));
+}
+
+/// Settings › Library › Automatic updates: "off", "idle" (the default: when no game is running) or "always".
+pub fn auto_update_setting(v: &Value) -> &'static str { match v.as_str() { Some("off") => "off", Some("always") => "always", _ => "idle" } }
+
 /// The command line for a direct start (pure, for the tests): (program, arguments, environment). Windows games go
 /// through umu (Proton) with the game's own Steam prefix, so saves are shared with Valve's client.
 pub fn direct_command(info: &Value, opts: &Value, app: u32, umu: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
@@ -430,6 +504,40 @@ mod tests {
         }
         assert!(sign_in_down_message(true, false).contains("Start the engine again"));
         assert!(sign_in_down_message(true, true).contains("normal Steam client is running"));
+    }
+
+    #[test]
+    fn the_open_engines_queue_on_the_downloads_page() {
+        let mut active = vec![json!({"id": "steam:10", "state": "downloading", "installed": false, "bytesPerSec": 0})];
+        let jobs = vec![
+            json!({"appid": 10, "state": "downloading", "paused": false, "position": 0, "done": 50, "total": 200, "speed": 7000, "eta": 1, "kind": "install"}),
+            json!({"appid": 20, "state": "queued", "paused": true, "position": 1, "done": 0, "total": 0, "speed": 0, "kind": "auto", "auto": true}),
+            json!({"appid": 30, "state": "queued", "paused": false, "position": 2, "kind": "update"}),
+            json!({"appid": 40, "state": "done", "position": -1}),
+            json!({"appid": 50, "state": "queued", "position": 3}),
+        ];
+        merge_downloads(&mut active, &jobs, |id| match id {
+            "steam:20" | "steam:30" | "steam:40" => Some(json!({"id": id, "state": "installed", "installed": true})),
+            _ => None,   // not in the library: left out
+        });
+        assert_eq!(active.len(), 3);
+        assert_eq!(active[0]["engine"]["position"], 0);
+        assert_eq!(active[0]["bytesPerSec"], 7000);
+        assert_eq!(active[0]["bytesTotal"], 200);
+        assert_eq!(active[0]["progress"], 0.25);
+        let b = active.iter().find(|a| a["id"] == "steam:20").unwrap();
+        assert_eq!(b["state"], "paused");
+        assert_eq!(b["engine"]["auto"], true);
+        let c = active.iter().find(|a| a["id"] == "steam:30").unwrap();
+        assert_eq!(c["state"], "queued");
+        assert!(!active.iter().any(|a| a["id"] == "steam:40"), "finished jobs aren't downloads");
+        // Classic: never asked, nothing merged.
+        assert!(engine_downloads().is_none() || current_mode() == Mode::Open);
+        assert!(download_op("pause", None, None).is_err() || current_mode() == Mode::Open);
+        assert_eq!(auto_update_setting(&json!(null)), "idle");
+        assert_eq!(auto_update_setting(&json!("off")), "off");
+        assert_eq!(auto_update_setting(&json!("always")), "always");
+        assert_eq!(auto_update_setting(&json!("weird")), "idle");
     }
 
     #[test]

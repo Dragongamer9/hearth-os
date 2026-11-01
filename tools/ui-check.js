@@ -69,6 +69,34 @@ const path = require('path');
       if (steamOpenLibPill() !== '') throw new Error('the Library sign-in pill shows without Hearth');
     } finally { S.set.steamLight = was.light; S.set.steamOpen = was.open; SENG.st = was.st; }
   });
+  // Downloads › Hearth's Steam client's queue: up / down / pause / cancel per game, the automatic update label, and
+  // Settings › Library's automatic updates and speed limit.
+  await step('downloads controls', () => {
+    const it = { g: { id: 'steam:620', src: 'steam', title: 'Portal 2', engine: { position: 1, auto: false } }, state: 'queued' };
+    const row = dlButtons(it, false);
+    for (const k of ['dq-up-steam:620', 'dq-down-steam:620', 'dq-pp-steam:620', 'dq-x-steam:620']) if (!row.includes(`data-k="${k}"`)) throw new Error('no ' + k + ' in ' + row.slice(0, 200));
+    if (!/data-act="dlMove" data-v="up"/.test(row) || !/data-act="dlMove" data-v="down"/.test(row)) throw new Error('move buttons do not move');
+    const paused = dlButtons({ ...it, state: 'paused' }, false);
+    if (!/data-act="dlResume"/.test(paused)) throw new Error('a paused download has no Resume');
+    const big = dlButtons({ ...it, state: 'downloading' }, true);
+    if (!/data-act="dlPause"/.test(big) || !/data-act="dlCancel"/.test(big)) throw new Error('the current download has no Pause / Cancel');
+    if (!/^Automatic update 50%/.test(dlInfo({ engine: { auto: true }, state: 'downloading', progress: 0.5 }).label)) throw new Error('automatic updates are not labelled');
+    if (etaText({ speed: 1e6, total: 4e8, done: 1e8 }) !== '5 min left') throw new Error('time left: ' + etaText({ speed: 1e6, total: 4e8, done: 1e8 }));
+    const was = { open: S.set.steamOpen, light: S.set.steamLight, st: SENG.st };
+    try {
+      S.set.steamOpen = true; S.set.steamLight = false; SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: true, kind: 'open' } };
+      S.steamAuto = 'idle'; S.steamLimit = 5120;
+      const h = steamEngineRows();
+      if (!/data-k="s-steamAuto"/.test(h) || !/When no game is running/.test(h)) throw new Error('no automatic updates row');
+      if (!/data-k="s-steamLimit"/.test(h) || !/5\.\d MB\/s/.test(h)) throw new Error('no speed limit row: ' + h.slice(0, 200));
+      S.layers = []; act({ dataset: { act: 'steamAuto' } });
+      if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3) throw new Error('the automatic updates sheet is wrong');
+      closeAll();
+      S.layers = []; act({ dataset: { act: 'steamLimit' } });
+      if (S.layers.at(-1) !== 'sheet' || !sheet.items.some(i => i.label === 'No limit')) throw new Error('the speed limit sheet is wrong');
+      closeAll();
+    } finally { S.set.steamOpen = was.open; S.set.steamLight = was.light; SENG.st = was.st; }
+  });
   try {
     const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
     if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));

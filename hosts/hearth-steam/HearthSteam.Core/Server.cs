@@ -68,6 +68,8 @@ public sealed class Server
     static uint App(JsonObject r) => r["appid"]?.GetValue<uint>() is uint a and > 0 ? a : throw new EngineException(Codes.BadRequest, "No appid.");
     static string Str(JsonObject r, string k) => r[k]?.GetValue<string>() ?? throw new EngineException(Codes.BadRequest, $"No {k}.");
 
+    static uint? OptApp(JsonObject r) => r["appid"] == null ? null : App(r);
+
     IOpenEngine Open() => engine as IOpenEngine ?? throw new EngineException(Codes.Unsupported, "Only the Open engine does that.");
 
     async Task<JsonObject> Dispatch(string cmd, JsonObject r)
@@ -92,6 +94,10 @@ public sealed class Server
             case "verify": return Open().Verify(App(r));
             case "cancel": return Open().Cancel(App(r));
             case "standby": return Open().Standby();
+            case "pause": return Open().Pause(OptApp(r));
+            case "resume": return Open().Resume(OptApp(r));
+            case "move": return Open().Move(App(r), Str(r, "to"));
+            case "config": return Open().Config(r["autoUpdate"]?.GetValue<string>(), r["limitKBps"]?.GetValue<long>(), r["gameRunning"]?.GetValue<bool>());
             case "release": Released = true; engine.Release(); return new JsonObject { ["released"] = true };
             default: throw new EngineException(Codes.Unsupported, $"Unknown command {cmd}.");
         }

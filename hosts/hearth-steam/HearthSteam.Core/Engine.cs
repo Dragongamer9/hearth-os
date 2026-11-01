@@ -58,4 +58,12 @@ public interface IOpenEngine : IEngine
     /// <summary>Valve's client is about to run: stop downloads (kept, resumed when it has closed) and write nothing
     /// into the libraries meanwhile. The engine stays signed in, so sign-in and the library keep working.</summary>
     JsonObject Standby();
+    /// <summary>Pauses one queued or running download (or all with null): what's done is kept.</summary>
+    JsonObject Pause(uint? appId);
+    JsonObject Resume(uint? appId);
+    /// <summary>Moves a download "up", "down" or to the "top" of the queue.</summary>
+    JsonObject Move(uint appId, string to);
+    /// <summary>Hearth's settings (automatic updates off/idle/always, speed limit in KB/s, 0 none) and whether a game is
+    /// running; null leaves one as it is.</summary>
+    JsonObject Config(string? autoUpdate, long? limitKBps, bool? gameRunning);
 }
