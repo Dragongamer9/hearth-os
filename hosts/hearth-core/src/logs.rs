@@ -258,6 +258,19 @@ pub fn report(version: &str) -> String {
         }
         section("Desktop Mode: Hearth Plasma, GNOME and COSMIC", body);
     }
+    // Hearth Theater (docs/THEATER.md): its own log (start, the renderer and graphics it got, pages that loaded or
+    // failed, the controller pointer), when it has been opened on this device.
+    {
+        let f = crate::theater::log_file();
+        if crate::theater::find().is_some() || f.exists() {
+            let body = match std::fs::read_to_string(&f) {
+                Ok(t) => tail(&t, 400),
+                Err(_) => "(no theater.log: Theater hasn't been opened since it started keeping one)".into(),
+            };
+            let chromium = if crate::theater::electron_in(Path::new("/")).is_some() { "there" } else { "missing (Theater can't open)" };
+            section("Hearth Theater", format!("Hearth's Chromium (draws Theater): {chromium}\n\n{body}"));
+        }
+    }
     // Which engine draws Hearth's screens (docs/RENDERERS.md), and the Qt renderer's own log (Experimental).
     {
         let qt = std::fs::read_to_string(data.join("hearth-qml.log")).map(|t| tail(&t, 300)).unwrap_or_else(|_| "(no hearth-qml.log: the Qt renderer hasn't run)".into());

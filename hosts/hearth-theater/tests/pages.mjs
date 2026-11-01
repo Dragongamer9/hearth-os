@@ -1,11 +1,11 @@
 // Opens Hearth Theater's page in Chromium with its sample sites (no app: the page answers its own calls), drives it
-// with the keyboard, and runs the viewer's script (src/viewer.js) on a test page with a video and a frame, failing on
+// with the keyboard, and checks the viewer's controller (ui/viewer-pad.js) with a stand-in controller, failing on
 // any script error. It also runs the catalog reader (src/reader.js) on four local test sites (tests/fixtures, served
 // by tests/serve.mjs: JSON-LD, Open Graph cards, RSS + sitemap, plain cards), checks the rows it finds, shows them on
 // Theater's home screen and picks a card. Screenshots go to shots-pages/.
 //   node tests/pages.mjs            (from hosts/hearth-theater; needs the playwright package)
 import { chromium } from 'playwright';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { serveFixtures, FIXTURES } from './serve.mjs';
@@ -156,48 +156,66 @@ notice('Theater reader: search', `${SR.items?.length} results on the cards fixtu
 }
 fx.close();
 
-// ---- the viewer's script on a page with a video in it and one in a frame
+// ---- the viewer's controller (ui/viewer-pad.js): with a site open, the controller drives the real pointer and the
+// viewer (electron/main.js), and the home screen leaves it alone. theaterHost is stood in for, recording what's asked.
 {
-  const dir = path.join(out, 'viewer-page');
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, 'frame.html'), `<!doctype html><body style="margin:0;background:#123"><video id=v width=320 height=180 style="background:#333"></video><button id=b style="position:absolute;left:10px;top:200px" onclick="parent.postMessage('frame-clicked','*')">in frame</button></body>`);
-  writeFileSync(path.join(dir, 'index.html'), `<!doctype html><body style="margin:0;height:3000px;background:#222;color:#fff">
-    <button id=b style="position:absolute;left:600px;top:380px;width:120px;height:60px" onclick="window.clicked=(window.clicked||0)+1">click me</button>
-    <iframe id=f src="frame.html" style="position:absolute;left:40px;top:40px;width:400px;height:260px;border:0"></iframe>
-    <script>addEventListener('message',e=>{ if(e.data==='frame-clicked') window.frameClicked=1; })</script></body>`);
-  const js = readFileSync(path.join(here, '..', 'src', 'viewer.js'), 'utf8');
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  await ctx.addInitScript(js);
+  await ctx.addInitScript(() => {
+    window.__sent = [];
+    let fn = null;
+    window.theaterHost = { viewer: (op, a) => __sent.push(['viewer', op, a || {}]), ptr: m => __sent.push(['ptr', m.op, m]), on: f => { fn = f; } };
+    window.__viewerEvent = m => fn && fn(m);
+    window.__pads = [];
+    navigator.getGamepads = () => window.__pads;
+  });
   const p = await ctx.newPage();
-  p.on('pageerror', e => errors.push(`viewer: ${e.message}`));
-  await p.goto(pathToFileURL(path.join(dir, 'index.html')).href);
-  await sleep(700);
-  await shot(p, 'viewer');
-  if (!await p.evaluate(() => !!document.querySelector('hearth-theater-ui'))) errors.push("viewer: the pointer layer isn't on the page");
-  // A fake controller: press A with the pointer in the middle of the screen (where "click me" is).
+  p.on('pageerror', e => errors.push(`viewer pad: ${e.message}`));
+  await p.goto(pathToFileURL(path.join(ui, 'index.html')).href);
+  await sleep(500);
   const pad = async (buttons, axes = [0, 0, 0, 0], ms = 120) => {
     await p.evaluate(([b, a]) => {
-      const g = { id: 'test', index: 0, connected: true, axes: a, buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: b.includes(i), value: b.includes(i) ? 1 : 0 })) };
-      navigator.getGamepads = () => [g];
+      window.__pads = [{ id: 'test', index: 0, connected: true, axes: a, buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: b.includes(i), value: b.includes(i) ? 1 : 0 })) }];
     }, [buttons, axes]);
     await sleep(ms);
   };
+  const sent = () => p.evaluate(() => window.__sent.splice(0));
+  // A held while the viewer opens (the A that chose the tile) doesn't click.
+  await pad([0]);
+  await p.evaluate(() => window.__viewerEvent({ type: 'open' }));
+  await sleep(100); await pad([]); await sent();
+  check(await p.evaluate(() => H.viewing === true), 'viewer pad: the home screen should leave the controller to the viewer');
+  // Left stick: the pointer moves right and down.
+  await pad([], [1, 0.6, 0, 0], 300); await pad([]);
+  let got = await sent();
+  const moves = got.filter(x => x[1] === 'move');
+  check(moves.length > 3 && moves.reduce((t, x) => t + x[2].dx, 0) > 100 && moves.reduce((t, x) => t + x[2].dy, 0) > 20, `viewer pad: the left stick didn't move the pointer: ${JSON.stringify(moves.slice(0, 3))}`);
+  // A: the real left button, down and then up (so holding drags).
   await pad([0]); await pad([]);
-  if (await p.evaluate(() => window.clicked) !== 1) errors.push("viewer: A didn't click under the pointer");
-  // Y fills the screen with the biggest player (the frame), Y again puts it back.
-  await pad([3]); await pad([]);
-  const filled = await p.evaluate(() => getComputedStyle(document.getElementById('f')).position);
-  if (filled !== 'fixed') errors.push("viewer: Y didn't fill the screen with the player");
-  await shot(p, 'viewer-fill');
-  await pad([3]); await pad([]);
-  if (await p.evaluate(() => getComputedStyle(document.getElementById('f')).position) === 'fixed') errors.push("viewer: Y again didn't put the player back");
-  // The right stick scrolls.
-  await pad([], [0, 0, 0, 1], 300); await pad([]);
-  if (await p.evaluate(() => scrollY) < 50) errors.push("viewer: the right stick didn't scroll");
-  // View goes back to Theater (the viewer asks for hearth-theater://close; here that's just a failed navigation).
-  const asked = new Promise(res => p.on('request', r => { if (r.url().startsWith('hearth-theater:')) res(true); }));
-  await pad([8]); await pad([]);
-  if (!await Promise.race([asked, sleep(1500).then(() => false)])) errors.push("viewer: View didn't ask to go back to Theater");
+  got = await sent();
+  check(JSON.stringify(got.map(x => [x[1], x[2].button, x[2].down])) === JSON.stringify([['button', 'left', true], ['button', 'left', false]]), `viewer pad: A should press and let go of the left button: ${JSON.stringify(got)}`);
+  // The right stick scrolls with the wheel; D-pad down too.
+  await pad([], [0, 0, 0, 1], 250); await pad([13]); await pad([]);
+  got = await sent();
+  check(got.filter(x => x[1] === 'wheel').reduce((t, x) => t + x[2].dy, 0) > 400, `viewer pad: the right stick / D-pad didn't scroll: ${JSON.stringify(got)}`);
+  // X play/pause, Y full screen, ◀ ▶ skip, B back, LB/RB, Menu hints, View back to Theater.
+  for (const b of [2, 3, 14, 15, 1, 4, 5, 9, 8]) { await pad([b]); await pad([]); }
+  got = (await sent()).map(x => x[1] === 'media' ? `media:${x[2].do}${x[2].s ? ':' + x[2].s : ''}` : x[1]);
+  const want = ['media:toggle', 'media:fill', 'media:seek:-10', 'media:seek:10', 'back', 'back', 'forward', 'hints', 'close'];
+  check(JSON.stringify(got) === JSON.stringify(want), `viewer pad: buttons asked for ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`);
+  // RT: Hearth's on-screen keyboard docks under the site and types into the field clicked there.
+  await pad([7]); await pad([]);
+  got = await sent();
+  const osk = got.find(x => x[1] === 'osk');
+  check(osk && osk[2].on === true && osk[2].h > 100 && await p.evaluate(() => window.HearthOSK && HearthOSK.isOpen()), `viewer pad: RT didn't open the keyboard: ${JSON.stringify(got)}`);
+  await shot(p, 'viewer-keyboard');
+  await p.evaluate(() => HearthOSK.close()); await sleep(100);
+  got = await sent();
+  check(got.some(x => x[1] === 'osk' && x[2].on === false), `viewer pad: closing the keyboard should give the site its room back: ${JSON.stringify(got)}`);
+  // Closed: the controller is the home screen's again, and nothing goes to the pointer.
+  await p.evaluate(() => window.__viewerEvent({ type: 'closed' }));
+  await pad([0], [1, 0, 0, 0], 200); await pad([]);
+  check((await sent()).length === 0 && await p.evaluate(() => H.viewing === false), 'viewer pad: after the viewer closed, the controller still drove the pointer');
+  notice('Theater viewer controller', 'pointer, A (left button down/up), scrolling, X/Y/◀▶, B/LB/RB, Menu, View and RT (keyboard) asked for the right things');
   await ctx.close();
 }
 

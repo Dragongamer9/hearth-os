@@ -174,8 +174,9 @@ const H = (() => {
       s.up ||= bt(12) || ay < -.6; s.down ||= bt(13) || ay > .6; s.left ||= bt(14) || ax < -.6; s.right ||= bt(15) || ax > .6;
       s.a ||= bt(0); s.b ||= bt(1); s.x ||= bt(2); s.y ||= bt(3); s.lb ||= bt(4); s.rb ||= bt(5); s.select ||= bt(8); s.start ||= bt(9);
     }
-    // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after).
-    if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(s)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(poll); return; }
+    // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after), and
+    // while Theater's viewer shows a site, viewer-pad.js has the controller.
+    if (H.viewing || (window.HearthOSK && HearthOSK.isOpen())) { for (const [k, on] of Object.entries(s)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(poll); return; }
     for (const [k, on] of Object.entries(s)) {
       if (!on) { held[k] = 0; continue; }
       const first = !held[k];
