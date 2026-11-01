@@ -70,6 +70,7 @@ export function useFront(): { run: Running | null; front: any; core: boolean | n
   useEffect(() => {
     const f = () => bump((n) => n + 1);
     listeners.add(f);
+    f();   // anything that changed before this was shown
     const t = setInterval(f, 3000);   // the running game changes without the heartbeat changing anything
     return () => { listeners.delete(f); clearInterval(t); };
   }, []);
