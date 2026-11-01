@@ -58,6 +58,7 @@ pub mod perf;
 pub mod picker;   // file and folder pickers, off the bridge
 pub mod power;
 pub mod procs;
+pub mod recomps;   // Hearth Recomps: native PC ports of console games (docs/RECOMPS.md)
 pub mod profile;
 pub mod profiles;
 pub mod remote;
