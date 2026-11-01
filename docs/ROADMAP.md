@@ -166,7 +166,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
-## Next (unreleased)
+## 0.6.60 (released)
 
 - [x] Steam games start faster: "Keep Steam ready in the background" (Settings › Library, on by default) starts Steam hidden when Game Mode comes up, if you've used it here before, and keeps it running, so Play hands the game straight to Steam instead of waiting for Steam to start (needs testing on a device)
 - [x] Steam's pop-ups while a Steam game starts or runs (cloud-save conflict, EULA, errors, install steps) come in front of Hearth's starting screen instead of hiding behind it, and the controller mouse turns on by itself over them and over a game's own launcher (Bethesda's, for one): right stick moves the pointer, A clicks, View + Menu turns it off (needs testing on a device)
