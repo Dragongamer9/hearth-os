@@ -166,6 +166,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## Next (unreleased)
+
+- [x] Fix: moving a Peppermint device to Hearth OS on Anatase failed ("composefs: enabled at runtime, but support is not compiled in"): Peppermint's ostree is now built with composefs support; Peppermint's own deployments keep composefs off, so its booting is unchanged (needs testing on a device)
+
 ## 0.6.60 (released)
 
 - [x] Steam games start faster: "Keep Steam ready in the background" (Settings › Library, on by default) starts Steam hidden when Game Mode comes up, if you've used it here before, and keeps it running, so Play hands the game straight to Steam instead of waiting for Steam to start (needs testing on a device)
