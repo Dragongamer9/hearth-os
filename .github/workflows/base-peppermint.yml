@@ -370,6 +370,20 @@ jobs:
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
           mkdir -p /tmp/electron && cp -a dist/linux-unpacked/. /tmp/electron/
+      # ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
+      # packed into hearth-decky.tar; build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
+      # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
+      - name: Build the Hearth Decky plugin
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth
+          npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          tar -C /tmp/decky-out/decky-hearth -cf "$GITHUB_WORKSPACE/hearth-decky.tar" .
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -389,6 +403,7 @@ jobs:
           path: |
             hearth-browser.tar
             hearth-electron.tar
+            hearth-decky.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
   # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
@@ -492,6 +507,7 @@ jobs:
           if [ -f hearth-steam.tar ]; then mkdir -p os/nimbus-app/hearth-steam && tar -C os/nimbus-app/hearth-steam -xf hearth-steam.tar || rm -rf os/nimbus-app/hearth-steam; fi
           test -x os/nimbus-app/hearth
           if [ -f hearth-kde.tar ]; then cp hearth-kde.tar os/nimbus-app/hearth-kde.tar; fi
+          if [ -f hearth-decky.tar ]; then mkdir -p os/nimbus-app/decky-hearth && tar -C os/nimbus-app/decky-hearth -xf hearth-decky.tar || rm -rf os/nimbus-app/decky-hearth; fi
 
       - name: Build
         run: |

@@ -17,6 +17,13 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+usb-\S+(\s.*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // Steam Game Mode's Decky Loader (hearth-decky): installing it adds a service that runs as root, downloaded from
+    // Decky's GitHub releases: always an administrator's password. Removing, starting and stopping it don't ask.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+decky-install(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
     // root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&

@@ -885,6 +885,10 @@ impl Library {
         events
     }
 
+    /// Only the running game's part of tick (game.started, gap, exited, timeout), without Steam's or Quick Resume's:
+    /// for `hearth --play-now` in Steam's Game Mode (desktop_games.rs), which must never close Steam.
+    pub fn tick_game(&mut self) -> Vec<Value> { self.tick_running() }
+
     fn tick_running(&mut self) -> Vec<Value> {
         let mut events = Vec::new();
         let pids = self.game_pids();

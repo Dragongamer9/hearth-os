@@ -306,7 +306,7 @@ impl Bridge {
                 let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
                 // Desktop Mode with a game stopped (Quick Resume, Pause) froze the desktop: they're ended first (the page
                 // asked: "<game> is paused and will be closed"). nimbus-session does it again before Desktop Mode starts.
-                if msg["action"] == "desktop" {
+                if msg["action"] == "desktop" || msg["action"] == "steam" {
                     let ended = self.library.end_stopped();
                     if !ended.is_empty() {
                         log(&format!("desktop mode: ended the games Hearth had stopped first: {}", ended.join(", ")));
@@ -473,6 +473,16 @@ impl Bridge {
             "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
             // ---- Hearth Theater (theater.rs): Game Mode's menu › Theater
             "theater.open" => crate::theater::open(crate::signin_handoff::game_mode()),
+            // ---- Steam Game Mode (Experimental, steam_mode.rs, docs/STEAM-GAME-MODE.md): Settings › System
+            "steamMode.status" => Ok(crate::steam_mode::status()),
+            "steamMode.decky" => {
+                let action = a["action"].as_str().unwrap_or("").to_string();
+                if !crate::steam_mode::decky_action_ok(&action) { return Err("Unknown choice".into()); }
+                // Downloads Decky Loader (and asks for an administrator's password): answered when done.
+                crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || crate::steam_mode::decky(&action));
+                Ok(json!(DEFERRED))
+            }
+            // ---- end Steam Game Mode
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1866,12 +1876,14 @@ fn features() -> Vec<&'static str> {
     if crate::link::available() { f.push("hearthLink"); }
     if crate::bazaar::available() { f.push("bazaar"); }
     if crate::theater::available() { f.push("theater"); }
+    // Steam Game Mode (Experimental): the power menu's and Settings › System's switch, where it can run.
+    if crate::steam_mode::available() { f.push("steamMode"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
 /// page of Settings (only the ones listed here; "hhd" is Settings › Controls › Handheld Daemon). Null: the usual start.
 pub fn start_page(args: &[String]) -> Value {
-    const PAGES: &[&str] = &["hhd", "settings"];
+    const PAGES: &[&str] = &["hhd", "settings", "shop"];   // shop: the Hearth Decky plugin's Store link (Steam Game Mode)
     let mut start = Value::Null;
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
@@ -2053,6 +2065,7 @@ mod tests {
         assert_eq!(a(&["nimbus", "--windowed", "--settings"]), json!("settings"));
         assert_eq!(a(&["nimbus", "--windowed", "--page", "hhd"]), json!("hhd"));
         assert_eq!(a(&["nimbus", "--page=hhd", "--windowed"]), json!("hhd"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "shop"]), json!("shop"));
         assert_eq!(a(&["nimbus", "--settings", "--page", "hhd"]), json!("hhd"));
         // Pages Hearth doesn't know, or none given: the usual start (or Settings, when asked for too).
         assert_eq!(a(&["nimbus", "--page", "rm -rf"]), Value::Null);

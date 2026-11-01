@@ -791,6 +791,11 @@ fn main() {
     }
     // Mantel's Games section (Desktop Mode's launcher): the installed games as JSON. No window is opened.
     if has("--list-games") { println!("{}", hearth_core::desktop_games::list_now()); std::process::exit(0); }
+    // Steam's Game Mode (Experimental): a Hearth game added to Steam by the Hearth Decky plugin plays through Hearth
+    // without a window, and this waits until it has closed (desktop_games.rs play_now).
+    if args.get(1).map(String::as_str) == Some("--play-now") {
+        std::process::exit(hearth_core::desktop_games::play_now(args.get(2).map(String::as_str).unwrap_or("")));
+    }
     let windowed = has("--windowed");
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }

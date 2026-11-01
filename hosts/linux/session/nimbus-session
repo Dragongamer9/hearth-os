@@ -731,8 +731,78 @@ input_stop() {
   return 0
 }
 
+# >>> steam game mode
+# ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS
+# runs it, with Decky Loader and the Hearth plugin when they're installed. Chosen for ONE time only: Hearth's power menu
+# or Settings › System write "steam" to nimbus-next (or `nimbus-mode steam`). It's never saved and never the start mode,
+# so a restart always starts Hearth's Game Mode; when Steam's ends, for whatever reason, Hearth's Game Mode comes back
+# (Desktop Mode when that was asked for). Steam or gamescope missing, safe graphics, or Steam ending with an error
+# within STEAM_MODE_MIN_SECS: straight back to Hearth's, with a note Settings shows ($RUN/hearth-steam-mode-failed).
+# (test_hearth_steam_mode.py runs these lines, between the >>> and <<< marks.)
+STEAM_FLATPAK=com.valvesoftware.Steam
+STEAM_MODE_MIN_SECS="${STEAM_MODE_MIN_SECS:-20}"
+steam_flatpak() { have flatpak && { [ -d "/var/lib/flatpak/app/$STEAM_FLATPAK" ] || [ -d "$HOME/.local/share/flatpak/app/$STEAM_FLATPAK" ]; }; }
+can_steam_mode() { [ -z "$HEARTH_SEAT" ] && have gamescope && { have steam || steam_flatpak; }; }
+steam_mode_failed() { log "steam game mode: $1; back to Hearth's Game Mode"; echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; }
+# Decky Loader, when Hearth installed it (hearth-admin decky-install): its root service runs only while Steam Game
+# Mode does, never at boot or in Hearth's modes. Never waited on for long, never fatal.
+DECKY_UNIT="${HEARTH_DECKY_UNIT:-/etc/systemd/system/hearth-decky.service}"
+decky_ctl() {
+  [ -f "$DECKY_UNIT" ] && [ -x /usr/libexec/nimbus/hearth-admin ] && have pkexec || return 0
+  timeout 15 pkexec /usr/libexec/nimbus/hearth-admin "decky-$1" >/dev/null 2>&1 || log "steam game mode: decky-$1 didn't work (Steam Game Mode goes on without Decky)"
+  return 0
+}
+run_steam_mode() {
+  log "steam game mode (experimental, this time only)"
+  rm -f "$RUN/hearth-steam-mode-failed"
+  if ! can_steam_mode; then steam_mode_failed "Steam or gamescope isn't installed"; echo game >"$NEXT"; return 0; fi
+  if [ -f /run/hearth/safe-graphics ]; then steam_mode_failed "safe graphics are on this time"; echo game >"$NEXT"; return 0; fi
+  NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
+  # shellcheck source=/dev/null
+  [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
+  # Steam's "Switch to Desktop" (and Game Mode) runs steamos-session-select: Hearth's own comes first on Steam's PATH and
+  # asks this session (nothing about the login screen or the next start changes).
+  sbin="$RUN/hearth-steam-bin"; mkdir -p "$sbin"
+  printf '#!/bin/sh\n# Hearth (nimbus-session): Steam Game Mode'"'"'s Switch to Desktop / Game Mode\ncase "$1" in gamescope*|game*) exec nimbus-mode game ;; *) exec nimbus-mode desktop ;; esac\n' >"$sbin/steamos-session-select"
+  chmod 755 "$sbin/steamos-session-select"
+  # The system's Steam (both editions), unless it's Hearth's stand-in that starts Flathub's (Anatase without RPM Fusion).
+  if have steam && { [ ! -e /usr/share/nimbus/steam-flatpak ] || ! steam_flatpak; }; then
+    set -- env PATH="$sbin:$PATH" steam
+  else
+    # Flathub's Steam: the same through flatpak-spawn --host, given for this run only (no lasting flatpak override).
+    printf '#!/bin/sh\nexec flatpak-spawn --host nimbus-mode "$@"\n' >"$sbin/nimbus-mode"; chmod 755 "$sbin/nimbus-mode"
+    set -- flatpak run --talk-name=org.freedesktop.Flatpak --filesystem="$sbin:ro" --env=PATH="$sbin:/app/bin:/app/utils/bin:/usr/bin" "$STEAM_FLATPAK"
+  fi
+  sextra=""
+  have mangoapp && sextra="--mangoapp"
+  decky_ctl start
+  echo $$ >"$RUN/hearth-steam-mode.pid"
+  started=$(date +%s)
+  # What gamescope-session-steam (SteamOS, Bazzite, ChimeraOS) tells Steam, in a subshell so nothing stays for later modes.
+  # shellcheck disable=SC2086
+  (
+    export STEAM_MULTIPLE_XWAYLANDS=1 STEAM_GAMESCOPE_VRR_SUPPORTED=1 STEAM_ENABLE_VOLUME_HANDLER=1 SRT_URLOPEN_PREFER_STEAM=1 \
+      STEAM_DISABLE_MANGOAPP_ATOM_WORKAROUND=1 ENABLE_GAMESCOPE_WSI=1 SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0 HEARTH_STEAM_MODE=1
+    if [ -n "$sextra" ]; then export STEAM_USE_MANGOAPP=1 STEAM_MANGOAPP_PRESETS_SUPPORTED=1 MANGOHUD_CONFIGFILE="$RUN/hearth-steam-mangohud.conf"; : >"$MANGOHUD_CONFIGFILE"; fi
+    exec gamescope -e -f $sextra $NIMBUS_GAMESCOPE_ARGS -- "$@" -gamepadui -steamos3 -steampal
+  )
+  rc=$?
+  rm -f "$RUN/hearth-steam-mode.pid"
+  decky_ctl stop &
+  next_now="$(cat "$NEXT" 2>/dev/null)"
+  if [ "$next_now" != game ] && [ "$next_now" != desktop ]; then
+    if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ]; then steam_mode_failed "Steam ended right away (code $rc)"
+    else log "steam game mode ended (code $rc); Hearth's Game Mode next"; fi
+    echo game >"$NEXT"
+  fi
+  return 0
+}
+# <<< steam game mode
+
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
+# Steam Game Mode is one time only, never where the session starts.
+[ "$mode" = steam ] && mode=game
 # Hearth Recovery on the device › Desktop Mode this time (until the next restart).
 [ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
 # Extra multi-seat players have Game Mode only, even when their session.conf says to start in Desktop Mode.
@@ -749,12 +819,16 @@ while :; do
   # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick
   # Access the Game Mode way (in gamescope) instead of sending every press to a Desktop Mode that's gone.
   echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null
-  if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop; else run_desktop; code=$?; fi
+  if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop
+  elif [ "$mode" = steam ]; then run_steam_mode; code=$?
+  else run_desktop; code=$?; fi
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
+  [ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game     # ...and never Steam Game Mode
+  [ "$mode" = steam ] && [ "$next" = steam ] && next=game        # Steam Game Mode never follows itself
   case "$next" in
-    game|desktop) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
+    game|desktop|steam) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
     *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;
   esac
 done
