@@ -712,6 +712,18 @@ class DeckyHelper(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.home, 'homebrew/plugins/decky-hearth')))
         self.assertFalse(os.path.exists(cef), 'the CEF debugging file Hearth made is taken away again')
 
+    def test_start_brings_the_images_new_plugin(self):
+        self.ship_plugin()
+        os.makedirs(os.path.join(self.root, 'etc/systemd/system'))
+        open(os.path.join(self.root, 'etc/systemd/system/hearth-decky.service'), 'w').write(
+            self.m.unit_text(self.home, 'x', '/var/lib/hearth-decky/PluginLoader'))
+        self.m.copy_plugin(self.home, owner_root=False)
+        self.assertNotIn('plugin', self.m.start_stop('start'), 'the same plugin: left as it is')
+        open(os.path.join(self.root, 'usr/share/hearth/decky-hearth/dist/index.js'), 'w').write('// new version')
+        self.assertEqual(self.m.start_stop('start')['plugin'], 'updated')
+        self.assertEqual(open(os.path.join(self.home, 'homebrew/plugins/decky-hearth/dist/index.js')).read(), '// new version')
+        self.assertNotIn('plugin', self.m.start_stop('stop'))
+
     def test_a_cef_file_you_had_stays_on_remove(self):
         cef = os.path.join(self.home, '.steam/steam/.cef-enable-remote-debugging')
         os.makedirs(os.path.dirname(cef))

@@ -16,6 +16,7 @@ Run by hearth-admin (decky-install asks for an administrator's password, 49-hear
 Prints one JSON line ({"ok": true, ...}); errors print "error: ..." and exit 1. Paths can be moved for tests with
 HEARTH_DECKY_ROOT (a folder standing in for /).
 """
+import filecmp
 import json
 import os
 import pwd
@@ -257,10 +258,48 @@ def remove(user):
     return {'ok': True}
 
 
+def unit_home():
+    """The person's home from Hearth's Decky service (its PRIVILEGED_PATH=<home>/homebrew), or None."""
+    try:
+        for line in open(unit_path()):
+            if line.startswith('Environment=PRIVILEGED_PATH='):
+                hb = line.split('=', 2)[2].strip()
+                return os.path.dirname(hb) if hb.endswith('/homebrew') and hb.startswith('/') else None
+    except OSError:
+        pass
+    return None
+
+
+def plugin_outdated(home):
+    """The Hearth plugin in Decky's folder isn't the one this image ships (a Hearth OS update brought a new one)."""
+    src = shipped_plugin()
+    dst = os.path.join(home, 'homebrew', 'plugins', 'decky-hearth')
+    if not os.path.isfile(os.path.join(src, 'plugin.json')):
+        return False
+    for rel in ('plugin.json', 'package.json', 'main.py', 'dist/index.js'):
+        a, b = os.path.join(src, rel), os.path.join(dst, rel)
+        if not os.path.isfile(a):
+            continue
+        if not os.path.isfile(b) or not filecmp.cmp(a, b, shallow=False):
+            return True
+    return False
+
+
 def start_stop(verb):
     if not os.path.isfile(unit_path()):
         return {'ok': True, 'skipped': True}
-    return {'ok': systemctl(verb, UNIT_NAME)}
+    out = {}
+    if verb == 'start':
+        # Decky keeps its own copy of the Hearth plugin: after a Hearth OS update, the image's new one replaces it
+        # before Decky starts (otherwise Steam Game Mode keeps the plugin of the version Decky was installed with).
+        home = unit_home()
+        try:
+            if home and plugin_outdated(home):
+                out['plugin'] = 'updated' if copy_plugin(home) else 'not shipped'
+        except OSError as e:
+            out['plugin'] = 'couldn\'t update (%s)' % e
+    out['ok'] = systemctl(verb, UNIT_NAME)
+    return out
 
 
 def main(argv):
