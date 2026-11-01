@@ -56,7 +56,7 @@ export const onFocus = (e: any) => {
 /** A page's frame: Hearth's background (the wallpaper, darkened like Hearth's home), its styles, a back button. */
 export function Page(props: { title?: string; wallpaper?: string; children?: ReactNode; noBack?: boolean }) {
   return (
-    <div className="hearth-tk" style={props.wallpaper ? { background: `linear-gradient(180deg,rgba(12,16,22,.35),rgba(12,16,22,.9) 50%,${C.bg}),url(${props.wallpaper}) center/cover fixed` } : undefined}>
+    <div className="hearth-tk" style={props.wallpaper ? { background: `linear-gradient(180deg,rgba(12,16,22,.35),rgba(12,16,22,.9) 50%,${C.bg}),url("${props.wallpaper}") center/cover fixed` } : undefined}>
       <style>{CSS}</style>
       <div style={{ padding: "54px 2.8vw 80px" }}>
         {props.title && <div style={{ fontSize: 26, fontWeight: 700, marginBottom: 6 }}>{props.title}</div>}

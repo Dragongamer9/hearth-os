@@ -73,7 +73,7 @@ function Hero(props: { game: Game | null }) {
   const logo = usePic(g?.logo);
   return (
     <div style={{ position: "relative", height: "34vh", minHeight: 200, margin: "-54px -2.8vw 10px", padding: "54px 2.8vw 18px", display: "flex", flexDirection: "column", justifyContent: "flex-end",
-                  background: art ? `linear-gradient(90deg,rgba(12,16,22,.92),rgba(12,16,22,.2) 70%),linear-gradient(0deg,${C.bg},transparent 45%),url(${art}) center/cover` : undefined }}>
+                  background: art ? `linear-gradient(90deg,rgba(12,16,22,.92),rgba(12,16,22,.2) 70%),linear-gradient(0deg,${C.bg},transparent 45%),url("${art}") center/cover` : undefined }}>
       <div style={{ position: "absolute", top: 54, left: "2.8vw", display: "flex", alignItems: "center", gap: 10 }}>
         {brandNow?.logo && <img src={brandNow.logo} style={{ width: 28, height: 28 }} />}
         <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".02em", textTransform: "uppercase", color: C.dim }}>Hearth</div>

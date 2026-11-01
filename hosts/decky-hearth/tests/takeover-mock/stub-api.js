@@ -10,7 +10,7 @@ function pic(ref) {
   let n = 0;
   for (const c of title) n = (n * 31 + c.charCodeAt(0)) % 9973;
   const [a, b] = PALETTE[n % PALETTE.length];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${w * 0.78}" cy="${h * 0.3}" r="${h * 0.42}" fill="rgba(255,255,255,.07)"/><text x="${wide ? 22 : 18}" y="${h - (wide ? 26 : 34)}" font-family="Segoe UI,Noto Sans,sans-serif" font-size="${wide ? 30 : 34}" font-weight="800" fill="#fff">${title.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${w * 0.78}" cy="${h * 0.3}" r="${h * 0.42}" fill="rgba(255,255,255,.07)"/>${wide ? "" : `<text x="18" y="${h - 34}" font-family="Segoe UI,Noto Sans,sans-serif" font-size="34" font-weight="800" fill="#fff">${title.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>`}</svg>`;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
