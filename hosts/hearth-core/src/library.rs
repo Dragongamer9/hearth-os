@@ -726,7 +726,22 @@ impl Library {
                 let mode = self.steam_engine_mode();
                 // Open engine: a DRM-free game is started by Hearth itself (natively or with Proton through umu); everything
                 // else (Steamworks, VAC, a failed first start…) starts through Valve's client below.
-                let direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
+                let mut direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
+                // Steam Cloud first (the engine syncs Auto-Cloud saves): a conflict asks the player before anything
+                // starts; anything unsure starts it through Valve's client, which syncs them itself.
+                if direct.as_ref().map(|i| i["cloud"] == true).unwrap_or(false) {
+                    match crate::steam_engine::cloud_before(app_num) {
+                        crate::steam_engine::CloudBefore::Ready => {}
+                        crate::steam_engine::CloudBefore::Conflict(c) => {
+                            crate::bridge::log(&format!("steam (open): {app_num}: saves changed here and in Steam Cloud; asking before it starts"));
+                            return Ok(json!({"tracked": true, "cloudConflict": {"id": id, "title": g.title, "files": c["files"], "when": "before"}}));
+                        }
+                        crate::steam_engine::CloudBefore::ValveClient(why) => {
+                            crate::bridge::log(&format!("steam (open): {app_num}: {why}; starting it through Valve's client"));
+                            direct = None;
+                        }
+                    }
+                }
                 if let Some(info) = direct {
                     let opts = crate::game_options::get(&self.store, id);
                     match crate::steam_engine::launch_direct(&info, &opts, app_num, app_id) {
@@ -990,6 +1005,20 @@ impl Library {
         crate::seat_share::release(std::path::Path::new(crate::seat_share::IN_USE), &r.id, &crate::seat_share::me());
         // Saves follow you (Hearth Storage): this game's save goes to the server, if it's one Hearth Link follows.
         crate::link::game_closed(&r.id);
+        // Steam Cloud (Hearth's Steam client, a game Hearth started directly): changed saves go up once it has closed;
+        // when the cloud changed meanwhile too, the page asks which to keep.
+        if let Some(app) = r.id.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()) {
+            if r.track.pid.is_some() && crate::steam_engine::current_mode() == crate::steam_engine::Mode::Open {
+                let (id, title) = (r.id.clone(), self.games.get(&r.id).map(|g| g.title.clone()).unwrap_or_default());
+                std::thread::spawn(move || {
+                    if let Some(v) = crate::steam_engine::cloud_after(app) {
+                        if v["conflict"] == true {
+                            crate::stores::notify(json!({"type": "event", "name": "steam.cloudConflict", "data": {"id": id, "title": title, "files": v["files"], "when": "after"}}));
+                        }
+                    }
+                });
+            }
+        }
         // Epic cloud saves go up once the game has closed.
         // GOG cloud saves go up once the game has closed.
         if let Some(gid) = r.id.strip_prefix("gog:") {

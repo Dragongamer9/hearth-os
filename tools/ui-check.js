@@ -69,6 +69,17 @@ const path = require('path');
       if (steamOpenLibPill() !== '') throw new Error('the Library sign-in pill shows without Hearth');
     } finally { S.set.steamLight = was.light; S.set.steamOpen = was.open; SENG.st = was.st; }
   });
+  // Steam Cloud conflict sheet (Hearth's Steam client): three answers, controller-friendly (a sheet), nothing deleted.
+  await step('steam cloud conflict', () => {
+    S.layers = [];
+    steamCloudConflict({ id: 'steam:620', title: 'Portal 2' }, { files: 2, when: 'before' }, true);
+    if (S.layers.at(-1) !== 'sheet' || !/Portal 2: which saves\?/.test(sheet.title)) throw new Error('no conflict sheet: ' + (sheet && sheet.title));
+    const labels = sheet.items.map(i => i.label).join(' | ');
+    if (!/Keep this device's saves/.test(labels) || !/Keep the Steam Cloud saves/.test(labels) || !/Keep both/.test(labels)) throw new Error('conflict answers: ' + labels);
+    if (!/2 save files changed/.test(sheet.sub) || !/Nothing is deleted without asking/.test(sheet.sub)) throw new Error('conflict text: ' + sheet.sub);
+    if (!document.querySelector('#sheet.open')) throw new Error('the sheet is not shown');
+    closeAll();
+  });
   // Downloads › Hearth's Steam client's queue: up / down / pause / cancel per game, the automatic update label, and
   // Settings › Library's automatic updates and speed limit.
   await step('downloads controls', () => {

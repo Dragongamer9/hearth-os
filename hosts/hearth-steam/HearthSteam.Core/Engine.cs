@@ -66,4 +66,11 @@ public interface IOpenEngine : IEngine
     /// <summary>Hearth's settings (automatic updates off/idle/always, speed limit in KB/s, 0 none) and whether a game is
     /// running; null leaves one as it is.</summary>
     JsonObject Config(string? autoUpdate, long? limitKBps, bool? gameRunning);
+    /// <summary>Steam Cloud before a direct start: newer cloud saves come down ({downloaded}), or {conflict, files}
+    /// when both sides changed (nothing starts until the player answers), or {supported: false, why}.</summary>
+    Task<JsonObject> CloudBefore(uint appId);
+    /// <summary>Steam Cloud after the game exits: changed saves go up in one batch ({uploaded}), or {conflict}.</summary>
+    Task<JsonObject> CloudAfter(uint appId);
+    /// <summary>The player's answer to a conflict: "local", "cloud" or "both".</summary>
+    Task<JsonObject> CloudResolve(uint appId, string choice);
 }

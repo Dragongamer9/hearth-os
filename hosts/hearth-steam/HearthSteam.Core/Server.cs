@@ -97,6 +97,9 @@ public sealed class Server
             case "pause": return Open().Pause(OptApp(r));
             case "resume": return Open().Resume(OptApp(r));
             case "move": return Open().Move(App(r), Str(r, "to"));
+            case "cloud.before": return await Open().CloudBefore(App(r));
+            case "cloud.after": return await Open().CloudAfter(App(r));
+            case "cloud.resolve": return await Open().CloudResolve(App(r), Str(r, "choice"));
             case "config": return Open().Config(r["autoUpdate"]?.GetValue<string>(), r["limitKBps"]?.GetValue<long>(), r["gameRunning"]?.GetValue<bool>());
             case "release": Released = true; engine.Release(); return new JsonObject { ["released"] = true };
             default: throw new EngineException(Codes.Unsupported, $"Unknown command {cmd}.");

@@ -10269,6 +10269,20 @@ function hideLaunch(){
 }
 // mod (Beacon's games, Play with…): a mod id to play with this time, '@none' without mods; left out: Beacon's choice.
 // save: 'skip' (saves follow you already checked), 'pull' (bring Hearth Storage's save first), or left out.
+// Steam Cloud conflict (Hearth's Steam client syncs Auto-Cloud saves of games it starts directly): which saves to keep.
+// Nothing is deleted without asking; with "both" this device's saves are kept in a folder the toast names.
+function steamCloudConflict(g, c, relaunch){
+  if(!g) return;
+  const n=(c&&c.files)||1, when=c&&c.when==='after'?'while you played':'since they last matched';
+  const pick = choice => call('steam.cloudResolve',{id:g.id, choice},180000).then(r=>{
+    toast(choice==='local'?'Your saves on this device went to Steam Cloud':choice==='cloud'?'The Steam Cloud saves are here now':`Both kept: this device's saves are in ${(r&&r.copies)||'Hearth\'s Steam Cloud copies folder'}`);
+    if(relaunch) launch(g);
+  }).catch(e=>toast(e.message));
+  openSheet({title:`${g.title}: which saves?`, sub:`${n} save file${n===1?'':'s'} changed both on this device and in Steam Cloud ${when}. Nothing is deleted without asking.`, items:[
+    {label:'Keep this device\'s saves', icon:'pad', run:()=>pick('local')},
+    {label:'Keep the Steam Cloud saves', icon:'dl', run:()=>pick('cloud')},
+    {label:'Keep both (this device\'s go in a folder)', icon:'check', run:()=>pick('both')}]});
+}
 function launch(g, mod, save){
   if(isFrozen(g)) return quickResume(g.id);
   if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
@@ -10292,6 +10306,8 @@ function launch(g, mod, save){
     return;
   }
   const start = () => call('game.launch',mod?{id:g.id, mod}:{id:g.id}).then(r=>{
+    // Steam Cloud (Hearth's Steam client): saves changed here and in the cloud. Asked first; nothing has started.
+    if(r && r.cloudConflict){ hideLaunch(); return steamCloudConflict(g, r.cloudConflict, true); }
     if(r && r.tracked===false){ // shortcut Nimbus can't watch
       launchTimer=setTimeout(()=>{ hideLaunch(); toast(`Started ${g.title}`); }, 2500);
       return;
@@ -13156,6 +13172,7 @@ function onSysEvent(name, data){
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
   if(name==='steam.launch') return steamLaunchStage(data);
+  if(name==='steam.cloudConflict') return steamCloudConflict(G(data.id)||{id:data.id, title:data.title||'A Steam game'}, data, false);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad'){
     if(HOSTSCREEN.picker && !OVERLAY) return;           // a file picker is open: its own controller helper has it

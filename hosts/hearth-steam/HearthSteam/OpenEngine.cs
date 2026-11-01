@@ -34,6 +34,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     string? account;
     ulong steamId;
     readonly SignInFlow flow;
+    readonly CloudSync cloudSync;
     List<SteamApps.LicenseListCallback.License> licenses = new();
     readonly Dictionary<uint, AppInfo> owned = new();
     HashSet<uint> ownedApps = new();
@@ -69,6 +70,9 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         callbacks.Subscribe<SteamUser.LoggedOffCallback>(e => { Log($"signed off by Steam ({e.Result})"); lock (gate) signedIn = false; });
         callbacks.Subscribe<SteamApps.LicenseListCallback>(OnLicenses);
         flow = new SignInFlow(new SteamAuth(this), secrets, Svg) { Log = Log };
+        var data = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+        var copies = Path.Combine(string.IsNullOrEmpty(data) ? Path.Combine(home, ".local/share") : data, "Hearth", "Steam Cloud copies");
+        cloudSync = new CloudSync(new SteamCloudApi(client), stateDir, copies, Log);
         autoPolicy = AutoUpdate.Normal(store.Data["autoUpdate"]?.GetValue<string>());
         limiter.BytesPerSecond = (store.Data["limitKBps"]?.GetValue<long>() ?? 0) * 1024;
     }
@@ -677,11 +681,10 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
 
     /// <summary>DRM-free games: how Hearth starts it itself ({direct, exe, args, cwd, os, prefix}). Others answer
     /// unsupported, and Hearth starts them through Valve's client (legitimate licence checks).</summary>
-    public async Task<JsonObject> Launch(uint appId)
+    /// <summary>An installed game's app info, library, folder and installed build (linux / windows).</summary>
+    async Task<(AppInfo info, string lib, AppManifest acf, string gameDir, string os)> Context(uint appId)
     {
-        NeedSignIn();
         var inst = Installed(appId) ?? throw new EngineException(Codes.Unsupported, "Not installed.");
-        if (!inst.acf.Installed || (inst.acf.StateFlags & AppManifest.UpdateRequired) != 0) throw new EngineException(Codes.Busy, "It's being installed or updated.");
         AppInfo? info; lock (gate) owned.TryGetValue(appId, out info);
         info ??= await FreshInfo(appId).WaitAsync(TimeSpan.FromSeconds(10));
         if (info == null) throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
@@ -690,6 +693,22 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         // Which build is installed: Linux when its depots are (the record's depots), else Windows.
         var linuxDepots = info.Depots.Where(d => d.OsList.Contains("linux", StringComparison.OrdinalIgnoreCase)).Select(d => d.Id).ToHashSet();
         var os = inst.acf.Depots.Keys.Any(linuxDepots.Contains) ? "linux" : info.Depots.Any(d => d.OsList.Contains("windows", StringComparison.OrdinalIgnoreCase)) ? "windows" : info.ChooseOs(false);
+        return (info, inst.lib, inst.acf, gameDir, os);
+    }
+
+    static string Prefix(string lib, uint appId) => Path.Combine(lib, "steamapps", "compatdata", appId.ToString(), "pfx");
+
+    CloudPaths Paths(AppInfo info, string lib, string gameDir, string os, uint appId) => new(info.Ufs, gameDir, os, Prefix(lib, appId), home, steamId);
+
+    /// <summary>DRM-free games: how Hearth starts it itself ({direct, exe, args, cwd, os, prefix, cloud}). Others answer
+    /// unsupported, and Hearth starts them through Valve's client (legitimate licence checks). A game with Steam Cloud
+    /// saves Hearth can't place also starts through Valve's client, which syncs them.</summary>
+    public async Task<JsonObject> Launch(uint appId)
+    {
+        NeedSignIn();
+        var inst = Installed(appId) ?? throw new EngineException(Codes.Unsupported, "Not installed.");
+        if (!inst.acf.Installed || (inst.acf.StateFlags & AppManifest.UpdateRequired) != 0) throw new EngineException(Codes.Busy, "It's being installed or updated.");
+        var (info, lib, _, gameDir, os) = await Context(appId);
         var files = Directory.EnumerateFiles(gameDir, "*", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 8, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint })
             .Take(200_000).Select(f => Path.GetRelativePath(gameDir, f));
         var decision = LaunchPolicy.Decide(info, os, files, exe =>
@@ -698,6 +717,12 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         }, store.Launch(appId));
         Log($"app {appId}: {decision.Reason}");
         if (!decision.Direct || decision.Entry == null) throw new EngineException(Codes.Unsupported, decision.Reason);
+        var (cloudOk, cloudWhy) = Paths(info, lib, gameDir, decision.Os, appId).Supported();
+        if (!cloudOk)
+        {
+            Log($"app {appId}: Steam Cloud: {cloudWhy}; Valve's client starts it");
+            throw new EngineException(Codes.Unsupported, $"Steam Cloud saves Hearth can't place ({cloudWhy}): Valve's client starts it and syncs them.");
+        }
         var exePath = Depot.Inside(gameDir, decision.Entry.Exe);
         if (!File.Exists(exePath)) throw new EngineException(Codes.Unsupported, "Its program is missing.");
         var cwd = decision.Entry.WorkingDir.Length > 0 && Depot.SafePath(decision.Entry.WorkingDir) != null ? Depot.Inside(gameDir, decision.Entry.WorkingDir + "/x")[..^2] : Path.GetDirectoryName(exePath)!;
@@ -706,9 +731,22 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
             ["direct"] = true, ["exe"] = exePath, ["args"] = decision.Entry.Args, ["cwd"] = cwd, ["os"] = decision.Os,
             ["firstRun"] = decision.FirstRun, ["reason"] = decision.Reason, ["dir"] = gameDir,
             // Valve's client's Proton prefix for the game, so saves are shared with it.
-            ["prefix"] = Path.Combine(inst.lib, "steamapps", "compatdata", appId.ToString(), "pfx"),
+            ["prefix"] = Prefix(lib, appId),
+            // Steam Cloud: Hearth syncs it before the start (cloud.before) and after the game exits (cloud.after).
+            ["cloud"] = info.Ufs.HasCloud,
         };
     }
+
+    async Task<CloudPaths> CloudFor(uint appId)
+    {
+        NeedSignIn();
+        var (info, lib, _, gameDir, os) = await Context(appId);
+        return Paths(info, lib, gameDir, os, appId);   // the same build and places as Launch
+    }
+
+    public async Task<JsonObject> CloudBefore(uint appId) => await cloudSync.Before(appId, await CloudFor(appId));
+    public async Task<JsonObject> CloudAfter(uint appId) => await cloudSync.After(appId, await CloudFor(appId));
+    public async Task<JsonObject> CloudResolve(uint appId, string choice) => await cloudSync.Resolve(appId, choice, await CloudFor(appId));
 
     public JsonObject LaunchResult(uint appId, bool ok)
     {

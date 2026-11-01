@@ -302,6 +302,53 @@ pub fn push_config(cfg: Value) {
 /// Settings › Library › Automatic updates: "off", "idle" (the default: when no game is running) or "always".
 pub fn auto_update_setting(v: &Value) -> &'static str { match v.as_str() { Some("off") => "off", Some("always") => "always", _ => "idle" } }
 
+/// What Steam Cloud says before a direct start (the Open engine syncs a game's Auto-Cloud saves itself).
+#[derive(Debug, PartialEq)]
+pub enum CloudBefore {
+    /// Synced (or nothing to do): start it.
+    Ready,
+    /// Changed both here and in the cloud: ask the player first ({files, when}); nothing starts.
+    Conflict(Value),
+    /// Anything else (saves Hearth can't place, an error, no answer): start it through Valve's client, which syncs.
+    ValveClient(String),
+}
+
+/// The decision from the engine's answer (pure, for the tests).
+pub fn cloud_before_outcome(a: &Answer) -> CloudBefore {
+    match a {
+        Answer::Ok(v) if v["conflict"] == true => CloudBefore::Conflict(json!({"files": v["files"], "when": "before"})),
+        Answer::Ok(v) if v["supported"] == false => CloudBefore::ValveClient(format!("Steam Cloud: {}", v["why"].as_str().unwrap_or("saves Hearth can't place"))),
+        Answer::Ok(_) => CloudBefore::Ready,
+        Answer::No { code, error } => CloudBefore::ValveClient(format!("{code}: {error}")),
+        Answer::Down(e) => CloudBefore::ValveClient(format!("no answer: {e}")),
+    }
+}
+
+/// Open: Steam Cloud before a direct start (up to 25 seconds; longer means Valve's client starts it instead).
+pub fn cloud_before(app: u32) -> CloudBefore {
+    crate::watchdog::long_task();
+    cloud_before_outcome(&ask(&json!({"cmd": "cloud.before", "appid": app}), Duration::from_secs(25)))
+}
+
+/// Open: Steam Cloud after the game exits (changed saves go up). Some({conflict, files}) when the player must choose.
+pub fn cloud_after(app: u32) -> Option<Value> {
+    match ask(&json!({"cmd": "cloud.after", "appid": app}), Duration::from_secs(180)) {
+        Answer::Ok(v) => Some(v),
+        Answer::No { code, error } => { crate::bridge::log(&format!("steam (open): {app}: Steam Cloud after the game: {code}: {error}")); None }
+        Answer::Down(e) => { crate::bridge::log(&format!("steam (open): {app}: Steam Cloud after the game: {e}")); None }
+    }
+}
+
+/// Open: the player's answer to a Steam Cloud conflict ("local", "cloud" or "both").
+pub fn cloud_resolve(app: u32, choice: &str) -> Result<Value, String> {
+    if !matches!(choice, "local" | "cloud" | "both") { return Err("Keep this device's saves, the cloud's, or both.".into()); }
+    match ask(&json!({"cmd": "cloud.resolve", "appid": app, "choice": choice}), Duration::from_secs(150)) {
+        Answer::Ok(v) => Ok(v),
+        Answer::No { error, .. } => Err(error),
+        Answer::Down(_) => Err("Hearth's Steam client isn't running; Valve's Steam client will ask about these saves instead.".into()),
+    }
+}
+
 /// The command line for a direct start (pure, for the tests): (program, arguments, environment). Windows games go
 /// through umu (Proton) with the game's own Steam prefix, so saves are shared with Valve's client.
 pub fn direct_command(info: &Value, opts: &Value, app: u32, umu: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
@@ -538,6 +585,17 @@ mod tests {
         assert_eq!(auto_update_setting(&json!("off")), "off");
         assert_eq!(auto_update_setting(&json!("always")), "always");
         assert_eq!(auto_update_setting(&json!("weird")), "idle");
+    }
+
+    #[test]
+    fn steam_cloud_before_a_direct_start() {
+        assert_eq!(cloud_before_outcome(&Answer::Ok(json!({"ok": true, "supported": true, "downloaded": 2}))), CloudBefore::Ready);
+        assert_eq!(cloud_before_outcome(&Answer::Ok(json!({"ok": true, "conflict": true, "files": 3}))), CloudBefore::Conflict(json!({"files": 3, "when": "before"})));
+        // Anything unsure starts through Valve's client, which syncs the saves itself.
+        assert!(matches!(cloud_before_outcome(&Answer::Ok(json!({"supported": false, "why": "x"}))), CloudBefore::ValveClient(w) if w.contains("Steam Cloud")));
+        assert!(matches!(cloud_before_outcome(&Answer::No { code: "steam_error".into(), error: "e".into() }), CloudBefore::ValveClient(_)));
+        assert!(matches!(cloud_before_outcome(&Answer::Down("timed out".into())), CloudBefore::ValveClient(_)));
+        assert!(cloud_resolve(1, "delete everything").is_err());
     }
 
     #[test]

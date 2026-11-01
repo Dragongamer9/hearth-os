@@ -25,6 +25,8 @@ public sealed class AppInfo
     public List<DepotInfo> Depots { get; init; } = new();
     public List<LaunchEntry> Launch { get; init; } = new();
     public List<BranchInfo> Branches { get; init; } = new();
+    /// <summary>Steam Auto-Cloud's save rules (empty when the app has none).</summary>
+    public Ufs Ufs { get; init; } = new();
     /// <summary>The branch these depots' manifests are for.</summary>
     public string Branch { get; init; } = "public";
 
@@ -72,7 +74,7 @@ public sealed class AppInfo
                 branches.Add(new BranchInfo(name, U(b.Str("buildid")), b.Str("pwdrequired") == "1", b.Str("description") ?? "", (long)UL(b.Str("timeupdated"))));
         return new AppInfo
         {
-            AppId = appId, Branches = branches, Branch = branch,
+            AppId = appId, Branches = branches, Branch = branch, Ufs = Ufs.Parse(app.Get("ufs")),
             Name = app.Str("common", "name") ?? "",
             Type = app.Str("common", "type") ?? "",
             InstallDir = app.Str("config", "installdir") ?? "",

@@ -570,6 +570,13 @@ impl Bridge {
                 Ok(json!({"ok": true}))
             }
             // Settings › Library: automatic updates (off / idle / always) and the download speed limit (KB/s, 0 none).
+            // A Steam Cloud conflict answered on the page ({id, choice: local|cloud|both}); answered when the saves are done.
+            "steam.cloudResolve" => {
+                let app = req("id")?.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()).ok_or("Not a Steam game.")?;
+                let choice = req("choice")?;
+                crate::watchdog::long_task();
+                self.later(move || crate::steam_engine::cloud_resolve(app, &choice))
+            }
             "steam.engine.config" => {
                 if let Some(v) = a["autoUpdate"].as_str() { let v = crate::steam_engine::auto_update_setting(&json!(v)); io(self.library.store.update(|d| { d.insert("steamAutoUpdate".into(), json!(v)); }))?; }
                 if let Some(k) = a["limitKBps"].as_u64() { io(self.library.store.update(|d| { d.insert("steamLimitKBps".into(), json!(k)); }))?; }
@@ -995,7 +1002,7 @@ impl Bridge {
                 if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
                 (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
                 if r["resumed"] == true { (self.host)("resumeGame", &Value::Null); }
-                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"]}))
+                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"], "cloudConflict": r["cloudConflict"]}))
             }
             // Quick Resume: games put aside stay frozen in memory and carry on where they were
             "game.quickResume" => {

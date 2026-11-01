@@ -251,7 +251,23 @@ and never touches anti-cheat.
   the setting and whether a game runs with `config`.
 - **Speed limit.** Settings › Library › Download speed limit (none, 1 to 50 MB/s): a token bucket in front of every
   chunk download.
-- **Not yet.** Beta branches, workshop items, cloud saves (Valve's client syncs them when it runs).
+- **Steam Cloud.** For games Hearth starts directly (`HearthSteam.Core/Open/Cloud.cs`, `HearthSteam/OpenCloud.cs`),
+  through SteamKit2's public unified Cloud service messages (the app's file changelist, file downloads, upload batches:
+  `BeginAppUploadBatch`, per file `ClientBeginFileUpload` / its HTTP blocks / `ClientCommitFileUpload`, then
+  `CompleteAppUploadBatchBlocking`, completed as failed when a file didn't go up). Where files go comes from the app
+  info's Auto-Cloud rules (`ufs`: savefiles roots, paths, patterns, platforms, root overrides for Linux builds; path
+  tokens `{64BitSteamID}`, `{Steam3AccountID}`): Windows roots (`WinMyDocuments`, `WinAppDataLocal`/`LocalLow`/
+  `Roaming`, `WinSavedGames`) inside the game's Proton prefix (steamuser's profile in `compatdata/<id>/pfx`), Linux
+  roots in the home folder, `GameInstall` in the game's folder; never outside a root, links never followed. Before a
+  direct start (`cloud.before`, up to 25 seconds) newer cloud files come down (checked by SHA-1, unzipped when Steam
+  serves them zipped, their times kept); after the game exits (`cloud.after`) changed files go up in one batch.
+  Changed on both sides since the last sync on this device: Hearth asks with a sheet (keep this device's / keep the
+  cloud's / keep both: this device's go to `~/.local/share/Hearth/Steam Cloud copies/<app>/<time>`; "keep the cloud's"
+  still keeps them aside in Hearth's state folder), and nothing starts until it's answered. A file removed on one side
+  is never deleted on the other. The record of the last sync is `~/.local/state/hearth-steam/cloud/<app>.json`; the
+  log has counts and the app id only. Games with Steam Cloud but no rules Hearth can place (no `ufs` save rules, a
+  root it doesn't know, encrypted files), or any error or timeout, start through Valve's client, which syncs them.
+- **Not yet.** Beta branches, workshop items.
 
 ## 9. Playing Steam games in Game Mode
 
