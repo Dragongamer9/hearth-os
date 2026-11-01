@@ -50,7 +50,7 @@ pub fn list(lib: &Library) -> Value {
 }
 
 /// The library read the way Hearth reads it, without starting anything (no download is resumed, nothing is saved).
-fn read_library() -> Library {
+pub fn read_library() -> Library {
     let store = crate::store::Store::open(crate::paths::data_dir().join("library.json"));
     let mut lib = Library::new(store, crate::paths::home());
     lib.scan_quietly();

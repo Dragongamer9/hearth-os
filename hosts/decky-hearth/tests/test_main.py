@@ -140,9 +140,14 @@ class Backend(unittest.TestCase):
 
     def test_settings_and_shortcuts_are_kept(self):
         p = self.m.Plugin()
-        self.assertEqual(run(p.get_settings()), {'theme': True, 'homeRow': True})
-        run(p.set_settings({'theme': False, 'evil': 'x'}))
-        self.assertEqual(run(p.get_settings()), {'theme': False, 'homeRow': True})
+        self.assertEqual(run(p.get_settings()), self.m.DEFAULT_SETTINGS)
+        self.assertTrue(self.m.DEFAULT_SETTINGS['takeover'], 'the takeover is on by default')
+        run(p.set_settings({'theme': False, 'evil': 'x', 'tkHome': 0}))
+        s = run(p.get_settings())
+        self.assertFalse(s['theme'])
+        self.assertFalse(s['tkHome'])
+        self.assertTrue(s['homeRow'])
+        self.assertNotIn('evil', s)
         self.assertEqual(run(p.set_shortcuts({'gog:1': 123, 'bad': -1, 'x': 'y'})), {'gog:1': 123})
         self.assertEqual(run(p.get_shortcuts()), {'gog:1': 123})
 
@@ -189,6 +194,105 @@ class Backend(unittest.TestCase):
             self.assertTrue(self.m.valid_id(ok))
         for bad in ('', 'x', 'a:"', 'a:\\', 'a:\n', None):
             self.assertFalse(self.m.valid_id(bad))
+
+
+class Takeover(unittest.TestCase):
+    """The takeover's backend calls: questions for Hearth, pictures, the parts that turned themselves off."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-tk-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake_hearth(self, body):
+        app = os.path.join(self.tmp, 'nimbus')
+        with open(app, 'w') as f:
+            f.write('#!/bin/sh\n' + body)
+        os.chmod(app, 0o755)
+        self.m.find_program = lambda name: app if name == 'nimbus' else None
+        return app
+
+    def test_only_known_questions_are_asked(self):
+        a = self.m.data_args
+        self.assertEqual(a('home', ''), ['--steam-mode-data', 'home'])
+        self.assertEqual(a('store', 'epic'), ['--steam-mode-data', 'store', 'epic'])
+        self.assertIsNone(a('store', 'evil; rm -rf'))
+        self.assertIsNone(a('store', ''))
+        self.assertEqual(a('info', 'gog:1'), ['--steam-mode-data', 'info', 'gog:1'])
+        self.assertIsNone(a('info', 'no colon'))
+        self.assertEqual(a('power-mode', 'performance'), ['--steam-mode-data', 'power-mode', 'performance'])
+        self.assertIsNone(a('power-mode', 'turbo'))
+        self.assertIsNone(a('uninstall', 'gog:1'), 'nothing that changes the library')
+        self.assertEqual(set(self.m.STORE_PAGES), {'steam', 'gog', 'epic', 'xbox', 'free', 'recomps', 'battlenet'})
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'steam_takeover.rs').read_text()
+        for what in self.m.DATA:
+            self.assertIn('"%s"' % what, rs, 'hearth-core answers ' + what)
+        for st in self.m.STORE_PAGES:
+            self.assertIn('"%s"' % st, rs)
+
+    def test_hearth_is_asked_and_answers_are_checked(self):
+        self.fake_hearth('[ "$1" = --steam-mode-data ] || exit 3\necho "warming up"\necho "{\\"what\\":\\"$2\\",\\"arg\\":\\"$3\\"}"\n')
+        self.assertEqual(self.m.hearth_data('store', 'gog'), {'what': 'store', 'arg': 'gog'})
+        self.assertIn('error', self.m.hearth_data('store', 'nope'))
+        self.fake_hearth('echo "[1,2]"\necho broken >&2\n')
+        self.assertEqual(self.m.hearth_data('home'), {'error': 'broken'})
+        self.fake_hearth('echo \'{"error":"Unknown store"}\'\nexit 1\n')
+        self.assertEqual(self.m.hearth_data('library'), {'error': 'Unknown store'})
+        self.m.find_program = lambda name: None
+        self.assertIn('error', self.m.hearth_data('home'))
+        p = self.m.Plugin()
+        self.assertIn('error', run(p.hearth_data('home')))
+
+    def test_pictures_only_from_allowed_places(self):
+        home = os.path.join(self.tmp, 'home')
+        png = os.path.join(home, 'a.png')
+        open(png, 'wb').write(PNG)
+        self.assertTrue(self.m.picture_url(png).startswith('data:image/png;base64,'))
+        webp = os.path.join(home, 'a.webp')
+        open(webp, 'wb').write(b'RIFF0000WEBPVP8 ')
+        self.assertTrue(self.m.picture_url(webp).startswith('data:image/webp;base64,'))
+        fake = os.path.join(home, 'fake.jpg')
+        open(fake, 'wb').write(b'#!/bin/sh')
+        self.assertEqual(self.m.picture_url(fake), '')
+        outside = os.path.join(self.tmp, 'x.png')
+        open(outside, 'wb').write(PNG)
+        self.assertEqual(self.m.picture_url(outside), '')
+        self.assertEqual(self.m.picture_url('/etc/passwd'), '')
+        self.assertEqual(self.m.picture_url('https://x/y.png'), '', 'web pictures load in the page')
+        os.symlink(outside, os.path.join(home, 'l.png'))
+        self.assertEqual(self.m.picture_url(os.path.join(home, 'l.png')), '')
+
+    def test_targets_and_links(self):
+        self.fake_hearth('exit 0\n')
+        self.m.steam_is_flatpak = lambda proc='/proc': False
+        p = self.m.Plugin()
+        t = run(p.get_target('epic:a'))
+        self.assertTrue(t['ok'])
+        self.assertEqual(shlex.split(t['options']), ['--play-now', 'epic:a'])
+        self.assertFalse(run(p.get_target('steam:570'))['ok'], "Steam's games play from Steam")
+        self.assertFalse(run(p.get_target('bad'))['ok'])
+        h = run(p.get_link('hearth-app:hearth'))
+        self.assertEqual(shlex.split(h['options']), ['--windowed'])
+        self.assertEqual(shlex.split(run(p.get_link('hearth-app:settings'))['options']), ['--windowed', '--settings'])
+        self.assertIsNone(run(p.get_link('hearth-app:nope')))
+
+    def test_parts_that_turned_off_are_logged_and_cleared_at_start(self):
+        p = self.m.Plugin()
+        for i in range(60):
+            run(p.log_error('tkMenu', 'not found %d\nsecond line' % i))
+        e = run(p.get_errors())
+        self.assertEqual(len(e), self.m.ERRORS_KEPT)
+        self.assertEqual(e[-1], 'tkMenu: not found 59 second line')
+        run(p._main())
+        self.assertEqual(run(p.get_errors()), [])
+
+    def test_settings_match_the_frontend(self):
+        ts = (HERE / 'src' / 'model.ts').read_text()
+        block = re.search(r'export const DEFAULTS: Settings = \{(.*?)\};', ts, re.S).group(1)
+        front = {k: v == 'true' for k, v in re.findall(r'(\w+): (true|false)', block)}
+        self.assertEqual(front, self.m.DEFAULT_SETTINGS)
 
 
 class Theme(unittest.TestCase):
