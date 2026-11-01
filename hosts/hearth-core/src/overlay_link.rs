@@ -165,7 +165,7 @@ pub fn send(v: &Value) {
 fn remove(id: u64) { CLIENTS.lock().unwrap_or_else(|p| p.into_inner()).retain(|(i, _)| *i != id); }
 
 /// The socket's folder: made if needed, this user's own and nobody else's.
-fn prepare_dir(dir: &Path) -> Result<(), String> {
+pub(crate) fn prepare_dir(dir: &Path) -> Result<(), String> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
     if std::fs::symlink_metadata(dir).is_err() {
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).map_err(|e| format!("{}: {e}", dir.display()))?;

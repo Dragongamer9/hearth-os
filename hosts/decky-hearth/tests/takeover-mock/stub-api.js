@@ -81,12 +81,25 @@ function picture(ref) {
 }
 export const rowGames = games.filter((g) => g.source !== "steam").map((g) => ({ id: g.id, title: g.title, store: g.store, cover: g.cover, wide: g.wide }))
   .sort((a, b) => (a.id.startsWith("gog:") || a.id.startsWith("battlenet:") ? -1 : 1) - (b.id.startsWith("gog:") || b.id.startsWith("battlenet:") ? -1 : 1));
+// Hearth in Steam's menus, Quick Access and in-game: what Hearth's core service answers (core_service.rs) for a
+// running Alan Wake 2 played through Hearth.
+answers.power = { mode: { supported: true, mode: "balanced", available: ["efficiency", "balanced", "performance"] }, tdp: { supported: true, watts: 15, min: 5, max: 30 } };
+const gameView = { id: "epic:alan-wake-2", title: "Alan Wake 2", source: "epic", store: "Epic", kind: "proton", mods: true, proton: "GE-Proton",
+  input: { layout: "shooter", name: "Shooter / action", choices: [{ id: "off", label: "Off (the game's own controls)" }, { id: "shooter", label: "Shooter / action" },
+    { id: "pointclick", label: "Point-and-click / strategy" }, { id: "retro", label: "Retro / arrow keys" }, { id: "mouse", label: "Mouse only" }, { id: "rts", label: "Strategy (RTS)" }] },
+  protonChoices: [{ id: "", label: "Default" }, { id: "GE-Proton", label: "GE-Proton (newest)" }, { id: "Proton 9.0", label: "Proton 9.0" }] };
 const handlers = {
   hearth_data: (what, arg) => (what === "store" ? stores[arg] || stores.steam : answers[what] || { error: "no mock" }),
+  core_status: () => ({ running: true, version: "0.0.0" }),
+  hearth_front: (appid, game, overlay) => ({ game: game || null, front: !overlay, overlay, layout: game ? "Shooter / action" : null, active: !!game && !overlay }),
+  hearth_game: () => gameView, hearth_input_set: (g, l) => ({ layout: l }), hearth_set_proton: (g, p) => ({ proton: p }),
+  hearth_mods: () => ({ count: 7, enabled: 5, beacon: false, mods: [{ name: "Ultra textures", enabled: true }] }),
+  hearth_tool: () => ({}), update_status: () => ({ state: "none" }), get_steam_default: () => false, get_link: () => null,
   get_picture: picture, art_error: () => null,
   log_error: () => null, get_errors: () => [], get_settings: () => ({}), set_settings: (s) => s, get_shortcuts: () => ({}),
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export const routerHook = { addPatch() { return {}; }, removePatch() {}, addRoute() {}, removeRoute() {} };
 export const toaster = { toast() {} };
+export const useQuickAccessVisible = () => true;
 export function definePlugin(f) { return f; }

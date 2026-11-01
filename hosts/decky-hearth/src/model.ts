@@ -13,19 +13,26 @@ export interface Settings {
   tkLibraryTabs: boolean;// Hearth's stores as tabs in Steam's Library
   tkGamePage: boolean;   // Hearth's facts and Play through Hearth on a game's page
   tkSounds: boolean;     // Hearth's sounds on Hearth's pages
+  tkQam: boolean;        // Hearth's tabs in Steam's Quick Access (beside Steam's and Decky's)
+  tkInGame: boolean;     // Hearth for the game you're playing (Steam's main menu and Quick Access)
+  tkInput: boolean;      // Hearth Input layouts for the game in front (through Hearth's core service)
 }
 
 export const DEFAULTS: Settings = {
   theme: true, homeRow: true, takeover: true, tkHome: true, tkMenu: true, tkLibraryTabs: true, tkGamePage: true, tkSounds: false,
+  tkQam: true, tkInGame: true, tkInput: true,
 };
 
 /** The takeover's parts: what each switch is called in Quick Access. */
-export type Part = "tkHome" | "tkMenu" | "tkLibraryTabs" | "tkGamePage" | "tkSounds";
+export type Part = "tkHome" | "tkMenu" | "tkLibraryTabs" | "tkGamePage" | "tkSounds" | "tkQam" | "tkInGame" | "tkInput";
 export const PARTS: [Part, string, string][] = [
   ["tkHome", "Hearth home screen", "Hearth's home in place of Steam's Home"],
-  ["tkMenu", "Hearth in Steam's menu", "Hearth Store, Library, Downloads… in Steam's main menu"],
+  ["tkMenu", "Hearth in Steam's menu", "Hearth's places and power options in Steam's main menu"],
   ["tkLibraryTabs", "Hearth tabs in the Library", "Epic, GOG, Battle.net, Xbox… as tabs in Steam's Library"],
   ["tkGamePage", "Hearth on game pages", "ProtonDB and achievements from Hearth, Play through Hearth"],
+  ["tkQam", "Hearth tabs in Quick Access", "Hearth, Hearth Performance and Hearth Controller beside Steam's tabs"],
+  ["tkInGame", "Hearth for the game you're playing", "Its Hearth Input layout, mods and Proton in Steam's menu and Quick Access"],
+  ["tkInput", "Hearth Input layouts", "A game's Hearth controller layout works while it's in front"],
   ["tkSounds", "Hearth sounds", "Hearth's sounds on Hearth's pages (Steam's own stay)"],
 ];
 
@@ -251,4 +258,105 @@ export function updateView(u: UpdateStatus | null | undefined): { line: string; 
     case "error": return { line: u?.message || "The update failed", button: "Try again", action: "check", poll: false, pct: null };
     default: return { line: "", button: "Check for Hearth updates", action: "check", poll: false, pct: null };
   }
+}
+
+// ---- Hearth in Steam's main menu (the Xbox / Steam button)
+
+/** Hearth's places in Steam's main menu, in Hearth's order. Hearth's home is Steam's Home when the takeover has it,
+ *  else a page of its own. */
+export function menuPlaces(s: Settings, broken?: Set<string>): Dest[] {
+  const home: Dest = { id: "home", title: "Hearth Home", route: partOn(s, "tkHome", broken) ? "/library/home" : "/hearth/home" };
+  const by = (id: string) => DESTS.find((d) => d.id === id)!;
+  return [home, by("store"), by("library"), by("theater"), by("mods"), by("storage"), by("downloads")];
+}
+
+/** Hearth's power options beside Steam's: back to Hearth's Game Mode, or Hearth's Desktop Mode. */
+export const MENU_POWER: [string, string, string][] = [
+  ["hearth-game", "Switch to Hearth Game Mode", "Steam closes and Hearth's own Game Mode comes back"],
+  ["hearth-desktop", "Desktop Mode", "Hearth's Desktop Mode (Steam closes)"],
+];
+
+// ---- The game Steam is running (Steam's own game, or one of Hearth's played through a shortcut)
+
+export interface Running { appid: number; id: string | null; title: string; hearth: boolean }
+
+/** The running app Steam reports (Router.MainRunningApp: {appid, display_name}) as Hearth sees it, or null. */
+export function runningGame(app: { appid?: number | string; display_name?: string } | null | undefined, map: Record<string, number>): Running | null {
+  if (!app) return null;
+  const appid = Number(app.appid);
+  if (!Number.isFinite(appid) || appid <= 0) return null;
+  const id = hearthIdForApp(map, appid);
+  return { appid, id, title: String(app.display_name || ""), hearth: !!id && !id.startsWith("steam:") };
+}
+
+/** What Hearth's core is told every 2 s (core_service.rs `front`): no game when Hearth Input is switched off, so the
+ *  mapper never holds the controller then. */
+export function frontMessage(run: Running | null, s: Settings, broken: Set<string> | undefined, overlay: boolean): { appid: number; game: string; overlay: boolean } {
+  if (!run || !run.id || !partOn(s, "tkInput", broken)) return { appid: run?.appid || 0, game: "", overlay };
+  return { appid: run.appid, game: run.id, overlay };
+}
+
+// ---- Hearth's tabs in Steam's Quick Access (added through Decky's own tab list, the way Decky adds its tab)
+
+/** Ids far from Steam's own tabs (small numbers) and Decky's (999). */
+export const QAM_TABS: { id: number; key: "hearth" | "perf" | "controller"; title: string }[] = [
+  { id: 4801, key: "hearth", title: "Hearth" },
+  { id: 4802, key: "perf", title: "Hearth Performance" },
+  { id: 4803, key: "controller", title: "Hearth Controller" },
+];
+
+/** Which of Hearth's Quick Access tabs to add or take away so the list matches the switches. */
+export function qamPlan(s: Settings, broken: Set<string> | undefined, have: number[]): { add: number[]; remove: number[] } {
+  const want = partOn(s, "tkQam", broken) ? QAM_TABS.map((t) => t.id) : [];
+  return { add: want.filter((i) => !have.includes(i)), remove: have.filter((i) => !want.includes(i)) };
+}
+
+// ---- The in-game section (core_service.rs `game`)
+
+export interface Choice { id: string; label: string }
+export interface GameView {
+  id: string; title: string; source: string; store: string; kind: string;
+  input: { layout: string; name?: string | null; choices: Choice[] };
+  proton: string; protonChoices: { id: string; label: string; sub?: string }[]; mods: boolean;
+}
+
+/** The layout line: "Shooter / action", "Your own layout", or "Off". */
+export function layoutLabel(v: GameView | null | undefined): string {
+  if (!v) return "";
+  const l = v.input?.layout || "off";
+  if (l === "off") return "Off";
+  return v.input.choices?.find((c) => c.id === l)?.label || v.input.name || l;
+}
+
+/** What the Controller tab says about Hearth Input right now (core_service.rs `front`'s answer). */
+export function inputLine(f: { game?: string | null; front?: boolean; overlay?: boolean; layout?: string | null; active?: boolean } | null | undefined, on: boolean): string {
+  if (!on) return "Hearth Input is off in Steam Game Mode";
+  if (!f || !f.game) return "No game of yours is running";
+  if (!f.layout) return "No Hearth layout: the game gets the controller";
+  if (f.active) return `${f.layout}: on`;
+  return f.overlay ? `${f.layout}: paused while Quick Access is open` : `${f.layout}: paused while Steam is in front`;
+}
+
+/** The Proton line for a game Hearth starts (its choice, or the default). */
+export function protonLabel(v: GameView | null | undefined): string {
+  if (!v || v.kind !== "proton") return "";
+  return v.protonChoices?.find((c) => c.id === (v.proton || ""))?.label || v.proton || "Default";
+}
+
+/** The mods line: "12 mods, 9 on", "No mods yet". */
+export function modsLine(m: { count?: number; enabled?: number; beacon?: boolean } | null | undefined): string {
+  if (!m) return "";
+  if (m.beacon) return "Beacon manages this game's mods";
+  if (!m.count) return "No mods yet";
+  return `${m.count} mod${m.count === 1 ? "" : "s"}, ${m.enabled || 0} on`;
+}
+
+// ---- Quick Access › Hearth Performance: Hearth's power settings, without fighting Steam's own Performance tab
+
+/** The power limit as a read-only line ("Power limit: 15 W (Hearth's)"); Steam's own Performance tab sets the frame
+ *  limit and TDP in Steam Game Mode, so Hearth shows its limit and leaves it there. */
+export function tdpLine(p: { tdp?: { supported?: boolean; watts?: number; min?: number; max?: number } } | null | undefined): string {
+  const t = p?.tdp;
+  if (!t || !t.supported || typeof t.watts !== "number") return "";
+  return `Power limit: ${Math.round(t.watts)} W (Hearth's, ${t.min ?? "?"}–${t.max ?? "?"} W)`;
 }

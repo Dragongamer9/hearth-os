@@ -7,17 +7,20 @@
 //    apps, and the way back to Hearth's Game Mode;
 //  - Hearth's look over Steam (theme.ts), on by default and switched off with one toggle;
 //  - the older Hearth row over Steam's Home (when Hearth's home screen is off).
-import { ButtonItem, DialogButton, Focusable, PanelSection, PanelSectionRow, ToggleField, staticClasses } from "@decky/ui";
+import { ButtonItem, PanelSection, PanelSectionRow, ToggleField, staticClasses } from "@decky/ui";
 import { callable, definePlugin } from "@decky/api";
 import { ReactNode, useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { applyTheme, removeTheme } from "./theme";
 import { Item, play, refreshTargets, removeAll, sync } from "./shortcuts";
-import { PARTS, Settings, UpdateStatus, partOn, updateView } from "./model";
-import { ask, getErrors, getSettings, setSettings } from "./api";
+import { PARTS, Settings, partOn } from "./model";
+import { getErrors, getSettings, setSettings } from "./api";
 import { guard, setSettingsLocal, setShortcutMap, settings as liveSettings, useLive } from "./state";
 import { Brand, DownloadsPage, GamePage, LibraryPage, StoragePage, StorePage, setBrand } from "./pages";
 import { addRoutes, patchGamePage, patchHome, patchLibraryTabs, patchMainMenu } from "./patches";
+import { ControllerBody, PerformanceBody, SwitchButton, ThisGameSection, ToolsBody, UpdateRow, removeQamTabs, syncQamTabs } from "./qam";
+import { HearthHomePage, NowPlayingPage } from "./ingame";
+import { startFront } from "./core";
 import { go, setSounds } from "./ui";
 import { HearthRowView } from "./row";
 import { say } from "./actions";
@@ -26,10 +29,8 @@ interface Games { ok: boolean; error?: string; games: Item[]; links: Item[] }
 
 const getGames = callable<[], Games>("get_games");
 const getBrand = callable<[], Brand>("get_brand");
-const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
 const getShortcuts = callable<[], Record<string, number>>("get_shortcuts");
 
-const ACCENT = "#3fd0b8", INK = "#06231e";
 
 let cache: Games | null = null;
 let brand: Brand | null = null;
@@ -62,55 +63,7 @@ async function change(k: keyof Settings, v: boolean) {
   setSettingsLocal(next);
   setSounds(partOn(next, "tkSounds", guard.broken));
   if (k === "theme") { if (v && brand) applyTheme(brand); else removeTheme(); }
-}
-
-const updCheck = callable<[], UpdateStatus>("update_check");
-const updStart = callable<[], UpdateStatus>("update_start");
-const updStatus = callable<[], UpdateStatus>("update_status");
-
-/** Update Hearth OS: the same updater as Steam's Settings › System › Check for updates (hearth-steamos-update). It
- *  downloads and stages the update; the device never restarts by itself (restart from Steam's power menu). */
-function UpdateRow() {
-  const [u, setU] = useState<UpdateStatus | null>(null);
-  useEffect(() => { updStatus().then(setU).catch(() => {}); }, []);
-  const v = updateView(u);
-  useEffect(() => {
-    if (!v.poll) return;
-    const t = setInterval(() => { updStatus().then(setU).catch(() => {}); }, 1500);
-    return () => clearInterval(t);
-  }, [v.poll]);
-  const act = async () => {
-    if (v.action === "check") { setU({ state: "checking" }); setU(await updCheck().catch((e) => ({ state: "error", message: String(e) }))); }
-    else if (v.action === "start") setU(await updStart().catch((e) => ({ state: "error", message: String(e) })));
-  };
-  return (
-    <PanelSectionRow>
-      {v.line && <div className={staticClasses.Text} style={{ fontSize: 12, marginBottom: 6 }}>{v.line}</div>}
-      {v.pct != null && v.pct < 100 && <div style={{ height: 6, borderRadius: 3, background: "#273140", overflow: "hidden", marginBottom: 6 }}><div style={{ width: `${v.pct}%`, height: "100%", background: ACCENT }} /></div>}
-      {v.button && <ButtonItem layout="below" onClick={act} description="Downloads Hearth OS's update; it finishes when you restart, and the version before stays">{v.button}</ButtonItem>}
-    </PanelSectionRow>
-  );
-}
-
-/** The power mode (Hearth's Quick Access › Performance, through hearth-power), when this device has one. */
-function PowerMode() {
-  const [p, setP] = useState<any>(null);
-  useEffect(() => { ask("power", "", 0).then(setP); }, []);
-  const m = p?.mode;
-  if (!m || !m.supported) return null;
-  const modes: [string, string][] = ([["efficiency", "Saver"], ["balanced", "Balanced"], ["performance", "Performance"]] as [string, string][])
-    .filter(([k]) => !m.available?.length || m.available.includes(k));
-  return (
-    <PanelSectionRow>
-      <div className={staticClasses.Text} style={{ marginBottom: 6 }}>Power mode</div>
-      <Focusable style={{ display: "flex", gap: 6 }} {...({ "flow-children": "horizontal" } as any)}>
-        {modes.map(([k, label]) => (
-          <DialogButton key={k} style={{ minWidth: 0, flex: 1, padding: "8px 4px", background: m.mode === k ? ACCENT : undefined, color: m.mode === k ? INK : undefined }}
-            onClick={async () => { const r = await ask("power-mode", k, 0); if (r.error) say(r.error); else setP(r); }}>{label}</DialogButton>
-        ))}
-      </Focusable>
-    </PanelSectionRow>
-  );
+  if (k === "takeover" || k === "tkQam") syncQamTabs();
 }
 
 /** "Start in Steam Game Mode" (Hearth's Settings › System): turning it off here is a way back to Hearth's Game Mode
@@ -156,13 +109,9 @@ function Panel() {
 
   return (
     <>
+      <ThisGameSection />
       <PanelSection title="Hearth">
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={async () => { const r = await switchToHearth(); if (!r.ok) say(r.error ?? "Couldn't switch"); }}
-            description="Steam closes and Hearth's own Game Mode comes back">
-            Switch to Hearth Game Mode
-          </ButtonItem>
-        </PanelSectionRow>
+        <SwitchButton />
         <StartInSteam />
         <PanelSectionRow>
           <ToggleField label="Hearth takeover" description="Hearth's home, pages and tabs in Steam's Game Mode (Steam's library, downloads and overlay stay)"
@@ -185,15 +134,9 @@ function Panel() {
           </PanelSectionRow>
         )}
       </PanelSection>
-      <PanelSection title="Quick settings">
-        <PowerMode />
-        <PanelSectionRow>
-          <ButtonItem layout="below" description="Steam's layouts: Quick Access › Controller. Hearth Input's open in Hearth's Settings"
-            onClick={() => { const l = link("hearth-app:settings"); if (l) playItem(l); else say("Hearth's Settings aren't installed here"); }}>
-            Controller layouts
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+      <PanelSection title="Performance"><PerformanceBody /></PanelSection>
+      <PanelSection title="Controller"><ControllerBody /></PanelSection>
+      <PanelSection title="Hearth tools"><ToolsBody /></PanelSection>
       <PanelSection title="Hearth OS updates">
         <UpdateRow />
       </PanelSection>
@@ -263,13 +206,18 @@ export default definePlugin(() => {
       .then((n) => { if (n) console.log(`Hearth: ${n} shortcuts brought up to date`); }).catch((e) => console.warn("Hearth: shortcuts", e));
     // Steam's main menu is looked for once Steam's UI has loaded its code (a moment after the plugin starts).
     setTimeout(() => { undo.push(patchMainMenu()); }, 4000);
+    // Hearth's tabs in Steam's Quick Access (Decky's own tab list, once Decky has set it up).
+    setTimeout(() => { syncQamTabs(); }, 1500);
   })().catch((e) => console.warn("Hearth: start", e));
   // Each of these is guarded inside: one that fails leaves Steam's screen as it is and the others working.
   undo.push(patchHome((steam) => <HearthRow>{steam}</HearthRow>));
   undo.push(addRoutes([
     ["/hearth/store", StorePage], ["/hearth/library", LibraryPage], ["/hearth/downloads", DownloadsPage],
-    ["/hearth/storage", StoragePage], ["/hearth/game/:id", GamePage],
+    ["/hearth/storage", StoragePage], ["/hearth/game/:id", GamePage], ["/hearth/now", NowPlayingPage], ["/hearth/home", HearthHomePage],
   ]));
+  // The game Steam runs, told to Hearth's core every 2 s (Hearth Input, the in-game section).
+  undo.push(startFront());
+  undo.push(removeQamTabs);
   undo.push(patchLibraryTabs());
   undo.push(patchGamePage());
   return {

@@ -766,6 +766,31 @@ decky_ctl() {
   timeout 15 pkexec /usr/libexec/nimbus/hearth-admin "decky-$1" >/dev/null 2>&1 || log "steam game mode: decky-$1 didn't work (Steam Game Mode goes on without Decky)"
   return 0
 }
+# Hearth's core without a window (nimbus --core-service, hearth-core core_service.rs): live answers for the Hearth
+# plugin (Hearth in Steam's main menu, Quick Access and in-game overlay) over a socket only this user can open. It
+# ends by itself when the running mark goes away, and is stopped with Steam. It never controls gamescope's focus,
+# padmouse, Steam or InputPlumber, and has no controllers. Never waited on, never fatal: if it doesn't start, Steam
+# Game Mode goes on and the plugin asks Hearth's command line as before. HEARTH_STEAM_CORE=0 (session.conf) leaves it out.
+STEAM_CORE_PID=""
+steam_core_start() {
+  [ -z "$HEARTH_SEAT" ] && [ "${HEARTH_STEAM_CORE:-1}" != 0 ] && have nimbus || return 0
+  # Only a Hearth that knows --core-service (an older one would open its whole window instead).
+  core_app="$(command -v nimbus)"
+  grep -qaF -- '--core-service' "$core_app" 2>/dev/null || { log "steam game mode: this Hearth has no core service"; return 0; }
+  "$core_app" --core-service --while "$RUN/hearth-steam-mode.pid" >>"${LOG%/*}/core-service.log" 2>&1 </dev/null &
+  STEAM_CORE_PID=$!
+  log "steam game mode: Hearth's core started without a window (pid $STEAM_CORE_PID)"
+  return 0
+}
+steam_core_stop() {
+  [ -n "$STEAM_CORE_PID" ] && kill "$STEAM_CORE_PID" 2>/dev/null
+  STEAM_CORE_PID=""
+  return 0
+}
+# Hearth Input (the same mapper as Hearth's Game Mode, input_start): it holds a controller only while Hearth's core
+# says a game with a Hearth Input layout is in front, and lets go by itself when nobody tells it anything.
+steam_input_start() { [ "${HEARTH_STEAM_CORE:-1}" != 0 ] && command -v input_start >/dev/null 2>&1 && input_start; return 0; }
+steam_input_stop() { command -v input_stop >/dev/null 2>&1 && input_stop; return 0; }
 run_steam_mode() {
   log "steam game mode (experimental, this time only)"
   rm -f "$RUN/hearth-steam-mode-failed"
@@ -800,6 +825,8 @@ run_steam_mode() {
   have mangoapp && sextra="--mangoapp"
   decky_ctl start
   echo $$ >"$RUN/hearth-steam-mode.pid"
+  steam_core_start
+  steam_input_start
   started=$(date +%s)
   # What gamescope-session-steam (SteamOS, Bazzite, ChimeraOS) tells Steam, in a subshell so nothing stays for later modes.
   # shellcheck disable=SC2086
@@ -811,6 +838,8 @@ run_steam_mode() {
   )
   rc=$?
   rm -f "$RUN/hearth-steam-mode.pid"
+  steam_core_stop
+  steam_input_stop
   decky_ctl stop &
   next_now="$(cat "$NEXT" 2>/dev/null)"
   if [ "$next_now" != game ] && [ "$next_now" != desktop ]; then

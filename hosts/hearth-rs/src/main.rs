@@ -799,6 +799,9 @@ fn main() {
     // Steam's Game Mode takeover (Experimental): what the Hearth Decky plugin's pages show, as one line of JSON. No
     // window, nothing listens (hearth-core steam_takeover.rs).
     if has("--steam-mode-data") { std::process::exit(hearth_core::steam_takeover::run(&args)); }
+    // Steam's Game Mode: Hearth's core without a window for the Hearth Decky plugin (Hearth in Steam's menus, Quick Access
+    // and in-game overlay), started and stopped with Steam Game Mode by nimbus-session (hearth-core core_service.rs).
+    if has("--core-service") { std::process::exit(hearth_core::core_service::run(&args)); }
     let windowed = has("--windowed");
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }

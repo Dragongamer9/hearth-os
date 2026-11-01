@@ -72,6 +72,7 @@ pub mod space;
 pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
+pub mod core_service;   // Hearth's core without a window in Steam Game Mode, for the Hearth Decky plugin (`--core-service`)
 pub mod steam_takeover;   // Steam Game Mode takeover: what the Hearth Decky plugin's pages show (`--steam-mode-data`)
 pub mod steam_mode;   // Steam Game Mode (Experimental): Steam's gamepad UI in gamescope with the Hearth Decky plugin (docs/STEAM-GAME-MODE.md)
 pub mod steam_launch;   // Steam games in Game Mode: Steam kept ready, its windows in front, the starting screen's stages

@@ -7,11 +7,11 @@ name: Hearth Decky plugin
 
 on:
   push:
-    # feature/decky-hearth, feature/decky-art: a new workflow can't be started by hand until it's on the default
+    # feature/decky-hearth, feature/steam-menus: a new workflow can't be started by hand until it's on the default
     # branch (remove them once it is).
-    branches: [bughunt, feature/decky-hearth, feature/decky-art]
+    branches: [bughunt, feature/decky-hearth, feature/steam-menus]
     paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_steam_mode.py',
-            'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_takeover.rs',
+            'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_takeover.rs', 'hosts/hearth-core/src/core_service.rs',
             'hosts/hearth-rs/src/main.rs',
             'os/system_files/usr/libexec/nimbus/hearth-decky', '.github/workflows/decky-hearth.yml']
   workflow_dispatch:
@@ -62,9 +62,9 @@ jobs:
         with:
           name: decky-hearth
           path: ${{ runner.temp }}/out/decky-hearth.zip
-      - name: The theme over a stand-in for Steam's UI, and the takeover's pages (pictures)
+      - name: The theme over a stand-in for Steam's UI, the takeover's pages, Hearth in Steam's menu, Quick Access and in-game (pictures)
         run: |
-          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
           cp hosts/decky-hearth/tests/render-mock.mjs tools/render-mock.mjs
           cp hosts/decky-hearth/tests/render-takeover.mjs tools/render-takeover.mjs
           HEARTH_ROOT="$PWD" node tools/render-mock.mjs "$RUNNER_TEMP/shots"
@@ -120,7 +120,7 @@ jobs:
             exit 1
           fi
           echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
-          grep -E 'steam_mode::|desktop_games::|steam_takeover::' test.log | head -30
+          grep -E 'steam_mode::|desktop_games::|steam_takeover::|core_service::' test.log | head -40
       - name: Check the app (--play-now)
         working-directory: hosts/hearth-rs
         run: |

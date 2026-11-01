@@ -48,7 +48,7 @@ class SteamModeSession(unittest.TestCase):
         os.makedirs(self.run_dir)
         os.makedirs(self.bin)
         # Only these programs and the basic tools: no real gamescope, Steam, pkexec or flatpak.
-        for tool in ('sh', 'cat', 'date', 'mkdir', 'chmod', 'rm', 'printf', 'env', 'echo', 'sleep', 'timeout', 'true'):
+        for tool in ('sh', 'cat', 'date', 'mkdir', 'chmod', 'rm', 'printf', 'env', 'echo', 'sleep', 'timeout', 'true', 'grep', 'kill'):
             p = shutil.which(tool)
             if p:
                 os.symlink(p, os.path.join(self.bin, tool))
@@ -190,6 +190,75 @@ class SteamModeSession(unittest.TestCase):
         self.run_mode()
         self.assertFalse(os.path.exists(calls), 'no Decky unit: nothing asked')
         # (/usr/libexec/nimbus/hearth-admin isn't on a CI runner, so decky_ctl stays quiet there too.)
+
+    def fake_core(self, body):
+        """A stand-in for Hearth's app that knows --core-service (the session checks for the word first)."""
+        self.fake('nimbus', '# --core-service\n' + body)
+
+    def test_core_service_runs_with_steam_and_stops_after(self):
+        args = os.path.join(self.tmp, 'core-args')
+        pidf = os.path.join(self.tmp, 'core-pid')
+        seen = os.path.join(self.tmp, 'seen')
+        self.fake_core('echo "$@" >%s; echo $$ >%s; exec sleep 30' % (args, pidf))
+        # Steam (gamescope) runs a moment: the core is already running by then.
+        self.fake('gamescope', 'sleep 1; [ -s %s ] && echo core-up >%s; exit 0' % (pidf, seen))
+        self.fake('steam', 'exit 0')
+        self.run_mode()
+        self.assertEqual(open(seen).read().strip(), 'core-up', 'started before Steam')
+        self.assertEqual(open(args).read().split(), ['--core-service', '--while', os.path.join(self.run_dir, 'hearth-steam-mode.pid')])
+        pid = int(open(pidf).read())
+        for _ in range(50):
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+            time.sleep(0.1)
+        else:
+            self.fail('the core service is still running after Steam Game Mode ended')
+        self.assertEqual(self.read('nimbus-next'), 'game')
+        self.assertIn("Hearth's core started", open(os.path.join(self.tmp, 'session.log')).read())
+
+    def test_core_service_that_fails_never_stops_steam_game_mode(self):
+        ran = os.path.join(self.tmp, 'steam-ran')
+        self.fake_core('exit 1')
+        self.fake('gamescope', 'echo yes >%s; exit 0' % ran)
+        self.fake('steam', 'exit 0')
+        self.run_mode()
+        self.assertTrue(os.path.exists(ran), 'Steam Game Mode ran')
+        self.assertIsNone(self.read('hearth-steam-mode-failed'))
+        self.assertEqual(self.read('nimbus-next'), 'game')
+
+    def test_no_core_service_when_turned_off_or_hearth_too_old(self):
+        args = os.path.join(self.tmp, 'core-args')
+        self.fake_core('echo "$@" >%s' % args)
+        self.fake('gamescope', 'exit 0')
+        self.fake('steam', 'exit 0')
+        self.run_mode({'HEARTH_STEAM_CORE': '0'})
+        self.assertFalse(os.path.exists(args), 'HEARTH_STEAM_CORE=0 leaves it out')
+        # A Hearth without --core-service would open its whole window: never started.
+        self.fake('nimbus', 'echo "$@" >%s' % args)
+        self.run_mode()
+        self.assertFalse(os.path.exists(args))
+        self.assertIn('no core service', open(os.path.join(self.tmp, 'session.log')).read())
+
+    def test_hearth_input_runs_with_steam_game_mode(self):
+        calls = os.path.join(self.tmp, 'input-calls')
+        self.fake('gamescope', 'echo steam >>%s; exit 0' % calls)
+        self.fake('steam', 'exit 0')
+        self.run_mode(before='input_start() { echo start >>%s; }\ninput_stop() { echo stop >>%s; }' % (calls, calls))
+        self.assertEqual(open(calls).read().split(), ['start', 'steam', 'stop'])
+        # Without Hearth Input's functions (or with the core turned off): nothing, and no error.
+        os.remove(calls)
+        self.fake('gamescope', 'exit 0')
+        r = self.run_mode()
+        self.assertNotIn('not found', r.stderr)
+
+    def test_core_service_never_does_hearths_game_mode_work(self):
+        text = block()
+        start = text[text.index('steam_core_start() {'):text.index('steam_core_stop() {')]
+        for word in ('padmouse', 'gamescopectl', 'InputPlumber', 'busctl', 'pkill', 'steam_keep', 'reset_controllers'):
+            self.assertNotIn(word, start)
+        self.assertIn('--while "$RUN/hearth-steam-mode.pid"', start)
 
     def test_session_loop_never_starts_or_repeats_steam_mode(self):
         text = SESSION.read_text()
