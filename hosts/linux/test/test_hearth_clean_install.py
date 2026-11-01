@@ -344,6 +344,28 @@ class Admin(unittest.TestCase):
             ha.move_to_new_os('peppermint', False)
         self.assertEqual(jload(plan)['edition'], 'peppermint')
 
+    def test_drop_cached_images(self):
+        from unittest import mock
+        # Moving to another edition forgets the kept container images first (layers another edition's ostree stored
+        # came out without SELinux labels: Anatase started to a black screen), and never fails the move.
+        calls = []
+
+        def run(cmd, **k):
+            calls.append(cmd)
+            if cmd[:4] == ['ostree', 'container', 'image', 'list']:
+                return types.SimpleNamespace(returncode=0, stdout='ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:latest\nostree-unverified-registry:ghcr.io/dragongamer9/hearth-peppermint:testing\n')
+            return types.SimpleNamespace(returncode=0, stdout='')
+        with tempfile.TemporaryDirectory() as repo, mock.patch.object(ha.subprocess, 'run', run), mock.patch('builtins.print'):
+            self.assertEqual(ha.drop_cached_images(repo), 2)
+        self.assertEqual([c[3] for c in calls], ['list', 'remove', 'remove', 'prune-layers'])
+        self.assertTrue(all('--repo=' + repo in c for c in calls))
+
+        def broken(cmd, **k):
+            raise FileNotFoundError('ostree')
+        with tempfile.TemporaryDirectory() as repo, mock.patch.object(ha.subprocess, 'run', broken), mock.patch('builtins.print'):
+            self.assertEqual(ha.drop_cached_images(repo), 0)
+        self.assertEqual(ha.drop_cached_images('/nonexistent/repo'), 0)
+
     def test_editions(self):
         self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')
         self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:testing')
