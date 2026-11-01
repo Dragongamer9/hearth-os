@@ -4,7 +4,7 @@ namespace HearthSteam.Open;
 // with the converted SteamKit2 KeyValue in the service.
 
 public sealed record DepotInfo(uint Id, ulong Manifest, ulong Size, string OsList, string OsArch, string Language,
-    uint DlcAppId, bool SharedInstall, uint DepotFromApp, bool LowViolence, bool Encrypted);
+    uint DlcAppId, bool SharedInstall, uint DepotFromApp, bool LowViolence, bool Encrypted, string EncryptedGid = "");
 
 /// <summary>A branch of the app (PICS depots › branches): "public" and its betas. Password-protected ones need the
 /// beta's password (checked with Steam) before their manifests can be had.</summary>
@@ -27,6 +27,8 @@ public sealed class AppInfo
     public List<BranchInfo> Branches { get; init; } = new();
     /// <summary>Steam Auto-Cloud's save rules (empty when the app has none).</summary>
     public Ufs Ufs { get; init; } = new();
+    /// <summary>The depot Workshop items come from (PICS depots › workshopdepot; 0: the app itself).</summary>
+    public uint WorkshopDepot { get; init; }
     /// <summary>The branch these depots' manifests are for.</summary>
     public string Branch { get; init; } = "public";
 
@@ -55,10 +57,11 @@ public sealed class AppInfo
             var m = d.Get("manifests", branch);
             ulong gid = m?.Value != null ? UL(m.Value) : UL(m?.Str("gid"));
             ulong size = UL(m?.Str("size"));
-            bool enc = gid == 0 && d.Get("encryptedmanifests", branch) != null;
+            var em = d.Get("encryptedmanifests", branch);
+            bool enc = gid == 0 && em != null;
             depots.Add(new DepotInfo(id, gid, size, d.Str("config", "oslist") ?? "", d.Str("config", "osarch") ?? "",
                 d.Str("config", "language") ?? "", U(d.Str("dlcappid")), d.Str("sharedinstall") == "1", U(d.Str("depotfromapp")),
-                d.Str("config", "lowviolence") == "1", enc));
+                d.Str("config", "lowviolence") == "1", enc, enc ? em!.Str("encrypted_gid_2") ?? em.Str("encrypted_gid") ?? "" : ""));
         }
         var launch = new List<LaunchEntry>();
         foreach (var (_, l) in app.Get("config", "launch")?.Children ?? new())
@@ -74,7 +77,7 @@ public sealed class AppInfo
                 branches.Add(new BranchInfo(name, U(b.Str("buildid")), b.Str("pwdrequired") == "1", b.Str("description") ?? "", (long)UL(b.Str("timeupdated"))));
         return new AppInfo
         {
-            AppId = appId, Branches = branches, Branch = branch, Ufs = Ufs.Parse(app.Get("ufs")),
+            AppId = appId, Branches = branches, Branch = branch, Ufs = Ufs.Parse(app.Get("ufs")), WorkshopDepot = U(dn?.Str("workshopdepot")),
             Name = app.Str("common", "name") ?? "",
             Type = app.Str("common", "type") ?? "",
             InstallDir = app.Str("config", "installdir") ?? "",

@@ -570,6 +570,12 @@ impl Bridge {
                 Ok(json!({"ok": true}))
             }
             // Settings › Library: automatic updates (off / idle / always) and the download speed limit (KB/s, 0 none).
+            // A game page's beta branch and Workshop requests (Hearth's Steam client), answered when Steam has.
+            "steam.engine.call" => {
+                let args = a.clone();
+                crate::watchdog::long_task();
+                self.later(move || crate::steam_engine::game_call(&args))
+            }
             // A Steam Cloud conflict answered on the page ({id, choice: local|cloud|both}); answered when the saves are done.
             "steam.cloudResolve" => {
                 let app = req("id")?.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()).ok_or("Not a Steam game.")?;

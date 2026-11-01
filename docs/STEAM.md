@@ -267,7 +267,19 @@ and never touches anti-cheat.
   is never deleted on the other. The record of the last sync is `~/.local/state/hearth-steam/cloud/<app>.json`; the
   log has counts and the app id only. Games with Steam Cloud but no rules Hearth can place (no `ufs` save rules, a
   root it doesn't know, encrypted files), or any error or timeout, start through Valve's client, which syncs them.
-- **Not yet.** Beta branches, workshop items.
+- **Beta branches.** A Steam game's ⋯ menu › Beta branch (signed in): the branches from the app info (PICS depots ›
+  branches), the default first; a password-protected beta asks for its password, checked with Steam through
+  SteamKit2's `CheckAppBetaPassword` (the password is never kept; the key Steam gives back is kept in the secret store
+  and decrypts that branch's manifest ids). Picking one remembers it and, for an installed game, queues the switch:
+  that branch's manifests (manifest request codes for the branch), recorded as `BetaKey` in the appmanifest's
+  UserConfig and MountedConfig like Steam does; automatic updates follow the game's branch.
+- **Workshop.** A Steam game's ⋯ menu › Workshop items: the player's subscriptions through SteamKit2's PublishedFile
+  service (`GetUserFiles`, "mysubscriptions"); a Workshop job downloads new and updated items into
+  `steamapps/workshop/content/<app>/<id>` (UGC manifests through the app's workshop depot with the same chunk checks
+  as games, or an old item's single file) and writes `steamapps/workshop/appworkshop_<app>.acf` as Steam does, so
+  the game and Valve's client see them; items no longer subscribed are removed (only when Steam gave a real
+  subscription list; an empty or failed one never removes anything); Unsubscribe (`Unsubscribe`) removes the item's
+  folder (links never followed). Installed games' Workshop items are checked with the automatic updates every 6 hours.
 
 ## 9. Playing Steam games in Game Mode
 

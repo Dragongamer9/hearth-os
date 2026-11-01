@@ -68,6 +68,9 @@ public sealed class Server
     static uint App(JsonObject r) => r["appid"]?.GetValue<uint>() is uint a and > 0 ? a : throw new EngineException(Codes.BadRequest, "No appid.");
     static string Str(JsonObject r, string k) => r[k]?.GetValue<string>() ?? throw new EngineException(Codes.BadRequest, $"No {k}.");
 
+    /// <summary>A Workshop item id, as a number or a string (ids can be past what JavaScript numbers hold exactly).</summary>
+    static ulong Item(JsonObject r) => ulong.TryParse(r["item"]?.ToString(), out var i) && i > 0 ? i : throw new EngineException(Codes.BadRequest, "No item.");
+
     static uint? OptApp(JsonObject r) => r["appid"] == null ? null : App(r);
 
     IOpenEngine Open() => engine as IOpenEngine ?? throw new EngineException(Codes.Unsupported, "Only the Open engine does that.");
@@ -100,6 +103,12 @@ public sealed class Server
             case "cloud.before": return await Open().CloudBefore(App(r));
             case "cloud.after": return await Open().CloudAfter(App(r));
             case "cloud.resolve": return await Open().CloudResolve(App(r), Str(r, "choice"));
+            case "betas": return await Open().BetaList(App(r));
+            case "beta.password": return await Open().BetaPassword(App(r), Str(r, "password"));
+            case "beta.set": return await Open().BetaSet(App(r), r["branch"]?.GetValue<string>() ?? "");
+            case "workshop": return await Open().WorkshopList(App(r));
+            case "workshop.sync": return Open().WorkshopSync(App(r));
+            case "workshop.unsubscribe": return await Open().WorkshopUnsubscribe(App(r), Item(r));
             case "config": return Open().Config(r["autoUpdate"]?.GetValue<string>(), r["limitKBps"]?.GetValue<long>(), r["gameRunning"]?.GetValue<bool>());
             case "release": Released = true; engine.Release(); return new JsonObject { ["released"] = true };
             default: throw new EngineException(Codes.Unsupported, $"Unknown command {cmd}.");

@@ -1915,6 +1915,7 @@ function dlInfo(g){
   const pct = g.progress!=null ? Math.round(g.progress*100) : null;
   // Steam downloads say what Steam is doing ("Verifying", "Waiting for Steam", "Stopped: …").
   if(g.engine && g.engine.auto && g.state!=='paused') return {pct, label:'Automatic update'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
+  if(g.engine && g.engine.kind==='workshop' && g.state!=='paused') return {pct, label:'Workshop items'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   if(g.engine && g.engine.kind==='verify' && g.state!=='paused') return {pct, label:'Checking files'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   return {pct, label: (g.stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(g.stage||'') ? ` ${pct}%` : '')};
 }
@@ -11116,8 +11117,39 @@ function gameOptionItems(g){
     if(g.inst && !added) items.push({label:'Mods',icon:'lib',run:()=>beaconModsPage(g)});
     items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
+  // Hearth's Steam client (signed in): the game's beta branch and its Workshop items.
+  if(LINUX && host && g.src==='steam' && g.inst && S.set.steamOpen && S.steamOpenSigned){
+    items.push({label:'Beta branch…',icon:'sliders',run:()=>steamBetas(g)});
+    items.push({label:'Workshop items…',icon:'lib',run:()=>steamWorkshop(g)});
+  }
   gamingGameItems(g, items);   // Hearth's gaming apps (block below)
   return items;
+}
+// ---------- Beta branches and Workshop items (Hearth's Steam client, hosts/hearth-steam) ----------
+const steamApp = g => +String(g.id).replace(/^steam:/,'');
+function steamEng(cmd, args){ return call('steam.engine.call',{cmd, ...args},60000); }
+function steamBetas(g){ return steamEng('betas',{appid:steamApp(g)}).then(r=>steamBetaSheet(g,r)).catch(e=>toast(e.message)); }
+function steamBetaSheet(g, r){
+  const chosen=r.chosen||'', items=(r.branches||[]).map(b=>{ const name=b.name==='public'?'':b.name, locked=b.password&&!b.unlocked;
+    return {label:(name?b.name:'Default (no beta)')+(b.description?` · ${b.description}`:'')+(locked?' · needs a password':''), icon:chosen===name?'check':locked?'lock':'', run:()=>steamBetaPick(g, b)}; });
+  openSheet({title:`${g.title}: branch`, sub:'Betas are test versions of the game. Switching downloads that branch (see Downloads); the default branch switches back.', items});
+}
+async function steamBetaPick(g, b){
+  const appid=steamApp(g), name=b.name==='public'?'':b.name;
+  if(b.password && !b.unlocked){
+    const pw=await openPrompt({title:`Password for the ${b.name} beta`, secret:true, osk:true}); if(!pw) return;
+    try{ await steamEng('beta.password',{appid, password:pw}); }catch(e){ return toast(e.message); }
+  }
+  try{ const r=await steamEng('beta.set',{appid, branch:name}); toast(r.queued?`${g.title} is switching to ${name||'the default branch'}: see Downloads`:`${g.title} uses ${name||'the default branch'}`); }
+  catch(e){ toast(e.message); }
+}
+function steamWorkshop(g){ return steamEng('workshop',{appid:steamApp(g)}).then(r=>steamWorkshopSheet(g,r)).catch(e=>toast(e.message)); }
+function steamWorkshopSheet(g, r){
+  const list=r.items||[], waiting=list.filter(i=>!i.installed||i.needsUpdate).length;
+  const items=[{label:waiting?`Download ${waiting} new or updated item${waiting===1?'':'s'}`:'Check for updates now', icon:'dl', run:()=>steamEng('workshop.sync',{appid:steamApp(g)}).then(x=>toast(x.queued?'Workshop items are in Downloads':'Already in Downloads')).catch(e=>toast(e.message))}];
+  for(const i of list) items.push({label:`${i.title||('Item '+i.id)} · ${i.installed?(i.needsUpdate?'update waiting':'installed'):'not downloaded yet'}${i.size?' · '+gbs(i.size):''}`, icon:i.installed?'check':'', run:()=>openSheet({title:`Unsubscribe from ${i.title||'this item'}?`, sub:'It leaves your Steam Workshop subscriptions and its files are removed from this device.', items:[
+    {label:'Unsubscribe and remove', icon:'trash', run:()=>steamEng('workshop.unsubscribe',{appid:steamApp(g), item:String(i.id)}).then(()=>toast('Unsubscribed')).catch(e=>toast(e.message))}]})});
+  openSheet({title:`${g.title}: Workshop`, sub:list.length?`${list.length} subscribed item${list.length===1?'':'s'}. Hearth puts them where the game and Steam look for them.`:(r.complete===false?'Steam didn\'t give your subscriptions right now. Try again later.':'No Workshop subscriptions for this game. Subscribe on the Steam Workshop, then come back.'), items});
 }
 // ---------- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves, Mods ----------
 // Separate programs on Hearth OS (host.info feature "gamingApps"); the host opens them full screen in Game Mode

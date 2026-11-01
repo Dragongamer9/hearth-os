@@ -35,6 +35,9 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     ulong steamId;
     readonly SignInFlow flow;
     readonly CloudSync cloudSync;
+    readonly SteamWorkshopApi workshop;
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(30) };
+    DateTime lastWorkshopCheck = DateTime.MinValue;
     List<SteamApps.LicenseListCallback.License> licenses = new();
     readonly Dictionary<uint, AppInfo> owned = new();
     HashSet<uint> ownedApps = new();
@@ -73,6 +76,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         var data = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
         var copies = Path.Combine(string.IsNullOrEmpty(data) ? Path.Combine(home, ".local/share") : data, "Hearth", "Steam Cloud copies");
         cloudSync = new CloudSync(new SteamCloudApi(client), stateDir, copies, Log);
+        workshop = new SteamWorkshopApi(client);
         autoPolicy = AutoUpdate.Normal(store.Data["autoUpdate"]?.GetValue<string>());
         limiter.BytesPerSecond = (store.Data["limitKBps"]?.GetValue<long>() ?? 0) * 1024;
     }
@@ -305,7 +309,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         finally { lock (gate) libraryLoading = false; }
     }
 
-    async Task<Dictionary<uint, AppInfo>> AppInfos(IEnumerable<uint> ids)
+    async Task<Dictionary<uint, AppInfo>> AppInfos(IEnumerable<uint> ids, string branch = "public")
     {
         var result = new Dictionary<uint, AppInfo>();
         foreach (var batch in ids.Chunk(200))
@@ -314,17 +318,35 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
             var reqs = batch.Select(a => new SteamApps.PICSRequest(a, tokens.AppTokens.TryGetValue(a, out var t) ? t : 0)).ToList();
             var r = await apps.PICSGetProductInfo(reqs, Enumerable.Empty<SteamApps.PICSRequest>());
             foreach (var cb in r.Results ?? new List<SteamApps.PICSProductInfoCallback>().AsReadOnly())
-                foreach (var (id, i) in cb.Apps) result[id] = AppInfo.Parse(id, Conv(i.KeyValues));
+                foreach (var (id, i) in cb.Apps) result[id] = AppInfo.Parse(id, Conv(i.KeyValues), branch);
         }
         return result;
     }
 
-    async Task<AppInfo?> FreshInfo(uint appId)
+    async Task<AppInfo?> FreshInfo(uint appId, string branch = "public")
     {
-        var r = await AppInfos(new[] { appId });
-        if (r.TryGetValue(appId, out var i)) { lock (gate) if (i.IsGame) owned[appId] = i; return i; }
+        var r = await AppInfos(new[] { appId }, branch);
+        if (r.TryGetValue(appId, out var i)) { if (branch == "public") lock (gate) if (i.IsGame) owned[appId] = i; return i; }
         return null;
     }
+
+    /// <summary>The app info for a branch ("" the default), with a password-protected beta's manifests unlocked when
+    /// its key is known.</summary>
+    async Task<AppInfo?> InfoFor(uint appId, string branch)
+    {
+        var info = await FreshInfo(appId, branch.Length == 0 ? "public" : branch);
+        return info == null ? null : Betas.WithKey(info, BetaKey(appId, branch));
+    }
+
+    byte[]? BetaKey(uint appId, string branch)
+    {
+        if (branch.Length == 0 || branch == "public") return null;
+        try { return secrets.Load($"beta:{appId}:{branch}") is { Length: > 0 } hex ? Convert.FromHexString(hex) : null; }
+        catch (Exception) { return null; }
+    }
+
+    /// <summary>The branch a game is on (or was picked for it): Hearth's choice, else the installed record's.</summary>
+    string BranchOf(uint appId) => store.Data["betas"]?[appId.ToString()]?.GetValue<string>() ?? Installed(appId)?.acf.BetaKey ?? "";
 
     List<string> Libraries() => SteamFiles.UserSteam(home) is { } s ? SteamFiles.Libraries(s) : new List<string>();
 
@@ -362,8 +384,9 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     {
         NeedSignIn();
         if (SteamFiles.ClassicRunning()) throw new EngineException(Codes.ClassicRunning, "The normal Steam client is running.");
+        if (branch.Length == 0) branch = BranchOf(appId);
         AppInfo? info;
-        try { info = FreshInfo(appId).WaitAsync(TimeSpan.FromSeconds(12)).GetAwaiter().GetResult(); }
+        try { info = InfoFor(appId, branch).WaitAsync(TimeSpan.FromSeconds(12)).GetAwaiter().GetResult(); }
         catch (TimeoutException) { throw new EngineException(Codes.Busy, "Steam didn't answer in time."); }
         bool ownsApp(uint a) { lock (gate) return ownedApps.Contains(a); }
         var os = info?.ChooseOs(UserPickedProton(appId)) ?? "windows";
@@ -526,6 +549,13 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         foreach (var a in need)
             if (dl.Add(new QueueItem { AppId = a, Library = where[a], Kind = "auto", Name = infos[a].Name, Branch = installed[a].Branch })) added++;
         store.Update(d => d["changeNumber"] = changes.CurrentChangeNumber);
+        // Workshop items of installed games, every 6 hours: a Workshop job each for games that have some.
+        if (DateTime.UtcNow - lastWorkshopCheck >= TimeSpan.FromHours(6))
+        {
+            lastWorkshopCheck = DateTime.UtcNow;
+            foreach (var (a, lib) in where)
+                if (WorkshopManifest.Load(lib, a).Items.Count > 0 && dl.Add(new QueueItem { AppId = a, Library = lib, Kind = "workshop", Name = infos.TryGetValue(a, out var wi) ? wi.Name : "" })) added++;
+        }
         if (added > 0) SaveQueue();
         Log($"update check: {installed.Count} installed, {want.Count} changed, {added} to update");
     }
@@ -546,10 +576,10 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     static List<DepotFile> Files(DepotManifest m) => (m.Files ?? new List<DepotManifest.FileData>()).Select(f => new DepotFile(
         f.FileName, f.TotalSize, (int)f.Flags, f.FileHash, f.Chunks.Select(c => new ChunkRef(c.ChunkID ?? Array.Empty<byte>(), c.Offset, c.UncompressedLength, c.CompressedLength, c.Checksum)).ToList(), f.LinkTarget)).ToList();
 
-    async Task<DepotManifest> GetManifest(uint appId, uint depot, ulong gid, byte[] key, List<SteamKit2.CDN.Server> servers, CancellationToken ct)
+    async Task<DepotManifest> GetManifest(uint appId, uint depot, ulong gid, byte[] key, List<SteamKit2.CDN.Server> servers, CancellationToken ct, string branch = "public", bool ugc = false)
     {
-        var code = await content.GetManifestRequestCode(depot, appId, gid, "public");
-        if (code == 0) throw new EngineException(Codes.SteamError, $"Steam didn't give a manifest code for depot {depot}.");
+        var code = await content.GetManifestRequestCode(depot, appId, gid, branch.Length == 0 ? "public" : branch);
+        if (code == 0 && !ugc) throw new EngineException(Codes.SteamError, $"Steam didn't give a manifest code for depot {depot}.");
         Exception? last = null;
         foreach (var s in servers.Take(5))
         {
@@ -583,7 +613,8 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     async Task RunJob(QueueItem j, CancellationToken ct)
     {
         j.State = "preparing";
-        var info = await FreshInfo(j.AppId) ?? throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
+        if (j.Kind == "workshop") { await RunWorkshop(j, ct); return; }
+        var info = await InfoFor(j.AppId, j.Branch) ?? throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
         j.Name = info.Name;
         bool ownsApp(uint a) { lock (gate) return ownedApps.Contains(a); }
         var os = info.ChooseOs(UserPickedProton(j.AppId));
@@ -609,7 +640,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
             ct.ThrowIfCancellationRequested();
             var k = await apps.GetDepotDecryptionKey(d.Id, j.AppId);
             if (k.Result != EResult.OK) { if (d.DlcAppId != 0) continue; throw new EngineException(Codes.SteamError, $"No access to depot {d.Id} ({k.Result})."); }
-            var m = await GetManifest(j.AppId, d.Id, d.Manifest, k.DepotKey, servers, ct);
+            var m = await GetManifest(j.AppId, d.Id, d.Manifest, k.DepotKey, servers, ct, j.Branch);
             List<DepotFile>? old = null;
             if (!j.Verify && acf.Depots.TryGetValue(d.Id, out var had)) old = had.Manifest == d.Manifest ? Files(m) : await OldFiles(lib, j.AppId, d.Id, had.Manifest, k.DepotKey, servers, ct);
             var plan = Depot.Build(Files(m), old, p => { try { var fi = new FileInfo(Depot.Inside(gameDir, p)); return fi.Exists ? (ulong)fi.Length : null; } catch (InvalidDataException) { return null; } }, j.Verify);
@@ -662,6 +693,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         }
         acf.StateFlags = AppManifest.FullyInstalled;
         acf.BuildId = info.BuildId;
+        acf.BetaKey = j.Branch == "public" ? "" : j.Branch;   // UserConfig / MountedConfig BetaKey, as Steam records the branch
         acf.SizeOnDisk = (ulong)acf.Depots.Values.Sum(v => (decimal)v.Size);
         acf.BytesDownloaded = acf.BytesToDownload;
         acf.LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -747,6 +779,200 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     public async Task<JsonObject> CloudBefore(uint appId) => await cloudSync.Before(appId, await CloudFor(appId));
     public async Task<JsonObject> CloudAfter(uint appId) => await cloudSync.After(appId, await CloudFor(appId));
     public async Task<JsonObject> CloudResolve(uint appId, string choice) => await cloudSync.Resolve(appId, choice, await CloudFor(appId));
+
+    // ---------------------------------------------------------------- beta branches
+
+    public async Task<JsonObject> BetaList(uint appId)
+    {
+        NeedSignIn();
+        var info = await FreshInfo(appId) ?? throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
+        var list = new JsonArray();
+        foreach (var b in Betas.Offer(info))
+            list.Add(new JsonObject
+            {
+                ["name"] = b.Name, ["buildid"] = b.BuildId, ["password"] = b.PasswordRequired, ["unlocked"] = b.PasswordRequired && BetaKey(appId, b.Name) != null,
+                ["description"] = b.Description, ["updated"] = b.TimeUpdated,
+            });
+        var inst = Installed(appId);
+        return new JsonObject { ["branches"] = list, ["chosen"] = BranchOf(appId), ["installed"] = inst?.acf.Installed == true ? inst.Value.acf.BetaKey : null };
+    }
+
+    /// <summary>Steam's beta password check (SteamKit2's CheckAppBetaPassword): the branches it unlocks, their keys kept
+    /// in the secret store. The password itself is never kept or logged.</summary>
+    public async Task<JsonObject> BetaPassword(uint appId, string password)
+    {
+        NeedSignIn();
+        var r = await apps.CheckAppBetaPassword(appId, password);
+        if (r.Result != EResult.OK || r.BetaPasswords.Count == 0) throw new EngineException(Codes.SteamError, "That password didn't unlock a beta.");
+        var unlocked = new JsonArray();
+        foreach (var (branch, key) in r.BetaPasswords)
+        {
+            try { secrets.Save($"beta:{appId}:{branch}", Convert.ToHexString(key)); } catch (Exception) { Log("couldn't keep a beta's key"); }
+            unlocked.Add(branch);
+        }
+        Log($"app {appId}: {unlocked.Count} beta(s) unlocked");
+        return new JsonObject { ["unlocked"] = unlocked };
+    }
+
+    /// <summary>Picks a game's branch ("" or "public": the default) and, when it's installed, queues the switch (that
+    /// branch's manifests, recorded as BetaKey in the appmanifest like Steam does).</summary>
+    public async Task<JsonObject> BetaSet(uint appId, string branch)
+    {
+        NeedSignIn();
+        var info = await FreshInfo(appId) ?? throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
+        var name = Betas.Pick(info, branch);
+        var b = info.Branches.FirstOrDefault(x => x.Name == name);
+        if (b != null && b.PasswordRequired && BetaKey(appId, name) == null) throw new EngineException(Codes.BadRequest, "That beta needs its password first.");
+        store.Update(d => { if (d["betas"] is not JsonObject o) d["betas"] = o = new JsonObject(); o[appId.ToString()] = name; });
+        var inst = Installed(appId);
+        bool queued = false;
+        if (inst != null && inst.Value.acf.BetaKey != name) { Enqueue(appId, inst.Value.lib, "update", name.Length == 0 ? "public" : name); queued = true; }
+        return new JsonObject { ["branch"] = name, ["queued"] = queued };
+    }
+
+    // ---------------------------------------------------------------- Workshop
+
+    public async Task<JsonObject> WorkshopList(uint appId)
+    {
+        NeedSignIn();
+        var subs = await workshop.Subscribed(appId, steamId);
+        var inst = Installed(appId);
+        var m = inst == null ? new WorkshopManifest { AppId = appId } : WorkshopManifest.Load(inst.Value.lib, appId);
+        var a = new JsonArray();
+        foreach (var i in subs ?? new List<WorkshopItem>())
+        {
+            bool have = m.Items.TryGetValue(i.Id, out var h);
+            a.Add(new JsonObject
+            {
+                ["id"] = i.Id.ToString(), ["title"] = i.Title, ["size"] = i.Size, ["updated"] = i.TimeUpdated, ["installed"] = have,
+                ["needsUpdate"] = have && (h.TimeUpdated < i.TimeUpdated || (i.Manifest != 0 && h.Manifest != i.Manifest)),
+            });
+        }
+        return new JsonObject { ["items"] = a, ["complete"] = subs != null, ["gameInstalled"] = inst != null };
+    }
+
+    public JsonObject WorkshopSync(uint appId)
+    {
+        NeedSignIn();
+        if (SteamFiles.ClassicRunning()) throw new EngineException(Codes.ClassicRunning, "The normal Steam client is running.");
+        var inst = Installed(appId) ?? throw new EngineException(Codes.Unsupported, "Install the game first.");
+        bool added = dl.Add(new QueueItem { AppId = appId, Library = inst.lib, Kind = "workshop", Name = inst.acf.Name });
+        SaveQueue();
+        return new JsonObject { ["queued"] = added };
+    }
+
+    public async Task<JsonObject> WorkshopUnsubscribe(uint appId, ulong item)
+    {
+        NeedSignIn();
+        if (dl.Current is { } c && c.AppId == appId && c.Kind == "workshop") throw new EngineException(Codes.Busy, "Its Workshop items are downloading; try again when that's done.");
+        await workshop.Unsubscribe(appId, item);
+        if (Installed(appId) is { } inst)
+        {
+            var m = WorkshopManifest.Load(inst.lib, appId);
+            if (m.Items.ContainsKey(item)) { WorkshopRules.Remove(inst.lib, m, item); m.TimeLastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds(); m.Save(inst.lib); }
+        }
+        return new JsonObject { ["unsubscribed"] = true };
+    }
+
+    /// <summary>A Workshop job: subscribed items that are new or updated come down into
+    /// steamapps/workshop/content/&lt;app&gt;/&lt;id&gt; (UGC manifests through the app's workshop depot, or an old item's single
+    /// file), unsubscribed ones are removed, and appworkshop_&lt;app&gt;.acf says what's there.</summary>
+    async Task RunWorkshop(QueueItem j, CancellationToken ct)
+    {
+        var inst = Installed(j.AppId) ?? throw new EngineException(Codes.Unsupported, "Install the game first.");
+        var lib = inst.lib;
+        var info = await FreshInfo(j.AppId) ?? throw new EngineException(Codes.Unsupported, "Steam didn't give this app's details.");
+        j.Name = info.Name;
+        var subs = await workshop.Subscribed(j.AppId, steamId);
+        var m = WorkshopManifest.Load(lib, j.AppId);
+        m.SubscribedBy = (uint)(steamId & 0xFFFFFFFF);
+        m.LastBuildId = inst.acf.BuildId;
+        var (get, remove) = WorkshopRules.Plan(subs, m);
+        foreach (var id in remove) WorkshopRules.Remove(lib, m, id);
+        m.TimeLastUpdated = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        m.Save(lib);
+        Log($"app {j.AppId}: Workshop: {get.Count} to download, {remove.Count} removed");
+        if (get.Count == 0) return;
+        var depot = info.WorkshopDepot != 0 ? info.WorkshopDepot : j.AppId;
+        byte[]? key = null;
+        var servers = await Servers();
+        if (servers.Count == 0) throw new EngineException(Codes.SteamError, "No Steam content servers.");
+        j.Total = (long)get.Sum(i => (decimal)i.Size); j.Done = 0; j.State = "downloading";
+        long before = 0;
+        var serverIndex = new int[1];
+        foreach (var item in get)
+        {
+            ct.ThrowIfCancellationRequested();
+            var dir = WorkshopManifest.ContentDir(lib, j.AppId, item.Id);
+            ulong size;
+            if (item.Manifest != 0)
+            {
+                if (key == null)
+                {
+                    var k = await apps.GetDepotDecryptionKey(depot, j.AppId);
+                    if (k.Result != EResult.OK) throw new EngineException(Codes.SteamError, $"No access to the Workshop depot ({k.Result}).");
+                    key = k.DepotKey;
+                }
+                var man = await GetManifest(j.AppId, depot, item.Manifest, key, servers, ct, "public", ugc: true);
+                var keep = Path.Combine(OpenPaths.AppDir(lib, j.AppId), "workshop");
+                List<DepotFile>? old = null;
+                if (m.Items.TryGetValue(item.Id, out var had) && had.Manifest != 0 && DepotManifest.LoadFromFile(Path.Combine(keep, $"{item.Id}_{had.Manifest}.manifest")) is { } om) old = Files(om);
+                var plan = Depot.Build(Files(man), old, p => { try { var fi = new FileInfo(Depot.Inside(dir, p)); return fi.Exists ? (ulong)fi.Length : null; } catch (InvalidDataException) { return null; } });
+                var writer = new DepotWriter(dir, Path.Combine(OpenPaths.AppDir(lib, j.AppId), "workshop-staging", item.Id.ToString()), Fetcher(depot, key, servers, serverIndex))
+                {
+                    Progress = done => j.Done = before + done,
+                };
+                await writer.Apply(plan, ct);
+                try
+                {
+                    Directory.CreateDirectory(keep);
+                    man.SaveToFile(Path.Combine(keep, $"{item.Id}_{item.Manifest}.manifest"));
+                    if (had.Manifest != 0 && had.Manifest != item.Manifest) File.Delete(Path.Combine(keep, $"{item.Id}_{had.Manifest}.manifest"));
+                }
+                catch (IOException) { }
+                size = man.TotalUncompressedSize;
+            }
+            else
+            {
+                Directory.CreateDirectory(dir);
+                var file = Depot.Inside(dir, WorkshopRules.FileName(item.FileName, item.Id));
+                await limiter.Wait((long)item.Size, ct);
+                using (var resp = await Http.GetAsync(item.FileUrl, HttpCompletionOption.ResponseHeadersRead, ct))
+                {
+                    resp.EnsureSuccessStatusCode();
+                    await using var fs = File.Create(file + ".hearth-tmp");
+                    await resp.Content.CopyToAsync(fs, ct);
+                }
+                File.Move(file + ".hearth-tmp", file, true);
+                size = (ulong)new FileInfo(file).Length;
+            }
+            before += (long)item.Size;
+            j.Done = before;
+            m.Items[item.Id] = (size, item.TimeUpdated, item.Manifest);
+            m.Save(lib);
+        }
+    }
+
+    /// <summary>Downloads one chunk from Steam's CDN (servers in turn on errors, the speed limit first).</summary>
+    Func<ChunkRef, CancellationToken, Task<byte[]>> Fetcher(uint depot, byte[] key, List<SteamKit2.CDN.Server> servers, int[] serverIndex) => async (c, t) =>
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            var s = servers[(Volatile.Read(ref serverIndex[0]) + attempt) % servers.Count];
+            try
+            {
+                await limiter.Wait(c.CompressedLength, t);
+                var buf = new byte[c.Length];
+                var n = await cdn.DownloadDepotChunkAsync(depot, new DepotManifest.ChunkData(c.Sha, c.Checksum, c.Offset, c.CompressedLength, c.Length), s, buf, key);
+                return n == buf.Length ? buf : buf[..n];
+            }
+            catch (Exception e) when (attempt < 6 && e is HttpRequestException or TaskCanceledException or IOException && !t.IsCancellationRequested)
+            {
+                Interlocked.Increment(ref serverIndex[0]);
+                await Task.Delay(500 * (attempt + 1), t);
+            }
+        }
+    };
 
     public JsonObject LaunchResult(uint appId, bool ok)
     {

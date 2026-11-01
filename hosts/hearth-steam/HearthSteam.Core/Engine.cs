@@ -73,4 +73,16 @@ public interface IOpenEngine : IEngine
     Task<JsonObject> CloudAfter(uint appId);
     /// <summary>The player's answer to a conflict: "local", "cloud" or "both".</summary>
     Task<JsonObject> CloudResolve(uint appId, string choice);
+    /// <summary>A game's branches ({branches: [{name, buildid, password, unlocked, description}], chosen, installed}).</summary>
+    Task<JsonObject> BetaList(uint appId);
+    /// <summary>Steam's beta password check: the branches it unlocks.</summary>
+    Task<JsonObject> BetaPassword(uint appId, string password);
+    /// <summary>Picks the branch ("" / "public": default); an installed game switches (a queued update).</summary>
+    Task<JsonObject> BetaSet(uint appId, string branch);
+    /// <summary>The player's subscribed Workshop items for a game ({items: [{id, title, size, installed, needsUpdate}]}).</summary>
+    Task<JsonObject> WorkshopList(uint appId);
+    /// <summary>Queues a Workshop job: new and updated items come down, unsubscribed ones are removed.</summary>
+    JsonObject WorkshopSync(uint appId);
+    /// <summary>Unsubscribes an item and removes its files.</summary>
+    Task<JsonObject> WorkshopUnsubscribe(uint appId, ulong item);
 }

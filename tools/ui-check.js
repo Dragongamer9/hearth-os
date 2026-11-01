@@ -80,6 +80,25 @@ const path = require('path');
     if (!document.querySelector('#sheet.open')) throw new Error('the sheet is not shown');
     closeAll();
   });
+  // A Steam game's beta branch picker and Workshop list (Hearth's Steam client), from the engine's answers.
+  await step('steam betas and workshop', () => {
+    const g = { id: 'steam:620', title: 'Portal 2', src: 'steam', inst: true };
+    S.layers = [];
+    steamBetaSheet(g, { chosen: 'beta', branches: [{ name: 'public' }, { name: 'beta', description: 'Next update' }, { name: 'secret', password: true, unlocked: false }] });
+    if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3) throw new Error('beta picker: ' + JSON.stringify(sheet && sheet.items));
+    if (sheet.items[0].label !== 'Default (no beta)' || sheet.items[1].icon !== 'check' || !/needs a password/.test(sheet.items[2].label) || sheet.items[2].icon !== 'lock') throw new Error('beta picker rows: ' + sheet.items.map(i => i.label + '/' + i.icon).join(' | '));
+    closeAll();
+    steamWorkshopSheet(g, { complete: true, items: [{ id: '3000000001', title: 'Big Map', size: 2e9, installed: true, needsUpdate: true }, { id: '42', title: 'Skin', installed: false }] });
+    if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3 || !/Download 2 new or updated items/.test(sheet.items[0].label)) throw new Error('workshop list: ' + JSON.stringify(sheet && sheet.items.map(i => i.label)));
+    if (!/Big Map · update waiting · 2\.0 GB/.test(sheet.items[1].label) || !/Skin · not downloaded yet/.test(sheet.items[2].label)) throw new Error('workshop rows: ' + sheet.items.map(i => i.label).join(' | '));
+    closeAll();
+    steamWorkshopSheet(g, { complete: false, items: [] });
+    if (!/didn't give your subscriptions/.test(sheet.sub)) throw new Error('workshop without a list: ' + sheet.sub);
+    closeAll();
+    // Only offered with Hearth's Steam client signed in (never in the preview, which has no Hearth).
+    if (gameOptionItems(g).some(i => /Beta branch|Workshop items/.test(i.label))) throw new Error('beta/workshop offered without Hearth');
+    if (!/^Workshop items 50%/.test(dlInfo({ engine: { kind: 'workshop' }, state: 'downloading', progress: 0.5 }).label)) throw new Error('workshop downloads are not labelled');
+  });
   // Downloads › Hearth's Steam client's queue: up / down / pause / cancel per game, the automatic update label, and
   // Settings › Library's automatic updates and speed limit.
   await step('downloads controls', () => {

@@ -349,6 +349,23 @@ pub fn cloud_resolve(app: u32, choice: &str) -> Result<Value, String> {
     }
 }
 
+/// Open: a game page's beta and Workshop requests, handed to the engine as they are (only these commands; the beta
+/// password goes to the engine and on to Steam, never logged or kept).
+pub const GAME_CALLS: [&str; 6] = ["betas", "beta.password", "beta.set", "workshop", "workshop.sync", "workshop.unsubscribe"];
+
+pub fn game_call(a: &Value) -> Result<Value, String> {
+    let cmd = a["cmd"].as_str().unwrap_or("");
+    if !GAME_CALLS.contains(&cmd) { return Err("Unknown request.".into()); }
+    if current_mode() != Mode::Open { return Err("Turn on Hearth's Steam client in Settings › Library first.".into()); }
+    let mut req = json!({"cmd": cmd, "appid": a["appid"]});
+    for k in ["password", "branch", "item"] { if !a[k].is_null() { req[k] = a[k].clone(); } }
+    match ask(&req, Duration::from_secs(45)) {
+        Answer::Ok(v) => Ok(v),
+        Answer::No { error, .. } => Err(if error.is_empty() { "Steam said no.".into() } else { error }),
+        Answer::Down(_) => Err("Hearth's Steam client isn't running right now. Try again in a moment.".into()),
+    }
+}
+
 /// The command line for a direct start (pure, for the tests): (program, arguments, environment). Windows games go
 /// through umu (Proton) with the game's own Steam prefix, so saves are shared with Valve's client.
 pub fn direct_command(info: &Value, opts: &Value, app: u32, umu: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
@@ -596,6 +613,14 @@ mod tests {
         assert!(matches!(cloud_before_outcome(&Answer::No { code: "steam_error".into(), error: "e".into() }), CloudBefore::ValveClient(_)));
         assert!(matches!(cloud_before_outcome(&Answer::Down("timed out".into())), CloudBefore::ValveClient(_)));
         assert!(cloud_resolve(1, "delete everything").is_err());
+    }
+
+    #[test]
+    fn game_page_requests_are_limited() {
+        assert!(game_call(&json!({"cmd": "release"})).is_err(), "only beta and Workshop requests");
+        assert!(game_call(&json!({"cmd": "signin.password"})).is_err());
+        if current_mode() != Mode::Open { assert!(game_call(&json!({"cmd": "betas", "appid": 10})).unwrap_err().contains("Settings")); }
+        assert!(GAME_CALLS.contains(&"workshop.unsubscribe"));
     }
 
     #[test]
