@@ -153,9 +153,9 @@ key), or Guide + X again, closes it. Guide alone still does what it always did.
 
 | Where | How it opens | Where the typing goes |
 |---|---|---|
-| Over any game or app in Game Mode (native, Proton/Wine, emulators; with or without a Hearth Input layout) | The chord is caught by whoever holds the controller: Hearth's reader (`guide.rs`; Guide held is asked from the device itself, EVIOCGKEY, so it counts even if Hearth Input had the controller when Guide went down), Hearth Input (`{"t": "osk"}`: it keeps the controller while Guide is held, so the game sees neither press) or InputPlumber (everything after Guide). Hearth (`gamemode.rs osk_chord`) opens the overlay page as just the keyboard (`overlay.osk`): see-through, the game keeps its keyboard focus (gamescope `STEAM_INPUT_FOCUS` 2), and Hearth holds the controller for the keyboard the way it does for Quick Access (the game doesn't get the presses). Quick Access opened by that same Guide press becomes the keyboard. | `osk.type` / `osk.key` → Hearth Input's uinput keyboard: each character becomes the key presses for gamescope's keyboard layout (`hosts/linux/desktop/shell/osk-keymap.json`: us, gb, de, fr, es, it, pt, se, fi, dk, no; `XKB_DEFAULT_LAYOUT`), held 30 ms each so games that look once a frame see them. Characters the layout can't type go through `xdotool type` on gamescope's X display when xdotool is installed; otherwise the keyboard says which it couldn't type. |
+| Over any game or app in Game Mode (native, Proton/Wine, emulators; with or without a Hearth Input layout) | The chord is caught by whoever holds the controller: Hearth's reader (`guide.rs`; Guide held is asked from the device itself, EVIOCGKEY, so it counts even if Hearth Input had the controller when Guide went down), Hearth Input (`{"t": "osk"}`: it keeps the controller while Guide is held, so the game sees neither press) or InputPlumber (everything after Guide). Hearth (`gamemode.rs osk_chord`) opens the overlay page as just the keyboard (`overlay.osk`): see-through, the game keeps its keyboard focus (gamescope `STEAM_INPUT_FOCUS` 2), and Hearth holds the controller for the keyboard the way it does for Quick Access (the game doesn't get the presses). Quick Access opened by that same Guide press becomes the keyboard. | `osk.type` / `osk.key` → Hearth Input's uinput keyboard: each character becomes the key presses for gamescope's keyboard layout (`hosts/linux/desktop/shell/osk-keymap.json`: us, gb, de, fr, es, it, pt, se, fi, dk, no; `XKB_DEFAULT_LAYOUT`), held 30 ms each so games that look once a frame see them. Characters the layout can't type go through `xdotool type` on the X display gamescope's keyboard focus is on (`GAMESCOPE_KEYBOARD_FOCUS_DISPLAY`, the game's Xwayland; Hearth's own `DISPLAY` when gamescope doesn't say) when xdotool is installed; otherwise the keyboard says which it couldn't type. A virtual keyboard Hearth Input has only just made waits 0.3 s before its first press (gamescope finds new keyboards a moment later). |
 | Hearth Classic (Mantel) | hearth-pad: Guide opens the Hearth menu as before; X while Guide is held closes it again and asks for the keyboard (`osk {open}`) | `Keyboard.qml` as always (wtype, or hearth-pad's uinput keyboard) |
-| Hearth Plasma | `hearth-pad --plasma` (the whole controller in Plasma, docs/PLASMA.md), started with `osk-plasma.qml` (Quickshell, `/usr/share/hearth-plasma/xdg/autostart/hearth-osk.desktop`): Guide + X or Y, and by itself on KRunner and on text fields KWin reports right after you used the controller; holds the controller for the keyboard while it's open (apps don't see the presses). `--osk` (only the keyboard) is still there | The same `Keyboard.qml` as a layer-shell window that never takes the keyboard focus, typing through hearth-pad's uinput keyboard (KWin has no wtype). Without quickshell, python3-evdev or /dev/uinput, Plasma simply runs without it. |
+| Hearth Plasma | `hearth-pad --plasma` (the whole controller in Plasma, docs/PLASMA.md), started with `osk-plasma.qml` (Quickshell, by `desktop/shell/hearth-companion plasma`, which nimbus-session runs once Plasma is up): Guide + X or Y, and by itself on KRunner and on text fields KWin reports right after you used the controller; holds the controller for the keyboard while it's open (apps don't see the presses). `--osk` (only the keyboard) is still there | The same `Keyboard.qml` as a layer-shell window that never takes the keyboard focus, typing through hearth-pad's uinput keyboard (KWin has no wtype). Without quickshell, python3-evdev or /dev/uinput, Plasma simply runs without it. |
 | Hearth's own screen in Game Mode | its page gets `osk.chord` and opens the keyboard for the open search or text prompt | the field |
 
 The keyboard over a game uses the same engine (`ui/osk/hearth-osk.js`) with an adapter of its own (`ovoskAdapter` in
@@ -163,6 +163,28 @@ The keyboard over a game uses the same engine (`ui/osk/hearth-osk.js`) with an a
 esc, arrows, home, end, paste). A strip above it shows what you've typed since the last Enter (the game's own text box
 can't be read). Over a game the controller reaches the page as Hearth's presses (`pad`), so A, B, X, Y, the bumpers,
 LT / RT, L3 / R3, View and ☰ all work as on the table above.
+
+Staying open and reaching the game (fixed after 0.6.59, "In-game keyboard doesn't interact with the game"):
+
+- The keyboard isn't a panel. `overlayOsk` marks it open (`OVOSK.on`) before it closes Quick Access under it (left in
+  the page from the last time, or opened by the same Guide press), and the empty-overlay check (`overlayEmptyCheck`,
+  50 ms after the last panel closes) leaves the overlay alone while it's open. Before, the first Guide + X after
+  Quick Access had been open closed itself about 40 ms after opening. A Guide within 0.4 s of opening (the chord's own
+  Guide, passed on late) doesn't close it either.
+- With Handheld Daemon's overlay app (the HHD editions), HHD shows the window by giving it gamescope's input focus
+  (`STEAM_INPUT_FOCUS` 1), which took the keyboard focus from the game, so what Hearth Input typed went to the
+  overlay instead. While the keyboard is open the app sets 2 on its own window (touch there, the keyboard stays with
+  the game, as Steam's keyboard does) and again every 250 ms (`hosts/linux/src/overlay/protocol.js` `keyboard`,
+  `main.js` `setInputFocus`, via xprop); Hearth's own overlay window already used 2. Quick Access taking its place
+  goes back to 1; closing is left to HHD.
+- B and Guide close it (the page says which: Hearth's log reads `overlay: closing Quick Access (its page closed it:
+  the keyboard: B)`), and Hearth gives the controller back (Hearth Input's layout comes back on).
+- Every typed batch is in Hearth's log with how it went, counts only, never the text:
+  `osk: typed 3 characters into the game: 3 on Hearth Input's virtual keyboard (layout us)`, `, 1 through xdotool on
+  :1`, `, 1 it couldn't type`, `osk: key bksp x1 into the game on Hearth Input's virtual keyboard`, or the error.
+  Hearth Input's own log (Send logs, Hearth Input section) says the same (`typed 3 characters: 3 on the virtual
+  keyboard (layout us), 0 through xdotool, 0 skipped`). HHD's overlay app logs the `STEAM_INPUT_FOCUS 2` it set
+  (`hearth-overlay.log`).
 
 ## Where it runs
 
@@ -269,8 +291,13 @@ then counted every 10 s (`controller: the same error N more times`).
 - `hosts/linux/test/test_hearth_pad.py`: hearth-pad hands the keyboard its buttons and sticks, types without wtype;
   Guide + X in Hearth Classic and with `--osk` (Hearth Plasma: nothing else, the controller held while it's open).
 - `hosts/linux/test/test_hearth_input.py` and `tools/e2e-hearth-input.py`: Guide + X from Hearth Input, and typing
-  (characters to keys for us and de, Backspace) through its real uinput keyboard. `tools/ui-check.js`: the keyboard
-  over a game opens alone, its presses send `osk.type` / `osk.key`, B closes it.
+  (characters to keys for us and de, Backspace, the arrows, Enter) through its real uinput keyboard, each batch's way
+  in the answer and the log (counts only); the unit test also covers xdotool on the keyboard focus display and the
+  wait on a just-made keyboard. `tools/ui-check.js`: the keyboard over a game opens alone, stays open when Quick
+  Access was open before or is open under it (and through a late Guide), its presses send `osk.type` / `osk.key`, B
+  closes it. `hosts/linux/test/overlay-protocol.test.js`: HHD's overlay app keeps `STEAM_INPUT_FOCUS` 2 while the
+  keyboard is open (run in the Hearth Input e2e workflow). `input_map.rs` tests: gamescope's keyboard focus display
+  read from its root property, each batch's log line.
 - `.github/workflows/desktop-test.yml`: Desktop Mode types into a real app (foot running `cat`) through the keyboard:
   taps, a picked suggestion, X / Y, an accent with A held, an emoji, the Ember Wheel, Enter; pictures `osk-*.png`.
 - `tools/hearth-browser-test.py`: Hearth Browser's keyboard types into a web page.

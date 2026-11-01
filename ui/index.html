@@ -1510,7 +1510,7 @@ function barsIcon(n){
 
 // ---------- mock data ----------
 const H = 3600e3, D = 24*H, now = Date.now();
-const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', xodus:'Xbox PC', battlenet:'Battle.net', emu:'Emulators', beacon:'Beacon', manual:'Manual', android:'Android'};
+const SOURCES = {steam:'Steam', epic:'Epic', gog:'GOG', xbox:'Xbox', xodus:'Xbox PC', battlenet:'Battle.net', recomps:'Recomps', emu:'Emulators', beacon:'Beacon', manual:'Manual', android:'Android'};
 const GAMES = [
   {id:'g01',title:'Starfall Drift',src:'steam',appId:'1000010',inst:true,fav:true,hrs:142.5,last:now-5*H,size:'38.2 GB',ach:[34,50],added:now-200*D,genre:'Arcade racing'},
   {id:'g02',title:'Hollow Pines',src:'gog',inst:true,fav:false,hrs:31.2,last:now-1*D,size:'12.9 GB',ach:[11,40],added:now-30*D,genre:'Survival horror'},
@@ -1566,7 +1566,7 @@ const S = {
   view:'home', game:null, tab:'inst', sort:'recent', settingsTab:'wifi', qtab:'quick',
   history:[], layers:[], running:null,
   set:{bright:70,vol:55,sounds:true,tdp:15,fps:'60',overlay:0,
-       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,steamOnDemand:true,startOnBoot:true,escapeHatch:true},
+       srcSteam:true,srcEpic:true,srcGog:true,srcXbox:true,srcEmu:true,steamBg:true,steamOnDemand:true,steamKeepReady:true,startOnBoot:true,escapeHatch:true},
   // Live system state, filled from the host (or the browser mock)
   sys:{wifi:{available:true,on:false,ssid:null,bars:0}, bt:{available:true,on:false}, airplane:false,
        battery:null, audio:{volume:55,muted:false,devices:null}, display:{supported:true,brightness:70,resolution:'',scale:''},
@@ -1574,7 +1574,7 @@ const S = {
        nets:null, scanning:false, scannedAt:0, connecting:null,
        paired:null, found:[], btScanning:false, foundDone:false, busy:{}}
 };
-const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['xodus','Xbox PC'],['battlenet','Battle.net'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
+const LIB_TABS = [['inst','Installed'],['all','All games'],['fav','Favorites'],['steam','Steam'],['epic','Epic'],['gog','GOG'],['xbox','Xbox'],['xodus','Xbox PC'],['battlenet','Battle.net'],['recomps','Recomps'],['emu','Emulators'],['beacon','Beacon'],['manual','Non-library'],['hidden','Hidden']];
 const QTABS = [['notif','bell','Notifications'],['quick','sliders','Quick settings'],['perf','bolt','Performance'],['now','play','Now playing']];
 // Open apps: wherever the host can list them (Hearth OS's window and every overlay page; not Ember's own window), the
 // same tab in Hearth's panel and over a game.
@@ -1598,7 +1598,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -1816,7 +1816,7 @@ const MOCK = (()=>{
       {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}],
       beacon:{installed:true,app:true,via:'native',games:9,setUp:4,error:null},
       xodus:{installed:true,preinstalled:true,version:'0.4.2',games:2,busy:false,error:null},
-      battlenet:{installed:false,busy:false,stage:null,error:null,games:0}}),
+      battlenet:{installed:false,busy:false,stage:null,error:null,games:0,faugus:true,via:null}}),
     'profile.get':async()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){} return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
     'profile.set':async(c)=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){}
       for(const k of ['name','status','avatar','accent','background']) if(c[k]!=null) p[k]=String(c[k]).trim()||null;
@@ -1861,7 +1861,7 @@ const MOCK = (()=>{
     'mfriends.openSteam':async()=>null, 'mfriends.discord':async()=>({installed:false,flathub:'https://flathub.org/apps/com.discordapp.Discord'}), 'mfriends.installDiscord':async()=>({installed:true}), 'mfriends.openDiscord':async()=>null, 'discord.status':async()=>({available:false}), 'discord.set':async()=>({available:false}),
     'mfriends.emoji':async()=>[], 'screenshots.list':H['screenshots.list']||(async()=>({list:[{file:'/tmp/shot.png',url:'',time:Date.now()-3600e3}]})),
   });
-  return {call:(m,a)=> H[m] ? H[m](a||{}) : Promise.reject(new Error('Not available in the browser preview: '+m))};
+  return {call:(m,a)=> H[m] ? H[m](a||{}) : /^recomps\./.test(m) ? RC_MOCK(m, a) : Promise.reject(new Error('Not available in the browser preview: '+m))};
 })();
 
 // ---------- helpers ----------
@@ -2163,7 +2163,7 @@ function mfMain(){
   const head = `<div class="mfhead">${mfAv(mfShort(st.userId),'me')}<div class="rt"><b>${esc(st.userId)}</b><small>Your account lives on ${esc(st.lives||st.homeserver)} · ${st.settings&&st.settings.presence==='offline'?'appearing offline':st.settings&&st.settings.presence==='unavailable'?'Away':'Online'}</small></div>
     <button class="btn sm" data-f data-k="mf-add" data-act="mfAdd">${I.user}Add friend</button><button class="btn sm" data-f data-k="mf-code" data-act="mfCode">${I.layout}My code</button></div>
     ${st.error?note(esc(st.error)):''}${!st.synced?note('Catching up with your chats…'):''}${st.keyringOk===false?note('The system keyring isn\'t available, so you\'ll need to sign in again next time.'):''}${mfRecoveryCard()}`;
-  const tabs = `<div class="chips frchips">${[['friends','Friends'],['chats','Chats'],['requests','Requests'+(req.length?` · ${req.length}`:'')],['settings','Settings']].map(([k,l])=>`<button class="chip ${MF.tab===k?'on':''}" data-f data-k="mfb-${k}" data-act="mfTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const tabs = `<div class="chips frchips">${[['friends','Friends'],['chats','Chats'],...(typeof hpActivityTab==='function'?[['activity','Activity']]:[]),['requests','Requests'+(req.length?` · ${req.length}`:'')],['settings','Settings']].map(([k,l])=>`<button class="chip ${MF.tab===k?'on':''}" data-f data-k="mfb-${k}" data-act="mfTab" data-v="${k}">${l}</button>`).join('')}</div>`;
   let body='';
   if(MF.tab==='friends'){
     const fs=MF.friends;
@@ -2186,6 +2186,7 @@ function mfMain(){
       + (req.length ? `<div class="rows">${req.map((r,i)=>mfReqRow(r,i,'req')).join('')}</div>` : note('No requests.'));
   }
   if(MF.tab==='settings') body = mfSettings();
+  if(MF.tab==='activity' && typeof hpActivityTab==='function') body = hpActivityTab();   // hearth-play.js
   return head + tabs + body;
 }
 function mfPreview(m){ return (m.mine?'You: ':'') + (m.kind==='image'?'Picture':m.kind==='game'?`Game invite: ${(m.game&&m.game.title)||''}`:m.kind==='play'?'Play together':m.kind==='locked'?'Encrypted message':(m.body||'')).slice(0,90); }
@@ -2595,7 +2596,7 @@ function mfQam(){
 // signs in or sees a password. Buying and wishlists happen on the stores' own pages: Steam's in the Steam client
 // (signed in already), GOG's, Epic's and Xbox's in Hearth's store window, which shares the browser profile of that
 // store's sign-in in Library › Stores, so one sign-in covers the library and the store (docs/STORE.md).
-const SHOP_STORES = [['steam','Steam'],['gog','GOG'],['epic','Epic Games'],['xbox','Xbox'],['battlenet','Battle.net']];
+const SHOP_STORES = [['steam','Steam'],['gog','GOG'],['epic','Epic Games'],['xbox','Xbox'],['battlenet','Battle.net'],['recomps','Recomps']];
 // Stores whose shop is only inside their own app: no shelves to read, the section opens the app (shopLauncher).
 const SHOP_IN_APP = ['battlenet'];
 const SHOP = {store:'steam', shot:null, back:null, home:{}, err:{}, busy:{}, q:{}, res:{}, rerr:{}, rbusy:{}, page:null, det:{}, derr:{}, more:false, status:null, steamVisit:0};
@@ -2674,6 +2675,7 @@ async function shopStatus(){
   if(S.view==='shop') render(null,true);
 }
 function shopLoad(store, again){
+  if(store==='recomps') return rcLoad(again);   // Hearth Recomps: its own catalogue
   if(SHOP_IN_APP.includes(store)){ if(!ACC.battlenet) Promise.resolve(loadAccounts()).then(()=>{ if(S.view==='shop' && SHOP.store===store) render(null,true); }); return; }
   if(SHOP.busy[store] || (SHOP.home[store] && !again)) return;
   SHOP.busy[store]=true; SHOP.err[store]=null;
@@ -2690,6 +2692,7 @@ function shopLoadDetails(store, id){
     .finally(()=>{ if(S.view==='shop' && SHOP.page && SHOP.page.store+':'+SHOP.page.id===k) render(null,true); });
 }
 function shopDoSearch(store, q){
+  if(store==='recomps'){ RC.q=q; return render('rc-search',true); }
   // Battle.net's section has no search of its own: a search from elsewhere looks in Steam's store.
   if(SHOP_IN_APP.includes(store)){ store='steam'; if(SHOP.store!==store) shopTab(store); }
   SHOP.q[store]=q; SHOP.res[store]=null; SHOP.rerr[store]=null;
@@ -2732,7 +2735,245 @@ function shopLauncher(st){
     +note(b.installed ? `Buying happens in Battle.net's own shop, signed in with your Blizzard account. Games you buy and install there show up in Library › Battle.net.`
       : `Blizzard sells its games only in Battle.net. Set it up once, sign in in its window, and buy and install there. ${APP} never sees your password or payment details.`);
 }
+// ---------- Store › Recomps: Hearth Recomps (hearth-core recomps.rs, docs/RECOMPS.md) ----------
+// Native PC ports of console games (N64Recomp ports, Xbox 360 recompilations, decompilation ports), installed and
+// updated from each project's own GitHub releases. You supply your own copy of the game (a ROM or disc image you
+// made from your own game): Hearth checks it against the project's hash and puts it where the port looks. Hearth
+// never downloads or links to game files. Installed ports show in Library › Recomps with Play.
+const RC = {data:null, err:null, busy:false, page:null, det:{}, derr:{}, dbusy:{}, q:'', con:'all', show:'all', sort:'featured', back:null, notes:false, rel:{}};
+const RC_KIND = {recomp:'Recompilation', decomp:'Decompilation port', port:'Port', custom:'Added by you'};
+const RC_SORTS = [['featured','Featured'],['az','A to Z'],['console','Console'],['played','Recently played']];
+document.head.insertAdjacentHTML('beforeend', `<style id="rc-css">
+.rc-card .sfa{aspect-ratio:460/260}
+.rc-card .rc-ic{object-fit:contain;padding:16px;background:rgba(8,11,16,.35)}
+.rc-tags{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.rc-ok{color:var(--accent);font-weight:700} .rc-bad{color:#ff7b7b;font-weight:700}
+.rc-notes{white-space:pre-wrap;color:var(--dim);font-size:14px;line-height:1.5;max-height:none}
+.rc-bar{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin:8px 0 4px;min-width:220px}
+.rc-bar i{display:block;height:100%;background:var(--accent)}
+.rc-path{font-family:ui-monospace,monospace;font-size:12px;color:var(--dim);word-break:break-all}
+</style>`);
+function rcLoad(again){
+  if(RC.busy || (RC.data && !again)) return;
+  RC.busy=true; RC.err=null;
+  call('recomps.list',{},20000).then(r=>{ RC.data=r; }).catch(e=>{ RC.err=e.message; })
+    .finally(()=>{ RC.busy=false; if(S.view==='shop' && SHOP.store==='recomps') render(null,true); });
+}
+function rcDetails(id, fresh){
+  if(RC.dbusy[id] || (RC.det[id] && !fresh)) return;
+  RC.dbusy[id]=true; RC.derr[id]=null;
+  call('recomps.details',{id, fresh:!!fresh},60000).then(r=>{ RC.det[id]=r; }).catch(e=>{ RC.derr[id]=e.message; })
+    .finally(()=>{ RC.dbusy[id]=false; if(S.view==='shop' && RC.page===id) render(null,true); });
+}
+const rcAll = () => (RC.data&&RC.data.recomps)||[];
+const rcGet = id => rcAll().find(e=>e.id===id);
+const rcCon = k => ((RC.data&&RC.data.consoles)||{})[k] || (k==='other'?'Other':k||'');
+/** Which build this PC gets: 'linux' | 'windows' (through Proton) | null (not known until its page is opened). */
+function rcBuild(e){
+  if(e.platform) return e.platform;
+  const d=RC.det[e.id]; if(d) return d.pick ? d.pick.platform : 'none';
+  return e.linux===true ? 'linux' : e.linux===false ? 'windows' : null;
+}
+const rcBuildLabel = b => b==='linux' ? 'Linux build' : b==='windows' ? 'Windows build via Proton' : b==='none' ? 'No build for this PC' : 'Shown once you open it';
+function rcList(){
+  let L=rcAll();
+  L = RC.show==='hidden' ? L.filter(e=>e.hidden) : L.filter(e=>!e.hidden);
+  if(RC.con!=='all') L=L.filter(e=>e.console===RC.con);
+  if(RC.show==='installed') L=L.filter(e=>e.installed);
+  if(RC.show==='updates') L=L.filter(e=>e.update);
+  if(RC.show==='linux') L=L.filter(e=>rcBuild(e)==='linux');
+  if(RC.show==='mine') L=L.filter(e=>e.custom);
+  const q=shopNorm(RC.q);
+  if(q) L=L.filter(e=>shopNorm([e.title,e.game,rcCon(e.console),e.repo].join(' ')).includes(q));
+  const az=(a,b)=>a.title.localeCompare(b.title);
+  const played=e=>{ const g=G('recomp:'+e.id); return g&&g.last||0; };
+  if(RC.sort==='az') L.sort(az);
+  else if(RC.sort==='console') L.sort((a,b)=>rcCon(a.console).localeCompare(rcCon(b.console))||az(a,b));
+  else if(RC.sort==='played') L.sort((a,b)=>played(b)-played(a)||az(a,b));
+  else L.sort((a,b)=>(!!b.installed-!!a.installed)||(!!b.featured-!!a.featured)||(!!a.experimental-!!b.experimental)||az(a,b));
+  return L;
+}
+function rcCard(e){
+  const j=e.job||{};
+  const tag = j.busy ? `<span class="sfo">${j.progress!=null?Math.round(j.progress*100)+'%':'Working…'}</span>`
+    : e.update ? '<span class="sfo gp">Update</span>' : e.installed ? '<span class="sfo">Installed</span>' : '';
+  return `<button class="sft rc-card" data-f data-k="rc-c-${esc(e.id)}" data-act="rcOpen" data-id="${esc(e.id)}">
+    <div class="sfa" style="${artBg({title:e.title})}">${e.icon?shopImg([e.icon],'img rc-ic'):''}${tag}</div>
+    <div class="sft-t">${esc(e.title)}</div><div class="sft-p">${esc(rcCon(e.console))}${e.game&&e.game!==e.title?' · '+esc(e.game):''}</div></button>`;
+}
+function viewRecomps(){
+  if(RC.page) return rcPage();
+  let out=`<div class="shop-top"><div class="chips">${SHOP_STORES.map(([k,l])=>`<button class="chip ${k==='recomps'?'on':''}" data-f data-k="sf-t-${k}" data-act="shopTab" data-v="${k}">${l}</button>`).join('')}</div>
+    <button class="pill" data-f data-k="rc-search" data-act="rcSearch">${I.search}${RC.q?esc(RC.q):'Search Recomps'}</button>
+    ${RC.q?`<button class="pill ghost" data-f data-k="rc-clear" data-act="rcClear">${I.x}Clear</button>`:''}</div>`;
+  if(!RC.data){
+    return out + (RC.err ? `<div class="shop-err"><b>Couldn't load Hearth Recomps.</b><div class="muted" style="margin:4px 0 10px">${esc(RC.err)}</div><button class="pill" data-f data-k="rc-retry" data-act="rcRetry">${I.refresh}Try again</button></div>`
+      : `<div style="padding:30px 0">${shead('Loading Hearth Recomps…', true)}</div>`);
+  }
+  const all=rcAll(), n=f=>all.filter(f).length;
+  const shows=[['all','All'],['installed',`Installed (${n(e=>e.installed)})`],...(n(e=>e.update)?[['updates',`Updates (${n(e=>e.update)})`]]:[]),['linux','Linux builds'],
+    ...(n(e=>e.custom)?[['mine','Added by you']]:[]),...(n(e=>e.hidden)?[['hidden','Hidden']]:[])];
+  out += `<div class="shop-top"><div class="chips">${shows.map(([k,l])=>`<button class="chip ${RC.show===k?'on':''}" data-f data-k="rc-s-${k}" data-act="rcShow" data-v="${k}">${esc(l)}</button>`).join('')}</div>
+    <button class="pill" data-f data-k="rc-con" data-act="rcConsole">${I.pad}${RC.con==='all'?'Every console':esc(rcCon(RC.con))}</button>
+    <button class="pill" data-f data-k="rc-sort" data-act="rcSort">${I.sliders}${esc((RC_SORTS.find(s=>s[0]===RC.sort)||RC_SORTS[0])[1])}</button>
+    <button class="pill ghost" data-f data-k="rc-add" data-act="rcAdd">${I.globe}Add a GitHub project</button>
+    <button class="pill ghost" data-f data-k="rc-check" data-act="rcCheck">${I.refresh}Check for updates</button></div>`;
+  if(RC.data.limitedUntil) out += note(`GitHub only answers so many questions an hour without a sign-in. Until ${new Date(RC.data.limitedUntil).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}, ${APP} shows what it asked earlier.`);
+  const L=rcList();
+  out += L.length ? `<div class="shop-grid">${L.map(rcCard).join('')}</div>` : note(RC.q ? `No ports match “${esc(RC.q)}”.` : 'Nothing here yet.');
+  out += note(`${all.length} native PC ports of console games, each installed from its own project's GitHub releases. You bring your own copy of the game (a ROM or disc image made from a game you own): ${APP} checks it and puts it where the port looks. ${APP} never downloads games. Inspired by RecompStore and RecompLauncher; the catalogue is ${APP}'s own (${esc(RC.data.updated||'')}).`);
+  return out;
+}
+function rcPage(){
+  const e=rcGet(RC.page);
+  if(!e){ RC.page=null; return viewRecomps(); }
+  const d=RC.det[e.id], err=RC.derr[e.id], j=e.job||{}, b=rcBuild(e), latest=d&&d.latest;
+  const btn=(k,act,label,icon,pri,extra='')=>`<button class="play ${pri?'':'install'}" data-f data-k="${k}" data-act="${act}" data-id="${esc(e.id)}" ${extra}>${icon||''}${label}</button>`;
+  const copy = e.needs ? (e.copy&&e.copy.path ? 'Change your copy' : `Needs your copy of ${e.game||e.title}`) : '';
+  let main;
+  if(j.busy) main = `<div style="min-width:240px"><b>${esc(j.stage||'Working…')}</b><div class="rc-bar"><i style="width:${Math.round((j.progress||0)*100)}%"></i></div></div>`
+    + (/Download/.test(j.stage||'') ? btn('rc-stop','rcStop','Stop',I.x) : '');
+  else if(!e.installed) main = btn('rc-install','rcInstall', d&&!d.pick&&d.releases ? 'No build for this PC' : 'Install', I.dl, true) + (e.needs?btn('rc-game','rcGame',esc(copy),I.up):'');
+  else main = btn('rc-play','rcPlay','Play',I.play,true) + (e.update?btn('rc-update','rcUpdate',`Update to ${esc(e.update)}`,I.dl):'') + (e.needs?btn('rc-game','rcGame',esc(copy),I.up):'');
+  const stats=[['Console',esc(rcCon(e.console))],['Kind',esc(RC_KIND[e.kind]||'Port')],['On this PC',esc(rcBuildLabel(b))],
+    ['Installed',e.installed?esc(e.version||'Your own copy'):'—'],['Newest',latest?esc(latest.tag):err?'—':'…']];
+  const g=e.copy&&e.copy.path?e.copy:null;
+  const how = e.setup==='n64recomp' ? `${APP} checks your ROM the same way the port does and puts it where the port keeps it, so the game starts straight away.`
+    : e.setup==='beside' ? `${APP} puts your file in the port's folder${e.besideName?` (as <span class="rc-path">${esc(e.besideName)}</span>)`:''}, where it looks for it. Nothing is copied: it's a link to your file.`
+    : `The port asks for your file the first time it starts: choose the same file there.`;
+  const check = !e.needs ? '' : e.hash ? `${APP} checks your copy against the hash the project documents, so you know it's the version the port needs.` : `The project doesn't document a hash, so ${APP} can't check your copy: use the version it asks for.`;
+  const verdict = !g ? '' : `<div style="margin-top:10px"><span class="rc-path">${esc(g.path)}</span><br>${g.verified===true?'<span class="rc-ok">✓ Checked: the right version</span>':g.verified===false?'<span class="rc-bad">Used anyway: it doesn\'t match the project\'s hash</span>':'<span class="muted">Not checked (no hash to check against)</span>'}</div>`;
+  const mismatch = j.mismatch && !j.busy ? `<div class="serr" style="margin-top:10px">${esc(j.error)}. Make sure it's ${esc(e.needs)}.</div><button class="pill" style="margin-top:8px" data-f data-k="rc-anyway" data-act="rcAnyway" data-id="${esc(e.id)}">Use it anyway</button>` : '';
+  const notesFull=(latest&&latest.notes)||'', notes=RC.notes?notesFull:notesFull.slice(0,1400);
+  const tags=[e.experimental?'<span class="shop-tag">Early: expect rough edges</span>':'', e.custom?'<span class="shop-tag">Added by you: not checked by '+APP+'</span>':'', e.arm64?'<span class="shop-tag">Arm builds too</span>':'', e.featured?'<span class="shop-tag">Featured</span>':''].join('');
+  return `<div class="gpage">
+    <div class="ghero"><div class="art" style="${artBg({title:e.title})}"></div>${e.icon?shopImg([e.icon],'img rc-ic'):''}<div class="glogo">${esc(e.title)}</div></div>
+    <div class="gbar">${main}
+      <button class="sq" data-f data-k="rc-more" data-act="rcMore" data-id="${esc(e.id)}" aria-label="More">${I.dots}</button>
+      <div class="gstats">${stats.map(([k,v])=>`<div class="gstat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>
+    </div>
+    <div class="gbody"><div>
+      <div class="card"><h3>About</h3>${tags?`<div class="rc-tags">${tags}</div>`:''}
+        <div class="muted">${esc(e.game?`A native PC version of ${e.game}`:e.title)}${e.console&&e.console!=='other'?` (${esc(rcCon(e.console))})`:''}: ${esc((RC_KIND[e.kind]||'port').toLowerCase())} by the <b>${esc(e.repo.split('/')[0])}</b> project, installed from its GitHub releases (<span class="rc-path">github.com/${esc(e.repo)}</span>).
+        ${b==='windows'?` This port has no Linux build, so ${APP} runs its Windows build with Proton, like any Windows game.`:''}</div>
+        ${j.error&&!j.busy&&!j.mismatch?`<div class="serr" style="margin-top:10px">${esc(j.error)}</div>`:''}</div>
+      ${e.needs?`<div class="card"><h3>Your copy of the game</h3><div class="muted">It needs <b>${esc(e.needs)}</b>${(e.files||[]).length?` (${esc(e.files.join(', '))})`:''}, made from a game you own. ${check} ${how}</div>${verdict}${mismatch}</div>`:''}
+      <div class="card"><h3>Patch notes${latest?`: ${esc(latest.name||latest.tag)}`:''}</h3>
+        ${err?`<div class="muted">Couldn't ask GitHub: ${esc(err)}</div><button class="pill" style="margin-top:8px" data-f data-k="rc-retry-d" data-act="rcRefresh" data-id="${esc(e.id)}">${I.refresh}Try again</button>`
+          : !d ? shead('Loading…',true) : !latest ? '<div class="muted">No releases yet.</div>'
+          : `<div class="muted" style="margin-bottom:6px">${latest.published?esc(new Date(latest.published).toLocaleDateString()):''}${latest.prerelease?' · pre-release':''}${d.stale?' · shown as it was earlier':''}</div>
+             <div class="rc-notes">${esc(notes)||'The project wrote no notes for this release.'}${notesFull.length>notes.length?'…':''}</div>
+             ${notesFull.length>1400?`<button class="pill ghost" style="margin-top:8px" data-f data-k="rc-notes" data-act="rcNotes">${RC.notes?'Show less':'Read more'}</button>`:''}`}
+      </div>
+    </div><div>
+      <div class="card"><h3>Where things are</h3><div class="muted">
+        ${e.installed?`The port: <span class="rc-path">${esc(e.dir||'')}</span><br>`:''}
+        Saves: ${esc(e.saves||'where the port keeps them (updates never touch them)')}<br>
+        ${e.mods?`Mods and texture packs: ${esc(e.mods)}<br>`:''}
+        Updates are copied over the old version: your saves, mods, settings and game file stay.</div></div>
+      <div class="card"><h3>Credits</h3><div class="muted">${esc(e.title)} is made by the ${esc(e.repo.split('/')[0])} project and its contributors, not by ${APP}. ${APP} Recomps is inspired by RecompStore (elripalda), RecompLauncher and GithubLauncher (SirDiabo).</div></div>
+    </div></div></div>`;
+}
+function rcBack(){ const k=RC.back; RC.page=null; render(k||null); return blip(420,.05); }
+function rcInstallWith(id, args){
+  return call('recomps.install', Object.assign({id}, args||{}), 30000).then(()=>{ toast('Getting it from GitHub…'); rcLoad(true); }).catch(e=>toast(e.message));
+}
+function rcAct(a, d){
+  const id=d.id, e=id&&rcGet(id);
+  switch(a){
+    case 'rcOpen': RC.back=focused&&focused.dataset.k; RC.page=id; RC.notes=false; rcDetails(id); $('#view').scrollTop=0; return render('rc-install');
+    case 'rcSearch': return openPrompt({title:'Search Recomps', value:RC.q}).then(v=>{ if(v!=null){ RC.q=v.trim().slice(0,80); render('rc-search',true); } });
+    case 'rcClear': RC.q=''; return render('rc-search',true);
+    case 'rcRetry': return rcLoad(true), render(null,true);
+    case 'rcShow': RC.show=d.v; return render('rc-s-'+d.v,true);
+    case 'rcConsole': {
+      const cons=[...new Set(rcAll().map(x=>x.console))].sort((x,y)=>rcCon(x).localeCompare(rcCon(y)));
+      return openSheet({title:'Show ports for', items:[{label:'Every console', icon:'pad', run:()=>{ RC.con='all'; render('rc-con',true); }},
+        ...cons.map(c=>({label:`${rcCon(c)} (${rcAll().filter(x=>x.console===c&&!x.hidden).length})`, icon:'pad', run:()=>{ RC.con=c; render('rc-con',true); }}))]});
+    }
+    case 'rcSort': return openSheet({title:'Sort by', items:RC_SORTS.map(([k,l])=>({label:l, icon:RC.sort===k?'check':'sliders', run:()=>{ RC.sort=k; render('rc-sort',true); }}))});
+    case 'rcAdd': return openPrompt({title:'Add a GitHub project: owner/name (like Zelda64Recomp/Zelda64Recomp)', value:''}).then(v=>{
+      if(!v||!v.trim()) return;
+      return call('recomps.addCustom',{repo:v.trim()},60000).then(x=>{ toast(`${x.title} added to Recomps`); RC.data=null; rcLoad(true); }).catch(err=>toast(err.message)); });
+    case 'rcCheck': return call('recomps.checkUpdates',{},15000).then(()=>toast('Looking for updates…')).catch(err=>toast(err.message));
+    case 'rcNotes': RC.notes=!RC.notes; return render('rc-notes',true);
+    case 'rcRefresh': RC.det[id]=null; return rcDetails(id, true), render(null,true);
+    case 'rcStop': return call('recomps.cancel',{id}).catch(err=>toast(err.message));
+    case 'rcPlay': { const g=G('recomp:'+id); if(g) return launch(g); return loadLibrary(true).then(()=>{ const g2=G('recomp:'+id); g2 ? launch(g2) : toast("It isn't in your library yet: try again in a moment"); }); }
+    case 'rcUpdate': return rcInstallWith(id, {});
+    case 'rcInstall': {
+      if(!host) return toast('Installing needs the '+APP+' app (not the browser preview).');
+      const dd=RC.det[id]; if(dd && dd.releases && !dd.pick) return toast(`${e.title} has no build for this PC in its newest release. More › Choose a download lists every file.`);
+      return call('recomps.places',{},15000).then(P=>{
+        if(!P || P.length<2) return rcInstallWith(id, {});
+        openSheet({title:`Install ${e.title} on`, items:P.map(p=>({label:`${p.label}${p.free?' · '+fmtSize(p.free)+' free':''}`, icon:'dl', run:()=>rcInstallWith(id, p.path?{place:p.path}:{})}))});
+      }).catch(err=>toast(err.message));
+    }
+    case 'rcGame': return call('recomps.pickGame',{id},600000).then(r=>{ if(r) toast('Checking your copy…'); }).catch(err=>toast(err.message));
+    case 'rcAnyway': return call('recomps.useGame',{id, path:(e.job||{}).file, anyway:true},30000).catch(err=>toast(err.message));
+    case 'rcMore': return rcMore(e);
+  }
+}
+function rcMore(e){
+  const id=e.id, d=RC.det[id], items=[];
+  const done=(m,ok)=>call(m.method, Object.assign({id}, m.args||{}), m.t||15000).then(r=>{ if(ok) toast(typeof ok==='function'?ok(r):ok); rcLoad(true); if(m.lib) loadLibrary(true,true); }).catch(err=>toast(err.message));
+  if(d && d.releases && d.releases.length) items.push({label:'Choose a version', icon:'clock', run:()=>setTimeout(()=>openSheet({title:`${e.title}: versions`, sub:'An older version installs over this one; your saves stay.', items:d.releases.slice(0,15).map(r=>({label:`${r.tag}${r.prerelease?' (pre-release)':''}${e.version===r.tag?' · installed':''}`, icon:'dl', run:()=>rcInstallWith(id,{tag:r.tag})}))}),50)});
+  if(d && d.latest && d.latest.assets.length) items.push({label:'Choose a download', icon:'dl', run:()=>setTimeout(()=>openSheet({title:`${d.latest.tag}: files`, sub:`${APP} picked ${d.pick?d.pick.asset.name:'none'} for this PC.`, items:d.latest.assets.map(x=>({label:`${x.name} · ${fmtSize(x.size)||'?'}`, icon:'dl', run:()=>rcInstallWith(id,{asset:x.name, tag:d.latest.tag})}))}),50)});
+  if(e.installed){
+    items.push({label:'Choose the program to start', icon:'play', run:()=>call('recomps.exes',{id}).then(r=>setTimeout(()=>openSheet({title:'Start which program?', items:r.choices.map(c=>({label:c+(c===r.current?' (now)':''), icon:'play', run:()=>done({method:'recomps.setExe', args:{exe:c}, lib:true}, 'It starts that one now')}))}),50)).catch(err=>toast(err.message))});
+    if(e.update) items.push({label:`Skip ${e.update}`, icon:'x', run:()=>done({method:'recomps.skip', args:{tag:e.update}}, 'Skipped until the next update')});
+    items.push(e.pinned ? {label:`Let it update (kept at ${e.pinned})`, icon:'refresh', run:()=>done({method:'recomps.pin', args:{tag:null}}, 'Updates are offered again')}
+      : {label:'Keep this version (no updates)', icon:'lock', run:()=>done({method:'recomps.pin', args:{tag:e.version||'yours'}}, 'Kept at this version')});
+    items.push({label:e.shortcut?'Remove from the Desktop Mode menu':'Add to the Desktop Mode menu', icon:'desk', run:()=>done({method:'recomps.shortcut', args:{on:!e.shortcut}}, r=>r.on?'Added to the menu (Steam can add it from there too)':'Removed from the menu')});
+    items.push({label:'Back up saves and mods', icon:'up', run:()=>done({method:'recomps.backup', t:600000}, r=>`Backed up to ${r.file}`)});
+    items.push({label:'Uninstall', icon:'trash', run:()=>setTimeout(()=>openSheet({title:`Uninstall ${e.title}?`, sub:e.setup==='n64recomp'?`Its saves in ~/.config stay. ${e.adopted?'Your own folder is only forgotten.':''}`:e.adopted?'Your own folder stays; it\'s only forgotten.':'Deletes the port\'s folder, with anything saved in it.', items:[
+      {label:'Uninstall, back up my saves first', icon:'up', run:()=>done({method:'recomps.uninstall', args:{keep:true}, t:600000, lib:true}, r=>r.backup?`Uninstalled. Saves backed up to ${r.backup}`:'Uninstalled')},
+      {label:'Uninstall everything', icon:'trash', run:()=>done({method:'recomps.uninstall', args:{keep:false}, t:120000, lib:true}, 'Uninstalled')}]}),50)});
+  } else {
+    items.push({label:'I have it already: choose its folder', icon:'lib', run:()=>call('recomps.adopt',{id},600000).then(r=>{ if(r){ toast(`${APP} starts it from there now`); rcLoad(true); loadLibrary(true,true); } }).catch(err=>toast(err.message))});
+  }
+  items.push({label:'Refresh from GitHub', icon:'refresh', run:()=>{ RC.det[id]=null; rcDetails(id,true); render(null,true); }});
+  items.push({label:e.hidden?'Show it in Recomps again':'Hide it', icon:'x', run:()=>done({method:'recomps.hide', args:{on:!e.hidden}}, e.hidden?'Shown again':'Hidden (Recomps › Hidden)')});
+  if(e.custom && !e.installed) items.push({label:'Remove this project from Recomps', icon:'trash', run:()=>done({method:'recomps.removeCustom'}, 'Removed').then(()=>{ RC.page=null; render(null,true); })});
+  return openSheet({title:e.title, items});
+}
+// "recomps" events: a job's progress (install, update, checking your copy), or updates found.
+function onRecomps(data){
+  if(data.updates) return rcLoad(true);
+  const e=data.id&&rcGet(data.id); if(!e) return;
+  const was=e.job||{}; e.job=data.job;
+  const j=data.job||{};
+  if(was.busy && !j.busy){
+    if(j.error) toast(`${e.title}: ${j.error}`);
+    else if(j.game) toast(j.game.verified===true?'Your copy checks out: it\'s the right version':'Your copy is set up');
+    else if(j.done){ toast(`${e.title} ${j.version?j.version+' ':''}is installed: it's in your library`); loadLibrary(true,true); }
+    rcLoad(true);
+  }
+  if(S.view==='shop' && SHOP.store==='recomps') render(null,true);
+}
+// The browser preview's Recomps: a few ports from the real catalogue, one installed.
+function RC_MOCK(m, a){
+  const st = RC_MOCK.st || (RC_MOCK.st = {consoles:{n64:'Nintendo 64', x360:'Xbox 360', gamecube:'GameCube'}, updated:'2026-10-31', limitedUntil:null, arch:'x86_64', recomps:[
+    {id:'zelda64', title:'Zelda 64: Recompiled', game:"The Legend of Zelda: Majora's Mask", console:'n64', kind:'recomp', repo:'Zelda64Recomp/Zelda64Recomp', linux:true, needs:"Majora's Mask (USA) ROM", files:['.z64','.n64','.v64'], setup:'n64recomp',
+     hash:{xxh3:['ef18b4a9e2386169']}, saves:'~/.config/Zelda64Recompiled/saves', mods:'~/.config/Zelda64Recompiled/mods', featured:true, installed:true, version:'v1.2.1', platform:'linux', dir:'/home/you/.local/share/nimbus/recomps/zelda64/app',
+     copy:{path:'/home/you/ROMs/Majoras Mask (USA).z64', verified:true}, update:'v1.2.2'},
+    {id:'starship', title:'Starship', game:'Star Fox 64', console:'n64', kind:'decomp', repo:'harbourmasters/starship', linux:true, needs:'Star Fox 64 (USA 1.0 or 1.1) ROM', files:['.z64'], setup:'beside', featured:true, installed:false},
+    {id:'skate3', title:'Skate: Recompiled', game:'Skate 3', console:'x360', kind:'recomp', repo:'mchughalex/skate3recomp', linux:true, needs:'Skate 3 (Xbox 360) disc image', files:['.iso'], setup:'in-app', featured:true, installed:false},
+    {id:'acgc', title:'Animal Crossing PC Port', game:'Animal Crossing', console:'gamecube', kind:'decomp', repo:'flyngmt/ACGC-PC-Port', linux:false, needs:'Animal Crossing (GameCube) disc image', files:['.iso'], setup:'beside', besideName:'rom/', experimental:true, installed:false}]});
+  const rel = id => ({id, stale:false, releases:[{tag:'v1.2.2', name:'1.2.2', notes:'## Fixes\n- Saves load again\n- Faster loading', published:'2026-10-20T00:00:00Z', prerelease:false, assets:[{name:'Game-AppImage-X64.zip', size:52e6}, {name:'Game-Windows.zip', size:48e6}]}],
+    latest:{tag:'v1.2.2', name:'1.2.2', notes:'## Fixes\n- Saves load again\n- Faster loading', published:'2026-10-20T00:00:00Z', prerelease:false, assets:[{name:'Game-AppImage-X64.zip', size:52e6}, {name:'Game-Windows.zip', size:48e6}]},
+    pick:{asset:{name:id==='acgc'?'Game-Windows.zip':'Game-AppImage-X64.zip'}, platform:id==='acgc'?'windows':'linux'}});
+  const H = {
+    'recomps.list': async()=>JSON.parse(JSON.stringify(st)),
+    'recomps.details': async({id})=>rel(id),
+    'recomps.places': async()=>[{label:'This device', path:'', free:120e9}],
+    'recomps.checkUpdates': async()=>({}),
+    'recomps.hide': async({id,on})=>{ const e=st.recomps.find(x=>x.id===id); if(e) e.hidden=!!on; return {}; },
+  };
+  return H[m] ? H[m](a||{}) : Promise.reject(new Error('Not available in the browser preview: '+m));
+}
 function viewShop(){
+  if(SHOP.store==='recomps') return viewRecomps();   // Hearth Recomps (block above)
   if(SHOP.page) return shopDetails();
   if(SHOP_IN_APP.includes(SHOP.store)) return shopLauncher(SHOP.store);
   const st=SHOP.store, h=SHOP.home[st], q=SHOP.q[st]||'';
@@ -2842,7 +3083,7 @@ function shopAct(a, d, el){
 function shopLib(a, id){ const g=G(id); if(!g) return toast('That game isn\'t in your library yet. Refresh the store under Library › Stores.'); return a==='play' ? launch(g) : a==='install' ? installGame(g) : navigate('game',{game:g.id}); }
 function shopTab(s){
   if(!SHOP_STORES.some(x=>x[0]===s)) return;
-  SHOP.store=s; SHOP.page=null; try{ localStorage.setItem('hearth.shopStore', s); }catch(e){}
+  SHOP.store=s; SHOP.page=null; RC.page=null; try{ localStorage.setItem('hearth.shopStore', s); }catch(e){}
   shopLoad(s); render('sf-t-'+s); blip(600);
 }
 function shopShiftTab(d){ const i=SHOP_STORES.findIndex(x=>x[0]===SHOP.store); shopTab(SHOP_STORES[(i+d+SHOP_STORES.length)%SHOP_STORES.length][0]); }
@@ -3477,7 +3718,7 @@ const xLabel = g => (S.running===g.id || isFrozen(g)) ? 'Resume' : playable(g) ?
 const xMeta = g => [SOURCES[g.src], g.last?'Played '+ago(g.last).toLowerCase():'', g.hrs?hrs(g.hrs):''].filter(Boolean).join(' · ');
 const xBg = g => `<div class="sp-bg" id="xBg" data-id="${g?esc(g.id):''}"><div class="art" style="${heroStyle(g)}"></div>${heroImg(g)}</div>`;
 const xPlay = (g,k='x-play') => `<button class="play" data-f data-k="${k}" data-act="${xAct(g)}" data-id="${esc(g.id)}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>${xLabel(g)}</button>`;
-const xNav = () => `<div class="xnav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const xNav = () => `<div class="xnav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),['downloads','dl','Downloads'],...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="xn-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 function xDetail(g){ return g ? `<div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div><div class="sp-acts">${xPlay(g)}<button class="sq" data-f data-k="x-more" data-act="game" data-id="${esc(g.id)}" aria-label="Game page">${I.info}</button></div>` : ''; }
 // The game you move to fills the detail and background (layouts that follow the selection).
 function xUpdate(id){
@@ -3514,7 +3755,7 @@ function homeX(V){
     const d=new Date(), t=xFocusTime(d);
     return `<div class="x-focus"><div class="xf-clock">${t}</div><div class="xf-date">${longDate(d)}</div>
       ${g?`<div class="xf-card"><div class="xf-th">${cover(g,{badge:false})}</div><div class="rt"><div class="xk">Jump back in</div><div class="xd-title">${esc(g.title)}</div><div class="xd-meta">${esc(xMeta(g))}</div></div>${xPlay(g,'xf-play')}</div>`:''}
-      <div class="xf-btns">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
+      <div class="xf-btns">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),['downloads','dl','Downloads'],['friends','user','Friends'],['coop','pad','Couch Co-op'],['stores','user','Stores'],['settings','gear','Settings']].filter(([v])=>(v!=='friends'||(HOSTINFO.features||[]).includes('friends'))&&(v!=='coop'||coopOn())).map(([v,ic,l])=>`<button class="xf-b" data-f data-k="xf-${v}" data-act="nav" data-view="${v}">${I[ic]}<span>${l}</span></button>`).join('')}</div></div>`;
   }
   if(id==='x-widgets'){
     const dl=GAMES.find(x=>isActive(x)), b=S.sys.battery||{}, fr=FR.s&&FR.s.friends?FR.s.friends.filter(f=>f.state==='ingame'||f.state==='online').slice(0,4):null;
@@ -3926,6 +4167,7 @@ function pageSystem(){
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX || WINHOST) h += browserRows();
   if(LINUX && CLAUDE.s && CLAUDE.s.available) h += claudeRows();
+  if(LINUX && feat('steamMode')) h += steamModeRows();   // Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md)
   h += shead('Date and time')
     + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM'));
@@ -4012,6 +4254,26 @@ async function restoreBackup(){
 // ---------- Settings › System › Web browser: Hearth Browser (Firefox), and Aloha (optional, Linux) ----------
 const BROWSER = {s:null};
 const ART = {s:null};
+// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Steam's gamepad UI in gamescope, this time only (the
+// session comes back to Hearth's Game Mode afterwards, and a restart always starts Hearth's), with Decky Loader and the
+// Hearth plugin (hosts/decky-hearth), installed here.
+const SGM = {s:null, busy:false};
+function loadSteamMode(){ if(host && LINUX && hasFeat('steamMode')) call('steamMode.status').then(r=>{ SGM.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
+function steamModeRows(){
+  const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode (Experimental)')+note('Loading…'); }
+  const d=s.decky||{};
+  let h = shead('Steam Game Mode (Experimental)');
+  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS. This time only: when Steam closes, or from the Hearth panel in Quick Access, you're back in ${APP}'s Game Mode. Restarting always starts ${APP}'s.</small></div><div class="rv">›</div></button>`
+    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and the Hearth plugin</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth plugin in place':d.shipped?' · Hearth plugin not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Brings '+APP+'\'s games, look and apps into Steam. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
+  if(s.lastFailure) h += note(`Last try came back to ${APP}'s Game Mode: ${esc(s.lastFailure)}.`);
+  return h;
+}
+function sgmDecky(){
+  const d=(SGM.s&&SGM.s.decky)||{}; const action=d.installed&&d.via==='hearth'?'remove':'install';
+  const go=()=>{ SGM.busy=true; render('sy-decky',true); call('steamMode.decky',{action},900000).then(r=>{ SGM.s=r; toast(action==='install'?'Decky Loader and the Hearth plugin are installed. Switch to Steam Game Mode to try them.':'Decky Loader removed'); }).catch(e=>toast(e.message)).finally(()=>{ SGM.busy=false; render('sy-decky',true); }); };
+  if(action==='remove') return openSheet({title:'Remove Decky Loader?', sub:'Its service, the Hearth plugin and Steam\'s remote debugging go. Your other Decky plugins and their settings stay in ~/homebrew.', items:[{label:'Remove', icon:'x', run:go}]});
+  return openSheet({title:'Install Decky Loader?', sub:'Downloads Decky Loader from its GitHub releases and adds the Hearth plugin. Decky runs as root while Steam Game Mode runs, and Steam\'s remote debugging is turned on (any program on this device can then control Steam). Experimental: a Steam update can break Decky.', items:[{label:'Install', icon:'dl', run:go}]});
+}
 // Ember (Windows): Hearth Browser too (hosts/windows/Nimbus.Host/Services/HearthBrowser.cs).
 const WINHOST = !!host && !LINUX && !ANDROID;
 function loadArtStatus(){ if(LINUX && host) call('art.status').then(r=>{ ART.s=r; refreshUI(); }).catch(()=>{}); }
@@ -4201,7 +4463,7 @@ function libTabs(){
   const t=LIB_TABS.filter(([k])=>{
     if(k==='hidden') return GAMES.some(g=>g.hidden);
     if(k==='beacon') return GAMES.some(g=>g.src==='beacon' && !g.hidden);   // only with Beacon installed
-    if(k==='xodus' || k==='battlenet') return GAMES.some(g=>g.src===k && !g.hidden);   // only with Xodus Nexus / Battle.net set up
+    if(k==='xodus' || k==='battlenet' || k==='recomps') return GAMES.some(g=>g.src===k && !g.hidden);   // only with Xodus Nexus / Battle.net set up
     if(host && SOURCES[k]) return GAMES.some(g=>g.src===k && !g.hidden);
     return true;
   });
@@ -4650,7 +4912,7 @@ function mkSide(){
   const tabs=libTabs(), has=k=>tabs.some(t=>t[0]===k);
   const lists=[['all','All games'],['inst','Installed'],['fav','Favorites']].filter(([k])=>has(k));
   const stores=tabs.filter(([k])=>SOURCES[k]), cols=tabs.filter(([k])=>k.startsWith('c:'));
-  const SC={steam:'#4c8dff',epic:'#c9ced6',gog:'#b06bff',xbox:'#5fd068',xodus:'#5fd068',battlenet:'#3aa0ff',emu:'#ff6fae',beacon:'#ffb547',manual:'#8d99a8'};
+  const SC={steam:'#4c8dff',epic:'#c9ced6',gog:'#b06bff',xbox:'#5fd068',xodus:'#5fd068',battlenet:'#3aa0ff',recomps:'#ff9f43',emu:'#ff6fae',beacon:'#ffb547',manual:'#8d99a8'};
   const playedOn = S.tab==='all' && S.lfilter==='played', neverOn = S.tab==='all' && S.lfilter==='unplayed';
   return `<aside class="mk-side mk-scroll" data-sk="side">
     <div class="mk-grp">${lists.map(([k,l])=>item(k,l,S.tab===k&&!(k==='all'&&(playedOn||neverOn)),mkTabCount(k))).join('')}
@@ -4700,7 +4962,7 @@ function mkDesk(ctx){
 function mkEmpty(){
   return `<div class="mk-empty">${LIB.loading?'Loading your games…':MK.q?`Nothing matches “${esc(MK.q)}”. <button class="pill" data-f data-k="mk-clear" data-act="mkClear">Clear the search</button>`:!GAMES.length?'No games yet. Sign in to your stores under Stores &amp; accounts, or add a game from Home.':S.lfilter?'No games match. Remove the filter to see more.':'Nothing here yet.'}</div>`;
 }
-const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
+const mkNavPills = () => `<div class="mk-nav">${[['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),['downloads','dl','Downloads'],['stores','user','Stores'],['settings','gear','Settings']].map(([v,ic,l])=>`<button class="pill" data-f data-k="mkn-${v}" data-act="${v==='stores'?'stores':'nav'}" data-view="${v}">${I[ic]}${l}</button>`).join('')}</div>`;
 // A row (Table, and the Desk's list view). Table rows have a checkbox and follow the Shift/Ctrl selection.
 function mkRow(g, k, table){
   const [sc,sl]=lStatus(g), p=mkPdb(g), on=MK.sel.has(g.id);
@@ -5019,7 +5281,7 @@ function viewGame(){
     <div class="gbody">
       <div class="card"><h3>About</h3><div class="muted">${about}</div>
         ${g.path?`<div class="muted" style="margin-top:8px;word-break:break-all">Location: <code>${esc(g.path)}</code></div>`:''}</div>
-      ${g.src==='beacon'?beaconGameCard(g):''}${hmGameCard(g)}${side}
+      ${g.src==='beacon'?beaconGameCard(g):''}${hmGameCard(g)}${side}${typeof hpGameCards==='function'?hpGameCards(g):''}
     </div>
   </div>`;
 }
@@ -5109,6 +5371,7 @@ function viewDownloads(){
       <button class="pill" style="display:inline-flex" data-f data-k="d-lib" data-act="nav" data-view="library">${I.lib} Library</button></div>`;
   if(host && items.some(i=>i.g.src==='steam')) h += note('Steam downloads its games in the background, without its window. To pause or reorder them, use Manage in Steam.');
   if(host && items.some(i=>i.g.installKind==='nimbus')) h += note('Epic and GOG games download one at a time. Paused downloads keep what they have and carry on from there, also after a restart.');
+  if(typeof hpDownloadsSection==='function') h += hpDownloadsSection();   // Other downloads (hearth-play.js)
   return h + '</div>';
 }
 
@@ -7788,6 +8051,7 @@ function pageSources(){
   const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
   const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
   return sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
+    +(LINUX?swRow('steamKeepReady','Keep Steam ready in the background','Steam starts hidden when Game Mode comes up (if you\'ve used it here before) and stays running, so your Steam games start right away'):'')
     +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
     +(LINUX&&host?steamEngineRows():'')
     +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
@@ -7875,7 +8139,7 @@ function bazaarOpen(){
   return call('bazaar.open',{},15000).then(r=>{ if(r && r.mouse) toast('Bazaar: the controller mouse is on (right stick moves, A clicks, View + Menu turns it off)'); }).catch(e=>toast(e.message));
 }
 function renderSideMenu(){
-  const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
+  const items=[['home','home','Home'],['library','lib','Library'],...(shopOn()?[['shop','shop','Store']]:[]),...(typeof hpMenu==='function'?hpMenu():[]),...(ANDROID?[]:[['downloads','dl','Downloads']]),...((HOSTINFO.features||[]).includes('friends')?[['friends','user','Friends']]:[]),...(coopOn()?[['coop','pad','Couch Co-op']]:[]),['settings','gear','Settings']];
   $('#menu').innerHTML = `<div class="brand">${LINUX||ANDROID?`<div class="mark hm">${HEARTH_MARK}</div>`:'<div class="mark"><i></i></div>'}${APP}</div>
     ${items.map(([v,ic,l])=>`<button class="mitem ${S.view===v?'cur':''}" data-f data-k="m-${v}" data-act="nav" data-view="${v}">${I[ic]}${l}</button>`).join('')}
     ${theaterOn()?`<button class="mitem" data-f data-k="m-theater" data-act="theater">${I.theater}Theater</button>`:''}
@@ -7952,6 +8216,7 @@ function dockItems(game){
   add('home','home','Home','data-act="nav" data-view="home"', {cur:cur('home')});
   add('library','lib','Library','data-act="nav" data-view="library"', {cur:cur('library')||cur('game')});
   if(shopOn()) add('shop','shop','Store','data-act="nav" data-view="shop"', {cur:cur('shop')});
+  if(typeof hpDock==='function') hpDock(add, cur);   // Discover (hearth-play.js)
   if(friendsOn()) add('friends','friends','Friends','data-act="nav" data-view="friends"', {cur:cur('friends'), extra:dkBadge(dkUnread())});
   if(!ANDROID){ const d=dkDlNow(); add('downloads','dl','Downloads','data-act="nav" data-view="downloads"', {cur:cur('downloads'), extra:d?dkRing(d.pct||0):''}); }
   if(lkOn()) add('link','link','Hearth Link','data-act="goset" data-tab="link"', {cur:cur('settings')&&S.settingsTab==='link'&&!S.sfront});
@@ -8150,6 +8415,7 @@ function settingsBody(t){
     + note('You\'re running Hearth from the USB stick: nothing is saved until it\'s installed, and games run slowly from it.');
   if(t==='about') body = pageAbout();
   if(t==='linux') body = linuxPage();
+  if(typeof hpSettingsBody==='function') body = hpSettingsBody(t, body);   // Integrations, Theme files (hearth-play.js)
   if(ANDROID) body = androidPage(t, body);
   return body;
 }
@@ -8533,7 +8799,8 @@ function appsBody(){
 
 // ---------- overlay window mode ----------
 const OV = {shown:false};
-function overlayClose(){ send({type:'overlay', action:'close'}); }
+// why: what closed it, for Hearth's log ("overlay: closing Quick Access (its page closed it: why)").
+function overlayClose(why){ send({type:'overlay', action:'close', why: why||'B, Guide or the panel emptied'}); }
 async function overlayShown(){
   ovoskClose();
   OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
@@ -8579,15 +8846,20 @@ function ovoskAdapter(){
 function ovoskDraw(){ const t=OVOSK.el && OVOSK.el.querySelector('.ovosk-typed'); if(t) t.textContent = OVOSK.typed || 'Typing into the game'; }
 function overlayOsk(){
   OV.shown=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
+  // The keyboard is on from here, before Quick Access (left open from the last time, or opened by the same Guide
+  // press) is closed under it: closing the last panel checks whether the overlay is empty 50 ms later
+  // (overlayEmptyCheck), and the keyboard isn't a panel. It closed itself right after opening because of that
+  // ("In-game keyboard doesn't interact with the game", 0.6.59).
+  OVOSK.on=true;
   while(S.layers.length) closeLayer();
-  if(!OSKOK){ toast('The on-screen keyboard is missing'); return overlayClose(); }
+  if(!OSKOK){ OVOSK.on=false; toast('The on-screen keyboard is missing'); return overlayClose('the keyboard is missing'); }
   if(!OVOSK.el){
     OVOSK.el=document.createElement('div'); OVOSK.el.id='ovosk';
     OVOSK.el.innerHTML='<div class="ovosk-typed"></div><div class="ovosk-kb"></div><div class="ovosk-hint">B or Guide + X closes the keyboard</div>';
     document.body.appendChild(OVOSK.el);
   }
   if(!OVOSK.engine) OVOSK.engine=HearthOSK.createEngine({host:'web', mode:'text', enterLabel:'Enter', adapter:ovoskAdapter(),
-    onHide: ()=>overlayClose(), onHaptic: (st,ms)=>{ try{ HearthOSK.rumble(st,ms); }catch(e){} },
+    onHide: ()=>overlayClose('the keyboard: B'), onHaptic: (st,ms)=>{ try{ HearthOSK.rumble(st,ms); }catch(e){} },
     onSound: k=>{ if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
   OVOSK.engine.reset('text', 'Enter');
   if(OVOSK.view) OVOSK.view.destroy();
@@ -8595,6 +8867,7 @@ function overlayOsk(){
   OVOSK.engine.setActive(true); OVOSK.engine.setHints(true);
   OVOSK.on=true; OVOSK.typed=''; ovoskDraw();
   document.body.classList.add('ovosk');
+  cancelAnimationFrame(OVOSK.raf);
   const tick=()=>{ if(!OVOSK.on) return; try{ OVOSK.engine.tick(); }catch(e){} OVOSK.raf=requestAnimationFrame(tick); };
   OVOSK.raf=requestAnimationFrame(tick);
   if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
@@ -8609,7 +8882,8 @@ function ovoskClose(){
 }
 /** A controller press while the keyboard is open over the game: all of them are the keyboard's. */
 function ovoskInput(k){
-  if(k==='guide') return overlayClose();
+  // Guide closes it; not one right after it opened (the Guide of the Guide + X that opened it, passed on late).
+  if(k==='guide'){ if(qaSince() < 400) return; return overlayClose('the keyboard: Guide'); }
   if(qaSince() < 250 && k==='x') return;          // the X of the Guide + X that opened it, delivered late
   OVOSK.engine.handle(k, 'press');
 }
@@ -9126,6 +9400,7 @@ function renderPower(){
     ${keepR?`<button class="mitem" data-f data-k="p-restart-close" data-act="pwr" data-p="restart" data-sure="1">${I.restart}Restart and close games</button>`:''}
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
     <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
+    ${LINUX&&hasFeat('steamMode')?`<button class="mitem" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode${tag('experimental')}</button>`:''}
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
@@ -9368,7 +9643,7 @@ function closeLayer(){
 }
 function closeAll(){ while(S.layers.length) closeLayer(); }
 // The overlay with nothing open in it is just an invisible window holding the controller: close it.
-function overlayEmptyCheck(){ if(OVERLAY && OV.shown && !S.layers.length) overlayClose(); }
+function overlayEmptyCheck(){ if(OVERLAY && OV.shown && !S.layers.length && !OVOSK.on) overlayClose('the panel emptied'); }
 // While the overlay is open, tell Hearth every second that this page is alive (it reloads a frozen one).
 if(OVERLAY) setInterval(()=>{ if(OV.shown) send({type:'overlay', action:'alive'}); }, 1000);
 function toggleLayer(id){ if(S.layers.at(-1)===id){ closeLayer(); resumeIfGame(id); } else { closeAll(); openLayer(id); } }
@@ -9522,9 +9797,11 @@ function act(el){
   if(a.startsWith('a11y')) return a11yAct(a, d);   // Settings › Accessibility
   if(a==='oskSet'||a==='oskLay'||a==='oskClear'||a==='oskTry') return oskSettingAct(a, d);   // Settings › Keyboard
   if(a.startsWith('shop')) return shopAct(a, d, el);   // Game Mode › Store
+  if(/^rc[A-Z]/.test(a)) return rcAct(a, d);   // Game Mode › Store › Recomps
   if(a==='dfPick'||a==='dfResetAll') return dfAct(a, d);   // Settings › Default apps
   if(a==='gamingApp') return gamingOpen(d.v, d.id);   // Hearth's gaming apps (block below)
   if(/^hm[A-Z]/.test(a)) return hmAct(a, d);   // Hearth Mods in Game Mode (block below)
+  if(/^hy[A-Z]/.test(a)) return hyAct(a, d, el);   // Discover, downloads, pictures, Integrations (hearth-play.js)
   if(a.startsWith('dgf')) return dgfAct(a, d);   // the Dragonfire look (block by homeDf)
   if(a==='theater') return theaterOpen();   // Theater: Hearth Theater, your wall of video sites
   if(a==='bazaar') return bazaarOpen();   // Apps: Bazaar, Hearth OS's app store
@@ -9768,6 +10045,7 @@ function act(el){
       if(host && /^src/.test(k)) setSources(undo);
       else if(host && k==='steamBg') call('library.setSteamBackground',{on}).catch(undo);
       else if(host && k==='steamOnDemand') call('library.setSteamOnDemand',{on}).catch(undo);
+      else if(host && k==='steamKeepReady') call('library.setSteamKeepReady',{on}).catch(undo);
       else if(host && (k==='steamLight'||k==='steamOpen')){ const other=k==='steamLight'?'steamOpen':'steamLight', was=S.set[other]; if(on) S.set[other]=false;
         call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Open Steam client on (experimental)':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
       else send({type:'setting',key:d.key,value:S.set[d.key]});
@@ -9865,6 +10143,7 @@ function act(el){
     case 'clearnotifs': NOTIFS=NOTIFS.filter(n=>n.expired); updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p, d.sure==='1');
+    case 'sgmDecky': return sgmDecky();
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
     case 'desk': return deskAct(el);
@@ -9872,6 +10151,8 @@ function act(el){
     case 'andRoms': toast('Pick your ROMs folder'); return call('android.roms.pick',{},600000).then(r=>{ if(r){ AND.s=r; toast('ROMs folder set'); loadLibrary(true,true); } render('an-roms',true); }).catch(e=>toast(e.message));
     case 'andRomsForget': return call('android.roms.forget').then(r=>{ AND.s=r; loadLibrary(true); render('an-roms',true); }).catch(e=>toast(e.message));
     case 'launchShow': return launchShow();
+    case 'launchWait': return launchWait();
+    case 'launchBack': return launchBack();
     case 'toast': return toast(d.text);
   }
 }
@@ -9882,6 +10163,7 @@ function back(){
   if(S.layers.length && S.layers.at(-1)==='launch' && S.launchWaiting) return launchShow();
   if(S.layers.length && S.layers.at(-1)!=='launch'){ const top=S.layers.at(-1); closeLayer(); return resumeIfGame(top); }
   if(!S.layers.length && S.view==='shots' && SH.open>=0){ const i=SH.open; SH.open=-1; return render('sh-'+i,true); }
+  if(!S.layers.length && S.view==='shop' && SHOP.store==='recomps' && RC.page) return rcBack();
   if(!S.layers.length && S.view==='shop' && SHOP.page) return shopBack();
   if(!S.layers.length && S.view==='settings' && !S.sfront){ setBackToFront(); return blip(420,.05); }
   if(!S.layers.length && goBack()) return blip(420,.05);
@@ -9910,16 +10192,16 @@ function power(p, sure){
   }
   // Desktop Mode with a game stopped (put aside with Quick Resume, or paused) froze the desktop: Hearth ends them first
   // (bridge.rs "power" desktop → end_stopped), so say so.
-  if(!sure && p==='desktop' && LINUX){
+  if(!sure && (p==='desktop'||p==='steam') && LINUX){
     const names=[...(S.paused && S.running && G(S.running) ? [G(S.running).title] : []), ...QR.list.map(q=>G(q.id)).filter(Boolean).map(g=>g.title)];
     if(names.length){
       send({type:'log', text:`desktop mode: asking first, these games are stopped and will be closed: ${names.join(', ')}`});
-      return openSheet({title:'Switch to Desktop Mode?', sub:`${names.length===1?names[0]+' is paused and will be closed':names.slice(0,-1).join(', ')+' and '+names.at(-1)+' are paused and will be closed'}. Anything not saved in ${names.length===1?'it':'them'} is lost.`,
-        items:[{label:'Close and switch', icon:'shell', run:()=>power('desktop',true)}], focus:'sh-x'});
+      return openSheet({title:p==='steam'?'Switch to Steam Game Mode?':'Switch to Desktop Mode?', sub:`${names.length===1?names[0]+' is paused and will be closed':names.slice(0,-1).join(', ')+' and '+names.at(-1)+' are paused and will be closed'}. Anything not saved in ${names.length===1?'it':'them'} is lost.`,
+        items:[{label:'Close and switch', icon:'shell', run:()=>power(p,true)}], focus:'sh-x'});
     }
   }
   closeAll();
-  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
+  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',steam:'Switching to Steam Game Mode (this time only)…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
@@ -9951,6 +10233,7 @@ function launch(g, mod, save){
   const L=$('#launch');
   L.innerHTML = `<div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}<div class="lbox"><div class="spin"></div><div class="t">${esc(g.title)}</div><div class="s">${g.cloud?'Streaming with Xbox Cloud Gaming…':`Starting via ${SOURCES[g.src]}${mod?(mod==='@none'?' without mods':' with '+esc(beaconModName(g,mod))):''}…`}</div></div>`;
   closeAll();
+  S.launching=g.id; L.dataset.stage='';
   focusStack.push({el:focused, k:focused?.dataset.k}); S.layers.push('launch'); L.classList.add('open'); renderFooter();
 
   if(!host){ // browser preview: pretend
@@ -9964,7 +10247,10 @@ function launch(g, mod, save){
     }
     // Started without the store (its sign-in expired): it plays offline; cloud saves and online play wait.
     if(r && r.expired) toast(`${g.title} is starting offline: your ${storeName(r.expired)} sign-in expired, so cloud saves didn't sync. Sign in again from Notifications.`);
-    // Stay on the launch screen until the game's process shows up; stores can take a while.
+    // Stay on the launch screen until the game's process shows up; stores can take a while. Steam says what it's
+    // doing ("steam.launch": starting, updating, asking something, starting the game) and only after 2½ minutes
+    // does the screen offer a way back.
+    if(g.src==='steam'){ launchTimer=setTimeout(()=>steamLaunchTimeout(g.id), STEAM_LAUNCH_WAIT); return; }
     launchTimer=setTimeout(()=>{ hideLaunch(); toast(`${g.title} is still starting. The store may be updating it.`); }, 25000);
   }).catch(e=>{
     hideLaunch();
@@ -10009,6 +10295,25 @@ function gameSlow(d){
   box.insertAdjacentHTML('beforeend', `<div class="hint">${d.firstRun?'The first start of a Windows game sets up Proton and can take a few minutes. It comes to the front by itself when it\'s ready.':'Still starting. It comes to the front by itself when it\'s ready.'}</div><button class="btn" data-f data-k="l-show" data-act="launchShow">Show it now</button>`);
   setFocus($('#launch [data-k="l-show"]'));
 }
+// A Steam game's start, step by step (hearth-core steam_launch.rs): the starting screen's line says it.
+const STEAM_LAUNCH_WAIT=150000;
+function steamLaunchStage(d){
+  const L=$('#launch');
+  if(!d || !L || !S.layers.includes('launch') || (S.launching && S.launching!==d.id)) return;
+  L.dataset.stage=d.stage||'';
+  const s=$('#launch .s'); if(s && d.text) s.textContent=d.text;
+}
+// Still nothing after 2½ minutes: say so, with Keep waiting and Back to Hearth (the game may still come up later).
+function steamLaunchTimeout(id){
+  const L=$('#launch'), box=$('#launch .lbox');
+  if(!box || !S.layers.includes('launch') || (S.launching && S.launching!==id) || box.querySelector('.lwait')) return;
+  const g=G(id), stuck={updating:'Steam is still updating.', asking:'Steam is waiting for an answer in its window.'}[L.dataset.stage]||'Steam may still be starting or updating.';
+  box.querySelector('.hint')?.remove(); box.querySelector('[data-k="l-show"]')?.remove();
+  box.insertAdjacentHTML('beforeend', `<div class="hint lwait">${esc(g?g.title:'The game')} hasn't started yet. ${stuck} It comes to the front by itself if it starts.</div><button class="btn" data-f data-k="l-wait" data-act="launchWait">Keep waiting</button><button class="btn" data-f data-k="l-back" data-act="launchBack">Back to ${APP}</button>`);
+  setFocus($('#launch [data-k="l-back"]'));
+}
+function launchWait(){ $('#launch .lwait')?.remove(); $('#launch [data-k="l-wait"]')?.remove(); $('#launch [data-k="l-back"]')?.remove(); const id=S.launching; clearTimeout(launchTimer); launchTimer=setTimeout(()=>steamLaunchTimeout(id), STEAM_LAUNCH_WAIT); }
+function launchBack(){ S.launchWaiting=null; hideLaunch(); toast('Back to '+APP+'. The game still comes up if Steam starts it.'); }
 function launchQam(){
   if(host && !OVERLAY && (HOSTINFO.features||[]).includes('overlayOverLaunch')) return send({type:'overlay', action:'open'});
   qamFresh(); openLayer('qam');
@@ -11417,8 +11722,9 @@ function xodusCard(){
     <div class="sbtns">${x.busy?'<span class="mini-spin"></span>':!x.installed?btn('get','xodusGet','dl','Add Xodus Nexus',true)
       :btn('open','lnOpen','play','Open Xodus Nexus',true,'data-id="xodus:nexus"')+btn('sign','xodusSignIn','user','Sign in')+btn('show','accShow','lib','Show games','','data-s="xodus"')}</div></div>`;
 }
-// Library › Stores: Battle.net's card. One press sets up Blizzard's own Battle.net app in a Proton prefix of its own;
-// signing in, buying and installing happen in Battle.net's window. Its Blizzard games then show in Library › Battle.net.
+// Library › Stores: Battle.net's card. One press sets up Blizzard's own Battle.net app through Faugus Launcher (it comes
+// with Hearth OS; without it, Hearth's own Proton prefix); signing in, buying and installing happen in Battle.net's
+// window. Its Blizzard games then show in Library › Battle.net.
 function onBattlenet(d){
   const was=ACC.battlenet&&ACC.battlenet.busy; ACC.battlenet=Object.assign(ACC.battlenet||{},d);
   if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Battle.net is set up: open it from your library to sign in'); loadLibrary(true,true); } }
@@ -11430,7 +11736,7 @@ function battlenetCard(){
   const btn=(k,act,icon,label,pri,extra)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-bnet-${k}" data-act="${act}" ${extra||''}>${I[icon]}${label}</button>`;
   return `<div class="scard" style="--sc:#0e5aa7">
     <div class="shd"><div class="smark">B</div><div class="sti"><b>Battle.net</b><small class="${b.installed?'on':''}">${esc(st)}</small></div></div>
-    <div class="sblurb">Blizzard's games: Overwatch 2, Diablo, World of Warcraft, Hearthstone, StarCraft and more. ${b.installed?`Sign in, buy and install games in Battle.net's own window; they show up in Library › Battle.net, and Play starts them through Battle.net.`:`One press sets up Blizzard's own Battle.net app with Proton. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`}</div>
+    <div class="sblurb">Blizzard's games: Overwatch 2, Diablo, World of Warcraft, Hearthstone, StarCraft and more. ${b.installed?`Sign in, buy and install games in Battle.net's own window; they show up in Library › Battle.net, and Play starts them through Battle.net.${b.via==='faugus'?' It\'s in Faugus Launcher too.':''}`:b.faugus===false?`Faugus Launcher isn't installed, so one press sets up Battle.net with ${APP}'s own Proton setup instead. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`:`One press sets up Blizzard's own Battle.net app through Faugus Launcher, with Proton. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`}</div>
     ${b.busy&&b.stage?`<div class="sblurb">${esc(b.stage)}</div>`:''}
     ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
     <div class="sbtns">${b.busy?'<span class="mini-spin"></span>':!b.installed?btn('get','bnetGet','dl','Set up Battle.net',true)
@@ -12750,6 +13056,7 @@ async function loadLibrary(rescan, announce){
     if(lib.quickResume) applyQuick({list:lib.quickResume.list, on:lib.quickResume.on});
     S.set.steamBg = lib.steamBackground!==false;
     S.set.steamOnDemand = lib.steamOnDemand!==false;
+    S.set.steamKeepReady = lib.steamKeepReady!==false;
     S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; if(LINUX) steamEngRefresh();
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
@@ -12779,6 +13086,7 @@ function onSysEvent(name, data){
   if(name==='systemUpdate') return onSystemUpdate(data);
   if(name==='xodus') return onXodus(data);
   if(name==='battlenet') return onBattlenet(data);
+  if(name==='recomps') return onRecomps(data);   // Hearth Recomps
   if(name==='store.webClosed') return shopWebClosed(data);
   if(name==='import') return onImport(data);
   if(name==='osInstall') return onOsInstall(data);
@@ -12796,6 +13104,7 @@ function onSysEvent(name, data){
   if(name==='game.started') return gameStarted(data.id);
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
+  if(name==='steam.launch') return steamLaunchStage(data);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad'){
     if(HOSTSCREEN.picker && !OVERLAY) return;           // a file picker is open: its own controller helper has it
@@ -13156,6 +13465,7 @@ function input(k){
     // when there's none, and this window's own panel opens instead).
     if(k==='select'||k==='guide') return launchQam();
     if(k==='b' && S.launchWaiting) return launchShow();
+    if(k==='b' && document.querySelector('#launch .lwait')) return launchBack();
     if(k==='a' && focused && focused.closest('#launch')) return act(focused);
     return;
   }
@@ -13493,5 +13803,7 @@ else { S.qtab='quick'; openLayer('qam'); }
 requestAnimationFrame(pollPads);
 send({type:'ready'});
 </script>
+<!-- Discover, game details, achievements, pictures, other downloads, Find games, Activity, Integrations (docs/HYDRA-FEATURES.md) -->
+<script src="hearth-play.js"></script>
 </body>
 </html>

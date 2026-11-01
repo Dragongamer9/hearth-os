@@ -68,6 +68,74 @@ const path = require('path');
       if (document.querySelector('#view [data-k="sf-r-0"]')) throw new Error("Clear left the results");
     });
   } catch (e) { errors.push('store: ' + e.message.split('\n')[0]); }
+  // Hearth's take on Hydra Launcher's features (ui/hearth-play.js, docs/HYDRA-FEATURES.md), with the preview's data:
+  // Discover and its store suggestions, a game's page (details, requirements, time to beat, RetroAchievements,
+  // Change pictures), Other downloads (pause, resume), Get games, Find games in a folder, Integrations (a key typed
+  // with the on-screen keyboard's prompt), and Friends › Activity. Every step with the controller's own actions.
+  const hyErr = m => errors.push('hydra features: ' + m);
+  try {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const has = k => !!document.querySelector(`#view [data-k="${k}"]`);
+      const press = async k => { const el = document.querySelector(`#view [data-k="${k}"]`); if (!el) throw new Error('no ' + k); setFocus(el); act(el); await wait(250); };
+      const text = () => document.querySelector('#view').textContent;
+      const out = [];
+      closeAll(); S.layers = []; S.history = []; navigate('home', {}, false);
+      renderMenu(); if (!document.querySelector('#menu [data-k="m-discover"]')) out.push('Discover is not in the menu');
+      navigate('discover', {}, true); await wait(700);
+      if (!has('dc-surprise')) out.push('Discover has no Surprise me');
+      if (!/Not played yet|Pick up again/.test(text())) out.push('Discover has no shelves from your library');
+      if (!/Because you play/.test(text())) out.push('Discover has no suggestions from what you play');
+      if (!/Free and open-source games/.test(text())) out.push('Discover has no free and open-source games');
+      const card = document.querySelector('#view .sft[data-act="hyShop"]');
+      if (!card) out.push('no store suggestion'); else { setFocus(card); act(card); await wait(400); if (S.view !== 'shop' || !SHOP.page) out.push('a suggestion did not open its store page'); back(); back(); await wait(100); if (S.view !== 'discover') out.push('B did not come back to Discover: ' + S.view); }
+      // A game's page: an emulated game gets its achievements from RetroAchievements (the preview has it connected).
+      const g = GAMES.find(x => x.src === 'emu' && !x.cloud) || GAMES.find(x => !x.cloud);
+      navigate('game', { game: g.id }, true); await wait(500); render(null, true);
+      for (const t of ['More about it', 'System requirements', 'How long to beat', 'Pictures']) if (!text().includes(t)) out.push(`the game's page has no "${t}"`);
+      if (g.src === 'emu' && !/2 of 4 unlocked/.test(text())) out.push('no RetroAchievements on an emulated game: ' + text().slice(0, 80));
+      await press('g-hp-art'); await wait(300); render(null, true);
+      if (S.view !== 'hpart') out.push('Change pictures did not open');
+      if (!/SteamGridDB/.test(text())) out.push('Pictures without SteamGridDB says nothing about it');
+      // Integrations: SteamGridDB is off; a key typed in turns it on (never shown whole).
+      S.settingsTab = 'integrations'; navigate('settings', { sfront: false }, true); await wait(400); render(null, true);
+      if (!has('in-steamgriddb-on') || !has('in-retro-user')) out.push('Integrations is missing its rows');
+      const realPrompt = window.openPrompt; window.openPrompt = async () => 'abcdef123456';
+      await press('in-steamgriddb-key'); await wait(200); window.openPrompt = realPrompt;
+      if (!(HP.keys && HP.keys.steamgriddb.on)) out.push('typing a SteamGridDB key did not turn it on');
+      if (/abcdef/.test(text())) out.push('the whole key is on the screen');
+      navigate('hpart', { game: g.id }, true); HP.art = {}; render(null, true); await wait(500); render(null, true);
+      if (!has('ar-cover-0')) out.push('no covers from SteamGridDB'); else { await press('ar-cover-0'); await wait(300); if (!/^data:/.test((G(g.id).art || {}).cover || '')) out.push('picking a cover did not change it'); }
+      // Other downloads: the queue with Pause, then Resume.
+      navigate('downloads', {}, true); await wait(400); render(null, true);
+      if (!has('hd-url') || !has('hd-limit')) out.push('Downloads has no Other downloads rows');
+      if (!has('hj-hyDlPause-d1')) out.push('the running download has no Pause'); else { await press('hj-hyDlPause-d1'); render(null, true); if (!has('hj-hyDlResume-d1')) out.push('Pause did not pause'); else await press('hj-hyDlResume-d1'); }
+      if (!has('hj-add-d3')) out.push('a downloaded AppImage has no Add to library');
+      // Get games: free and open-source games ask before downloading.
+      navigate('hpget', {}, true); await wait(300); render(null, true);
+      if (!has('hpf-0')) out.push('Get games has no free and open-source games'); else { await press('hpf-0'); if (!S.layers.includes('sheet')) out.push('a free game did not ask first'); closeAll(); }
+      await press('hpg-url'); if (!/repack/.test(text())) out.push('Get games does not say what Hearth will not download');
+      // Find games in a folder: pick one, add it.
+      const n = GAMES.length;
+      navigate('hpfind', {}, true); await wait(400); render(null, true);
+      if (!has('hf-0')) out.push('Find games found nothing'); else { await press('hf-0'); await press('hf-add'); await wait(100); if (GAMES.length !== n + 1) out.push('Find games did not add the game'); }
+      // Friends › Activity.
+      MF.top = 'mx'; MF.tab = 'activity'; MF.room = null; navigate('friends', {}, true); mfLoad(); await wait(600); render(null, true);
+      if (MF.st && MF.st.signedIn) {
+        if (!has('ha-share') || !/Total play time/.test(text())) out.push('Friends › Activity is missing your profile or the share switch');
+        if (!/Stardew Valley/.test(text())) out.push("Friends › Activity has no friends' activity");
+        await press('ha-share'); render(null, true);
+        if (!document.querySelector('#view [data-k="ha-share"] .sw.on')) out.push('Share my activity did not turn on');
+      }
+      MF.tab = 'friends';
+      // Library › Add a game offers Find games in a folder.
+      closeAll(); await addManual(); await wait(100);
+      if (!S.layers.includes('sheet') || !/Find games in a folder/.test(document.querySelector('#sheetBox').textContent)) out.push('Add a game does not offer Find games in a folder');
+      closeAll(); S.history = []; navigate('home', {}, false);
+      return out;
+    });
+    r.forEach(hyErr);
+  } catch (e) { hyErr(e.message.split('\n')[0]); }
   // A game's settings, and its controller layout editor (Hearth Input).
   await step('screen gameset', () => { S.layers = []; navigate('gameset', {game: (GAMES.find(g => !g.cloud) || GAMES[0]).id}, false); });
   await step('screen inputmap', async () => {
@@ -196,6 +264,10 @@ const path = require('path');
     S.layers = []; await loadAccounts(); navigate('stores', {}, false);
     if (!document.querySelector('#view [data-k="sa-xodus-open"]') || !/Comes with Hearth OS/.test(document.querySelector('#view').textContent)) throw new Error('no Xodus Nexus card');
     if (!document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Set up Battle.net');
+    if (!/through Faugus Launcher/.test(document.querySelector('#view').textContent)) throw new Error("Battle.net's card doesn't say it's set up through Faugus Launcher");
+    { const was = ACC.battlenet; ACC.battlenet = Object.assign({}, was, {faugus: false}); render(null, true);
+      const t = document.querySelector('#view').textContent; ACC.battlenet = was; render(null, true);
+      if (!/Faugus Launcher isn't installed/.test(t) || !document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error("no clear message (and setup) on Battle.net's card without Faugus Launcher"); }
     const was = ACC.battlenet; ACC.battlenet = {installed: true, busy: false, games: 2, error: null}; render(null, true);
     const ok = ['sa-bnet-open', 'sa-bnet-sign', 'sa-bnet-show', 'sa-bnet-rm'].every(k => document.querySelector(`#view [data-k="${k}"]`));
     ACC.battlenet = was; render(null, true);
@@ -205,7 +277,45 @@ const path = require('path');
     S.layers = []; S.history = []; SHOP.page = null; navigate('shop', {}, false); shopTab('battlenet');
     await new Promise(r => setTimeout(r, 300));
     if (!document.querySelector('#view [data-k="sf-t-battlenet"].on') || !document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Battle.net section in the Store');
-    input('rb'); if (SHOP.store !== 'steam') throw new Error('RB from Battle.net did not go round to Steam: ' + SHOP.store);
+    input('rb'); if (SHOP.store !== 'recomps') throw new Error('RB from Battle.net did not go to Recomps: ' + SHOP.store);
+    input('rb'); if (SHOP.store !== 'steam') throw new Error('RB from Recomps did not go round to Steam: ' + SHOP.store);
+  });
+  // Hearth Recomps (Store › Recomps, hearth-core recomps.rs): the catalogue from the preview's data, its filters and
+  // search, an installed port's page (Play, Update, patch notes, your copy checked, the More sheet), one that isn't
+  // installed (Install, "Needs your copy of", a Windows build through Proton), and B back.
+  await step('store recomps section', async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const v = () => document.querySelector('#view');
+    const has = k => !!v().querySelector(`[data-k="${k}"]`);
+    S.layers = []; S.history = []; SHOP.page = null; RC.page = null; navigate('shop', {}, false); shopTab('recomps');
+    await wait(400);
+    if (!has('sf-t-recomps') || !v().querySelector('[data-k="sf-t-recomps"].on')) throw new Error('no Recomps tab in the Store');
+    for (const k of ['rc-c-zelda64', 'rc-c-starship', 'rc-c-skate3', 'rc-c-acgc', 'rc-search', 'rc-con', 'rc-sort', 'rc-add', 'rc-check', 'rc-s-installed', 'rc-s-updates'])
+      if (!has(k)) throw new Error('no ' + k);
+    if (!/Update/.test(v().querySelector('[data-k="rc-c-zelda64"]').textContent)) throw new Error("an installed port with an update doesn't say so");
+    act(v().querySelector('[data-k="rc-s-installed"]')); await wait(100);
+    if (has('rc-c-starship') || !has('rc-c-zelda64')) throw new Error('the Installed filter shows the wrong ports');
+    RC.show = 'all'; RC.con = 'x360'; render(null, true);
+    if (has('rc-c-zelda64') || !has('rc-c-skate3')) throw new Error('the console filter shows the wrong ports');
+    RC.con = 'all'; shopDoSearch('recomps', 'star fox'); await wait(100);
+    if (!has('rc-c-starship') || has('rc-c-skate3')) throw new Error("searching by the game's name didn't find Starship");
+    RC.q = ''; render(null, true);
+    act(v().querySelector('[data-k="rc-c-zelda64"]')); await wait(400);
+    for (const k of ['rc-play', 'rc-update', 'rc-game', 'rc-more']) if (!has(k)) throw new Error("an installed port's page has no " + k);
+    const t = v().textContent;
+    if (!/Saves load again/.test(t) || !/Checked: the right version/.test(t) || !/Linux build/.test(t) || !/Zelda64Recomp\/Zelda64Recomp/.test(t))
+      throw new Error("an installed port's page is missing its patch notes, the copy check, its build or its project");
+    act(v().querySelector('[data-k="rc-more"]')); await wait(100);
+    const sheetText = document.querySelector('#sheetBox').textContent;
+    if (!S.layers.includes('sheet') || !/Uninstall/.test(sheetText) || !/Choose a version/.test(sheetText) || !/Keep this version/.test(sheetText) || !/Desktop Mode menu/.test(sheetText) || !/Back up saves/.test(sheetText))
+      throw new Error('the More sheet is missing something: ' + sheetText.slice(0, 300));
+    closeAll(); await wait(50);
+    back(); if (RC.page) throw new Error("B on a port's page didn't go back to Recomps");
+    act(v().querySelector('[data-k="rc-c-acgc"]')); await wait(400);
+    const t2 = v().textContent;
+    if (!has('rc-install') || !/Needs your copy of Animal Crossing/.test(t2) || !/Windows build via Proton/.test(t2) || !/Early: expect rough edges/.test(t2))
+      throw new Error("a port that isn't installed doesn't offer Install and Needs your copy: " + t2.slice(0, 300));
+    back(); if (RC.page) throw new Error('B did not go back');
   });
   await step('launcher windows start with the mouse', async () => {
     imLoadTables(); imLoad('battlenet:app', true); imLoad('xodus:nexus', true);
@@ -557,6 +667,32 @@ const path = require('path');
   await step('start while an unknown game runs', () => {
     const was = S.running; S.running = 'steam:999999';
     try { launch(G('g01')); } finally { S.running = was; closeAll(); }
+  });
+  // A Steam game's start, step by step (steam_launch.rs "steam.launch" events): the starting screen says what Steam is
+  // doing, ignores another game's steps, and after the wait offers Keep waiting / Back to Hearth (B goes back).
+  await step('steam launch states', () => {
+    const g = GAMES.find(x => x.src === 'steam') || G('g01');
+    const L = document.querySelector('#launch');
+    closeAll(); L.innerHTML = '<div class="lbox"><div class="spin"></div><div class="t">x</div><div class="s">Starting via Steam…</div></div>';
+    S.launching = g.id; S.layers.push('launch'); L.classList.add('open');
+    try {
+      const line = () => document.querySelector('#launch .s').textContent;
+      const want = { starting: 'Starting Steam…', updating: 'Steam is updating…', asking: "Steam is asking something. It's in front: use the right stick and A", game: 'Starting the game…' };
+      for (const [stage, text] of Object.entries(want)) {
+        onSysEvent('steam.launch', { id: g.id, stage, text });
+        if (line() !== text || L.dataset.stage !== stage) throw new Error(`${stage}: "${line()}" (${L.dataset.stage})`);
+      }
+      onSysEvent('steam.launch', { id: 'steam:1', stage: 'updating', text: 'Steam is updating…' });
+      if (line() !== want.game) throw new Error("another game's step changed the line: " + line());
+      L.dataset.stage = 'asking'; steamLaunchTimeout(g.id);
+      const box = document.querySelector('#launch .lbox').textContent;
+      if (!document.querySelector('#launch [data-k="l-back"]') || !document.querySelector('#launch [data-k="l-wait"]') || !/waiting for an answer/.test(box)) throw new Error('no way back after the wait: ' + box.slice(0, 200));
+      launchWait();
+      if (document.querySelector('#launch [data-k="l-back"]')) throw new Error('Keep waiting left the offer up');
+      steamLaunchTimeout(g.id);
+      padPressed('b', 'ui-check');
+      if (S.layers.includes('launch')) throw new Error('B after the wait did not go back');
+    } finally { clearTimeout(launchTimer); S.layers = S.layers.filter(x => x !== 'launch'); L.classList.remove('open'); S.launching = null; closeAll(); }
   });
   // Game settings that can't be read: a message with Try again (it said "Loading…" for good).
   await step('game settings not read', async () => {
@@ -1388,8 +1524,23 @@ const path = require('path');
         window.__sent = []; window.send = m => { window.__sent.push(m); };
         const real = MOCK.call; window.__calls = [];
         MOCK.call = (m, a) => { if (m === 'osk.type' || m === 'osk.key') { window.__calls.push([m, a]); return Promise.resolve({ ok: true, skipped: '' }); } return real(m, a); };
+        // Quick Access was open over the game before (its panel stays in the page when it closes), and is open again
+        // when Guide + X turns it into the keyboard: the keyboard must stay open, not close itself 50 ms later because
+        // its panel was closed under it (0.6.59: "In-game keyboard doesn't interact with the game").
+        await overlayShown(); await wait(200); overlayHidden();
+        o.leftOpen = S.layers.join(',');
+        window.__sent = [];
         onSysEvent('overlay.osk', {});
-        await wait(300);
+        await wait(400);
+        o.earlyClose = window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').map(m => m.why || '?').join(',');
+        await overlayShown(); await wait(200);
+        window.__sent = [];
+        onSysEvent('overlay.osk', {});
+        await wait(60);
+        hostPad('guide');                        // the Guide of the chord, passed on late: not a close
+        await wait(400);
+        o.earlyClose2 = window.__sent.filter(m => m.type === 'overlay' && m.action === 'close').map(m => m.why || '?').join(',');
+        o.earlyGuide = /Guide/.test(o.earlyClose2);
         o.open = OVOSK.on && !!document.querySelector('#ovosk .ovosk-kb *') && document.body.classList.contains('ovosk') && !S.layers.includes('qam');
         o.visible = getComputedStyle(document.querySelector('#ovosk')).display !== 'none';
         hostPad('a'); await wait(150);           // the selected key
@@ -1398,7 +1549,7 @@ const path = require('path');
         hostPad('start'); await wait(300);       // Enter
         o.calls = window.__calls.map(c => c[0] + ':' + (c[1].text || c[1].key)).join(' ');
         hostPad('b'); await wait(100);
-        o.closed = window.__sent.some(m => m.type === 'overlay' && m.action === 'close');
+        o.closed = window.__sent.some(m => m.type === 'overlay' && m.action === 'close' && /B/.test(m.why || ''));
         onSysEvent('overlay.hidden', {});
         o.gone = !OVOSK.on && !document.body.classList.contains('ovosk');
         // Quick Access over the game: the layout editor as a panel there.
@@ -1426,6 +1577,7 @@ const path = require('path');
         return o;
       });
       const kerr = m => errors.push('keyboard over a game: ' + m);
+      if (r.earlyClose || r.earlyClose2 || r.earlyGuide) kerr(`it closed itself right after opening (after Quick Access: "${r.earlyClose}", over Quick Access: "${r.earlyClose2}", late Guide: ${r.earlyGuide}; panels left: ${r.leftOpen})`);
       if (!r.open || !r.visible) kerr(`it didn't open as just the keyboard (${JSON.stringify(r)})`);
       if (!/^osk\.type:\S+ .*osk\.key:bksp.* osk\.key:enter$/.test(r.calls)) kerr(`presses didn't type into the game as expected: "${r.calls}"`);
       if (!r.closed || !r.gone) kerr(`B didn't close it (${JSON.stringify(r)})`);

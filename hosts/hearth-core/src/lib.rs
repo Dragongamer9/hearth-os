@@ -9,7 +9,7 @@ pub mod appupdate;
 pub mod artcache;
 pub mod backup;
 pub mod bazaar;   // Bazaar, Hearth OS's app store, opened from Game Mode's menu
-pub mod battlenet;   // Battle.net in its own Proton prefix (Library › Stores)
+pub mod battlenet;   // Battle.net through Faugus Launcher, or in Hearth's own Proton prefix (Library › Stores)
 pub mod beacon;
 pub mod binkv;
 pub mod bridge;
@@ -56,8 +56,10 @@ pub mod overlay_link;
 pub mod paths;
 pub mod perf;
 pub mod picker;   // file and folder pickers, off the bridge
+pub mod play;   // Discover, game details, achievements, artwork, profile, downloads (docs/HYDRA-FEATURES.md)
 pub mod power;
 pub mod procs;
+pub mod recomps;   // Hearth Recomps: native PC ports of console games (docs/RECOMPS.md)
 pub mod profile;
 pub mod profiles;
 pub mod remote;
@@ -69,6 +71,8 @@ pub mod space;
 pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
+pub mod steam_mode;   // Steam Game Mode (Experimental): Steam's gamepad UI in gamescope with the Hearth Decky plugin (docs/STEAM-GAME-MODE.md)
+pub mod steam_launch;   // Steam games in Game Mode: Steam kept ready, its windows in front, the starting screen's stages
 pub mod steam_engine;   // Settings › Library › Steam engine: Lightweight (hosts/hearth-steam), with fallback to the normal client
 pub mod steam_owned;
 pub mod steam_thaw;   // Steam stopped by Handheld Daemon while Quick Access is open over a game: let run again

@@ -53,21 +53,29 @@ jobs:
             (cd hosts/$c && cargo build --release 2>&1 | tee ../../build-$c.log) || { echo "::error title=$c build::$(grep -E '^error' -A8 build-$c.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
             echo "::notice title=$c::$(du -h "$CARGO_TARGET_DIR/release/$c" | cut -f1)"
           done
-      # Hearth Theater's catalogs (docs/THEATER.md): the reader script and the home screen in Chromium against local
-      # test sites (tests/fixtures), then the real app reading those sites in its own hidden web view.
-      - name: Theater - scripts parse; the catalog reader and the home screen in Chromium (local test sites)
+      # Hearth Theater (docs/THEATER.md): the reader script, the home screen and the viewer's controller in Chromium
+      # against local test sites (tests/fixtures), then the real app (its core and its Chromium windows, as Hearth's
+      # Electron runs them) reading those sites, its home screen, and its real pointer clicking a button that only
+      # takes real clicks inside a frame from another site.
+      - name: Theater - scripts parse; the catalog reader, the home screen and the viewer's controller in Chromium (local test sites)
         working-directory: hosts/hearth-theater
         run: |
           set -o pipefail
-          node --check src/reader.js && node --check src/viewer.js && node --check ui/hearth.js
+          for f in src/reader.js ui/hearth.js ui/viewer-pad.js electron/*.js tests/*.mjs; do node --check "$f"; done
           sed -n '/^<script>$/,/^<\/script>$/p' ui/index.html | sed '1d;$d' > "$RUNNER_TEMP/theater-inline.js" && node --check "$RUNNER_TEMP/theater-inline.js"
+          node --test electron/rules.test.js 2>&1 | tee rules.log || { echo "::error title=Theater window rules::$(grep -E 'not ok|Error|expected|actual' rules.log | head -30 | tr '\n' '|' | cut -c1-3500)"; exit 1; }
           npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
           HEARTH_THEATER_SHOTS="$GITHUB_WORKSPACE/shots/theater-pages" node tests/pages.mjs 2>&1 | tee pages.log \
             || { echo "::error title=Theater pages::$(grep -v '^::notice' pages.log | tail -c 3500 | tr '\n' '|')"; exit 1; }
-      - name: Theater - the app reads the test sites' catalogs in its own web view; its home screen
+      - name: Theater - the app reads the test sites' catalogs in its Chromium; its home screen; its real pointer
         run: |
           set -o pipefail
           mkdir -p shots
+          # Hearth's Electron (hosts/electron pins 38.0.0) runs Theater's window app, as /usr/lib/hearth-electron does.
+          mkdir -p "$RUNNER_TEMP/el" && (cd "$RUNNER_TEMP/el" && npm i --no-save --no-audit --no-fund electron@38.0.0 >/dev/null)
+          export HEARTH_THEATER_ELECTRON="$(cd "$RUNNER_TEMP/el" && node -p "require('electron')")"
+          export HEARTH_THEATER_APP="$GITHUB_WORKSPACE/hosts/hearth-theater/electron" HEARTH_THEATER_ELECTRON_FLAGS="--no-sandbox"
+          test -x "$HEARTH_THEATER_ELECTRON"
           node hosts/hearth-theater/tests/serve.mjs 8761 > serve.log 2>&1 &
           sleep 2; cat serve.log
           export HEARTH_THEATER_DIR="$RUNNER_TEMP/theater"; mkdir -p "$HEARTH_THEATER_DIR"
@@ -81,7 +89,9 @@ jobs:
           export DISPLAY=:98 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1
           Xvfb :98 -screen 0 1360x860x24 >/dev/null 2>&1 &
           sleep 2
-          timeout 400 dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" --read-catalogs 2>&1 | tee theater-read.log || true
+          timeout 400 dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" --read-catalogs || true
+          cp "$HEARTH_THEATER_DIR/theater.log" theater-read.log || touch theater-read.log
+          echo "::notice title=Theater log (reading catalogs)::$(grep -E 'theater (core|window)' theater-read.log | tail -c 3000 | tr '\n' '|')"
           python3 - <<'EOF'
           import json, os, sys
           d = os.environ["HEARTH_THEATER_DIR"]
@@ -105,13 +115,26 @@ jobs:
               sys.exit(1)
           EOF
           # The home screen with those catalogs: the real app and its own window.
-          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" > theater.log 2>&1 &
-          sleep 12; import -window root shots/theater-home.png || true
-          pkill -f release/hearth-theater || true
-          echo "::notice title=Theater app output::$(tail -c 800 theater.log | tr '\n' '|')"
+          dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" &
+          sleep 14; import -window root shots/theater-home.png || true
+          pkill -f hearth-theater || true; sleep 3; pkill -9 -f hearth-theater || true
+          grep -q 'main window: home screen loaded' "$HEARTH_THEATER_DIR/theater.log" || { echo "::error title=Theater home screen::it didn't load: $(tail -c 3000 "$HEARTH_THEATER_DIR/theater.log" | tr '\n' '|')"; exit 1; }
+          # The real pointer: a frame from another site with a button that only takes real clicks (tests/pointer.mjs).
+          # Theater opens the page in its viewer, puts its pointer (XTest here; uinput on a Hearth device) next to the
+          # button, moves it there and presses A the way the controller does. The page's title says if a real click came.
+          node hosts/hearth-theater/tests/pointer.mjs 8770 > pointer-serve.log 2>&1 &
+          sleep 1
+          HEARTH_THEATER_POINTER=xtest HEARTH_THEATER_TEST_CLICK=400,340 dbus-run-session -- "$CARGO_TARGET_DIR/release/hearth-theater" --fullscreen --open http://127.0.0.1:8770/ &
+          ok=; for i in $(seq 1 40); do grep -q 'page title "trusted-click-ok"' "$HEARTH_THEATER_DIR/theater.log" && { ok=1; break; }; sleep 1; done
+          import -window root shots/theater-pointer.png || true
+          pkill -f hearth-theater || true; sleep 2; pkill -9 -f hearth-theater || true
+          cp "$HEARTH_THEATER_DIR/theater.log" shots/theater.log || true
+          echo "::notice title=Theater log (home screen and pointer)::$(grep -E 'theater (core|window)' "$HEARTH_THEATER_DIR/theater.log" | grep -vE 'reader:' | tail -c 3500 | tr '\n' '|')"
+          [ -n "$ok" ] || { echo "::error title=Theater pointer::no real click reached the button in the other site's frame: $(grep -E 'pointer|test:|viewer' "$HEARTH_THEATER_DIR/theater.log" | tail -c 3000 | tr '\n' '|')"; exit 1; }
+          echo "::notice title=Theater pointer::a real click (isTrusted) reached the button inside a frame from another site"
           to=ci/apps-create-shots
           if [ "$GITHUB_REF_NAME" != main ] && [ "$GITHUB_REF_NAME" != linux-host ]; then to="ci/apps-create-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"; fi
-          for f in theater-home theater-pages/home-catalogs theater-pages/home-favorite theater-pages/shelf-movies theater-pages/search; do
+          for f in theater-home theater-pointer theater-pages/home-catalogs theater-pages/home-favorite theater-pages/viewer-keyboard theater-pages/search; do
             echo "::notice title=Theater screenshot ($f)::https://github.com/${{ github.repository }}/blob/$to/$f.png"
           done
       - name: Fonts lists this machine's fonts; hearth-gamma talks to labwc

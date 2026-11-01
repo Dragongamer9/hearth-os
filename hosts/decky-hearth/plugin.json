@@ -1,0 +1,11 @@
+{
+  "name": "Hearth",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["hearth", "theme", "library"],
+    "description": "Hearth OS inside Steam Game Mode: your games from Hearth's other stores, Hearth's look, and the way back to Hearth's Game Mode.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}

@@ -49,8 +49,8 @@ pub fn list(lib: &Library) -> Value {
     Value::Array(games.into_iter().map(entry).collect())
 }
 
-/// `hearth --list-games`: the library read the way Hearth reads it, as JSON.
-pub fn list_now() -> Value {
+/// The library read the way Hearth reads it, without starting anything (no download is resumed, nothing is saved).
+fn read_library() -> Library {
     let store = crate::store::Store::open(crate::paths::data_dir().join("library.json"));
     let mut lib = Library::new(store, crate::paths::home());
     lib.scan_quietly();
@@ -62,8 +62,47 @@ pub fn list_now() -> Value {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }
-    list(&lib)
+    lib
 }
+
+/// `hearth --list-games`: the library read the way Hearth reads it, as JSON.
+pub fn list_now() -> Value { list(&read_library()) }
+
+// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (hosts/decky-hearth) adds Hearth's
+// games to Steam as non-Steam shortcuts that run `hearth --play-now <id>`. No window opens: the game starts the way the
+// library's Play button starts it (Proton, Epic, GOG, Beacon, Battle.net, emulators...), and this process waits until
+// it has closed, so Steam shows it as running for as long as it plays and its overlay and focus follow it.
+
+/// Whether `id` can be played this way: an installed game of Hearth's own (not a Steam game: those play from
+/// Steam's own library; not a cloud game: Xbox Cloud Gaming needs Hearth's stream window).
+pub fn play_check(lib: &Library, id: &str) -> Result<(), String> {
+    if !valid_id(id) { return Err("That isn't a game id Hearth knows.".into()); }
+    if id.starts_with("steam:") { return Err("Steam games play from Steam's own library.".into()); }
+    let g = lib.games.get(id).ok_or("That game isn't in Hearth's library anymore. Sync again from the Hearth plugin.")?;
+    if g.cloud { return Err(format!("{} is a cloud game: play it in Hearth's Game Mode.", g.title)); }
+    if !g.installed { return Err(format!("{} isn't installed.", g.title)); }
+    Ok(())
+}
+
+/// What a tick's events mean for `--play-now`: Some(exit code) once the game is over (0) or never started (1).
+pub fn play_outcome(events: &[Value]) -> Option<i32> {
+    events.iter().find_map(|e| match e["name"].as_str() { Some("game.exited") => Some(0), Some("game.timeout") => Some(1), _ => None })
+}
+
+/// `hearth --play-now <id>`: plays the game and returns when it has closed. Returns the exit code (0 played, 1 it
+/// couldn't start, 2 not a game this can play).
+pub fn play_now(id: &str) -> i32 {
+    let mut lib = read_library();
+    if let Err(e) = play_check(&lib, id) { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id}: {e}")); return 2; }
+    crate::bridge::log(&format!("play-now: {id} (from Steam's Game Mode)"));
+    if let Err(e) = lib.launch(id) { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id} couldn't start: {e}")); return 1; }
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if let Some(code) = play_outcome(&lib.tick_game()) { crate::bridge::log(&format!("play-now: {id} {}", if code == 0 { "closed" } else { "never started" })); return code; }
+        if lib.running.is_none() { return 0; }
+    }
+}
+// ---- end Steam Game Mode
 
 /// `--play <id>` (or `--play=<id>`).
 pub fn id_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
@@ -135,6 +174,28 @@ mod tests {
         assert_eq!(take_file(&f, t, ROUTE_MAX_AGE_SECS).as_deref(), Some("manual:abc"));
         assert!(!f.exists());
         assert_eq!(take_file(&f, t, ROUTE_MAX_AGE_SECS), None);
+    }
+
+    #[test]
+    fn play_now_checks_and_outcome() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::open(dir.path().join("library.json"));
+        let mut lib = Library::new(store, dir.path().to_path_buf());
+        let mk = |id: &str, installed: bool, cloud: bool| Game { id: id.into(), title: id.into(), source: "manual", installed, cloud,
+            state: if installed { "installed" } else { "notInstalled" }, ..Default::default() };
+        lib.games.insert("manual:a".into(), mk("manual:a", true, false));
+        lib.games.insert("epic:b".into(), mk("epic:b", false, false));
+        lib.games.insert("xcloud:c".into(), mk("xcloud:c", false, true));
+        assert!(play_check(&lib, "manual:a").is_ok());
+        assert!(play_check(&lib, "epic:b").unwrap_err().contains("isn't installed"));
+        assert!(play_check(&lib, "xcloud:c").unwrap_err().contains("cloud"));
+        assert!(play_check(&lib, "steam:570").unwrap_err().contains("Steam's own library"));
+        assert!(play_check(&lib, "manual:gone").is_err());
+        assert!(play_check(&lib, "nope").is_err());
+        assert_eq!(play_outcome(&[json!({"name": "game.started"})]), None);
+        assert_eq!(play_outcome(&[json!({"name": "game.started"}), json!({"name": "game.exited"})]), Some(0));
+        assert_eq!(play_outcome(&[json!({"name": "game.timeout"})]), Some(1));
+        assert_eq!(play_outcome(&[]), None);
     }
 
     #[test]

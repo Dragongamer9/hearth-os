@@ -1,0 +1,7 @@
+{
+  "name": "hearth-theater-window",
+  "description": "Hearth Theater's windows, drawn by Chromium. Hearth's Electron build (hosts/electron) runs this with --hearth-theater; tests run it with a development Electron.",
+  "main": "main.js",
+  "private": true,
+  "license": "GPL-3.0-or-later"
+}

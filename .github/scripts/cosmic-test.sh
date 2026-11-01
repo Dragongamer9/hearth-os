@@ -126,11 +126,15 @@ sleep 2
 cosmic-bg >shots/cosmic-bg.log 2>&1 &
 cosmic-panel >shots/cosmic-panel.log 2>&1 &
 sleep 8
-# The companion, the way its autostart entry starts it.
-autostart_exec=$(sed -n 's/^Exec=//p' /usr/share/hearth-cosmic/xdg/autostart/hearth-cosmic.desktop)
-sh -c "$autostart_exec" >shots/companion.log 2>&1 &
+# The companion, the way nimbus-session starts it once COSMIC is up (companion_start: hearth-companion cosmic; XDG
+# autostart from /usr/share/hearth-cosmic/xdg never runs on a real, systemd-started COSMIC).
+sh hosts/linux/desktop/shell/hearth-companion cosmic ci >shots/companion.log 2>&1 &
 sleep 10
-pgrep -f desk-cosmic.qml >/dev/null || fail "companion" "desk-cosmic.qml didn't start: $(grep -iE 'error|warn' shots/companion.log | head -6 | tr '\n' ' ' | cut -c1-700)"
+pgrep -f desk-cosmic.qml >/dev/null || fail "companion" "desk-cosmic.qml didn't start: $(tail -4 "$HOME/.local/share/nimbus/pad.log" 2>/dev/null | tr '\n' ' ' | cut -c1-400) $(grep -iE 'error|warn' shots/companion.log | head -6 | tr '\n' ' ' | cut -c1-500)"
+# A second start (the old autostart entry, or nimbus-session again) finds it running and leaves it: one companion.
+sh hosts/linux/desktop/shell/hearth-companion cosmic ci-again >>shots/companion.log 2>&1
+grep -q 'ci-again): already running' "$HOME/.local/share/nimbus/pad.log" 2>/dev/null || fail "companion" "a second hearth-companion cosmic didn't see the first one: $(tail -3 "$HOME/.local/share/nimbus/pad.log" 2>/dev/null | tr '\n' ' ' | cut -c1-500)"
+[ "$(pgrep -fc 'quickshell -p .*desk-cosmic.qml')" -le 1 ] || fail "companion" "more than one desk-cosmic.qml is running"
 QS="timeout -k 2 10 quickshell ipc -p /src/hosts/linux/desktop/shell/desk-cosmic.qml call hearth"
 RESTARTS=0
 # Through hearth-cosmic, as the panel's entries and Super do: it starts the companion again if it has ended.

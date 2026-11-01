@@ -70,6 +70,17 @@ test -x /usr/lib/nimbus/nimbus
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
+# ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
+# copied into Decky's plugins folder when you install Decky from Settings › System (hearth-admin decky-install). No
+# service is enabled here and nothing runs at boot. Not in this build: skipped with a warning.
+if [ -f /ctx/nimbus-app/decky-hearth/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth && cp -a /ctx/nimbus-app/decky-hearth /usr/share/hearth/decky-hearth \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth && echo "Hearth Decky plugin added" \
+    || { echo "warning: the Hearth Decky plugin didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth; }
+else
+  echo "warning: the Hearth Decky plugin isn't in this build; Steam Game Mode goes without it"
+fi
+# ---- end Hearth Decky plugin
 # ---- end hearthfetch
 # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its
 # user service (hearth-steam-engine.service, not enabled) only while Settings › Library › Steam engine is Lightweight.
@@ -865,6 +876,20 @@ EOF
 else
   rm -rf /usr/lib/xodus-nexus
   echo "warning: couldn't install Xodus Nexus from $XODUS_API (no release with an AppImage?); Hearth works without it"
+fi
+
+# ------------------------------------------------------------------ Faugus Launcher (Battle.net and other Windows launchers)
+# Library › Stores › Battle.net sets Battle.net up through Faugus Launcher (hosts/hearth-core/src/battlenet.rs), which
+# runs Windows launchers with umu-launcher and Proton (github.com/Faugus/faugus-launcher). Faugus's own COPR, the way
+# its README installs it on Fedora. Optional: without it, Hearth sets Battle.net up with its own Proton setup.
+if ! rpm -q faugus-launcher >/dev/null 2>&1; then
+  if dnf5 -y copr enable faugus/faugus-launcher && dnf5 -y install faugus-launcher; then
+    echo "Faugus Launcher installed (COPR)"
+  else
+    rpm -q faugus-launcher >/dev/null 2>&1 && dnf5 -y remove faugus-launcher || true
+    echo "warning: couldn't install Faugus Launcher (COPR faugus/faugus-launcher); Battle.net uses Hearth's own setup instead"
+  fi
+  dnf5 -y copr disable faugus/faugus-launcher >/dev/null 2>&1 || true
 fi
 
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)

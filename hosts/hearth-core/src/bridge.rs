@@ -18,6 +18,8 @@ pub struct Bridge {
     pub updates: crate::admin::Updates,
     pub xodus: crate::xodus::Xodus,
     pub battlenet: crate::battlenet::Battlenet,
+    /// Hearth Recomps (recomps.rs): installs, updates and game-file checks in the background.
+    pub recomps: crate::recomps::Recomps,
     pub profiles: crate::profiles::Profiles,
     /// The parental-controls PIN unlocks managing profiles for a few minutes.
     pub pin_until: std::time::Instant,
@@ -88,9 +90,21 @@ impl Bridge {
         b.library.restore_quick();
         // Steam: with "Start Steam only when needed" (Settings › Library, on by default) it starts hidden when you
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
-        if !b.library.steam_on_demand() && b.library.store.data["steamBackground"] != false {
-            let home = b.library.home.clone();
-            std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(8)); crate::steam::ensure_running_silent(&home); });
+        // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
+        // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
+        {
+            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
+            let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
+            if !seat && (keep || (!on_demand && bg)) {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(if keep { 20 } else { 8 }));
+                    let game_mode = crate::gamescope::inside() && !crate::gamescope::steam_mode();
+                    if crate::steam_launch::warm_start(keep, on_demand, bg, game_mode, crate::steam::client_installed(&home), crate::steam_launch::used_before(&home), crate::steam::is_running()) {
+                        if keep { crate::bridge::log("steam: keeping it ready in the background (Settings › Library)"); }
+                        crate::steam::ensure_running_silent(&home);
+                    }
+                });
+            }
         }
         // The Steam games on your account (steam_owned.rs), fetched again when older than 12 hours.
         if b.library.store.source_on("steam") {
@@ -101,7 +115,7 @@ impl Bridge {
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
         use std::sync::Arc;
-        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), battlenet: crate::battlenet::Battlenet::new(), profiles, pin_until: std::time::Instant::now(),
+        Bridge { library, version: version.to_string(), emit: Arc::new(|_| {}), updates: crate::admin::Updates::new(), xodus: crate::xodus::Xodus::new(), battlenet: crate::battlenet::Battlenet::new(), recomps: crate::recomps::Recomps::new(), profiles, pin_until: std::time::Instant::now(),
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
@@ -304,7 +318,7 @@ impl Bridge {
                 let in_session = std::env::var("NIMBUS_SESSION").map(|v| v == "1").unwrap_or(false);
                 // Desktop Mode with a game stopped (Quick Resume, Pause) froze the desktop: they're ended first (the page
                 // asked: "<game> is paused and will be closed"). nimbus-session does it again before Desktop Mode starts.
-                if msg["action"] == "desktop" {
+                if msg["action"] == "desktop" || msg["action"] == "steam" {
                     let ended = self.library.end_stopped();
                     if !ended.is_empty() {
                         log(&format!("desktop mode: ended the games Hearth had stopped first: {}", ended.join(", ")));
@@ -421,6 +435,11 @@ impl Bridge {
             "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
             // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
             "steam.engine.signIn" => crate::steam_engine::sign_in(a),
+            "library.setSteamKeepReady" => {
+                let on = a["on"] == true;
+                if on && crate::gamescope::inside() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }))
+            }
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
                 if on { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
@@ -471,6 +490,16 @@ impl Bridge {
             "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
             // ---- Hearth Theater (theater.rs): Game Mode's menu › Theater
             "theater.open" => crate::theater::open(crate::signin_handoff::game_mode()),
+            // ---- Steam Game Mode (Experimental, steam_mode.rs, docs/STEAM-GAME-MODE.md): Settings › System
+            "steamMode.status" => Ok(crate::steam_mode::status()),
+            "steamMode.decky" => {
+                let action = a["action"].as_str().unwrap_or("").to_string();
+                if !crate::steam_mode::decky_action_ok(&action) { return Err("Unknown choice".into()); }
+                // Downloads Decky Loader (and asks for an administrator's password): answered when done.
+                crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || crate::steam_mode::decky(&action));
+                Ok(json!(DEFERRED))
+            }
+            // ---- end Steam Game Mode
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
             "emu.install" => crate::emulators::install_retroarch().map(|_| json!(true)),
@@ -1022,7 +1051,27 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
-            // Battle.net (battlenet.rs): one-press setup in its own Proton prefix; you sign in in Battle.net's own window.
+            // Hearth Recomps (recomps.rs, docs/RECOMPS.md): native PC ports of console games, from their GitHub releases.
+            "recomps.list" => { self.recomps.check_updates(false, self.emit.clone()); Ok(self.recomps.list()) }
+            "recomps.details" => { let (id, fresh) = (req("id")?, a["fresh"] == true); self.later(move || crate::recomps::Recomps::details(&id, fresh)) }
+            "recomps.install" => self.recomps.install(&req("id")?, a["tag"].as_str().map(str::to_string), a["asset"].as_str().map(str::to_string), a["place"].as_str().map(str::to_string), self.emit.clone()),
+            "recomps.cancel" => { self.recomps.cancel(&req("id")?); Ok(json!({})) }
+            "recomps.uninstall" => { let kept = crate::recomps::uninstall(&req("id")?, a["keep"] == true)?; self.library.scan(); Ok(json!({"backup": kept})) }
+            "recomps.places" => Ok(json!(crate::recomps::places())),
+            "recomps.pickGame" => self.pick_later(method, a, crate::picker::Ask::File("Choose your copy of the game (a ROM or disc image you made from your own game)".into())),
+            "recomps.useGame" => self.recomps.set_game(&req("id")?, &req("path")?, a["anyway"] == true, self.emit.clone()),
+            "recomps.adopt" => self.pick_later(method, a, crate::picker::Ask::Folder("Choose the folder the port is in".into(), paths::home().to_string_lossy().to_string())),
+            "recomps.exes" => crate::recomps::exe_choices(&req("id")?),
+            "recomps.setExe" => { let s = crate::recomps::set_exe(&req("id")?, &req("exe")?)?; self.library.scan(); Ok(s) }
+            "recomps.skip" => crate::recomps::set_skip(&req("id")?, a["tag"].as_str()),
+            "recomps.pin" => crate::recomps::set_pin(&req("id")?, a["tag"].as_str()),
+            "recomps.shortcut" => Ok(json!({"on": crate::recomps::set_shortcut(&req("id")?, a["on"] == true)?})),
+            "recomps.backup" => { let id = req("id")?; self.later(move || crate::recomps::backup(&id).map(|f| json!({"file": f}))) }
+            "recomps.hide" => { crate::recomps::set_hidden(&req("id")?, a["on"] == true)?; Ok(json!({})) }
+            "recomps.addCustom" => { let (r, t) = (req("repo")?, a["title"].as_str().map(str::to_string)); self.later(move || crate::recomps::add_custom(&r, t.as_deref())) }
+            "recomps.removeCustom" => { crate::recomps::remove_custom(&req("id")?)?; Ok(json!({})) }
+            "recomps.checkUpdates" => { self.recomps.check_updates(true, self.emit.clone()); Ok(json!({})) }
+            // Battle.net (battlenet.rs): one-press setup through Faugus Launcher (or Hearth's own prefix); you sign in in Battle.net's own window.
             "battlenet.status" => Ok(self.battlenet.status()),
             "battlenet.install" => Ok(self.battlenet.install(self.emit.clone())),
             "battlenet.signInDesktop" => { crate::battlenet::open_in_desktop()?; Ok(json!({})) }
@@ -1280,6 +1329,8 @@ impl Bridge {
             // ---- Hearth Link (Settings › Hearth Link, Library › Get from another Hearth)
             m if m.starts_with("link.") => crate::link::bridge_call(self, m, a),
             // ---- end of Hearth Link
+            // ---- Discover, game details, achievements, artwork, profile, downloads (play/, docs/HYDRA-FEATURES.md)
+            m if m.starts_with("play.") => crate::play::bridge_call(self, m, a),
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
     }
@@ -1308,14 +1359,14 @@ impl Bridge {
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
         let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
         let own_proton = (g.source == "epic" || g.source == "gog") && g.can_uninstall;   // installed by Hearth, started with Proton
-        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
+        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", "recomps" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "recomps" => "native", _ if own_proton => "proton", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
     }
     /// Opens a picker for the request in hand without holding the bridge (picker.rs) and answers it when the picker
     /// closes: the choice comes back as {type:'internal', what:'picked'} and `picked` finishes the call.
-    fn pick_later(&self, method: &str, a: &Value, ask: crate::picker::Ask) -> Result<Value, String> {
+    pub(crate) fn pick_later(&self, method: &str, a: &Value, ask: crate::picker::Ask) -> Result<Value, String> {
         let (m, args, id, to) = (method.to_string(), a.clone(), self.cur_id.clone(), self.cur_label.clone());
         crate::picker::open(&self.pick_file, &self.pick_folder, ask, method, move |path| crate::stores::notify(crate::picker::picked_message(&m, &args, path, &id, &to)))?;
         Ok(json!(DEFERRED))
@@ -1334,6 +1385,10 @@ impl Bridge {
                 None => Ok(Value::Null),
             },
             "library.addManual" => match path { Some(f) => self.add_manual(&f), None => Ok(Value::Null) },
+            // Hearth Recomps: your copy of a game (checked in the background), or a folder with the port in it.
+            "recomps.pickGame" => match path { Some(f) => self.recomps.set_game(a["id"].as_str().unwrap_or(""), &f, false, self.emit.clone()).map(|v| { let mut v = v; v["file"] = json!(f); v }), None => Ok(Value::Null) },
+            "recomps.adopt" => match path { Some(d) => { let s = crate::recomps::adopt(a["id"].as_str().unwrap_or(""), &d)?; self.library.scan(); Ok(s) } None => Ok(Value::Null) },
+            m if m.starts_with("play.") => crate::play::picked(self, m, a, path),   // Library › Find games in a folder
             _ => Err(format!("Nothing waits for a picker in {method}")),
         }
     }
@@ -1818,7 +1873,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 }
 
 fn features() -> Vec<&'static str> {
-    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet"];
+    let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet", "recomps"];
     // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
     f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }
@@ -1838,12 +1893,14 @@ fn features() -> Vec<&'static str> {
     if crate::link::available() { f.push("hearthLink"); }
     if crate::bazaar::available() { f.push("bazaar"); }
     if crate::theater::available() { f.push("theater"); }
+    // Steam Game Mode (Experimental): the power menu's and Settings › System's switch, where it can run.
+    if crate::steam_mode::available() { f.push("steamMode"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
 /// page of Settings (only the ones listed here; "hhd" is Settings › Controls › Handheld Daemon). Null: the usual start.
 pub fn start_page(args: &[String]) -> Value {
-    const PAGES: &[&str] = &["hhd", "settings"];
+    const PAGES: &[&str] = &["hhd", "settings", "shop"];   // shop: the Hearth Decky plugin's Store link (Steam Game Mode)
     let mut start = Value::Null;
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
@@ -2025,6 +2082,7 @@ mod tests {
         assert_eq!(a(&["nimbus", "--windowed", "--settings"]), json!("settings"));
         assert_eq!(a(&["nimbus", "--windowed", "--page", "hhd"]), json!("hhd"));
         assert_eq!(a(&["nimbus", "--page=hhd", "--windowed"]), json!("hhd"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "shop"]), json!("shop"));
         assert_eq!(a(&["nimbus", "--settings", "--page", "hhd"]), json!("hhd"));
         // Pages Hearth doesn't know, or none given: the usual start (or Settings, when asked for too).
         assert_eq!(a(&["nimbus", "--page", "rm -rf"]), Value::Null);

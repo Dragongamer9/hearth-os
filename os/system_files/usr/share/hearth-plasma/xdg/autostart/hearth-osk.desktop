@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Hearth controller
-Comment=Use Hearth Plasma with a controller: pointer, menus, the Hearth menu (Guide) and the on-screen keyboard (Guide + X); docs/PLASMA.md
-Exec=sh -c 'd="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"; command -v quickshell >/dev/null 2>&1 && [ -f "$d/osk-plasma.qml" ] && exec quickshell -p "$d/osk-plasma.qml"; exit 0'
+Comment=Use Hearth Plasma with a controller: pointer, menus, the Hearth menu (Guide) and the on-screen keyboard (Guide + X); docs/PLASMA.md. nimbus-session starts it (Plasma 6 never reads this folder's autostart); this entry only matters where Plasma does, and hearth-companion runs it once
+Exec=sh -c 'c="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-companion"; [ "$HEARTH_DESKTOP" = plasma ] && [ -f "$c" ] && exec sh "$c" plasma autostart; exit 0'
 OnlyShowIn=KDE;
 NoDisplay=true
 X-KDE-autostart-phase=2

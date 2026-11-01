@@ -1,10 +1,10 @@
 {
   "name": "hearth-electron",
   "productName": "Hearth",
-  "version": "0.6.59",
+  "version": "0.6.60",
   "license": "GPL-3.0-or-later",
   "description": "Hearth's window drawn by Chromium (Electron), on top of the same Hearth core (hearth --core-stdio). Used on Nvidia graphics.",
-  "main": "src/main.js",
+  "main": "src/start.js",
   "author": "Dragongamer9",
   "private": true,
   "scripts": {
@@ -22,7 +22,10 @@
     "files": ["src/**/*", "package.json"],
     "extraResources": [
       { "from": "../../ui", "to": "ui" },
-      { "from": "../hearth-rs/src/js", "to": "js" }
+      { "from": "../hearth-rs/src/js", "to": "js" },
+      { "from": "../hearth-theater/electron", "to": "theater/electron", "filter": ["*.js", "package.json", "!*.test.js"] },
+      { "from": "../hearth-theater/ui", "to": "theater/ui" },
+      { "from": "../hearth-theater/src", "to": "theater/src", "filter": ["reader.js"] }
     ],
     "linux": {
       "target": ["dir"],

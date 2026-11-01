@@ -20,6 +20,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const readline = require('node:readline');
 const { pathToFileURL } = require('node:url');
+const { execFile } = require('node:child_process');
 const { OverlayProtocol } = require('./protocol');
 const { HearthLink, socketPath } = require('./link');
 const { artFile } = require('./art');
@@ -98,11 +99,44 @@ const write = line => { try { process.stdout.write(line + '\n'); } catch {} };
 const toPage = msg => { if (win && !win.isDestroyed()) win.webContents.send('nimbus:msg', msg); };
 const link = new HearthLink(socketPath());
 
+/** This window's X id on gamescope's display (HHD gave us DISPLAY), or 0. */
+function xid() {
+  try {
+    const b = win && !win.isDestroyed() ? win.getNativeWindowHandle() : null;
+    if (!b || b.length < 4) return 0;
+    return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
+  } catch { return 0; }
+}
+// gamescope's STEAM_INPUT_FOCUS on this window (protocol.js: 2 while the keyboard over the game is open, so the game
+// keeps the keyboard focus and what Hearth Input types reaches it). One xprop at a time; said in the log when the
+// value changes and when it fails (once per value).
+const focus = { busy: false, want: 0, set: -1, failed: -1 };
+function setInputFocus(n) {
+  if (n == null) { focus.want = null; focus.set = -1; focus.failed = -1; return; }   // closed: said again next time
+  focus.want = n;
+  if (focus.busy) return;
+  const id = xid();
+  if (!id) { if (focus.failed !== n) { focus.failed = n; console.error(`overlay: can't set STEAM_INPUT_FOCUS ${n}: no X window yet`); } return; }
+  focus.busy = true;
+  execFile('xprop', ['-id', String(id), '-f', 'STEAM_INPUT_FOCUS', '32c', '-set', 'STEAM_INPUT_FOCUS', String(n)], { timeout: 2000 }, err => {
+    focus.busy = false;
+    if (err) {
+      if (focus.failed !== n) { focus.failed = n; console.error(`overlay: couldn't set STEAM_INPUT_FOCUS ${n} on window 0x${id.toString(16)} (${err.code || err.message}): typing may go to Quick Access instead of the game`); }
+    } else if (focus.set !== n) {
+      focus.set = n; focus.failed = -1;
+      console.error(n === 2 ? `overlay: the keyboard over the game is open: gamescope's keyboard focus stays with the game (STEAM_INPUT_FOCUS 2 on window 0x${id.toString(16)})`
+                            : `overlay: STEAM_INPUT_FOCUS ${n} on window 0x${id.toString(16)}`);
+    }
+    if (focus.want != null && focus.want !== n) setInputFocus(focus.want);
+  });
+}
+
 const proto = new OverlayProtocol({
   out: write,
   toHearth: msg => link.send(msg),
   toPage,
   connected: () => link.connected,
+  inputFocus: setInputFocus,
   onHost: msg => {
     if (msg.what === 'hello') return hello(msg);
     if (msg.what === 'opacity') proto.peek(!msg.value);   // Take a screenshot: a picture of just the game

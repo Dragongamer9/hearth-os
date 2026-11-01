@@ -1,0 +1,8 @@
+{
+  "name": "Hearth",
+  "author": "Dragongamer9",
+  "target": "System-Wide",
+  "manifest_version": 8,
+  "description": "Hearth OS's colours, corners and focus rings for Steam's gamepad UI (the stable part of the Hearth plugin's look).",
+  "inject": { "shared.css": ["SP", "QuickAccess", "MainMenu", "Keyboard"] }
+}

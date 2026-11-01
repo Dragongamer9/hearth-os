@@ -118,6 +118,10 @@ fn from_rec(v: &Value) -> Option<Running> {
 
 const EXIT_GRACE_MS: u64 = 10_000;     // a launcher closing and the game starting a moment later is still one game
 const START_TIMEOUT_MS: u64 = 180_000; // Steam may update the game first
+/// A Steam game: Steam may start cold, update itself, then ask something first.
+const STEAM_START_TIMEOUT_MS: u64 = 300_000;
+/// How long Hearth waits for a game's processes before it stops watching.
+fn start_timeout(id: &str) -> u64 { if id.starts_with("steam:") { STEAM_START_TIMEOUT_MS } else { START_TIMEOUT_MS } }
 
 pub fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
@@ -272,6 +276,12 @@ impl Library {
         if self.store.source_on("battlenet") {
             let list = crate::battlenet::games();
             counts.insert("battlenet".to_string(), list.len());
+            for g in list { all.insert(g.id.clone(), g); }
+        }
+        // Hearth Recomps (recomps.rs): each port installed from Game Mode › Store › Recomps.
+        if self.store.source_on("recomps") {
+            let list = crate::recomps::games();
+            counts.insert("recomps".to_string(), list.len());
             for g in list { all.insert(g.id.clone(), g); }
         }
         // Beacon's games (BFME, Age of the Ring, LOTR: Conquest...), read again when Beacon's files changed.
@@ -641,7 +651,9 @@ impl Library {
     pub fn dto(&self, g: &Game) -> Value {
         let d = &self.store.data;
         let stats = &d["stats"][&g.id];
-        let art: serde_json::Map<String, Value> = g.art.iter().map(|(k, v)| (k.to_string(), Value::String(art_url(v)))).collect();
+        let mut art: serde_json::Map<String, Value> = g.art.iter().map(|(k, v)| (k.to_string(), Value::String(art_url(v)))).collect();
+        // Pictures you picked for it (play/artwork.rs: SteamGridDB) go over the store's own.
+        if let Some(own) = d["customArt"][&g.id].as_object() { for (k, v) in own { if let Some(p) = v.as_str() { art.insert(k.clone(), Value::String(art_url(p))); } } }
         let cols: Vec<Value> = d["collections"].as_array().map(|a| a.iter()
             .filter(|c| c["games"].as_array().map(|g2| g2.iter().any(|x| x == g.id.as_str())).unwrap_or(false))
             .map(|c| c["id"].clone()).collect()).unwrap_or_default();
@@ -743,6 +755,8 @@ impl Library {
                         if let Err(e) = steam::spawn(&home, &uri) { crate::bridge::log(&format!("steam: {e}")); }
                     });
                 }
+                // The starting screen says what Steam is doing ("steam.launch" events) until the game's processes are up.
+                crate::steam_launch::watch(&self.home, id, app_num);
                 crate::procs::Track { steam_app_id: Some(id.trim_start_matches("steam:").to_string()), app_id: Some(app_id), ..Default::default() }
             }
             "manual" => {
@@ -755,14 +769,23 @@ impl Library {
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
                 crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
             }
-            // Games a launcher starts (Battle.net in its Proton prefix, Xodus Nexus): Hearth runs the launcher's script or
+            // Games a launcher starts (Battle.net through Faugus Launcher or in Hearth's own prefix, Xodus Nexus): Hearth runs the launcher's script or
             // shortcut with the game's number in its environment, and the game's own folder finds its processes, since
             // the launcher (not Hearth) starts the game itself.
             "battlenet" | "xodus" => {
                 let exe = g.exe.clone().unwrap_or_default();
                 let opts = crate::game_options::get(&self.store, id);
                 let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
-                let dirs = g.install_path.as_ref().filter(|p| p.starts_with(crate::battlenet::prefix())).map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                let dirs = g.install_path.as_ref().filter(|_| g.source == "battlenet").map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
+            }
+            // Hearth Recomps: Hearth's start script for a Linux build (in the port's folder), or the Windows build's
+            // .exe, which starts with Proton (umu-run) like any Windows game. The port's folder finds its processes.
+            "recomps" => {
+                let exe = g.exe.clone().unwrap_or_default();
+                let opts = crate::game_options::get(&self.store, id);
+                let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
+                let dirs = g.install_path.as_ref().map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
                 crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             "emu" => {
@@ -857,7 +880,8 @@ impl Library {
         if self.store.source_on("steam") {
             crate::steam_engine::tick(self.steam_engine_mode());
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
-            events.extend(crate::steam_ctl::tick(&self.home, self.steam_on_demand(), steam_game));
+            // Kept ready (Settings › Library, on by default): never closed when idle (steam_launch.rs).
+            events.extend(crate::steam_ctl::tick(&self.home, crate::steam_launch::may_close_idle(self.steam_on_demand(), self.steam_keep_ready()), steam_game));
         }
         events.extend(self.tick_running());
         if now_ms().saturating_sub(self.in_use_checked) > 10_000 { self.refresh_in_use(); }
@@ -868,6 +892,10 @@ impl Library {
         events
     }
 
+    /// Only the running game's part of tick (game.started, gap, exited, timeout), without Steam's or Quick Resume's:
+    /// for `hearth --play-now` in Steam's Game Mode (desktop_games.rs), which must never close Steam.
+    pub fn tick_game(&mut self) -> Vec<Value> { self.tick_running() }
+
     fn tick_running(&mut self) -> Vec<Value> {
         let mut events = Vec::new();
         let pids = self.game_pids();
@@ -876,7 +904,7 @@ impl Library {
         if r.cloud { return events; }
         if r.started_at == 0 {
             if !pids.is_empty() { r.started_at = now; events.push(json!({"type": "event", "name": "game.started", "data": {"id": r.id}})); }
-            else if now - r.launched_at > START_TIMEOUT_MS { events.push(json!({"type": "event", "name": "game.timeout", "data": {"id": r.id}})); self.running = None; }
+            else if now - r.launched_at > start_timeout(&r.id) { events.push(json!({"type": "event", "name": "game.timeout", "data": {"id": r.id}})); self.running = None; }
         } else if pids.is_empty() {
             if r.closing || (r.gone_since > 0 && now - r.gone_since > EXIT_GRACE_MS) { events.push(self.exited()); }
             else if r.gone_since == 0 { r.gone_since = now; events.push(json!({"type": "event", "name": "game.gap", "data": {"id": r.id}})); }
@@ -1163,6 +1191,9 @@ impl Library {
 
     /// "Start Steam only when needed" (Settings › Library, on by default).
     pub fn steam_on_demand(&self) -> bool { self.store.data["steamOnDemand"] != false }
+    /// "Keep Steam ready in the background" (on by default): Steam started hidden when Game Mode comes up, never closed
+    /// when idle, so Play hands the game to a running Steam (steam_launch.rs).
+    pub fn steam_keep_ready(&self) -> bool { self.store.data["steamKeepReady"] != false }
     /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
     pub fn steam_lightweight(&self) -> bool { self.steam_engine_mode() == crate::steam_engine::Mode::Lightweight }
     /// Settings › Library › Steam engine: Classic (default), Lightweight or Open (both experimental).
@@ -1175,7 +1206,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 

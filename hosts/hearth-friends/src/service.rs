@@ -60,6 +60,10 @@ struct State {
     seen_invites: HashSet<String>,
     playing: Option<hf::GameRef>,
     joinable: bool,
+    /// Friends' gaming-activity cards (hf::ACTIVITY_EVENT), by user id: only in memory.
+    activity: HashMap<String, Value>,
+    /// The last card sent, so the same one isn't sent again.
+    last_activity: Option<String>,
     error: Option<String>,
     synced: bool,
     keyring_ok: bool,
@@ -379,6 +383,18 @@ impl Service {
             for ev in &upd.timeline.events {
                 let Ok(v) = serde_json::from_str::<Value>(ev.raw().json().get()) else { continue };
                 if v["type"] == "m.room.member" { rooms_changed = true; }
+                // A friend's gaming activity (sent by their Hearth when they share it): kept for Friends › Activity,
+                // not shown as a message.
+                if v["type"] == hf::ACTIVITY_EVENT {
+                    if let (Some(sender), Some(mut card)) = (v["sender"].as_str(), hf::parse_activity(&v["content"])) {
+                        if sender != me {
+                            card["at"] = v["origin_server_ts"].clone();
+                            self.st.lock().unwrap().activity.insert(sender.to_string(), card);
+                            self.emit("activity", json!({"userId": sender}));
+                        }
+                    }
+                    continue;
+                }
                 let Some(msg) = self.message_json(&me, &v, ev.encryption_info().is_some()) else { continue };
                 {
                     let mut st = self.st.lock().unwrap();
@@ -813,6 +829,31 @@ impl Service {
         Ok(Value::Null)
     }
 
+    /// Your gaming activity (from Hearth's core: titles and play time only) to each friend, as an end-to-end
+    /// encrypted event in your direct chat with them. Only when "Share my activity" is on, and only when it changed.
+    pub async fn set_activity(&self, a: &Value) -> Result<Value, String> {
+        if !self.settings().share_activity { return Ok(json!({"sent": 0, "off": true})); }
+        let card = hf::activity_content(&a["activity"]).ok_or("Nothing to share.")?;
+        let key = card.to_string();
+        if self.st.lock().unwrap().last_activity.as_deref() == Some(key.as_str()) { return Ok(json!({"sent": 0, "same": true})); }
+        let c = self.client().await?;
+        let mut sent = 0;
+        for room in c.joined_rooms() {
+            if room.direct_targets_length() != 1 || !room.encryption_state().is_encrypted() { continue; }
+            if room.send_raw(hf::ACTIVITY_EVENT, card.clone()).await.is_ok() { sent += 1; }
+        }
+        self.st.lock().unwrap().last_activity = Some(key);
+        Ok(json!({"sent": sent}))
+    }
+
+    /// Friends' activity cards received since the service started: [{userId, playing, recent, top, totalMinutes, at}].
+    pub async fn activity(&self) -> Result<Value, String> {
+        let st = self.st.lock().unwrap();
+        let mut l: Vec<Value> = st.activity.iter().map(|(u, c)| { let mut c = c.clone(); c["userId"] = json!(u); c }).collect();
+        l.sort_by_key(|c| std::cmp::Reverse(c["at"].as_u64().unwrap_or(0)));
+        Ok(json!(l))
+    }
+
     async fn push_presence(&self) {
         let Ok(c) = self.client().await else { return };
         let s = self.settings();
@@ -880,6 +921,8 @@ impl Service {
             "settings" => self.set_settings(a).await,
             "setName" => self.set_name(a).await,
             "playing" => self.playing(a).await,
+            "setActivity" => self.set_activity(a).await,
+            "activity" => self.activity().await,
             "link" => self.link().await,
             "parseFriend" => Ok(json!(hf::parse_friend(arg(a, "text")?, a["server"].as_str().unwrap_or(hf::DEFAULT_HOMESERVER)))),
             _ => Err(format!("Unknown request '{method}'")),

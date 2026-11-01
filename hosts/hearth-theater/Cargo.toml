@@ -13,20 +13,20 @@ path = "src/lib.rs"
 name = "hearth-theater"
 path = "src/main.rs"
 
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
+# Theater's windows are Chromium's (Hearth's Electron build runs electron/main.js); this is their core.
 [dependencies]
-tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
 ureq = "2"
 url = "2"
 
-# The viewer's media settings (videos may play without a mouse click).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# The viewer's controller pointer as real input: uinput (libc), or XTest on an X display (x11rb, no C library).
 [target.'cfg(target_os = "linux")'.dependencies]
-webkit2gtk = "2.0"
+x11rb = { version = "0.13", features = ["xtest"] }
 
 [profile.release]
 opt-level = "s"

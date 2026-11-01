@@ -50,6 +50,10 @@ pub fn without_dump_details(journal: &str) -> String {
     out.join("\n")
 }
 
+/// The other desktops' logs in ~/.local/share/nimbus (nimbus-session's run_plasma / run_gnome / run_cosmic write them).
+const DESKTOP_LOGS: [(&str, &str); 4] = [("plasma.log", "Hearth Plasma"), ("gnome.log", "Hearth GNOME"), ("cosmic.log", "Hearth COSMIC"),
+                                         ("cosmic-companion.log", "Hearth COSMIC companion")];
+
 fn sh(cmd: &str) -> String {
     crate::system::run_timeout("sh", &["-c", &format!("{cmd} 2>&1")], Duration::from_secs(15)).unwrap_or_else(|e| format!("({e})"))
 }
@@ -243,6 +247,29 @@ pub fn report(version: &str) -> String {
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
+    }
+    // Hearth Plasma, Hearth GNOME and Hearth COSMIC: each desktop's own log (the desktop's messages, and what
+    // hearth-companion decided about the controller and why), and whether Quickshell is there (it runs the controller
+    // in Plasma and COSMIC).
+    {
+        let mut body = format!("quickshell: {}\n", sh("command -v quickshell || echo 'not installed'").trim());
+        for (f, name) in DESKTOP_LOGS {
+            if let Ok(t) = std::fs::read_to_string(data.join(f)) { body.push_str(&format!("\n--- {name} ({f}):\n{}\n", tail(&t, 150))); }
+        }
+        section("Desktop Mode: Hearth Plasma, GNOME and COSMIC", body);
+    }
+    // Hearth Theater (docs/THEATER.md): its own log (start, the renderer and graphics it got, pages that loaded or
+    // failed, the controller pointer), when it has been opened on this device.
+    {
+        let f = crate::theater::log_file();
+        if crate::theater::find().is_some() || f.exists() {
+            let body = match std::fs::read_to_string(&f) {
+                Ok(t) => tail(&t, 400),
+                Err(_) => "(no theater.log: Theater hasn't been opened since it started keeping one)".into(),
+            };
+            let chromium = if crate::theater::electron_in(Path::new("/")).is_some() { "there" } else { "missing (Theater can't open)" };
+            section("Hearth Theater", format!("Hearth's Chromium (draws Theater): {chromium}\n\n{body}"));
+        }
     }
     // Which engine draws Hearth's screens (docs/RENDERERS.md), and the Qt renderer's own log (Experimental).
     {
@@ -502,6 +529,12 @@ mod tests {
         }
         assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));
         assert!(DRIVER_SH.contains("/proc/cmdline") && DRIVER_SH.contains("modinfo -F version nvidia") && DRIVER_SH.contains("driver_version"));
+    }
+    #[test]
+    fn desktop_logs_are_the_ones_the_session_writes() {
+        let session = include_str!("../../linux/session/nimbus-session");
+        for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
+        assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]
     fn crash_dumps_shortened() {

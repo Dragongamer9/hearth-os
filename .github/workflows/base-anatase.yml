@@ -342,6 +342,20 @@ jobs:
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
           mkdir -p /tmp/app/electron && cp -a dist/linux-unpacked/. /tmp/app/electron/
+      # ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
+      # packed into hearth-app.tar (decky-hearth/); build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
+      # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
+      - name: Build the Hearth Decky plugin
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth
+          npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.ver.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          mkdir -p /tmp/app && rm -rf /tmp/app/decky-hearth && cp -a /tmp/decky-out/decky-hearth /tmp/app/decky-hearth
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -693,6 +707,7 @@ jobs:
           warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
           warn "Xodus Nexus is installed (Xbox PC games; preinstalled like Beacon)" "test -x /usr/lib/xodus-nexus/Xodus-Nexus.AppImage && test -x /usr/bin/xodus-nexus && test -s /usr/lib/xodus-nexus/version && test -f /usr/share/applications/xodus-nexus.desktop"
+          warn "Faugus Launcher is installed (Battle.net is set up through it; without it Hearth's own setup is used)" "command -v faugus-launcher && grep -q -- '--run)' \"\$(command -v faugus-launcher)\" && python3 -c 'import faugus.path_manager'"
           # ==== Hearth Recorder, Camera and Share (capture-apps.yml tests them for real): installed, with what they run.
           echo "--- Hearth Recorder, Camera and Share"
           for a in hearth-recorder hearth-camera hearth-share; do warn "$a is installed with its libraries and menu entry" "test -x /usr/bin/$a && ! ldd /usr/bin/$a | grep -q 'not found' && test -f /usr/share/applications/$a.desktop"; done

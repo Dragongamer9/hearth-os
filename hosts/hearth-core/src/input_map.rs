@@ -608,19 +608,80 @@ pub fn start_link(get: GetState, on_event: OnEvent) {
 pub fn type_text(text: &str, mods: &Value) -> Result<Value, String> {
     if text.is_empty() { return Ok(json!({"ok": true, "skipped": ""})); }
     let mods: Vec<&str> = mods.as_array().map(|m| m.iter().filter_map(Value::as_str).filter(|m| matches!(*m, "ctrl" | "alt")).collect()).unwrap_or_default();
-    let mut cmd = json!({"cmd": "type", "text": text.chars().take(2000).collect::<String>(), "mods": mods});
+    let text: String = text.chars().take(2000).collect();
+    let n = text.chars().count();
+    let mut cmd = json!({"cmd": "type", "text": text, "mods": mods});
     if let Ok(l) = std::env::var("XKB_DEFAULT_LAYOUT") { cmd["layout"] = json!(l); }
-    if let Ok(d) = std::env::var("DISPLAY") { cmd["display"] = json!(d); }
-    let r = request(&cmd, Duration::from_secs(2)).map_err(|_| "Can't type into the game: Hearth Input isn't running".to_string())?;
+    if let Some(d) = keyboard_display() { cmd["display"] = json!(d); }
+    let r = request(&cmd, Duration::from_secs(2)).map_err(|e| {
+        crate::bridge::log(&format!("osk: typing {n} characters into the game failed: Hearth Input isn't there ({e})"));
+        "Can't type into the game: Hearth Input isn't running".to_string()
+    })?;
+    // Each batch in the log (Send logs): how many, which way they went, what came back. Never the text itself.
+    crate::bridge::log(&format!("osk: {}", describe_typed(n, &r)));
     if r["ok"] == false { return Err(r["error"].as_str().unwrap_or("Couldn't type that").to_string()); }
     Ok(r)
+}
+/// One typed batch for the log: counts and the way they went (Hearth Input's virtual keyboard, xdotool on gamescope's
+/// keyboard focus display, skipped), or the error.
+pub fn describe_typed(n: usize, r: &Value) -> String {
+    if r["ok"] == false { return format!("typing {n} characters into the game failed: {}", r["error"].as_str().unwrap_or("no reason given")); }
+    let keys = r["keys"].as_u64();
+    let xdo = r["xdotool"].as_u64().unwrap_or(0);
+    let skipped = r["skipped"].as_str().map(|s| s.chars().count()).unwrap_or(0);
+    let layout = r["layout"].as_str().unwrap_or("?");
+    match keys {
+        // An older Hearth Input (no counts in its answer).
+        None => format!("typed {n} characters into the game through Hearth Input (layout {layout}; {skipped} it couldn't type)"),
+        Some(k) => {
+            let mut s = format!("typed {n} characters into the game: {k} on Hearth Input's virtual keyboard (layout {layout})");
+            if xdo > 0 { s += &format!(", {xdo} through xdotool on {}", r["display"].as_str().unwrap_or("?")); }
+            if skipped > 0 { s += &format!(", {skipped} it couldn't type"); }
+            s
+        }
+    }
+}
+/// The X display gamescope's keyboard focus is on (GAMESCOPE_KEYBOARD_FOCUS_DISPLAY on the root window): where the
+/// game is when gamescope runs more than one Xwayland, so xdotool types into the game's display, not Hearth's.
+/// Hearth's own DISPLAY when gamescope doesn't say. Asked at most once a second.
+fn keyboard_display() -> Option<String> {
+    static LAST: std::sync::Mutex<Option<(Instant, Option<String>)>> = std::sync::Mutex::new(None);
+    if let Ok(g) = LAST.lock() { if let Some((at, d)) = g.as_ref() { if at.elapsed() < Duration::from_secs(1) { return d.clone(); } } }
+    let gs = if crate::gamescope::available() { focus_display_name(&crate::gamescope::cardinals("GAMESCOPE_KEYBOARD_FOCUS_DISPLAY", None)) } else { None };
+    let d = gs.or_else(|| std::env::var("DISPLAY").ok());
+    if let Ok(mut g) = LAST.lock() { *g = Some((Instant::now(), d.clone())); }
+    d
+}
+/// gamescope writes the display's name (":1") into GAMESCOPE_KEYBOARD_FOCUS_DISPLAY as 32-bit CARDINALs straight
+/// from the C string: on 64-bit, each number carries the next 4 bytes of a long, so the name (with its end) is in the
+/// first number's bytes, low byte first. Only a display name (":N" or ":N.S") is taken.
+pub fn focus_display_name(cards: &[u64]) -> Option<String> {
+    let mut bytes = Vec::new();
+    'all: for c in cards {
+        for b in (*c as u32).to_le_bytes() { if b == 0 { break 'all; } bytes.push(b); }
+    }
+    let name = String::from_utf8(bytes).ok()?;
+    let ok = name.strip_prefix(':').map(|rest| {
+        let (n, screen) = rest.split_once('.').unwrap_or((rest, "0"));
+        !n.is_empty() && n.len() <= 3 && n.bytes().all(|b| b.is_ascii_digit()) && screen.len() == 1 && screen.bytes().all(|b| b.is_ascii_digit())
+    }).unwrap_or(false);
+    if ok { Some(name) } else { None }
 }
 /// A key for the keyboard over a game: bksp, enter, tab, esc, arrows, home, end, delete, paste (n times).
 pub fn type_key(key: &str, n: u64, mods: &Value) -> Result<Value, String> {
     let mods: Vec<&str> = mods.as_array().map(|m| m.iter().filter_map(Value::as_str).filter(|m| matches!(*m, "ctrl" | "alt" | "shift")).collect()).unwrap_or_default();
-    let r = request(&json!({"cmd": "key", "key": key, "n": n.clamp(1, 200), "mods": mods}), Duration::from_secs(2))
-        .map_err(|_| "Can't type into the game: Hearth Input isn't running".to_string())?;
-    if r["ok"] == false { return Err(r["error"].as_str().unwrap_or("Couldn't press that").to_string()); }
+    let n = n.clamp(1, 200);
+    let r = request(&json!({"cmd": "key", "key": key, "n": n, "mods": mods}), Duration::from_secs(2))
+        .map_err(|e| {
+            crate::bridge::log(&format!("osk: key {key} into the game failed: Hearth Input isn't there ({e})"));
+            "Can't type into the game: Hearth Input isn't running".to_string()
+        })?;
+    let with = if mods.is_empty() { String::new() } else { format!("{}+", mods.join("+")) };
+    if r["ok"] == false {
+        crate::bridge::log(&format!("osk: key {with}{key} into the game failed: {}", r["error"].as_str().unwrap_or("no reason given")));
+        return Err(r["error"].as_str().unwrap_or("Couldn't press that").to_string());
+    }
+    crate::bridge::log(&format!("osk: key {with}{key} x{n} into the game on Hearth Input's virtual keyboard"));
     Ok(r)
 }
 
@@ -939,6 +1000,23 @@ mod tests {
         assert_eq!(own[0]["game"], "_global");
         assert_eq!(decode_name("steam%3A440"), "steam:440");
         assert_eq!(decode_name("bad%zz%4"), "bad%zz%4");
+    }
+
+    #[test]
+    fn typing_route_for_the_log() {
+        // gamescope's keyboard focus display as xprop shows it (64-bit: each number the low half of a long).
+        assert_eq!(focus_display_name(&[u32::from_le_bytes(*b":1\0\x7f") as u64, 12345, 0]), Some(":1".into()));
+        assert_eq!(focus_display_name(&[u32::from_le_bytes(*b":10\0") as u64, 99]), Some(":10".into()));
+        assert_eq!(focus_display_name(&[u32::from_le_bytes(*b":0\0\0") as u64]), Some(":0".into()));
+        assert_eq!(focus_display_name(&[u32::from_le_bytes(*b"x;rm") as u64, 0]), None);
+        assert_eq!(focus_display_name(&[]), None);
+        assert_eq!(focus_display_name(&[u32::from_le_bytes(*b":\0\0\0") as u64]), None);
+        // Each typed batch: counts and the way, never the text.
+        let r = json!({"ok": true, "layout": "us", "skipped": "\u{2603}", "via": "keyboard+xdotool", "keys": 2, "xdotool": 1, "display": ":1"});
+        assert_eq!(describe_typed(4, &r), "typed 4 characters into the game: 2 on Hearth Input's virtual keyboard (layout us), 1 through xdotool on :1, 1 it couldn't type");
+        assert_eq!(describe_typed(1, &json!({"ok": true, "layout": "de", "skipped": "", "keys": 1, "xdotool": 0})), "typed 1 characters into the game: 1 on Hearth Input's virtual keyboard (layout de)");
+        assert_eq!(describe_typed(3, &json!({"ok": false, "error": "no virtual keyboard"})), "typing 3 characters into the game failed: no virtual keyboard");
+        assert!(describe_typed(2, &json!({"ok": true, "layout": "us", "skipped": ""})).contains("through Hearth Input"));
     }
 
     #[test]

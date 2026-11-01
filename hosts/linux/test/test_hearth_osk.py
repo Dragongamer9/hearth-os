@@ -184,5 +184,50 @@ class GameModeController(unittest.TestCase):
         self.assertIn('os._exit(0)', src)
 
 
+
+class KeyboardOverAGame(unittest.TestCase):
+    """Guide + X over a game (0.6.59, "In-game keyboard doesn't interact with the game"): the keyboard closed itself
+    right after opening when Quick Access had been open (its panel was closed under it and the empty-overlay check
+    closed the overlay 50 ms later), and with Handheld Daemon's overlay app the keyboard focus went to Quick Access's
+    window (HHD shows it with STEAM_INPUT_FOCUS 1), so nothing typed reached the game. The page's behaviour is run in
+    tools/ui-check.js and the protocol in overlay-protocol.test.js; these keep the pieces from going missing."""
+
+    def setUp(self):
+        self.page = read(ROOT, 'ui', 'index.html')
+
+    def fn(self, name):
+        i = self.page.index('function %s(' % name)
+        return self.page[i:self.page.index('\nfunction ', i + 1)]
+
+    def test_empty_check_spares_the_keyboard(self):
+        self.assertRegex(self.fn('overlayEmptyCheck'), r'!S\.layers\.length && !OVOSK\.on\)')
+
+    def test_keyboard_is_on_before_panels_close(self):
+        body = self.fn('overlayOsk')
+        self.assertLess(body.index('OVOSK.on=true'), body.index('while(S.layers.length) closeLayer()'))
+
+    def test_late_guide_of_the_chord_does_not_close_it(self):
+        self.assertRegex(self.fn('ovoskInput'), r"k==='guide'\)\{ if\(qaSince\(\) < \d+\) return;")
+
+    def test_close_says_why(self):
+        self.assertIn("action:'close', why:", self.fn('overlayClose'))
+        self.assertIn('m["why"]', read(ROOT, 'hosts', 'hearth-rs', 'src', 'gamemode.rs'))
+
+    def test_hhd_overlay_leaves_the_keyboard_focus_with_the_game(self):
+        proto = read(ROOT, 'hosts', 'linux', 'src', 'overlay', 'protocol.js')
+        main = read(ROOT, 'hosts', 'linux', 'src', 'overlay', 'main.js')
+        self.assertIn("this.keyboard(msg.name === 'overlay.osk')", proto)
+        self.assertIn('this.inputFocus(2)', proto)
+        self.assertIn('inputFocus: setInputFocus', main)
+        self.assertIn("'STEAM_INPUT_FOCUS', '32c', '-set', 'STEAM_INPUT_FOCUS'", main)
+
+    def test_typing_goes_to_the_keyboard_focus_display_and_is_logged(self):
+        core = read(ROOT, 'hosts', 'hearth-core', 'src', 'input_map.rs')
+        self.assertIn('GAMESCOPE_KEYBOARD_FOCUS_DISPLAY', core)
+        self.assertIn('describe_typed(n, &r)', core)
+        hi = read(SHELL, 'hearth-input')
+        self.assertIn("log('typed %d characters", hi)
+
+
 if __name__ == '__main__':
     unittest.main()

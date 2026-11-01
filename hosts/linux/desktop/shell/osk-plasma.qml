@@ -5,7 +5,7 @@
 // hearth-pad --plasma reads the controller (one helper for both desktops): right stick pointer, triggers click, left
 // stick scrolls, D-pad and A / B as keys in Plasma's menus and KDE apps (KWin's hearthpad script says what's in front),
 // LB / RB switch windows, View + a button for KWin's window shortcuts, and types through its uinput keyboard (KWin
-// has no wtype). Started by /usr/share/hearth-plasma/xdg/autostart/hearth-osk.desktop:
+// has no wtype). Started by desktop/shell/hearth-companion plasma (nimbus-session runs it once Plasma is up):
 //   quickshell -p /usr/share/nimbus/desktop/shell/osk-plasma.qml
 // If quickshell, python3-evdev or /dev/uinput is missing, Plasma works as usual, just without the controller.
 import QtQuick

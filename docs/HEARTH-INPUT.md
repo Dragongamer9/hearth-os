@@ -25,6 +25,15 @@ Guide over a layout: everything is let go, and the controller stays held while G
 0.35 s) it's Guide as always (Quick Access); X before that is **Guide + X**, Hearth's on-screen keyboard over the game
 (docs/OSK.md), and the game sees neither press.
 
+The keyboard's typing comes back here: `type` and `key` press keys on Hearth Input's virtual keyboard, which gamescope
+sends to whatever has its keyboard focus. While the keyboard is open that has to be the game, not the overlay
+(`STEAM_INPUT_FOCUS` 2 on the overlay window; with Handheld Daemon's overlay app the app sets it, since HHD shows it
+with 1). Characters gamescope's layout can't type go through xdotool on `display`, which Hearth fills with gamescope's
+keyboard focus display (`GAMESCOPE_KEYBOARD_FOCUS_DISPLAY`). The answer says how a batch went (`via`: `keyboard`,
+`xdotool`, `keyboard+xdotool` or `none`; `keys`, `xdotool`, `display`, `skipped`), and each batch is a line in Hearth
+Input's log and Hearth's (counts only, never the text). A virtual keyboard made for the typing waits 0.3 s before
+its first press, so gamescope has found it.
+
 ## Layouts (version 2)
 
 ```
@@ -108,7 +117,9 @@ this user only): `state`, `overlay`, `test`, `status`, `type`, `key`; events `gu
   the grab policy, the daemon with fake devices (Guide, Guide + X, typing), the socket.
 - `tools/e2e-hearth-input.py` (Hearth Input e2e workflow): the real daemon with uinput controllers (Xbox 360,
   Bluetooth Xbox, DualSense), the grab and hand-offs, Guide, **Guide + X** (Hearth gets `osk`, the game never sees the
-  X), typing (us and de) and Backspace through the virtual keyboard.
+  X), typing (us and de), Backspace, the arrows and Enter through the virtual keyboard, and each batch's answer and
+  log line. The workflow also runs `hosts/linux/test/overlay-protocol.test.js` (HHD's overlay app leaves the keyboard
+  focus with the game while the keyboard is open) and, run by hand with `page` ticked, `tools/ui-check.js`.
 - `input_map.rs` tests (rust workflow): the same shared cases, version 1 files, the global layout. `inputs.rs`
   (hearth-link): only layouts that pass the checks come in from another device.
 - `tools/ui-check.js`: the keyboard over a game, and the editor in Quick Access (a layer, a double press and chord,

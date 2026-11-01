@@ -36,6 +36,20 @@ pub struct Track { pub steam_app_id: Option<String>, pub pid: Option<u32>, pub d
 /// Steam's own processes: never part of a game, never paused or closed with one.
 pub fn is_steam_client(comm: &str) -> bool { matches!(comm, "steam" | "steamwebhelper" | "steam.sh") }
 
+/// Steam's client by its command line too: the Flatpak's processes can carry another name (a shortened
+/// "steamwebhelpe"), and then their windows looked like "an app Hearth opened" (Hearth started Steam).
+pub fn steam_client_cmdline(cmdline: &[String]) -> bool {
+    cmdline.first().map(|a| a.ends_with("ubuntu12_32/steam") || a.ends_with("/steamwebhelper") || a == "steamwebhelper").unwrap_or(false)
+}
+/// One process is Steam's client (by name or command line).
+pub fn steam_client_pid(root: &Path, pid: u32) -> bool {
+    if pid == 0 { return false; }
+    if is_steam_client(&comm(root, pid)) { return true; }
+    let args: Vec<String> = std::fs::read(root.join(pid.to_string()).join("cmdline")).unwrap_or_default()
+        .split(|c| *c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+    steam_client_cmdline(&args)
+}
+
 /// One variable from a /proc/<pid>/environ blob (NUL-separated KEY=value).
 pub fn env_value(environ: &[u8], key: &str) -> Option<String> {
     let k = key.as_bytes();
@@ -229,6 +243,16 @@ pub fn describe(pids: &[u32]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn steam_client_by_command_line() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        assert!(steam_client_cmdline(&v(&["/home/u/.local/share/Steam/ubuntu12_32/steam", "-silent"])));
+        assert!(steam_client_cmdline(&v(&["/app/x/ubuntu12_64/steamwebhelper", "-lang=en"])));
+        assert!(!steam_client_cmdline(&v(&["/s/ubuntu12_32/reaper", "SteamLaunch", "AppId=5"])));
+        assert!(!steam_client_cmdline(&v(&["Fallout4Launcher.exe"])));
+        assert!(!steam_client_cmdline(&[]));
+    }
+
     use super::*;
     fn p(pid: u32, ppid: u32, cmd: &[&str], cwd: Option<&str>, prefix: Option<&str>) -> Proc {
         Proc { pid, ppid, cmdline: cmd.iter().map(|s| s.to_string()).collect(), cwd: cwd.map(str::to_string), prefix: prefix.map(str::to_string), ..Default::default() }

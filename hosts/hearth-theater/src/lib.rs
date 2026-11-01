@@ -6,6 +6,10 @@
 //! Each site's catalog (the shows, movies and videos its own pages list) is read by reader.js inside Theater's own
 //! web view, with your own sign-ins; what it hands back is checked and tidied here (`sanitize`) and kept per site in
 //! catalog/<id>.json, with poster pictures in art/c-<id>/. Titles you open or favorite are kept in titles.json.
+//!
+//! Theater's windows are drawn by Chromium (Hearth's own Electron build, hosts/electron; electron/main.js): this
+//! program is their core (`--core-stdio`), and the parts of that here are the window app's lookup, the log, and the
+//! controller pointer's commands (`ptr_cmd`; main.rs's pointer.rs turns them into real mouse input).
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -562,6 +566,100 @@ pub fn tidy_titles(titles: &mut Vec<Title>) {
     }
 }
 
+// ------------------------------------------------------------------------------------------- the window app and the log
+
+/// Theater's windows: Hearth's own Chromium (Electron) build. `env` (HEARTH_THEATER_ELECTRON) names another one
+/// (tests); otherwise /usr/lib/hearth-electron/hearth-electron (or /usr/local/lib/...), looking in `root`.
+pub fn find_electron_in(root: &Path, env: Option<&str>) -> Option<PathBuf> {
+    if let Some(e) = env.filter(|e| !e.trim().is_empty()) {
+        let p = PathBuf::from(e.trim());
+        return if p.is_file() { Some(p) } else { None };
+    }
+    ["usr/lib/hearth-electron/hearth-electron", "usr/local/lib/hearth-electron/hearth-electron"].iter().map(|d| root.join(d)).find(|p| p.is_file())
+}
+
+/// Theater's own log (Send logs has a section for it): what started, which renderer draws, pages that loaded or
+/// failed, and the pointer.
+pub fn log_file(dir: &Path) -> PathBuf { dir.join("theater.log") }
+
+/// Keeps the log small: over `max` bytes, only about its last `keep` bytes stay (from the start of a line).
+pub fn trim_log(path: &Path, max: u64, keep: usize) {
+    let Ok(meta) = std::fs::metadata(path) else { return };
+    if meta.len() <= max { return; }
+    let Ok(b) = std::fs::read(path) else { return };
+    let mut start = b.len().saturating_sub(keep);
+    if let Some(i) = b[start..].iter().position(|&c| c == b'\n') { start += i + 1; }
+    let _ = std::fs::write(path, &b[start..]);
+}
+
+/// A web address for the log: its origin and path only (a query can hold sign-in codes).
+pub fn log_url(u: &str) -> String {
+    match url::Url::parse(u) {
+        Ok(x) if x.scheme() == "http" || x.scheme() == "https" => {
+            let mut s = format!("{}://{}", x.scheme(), x.host_str().unwrap_or(""));
+            if let Some(p) = x.port() { s.push_str(&format!(":{p}")); }
+            s.push_str(&x.path().chars().take(120).collect::<String>());
+            if x.query().is_some() { s.push_str("?…"); }
+            s
+        }
+        Ok(x) => format!("{}:…", x.scheme()),
+        Err(_) => "(not a web address)".into(),
+    }
+}
+
+/// The keys the viewer's pointer can press (B leaving a page's full screen, the on-screen keyboard's Enter and ⌫).
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum Key { Escape, Backspace, Enter, Tab, Space, Left, Right, Up, Down, Home, End }
+
+pub fn key_named(n: &str) -> Option<Key> {
+    Some(match n.to_ascii_lowercase().as_str() {
+        "escape" | "esc" => Key::Escape, "backspace" => Key::Backspace, "enter" | "return" => Key::Enter, "tab" => Key::Tab,
+        "space" | " " => Key::Space, "left" | "arrowleft" => Key::Left, "right" | "arrowright" => Key::Right,
+        "up" | "arrowup" => Key::Up, "down" | "arrowdown" => Key::Down, "home" => Key::Home, "end" => Key::End,
+        _ => return None,
+    })
+}
+
+/// What the viewer asks of the pointer (one "ptr" line from the window app).
+#[derive(Debug, PartialEq, Clone)]
+pub enum Ptr {
+    /// Moves it by (dx, dy) pixels.
+    Move(i32, i32),
+    /// Puts it at (x, y) on the screen (tests; only XTest can).
+    Warp(i32, i32),
+    /// Button 1 (left), 2 (middle) or 3 (right), down or up.
+    Button(u8, bool),
+    /// Scrolls by (dx, dy) in 1/120 of a wheel notch; dy > 0 scrolls down, dx > 0 right.
+    Wheel(i32, i32),
+    /// Presses and lets go of a key, n times.
+    Keys(Key, u32),
+}
+
+/// A "ptr" line: {"op": "move", "dx", "dy"} | {"op": "warp", "x", "y"} | {"op": "button", "button": "left", "down"}
+/// | {"op": "wheel", "dx", "dy"} | {"op": "key", "key": "backspace", "n"}. Anything else (or out of range) is None.
+pub fn ptr_cmd(v: &serde_json::Value) -> Option<Ptr> {
+    let int = |k: &str, lim: i64| v.get(k).and_then(|x| x.as_f64()).filter(|x| x.is_finite()).map(|x| (x.round() as i64).clamp(-lim, lim) as i32).unwrap_or(0);
+    Some(match v.get("op")?.as_str()? {
+        "move" => { let (dx, dy) = (int("dx", 4000), int("dy", 4000)); if dx == 0 && dy == 0 { return None; } Ptr::Move(dx, dy) }
+        "warp" => Ptr::Warp(int("x", 32000).max(0), int("y", 32000).max(0)),
+        "button" => {
+            let b = match v.get("button").and_then(|x| x.as_str()).unwrap_or("left") { "left" => 1, "middle" => 2, "right" => 3, _ => return None };
+            Ptr::Button(b, v.get("down")?.as_bool()?)
+        }
+        "wheel" => { let (dx, dy) = (int("dx", 120 * 40), int("dy", 120 * 40)); if dx == 0 && dy == 0 { return None; } Ptr::Wheel(dx, dy) }
+        "key" => Ptr::Keys(key_named(v.get("key")?.as_str()?)?, v.get("n").and_then(|x| x.as_u64()).unwrap_or(1).clamp(1, 64) as u32),
+        _ => return None,
+    })
+}
+
+/// Whole wheel notches out of 1/120 steps, keeping the rest for next time (for XTest's buttons 4-7 and REL_WHEEL).
+pub fn notches(acc: &mut i32, add: i32) -> i32 {
+    *acc += add;
+    let n = *acc / 120;
+    *acc -= n * 120;
+    n
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -731,5 +829,57 @@ mod tests {
         assert_eq!(art_name("s1", "art", "image/png", "https://a/x"), "s1-art.png");
         assert_eq!(art_name("s1", "icon", "", "https://a/favicon.ico"), "s1-icon.ico");
         assert_eq!(mime_for("s1-art.webp"), "image/webp");
+    }
+
+    #[test]
+    fn window_app_and_log() {
+        let root = std::env::temp_dir().join(format!("hearth-theater-electron-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(find_electron_in(&root, None), None);
+        std::fs::create_dir_all(root.join("usr/lib/hearth-electron")).unwrap();
+        std::fs::write(root.join("usr/lib/hearth-electron/hearth-electron"), "").unwrap();
+        assert_eq!(find_electron_in(&root, None), Some(root.join("usr/lib/hearth-electron/hearth-electron")));
+        assert_eq!(find_electron_in(&root, Some("/nonexistent/electron")), None);
+        let other = root.join("electron");
+        std::fs::write(&other, "").unwrap();
+        assert_eq!(find_electron_in(&root, Some(other.to_str().unwrap())), Some(other.clone()));
+        // The log keeps its newest lines.
+        let log = log_file(&root);
+        let text: String = (0..2000).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&log, &text).unwrap();
+        trim_log(&log, 100_000, 1000);
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), text);
+        trim_log(&log, 5000, 1000);
+        let t = std::fs::read_to_string(&log).unwrap();
+        assert!(t.len() <= 1000 && t.starts_with("line ") && t.ends_with("line 1999\n"), "{t}");
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(log_url("https://example.org/watch/1?token=abc"), "https://example.org/watch/1?…");
+        assert_eq!(log_url("http://127.0.0.1:8761/"), "http://127.0.0.1:8761/");
+        assert_eq!(log_url("data:text/html,hi"), "data:…");
+    }
+
+    #[test]
+    fn pointer_commands() {
+        use serde_json::json;
+        assert_eq!(ptr_cmd(&json!({"op": "move", "dx": 3.4, "dy": -2})), Some(Ptr::Move(3, -2)));
+        assert_eq!(ptr_cmd(&json!({"op": "move", "dx": 0, "dy": 0})), None);
+        assert_eq!(ptr_cmd(&json!({"op": "move", "dx": 1e9, "dy": 0})), Some(Ptr::Move(4000, 0)));
+        assert_eq!(ptr_cmd(&json!({"op": "warp", "x": 10, "y": -5})), Some(Ptr::Warp(10, 0)));
+        assert_eq!(ptr_cmd(&json!({"op": "button", "button": "left", "down": true})), Some(Ptr::Button(1, true)));
+        assert_eq!(ptr_cmd(&json!({"op": "button", "button": "right", "down": false})), Some(Ptr::Button(3, false)));
+        assert_eq!(ptr_cmd(&json!({"op": "button", "button": "left"})), None);
+        assert_eq!(ptr_cmd(&json!({"op": "button", "button": "side", "down": true})), None);
+        assert_eq!(ptr_cmd(&json!({"op": "wheel", "dx": 0, "dy": 240})), Some(Ptr::Wheel(0, 240)));
+        assert_eq!(ptr_cmd(&json!({"op": "key", "key": "Backspace", "n": 3})), Some(Ptr::Keys(Key::Backspace, 3)));
+        assert_eq!(ptr_cmd(&json!({"op": "key", "key": "enter"})), Some(Ptr::Keys(Key::Enter, 1)));
+        assert_eq!(ptr_cmd(&json!({"op": "key", "key": "F13"})), None);
+        assert_eq!(ptr_cmd(&json!({"op": "type", "text": "x"})), None);
+        assert_eq!(ptr_cmd(&json!({"dx": 1})), None);
+        let mut acc = 0;
+        assert_eq!(notches(&mut acc, 60), 0);
+        assert_eq!(notches(&mut acc, 70), 1);
+        assert_eq!(acc, 10);
+        assert_eq!(notches(&mut acc, -250), -2);
+        assert_eq!(acc, 0);
     }
 }

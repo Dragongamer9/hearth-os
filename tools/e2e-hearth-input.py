@@ -793,6 +793,22 @@ def run(proc, pad, sock_path, log_path, extra, recs):
     n = len([1 for _, t, c, v in rig.dev['kbd'].since(m['kbd']) if t == E.EV_KEY and c == E.KEY_BACKSPACE and v == 1])
     check('Backspace twice', r.get('ok') and n == 2, '%s, %d presses' % (json.dumps(r), n))
     check('nothing held after typing', not any(code for code in rig.dev['kbd'].dev.active_keys()), str(rig.dev['kbd'].dev.active_keys()))
+    # Enter and the arrows (the keyboard over a game moves the game's caret and sends what's typed), and each typed
+    # batch in the daemon's log with the way it went (counts only, never the text).
+    m = rig.marks()
+    rs = [request(sock_path, {'cmd': 'key', 'key': k, 'n': 1}) for k in ('left', 'right', 'up', 'down', 'enter')]
+    time.sleep(0.6)
+    downs = [code_name(c) for _, t, c, v in rig.dev['kbd'].since(m['kbd']) if t == E.EV_KEY and v == 1]
+    check('arrows and Enter → the same keys on the virtual keyboard',
+          all(r.get('ok') and r.get('via') == 'keyboard' for r in rs) and downs == ['KEY_LEFT', 'KEY_RIGHT', 'KEY_UP', 'KEY_DOWN', 'KEY_ENTER'],
+          '%s %s' % (json.dumps(rs), downs))
+    r = request(sock_path, {'cmd': 'type', 'text': 'ok', 'layout': 'us'})
+    time.sleep(0.4)
+    dl = daemon_log()
+    check('a typed batch says how it went (answer and log, no text)',
+          r.get('via') == 'keyboard' and r.get('keys') == 2 and 'typed 2 characters: 2 on the virtual keyboard (layout us)' in dl
+          and 'key enter x1 on the virtual keyboard' in dl and 'Hi!' not in dl,
+          '%s | %s' % (json.dumps(r), ' / '.join(l for l in dl.split('\n') if 'typed' in l or 'key ' in l)[-600:]))
 
     # Heartbeat: Hearth stops talking (crashed, stuck) → let go after 5 s.
     time.sleep(0.2)

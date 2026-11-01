@@ -407,16 +407,18 @@ class GuideXTest(unittest.TestCase):
 
 
 class PlasmaKeyboardFilesTest(unittest.TestCase):
-    """Hearth Plasma's keyboard: started by an autostart entry only Hearth Plasma reads, guarded (no quickshell or
-    file: nothing), running the shared Keyboard.qml without wtype and hearth-pad --osk."""
+    """Hearth Plasma's keyboard: started by nimbus-session through hearth-companion (the old autostart entry calls it
+    too), guarded (no quickshell or file: nothing), running the shared Keyboard.qml without wtype and hearth-pad --osk."""
 
     def test_files(self):
         root = PATH.parent.parent.parent.parent.parent
         auto = (root / 'os' / 'system_files' / 'usr' / 'share' / 'hearth-plasma' / 'xdg' / 'autostart' / 'hearth-osk.desktop').read_text()
         self.assertIn('OnlyShowIn=KDE;', auto)
-        self.assertIn('command -v quickshell', auto)
-        self.assertIn('osk-plasma.qml', auto)
+        self.assertIn('hearth-companion', auto)          # it checks quickshell and the files, and runs it once
         self.assertIn('exit 0', auto)
+        comp = (PATH.parent / 'hearth-companion').read_text()
+        self.assertIn('command -v quickshell', comp)
+        self.assertIn('osk-plasma.qml', comp)
         qml = (PATH.parent / 'osk-plasma.qml').read_text()
         self.assertIn('useWtype: false', qml)
         self.assertIn('"--plasma"', qml)

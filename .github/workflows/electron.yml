@@ -5,7 +5,7 @@ name: Hearth on Chromium (Electron window)
 on:
   push:
     branches: [linux-host, wip-electron]
-    paths: ['hosts/electron/**', 'ui/**', 'hosts/hearth-rs/src/js/**', '.github/workflows/electron.yml']
+    paths: ['hosts/electron/**', 'hosts/hearth-theater/electron/**', 'hosts/hearth-theater/ui/**', 'ui/**', 'hosts/hearth-rs/src/js/**', '.github/workflows/electron.yml']
   workflow_dispatch:
 
 permissions:
@@ -32,6 +32,10 @@ jobs:
           test -x dist/linux-unpacked/hearth-electron
           test -f dist/linux-unpacked/resources/ui/index.html
           test -f dist/linux-unpacked/resources/js/signin-pad.js
+          # Hearth Theater's windows ride along (hearth-electron --hearth-theater, docs/THEATER.md).
+          test -f dist/linux-unpacked/resources/theater/electron/main.js && test -f dist/linux-unpacked/resources/theater/electron/rules.js
+          test -f dist/linux-unpacked/resources/theater/ui/index.html && test -f dist/linux-unpacked/resources/theater/ui/viewer-pad.js
+          test -f dist/linux-unpacked/resources/theater/src/reader.js && ! test -e dist/linux-unpacked/resources/theater/electron/rules.test.js
           echo "::notice title=Electron window::$(du -sh dist/linux-unpacked | cut -f1) unpacked"
       - uses: actions/upload-artifact@v4
         with:
