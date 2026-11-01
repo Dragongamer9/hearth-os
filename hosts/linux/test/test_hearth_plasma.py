@@ -306,7 +306,8 @@ class Controller(unittest.TestCase):
         for d, f, desk in (('hearth-plasma', 'hearth-osk.desktop', 'plasma'), ('hearth-cosmic', 'hearth-cosmic.desktop', 'cosmic')):
             auto = (SYSTEM_FILES / d / 'xdg' / 'autostart' / f).read_text()
             self.assertIn('[ "$HEARTH_DESKTOP" = %s ]' % desk, auto)
-            self.assertIn('hearth-companion" %s autostart' % desk, auto)
+            self.assertIn('/desktop/shell/hearth-companion"', auto)
+            self.assertIn('exec sh "$c" %s autostart' % desk, auto)
             self.assertNotIn('quickshell -p', auto)
         comp = COMPANION.read_text()
         self.assertIn('flock -n 9', comp)
