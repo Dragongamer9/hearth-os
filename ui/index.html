@@ -4269,10 +4269,22 @@ function steamModeRows(){
   const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode (Experimental)')+note('Loading…'); }
   const d=s.decky||{};
   let h = shead('Steam Game Mode (Experimental)');
-  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS. This time only: when Steam closes, or from the Hearth panel in Quick Access, you're back in ${APP}'s Game Mode. Restarting always starts ${APP}'s.</small></div><div class="rv">›</div></button>`
-    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and the Hearth plugin</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth plugin in place':d.shipped?' · Hearth plugin not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Brings '+APP+'\'s games, look and apps into Steam. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
+  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS. This time only: when Steam closes, or from the Hearth panel in Quick Access, you're back in ${APP}'s Game Mode.${(s.startDefault||{}).on?'':` Restarting starts ${APP}'s.`}</small></div><div class="rv">›</div></button>`
+    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and the Hearth plugin</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth plugin in place':d.shipped?' · Hearth plugin not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Brings '+APP+'\'s games, look and apps into Steam. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy===true?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
   if(s.lastFailure) h += note(`Last try came back to ${APP}'s Game Mode: ${esc(s.lastFailure)}.`);
+  // Start in Steam Game Mode (per device, off by default): only offered where Steam is installed and signed in. The
+  // session turns it off by itself when it fails and says why (offNote). Ways back: docs/STEAM-GAME-MODE.md.
+  const sd=s.startDefault||{};
+  if(sd.on || sd.can) h += sgrid(`<button class="row" data-f data-k="sy-sgm-default" data-act="sgmDefault"><div class="rt"><b>Start in Steam Game Mode</b><small>The device starts in Steam's Game Mode instead of ${APP}'s. To skip it once, hold B or Guide while the device starts. To stop it: Quick Access › Hearth in Steam, or turn this off. It turns itself off if Steam fails to start.</small></div>${SGM.busy==='default'?'<span class="mini-spin"></span>':`<div class="sw ${sd.on?'on':''}"></div>`}</button>`);
+  else if(s.available && sd.signedIn===false) h += note(`Start in Steam Game Mode: sign in to Steam first (Switch to Steam Game Mode once and sign in there).`);
+  if(sd.offNote && !sd.on) h += note(`Start in Steam Game Mode was turned off by itself: ${esc(sd.offNote)}. The device starts in ${APP}'s Game Mode.`);
   return h;
+}
+function sgmDefault(){
+  const sd=(SGM.s&&SGM.s.startDefault)||{}; const on=!sd.on;
+  const go=()=>{ SGM.busy='default'; render('sy-sgm-default',true); call('steamMode.setDefault',{on}).then(r=>{ SGM.s=r; toast(on?`The device starts in Steam Game Mode from now on. Hold B or Guide while it starts to get ${APP}'s Game Mode once.`:`The device starts in ${APP}'s Game Mode again`); }).catch(e=>toast(e.message)).finally(()=>{ SGM.busy=false; render('sy-sgm-default',true); }); };
+  if(on) return openSheet({title:'Start in Steam Game Mode?', sub:`Experimental. The device starts in Steam's Game Mode instead of ${APP}'s. Ways back with only a controller: Quick Access › Hearth › Switch to Hearth Game Mode (or turn off Start in Steam Game Mode there), Steam's Power › Switch to Desktop, or hold B or Guide while the device starts. If Steam fails to start, it turns itself off.`, items:[{label:'Start in Steam Game Mode', icon:'pad', run:go}]});
+  return go();
 }
 function sgmDecky(){
   const d=(SGM.s&&SGM.s.decky)||{}; const action=d.installed&&d.via==='hearth'?'remove':'install';
@@ -10416,6 +10428,7 @@ function act(el){
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p, d.sure==='1');
     case 'sgmDecky': return sgmDecky();
+    case 'sgmDefault': return sgmDefault();
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
     case 'desk': return deskAct(el);

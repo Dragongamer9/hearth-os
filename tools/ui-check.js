@@ -2529,6 +2529,53 @@ const path = require('path');
     await hp.close();
   }
 
+  // Settings › System › Steam Game Mode › Start in Steam Game Mode (docs/STEAM-GAME-MODE.md): offered only with Steam
+  // signed in, asks first when turning on, and shows the session's note when it turned itself off.
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    sp.on('pageerror', e => errors.push('steam game mode default: ' + e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(800);
+      const r = await sp.evaluate(async () => {
+        const out = [];
+        HOSTINFO.features = [...(HOSTINFO.features || []), 'steamMode'];
+        const base = { available: true, steam: 'native', gamescope: true, inSession: true, decky: { installed: false }, lastFailure: null };
+        window.__sd = [];
+        const real = MOCK.call;
+        MOCK.call = (m, a) => {
+          if (m === 'steamMode.setDefault') { window.__sd.push(a.on); return Promise.resolve(Object.assign({}, base, { startDefault: { on: a.on, can: true, signedIn: true, offNote: null } })); }
+          if (m === 'steamMode.status') return Promise.resolve(SGM.s);
+          return real(m, a);
+        };
+        const has = (html, k) => html.includes(`data-k="${k}"`);
+        SGM.s = Object.assign({}, base, { startDefault: { on: false, can: false, signedIn: false, offNote: null } });
+        let h = pageSystem();
+        if (has(h, 'sy-sgm-default')) out.push('offered without a Steam sign-in');
+        if (!/sign in to Steam first/.test(h)) out.push('no hint to sign in to Steam');
+        SGM.s = Object.assign({}, base, { startDefault: { on: false, can: true, signedIn: true, offNote: 'Steam ended right away (code 1)' } });
+        h = pageSystem();
+        if (!has(h, 'sy-sgm-default')) out.push('no Start in Steam Game Mode row with Steam signed in');
+        if (!/turned off by itself: Steam ended right away \(code 1\)/.test(h)) out.push("the session's note isn't shown");
+        if (!/hold B or Guide/.test(h)) out.push("the row doesn't say how to skip it");
+        sgmDefault();
+        if (S.layers.at(-1) !== 'sheet' || !/Switch to Hearth Game Mode/.test(sheet.sub || '')) out.push('turning it on did not ask first with the ways back');
+        else sheetPick(0);
+        await new Promise(res => setTimeout(res, 100));
+        if (JSON.stringify(window.__sd) !== '[true]' || !SGM.s.startDefault.on) out.push('turning on did not reach the host: ' + JSON.stringify(window.__sd));
+        h = pageSystem();
+        if (!/class="sw on"/.test(h.slice(h.indexOf('sy-sgm-default')))) out.push('the switch is not on afterwards');
+        if (/turned off by itself/.test(h)) out.push('the old note still shows while on');
+        sgmDefault(); await new Promise(res => setTimeout(res, 100));
+        if (JSON.stringify(window.__sd) !== '[true,false]') out.push('turning off asked first or did not reach the host: ' + JSON.stringify(window.__sd));
+        closeAll();
+        return out;
+      });
+      for (const e of r) errors.push('steam game mode default: ' + e);
+    } catch (e) { errors.push('steam game mode default: ' + e.message.split('\n')[0]); }
+    await sp.close();
+  }
+
   await browser.close();
   if (errors.length) {
     for (const e of errors) console.log(`::error title=Hearth page::${e}`);

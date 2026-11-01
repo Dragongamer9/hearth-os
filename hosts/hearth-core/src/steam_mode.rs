@@ -1,7 +1,8 @@
 //! Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs
 //! it, as a one-time switch from Hearth's Game Mode (the power menu, or Settings › System). nimbus-session runs it
-//! (`run_steam_mode`) and always comes back to Hearth's Game Mode afterwards: the choice is never saved, so a restart
-//! always starts Hearth's Game Mode, and a Steam that's missing or fails right away falls back to it at once.
+//! (`run_steam_mode`) and always comes back to Hearth's Game Mode afterwards: the switch is never saved, and a Steam
+//! that's missing or fails right away falls back to it at once. Starting in Steam Game Mode is a separate per-device
+//! opt-in (`set_default`, off by default) that the session turns off by itself when it fails.
 //!
 //! With Decky Loader (installed from Settings › System › Steam Game Mode, hearth-admin decky-install), the Hearth Decky
 //! plugin (hosts/decky-hearth) brings Hearth into Steam: your other stores' games with Play buttons, and a sync that adds
@@ -61,16 +62,115 @@ pub fn last_failure(run_dir: &Path) -> Option<String> {
     std::fs::read_to_string(run_dir.join(FAILED_NOTE)).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
-/// Settings › System › Steam Game Mode: {available, steam, decky: {...}, lastFailure}.
+// ---- Start in Steam Game Mode (Experimental, per device, off by default): HEARTH_STEAM_DEFAULT=1 in session.conf,
+// read by nimbus-session at every sign-in (steam_default_wanted), which also turns it off by itself when it can't work
+// and leaves the reason in ~/.local/state/nimbus/steam-default-off.
+pub const DEFAULT_KEY: &str = "HEARTH_STEAM_DEFAULT";
+/// Why the session turned "Start in Steam Game Mode" off by itself (kept until it's turned on again).
+pub const DEFAULT_OFF_NOTE: &str = "steam-default-off";
+/// The session's count of failed starts (cleared here when it's turned on again).
+pub const DEFAULT_FAILS: &str = "steam-default-fails";
+
+fn is_default_line(l: &str) -> bool {
+    let t = l.trim_start();
+    t.strip_prefix("export").map(str::trim_start).unwrap_or(t).starts_with("HEARTH_STEAM_DEFAULT=")
+}
+/// HEARTH_STEAM_DEFAULT from session.conf: on only when it's exactly 1 (the last line wins, as in the shell).
+pub fn read_default(text: &str) -> bool {
+    let mut on = false;
+    for l in text.lines().filter(|l| is_default_line(l)) {
+        let v = l.trim_start().trim_start_matches("export").trim_start().trim_start_matches("HEARTH_STEAM_DEFAULT=");
+        on = v.trim().trim_matches(|c| c == '"' || c == '\'') == "1";
+    }
+    on
+}
+/// Sets HEARTH_STEAM_DEFAULT to 1 or 0, keeping everything else in the file.
+pub fn write_default(text: &str, on: bool) -> String {
+    let line = format!("{DEFAULT_KEY}={}", if on { 1 } else { 0 });
+    if text.lines().any(is_default_line) {
+        let mut out: Vec<String> = text.lines().map(|l| if is_default_line(l) { line.clone() } else { l.to_string() }).collect();
+        out.push(String::new());
+        out.join("\n")
+    } else {
+        format!("{}{}{line}\n", text, if !text.is_empty() && !text.ends_with('\n') { "\n" } else { "" })
+    }
+}
+
+fn state_dir() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus")
+}
+
+/// Whether Steam has a signed-in account (loginusers.vdf) in the folder of the Steam that nimbus-session will start,
+/// with the session's own rules (steam_flatpak_in_use, run_steam_mode): Flathub's Steam when it's signed in and newer
+/// than the system Steam's folder (or that has no sign-in), or when it's the only Steam / Hearth's stand-in starts it.
+pub fn signed_in(home: &Path, has_native: bool, flatpak_installed: bool, flatpak_standin: bool) -> bool {
+    let nonempty = |p: &PathBuf| std::fs::metadata(p).map(|m| m.is_file() && m.len() > 0).unwrap_or(false);
+    let fl = [".var/app/com.valvesoftware.Steam/.local/share/Steam/config/loginusers.vdf", ".var/app/com.valvesoftware.Steam/data/Steam/config/loginusers.vdf"]
+        .iter().map(|p| home.join(p)).find(|p| nonempty(p));
+    let nl = home.join(".local/share/Steam/config/loginusers.vdf");
+    let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let flatpak_in_use = flatpak_installed && fl.as_ref().is_some_and(|f| !nonempty(&nl) || mtime(f.as_path()) > mtime(nl.as_path()));
+    if flatpak_in_use { return true; }
+    if has_native && (!flatpak_standin || !flatpak_installed) {
+        return nonempty(&nl) || nonempty(&home.join(".steam/steam/config/loginusers.vdf"));
+    }
+    fl.is_some()
+}
+
+fn flatpak_installed(home: &Path) -> bool {
+    Path::new("/var/lib/flatpak/app/com.valvesoftware.Steam").is_dir() || home.join(".local/share/flatpak/app/com.valvesoftware.Steam").is_dir()
+}
+/// The live USB / installer never starts in Steam Game Mode.
+fn live() -> bool { Path::new("/etc/hearth-live").exists() }
+
+/// Whether "Start in Steam Game Mode" can be turned on: where the switch can be offered, Steam signed in, not the live USB.
+pub fn can_default(available: bool, signed_in: bool, live: bool) -> bool { available && signed_in && !live }
+
+fn steam_signed_in_here() -> bool {
+    let home = crate::paths::home();
+    signed_in(&home, crate::system::has("steam"), crate::system::has("flatpak") && flatpak_installed(&home), Path::new("/usr/share/nimbus/steam-flatpak").exists())
+}
+
+/// {on, can, signedIn, offNote}: the setting as the session will see it.
+pub fn default_status_in(conf: &Path, state: &Path, can: bool, signed_in: bool) -> Value {
+    let on = read_default(&std::fs::read_to_string(conf).unwrap_or_default());
+    let note = std::fs::read_to_string(state.join(DEFAULT_OFF_NOTE)).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    json!({ "on": on, "can": can, "signedIn": signed_in, "offNote": if on { Value::Null } else { json!(note) } })
+}
+
+/// Turns "Start in Steam Game Mode" on or off. Turning it on is refused where it can't work; it clears the session's
+/// old note and failure count, so it gets its two chances again.
+pub fn set_default_in(conf: &Path, state: &Path, on: bool, can: bool) -> Result<(), String> {
+    if on && !can { return Err("Starting in Steam Game Mode needs Steam installed and signed in, in Hearth OS's session.".into()); }
+    let text = std::fs::read_to_string(conf).unwrap_or_default();
+    crate::paths::write_atomic(conf, write_default(&text, on).as_bytes()).map_err(|e| e.to_string())?;
+    if on {
+        let _ = std::fs::remove_file(state.join(DEFAULT_OFF_NOTE));
+        let _ = std::fs::remove_file(state.join(DEFAULT_FAILS));
+    }
+    crate::bridge::log(&format!("steam game mode: start in Steam Game Mode {}", if on { "on" } else { "off" }));
+    Ok(())
+}
+
+pub fn set_default(on: bool) -> Result<Value, String> {
+    let signed = steam_signed_in_here();
+    set_default_in(&crate::admin::session_conf(), &state_dir(), on, can_default(available(), signed, live()))?;
+    Ok(status())
+}
+
+/// Settings › System › Steam Game Mode: {available, steam, decky: {...}, lastFailure, startDefault: {...}}.
 pub fn status() -> Value {
     let home = crate::paths::home();
+    let avail = available();
+    let signed = avail && steam_signed_in_here();
     json!({
-        "available": available(),
+        "available": avail,
         "steam": steam_kind(&home, crate::system::has("steam")),
         "gamescope": crate::system::has("gamescope"),
         "inSession": in_session(),
         "decky": decky_status(Path::new("/"), &home),
         "lastFailure": last_failure(&runtime_dir()),
+        "startDefault": default_status_in(&crate::admin::session_conf(), &state_dir(), can_default(avail, signed, live()), signed),
     })
 }
 
@@ -159,5 +259,68 @@ mod tests {
         assert_eq!(std::fs::read_to_string(run.path().join("nimbus-next")).unwrap(), "steam\n");
         assert_eq!(last_failure(run.path()), None, "an old failure note is cleared on a new try");
         assert!(decky_action_ok("install") && decky_action_ok("remove") && !decky_action_ok("start") && !decky_action_ok("rm -rf"));
+    }
+
+    #[test]
+    fn start_default_in_session_conf() {
+        assert!(!read_default(""));
+        assert!(!read_default("NIMBUS_START_MODE=game\n"));
+        assert!(read_default("HEARTH_STEAM_DEFAULT=1\n"));
+        assert!(read_default("export HEARTH_STEAM_DEFAULT=\"1\"\n"));
+        assert!(!read_default("HEARTH_STEAM_DEFAULT=1\nHEARTH_STEAM_DEFAULT=0\n"), "the last line wins, as in the shell");
+        assert!(!read_default("HEARTH_STEAM_DEFAULT=yes\n"), "only 1 is on (the session reads it the same way)");
+        let t = write_default("NIMBUS_GAMESCOPE_ARGS=\"-W 1280\"", true);
+        assert_eq!(t, "NIMBUS_GAMESCOPE_ARGS=\"-W 1280\"\nHEARTH_STEAM_DEFAULT=1\n");
+        let t = write_default(&t, false);
+        assert!(t.contains("NIMBUS_GAMESCOPE_ARGS=\"-W 1280\"") && t.contains("HEARTH_STEAM_DEFAULT=0") && !t.contains("HEARTH_STEAM_DEFAULT=1"));
+        assert!(!read_default(&t));
+    }
+
+    #[test]
+    fn start_default_offered_only_where_it_can_work() {
+        assert!(can_default(true, true, false));
+        assert!(!can_default(false, true, false), "no Steam / gamescope / session, or an extra multi-seat player");
+        assert!(!can_default(true, false, false), "Steam not signed in");
+        assert!(!can_default(true, true, true), "the live USB / installer");
+    }
+
+    #[test]
+    fn signed_in_follows_the_steam_the_session_starts() {
+        let h = tempfile::tempdir().unwrap();
+        let mk = |p: &str| { let f = h.path().join(p); std::fs::create_dir_all(f.parent().unwrap()).unwrap(); std::fs::write(f, "\"users\" {}").unwrap(); };
+        assert!(!signed_in(h.path(), true, false, false), "no loginusers.vdf");
+        mk(".var/app/com.valvesoftware.Steam/.local/share/Steam/config/loginusers.vdf");
+        assert!(!signed_in(h.path(), true, false, false), "Flathub's sign-in doesn't count when only the system Steam is installed");
+        assert!(signed_in(h.path(), true, true, false), "Flathub's Steam in use (signed in there, none in the system Steam's folder)");
+        assert!(signed_in(h.path(), false, true, false), "only Flathub's Steam");
+        mk(".local/share/Steam/config/loginusers.vdf");
+        assert!(signed_in(h.path(), true, false, false));
+        let h2 = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(h2.path().join(".local/share/Steam/config")).unwrap();
+        std::fs::write(h2.path().join(".local/share/Steam/config/loginusers.vdf"), "").unwrap();
+        assert!(!signed_in(h2.path(), true, false, false), "an empty file isn't a sign-in");
+    }
+
+    #[test]
+    fn start_default_set_and_status() {
+        let d = tempfile::tempdir().unwrap();
+        let conf = d.path().join("config/session.conf");
+        let state = d.path().join("state");
+        assert!(set_default_in(&conf, &state, true, false).is_err());
+        assert!(!conf.exists(), "nothing written when it can't work");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join(DEFAULT_OFF_NOTE), "Steam ended right away (code 1)\n").unwrap();
+        std::fs::write(state.join(DEFAULT_FAILS), "1700000000\n").unwrap();
+        let s = default_status_in(&conf, &state, true, true);
+        assert_eq!(s["on"], false);
+        assert_eq!(s["offNote"], "Steam ended right away (code 1)", "the session's note shows while it's off");
+        set_default_in(&conf, &state, true, true).unwrap();
+        assert!(read_default(&std::fs::read_to_string(&conf).unwrap()));
+        assert!(!state.join(DEFAULT_OFF_NOTE).exists() && !state.join(DEFAULT_FAILS).exists(), "a fresh start: two chances again");
+        let s = default_status_in(&conf, &state, true, true);
+        assert_eq!(s["on"], true);
+        assert!(s["offNote"].is_null());
+        set_default_in(&conf, &state, false, false).unwrap();
+        assert!(!read_default(&std::fs::read_to_string(&conf).unwrap()), "turning it off always works");
     }
 }

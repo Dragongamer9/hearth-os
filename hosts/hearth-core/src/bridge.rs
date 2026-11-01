@@ -524,6 +524,8 @@ impl Bridge {
                 crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || crate::steam_mode::decky(&action));
                 Ok(json!(DEFERRED))
             }
+            // Start in Steam Game Mode (per device, off by default; the session turns it off by itself when it fails)
+            "steamMode.setDefault" => crate::steam_mode::set_default(a["on"].as_bool().unwrap_or(false)),
             // ---- end Steam Game Mode
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),

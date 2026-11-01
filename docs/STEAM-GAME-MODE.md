@@ -3,7 +3,8 @@
 Steam Game Mode is an **optional, experimental** way to play on Hearth OS with **Valve's own Steam gamepad screens**
 (Steam Big Picture in gamescope, the way SteamOS, Bazzite and ChimeraOS run it), with **Hearth brought into Steam**
 through Decky Loader and the **Hearth Decky plugin**. Hearth's own Game Mode is still the default and hasn't changed:
-Steam Game Mode is something you switch to for a while, never what the device starts in.
+Steam Game Mode is something you switch to for a while, unless you turn on **Start in Steam Game Mode** (off by default,
+per device; see below).
 
 ## What you get
 
@@ -97,13 +98,15 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
 4. With Decky installed, press the **…** (Quick Access) button and open the **plug** tab, then **Hearth**. Press
    **Sync to Steam library** to see your Hearth games in Steam's library.
 5. To go back: Quick Access › Hearth › **Switch to Hearth Game Mode**, or Steam's own **Power › Switch to Desktop**
-   (Desktop Mode), or just restart: the device **always starts in Hearth's Game Mode**.
+   (Desktop Mode), or just restart: the device starts in Hearth's Game Mode (unless you turned on **Start in Steam Game
+   Mode**, below).
 
 ## How it's kept safe
 
 - **This time only.** The switch is never saved. Whatever happens in Steam Game Mode, the session comes back to
-  Hearth's Game Mode (or Desktop Mode, when you asked for it), and a restart always starts Hearth's. Hearth tried a
-  saved "Steam's Game Mode" choice in 0.2.8 and it could leave you stuck; this one can't.
+  Hearth's Game Mode (or Desktop Mode, when you asked for it), and a restart starts Hearth's. Hearth tried a saved
+  "Steam's Game Mode" choice in 0.2.8 and it could leave you stuck; that's why **Start in Steam Game Mode** (below) is a
+  separate opt-in that turns itself off when it fails and always has ways back with only a controller.
 - **Falls back by itself.** No Steam or gamescope, safe graphics (Hearth Recovery), an extra multi-seat player, or
   Steam ending with an error within 20 seconds: you're back in Hearth's Game Mode straight away, and Settings says why.
 - **Never touches booting.** Nothing in the boot menu, the login screen or the start mode changes. Decky Loader's
@@ -111,6 +114,57 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
   it fails, Steam Game Mode carries on without Decky.
 - **Steam's Switch to Desktop** asks Hearth's session (Hearth's own `steamos-session-select` comes first on Steam's
   path), so it never changes the login screen's session.
+
+## Start in Steam Game Mode (Experimental)
+
+**Settings › System › Steam Game Mode › Start in Steam Game Mode** makes the device start in Steam's Game Mode instead
+of Hearth's, on this device only. It's **off by default** (Hearth's Game Mode stays the default), and it's offered
+only when Steam is installed and signed in (Steam's `loginusers.vdf` in the folder of the Steam Hearth will start: the
+system Steam's, or Flathub's when that's the one in use). To sign in the first time, use **Switch to Steam Game Mode**
+once and sign in on Steam's screen. Turning it on asks first and lists the ways back.
+
+It applies when the device would start in Game Mode: with **Start in Desktop Mode** on, Desktop Mode still comes first.
+When Steam Game Mode ends, the session follows what you asked for (Steam's **Switch to Desktop**, Quick Access ›
+Hearth › **Switch to Hearth Game Mode**); if Steam just closes or crashes, you're in Hearth's Game Mode. It's used once
+per sign-in: after you leave it, the session doesn't go back to it by itself.
+
+### Ways back to Hearth's Game Mode (with only a controller)
+
+- **Quick Access › Hearth › Switch to Hearth Game Mode** (the **…** button, then the plug tab): Steam closes and
+  Hearth's Game Mode comes back for this time.
+- **Quick Access › Hearth › Start in Steam Game Mode**: turn it off there and the device starts in Hearth's Game Mode
+  again from the next start. (Needs Decky and the Hearth plugin.)
+- **Steam's Power › Switch to Desktop**: Desktop Mode (Hearth Classic, Plasma, ...); from there, **Return to Game
+  Mode** brings Hearth's Game Mode, where **Settings › System › Steam Game Mode** turns it off.
+- **Hold B or Guide while the device starts** (until Hearth's Game Mode appears): Steam Game Mode is skipped for that
+  start, and the setting stays as it is. Hearth checks the controller's buttons for about 2.5 seconds as the session
+  starts.
+- **Hearth Recovery** (hold Volume Down, or Select + Start on a controller, while the device starts): **Desktop Mode
+  this time** skips Steam Game Mode for that start, and **Safe graphics this time** turns Start in Steam Game Mode off.
+- With a keyboard: add **`hearth.mode=game`** to the kernel command line in the boot menu (in GRUB: `e` on the entry, add it to the `linux` line, then Ctrl+X or F10):
+  Hearth's Game Mode for that start, the setting stays. Hearth doesn't add a boot menu entry for this (the boot menu
+  isn't changed at all).
+- **Hearth's Settings › System › Steam Game Mode**: turn **Start in Steam Game Mode** off.
+
+### When it turns itself off
+
+The session turns it off by itself, writes why in its log (`steam game mode default: turned off by itself: ...` in
+`~/.local/share/nimbus/session.log`) and shows the reason under the switch in Settings, when:
+
+- Steam or gamescope isn't installed any more;
+- safe graphics are on (Hearth Recovery);
+- Steam isn't signed in any more;
+- Steam ends with an error within 20 seconds of starting;
+- Steam Game Mode closes by itself (no Switch asked for) within 2 minutes, twice in a row within 10 minutes. Each start
+  counts as a failure until it has run 2 minutes or you switched on purpose, so a start that hangs or takes the device
+  down counts too (no third try). A good run of 2 minutes or more starts the count again.
+
+It never loops: Steam Game Mode is tried at most once per sign-in, and after at most two failed starts the device
+starts in Hearth's Game Mode. Turning it on again in Settings (or in Quick Access › Hearth) clears the note and the
+count. The count and the note are in `~/.local/state/nimbus` (`steam-default-fails`, `steam-default-off`); the setting
+is `HEARTH_STEAM_DEFAULT=1` in `~/.config/nimbus/session.conf`, never in the image.
+
+**Never for**: extra multi-seat players (they always get Hearth's Game Mode) and the live USB / installer.
 
 ## Security: what installing Decky means
 
@@ -210,6 +264,7 @@ window).
 | Part | Where |
 | --- | --- |
 | The switch (one time, falls back) | `hosts/linux/session/nimbus-session` (`run_steam_mode`), `nimbus-mode steam` |
+| Start in Steam Game Mode | `nimbus-session` (`steam_default_wanted`, `steam_default_before` / `_after`), `os/system_files/usr/libexec/nimbus/hearth-pad-held` (B / Guide held), `steam_mode.rs` (`set_default`, `startDefault` in the status), the plugin's `get_steam_default` / `set_steam_default` |
 | Settings, power menu, status | `hosts/hearth-core/src/steam_mode.rs`, `power.rs` ("steam"), `ui/index.html` |
 | Playing a Hearth game from Steam | the shortcut's wrapper (`main.py` `WRAPPER`), then `hearth --play-now <id>` (`hosts/hearth-core/src/desktop_games.rs`, `steam_env_scrub`) |
 | Game pictures | `main.py` (`art_bytes`, `picture_url`, `read_art`, `steam_art_file`), `src/model.ts` (`artCandidates`), `src/api.ts` (`useArt`), `src/ui.tsx` (`CoverArt`), `src/row.tsx` |

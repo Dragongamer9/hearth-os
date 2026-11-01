@@ -72,6 +72,72 @@ def plugin_dir():
     return d or os.path.dirname(os.path.abspath(__file__))
 
 
+# "Start in Steam Game Mode" (Hearth's Settings › System; docs/STEAM-GAME-MODE.md): HEARTH_STEAM_DEFAULT in Hearth's
+# session.conf, read by nimbus-session at every sign-in. Quick Access › Hearth can turn it off (a way back to Hearth's
+# Game Mode with only a controller) or on again; the session still checks everything at each start and turns it off
+# by itself when Steam fails. The same rules as hearth-core steam_mode.rs read_default / write_default.
+STEAM_DEFAULT_KEY = 'HEARTH_STEAM_DEFAULT'
+
+
+def session_conf(home_dir=None):
+    return os.path.join(home_dir or home(), '.config', 'nimbus', 'session.conf')
+
+
+def _is_default_line(line):
+    t = line.lstrip()
+    if t.startswith('export'):
+        t = t[len('export'):].lstrip()
+    return t.startswith(STEAM_DEFAULT_KEY + '=')
+
+
+def read_steam_default(text):
+    on = False
+    for line in text.splitlines():
+        if _is_default_line(line):
+            on = line.split('=', 1)[1].strip().strip('"\'') == '1'
+    return on
+
+
+def write_steam_default(text, on):
+    line = '%s=%d' % (STEAM_DEFAULT_KEY, 1 if on else 0)
+    lines = text.splitlines()
+    if any(_is_default_line(l) for l in lines):
+        return '\n'.join(line if _is_default_line(l) else l for l in lines) + '\n'
+    return text + ('\n' if text and not text.endswith('\n') else '') + line + '\n'
+
+
+def steam_default(home_dir=None):
+    try:
+        with open(session_conf(home_dir)) as f:
+            return read_steam_default(f.read())
+    except OSError:
+        return False
+
+
+def set_steam_default(on, home_dir=None):
+    """Writes the setting (all at once, keeping the rest of session.conf). Turning it on clears the session's note and
+    count of failed starts (~/.local/state/nimbus), like Hearth's Settings does."""
+    h = home_dir or home()
+    path = session_conf(h)
+    try:
+        with open(path) as f:
+            text = f.read()
+    except OSError:
+        text = ''
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.decky-hearth.tmp'
+    with open(tmp, 'w') as f:
+        f.write(write_steam_default(text, on))
+    os.replace(tmp, path)
+    if on:
+        for n in ('steam-default-off', 'steam-default-fails'):
+            try:
+                os.remove(os.path.join(h, '.local', 'state', 'nimbus', n))
+            except OSError:
+                pass
+    return on
+
+
 def clean_env():
     """The environment for Hearth's programs: Decky's own library path removed (it's a bundled program whose libraries
     break the system's), and the session's runtime folder, which nimbus-mode and Hearth need."""
@@ -745,6 +811,18 @@ class Plugin:
         subprocess.Popen([prog, 'game'], env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
         return {'ok': True}
+
+    async def get_steam_default(self):
+        return steam_default()
+
+    async def set_steam_default(self, on):
+        try:
+            set_steam_default(bool(on))
+        except OSError as e:
+            log('start in Steam Game Mode: %s' % e)
+            return {'ok': False, 'error': str(e), 'on': steam_default()}
+        log('start in Steam Game Mode: %s (from Quick Access)' % ('on' if on else 'off'))
+        return {'ok': True, 'on': steam_default()}
 
     async def _main(self):
         # Parts that turned themselves off last time get their chance again (Steam may have been fixed): a fresh log.
