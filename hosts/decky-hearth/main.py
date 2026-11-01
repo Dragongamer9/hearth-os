@@ -21,6 +21,7 @@ import pwd
 import shlex
 import shutil
 import subprocess
+import threading
 import urllib.parse
 import urllib.request
 
@@ -122,14 +123,24 @@ def steam_is_flatpak(proc='/proc'):
     return False
 
 
-def shortcut(program, args, flatpak):
-    """What a Steam shortcut runs: {exe, startDir, options}. Steam adds the options after the program through a shell,
-    so each argument is quoted. Flathub's Steam reaches the system's programs through flatpak-spawn --host."""
-    if flatpak:
-        exe, opts = '/usr/bin/flatpak-spawn', ['--host', program] + list(args)
-    else:
-        exe, opts = program, list(args)
-    return {'exe': exe, 'startDir': home(), 'options': ' '.join(shlex.quote(a) for a in opts)}
+# What every Hearth shortcut in Steam runs: a tiny /bin/sh script that cleans Steam's environment before Hearth starts.
+# Steam starts a non-Steam shortcut with its runtime's libraries (LD_LIBRARY_PATH) and its overlay preloaded
+# (LD_PRELOAD); Hearth's program links the system's GTK/WebKit and broke on Steam's older libraries, so 0.6.60's synced
+# games didn't start. The overlay library is set aside (HEARTH_STEAM_LD_PRELOAD) and Hearth gives it back to the game
+# only (desktop_games.rs steam_env_scrub). Which Steam is running is decided at every launch, not at sync time: inside
+# Flathub's Steam sandbox (/.flatpak-info) the program runs on the system through flatpak-spawn --host, which starts it
+# with the session's own environment.
+WRAPPER = ('if [ -e /.flatpak-info ]; then exec /usr/bin/flatpak-spawn --host /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"; fi; '
+           'exec /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH HEARTH_STEAM_LD_PRELOAD="${LD_PRELOAD:-}" "$@"')
+WRAPPER_NAME = 'hearth-steam'
+
+
+def shortcut(program, args, flatpak=None):
+    """What a Steam shortcut runs: {exe, startDir, options}. The exe is /bin/sh with WRAPPER (it exists in the system
+    and in Flathub's Steam sandbox); Steam adds the options after the program through a shell, so each argument is
+    quoted. `flatpak` is no longer needed (the wrapper decides at launch) and is ignored."""
+    opts = ['-c', WRAPPER, WRAPPER_NAME, program] + list(args)
+    return {'exe': '/bin/sh', 'startDir': home(), 'options': ' '.join(shlex.quote(a) for a in opts)}
 
 
 def clean_games(raw):
@@ -559,6 +570,90 @@ def startup_movie(pdir=None, home_dir=None):
     return dst
 
 
+# Quick Access › Hearth › Update Hearth OS: the same updater Steam's Settings › System › Check for updates runs in Steam
+# Game Mode (hearth-steamos-update: Hearth's own update through hearth-admin; it never restarts the device).
+STEAMOS_UPDATE = '/usr/libexec/nimbus/hearth-steamos-update'
+UPDATE_CHECK_TIMEOUT = 300
+UPDATE_TIMEOUT = 3 * 3600
+UPDATE = {'state': 'idle', 'pct': None, 'message': '', 'version': ''}
+_update_lock = threading.Lock()
+
+
+def update_result(mode, code, out, err):
+    """What the updater's answer means for the panel: {state, pct, message, version}.
+    check: 0 available, 7 up to date; apply: 0 ready for a restart, 7 nothing new; anything else failed."""
+    lines = [l.strip() for l in (err or '').splitlines() if l.strip()]
+    msg = lines[-1] if lines else ''
+    version = ''
+    for l in (out or '').splitlines():
+        if l.startswith('Update available: '):
+            version = l[len('Update available: '):].strip()
+    if code == 7:
+        return {'state': 'none', 'pct': None, 'message': 'Hearth OS is up to date', 'version': ''}
+    if code == 0 and mode == 'check':
+        return {'state': 'available', 'pct': None, 'message': 'An update is available' + (' (%s)' % version if version else ''), 'version': version}
+    if code == 0:
+        return {'state': 'ready', 'pct': 100, 'message': 'Ready: restart to finish updating (the version before stays installed)', 'version': version}
+    return {'state': 'error', 'pct': None, 'message': msg.replace('Hearth OS: ', '') or 'The update failed', 'version': ''}
+
+
+def progress_of(line):
+    """A "42%" line from the updater, as 42; else None."""
+    line = (line or '').strip()
+    if line.endswith('%') and line[:-1].isdigit():
+        return max(0, min(100, int(line[:-1])))
+    return None
+
+
+def updater():
+    return STEAMOS_UPDATE if os.access(STEAMOS_UPDATE, os.X_OK) else None
+
+
+def update_check(run=subprocess.run, prog=None):
+    prog = prog or updater()
+    if not prog:
+        return {'state': 'error', 'pct': None, 'message': "Hearth's updater isn't installed here", 'version': ''}
+    try:
+        r = run([prog, 'check'], capture_output=True, text=True, timeout=UPDATE_CHECK_TIMEOUT, env=clean_env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {'state': 'error', 'pct': None, 'message': 'The update check didn\'t answer (%s)' % type(e).__name__, 'version': ''}
+    res = update_result('check', r.returncode, r.stdout, r.stderr)
+    log('update check: %s' % res['state'])
+    return res
+
+
+def update_apply(prog=None, popen=subprocess.Popen):
+    """Runs the update in the background; UPDATE says how far it is. False when one is already running."""
+    prog = prog or updater()
+    if not prog:
+        UPDATE.update({'state': 'error', 'pct': None, 'message': "Hearth's updater isn't installed here"})
+        return False
+    with _update_lock:
+        if UPDATE['state'] == 'running':
+            return False
+        UPDATE.update({'state': 'running', 'pct': 0, 'message': 'Updating Hearth OS…', 'version': ''})
+
+    def work():
+        try:
+            p = popen([prog], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=clean_env())
+            err = []
+            t = threading.Thread(target=lambda: err.extend(p.stderr.readlines()), daemon=True)
+            t.start()
+            for line in p.stdout:
+                pct = progress_of(line)
+                if pct is not None:
+                    UPDATE['pct'] = pct
+            code = p.wait(timeout=UPDATE_TIMEOUT)
+            t.join(5)
+            UPDATE.update(update_result('apply', code, '', ''.join(err)))
+        except Exception as e:  # noqa: BLE001 - the panel says it failed
+            UPDATE.update({'state': 'error', 'pct': None, 'message': 'The update failed (%s)' % type(e).__name__})
+        log('update: %s' % UPDATE['state'])
+
+    threading.Thread(target=work, daemon=True).start()
+    return True
+
+
 class Plugin:
     async def get_games(self):
         r = list_games()
@@ -627,6 +722,20 @@ class Plugin:
                 return f.read().splitlines()[-ERRORS_KEPT:]
         except OSError:
             return []
+
+    async def update_check(self):
+        if UPDATE['state'] == 'running':
+            return dict(UPDATE)
+        import asyncio
+        UPDATE.update(await asyncio.get_event_loop().run_in_executor(None, update_check))
+        return dict(UPDATE)
+
+    async def update_start(self):
+        update_apply()
+        return dict(UPDATE)
+
+    async def update_status(self):
+        return dict(UPDATE)
 
     async def switch_to_hearth(self):
         prog = find_program('nimbus-mode')

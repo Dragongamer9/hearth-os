@@ -33,6 +33,15 @@ way Hearth's Play button does (Proton, Epic, GOG, Beacon's mods, Battle.net thro
 options) and waits until the game has closed, so Steam shows it as running, gives it the screen and its overlay, and
 counts the play time. Steam's own games simply play from Steam.
 
+Each shortcut runs a tiny wrapper first (`/bin/sh -c …`, the same for every shortcut): Steam starts shortcuts with its
+own runtime's libraries and its overlay preloaded, which broke Hearth's program in 0.6.60 (the games didn't start).
+The wrapper takes those out before Hearth starts, and decides at every launch which Steam is running: inside Flathub's
+Steam it starts Hearth on the system through `flatpak-spawn --host`. Hearth then cleans the rest of Steam's settings
+for its own games (the Steam Runtime's and pressure-vessel's variables, Steam's compatibility-tool paths, Steam's
+runtime folders in PATH) and gives Steam's overlay library back to the game only, so the overlay still works over
+it. Every start and failure is in Hearth's log (`play-now:` lines, with the reason). Shortcuts synced before are
+brought up to date by themselves each time the plugin starts.
+
 ## The Hearth takeover
 
 With the **Hearth takeover** switch on (Quick Access › Hearth; on by default), Hearth takes these over:
@@ -122,6 +131,23 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
 made. Your other Decky plugins and their settings stay in `~/homebrew`. If you installed Decky yourself with Decky's
 installer, Hearth leaves that Decky alone and only adds the Hearth plugin.
 
+## Updating Hearth OS from Steam Game Mode
+
+Steam's **Settings › System › Check for updates** updates Hearth OS: Hearth puts a `steamos-update` on Steam Game
+Mode's Steam's way (only for that run, in the session's own folder; nothing system-wide), which runs Hearth's updater
+(`/usr/libexec/nimbus/hearth-steamos-update`, Hearth's normal update through `hearth-admin`: bootc, or rpm-ostree on a
+system with extra packages, then the system's Flatpak apps). It follows Steam's contract the way SteamOS, Bazzite and
+ChimeraOS do: `check` answers 0 when an update is available (or downloaded and waiting for a restart) and 7 when Hearth
+OS is up to date; the update prints `NN%` lines for Steam's progress bar and ends with 0 when it's ready for a restart.
+
+**Quick Access › Hearth › Hearth OS updates** does the same with **Check for Hearth updates**, then **Update Hearth OS**
+with a progress bar.
+
+Neither ever restarts the device. Restart from Steam's power menu (or Hearth's) when you're ready: it's a normal
+restart into the new version, and the version before stays installed (Settings › Updates › Go back, or the previous
+entry in the boot menu). If Steam's own Restart button after an update doesn't do anything, use the power menu's
+Restart.
+
 ## Game pictures in Steam Game Mode
 
 The Hearth row on Steam's home, Hearth's home and pages and the Library tabs show each game's picture with its
@@ -185,7 +211,10 @@ window).
 | --- | --- |
 | The switch (one time, falls back) | `hosts/linux/session/nimbus-session` (`run_steam_mode`), `nimbus-mode steam` |
 | Settings, power menu, status | `hosts/hearth-core/src/steam_mode.rs`, `power.rs` ("steam"), `ui/index.html` |
-| Playing a Hearth game from Steam | `hearth --play-now <id>` (`hosts/hearth-core/src/desktop_games.rs`) |
+| Playing a Hearth game from Steam | the shortcut's wrapper (`main.py` `WRAPPER`), then `hearth --play-now <id>` (`hosts/hearth-core/src/desktop_games.rs`, `steam_env_scrub`) |
+| Game pictures | `main.py` (`art_bytes`, `picture_url`, `read_art`, `steam_art_file`), `src/model.ts` (`artCandidates`), `src/api.ts` (`useArt`), `src/ui.tsx` (`CoverArt`), `src/row.tsx` |
+| OS updates from Steam | `os/system_files/usr/libexec/nimbus/hearth-steamos-update` (Steam's `steamos-update`, put on Steam's PATH by `run_steam_mode`), `main.py` `update_*` |
+| Send logs' section | `hosts/hearth-core/src/logs.rs` (`decky_report`) |
 | Decky install, start/stop (root) | `os/system_files/usr/libexec/nimbus/hearth-decky` through `hearth-admin decky-*` |
 | The plugin | `hosts/decky-hearth` (`src/index.tsx` panel and start, `src/shortcuts.ts`, `src/theme.ts`, `main.py`) |
 | The takeover | `src/patches.tsx` (Steam's screens, each guarded), `src/pages.tsx` (Hearth's pages), `src/model.ts` (switches, guard, pure helpers, unit-tested), `src/api.ts`, `src/ui.tsx` |

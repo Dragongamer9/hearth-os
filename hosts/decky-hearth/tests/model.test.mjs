@@ -128,3 +128,15 @@ test("art: the log gets the kind of picture, never its address", () => {
     "steam-lib:1:wide", "file:///a", "~/a.png", "/home/me/a.png", "weird", ""].map(M.refKind);
   assert.deepEqual(kinds, ["web", "plain-http", "data", "art-cache", "nimbus-file", "steam-library", "file-url", "home-path", "path", "other", "none"]);
 });
+
+test("update row: check, update with progress, ready for a restart, errors", () => {
+  assert.deepEqual(M.updateView(null), { line: "", button: "Check for Hearth updates", action: "check", poll: false, pct: null });
+  assert.equal(M.updateView({ state: "available", message: "An update is available (0.6.61)" }).action, "start");
+  const r = M.updateView({ state: "running", pct: 37.6 });
+  assert.deepEqual([r.line, r.button, r.poll, r.pct], ["Updating Hearth OS… 38%", "", true, 38], "no button while it runs; asked again");
+  assert.equal(M.updateView({ state: "running", pct: 400 }).pct, 100);
+  assert.equal(M.updateView({ state: "ready", pct: 100 }).line, "Ready: restart to finish updating");
+  assert.equal(M.updateView({ state: "none" }).line, "Hearth OS is up to date");
+  assert.equal(M.updateView({ state: "error", message: "another update is already running" }).line, "another update is already running");
+  assert.equal(M.updateView({ state: "error" }).button, "Try again");
+});

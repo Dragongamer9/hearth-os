@@ -78,23 +78,44 @@ class Backend(unittest.TestCase):
 
     def test_shortcut_runs_hearth_play_now_quoted(self):
         t = self.m.shortcut('/usr/bin/nimbus', ['--play-now', "emu:snes:Mario's World.sfc"], False)
-        self.assertEqual(t['exe'], '/usr/bin/nimbus')
-        self.assertEqual(shlex.split(t['options']), ['--play-now', "emu:snes:Mario's World.sfc"])
-        f = self.m.shortcut('/usr/bin/nimbus', ['--play-now', 'gog:1'], True)
-        self.assertEqual(f['exe'], '/usr/bin/flatpak-spawn')
-        self.assertEqual(shlex.split(f['options']), ['--host', '/usr/bin/nimbus', '--play-now', 'gog:1'])
+        self.assertEqual(t['exe'], '/bin/sh', 'a wrapper that cleans Steam\'s environment first')
+        self.assertEqual(shlex.split(t['options']), ['-c', self.m.WRAPPER, 'hearth-steam', '/usr/bin/nimbus', '--play-now', "emu:snes:Mario's World.sfc"])
+        self.assertEqual(self.m.shortcut('/usr/bin/nimbus', ['--play-now', 'gog:1'], True), self.m.shortcut('/usr/bin/nimbus', ['--play-now', 'gog:1'], False),
+                         "the same shortcut for both Steams: the wrapper decides at every launch")
+        self.assertIn('[ -e /.flatpak-info ]', self.m.WRAPPER)
+        self.assertIn('flatpak-spawn --host /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"', self.m.WRAPPER)
+
+    def test_shortcut_cleans_steams_environment_when_run(self):
+        """Runs the shortcut the way Steam does (its exe and options through a shell, in Steam's environment) with a
+        stand-in for Hearth that writes down what it got."""
+        out = os.path.join(self.tmp, 'got')
+        fake = os.path.join(self.tmp, 'nimbus')
+        with open(fake, 'w') as f:
+            f.write('#!/bin/sh\n{ printf "%%s\\n" "$@"; echo "LDLP=${LD_LIBRARY_PATH-unset}"; echo "PRE=${LD_PRELOAD-unset}"; '
+                    'echo "SET_ASIDE=$HEARTH_STEAM_LD_PRELOAD"; echo "GAMEID=$SteamGameId"; } > %s\n' % out)
+        os.chmod(fake, 0o755)
+        t = self.m.shortcut(fake, ['--play-now', "emu:snes:Mario's World.sfc"])
+        # LD_PRELOAD empty here: a real overlay library would be loaded into the test's own shell too.
+        env = dict(os.environ, LD_LIBRARY_PATH='/steam/ubuntu12_32/steam-runtime/lib', LD_PRELOAD='', SteamGameId='123')
+        import subprocess
+        subprocess.run(['/bin/sh', '-c', '%s %s' % (shlex.quote(t['exe']), t['options'])], env=env, check=True)
+        got = open(out).read().splitlines()
+        self.assertEqual(got[:2], ['--play-now', "emu:snes:Mario's World.sfc"], 'arguments arrive whole')
+        self.assertIn('LDLP=unset', got, "Steam's runtime libraries are gone before Hearth starts")
+        self.assertIn('PRE=unset', got)
+        self.assertIn('GAMEID=123', got, "Steam's id for the shortcut stays")
 
     def test_targets_include_hearths_apps_only_when_installed(self):
         games = self.m.clean_games([{'id': 'gog:1', 'title': 'A', 'source': 'gog'}])
         finder = lambda p: {'nimbus': '/usr/bin/nimbus', 'hearth-mods': '/usr/bin/hearth-mods'}.get(p)
         g, links = self.m.targets(games, False, finder=finder)
-        self.assertEqual(shlex.split(g[0]['options']), ['--play-now', 'gog:1'])
+        self.assertEqual(shlex.split(g[0]['options'])[3:], ['/usr/bin/nimbus', '--play-now', 'gog:1'])
         ids = [l['id'] for l in links]
         self.assertIn('hearth-app:mods', ids)
         self.assertIn('hearth-app:store', ids)
         self.assertNotIn('hearth-app:theater', ids)
         store = [l for l in links if l['id'] == 'hearth-app:store'][0]
-        self.assertEqual(shlex.split(store['options']), ['--windowed', '--page', 'shop'])
+        self.assertEqual(shlex.split(store['options'])[4:], ['--windowed', '--page', 'shop'])
 
     def test_list_games_asks_hearth(self):
         app = os.path.join(self.tmp, 'nimbus')
@@ -284,12 +305,12 @@ class Takeover(unittest.TestCase):
         p = self.m.Plugin()
         t = run(p.get_target('epic:a'))
         self.assertTrue(t['ok'])
-        self.assertEqual(shlex.split(t['options']), ['--play-now', 'epic:a'])
+        self.assertEqual(shlex.split(t['options'])[4:], ['--play-now', 'epic:a'])
         self.assertFalse(run(p.get_target('steam:570'))['ok'], "Steam's games play from Steam")
         self.assertFalse(run(p.get_target('bad'))['ok'])
         h = run(p.get_link('hearth-app:hearth'))
-        self.assertEqual(shlex.split(h['options']), ['--windowed'])
-        self.assertEqual(shlex.split(run(p.get_link('hearth-app:settings'))['options']), ['--windowed', '--settings'])
+        self.assertEqual(shlex.split(h['options'])[4:], ['--windowed'])
+        self.assertEqual(shlex.split(run(p.get_link('hearth-app:settings'))['options'])[4:], ['--windowed', '--settings'])
         self.assertIsNone(run(p.get_link('hearth-app:nope')))
 
     def test_parts_that_turned_off_are_logged_and_cleared_at_start(self):
@@ -420,6 +441,62 @@ class Art(unittest.TestCase):
         self.assertTrue(png.startswith(b'\x89PNG'))
         self.assertEqual(self.m.kind_of(webp), 'webp')
         self.assertEqual(self.m.kind_of(real_png()), 'png')
+
+
+
+class Update(unittest.TestCase):
+    """Quick Access › Hearth › Update Hearth OS: hearth-steamos-update's answers (a stand-in for it here)."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-upd-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+        self.prog = os.path.join(self.tmp, 'hearth-steamos-update')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake(self, body):
+        with open(self.prog, 'w') as f:
+            f.write('#!/bin/sh\n' + body)
+        os.chmod(self.prog, 0o755)
+
+    def test_check(self):
+        self.fake('echo "Update available: 0.6.61"; exit 0\n')
+        r = self.m.update_check(prog=self.prog)
+        self.assertEqual((r['state'], r['version']), ('available', '0.6.61'))
+        self.fake('echo "Hearth OS is up to date" >&2; exit 7\n')
+        self.assertEqual(self.m.update_check(prog=self.prog)['state'], 'none')
+        self.fake('echo "Hearth OS: checking for updates failed: no network" >&2; exit 1\n')
+        r = self.m.update_check(prog=self.prog)
+        self.assertEqual(r['state'], 'error')
+        self.assertIn('no network', r['message'])
+        self.m.STEAMOS_UPDATE = os.path.join(self.tmp, 'missing')
+        self.assertIn("isn't installed", self.m.update_check()['message'])
+
+    def wait(self):
+        import time
+        for _ in range(100):
+            if self.m.UPDATE['state'] != 'running':
+                return
+            time.sleep(0.05)
+
+    def test_apply_with_progress(self):
+        self.fake('echo 0%; echo 37%; echo "Hearth OS: the update is ready." >&2; echo 100%; exit 0\n')
+        self.assertTrue(self.m.update_apply(prog=self.prog))
+        self.wait()
+        self.assertEqual((self.m.UPDATE['state'], self.m.UPDATE['pct']), ('ready', 100))
+        self.assertIn('restart', self.m.UPDATE['message'])
+        self.fake('echo 5%; sleep 0.5; echo "Hearth OS: the update failed: another update is already running" >&2; exit 1\n')
+        self.assertTrue(self.m.update_apply(prog=self.prog))
+        self.assertFalse(self.m.update_apply(prog=self.prog), 'one update at a time')
+        self.wait()
+        self.assertEqual(self.m.UPDATE['state'], 'error')
+        self.assertIn('another update is already running', self.m.UPDATE['message'])
+        self.fake('exit 7\n')
+        self.m.update_apply(prog=self.prog)
+        self.wait()
+        self.assertEqual(self.m.UPDATE['state'], 'none')
+        self.assertEqual([self.m.progress_of(x) for x in ('42%', ' 7%\n', 'x%', '42', '')], [42, 7, None, None, None])
 
 
 class Theme(unittest.TestCase):

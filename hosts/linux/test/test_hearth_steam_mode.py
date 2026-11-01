@@ -22,6 +22,7 @@ MODE = ROOT / 'hosts/linux/session/nimbus-mode'
 DECKY = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-decky'
 ADMIN = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-admin'
 RULES = ROOT / 'os/system_files/usr/share/polkit-1/rules.d/49-hearth-admin.rules'
+STEAMOS_UPDATE = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-steamos-update'
 
 
 def block():
@@ -162,6 +163,24 @@ class SteamModeSession(unittest.TestCase):
         shim = open(os.path.join(self.run_dir, 'hearth-steam-bin', 'steamos-session-select')).read()
         self.assertIn('exec nimbus-mode desktop', shim)
         self.assertIn('gamescope*|game*) exec nimbus-mode game', shim)
+
+    def test_steams_os_update_runs_hearths_updater(self):
+        self.fake('gamescope', 'exit 0')
+        self.fake('steam', 'exit 0')
+        helper = os.path.join(self.tmp, 'hearth-steamos-update')
+        with open(helper, 'w') as f:
+            f.write('#!/bin/sh\nexit 7\n')
+        os.chmod(helper, 0o755)
+        self.run_mode({'HEARTH_STEAMOS_UPDATE': helper})
+        shim = os.path.join(self.run_dir, 'hearth-steam-bin', 'steamos-update')
+        self.assertIn('exec %s "$@"' % helper, open(shim).read())
+        r = subprocess.run([shim, 'check'], capture_output=True)
+        self.assertEqual(r.returncode, 7, 'the exit code reaches Steam')
+        # Without Hearth's updater installed: no steamos-update at all (Steam then has none, as before).
+        os.remove(shim)
+        self.run_mode({'HEARTH_STEAMOS_UPDATE': os.path.join(self.tmp, 'missing')})
+        self.assertFalse(os.path.exists(shim))
+        self.assertNotIn('/usr/bin/steamos-update', SESSION.read_text(), 'nothing system-wide')
 
     def test_decky_started_and_stopped_only_when_hearth_installed_it(self):
         calls = os.path.join(self.tmp, 'pkexec-calls')
@@ -333,6 +352,73 @@ class DeckyHelper(unittest.TestCase):
         self.assertTrue(rx.search('/usr/libexec/nimbus/hearth-admin decky-install'))
         self.assertFalse(rx.search('/usr/libexec/nimbus/hearth-admin decky-start'))
         self.assertFalse(rx.search('/usr/libexec/nimbus/hearth-admin decky-remove'))
+
+
+class SteamosUpdate(unittest.TestCase):
+    """hearth-steamos-update: Steam's steamos-update contract (check: 0 available / 7 up to date; apply: "NN%" lines,
+    0 ready for a restart, 7 nothing new), backed by a stand-in for hearth-admin. Never restarts anything."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-steamos-update-')
+        self.admin = os.path.join(self.tmp, 'hearth-admin')
+        self.calls = os.path.join(self.tmp, 'calls')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake_admin(self, check_json, update_lines='', update_json=None, code=0):
+        with open(self.admin, 'w') as f:
+            f.write('#!/bin/sh\necho "$*" >>%s\ncase "$1" in\n' % self.calls)
+            f.write("  update-check) echo 'log: bootc says hi'; echo '%s'; exit %d ;;\n" % (json.dumps(check_json), code))
+            f.write("  update) printf '%s'; echo '%s'; exit %d ;;\n" % (update_lines, json.dumps(update_json or check_json), code))
+            f.write('  *) exit 3 ;;\nesac\n')
+        os.chmod(self.admin, 0o755)
+
+    def upd(self, *args):
+        env = dict(os.environ, HEARTH_STEAMOS_UPDATE_ADMIN=self.admin, HEARTH_STEAMOS_UPDATE_PKEXEC='')
+        return subprocess.run([sys.executable, str(STEAMOS_UPDATE)] + list(args), env=env, capture_output=True, text=True, timeout=30)
+
+    def test_check(self):
+        self.fake_admin({'booted': {'version': '0.6.60'}, 'staged': None, 'available': None})
+        r = self.upd('check')
+        self.assertEqual(r.returncode, 7, r.stderr)
+        self.assertIn('up to date', r.stderr)
+        self.fake_admin({'booted': {}, 'staged': None, 'available': {'version': '0.6.61'}})
+        r = self.upd('--enable-duplicate-detection', 'check')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('Update available: 0.6.61', r.stdout)
+        self.fake_admin({'booted': {}, 'staged': {'version': '0.6.61'}, 'available': None})
+        self.assertEqual(self.upd('check').returncode, 0, 'downloaded and waiting for a restart counts as available')
+        with open(self.admin, 'w') as f:
+            f.write('#!/bin/sh\necho "error: no network"\nexit 1\n')
+        r = self.upd('check')
+        self.assertNotIn(r.returncode, (0, 7))
+        self.assertIn('no network', r.stderr)
+
+    def test_supports_duplicate_detection_does_nothing(self):
+        self.fake_admin({})
+        self.assertEqual(self.upd('--supports-duplicate-detection').returncode, 0)
+        self.assertFalse(os.path.exists(self.calls), 'hearth-admin not run')
+
+    def test_apply_prints_steams_progress(self):
+        lines = 'progress: 0.0 Starting\\nlog: x\\nprogress: 12.4 Downloading\\nprogress: 12.9 Downloading\\nprogress: 55.0 Installing\\nstage: {}\\nprogress: 40.0 odd\\nprogress: 90.0 Updating apps\\n'
+        self.fake_admin({}, lines, {'booted': {}, 'staged': {'version': '0.6.61'}, 'available': None})
+        r = self.upd()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split(), ['0%', '12%', '55%', '90%', '100%'], 'whole numbers, never back, 100% at the end')
+        self.assertIn('Restart to finish', r.stderr)
+        self.assertEqual(open(self.calls).read().split(), ['update'])
+        self.fake_admin({}, 'progress: 100.0 Hearth OS is already up to date.\\n', {'booted': {}, 'staged': None, 'available': None})
+        self.assertEqual(self.upd('--enable-duplicate-detection').returncode, 7)
+        with open(self.admin, 'w') as f:
+            f.write("#!/bin/sh\nprintf 'progress: 5.0 x\\nerror: another update is already running\\n'\nexit 1\n")
+        r = self.upd()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('another update is already running', r.stderr)
+
+    def test_never_restarts(self):
+        text = STEAMOS_UPDATE.read_text()
+        for word in ('reboot', 'systemctl', 'shutdown', 'loginctl'):
+            self.assertNotIn(word + ' ', text.split('"""', 2)[2], word)
 
 
 if __name__ == '__main__':

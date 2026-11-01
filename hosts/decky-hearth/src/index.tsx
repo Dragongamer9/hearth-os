@@ -12,8 +12,8 @@ import { callable, definePlugin } from "@decky/api";
 import { ReactNode, useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { applyTheme, removeTheme } from "./theme";
-import { Item, play, removeAll, sync } from "./shortcuts";
-import { PARTS, Settings, partOn } from "./model";
+import { Item, play, refreshTargets, removeAll, sync } from "./shortcuts";
+import { PARTS, Settings, UpdateStatus, partOn, updateView } from "./model";
 import { ask, getErrors, getSettings, setSettings } from "./api";
 import { guard, setSettingsLocal, setShortcutMap, settings as liveSettings, useLive } from "./state";
 import { Brand, DownloadsPage, GamePage, LibraryPage, StoragePage, StorePage, setBrand } from "./pages";
@@ -62,6 +62,34 @@ async function change(k: keyof Settings, v: boolean) {
   setSettingsLocal(next);
   setSounds(partOn(next, "tkSounds", guard.broken));
   if (k === "theme") { if (v && brand) applyTheme(brand); else removeTheme(); }
+}
+
+const updCheck = callable<[], UpdateStatus>("update_check");
+const updStart = callable<[], UpdateStatus>("update_start");
+const updStatus = callable<[], UpdateStatus>("update_status");
+
+/** Update Hearth OS: the same updater as Steam's Settings › System › Check for updates (hearth-steamos-update). It
+ *  downloads and stages the update; the device never restarts by itself (restart from Steam's power menu). */
+function UpdateRow() {
+  const [u, setU] = useState<UpdateStatus | null>(null);
+  useEffect(() => { updStatus().then(setU).catch(() => {}); }, []);
+  const v = updateView(u);
+  useEffect(() => {
+    if (!v.poll) return;
+    const t = setInterval(() => { updStatus().then(setU).catch(() => {}); }, 1500);
+    return () => clearInterval(t);
+  }, [v.poll]);
+  const act = async () => {
+    if (v.action === "check") { setU({ state: "checking" }); setU(await updCheck().catch((e) => ({ state: "error", message: String(e) }))); }
+    else if (v.action === "start") setU(await updStart().catch((e) => ({ state: "error", message: String(e) })));
+  };
+  return (
+    <PanelSectionRow>
+      {v.line && <div className={staticClasses.Text} style={{ fontSize: 12, marginBottom: 6 }}>{v.line}</div>}
+      {v.pct != null && v.pct < 100 && <div style={{ height: 6, borderRadius: 3, background: "#273140", overflow: "hidden", marginBottom: 6 }}><div style={{ width: `${v.pct}%`, height: "100%", background: ACCENT }} /></div>}
+      {v.button && <ButtonItem layout="below" onClick={act} description="Downloads Hearth OS's update; it finishes when you restart, and the version before stays">{v.button}</ButtonItem>}
+    </PanelSectionRow>
+  );
 }
 
 /** The power mode (Hearth's Quick Access › Performance, through hearth-power), when this device has one. */
@@ -144,6 +172,9 @@ function Panel() {
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
+      <PanelSection title="Hearth OS updates">
+        <UpdateRow />
+      </PanelSection>
       <PanelSection title="Hearth's places">
         {s.takeover && <PanelSectionRow><ButtonItem layout="below" onClick={nav("/library/home")}>Hearth home</ButtonItem></PanelSectionRow>}
         <PanelSectionRow><ButtonItem layout="below" onClick={nav("/hearth/store")}>Hearth Store</ButtonItem></PanelSectionRow>
@@ -206,7 +237,8 @@ export default definePlugin(() => {
     brand = await getBrand().catch(() => null);
     setBrand(brand);
     if (s.theme && brand) { try { applyTheme(brand); } catch (e) { console.warn("Hearth: theme", e); } }
-    loadGames();
+    loadGames().then((g) => (g.ok ? refreshTargets([...g.games, ...g.links]) : 0))
+      .then((n) => { if (n) console.log(`Hearth: ${n} shortcuts brought up to date`); }).catch((e) => console.warn("Hearth: shortcuts", e));
     // Steam's main menu is looked for once Steam's UI has loaded its code (a moment after the plugin starts).
     setTimeout(() => { undo.push(patchMainMenu()); }, 4000);
   })().catch((e) => console.warn("Hearth: start", e));

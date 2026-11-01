@@ -234,3 +234,21 @@ export function refKind(ref: string | null | undefined): string {
   if (r.startsWith("/")) return "path";
   return "other";
 }
+
+// ---- Quick Access › Hearth › Update Hearth OS (main.py update_check / update_start / update_status)
+
+export interface UpdateStatus { state: string; pct?: number | null; message?: string; version?: string }
+/** What the update row shows: its line, its button (or "" for none while it runs) and whether to keep asking. */
+export function updateView(u: UpdateStatus | null | undefined): { line: string; button: string; action: "check" | "start" | ""; poll: boolean; pct: number | null } {
+  const s = u?.state || "idle";
+  const pct = typeof u?.pct === "number" && Number.isFinite(u.pct) ? Math.max(0, Math.min(100, Math.round(u.pct))) : null;
+  switch (s) {
+    case "checking": return { line: "Looking for an update…", button: "", action: "", poll: true, pct: null };
+    case "available": return { line: u?.message || "An update is available", button: "Update Hearth OS", action: "start", poll: false, pct: null };
+    case "running": return { line: `Updating Hearth OS… ${pct ?? 0}%`, button: "", action: "", poll: true, pct: pct ?? 0 };
+    case "ready": return { line: u?.message || "Ready: restart to finish updating", button: "Check again", action: "check", poll: false, pct: 100 };
+    case "none": return { line: "Hearth OS is up to date", button: "Check for Hearth updates", action: "check", poll: false, pct: null };
+    case "error": return { line: u?.message || "The update failed", button: "Try again", action: "check", poll: false, pct: null };
+    default: return { line: "", button: "Check for Hearth updates", action: "check", poll: false, pct: null };
+  }
+}
