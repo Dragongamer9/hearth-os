@@ -852,16 +852,18 @@ run_steam_mode() {
   # What gamescope-session-steam (SteamOS, Bazzite, ChimeraOS) tells Steam, in a subshell so nothing stays for later modes.
   # shellcheck disable=SC2086
   (
+    # STEAM_MULTIPLE_XWAYLANDS=1 makes Steam start games on gamescope's second X display, so gamescope must make one
+    # (--xwayland-count 2, as gamescope-session-steam does); without it Steam's games never start.
     export STEAM_MULTIPLE_XWAYLANDS=1 STEAM_GAMESCOPE_VRR_SUPPORTED=1 STEAM_ENABLE_VOLUME_HANDLER=1 SRT_URLOPEN_PREFER_STEAM=1 \
       STEAM_DISABLE_MANGOAPP_ATOM_WORKAROUND=1 ENABLE_GAMESCOPE_WSI=1 SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS=0 HEARTH_STEAM_MODE=1
     if [ -n "$sextra" ]; then export STEAM_USE_MANGOAPP=1 STEAM_MANGOAPP_PRESETS_SUPPORTED=1 MANGOHUD_CONFIGFILE="$RUN/hearth-steam-mangohud.conf"; : >"$MANGOHUD_CONFIGFILE"; fi
     if [ -n "$shost" ]; then
-      python3 "$STEAM_SEATS" host -- gamescope -e -f $NIMBUS_GAMESCOPE_ARGS -- "$@" -gamepadui -steamos3 -steampal
+      python3 "$STEAM_SEATS" host -- gamescope -e -f --xwayland-count 2 $NIMBUS_GAMESCOPE_ARGS -- "$@" -gamepadui -steamos3 -steampal
       hrc=$?
       [ "$hrc" -ne 3 ] && exit "$hrc"
       log "steam game mode: multi-seat host couldn't start; Steam Game Mode without it"
     fi
-    exec gamescope -e -f $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal
+    exec gamescope -e -f --xwayland-count 2 $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal
   )
   rc=$?
   rm -f "$RUN/hearth-steam-mode.pid"

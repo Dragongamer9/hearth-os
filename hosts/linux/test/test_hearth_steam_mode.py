@@ -132,7 +132,7 @@ class SteamModeSession(unittest.TestCase):
         self.assertEqual(self.read('nimbus-next'), 'game')
         self.assertIn('ended right away (code 1)', self.read('hearth-steam-mode-failed'))
         args = open(argv).read().split('\n')
-        self.assertEqual(args[:2], ['-e', '-f'])
+        self.assertEqual(args[:4], ['-e', '-f', '--xwayland-count', '2'], 'Steam starts games on a second X display')
         tail = args[args.index('--') + 1:]
         self.assertEqual(tail[0], 'env')
         self.assertTrue(tail[1].startswith('PATH=%s/hearth-steam-bin:' % self.run_dir))
@@ -288,8 +288,8 @@ class SteamModeSession(unittest.TestCase):
         self.run_mode(env)
         self.assertEqual(self.seats_calls(), '', 'multi-seat off: hearth-seats is never asked')
         args = open(argv).read().split('\n')
-        self.assertEqual(args[:3], ['-e', '-f', '--mangoapp'])
-        self.assertEqual(args[3], '--')
+        self.assertEqual(args[:5], ['-e', '-f', '--xwayland-count', '2', '--mangoapp'])
+        self.assertEqual(args[5], '--')
 
     def test_card_per_player_keeps_player_one_on_their_card(self):
         argv = os.path.join(self.tmp, 'argv')
@@ -298,7 +298,7 @@ class SteamModeSession(unittest.TestCase):
         self.fake('mangoapp', 'exit 0')
         self.run_mode(self.seats(host_check=1, gs_args='--prefer-vk-device 1002:73bf --prefer-output DP-1'))
         args = open(argv).read().split('\n')
-        self.assertEqual(args[:args.index('--')], ['-e', '-f', '--prefer-vk-device', '1002:73bf', '--prefer-output', 'DP-1'])
+        self.assertEqual(args[:args.index('--')], ['-e', '-f', '--xwayland-count', '2', '--prefer-vk-device', '1002:73bf', '--prefer-output', 'DP-1'])
         self.assertNotIn('--mangoapp', args, 'no performance overlay while other players play')
         self.assertNotIn(' host ', self.seats_calls())
         self.assertEqual(self.read('nimbus-next'), 'game')
