@@ -72,6 +72,7 @@ pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULT
 pub mod steam;
 pub mod steam_ctl;
 pub mod steam_mode;   // Steam Game Mode (Experimental): Steam's gamepad UI in gamescope with the Hearth Decky plugin (docs/STEAM-GAME-MODE.md)
+pub mod steam_launch;   // Steam games in Game Mode: Steam kept ready, its windows in front, the starting screen's stages
 pub mod steam_engine;   // Settings › Library › Steam engine: Lightweight (hosts/hearth-steam), with fallback to the normal client
 pub mod steam_owned;
 pub mod steam_thaw;   // Steam stopped by Handheld Daemon while Quick Access is open over a game: let run again

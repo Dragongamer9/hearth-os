@@ -47,6 +47,10 @@ use crate::winhost::WindowHost;
 
 pub const MAIN_TITLE: &str = "Hearth";
 pub const OVERLAY_TITLE: &str = "Hearth Overlay";
+/// The controller mouse turning on by itself (GameMode::pointer_pass): the window in front last time, whether it
+/// was turned on for it, the window it was turned off over with View + Menu, and the screen's size.
+#[derive(Default)]
+struct PointerState { win: u64, on: bool, dismissed: u64, screen: (u32, u32) }
 const OPAQUE: u64 = 4294967295;
 /// How long a Quick Access press waits for Handheld Daemon's overlay app to connect again: by itself, when HHD can't
 /// be asked (it reconnects within a second when it's running); when HHD is asked to start it (after APP_ASK_AFTER_MS:
@@ -354,10 +358,15 @@ impl GameMode {
             log(&format!("ids: Hearth is id {HEARTH_ID}, apps it opens {APPS_ID}; gamescope in Steam mode: {}", gs::steam_mode()));
             // Twice a second: without Steam mode a game's window that's mapped again (Wine does it switching modes)
             // has no number until Hearth puts it back (the screen stays dark for that moment).
+            let mut pointer = PointerState::default();
+            let mut tick: u64 = 0;
             loop {
                 std::thread::sleep(Duration::from_millis(500));
                 me.tag_windows(&mut seen, false);
                 gs::keep_list();
+                // Once a second: the controller mouse on by itself over a Steam window or a game's launcher.
+                tick += 1;
+                if tick % 2 == 0 { me.pointer_pass(&mut pointer); }
                 // Hearth's window set aside but on screen again (what was in front of it closed by itself): its page
                 // gets the controller back.
                 if me.main_aside.load(Ordering::SeqCst) && !still_aside(true, me.hearth_on_screen()) { me.set_aside(false); }
@@ -378,6 +387,8 @@ impl GameMode {
         };
         let mut open: Option<Option<Vec<(u32, String, Vec<u32>)>>> = None;
         let mut new_apps: Vec<u64> = Vec::new();
+        // New windows of Steam's own processes: while a Steam game starts or runs, its questions come in front.
+        let mut steam_new: Vec<(u64, u64)> = Vec::new();
         for w in &wins {
             if Some(w.win) == overlay { continue; }
             let pid = w.pid;
@@ -394,7 +405,7 @@ impl GameMode {
                 None   // looked at already: not a game's
             } else {
                 let p = pid as u32;
-                if procs::is_steam_client(&procs::comm(root, p)) { None }
+                if procs::is_steam_client(&procs::comm(root, p)) { steam_new.push((w.win, pid)); None }
                 else if let Some(id) = procs::owner_of(root, p, mine) { Some(id) }
                 else {
                     // A game whose processes carry no number (started outside Hearth or by an older one): the guesses.
@@ -402,6 +413,9 @@ impl GameMode {
                     let Some(games) = games.as_ref() else { continue };   // the library is busy: next time
                     match games.iter().find(|(id, _, ps)| *id != 0 && ps.contains(&p)) {
                         Some((id, _, _)) => Some(*id),
+                        // The Flatpak's Steam (started by Hearth) carries other process names: its windows are
+                        // Steam's, never "an app Hearth opened" in front over everything.
+                        None if procs::steam_client_pid(root, p) => { steam_new.push((w.win, pid)); None }
                         None if procs::descends_from(root, p, mine) => { new_apps.push(w.win); Some(APPS_ID) }
                         None => None,
                     }
@@ -417,10 +431,79 @@ impl GameMode {
         }
         if !wins.is_empty() { seen.retain(|k, _| wins.iter().any(|w| w.win == *k)); }
         if starting { return; }
+        if !steam_new.is_empty() {
+            match self.bridge.try_lock() {
+                // Busy: looked at again next time.
+                Err(_) => { for (win, _) in &steam_new { seen.remove(win); } }
+                Ok(b) => {
+                    let game = b.library.running.as_ref().filter(|r| r.id.starts_with("steam:") && !r.cloud).map(|r| (r.id.clone(), if r.app_id != 0 { r.app_id } else { hearth_core::appid::steam_app_id(&r.id).unwrap_or(0) }));
+                    drop(b);
+                    if let Some((id, num)) = game {
+                        for (win, _pid) in steam_new {
+                            let title = gs::title_of(win);
+                            let (ww, hh) = gs::size_of(win);
+                            let nw = hearth_core::steam_launch::NewWin { steam_client: true, title: title.clone(), w: ww, h: hh, owner: None, game: num };
+                            if !hearth_core::steam_launch::counts_as_launch(&nw) { continue; }
+                            log(&format!("ids: Steam window {win:#x} \"{title}\" ({ww}x{hh}) while {id} starts or runs: part of it, in front"));
+                            hearth_core::steam_launch::note_asking();
+                            let me = self.clone();
+                            self.run_focus("Steam question", 0, false, move |_| { gs::focus_window(win); me.set_aside(true); });
+                        }
+                    }
+                }
+            }
+        }
         for win in new_apps {
             log(&format!("ids: new window {win:#x} of a program Hearth opened: in front"));
             self.focus_xid("app window", win, 0, false);
         }
+    }
+
+    /// Does Hearth (or its Quick Access) have the controller? Its window is focused and really on screen: a Steam
+    /// window pinned in front of it left the window "focused" and the controller mouse paused over that window.
+    pub fn hearth_has_controller(&self) -> bool { self.overlay_on.load(Ordering::SeqCst) || (self.main_focused() && self.hearth_on_screen()) }
+
+    /// One pass of the controller mouse turning on and off by itself (once a second, steam_launch::pointer_wanted):
+    /// only when what's in front changed. Turned off with View + Menu over a window: not again for that window.
+    fn pointer_pass(self: &Arc<Self>, st: &mut PointerState) {
+        let f = gs::focused().unwrap_or(0);
+        if st.on && !hearth_core::padmouse::is_on() {
+            st.on = false;
+            st.dismissed = st.win;
+            log(&format!("pad mouse: turned off over window {:#x}; not on by itself again for it", st.win));
+        }
+        if f == st.win { return; }
+        st.win = f;
+        let want = f != 0 && f != st.dismissed && self.pointer_front(f, st);
+        if want && !st.on {
+            if hearth_core::padmouse::start_auto(&format!("window {f:#x} needs a pointer")) { st.on = true; }
+        } else if !want && st.on {
+            hearth_core::padmouse::stop_auto();
+            st.on = false;
+        }
+    }
+    /// What's in front (`f`), for steam_launch::pointer_wanted.
+    fn pointer_front(&self, f: u64, st: &mut PointerState) -> bool {
+        use hearth_core::steam_launch::{pointer_wanted, Front};
+        let main = self.cached_xid(MAIN_TITLE);
+        let hearth = Some(f) == main || Some(f) == self.cached_xid(OVERLAY_TITLE) || self.overlay_on.load(Ordering::SeqCst);
+        let w = gs::focusable_windows().into_iter().find(|w| w.win == f);
+        let pid = w.as_ref().map(|w| w.pid).unwrap_or(0);
+        if hearth || pid == std::process::id() as u64 { return false; }
+        let real = pid > 0 && pid < u32::MAX as u64;
+        let steam_client = real && procs::steam_client_pid(std::path::Path::new("/proc"), pid as u32);
+        let game_window = !steam_client && match self.running_app() {
+            Some((_, num)) => (num != 0 && w.as_ref().map(|w| w.appid == num as u64).unwrap_or(false))
+                || (real && self.bridge.lock().map(|b| b.library.game_pids().contains(&(pid as u32))).unwrap_or(false)),
+            None => false,
+        };
+        if !steam_client && !game_window { return false; }
+        if st.screen.0 == 0 { if let Some(m) = main { st.screen = gs::size_of(m); } }
+        let (ww, hh) = gs::size_of(f);
+        let front = Front { hearth: false, steam_client, game_window, w: ww, h: hh, screen_w: st.screen.0, screen_h: st.screen.1 };
+        let on = pointer_wanted(&front);
+        log(&format!("pad mouse: window {f:#x} in front ({}, {ww}x{hh} of {}x{}): {}", if steam_client { "Steam's" } else { "the game's" }, st.screen.0, st.screen.1, if on { "pointer wanted" } else { "the game has the controller" }));
+        on
     }
 
     /// Hearth stays in front with its "starting" screen while the game loads, and puts it in front once its
@@ -463,6 +546,7 @@ impl GameMode {
                 Some(gs::Ready::Dialog(w, t)) => { log(&format!("launch: Steam is asking something (\"{t}\"), showing it")); me.focus_xid("Steam question", w, 0, false); me.focus_running_game(0, false); }
                 None => { log(&format!("launch: {id} didn't open a window in 10 minutes; showing whatever it has")); me.focus_running_game(0, false); }
             }
+            hearth_core::steam_launch::stop_watch();
             me.to_main(ev("game.ready", json!({"id": id})));
         });
     }
