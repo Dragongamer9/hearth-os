@@ -201,6 +201,14 @@ section{padding:clamp(72px,10vw,128px) 0}
 .safety p{font-size:16px;margin:0}
 @media (max-width:820px){.safety{grid-template-columns:minmax(0,1fr)}}
 
+/* Steam Game Mode */
+.steam .head .chip{justify-self:start}
+.steam .split{align-items:start}
+.steam .box h3{font-size:clamp(21px,2vw,24px)}
+.steam .box .points{margin-top:6px}
+.steam .box .points li{font-size:15.5px}
+.steam .more{display:flex;flex-wrap:wrap;gap:12px;margin-top:clamp(28px,3vw,40px)}
+
 /* Download */
 .get{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(16px,2vw,24px)}
 .box{border:1px solid var(--rule);border-radius:16px;padding:26px;background:var(--coal);display:flex;flex-direction:column;gap:10px}
@@ -275,6 +283,7 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
     <a class="brand" href="#top"><img src="img/logo.svg" alt="" width="30" height="30">Hearth OS</a>
     <nav aria-label="Sections">
       <a href="#new">What's new</a>
+      <a href="#steam">Steam Game Mode</a>
       <a href="#game-mode">Game Mode</a>
       <a href="#desktop">Desktop</a>
       <a href="#editions">Editions</a>
@@ -312,6 +321,45 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
     </figure>
   </div>
 </div>
+
+<section id="steam" class="steam band">
+  <div class="wrap">
+    <div class="head">
+      <span class="chip new">Coming in the next update</span>
+      <h2 class="h2">Steam's Game Mode, with Hearth built in</h2>
+      <p class="lede">Hearth is moving into Steam. Steam's own Game Mode, the gamepad screens SteamOS uses, is now Hearth's first priority. The Hearth Decky plugin builds Hearth right into it: Steam's library, store and overlay, with Hearth's stores, mods and tools in the same place.</p>
+    </div>
+    <div class="split">
+      <div>
+        <h3 class="h3">What the next update brings</h3>
+        <ul class="points">
+          <li>A Hearth section in Steam's main menu: Home, Store, Library, Mods, Storage, Friends, Hearth Link and Couch Co-op.</li>
+          <li>Hearth tabs in Quick Access: Hearth, Performance, Controller and Players.</li>
+          <li>A Hearth page for the game you're playing: its controller layout, its Proton version and its mods.</li>
+          <li>Store, Mods, Storage and Recomps pages that really work: install games, move them, turn mods on and off.</li>
+          <li>Quick Resume: put the game aside and carry on where you left it.</li>
+          <li>Pair Moonlight with Sunshine using its PIN, right from Quick Access.</li>
+          <li>Couch co-op split screen as a Steam shortcut, and multi-seat next to Steam's Game Mode.</li>
+        </ul>
+        <p class="small" style="margin-top:20px">Already in 0.6.61: Steam Game Mode itself, Hearth's look and home screen over Steam, your Hearth games in Steam's library, and Start in Steam Game Mode. All of it is Experimental and still needs testing on real devices.</p>
+      </div>
+      <div class="box main">
+        <h3>Hearth's Game Mode isn't going anywhere</h3>
+        <p>Hearth's own Game Mode stays, and we'll keep looking after it.</p>
+        <ul class="points">
+          <li><b>A safety net.</b> If Steam's Game Mode can't start, Hearth's Game Mode starts instead.</li>
+          <li><b>Your choice.</b> Like Hearth's Game Mode better? Keep using it. It's still the default.</li>
+          <li><b>Multi-seat.</b> Extra players always get Hearth's Game Mode.</li>
+          <li><b>One press back.</b> Quick Access › Hearth › Switch to Hearth Game Mode.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="more">
+      <a class="btn go" href="docs/steam.html">How Steam Game Mode works</a>
+      <a class="btn line" href="docs/steam.html#hearth-game-mode">About Hearth's Game Mode</a>
+    </div>
+  </div>
+</section>
 
 <section id="new" class="new">
   <div class="wrap">
