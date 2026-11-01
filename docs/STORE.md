@@ -80,16 +80,26 @@ Things to know:
 ## Battle.net
 
 Blizzard sells and installs its games only in its own Battle.net app, and there's no open-source downloader for it
-(like legendary for Epic or gogdl for GOG). So Hearth runs **the real Battle.net app** with Proton, the way it runs
-Epic and GOG games (`hosts/hearth-core/src/battlenet.rs`):
+(like legendary for Epic or gogdl for GOG). So Hearth runs **the real Battle.net app** with Proton, set up through
+**Faugus Launcher** ([github.com/Faugus/faugus-launcher](https://github.com/Faugus/faugus-launcher)), which comes with
+Hearth OS (`hosts/hearth-core/src/battlenet.rs`):
 
-- **One press:** Library › Stores › Battle.net › **Set up Battle.net** (or the Store's Battle.net section). Hearth gets
-  umu-launcher if it isn't there yet, downloads Blizzard's installer from Blizzard
-  (`downloader.battle.net/…gameProgram=BATTLENET_APP`), and installs Battle.net into a Proton prefix of its own,
-  `~/.local/share/nimbus/battlenet/prefix`, in the system's language when Blizzard has it. When the installer has
-  finished (Battle.net opens by itself at the end), Hearth closes it and turns off Battle.net's hardware acceleration,
-  which draws a black window in Proton, unless you've chosen otherwise. The installer's output is in
-  `battlenet/setup.log`.
+- **Faugus Launcher is preinstalled** on both editions: Anatase from Faugus's COPR (`faugus/faugus-launcher`),
+  Peppermint from the `.deb` on Faugus's latest release. If that install fails, the image still builds (a warning) and
+  Hearth uses its own setup instead (below). Elsewhere, Faugus's Flatpak (`io.github.Faugus.faugus-launcher`) works too.
+- **One press:** Library › Stores › Battle.net › **Set up Battle.net** (or the Store's Battle.net section). Faugus's
+  own Battle.net option is in its Add game window (it has no command line for it), so Hearth does exactly what that
+  option does, through Faugus: it downloads Blizzard's installer from Blizzard
+  (`downloader.battle.net/…gameProgram=BATTLENET_APP`) into Battle.net's prefix in Faugus's prefix folder
+  (`~/Faugus/battlenet` unless you changed Faugus's default), and has Faugus's runner (`faugus-launcher --run`) install
+  it there with Faugus's command for Battle.net (Faugus's own umu-run and Proton, which Faugus downloads first if
+  needed; `WINE_SIMULATE_WRITECOPY=1`, `PROTON_ENABLE_WAYLAND=0`), in the system's language when Blizzard has it.
+  Battle.net's installer window is the only other thing you see. When it has finished (Battle.net opens by itself at
+  the end), Hearth closes it, turns off Battle.net's hardware acceleration (it draws a black window in Proton) unless
+  you've chosen otherwise, and adds Battle.net to Faugus's games (`games.json`) as Faugus's option would, so it shows
+  in Faugus too. The installer's output is in `~/.local/share/nimbus/battlenet/setup.log`.
+- **Already added Battle.net in Faugus yourself?** Hearth finds it (any Faugus entry for `Battle.net.exe` that is
+  installed) and uses it; nothing is installed again.
 - **Sign-in, buying, installing and updates all happen in Battle.net's own window.** Hearth never sees the Blizzard
   password or payment details and never uses the account. **Sign in** on the card opens Battle.net in Desktop Mode,
   where the controller types, like Xodus Nexus.
@@ -99,11 +109,19 @@ Epic and GOG games (`hosts/hearth-core/src/battlenet.rs`):
   Immortal, Hearthstone, Heroes of the Storm, StarCraft, StarCraft II and Warcraft III are known. **Find games** reads
   them again.
 - **Play** starts the game through Battle.net (`Battle.net.exe --exec="launch <code>"`), so its sign-in and the game's
-  licence work as on Windows. The game's number (`HEARTH_GAME_ID`) is in Battle.net's environment, and the game's
-  folder finds its processes.
+  licence work as on Windows. With Faugus, Hearth keeps one hidden entry per game in Faugus's games
+  (`hearth-battlenet-<game>`: Battle.net's own entry, so its Proton and options, with that `--exec`), and the library
+  runs `~/.local/share/nimbus/battlenet/faugus.sh`, which starts `faugus-launcher --game battlenet` (Battle.net) or
+  `--game hearth-battlenet-<game>`. The game's number (`HEARTH_GAME_ID`) is in Battle.net's environment, and the
+  game's folder finds its processes.
 - **Controller:** Battle.net's own window starts with the **Mouse only** layout (it's made for a mouse); the games
   start Off, since they have controller support of their own.
-- **Remove** deletes the prefix, with every Blizzard game installed in it.
+- **Set up before Faugus** (Hearth's own prefix, `~/.local/share/nimbus/battlenet/prefix`, started with umu-run by
+  `battlenet/run.sh`): keeps working as it was, nothing moves and nothing is installed again. **Without Faugus**
+  Launcher the card says so, and one press uses that same built-in setup (umu-launcher, downloaded if needed).
+- **Remove** takes Battle.net and Hearth's game entries out of Faugus's games and deletes its prefix, with every
+  Blizzard game installed in it (not a prefix another Faugus game uses, and never Faugus's shared `default` one), and
+  the built-in setup's folder if there is one.
 - The Store's Battle.net section has no shelves: Hearth reads no Blizzard pages. It opens Battle.net, or sets it up.
 
 ## Xodus Nexus (Xbox PC games)

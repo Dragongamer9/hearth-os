@@ -755,14 +755,14 @@ impl Library {
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
                 crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
             }
-            // Games a launcher starts (Battle.net in its Proton prefix, Xodus Nexus): Hearth runs the launcher's script or
+            // Games a launcher starts (Battle.net through Faugus Launcher or in Hearth's own prefix, Xodus Nexus): Hearth runs the launcher's script or
             // shortcut with the game's number in its environment, and the game's own folder finds its processes, since
             // the launcher (not Hearth) starts the game itself.
             "battlenet" | "xodus" => {
                 let exe = g.exe.clone().unwrap_or_default();
                 let opts = crate::game_options::get(&self.store, id);
                 let pid = crate::manual::launch(&exe, &g.args, &opts, app_id)?;
-                let dirs = g.install_path.as_ref().filter(|p| p.starts_with(crate::battlenet::prefix())).map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
+                let dirs = g.install_path.as_ref().filter(|_| g.source == "battlenet").map(|p| vec![p.to_string_lossy().to_string()]).unwrap_or_default();
                 crate::procs::Track { pid: Some(pid), dirs, app_id: Some(app_id), ..Default::default() }
             }
             "emu" => {

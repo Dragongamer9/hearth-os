@@ -1299,6 +1299,23 @@ else
   echo "warning: couldn't install Xodus Nexus from $XODUS_API (no release with an AppImage?); Hearth works without it"
 fi
 
+# ------------------------------------------------------------------ Faugus Launcher (Battle.net and other Windows launchers)
+# Library › Stores › Battle.net sets Battle.net up through Faugus Launcher (hosts/hearth-core/src/battlenet.rs), which
+# runs Windows launchers with umu-launcher and Proton (github.com/Faugus/faugus-launcher). Its README's Debian way: the
+# .deb from its latest release (one package for every architecture; its dependencies are Debian's). Optional: without
+# it, Hearth sets Battle.net up with its own Proton setup.
+FAUGUS_API=https://api.github.com/repos/Faugus/faugus-launcher/releases/latest
+FAUGUS_DEB="$(curl -fsSL --retry 3 "$FAUGUS_API" 2>/dev/null | python3 -c 'import json, sys; a=[x for x in json.load(sys.stdin).get("assets", []) if x["name"].endswith("_all.deb")]; print(a[0]["browser_download_url"] if a else "")' 2>/dev/null || true)"
+if [ -n "$FAUGUS_DEB" ] && curl -fsSL --retry 3 -o /tmp/faugus-launcher_all.deb "$FAUGUS_DEB" \
+   && "${APT[@]}" /tmp/faugus-launcher_all.deb; then
+  echo "Faugus Launcher installed ($FAUGUS_DEB)"
+else
+  dpkg -s faugus-launcher >/dev/null 2>&1 && ! command -v faugus-launcher >/dev/null 2>&1 && apt-get -y purge faugus-launcher || true
+  apt-get -y -f install >/dev/null 2>&1 || true
+  echo "warning: couldn't install Faugus Launcher from ${FAUGUS_DEB:-$FAUGUS_API}; Battle.net uses Hearth's own setup instead"
+fi
+rm -f /tmp/faugus-launcher_all.deb
+
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
 # Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
 # Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. The archive's package

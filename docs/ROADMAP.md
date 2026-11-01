@@ -33,7 +33,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [ ] Capacitive stick touch for "gyro while touching" (today: while the right stick is moved), and a desktop layout for Hearth Classic's own controller mapping
 
 **After that**
-- [x] Battle.net: one-press setup (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
+- [x] Battle.net: one-press setup through Faugus Launcher (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
 - [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)
 - [x] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
 - [x] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share (per folder, read-only option, generated sign-in), wake on network (automatic, and a Wake button)
@@ -162,6 +162,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## 0.2.6 (released)
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
+
+## Next
+
+- [x] Battle.net is set up through Faugus Launcher (preinstalled on Anatase and Peppermint): one press, Blizzard games in the Library and Play through Battle.net as before; Battle.net set up before keeps working (needs testing on a device)
 
 ## 0.6.59 (released)
 

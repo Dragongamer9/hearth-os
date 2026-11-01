@@ -1022,7 +1022,7 @@ impl Bridge {
             "xodus.setFolder" => { crate::xodus::set_folder(a["folder"].as_str().unwrap_or(""))?; Ok(self.xodus.status(false)) }
             "xodus.signInDesktop" => { crate::xodus::open_in_desktop()?; Ok(json!({})) }
             "xodus.remove" => { crate::xodus::remove()?; self.library.scan(); Ok(self.xodus.status(false)) }
-            // Battle.net (battlenet.rs): one-press setup in its own Proton prefix; you sign in in Battle.net's own window.
+            // Battle.net (battlenet.rs): one-press setup through Faugus Launcher (or Hearth's own prefix); you sign in in Battle.net's own window.
             "battlenet.status" => Ok(self.battlenet.status()),
             "battlenet.install" => Ok(self.battlenet.install(self.emit.clone())),
             "battlenet.signInDesktop" => { crate::battlenet::open_in_desktop()?; Ok(json!({})) }

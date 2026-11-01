@@ -1816,7 +1816,7 @@ const MOCK = (()=>{
       {store:'xbox',signedIn:false,name:null,avatar:null,owned:0,installed:3,fetched:0,busy:false,error:null,toolReady:true}],
       beacon:{installed:true,app:true,via:'native',games:9,setUp:4,error:null},
       xodus:{installed:true,preinstalled:true,version:'0.4.2',games:2,busy:false,error:null},
-      battlenet:{installed:false,busy:false,stage:null,error:null,games:0}}),
+      battlenet:{installed:false,busy:false,stage:null,error:null,games:0,faugus:true,via:null}}),
     'profile.get':async()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){} return {name:'Player One',status:null,avatar:'initials',accent:'#3fd0b8',background:'default',customAvatar:null,customBackground:null,storeAvatars:{},...p}; },
     'profile.set':async(c)=>{ let p={}; try{ p=JSON.parse(localStorage.getItem('nimbus.profile')||'{}'); }catch(e){}
       for(const k of ['name','status','avatar','accent','background']) if(c[k]!=null) p[k]=String(c[k]).trim()||null;
@@ -11417,8 +11417,9 @@ function xodusCard(){
     <div class="sbtns">${x.busy?'<span class="mini-spin"></span>':!x.installed?btn('get','xodusGet','dl','Add Xodus Nexus',true)
       :btn('open','lnOpen','play','Open Xodus Nexus',true,'data-id="xodus:nexus"')+btn('sign','xodusSignIn','user','Sign in')+btn('show','accShow','lib','Show games','','data-s="xodus"')}</div></div>`;
 }
-// Library › Stores: Battle.net's card. One press sets up Blizzard's own Battle.net app in a Proton prefix of its own;
-// signing in, buying and installing happen in Battle.net's window. Its Blizzard games then show in Library › Battle.net.
+// Library › Stores: Battle.net's card. One press sets up Blizzard's own Battle.net app through Faugus Launcher (it comes
+// with Hearth OS; without it, Hearth's own Proton prefix); signing in, buying and installing happen in Battle.net's
+// window. Its Blizzard games then show in Library › Battle.net.
 function onBattlenet(d){
   const was=ACC.battlenet&&ACC.battlenet.busy; ACC.battlenet=Object.assign(ACC.battlenet||{},d);
   if(was && !d.busy){ if(d.error) toast(d.error); else { toast('Battle.net is set up: open it from your library to sign in'); loadLibrary(true,true); } }
@@ -11430,7 +11431,7 @@ function battlenetCard(){
   const btn=(k,act,icon,label,pri,extra)=>`<button class="sbtn ${pri?'pri':''}" data-f data-k="sa-bnet-${k}" data-act="${act}" ${extra||''}>${I[icon]}${label}</button>`;
   return `<div class="scard" style="--sc:#0e5aa7">
     <div class="shd"><div class="smark">B</div><div class="sti"><b>Battle.net</b><small class="${b.installed?'on':''}">${esc(st)}</small></div></div>
-    <div class="sblurb">Blizzard's games: Overwatch 2, Diablo, World of Warcraft, Hearthstone, StarCraft and more. ${b.installed?`Sign in, buy and install games in Battle.net's own window; they show up in Library › Battle.net, and Play starts them through Battle.net.`:`One press sets up Blizzard's own Battle.net app with Proton. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`}</div>
+    <div class="sblurb">Blizzard's games: Overwatch 2, Diablo, World of Warcraft, Hearthstone, StarCraft and more. ${b.installed?`Sign in, buy and install games in Battle.net's own window; they show up in Library › Battle.net, and Play starts them through Battle.net.${b.via==='faugus'?' It\'s in Faugus Launcher too.':''}`:b.faugus===false?`Faugus Launcher isn't installed, so one press sets up Battle.net with ${APP}'s own Proton setup instead. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`:`One press sets up Blizzard's own Battle.net app through Faugus Launcher, with Proton. ${APP} never sees your Blizzard password: you sign in in Battle.net's window.`}</div>
     ${b.busy&&b.stage?`<div class="sblurb">${esc(b.stage)}</div>`:''}
     ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
     <div class="sbtns">${b.busy?'<span class="mini-spin"></span>':!b.installed?btn('get','bnetGet','dl','Set up Battle.net',true)

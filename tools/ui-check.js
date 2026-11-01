@@ -196,6 +196,10 @@ const path = require('path');
     S.layers = []; await loadAccounts(); navigate('stores', {}, false);
     if (!document.querySelector('#view [data-k="sa-xodus-open"]') || !/Comes with Hearth OS/.test(document.querySelector('#view').textContent)) throw new Error('no Xodus Nexus card');
     if (!document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error('no Set up Battle.net');
+    if (!/through Faugus Launcher/.test(document.querySelector('#view').textContent)) throw new Error("Battle.net's card doesn't say it's set up through Faugus Launcher");
+    { const was = ACC.battlenet; ACC.battlenet = Object.assign({}, was, {faugus: false}); render(null, true);
+      const t = document.querySelector('#view').textContent; ACC.battlenet = was; render(null, true);
+      if (!/Faugus Launcher isn't installed/.test(t) || !document.querySelector('#view [data-k="sa-bnet-get"]')) throw new Error("no clear message (and setup) on Battle.net's card without Faugus Launcher"); }
     const was = ACC.battlenet; ACC.battlenet = {installed: true, busy: false, games: 2, error: null}; render(null, true);
     const ok = ['sa-bnet-open', 'sa-bnet-sign', 'sa-bnet-show', 'sa-bnet-rm'].every(k => document.querySelector(`#view [data-k="${k}"]`));
     ACC.battlenet = was; render(null, true);

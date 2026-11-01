@@ -9,7 +9,7 @@ pub mod appupdate;
 pub mod artcache;
 pub mod backup;
 pub mod bazaar;   // Bazaar, Hearth OS's app store, opened from Game Mode's menu
-pub mod battlenet;   // Battle.net in its own Proton prefix (Library › Stores)
+pub mod battlenet;   // Battle.net through Faugus Launcher, or in Hearth's own Proton prefix (Library › Stores)
 pub mod beacon;
 pub mod binkv;
 pub mod bridge;
