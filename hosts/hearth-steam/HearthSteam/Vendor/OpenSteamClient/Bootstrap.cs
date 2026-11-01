@@ -155,9 +155,6 @@ internal static class Bootstrap
         Environment.SetEnvironmentVariable("BREAKPAD_DUMP_LOCATION", Path.Combine(dir, "dumps"));
     }
 
-    [DllImport("libc", SetLastError = true)]
-    static extern int execv([MarshalAs(UnmanagedType.LPUTF8Str)] string file, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPUTF8Str)] string?[] args);
-
     /// <summary>steamclient.so needs Steam's libraries and the Steam runtime's on LD_LIBRARY_PATH, which the
     /// loader only reads at process start: so the process starts itself again once (HEARTH_STEAM_REEXEC=1).</summary>
     public static void ReExecWithEnvs(string dir)
@@ -177,8 +174,10 @@ internal static class Bootstrap
         Environment.SetEnvironmentVariable("LD_LIBRARY_PATH", ld);
         Environment.SetEnvironmentVariable("HEARTH_STEAM_REEXEC", "1");
         var exe = Directory.ResolveLinkTarget("/proc/self/exe", false)?.FullName ?? Environment.ProcessPath!;
-        var args = Environment.GetCommandLineArgs().Skip(1).Prepend(exe).Append(null).ToArray();
-        execv(exe, args);
-        throw new InvalidOperationException($"Couldn't restart with Steam's libraries (errno {Marshal.GetLastWin32Error()}).");
+        // Hearth's change: execve with arrays it builds itself (NativeExec), and .NET's view of the environment passed
+        // explicitly (Environment.SetEnvironmentVariable doesn't reach the native environment execv would use).
+        var args = Environment.GetCommandLineArgs().Skip(1).Prepend(exe).ToList();
+        var errno = NativeExec.Exec(exe, args, NativeExec.Environ());
+        throw new InvalidOperationException($"Couldn't restart with Steam's libraries (errno {errno}).");
     }
 }

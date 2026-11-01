@@ -45,6 +45,24 @@ const path = require('path');
     if (SHOP.store !== 'gog' || !document.querySelector('#view [data-k="sf-t-gog"].on')) throw new Error('RB did not go to GOG: ' + SHOP.store);
     input('lb'); if (SHOP.store !== 'steam') throw new Error('LB did not go back to Steam');
   });
+  // Settings › Library › Steam engine when the engine isn't ready (0.6.59: it never started and the sign-in row just
+  // wasn't there): a Sign in row that says why, and a sheet that offers to start it again.
+  await step('steam engine not ready', () => {
+    const was = { light: S.set.steamLight, open: S.set.steamOpen, st: SENG.st };
+    try {
+      S.set.steamLight = true; S.set.steamOpen = false;
+      SENG.st = { installed: true, lightweight: true, mode: 'lightweight', classicRunning: false, status: { engine: 'unavailable', reason: "Steam's engine didn't start: Cannot marshal" } };
+      const h = steamEngineRows();
+      if (!/data-k="s-steamEngSign"/.test(h) || !/Can&#39;t sign in|Can't sign in/.test(h) || !/didn(&#39;|')t start/.test(h)) throw new Error('no sign-in row with the reason: ' + h.slice(0, 300));
+      SENG.st.status = { engine: 'stopped' };
+      if (!/Try starting it again/.test(steamEngineRows())) throw new Error('a stopped engine does not say so');
+      S.layers = []; steamEngSignIn();
+      if (S.layers.at(-1) !== 'sheet' || !/Can't sign in to Steam yet/.test(sheet.title) || !sheet.items.some(i => /Start the engine again/.test(i.label))) throw new Error('the sign-in sheet does not explain: ' + JSON.stringify(sheet && sheet.title));
+      closeAll();
+      SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: false } }; S.set.steamLight = false; S.set.steamOpen = true;
+      if (!/Sign in to Steam/.test(steamEngineRows()) || /Can't sign in/.test(steamEngineRows())) throw new Error('a ready engine does not offer the normal sign-in');
+    } finally { S.set.steamLight = was.light; S.set.steamOpen = was.open; SENG.st = was.st; }
+  });
   try {
     const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
     if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));

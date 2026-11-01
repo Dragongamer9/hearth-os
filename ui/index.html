@@ -8005,13 +8005,25 @@ function steamEngLine(e){
   if(s.engine==='starting') return 'Starting…';
   if(s.engine==='ready') return s.signedIn?`Ready · signed in as ${esc(s.account||'')}`+(s.libraryLoading?' · reading your library':''):'Ready · sign in below. Until then the normal Steam client is used';
   if(s.engine==='unavailable'||s.engine==='error') return 'Not available: '+esc(s.reason||'it didn\'t start')+'. The normal Steam client is used';
-  return 'Off right now · the normal Steam client is used';
+  return 'Not running (it stopped or didn\'t start) · the normal Steam client is used';
+}
+// Why signing in to the engine isn't possible right now (plain text), or '' when it is.
+function steamEngNotReady(e){
+  const s=(e&&e.status)||{};
+  if(s.engine==='ready') return '';
+  if(e&&e.installed===false) return 'Hearth\'s Steam engine isn\'t part of this build, so there\'s nothing to sign in to. The normal Steam client is used.';
+  if(e&&e.classicRunning) return 'The normal Steam client is running, so it does the work for now. You can sign in here once it has closed.';
+  if(s.engine==='bootstrapping') return 'Getting Steam\'s engine from Valve. You can sign in when it\'s ready.';
+  if(s.engine==='starting') return (s.reason?s.reason+'. ':'')+'Still starting. You can sign in in a moment.';
+  if(s.engine==='unavailable'||s.engine==='error') return 'Can\'t sign in: '+(s.reason||'the engine didn\'t start')+'. The normal Steam client is used meanwhile.';
+  return 'The engine isn\'t running (it stopped or didn\'t start). Try starting it again. The normal Steam client is used meanwhile.';
 }
 function steamEngineRows(){
   const light=!!S.set.steamLight, open=!!S.set.steamOpen, on=light||open, e=SENG.st||{}, s=e.status||{};
   let h=`<button class="row" data-f data-k="s-steamLight" data-act="toggle" data-key="steamLight"><div class="rt"><b>Lightweight Steam engine (experimental)</b><small>${light?steamEngLine(e):'Off: the normal Steam client does everything (Classic). On: Steam\'s own engine runs with no Steam window; anything it can\'t do (VAC games, errors) still uses the normal client'}</small></div><div class="sw ${light?'on':''}"></div></button>`;
   h+=`<button class="row" data-f data-k="s-steamOpen" data-act="toggle" data-key="steamOpen"><div class="rt"><b>Open Steam client (experimental)</b><small>${open?steamEngLine(e):'Hearth\'s own open-source Steam client: your library, installs and updates without Steam running. DRM-free games start directly; Steamworks and VAC games, and anything it can\'t do, still use the normal Steam client'}</small></div><div class="sw ${open?'on':''}"></div></button>`;
   if(on && SENG.qr) h+=`<div class="mfqr"><div class="mfqrcode" role="img" aria-label="QR code to sign in to Steam">${SENG.qr}</div><div class="rt"><h2>Sign in with the Steam app</h2><p>Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code. Hearth finishes by itself.</p><div class="mfbtns"><button class="btn" data-f data-k="s-steamEngQrX" data-act="steamEngCancel">${I.x}Cancel</button></div></div></div>`;
+  else if(on && s.engine!=='ready' && SENG.st) h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>Sign in to Steam</b><small>${esc(steamEngNotReady(e))}</small></div><div class="rv">›</div></button>`;
   else if(on && s.engine==='ready') h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>${s.signedIn?'Steam: '+esc(s.account||'signed in'):'Sign in to Steam'}</b><small>${s.signedIn?(open?'Sign out of the open Steam client':'Sign out of the lightweight engine'):(open?'For the open Steam client':'For the lightweight engine')+': with the Steam app on your phone, or your name and password. Hearth doesn\'t keep what you type'}</small></div><div class="rv">›</div></button>`;
   return h;
 }
@@ -8041,9 +8053,14 @@ async function steamEngPassword(){
 }
 function steamEngSignIn(){
   const s=((SENG.st||{}).status)||{};
-  if(s.signedIn) return openSheet({title:'Sign out of Steam?', sub:'The lightweight engine signs out. Games start with the normal Steam client until you sign in again.', items:[
+  const why=steamEngNotReady(SENG.st||{});
+  if(why){ const mode=S.set.steamOpen?'open':'lightweight';
+    return openSheet({title:'Can\'t sign in to Steam yet', sub:why, items:[
+      {label:'Start the engine again', icon:'refresh', run:()=>call('steam.engine.set',{engine:mode}).then(()=>{ toast('Starting Hearth\'s Steam engine…'); setTimeout(steamEngRefresh,2500); setTimeout(steamEngRefresh,8000); }).catch(e=>toast(e.message))},
+      {label:'Check again', icon:'info', run:()=>steamEngRefresh().then(()=>{ const w=steamEngNotReady(SENG.st||{}); toast(w||'Ready: you can sign in now'); })}]}); }
+  if(s.signedIn) return openSheet({title:'Sign out of Steam?', sub:(S.set.steamOpen?'The open Steam client':'The lightweight engine')+' signs out. Games start with the normal Steam client until you sign in again.', items:[
     {label:'Sign out', icon:'x', run:()=>call('steam.engine.signIn',{method:'signout'}).then(steamEngRefresh).catch(e=>toast(e.message))}]});
-  openSheet({title:'Sign in to Steam', sub:'For the lightweight engine. What you type goes to Steam only.', items:[
+  openSheet({title:'Sign in to Steam', sub:(S.set.steamOpen?'For the open Steam client':'For the lightweight engine')+'. What you type goes to Steam only.', items:[
     {label:'Use the Steam app on my phone', icon:'layout', run:()=>call('steam.engine.signIn',{method:'qr'},45000).then(r=>{ SENG.qr=r.qrSvg||null; steamEngWatch(); }).catch(e=>toast(e.message))},
     {label:'Type my name and password', icon:'kbd', run:()=>setTimeout(steamEngPassword,50)}]});
 }

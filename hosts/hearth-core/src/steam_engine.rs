@@ -296,8 +296,15 @@ pub fn sign_in(a: &Value) -> Result<Value, String> {
     match ask(&req, Duration::from_secs(30)) {
         Answer::Ok(v) => Ok(v),
         Answer::No { error, .. } => Err(if error.is_empty() { "Steam said no.".into() } else { error }),
-        Answer::Down(_) => Err("The lightweight Steam engine isn't running. Turn it on in Settings › Library, or use the normal Steam client.".into()),
+        Answer::Down(_) => Err(sign_in_down_message(installed(), crate::steam::client_running())),
     }
+}
+
+/// Why signing in can't happen when the engine doesn't answer at all (pure, for the tests): never an empty error.
+pub fn sign_in_down_message(installed: bool, classic_running: bool) -> String {
+    if !installed { return "Hearth's Steam engine isn't part of this build. The normal Steam client is used.".into(); }
+    if classic_running { return "The normal Steam client is running, so Hearth's Steam engine has stepped aside. Sign in here once Steam has closed.".into(); }
+    "Hearth's Steam engine isn't running (it stopped or didn't start). Choose \"Start the engine again\" in Settings › Library, or keep using the normal Steam client.".into()
 }
 
 #[cfg(test)]
@@ -370,6 +377,16 @@ mod tests {
         // The normal client is already running: nothing to let go of. Not running at all: nothing either.
         assert_eq!(outcome(Answer::No { code: "classic_running".into(), error: "e".into() }), Outcome::Fallback { why: "classic_running: e".into(), release: false });
         assert!(matches!(outcome(Answer::Down("gone".into())), Outcome::Fallback { release: false, .. }));
+    }
+
+    #[test]
+    fn sign_in_errors_are_never_empty() {
+        for (i, c) in [(false, false), (true, true), (true, false)] {
+            let m = sign_in_down_message(i, c);
+            assert!(m.len() > 20 && m.contains("Steam"), "{m}");
+        }
+        assert!(sign_in_down_message(true, false).contains("Start the engine again"));
+        assert!(sign_in_down_message(true, true).contains("normal Steam client is running"));
     }
 
     #[test]

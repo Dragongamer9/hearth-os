@@ -30,10 +30,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
     bool connected, signedIn, released;
     string? account;
     ulong steamId;
-    JsonObject signIn = new() { ["state"] = "idle" };
-    TaskCompletionSource<JsonObject>? step;
-    CancellationTokenSource? authCts;
-    BridgeAuthenticator? authenticator;
+    readonly SignInFlow flow;
     List<SteamApps.LicenseListCallback.License> licenses = new();
     readonly Dictionary<uint, AppInfo> owned = new();
     HashSet<uint> ownedApps = new();
@@ -72,6 +69,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         callbacks.Subscribe<SteamUser.LoggedOnCallback>(OnLoggedOn);
         callbacks.Subscribe<SteamUser.LoggedOffCallback>(e => { Log($"signed off by Steam ({e.Result})"); lock (gate) signedIn = false; });
         callbacks.Subscribe<SteamApps.LicenseListCallback>(OnLicenses);
+        flow = new SignInFlow(new SteamAuth(this), secrets, Svg) { Log = Log };
     }
 
     static void Log(string s) => Console.Error.WriteLine("hearth-steam (open): " + s);
@@ -117,24 +115,19 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         if (e.Result != EResult.OK)
         {
             Log($"sign-in refused ({e.Result})");
-            if (e.Result is EResult.InvalidPassword or EResult.AccessDenied or EResult.Expired or EResult.Revoked or EResult.InvalidSignature)
-            {
-                var name = store.Data["account"]?.GetValue<string>();
-                if (name != null) { try { secrets.Delete(name); } catch (Exception) { } }
-            }
-            lock (gate) { signedIn = false; signIn = new JsonObject { ["state"] = "failed", ["error"] = SignInError(e.Result) }; }
-            step?.TrySetException(new EngineException(Codes.SteamError, SignInError(e.Result)));
+            bool forget = e.Result is EResult.InvalidPassword or EResult.AccessDenied or EResult.Expired or EResult.Revoked or EResult.InvalidSignature;
+            lock (gate) signedIn = false;
+            flow.LoggedOn(SignInError(e.Result), forget, store.Data["account"]?.GetValue<string>() ?? account);
             return;
         }
         lock (gate)
         {
             signedIn = true;
             steamId = e.ClientSteamID?.ConvertToUInt64() ?? 0;
-            signIn = new JsonObject { ["state"] = "idle" };
         }
         store.Update(d => { d["account"] = account; d["steamId"] = steamId; });
         Log("signed in");
-        step?.TrySetResult(new JsonObject { ["needs"] = null });
+        flow.LoggedOn(null, false, account);
         _ = Task.Run(ResumeQueue);
     }
 
@@ -147,127 +140,74 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
         _ => $"Steam didn't sign you in ({r}).",
     };
 
-    /// <summary>Hands Steam Guard's questions to Hearth's sign-in screen: the next signin.code answers them.</summary>
-    sealed class BridgeAuthenticator : IAuthenticator
+    /// <summary>SteamKit2's authentication for the sign-in flow (SignInFlow in HearthSteam.Core, tested with a fake).</summary>
+    sealed class SteamAuth : IAuthBackend
     {
         readonly OpenEngine e;
-        public TaskCompletionSource<string>? Code;
-        public BridgeAuthenticator(OpenEngine e) { this.e = e; }
-        Task<string> Ask(string kind, bool wrong)
+        public SteamAuth(OpenEngine e) { this.e = e; }
+
+        public (bool Connected, string Why) Connection()
         {
-            Code = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            lock (e.gate) e.signIn = new JsonObject { ["state"] = "needs", ["needs"] = kind, ["wrong"] = wrong };
-            e.step?.TrySetResult(new JsonObject { ["needs"] = kind, ["wrong"] = wrong });
-            return Code.Task;
+            lock (e.gate)
+            {
+                if (e.connected) return (true, "");
+                if (e.state == "unavailable") return (false, e.reason.Length > 0 ? e.reason + " Sign-in isn't possible right now." : "Steam isn't reachable right now.");
+                return (false, e.reason.Length > 0 ? e.reason + ". Try again in a moment." : "Still connecting to Steam. Try again in a moment.");
+            }
         }
-        public Task<string> GetDeviceCodeAsync(bool previousCodeWasIncorrect) => Ask("device", previousCodeWasIncorrect);
-        public Task<string> GetEmailCodeAsync(string email, bool previousCodeWasIncorrect) => Ask("email", previousCodeWasIncorrect);
-        // Typing the code works with a controller (Hearth's keyboard); approving in the app is the QR sign-in.
-        public Task<bool> AcceptDeviceConfirmationAsync() => Task.FromResult(false);
-    }
 
-    void NeedConnection()
-    {
-        lock (gate) if (!connected) throw new EngineException(Codes.NotReady, reason.Length > 0 ? reason : "Not connected to Steam yet.");
-    }
+        /// <summary>Hands Steam Guard's questions to Hearth's sign-in screen: the next signin.code answers them.</summary>
+        sealed class Guard : IAuthenticator
+        {
+            readonly Func<string, bool, Task<string>> ask;
+            public Guard(Func<string, bool, Task<string>> ask) { this.ask = ask; }
+            public Task<string> GetDeviceCodeAsync(bool previousCodeWasIncorrect) => ask("device", previousCodeWasIncorrect);
+            public Task<string> GetEmailCodeAsync(string email, bool previousCodeWasIncorrect) => ask("email", previousCodeWasIncorrect);
+            // Typing the code works with a controller (Hearth's keyboard); approving in the app is the QR sign-in.
+            public Task<bool> AcceptDeviceConfirmationAsync() => Task.FromResult(false);
+        }
 
-    async Task<JsonObject> NextStep()
-    {
-        var s = step!;
-        var done = await Task.WhenAny(s.Task, Task.Delay(TimeSpan.FromSeconds(40)));
-        if (done != s.Task) return new JsonObject { ["needs"] = null, ["pending"] = true };
-        return await s.Task;
-    }
-
-    /// <summary>Runs one sign-in (credentials or QR) to the end in the background.</summary>
-    void RunAuth(Func<CancellationToken, Task<AuthSession>> begin, bool remember)
-    {
-        authCts?.Cancel();
-        var ac = authCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
-        _ = Task.Run(async () =>
+        public async Task<AuthResult> Credentials(string user, string password, bool remember, Func<string, bool, Task<string>> askCode, CancellationToken ct)
         {
             try
             {
-                var session = await begin(ac.Token);
-                var result = await session.PollingWaitForResultAsync(ac.Token);
-                account = result.AccountName;
-                if (remember) { try { secrets.Save(result.AccountName, result.RefreshToken); } catch (Exception) { Log("couldn't keep the sign-in (keyring and file both failed)"); } }
-                lock (gate) signIn = new JsonObject { ["state"] = "signing-in" };
-                LogOn(result.AccountName, result.RefreshToken);
+                // The password goes straight into SteamKit2's request (encrypted with Steam's key) and is dropped with it.
+                var session = await e.client.Authentication.BeginAuthSessionViaCredentialsAsync(new AuthSessionDetails
+                {
+                    Username = user, Password = password, IsPersistentSession = remember, Authenticator = new Guard(askCode), DeviceFriendlyName = "Hearth OS",
+                });
+                var r = await session.PollingWaitForResultAsync(ct);
+                return new AuthResult(r.AccountName, r.RefreshToken);
             }
-            catch (OperationCanceledException) { lock (gate) signIn = new JsonObject { ["state"] = "idle" }; step?.TrySetException(new EngineException(Codes.SteamError, "Cancelled.")); }
-            catch (AuthenticationException e)
-            {
-                lock (gate) signIn = new JsonObject { ["state"] = "failed", ["error"] = SignInError(e.Result) };
-                step?.TrySetException(new EngineException(Codes.SteamError, SignInError(e.Result)));
-            }
-            catch (Exception e)
-            {
-                Log("sign-in failed: " + e.GetType().Name);
-                var msg = e is InvalidOperationException ? "Steam wants this sign-in approved in the Steam app: use the QR code instead." : "Steam didn't sign you in.";
-                lock (gate) signIn = new JsonObject { ["state"] = "failed", ["error"] = msg };
-                step?.TrySetException(new EngineException(Codes.SteamError, msg));
-            }
-        });
-    }
+            catch (AuthenticationException x) { throw new SignInFailure(SignInError(x.Result)); }
+            catch (InvalidOperationException x) when (x is not ObjectDisposedException) { throw new SignInFailure("Steam wants this sign-in approved in the Steam app: use the QR code instead."); }
+        }
 
-    public async Task<JsonObject> SignInPassword(string userName, string password, bool remember)
-    {
-        NeedConnection();
-        step = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
-        authenticator = new BridgeAuthenticator(this);
-        lock (gate) signIn = new JsonObject { ["state"] = "waiting" };
-        var auth = authenticator;
-        // The password goes straight into SteamKit2's request (encrypted with Steam's key) and is dropped with it.
-        RunAuth(async _ => await client.Authentication.BeginAuthSessionViaCredentialsAsync(new AuthSessionDetails
+        public async Task<AuthResult> Qr(Action<string> onUrl, CancellationToken ct)
         {
-            Username = userName, Password = password, IsPersistentSession = remember, Authenticator = auth, DeviceFriendlyName = "Hearth OS",
-        }), remember);
-        return await NextStep();
+            try
+            {
+                var s = await e.client.Authentication.BeginAuthSessionViaQRAsync(new AuthSessionDetails { IsPersistentSession = true, DeviceFriendlyName = "Hearth OS" });
+                s.ChallengeURLChanged = () => onUrl(s.ChallengeURL);
+                onUrl(s.ChallengeURL);
+                var r = await s.PollingWaitForResultAsync(ct);
+                return new AuthResult(r.AccountName, r.RefreshToken);
+            }
+            catch (AuthenticationException x) { throw new SignInFailure(SignInError(x.Result)); }
+        }
+
+        public void LogOn(string account, string refreshToken) { e.account = account; e.LogOn(account, refreshToken); }
     }
 
-    public async Task<JsonObject> SignInCode(string code, string kind)
-    {
-        var a = authenticator?.Code ?? throw new EngineException(Codes.BadRequest, "No sign-in is waiting for a code.");
-        step = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (gate) signIn = new JsonObject { ["state"] = "waiting" };
-        a.TrySetResult(code.Trim());
-        var r = await NextStep();
-        if (r["wrong"]?.GetValue<bool>() == true) throw new EngineException(Codes.SteamError, "That code wasn't right. Try again.");
-        return r;
-    }
-
-    public async Task<JsonObject> SignInQr()
-    {
-        NeedConnection();
-        step = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var first = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        RunAuth(async _ =>
-        {
-            var s = await client.Authentication.BeginAuthSessionViaQRAsync(new AuthSessionDetails { IsPersistentSession = true, DeviceFriendlyName = "Hearth OS" });
-            void Show() { lock (gate) signIn = new JsonObject { ["state"] = "qr", ["qrSvg"] = Svg(s.ChallengeURL) }; }
-            s.ChallengeURLChanged = Show;
-            Show();
-            first.TrySetResult(s.ChallengeURL);
-            return s;
-        }, true);
-        var done = await Task.WhenAny(first.Task, step.Task, Task.Delay(TimeSpan.FromSeconds(30)));
-        if (done != first.Task) { if (step.Task.IsFaulted) await step.Task; throw new EngineException(Codes.SteamError, "Steam didn't give a QR code."); }
-        var url = await first.Task;
-        return new JsonObject { ["url"] = url, ["qrSvg"] = Svg(url) };
-    }
+    public Task<JsonObject> SignInPassword(string userName, string password, bool remember) => flow.Password(userName, password, remember);
+    public Task<JsonObject> SignInCode(string code, string kind) => flow.Code(code);
+    public Task<JsonObject> SignInQr() => flow.Qr();
+    public void SignInCancel() => flow.Cancel();
 
     static string Svg(string url)
     {
         using var gen = new QRCodeGenerator();
         return new SvgQRCode(gen.CreateQrCode(url, QRCodeGenerator.ECCLevel.M)).GetGraphic(4);
-    }
-
-    public void SignInCancel()
-    {
-        authCts?.Cancel();
-        authenticator?.Code?.TrySetCanceled();
-        lock (gate) signIn = new JsonObject { ["state"] = "idle" };
     }
 
     public Task<JsonObject> SignOut()
@@ -290,7 +230,7 @@ public sealed class OpenEngine : IOpenEngine, IDisposable
                 ["kind"] = "open", ["engine"] = state, ["reason"] = reason, ["signedIn"] = signedIn,
                 ["account"] = signedIn ? account ?? store.Data["account"]?.GetValue<string>() : null,
                 ["steamId"] = signedIn ? steamId.ToString() : null,
-                ["signIn"] = signIn.DeepClone(), ["secretStore"] = secrets.Kind, ["libraryApps"] = owned.Count,
+                ["signIn"] = flow.State(), ["secretStore"] = secrets.Kind, ["libraryApps"] = owned.Count,
                 ["libraryLoading"] = libraryLoading,
             };
             if (state == "unavailable") o["code"] = Codes.ClassicRunning;
