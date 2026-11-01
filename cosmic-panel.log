@@ -1,0 +1,6 @@
+[2m2026-11-01T22:13:32.098157Z[0m [31mERROR[0m Failed to connect to the notifications daemon.
+[2m2026-11-01T22:13:32.145454Z[0m [31mERROR[0m Failed to connect to the notifications daemon
+[2m2026-11-01T22:13:32.145477Z[0m [33m WARN[0m Can't start notifications applet without a connection
+[2m2026-11-01T22:14:32.317930Z[0m [31mERROR[0m [1mstderr[0m[1m{[0m[3mclient[0m[2m=[0mInnerClientId { ptr: 0x60796c6c9620, alive: true }[1m}[0m[2m:[0m com.system76.CosmicAppletStatusArea: Failed to start status notifier watcher: org.freedesktop.DBus.Error.NoReply: Message recipient disconnected from message bus without replying
+[2m2026-11-01T22:14:32.318291Z[0m [31mERROR[0m [1mstderr[0m[1m{[0m[3mclient[0m[2m=[0mInnerClientId { ptr: 0x60796c6c9620, alive: true }[1m}[0m[2m:[0m com.system76.CosmicAppletStatusArea: Failed to register status notifier host: org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.StatusNotifierWatcher was not provided by any .service files
+[2m2026-11-01T22:14:32.319322Z[0m [31mERROR[0m [1mstderr[0m[1m{[0m[3mclient[0m[2m=[0mInnerClientId { ptr: 0x60796c6c9620, alive: true }[1m}[0m[2m:[0m com.system76.CosmicAppletStatusArea: Status notifier error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.StatusNotifierWatcher was not provided by any .service files

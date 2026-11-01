@@ -1,0 +1,5 @@
+app the companion sees: ''
+ok Y: find and the keyboard: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok Guide + X closes the keyboard: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok B: Esc: expected KEY_ESC, got keys ['KEY_ESC'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok D-pad right moves the caret: expected KEY_RIGHT, got keys ['KEY_RIGHT'], pointer {'move': 0, 'wheel': 0}, buttons []
