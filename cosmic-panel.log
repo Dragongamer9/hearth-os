@@ -1,0 +1,3 @@
+[2m2026-11-01T00:42:14.175892Z[0m [31mERROR[0m Failed to connect to the notifications daemon.
+[2m2026-11-01T00:42:14.227538Z[0m [31mERROR[0m Failed to connect to the notifications daemon
+[2m2026-11-01T00:42:14.227560Z[0m [33m WARN[0m Can't start notifications applet without a connection

@@ -1,0 +1,5 @@
+cosmic-session-1.10.0-2.fc45.x86_64
+cosmic-comp-1.10.0-2.fc45.x86_64
+cosmic-files-1.10.0-2.fc45.x86_64
+cosmic-term-1.10.0-2.fc45.x86_64
+cosmic-edit-1.10.0-2.fc45.x86_64

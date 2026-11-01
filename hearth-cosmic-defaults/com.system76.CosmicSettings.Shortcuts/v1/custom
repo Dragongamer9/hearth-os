@@ -1,0 +1,5 @@
+{
+    (modifiers: [Super], key: "g"): Spawn("nimbus-mode game"),
+    (modifiers: [Super, Ctrl], key: "Up"): Maximize,
+    (modifiers: [Super, Ctrl], key: "Down"): Minimize,
+}
