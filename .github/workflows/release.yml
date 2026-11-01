@@ -7,6 +7,11 @@
 # - Push to linux-host (the Linux work in progress): also publish a pre-release vX.Y.Z-linux.N with the
 #   AppImage. Pre-releases are never offered as updates (the app only looks at the latest full release).
 # The version lives in one place, hosts/windows/Nimbus.Host/Nimbus.Host.csproj; the Linux build takes it from there.
+# - Hearth app updates (docs/APP-UPDATES.md): on main, tags and when run by hand (never for pull requests), the app
+#   bundle for each Hearth OS edition (the Hearth program and its Chromium window app, from this same commit) is built,
+#   tested end to end with a throwaway key made in the run, and signed with the HEARTH_APP_SIGNING_KEY secret if it's
+#   set. Only a push to main or a tag publishes (app-publish adds the signed bundles to the release this run made);
+#   without the secret the bundles are built and tested but not published (a notice says so).
 name: Build and release
 
 on:
@@ -350,6 +355,178 @@ jobs:
             Nimbus-linux-x86_64.AppImage
             Nimbus-linux-x86_64.AppImage.sha256
 
+  # ==== Hearth app updates (docs/APP-UPDATES.md) ====
+  # The Hearth program for each edition, built exactly as that edition's image builds it (Anatase: the Ubuntu runner,
+  # like base-anatase.yml; Peppermint: inside Debian trixie, like base-peppermint.yml), then the start-up choice tested
+  # end to end with it (hosts/linux/test/test_hearth_app_channel.py: a throwaway key made here, bundles packed from this
+  # commit and signed with it, installed into a temporary home; the bundle is picked, and every broken or unfit one
+  # falls back to the built-in Hearth).
+  app-bundle:
+    needs: version
+    if: github.event_name != 'pull_request'
+    name: App bundle program (${{ matrix.edition }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - edition: anatase
+            container: ''
+          - edition: peppermint
+            container: docker.io/library/debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Build tools
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y -qq --no-install-recommends \
+            git curl ca-certificates build-essential pkg-config file zstd tar python3 openssh-client \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libssl-dev libxdo-dev >/dev/null
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-rs
+          key: app-bundle-${{ matrix.edition }}
+      - name: Build the Hearth program
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          sed -i "s/^version = \".*\"/version = \"${{ needs.version.outputs.version }}\"/" Cargo.toml
+          cargo build --release 2>&1 | tee /tmp/build.log || { echo "::error title=app bundle (${{ matrix.edition }})::$(grep -E '^error' -A8 /tmp/build.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          mkdir -p /tmp/app-bin && cp target/release/hearth /tmp/app-bin/nimbus
+      - name: Start-up choice, end to end (throwaway key)
+        run: |
+          set -o pipefail
+          cd hosts/linux/test
+          if ! HEARTH_BIN=/tmp/app-bin/nimbus HEARTH_EDITION=${{ matrix.edition }} python3 -m unittest -v test_hearth_app_channel > /tmp/t.txt 2>&1; then
+            grep -A14 -E '^(FAIL|ERROR):' /tmp/t.txt | head -60 | while IFS= read -r l; do echo "::error title=app updates e2e (${{ matrix.edition }})::$l"; done
+            tail -5 /tmp/t.txt; exit 1
+          fi
+          grep -c ' ok$' /tmp/t.txt | xargs -I{} echo "::notice title=app updates e2e (${{ matrix.edition }})::{} tests passed: bundles picked, every fallback path back to the built-in Hearth"
+          grep -q 'skipped' /tmp/t.txt && { echo "::error title=app updates e2e::tests were skipped"; grep skipped /tmp/t.txt | head -5; exit 1; } || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-bin-${{ matrix.edition }}
+          path: /tmp/app-bin/nimbus
+          retention-days: 7
+
+  # Hearth's Chromium window app (hosts/electron), the same build both images carry.
+  app-electron:
+    needs: version
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build Hearth's Chromium window
+        working-directory: hosts/electron
+        run: |
+          npm install --no-audit --no-fund
+          npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run dist:dir
+          test -x dist/linux-unpacked/hearth-electron
+          tar -C dist/linux-unpacked -cf "$GITHUB_WORKSPACE/hearth-electron.tar" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-electron
+          path: hearth-electron.tar
+          retention-days: 7
+
+  # The bundle per edition: program + Chromium window app, packed with its manifest (tools/app-bundle.py), the real
+  # archive installed and chosen once in a temporary home with a throwaway key (Anatase: its program runs on this
+  # runner), then signed with HEARTH_APP_SIGNING_KEY when that secret is set. Never handles the key beyond signing.
+  app-pack:
+    needs: [version, app-bundle, app-electron]
+    if: github.event_name != 'pull_request'
+    name: App bundle (${{ matrix.edition }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [anatase, peppermint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-bin-${{ matrix.edition }}
+          path: /tmp/app-bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-electron
+          path: /tmp/app-electron
+      - name: Pack
+        run: |
+          set -e
+          b=/tmp/bundle; rm -rf "$b"; mkdir -p "$b/electron" out
+          install -m755 /tmp/app-bin/nimbus "$b/nimbus"
+          tar -C "$b/electron" -xf /tmp/app-electron/hearth-electron.tar
+          base="hearth-app-${{ matrix.edition }}-x86_64"
+          python3 tools/app-bundle.py pack --src "$b" --version "${{ needs.version.outputs.version }}" --edition "${{ matrix.edition }}" \
+            --commit "${{ github.sha }}" --out "out/$base"
+          echo "::notice title=app bundle (${{ matrix.edition }})::$(du -h out/$base.tar.zst | cut -f1), $(python3 -c "import json;m=json.load(open('out/$base.json'));print(len(m['files']),'files, ABI',m['abi'],'version',m['version'])")"
+      - name: The real bundle installs and is chosen (throwaway key)
+        if: matrix.edition == 'anatase'
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-0 zstd >/dev/null
+          t=$(mktemp -d); base="hearth-app-anatase-x86_64"
+          ssh-keygen -q -t ed25519 -N '' -C throwaway -f "$t/key"
+          cp out/$base.json "$t/m.json"
+          ssh-keygen -Y sign -q -n hearth-app -f "$t/key" "$t/m.json"
+          mkdir -p "$t/image" "$t/home"
+          echo 0.0.1 > "$t/image/version"
+          python3 -c "import json;print(json.load(open('out/$base.json'))['abi'])" > "$t/image/app-abi"
+          echo '{"base": "anatase"}' > "$t/image/image-info.json"
+          cp "$t/key.pub" "$t/image/app-signing.pub"
+          e="env -i PATH=$PATH HOME=$t/home HEARTH_APP_IMAGE_DIR=$t/image NIMBUS_SESSION=1 HEARTH_RENDERER=webkit"
+          chmod +x /tmp/app-bin/nimbus
+          $e /tmp/app-bin/nimbus --app-install "out/$base.tar.zst" "$t/m.json" "$t/m.json.sig"
+          out=$($e /tmp/app-bin/nimbus --session --app-mark-good)
+          echo "$out" | grep -q '"bundle":"${{ needs.version.outputs.version }}"' || { echo "::error title=app bundle::the real bundle wasn't chosen: $out"; exit 1; }
+          # A deliberately broken copy of it (its program changed after install): the built-in Hearth.
+          v="${{ needs.version.outputs.version }}"
+          python3 -c "import sys;p=sys.argv[1];b=bytearray(open(p,'rb').read());b[-1]^=1;open(p,'wb').write(b)" "$t/home/.local/share/hearth/app/$v/nimbus"
+          out=$($e /tmp/app-bin/nimbus --session --app-which)
+          echo "$out" | grep -q '"bundle":null' || { echo "::error title=app bundle::a broken bundle was used: $out"; exit 1; }
+          echo "::notice title=app bundle::the real Anatase bundle installed and was chosen; a broken copy fell back to the built-in Hearth"
+      - name: Sign (HEARTH_APP_SIGNING_KEY)
+        env:
+          HEARTH_APP_SIGNING_KEY: ${{ secrets.HEARTH_APP_SIGNING_KEY }}
+        run: |
+          base="hearth-app-${{ matrix.edition }}-x86_64"
+          if [ -z "$HEARTH_APP_SIGNING_KEY" ]; then
+            echo "::notice title=Hearth app updates::The HEARTH_APP_SIGNING_KEY secret isn't set, so the ${{ matrix.edition }} app bundle is built and tested but won't be published (docs/APP-UPDATES.md says how to add it)."
+            exit 0
+          fi
+          if ! grep -q '^ssh-ed25519 ' os/system_files/usr/share/nimbus/app-signing.pub; then
+            echo "::notice title=Hearth app updates::The image's public key (os/system_files/usr/share/nimbus/app-signing.pub) is still the placeholder, so devices couldn't check a signed bundle: not published."
+            exit 0
+          fi
+          k="$RUNNER_TEMP/hearth-app-key"
+          umask 077; printf '%s\n' "$HEARTH_APP_SIGNING_KEY" > "$k"
+          ssh-keygen -Y sign -q -n hearth-app -f "$k" "out/$base.json"; rc=$?
+          rm -f "$k"
+          [ "$rc" -eq 0 ] || { echo "::error title=Hearth app updates::signing failed (is HEARTH_APP_SIGNING_KEY an unencrypted OpenSSH ed25519 private key?)"; rm -f "out/$base.json.sig"; exit 0; }
+          { printf 'hearth '; grep '^ssh-ed25519 ' os/system_files/usr/share/nimbus/app-signing.pub | head -1; } > "$RUNNER_TEMP/allowed"
+          if ! ssh-keygen -Y verify -f "$RUNNER_TEMP/allowed" -I hearth -n hearth-app -s "out/$base.json.sig" < "out/$base.json" >/dev/null; then
+            echo "::error title=Hearth app updates::the secret's key doesn't match the image's public key (app-signing.pub): not published"
+            rm -f "out/$base.json.sig"; exit 0
+          fi
+          echo "::notice title=Hearth app updates::the ${{ matrix.edition }} app bundle is signed"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-bundle-${{ matrix.edition }}
+          path: out/
+          retention-days: 14
+  # ==== end of Hearth app updates (built) ====
+
   release:
     needs: [version, windows, linux, rust, ui]
     if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
@@ -390,3 +567,35 @@ jobs:
           gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
             -q ".[] | select(.draft == false and .tag_name != \"$tag\") | .id" |
             while read -r id; do gh api -X PATCH "repos/${{ github.repository }}/releases/$id" -F draft=true >/dev/null; done
+
+  # Hearth app updates: the signed bundles go on the release this run just made (same commit), so Hearth OS devices
+  # whose image has the same app ABI pick them up in minutes. Only on a push to main or a tag (never from a branch), only
+  # signed bundles, and never onto a release made from another commit. A failure here never touches the release itself.
+  app-publish:
+    needs: [version, release, app-pack]
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: app-bundle-*
+          path: app
+          merge-multiple: true
+      - name: Add the signed app bundles to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ needs.version.outputs.version }}"
+          ls -la app || true
+          tagsha=$(gh api "repos/${{ github.repository }}/git/refs/tags/$tag" -q .object.sha 2>/dev/null || true)
+          if [ "$tagsha" != "${{ github.sha }}" ]; then echo "::notice title=Hearth app updates::$tag isn't this commit's release; no app bundles added"; exit 0; fi
+          files=""
+          for sig in app/*.json.sig; do
+            [ -f "$sig" ] || continue
+            base="${sig%.json.sig}"
+            [ -f "$base.json" ] && [ -f "$base.tar.zst" ] && files="$files $base.tar.zst $base.json $sig"
+          done
+          if [ -z "$files" ]; then echo "::notice title=Hearth app updates::no signed app bundles (HEARTH_APP_SIGNING_KEY not set yet); the release goes out without them"; exit 0; fi
+          # shellcheck disable=SC2086
+          gh release upload "$tag" $files --clobber --repo "${{ github.repository }}"
+          echo "::notice title=Hearth app updates::added to $tag:$files"

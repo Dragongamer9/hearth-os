@@ -39,7 +39,13 @@ fn qt_crashes_file() -> PathBuf { cfg("renderer-qt-crashes") }
 fn once_file() -> PathBuf { cfg("renderer-once") }
 fn note_file() -> PathBuf { cfg("renderer-note") }
 
-fn electron_app() -> PathBuf { std::env::var("HEARTH_ELECTRON_APP").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(ELECTRON_APP)) }
+/// A Hearth app update (appchannel.rs) draws with its own Chromium window app, never the image's (those screens
+/// belong to the built-in version); without one it can't use Chromium.
+fn electron_app() -> PathBuf {
+    std::env::var("HEARTH_ELECTRON_APP").map(PathBuf::from).ok()
+        .or_else(crate::appchannel::running_bundle_electron)
+        .unwrap_or_else(|| PathBuf::from(ELECTRON_APP))
+}
 fn qt_app() -> PathBuf { std::env::var("HEARTH_QT_APP").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(QT_APP)) }
 
 /// An Nvidia graphics card in this PC (a display-class PCI device from vendor 0x10de). `pci`: /sys/bus/pci/devices.
@@ -98,6 +104,15 @@ fn facts() -> Facts {
         qt_fails: recent(&read(&qt_starts_file()), now, FAIL_WINDOW_MS),
         qt_crashes: recent(&read(&qt_crashes_file()), now, QT_CRASH_WINDOW_MS),
     }
+}
+
+/// What would draw if Hearth started now, with (`electron`) or without a Chromium window app to use. The image's
+/// Hearth asks before handing over to a Hearth app update (appchannel.rs `decide`). Reads nothing it changes.
+pub fn planned(electron: bool) -> Engine {
+    let mut f = facts();
+    f.electron = electron;
+    let once = std::fs::read_to_string(once_file()).ok().as_deref().and_then(norm).map(str::to_string);
+    decide(&once.unwrap_or_else(choice), f)
 }
 
 /// What to start instead of drawing with WebKit in this process.

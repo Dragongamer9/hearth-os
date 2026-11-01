@@ -5,7 +5,7 @@ name: Rust host
 on:
   push:
     branches: [linux-host]
-    paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml']
+    paths: ['hosts/hearth-core/**', 'hosts/hearth-rs/**', 'ui/**', '.github/workflows/rust.yml', 'tools/app-bundle.py', 'hosts/linux/test/test_hearth_app_channel.py']
   workflow_dispatch:
 
 permissions:
@@ -99,6 +99,16 @@ jobs:
           cargo build --release 2>&1 | tee build.log || { echo "::error title=Build failed::$(grep -E '^(error|warning: unused)' -A6 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           ls -l target/release/hearth
           echo "::notice title=App size::$(du -h target/release/hearth | cut -f1) (the Electron app is about 250 MB)"
+      # Hearth app updates (docs/APP-UPDATES.md): the start-up choice with this build, end to end (a throwaway key made in
+      # the test; bundles picked, every broken or unfit one back to the built-in Hearth).
+      - name: Hearth app updates, end to end
+        run: |
+          cd hosts/linux/test
+          if ! HEARTH_BIN="$GITHUB_WORKSPACE/hosts/hearth-rs/target/release/hearth" python3 -m unittest -v test_hearth_app_channel > /tmp/au.txt 2>&1; then
+            grep -A14 -E '^(FAIL|ERROR):' /tmp/au.txt | head -60 | while IFS= read -r l; do echo "::error title=app updates e2e::$l"; done
+            tail -5 /tmp/au.txt; exit 1
+          fi
+          echo "::notice title=app updates e2e::$(tail -3 /tmp/au.txt | tr '\n' ' ')"
       - name: Test the app, and its windowless core for the Chromium window (docs/RENDERERS.md)
         working-directory: hosts/hearth-rs
         run: |

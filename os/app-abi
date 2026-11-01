@@ -1,0 +1,6 @@
+# Hearth app updates (docs/APP-UPDATES.md): the app ABI number. Raise it by one whenever a change to Hearth's app
+# needs image-side files that older images don't have (a new hearth-admin verb, a new session flag, a new system
+# service the app calls, a library the app links that the image must add...). Images record it with a fingerprint of
+# the root helper, polkit rules and session scripts (tools/app-bundle.py abi) in /usr/share/nimbus/app-abi, and a Hearth
+# app update only runs on an image with exactly the same tag.
+1

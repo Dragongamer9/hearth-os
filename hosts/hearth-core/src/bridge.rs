@@ -990,6 +990,22 @@ impl Bridge {
             "osinstall.restart" => Ok(json!(self.osinstall.restart())),
             "osinstall.useMantel" => Ok(json!(crate::osinstall::handoff(true))),
             // Updates to the app itself
+            // Hearth app updates without a system update (appchannel.rs, docs/APP-UPDATES.md): Settings › Updates.
+            "appUpdates.status" => Ok(crate::appchannel::status()),
+            "appUpdates.setMode" => {
+                let m = crate::appchannel::Mode::parse(a["mode"].as_str().unwrap_or("")).ok_or("Unknown choice")?;
+                crate::appchannel::set_mode(m)?;
+                Ok(crate::appchannel::status())
+            }
+            "appUpdates.check" => {
+                // In the background: the download can take minutes. Its progress comes as "appUpdates" events.
+                let install = a["install"] == true || crate::appchannel::mode() == crate::appchannel::Mode::Auto;
+                std::thread::spawn(move || { crate::appchannel::updater().check(install); });
+                Ok(crate::appchannel::status())
+            }
+            "appUpdates.useBuiltin" => { crate::appchannel::use_builtin()?; Ok(crate::appchannel::status()) }
+            // Hearth starts again (the session's watchdog starts the chosen version: an update, or the built-in one).
+            "appUpdates.restart" => { (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
             "update.status" => Ok(self.app_updates.status(self.auto_update())),
             "update.check" => Ok(self.app_updates.check(self.auto_update())),
             "update.download" => Ok(self.app_updates.download(self.auto_update())),
