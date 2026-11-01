@@ -19,6 +19,7 @@ import { guard, setSettingsLocal, setShortcutMap, settings as liveSettings, useL
 import { Brand, DownloadsPage, GamePage, LibraryPage, StoragePage, StorePage, setBrand } from "./pages";
 import { addRoutes, patchGamePage, patchHome, patchLibraryTabs, patchMainMenu } from "./patches";
 import { go, setSounds } from "./ui";
+import { HearthRowView } from "./row";
 import { say } from "./actions";
 
 interface Games { ok: boolean; error?: string; games: Item[]; links: Item[] }
@@ -26,10 +27,9 @@ interface Games { ok: boolean; error?: string; games: Item[]; links: Item[] }
 const getGames = callable<[], Games>("get_games");
 const getBrand = callable<[], Brand>("get_brand");
 const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
-const getArt = callable<[ref: string], { data: string; type: string } | null>("get_art");
 const getShortcuts = callable<[], Record<string, number>>("get_shortcuts");
 
-const ACCENT = "#3fd0b8", INK = "#06231e", PANEL = "#1d2531", DIM = "#8d99a8";
+const ACCENT = "#3fd0b8", INK = "#06231e";
 
 let cache: Games | null = null;
 let brand: Brand | null = null;
@@ -190,54 +190,10 @@ function Panel() {
   );
 }
 
-// ---- The older Hearth row over Steam's Home (Hearth's home screen off): a hero with Hearth's wallpaper and logo,
-// then your Hearth games like Hearth's home.
-// Covers as data: addresses (Steam's window can't load files from the disk), read once each.
-const coverCache: Record<string, string> = {};
-function useCovers(list: Item[]): Record<string, string> {
-  const [, bump] = useState(0);
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      for (const g of list.slice(0, 12)) {
-        if (coverCache[g.id] !== undefined || !g.cover) continue;
-        const a = await getArt(g.cover).catch(() => null);
-        coverCache[g.id] = a ? `data:image/${a.type === "png" ? "png" : "jpeg"};base64,${a.data}` : "";
-        if (live) bump((n) => n + 1);
-      }
-    })();
-    return () => { live = false; };
-  }, [list.length]);
-  return coverCache;
-}
+// ---- The older Hearth row over Steam's Home (Hearth's home screen off): row.tsx.
 function HearthRow(props: { children?: ReactNode }) {
   const games = useGames();
-  const list = games?.games ?? [];
-  const covers = useCovers(list);
-  if (!list.length) return <>{props.children}</>;
-  const cover = (g: Item) => covers[g.id] || null;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div style={{ flex: "none", padding: "18px 2.8vw 10px", background: brand?.wallpaper
-          ? `linear-gradient(180deg,rgba(12,16,22,.25),rgba(12,16,22,.95)),url(${brand.wallpaper}) center/cover` : "#121821" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          {brand?.logo && <img src={brand.logo} style={{ width: 30, height: 30 }} />}
-          <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".02em", textTransform: "uppercase", color: DIM }}>From Hearth</div>
-        </div>
-        <Focusable {...({ "flow-children": "horizontal" } as any)} style={{ display: "flex", gap: 14, overflow: "hidden" }}>
-          {list.slice(0, 12).map((g) => (
-            <DialogButton key={g.id} onClick={() => playItem(g)}
-              style={{ flex: "none", width: 120, height: 170, minWidth: 0, padding: 0, borderRadius: 10, overflow: "hidden", position: "relative",
-                background: cover(g) ? `url(${cover(g)}) center/cover` : PANEL }}>
-              {!cover(g) && <div style={{ padding: 10, fontSize: 13, color: "#e9eef4", whiteSpace: "normal" }}>{g.title}</div>}
-              <div style={{ position: "absolute", left: 6, bottom: 6, fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 8, background: ACCENT, color: INK }}>{g.store}</div>
-            </DialogButton>
-          ))}
-        </Focusable>
-      </div>
-      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>{props.children}</div>
-    </div>
-  );
+  return <HearthRowView games={games?.games ?? []} brand={brand} onPlay={playItem}>{props.children}</HearthRowView>;
 }
 
 export default definePlugin(() => {

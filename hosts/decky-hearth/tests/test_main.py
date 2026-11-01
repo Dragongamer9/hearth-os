@@ -38,6 +38,18 @@ def run(coro):
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'0' * 64
 JPG = b'\xff\xd8\xff\xe0' + b'0' * 64
+WEBP = b'RIFF\x20\x00\x00\x00WEBPVP8 ' + b'0' * 32
+GIF = b'GIF89a' + b'0' * 32
+AVIF = b'\x00\x00\x00\x1cftypavif' + b'0' * 32
+
+
+def real_png(w=4, h=6):
+    """A real (tiny) PNG, made here: zlib and the PNG chunk layout."""
+    import struct, zlib
+    def chunk(t, d):
+        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    raw = b''.join(b'\x00' + bytes([200, 60, 40]) * w for _ in range(h))
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
 
 
 class Backend(unittest.TestCase):
@@ -133,7 +145,8 @@ class Backend(unittest.TestCase):
         self.assertIsNone(self.m.read_art(notpic))
         self.assertEqual(self.m.read_art('https://x/y.jpg', fetch=lambda u: JPG)['type'], 'jpg')
         self.assertIsNone(self.m.read_art('http://x/y.jpg', fetch=lambda u: JPG), 'plain http is refused')
-        self.assertIsNone(self.m.read_art('https://x/y.webp', fetch=lambda u: b'RIFF0000WEBP'))
+        self.assertIsNone(self.m.read_art('https://x/y.webp', fetch=lambda u: WEBP, converters=[]),
+                          'a webp nothing here can convert is skipped (Steam takes png and jpg only)')
         link = os.path.join(home, 'sneaky.png')
         os.symlink(outside, link)
         self.assertIsNone(self.m.read_art(link), 'a link out of home is followed and refused')
@@ -260,7 +273,8 @@ class Takeover(unittest.TestCase):
         open(outside, 'wb').write(PNG)
         self.assertEqual(self.m.picture_url(outside), '')
         self.assertEqual(self.m.picture_url('/etc/passwd'), '')
-        self.assertEqual(self.m.picture_url('https://x/y.png'), '', 'web pictures load in the page')
+        self.assertTrue(self.m.picture_url('https://x/y.png', fetch=lambda u: PNG).startswith('data:image/png;base64,'),
+                        'a web picture the page could not load is fetched by the backend')
         os.symlink(outside, os.path.join(home, 'l.png'))
         self.assertEqual(self.m.picture_url(os.path.join(home, 'l.png')), '')
 
@@ -293,6 +307,119 @@ class Takeover(unittest.TestCase):
         block = re.search(r'export const DEFAULTS: Settings = \{(.*?)\};', ts, re.S).group(1)
         front = {k: v == 'true' for k, v in re.findall(r'(\w+): (true|false)', block)}
         self.assertEqual(front, self.m.DEFAULT_SETTINGS)
+
+
+class Art(unittest.TestCase):
+    """Every kind of picture reference Hearth gives (desktop_games.rs art_for_desktop, artcache.rs, library.rs art_url)
+    becomes a picture, safely, in every format the cache keeps (0.6.60's Hearth row showed blank cards)."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-art-')
+        self.home = os.path.join(self.tmp, 'home')
+        self.cache = os.path.join(self.home, '.local', 'share', 'nimbus', 'art-cache')
+        os.makedirs(self.cache)
+        self.m = load(self.tmp)
+        self.logged = []
+        sys.modules['decky'].logger = types.SimpleNamespace(info=self.logged.append)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def put(self, rel, data):
+        p = os.path.join(self.home, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, 'wb').write(data)
+        return p
+
+    def test_every_kind_of_reference(self):
+        pic = self.put('Pictures/my cover.png', PNG)
+        name = self.m.cache_name('https://images.gog-statics.com/abc.jpg')
+        self.put('.local/share/nimbus/art-cache/%s.webp' % name, WEBP)
+        other = 'a' * 24
+        self.put('.local/share/nimbus/art-cache/' + other, JPG)   # no extension
+        cases = {
+            pic: 'image/png',
+            'file://' + pic.replace(' ', '%20'): 'image/png',
+            'file://localhost' + pic.replace(' ', '%20'): 'image/png',
+            '~/Pictures/my cover.png': 'image/png',
+            'nimbus-art://file/' + pic.replace(' ', '%20') + '?v=3': 'image/png',
+            'nimbus-art://file//' + pic.lstrip('/').replace(' ', '%20'): 'image/png',
+            'nimbus-art://cache/' + name: 'image/webp',
+            'nimbus-art://cache/' + other: 'image/jpeg',
+            'https://images.gog-statics.com/abc.jpg': 'image/webp',   # the cached copy, no network
+        }
+        for ref, mime in cases.items():
+            self.assertTrue(self.m.picture_url(ref, fetch=self.fail).startswith('data:%s;base64,' % mime), ref)
+        self.assertEqual(self.m.picture_url('https://x/new.gif', fetch=lambda u: GIF)[:21], 'data:image/gif;base64')
+        self.assertEqual(self.m.picture_url('https://x/new.avif', fetch=lambda u: AVIF)[:22], 'data:image/avif;base64')
+
+    def test_refused_and_logged_without_paths(self):
+        outside = os.path.join(self.tmp, 'secret.png')
+        open(outside, 'wb').write(PNG)
+        for ref in (outside, 'file://' + outside, 'nimbus-art://file/' + outside, '/etc/passwd', 'nimbus-art://cache/../../x',
+                    'nimbus-art://cache/' + 'b' * 24, 'http://x/y.png', 'relative/y.png', '', self.put('notes.png', b'hello')):
+            self.assertEqual(self.m.picture_url(ref, fetch=lambda u: PNG), '', ref)
+        os.symlink(outside, os.path.join(self.cache, 'c' * 24 + '.png'))
+        self.assertEqual(self.m.picture_url('nimbus-art://cache/' + 'c' * 24), '', 'a link out of the cache is refused')
+        self.assertEqual(self.m.picture_url('https://x/y.png', fetch=lambda u: (_ for _ in ()).throw(OSError('down'))), '')
+        text = '\n'.join(self.logged)
+        self.assertIn('outside the allowed folders', text)
+        self.assertIn('not a picture', text)
+        self.assertIn('download failed (OSError)', text)
+        self.assertNotIn(self.tmp, text, 'no paths in the log')
+        self.assertNotIn('x/y.png', text, 'no addresses in the log')
+        self.assertGreaterEqual(self.m.ART_FAILS['page art: outside the allowed folders'], 3)
+
+    def test_steam_library_cache(self):
+        self.put('.local/share/Steam/appcache/librarycache/620_library_600x900.jpg', JPG)
+        self.put('.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/570/9f8e/library_600x900.jpg', JPG)
+        self.put('.steam/steam/appcache/librarycache/440/header.jpg', PNG)
+        self.assertTrue(self.m.picture_url('steam-lib:620:portrait').startswith('data:image/jpeg'))
+        self.assertTrue(self.m.picture_url('steam-lib:570:portrait').startswith('data:image/jpeg'), "Flathub's Steam, newer layout")
+        self.assertTrue(self.m.picture_url('steam-lib:440:wide').startswith('data:image/png'))
+        self.assertEqual(self.m.picture_url('steam-lib:440:portrait'), '')
+        self.assertEqual(self.m.picture_url('steam-lib:../../etc:portrait'), '')
+        self.assertEqual(self.m.picture_url('steam-lib:620:passwd'), '')
+
+    def test_steam_shortcut_art_is_png_or_jpg(self):
+        self.assertEqual(self.m.read_art('https://x/a.jpg', fetch=lambda u: JPG)['type'], 'jpg')
+        conv = []
+        def fake(data):
+            conv.append(data[:4])
+            return PNG
+        a = self.m.read_art('https://x/a.webp', fetch=lambda u: WEBP, converters=[lambda d: None, fake])
+        self.assertEqual((a['type'], base64.b64decode(a['data'])), ('png', PNG), 'webp converted to PNG for Steam')
+        self.assertEqual(conv, [b'RIFF'])
+        self.assertIsNone(self.m.read_art('https://x/a.avif', fetch=lambda u: AVIF, converters=[lambda d: b'not png']))
+        self.assertIn('avif and nothing here converts it', '\n'.join(self.logged))
+        self.assertEqual(self.m.to_png(GIF, converters=[lambda d: (_ for _ in ()).throw(RuntimeError()), lambda d: PNG]), PNG,
+                         'a converter that throws is skipped')
+
+    def test_real_conversion_when_a_converter_is_here(self):
+        src = real_png()
+        webp = None
+        try:
+            from PIL import Image  # noqa: F401
+            import io
+            out = io.BytesIO()
+            Image.open(io.BytesIO(src)).save(out, 'WEBP')
+            webp = out.getvalue()
+        except Exception:  # noqa: BLE001
+            for tool, args in (('magick', ['png:-', 'webp:-']), ('convert', ['png:-', 'webp:-']),
+                               ('ffmpeg', ['-loglevel', 'error', '-i', 'pipe:0', '-f', 'webp', 'pipe:1'])):
+                if shutil.which(tool):
+                    import subprocess
+                    r = subprocess.run([tool] + args, input=src, capture_output=True)
+                    if r.returncode == 0 and r.stdout[8:12] == b'WEBP':
+                        webp = r.stdout
+                        break
+        if not webp:
+            self.skipTest('no Pillow, ImageMagick or ffmpeg here to make a webp')
+        self.m.find_program = lambda n: shutil.which(n)
+        png = self.m.to_png(webp)
+        self.assertIsNotNone(png, 'Pillow, magick, convert or ffmpeg turned the webp into PNG')
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        self.assertEqual(self.m.kind_of(webp), 'webp')
+        self.assertEqual(self.m.kind_of(real_png()), 'png')
 
 
 class Theme(unittest.TestCase):

@@ -10,15 +10,18 @@ Runs as you (no root flag) inside Decky Loader and only talks to Hearth's own co
                            facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs). Nothing listens on a
                            port or socket for this: Decky's own channel to this backend is the only way in.
 
-Nothing is sent anywhere: game pictures from the web are fetched only to hand them to Steam as the shortcut's art.
+Nothing is sent anywhere: game pictures from the web are fetched (when Hearth's art cache hasn't got them) only to hand
+them to Steam as a shortcut's art or to a page that couldn't load them itself.
 """
 import base64
+import hashlib
 import json
 import os
 import pwd
 import shlex
 import shutil
 import subprocess
+import urllib.parse
 import urllib.request
 
 try:
@@ -181,50 +184,206 @@ def targets(games, flatpak, app=None, finder=None):
 
 
 ALLOWED_ROOTS = ('/usr/share/', '/var/lib/flatpak/', '/opt/')
+# What a picture is, from its first bytes (never from its name): Steam's SetCustomArtworkForApp takes png and jpg only,
+# the takeover's pages (Steam's window) show all of these.
+MIMES = {'png': 'image/png', 'jpg': 'image/jpeg', 'webp': 'image/webp', 'gif': 'image/gif', 'avif': 'image/avif'}
+CACHE_EXTS = ('jpg', 'png', 'webp', 'jpeg', 'gif', 'avif')   # hearth-core artcache.rs EXTS
+CONVERT_TIMEOUT = 20
+# Art that couldn't be shown, counted by reason (the plugin log gets the reasons and counts, never paths or addresses).
+ART_FAILS = {}
 
 
-def art_allowed(path, home_dir=None):
-    """Only pictures in your home, the system's shared files or Flatpak's (never other files)."""
+def art_failed(reason):
+    """Counts a picture that couldn't be used and logs it: the first few of each reason, then every 25th."""
+    reason = str(reason)[:80]
+    n = ART_FAILS.get(reason, 0) + 1
+    ART_FAILS[reason] = n
+    if n <= 3 or n % 25 == 0:
+        log('art: not shown (%s), %d so far; all: %s' % (reason, n, ', '.join('%s=%d' % kv for kv in sorted(ART_FAILS.items()))))
+    return None
+
+
+def art_cache_dir(home_dir=None):
+    """Hearth's art cache (hearth-core artcache.rs: ~/.local/share/nimbus/art-cache/<name>.<ext>)."""
+    return os.path.join(home_dir or home(), '.local', 'share', 'nimbus', 'art-cache')
+
+
+def cache_name(url):
+    """The cache's name for a web picture (hearth-core artcache::name_of: the address's SHA-1, first 24 hex digits)."""
+    return hashlib.sha1(url.encode('utf-8')).hexdigest()[:24]
+
+
+def cached_file(name, home_dir=None):
+    """The file behind nimbus-art://cache/<name> (or a web address's cached copy), or None."""
+    if not isinstance(name, str) or len(name) != 24 or any(c not in '0123456789abcdefABCDEF' for c in name):
+        return None
+    d = art_cache_dir(home_dir)
+    for ext in CACHE_EXTS + ('',):
+        f = os.path.join(d, name + ('.' + ext if ext else ''))
+        if os.path.isfile(f):
+            return f
+    return None
+
+
+def roots(home_dir=None):
+    h = home_dir or home()
+    out = list(ALLOWED_ROOTS) + [os.path.realpath(h).rstrip('/') + '/']
+    cache = os.path.realpath(art_cache_dir(h)).rstrip('/') + '/'
+    if cache not in out:
+        out.append(cache)
+    return tuple(out)
+
+
+def path_allowed(path, home_dir=None):
+    """A file in your home (Hearth's art cache is there), the system's shared files or Flatpak's; links are followed
+    first, so one pointing out of these places is refused."""
     if not isinstance(path, str) or not path.startswith('/'):
         return False
     real = os.path.realpath(path)
-    roots = ALLOWED_ROOTS + (os.path.realpath(home_dir or home()).rstrip('/') + '/',)
-    return real.lower().endswith(('.png', '.jpg', '.jpeg')) and any(real.startswith(r) for r in roots)
+    return any(real.startswith(r) for r in roots(home_dir))
+
+
+def art_allowed(path, home_dir=None):
+    """Only pictures (png, jpg, webp, gif, avif by name) in the allowed places. The bytes are checked when read."""
+    return (isinstance(path, str) and os.path.realpath(path).lower().endswith(tuple('.' + e for e in CACHE_EXTS))
+            and path_allowed(path, home_dir))
 
 
 def kind_of(data):
+    """png, jpg, webp, gif or avif from a picture's first bytes, else None."""
+    if not data:
+        return None
     if data.startswith(b'\x89PNG'):
         return 'png'
     if data.startswith(b'\xff\xd8'):
         return 'jpg'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'webp'
+    if data[:4] in (b'GIF8',):
+        return 'gif'
+    if data[4:8] == b'ftyp' and data[8:12] in (b'avif', b'avis'):
+        return 'avif'
     return None
 
 
-def read_art(ref, fetch=None):
-    """A picture as Steam's SetCustomArtworkForApp wants it: {data (base64), type: png|jpg}, or None."""
-    if not isinstance(ref, str) or not ref:
-        return None
+def local_path(ref, home_dir=None):
+    """Where a picture reference Hearth gives points on this device: (path, None), or (None, reason).
+    Takes absolute paths, ~/ paths, file:// addresses, nimbus-art://file/<path> and nimbus-art://cache/<name>."""
+    h = home_dir or home()
+    if ref.startswith('nimbus-art://cache/'):
+        name = ref[len('nimbus-art://cache/'):].split('?')[0].split('#')[0].strip('/')
+        f = cached_file(name, h)
+        if not f:
+            return None, 'not in the art cache'
+        return (f, None) if path_allowed(f, h) else (None, 'outside the allowed folders')
+    if ref.startswith('nimbus-art://file/'):
+        ref = urllib.parse.unquote(ref[len('nimbus-art://file/'):].split('?')[0].split('#')[0])
+        if not ref.startswith('/'):
+            ref = '/' + ref
+    elif ref.startswith('file://'):
+        rest = ref[7:]
+        if rest.startswith('localhost/'):
+            rest = rest[9:]
+        ref = urllib.request.url2pathname(rest.split('?')[0].split('#')[0])
+    if ref == '~' or ref.startswith('~/'):
+        ref = os.path.join(h, ref[2:])
+    if not ref.startswith('/'):
+        return None, 'unknown kind of address'
+    if not path_allowed(ref, h):
+        return None, 'outside the allowed folders'
+    return ref, None
+
+
+def art_bytes(ref, fetch=None, home_dir=None):
+    """A picture's bytes and kind: (data, kind, None), or (None, None, reason). Web pictures come from Hearth's art
+    cache when it has them (no network), else https ones are fetched; plain http only from the cache."""
+    if not isinstance(ref, str) or not ref.strip():
+        return None, None, 'no picture'
+    ref = ref.strip()
+    low = ref.lower()
     data = None
-    if ref.startswith('file://'):
-        ref = urllib.request.url2pathname(ref[7:])
-    if ref.startswith('https://'):
+    if low.startswith(('http://', 'https://')):
+        f = cached_file(cache_name(ref), home_dir)
+        if f and path_allowed(f, home_dir):
+            ref, low = f, f.lower()
+        elif not low.startswith('https://'):
+            return None, None, 'plain http, not cached'
+        else:
+            try:
+                data = (fetch or _fetch)(ref)
+            except Exception as e:  # noqa: BLE001 - any failure just means no picture
+                return None, None, 'download failed (%s)' % type(e).__name__
+    if data is None:
+        path, why = local_path(ref, home_dir)
+        if not path:
+            return None, None, why
         try:
-            data = (fetch or _fetch)(ref)
-        except Exception as e:  # noqa: BLE001 - any failure just means no picture
-            log('art: %s: %s' % (ref, e))
-            return None
-    elif art_allowed(ref):
-        try:
-            if os.path.getsize(ref) > ART_LIMIT:
-                return None
-            with open(ref, 'rb') as f:
+            if os.path.getsize(path) > ART_LIMIT:
+                return None, None, 'too big'
+            with open(path, 'rb') as f:
                 data = f.read()
         except OSError:
-            return None
-    if not data or len(data) > ART_LIMIT:
-        return None
+            return None, None, 'unreadable file'
+    if not data:
+        return None, None, 'empty'
+    if len(data) > ART_LIMIT:
+        return None, None, 'too big'
     k = kind_of(data)
-    return {'data': base64.b64encode(data).decode(), 'type': k} if k else None
+    if not k:
+        return None, None, 'not a picture'
+    return data, k, None
+
+
+def _pillow_png(data):
+    from PIL import Image  # noqa: WPS433 - optional, only when Decky's Python has it
+    import io
+    im = Image.open(io.BytesIO(data))
+    im.seek(0)
+    out = io.BytesIO()
+    im.convert('RGBA').save(out, 'PNG')
+    return out.getvalue()
+
+
+def _tool_png(data, finder=None):
+    finder = finder or find_program
+    for name, args in (('magick', ['-[0]', 'png:-']), ('convert', ['-[0]', 'png:-']),
+                       ('ffmpeg', ['-loglevel', 'error', '-i', 'pipe:0', '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'])):
+        prog = finder(name)
+        if not prog:
+            continue
+        try:
+            r = subprocess.run([prog] + args, input=data, capture_output=True, timeout=CONVERT_TIMEOUT, env=clean_env())
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if r.returncode == 0 and r.stdout.startswith(b'\x89PNG'):
+            return r.stdout
+    return None
+
+
+def to_png(data, converters=None):
+    """A webp/gif/avif picture as PNG for Steam: Pillow if Decky's Python has it, else ImageMagick or ffmpeg if the
+    system has them. None when nothing here can convert it."""
+    for conv in converters if converters is not None else (_pillow_png, _tool_png):
+        try:
+            out = conv(data)
+        except Exception:  # noqa: BLE001 - try the next one
+            out = None
+        if out and out.startswith(b'\x89PNG'):
+            return out
+    return None
+
+
+def read_art(ref, fetch=None, converters=None):
+    """A picture as Steam's SetCustomArtworkForApp wants it: {data (base64), type: png|jpg}, or None (logged)."""
+    data, k, why = art_bytes(ref, fetch)
+    if not data:
+        return art_failed('shortcut art: ' + why)
+    if k not in ('png', 'jpg'):
+        png = to_png(data, converters)
+        if not png:
+            return art_failed('shortcut art: %s and nothing here converts it' % k)
+        data, k = png, 'png'
+    return {'data': base64.b64encode(data).decode(), 'type': k}
 
 
 def _fetch(url):
@@ -318,32 +477,55 @@ def hearth_data(what, arg='', run=subprocess.run):
     return v
 
 
-PICTURE_KINDS = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif'}
+STEAM_ROOTS = ('.steam/steam', '.steam/root', '.local/share/Steam', '.var/app/com.valvesoftware.Steam/.local/share/Steam',
+               '.var/app/com.valvesoftware.Steam/data/Steam')
+# Steam's own pictures of its games in its library cache (appcache/librarycache): older Steam names them
+# <appid>_<file>, newer Steam keeps them in <appid>/ (sometimes one folder deeper).
+STEAM_ART = {'portrait': ('library_600x900.jpg', 'library_600x900_2x.jpg', 'library_capsule.jpg'),
+             'wide': ('header.jpg', 'library_header.jpg', 'library_hero.jpg'),
+             'hero': ('library_hero.jpg', 'header.jpg'), 'logo': ('logo.png',)}
 
 
-def picture_url(ref):
-    """A picture on this device as a data: address for the takeover's pages (Steam's window can't open files); only
-    from the places art_allowed allows, and only pictures. Web pictures aren't read here (the page loads them)."""
-    if not isinstance(ref, str) or not ref:
+def steam_art_file(appid, kind, home_dir=None):
+    """A Steam game's own picture from Steam's library cache on this device, or None."""
+    appid = str(appid)
+    if not appid.isdigit() or kind not in STEAM_ART:
+        return None
+    h = home_dir or home()
+    for root in STEAM_ROOTS:
+        cache = os.path.join(h, root, 'appcache', 'librarycache')
+        if not os.path.isdir(cache):
+            continue
+        for name in STEAM_ART[kind]:
+            for f in (os.path.join(cache, '%s_%s' % (appid, name)), os.path.join(cache, appid, name)):
+                if os.path.isfile(f):
+                    return f
+            sub = os.path.join(cache, appid)
+            try:
+                for d in sorted(os.listdir(sub)):
+                    f = os.path.join(sub, d, name)
+                    if os.path.isfile(f):
+                        return f
+            except OSError:
+                pass
+    return None
+
+
+def picture_url(ref, fetch=None):
+    """A picture as a data: address for the takeover's pages and the Hearth row (Steam's window can't open files on
+    this device): every kind of reference Hearth gives (see local_path, art_bytes), and steam-lib:<appid>:<kind> for a
+    Steam game's own picture from Steam's library cache. Only pictures, only from the allowed places; '' otherwise."""
+    if isinstance(ref, str) and ref.startswith('steam-lib:'):
+        parts = ref.split(':')
+        f = steam_art_file(parts[1], parts[2]) if len(parts) == 3 else None
+        if not f:
+            return ''   # Steam hasn't got this picture: the card shows the title (not counted as a failure)
+        ref = f
+    data, k, why = art_bytes(ref, fetch)
+    if not data:
+        art_failed('page art: ' + why)
         return ''
-    if ref.startswith('file://'):
-        ref = urllib.request.url2pathname(ref[7:])
-    if not ref.startswith('/'):
-        return ''
-    real = os.path.realpath(ref)
-    ext = os.path.splitext(real)[1].lower()
-    roots = ALLOWED_ROOTS + (os.path.realpath(home()).rstrip('/') + '/',)
-    if ext not in PICTURE_KINDS or not any(real.startswith(r) for r in roots):
-        return ''
-    try:
-        if os.path.getsize(real) > ART_LIMIT:
-            return ''
-        with open(real, 'rb') as f:
-            data = f.read()
-    except OSError:
-        return ''
-    ok = kind_of(data) or (data[:4] == b'RIFF' and data[8:12] == b'WEBP' and 'webp') or (data[:3] == b'GIF' and 'gif')
-    return 'data:%s;base64,%s' % (PICTURE_KINDS[ext], base64.b64encode(data).decode()) if ok else ''
+    return 'data:%s;base64,%s' % (MIMES[k], base64.b64encode(data).decode())
 
 
 def note_error(part, message, name='errors.log'):
@@ -414,6 +596,10 @@ class Plugin:
 
     async def get_picture(self, ref):
         return picture_url(ref)
+
+    async def art_error(self, where, reason):
+        """A picture that didn't load in Steam's window (the page's <img> said so): counted and logged by reason."""
+        art_failed('%s: %s' % (str(where)[:30], str(reason)[:40]))
 
     async def get_target(self, game_id):
         if not valid_id(game_id) or game_id.startswith('steam:'):

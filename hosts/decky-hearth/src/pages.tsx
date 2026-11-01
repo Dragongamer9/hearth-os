@@ -4,10 +4,10 @@
 import * as DUI from "@decky/ui";
 import { DialogButton, Focusable, Navigation } from "@decky/ui";
 import { ReactNode, useEffect, useState } from "react";
-import { logError, useAsk, usePic } from "./api";
+import { logError, useArt, useAsk } from "./api";
 import { gamePage, openApp, playGame, say } from "./actions";
-import { DESTS, Game, Home, STORE_TABS, bytes, downloadLine, driveLine, homeShelves, percent, played, validId } from "./model";
-import { Boundary, C, Chips, Page, Shelf, blip, go, onFocus } from "./ui";
+import { DESTS, Game, Home, STORE_TABS, artCandidates, bytes, downloadLine, driveLine, homeShelves, percent, played, validId } from "./model";
+import { Boundary, C, Chips, CoverArt, Page, Shelf, blip, go, onFocus } from "./ui";
 import { guard } from "./state";
 
 export interface Brand { css: string; logo: string; wallpaper: string }
@@ -69,8 +69,8 @@ export function HearthHome(props: { steam: ReactNode }) {
 
 function Hero(props: { game: Game | null }) {
   const g = props.game;
-  const art = usePic(g ? g.hero || g.wide : null);
-  const logo = usePic(g?.logo);
+  const art = useArt(artCandidates(g, "hero"), "hero").src;
+  const logo = useArt(g?.logo ? [g.logo] : [], "logo").src;
   return (
     <div style={{ position: "relative", height: "34vh", minHeight: 200, margin: "-54px -2.8vw 10px", padding: "54px 2.8vw 18px", display: "flex", flexDirection: "column", justifyContent: "flex-end",
                   background: art ? `linear-gradient(90deg,rgba(12,16,22,.92),rgba(12,16,22,.2) 70%),linear-gradient(0deg,${C.bg},transparent 45%),url("${art}") center/cover` : undefined }}>
@@ -101,12 +101,12 @@ interface StorePageData { store: string; sections: { id: string; title: string; 
 
 function StoreTile(props: { it: StoreItem }) {
   const it = props.it;
-  const src = usePic(it.wide || it.tall || it.icon);
+  const { src, failed } = useArt([it.wide, it.tall, it.icon].filter((x): x is string => !!x), "store");
   const p: NonNullable<StoreItem["price"]> = it.price || {};
   return (
     <DialogButton className="ht-tile" style={{ width: 276, height: 160 }} onClick={() => { blip("ok"); openApp("hearth-app:store"); say(`Opening Hearth Store for ${it.title}`); }}
       {...({ onGamepadFocus: onFocus } as any)}>
-      {src && <img src={src} style={{ height: 112, bottom: "auto", objectFit: it.wide ? "cover" : "contain" }} />}
+      {src && <img src={src} onError={failed} style={{ height: 112, bottom: "auto", objectFit: it.wide ? "cover" : "contain" }} />}
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 48, padding: "6px 10px", background: C.panel, textAlign: "left" }}>
         <div style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.title}</div>
         <div style={{ fontSize: 12, color: p.free ? C.accent : C.dim }}>
@@ -185,12 +185,10 @@ export function LibraryGrid(props: { tab: string; perRow?: number }) {
 }
 function TileFor(props: { g: Game }) {
   const g = props.g;
-  const src = usePic(g.cover || g.wide);
   return (
     <DialogButton className="ht-tile" style={{ width: 132, height: 188, opacity: g.installed ? 1 : 0.55 }} onClick={() => { blip("ok"); gamePage(g); }}
       {...({ onGamepadFocus: onFocus } as any)}>
-      {src && <img src={src} />}
-      {!src && <div className="ht-name">{g.title}</div>}
+      <CoverArt game={g} shape="portrait" badge="none" where="library" />
     </DialogButton>
   );
 }
@@ -288,7 +286,7 @@ export function GamePage() {
   if (!id) { try { id = decodeURIComponent((location.pathname.split("/hearth/game/")[1] || "")); } catch { id = ""; } }
   const lib = useAsk<LibraryData>("library", "", 30000);
   const g = lib && !(lib as any).error ? lib.tabs.flatMap((t) => t.items).find((x) => x.id === id) : undefined;
-  const art = usePic(g ? g.hero || g.wide : null);
+  const art = useArt(artCandidates(g, "hero"), "game page").src;
   return (
     <Boundary part="gamePage" onError={guard.fail}>
       <Page wallpaper={art || brandNow?.wallpaper}>

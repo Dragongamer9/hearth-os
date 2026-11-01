@@ -122,6 +122,33 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
 made. Your other Decky plugins and their settings stay in `~/homebrew`. If you installed Decky yourself with Decky's
 installer, Hearth leaves that Decky alone and only adds the Hearth plugin.
 
+## Game pictures in Steam Game Mode
+
+The Hearth row on Steam's home, Hearth's home and pages and the Library tabs show each game's picture with its
+**title always at the bottom**. Pictures are tried in order: the portrait cover, then (for Steam's games) Steam's own
+picture from its library cache on this device, then the wide art, cropped. If none loads, the card shows the title on
+Hearth's panel colour; a card is never blank.
+
+Every kind of picture Hearth keeps is shown: web pictures (from Hearth's picture cache when it has them, so nothing is
+downloaded again), Hearth's cache addresses (`nimbus-art://cache/…`, `nimbus-art://file/…`), your own pictures (in
+your home folder, `~/…`, `file://…`), in PNG, JPEG, WebP, AVIF or GIF. The plugin reads only pictures (checked from
+their first bytes), only from your home folder, `/usr/share`, `/opt` and Flatpak's folder; links pointing elsewhere are
+refused. Steam's window can't open files, so the plugin hands these to the page as `data:` addresses of the right type.
+
+**Sync to Steam library** gives each shortcut Hearth's cover and banner. Steam only takes PNG and JPEG there, so WebP,
+AVIF and GIF pictures are turned into PNG first (with Pillow if Decky's Python has it, otherwise ImageMagick or ffmpeg
+if they're installed); when nothing can convert one, that shortcut simply keeps Steam's own look and the plugin's log
+says so.
+
+Pictures that couldn't be shown are counted in the plugin's log by reason (never the picture's path or address), for
+example `art: not shown (page art: not in the art cache), 3 so far`. **Send logs** (Hearth's Settings) has a
+**Steam Game Mode (Decky plugin)** section: whether Decky and its service are installed and running, whether the Hearth
+plugin is there, the newest lines of its log (`~/homebrew/logs/…`) and the parts that turned themselves off.
+
+0.6.60 showed blank cards in the Hearth row: the covers were loaded, but Hearth's look over Steam paints every Steam
+dialog button's background (with `!important`), and the row drew each cover as that button's background. Covers are now
+pictures inside the card, which the look doesn't touch.
+
 ## What only Hearth's Game Mode has
 
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's

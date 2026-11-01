@@ -7,9 +7,9 @@ name: Hearth Decky plugin
 
 on:
   push:
-    # feature/decky-hearth, feature/decky-takeover: a new workflow can't be started by hand until it's on the default
+    # feature/decky-hearth, feature/decky-art: a new workflow can't be started by hand until it's on the default
     # branch (remove them once it is).
-    branches: [bughunt, feature/decky-hearth, feature/decky-takeover]
+    branches: [bughunt, feature/decky-hearth, feature/decky-art]
     paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_steam_mode.py',
             'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_takeover.rs',
             'hosts/hearth-rs/src/main.rs',
