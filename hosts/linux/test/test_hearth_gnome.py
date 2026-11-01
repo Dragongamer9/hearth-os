@@ -125,6 +125,69 @@ class SessionFallback(unittest.TestCase):
         self.assertIn('HEARTH_DESKTOP=gnome', env)
         self.assertTrue(os.path.exists(os.path.join(self.home, '.config', 'gnome-initial-setup-done')))
 
+    def test_session_mode_reaches_systemd_and_leaves_again(self):
+        # GNOME Shell is a systemd user service: Hearth's session mode has to be in systemd's environment (or it's
+        # plain GNOME, without Hearth's extensions and so without the controller), and out of it once GNOME ends.
+        self.gnome('ok')
+        self.write_bin('systemctl', '#!/bin/sh\necho "$*" >> "$HOME/systemctl.log"\nexit 0\n')
+        _, log = self.session('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=gnome\n')
+        calls = pathlib.Path(self.home, 'systemctl.log').read_text()
+        self.assertIn('--user import-environment GNOME_SHELL_SESSION_MODE HEARTH_DESKTOP', calls)
+        self.assertIn('--user unset-environment GNOME_SHELL_SESSION_MODE', calls)
+        self.assertLess(calls.index('import-environment GNOME_SHELL_SESSION_MODE'), calls.index('unset-environment GNOME_SHELL_SESSION_MODE'))
+        self.assertIn('gnome: up; checking the controller', log)
+
+    def test_controller_when_the_extension_doesnt_start_it(self):
+        # The extension didn't run hearth-pad --gnome: hearth-companion says why in pad.log and runs hearth-pad
+        # --standalone (the pointer at least) while GNOME runs.
+        shell = os.path.join(self.share, 'desktop', 'shell')
+        os.makedirs(shell)
+        shutil.copy(ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-companion', shell)
+        pathlib.Path(shell, 'hearth-pad').write_text(
+            'import os, sys, time\nopen(os.path.expanduser("~/pad-ran"), "a").write(" ".join(sys.argv[1:]) + "\\n")\ntime.sleep(8)\n')
+        self.write_bin('gnome-session', '#!/bin/sh\n"$(dirname "$0")/gnome-shell" &\nsleep 7\nexit 0\n')
+        self.write_bin('gnome-shell', '#!/bin/sh\nsleep 15\n')
+        _, log = self.session('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=gnome\n',
+                              extra_env={'HEARTH_COMPANION_DELAY': '0', 'HEARTH_COMPANION_WAIT': '1'})
+        import time
+        ran = os.path.join(self.home, 'pad-ran')
+        for _ in range(60):
+            if os.path.exists(ran):
+                break
+            time.sleep(0.2)
+        time.sleep(0.5)
+        pad_log = pathlib.Path(self.home, '.local', 'share', 'nimbus', 'pad.log')
+        text = pad_log.read_text() if pad_log.exists() else ''
+        self.assertTrue(os.path.exists(ran), log + text)
+        self.assertEqual(pathlib.Path(ran).read_text().strip(), '--standalone')
+        self.assertIn("hearth-pad@hearthos.fun didn't start hearth-pad --gnome within 1 s", text)
+        self.assertIn('gnome-shell started with GNOME_SHELL_SESSION_MODE=', text)
+        self.assertIn('starting hearth-pad --standalone instead', text)
+        subprocess.run(['pkill', '-KILL', '-f', self.tmp], capture_output=True)
+
+    def test_controller_left_to_the_extension(self):
+        # The extension's hearth-pad --gnome is running: nothing else is started.
+        shell = os.path.join(self.share, 'desktop', 'shell')
+        os.makedirs(shell)
+        shutil.copy(ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-companion', shell)
+        self.write_bin('gnome-shell', '#!/bin/sh\nsleep 8\n')
+        self.write_bin('hearth-pad', '#!/bin/sh\nsleep 8\n')
+        procs = [subprocess.Popen([os.path.join(self.bin, 'gnome-shell')]),
+                 subprocess.Popen(['sh', os.path.join(self.bin, 'hearth-pad'), '--gnome'])]
+        try:
+            env = {'HOME': self.home, 'XDG_RUNTIME_DIR': self.run_dir, 'NIMBUS_SHARE': self.share,
+                   'PATH': self.bin + ':/usr/bin:/bin', 'HEARTH_DESKTOP': 'gnome'}
+            r = subprocess.run(['sh', os.path.join(shell, 'hearth-companion'), 'gnome', 'test'], env=env,
+                               capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0)
+            text = pathlib.Path(self.home, '.local', 'share', 'nimbus', 'pad.log').read_text()
+            self.assertIn("GNOME Shell's hearth-pad@hearthos.fun extension started hearth-pad --gnome", text)
+            self.assertNotIn('--standalone', text)
+        finally:
+            for p in procs:
+                p.kill()
+                p.wait()
+
     def test_safe_graphics_or_seat_never_gnome(self):
         self.gnome('ok')
         _, log = self.session('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=gnome\n', extra_env={'HEARTH_SEAT': 'seat1'})

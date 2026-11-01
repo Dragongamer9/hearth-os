@@ -164,6 +164,156 @@ class SessionFallback(unittest.TestCase):
             p.wait()
 
 
+COMPANION = ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-companion'
+
+
+def wait_for(path, seconds=12):
+    """True once the file exists (the companion runs in the background, after the session's own steps)."""
+    import time
+    end = time.time() + seconds
+    while time.time() < end:
+        if os.path.exists(path):
+            time.sleep(0.3)
+            return True
+        time.sleep(0.2)
+    return False
+
+
+class Controller(unittest.TestCase):
+    """The controller in Hearth Plasma: on a real device Plasma 6 starts XDG autostart entries through systemd's
+    generator, which never sees /usr/share/hearth-plasma/xdg (0.6.59: no controller at all). nimbus-session starts it
+    itself once Plasma is up (companion_start → desktop/shell/hearth-companion plasma), once, only in Hearth Plasma,
+    and says in pad.log what it decided."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-companion-test-')
+        self.home = os.path.join(self.tmp, 'home')
+        self.run_dir = os.path.join(self.tmp, 'run')
+        self.bin = os.path.join(self.tmp, 'bin')
+        self.share = os.path.join(self.tmp, 'share')
+        shell = os.path.join(self.share, 'desktop', 'shell')
+        for d in (self.home, self.run_dir, self.bin, shell):
+            os.makedirs(d)
+        os.chmod(self.run_dir, 0o700)
+        shutil.copy(COMPANION, shell)
+        for f in ('osk-plasma.qml', 'hearth-pad'):
+            pathlib.Path(shell, f).write_text('# stand-in\n')
+        self.conf = os.path.join(self.home, '.config', 'nimbus', 'session.conf')
+        os.makedirs(os.path.dirname(self.conf))
+        self.write_bin('labwc', '#!/bin/sh\ntouch "$HOME/labwc-ran"\nexit 0\n')
+        # quickshell stand-in: says how it was started, then stays a while (as the real one does).
+        self.write_bin('quickshell', '#!/bin/sh\necho "ARGS=$* HEARTH_DESKTOP=$HEARTH_DESKTOP WAYLAND_DISPLAY=$WAYLAND_DISPLAY '
+                                     'CUR=$XDG_CURRENT_DESKTOP" >> "$HOME/quickshell-ran"\nexec sleep 8\n')
+        self.pad_log = os.path.join(self.home, '.local', 'share', 'nimbus', 'pad.log')
+
+    def tearDown(self):
+        subprocess.run(['pkill', '-KILL', '-f', self.tmp], capture_output=True)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def write_bin(self, name, text):
+        p = os.path.join(self.bin, name)
+        with open(p, 'w') as f:
+            f.write(text)
+        os.chmod(p, 0o755)
+
+    def env(self, **kw):
+        e = {'HOME': self.home, 'XDG_RUNTIME_DIR': self.run_dir, 'NIMBUS_SHARE': self.share,
+             'PATH': self.bin + ':/usr/bin:/bin', 'NIMBUS_APP': '/nonexistent', 'HEARTH_PLASMA_TIMEOUT': '20',
+             'HEARTH_COMPANION_DELAY': '0'}
+        e.update(kw)
+        return e
+
+    def companion(self, *args, **env):
+        return subprocess.run(['sh', str(COMPANION)] + list(args), env=self.env(**env), capture_output=True, text=True, timeout=30)
+
+    def pad_text(self):
+        return pathlib.Path(self.pad_log).read_text() if os.path.exists(self.pad_log) else ''
+
+    def test_session_starts_it_once_plasma_is_up(self):
+        # Plasma's shell has the desktop's Wayland display in its environment, as on a device.
+        self.write_bin('startplasma-wayland', '#!/bin/sh\nexport WAYLAND_DISPLAY=wayland-hearth-test\n'
+                                              '"$(dirname "$0")/kwin_wayland" & "$(dirname "$0")/plasmashell" &\nsleep 5\nexit 0\n')
+        self.write_bin('kwin_wayland', '#!/bin/sh\nsleep 9\n')
+        self.write_bin('plasmashell', '#!/bin/sh\nsleep 9\n')
+        with open(self.conf, 'w') as f:
+            f.write('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=plasma\n')
+        subprocess.run(['sh', str(SESSION)], env=self.env(), capture_output=True, text=True, timeout=60)
+        log = pathlib.Path(self.home, '.local', 'share', 'nimbus', 'session.log').read_text()
+        self.assertIn('plasma: up; starting the controller', log)
+        ran = os.path.join(self.home, 'quickshell-ran')
+        self.assertTrue(wait_for(ran), log + self.pad_text())
+        text = pathlib.Path(ran).read_text()
+        self.assertEqual(text.count('ARGS='), 1, text)
+        self.assertIn('ARGS=-p %s/desktop/shell/osk-plasma.qml' % self.share, text)
+        self.assertIn('HEARTH_DESKTOP=plasma', text)
+        self.assertIn('WAYLAND_DISPLAY=wayland-hearth-test', text)
+        self.assertIn('CUR=KDE', text)
+        self.assertIn('Hearth Plasma controller (session): starting quickshell osk-plasma.qml', self.pad_text())
+
+    def test_only_in_hearth_plasma(self):
+        r = self.companion('plasma', 'test', HEARTH_DESKTOP='')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("not started: this isn't Hearth Plasma", self.pad_text())
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'quickshell-ran')))
+
+    def test_not_without_kwin(self):
+        r = self.companion('plasma', 'test', HEARTH_DESKTOP='plasma')
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("not started: kwin_wayland isn't running", self.pad_text())
+
+    def test_once(self):
+        self.write_bin('kwin_wayland', '#!/bin/sh\nsleep 12\n')
+        kwin = subprocess.Popen([os.path.join(self.bin, 'kwin_wayland')])
+        try:
+            first = subprocess.Popen(['sh', str(COMPANION), 'plasma', 'first'], env=self.env(HEARTH_DESKTOP='plasma'),
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.assertTrue(wait_for(os.path.join(self.home, 'quickshell-ran')), self.pad_text())
+            r = self.companion('plasma', 'second', HEARTH_DESKTOP='plasma')
+            self.assertEqual(r.returncode, 0)
+            self.assertIn('Hearth Plasma controller (second): already running', self.pad_text())
+            self.assertEqual(pathlib.Path(self.home, 'quickshell-ran').read_text().count('ARGS='), 1)
+            first.kill()
+            first.wait()
+        finally:
+            kwin.kill()
+            kwin.wait()
+
+    def test_no_quickshell_says_so(self):
+        if shutil.which('quickshell', path='/usr/bin:/bin'):
+            self.skipTest('quickshell is installed on this machine')
+        os.remove(os.path.join(self.bin, 'quickshell'))
+        self.write_bin('kwin_wayland', '#!/bin/sh\nsleep 6\n')
+        kwin = subprocess.Popen([os.path.join(self.bin, 'kwin_wayland')])
+        try:
+            self.companion('plasma', 'test', HEARTH_DESKTOP='plasma')
+            self.assertIn("not started: quickshell isn't installed", self.pad_text())
+        finally:
+            kwin.kill()
+            kwin.wait()
+
+    def test_start_paths_dont_rely_on_xdg_autostart(self):
+        # What a real (systemd-started) session does: nimbus-session starts each desktop's controller itself once the
+        # desktop is up, and stops it before the next mode; the old autostart entries only call hearth-companion (which
+        # runs it once), guarded by HEARTH_DESKTOP.
+        text = SESSION.read_text()
+        self.assertIn('COMPANION="$SHARE/desktop/shell/hearth-companion"', text)
+        for desk, fn in (('plasma', 'run_plasma'), ('gnome', 'run_gnome'), ('cosmic', 'run_cosmic')):
+            body = text.split(fn + '() {', 1)[1].split('\n}\n', 1)[0]
+            self.assertIn('companion_start %s ' % desk, body, fn)
+            self.assertIn('if [ "$up" = 1 ]; then', body.split('companion_start %s ' % desk)[0].rsplit('\n', 1)[-1], fn)
+        for fn in ('settle_plasma', 'settle_gnome', 'settle_cosmic', 'settle'):
+            self.assertIn('companion_stop', text.split('\n' + fn + '() {', 1)[1].split('\n}\n', 1)[0], fn)
+        for d, f, desk in (('hearth-plasma', 'hearth-osk.desktop', 'plasma'), ('hearth-cosmic', 'hearth-cosmic.desktop', 'cosmic')):
+            auto = (SYSTEM_FILES / d / 'xdg' / 'autostart' / f).read_text()
+            self.assertIn('[ "$HEARTH_DESKTOP" = %s ]' % desk, auto)
+            self.assertIn('hearth-companion" %s autostart' % desk, auto)
+            self.assertNotIn('quickshell -p', auto)
+        comp = COMPANION.read_text()
+        self.assertIn('flock -n 9', comp)
+        self.assertIn('"$@" 9>&-', comp)
+        self.assertTrue(os.access(COMPANION, os.X_OK))
+
+
 class Helper(unittest.TestCase):
     def setUp(self):
         self.m = load()

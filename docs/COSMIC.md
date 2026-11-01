@@ -82,8 +82,14 @@ monitor and wallpapers (Hearth already has those kinds).
 
 ## The companion: Hearth's pieces on COSMIC
 
-`hosts/linux/desktop/shell/desk-cosmic.qml` (Quickshell, layer-shell windows over COSMIC; started by
-`/usr/share/hearth-cosmic/xdg/autostart/hearth-cosmic.desktop`, only in Hearth COSMIC). It's Mantel's own QML:
+`hosts/linux/desktop/shell/desk-cosmic.qml` (Quickshell, layer-shell windows over COSMIC; started with the controller
+`hearth-pad --cosmic` by `desktop/cosmic/hearth-cosmic companion`, which `desktop/shell/hearth-companion cosmic` runs
+once nimbus-session's `run_cosmic` sees COSMIC's compositor and panel up, only in Hearth COSMIC). It used to be an XDG
+autostart entry in `/usr/share/hearth-cosmic/xdg/autostart`; a real, systemd-started COSMIC hands autostart to
+systemd's xdg-autostart generator, which never sees that folder, so the companion and the controller never started
+(0.6.59). `hearth-companion` runs it once (a lock in `$XDG_RUNTIME_DIR`), only with `HEARTH_DESKTOP=cosmic`, only while
+`cosmic-comp` runs, and writes its decisions to `pad.log` and `cosmic.log` (both, and `cosmic-companion.log`, are in
+Send logs). The old entry only calls `hearth-companion` now. It's Mantel's own QML:
 Launcher.qml, QuickAccess.qml, RadialMenu.qml (the Hearth menu), Keyboard.qml (the on-screen keyboard), Help.qml (the
 controls), plus CosmicHub.qml. `desktop/cosmic/hearth-cosmic launcher|games|quick|link|storage|menu|keyboard` opens
 them (the panel's entries and Super use it), starting the companion first if it isn't running.

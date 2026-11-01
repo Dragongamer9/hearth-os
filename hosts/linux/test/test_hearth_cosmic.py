@@ -148,6 +148,40 @@ class SessionFallback(unittest.TestCase):
         self.assertIn('HEARTH_DESKTOP=cosmic', env)
         self.assertIn('CUR=unset', env)     # start-cosmic sets COSMIC itself
 
+    def test_controller_started_once_cosmic_is_up(self):
+        # A real COSMIC starts autostart entries through systemd's generator, which never sees
+        # /usr/share/hearth-cosmic/xdg (0.6.59: no companion, no controller): nimbus-session starts it itself.
+        shell = os.path.join(self.share, 'desktop', 'shell')
+        cosmic_dir = os.path.join(self.share, 'desktop', 'cosmic')
+        os.makedirs(shell)
+        os.makedirs(cosmic_dir)
+        shutil.copy(ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-companion', shell)
+        for f in ('desk-cosmic.qml', 'hearth-pad'):
+            pathlib.Path(shell, f).write_text('# stand-in\n')
+        pathlib.Path(cosmic_dir, 'hearth-cosmic').write_text(
+            '#!/bin/sh\necho "ARGS=$* HEARTH_DESKTOP=$HEARTH_DESKTOP WAYLAND_DISPLAY=$WAYLAND_DISPLAY" >> "$HOME/companion-ran"\nexec sleep 8\n')
+        self.write_bin('quickshell', '#!/bin/sh\nexit 0\n')
+        self.write_bin('start-cosmic', '#!/bin/sh\nexport WAYLAND_DISPLAY=wayland-cosmic-test\n'
+                                       '"$(dirname "$0")/cosmic-comp" & "$(dirname "$0")/cosmic-panel" &\nsleep 5\nexit 0\n')
+        self.write_bin('cosmic-comp', '#!/bin/sh\nsleep 9\n')
+        self.write_bin('cosmic-panel', '#!/bin/sh\nsleep 9\n')
+        _, log = self.run_fake('NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=cosmic\n', extra_env={'HEARTH_COMPANION_DELAY': '0'})
+        self.assertIn('cosmic: up; starting the controller', log)
+        ran = os.path.join(self.home, 'companion-ran')
+        import time
+        for _ in range(60):
+            if os.path.exists(ran):
+                break
+            time.sleep(0.2)
+        time.sleep(0.5)
+        pad_log = pathlib.Path(self.home, '.local', 'share', 'nimbus', 'pad.log')
+        self.assertTrue(os.path.exists(ran), log + (pad_log.read_text() if pad_log.exists() else ''))
+        text = pathlib.Path(ran).read_text()
+        self.assertEqual(text.count('ARGS='), 1, text)
+        self.assertIn('ARGS=companion HEARTH_DESKTOP=cosmic WAYLAND_DISPLAY=wayland-cosmic-test', text)
+        self.assertIn('Hearth COSMIC controller (session): starting hearth-cosmic companion', pad_log.read_text())
+        subprocess.run(['pkill', '-KILL', '-f', self.tmp], capture_output=True)
+
     def test_failed_earlier_skips_cosmic(self):
         self.cosmic('ok')
         pathlib.Path(self.run_dir, 'hearth-cosmic-failed').touch()
