@@ -55,4 +55,34 @@ public interface IOpenEngine : IEngine
     JsonObject Verify(uint appId);
     /// <summary>Stops a queued or running download (what's done is kept; it can be resumed).</summary>
     JsonObject Cancel(uint appId);
+    /// <summary>Valve's client is about to run: stop downloads (kept, resumed when it has closed) and write nothing
+    /// into the libraries meanwhile. The engine stays signed in, so sign-in and the library keep working.</summary>
+    JsonObject Standby();
+    /// <summary>Pauses one queued or running download (or all with null): what's done is kept.</summary>
+    JsonObject Pause(uint? appId);
+    JsonObject Resume(uint? appId);
+    /// <summary>Moves a download "up", "down" or to the "top" of the queue.</summary>
+    JsonObject Move(uint appId, string to);
+    /// <summary>Hearth's settings (automatic updates off/idle/always, speed limit in KB/s, 0 none) and whether a game is
+    /// running; null leaves one as it is.</summary>
+    JsonObject Config(string? autoUpdate, long? limitKBps, bool? gameRunning);
+    /// <summary>Steam Cloud before a direct start: newer cloud saves come down ({downloaded}), or {conflict, files}
+    /// when both sides changed (nothing starts until the player answers), or {supported: false, why}.</summary>
+    Task<JsonObject> CloudBefore(uint appId);
+    /// <summary>Steam Cloud after the game exits: changed saves go up in one batch ({uploaded}), or {conflict}.</summary>
+    Task<JsonObject> CloudAfter(uint appId);
+    /// <summary>The player's answer to a conflict: "local", "cloud" or "both".</summary>
+    Task<JsonObject> CloudResolve(uint appId, string choice);
+    /// <summary>A game's branches ({branches: [{name, buildid, password, unlocked, description}], chosen, installed}).</summary>
+    Task<JsonObject> BetaList(uint appId);
+    /// <summary>Steam's beta password check: the branches it unlocks.</summary>
+    Task<JsonObject> BetaPassword(uint appId, string password);
+    /// <summary>Picks the branch ("" / "public": default); an installed game switches (a queued update).</summary>
+    Task<JsonObject> BetaSet(uint appId, string branch);
+    /// <summary>The player's subscribed Workshop items for a game ({items: [{id, title, size, installed, needsUpdate}]}).</summary>
+    Task<JsonObject> WorkshopList(uint appId);
+    /// <summary>Queues a Workshop job: new and updated items come down, unsubscribed ones are removed.</summary>
+    JsonObject WorkshopSync(uint appId);
+    /// <summary>Unsubscribes an item and removes its files.</summary>
+    Task<JsonObject> WorkshopUnsubscribe(uint appId, ulong item);
 }

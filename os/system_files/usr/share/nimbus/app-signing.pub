@@ -1,0 +1,5 @@
+# Hearth app updates (docs/APP-UPDATES.md): the public key Hearth app update bundles are signed with.
+# PLACEHOLDER: no key yet, so this image never uses a Hearth app update (it always starts its built-in Hearth).
+# The owner makes the key pair once (docs/APP-UPDATES.md, "Signing key") and replaces these lines with the one line
+# of the public key, "ssh-ed25519 AAAA... hearth-app". The private key only ever goes in the repository's
+# HEARTH_APP_SIGNING_KEY secret.

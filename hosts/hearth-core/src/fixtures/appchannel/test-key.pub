@@ -1,0 +1,2 @@
+# Test key for appchannel.rs unit tests only (its private half was thrown away).
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHS8mB4OfFYuy4btdLeGJ8s7JjLf419AqIEqD6LJQwiZ hearth-app-test

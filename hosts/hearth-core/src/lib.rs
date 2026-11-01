@@ -5,6 +5,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod access;   // Settings › Accessibility (desktop/shell/hearth-access)
 pub mod admin;
 pub mod appid;
+pub mod appchannel;   // Hearth app updates without a system update (docs/APP-UPDATES.md)
 pub mod appupdate;
 pub mod artcache;
 pub mod backup;
@@ -18,6 +19,7 @@ pub mod collections;
 pub mod desktop_games;
 pub mod discord;   // Discord: "Playing X" (Rich Presence; needs the owner's application ID, /etc/hearth/discord.conf)
 pub mod display;
+pub mod diskspace;   // Settings › Storage: drives, games by size, moving games, clean up, low space (docs/STORAGE.md)
 pub mod emulators;
 pub mod friends;
 // ---- Hearth's gaming apps (Controller Lab, Saves, Mods): opened from Game Mode
@@ -71,6 +73,7 @@ pub mod space;
 pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
+pub mod steam_takeover;   // Steam Game Mode takeover: what the Hearth Decky plugin's pages show (`--steam-mode-data`)
 pub mod steam_mode;   // Steam Game Mode (Experimental): Steam's gamepad UI in gamescope with the Hearth Decky plugin (docs/STEAM-GAME-MODE.md)
 pub mod steam_launch;   // Steam games in Game Mode: Steam kept ready, its windows in front, the starting screen's stages
 pub mod steam_engine;   // Settings › Library › Steam engine: Lightweight (hosts/hearth-steam), with fallback to the normal client

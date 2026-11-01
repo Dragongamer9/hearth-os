@@ -1970,6 +1970,39 @@ def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_
     }
 
 
+OSTREE_REPO = '/sysroot/ostree/repo'
+
+
+def drop_cached_images(repo=OSTREE_REPO):
+    """Before moving to another edition: forget the container images (and their layers) kept from earlier pulls, so
+    the new edition is downloaded whole. Layers another edition's ostree stored can't be reused safely: Peppermint's
+    ostree stored Anatase's layers without SELinux labels, and Anatase then booted to a black screen from them.
+    Deployments keep their own files (they hold commits, not these images), so the systems in the boot menu are
+    untouched; only the download cache goes. Never fatal: a failure just means more gets reused."""
+    if not os.path.isdir(repo):
+        return 0
+    try:
+        r = subprocess.run(['ostree', 'container', 'image', 'list', '--repo=' + repo], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    if r.returncode != 0:
+        return 0
+    dropped = 0
+    for ref in [l.strip() for l in r.stdout.splitlines() if l.strip()]:
+        try:
+            if subprocess.run(['ostree', 'container', 'image', 'remove', '--repo=' + repo, ref],
+                              capture_output=True, text=True, timeout=120).returncode == 0:
+                dropped += 1
+        except (OSError, subprocess.SubprocessError):
+            pass
+    try:
+        subprocess.run(['ostree', 'container', 'image', 'prune-layers', '--repo=' + repo], capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    print(f'log: Dropped {dropped} kept download(s) so the new Hearth OS is fetched whole', flush=True)
+    return dropped
+
+
 def move_to_new_os(edition='anatase', testing=False):
     user = caller()
     if edition in ARCHIVED_EDITIONS:
@@ -2008,6 +2041,8 @@ def move_to_new_os(edition='anatase', testing=False):
     print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
     progress(0, 'Getting the new Hearth OS')
     ensure_podman()
+    if current is not None:
+        drop_cached_images()
     stage = Stage()
     try:
         if layered():

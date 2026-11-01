@@ -50,7 +50,7 @@ pub fn list(lib: &Library) -> Value {
 }
 
 /// The library read the way Hearth reads it, without starting anything (no download is resumed, nothing is saved).
-fn read_library() -> Library {
+pub fn read_library() -> Library {
     let store = crate::store::Store::open(crate::paths::data_dir().join("library.json"));
     let mut lib = Library::new(store, crate::paths::home());
     lib.scan_quietly();
@@ -89,17 +89,63 @@ pub fn play_outcome(events: &[Value]) -> Option<i32> {
     events.iter().find_map(|e| match e["name"].as_str() { Some("game.exited") => Some(0), Some("game.timeout") => Some(1), _ => None })
 }
 
+/// Steam's environment for a shortcut, cleaned for Hearth (`--play-now` runs as a Steam shortcut): Steam's runtime
+/// libraries (LD_LIBRARY_PATH, its PATH), its preloads (LD_PRELOAD: Steam's overlay library), the Steam Runtime and
+/// pressure-vessel settings and Steam's compatibility-tool paths are meant for Steam's own games and break Hearth's
+/// program and its Proton/umu launches. Returns (names to remove, names to set). Kept: DISPLAY, WAYLAND_DISPLAY,
+/// XDG_*, HOME, the session's D-Bus, gamescope's variables, and SteamGameId/SteamOverlayGameId (Steam's id for the
+/// shortcut; a game started by umu gets umu's own anyway). Steam's overlay library goes back in LD_PRELOAD for the game
+/// (the wrapper the plugin gives the shortcut sets it aside in HEARTH_STEAM_LD_PRELOAD) unless HEARTH_STEAM_OVERLAY=0:
+/// gamescope keeps the game in front through Steam's reaper process, which the game still descends from.
+pub fn steam_env_scrub(vars: &[(String, String)]) -> (Vec<String>, Vec<(String, String)>) {
+    let get = |k: &str| vars.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+    let drop_exact = ["LD_LIBRARY_PATH", "LD_PRELOAD", "SYSTEM_LD_LIBRARY_PATH", "SYSTEM_PATH", "STEAM_RUNTIME", "STEAM_ZENITY",
+        "SteamAppId", "SteamClientLaunch", "SteamEnv", "STEAMSCRIPT", "STEAMSCRIPT_VERSION", "STEAM_LD_LIBRARY_PATH",
+        "ENABLE_VK_LAYER_VALVE_steam_overlay_1", "ENABLE_VK_LAYER_VALVE_steam_fossilize_1", "DISABLE_VK_LAYER_VALVE_steam_overlay_1",
+        "LD_LIBRARY_PATH_ORIG", "HEARTH_STEAM_LD_PRELOAD", "STEAM_COMPAT_FLAGS"];
+    let drop_prefix = ["STEAM_RUNTIME_", "PRESSURE_VESSEL_", "STEAM_COMPAT_", "SRT_", "STEAMDECK_RUNTIME"];
+    let remove: Vec<String> = vars.iter().map(|(n, _)| n.clone())
+        .filter(|n| drop_exact.contains(&n.as_str()) || drop_prefix.iter().any(|p| n.starts_with(p))).collect();
+    let mut set = Vec::new();
+    // PATH: the system's when Steam kept it (SYSTEM_PATH), else Steam's own entries taken out; the usual folders always there.
+    let path = get("SYSTEM_PATH").filter(|p| !p.is_empty()).or(get("PATH")).unwrap_or("");
+    let mut parts: Vec<&str> = path.split(':').filter(|p| !p.is_empty() && !p.contains("steam-runtime") && !p.contains("/ubuntu12_") && !p.contains("pressure-vessel")).collect();
+    for d in ["/usr/local/bin", "/usr/bin", "/bin"] { if !parts.contains(&d) { parts.push(d); } }
+    let clean = parts.join(":");
+    if get("PATH") != Some(clean.as_str()) { set.push(("PATH".to_string(), clean)); }
+    let overlay: Vec<&str> = get("HEARTH_STEAM_LD_PRELOAD").or(get("LD_PRELOAD")).unwrap_or("")
+        .split([':', ' ']).filter(|p| p.contains("gameoverlayrenderer.so")).collect();
+    if !overlay.is_empty() && get("HEARTH_STEAM_OVERLAY") != Some("0") { set.push(("LD_PRELOAD".to_string(), overlay.join(":"))); }
+    (remove, set)
+}
+
 /// `hearth --play-now <id>`: plays the game and returns when it has closed. Returns the exit code (0 played, 1 it
-/// couldn't start, 2 not a game this can play).
+/// couldn't start, 2 not a game this can play). Every step and failure goes to Hearth's log with the reason.
 pub fn play_now(id: &str) -> i32 {
+    let vars: Vec<(String, String)> = std::env::vars().collect();
+    let (remove, set) = steam_env_scrub(&vars);
+    crate::bridge::log(&format!("play-now: {id}: starting (from Steam's Game Mode; Steam's game id {}; cleaned {} of Steam's variables{}{})",
+        std::env::var("SteamGameId").unwrap_or_else(|_| "none".into()), remove.len(),
+        if remove.is_empty() { String::new() } else { format!(": {}", remove.iter().take(12).cloned().collect::<Vec<_>>().join(" ")) },
+        if set.iter().any(|(k, _)| k == "LD_PRELOAD") { "; Steam's overlay kept for the game" } else { "" }));
+    for k in &remove { std::env::remove_var(k); }
+    for (k, v) in &set { std::env::set_var(k, v); }
     let mut lib = read_library();
-    if let Err(e) = play_check(&lib, id) { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id}: {e}")); return 2; }
-    crate::bridge::log(&format!("play-now: {id} (from Steam's Game Mode)"));
-    if let Err(e) = lib.launch(id) { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id} couldn't start: {e}")); return 1; }
+    if let Err(e) = play_check(&lib, id) { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id}: not started: {e}")); return 2; }
+    let g = &lib.games[id];
+    crate::bridge::log(&format!("play-now: {id} ({}, {}) launching", g.title, g.source));
+    match lib.launch(id) {
+        Err(e) => { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id} couldn't start: {e}")); return 1; }
+        Ok(v) => crate::bridge::log(&format!("play-now: {id} launched ({v}); running: {}", lib.running.is_some())),
+    }
+    let started = std::time::Instant::now();
     loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
-        if let Some(code) = play_outcome(&lib.tick_game()) { crate::bridge::log(&format!("play-now: {id} {}", if code == 0 { "closed" } else { "never started" })); return code; }
-        if lib.running.is_none() { return 0; }
+        if let Some(code) = play_outcome(&lib.tick_game()) {
+            crate::bridge::log(&format!("play-now: {id} {} after {}s", if code == 0 { "closed" } else { "never started (no game process appeared)" }, started.elapsed().as_secs()));
+            return code;
+        }
+        if lib.running.is_none() { crate::bridge::log(&format!("play-now: {id}: Hearth isn't tracking it any more after {}s; done", started.elapsed().as_secs())); return 0; }
     }
 }
 // ---- end Steam Game Mode
@@ -174,6 +220,32 @@ mod tests {
         assert_eq!(take_file(&f, t, ROUTE_MAX_AGE_SECS).as_deref(), Some("manual:abc"));
         assert!(!f.exists());
         assert_eq!(take_file(&f, t, ROUTE_MAX_AGE_SECS), None);
+    }
+
+    #[test]
+    fn steams_environment_is_cleaned_for_hearth() {
+        let v = |pairs: &[(&str, &str)]| pairs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        let env = v(&[("HOME", "/home/me"), ("DISPLAY", ":0"), ("XDG_RUNTIME_DIR", "/run/user/1000"), ("GAMESCOPE_WAYLAND_DISPLAY", "gamescope-0"),
+            ("LD_LIBRARY_PATH", "/home/me/.steam/steam/ubuntu12_32/steam-runtime/usr/lib"), ("LD_PRELOAD", "/home/me/.steam/steam/ubuntu12_32/gameoverlayrenderer.so:/home/me/.steam/steam/ubuntu12_64/gameoverlayrenderer.so"),
+            ("STEAM_RUNTIME", "/x"), ("STEAM_RUNTIME_LIBRARY_PATH", "/x"), ("PRESSURE_VESSEL_FILESYSTEMS_RO", "/y"), ("STEAM_COMPAT_CLIENT_INSTALL_PATH", "/s"),
+            ("SteamAppId", "0"), ("SteamGameId", "13416523480334614528"), ("PATH", "/home/me/.steam/steam/ubuntu12_32/steam-runtime/usr/bin:/usr/bin"), ("SYSTEM_PATH", "")]);
+        let (remove, set) = steam_env_scrub(&env);
+        for k in ["LD_LIBRARY_PATH", "LD_PRELOAD", "STEAM_RUNTIME", "STEAM_RUNTIME_LIBRARY_PATH", "PRESSURE_VESSEL_FILESYSTEMS_RO", "STEAM_COMPAT_CLIENT_INSTALL_PATH", "SteamAppId", "SYSTEM_PATH"] {
+            assert!(remove.contains(&k.to_string()), "{k} removed: {remove:?}");
+        }
+        for k in ["HOME", "DISPLAY", "XDG_RUNTIME_DIR", "GAMESCOPE_WAYLAND_DISPLAY", "SteamGameId"] { assert!(!remove.contains(&k.to_string()), "{k} kept"); }
+        let get = |k: &str| set.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("PATH").as_deref(), Some("/usr/bin:/usr/local/bin:/bin"), "Steam's runtime folders out of PATH");
+        assert_eq!(get("LD_PRELOAD").as_deref(), Some("/home/me/.steam/steam/ubuntu12_32/gameoverlayrenderer.so:/home/me/.steam/steam/ubuntu12_64/gameoverlayrenderer.so"),
+            "only Steam's overlay goes back, for the game");
+        // The plugin's wrapper set the preload aside; the system PATH Steam kept is used; the overlay can be turned off.
+        let env2 = v(&[("HEARTH_STEAM_LD_PRELOAD", "/evil/libx.so /s/ubuntu12_64/gameoverlayrenderer.so"), ("PATH", "/steam/bin"), ("SYSTEM_PATH", "/usr/local/bin:/usr/bin:/bin:/usr/games")]);
+        let (r2, s2) = steam_env_scrub(&env2);
+        assert!(r2.contains(&"HEARTH_STEAM_LD_PRELOAD".to_string()));
+        assert!(s2.contains(&("LD_PRELOAD".to_string(), "/s/ubuntu12_64/gameoverlayrenderer.so".to_string())), "{s2:?}");
+        assert!(s2.contains(&("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin:/usr/games".to_string())), "{s2:?}");
+        let (_, s3) = steam_env_scrub(&v(&[("LD_PRELOAD", "/s/gameoverlayrenderer.so"), ("HEARTH_STEAM_OVERLAY", "0"), ("PATH", "/usr/local/bin:/usr/bin:/bin")]));
+        assert!(s3.is_empty(), "nothing to change: {s3:?}");
     }
 
     #[test]

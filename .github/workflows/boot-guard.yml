@@ -28,6 +28,9 @@ on:
       - 'hosts/linux/test/test_hearth_unlock.py'
       - '.github/scripts/hearth-unlock-check.sh'
       - '.github/workflows/boot-guard.yml'
+      - 'tools/app-bundle.py'
+      - 'hosts/linux/test/test_hearth_app_channel.py'
+      - 'hosts/linux/session/nimbus-watchdog'
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -42,6 +45,16 @@ jobs:
             grep -v -E '^$|\.\.\. ok$' /tmp/t.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
           fi
           cat /tmp/t.txt
+      # Hearth app updates (docs/APP-UPDATES.md): the bundle packing and the image's app ABI tag (the start-up choice
+      # itself runs end to end with a built Hearth in rust.yml and release.yml).
+      - name: Hearth app updates (packing, ABI)
+        run: |
+          cd hosts/linux
+          if ! python3 -m unittest discover -s test -p 'test_hearth_app_channel.py' -v > /tmp/a.txt 2>&1; then
+            grep -A12 -E '^(FAIL|ERROR):' /tmp/a.txt | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          tail -n 3 /tmp/a.txt
+          echo "::notice title=app ABI::$(python3 ../../tools/app-bundle.py abi)"
       - name: Recovery USB tests
         run: |
           cd hosts/linux

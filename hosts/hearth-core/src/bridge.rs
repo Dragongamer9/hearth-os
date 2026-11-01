@@ -79,6 +79,13 @@ fn recorder_cli(args: &[&str]) -> Result<Value, String> {
 }
 // ==== end of Hearth Recorder
 
+/// A Steam game's app id from a request's "id" ("steam:<id>"), when Hearth's Steam client (Open) is the engine in use:
+/// its downloads are controlled in the engine's queue.
+fn steam_app(a: &Value) -> Option<u32> {
+    if crate::steam_engine::current_mode() != crate::steam_engine::Mode::Open { return None; }
+    a["id"].as_str()?.strip_prefix("steam:")?.parse().ok()
+}
+
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         // Before anything else this version does: store sign-ins that went missing are put back from where they
@@ -92,8 +99,15 @@ impl Bridge {
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
         // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
         // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
+        // Hearth's own Steam client (Open) is the default: switched on once for everyone who never chose an
+        // engine, with a short explainer in Settings › Library (steam_engine::migrate).
+        if let Some(writes) = b.library.store.data.as_object().and_then(crate::steam_engine::migrate) {
+            if b.library.store.update(|d| { for (k, v) in writes { d.insert(k.into(), v); } }).is_ok() {
+                crate::bridge::log("steam engine: Hearth's own Steam client is now the default (Settings › Library to turn it off)");
+            }
+        }
         {
-            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
+            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready_effective(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
             let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
             if !seat && (keep || (!on_demand && bg)) {
                 std::thread::spawn(move || {
@@ -154,6 +168,14 @@ impl Bridge {
             }
             "queueChanged" => self.library.save_queue(),
             "importDone" => out.extend(self.import_done(&v["result"])),
+            // Settings › Storage moved a GOG game: its new folder goes in library.json (diskspace.rs waits for this).
+            "diskspaceGog" => {
+                let (gid, dir) = (v["gid"].as_str().unwrap_or("").to_string(), v["dir"].as_str().unwrap_or("").to_string());
+                let r = if gid.is_empty() || dir.is_empty() { Err("Nothing to record".to_string()) } else {
+                    self.library.store.update(|d| { crate::store::object_in(d, "gogInstalls").insert(gid.clone(), json!(dir)); }).map_err(|e| e.to_string())
+                };
+                crate::diskspace::gog_ack(r);
+            }
             "epicImported" => {
                 let arr = |k: &str| v[k].as_array().cloned().unwrap_or_default();
                 let tried = arr("tried");
@@ -433,12 +455,15 @@ impl Bridge {
                 Ok(json!({"engine": mode.name(), "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}))
             }
             "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
+            // The once-only "Hearth's own Steam client is now the default" note in Settings › Library: read.
+            "steam.engine.explained" => io(self.library.store.update(|d| { d.insert("steamEngineExplain".into(), json!(false)); })),
             // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
             "steam.engine.signIn" => crate::steam_engine::sign_in(a),
             "library.setSteamKeepReady" => {
                 let on = a["on"] == true;
-                if on && crate::gamescope::inside() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
-                io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }))
+                let r = io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }));
+                if on && crate::gamescope::inside() && self.library.steam_keep_ready_effective() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                r
             }
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
@@ -499,6 +524,8 @@ impl Bridge {
                 crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || crate::steam_mode::decky(&action));
                 Ok(json!(DEFERRED))
             }
+            // Start in Steam Game Mode (per device, off by default; the session turns it off by itself when it fails)
+            "steamMode.setDefault" => crate::steam_mode::set_default(a["on"].as_bool().unwrap_or(false)),
             // ---- end Steam Game Mode
             "emu.status" => Ok(crate::emulators::status(&paths::home())),
             "emu.makeFolders" => crate::emulators::make_folders(&paths::home()).map(|p| json!(p)),
@@ -513,6 +540,12 @@ impl Bridge {
             }
             "game.cancelInstall" => {
                 let id = req("id")?;
+                // Hearth's Steam client's download: out of its queue (what's downloaded is kept).
+                if let Some(app) = steam_app(a) {
+                    if let Ok(v) = crate::steam_engine::download_op("cancel", Some(app), None) {
+                        if v["cancelled"] == true { self.library.scan(); (self.emit)(Bridge::event("library.changed", json!({}))); return Ok(json!({"ok": true})); }
+                    }
+                }
                 if let Some(app) = id.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()) {
                     if !crate::steam_ctl::cancel_pending(app) { return Err("Steam is downloading it already: cancel it in Steam (Manage in Steam).".into()); }
                     self.library.scan();
@@ -523,9 +556,49 @@ impl Bridge {
                 if removed { (self.emit)(Bridge::event("install.done", self.library.install_done(&id, Some("cancelled"), None))); }
                 Ok(json!({"ok": ok}))
             }
+            // A Steam download of Hearth's Steam client (Open) is paused, resumed and moved in the engine's queue.
+            "game.pauseInstall" | "game.resumeInstall" | "game.installFirst" if steam_app(a).is_some() => {
+                let op = match method { "game.pauseInstall" => "pause", "game.resumeInstall" => "resume", _ => "move" };
+                crate::steam_engine::download_op(op, steam_app(a), if op == "move" { Some("top") } else { None }).map(|_| json!({"ok": true}))
+            }
             "game.pauseInstall" => Ok(json!({"ok": self.library.pause_install(&req("id")?)})),
             "game.resumeInstall" => Ok(json!({"ok": self.library.resume_install(&req("id")?)})),
             "game.installFirst" => Ok(json!({"ok": self.library.install_first(&req("id")?)})),
+            // Up / down / top in the queue: Hearth's Steam client's downloads; Epic and GOG go to the top only.
+            "game.moveInstall" => {
+                let to = a["to"].as_str().unwrap_or("top");
+                if steam_app(a).is_some() { return crate::steam_engine::download_op("move", steam_app(a), Some(to)).map(|_| json!({"ok": true})); }
+                if to == "top" { return Ok(json!({"ok": self.library.install_first(&req("id")?)})); }
+                Err("Only Steam downloads of Hearth's Steam client move up and down; Epic and GOG downloads can go first.".into())
+            }
+            // Pause / resume every download: Hearth's Steam client's queue and Hearth's own (Epic, GOG).
+            "downloads.pauseAll" | "downloads.resumeAll" => {
+                let pause = method == "downloads.pauseAll";
+                let _ = crate::steam_engine::download_op(if pause { "pause" } else { "resume" }, None, None);
+                let ids = self.library.queue.lock().unwrap().ids();
+                for id in ids { if pause { self.library.pause_install(&id); } else { self.library.resume_install(&id); } }
+                Ok(json!({"ok": true}))
+            }
+            // Settings › Library: automatic updates (off / idle / always) and the download speed limit (KB/s, 0 none).
+            // A game page's beta branch and Workshop requests (Hearth's Steam client), answered when Steam has.
+            "steam.engine.call" => {
+                let args = a.clone();
+                crate::watchdog::long_task();
+                self.later(move || crate::steam_engine::game_call(&args))
+            }
+            // A Steam Cloud conflict answered on the page ({id, choice: local|cloud|both}); answered when the saves are done.
+            "steam.cloudResolve" => {
+                let app = req("id")?.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()).ok_or("Not a Steam game.")?;
+                let choice = req("choice")?;
+                crate::watchdog::long_task();
+                self.later(move || crate::steam_engine::cloud_resolve(app, &choice))
+            }
+            "steam.engine.config" => {
+                if let Some(v) = a["autoUpdate"].as_str() { let v = crate::steam_engine::auto_update_setting(&json!(v)); io(self.library.store.update(|d| { d.insert("steamAutoUpdate".into(), json!(v)); }))?; }
+                if let Some(k) = a["limitKBps"].as_u64() { io(self.library.store.update(|d| { d.insert("steamLimitKBps".into(), json!(k)); }))?; }
+                crate::steam_engine::push_config(json!({"autoUpdate": self.library.steam_auto_update(), "limitKBps": self.library.steam_limit_kbps(), "gameRunning": self.library.running.is_some()}));
+                Ok(json!({"autoUpdate": self.library.steam_auto_update(), "limitKBps": self.library.steam_limit_kbps()}))
+            }
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
             "steam.downloads" => { self.open_steam("steam://open/downloads"); Ok(json!({"ok": true})) }
             // Steam's window in front again (during a sign-in, after coming back to Hearth).
@@ -649,6 +722,40 @@ impl Bridge {
                 } else { crate::space::grow(&from, gb, self.emit.clone()) }
             }
             "space.clearJournal" => crate::space::clear_journal(),
+            // Settings › Storage (diskspace.rs, docs/STORAGE.md): drives, games by size, moving, clean up, low space.
+            "diskspace.status" => {
+                let (ctx, warn, want) = (crate::diskspace::ctx_from(&self.library), crate::diskspace::warn_settings(&self.library.store.data), a["scan"] == true);
+                self.later(move || Ok(crate::diskspace::status(&ctx, warn, want)))
+            }
+            "diskspace.scan" => Ok(crate::diskspace::scan(crate::diskspace::ctx_from(&self.library))),
+            "diskspace.move" => {
+                let (id, to) = (req("id")?, req("to")?);
+                let (ctx, on_demand) = (crate::diskspace::ctx_from(&self.library), self.library.steam_on_demand());
+                self.later(move || crate::diskspace::start_move(ctx, &id, &to, on_demand))
+            }
+            "diskspace.cancel" => Ok(crate::diskspace::cancel()),
+            "diskspace.cleanList" => { let ctx = crate::diskspace::ctx_from(&self.library); self.later(move || Ok(crate::diskspace::clean_list(&ctx))) }
+            "diskspace.clean" => {
+                let list = |k: &str| a[k].as_array().map(|v| v.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
+                let (keys, confirmed, ctx) = (list("keys"), list("confirmed"), crate::diskspace::ctx_from(&self.library));
+                self.later(move || crate::diskspace::clean(&ctx, &keys, &confirmed))
+            }
+            "diskspace.low" => {
+                let (ctx, warn) = (crate::diskspace::ctx_from(&self.library), crate::diskspace::warn_settings(&self.library.store.data));
+                self.later(move || Ok(crate::diskspace::low(&ctx, warn)))
+            }
+            // Before an install: is the drive it goes to low on space?
+            "diskspace.check" => {
+                let id = req("id")?;
+                let warn = crate::diskspace::warn_settings(&self.library.store.data);
+                let dest = if id.starts_with("steam:") { self.library.steam_library() } else { Some(self.library.install_root()) };
+                match dest { Some(d) => Ok(crate::diskspace::install_check(&d, warn)), None => Ok(json!({"low": false})) }
+            }
+            "diskspace.setWarn" => {
+                let (on, gb) = (a["on"] != false, a["gb"].as_u64().unwrap_or(15).clamp(1, 500));
+                io(self.library.store.update(|d| { d.insert("lowSpace".into(), json!({"on": on, "gb": gb})); }))?;
+                Ok(json!({"on": on, "gb": gb}))
+            }
             "art.status" => Ok(crate::artcache::status()),
             // Steam friends: who's online and what they're playing
             "steam.friends" => Ok(crate::friends::list(&self.library.home)),
@@ -883,6 +990,22 @@ impl Bridge {
             "osinstall.restart" => Ok(json!(self.osinstall.restart())),
             "osinstall.useMantel" => Ok(json!(crate::osinstall::handoff(true))),
             // Updates to the app itself
+            // Hearth app updates without a system update (appchannel.rs, docs/APP-UPDATES.md): Settings › Updates.
+            "appUpdates.status" => Ok(crate::appchannel::status()),
+            "appUpdates.setMode" => {
+                let m = crate::appchannel::Mode::parse(a["mode"].as_str().unwrap_or("")).ok_or("Unknown choice")?;
+                crate::appchannel::set_mode(m)?;
+                Ok(crate::appchannel::status())
+            }
+            "appUpdates.check" => {
+                // In the background: the download can take minutes. Its progress comes as "appUpdates" events.
+                let install = a["install"] == true || crate::appchannel::mode() == crate::appchannel::Mode::Auto;
+                std::thread::spawn(move || { crate::appchannel::updater().check(install); });
+                Ok(crate::appchannel::status())
+            }
+            "appUpdates.useBuiltin" => { crate::appchannel::use_builtin()?; Ok(crate::appchannel::status()) }
+            // Hearth starts again (the session's watchdog starts the chosen version: an update, or the built-in one).
+            "appUpdates.restart" => { (self.emit)(json!({"type": "restart"})); Ok(Value::Null) }
             "update.status" => Ok(self.app_updates.status(self.auto_update())),
             "update.check" => Ok(self.app_updates.check(self.auto_update())),
             "update.download" => Ok(self.app_updates.download(self.auto_update())),
@@ -945,7 +1068,7 @@ impl Bridge {
                 if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
                 (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
                 if r["resumed"] == true { (self.host)("resumeGame", &Value::Null); }
-                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"]}))
+                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"], "cloudConflict": r["cloudConflict"]}))
             }
             // Quick Resume: games put aside stay frozen in memory and carry on where they were
             "game.quickResume" => {
@@ -1874,6 +1997,7 @@ fn shell_install(remove: bool) -> Result<(), String> {
 
 fn features() -> Vec<&'static str> {
     let mut f = vec!["restartApp", "exportLogs", "powerButton", "overamp", "quickResume", "friends", "screenshots", "sendLogs", "xodus", "battlenet", "recomps"];
+    f.push("diskspace");   // Settings › Storage (Ember doesn't have it, so the page stays hidden there)
     // Quick Access on the starting screen (a game or Steam loading) is the overlay, as over the game (gamemode.rs).
     f.push("overlayOverLaunch");
     if crate::guide::controller_available() { f.push("remap"); }

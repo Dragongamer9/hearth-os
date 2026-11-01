@@ -1,15 +1,18 @@
 # Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (hosts/decky-hearth) built and packed
-# like Decky's plugin template does, its backend's tests, pictures of its theme over a static stand-in for Steam's UI,
+# like Decky's plugin template does, its backend's tests and its pure parts' unit tests, pictures of its theme over a
+# static stand-in for Steam's UI and of the takeover's real pages (Hearth's home, Store, Library) with made-up games,
 # the session's Steam Game Mode and the Decky helper (hosts/linux/test/test_hearth_steam_mode.py), and the Rust side
 # (hearth-core's tests, the app checked). No Steam, no sign-in, nothing of Valve's is run.
 name: Hearth Decky plugin
 
 on:
   push:
-    # feature/decky-hearth: a new workflow can't be started by hand until it's on the default branch.
-    branches: [bughunt, feature/decky-hearth]
+    # feature/decky-hearth, feature/decky-art: a new workflow can't be started by hand until it's on the default
+    # branch (remove them once it is).
+    branches: [bughunt, feature/decky-hearth, feature/decky-art]
     paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_steam_mode.py',
-            'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs',
+            'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_takeover.rs',
+            'hosts/hearth-rs/src/main.rs',
             'os/system_files/usr/libexec/nimbus/hearth-decky', '.github/workflows/decky-hearth.yml']
   workflow_dispatch:
 
@@ -30,6 +33,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Unit tests of the takeover's pure parts (src/model.ts)
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test --test-reporter=tap hosts/decky-hearth/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
+          grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=plugin unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=plugin unit tests::$(grep -E '^# (tests|pass|fail)' /tmp/unit.log | tr '\n' ' ')"
       - name: Build and pack (pnpm build, then Decky's layout and a zip)
         working-directory: hosts/decky-hearth
         run: |
@@ -53,11 +62,13 @@ jobs:
         with:
           name: decky-hearth
           path: ${{ runner.temp }}/out/decky-hearth.zip
-      - name: The theme over a stand-in for Steam's UI (pictures)
+      - name: The theme over a stand-in for Steam's UI, and the takeover's pages (pictures)
         run: |
-          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
           cp hosts/decky-hearth/tests/render-mock.mjs tools/render-mock.mjs
+          cp hosts/decky-hearth/tests/render-takeover.mjs tools/render-takeover.mjs
           HEARTH_ROOT="$PWD" node tools/render-mock.mjs "$RUNNER_TEMP/shots"
+          HEARTH_ROOT="$PWD" node tools/render-takeover.mjs "$RUNNER_TEMP/shots"
       - name: Keep the pictures (ci/decky-hearth-shots)
         run: |
           git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
@@ -109,7 +120,7 @@ jobs:
             exit 1
           fi
           echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
-          grep -E 'steam_mode::|desktop_games::' test.log | head -20
+          grep -E 'steam_mode::|desktop_games::|steam_takeover::' test.log | head -30
       - name: Check the app (--play-now)
         working-directory: hosts/hearth-rs
         run: |

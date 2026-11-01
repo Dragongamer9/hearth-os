@@ -45,6 +45,88 @@ const path = require('path');
     if (SHOP.store !== 'gog' || !document.querySelector('#view [data-k="sf-t-gog"].on')) throw new Error('RB did not go to GOG: ' + SHOP.store);
     input('lb'); if (SHOP.store !== 'steam') throw new Error('LB did not go back to Steam');
   });
+  // Settings › Library › Steam engine when the engine isn't ready (0.6.59: it never started and the sign-in row just
+  // wasn't there): a Sign in row that says why, and a sheet that offers to start it again.
+  await step('steam engine not ready', () => {
+    const was = { light: S.set.steamLight, open: S.set.steamOpen, st: SENG.st };
+    try {
+      S.set.steamLight = true; S.set.steamOpen = false;
+      SENG.st = { installed: true, lightweight: true, mode: 'lightweight', classicRunning: false, status: { engine: 'unavailable', reason: "Steam's engine didn't start: Cannot marshal" } };
+      const h = steamEngineRows();
+      if (!/data-k="s-steamEngSign"/.test(h) || !/Can&#39;t sign in|Can't sign in/.test(h) || !/didn(&#39;|')t start/.test(h)) throw new Error('no sign-in row with the reason: ' + h.slice(0, 300));
+      SENG.st.status = { engine: 'stopped' };
+      if (!/Try starting it again/.test(steamEngineRows())) throw new Error('a stopped engine does not say so');
+      S.layers = []; steamEngSignIn();
+      if (S.layers.at(-1) !== 'sheet' || !/Can't sign in to Steam yet/.test(sheet.title) || !sheet.items.some(i => /Start the engine again/.test(i.label))) throw new Error('the sign-in sheet does not explain: ' + JSON.stringify(sheet && sheet.title));
+      closeAll();
+      SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: false } }; S.set.steamLight = false; S.set.steamOpen = true;
+      if (!/Sign in to Steam/.test(steamEngineRows()) || /Can't sign in/.test(steamEngineRows())) throw new Error('a ready engine does not offer the normal sign-in');
+      // Open is the default: a once-only explainer with Got it, and no Library pill without Hearth's host.
+      S.steamExplain = true;
+      if (!/data-k="s-steamExplain"/.test(steamEngineRows()) || !/Turn it off here any time/.test(steamEngineRows())) throw new Error('no explainer for the new default');
+      S.steamExplain = false;
+      if (/s-steamExplain/.test(steamEngineRows())) throw new Error('the explainer stays after Got it');
+      if (steamOpenLibPill() !== '') throw new Error('the Library sign-in pill shows without Hearth');
+    } finally { S.set.steamLight = was.light; S.set.steamOpen = was.open; SENG.st = was.st; }
+  });
+  // Steam Cloud conflict sheet (Hearth's Steam client): three answers, controller-friendly (a sheet), nothing deleted.
+  await step('steam cloud conflict', () => {
+    S.layers = [];
+    steamCloudConflict({ id: 'steam:620', title: 'Portal 2' }, { files: 2, when: 'before' }, true);
+    if (S.layers.at(-1) !== 'sheet' || !/Portal 2: which saves\?/.test(sheet.title)) throw new Error('no conflict sheet: ' + (sheet && sheet.title));
+    const labels = sheet.items.map(i => i.label).join(' | ');
+    if (!/Keep this device's saves/.test(labels) || !/Keep the Steam Cloud saves/.test(labels) || !/Keep both/.test(labels)) throw new Error('conflict answers: ' + labels);
+    if (!/2 save files changed/.test(sheet.sub) || !/Nothing is deleted without asking/.test(sheet.sub)) throw new Error('conflict text: ' + sheet.sub);
+    if (!document.querySelector('#sheet.open')) throw new Error('the sheet is not shown');
+    closeAll();
+  });
+  // A Steam game's beta branch picker and Workshop list (Hearth's Steam client), from the engine's answers.
+  await step('steam betas and workshop', () => {
+    const g = { id: 'steam:620', title: 'Portal 2', src: 'steam', inst: true };
+    S.layers = [];
+    steamBetaSheet(g, { chosen: 'beta', branches: [{ name: 'public' }, { name: 'beta', description: 'Next update' }, { name: 'secret', password: true, unlocked: false }] });
+    if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3) throw new Error('beta picker: ' + JSON.stringify(sheet && sheet.items));
+    if (sheet.items[0].label !== 'Default (no beta)' || sheet.items[1].icon !== 'check' || !/needs a password/.test(sheet.items[2].label) || sheet.items[2].icon !== 'lock') throw new Error('beta picker rows: ' + sheet.items.map(i => i.label + '/' + i.icon).join(' | '));
+    closeAll();
+    steamWorkshopSheet(g, { complete: true, items: [{ id: '3000000001', title: 'Big Map', size: 2e9, installed: true, needsUpdate: true }, { id: '42', title: 'Skin', installed: false }] });
+    if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3 || !/Download 2 new or updated items/.test(sheet.items[0].label)) throw new Error('workshop list: ' + JSON.stringify(sheet && sheet.items.map(i => i.label)));
+    if (!/Big Map · update waiting · 2\.0 GB/.test(sheet.items[1].label) || !/Skin · not downloaded yet/.test(sheet.items[2].label)) throw new Error('workshop rows: ' + sheet.items.map(i => i.label).join(' | '));
+    closeAll();
+    steamWorkshopSheet(g, { complete: false, items: [] });
+    if (!/didn't give your subscriptions/.test(sheet.sub)) throw new Error('workshop without a list: ' + sheet.sub);
+    closeAll();
+    // Only offered with Hearth's Steam client signed in (never in the preview, which has no Hearth).
+    if (gameOptionItems(g).some(i => /Beta branch|Workshop items/.test(i.label))) throw new Error('beta/workshop offered without Hearth');
+    if (!/^Workshop items 50%/.test(dlInfo({ engine: { kind: 'workshop' }, state: 'downloading', progress: 0.5 }).label)) throw new Error('workshop downloads are not labelled');
+  });
+  // Downloads › Hearth's Steam client's queue: up / down / pause / cancel per game, the automatic update label, and
+  // Settings › Library's automatic updates and speed limit.
+  await step('downloads controls', () => {
+    const it = { g: { id: 'steam:620', src: 'steam', title: 'Portal 2', engine: { position: 1, auto: false } }, state: 'queued' };
+    const row = dlButtons(it, false);
+    for (const k of ['dq-up-steam:620', 'dq-down-steam:620', 'dq-pp-steam:620', 'dq-x-steam:620']) if (!row.includes(`data-k="${k}"`)) throw new Error('no ' + k + ' in ' + row.slice(0, 200));
+    if (!/data-act="dlMove" data-v="up"/.test(row) || !/data-act="dlMove" data-v="down"/.test(row)) throw new Error('move buttons do not move');
+    const paused = dlButtons({ ...it, state: 'paused' }, false);
+    if (!/data-act="dlResume"/.test(paused)) throw new Error('a paused download has no Resume');
+    const big = dlButtons({ ...it, state: 'downloading' }, true);
+    if (!/data-act="dlPause"/.test(big) || !/data-act="dlCancel"/.test(big)) throw new Error('the current download has no Pause / Cancel');
+    if (!/^Automatic update 50%/.test(dlInfo({ engine: { auto: true }, state: 'downloading', progress: 0.5 }).label)) throw new Error('automatic updates are not labelled');
+    if (etaText({ speed: 1e6, total: 4e8, done: 1e8 }) !== '5 min left') throw new Error('time left: ' + etaText({ speed: 1e6, total: 4e8, done: 1e8 }));
+    const was = { open: S.set.steamOpen, light: S.set.steamLight, st: SENG.st };
+    try {
+      S.set.steamOpen = true; S.set.steamLight = false; SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: true, kind: 'open' } };
+      S.steamAuto = 'idle'; S.steamLimit = 5120;
+      const h = steamEngineRows();
+      if (!/data-k="s-steamAuto"/.test(h) || !/When no game is running/.test(h)) throw new Error('no automatic updates row');
+      if (!/data-k="s-steamLimit"/.test(h) || !/5\.\d MB\/s/.test(h)) throw new Error('no speed limit row: ' + h.slice(0, 200));
+      S.layers = []; act({ dataset: { act: 'steamAuto' } });
+      if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3) throw new Error('the automatic updates sheet is wrong');
+      closeAll();
+      S.layers = []; act({ dataset: { act: 'steamLimit' } });
+      if (S.layers.at(-1) !== 'sheet' || !sheet.items.some(i => i.label === 'No limit')) throw new Error('the speed limit sheet is wrong');
+      closeAll();
+    } finally { S.set.steamOpen = was.open; S.set.steamLight = was.light; SENG.st = was.st; }
+  });
   try {
     const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
     if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));
@@ -1988,6 +2070,91 @@ const path = require('path');
     await lp.close();
   }
 
+  // Settings › Storage (docs/STORAGE.md), with the preview's two drives and six games: drives with their bars, games
+  // sorted and filtered by drive, a game's menu (move targets with room checked, uninstall, what can't be moved and
+  // why), clean up with its defaults (prefixes with saves off, never-delete ones kept), the saves confirmation, the
+  // low space setting, and the page hidden where the host doesn't have it (Ember).
+  {
+    const dp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const derr = m => errors.push('Storage page: ' + m);
+    dp.on('pageerror', e => derr(e.message));
+    try {
+      await dp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await dp.waitForTimeout(1200);
+      const r = await dp.evaluate(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const out = {};
+        const v = () => document.querySelector('#view').textContent;
+        const rows = p => [...document.querySelectorAll(`#view [data-k^="${p}"]`)];
+        out.inGames = stabsIn('games').some(x => x[0] === 'diskspace');
+        closeAll(); S.layers = []; S.settingsTab = 'diskspace'; navigate('settings', {}, false); await wait(500);
+        out.tab = S.settingsTab;
+        out.drives = rows('dsk-d-').length;
+        out.bars = document.querySelectorAll('#view .dskbar i').length > 3;
+        out.games = rows('dsk-g-').map(e => e.querySelector('b').textContent);
+        out.low = /SD card \(SD\) is low on space: 13 GB free/.test(v());
+        act(document.querySelector('#view [data-k="dsk-s-name"]')); await wait(50);
+        out.byName = rows('dsk-g-').map(e => e.querySelector('b').textContent)[0];
+        act(document.querySelector('#view [data-k="dsk-f-1"]')); await wait(50);
+        out.onSd = rows('dsk-g-').map(e => e.querySelector('b').textContent);
+        act(document.querySelector('#view [data-k="dsk-f-all"]')); act(document.querySelector('#view [data-k="dsk-s-size"]')); await wait(50);
+        act(document.querySelector('#view [data-k="dsk-g-steam:1091500"]')); await wait(100);
+        out.sheet = sheet && sheet.items.map(i => i.label).join('|');
+        closeAll();
+        act(document.querySelector('#view [data-k="dsk-g-steam:620"]')); await wait(100);
+        out.sheetSd = sheet && sheet.items.map(i => i.label).join('|');
+        sheet.items[0].run(); await wait(400);
+        out.ask = sheet && sheet.title;
+        sheet.items[0].run(); await wait(100);
+        out.job = /Moving Portal 2 to This device/.test(v()) && !!document.querySelector('#view [data-k="dsk-stop"]');
+        act(document.querySelector('#view [data-k="dsk-stop"]')); await wait(50);
+        closeAll();
+        act(document.querySelector('#view [data-k="dsk-g-battlenet:wow"]')); await wait(100);
+        out.why = sheet && /move them with Battle\.net itself/.test(sheet.sub) && /Uninstall it in Battle\.net/.test(sheet.sub);
+        closeAll();
+        act(document.querySelector('#view [data-k="dsk-find"]')); await wait(100);
+        out.clean = rows('dsk-c-').length;
+        out.sel = [...DSK.sel].sort().join(',');
+        act(document.querySelector('#view [data-k="dsk-c-3"]')); await wait(50);
+        out.keptStill = !DSK.sel.has('prefix:d');
+        act(document.querySelector('#view [data-k="dsk-c-2"]')); await wait(50);
+        act(document.querySelector('#view [data-k="dsk-clean"]')); await wait(100);
+        out.confirm1 = sheet && sheet.title;
+        sheet.items[0].run(); await wait(400);
+        out.confirm2 = sheet && sheet.title;
+        sheet.items[1].run(); await wait(100);
+        out.left = DSK.clean.map(c => c.key).join(',');
+        closeAll();
+        const gbBefore = DSK.s.warn.gb;
+        act(document.querySelector('#view [data-k="dsk-wmore"]')); await wait(30);
+        out.warnGb = gbBefore + '>' + DSK.s.warn.gb;
+        act(document.querySelector('#view [data-k="dsk-warn"]')); await wait(30);
+        out.warnOff = DSK.s.warn.on === false && !document.querySelector('#view [data-k="dsk-wmore"]');
+        const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
+        out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
+        out.card = /Storage/.test(document.querySelector('#view .sc-side').textContent) && /free/.test(document.querySelector('#view .sc-side').textContent);
+        return out;
+      });
+      const want = { inGames: true, tab: 'diskspace', drives: 2, bars: true, low: true, byName: 'Cyberpunk 2077', onSd: '["Portal 2"]', job: true, why: true, clean: 6,
+                     sel: 'dl:f,gpu:b,shader:a', keptStill: true, confirm1: 'Delete 4 items?', confirm2: 'Some of these have saves', left: 'prefix:c,prefix:d,tool:e', warnGb: '15>20', warnOff: true, card: true };
+      r.onSd = JSON.stringify(r.onSd);
+      for (const k of Object.keys(want)) if (r[k] !== want[k]) derr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
+      if ((r.games || []).length !== 6 || r.games[0] !== 'World of Warcraft') derr('games by size: ' + JSON.stringify(r.games));
+      if (!/^Move to SD card \(SD\) \(13 GB free\) · not enough space\|Uninstall$/.test(r.sheet || '')) derr('a game\'s menu: ' + r.sheet);
+      if (!/^Move to This device \(124 GB free\)\|Uninstall$/.test(r.sheetSd || '')) derr('the SD card game\'s menu: ' + r.sheetSd);
+      if (r.ask !== 'Move Portal 2 to This device?') derr('moving, asked: ' + r.ask);
+      if (r.dupKeys.length) derr('two rows with the same key: ' + r.dupKeys.join(', '));
+      // Ember (Windows) and hosts without it: no Storage page.
+      const ember = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await ember.goto('file://' + path.resolve(__dirname, '../ui/index.html'));
+      await ember.waitForTimeout(800);
+      if (await ember.evaluate(() => stabShown('diskspace'))) derr('shown on Ember');
+      await ember.close();
+      if (!errors.some(e => e.startsWith('Storage page'))) console.log('Storage page: drives, games by size and drive, move and uninstall menus, clean up rules and confirmation, low space setting ok');
+    } catch (e) { derr(e.message.split('\n')[0]); }
+    await dp.close();
+  }
+
   // Hearth Storage's page (Settings › Hearth Storage): a server among the paired devices, browsing its shared
   // folder, this device as a server with a shared folder, the switches sending what they say.
   {
@@ -2360,6 +2527,53 @@ const path = require('path');
       if (!(await hev(() => !!document.querySelector('#view [data-k="lib-mods"]')))) herr('the Library has no Mods button');
     } catch (e) { herr(e.message.split('\n')[0]); }
     await hp.close();
+  }
+
+  // Settings › System › Steam Game Mode › Start in Steam Game Mode (docs/STEAM-GAME-MODE.md): offered only with Steam
+  // signed in, asks first when turning on, and shows the session's note when it turned itself off.
+  {
+    const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    sp.on('pageerror', e => errors.push('steam game mode default: ' + e.message));
+    try {
+      await sp.goto('file://' + path.resolve(__dirname, '../ui/index.html') + '?preview=linux');
+      await sp.waitForTimeout(800);
+      const r = await sp.evaluate(async () => {
+        const out = [];
+        HOSTINFO.features = [...(HOSTINFO.features || []), 'steamMode'];
+        const base = { available: true, steam: 'native', gamescope: true, inSession: true, decky: { installed: false }, lastFailure: null };
+        window.__sd = [];
+        const real = MOCK.call;
+        MOCK.call = (m, a) => {
+          if (m === 'steamMode.setDefault') { window.__sd.push(a.on); return Promise.resolve(Object.assign({}, base, { startDefault: { on: a.on, can: true, signedIn: true, offNote: null } })); }
+          if (m === 'steamMode.status') return Promise.resolve(SGM.s);
+          return real(m, a);
+        };
+        const has = (html, k) => html.includes(`data-k="${k}"`);
+        SGM.s = Object.assign({}, base, { startDefault: { on: false, can: false, signedIn: false, offNote: null } });
+        let h = pageSystem();
+        if (has(h, 'sy-sgm-default')) out.push('offered without a Steam sign-in');
+        if (!/sign in to Steam first/.test(h)) out.push('no hint to sign in to Steam');
+        SGM.s = Object.assign({}, base, { startDefault: { on: false, can: true, signedIn: true, offNote: 'Steam ended right away (code 1)' } });
+        h = pageSystem();
+        if (!has(h, 'sy-sgm-default')) out.push('no Start in Steam Game Mode row with Steam signed in');
+        if (!/turned off by itself: Steam ended right away \(code 1\)/.test(h)) out.push("the session's note isn't shown");
+        if (!/hold B or Guide/.test(h)) out.push("the row doesn't say how to skip it");
+        sgmDefault();
+        if (S.layers.at(-1) !== 'sheet' || !/Switch to Hearth Game Mode/.test(sheet.sub || '')) out.push('turning it on did not ask first with the ways back');
+        else sheetPick(0);
+        await new Promise(res => setTimeout(res, 100));
+        if (JSON.stringify(window.__sd) !== '[true]' || !SGM.s.startDefault.on) out.push('turning on did not reach the host: ' + JSON.stringify(window.__sd));
+        h = pageSystem();
+        if (!/class="sw on"/.test(h.slice(h.indexOf('sy-sgm-default')))) out.push('the switch is not on afterwards');
+        if (/turned off by itself/.test(h)) out.push('the old note still shows while on');
+        sgmDefault(); await new Promise(res => setTimeout(res, 100));
+        if (JSON.stringify(window.__sd) !== '[true,false]') out.push('turning off asked first or did not reach the host: ' + JSON.stringify(window.__sd));
+        closeAll();
+        return out;
+      });
+      for (const e of r) errors.push('steam game mode default: ' + e);
+    } catch (e) { errors.push('steam game mode default: ' + e.message.split('\n')[0]); }
+    await sp.close();
   }
 
   await browser.close();

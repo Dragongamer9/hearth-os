@@ -25,6 +25,9 @@ public sealed class AppManifest
     public long LastPlayed { get; set; }
     public int UpdateResult { get; set; }
     public string Language { get; set; } = "english";
+    /// <summary>The beta branch installed ("" for the default), as Steam records it: BetaKey in UserConfig (what the
+    /// player picked) and MountedConfig (what's on disk).</summary>
+    public string BetaKey { get; set; } = "";
     /// <summary>Depot id → (manifest id, size).</summary>
     public SortedDictionary<uint, (ulong Manifest, ulong Size, uint DlcAppId)> Depots { get; } = new();
 
@@ -54,8 +57,12 @@ public sealed class AppManifest
             sb.Append("\t\t}\n");
         }
         sb.Append("\t}\n");
-        sb.Append("\t\"UserConfig\"\n\t{\n\t\t\"language\"\t\t\"").Append(Q(Language)).Append("\"\n\t}\n");
-        sb.Append("\t\"MountedConfig\"\n\t{\n\t\t\"language\"\t\t\"").Append(Q(Language)).Append("\"\n\t}\n");
+        foreach (var section in new[] { "UserConfig", "MountedConfig" })
+        {
+            sb.Append("\t\"").Append(section).Append("\"\n\t{\n\t\t\"language\"\t\t\"").Append(Q(Language)).Append("\"\n");
+            if (BetaKey.Length > 0 && BetaKey != "public") sb.Append("\t\t\"BetaKey\"\t\t\"").Append(Q(BetaKey)).Append("\"\n");
+            sb.Append("\t}\n");
+        }
         sb.Append("}\n");
         return sb.ToString();
     }
@@ -72,6 +79,7 @@ public sealed class AppManifest
             SizeOnDisk = N(s.Str("SizeOnDisk")), BytesToDownload = N(s.Str("BytesToDownload")), BytesDownloaded = N(s.Str("BytesDownloaded")),
             LastUpdated = (long)N(s.Str("LastUpdated")), LastPlayed = (long)N(s.Str("LastPlayed")), UpdateResult = (int)N(s.Str("UpdateResult")),
             Language = s.Str("UserConfig", "language") ?? "english",
+            BetaKey = s.Str("MountedConfig", "BetaKey") ?? s.Str("UserConfig", "BetaKey") ?? "",
         };
         foreach (var (k, d) in s.Get("InstalledDepots")?.Children ?? new())
             if (uint.TryParse(k, out var id)) m.Depots[id] = (N(d.Str("manifest")), N(d.Str("size")), (uint)N(d.Str("dlcappid")));

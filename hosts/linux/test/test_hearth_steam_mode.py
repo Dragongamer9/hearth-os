@@ -22,6 +22,7 @@ MODE = ROOT / 'hosts/linux/session/nimbus-mode'
 DECKY = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-decky'
 ADMIN = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-admin'
 RULES = ROOT / 'os/system_files/usr/share/polkit-1/rules.d/49-hearth-admin.rules'
+STEAMOS_UPDATE = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-steamos-update'
 
 
 def block():
@@ -100,6 +101,29 @@ class SteamModeSession(unittest.TestCase):
         self.assertEqual(self.read('nimbus-next'), 'game')
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'home.ran')))
 
+    def test_flathub_steam_in_use_is_the_one_started(self):
+        # Both Steams installed, but the games and sign-in are in Flathub's Steam's folder: that one starts
+        # (the system Steam would show no installed games).
+        home = os.path.join(self.tmp, 'home')
+        os.makedirs(os.path.join(home, '.local/share/flatpak/app/com.valvesoftware.Steam'))
+        os.makedirs(os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam/config'))
+        with open(os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam/config/loginusers.vdf'), 'w') as f:
+            f.write('"users" {}\n')
+        argv = os.path.join(self.tmp, 'argv')
+        self.fake('gamescope', 'for a in "$@"; do echo "$a"; done >%s\nexit 1' % argv)
+        self.fake('steam', 'exit 0')
+        self.fake('flatpak', 'exit 0')
+        self.run_mode()
+        tail = open(argv).read().split('\n')
+        tail = tail[tail.index('--') + 1:]
+        self.assertEqual(tail[:2], ['flatpak', 'run'])
+        self.assertIn('com.valvesoftware.Steam', tail)
+        # No sign-in in Flathub's folder: the system Steam, as before.
+        os.remove(os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam/config/loginusers.vdf'))
+        self.run_mode()
+        tail = open(argv).read().split('\n')
+        self.assertEqual(tail[tail.index('--') + 1], 'env')
+
     def test_steam_that_fails_right_away_comes_back_with_a_note(self):
         argv = os.path.join(self.tmp, 'argv')
         self.fake('gamescope', 'for a in "$@"; do echo "$a"; done >%s\nexit 1' % argv)
@@ -140,6 +164,24 @@ class SteamModeSession(unittest.TestCase):
         self.assertIn('exec nimbus-mode desktop', shim)
         self.assertIn('gamescope*|game*) exec nimbus-mode game', shim)
 
+    def test_steams_os_update_runs_hearths_updater(self):
+        self.fake('gamescope', 'exit 0')
+        self.fake('steam', 'exit 0')
+        helper = os.path.join(self.tmp, 'hearth-steamos-update')
+        with open(helper, 'w') as f:
+            f.write('#!/bin/sh\nexit 7\n')
+        os.chmod(helper, 0o755)
+        self.run_mode({'HEARTH_STEAMOS_UPDATE': helper})
+        shim = os.path.join(self.run_dir, 'hearth-steam-bin', 'steamos-update')
+        self.assertIn('exec %s "$@"' % helper, open(shim).read())
+        r = subprocess.run([shim, 'check'], capture_output=True)
+        self.assertEqual(r.returncode, 7, 'the exit code reaches Steam')
+        # Without Hearth's updater installed: no steamos-update at all (Steam then has none, as before).
+        os.remove(shim)
+        self.run_mode({'HEARTH_STEAMOS_UPDATE': os.path.join(self.tmp, 'missing')})
+        self.assertFalse(os.path.exists(shim))
+        self.assertNotIn('/usr/bin/steamos-update', SESSION.read_text(), 'nothing system-wide')
+
     def test_decky_started_and_stopped_only_when_hearth_installed_it(self):
         calls = os.path.join(self.tmp, 'pkexec-calls')
         self.fake('pkexec', 'echo "$@" >>%s' % calls)
@@ -158,6 +200,255 @@ class SteamModeSession(unittest.TestCase):
         self.assertIn('elif [ "$mode" = steam ]; then run_steam_mode; code=$?', text)
         r = subprocess.run(['bash', '-n', str(SESSION)], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
+
+
+def start_lines():
+    """The session's own lines that decide to start in Steam Game Mode (after the >>> <<< block, before the loop)."""
+    text = SESSION.read_text()
+    m = re.search(r'\nSD_FIRST=""\n(if \[ "\$mode" = game \] && steam_default_wanted && steam_default_before; then\n.*?\nfi)\n', text, re.S)
+    assert m, 'the start-in-Steam-Game-Mode lines not found'
+    return m.group(1)
+
+
+def load_pad_held():
+    path = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-pad-held'
+    loader = importlib.machinery.SourceFileLoader('hearth_pad_held', str(path))
+    spec = importlib.util.spec_from_loader('hearth_pad_held', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+class StartInSteamGameMode(unittest.TestCase):
+    """Start in Steam Game Mode (HEARTH_STEAM_DEFAULT=1): the session's start decision, run_steam_mode and the
+    failure rules, run for real with stand-ins for gamescope and Steam."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-steam-default-')
+        self.run_dir = os.path.join(self.tmp, 'run')
+        self.bin = os.path.join(self.tmp, 'bin')
+        self.home = os.path.join(self.tmp, 'home')
+        self.conf = os.path.join(self.tmp, 'session.conf')
+        self.state = os.path.join(self.home, '.local/state/nimbus')
+        os.makedirs(self.run_dir)
+        os.makedirs(self.bin)
+        os.makedirs(self.home)
+        for tool in ('sh', 'cat', 'date', 'mkdir', 'chmod', 'rm', 'printf', 'env', 'echo', 'sleep', 'timeout', 'true',
+                     'sed', 'grep', 'tail', 'mv'):
+            p = shutil.which(tool)
+            if p:
+                os.symlink(p, os.path.join(self.bin, tool))
+        self.fake('gamescope', 'echo ran >>"$RUN_DIR/gamescope-ran"; exit 0')
+        self.fake('steam', 'exit 0')
+        self.sign_in()
+        self.set_conf('NIMBUS_GAMESCOPE_ARGS=""\nHEARTH_STEAM_DEFAULT=1\n')
+        self.cmdline = os.path.join(self.tmp, 'cmdline')
+        open(self.cmdline, 'w').write('BOOT_IMAGE=/vmlinuz root=UUID=x rhgb quiet\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake(self, name, body):
+        p = os.path.join(self.bin, name)
+        with open(p, 'w') as f:
+            f.write('#!/bin/sh\n' + body + '\n')
+        os.chmod(p, 0o755)
+
+    def sign_in(self):
+        d = os.path.join(self.home, '.local/share/Steam/config')
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, 'loginusers.vdf'), 'w').write('"users" { "1" { "AccountName" "x" } }\n')
+
+    def set_conf(self, text):
+        open(self.conf, 'w').write(text)
+
+    def start(self, extra_env=None):
+        """Sign-in: the session's start lines, then (if it chose Steam Game Mode) one run like the loop does."""
+        script = os.path.join(self.tmp, 'start.sh')
+        with open(script, 'w') as f:
+            f.write('RUN=%s\nNEXT="$RUN/nimbus-next"\nLOG=%s\nSESSION_CONF=%s\nENV_GAMESCOPE_ARGS=""\n'
+                    % (self.run_dir, os.path.join(self.tmp, 'session.log'), self.conf))
+            f.write('log() { echo "$*" >>"$LOG"; }\nhave() { command -v "$1" >/dev/null 2>&1; }\n')
+            f.write(block() + '\nmode=game\nrm -f "$NEXT"\n' + start_lines() + '\necho "start=$mode"\n')
+            f.write('if [ "$mode" = steam ]; then run_steam_mode; steam_default_after; fi\necho "next=$(cat "$NEXT" 2>/dev/null)"\n')
+        env = {'PATH': self.bin, 'HOME': self.home, 'RUN_DIR': self.run_dir, 'STEAM_MODE_MIN_SECS': '20',
+               'HEARTH_DECKY_UNIT': os.path.join(self.tmp, 'no-decky.service'), 'HEARTH_CMDLINE': self.cmdline,
+               'HEARTH_LIVE_FLAG': os.path.join(self.tmp, 'no-live'), 'HEARTH_SAFE_FLAG': os.path.join(self.tmp, 'no-safe'),
+               'HEARTH_PAD_HELD': os.path.join(self.tmp, 'no-pad-held'), 'USER': 'player'}
+        env.update(extra_env or {})
+        r = subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
+        out = dict(l.split('=', 1) for l in r.stdout.split('\n') if '=' in l)
+        self.assertIn('start', out, r.stderr)
+        return out
+
+    def on(self):
+        return 'HEARTH_STEAM_DEFAULT=1' in open(self.conf).read()
+
+    def note(self):
+        try:
+            return open(os.path.join(self.state, 'steam-default-off')).read().strip()
+        except OSError:
+            return None
+
+    def fails(self):
+        try:
+            return [l for l in open(os.path.join(self.state, 'steam-default-fails')).read().split('\n') if l]
+        except OSError:
+            return []
+
+    def ran(self):
+        return os.path.exists(os.path.join(self.run_dir, 'gamescope-ran'))
+
+    def test_off_by_default(self):
+        self.set_conf('NIMBUS_GAMESCOPE_ARGS=""\n')
+        self.assertEqual(self.start()['start'], 'game')
+        self.assertFalse(self.ran())
+        self.set_conf('HEARTH_STEAM_DEFAULT=0\n')
+        self.assertEqual(self.start()['start'], 'game')
+
+    def test_on_starts_steam_game_mode_and_a_good_run_clears_the_count(self):
+        r = self.start({'STEAM_DEFAULT_GOOD_SECS': '0'})
+        self.assertEqual(r['start'], 'steam')
+        self.assertTrue(self.ran())
+        self.assertEqual(r['next'], 'game', "a plain exit goes to Hearth's Game Mode")
+        self.assertTrue(self.on())
+        self.assertEqual(self.fails(), [], 'a good run clears the count')
+        self.assertIsNone(self.note())
+
+    def test_switch_asked_for_is_followed_and_not_a_failure(self):
+        self.fake('gamescope', 'echo desktop >"$RUN_DIR/nimbus-next"; exit 0')
+        r = self.start()
+        self.assertEqual((r['start'], r['next']), ('steam', 'desktop'))
+        self.assertTrue(self.on())
+        self.assertEqual(self.fails(), [], 'Switch to Desktop right away is not a failed start')
+        self.fake('gamescope', 'echo game >"$RUN_DIR/nimbus-next"; exit 0')
+        r = self.start()
+        self.assertEqual(r['next'], 'game')
+        self.assertEqual(self.fails(), [])
+
+    def test_error_within_20s_turns_it_off(self):
+        self.fake('gamescope', 'exit 1')
+        r = self.start()
+        self.assertEqual((r['start'], r['next']), ('steam', 'game'))
+        self.assertFalse(self.on(), 'session.conf says 0 now')
+        self.assertIn('HEARTH_STEAM_DEFAULT=0', open(self.conf).read())
+        self.assertIn('ended right away (code 1)', self.note())
+        self.assertIn('turned off by itself', open(os.path.join(self.tmp, 'session.log')).read())
+        self.assertEqual(self.start()['start'], 'game', 'the next sign-in is Hearth\'s Game Mode')
+
+    def test_two_short_runs_in_a_row_turn_it_off(self):
+        r = self.start()
+        self.assertEqual(r['start'], 'steam')
+        self.assertTrue(self.on(), 'one short run: still on')
+        self.assertEqual(len(self.fails()), 1)
+        r = self.start()
+        self.assertEqual(r['start'], 'steam')
+        self.assertFalse(self.on())
+        self.assertIn('twice within 10 minutes', self.note())
+        self.assertEqual(self.start()['start'], 'game')
+
+    def test_starts_that_never_finished_count(self):
+        # Two starts in the last 10 minutes that never came back (the device hung or was turned off): no third try.
+        import time as t
+        os.makedirs(self.state)
+        now = int(t.time())
+        open(os.path.join(self.state, 'steam-default-fails'), 'w').write('%d\n%d\n' % (now - 300, now - 60))
+        r = self.start()
+        self.assertEqual(r['start'], 'game')
+        self.assertFalse(self.ran())
+        self.assertFalse(self.on())
+        self.assertIn("didn't start properly twice", self.note())
+
+    def test_old_failures_dont_count(self):
+        import time as t
+        os.makedirs(self.state)
+        now = int(t.time())
+        open(os.path.join(self.state, 'steam-default-fails'), 'w').write('%d\n%d\n' % (now - 4000, now - 3000))
+        r = self.start({'STEAM_DEFAULT_GOOD_SECS': '0'})
+        self.assertEqual(r['start'], 'steam')
+        self.assertTrue(self.on())
+
+    def test_missing_steam_or_gamescope_turns_it_off(self):
+        os.remove(os.path.join(self.bin, 'steam'))
+        self.assertEqual(self.start()['start'], 'game')
+        self.assertFalse(self.on())
+        self.assertIn("isn't installed", self.note())
+        self.assertFalse(self.ran())
+
+    def test_safe_graphics_turns_it_off(self):
+        safe = os.path.join(self.tmp, 'safe')
+        open(safe, 'w').close()
+        self.assertEqual(self.start({'HEARTH_SAFE_FLAG': safe})['start'], 'game')
+        self.assertFalse(self.on())
+        self.assertIn('safe graphics', self.note())
+
+    def test_not_signed_in_turns_it_off(self):
+        os.remove(os.path.join(self.home, '.local/share/Steam/config/loginusers.vdf'))
+        self.assertEqual(self.start()['start'], 'game')
+        self.assertFalse(self.on())
+        self.assertIn("isn't signed in", self.note())
+
+    def test_b_or_guide_held_skips_it_this_time(self):
+        held = os.path.join(self.tmp, 'pad-held')
+        open(held, 'w').write('# stand-in\n')
+        self.fake('python3', 'echo "$@" >"$RUN_DIR/pad-asked"; exit 0')
+        self.assertEqual(self.start({'HEARTH_PAD_HELD': held})['start'], 'game')
+        self.assertFalse(self.ran())
+        self.assertTrue(self.on(), 'skipping once leaves the setting on')
+        self.assertIn('--window', open(os.path.join(self.run_dir, 'pad-asked')).read())
+        self.fake('python3', 'exit 1')   # nothing held: Steam Game Mode as usual
+        self.assertEqual(self.start({'HEARTH_PAD_HELD': held, 'STEAM_DEFAULT_GOOD_SECS': '0'})['start'], 'steam')
+
+    def test_kernel_option_skips_it_this_time(self):
+        open(self.cmdline, 'w').write('BOOT_IMAGE=/vmlinuz quiet hearth.mode=game\n')
+        self.assertEqual(self.start()['start'], 'game')
+        self.assertTrue(self.on())
+        open(self.cmdline, 'w').write('BOOT_IMAGE=/vmlinuz quiet hearth.mode=gamex\n')
+        self.assertEqual(self.start({'STEAM_DEFAULT_GOOD_SECS': '0'})['start'], 'steam')
+
+    def test_extra_seats_and_the_live_usb_never_get_it(self):
+        self.assertEqual(self.start({'HEARTH_SEAT': '2'})['start'], 'game')
+        self.assertTrue(self.on(), "an extra player's start doesn't change the setting")
+        live = os.path.join(self.tmp, 'hearth-live')
+        open(live, 'w').close()
+        self.assertEqual(self.start({'HEARTH_LIVE_FLAG': live})['start'], 'game')
+        self.assertEqual(self.start({'USER': 'liveuser'})['start'], 'game')
+        self.assertFalse(self.ran())
+
+    def test_session_loop_wiring(self):
+        text = SESSION.read_text()
+        # Only from Hearth's Game Mode start (Desktop Mode start, Recovery's Desktop Mode this time and extra players
+        # are decided first), and the loop counts manual Steam Game Mode runs too while it's on.
+        i_seat = text.index('[ -n "$HEARTH_SEAT" ] && mode=game\n')
+        i_start = text.index('if [ "$mode" = game ] && steam_default_wanted && steam_default_before; then')
+        self.assertLess(i_seat, i_start)
+        self.assertIn('[ "$mode" = steam ] && [ -z "$SD_FIRST" ] && { steam_default_before || :; }', text)
+        self.assertIn('[ "$mode" = steam ] && steam_default_after', text)
+        self.assertIn('[ "$mode" = steam ] && [ "$next" = steam ] && next=game', text, 'never follows itself')
+
+
+class PadHeld(unittest.TestCase):
+    def test_b_or_guide(self):
+        m = load_pad_held()
+        self.assertTrue(m.wanted({305}))
+        self.assertTrue(m.wanted({316, 304}))
+        self.assertFalse(m.wanted({304, 314, 315}), 'A, Select, Start are not a skip')
+        buf = bytearray(96)
+        buf[305 // 8] |= 1 << (305 % 8)
+        self.assertEqual(m.keys_from(buf), {305})
+
+    def test_looks_for_the_window_then_gives_up(self):
+        m = load_pad_held()
+        d = tempfile.mkdtemp()
+        try:
+            for n in ('event0', 'event1'):
+                open(os.path.join(d, n), 'w').close()
+            pat = os.path.join(d, 'event*')
+            self.assertFalse(m.held(0, pat, read=lambda p: {304}))
+            self.assertTrue(m.held(0, pat, read=lambda p: {305} if p.endswith('event1') else set()))
+            self.assertFalse(m.held(0, pat), 'plain files are not controllers')
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 class NimbusModeSteam(unittest.TestCase):
@@ -310,6 +601,73 @@ class DeckyHelper(unittest.TestCase):
         self.assertTrue(rx.search('/usr/libexec/nimbus/hearth-admin decky-install'))
         self.assertFalse(rx.search('/usr/libexec/nimbus/hearth-admin decky-start'))
         self.assertFalse(rx.search('/usr/libexec/nimbus/hearth-admin decky-remove'))
+
+
+class SteamosUpdate(unittest.TestCase):
+    """hearth-steamos-update: Steam's steamos-update contract (check: 0 available / 7 up to date; apply: "NN%" lines,
+    0 ready for a restart, 7 nothing new), backed by a stand-in for hearth-admin. Never restarts anything."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='hearth-steamos-update-')
+        self.admin = os.path.join(self.tmp, 'hearth-admin')
+        self.calls = os.path.join(self.tmp, 'calls')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake_admin(self, check_json, update_lines='', update_json=None, code=0):
+        with open(self.admin, 'w') as f:
+            f.write('#!/bin/sh\necho "$*" >>%s\ncase "$1" in\n' % self.calls)
+            f.write("  update-check) echo 'log: bootc says hi'; echo '%s'; exit %d ;;\n" % (json.dumps(check_json), code))
+            f.write("  update) printf '%s'; echo '%s'; exit %d ;;\n" % (update_lines, json.dumps(update_json or check_json), code))
+            f.write('  *) exit 3 ;;\nesac\n')
+        os.chmod(self.admin, 0o755)
+
+    def upd(self, *args):
+        env = dict(os.environ, HEARTH_STEAMOS_UPDATE_ADMIN=self.admin, HEARTH_STEAMOS_UPDATE_PKEXEC='')
+        return subprocess.run([sys.executable, str(STEAMOS_UPDATE)] + list(args), env=env, capture_output=True, text=True, timeout=30)
+
+    def test_check(self):
+        self.fake_admin({'booted': {'version': '0.6.60'}, 'staged': None, 'available': None})
+        r = self.upd('check')
+        self.assertEqual(r.returncode, 7, r.stderr)
+        self.assertIn('up to date', r.stderr)
+        self.fake_admin({'booted': {}, 'staged': None, 'available': {'version': '0.6.61'}})
+        r = self.upd('--enable-duplicate-detection', 'check')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('Update available: 0.6.61', r.stdout)
+        self.fake_admin({'booted': {}, 'staged': {'version': '0.6.61'}, 'available': None})
+        self.assertEqual(self.upd('check').returncode, 0, 'downloaded and waiting for a restart counts as available')
+        with open(self.admin, 'w') as f:
+            f.write('#!/bin/sh\necho "error: no network"\nexit 1\n')
+        r = self.upd('check')
+        self.assertNotIn(r.returncode, (0, 7))
+        self.assertIn('no network', r.stderr)
+
+    def test_supports_duplicate_detection_does_nothing(self):
+        self.fake_admin({})
+        self.assertEqual(self.upd('--supports-duplicate-detection').returncode, 0)
+        self.assertFalse(os.path.exists(self.calls), 'hearth-admin not run')
+
+    def test_apply_prints_steams_progress(self):
+        lines = 'progress: 0.0 Starting\\nlog: x\\nprogress: 12.4 Downloading\\nprogress: 12.9 Downloading\\nprogress: 55.0 Installing\\nstage: {}\\nprogress: 40.0 odd\\nprogress: 90.0 Updating apps\\n'
+        self.fake_admin({}, lines, {'booted': {}, 'staged': {'version': '0.6.61'}, 'available': None})
+        r = self.upd()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split(), ['0%', '12%', '55%', '90%', '100%'], 'whole numbers, never back, 100% at the end')
+        self.assertIn('Restart to finish', r.stderr)
+        self.assertEqual(open(self.calls).read().split(), ['update'])
+        self.fake_admin({}, 'progress: 100.0 Hearth OS is already up to date.\\n', {'booted': {}, 'staged': None, 'available': None})
+        self.assertEqual(self.upd('--enable-duplicate-detection').returncode, 7)
+        with open(self.admin, 'w') as f:
+            f.write("#!/bin/sh\nprintf 'progress: 5.0 x\\nerror: another update is already running\\n'\nexit 1\n")
+        r = self.upd()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('another update is already running', r.stderr)
+
+    def test_never_restarts(self):
+        text = STEAMOS_UPDATE.read_text()
+        for word in ('reboot', 'systemctl', 'shutdown', 'loginctl'):
+            self.assertNotIn(word + ' ', text.split('"""', 2)[2], word)
 
 
 if __name__ == '__main__':

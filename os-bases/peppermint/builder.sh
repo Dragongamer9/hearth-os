@@ -47,7 +47,7 @@ apt-get install -y --no-install-recommends \
 # build that needs it says so).
 # libcomposefs-dev: ostree uses composefs when it's there (the image's root is mounted through it if so).
 # qt6-wayland-private-dev: Quickshell's Wayland parts (some Debian releases ship these headers in qt6-wayland-dev).
-for p in libcomposefs-dev qt6-wayland-private-dev vulkan-headers spirv-headers; do
+for p in libcomposefs-dev libselinux1-dev qt6-wayland-private-dev vulkan-headers spirv-headers; do
   apt-get install -y --no-install-recommends "$p" || echo "builder: $p not available"
 done
 
@@ -61,10 +61,20 @@ curl -fsSL --retry 3 -o /src/ostree.tar.xz \
   "https://github.com/ostreedev/ostree/releases/download/v${OSTREE_VER}/libostree-${OSTREE_VER}.tar.xz"
 tar -C /src -xf /src/ostree.tar.xz
 cd "/src/libostree-${OSTREE_VER}"
-./configure --prefix=/usr --libdir="/usr/lib/${MULTIARCH}" --libexecdir=/usr/libexec \
+# composefs support (libcomposefs-dev, above): needed to stage an image that turns composefs on, e.g. moving this
+# device to Hearth OS on Anatase (without it: "composefs: enabled at runtime, but support is not compiled in").
+# Peppermint's own deployments don't use it (prepare-root.conf: enabled = no), so its booting is unchanged.
+# SELinux support (libselinux1-dev): staging Anatase's image labels its files with Anatase's own SELinux policy;
+# without it the files came out unlabeled and Anatase started to a black screen. Peppermint has no SELinux policy,
+# so its own deployments stay unlabeled exactly as before.
+SELINUX_OPT=--without-selinux
+if pkg-config --exists libselinux; then SELINUX_OPT=--with-selinux; else echo "builder: libselinux not found: ostree without SELinux (moving to Anatase won't work)"; fi
+COMPOSEFS_OPT=--without-composefs
+if pkg-config --exists composefs; then COMPOSEFS_OPT=--with-composefs; else echo "builder: libcomposefs not found: ostree without composefs (moving to Anatase won't work)"; fi
+./configure ${COMPOSEFS_OPT} ${SELINUX_OPT} --prefix=/usr --libdir="/usr/lib/${MULTIARCH}" --libexecdir=/usr/libexec \
   --sysconfdir=/etc --localstatedir=/var \
   --with-crypto=openssl --with-curl --without-soup --with-libarchive --with-libmount --with-libsystemd \
-  --without-selinux --without-avahi --with-dracut=yes \
+  --without-avahi --with-dracut=yes \
   --with-systemdsystemunitdir=/usr/lib/systemd/system \
   --with-systemdsystemgeneratordir=/usr/lib/systemd/system-generators \
   --disable-gtk-doc --disable-man --disable-introspection --disable-static --disable-installed-tests \

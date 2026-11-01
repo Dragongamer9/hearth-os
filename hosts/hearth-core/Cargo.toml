@@ -1,6 +1,6 @@
 [package]
 name = "hearth-core"
-version = "0.6.60"
+version = "0.6.61"
 edition = "2021"
 description = "Hearth's host logic without a window: library, stores, system, the UI's message handling"
 license = "GPL-3.0-or-later"
@@ -17,6 +17,12 @@ regex = "1"
 sha2 = "0.10"
 md-5 = "0.10"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+# Settings › Storage checks a moved game's copy as read back from the drive (posix_fadvise) (diskspace.rs).
+libc = "0.2"
+# Hearth app updates (appchannel.rs, docs/APP-UPDATES.md): the bundle's manifest is signed with Ed25519 (ssh-keygen -Y
+# sign), and the bundle is a tar (zstd decompresses it; every Hearth OS image has zstd).
+ed25519-dalek = "2"
+tar = { version = "0.4", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

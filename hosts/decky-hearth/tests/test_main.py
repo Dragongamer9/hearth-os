@@ -38,6 +38,18 @@ def run(coro):
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'0' * 64
 JPG = b'\xff\xd8\xff\xe0' + b'0' * 64
+WEBP = b'RIFF\x20\x00\x00\x00WEBPVP8 ' + b'0' * 32
+GIF = b'GIF89a' + b'0' * 32
+AVIF = b'\x00\x00\x00\x1cftypavif' + b'0' * 32
+
+
+def real_png(w=4, h=6):
+    """A real (tiny) PNG, made here: zlib and the PNG chunk layout."""
+    import struct, zlib
+    def chunk(t, d):
+        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    raw = b''.join(b'\x00' + bytes([200, 60, 40]) * w for _ in range(h))
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
 
 
 class Backend(unittest.TestCase):
@@ -66,23 +78,44 @@ class Backend(unittest.TestCase):
 
     def test_shortcut_runs_hearth_play_now_quoted(self):
         t = self.m.shortcut('/usr/bin/nimbus', ['--play-now', "emu:snes:Mario's World.sfc"], False)
-        self.assertEqual(t['exe'], '/usr/bin/nimbus')
-        self.assertEqual(shlex.split(t['options']), ['--play-now', "emu:snes:Mario's World.sfc"])
-        f = self.m.shortcut('/usr/bin/nimbus', ['--play-now', 'gog:1'], True)
-        self.assertEqual(f['exe'], '/usr/bin/flatpak-spawn')
-        self.assertEqual(shlex.split(f['options']), ['--host', '/usr/bin/nimbus', '--play-now', 'gog:1'])
+        self.assertEqual(t['exe'], '/bin/sh', 'a wrapper that cleans Steam\'s environment first')
+        self.assertEqual(shlex.split(t['options']), ['-c', self.m.WRAPPER, 'hearth-steam', '/usr/bin/nimbus', '--play-now', "emu:snes:Mario's World.sfc"])
+        self.assertEqual(self.m.shortcut('/usr/bin/nimbus', ['--play-now', 'gog:1'], True), self.m.shortcut('/usr/bin/nimbus', ['--play-now', 'gog:1'], False),
+                         "the same shortcut for both Steams: the wrapper decides at every launch")
+        self.assertIn('[ -e /.flatpak-info ]', self.m.WRAPPER)
+        self.assertIn('flatpak-spawn --host /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"', self.m.WRAPPER)
+
+    def test_shortcut_cleans_steams_environment_when_run(self):
+        """Runs the shortcut the way Steam does (its exe and options through a shell, in Steam's environment) with a
+        stand-in for Hearth that writes down what it got."""
+        out = os.path.join(self.tmp, 'got')
+        fake = os.path.join(self.tmp, 'nimbus')
+        with open(fake, 'w') as f:
+            f.write('#!/bin/sh\n{ printf "%%s\\n" "$@"; echo "LDLP=${LD_LIBRARY_PATH-unset}"; echo "PRE=${LD_PRELOAD-unset}"; '
+                    'echo "SET_ASIDE=$HEARTH_STEAM_LD_PRELOAD"; echo "GAMEID=$SteamGameId"; } > %s\n' % out)
+        os.chmod(fake, 0o755)
+        t = self.m.shortcut(fake, ['--play-now', "emu:snes:Mario's World.sfc"])
+        # LD_PRELOAD empty here: a real overlay library would be loaded into the test's own shell too.
+        env = dict(os.environ, LD_LIBRARY_PATH='/steam/ubuntu12_32/steam-runtime/lib', LD_PRELOAD='', SteamGameId='123')
+        import subprocess
+        subprocess.run(['/bin/sh', '-c', '%s %s' % (shlex.quote(t['exe']), t['options'])], env=env, check=True)
+        got = open(out).read().splitlines()
+        self.assertEqual(got[:2], ['--play-now', "emu:snes:Mario's World.sfc"], 'arguments arrive whole')
+        self.assertIn('LDLP=unset', got, "Steam's runtime libraries are gone before Hearth starts")
+        self.assertIn('PRE=unset', got)
+        self.assertIn('GAMEID=123', got, "Steam's id for the shortcut stays")
 
     def test_targets_include_hearths_apps_only_when_installed(self):
         games = self.m.clean_games([{'id': 'gog:1', 'title': 'A', 'source': 'gog'}])
         finder = lambda p: {'nimbus': '/usr/bin/nimbus', 'hearth-mods': '/usr/bin/hearth-mods'}.get(p)
         g, links = self.m.targets(games, False, finder=finder)
-        self.assertEqual(shlex.split(g[0]['options']), ['--play-now', 'gog:1'])
+        self.assertEqual(shlex.split(g[0]['options'])[3:], ['/usr/bin/nimbus', '--play-now', 'gog:1'])
         ids = [l['id'] for l in links]
         self.assertIn('hearth-app:mods', ids)
         self.assertIn('hearth-app:store', ids)
         self.assertNotIn('hearth-app:theater', ids)
         store = [l for l in links if l['id'] == 'hearth-app:store'][0]
-        self.assertEqual(shlex.split(store['options']), ['--windowed', '--page', 'shop'])
+        self.assertEqual(shlex.split(store['options'])[4:], ['--windowed', '--page', 'shop'])
 
     def test_list_games_asks_hearth(self):
         app = os.path.join(self.tmp, 'nimbus')
@@ -133,16 +166,22 @@ class Backend(unittest.TestCase):
         self.assertIsNone(self.m.read_art(notpic))
         self.assertEqual(self.m.read_art('https://x/y.jpg', fetch=lambda u: JPG)['type'], 'jpg')
         self.assertIsNone(self.m.read_art('http://x/y.jpg', fetch=lambda u: JPG), 'plain http is refused')
-        self.assertIsNone(self.m.read_art('https://x/y.webp', fetch=lambda u: b'RIFF0000WEBP'))
+        self.assertIsNone(self.m.read_art('https://x/y.webp', fetch=lambda u: WEBP, converters=[]),
+                          'a webp nothing here can convert is skipped (Steam takes png and jpg only)')
         link = os.path.join(home, 'sneaky.png')
         os.symlink(outside, link)
         self.assertIsNone(self.m.read_art(link), 'a link out of home is followed and refused')
 
     def test_settings_and_shortcuts_are_kept(self):
         p = self.m.Plugin()
-        self.assertEqual(run(p.get_settings()), {'theme': True, 'homeRow': True})
-        run(p.set_settings({'theme': False, 'evil': 'x'}))
-        self.assertEqual(run(p.get_settings()), {'theme': False, 'homeRow': True})
+        self.assertEqual(run(p.get_settings()), self.m.DEFAULT_SETTINGS)
+        self.assertTrue(self.m.DEFAULT_SETTINGS['takeover'], 'the takeover is on by default')
+        run(p.set_settings({'theme': False, 'evil': 'x', 'tkHome': 0}))
+        s = run(p.get_settings())
+        self.assertFalse(s['theme'])
+        self.assertFalse(s['tkHome'])
+        self.assertTrue(s['homeRow'])
+        self.assertNotIn('evil', s)
         self.assertEqual(run(p.set_shortcuts({'gog:1': 123, 'bad': -1, 'x': 'y'})), {'gog:1': 123})
         self.assertEqual(run(p.get_shortcuts()), {'gog:1': 123})
 
@@ -189,6 +228,275 @@ class Backend(unittest.TestCase):
             self.assertTrue(self.m.valid_id(ok))
         for bad in ('', 'x', 'a:"', 'a:\\', 'a:\n', None):
             self.assertFalse(self.m.valid_id(bad))
+
+
+class Takeover(unittest.TestCase):
+    """The takeover's backend calls: questions for Hearth, pictures, the parts that turned themselves off."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-tk-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake_hearth(self, body):
+        app = os.path.join(self.tmp, 'nimbus')
+        with open(app, 'w') as f:
+            f.write('#!/bin/sh\n' + body)
+        os.chmod(app, 0o755)
+        self.m.find_program = lambda name: app if name == 'nimbus' else None
+        return app
+
+    def test_only_known_questions_are_asked(self):
+        a = self.m.data_args
+        self.assertEqual(a('home', ''), ['--steam-mode-data', 'home'])
+        self.assertEqual(a('store', 'epic'), ['--steam-mode-data', 'store', 'epic'])
+        self.assertIsNone(a('store', 'evil; rm -rf'))
+        self.assertIsNone(a('store', ''))
+        self.assertEqual(a('info', 'gog:1'), ['--steam-mode-data', 'info', 'gog:1'])
+        self.assertIsNone(a('info', 'no colon'))
+        self.assertEqual(a('power-mode', 'performance'), ['--steam-mode-data', 'power-mode', 'performance'])
+        self.assertIsNone(a('power-mode', 'turbo'))
+        self.assertIsNone(a('uninstall', 'gog:1'), 'nothing that changes the library')
+        self.assertEqual(set(self.m.STORE_PAGES), {'steam', 'gog', 'epic', 'xbox', 'free', 'recomps', 'battlenet'})
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'steam_takeover.rs').read_text()
+        for what in self.m.DATA:
+            self.assertIn('"%s"' % what, rs, 'hearth-core answers ' + what)
+        for st in self.m.STORE_PAGES:
+            self.assertIn('"%s"' % st, rs)
+
+    def test_hearth_is_asked_and_answers_are_checked(self):
+        self.fake_hearth('[ "$1" = --steam-mode-data ] || exit 3\necho "warming up"\necho "{\\"what\\":\\"$2\\",\\"arg\\":\\"$3\\"}"\n')
+        self.assertEqual(self.m.hearth_data('store', 'gog'), {'what': 'store', 'arg': 'gog'})
+        self.assertIn('error', self.m.hearth_data('store', 'nope'))
+        self.fake_hearth('echo "[1,2]"\necho broken >&2\n')
+        self.assertEqual(self.m.hearth_data('home'), {'error': 'broken'})
+        self.fake_hearth('echo \'{"error":"Unknown store"}\'\nexit 1\n')
+        self.assertEqual(self.m.hearth_data('library'), {'error': 'Unknown store'})
+        self.m.find_program = lambda name: None
+        self.assertIn('error', self.m.hearth_data('home'))
+        p = self.m.Plugin()
+        self.assertIn('error', run(p.hearth_data('home')))
+
+    def test_pictures_only_from_allowed_places(self):
+        home = os.path.join(self.tmp, 'home')
+        png = os.path.join(home, 'a.png')
+        open(png, 'wb').write(PNG)
+        self.assertTrue(self.m.picture_url(png).startswith('data:image/png;base64,'))
+        webp = os.path.join(home, 'a.webp')
+        open(webp, 'wb').write(b'RIFF0000WEBPVP8 ')
+        self.assertTrue(self.m.picture_url(webp).startswith('data:image/webp;base64,'))
+        fake = os.path.join(home, 'fake.jpg')
+        open(fake, 'wb').write(b'#!/bin/sh')
+        self.assertEqual(self.m.picture_url(fake), '')
+        outside = os.path.join(self.tmp, 'x.png')
+        open(outside, 'wb').write(PNG)
+        self.assertEqual(self.m.picture_url(outside), '')
+        self.assertEqual(self.m.picture_url('/etc/passwd'), '')
+        self.assertTrue(self.m.picture_url('https://x/y.png', fetch=lambda u: PNG).startswith('data:image/png;base64,'),
+                        'a web picture the page could not load is fetched by the backend')
+        os.symlink(outside, os.path.join(home, 'l.png'))
+        self.assertEqual(self.m.picture_url(os.path.join(home, 'l.png')), '')
+
+    def test_targets_and_links(self):
+        self.fake_hearth('exit 0\n')
+        self.m.steam_is_flatpak = lambda proc='/proc': False
+        p = self.m.Plugin()
+        t = run(p.get_target('epic:a'))
+        self.assertTrue(t['ok'])
+        self.assertEqual(shlex.split(t['options'])[4:], ['--play-now', 'epic:a'])
+        self.assertFalse(run(p.get_target('steam:570'))['ok'], "Steam's games play from Steam")
+        self.assertFalse(run(p.get_target('bad'))['ok'])
+        h = run(p.get_link('hearth-app:hearth'))
+        self.assertEqual(shlex.split(h['options'])[4:], ['--windowed'])
+        self.assertEqual(shlex.split(run(p.get_link('hearth-app:settings'))['options'])[4:], ['--windowed', '--settings'])
+        self.assertIsNone(run(p.get_link('hearth-app:nope')))
+
+    def test_parts_that_turned_off_are_logged_and_cleared_at_start(self):
+        p = self.m.Plugin()
+        for i in range(60):
+            run(p.log_error('tkMenu', 'not found %d\nsecond line' % i))
+        e = run(p.get_errors())
+        self.assertEqual(len(e), self.m.ERRORS_KEPT)
+        self.assertEqual(e[-1], 'tkMenu: not found 59 second line')
+        run(p._main())
+        self.assertEqual(run(p.get_errors()), [])
+
+    def test_settings_match_the_frontend(self):
+        ts = (HERE / 'src' / 'model.ts').read_text()
+        block = re.search(r'export const DEFAULTS: Settings = \{(.*?)\};', ts, re.S).group(1)
+        front = {k: v == 'true' for k, v in re.findall(r'(\w+): (true|false)', block)}
+        self.assertEqual(front, self.m.DEFAULT_SETTINGS)
+
+
+class Art(unittest.TestCase):
+    """Every kind of picture reference Hearth gives (desktop_games.rs art_for_desktop, artcache.rs, library.rs art_url)
+    becomes a picture, safely, in every format the cache keeps (0.6.60's Hearth row showed blank cards)."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-art-')
+        self.home = os.path.join(self.tmp, 'home')
+        self.cache = os.path.join(self.home, '.local', 'share', 'nimbus', 'art-cache')
+        os.makedirs(self.cache)
+        self.m = load(self.tmp)
+        self.logged = []
+        sys.modules['decky'].logger = types.SimpleNamespace(info=self.logged.append)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def put(self, rel, data):
+        p = os.path.join(self.home, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, 'wb').write(data)
+        return p
+
+    def test_every_kind_of_reference(self):
+        pic = self.put('Pictures/my cover.png', PNG)
+        name = self.m.cache_name('https://images.gog-statics.com/abc.jpg')
+        self.put('.local/share/nimbus/art-cache/%s.webp' % name, WEBP)
+        other = 'a' * 24
+        self.put('.local/share/nimbus/art-cache/' + other, JPG)   # no extension
+        cases = {
+            pic: 'image/png',
+            'file://' + pic.replace(' ', '%20'): 'image/png',
+            'file://localhost' + pic.replace(' ', '%20'): 'image/png',
+            '~/Pictures/my cover.png': 'image/png',
+            'nimbus-art://file/' + pic.replace(' ', '%20') + '?v=3': 'image/png',
+            'nimbus-art://file//' + pic.lstrip('/').replace(' ', '%20'): 'image/png',
+            'nimbus-art://cache/' + name: 'image/webp',
+            'nimbus-art://cache/' + other: 'image/jpeg',
+            'https://images.gog-statics.com/abc.jpg': 'image/webp',   # the cached copy, no network
+        }
+        for ref, mime in cases.items():
+            self.assertTrue(self.m.picture_url(ref, fetch=self.fail).startswith('data:%s;base64,' % mime), ref)
+        self.assertEqual(self.m.picture_url('https://x/new.gif', fetch=lambda u: GIF)[:21], 'data:image/gif;base64')
+        self.assertEqual(self.m.picture_url('https://x/new.avif', fetch=lambda u: AVIF)[:22], 'data:image/avif;base64')
+
+    def test_refused_and_logged_without_paths(self):
+        outside = os.path.join(self.tmp, 'secret.png')
+        open(outside, 'wb').write(PNG)
+        for ref in (outside, 'file://' + outside, 'nimbus-art://file/' + outside, '/etc/passwd', 'nimbus-art://cache/../../x',
+                    'nimbus-art://cache/' + 'b' * 24, 'http://x/y.png', 'relative/y.png', '', self.put('notes.png', b'hello')):
+            self.assertEqual(self.m.picture_url(ref, fetch=lambda u: PNG), '', ref)
+        os.symlink(outside, os.path.join(self.cache, 'c' * 24 + '.png'))
+        self.assertEqual(self.m.picture_url('nimbus-art://cache/' + 'c' * 24), '', 'a link out of the cache is refused')
+        self.assertEqual(self.m.picture_url('https://x/y.png', fetch=lambda u: (_ for _ in ()).throw(OSError('down'))), '')
+        text = '\n'.join(self.logged)
+        self.assertIn('outside the allowed folders', text)
+        self.assertIn('not a picture', text)
+        self.assertIn('download failed (OSError)', text)
+        self.assertNotIn(self.tmp, text, 'no paths in the log')
+        self.assertNotIn('x/y.png', text, 'no addresses in the log')
+        self.assertGreaterEqual(self.m.ART_FAILS['page art: outside the allowed folders'], 3)
+
+    def test_steam_library_cache(self):
+        self.put('.local/share/Steam/appcache/librarycache/620_library_600x900.jpg', JPG)
+        self.put('.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/570/9f8e/library_600x900.jpg', JPG)
+        self.put('.steam/steam/appcache/librarycache/440/header.jpg', PNG)
+        self.assertTrue(self.m.picture_url('steam-lib:620:portrait').startswith('data:image/jpeg'))
+        self.assertTrue(self.m.picture_url('steam-lib:570:portrait').startswith('data:image/jpeg'), "Flathub's Steam, newer layout")
+        self.assertTrue(self.m.picture_url('steam-lib:440:wide').startswith('data:image/png'))
+        self.assertEqual(self.m.picture_url('steam-lib:440:portrait'), '')
+        self.assertEqual(self.m.picture_url('steam-lib:../../etc:portrait'), '')
+        self.assertEqual(self.m.picture_url('steam-lib:620:passwd'), '')
+
+    def test_steam_shortcut_art_is_png_or_jpg(self):
+        self.assertEqual(self.m.read_art('https://x/a.jpg', fetch=lambda u: JPG)['type'], 'jpg')
+        conv = []
+        def fake(data):
+            conv.append(data[:4])
+            return PNG
+        a = self.m.read_art('https://x/a.webp', fetch=lambda u: WEBP, converters=[lambda d: None, fake])
+        self.assertEqual((a['type'], base64.b64decode(a['data'])), ('png', PNG), 'webp converted to PNG for Steam')
+        self.assertEqual(conv, [b'RIFF'])
+        self.assertIsNone(self.m.read_art('https://x/a.avif', fetch=lambda u: AVIF, converters=[lambda d: b'not png']))
+        self.assertIn('avif and nothing here converts it', '\n'.join(self.logged))
+        self.assertEqual(self.m.to_png(GIF, converters=[lambda d: (_ for _ in ()).throw(RuntimeError()), lambda d: PNG]), PNG,
+                         'a converter that throws is skipped')
+
+    def test_real_conversion_when_a_converter_is_here(self):
+        src = real_png()
+        webp = None
+        try:
+            from PIL import Image  # noqa: F401
+            import io
+            out = io.BytesIO()
+            Image.open(io.BytesIO(src)).save(out, 'WEBP')
+            webp = out.getvalue()
+        except Exception:  # noqa: BLE001
+            for tool, args in (('magick', ['png:-', 'webp:-']), ('convert', ['png:-', 'webp:-']),
+                               ('ffmpeg', ['-loglevel', 'error', '-i', 'pipe:0', '-f', 'webp', 'pipe:1'])):
+                if shutil.which(tool):
+                    import subprocess
+                    r = subprocess.run([tool] + args, input=src, capture_output=True)
+                    if r.returncode == 0 and r.stdout[8:12] == b'WEBP':
+                        webp = r.stdout
+                        break
+        if not webp:
+            self.skipTest('no Pillow, ImageMagick or ffmpeg here to make a webp')
+        self.m.find_program = lambda n: shutil.which(n)
+        png = self.m.to_png(webp)
+        self.assertIsNotNone(png, 'Pillow, magick, convert or ffmpeg turned the webp into PNG')
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        self.assertEqual(self.m.kind_of(webp), 'webp')
+        self.assertEqual(self.m.kind_of(real_png()), 'png')
+
+
+
+class Update(unittest.TestCase):
+    """Quick Access › Hearth › Update Hearth OS: hearth-steamos-update's answers (a stand-in for it here)."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='decky-hearth-upd-')
+        os.makedirs(os.path.join(self.tmp, 'home'))
+        self.m = load(self.tmp)
+        self.prog = os.path.join(self.tmp, 'hearth-steamos-update')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def fake(self, body):
+        with open(self.prog, 'w') as f:
+            f.write('#!/bin/sh\n' + body)
+        os.chmod(self.prog, 0o755)
+
+    def test_check(self):
+        self.fake('echo "Update available: 0.6.61"; exit 0\n')
+        r = self.m.update_check(prog=self.prog)
+        self.assertEqual((r['state'], r['version']), ('available', '0.6.61'))
+        self.fake('echo "Hearth OS is up to date" >&2; exit 7\n')
+        self.assertEqual(self.m.update_check(prog=self.prog)['state'], 'none')
+        self.fake('echo "Hearth OS: checking for updates failed: no network" >&2; exit 1\n')
+        r = self.m.update_check(prog=self.prog)
+        self.assertEqual(r['state'], 'error')
+        self.assertIn('no network', r['message'])
+        self.m.STEAMOS_UPDATE = os.path.join(self.tmp, 'missing')
+        self.assertIn("isn't installed", self.m.update_check()['message'])
+
+    def wait(self):
+        import time
+        for _ in range(100):
+            if self.m.UPDATE['state'] != 'running':
+                return
+            time.sleep(0.05)
+
+    def test_apply_with_progress(self):
+        self.fake('echo 0%; echo 37%; echo "Hearth OS: the update is ready." >&2; echo 100%; exit 0\n')
+        self.assertTrue(self.m.update_apply(prog=self.prog))
+        self.wait()
+        self.assertEqual((self.m.UPDATE['state'], self.m.UPDATE['pct']), ('ready', 100))
+        self.assertIn('restart', self.m.UPDATE['message'])
+        self.fake('echo 5%; sleep 0.5; echo "Hearth OS: the update failed: another update is already running" >&2; exit 1\n')
+        self.assertTrue(self.m.update_apply(prog=self.prog))
+        self.assertFalse(self.m.update_apply(prog=self.prog), 'one update at a time')
+        self.wait()
+        self.assertEqual(self.m.UPDATE['state'], 'error')
+        self.assertIn('another update is already running', self.m.UPDATE['message'])
+        self.fake('exit 7\n')
+        self.m.update_apply(prog=self.prog)
+        self.wait()
+        self.assertEqual(self.m.UPDATE['state'], 'none')
+        self.assertEqual([self.m.progress_of(x) for x in ('42%', ' 7%\n', 'x%', '42', '')], [42, 7, None, None, None])
 
 
 class Theme(unittest.TestCase):
