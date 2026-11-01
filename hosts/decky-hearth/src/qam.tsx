@@ -18,7 +18,7 @@ import { guard, setSettingsLocal, settings, useLive } from "./state";
 import { Boundary, C, go } from "./ui";
 import { openApp, say } from "./actions";
 import { GameInfoLine } from "./pages";
-import { PlayersBody } from "./coop";
+import { PlayersBody, SeatsBody } from "./coop";
 
 const ACCENT = C.accent, INK = C.ink;
 const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
@@ -299,6 +299,7 @@ export function QamPanel(props: { which: "hearth" | "perf" | "controller" | "pla
           {props.which === "perf" && <PanelSection title="Hearth Performance"><PerformanceBody /></PanelSection>}
           {props.which === "controller" && <PanelSection title="Hearth Controller"><ControllerBody /></PanelSection>}
           {props.which === "players" && <PanelSection title="Players"><PlayersBody /></PanelSection>}
+          {props.which === "players" && <PanelSection title="Seats"><Boundary part="seats" fallback={null} onError={guard.fail}><SeatsBody /></Boundary></PanelSection>}
         </Boundary>
       </div>
     </Shown>

@@ -406,6 +406,37 @@ class CoreService(unittest.TestCase):
                          {'error': 'That controller is no longer connected.'})
         self.assertIn('error', self.m.coop_call('players', core=lambda c, a: None, helper=os.path.join(self.tmp, 'none')))
 
+    def test_seats_match_hearth_core_and_only_read_without_it(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        ops = re.search(r'pub const SEATS_OPS: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', ops)), self.m.SEATS_OPS)
+        admin = (ROOT / 'os/system_files/usr/libexec/nimbus/hearth-admin').read_text()
+        self.assertIn(self.m.SEAT_PAD.pattern, admin, 'the same pad ids as hearth-admin')
+        bad = {'error': "That isn't something the Hearth plugin asks"}
+        for args in (('setup',), ('remove',), ('start', 1), ('stop', 5), ('start', True), ('assign', 2, 'event7'), ('assign', 0, 'usb:1-2'),
+                     ('assign', 2, 'usb:1-2;rm')):
+            self.assertEqual(self.m.seats_call(*args, core=lambda c, a: self.fail('asked')), bad, args)
+        seen = []
+        core = lambda cmd, a: seen.append((cmd, a)) or {'ok': True, 'data': {'ok': True}}
+        self.assertEqual(self.m.seats_call('assign', 3, 'uniq:aa:bb:cc:dd:ee:ff', core=core), {'ok': True})
+        self.assertEqual(self.m.seats_call('stop', 2, 'usb:1-2', core=core), {'ok': True})
+        self.assertEqual(seen, [('seats', {'op': 'assign', 'seat': 3, 'pad': 'uniq:aa:bb:cc:dd:ee:ff'}),
+                                ('seats', {'op': 'stop', 'seat': 2, 'pad': ''})])
+        # No core: reads go to hearth-seats itself; changes never (polkit wouldn't answer for the plugin).
+        helper = os.path.join(self.tmp, 'hearth-seats')
+        open(helper, 'w').close()
+        calls = []
+
+        class P:
+            def __init__(self, out):
+                self.stdout, self.stderr = out, ''
+        run = lambda argv, **k: calls.append(argv) or P('{"configured": true, "seats": []}\n')
+        self.assertTrue(self.m.seats_call('status', core=lambda c, a: None, run=run, helper=helper)['configured'])
+        self.assertEqual(calls, [['python3', helper, 'status']])
+        self.assertEqual(self.m.seats_call('start', 2, core=lambda c, a: None, run=run, helper=helper), {'error': self.m.NO_CORE_SEATS})
+        self.assertEqual(len(calls), 1)
+        self.assertIn('error', self.m.seats_call('pads', core=lambda c, a: None, helper=os.path.join(self.tmp, 'none')))
+
     def test_coop_shortcut(self):
         t = self.m.coop_shortcut("gog:it's", 3, 'grid')
         self.assertEqual(t['exe'], '/bin/sh')

@@ -128,7 +128,7 @@ turns itself off and the same sections stay in Decky's Hearth tab.
 | --- | --- |
 | **Hearth** | **This game** (below), **Hearth tools** (Keyboard: Steam's on-screen keyboard, also Steam + X; Screenshot: Hearth's, to Pictures › Screenshots › Hearth; Record: Hearth Recorder), **Switch to Hearth Game Mode**, **Hearth OS updates** |
 | **Hearth Performance** | Hearth's **power mode** (Saver, Balanced, Performance, through hearth-power) and Hearth's **power limit**, read only. The frame limit, refresh rate and TDP stay Steam's own Performance tab's in Steam Game Mode, so the two never fight. |
-| **Hearth Players** | Couch co-op: the controllers connected, as **P1** to **P4** in Hearth's player order, **Move up** / **Move down** and **Rumble** (to tell which controller is which), and **Split-screen games** (below). |
+| **Hearth Players** | Couch co-op: the controllers connected, as **P1** to **P4** in Hearth's player order, **Move up** / **Move down** and **Rumble** (to tell which controller is which), and **Split-screen games** (below). **Seats**: multi-seat beside Steam Game Mode (below). |
 | **Hearth Controller** | What Hearth Input is doing now, **Hearth Input in Steam Game Mode** (on/off), the running game's **Hearth Input layout** and **Edit layouts in Hearth** (Hearth's editor in a window). Steam's own layouts stay in Steam's Controller tab: for a game with a Hearth layout, set Steam's to Gamepad or none, or the game gets both. |
 
 ### The game you're playing
@@ -201,6 +201,57 @@ finds it from labwc's process under Steam's launcher; STEAM_GAME is also set on 
 move a mouse in the split screen); Flathub's Steam (the shortcut hands the display and Steam's app id to
 `flatpak-spawn --host`, but labwc then isn't under Steam's launcher, so focus relies on STEAM_GAME); rumble while Steam
 holds the controllers; two identical controllers without serial numbers keep their plug-in order only.
+
+### Multi-seat beside Steam Game Mode (Experimental, needs testing on a device)
+
+With multi-seat (docs/MULTI-SEAT.md) set up, **player 1 can play in Steam's Game Mode while the other players keep their own
+Hearth Game Mode**, each on their own account, screen (or part of one, or a stream) and controllers. Nothing changes when
+multi-seat isn't set up or is off: Steam Game Mode starts exactly as before.
+
+- **The other players aren't touched.** Their sessions are their own system services (`hearth-seat@hearth-pN`); Steam Game
+  Mode never starts, stops or waits for them, and switching between Hearth's and Steam's Game Mode doesn't end them (except
+  as below for screens player 1's Game Mode hosts). Extra players themselves always get Hearth's Game Mode, never Steam's.
+- **A graphics card per player:** Steam's gamescope stays on player 1's card (`hearth-seats gamescope-args`, as Hearth's
+  Game Mode does). The other cards and their HDMI sound were already taken out of player 1's reach (udev rules and ACLs).
+- **Another screen of player 1's card, or a split screen:** those screens need player 1's Game Mode to share them out, so
+  Steam's gamescope runs inside the same host as Hearth's (`hearth-seats host`: labwc over every screen, Steam's gamescope
+  as player 1's window, nested). Steam then can't use gamescope's direct screen control (VRR, HDR, its own refresh-rate
+  switching) on player 1's screen. If the host doesn't start (or paused itself after failing twice), Steam Game Mode
+  starts as usual without it and the hosted players wait for their screen. `HEARTH_STEAM_SEATS_HOST=0` in
+  `~/.config/nimbus/session.conf` leaves the host out of Steam Game Mode.
+- **Streamed players** run on their own virtual screen and aren't affected at all.
+- **Controllers, graphics cards, sound:** Steam (player 1's) can only open what multi-seat leaves to player 1: the other
+  players' controllers, hidraw nodes and cards are outside player 1's seat with ACLs for their own account, and Steam
+  Input's virtual controllers go to the active session (player 1) only. On shared screens everyone's sound goes through
+  player 1's PipeWire on their own screen's output, as in Hearth's Game Mode; Steam's sound settings can still move player
+  1's own output. No performance overlay (mangoapp) while multi-seat is on, as in Hearth's Game Mode.
+- **Per-seat safe:** Hearth's core service, its socket and Hearth Input are per account (`$XDG_RUNTIME_DIR`) and only start
+  for player 1; the `steamos-session-select` and `steamos-update` stand-ins are only on player 1's Steam's PATH for that
+  run. Updating Hearth OS from Steam only stages the update and never restarts. Restarting or turning off from Steam's
+  Power menu is a normal restart, which ends the other players' sessions too (logind usually asks for an administrator's
+  password first while other people are signed in, depending on the base system's polkit rules).
+- **Quick Access › Hearth Players › Seats** (also in Decky's Hearth tab): each player, how they play (their own card,
+  another screen, part of this screen, streamed), their account and whether they're playing; **Start Player N** / **Stop
+  Player N** for each extra player (only that player: `hearth-seats start|stop --seat N` → `hearth-admin seats-start|-stop
+  --seat N`), and **Assign controllers**: each connected controller with **P1** to **P4** to give it to another player
+  (it reconnects to them; not to streamed players, whose controllers come from their device). A player on a shared screen
+  started while there's no host gets their screen the next time Steam Game Mode starts, and the section says so. These go
+  through Hearth's core service (`seats`: only `status`, `pads`, `start`/`stop` for players 2-4, `assign` with a pad id
+  hearth-admin takes); without it the section can still show the players but changes go to Hearth's Settings. Setting
+  multi-seat up, changing it and removing it stay in Hearth's Game Mode (Settings › Games › Multi-seat).
+
+**A Linux user and their own Steam account per seat** is how multi-seat already works: every extra player is their own
+Linux account (`hearth-p2` … `hearth-p4`, created by multi-seat's set-up, password locked, hidden from the login screen),
+with their own home, Hearth profile, saves and their own Steam (signed in on that player's own screen, by them, in Steam's
+own sign-in). The Seats section shows each player's account. Hearth never sees, stores or moves a Steam sign-in, password
+or token: there's no "choose a Steam account for this seat" in Hearth, and there won't be. Player 1's account is the one
+signed in at the device.
+
+Not checked on a device yet (CI can't run Steam or several screens): Steam's gamepad screens inside the nested host
+(Steam's own focus and overlay in a nested gamescope, the Quick Access and Steam buttons), Steam's sound and
+brightness settings with the host, two Steams of different accounts running at once on one PC (Steam supports it; Decky
+attaches only to player 1's, the only one with remote debugging on), and starting or stopping a player from the Seats
+section while Steam holds the controllers (moving a controller reconnects it, which Steam should take in its stride).
 
 ### Still Hearth-only
 
@@ -364,7 +415,8 @@ In Steam Game Mode you have Steam's features instead of these Hearth ones: Heart
 performance and controller pages, the power limit, Hearth Recorder, Quick Resume, Pause; the power mode is in Quick
 Access › Hearth), favourites, collections and
 game settings, Hearth Friends, Couch Co-op's own setup (player names, choosing controllers by pressing A; Steam Game
-Mode has the player order and split-screen shortcuts, above) and multi-seat, Hearth Link's device health, editing Hearth Input
+Mode has the player order and split-screen shortcuts, above) and setting multi-seat up (Steam Game Mode starts, stops and
+gives controllers to the players already set up, above), Hearth Link's device health, editing Hearth Input
 layouts (choosing one is in Quick Access › Hearth Controller), parental controls and per-game power settings, Hearth's
 on-screen keyboard, Discord status, and
 Hearth's Settings (switch back for those). Xbox Cloud Gaming games aren't added to Steam (they need Hearth's stream
@@ -407,6 +459,7 @@ window).
 | Hearth's answers for the pages | `hearth --steam-mode-data home\|library\|store <s>\|downloads\|storage\|info <id>\|power\|power-mode <m>` (`hosts/hearth-core/src/steam_takeover.rs`) |
 | Hearth's core in Steam Game Mode | `nimbus --core-service --while <running mark>` (`hosts/hearth-core/src/core_service.rs`: socket, `COMMANDS`, `front` for Hearth Input), started by `nimbus-session` (`steam_core_start` / `steam_core_stop`, `steam_input_start`), the plugin's `core_call` (`main.py`) |
 | Couch co-op in Steam Game Mode | `src/coop.tsx` (Players tab, `/hearth/coop`), `main.py` (`coop_call`, `coop_shortcut`, `COOP_WRAPPER`), `core_service.rs` (`coop`, `COOP_OPS`), `hearth-coop` (`players`, `order-set`, `identify`, `play`) |
+| Multi-seat beside Steam Game Mode | `nimbus-session` (`steam_seats_on`, the host and `gamescope-args` in `run_steam_mode`), `src/coop.tsx` (`SeatsBody`), `src/model.ts` (`seatState`, `seatAction`, `seatTargets`, `seatsLine`, `seatDone`), `main.py` (`seats_call`, `SEATS_OPS`), `core_service.rs` (`seats`, `SEATS_OPS`, `seat_pad_ok`), `hearth-seats start\|stop --seat N`, `hearth-admin seats-start\|seats-stop --seat N` |
 | Steam's main menu, Quick Access tabs, in-game section | `src/patches.tsx` (`HearthMenuItems`), `src/qam.tsx` (`syncQamTabs` through Decky's tab list, the tabs, `ThisGame`), `src/ingame.tsx` (`/hearth/now`, `/hearth/home`), `src/core.ts` (the running game, the 2-second `front`), `src/model.ts` (`menuPlaces`, `runningGame`, `frontMessage`, `qamPlan`) |
 | The look | `hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
 | CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures, and pictures of Steam's main menu, Hearth's Quick Access tabs and the in-game section over static stand-ins, as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |

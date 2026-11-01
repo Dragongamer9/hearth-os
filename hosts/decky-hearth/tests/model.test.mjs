@@ -219,3 +219,25 @@ test("players: moving a controller, the tab's lines", () => {
   assert.equal(M.coopProblem({ pads: [], max: 4, running: false, lastError: "x", lastErrorAt: 1000 }, 1000 + 7200e3), "", "old news");
   assert.equal(M.coopProblem({ pads: [], max: 4, running: true, lastError: "x" }, 0), "");
 });
+
+test("seats: words, actions, who can get a controller", () => {
+  const st = { configured: true, enabled: true, seats: [
+    { seat: 1, user: "bob", mode: "nested", state: "active" },
+    { seat: 2, user: "hearth-p2", mode: "nested", state: "running" },
+    { seat: 3, user: "hearth-p3", mode: "stream", state: "stopped" },
+    { seat: 4, user: "hearth-p4", mode: "gpu", state: "failed" }] };
+  assert.equal(M.seatState(st.seats[0]), "Playing here (Steam Game Mode)");
+  assert.equal(M.seatState(st.seats[1]), "Playing (Hearth Game Mode)");
+  assert.equal(M.seatAction(st.seats[0]), null, "player 1 is never started or stopped here");
+  assert.equal(M.seatAction(st.seats[1]), "stop");
+  assert.equal(M.seatAction(st.seats[2]), "start");
+  assert.equal(M.seatAction(st.seats[3]), "start");
+  assert.deepEqual(M.seatTargets(st), [1, 2, 4], "streamed players' controllers come from their device");
+  assert.deepEqual(M.seatTargets({ configured: false, enabled: false, seats: [] }), []);
+  assert.match(M.seatAccount(st.seats[2]), /hearth-p3 · own account/);
+  assert.match(M.seatsLine(st), /^1 of 3 other players playing/);
+  assert.match(M.seatsLine({ configured: false, enabled: false, seats: [] }), /isn't set up/);
+  assert.equal(M.seatsLine({ error: "x" }), "x");
+  assert.match(M.seatDone("start", 2, { restart_game_mode: true }), /next time Steam Game Mode starts/);
+  assert.equal(M.seatDone("start", 3, {}), "Player 3 is starting");
+});

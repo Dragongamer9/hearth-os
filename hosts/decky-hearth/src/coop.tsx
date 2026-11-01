@@ -5,12 +5,17 @@
 //    one Steam shortcut running `hearth-coop play --game <id>` (main.py coop_shortcut): Hearth's own Couch Co-op split
 //    screen (a nested labwc inside Steam's gamescope, a nested gamescope per player, each player's copy seeing only
 //    their own controller), started with the player order.
-// Everything goes through Hearth's core service (`coop`), or hearth-coop itself when the core isn't running. Nothing
-// here can stop Steam: every answer that fails is shown as a line, and the page is inside a Boundary.
+//  - the Seats section (Quick Access › Hearth Players, and Decky's Hearth tab): multi-seat beside Steam Game Mode. Player 1
+//    plays here, the extra players in their own Hearth Game Mode on their own account; each extra player started or
+//    stopped, and a controller given to a player (hearth-seats through the core service's `seats`; set-up stays in
+//    Hearth's Settings › Multi-seat).
+// Everything goes through Hearth's core service (`coop`, `seats`), or the helper itself when the core isn't running.
+// Nothing here can stop Steam: every answer that fails is shown as a line, and the sections are inside a Boundary.
 import { ButtonItem, DialogButton, Focusable, PanelSectionRow, staticClasses } from "@decky/ui";
 import { callable } from "@decky/api";
 import { ReactNode, useEffect, useState } from "react";
-import { COOP_LAYOUTS, CoopPad, CoopPlayers, coopLine, coopProblem, movePad } from "./model";
+import { COOP_LAYOUTS, CoopPad, CoopPlayers, SEAT_MODES, Seat, SeatPad, SeatsStatus, coopLine, coopProblem, movePad,
+  seatAccount, seatAction, seatDone, seatState, seatTargets, seatsLine } from "./model";
 import { Boundary, C, Chips, Page, go } from "./ui";
 import { guard } from "./state";
 import { brand } from "./pages";
@@ -20,11 +25,19 @@ import { Act, Row } from "./manage";
 
 type Ans<T> = T & { error?: string };
 const coopRaw = callable<[op: string, pads: string[], pad: string], any>("coop");
+const seatsRaw = callable<[op: string, seat: number, pad: string], any>("seats");
 const coopTarget = callable<[id: string, players: number, layout: string], { ok: boolean; error?: string; exe?: string; startDir?: string; options?: string }>("coop_target");
 
 async function coop<T = any>(op: string, pads: string[] = [], pad = ""): Promise<Ans<T>> {
   try {
     const r = await coopRaw(op, pads, pad);
+    return r && typeof r === "object" ? r : ({ error: "Hearth gave no answer" } as any);
+  } catch (e) { return { error: String(e) } as any; }
+}
+
+async function seats<T = any>(op: string, seat = 0, pad = ""): Promise<Ans<T>> {
+  try {
+    const r = await seatsRaw(op, seat, pad);
     return r && typeof r === "object" ? r : ({ error: "Hearth gave no answer" } as any);
   } catch (e) { return { error: String(e) } as any; }
 }
@@ -103,6 +116,110 @@ export function PlayersBody() {
           Split-screen games
         </ButtonItem>
       </PanelSectionRow>
+    </>
+  );
+}
+
+function SeatBadge(props: { n: number; on: boolean }) {
+  return (
+    <div className="hearth-seat-badge" style={{ width: 34, height: 34, borderRadius: 8, flex: "none", display: "flex", alignItems: "center", justifyContent: "center",
+      fontWeight: 800, fontSize: 13, background: props.on ? C.accent : C.panel3, color: props.on ? C.ink : C.dim }}>{`S${props.n}`}</div>
+  );
+}
+
+/** Quick Access › Hearth Players › Seats: multi-seat beside Steam Game Mode. Quiet (one line) when it isn't set up. */
+export function SeatsBody() {
+  const [st, setSt] = useState<Ans<SeatsStatus> | null>(null);
+  const [pads, setPads] = useState<Ans<{ pads: SeatPad[] }> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const refresh = async (withPads = open) => {
+    const r = await seats<SeatsStatus>("status");
+    setSt(r);
+    if (withPads && r.configured) setPads(await seats<{ pads: SeatPad[] }>("pads"));
+  };
+  useEffect(() => {
+    let live = true;
+    const f = () => seats<SeatsStatus>("status").then((r) => { if (live) setSt(r); });
+    f();
+    const t = setInterval(f, 4000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+  const list: Seat[] = st && !st.error && st.configured && Array.isArray(st.seats) ? st.seats : [];
+  const targets = seatTargets(st && !st.error ? st : null);
+  const toggle = async (s: Seat) => {
+    const op = seatAction(s);
+    if (!op) return;
+    setBusy(true);
+    const r = await seats<{ restart_game_mode?: boolean }>(op, s.seat);
+    setBusy(false);
+    say(r.error ? r.error : seatDone(op, s.seat, r));
+    refresh();
+  };
+  const give = async (d: SeatPad, n: number) => {
+    if (!d.id) return;
+    setBusy(true);
+    const r = await seats("assign", n, d.id);
+    setBusy(false);
+    say(r.error ? r.error : `${d.name} is Player ${n}'s now (it reconnects)`);
+    refresh(true);
+  };
+  const showPads = async () => { setOpen(!open); if (!open) setPads(await seats<{ pads: SeatPad[] }>("pads")); };
+  const padList = pads && !pads.error && Array.isArray(pads.pads) ? pads.pads : [];
+  return (
+    <>
+      <PanelSectionRow><Line dim={!list.length}>{seatsLine(st)}</Line></PanelSectionRow>
+      {list.map((s) => {
+        const act = seatAction(s);
+        return (
+          <PanelSectionRow key={s.seat}>
+            <div className="hearth-seat" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "6px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <SeatBadge n={s.seat} on={s.seat === 1 || s.state === "running" || s.state === "starting"} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Player {s.seat} · {seatState(s)}</div>
+                  <div style={{ fontSize: 11.5, color: C.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {SEAT_MODES[s.mode] || s.mode} · {seatAccount(s)}
+                  </div>
+                </div>
+              </div>
+              {act && (
+                <Focusable style={{ display: "flex", gap: 6 }} {...({ "flow-children": "horizontal" } as any)}>
+                  <DialogButton style={small} disabled={busy} onClick={() => toggle(s)}>{act === "start" ? `Start Player ${s.seat}` : `Stop Player ${s.seat}`}</DialogButton>
+                </Focusable>
+              )}
+            </div>
+          </PanelSectionRow>
+        );
+      })}
+      {list.length > 0 && targets.length > 1 && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" disabled={busy} onClick={showPads} description="Give a controller to another player; it reconnects to them">
+            {open ? "Hide controllers" : "Assign controllers"}
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+      {open && pads?.error && <PanelSectionRow><Line dim>{pads.error}</Line></PanelSectionRow>}
+      {open && padList.map((d, i) => (
+        <PanelSectionRow key={d.id || "pad" + i}>
+          <div className="hearth-seat-pad" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 0" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text }}>{d.name}
+              <span style={{ fontWeight: 400, color: C.dim }}> · Player {d.seat}{d.bus === "bluetooth" ? " · Bluetooth" : ""}</span></div>
+            {d.assignable ? (
+              <Focusable style={{ display: "flex", gap: 6 }} {...({ "flow-children": "horizontal" } as any)}>
+                {targets.map((n) => (
+                  <DialogButton key={n} style={small} disabled={busy || n === d.seat} onClick={() => give(d, n)}>{`P${n}`}</DialogButton>
+                ))}
+              </Focusable>
+            ) : <Line dim>Stays with Player 1 (no serial number or port to recognise it by)</Line>}
+          </div>
+        </PanelSectionRow>
+      ))}
+      {open && pads && !pads.error && !padList.length && <PanelSectionRow><Line dim>No controllers connected.</Line></PanelSectionRow>}
+      {list.length > 0 && (
+        <PanelSectionRow><Line dim>Players are set up, added and removed in Hearth's Game Mode (Settings › Games › Multi-seat). Each extra player signs in to
+          Steam on their own screen; Hearth never sees their Steam sign-in.</Line></PanelSectionRow>
+      )}
     </>
   );
 }

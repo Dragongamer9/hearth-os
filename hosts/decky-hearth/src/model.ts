@@ -392,3 +392,52 @@ export function coopProblem(p: CoopPlayers | null, now: number): string {
   if (!p || p.running || !p.lastError) return "";
   return !p.lastErrorAt || now - p.lastErrorAt < 3600e3 ? p.lastError : "";
 }
+
+// ---- Multi-seat beside Steam Game Mode (hearth-seats `status` / `pads`, core_service.rs `seats`)
+
+export interface Seat { seat: number; user: string; mode: string; state: string; pads?: string[]; region?: number | null }
+export interface SeatsStatus { configured: boolean; enabled: boolean; mode?: string | null; seats: Seat[]; host?: { running: boolean; paused: boolean } | null }
+export interface SeatPad { id: string | null; name: string; bus: string; seat: number; assignable: boolean }
+export const SEAT_MODES: Record<string, string> = { gpu: "Own graphics card", nested: "Another screen", split: "Part of this screen", stream: "Streamed (Moonlight)", local: "This screen" };
+const SEAT_STATES: Record<string, string> = { running: "Playing (Hearth Game Mode)", starting: "Starting…", waiting: "Waits for its screen", stopped: "Stopped", failed: "Didn't start" };
+
+/** A seat's state in words: player 1 plays here in Steam Game Mode; the others have their own Hearth Game Mode. */
+export function seatState(s: Seat): string {
+  if (s.seat === 1) return "Playing here (Steam Game Mode)";
+  return SEAT_STATES[s.state] || s.state || "Unknown";
+}
+
+/** The account a seat plays as: player 1 is you, the others have their own Linux account (and their own Steam). */
+export function seatAccount(s: Seat): string {
+  return s.seat === 1 ? `${s.user} (you)` : `${s.user} · own account and Steam sign-in`;
+}
+
+/** Can this extra player be started now (Start), or stopped (Stop)? Player 1 never is. */
+export function seatAction(s: Seat): "start" | "stop" | null {
+  if (s.seat < 2 || s.seat > 4) return null;
+  return s.state === "stopped" || s.state === "failed" ? "start" : "stop";
+}
+
+/** The players a controller can be given to: everyone but streamed players (their controllers come from their device). */
+export function seatTargets(st: SeatsStatus | null): number[] {
+  if (!st || !st.configured) return [];
+  return st.seats.filter((s) => s.mode !== "stream").map((s) => s.seat).sort((a, b) => a - b);
+}
+
+/** The Seats section's first line. */
+export function seatsLine(st: (SeatsStatus & { error?: string }) | null): string {
+  if (!st) return "Looking at the seats…";
+  if (st.error) return st.error;
+  if (!st.configured) return "Multi-seat isn't set up. Set it up in Hearth's Game Mode: Settings › Games › Multi-seat.";
+  const on = st.seats.filter((s) => s.seat > 1 && (s.state === "running" || s.state === "starting")).length;
+  const extra = st.seats.length - 1;
+  const paused = st.host?.paused ? " The shared screens are paused after failing to start: start a player again to retry." : "";
+  return (on ? `${on} of ${extra} other player${extra === 1 ? "" : "s"} playing in their own Hearth Game Mode.` : `${extra} other player${extra === 1 ? "" : "s"} set up, none playing now.`) + paused;
+}
+
+/** What to say after starting or stopping one player (hearth-seats' restart_game_mode: their screen needs player 1's
+ *  Game Mode to host it, which Steam Game Mode does when it starts). */
+export function seatDone(op: "start" | "stop", seat: number, r: { restart_game_mode?: boolean } | null): string {
+  if (op === "start") return r?.restart_game_mode ? `Player ${seat}'s screen opens the next time Steam Game Mode starts` : `Player ${seat} is starting`;
+  return r?.restart_game_mode ? `Player ${seat} stopped. Your picture fills the screen again the next time Steam Game Mode starts` : `Player ${seat} stopped`;
+}

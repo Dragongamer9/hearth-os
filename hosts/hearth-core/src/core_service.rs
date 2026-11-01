@@ -38,6 +38,9 @@
 //!   coop {op, pads, pad}                  Couch Co-op in Steam Game Mode (hearth-coop, multiplay.rs): `players` (the
 //!                                         controllers in the saved player order), `order` (save it), `identify` (a
 //!                                         short rumble on one), `games` (what plays split-screen), `check`
+//!   seats {op, seat, pad}                 Multi-seat beside Steam Game Mode (hearth-seats): `status`, `pads`, `start` /
+//!                                         `stop` one extra player (seat 2-4), `assign` a controller (its pad id) to a
+//!                                         player (1-4). Never sets multi-seat up or removes it, never touches accounts
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -48,7 +51,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Every command the service answers; anything else is refused.
-pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk", "coop"];
+pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk", "coop", "seats"];
 /// Hearth's own calls the Steam pages may make (`call`), each with the arguments it may carry (everything else is dropped).
 pub const BRIDGE_CALLS: &[(&str, &[&str])] = &[
     ("library.downloads", &[]), ("game.install", &["id"]), ("game.cancelInstall", &["id"]), ("game.pauseInstall", &["id"]), ("game.resumeInstall", &["id"]),
@@ -64,6 +67,22 @@ pub const MODS_CALLS: &[(&str, &[&str])] = &[
 pub const COOP_OPS: &[&str] = &["players", "order", "identify", "games", "check"];
 /// A controller as hearth-coop names it: its event node (`event12`), nothing else.
 pub fn pad_id_ok(s: &str) -> bool { s.len() > 5 && s.len() <= 10 && s.starts_with("event") && s[5..].chars().all(|c| c.is_ascii_digit()) }
+/// Multi-seat's questions and changes the Quick Access › Hearth Players › Seats section may make (`seats`).
+pub const SEATS_OPS: &[&str] = &["status", "pads", "start", "stop", "assign"];
+/// A controller as hearth-seats names it (hearth-admin's SEAT_PAD_RE): `usb:1-2` (a USB port path, `usb:3-1.4.2`) or
+/// `uniq:<serial or Bluetooth address>`, nothing else.
+pub fn seat_pad_ok(s: &str) -> bool {
+    let digits = |p: &str| (1..=3).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit());
+    if let Some(port) = s.strip_prefix("usb:") {
+        let Some((bus, path)) = port.split_once('-') else { return false };
+        let parts: Vec<&str> = path.split('.').collect();
+        return digits(bus) && parts.len() <= 7 && parts.iter().all(|p| digits(p));
+    }
+    if let Some(u) = s.strip_prefix("uniq:") {
+        return (4..=64).contains(&u.len()) && u.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-'));
+    }
+    false
+}
 /// What `data` may ask (the same list as the plugin's DATA, main.py).
 pub const DATA: &[&str] = &["home", "library", "store", "downloads", "storage", "info", "power", "power-mode"];
 pub const POWER_MODES: &[&str] = &["efficiency", "balanced", "performance"];
@@ -189,6 +208,18 @@ pub fn check(req: &Value) -> Result<(String, Value), String> {
             if op == "identify" && pad.is_empty() { return Err("Which controller?".into()); }
             if op == "order" && pads.is_empty() { return Err("No player order".into()); }
             json!({"op": op, "pads": pads, "pad": pad})
+        }
+        "seats" => {
+            let op = req["op"].as_str().filter(|o| SEATS_OPS.contains(o)).ok_or("That isn't something the Hearth plugin asks")?;
+            let seat = req["seat"].as_u64().unwrap_or(0);
+            let pad = req["pad"].as_str().unwrap_or("");
+            match op {
+                "start" | "stop" if !(2..=4).contains(&seat) => return Err("Which player? (2 to 4)".into()),
+                "assign" if !(1..=4).contains(&seat) => return Err("Which player? (1 to 4)".into()),
+                "assign" if !seat_pad_ok(pad) => return Err("That isn't a controller".into()),
+                _ => {}
+            }
+            json!({"op": op, "seat": if matches!(op, "start" | "stop" | "assign") { seat } else { 0 }, "pad": if op == "assign" { pad } else { "" }})
         }
         "set-proton" => {
             let p = req["proton"].as_str().ok_or("No Proton version")?;
@@ -402,6 +433,23 @@ fn coop(a: &Value) -> Result<Value, String> {
     }
 }
 
+/// Multi-seat beside Steam Game Mode: what's set up and running, the controllers, one extra player started or stopped, a
+/// controller moved (hearth-seats, the same helper Hearth's Settings › Multi-seat uses; its root side asks polkit, which
+/// this service can answer for because it runs in the signed-in person's session).
+fn seats(a: &Value) -> Result<Value, String> {
+    use crate::multiplay::{ask, SEATS};
+    if !crate::multiplay::seats_available() { return Err("Multi-seat isn't part of this Hearth OS.".into()); }
+    let seat = a["seat"].as_u64().unwrap_or(0).to_string();
+    match a["op"].as_str().unwrap_or("") {
+        "status" => ask(SEATS, &["status"]),
+        "pads" => ask(SEATS, &["pads"]),
+        "start" => ask(SEATS, &["start", "--seat", &seat]),
+        "stop" => ask(SEATS, &["stop", "--seat", &seat]),
+        "assign" => ask(SEATS, &["assign-pad", "--pad", a["pad"].as_str().unwrap_or(""), "--seat", &seat]),
+        _ => Err("Unknown command".into()),
+    }
+}
+
 /// One checked command's answer.
 pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
     let game = a["game"].as_str().unwrap_or("");
@@ -435,6 +483,7 @@ pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
         }
         "games-disk" => games_disk(a["mount"].as_str().unwrap_or("")),
         "coop" => coop(a),
+        "seats" => seats(a),
         _ => Err("Unknown command".into()),
     }
 }
@@ -630,6 +679,19 @@ mod tests {
         assert!(req(json!({"cmd": "coop", "op": "identify", "pad": "js0"})).is_err());
         assert!(req(json!({"cmd": "coop", "op": "identify"})).is_err());
         assert!(req(json!({"cmd": "coop", "op": "start", "pads": ["event1", "event2"]})).is_err(), "the split screen starts from Steam's shortcut");
+        // Multi-seat: only its questions, one extra player at a time, only pad ids hearth-admin takes.
+        assert_eq!(req(json!({"cmd": "seats", "op": "status", "seat": 3})).unwrap().1, json!({"op": "status", "seat": 0, "pad": ""}));
+        assert_eq!(req(json!({"cmd": "seats", "op": "stop", "seat": 2})).unwrap().1, json!({"op": "stop", "seat": 2, "pad": ""}));
+        assert!(req(json!({"cmd": "seats", "op": "start", "seat": 1})).is_err(), "player 1 is never started or stopped here");
+        assert!(req(json!({"cmd": "seats", "op": "stop", "seat": 5})).is_err());
+        assert!(req(json!({"cmd": "seats", "op": "start"})).is_err());
+        assert!(req(json!({"cmd": "seats", "op": "assign", "seat": 2, "pad": "usb:1-2.4"})).is_ok());
+        assert!(req(json!({"cmd": "seats", "op": "assign", "seat": 1, "pad": "uniq:aa:bb:cc:dd:ee:ff"})).is_ok());
+        assert!(req(json!({"cmd": "seats", "op": "assign", "seat": 2, "pad": "event7"})).is_err());
+        assert!(req(json!({"cmd": "seats", "op": "assign", "seat": 2, "pad": "usb:1-2; rm"})).is_err());
+        assert!(req(json!({"cmd": "seats", "op": "setup"})).is_err(), "never set up from here");
+        assert!(req(json!({"cmd": "seats", "op": "remove"})).is_err(), "never removed from here");
+        assert!(seat_pad_ok("usb:3-1.4.2") && seat_pad_ok("uniq:0123") && !seat_pad_ok("usb:1") && !seat_pad_ok("usb:1-") && !seat_pad_ok("uniq:a b c"));
         assert!(pad_id_ok("event12") && !pad_id_ok("event") && !pad_id_ok("event1x") && !pad_id_ok("event12345678"));
         for (m, _) in MODS_CALLS { assert!(crate::hearth_mods::allowed(m), "{m} is a Hearth Mods call"); }
         // The same lists as the plugin's backend (main.py DATA, CORE_COMMANDS; its tests check the other way).

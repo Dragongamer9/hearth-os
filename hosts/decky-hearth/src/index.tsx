@@ -21,9 +21,9 @@ import { ModsPage, RecompsPage, StorageManagePage } from "./manage";
 import { addRoutes, patchGamePage, patchHome, patchLibraryTabs, patchMainMenu } from "./patches";
 import { ControllerBody, PerformanceBody, SwitchButton, ThisGameSection, ToolsBody, UpdateRow, removeQamTabs, syncQamTabs } from "./qam";
 import { HearthHomePage, NowPlayingPage } from "./ingame";
-import { CoopPage, PlayersBody } from "./coop";
+import { CoopPage, PlayersBody, SeatsBody } from "./coop";
 import { startFront } from "./core";
-import { go, setSounds } from "./ui";
+import { Boundary, go, setSounds } from "./ui";
 import { HearthRowView } from "./row";
 import { say } from "./actions";
 
@@ -139,6 +139,7 @@ function Panel() {
       <PanelSection title="Performance"><PerformanceBody /></PanelSection>
       <PanelSection title="Controller"><ControllerBody /></PanelSection>
       <PanelSection title="Players"><PlayersBody /></PanelSection>
+      <PanelSection title="Seats"><Boundary part="seats" fallback={null} onError={guard.fail}><SeatsBody /></Boundary></PanelSection>
       <PanelSection title="Hearth tools"><ToolsBody /></PanelSection>
       <PanelSection title="Hearth OS updates">
         <UpdateRow />
