@@ -342,6 +342,20 @@ jobs:
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
           mkdir -p /tmp/app/electron && cp -a dist/linux-unpacked/. /tmp/app/electron/
+      # ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
+      # packed into hearth-app.tar (decky-hearth/); build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
+      # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
+      - name: Build the Hearth Decky plugin
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth
+          npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.ver.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          mkdir -p /tmp/app && rm -rf /tmp/app/decky-hearth && cp -a /tmp/decky-out/decky-hearth /tmp/app/decky-hearth
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |

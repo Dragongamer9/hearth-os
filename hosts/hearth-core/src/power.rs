@@ -115,6 +115,8 @@ pub fn action(what: &str, in_session: bool) -> Result<bool, String> {
             if what == "desktop" { std::fs::write(&f, "desktop\n").map_err(|e| e.to_string())?; } else { let _ = std::fs::remove_file(&f); }
             Ok(true)
         }
+        // Steam Game Mode (Experimental, steam_mode.rs): this time only; the session comes back to Hearth's Game Mode.
+        "steam" if in_session => crate::steam_mode::switch().map(|_| true),
         _ => Ok(false),
     }
 }

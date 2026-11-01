@@ -1,0 +1,124 @@
+# Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (hosts/decky-hearth) built and packed
+# like Decky's plugin template does, its backend's tests, pictures of its theme over a static stand-in for Steam's UI,
+# the session's Steam Game Mode and the Decky helper (hosts/linux/test/test_hearth_steam_mode.py), and the Rust side
+# (hearth-core's tests, the app checked). No Steam, no sign-in, nothing of Valve's is run.
+name: Hearth Decky plugin
+
+on:
+  push:
+    branches: [bughunt]
+    paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_steam_mode.py',
+            'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs',
+            'os/system_files/usr/libexec/nimbus/hearth-decky', '.github/workflows/decky-hearth.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/decky-hearth/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30
+          grep -q '^OK' /tmp/py.log || { echo "::error title=plugin backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build and pack (pnpm build, then Decky's layout and a zip)
+        working-directory: hosts/decky-hearth
+        run: |
+          set -o pipefail
+          npm install -g pnpm@9 >/dev/null
+          v=$(grep -m1 '^version' ../hearth-core/Cargo.toml | cut -d'"' -f2)
+          sed -i "s/\"version\": \".*\"/\"version\": \"$v\"/" package.json
+          pnpm install --no-frozen-lockfile 2>&1 | tail -5
+          if ! pnpm build > /tmp/build.log 2>&1; then
+            echo "::error title=plugin build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          tail -5 /tmp/build.log
+          ./package.sh "$RUNNER_TEMP/out"
+          test -s "$RUNNER_TEMP/out/decky-hearth/dist/index.js"
+          test -s "$RUNNER_TEMP/out/decky-hearth/hearth-theme.css"
+          test -s "$RUNNER_TEMP/out/decky-hearth/css-loader/Hearth/shared.css"
+          ! grep -q '{{' "$RUNNER_TEMP/out/decky-hearth/css-loader/Hearth/shared.css"
+          (cd "$RUNNER_TEMP/out" && unzip -l decky-hearth.zip | tail -25)
+          echo "::notice title=Hearth Decky plugin::built, $(du -h "$RUNNER_TEMP/out/decky-hearth.zip" | cut -f1) zip, index.js $(du -h "$RUNNER_TEMP/out/decky-hearth/dist/index.js" | cut -f1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decky-hearth
+          path: ${{ runner.temp }}/out/decky-hearth.zip
+      - name: The theme over a stand-in for Steam's UI (pictures)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cp hosts/decky-hearth/tests/render-mock.mjs tools/render-mock.mjs
+          HEARTH_ROOT="$PWD" node tools/render-mock.mjs "$RUNNER_TEMP/shots"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decky-hearth-theme-shots
+          path: ${{ runner.temp }}/shots
+
+  session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Steam Game Mode in the session, nimbus-mode, the Decky helper
+        run: |
+          set -o pipefail
+          bash -n hosts/linux/session/nimbus-session && sh -n hosts/linux/session/nimbus-mode
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_steam_mode.py' -v 2>&1 | tee /tmp/t.log | tail -40
+          grep -q '^OK' /tmp/t.log || { echo "::error title=steam game mode tests::$(grep -E -A8 '^(FAIL|ERROR):' /tmp/t.log | head -50 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          # The session's other tests that read nimbus-session and nimbus-mode.
+          for t in test_hearth_overlay.py test_hearth_polkit_agent.py test_hearth_system_tools.py; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t" 2>&1 | tail -3 | tee /tmp/o.log
+            grep -q '^OK' /tmp/o.log || { echo "::error title=$t::$(tail -3 /tmp/o.log | tr '\n' ' ')"; exit 1; }
+          done
+
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-core
+            hosts/hearth-rs
+      - name: Test hearth-core
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          if ! cargo test --lib 2>&1 | tee test.log; then
+            echo "::error title=hearth-core::$( (grep -E -A8 '^(error|---- |thread .* panicked)' test.log | head -60; echo ===; tail -25 test.log) | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
+          echo "::notice title=hearth-core tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+          grep -E 'steam_mode::|desktop_games::' test.log | head -20
+      - name: Check the app (--play-now)
+        working-directory: hosts/hearth-rs
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
+          if ! cargo check 2>&1 | tee check.log; then
+            echo "::error title=hearth-rs::$(grep -E -A8 '^error' check.log | head -60 | tr '\n' '|' | cut -c1-3900)"; exit 1
+          fi
+
+  ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page (power menu and Settings › System changed)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js

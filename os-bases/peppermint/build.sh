@@ -312,6 +312,17 @@ if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/c
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
+# ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
+# copied into Decky's plugins folder when you install Decky from Settings › System (hearth-admin decky-install). No
+# service is enabled here and nothing runs at boot. Not in this build: skipped with a warning.
+if [ -f /ctx/nimbus-app/decky-hearth/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth && cp -a /ctx/nimbus-app/decky-hearth /usr/share/hearth/decky-hearth \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth && echo "Hearth Decky plugin added" \
+    || { echo "warning: the Hearth Decky plugin didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth; }
+else
+  echo "warning: the Hearth Decky plugin isn't in this build; Steam Game Mode goes without it"
+fi
+# ---- end Hearth Decky plugin
 # ---- end hearthfetch
 # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its
 # user service (hearth-steam-engine.service, not enabled) only while Settings › Library › Steam engine is Lightweight.

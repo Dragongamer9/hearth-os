@@ -1,0 +1,281 @@
+#!/usr/bin/python3
+"""hearth-decky: Decky Loader for Hearth's Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md), as root.
+
+Run by hearth-admin (decky-install asks for an administrator's password, 49-hearth-admin.rules; the others don't):
+
+  hearth-decky install USER   Decky Loader's latest stable release from its GitHub releases (the same file its own
+                              installer fetches) into /var/lib/hearth-decky (root's, so nothing running as you can
+                              change what runs as root), a service that is NOT started at boot (nimbus-session starts
+                              it only for Steam Game Mode), ~USER/homebrew for Decky's plugins and settings, Steam's
+                              CEF remote debugging turned on for USER (Decky needs it), and the Hearth plugin the image
+                              ships (/usr/share/hearth/decky-hearth) put in Decky's plugins folder
+  hearth-decky remove USER    the service, the program, the Hearth plugin and the CEF debugging file Hearth made;
+                              Decky's settings and other plugins in ~/homebrew stay
+  hearth-decky start|stop     the service (only Hearth's own; a Decky installed with Decky's installer runs by itself)
+
+Prints one JSON line ({"ok": true, ...}); errors print "error: ..." and exit 1. Paths can be moved for tests with
+HEARTH_DECKY_ROOT (a folder standing in for /).
+"""
+import json
+import os
+import pwd
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+ROOT = os.environ.get('HEARTH_DECKY_ROOT', '/')
+RELEASES = 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases'
+UNIT_NAME = 'hearth-decky.service'
+MARK = '.hearth-made-this'
+
+
+def path(*p):
+    return os.path.join(ROOT, *[x.lstrip('/') for x in p])
+
+
+def unit_path():
+    return path('etc/systemd/system', UNIT_NAME)
+
+
+def upstream_unit():
+    return path('etc/systemd/system/plugin_loader.service')
+
+
+def lib_dir():
+    return path('var/lib/hearth-decky')
+
+
+def shipped_plugin():
+    return path('usr/share/hearth/decky-hearth')
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+def person(name):
+    """A person's account (ids 1000-59999), never root or a system account."""
+    try:
+        pw = pwd.getpwnam(name)
+    except (KeyError, TypeError):
+        raise ValueError('unknown account')
+    if not 1000 <= pw.pw_uid < 60000:
+        raise ValueError('only a person\'s own account')
+    return pw
+
+
+def home_of(pw):
+    """The person's home (tests, with HEARTH_DECKY_ROOT set, may give another with HEARTH_DECKY_TEST_HOME)."""
+    if ROOT != '/' and os.environ.get('HEARTH_DECKY_TEST_HOME'):
+        return os.environ['HEARTH_DECKY_TEST_HOME']
+    return pw.pw_dir
+
+
+def unit_text(home, user, binary):
+    """Decky's own service (dist/plugin_loader-release.service), with Hearth's changes: the program in a root-owned
+    folder, the user named, no [Install] section (never started at boot), Decky's updater told to keep this file."""
+    hb = os.path.join(home, 'homebrew')
+    return '\n'.join([
+        '# Hearth: Decky Loader for Steam Game Mode (Experimental). Started only while Steam Game Mode runs',
+        '# (nimbus-session, hearth-admin decky-start); never at boot. Remove: Settings > System > Steam Game Mode.',
+        '[Unit]',
+        'Description=Decky Loader (Hearth Steam Game Mode)',
+        'After=network.target',
+        '[Service]',
+        'Type=simple',
+        'User=root',
+        'Restart=on-failure',
+        'RestartSec=3',
+        'StartLimitBurst=3',
+        'KillMode=process',
+        'TimeoutStopSec=15',
+        'ExecStart=' + binary,
+        'WorkingDirectory=' + os.path.dirname(binary),
+        'Environment=UNPRIVILEGED_PATH=' + hb,
+        'Environment=PRIVILEGED_PATH=' + hb,
+        'Environment=UNPRIVILEGED_USER=' + user,
+        'Environment=KEEP_SYSTEMD_SERVICE=1',
+        'Environment=LOG_LEVEL=INFO',
+        '',
+    ])
+
+
+def pick_asset(releases, machine):
+    """The newest stable release's PluginLoader for this CPU (what Decky's installer picks): (version, url)."""
+    want = 'PluginLoader-arm64' if machine in ('aarch64', 'arm64') else 'PluginLoader'
+    for r in releases if isinstance(releases, list) else []:
+        if not isinstance(r, dict) or r.get('prerelease') or r.get('draft'):
+            continue
+        for a in r.get('assets') or []:
+            url = a.get('browser_download_url') or ''
+            if a.get('name') == want and url.startswith('https://github.com/SteamDeckHomebrew/decky-loader/releases/download/'):
+                return r.get('tag_name') or '?', url
+        return None
+    return None
+
+
+def fetch(url, limit=200 * 1024 * 1024):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth'})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = r.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError('download too big')
+    return data
+
+
+def as_user(pw, fn):
+    """Runs fn() with the person's ids (files in their home are theirs)."""
+    if os.geteuid() != 0:
+        return fn()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.setgid(pw.pw_gid)
+            os.setuid(pw.pw_uid)
+            fn()
+            os._exit(0)
+        except Exception:
+            os._exit(1)
+    _, status = os.waitpid(pid, 0)
+    return os.WEXITSTATUS(status) == 0
+
+
+def cef_files(home):
+    return [os.path.join(home, '.steam/steam/.cef-enable-remote-debugging'),
+            os.path.join(home, '.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging')]
+
+
+def user_side(home):
+    """~/homebrew and Steam's CEF debugging flag, made as the person. Notes which flag files Hearth made."""
+    hb = os.path.join(home, 'homebrew')
+    for d in ('settings', 'data', 'logs'):
+        os.makedirs(os.path.join(hb, d), exist_ok=True)
+    made = []
+    for i, f in enumerate(cef_files(home)):
+        steam_dir = os.path.dirname(f)
+        if i == 1 and not os.path.isdir(steam_dir):
+            continue   # no Flathub Steam
+        if not os.path.exists(f):
+            os.makedirs(steam_dir, exist_ok=True)
+            open(f, 'w').close()
+            made.append(f)
+    if made:
+        with open(os.path.join(hb, MARK), 'w') as m:
+            m.write('\n'.join(made) + '\n')
+
+
+def copy_plugin(home, owner_root=True):
+    """The image's Hearth plugin into Decky's plugins folder (root's, as Decky keeps it). False when not shipped."""
+    src = shipped_plugin()
+    if not os.path.isfile(os.path.join(src, 'plugin.json')):
+        return False
+    plugins = os.path.join(home, 'homebrew', 'plugins')
+    os.makedirs(plugins, exist_ok=True)
+    dst = os.path.join(plugins, 'decky-hearth')
+    tmp = dst + '.new'
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.copytree(src, tmp, symlinks=False)
+    shutil.rmtree(dst, ignore_errors=True)
+    os.rename(tmp, dst)
+    if owner_root and os.geteuid() == 0:
+        for d in (plugins, dst):
+            os.chown(d, 0, 0)
+        for base, dirs, files in os.walk(dst):
+            for n in dirs + files:
+                os.lchown(os.path.join(base, n), 0, 0)
+        os.chmod(plugins, 0o755)
+    return True
+
+
+def systemctl(*args):
+    if ROOT != '/':
+        return True
+    return subprocess.run(['systemctl', *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def install(user, download=None, machine=None):
+    pw = person(user)
+    home = home_of(pw)
+    plugin = False
+    if os.path.isfile(upstream_unit()):
+        # Decky installed with its own installer: kept as it is, only the Hearth plugin is added.
+        as_user(pw, lambda: user_side(home))
+        plugin = copy_plugin(home)
+        return {'ok': True, 'via': 'decky', 'plugin': plugin}
+    download = download or (lambda: pick_asset(json.loads(fetch(RELEASES)), machine or os.uname().machine))
+    got = download()
+    if not got:
+        raise ValueError('no Decky Loader release for this device was found (or GitHub couldn\'t be reached)')
+    version, url = got
+    os.makedirs(lib_dir(), mode=0o755, exist_ok=True)
+    binary = os.path.join(lib_dir(), 'PluginLoader')
+    data = fetch(url) if isinstance(url, str) else url()
+    if len(data) < 1024 * 1024 or not data.startswith(b'\x7fELF'):
+        raise ValueError('the download isn\'t Decky Loader\'s program')
+    fd, tmp = tempfile.mkstemp(dir=lib_dir())
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    os.chmod(tmp, 0o755)
+    os.rename(tmp, binary)
+    with open(os.path.join(lib_dir(), 'version'), 'w') as f:
+        f.write(version + '\n')
+    if ROOT == '/' and shutil.which('getenforce'):
+        enforcing = subprocess.run(['getenforce'], capture_output=True, text=True).stdout.strip() == 'Enforcing'
+        if enforcing:
+            subprocess.run(['chcon', '-t', 'bin_t', binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    as_user(pw, lambda: user_side(home))
+    plugin = copy_plugin(home)
+    os.makedirs(os.path.dirname(unit_path()), exist_ok=True)
+    with open(unit_path(), 'w') as f:
+        f.write(unit_text(home, pw.pw_name, binary))
+    systemctl('daemon-reload')
+    return {'ok': True, 'via': 'hearth', 'version': version, 'plugin': plugin}
+
+
+def remove(user):
+    pw = person(user)
+    home = home_of(pw)
+    if os.path.isfile(unit_path()):
+        systemctl('stop', UNIT_NAME)
+        os.remove(unit_path())
+        systemctl('daemon-reload')
+    shutil.rmtree(lib_dir(), ignore_errors=True)
+    shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', 'decky-hearth'), ignore_errors=True)
+    mark = os.path.join(home, 'homebrew', MARK)
+    try:
+        made = [l.strip() for l in open(mark) if l.strip()]
+    except OSError:
+        made = []
+    for f in made:
+        if f in cef_files(home) and os.path.isfile(f):
+            os.remove(f)
+    if os.path.exists(mark):
+        os.remove(mark)
+    return {'ok': True}
+
+
+def start_stop(verb):
+    if not os.path.isfile(unit_path()):
+        return {'ok': True, 'skipped': True}
+    return {'ok': systemctl(verb, UNIT_NAME)}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd in ('install', 'remove') and len(argv) == 3:
+            out = install(argv[2]) if cmd == 'install' else remove(argv[2])
+        elif cmd in ('start', 'stop') and len(argv) == 2:
+            out = start_stop(cmd)
+        else:
+            fail('usage: hearth-decky install USER | remove USER | start | stop')
+    except (ValueError, OSError) as e:
+        fail(str(e))
+    print(json.dumps(out), flush=True)
+
+
+if __name__ == '__main__':
+    main(sys.argv)

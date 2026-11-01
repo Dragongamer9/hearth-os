@@ -167,6 +167,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Battle.net is set up through Faugus Launcher (preinstalled on Anatase and Peppermint): one press, Blizzard games in the Library and Play through Battle.net as before; Battle.net set up before keeps working (needs testing on a device)
 - [x] Fix: the controller did nothing in Hearth Plasma, Hearth GNOME and Hearth COSMIC (Hearth Classic was fine). Plasma and COSMIC never started their controller helper (their autostart folder isn't read on a real sign-in); the session now starts it itself once the desktop is up, once, only in Hearth's desktops. In Hearth GNOME the session mode is handed to GNOME Shell's service, and if Hearth's controller extension still doesn't start, the pointer, clicks and keys work anyway and the reason is logged. Send logs now include plasma.log, gnome.log, cosmic.log and whether Quickshell is installed (needs testing on a device)
+- [x] Steam Game Mode (Experimental): Steam's own gamepad screens in gamescope, switched to for one time only from the power menu or Settings › System (always back to Hearth's Game Mode afterwards, and at every start); optional Decky Loader install with the Hearth plugin: Hearth's look over Steam, a Hearth row on Steam's home, your other stores' games with Play, Sync to Steam library (they play through Hearth), Hearth Store, Mods and Theater, and Switch to Hearth Game Mode; docs/STEAM-GAME-MODE.md (needs testing on a device)
 
 ## 0.6.59 (released)
 

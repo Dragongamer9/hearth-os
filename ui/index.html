@@ -1598,7 +1598,7 @@ if(ANDROID){ LIB_TABS.splice(LIB_TABS.findIndex(t=>t[0]==='emu'),0,['android','A
 // Product names: Hearth on Linux (the OS and its session) and Android, Ember on Windows (the shell). One UI for all.
 const APP = LINUX||ANDROID ? 'Hearth' : 'Ember';
 document.title = APP;
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -3926,6 +3926,7 @@ function pageSystem(){
   if(LINUX && ART.s) h += shead('Offline') + `<div class="row" data-f data-k="sy-art"><span class="ricon">${I.dl}</span><div class="rt"><b>Game art on this device</b><small>${ART.s.pictures} pictures (${Math.round(ART.s.bytes/1e6)} MB)${ART.s.waiting?` · ${ART.s.waiting} still downloading`:' · your library looks the same offline'}</small></div></div>`;
   if(LINUX || WINHOST) h += browserRows();
   if(LINUX && CLAUDE.s && CLAUDE.s.available) h += claudeRows();
+  if(LINUX && feat('steamMode')) h += steamModeRows();   // Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md)
   h += shead('Date and time')
     + sgrid(infoRow('tz','Time zone', tz.replace(/_/g,' ') || 'Unknown')
     + lookRow('clock24','24-hour clock','Shows 18:30 instead of 6:30 PM'));
@@ -4012,6 +4013,26 @@ async function restoreBackup(){
 // ---------- Settings › System › Web browser: Hearth Browser (Firefox), and Aloha (optional, Linux) ----------
 const BROWSER = {s:null};
 const ART = {s:null};
+// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Steam's gamepad UI in gamescope, this time only (the
+// session comes back to Hearth's Game Mode afterwards, and a restart always starts Hearth's), with Decky Loader and the
+// Hearth plugin (hosts/decky-hearth), installed here.
+const SGM = {s:null, busy:false};
+function loadSteamMode(){ if(host && LINUX && hasFeat('steamMode')) call('steamMode.status').then(r=>{ SGM.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
+function steamModeRows(){
+  const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode (Experimental)')+note('Loading…'); }
+  const d=s.decky||{};
+  let h = shead('Steam Game Mode (Experimental)');
+  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS. This time only: when Steam closes, or from the Hearth panel in Quick Access, you're back in ${APP}'s Game Mode. Restarting always starts ${APP}'s.</small></div><div class="rv">›</div></button>`
+    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and the Hearth plugin</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth plugin in place':d.shipped?' · Hearth plugin not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Brings '+APP+'\'s games, look and apps into Steam. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
+  if(s.lastFailure) h += note(`Last try came back to ${APP}'s Game Mode: ${esc(s.lastFailure)}.`);
+  return h;
+}
+function sgmDecky(){
+  const d=(SGM.s&&SGM.s.decky)||{}; const action=d.installed&&d.via==='hearth'?'remove':'install';
+  const go=()=>{ SGM.busy=true; render('sy-decky',true); call('steamMode.decky',{action},900000).then(r=>{ SGM.s=r; toast(action==='install'?'Decky Loader and the Hearth plugin are installed. Switch to Steam Game Mode to try them.':'Decky Loader removed'); }).catch(e=>toast(e.message)).finally(()=>{ SGM.busy=false; render('sy-decky',true); }); };
+  if(action==='remove') return openSheet({title:'Remove Decky Loader?', sub:'Its service, the Hearth plugin and Steam\'s remote debugging go. Your other Decky plugins and their settings stay in ~/homebrew.', items:[{label:'Remove', icon:'x', run:go}]});
+  return openSheet({title:'Install Decky Loader?', sub:'Downloads Decky Loader from its GitHub releases and adds the Hearth plugin. Decky runs as root while Steam Game Mode runs, and Steam\'s remote debugging is turned on (any program on this device can then control Steam). Experimental: a Steam update can break Decky.', items:[{label:'Install', icon:'dl', run:go}]});
+}
 // Ember (Windows): Hearth Browser too (hosts/windows/Nimbus.Host/Services/HearthBrowser.cs).
 const WINHOST = !!host && !LINUX && !ANDROID;
 function loadArtStatus(){ if(LINUX && host) call('art.status').then(r=>{ ART.s=r; refreshUI(); }).catch(()=>{}); }
@@ -9126,6 +9147,7 @@ function renderPower(){
     ${keepR?`<button class="mitem" data-f data-k="p-restart-close" data-act="pwr" data-p="restart" data-sure="1">${I.restart}Restart and close games</button>`:''}
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
     <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
+    ${LINUX&&hasFeat('steamMode')?`<button class="mitem" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode${tag('experimental')}</button>`:''}
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
@@ -9865,6 +9887,7 @@ function act(el){
     case 'clearnotifs': NOTIFS=NOTIFS.filter(n=>n.expired); updateBadge(); renderQam(); return setFocus($('#qam [data-f]'),true);
     case 'key': return typeKey(d.c);
     case 'pwr': return power(d.p, d.sure==='1');
+    case 'sgmDecky': return sgmDecky();
     case 'andOpen': return andOpen(d.page);
     case 'lx': return lxAct(d.v);
     case 'desk': return deskAct(el);
@@ -9910,16 +9933,16 @@ function power(p, sure){
   }
   // Desktop Mode with a game stopped (put aside with Quick Resume, or paused) froze the desktop: Hearth ends them first
   // (bridge.rs "power" desktop → end_stopped), so say so.
-  if(!sure && p==='desktop' && LINUX){
+  if(!sure && (p==='desktop'||p==='steam') && LINUX){
     const names=[...(S.paused && S.running && G(S.running) ? [G(S.running).title] : []), ...QR.list.map(q=>G(q.id)).filter(Boolean).map(g=>g.title)];
     if(names.length){
       send({type:'log', text:`desktop mode: asking first, these games are stopped and will be closed: ${names.join(', ')}`});
-      return openSheet({title:'Switch to Desktop Mode?', sub:`${names.length===1?names[0]+' is paused and will be closed':names.slice(0,-1).join(', ')+' and '+names.at(-1)+' are paused and will be closed'}. Anything not saved in ${names.length===1?'it':'them'} is lost.`,
-        items:[{label:'Close and switch', icon:'shell', run:()=>power('desktop',true)}], focus:'sh-x'});
+      return openSheet({title:p==='steam'?'Switch to Steam Game Mode?':'Switch to Desktop Mode?', sub:`${names.length===1?names[0]+' is paused and will be closed':names.slice(0,-1).join(', ')+' and '+names.at(-1)+' are paused and will be closed'}. Anything not saved in ${names.length===1?'it':'them'} is lost.`,
+        items:[{label:'Close and switch', icon:'shell', run:()=>power(p,true)}], focus:'sh-x'});
     }
   }
   closeAll();
-  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
+  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',steam:'Switching to Steam Game Mode (this time only)…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
