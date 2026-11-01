@@ -1,0 +1,26 @@
+crw------- 1 root root 10, 223 Nov  1 22:10 /dev/uinput
+Starting systemd-udevd version 259.10-1.fc44
+::notice title=Panel widgets::timeout: failed to run command 'qdbus6': No such file or directory 
+/__w/_temp/e9de3411-a013-4495-b1f0-ef50dc03e2a4.sh: line 101:  2207 Segmentation fault         (core dumped) WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth > shots/kwin.log 2>&1
+/__w/_temp/e9de3411-a013-4495-b1f0-ef50dc03e2a4.sh: line 101:  2395 Aborted                    (core dumped) plasmawindowed "org.hearth.$p" > "shots/plasmawindowed-$p.log" 2>&1
+/__w/_temp/e9de3411-a013-4495-b1f0-ef50dc03e2a4.sh: line 101:  2402 Aborted                    (core dumped) plasmawindowed "org.hearth.$p" > "shots/plasmawindowed-$p.log" 2>&1
+/__w/_temp/e9de3411-a013-4495-b1f0-ef50dc03e2a4.sh: line 106:  2409 Aborted                    "$g" --testing > shots/lockscreen.log 2>&1
+::error title=Controller: KWin answers through hearth-pad (org.hearth.Pad)::FAILED. first probe: None
+::error title=Controller: right stick moves the pointer::FAILED. cursor None -> None
+::notice title=Controller: View shows the controls::passed. 
+::notice title=Controller: Guide + X asks for the on-screen keyboard::passed. events: [{'t': 'radial', 'open': True, 'sel': -1}, {'t': 'radial', 'open': False, 'pick': -1}, {'t': 'osk', 'open': True}]
+::error title=Controller: Menu opens Plasma's launcher::FAILED. in front: None
+::error title=Controller: D-pad and A start an app from the launcher::FAILED. the test app did not start; pad.log says what was in front
+::error title=Controller: the Hearth menu opens Hearth Quick Access::FAILED. picked: True, in front: None
+::error title=Controller: B closes it::FAILED. in front: None
+::notice title=Controller: View + B closes the window::passed. in front before: None
+::error title=Controller: Hearth Files (Dolphin) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+::error title=Controller: Terminal (Konsole) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+::error title=Controller: Text (Kate) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+::error title=Controller: Reader (Okular) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+::error title=Controller: Calculator (KCalc) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+::error title=Controller: Capture (Spectacle) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+::notice title=pad.log::2026-11-01 22:14:29 started; input devices: event0 'Microsoft Vmbus HID-compliant Mouse'; event1 'AT Translated Set 2 keyboard'; event2 'PC Speaker'; event3 'Microsoft X-Box 360 pad' (controller); event4 'Hearth controller pointer'; event5 'Hearth controller keyboard'|2026-11-01 22:14:29 Hearth Plasma controller|2026-11-01 22:14:29 serving org.hearth.Pad for KWin|2026-11-01 22:14:29 controllers: /dev/input/event3 'Microsoft X-Box 360 pad'|2026-11-01 22:14:30 KWin scripting: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|2026-11-01 22:14:30 Quick Access shortcut: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.plasmashell was not provided by any .service files|2026-11-01 22:14:59 last 30 s: 50 controller events, pointer moved 1644 px|2026-11-01 22:15:29 last 30 s: 64 controller events, pointer moved 0 px|2026-11-01 22:15:59 last 30 s: 60 controller events, pointer moved 0 px|
+::error title=controller::probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files|controller checks: 3 passed, 12 failed|
+::notice title=libinput (labwc)::
+
