@@ -5,6 +5,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod access;   // Settings › Accessibility (desktop/shell/hearth-access)
 pub mod admin;
 pub mod appid;
+pub mod appchannel;   // Hearth app updates without a system update (docs/APP-UPDATES.md)
 pub mod appupdate;
 pub mod artcache;
 pub mod backup;

@@ -319,6 +319,12 @@ pub(crate) fn page_msg(host: &Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, l
     if ty == "overlay" && msg["action"] == "open" { send_to(host, &label, Bridge::event("overlay.unavailable", serde_json::json!({}))); return; }
     // The renderer was changed by itself (the Qt renderer was given up): said once, on the next screen.
     if ty == "ready" && label == "main" { if let Some(t) = hearth_core::renderer::take_note() { send_to(host, &label, serde_json::json!({"type": "toast", "text": t})); } }
+    // Hearth app updates: the screen came up (a bundle running a minute from here is good), and the built-in version
+    // says once why it started instead of an update.
+    if ty == "ready" && label == "main" {
+        hearth_core::appchannel::note_ui_ready();
+        if let Some(t) = hearth_core::appchannel::take_note() { send_to(host, &label, serde_json::json!({"type": "toast", "text": t})); }
+    }
     if ty == "ready" { send_to(host, &label, Bridge::event("padHost", serde_json::json!({"connected": 0}))); return; }
     let (reply, quit) = {
         let mut b = match bridge.lock() { Ok(b) => b, Err(p) => p.into_inner() };
@@ -330,7 +336,7 @@ pub(crate) fn page_msg(host: &Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, l
         r
     };
     if let Some(r) = reply { send_to(host, &label, r); }
-    if quit { host.exit(0); }   // the Hearth session starts Desktop Mode, or ends, when Hearth closes
+    if quit { hearth_core::appchannel::note_clean_exit(); host.exit(0); }   // the Hearth session starts Desktop Mode, or ends, when Hearth closes
 }
 
 fn percent_decode(s: &str) -> String {
@@ -414,11 +420,11 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
                 if v["type"] == "result" { if let Some(to) = v["to"].as_str().map(str::to_string) { send_to(&h, &to, v); return; } }
                 // The host asks for a restart (after restoring a backup): Hearth reads everything at start.
                 // Game Mode restarts with new options (the session starts it again when Hearth closes).
-                if v["type"] == "quit" { h.exit(0); return; }
+                if v["type"] == "quit" { hearth_core::appchannel::note_clean_exit(); h.exit(0); return; }
                 // The volume bar and messages: over the game when one is in front.
                 if v["name"] == "osd" { if let Some(gm) = GM.get() { let (gm, d) = (gm.clone(), v["data"].clone()); std::thread::spawn(move || gm.osd(d)); return; } }
                 // In the Hearth session, the session's watchdog starts Hearth again right away (exit code 75).
-                if v["type"] == "restart" && in_session() { h.exit(75); return; }
+                if v["type"] == "restart" && in_session() { hearth_core::appchannel::note_clean_exit(); h.exit(75); return; }
                 if v["type"] == "restart" {
                     let h2 = h.clone();
                     std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(1500)); h2.restart(); });
@@ -530,6 +536,11 @@ pub(crate) fn start_core(host: Arc<dyn WindowHost>, bridge: Arc<Mutex<Bridge>>, 
             if h.exists("main") { h.unminimize("main"); h.show("main"); h.focus("main"); }
             h.emit_to("main", Bridge::event("play", serde_json::json!({"id": id})));
         });
+    }
+    // Hearth app updates (Settings › Updates › Hearth app updates): checked by Game Mode's Hearth (not a window in
+    // Desktop Mode, not an extra multi-seat player) two minutes after it starts and every 6 hours.
+    if in_session() && !windowed && std::env::var("HEARTH_SEAT").map(|s| s.is_empty()).unwrap_or(true) {
+        hearth_core::appchannel::updater().start_background();
     }
     start_game_mode(host, bridge, windowed);
 }
@@ -799,9 +810,45 @@ fn main() {
     // Steam's Game Mode takeover (Experimental): what the Hearth Decky plugin's pages show, as one line of JSON. No
     // window, nothing listens (hearth-core steam_takeover.rs).
     if has("--steam-mode-data") { std::process::exit(hearth_core::steam_takeover::run(&args)); }
+    // Hearth app updates (hearth-core appchannel.rs, docs/APP-UPDATES.md), for the terminal and CI: what's installed and
+    // used (--app-status), install a downloaded bundle (--app-install <archive> <manifest> <signature>), or set the
+    // current one aside (--app-use-builtin). No window is opened.
+    if has("--app-status") { println!("{}", serde_json::to_string_pretty(&hearth_core::appchannel::status()).unwrap_or_default()); std::process::exit(0); }
+    if args.get(1).map(String::as_str) == Some("--app-install") {
+        let r = (|| -> Result<String, String> {
+            let (a, m, s) = (args.get(2).ok_or("--app-install <archive> <manifest> <signature>")?, args.get(3).ok_or("no manifest")?, args.get(4).ok_or("no signature")?);
+            let img = hearth_core::appchannel::image()?;
+            let mb = std::fs::read(m).map_err(|e| format!("{m}: {e}"))?;
+            let sig = std::fs::read_to_string(s).map_err(|e| format!("{s}: {e}"))?;
+            hearth_core::appchannel::install_archive(&hearth_core::appchannel::root(), &img, std::path::Path::new(a), &mb, &sig)
+        })();
+        match r { Ok(v) => { println!("installed {v}"); std::process::exit(0); } Err(e) => { eprintln!("not installed: {e}"); std::process::exit(1); } }
+    }
+    if has("--app-use-builtin") {
+        match hearth_core::appchannel::use_builtin() { Ok(()) => { println!("Hearth starts its built-in version from the next start"); std::process::exit(0); } Err(e) => { eprintln!("{e}"); std::process::exit(1); } }
+    }
     let windowed = has("--windowed");
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }
+    // Hearth app updates: the image's own Hearth decides whether a newer, checked Hearth app update starts instead of
+    // itself, and hands over to it (anything wrong, or two Game Mode starts with it that never came up: the built-in
+    // Hearth carries on, as it always did). A bundle never decides; it just runs.
+    // Game Mode's own start: the bundle runs as this process's child and is watched (its screen must come up); other
+    // starts (a window in Desktop Mode, an extra player) only use a bundle that already came up, and become it.
+    match hearth_core::appchannel::handoff(&args) {
+        Some((app, true)) => { if let Some(code) = hearth_core::appchannel::supervise(&app, &args) { std::process::exit(code); } }
+        Some((app, false)) => {
+            use std::os::unix::process::CommandExt;
+            let err = std::process::Command::new(&app).args(&args[1..]).exec();
+            hearth_core::appchannel::handoff_failed(&app, &err.to_string());
+        }
+        None => {}
+    }
+    // CI's end-to-end test of the choice (hosts/linux/test/test_hearth_app_channel.py): which program runs now, and
+    // marking the running bundle good. No window is opened.
+    if has("--app-which") { println!("{}", hearth_core::appchannel::which_json()); std::process::exit(0); }
+    if has("--app-mark-good") { hearth_core::appchannel::note_ui_up_now(); hearth_core::appchannel::mark_running_good(); println!("{}", hearth_core::appchannel::which_json()); std::process::exit(0); }
+    if has("--app-ui-up") { hearth_core::appchannel::note_ui_up_now(); std::thread::sleep(std::time::Duration::from_secs(2)); println!("{}", hearth_core::appchannel::which_json()); std::process::exit(0); }
     // Which engine draws Hearth: Chromium (the Electron window app) on Nvidia graphics, WebKit elsewhere; Settings ›
     // Display › Renderer, or HEARTH_RENDERER, says otherwise (also Qt, Experimental). Chromium that failed to start
     // twice lately: WebKit. Qt that failed: back to Automatic (hearth_core::renderer).

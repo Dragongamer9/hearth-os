@@ -6755,6 +6755,52 @@ async function loginHost(){
   refreshUI();
 }
 
+// ---------- Settings › Updates › Hearth app updates (docs/APP-UPDATES.md): Hearth's own app updates by itself in minutes,
+// between system updates; the version built into the system always stays as the fallback (hearth-core appchannel.rs).
+const APPUPD = {s:null};
+function loadAppUpd(){ if(host && LINUX && HOSTINFO.system) call('appUpdates.status').then(r=>{ APPUPD.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
+function appUpdLabel(u){ const run=u.running||u.builtin||'?'; return u.running ? `${APP} app: ${run} (built-in ${u.builtin||'?'})` : `${APP} app: built-in ${u.builtin||'?'}`; }
+function appUpdRows(){
+  if(!LINUX || !HOSTINFO.system) return '';
+  const u=APPUPD.s;
+  let h=shead('Hearth app updates', u&&(u.state==='checking'||u.state==='downloading'));
+  if(!u) return h+note('Checking…');
+  const modes={auto:'Automatic', ask:'Ask', off:'Off'};
+  const pct=Math.round((u.progress||0)*100), L=u.latest;
+  const line = u.unavailable ? u.unavailable
+    : u.state==='checking' ? 'Checking for an app update…'
+    : u.state==='downloading' ? `Downloading ${L&&L.version||''}… ${pct}%`
+    : u.state==='installed' || (u.bundle && u.bundle!==u.running) ? `${u.bundle} is ready. It's used the next time ${APP} starts.`
+    : u.state==='available' ? `${L&&L.version} is available`
+    : u.state==='error' ? (u.error||'Something went wrong')
+    : u.note ? u.note : 'Up to date';
+  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${esc(appUpdLabel(u))}</b><small>${esc(line)}${u.lastCheck?` · checked ${ago(u.lastCheck).toLowerCase()}`:''}</small></div>${u.state==='checking'||u.state==='downloading'?'<span class="mini-spin"></span>':''}</div>`;
+  h += `<button class="row" data-f data-k="au-mode" data-act="appUpdMode"><span class="ricon">${I.refresh}</span><div class="rt"><b>Hearth app updates</b><small>${APP}'s own screens and app update by themselves in minutes, between system updates. The version built into the system always stays as the fallback.</small></div><div class="rv">${modes[u.mode]||'Automatic'} ›</div></button>`;
+  if(!u.unavailable && u.mode!=='off' && u.state!=='checking' && u.state!=='downloading')
+    h += `<button class="row" data-f data-k="au-check" data-act="appUpdCheck"><span class="ricon">${I.dl}</span><div class="rt"><b>${u.state==='available'&&u.mode==='ask'?'Get '+esc(L&&L.version||'the update'):'Check for an app update'}</b></div></button>`;
+  if(u.bundle && u.bundle!==u.running)
+    h += `<button class="row" data-f data-k="au-restart" data-act="appUpdRestart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP} now</b><small>Takes a few seconds. If ${esc(u.bundle)} doesn't come up, ${APP} goes back to its built-in version by itself.</small></div></button>`;
+  if(u.running || u.bundle)
+    h += `<button class="row" data-f data-k="au-builtin" data-act="appUpdBuiltin"><span class="ricon">${I.x}</span><div class="rt"><b>Use the built-in version</b><small>Sets ${esc(u.bundle||u.running)} aside and starts ${APP} ${esc(u.builtin||'')} from the system next time</small></div></button>`;
+  if(u.lastFallback) h += note('Last time '+APP+' went back to its built-in version: '+esc(u.lastFallback.replace(/^\S+ /,'')));
+  if(u.forced) h += note(esc(u.forced)+'.');
+  return h;
+}
+function appUpdMode(){
+  const cur=APPUPD.s&&APPUPD.s.mode;
+  const pick=mode=>call('appUpdates.setMode',{mode}).then(r=>{ APPUPD.s=r; render('au-mode',true); }).catch(e=>toast(e.message));
+  openSheet({title:'Hearth app updates', sub:APP+"'s own app and screens, between system updates. The system's built-in version always stays as the fallback.", items:[
+    {label:'Automatic (downloads and installs; used from the next start)', icon:cur==='auto'?'check':'', run:()=>pick('auto')},
+    {label:'Ask (says when one is available)', icon:cur==='ask'?'check':'', run:()=>pick('ask')},
+    {label:'Off (always the built-in version)', icon:cur==='off'?'check':'', run:()=>pick('off')}]});
+}
+function appUpdBuiltin(){
+  const u=APPUPD.s||{};
+  openSheet({title:'Use the built-in version?', sub:`${APP} ${u.builtin||''} from the system starts from the next start, and ${u.bundle||u.running||'this update'} is set aside. A newer app update can still come.`, items:[
+    {label:'Use the built-in version and restart '+APP, icon:'restart', run:()=>call('appUpdates.useBuiltin').then(r=>{ APPUPD.s=r; call('appUpdates.restart').catch(()=>{}); }).catch(e=>toast(e.message))},
+    {label:'Use it from the next start', icon:'clock', run:()=>call('appUpdates.useBuiltin').then(r=>{ APPUPD.s=r; toast(APP+' starts its built-in version next time'); render('au-mode',true); }).catch(e=>toast(e.message))}]});
+}
+
 // ---------- Settings › Updates › System (Hearth, the OS) ----------
 const SYSUPD = {s:null};
 function loadSystemUpdate(){ if(host && LINUX && HOSTINFO.system) call('system.update.status',{},90000).then(r=>{ SYSUPD.s=r; refreshUI(); }).catch(()=>{}); }
@@ -6837,7 +6883,7 @@ function pageSystemUpdate(o={}){
   const st=u.status||{}, v=x=>x&&x.version?x.version:'';
   if(u.state==='updating'){
     h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${st.available?`Getting version ${esc(v(st.available))}`:'Getting the newest version'}</small></div></div>`;
-    return h + sysUpdCard(u) + note('Hearth also updates by itself in the background and finishes the next time you restart.') + newOsRows();
+    return h + sysUpdCard(u) + note('Hearth also updates by itself in the background and finishes the next time you restart.') + appUpdRows() + newOsRows();
   }
   const line = u.state==='checking' ? 'Checking for updates…'
     : st.staged ? `Version ${v(st.staged)} is downloaded. Restart to finish.`
@@ -6853,7 +6899,7 @@ function pageSystemUpdate(o={}){
     if(!o.df) h += rollbackRows(st);   // Updates & Recovery shows it under Snapshots
   }
   h += note('Hearth also updates by itself in the background and finishes the next time you restart.');
-  return h + (o.df ? '' : unlockRows()) + newOsRows();
+  return h + appUpdRows() + (o.df ? '' : unlockRows()) + newOsRows();
 }
 
 // ---------- Settings › Updates › Go back to the previous version (Hearth OS images: bootc keeps the version before
@@ -10175,6 +10221,10 @@ function act(el){
     case 'loginHost': return loginHost();
     case 'sysRollback': return sysRollback(!!d.undo);
     case 'unlockSet': return unlockSet(d.v);
+    case 'appUpdMode': return appUpdMode();
+    case 'appUpdCheck': toast('Checking for a Hearth app update…'); return call('appUpdates.check',{install:true}).then(r=>{ APPUPD.s=r; render('au-check',true); }).catch(e=>toast(e.message));
+    case 'appUpdRestart': return call('appUpdates.restart').catch(e=>toast(e.message));
+    case 'appUpdBuiltin': return appUpdBuiltin();
     case 'sysUpdCheck': return call('system.update.check').then(onSystemUpdate).catch(e=>toast(e.message));
     case 'impScan': return call('import.scan',{},6*60e3).then(onImport).catch(e=>toast(e.message));
     case 'impToggle': return impToggle(d.key);
@@ -13417,6 +13467,7 @@ function onSysEvent(name, data){
   if(name==='bt.pad'){ BTPAD.state=data.state; BTPAD.name=data.name||'the controller'; if(data.state==='paired') toast(`${BTPAD.name} connected`); if(S.view==='pad'||S.view==='setup') render(null,true); return; }
   if(name==='parental.timeup'){ toast("Play time's up for today"); return; }
   if(name==='profiles.switching'){ PROF.switching=data.name; if(S.view!=='profiles') navigate('profiles',{},false); else render(null,true); return; }
+  if(name==='appUpdates'){ const was=APPUPD.s; APPUPD.s=data; if(data&&data.state==='installed'&&(!was||was.state!=='installed')) toast(APP+' app '+(data.bundle||'')+' is ready. It\'s used the next time '+APP+' starts.'); if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); return; }
   if(name==='newOs'){ const was=NEWOS.s; NEWOS.s=Object.assign({},was||{},data); if(was&&was.state==='moving'&&data.state!=='moving') toast(data.error?data.error:'The new Hearth OS is ready. Restart to start it.'); if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); return; }
   if(name==='switch'){ if(SW.s) SW.s.job=data.job; if(data.job && data.job.state==='done') loadSwitch(); if(data.job && data.job.state==='error') toast(data.job.error||'That step didn\'t work'); if(S.view==='settings'&&S.settingsTab==='switch') render(null,true); return; }
   if(name==='watchdog'){ const d=data||{}; if(d.code){ LOGS.r={code:d.code, url:'https://hearth-counter.game305-cl.workers.dev/v1/logs/'+d.code}; NOTIFS.unshift({i:'refresh', t:APP+' got stuck and sent a report', s:'Code '+d.code}); updateBadge(); toast(APP+' got stuck. Report sent: '+d.code); } else toast(APP+' got stuck. It\'s freeing itself.'); return; }
@@ -13543,7 +13594,7 @@ function onSettingsTab(t){
   if(t==='shell') loadShellStatus();
   if(t==='seats') loadSeats();
   if(t==='profile'){ loadProfile(); loadAccounts(true); }
-  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); loadUnlock(); }
+  if(t==='updates'){ loadUpdateStatus(); loadSystemUpdate(); loadNewOs(); loadUnlock(); loadAppUpd(); }
   if(t==='signin') loadLogin();
   if(t==='remote') loadRemote();
   if(t==='link') loadLink();   // Hearth Link
