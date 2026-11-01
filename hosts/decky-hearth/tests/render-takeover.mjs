@@ -89,7 +89,7 @@ for (const [name, which, want, focus] of [
   ["steam-menu", "steam-menu", ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Switch to Hearth Game Mode", "Desktop Mode", "Alan Wake 2"], ".hearth-menu-item:nth-of-type(1)"],
   ["qam-hearth", "qam-hearth", ["This game", "Alan Wake 2", "Hearth Input layout", "Shooter / action", "GE-Proton (newest)", "7 mods, 5 on", "Screenshot", "Switch to Hearth Game Mode"], null],
   ["qam-performance", "qam-perf", ["Power mode", "Balanced", "Power limit: 15 W", "Steam's own Performance tab"], null],
-  ["qam-controller", "qam-controller", ["Shooter / action: on", "Hearth Input in Steam Game Mode", "Edit layouts in Hearth"], null],
+  ["qam-controller", "qam-controller", ["Shooter / action: on in the game (paused while Quick Access is open)", "Hearth Input in Steam Game Mode", "Edit layouts in Hearth"], null],
   ["ingame-hearth", "ingame", ["Plays through Hearth", "Alan Wake 2", "Hearth Input layout", "Proton (Play through Hearth)", "Open Hearth Mods"], null],
 ]) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>${theme}</style><style>body{margin:0;width:1280px;height:800px;overflow:hidden;position:relative;background:#0c1016;font-family:"Segoe UI","Noto Sans",sans-serif}

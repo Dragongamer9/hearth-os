@@ -334,7 +334,7 @@ export function inputLine(f: { game?: string | null; front?: boolean; overlay?: 
   if (!f || !f.game) return "No game of yours is running";
   if (!f.layout) return "No Hearth layout: the game gets the controller";
   if (f.active) return `${f.layout}: on`;
-  return f.overlay ? `${f.layout}: paused while Quick Access is open` : `${f.layout}: paused while Steam is in front`;
+  return f.overlay ? `${f.layout}: on in the game (paused while Quick Access is open)` : `${f.layout}: paused while Steam is in front`;
 }
 
 /** The Proton line for a game Hearth starts (its choice, or the default). */

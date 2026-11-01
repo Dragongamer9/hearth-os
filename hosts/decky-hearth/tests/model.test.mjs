@@ -195,7 +195,7 @@ test("in-game section: layout, Hearth Input, Proton and mods lines", () => {
   assert.equal(M.inputLine({ game: null }, true), "No game of yours is running");
   assert.equal(M.inputLine({ game: "gog:a", layout: null }, true), "No Hearth layout: the game gets the controller");
   assert.equal(M.inputLine({ game: "gog:a", layout: "Shooter", active: true }, true), "Shooter: on");
-  assert.equal(M.inputLine({ game: "gog:a", layout: "Shooter", active: false, overlay: true }, true), "Shooter: paused while Quick Access is open");
+  assert.equal(M.inputLine({ game: "gog:a", layout: "Shooter", active: false, overlay: true }, true), "Shooter: on in the game (paused while Quick Access is open)");
   assert.equal(M.modsLine({ count: 12, enabled: 9 }), "12 mods, 9 on");
   assert.equal(M.modsLine({ count: 1, enabled: 1 }), "1 mod, 1 on");
   assert.equal(M.modsLine({ count: 0 }), "No mods yet");
