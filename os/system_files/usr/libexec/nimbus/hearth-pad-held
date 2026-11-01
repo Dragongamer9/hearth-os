@@ -1,0 +1,69 @@
+#!/usr/bin/python3
+"""hearth-pad-held: is B or Guide held on a controller right now? (exit 0: yes, 1: no)
+
+nimbus-session asks this as it starts, only when "Start in Steam Game Mode" is on (docs/STEAM-GAME-MODE.md): holding
+B or Guide while the device starts skips Steam Game Mode that time and opens Hearth's Game Mode. It reads only the
+buttons' current state (EVIOCGKEY, the way Hearth Recovery checks Volume Down), from the controllers this account may
+read (the signed-in person's controllers, given by logind); it never grabs them and changes nothing.
+
+  hearth-pad-held [--window SECONDS]   keep looking for that long (controllers may still be appearing); default 2
+"""
+import fcntl
+import glob
+import os
+import sys
+import time
+
+BTN_EAST, BTN_MODE = 305, 316           # B (Xbox layout) and Guide / Xbox / PS / Home
+WANTED = (BTN_EAST, BTN_MODE)
+EVIOCGKEY = (2 << 30) | (96 << 16) | (ord('E') << 8) | 0x18
+DEVICES = os.environ.get('HEARTH_PAD_DEVICES', '/dev/input/event*')
+
+
+def keys_from(buf):
+    """The key codes set in an EVIOCGKEY bitmap."""
+    return {i for i in range(len(buf) * 8) if buf[i // 8] >> (i % 8) & 1}
+
+
+def wanted(keys):
+    return any(k in keys for k in WANTED)
+
+
+def held_keys(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return set()
+    try:
+        buf = bytearray(96)
+        fcntl.ioctl(fd, EVIOCGKEY, buf)
+        return keys_from(buf)
+    except OSError:
+        return set()
+    finally:
+        os.close(fd)
+
+
+def held(window=2.0, devices=DEVICES, read=held_keys):
+    end = time.monotonic() + window
+    while True:
+        for dev in glob.glob(devices):
+            if wanted(read(dev)):
+                return True
+        if time.monotonic() >= end:
+            return False
+        time.sleep(0.2)
+
+
+def main(argv):
+    window = 2.0
+    if len(argv) >= 2 and argv[0] == '--window':
+        try:
+            window = max(0.0, min(10.0, float(argv[1])))
+        except ValueError:
+            pass
+    return 0 if held(window) else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

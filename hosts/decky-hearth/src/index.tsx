@@ -85,6 +85,27 @@ function PowerMode() {
   );
 }
 
+/** "Start in Steam Game Mode" (Hearth's Settings › System): turning it off here is a way back to Hearth's Game Mode
+ *  with only a controller; the next start is Hearth's. (Hearth's session still checks Steam at every start.) */
+const getSteamDefault = callable<[], boolean>("get_steam_default");
+const setSteamDefault = callable<[on: boolean], { ok: boolean; on: boolean; error?: string }>("set_steam_default");
+function StartInSteam() {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => { getSteamDefault().then(setOn).catch(() => setOn(null)); }, []);
+  if (on === null) return null;
+  return (
+    <PanelSectionRow>
+      <ToggleField label="Start in Steam Game Mode"
+        description={on ? "Turn off to stop starting in Steam Game Mode: the device starts in Hearth's Game Mode again" : "Off: the device starts in Hearth's Game Mode"}
+        checked={on} onChange={async (v) => {
+          const r = await setSteamDefault(v).catch((e) => ({ ok: false, on, error: String(e) }));
+          setOn(r.on);
+          say(r.ok ? (r.on ? "The device starts in Steam Game Mode" : "The device starts in Hearth's Game Mode again") : `Couldn't change it: ${r.error}`);
+        }} />
+    </PanelSectionRow>
+  );
+}
+
 function Panel() {
   const games = useGames();
   const s = useLive();
@@ -114,6 +135,7 @@ function Panel() {
             Switch to Hearth Game Mode
           </ButtonItem>
         </PanelSectionRow>
+        <StartInSteam />
         <PanelSectionRow>
           <ToggleField label="Hearth takeover" description="Hearth's home, pages and tabs in Steam's Game Mode (Steam's library, downloads and overlay stay)"
             checked={s.takeover} onChange={(v) => change("takeover", v)} />
