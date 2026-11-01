@@ -285,8 +285,8 @@ mod tests {
         // Steam's reaper; only SteamAppId says whose it is. Put aside (Quick Resume) used to find nothing to pause.
         let s = |pid, ppid, cmd: &[&str], env: Option<u32>| Proc { steam_env: env, ..p(pid, ppid, cmd, None, None) };
         let procs = vec![
-            s(10, 1, &["reaper", "SteamLaunch", "AppId=620", "--"], None),
-            s(11, 10, &["pressure-vessel-wrap"], Some(620)),
+            Proc { reaper_app: Some(620), comm: "reaper".into(), ..s(10, 1, &["reaper", "SteamLaunch", "AppId=620", "--"], None) },
+            s(11, 10, &["pressure-vessel-wrap"], None),
             s(50, 1, &["flatpak-portal"], None),
             s(51, 50, &["bwrap"], None),
             s(52, 51, &["portal2_linux"], Some(620)),
