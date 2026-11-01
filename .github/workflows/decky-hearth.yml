@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # the theme pictures also go to the ci/decky-hearth-shots branch, to look at in the browser
 
 jobs:
   plugin:
@@ -25,7 +25,7 @@ jobs:
       - name: Backend tests
         run: |
           set -o pipefail
-          python3 -m unittest discover -s hosts/decky-hearth/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30
+          python3 -m unittest discover -s hosts/decky-hearth/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
           grep -q '^OK' /tmp/py.log || { echo "::error title=plugin backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
       - uses: actions/setup-node@v4
         with:
@@ -58,6 +58,15 @@ jobs:
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
           cp hosts/decky-hearth/tests/render-mock.mjs tools/render-mock.mjs
           HEARTH_ROOT="$PWD" node tools/render-mock.mjs "$RUNNER_TEMP/shots"
+      - name: Keep the pictures (ci/decky-hearth-shots)
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r "$RUNNER_TEMP/shots" /tmp/shots-keep
+          git checkout -q --orphan ci/decky-hearth-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/shots-keep/*.png shots/
+          git add -f shots
+          git commit -qm "Hearth look over a stand-in for Steam's UI ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/decky-hearth-shots || true
       - uses: actions/upload-artifact@v4
         with:
           name: decky-hearth-theme-shots
@@ -72,11 +81,11 @@ jobs:
         run: |
           set -o pipefail
           bash -n hosts/linux/session/nimbus-session && sh -n hosts/linux/session/nimbus-mode
-          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_steam_mode.py' -v 2>&1 | tee /tmp/t.log | tail -40
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_steam_mode.py' -v 2>&1 | tee /tmp/t.log | tail -40 || true
           grep -q '^OK' /tmp/t.log || { echo "::error title=steam game mode tests::$(grep -E -A8 '^(FAIL|ERROR):' /tmp/t.log | head -50 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           # The session's other tests that read nimbus-session and nimbus-mode.
           for t in test_hearth_overlay.py test_hearth_polkit_agent.py test_hearth_system_tools.py; do
-            python3 -m unittest discover -s hosts/linux/test -p "$t" 2>&1 | tail -3 | tee /tmp/o.log
+            python3 -m unittest discover -s hosts/linux/test -p "$t" 2>&1 | tail -3 | tee /tmp/o.log || true
             grep -q '^OK' /tmp/o.log || { echo "::error title=$t::$(tail -3 /tmp/o.log | tr '\n' ' ')"; exit 1; }
           done
 
