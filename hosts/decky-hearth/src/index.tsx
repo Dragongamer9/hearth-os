@@ -21,6 +21,7 @@ import { ModsPage, RecompsPage, StorageManagePage } from "./manage";
 import { addRoutes, patchGamePage, patchHome, patchLibraryTabs, patchMainMenu } from "./patches";
 import { ControllerBody, PerformanceBody, SwitchButton, ThisGameSection, ToolsBody, UpdateRow, removeQamTabs, syncQamTabs } from "./qam";
 import { HearthHomePage, NowPlayingPage } from "./ingame";
+import { CoopPage, PlayersBody } from "./coop";
 import { startFront } from "./core";
 import { go, setSounds } from "./ui";
 import { HearthRowView } from "./row";
@@ -137,6 +138,7 @@ function Panel() {
       </PanelSection>
       <PanelSection title="Performance"><PerformanceBody /></PanelSection>
       <PanelSection title="Controller"><ControllerBody /></PanelSection>
+      <PanelSection title="Players"><PlayersBody /></PanelSection>
       <PanelSection title="Hearth tools"><ToolsBody /></PanelSection>
       <PanelSection title="Hearth OS updates">
         <UpdateRow />
@@ -217,6 +219,7 @@ export default definePlugin(() => {
   undo.push(addRoutes([
     ["/hearth/store", StorePage], ["/hearth/library", LibraryPage], ["/hearth/downloads", DownloadsPage],
     ["/hearth/storage", StorageManagePage], ["/hearth/mods", ModsPage], ["/hearth/recomps", RecompsPage], ["/hearth/game/:id", GamePage], ["/hearth/now", NowPlayingPage], ["/hearth/home", HearthHomePage],
+    ["/hearth/coop", CoopPage],
   ]));
   // The game Steam runs, told to Hearth's core every 2 s (Hearth Input, the in-game section).
   undo.push(startFront());

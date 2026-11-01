@@ -35,6 +35,9 @@
 //!   mods-call {call, args}                Hearth Mods (MODS_CALLS: a game's mods, on/off, uninstall, install a finished
 //!                                         download), its worker started when none runs
 //!   games-disk {mount}                    "Use this disk for games": Hearth's install folder (Epic, GOG) on that drive
+//!   coop {op, pads, pad}                  Couch Co-op in Steam Game Mode (hearth-coop, multiplay.rs): `players` (the
+//!                                         controllers in the saved player order), `order` (save it), `identify` (a
+//!                                         short rumble on one), `games` (what plays split-screen), `check`
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -45,7 +48,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Every command the service answers; anything else is refused.
-pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk"];
+pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk", "coop"];
 /// Hearth's own calls the Steam pages may make (`call`), each with the arguments it may carry (everything else is dropped).
 pub const BRIDGE_CALLS: &[(&str, &[&str])] = &[
     ("library.downloads", &[]), ("game.install", &["id"]), ("game.cancelInstall", &["id"]), ("game.pauseInstall", &["id"]), ("game.resumeInstall", &["id"]),
@@ -57,6 +60,10 @@ pub const BRIDGE_CALLS: &[(&str, &[&str])] = &[
 pub const MODS_CALLS: &[(&str, &[&str])] = &[
     ("list", &[]), ("mods_of", &["id"]), ("toggle", &["id", "m", "on"]), ("remove_mod", &["id", "m"]), ("downloads_list", &[]), ("install_download", &["id", "gameId"]),
 ];
+/// Couch Co-op's questions the Quick Access › Players tab and the split-screen page may ask (`coop`).
+pub const COOP_OPS: &[&str] = &["players", "order", "identify", "games", "check"];
+/// A controller as hearth-coop names it: its event node (`event12`), nothing else.
+pub fn pad_id_ok(s: &str) -> bool { s.len() > 5 && s.len() <= 10 && s.starts_with("event") && s[5..].chars().all(|c| c.is_ascii_digit()) }
 /// What `data` may ask (the same list as the plugin's DATA, main.py).
 pub const DATA: &[&str] = &["home", "library", "store", "downloads", "storage", "info", "power", "power-mode"];
 pub const POWER_MODES: &[&str] = &["efficiency", "balanced", "performance"];
@@ -165,6 +172,23 @@ pub fn check(req: &Value) -> Result<(String, Value), String> {
             let layout = req["layout"].as_str().ok_or("No layout")?;
             if !matches!(layout, "off" | "custom" | "global") && crate::input_map::template(layout).is_none() { return Err("Unknown layout".into()); }
             json!({"game": need_game()?, "layout": layout})
+        }
+        "coop" => {
+            let op = req["op"].as_str().filter(|o| COOP_OPS.contains(o)).ok_or("That isn't something the Hearth plugin asks")?;
+            let pads: Vec<String> = match &req["pads"] {
+                Value::Null => Vec::new(),
+                Value::Array(l) if l.len() <= 16 => l.iter().map(|v| v.as_str().filter(|p| pad_id_ok(p)).map(str::to_string).ok_or("That isn't a controller"))
+                    .collect::<Result<Vec<String>, &str>>()?,
+                _ => return Err("That isn't a controller".into()),
+            };
+            let pad = match req["pad"].as_str() {
+                None | Some("") => String::new(),
+                Some(p) if pad_id_ok(p) => p.to_string(),
+                _ => return Err("That isn't a controller".into()),
+            };
+            if op == "identify" && pad.is_empty() { return Err("Which controller?".into()); }
+            if op == "order" && pads.is_empty() { return Err("No player order".into()); }
+            json!({"op": op, "pads": pads, "pad": pad})
         }
         "set-proton" => {
             let p = req["proton"].as_str().ok_or("No Proton version")?;
@@ -362,6 +386,22 @@ fn record() -> Result<Value, String> {
     Ok(v)
 }
 
+/// Couch Co-op for Steam Game Mode: hearth-coop's own player order, rumble and game list (the same helper Hearth's
+/// Couch Co-op uses; its split screen is started by the game's Steam shortcut, `hearth-coop play`, not from here).
+fn coop(a: &Value) -> Result<Value, String> {
+    use crate::multiplay::{ask, COOP};
+    if !Path::new(COOP).exists() { return Err("Couch Co-op isn't part of this Hearth OS.".into()); }
+    let pads = a["pads"].as_array().map(|l| l.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(",")).unwrap_or_default();
+    match a["op"].as_str().unwrap_or("") {
+        "players" => ask(COOP, &["players"]),
+        "order" => ask(COOP, &["order-set", "--pads", &pads]),
+        "identify" => ask(COOP, &["identify", "--pad", a["pad"].as_str().unwrap_or("")]),
+        "games" => ask(COOP, &["games"]),
+        "check" => ask(COOP, &["check"]),
+        _ => Err("Unknown command".into()),
+    }
+}
+
 /// One checked command's answer.
 pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
     let game = a["game"].as_str().unwrap_or("");
@@ -394,6 +434,7 @@ pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
             crate::hearth_mods::call(c, &a["args"], true).map(|v| if v.is_object() { v } else { json!({"value": v}) })
         }
         "games-disk" => games_disk(a["mount"].as_str().unwrap_or("")),
+        "coop" => coop(a),
         _ => Err("Unknown command".into()),
     }
 }
@@ -580,6 +621,16 @@ mod tests {
         assert!(req(json!({"cmd": "mods-call", "call": "toggle", "args": {"id": "bad", "m": "x"}})).is_err());
         assert!(req(json!({"cmd": "games-disk", "mount": "/run/media/a/sd"})).is_ok());
         assert!(req(json!({"cmd": "games-disk", "mount": "../etc"})).is_err());
+        // Couch Co-op: only its questions, only event nodes as controllers.
+        assert_eq!(req(json!({"cmd": "coop", "op": "players"})).unwrap().1, json!({"op": "players", "pads": [], "pad": ""}));
+        assert!(req(json!({"cmd": "coop", "op": "order", "pads": ["event30", "event20"]})).is_ok());
+        assert!(req(json!({"cmd": "coop", "op": "order", "pads": ["event30", "../dev/sda"]})).is_err());
+        assert!(req(json!({"cmd": "coop", "op": "order", "pads": []})).is_err());
+        assert!(req(json!({"cmd": "coop", "op": "identify", "pad": "event7"})).is_ok());
+        assert!(req(json!({"cmd": "coop", "op": "identify", "pad": "js0"})).is_err());
+        assert!(req(json!({"cmd": "coop", "op": "identify"})).is_err());
+        assert!(req(json!({"cmd": "coop", "op": "start", "pads": ["event1", "event2"]})).is_err(), "the split screen starts from Steam's shortcut");
+        assert!(pad_id_ok("event12") && !pad_id_ok("event") && !pad_id_ok("event1x") && !pad_id_ok("event12345678"));
         for (m, _) in MODS_CALLS { assert!(crate::hearth_mods::allowed(m), "{m} is a Hearth Mods call"); }
         // The same lists as the plugin's backend (main.py DATA, CORE_COMMANDS; its tests check the other way).
         assert_eq!(DATA, ["home", "library", "store", "downloads", "storage", "info", "power", "power-mode"]);

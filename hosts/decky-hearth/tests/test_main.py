@@ -377,6 +377,46 @@ class CoreService(unittest.TestCase):
         data = re.search(r'pub const DATA: &\[&str\] = &\[(.*?)\];', rs).group(1)
         self.assertEqual(set(re.findall(r'"([^"]+)"', data)), set(self.m.DATA))
 
+    def test_coop_matches_hearth_core_and_falls_back_to_the_helper(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        ops = re.search(r'pub const COOP_OPS: &\[&str\] = &\[(.*?)\];', rs).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', ops)), self.m.COOP_OPS)
+        self.assertEqual(self.m.coop_call('start', ['event1', 'event2']), {'error': "That isn't something the Hearth plugin asks"})
+        self.assertIsNone(self.m.coop_args('identify', pad='../../dev/sda'))
+        self.assertIsNone(self.m.coop_args('order', ['js0']))
+        seen = []
+        core = lambda cmd, a: seen.append((cmd, a)) or {'ok': True, 'data': {'pads': []}}
+        self.assertEqual(self.m.coop_call('order', ['event30', 'bad;rm', 'event20'], core=core), {'pads': []})
+        self.assertEqual(seen, [('coop', {'op': 'order', 'pads': ['event30', 'event20'], 'pad': ''})])
+        # No core: hearth-coop itself answers (same helper), its "error:" line becomes {'error'}.
+        helper = os.path.join(self.tmp, 'hearth-coop')
+        with open(helper, 'w') as f:
+            f.write('#!/bin/sh\n')
+        calls = []
+
+        class P:
+            def __init__(self, out):
+                self.stdout, self.stderr = out, ''
+        run = lambda argv, **k: calls.append(argv) or P('progress: 5 x\n{"pads": [{"id": "event30", "player": 1}]}\n')
+        r = self.m.coop_call('players', core=lambda c, a: None, run=run, helper=helper)
+        self.assertEqual(r['pads'][0]['player'], 1)
+        self.assertEqual(calls[0], [helper, 'players'])
+        run = lambda argv, **k: P('error: That controller is no longer connected.\n')
+        self.assertEqual(self.m.coop_call('identify', pad='event9', core=lambda c, a: None, run=run, helper=helper),
+                         {'error': 'That controller is no longer connected.'})
+        self.assertIn('error', self.m.coop_call('players', core=lambda c, a: None, helper=os.path.join(self.tmp, 'none')))
+
+    def test_coop_shortcut(self):
+        t = self.m.coop_shortcut("gog:it's", 3, 'grid')
+        self.assertEqual(t['exe'], '/bin/sh')
+        self.assertEqual(shlex.split(t['options']), ['-c', self.m.COOP_WRAPPER, 'hearth-steam-coop', self.m.COOP, 'play', '--game', "gog:it's",
+                                                     '--players', '3', '--layout', 'grid'])
+        self.assertEqual(shlex.split(self.m.coop_shortcut('steam:400')['options'])[-3:], ['play', '--game', 'steam:400'])
+        self.assertIsNone(self.m.coop_shortcut('steam:400', 2, 'sideways'))
+        self.assertIsNone(self.m.coop_shortcut('no-colon'))
+        self.assertIn('--env=SteamAppId=', self.m.COOP_WRAPPER)
+        self.assertIn('-u LD_PRELOAD -u LD_LIBRARY_PATH', self.m.COOP_WRAPPER)
+
     def test_page_calls_match_hearth_core_and_need_it_running(self):
         rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
         for const, mine in (('BRIDGE_CALLS', self.m.BRIDGE_CALLS), ('MODS_CALLS', self.m.MODS_CALLS)):

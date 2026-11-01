@@ -70,7 +70,8 @@ export async function sync(items: Item[], onStep?: (done: number, total: number)
   }
   const keep = new Set(items.map((i) => i.id));
   for (const id of Object.keys(map)) {
-    if (keep.has(id)) continue;
+    // Split-screen shortcuts (coop.tsx, "coop:<game>") are added by hand on the split-screen page: Sync leaves them.
+    if (keep.has(id) || id.startsWith("coop:")) continue;
     if (exists(map[id])) { try { steam().Apps.RemoveShortcut(map[id]); removed++; } catch { /* already gone */ } }
     delete map[id];
   }
@@ -87,6 +88,14 @@ export async function removeAll(): Promise<number> {
   }
   await setMap({});
   return n;
+}
+
+/** Adds (or brings up to date) one shortcut, with its art, and remembers it. Returns Steam's app id. */
+export async function add(item: Item): Promise<number> {
+  const map = { ...(await getMap()) };
+  const appId = await ensure(item, map, true);
+  await setMap(map);
+  return appId;
 }
 
 /** Plays through Steam (so the game gets focus, the overlay and Steam's play time): the shortcut is made if needed. */

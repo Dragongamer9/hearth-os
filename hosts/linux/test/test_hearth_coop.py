@@ -1011,5 +1011,100 @@ class CheckAndCli(Base):
         self.assertEqual(len(doc.getElementsByTagName('windowRule')), 5)
 
 
+# ---------------------------------------------------------------------- Steam Game Mode: player order and the shortcut
+
+class SteamCoop(Base):
+    def setUp(self):
+        super().setUp()
+        self.handheld()
+        self.steam_dir = self.steam()
+        self.gbe_cache()
+        os.makedirs(os.path.join(self.root, 'run', 'udev'))
+        os.makedirs(os.path.join(self.home, '.local/share/umu'))
+
+    def test_players_in_saved_order(self):
+        r = hc.players(self.ctx)
+        self.assertEqual([(p['id'], p['player']) for p in r['pads']], [('event20', 1), ('event30', 2)])
+        self.assertEqual(r['max'], 4)
+        self.assertFalse(r['running'])
+        r = hc.order_set(self.ctx, ['event30', 'bogus'])
+        self.assertEqual([p['id'] for p in r['pads']], ['event30', 'event20'])
+        # Remembered by the controller (Bluetooth address / vendor+product+name), not the event number.
+        saved = hc.read_json(hc.order_file(self.ctx))['order']
+        self.assertEqual(saved[0], '11:22:33:44:55:66')
+        self.assertEqual(hc.main(['players'], self.ctx), 0)
+        self.assertEqual(self.result()['pads'][0]['id'], 'event30')
+
+    def test_disconnected_pads_keep_their_place(self):
+        hc.write_json(hc.order_file(self.ctx), {'order': ['gone:pad', '11:22:33:44:55:66']})
+        hc.order_set(self.ctx, ['event20'])
+        self.assertIn('gone:pad', hc.read_json(hc.order_file(self.ctx))['order'])
+
+    def test_steam_virtual_pads_are_not_players(self):
+        self.assertTrue(hc.steam_virtual({'kind': 'virtual', 'name': 'Steam Virtual Gamepad'}))
+        self.assertFalse(hc.steam_virtual({'kind': 'inputplumber', 'name': 'Microsoft X-Box 360 pad'}))
+
+    def test_rumble_capability(self):
+        write(os.path.join(self.sys, 'class/input/event30/device/capabilities/ff'), '107030000 ffff000000000000 0 0\n')
+        write(os.path.join(self.sys, 'class/input/event20/device/capabilities/ff'), '0\n')
+        r = {p['id']: p['rumble'] for p in hc.players(self.ctx)['pads']}
+        self.assertEqual(r, {'event30': True, 'event20': False})
+
+    def test_identify_never_fails_hard(self):
+        # A plain file is no controller: the ioctl is refused and it says why.
+        r = hc.identify(self.ctx, 'event30', 300)
+        self.assertFalse(r['rumbled'])
+        self.assertTrue(r['why'])
+        with self.assertRaises(hc.Fail):
+            hc.identify(self.ctx, '../../etc/passwd')
+        with self.assertRaises(hc.Fail):
+            hc.identify(self.ctx, 'event99')
+        self.assertEqual(hc.EVIOCSFF, 0x40304580)
+
+    def test_play_needs_two_controllers_and_says_why(self):
+        os.unlink(os.path.join(self.dev, 'input', 'event30'))
+        self.assertEqual(hc.main(['play', '--game', 'steam:400'], self.ctx), 1)
+        self.assertIn('at least two controllers', self.lines()[-1])
+        self.assertIn('at least two controllers', hc.players(self.ctx)['lastError'])
+
+    def test_play_uses_the_order_and_waits_then_stops(self):
+        hc.order_set(self.ctx, ['event30', 'event20'])
+        self.runner.tools.update({'xdotool': '/usr/bin/xdotool', 'xprop': '/usr/bin/xprop'})
+        self.runner.responses['xdotool'] = (0, '12345\n', '')
+        self.ctx.env.update({'SteamAppId': '3000000001'})
+
+        def on_spawn(argv, pid):
+            if argv[0] == 'labwc':
+                s = hc.read_json(self.ctx.session_file)
+                s['state'], s['containerPid'], s['labwcPid'] = 'running', 4242, pid
+                self.pads_given = [p['pad'] for p in s['players']]
+                for i, p in enumerate(s['players']):
+                    p['pid'] = 5000 + i
+                    self.runner.live.add(5000 + i)
+                hc.write_json(self.ctx.session_file, s)
+        self.runner.on_spawn = on_spawn
+        ticks = {'n': 0}
+        sleep = self.ctx.sleep
+
+        def tick(sec):
+            sleep(sec)
+            s = hc.load_session(self.ctx)
+            if s and s.get('state') == 'running':
+                ticks['n'] += 1
+                if ticks['n'] > 3:              # everyone quits
+                    self.runner.live.clear()
+        self.ctx.sleep = tick
+        self.assertEqual(hc.main(['play', '--game', 'steam:400', '--layout', 'vertical'], self.ctx), 0, self.out.getvalue())
+        r = self.result()
+        self.assertTrue(r['played'])
+        self.assertEqual(r['players'], 2)
+        self.assertEqual(self.pads_given, ['event30', 'event20'], 'player 1 gets the first controller of the order')
+        bwraps = [x for x in self.runner.spawned if x['argv'][0] == 'labwc']
+        self.assertEqual(len(bwraps), 1)
+        self.assertFalse(os.path.exists(self.ctx.session_file))
+        props = [c for c in self.runner.calls if c[0] == 'xprop']
+        self.assertEqual(props[0][-2:], ['STEAM_GAME', '3000000001'])
+
+
 if __name__ == '__main__':
     unittest.main()

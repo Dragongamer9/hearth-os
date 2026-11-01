@@ -171,8 +171,8 @@ test("front: Hearth Input only gets a game when it's switched on", () => {
   assert.equal(M.frontMessage({ ...run, id: null }, M.DEFAULTS, undefined, false).game, "");
 });
 
-test("Quick Access tabs: three of Hearth's, added and taken away with the switch", () => {
-  assert.deepEqual(M.QAM_TABS.map((t) => t.key), ["hearth", "perf", "controller"]);
+test("Quick Access tabs: four of Hearth's, added and taken away with the switch", () => {
+  assert.deepEqual(M.QAM_TABS.map((t) => t.key), ["hearth", "perf", "controller", "players"]);
   for (const t of M.QAM_TABS) assert.ok(t.id > 999, "never one of Steam's or Decky's ids");
   const ids = M.QAM_TABS.map((t) => t.id);
   assert.deepEqual(M.qamPlan(M.DEFAULTS, undefined, []), { add: ids, remove: [] });
@@ -203,4 +203,19 @@ test("in-game section: layout, Hearth Input, Proton and mods lines", () => {
   assert.equal(M.tdpLine({ tdp: { supported: true, watts: 15.4, min: 5, max: 30 } }), "Power limit: 15 W (Hearth's, 5–30 W)");
   assert.equal(M.tdpLine({ tdp: { supported: false } }), "");
   assert.equal(M.tdpLine(null), "");
+});
+
+test("players: moving a controller, the tab's lines", () => {
+  assert.deepEqual(M.movePad(["a", "b", "c"], 1, -1), ["b", "a", "c"]);
+  assert.deepEqual(M.movePad(["a", "b", "c"], 1, 1), ["a", "c", "b"]);
+  assert.deepEqual(M.movePad(["a", "b"], 0, -1), ["a", "b"], "the first can't go up");
+  assert.deepEqual(M.movePad(["a", "b"], 1, 1), ["a", "b"], "the last can't go down");
+  const pad = (id, player) => ({ id, name: id, label: id, kind: "physical", player, playerName: "", rumble: true });
+  assert.equal(M.coopLine(null), "Looking for controllers…");
+  assert.match(M.coopLine({ pads: [pad("a", 1)], max: 4, running: false }), /connect another/);
+  assert.match(M.coopLine({ pads: [pad("a", 1), pad("b", 2)], max: 4, running: false }), /^2 players/);
+  assert.match(M.coopLine({ pads: ["a", "b", "c", "d", "e"].map((x, i) => pad(x, i < 4 ? i + 1 : null)), max: 4, running: false }), /1 more waits/);
+  assert.equal(M.coopProblem({ pads: [], max: 4, running: false, lastError: "x", lastErrorAt: 1000 }, 2000), "x");
+  assert.equal(M.coopProblem({ pads: [], max: 4, running: false, lastError: "x", lastErrorAt: 1000 }, 1000 + 7200e3), "", "old news");
+  assert.equal(M.coopProblem({ pads: [], max: 4, running: true, lastError: "x" }, 0), "");
 });

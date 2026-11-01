@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import pwd
+import re
 import shlex
 import shutil
 import socket
@@ -206,6 +207,79 @@ def steam_is_flatpak(proc='/proc'):
 WRAPPER = ('if [ -e /.flatpak-info ]; then exec /usr/bin/flatpak-spawn --host /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"; fi; '
            'exec /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH HEARTH_STEAM_LD_PRELOAD="${LD_PRELOAD:-}" "$@"')
 WRAPPER_NAME = 'hearth-steam'
+
+
+# Couch Co-op's split-screen shortcut (Steam Game Mode): `hearth-coop play --game <id>`, which opens Hearth's split
+# screen (a nested labwc in Steam's gamescope, a nested gamescope per player, each with their controller from the
+# player order) and stays until everyone has quit. Like WRAPPER, but inside Flathub's Steam it also hands on the
+# display and Steam's app id, which flatpak-spawn --host doesn't pass by itself (hearth-coop needs both).
+COOP = '/usr/libexec/nimbus/hearth-coop'
+COOP_WRAPPER = ('if [ -e /.flatpak-info ]; then exec /usr/bin/flatpak-spawn --host --env=DISPLAY="${DISPLAY:-}" '
+                '--env=GAMESCOPE_WAYLAND_DISPLAY="${GAMESCOPE_WAYLAND_DISPLAY:-}" --env=SteamAppId="${SteamAppId:-}" '
+                '--env=SteamGameId="${SteamGameId:-}" /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"; fi; '
+                'exec /usr/bin/env -u LD_PRELOAD -u LD_LIBRARY_PATH "$@"')
+COOP_LAYOUTS = ('auto', 'vertical', 'horizontal', 'grid')
+COOP_OPS = ('players', 'order', 'identify', 'games', 'check')    # core_service.rs COOP_OPS
+PAD_ID = re.compile(r'^event\d{1,4}$')
+
+
+def coop_shortcut(game_id, players=0, layout='auto', helper=COOP):
+    """The split-screen shortcut for one game: {exe, startDir, options}, or None when it can't be one."""
+    if not valid_id(game_id) or layout not in COOP_LAYOUTS:
+        return None
+    args = ['play', '--game', game_id]
+    try:
+        players = int(players or 0)
+    except (TypeError, ValueError):
+        players = 0
+    if 2 <= players <= 4:
+        args += ['--players', str(players)]
+    if layout != 'auto':
+        args += ['--layout', layout]
+    opts = ['-c', COOP_WRAPPER, WRAPPER_NAME + '-coop', helper] + args
+    return {'exe': '/bin/sh', 'startDir': home(), 'options': ' '.join(shlex.quote(a) for a in opts)}
+
+
+def coop_args(op, pads=None, pad=''):
+    """hearth-coop's command line for one of COOP_OPS (checked: only event nodes as controllers), or None."""
+    if op not in COOP_OPS:
+        return None
+    pads = [p for p in (pads or []) if isinstance(p, str) and PAD_ID.match(p)][:16]
+    if op == 'players':
+        return ['players']
+    if op == 'order':
+        return ['order-set', '--pads', ','.join(pads)] if pads else None
+    if op == 'identify':
+        return ['identify', '--pad', pad] if isinstance(pad, str) and PAD_ID.match(pad) else None
+    return [op]
+
+
+def coop_call(op, pads=None, pad='', core=None, run=subprocess.run, helper=COOP):
+    """Couch Co-op's player order, rumble and games: through Hearth's core service, or hearth-coop itself when the
+    core isn't running (it's the same helper; nothing here starts a split screen). Always a dict, {'error'} on failure."""
+    argv = coop_args(op, pads, pad)
+    if argv is None:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    clean = [p for p in (pads or []) if isinstance(p, str) and PAD_ID.match(p)][:16]
+    r = (core or core_call)('coop', {'op': op, 'pads': clean, 'pad': pad if isinstance(pad, str) else ''})
+    if r is not None:
+        return core_result(r)
+    if not os.path.isfile(helper):
+        return {'error': "Couch Co-op isn't part of this Hearth OS."}
+    try:
+        p = run([helper] + argv, capture_output=True, text=True, timeout=CORE_TIMEOUTS['coop'], env=clean_env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {'error': "Couch Co-op didn't answer (%s)" % e}
+    for line in reversed((p.stdout or '').splitlines()):
+        if line.startswith('error: '):
+            return {'error': line[7:][:300]}
+        if line.startswith('{'):
+            try:
+                v = json.loads(line)
+            except ValueError:
+                break
+            return v if isinstance(v, dict) else {'value': v}
+    return {'error': ((p.stderr or '').strip()[-300:]) or 'Couch Co-op gave no answer'}
 
 
 def shortcut(program, args, flatpak=None):
@@ -541,9 +615,9 @@ def data_args(what, arg):
 
 # ---- Hearth's core service (hearth-core core_service.rs COMMANDS: the same list, checked by the tests)
 CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record', 'call', 'mods-call',
-                 'games-disk')
+                 'games-disk', 'coop')
 CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3,
-                 'call': 120, 'mods-call': 310, 'games-disk': 30}
+                 'call': 120, 'mods-call': 310, 'games-disk': 30, 'coop': 120}
 # The Steam pages' calls (Store installs and downloads, Storage, Recomps; Hearth Mods): the same lists as
 # core_service.rs BRIDGE_CALLS and MODS_CALLS, checked here first so nothing else is ever sent.
 BRIDGE_CALLS = ('library.downloads', 'game.install', 'game.cancelInstall', 'game.pauseInstall', 'game.resumeInstall', 'game.uninstall',
@@ -981,6 +1055,20 @@ class Plugin:
             return {'error': "That isn't a drive"}
         import asyncio
         return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('games-disk', {'mount': mount}), NO_CORE))
+
+    # ---- Couch Co-op in Steam Game Mode (Quick Access › Hearth Players, the split-screen page)
+    async def coop(self, op, pads=None, pad=''):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: coop_call(op, pads if isinstance(pads, list) else [], pad))
+
+    async def coop_target(self, game_id, players=0, layout='auto'):
+        if not os.path.isfile(COOP):
+            return {'ok': False, 'error': "Couch Co-op isn't part of this Hearth OS."}
+        t = coop_shortcut(game_id, players, layout)
+        if not t:
+            return {'ok': False, 'error': "That isn't a game Hearth plays split-screen"}
+        t['ok'] = True
+        return t
 
     async def switch_to_desktop(self):
         """Hearth's Desktop Mode (the same as Steam's Power › Switch to Desktop: Hearth's session decides)."""
