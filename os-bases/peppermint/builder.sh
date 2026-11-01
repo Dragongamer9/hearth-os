@@ -61,7 +61,12 @@ curl -fsSL --retry 3 -o /src/ostree.tar.xz \
   "https://github.com/ostreedev/ostree/releases/download/v${OSTREE_VER}/libostree-${OSTREE_VER}.tar.xz"
 tar -C /src -xf /src/ostree.tar.xz
 cd "/src/libostree-${OSTREE_VER}"
-./configure --prefix=/usr --libdir="/usr/lib/${MULTIARCH}" --libexecdir=/usr/libexec \
+# composefs support (libcomposefs-dev, above): needed to stage an image that turns composefs on, e.g. moving this
+# device to Hearth OS on Anatase (without it: "composefs: enabled at runtime, but support is not compiled in").
+# Peppermint's own deployments don't use it (prepare-root.conf: enabled = no), so its booting is unchanged.
+COMPOSEFS_OPT=--without-composefs
+if pkg-config --exists composefs; then COMPOSEFS_OPT=--with-composefs; else echo "builder: libcomposefs not found: ostree without composefs (moving to Anatase won't work)"; fi
+./configure ${COMPOSEFS_OPT} --prefix=/usr --libdir="/usr/lib/${MULTIARCH}" --libexecdir=/usr/libexec \
   --sysconfdir=/etc --localstatedir=/var \
   --with-crypto=openssl --with-curl --without-soup --with-libarchive --with-libmount --with-libsystemd \
   --without-selinux --without-avahi --with-dracut=yes \
