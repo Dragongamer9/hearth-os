@@ -8,6 +8,7 @@ import { HearthRowView } from "../../src/row";
 import { HearthMenuItems } from "../../src/patches";
 import { QamPanel } from "../../src/qam";
 import { NowPlayingPage } from "../../src/ingame";
+import { ModsPage, RecompsPage, StorageManagePage } from "../../src/manage";
 import { startFront } from "../../src/core";
 import { setShortcutMap } from "../../src/state";
 import { rowGames } from "./stub-api.js";
@@ -55,5 +56,6 @@ const pages = {
   home: <HearthHome steam={steamHome} />, store: <StorePage />, library: <LibraryPage />, row,
   "steam-menu": steamMenu, "qam-hearth": <Qam which="hearth" />, "qam-perf": <Qam which="perf" />, "qam-controller": <Qam which="controller" />,
   ingame: <div style={{ position: "absolute", inset: 0 }}><NowPlayingPage /></div>,
+  mods: <ModsPage />, storage: <StorageManagePage />, recomps: <RecompsPage />,
 };
 createRoot(document.getElementById("root")).render(pages[window.HEARTH_PAGE] || steamHome);

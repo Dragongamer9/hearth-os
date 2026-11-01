@@ -540,8 +540,28 @@ def data_args(what, arg):
 
 
 # ---- Hearth's core service (hearth-core core_service.rs COMMANDS: the same list, checked by the tests)
-CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record')
-CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3}
+CORE_COMMANDS = ('ping', 'data', 'front', 'game', 'input-set', 'set-proton', 'mods', 'screenshot', 'record', 'call', 'mods-call',
+                 'games-disk')
+CORE_TIMEOUTS = {'game': 40, 'mods': 30, 'screenshot': 15, 'record': 75, 'input-set': 10, 'set-proton': 10, 'front': 5, 'ping': 3,
+                 'call': 120, 'mods-call': 310, 'games-disk': 30}
+# The Steam pages' calls (Store installs and downloads, Storage, Recomps; Hearth Mods): the same lists as
+# core_service.rs BRIDGE_CALLS and MODS_CALLS, checked here first so nothing else is ever sent.
+BRIDGE_CALLS = ('library.downloads', 'game.install', 'game.cancelInstall', 'game.pauseInstall', 'game.resumeInstall', 'game.uninstall',
+                'diskspace.status', 'diskspace.move', 'diskspace.cancel', 'diskspace.cleanList', 'diskspace.clean',
+                'recomps.list', 'recomps.install', 'recomps.cancel', 'recomps.uninstall')
+MODS_CALLS = ('list', 'mods_of', 'toggle', 'remove_mod', 'downloads_list', 'install_download')
+NO_CORE = "Hearth's core isn't running (it starts with Steam Game Mode), so this can't be done here. Open Hearth to do it."
+
+
+def page_call(kind, name, args, core=None):
+    """One of the Steam pages' changes, through Hearth's core service: {'error': ...} when it isn't allowed or the core
+    doesn't run (never the command line: these change things, and only the running core keeps their progress)."""
+    allowed = BRIDGE_CALLS if kind == 'call' else MODS_CALLS
+    if name not in allowed:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    args = args if isinstance(args, dict) else {}
+    req = {'method': name, 'args': args} if kind == 'call' else {'call': name, 'args': args}
+    return core_result((core or core_call)(kind, req), NO_CORE)
 CORE_MAX = 16 * 1024 * 1024
 CORE_IDS = [0]
 
@@ -946,6 +966,21 @@ class Plugin:
             return {'error': "That isn't something the Hearth plugin asks"}
         import asyncio
         return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call(what)))
+
+    # ---- The Steam pages' changes (Store, Mods, Storage, Recomps), through Hearth's core service
+    async def hearth_call(self, method, args=None):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: page_call('call', method, args))
+
+    async def hearth_mods_call(self, call, args=None):
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: page_call('mods-call', call, args))
+
+    async def hearth_games_disk(self, mount):
+        if not isinstance(mount, str) or not mount.startswith('/'):
+            return {'error': "That isn't a drive"}
+        import asyncio
+        return await asyncio.get_event_loop().run_in_executor(None, lambda: core_result(core_call('games-disk', {'mount': mount}), NO_CORE))
 
     async def switch_to_desktop(self):
         """Hearth's Desktop Mode (the same as Steam's Power › Switch to Desktop: Hearth's session decides)."""

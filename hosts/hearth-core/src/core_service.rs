@@ -27,6 +27,14 @@
 //!   mods {game}                           the game's mods in Hearth Mods (only when Hearth Mods' worker runs)
 //!   screenshot                            gamescope's screenshot, to Pictures/Screenshots/Hearth
 //!   record                                Hearth Recorder: start or stop recording
+//!   call {method, args}                   one of Hearth's own calls the Steam pages make (BRIDGE_CALLS: Store installs
+//!                                         and downloads, Settings › Storage, Recomps), answered by a Bridge this
+//!                                         service keeps (made the first time it's asked). Steam games are never
+//!                                         installed, moved or uninstalled from here: that needs Steam closed, and
+//!                                         Steam runs this Game Mode (Steam's own pages do it)
+//!   mods-call {call, args}                Hearth Mods (MODS_CALLS: a game's mods, on/off, uninstall, install a finished
+//!                                         download), its worker started when none runs
+//!   games-disk {mount}                    "Use this disk for games": Hearth's install folder (Epic, GOG) on that drive
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -37,7 +45,18 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Every command the service answers; anything else is refused.
-pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record"];
+pub const COMMANDS: &[&str] = &["ping", "data", "front", "game", "input-set", "set-proton", "mods", "screenshot", "record", "call", "mods-call", "games-disk"];
+/// Hearth's own calls the Steam pages may make (`call`), each with the arguments it may carry (everything else is dropped).
+pub const BRIDGE_CALLS: &[(&str, &[&str])] = &[
+    ("library.downloads", &[]), ("game.install", &["id"]), ("game.cancelInstall", &["id"]), ("game.pauseInstall", &["id"]), ("game.resumeInstall", &["id"]),
+    ("game.uninstall", &["id"]),
+    ("diskspace.status", &["scan"]), ("diskspace.move", &["id", "to"]), ("diskspace.cancel", &[]), ("diskspace.cleanList", &[]), ("diskspace.clean", &["keys", "confirmed"]),
+    ("recomps.list", &[]), ("recomps.install", &["id"]), ("recomps.cancel", &["id"]), ("recomps.uninstall", &["id", "keep"]),
+];
+/// Hearth Mods' calls the Steam pages may make (`mods-call`): a subset of hearth_mods::CALLS.
+pub const MODS_CALLS: &[(&str, &[&str])] = &[
+    ("list", &[]), ("mods_of", &["id"]), ("toggle", &["id", "m", "on"]), ("remove_mod", &["id", "m"]), ("downloads_list", &[]), ("install_download", &["id", "gameId"]),
+];
 /// What `data` may ask (the same list as the plugin's DATA, main.py).
 pub const DATA: &[&str] = &["home", "library", "store", "downloads", "storage", "info", "power", "power-mode"];
 pub const POWER_MODES: &[&str] = &["efficiency", "balanced", "performance"];
@@ -118,6 +137,30 @@ pub fn check(req: &Value) -> Result<(String, Value), String> {
             json!({"game": game, "appid": appid, "overlay": req["overlay"] == true})
         }
         "game" | "mods" => json!({"game": need_game()?}),
+        "call" => {
+            let m = req["method"].as_str().ok_or("No method")?;
+            let (m, keys) = BRIDGE_CALLS.iter().find(|(n, _)| *n == m).ok_or("That isn't something the Hearth plugin asks")?;
+            let args = clean_args(&req["args"], keys)?;
+            if let Some(id) = args["id"].as_str() {
+                let game_id = m.starts_with("game.") || *m == "diskspace.move";
+                if game_id && !crate::desktop_games::valid_id(id) { return Err("That isn't a game id Hearth knows.".into()); }
+                if !game_id && !recomp_id_ok(id) { return Err("That isn't a recomp Hearth knows.".into()); }
+            }
+            if let Some(why) = steam_refusal(m, &args) { return Err(why.into()); }
+            json!({"method": m, "args": args})
+        }
+        "mods-call" => {
+            let c = req["call"].as_str().ok_or("No call")?;
+            let (c, keys) = MODS_CALLS.iter().find(|(n, _)| *n == c).ok_or("That isn't something the Hearth plugin asks")?;
+            let args = clean_args(&req["args"], keys)?;
+            if *c != "install_download" { if let Some(id) = args["id"].as_str() { if !crate::desktop_games::valid_id(id) { return Err("That isn't a game id Hearth knows.".into()); } } }
+            if let Some(g) = args["gameId"].as_str() { if !g.is_empty() && !crate::desktop_games::valid_id(g) { return Err("That isn't a game id Hearth knows.".into()); } }
+            json!({"call": c, "args": args})
+        }
+        "games-disk" => {
+            let m = req["mount"].as_str().filter(|m| m.starts_with('/') && m.len() < 400 && !m.contains("..") && !m.chars().any(|c| c.is_control())).ok_or("That isn't a drive")?;
+            json!({"mount": m})
+        }
         "input-set" => {
             let layout = req["layout"].as_str().ok_or("No layout")?;
             if !matches!(layout, "off" | "custom" | "global") && crate::input_map::template(layout).is_none() { return Err("Unknown layout".into()); }
@@ -131,6 +174,128 @@ pub fn check(req: &Value) -> Result<(String, Value), String> {
         _ => json!({}),
     };
     Ok((cmd.to_string(), args))
+}
+
+/// Only `keys` of a request's arguments, each a short string, a bool or a list of short strings.
+pub fn clean_args(a: &Value, keys: &[&str]) -> Result<Value, String> {
+    fn ok_str(s: &str) -> bool { s.len() <= 400 && !s.chars().any(|c| c.is_control()) }
+    let mut out = serde_json::Map::new();
+    for k in keys {
+        let v = &a[*k];
+        match v {
+            Value::Null => continue,
+            Value::Bool(_) => {}
+            Value::String(s) if ok_str(s.as_str()) => {}
+            Value::Array(l) if l.len() <= 500 && l.iter().all(|x| x.as_str().map(ok_str).unwrap_or(false)) => {}
+            _ => return Err(format!("That isn't something the Hearth plugin sends ({k})")),
+        }
+        out.insert(k.to_string(), v.clone());
+    }
+    Ok(Value::Object(out))
+}
+
+/// A Hearth Recomps id (its catalogue's): letters, digits, '-', '_', '.'.
+pub fn recomp_id_ok(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 80 && !id.starts_with('.') && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+/// Steam games are installed, moved and uninstalled by Steam itself here: Hearth's way closes Steam for it, and Steam
+/// runs this Game Mode (closing it would end the session).
+pub fn steam_refusal(method: &str, args: &Value) -> Option<&'static str> {
+    let steam = args["id"].as_str().map(|i| i.starts_with("steam:")).unwrap_or(false);
+    if !steam { return None; }
+    match method {
+        "game.install" => Some("Steam games install from Steam's own page in Steam Game Mode."),
+        "game.uninstall" => Some("Uninstall Steam games from Steam's own page (Manage › Uninstall) in Steam Game Mode."),
+        "diskspace.move" => Some("Move Steam games in Steam's Settings › Storage in Steam Game Mode (Hearth would have to close Steam)."),
+        _ => None,
+    }
+}
+
+// ---- Hearth's own calls (`call`): a Bridge kept by this service, made the first time one is asked. Its background
+// work's messages come back through stores::notify: answers given later wake the call waiting for them, internal
+// messages (an install finished, a GOG move) go to the bridge, events are dropped (the pages ask again).
+struct Hub {
+    bridge: Mutex<Option<crate::bridge::Bridge>>,
+    answers: Mutex<std::collections::HashMap<u64, Value>>,
+    cv: std::sync::Condvar,
+    next: std::sync::atomic::AtomicU64,
+}
+
+fn hub() -> &'static Hub {
+    static H: std::sync::OnceLock<Hub> = std::sync::OnceLock::new();
+    H.get_or_init(|| {
+        crate::stores::set_notify(Arc::new(on_notify));
+        Hub { bridge: Mutex::new(None), answers: Mutex::new(Default::default()), cv: std::sync::Condvar::new(), next: std::sync::atomic::AtomicU64::new(1) }
+    })
+}
+
+fn put_answer(v: Value) {
+    let Some(id) = v["id"].as_u64() else { return };
+    let h = hub();
+    h.answers.lock().unwrap_or_else(|p| p.into_inner()).insert(id, v);
+    h.cv.notify_all();
+}
+
+fn on_notify(v: Value) {
+    match v["type"].as_str().unwrap_or("") {
+        "internal" => { std::thread::spawn(move || { for e in with_bridge(|b| b.internal(&v)) { if e["type"] == "result" { put_answer(e); } } }); }
+        "result" => put_answer(v),
+        _ => {}
+    }
+}
+
+fn bridge_ready() -> bool { hub().bridge.lock().unwrap_or_else(|p| p.into_inner()).is_some() }
+
+fn with_bridge<R>(f: impl FnOnce(&mut crate::bridge::Bridge) -> R) -> R {
+    let mut g = hub().bridge.lock().unwrap_or_else(|p| p.into_inner());
+    if g.is_none() {
+        let mut b = crate::bridge::Bridge::with(crate::desktop_games::read_library(), crate::profiles::Profiles::open(&crate::paths::data_dir()), env!("CARGO_PKG_VERSION"));
+        b.emit = Arc::new(on_notify);
+        b.cur_label = "steam".into();
+        crate::bridge::log("core service: Hearth's library loaded for the Steam pages (Store, Storage, Recomps)");
+        *g = Some(b);
+    }
+    f(g.as_mut().expect("made above"))
+}
+
+const CALL_WAIT: Duration = Duration::from_secs(110);
+
+fn bridge_call(method: &str, args: &Value) -> Result<Value, String> {
+    let h = hub();
+    let id = 1_000_000 + h.next.fetch_add(1, Ordering::SeqCst);
+    let reply = with_bridge(|b| b.handle(&json!({"type": "call", "id": id, "method": method, "args": args})));
+    let r = match reply {
+        Some(r) => r,
+        None => {
+            let start = Instant::now();
+            let mut m = h.answers.lock().unwrap_or_else(|p| p.into_inner());
+            loop {
+                if let Some(v) = m.remove(&id) { break v; }
+                if start.elapsed() > CALL_WAIT { return Err("Hearth is still working on it; look again in a moment.".into()); }
+                m = h.cv.wait_timeout(m, Duration::from_millis(500)).map(|x| x.0).unwrap_or_else(|p| p.into_inner().0);
+            }
+        }
+    };
+    if r["ok"] == true { Ok(r["value"].clone()) } else { Err(r["error"].as_str().unwrap_or("Hearth couldn't do that").to_string()) }
+}
+
+/// "Use this disk for games": Hearth's install folder (new Epic and GOG installs) on a writable drive Hearth lists.
+fn games_disk(mount: &str) -> Result<Value, String> {
+    use std::os::unix::fs::MetadataExt;
+    with_bridge(|b| -> Result<Value, String> {
+        let ctx = crate::diskspace::ctx_from(&b.library);
+        let d = crate::diskspace::drives(&ctx).into_iter().find(|d| d.mount.to_string_lossy() == mount).ok_or("That drive isn't one Hearth can put games on.")?;
+        if d.read_only { return Err("That drive is read only.".into()); }
+        let root = b.library.install_root();
+        let base = crate::diskspace::games_base(&d.mount, d.dev, &root);
+        std::fs::create_dir_all(&base).map_err(|e| format!("Couldn't make {} ({e})", base.display()))?;
+        if std::fs::metadata(&base).map(|m| m.dev() != d.dev).unwrap_or(true) { return Err("That folder isn't on that drive.".into()); }
+        let dir = base.to_string_lossy().to_string();
+        b.library.store.update(|x| { x.insert("installRoot".into(), json!(dir)); }).map_err(|e| e.to_string())?;
+        crate::bridge::log(&format!("core service: new Epic and GOG installs go to {} (Steam pages, Storage)", base.display()));
+        Ok(json!({"installRoot": b.library.install_root().to_string_lossy(), "drive": d.name}))
+    })
 }
 
 /// The Hearth Input layouts to pick from for a game: Off, the templates, then custom and global when there are.
@@ -202,6 +367,8 @@ pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
     let game = a["game"].as_str().unwrap_or("");
     match cmd {
         "ping" => Ok(json!({"service": "hearth-core", "version": env!("CARGO_PKG_VERSION"), "pid": std::process::id()})),
+        // Downloads Hearth started from the Steam pages are in this service's own queue.
+        "data" if a["what"] == "downloads" && bridge_ready() => Ok(with_bridge(|b| crate::steam_takeover::downloads_page(&b.library.downloads()))),
         "data" => crate::steam_takeover::answer(a["what"].as_str().unwrap_or(""), a["arg"].as_str().filter(|s| !s.is_empty())),
         "front" => {
             sh.set_front(Front { game: a["game"].as_str().map(str::to_string), appid: a["appid"].as_u64().unwrap_or(0), overlay: a["overlay"] == true });
@@ -220,6 +387,13 @@ pub fn answer(sh: &Shared, cmd: &str, a: &Value) -> Result<Value, String> {
         }
         "screenshot" => crate::gamescope::screenshot(),
         "record" => record(),
+        "call" => bridge_call(a["method"].as_str().unwrap_or(""), &a["args"]).map(|v| if v.is_object() { v } else { json!({"value": v}) }),
+        "mods-call" => {
+            if !crate::hearth_mods::available() { return Err("Hearth Mods isn't installed".into()); }
+            let c = a["call"].as_str().unwrap_or("");
+            crate::hearth_mods::call(c, &a["args"], true).map(|v| if v.is_object() { v } else { json!({"value": v}) })
+        }
+        "games-disk" => games_disk(a["mount"].as_str().unwrap_or("")),
         _ => Err("Unknown command".into()),
     }
 }
@@ -388,6 +562,25 @@ mod tests {
         assert_eq!(f, json!({"game": "epic:a", "appid": 3000000000u64, "overlay": true}));
         assert_eq!(req(json!({"cmd": "front", "game": null})).unwrap().1["game"], Value::Null);
         assert!(req(json!({"cmd": "front", "game": "epic:a", "appid": 99999999999u64})).is_err());
+        // The Steam pages' calls: only listed ones, only their own arguments, never a Steam game installed or moved here.
+        let c = req(json!({"cmd": "call", "method": "game.install", "args": {"id": "gog:1", "extra": "x"}})).unwrap().1;
+        assert_eq!(c, json!({"method": "game.install", "args": {"id": "gog:1"}}));
+        assert!(req(json!({"cmd": "call", "method": "game.install", "args": {"id": "steam:620"}})).unwrap_err().contains("Steam's own page"));
+        assert!(req(json!({"cmd": "call", "method": "diskspace.move", "args": {"id": "steam:620", "to": "/run/media/a/sd"}})).is_err());
+        assert!(req(json!({"cmd": "call", "method": "game.uninstall", "args": {"id": "steam:620"}})).is_err());
+        assert!(req(json!({"cmd": "call", "method": "diskspace.move", "args": {"id": "epic:a", "to": "/run/media/a/sd"}})).is_ok());
+        assert!(req(json!({"cmd": "call", "method": "accounts.signIn", "args": {"store": "epic"}})).is_err(), "never sign-ins");
+        assert!(req(json!({"cmd": "call", "method": "store.web"})).is_err());
+        assert!(req(json!({"cmd": "call", "method": "recomps.install", "args": {"id": "../x"}})).is_err());
+        assert!(req(json!({"cmd": "call", "method": "recomps.install", "args": {"id": "zelda64recomp"}})).is_ok());
+        assert!(req(json!({"cmd": "call", "method": "diskspace.clean", "args": {"keys": ["a", "b"], "confirmed": []}})).is_ok());
+        assert!(req(json!({"cmd": "call", "method": "diskspace.clean", "args": {"keys": [1]}})).is_err());
+        assert!(req(json!({"cmd": "mods-call", "call": "toggle", "args": {"id": "steam:489830", "m": "skyui", "on": true}})).is_ok());
+        assert!(req(json!({"cmd": "mods-call", "call": "nexus_sign_in", "args": {"key": "k"}})).is_err(), "no accounts from here");
+        assert!(req(json!({"cmd": "mods-call", "call": "toggle", "args": {"id": "bad", "m": "x"}})).is_err());
+        assert!(req(json!({"cmd": "games-disk", "mount": "/run/media/a/sd"})).is_ok());
+        assert!(req(json!({"cmd": "games-disk", "mount": "../etc"})).is_err());
+        for (m, _) in MODS_CALLS { assert!(crate::hearth_mods::allowed(m), "{m} is a Hearth Mods call"); }
         // The same lists as the plugin's backend (main.py DATA, CORE_COMMANDS; its tests check the other way).
         assert_eq!(DATA, ["home", "library", "store", "downloads", "storage", "info", "power", "power-mode"]);
     }

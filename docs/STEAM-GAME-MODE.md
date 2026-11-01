@@ -142,6 +142,33 @@ shortcut is that Hearth game, a Steam game is `steam:<app id>`.
 - its **mods in Hearth Mods** (how many, how many on; **Open Hearth Mods**). Shown when Hearth Mods' worker is running;
 - Hearth's facts (ProtonDB rating, achievements) and a page with all of it.
 
+### Store, Mods, Storage and Recomps that work (Experimental, needs testing on a device)
+
+These pages change things, not only show them. Every change goes through Hearth's core service (`call`, `mods-call`,
+`games-disk` in `hosts/hearth-core/src/core_service.rs`, from `page_call` in the plugin's `main.py`), which keeps one
+Hearth library for them (a `Bridge`, made the first time a page asks) and runs only the calls on its lists
+(`BRIDGE_CALLS`, `MODS_CALLS`), with only their own arguments. When the core isn't running, the page says so and does
+nothing; the pages are in `src/manage.tsx` and the Store's details in `src/pages.tsx`.
+
+- **Store** (`/hearth/store`): a game opens its details. **Buy** / **Get it** opens the store's own page in Steam's
+  browser (Steam's store for Steam games), signed in there: Hearth never sees payment details, passwords or tokens.
+  A game you own: **Install** (Epic and GOG through Hearth's queue; Steam games on Steam's own page, with Steam's
+  dialog), then its download's progress, **Cancel download**, **Play**. Hearth's downloads also show at the top.
+- **Mods** (`/hearth/mods`): a game's mods in Hearth Mods: **Turn on / off**, **Uninstall** (press twice), and mods
+  you downloaded: **Install** (into the game, turned on; one with installer choices is finished in Hearth Mods).
+  Finding new mods (Nexus Mods, signed in there) stays in Hearth Mods' window.
+- **Storage** (`/hearth/storage`, docs/STORAGE.md): drives, games by size, **Move to <drive>** with progress and
+  **Stop**, **Uninstall**, **Clean up** (find, choose, delete with a second press) and **Use this disk for games**
+  (Hearth's install folder for new Epic and GOG games on that drive).
+- **Recomps** (`/hearth/recomps`): install a port with progress, **Cancel**, **Play** (through Hearth, like every
+  Hearth game), **Uninstall** (saves backed up). A port that needs your copy of the game says to choose it in Hearth
+  (there's no file picker inside Steam).
+
+Steam's own games are never installed, moved or uninstalled by Hearth here: Hearth's way closes Steam for that, and
+Steam runs this Game Mode. Their buttons open Steam's page or Steam's Settings › Storage instead (the core refuses
+them too). A download Hearth started here stops if you leave Steam Game Mode before it's done; Hearth carries on with
+its queue the next time it runs.
+
 ### Still Hearth-only
 
 Hearth's own Quick Access over a game (Quick Resume, Pause, per-game power settings and the frame limit), Hearth's own
@@ -302,7 +329,7 @@ pictures inside the card, which the look doesn't touch.
 
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's
 performance and controller pages, the power limit, Hearth Recorder, Quick Resume, Pause; the power mode is in Quick
-Access › Hearth), buying and installing from Hearth's stores (Hearth Store opens for that), favourites, collections and
+Access › Hearth), favourites, collections and
 game settings, Hearth Friends, Couch Co-op and multi-seat, Hearth Link's device health, editing Hearth Input
 layouts (choosing one is in Quick Access › Hearth Controller), parental controls and per-game power settings, Hearth's
 on-screen keyboard, Discord status, and
