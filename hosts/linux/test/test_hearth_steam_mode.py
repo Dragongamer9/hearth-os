@@ -100,6 +100,29 @@ class SteamModeSession(unittest.TestCase):
         self.assertEqual(self.read('nimbus-next'), 'game')
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'home.ran')))
 
+    def test_flathub_steam_in_use_is_the_one_started(self):
+        # Both Steams installed, but the games and sign-in are in Flathub's Steam's folder: that one starts
+        # (the system Steam would show no installed games).
+        home = os.path.join(self.tmp, 'home')
+        os.makedirs(os.path.join(home, '.local/share/flatpak/app/com.valvesoftware.Steam'))
+        os.makedirs(os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam/config'))
+        with open(os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam/config/loginusers.vdf'), 'w') as f:
+            f.write('"users" {}\n')
+        argv = os.path.join(self.tmp, 'argv')
+        self.fake('gamescope', 'for a in "$@"; do echo "$a"; done >%s\nexit 1' % argv)
+        self.fake('steam', 'exit 0')
+        self.fake('flatpak', 'exit 0')
+        self.run_mode()
+        tail = open(argv).read().split('\n')
+        tail = tail[tail.index('--') + 1:]
+        self.assertEqual(tail[:2], ['flatpak', 'run'])
+        self.assertIn('com.valvesoftware.Steam', tail)
+        # No sign-in in Flathub's folder: the system Steam, as before.
+        os.remove(os.path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/Steam/config/loginusers.vdf'))
+        self.run_mode()
+        tail = open(argv).read().split('\n')
+        self.assertEqual(tail[tail.index('--') + 1], 'env')
+
     def test_steam_that_fails_right_away_comes_back_with_a_note(self):
         argv = os.path.join(self.tmp, 'argv')
         self.fake('gamescope', 'for a in "$@"; do echo "$a"; done >%s\nexit 1' % argv)

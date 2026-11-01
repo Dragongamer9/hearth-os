@@ -742,6 +742,17 @@ input_stop() {
 STEAM_FLATPAK=com.valvesoftware.Steam
 STEAM_MODE_MIN_SECS="${STEAM_MODE_MIN_SECS:-20}"
 steam_flatpak() { have flatpak && { [ -d "/var/lib/flatpak/app/$STEAM_FLATPAK" ] || [ -d "$HOME/.local/share/flatpak/app/$STEAM_FLATPAK" ]; }; }
+# Flathub's Steam is the one in use: installed, signed in in its own folder, and newer there than the system Steam's
+# folder (or that one has no sign-in).
+steam_flatpak_in_use() {
+  steam_flatpak || return 1
+  fl="$HOME/.var/app/$STEAM_FLATPAK/.local/share/Steam/config/loginusers.vdf"
+  [ -s "$fl" ] || fl="$HOME/.var/app/$STEAM_FLATPAK/data/Steam/config/loginusers.vdf"
+  [ -s "$fl" ] || return 1
+  nl="$HOME/.local/share/Steam/config/loginusers.vdf"
+  [ -s "$nl" ] || return 0
+  [ "$fl" -nt "$nl" ]
+}
 can_steam_mode() { [ -z "$HEARTH_SEAT" ] && have gamescope && { have steam || steam_flatpak; }; }
 steam_mode_failed() { log "steam game mode: $1; back to Hearth's Game Mode"; echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; }
 # Decky Loader, when Hearth installed it (hearth-admin decky-install): its root service runs only while Steam Game
@@ -765,8 +776,9 @@ run_steam_mode() {
   sbin="$RUN/hearth-steam-bin"; mkdir -p "$sbin"
   printf '#!/bin/sh\n# Hearth (nimbus-session): Steam Game Mode'"'"'s Switch to Desktop / Game Mode\ncase "$1" in gamescope*|game*) exec nimbus-mode game ;; *) exec nimbus-mode desktop ;; esac\n' >"$sbin/steamos-session-select"
   chmod 755 "$sbin/steamos-session-select"
-  # The system's Steam (both editions), unless it's Hearth's stand-in that starts Flathub's (Anatase without RPM Fusion).
-  if have steam && { [ ! -e /usr/share/nimbus/steam-flatpak ] || ! steam_flatpak; }; then
+  # The system's Steam (both editions), unless it's Hearth's stand-in that starts Flathub's (Anatase without RPM Fusion),
+  # or Flathub's Steam is the one in use here (its games and sign-in are in its own folder: the system's would show none).
+  if have steam && { [ ! -e /usr/share/nimbus/steam-flatpak ] || ! steam_flatpak; } && ! steam_flatpak_in_use; then
     set -- env PATH="$sbin:$PATH" steam
   else
     # Flathub's Steam: the same through flatpak-spawn --host, given for this run only (no lasting flatpak override).
