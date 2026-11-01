@@ -44,6 +44,15 @@ jobs:
           # What the Open engine adds: SteamKit2 and the packages it brings (protobuf-net, compression, hashing).
           cd "$RUNNER_TEMP/hearth-steam"
           echo "::notice title=Open engine size::$(du -kc SteamKit2.dll protobuf-net*.dll ZstdSharp.dll System.IO.Hashing.dll 2>/dev/null | tail -1 | cut -f1) KiB for $(ls SteamKit2.dll protobuf-net*.dll ZstdSharp.dll System.IO.Hashing.dll 2>/dev/null | tr '\n' ' ')"
+      # 0.6.59 never got ready: a native call .NET couldn't marshal. Every P/Invoke stub of the published build is built
+      # here, and the restart the Lightweight engine does (with the environment it sets) is done once for real.
+      - name: Native calls marshal, restart works
+        run: |
+          out=$("$RUNNER_TEMP/hearth-steam/hearth-steam" --check-interop 2>&1) || { echo "$out" | head -20 | sed 's/^/::error title=interop::/'; exit 1; }
+          echo "::notice title=interop::$(echo "$out" | tr '\n' ' ' | cut -c1-900)"
+          out=$("$RUNNER_TEMP/hearth-steam/hearth-steam" --check-reexec x 2>&1) || true
+          echo "$out" | grep -q 'reexec ok: --check-reexec x' || { echo "::error title=reexec::$(echo "$out" | head -5 | tr '\n' ' ')"; exit 1; }
+          echo "::notice title=reexec::$out"
       # No Steam here: it must come up, say why it can't run Steam (after reading OpenSteamworks' pinned client
       # build), and exit cleanly when told to let go.
       - name: Starts and answers with no Steam
@@ -78,6 +87,8 @@ jobs:
           PY
           for i in $(seq 50); do kill -0 $pid 2>/dev/null || break; sleep 0.1; done
           if kill -0 $pid 2>/dev/null; then echo "::error title=hearth-steam smoke::didn't exit after release"; kill $pid; exit 1; fi
+          rc=0; wait $pid || rc=$?
+          if [ "$rc" != 0 ]; then echo "::error title=hearth-steam smoke::exited with status $rc after release (must be 0)"; tail -5 "$RUNNER_TEMP/hs.log" | sed 's/^/::error title=hearth-steam smoke::/'; exit 1; fi
           test ! -e "$XDG_RUNTIME_DIR/hearth-steam.sock"
       # The Open engine with no account: it connects to Steam (no sign-in), answers status, says signed out for the
       # library and launches (so Hearth uses the normal client), keeps no token, and exits when told to let go.
@@ -115,6 +126,8 @@ jobs:
           PY
           for i in $(seq 50); do kill -0 $pid 2>/dev/null || break; sleep 0.1; done
           if kill -0 $pid 2>/dev/null; then echo "::error title=open engine smoke::didn't exit after release"; kill $pid; exit 1; fi
+          rc=0; wait $pid || rc=$?
+          if [ "$rc" != 0 ]; then echo "::error title=open engine smoke::exited with status $rc after release (must be 0)"; tail -5 "$RUNNER_TEMP/hs2.log" | sed 's/^/::error title=open engine smoke::/'; exit 1; fi
           test ! -e "$XDG_RUNTIME_DIR/hearth-steam.sock"
           if ls "$HOME/.local/state/hearth-steam/" 2>/dev/null | grep -q token; then echo "::error title=open engine smoke::a token file exists without signing in"; exit 1; fi
           if grep -qiE 'password|refresh.?token' "$RUNNER_TEMP/hs2.log"; then echo "::error title=open engine smoke::the log mentions secrets"; exit 1; fi

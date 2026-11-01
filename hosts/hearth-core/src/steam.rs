@@ -792,8 +792,9 @@ pub fn client_installed(home: &Path) -> bool {
 
 /// Hands Steam a URL or option, detached (no output kept).
 pub fn spawn(home: &Path, arg: &str) -> Result<(), String> {
-    // The lightweight engine (steam_engine.rs) lets go first: two Steam clients never run at once.
-    crate::steam_engine::release();
+    // Hearth's Steam engine steps aside first (steam_engine.rs): the Open engine stands by (no writes until Valve's
+    // client has closed), the Lightweight engine lets go, so two clients never write the same files.
+    crate::steam_engine::step_aside();
     let (cmd, args) = command(home, arg);
     std::process::Command::new(&cmd).args(&args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
         .spawn().map(|c| { crate::procs::detach(c); }).map_err(|e| format!("Couldn't start Steam: {e}"))

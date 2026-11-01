@@ -79,6 +79,13 @@ fn recorder_cli(args: &[&str]) -> Result<Value, String> {
 }
 // ==== end of Hearth Recorder
 
+/// A Steam game's app id from a request's "id" ("steam:<id>"), when Hearth's Steam client (Open) is the engine in use:
+/// its downloads are controlled in the engine's queue.
+fn steam_app(a: &Value) -> Option<u32> {
+    if crate::steam_engine::current_mode() != crate::steam_engine::Mode::Open { return None; }
+    a["id"].as_str()?.strip_prefix("steam:")?.parse().ok()
+}
+
 impl Bridge {
     pub fn new(version: &str) -> Bridge {
         // Before anything else this version does: store sign-ins that went missing are put back from where they
@@ -92,8 +99,15 @@ impl Bridge {
         // play, install or use its features (steam_ctl.rs). Turned off: started hidden now and kept running, as before.
         // "Keep Steam ready in the background" (on by default, steam_launch.rs): in Game Mode, when Steam was used here
         // before, it starts hidden 20 s after Hearth (Hearth's own start first), on its own thread so nothing waits for it.
+        // Hearth's own Steam client (Open) is the default: switched on once for everyone who never chose an
+        // engine, with a short explainer in Settings › Library (steam_engine::migrate).
+        if let Some(writes) = b.library.store.data.as_object().and_then(crate::steam_engine::migrate) {
+            if b.library.store.update(|d| { for (k, v) in writes { d.insert(k.into(), v); } }).is_ok() {
+                crate::bridge::log("steam engine: Hearth's own Steam client is now the default (Settings › Library to turn it off)");
+            }
+        }
         {
-            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
+            let (home, keep, on_demand, bg) = (b.library.home.clone(), b.library.steam_keep_ready_effective(), b.library.steam_on_demand(), b.library.store.data["steamBackground"] != false);
             let seat = std::env::var_os("HEARTH_SEAT").map(|v| !v.is_empty()).unwrap_or(false);
             if !seat && (keep || (!on_demand && bg)) {
                 std::thread::spawn(move || {
@@ -433,12 +447,15 @@ impl Bridge {
                 Ok(json!({"engine": mode.name(), "lightweight": mode == crate::steam_engine::Mode::Lightweight, "open": mode == crate::steam_engine::Mode::Open}))
             }
             "steam.engine.status" => Ok(crate::steam_engine::status(self.library.steam_engine_mode())),
+            // The once-only "Hearth's own Steam client is now the default" note in Settings › Library: read.
+            "steam.engine.explained" => io(self.library.store.update(|d| { d.insert("steamEngineExplain".into(), json!(false)); })),
             // The engine's sign-in screen: what's typed goes to the engine (then steamclient) and nowhere else.
             "steam.engine.signIn" => crate::steam_engine::sign_in(a),
             "library.setSteamKeepReady" => {
                 let on = a["on"] == true;
-                if on && crate::gamescope::inside() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
-                io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }))
+                let r = io(self.library.store.update(|d| { d.insert("steamKeepReady".into(), json!(on)); }));
+                if on && crate::gamescope::inside() && self.library.steam_keep_ready_effective() { let home = self.library.home.clone(); std::thread::spawn(move || crate::steam::ensure_running_silent(&home)); }
+                r
             }
             "library.setSteamBackground" => {
                 let on = a["on"] == true;
@@ -513,6 +530,12 @@ impl Bridge {
             }
             "game.cancelInstall" => {
                 let id = req("id")?;
+                // Hearth's Steam client's download: out of its queue (what's downloaded is kept).
+                if let Some(app) = steam_app(a) {
+                    if let Ok(v) = crate::steam_engine::download_op("cancel", Some(app), None) {
+                        if v["cancelled"] == true { self.library.scan(); (self.emit)(Bridge::event("library.changed", json!({}))); return Ok(json!({"ok": true})); }
+                    }
+                }
                 if let Some(app) = id.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()) {
                     if !crate::steam_ctl::cancel_pending(app) { return Err("Steam is downloading it already: cancel it in Steam (Manage in Steam).".into()); }
                     self.library.scan();
@@ -523,9 +546,49 @@ impl Bridge {
                 if removed { (self.emit)(Bridge::event("install.done", self.library.install_done(&id, Some("cancelled"), None))); }
                 Ok(json!({"ok": ok}))
             }
+            // A Steam download of Hearth's Steam client (Open) is paused, resumed and moved in the engine's queue.
+            "game.pauseInstall" | "game.resumeInstall" | "game.installFirst" if steam_app(a).is_some() => {
+                let op = match method { "game.pauseInstall" => "pause", "game.resumeInstall" => "resume", _ => "move" };
+                crate::steam_engine::download_op(op, steam_app(a), if op == "move" { Some("top") } else { None }).map(|_| json!({"ok": true}))
+            }
             "game.pauseInstall" => Ok(json!({"ok": self.library.pause_install(&req("id")?)})),
             "game.resumeInstall" => Ok(json!({"ok": self.library.resume_install(&req("id")?)})),
             "game.installFirst" => Ok(json!({"ok": self.library.install_first(&req("id")?)})),
+            // Up / down / top in the queue: Hearth's Steam client's downloads; Epic and GOG go to the top only.
+            "game.moveInstall" => {
+                let to = a["to"].as_str().unwrap_or("top");
+                if steam_app(a).is_some() { return crate::steam_engine::download_op("move", steam_app(a), Some(to)).map(|_| json!({"ok": true})); }
+                if to == "top" { return Ok(json!({"ok": self.library.install_first(&req("id")?)})); }
+                Err("Only Steam downloads of Hearth's Steam client move up and down; Epic and GOG downloads can go first.".into())
+            }
+            // Pause / resume every download: Hearth's Steam client's queue and Hearth's own (Epic, GOG).
+            "downloads.pauseAll" | "downloads.resumeAll" => {
+                let pause = method == "downloads.pauseAll";
+                let _ = crate::steam_engine::download_op(if pause { "pause" } else { "resume" }, None, None);
+                let ids = self.library.queue.lock().unwrap().ids();
+                for id in ids { if pause { self.library.pause_install(&id); } else { self.library.resume_install(&id); } }
+                Ok(json!({"ok": true}))
+            }
+            // Settings › Library: automatic updates (off / idle / always) and the download speed limit (KB/s, 0 none).
+            // A game page's beta branch and Workshop requests (Hearth's Steam client), answered when Steam has.
+            "steam.engine.call" => {
+                let args = a.clone();
+                crate::watchdog::long_task();
+                self.later(move || crate::steam_engine::game_call(&args))
+            }
+            // A Steam Cloud conflict answered on the page ({id, choice: local|cloud|both}); answered when the saves are done.
+            "steam.cloudResolve" => {
+                let app = req("id")?.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()).ok_or("Not a Steam game.")?;
+                let choice = req("choice")?;
+                crate::watchdog::long_task();
+                self.later(move || crate::steam_engine::cloud_resolve(app, &choice))
+            }
+            "steam.engine.config" => {
+                if let Some(v) = a["autoUpdate"].as_str() { let v = crate::steam_engine::auto_update_setting(&json!(v)); io(self.library.store.update(|d| { d.insert("steamAutoUpdate".into(), json!(v)); }))?; }
+                if let Some(k) = a["limitKBps"].as_u64() { io(self.library.store.update(|d| { d.insert("steamLimitKBps".into(), json!(k)); }))?; }
+                crate::steam_engine::push_config(json!({"autoUpdate": self.library.steam_auto_update(), "limitKBps": self.library.steam_limit_kbps(), "gameRunning": self.library.running.is_some()}));
+                Ok(json!({"autoUpdate": self.library.steam_auto_update(), "limitKBps": self.library.steam_limit_kbps()}))
+            }
             "downloads.clearRecent" => { self.library.clear_recent(); Ok(json!({"ok": true})) }
             "steam.downloads" => { self.open_steam("steam://open/downloads"); Ok(json!({"ok": true})) }
             // Steam's window in front again (during a sign-in, after coming back to Hearth).
@@ -945,7 +1008,7 @@ impl Bridge {
                 if let Some(url) = r["stream"].as_str() { (self.stream)(Some((url, r["title"].as_str().unwrap_or("Xbox Cloud Gaming")))); }
                 (self.emit)(Bridge::event("quickResume", self.library.quick_state()));
                 if r["resumed"] == true { (self.host)("resumeGame", &Value::Null); }
-                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"]}))
+                Ok(json!({"tracked": r["tracked"], "resumed": r["resumed"] == true, "expired": r["expired"], "cloudConflict": r["cloudConflict"]}))
             }
             // Quick Resume: games put aside stay frozen in memory and carry on where they were
             "game.quickResume" => {

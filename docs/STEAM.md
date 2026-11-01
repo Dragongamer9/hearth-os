@@ -181,10 +181,13 @@ steamclient's own doing; Steam's web UI never runs. This is the one place Hearth
   `hearth-steam-engine.service` (not enabled: Hearth starts and stops it). Built by `.github/workflows/hearth-steam.yml`
   and by the image builds, where a failed build only leaves it out.
 
-## 8. Open engine (experimental)
+## 8. Open engine (the default)
 
-Settings › Library › **Open Steam client** (off by default; turning it on turns Lightweight off and the other way
-round). Hearth's own open-source Steam client: the same `hosts/hearth-steam` service and socket API, started with
+Settings › Library › **Hearth's Steam client** (on by default; turning it on turns Lightweight off and the
+other way round). New installs start with it, and everyone who never chose an engine gets it switched on once, with a
+short explainer in Settings › Library (`steam_engine::migrate`, `steamEngineExplain`); turning it off (Classic) sticks.
+Until the player signs in to it, everything behaves exactly like Classic (Settings › Library and a pill in the Library
+offer to sign in; never forced). Steam's own Game Mode (Decky) always uses Valve's client (`steam_engine::effective`). Hearth's own open-source Steam client: the same `hosts/hearth-steam` service and socket API, started with
 `HEARTH_STEAM_ENGINE=open` (Hearth sets it in the user manager before starting `hearth-steam-engine.service`), but
 **without steamclient**: it speaks Steam's protocol through [SteamKit2](https://github.com/SteamRE/SteamKit) 3.4.0
 (LGPL-2.1, used unmodified as its own assembly; credited in `hosts/hearth-steam/LICENSE.SteamKit2`). It needs no
@@ -195,7 +198,9 @@ Clean-room limits: written from SteamKit2's public API only (DepotDownloader's a
 code or binaries copied, decompiled or disassembled; it never replaces or emulates `steam_api`/`steamclient` for games
 and never touches anti-cheat.
 
-- **Signing in.** Hearth's own screen, as for Lightweight: name + password, then the Steam Guard code from the app or
+- **Signing in.** Hearth's own screen, as for Lightweight (the flow is `HearthSteam.Core/Open/SignIn.cs`, tested end to
+  end against a fake of SteamKit2's authentication; when the engine isn't ready, Settings says why and offers **Start the
+  engine again** instead of hiding the sign-in): name + password, then the Steam Guard code from the app or
   the email (typed with Hearth's keyboard), or the QR code for the Steam app. The password goes into SteamKit2's
   request and is dropped. The refresh token Steam gives back is kept in the user's keyring (Secret Service through
   `secret-tool`, the token on stdin) or, without one, in `~/.local/state/hearth-steam/open-token.json` (0600, folder
@@ -224,10 +229,57 @@ and never touches anti-cheat.
   Valve's.
 - **Fallback.** As for Lightweight (`steam_engine.rs`): Open is used only when it's chosen, installed, running as the
   Open engine (`"kind": "open"` in its status), ready and signed in, and the normal client isn't running; anything else
-  or any error is done with Valve's client. The service lets go (exits) when Valve's client starts (checked every
-  5 seconds, and Hearth tells it to first); downloads stop and resume from the saved queue when it's back.
-- **Not yet.** Beta branches, workshop items, cloud saves (Valve's client syncs them when it runs), pausing and
-  reordering downloads from Hearth's Downloads page, automatic updates (Update asks for one).
+  or any error is done with Valve's client. When Valve's client starts (a game that needs it: Steam DRM, VAC,
+  Steamworks; or anything the engine can't do), Hearth first tells the Open engine to **stand by** (`standby`): it
+  stays signed in (sign-in and the library keep working) but stops its downloads and writes nothing into the libraries
+  until Valve's client has closed (checked every 5 seconds), then carries on from the saved queue. The Lightweight
+  engine (which loads Valve's steamclient) still lets go and exits. The Open engine may start while Valve's client runs
+  (it starts standing by), so the player can always sign in.
+- **Valve's client kept ready, reconciled.** While the Open engine is the one in use and signed in, **Keep Steam ready
+  in the background** steps back (`steam_launch::keep_ready_effective`): Valve's client isn't started when Game Mode
+  comes up, starts only when a game needs it, and is closed again when idle ("Start Steam only when needed"). Not
+  signed in to Open, or on Classic or Lightweight: Keep Steam ready works as in section 9.
+- **Downloads page.** The engine's queue (`HearthSteam.Core/Open/Queue.cs`) is Hearth's: one game at a time in
+  order; pause / resume one or all, move up / down / to the top, cancel (what's downloaded is kept), speed and time
+  left; kept in `open-state.json` across restarts (paused ones stay paused). A paused, moved-down or cancelled running
+  job stops within a second and carries on later from what it has. Socket commands `pause` / `resume` (`appid` or all),
+  `move` (`to`: up/down/top), `cancel`; hearth-core merges the queue into `library.downloads` (`engine` on each item).
+- **Automatic updates.** Settings › Library › Automatic updates: Off, When no game is running (default) or Always.
+  While signed in (and not standing by), Steam's PICS change number is checked every 20 minutes; installed games
+  (fully installed, owned) whose build on their branch changed get an "auto" job. Never during a game unless Always:
+  an automatic update running when a game starts stops and waits; the player's own installs go ahead. Hearth sends
+  the setting and whether a game runs with `config`.
+- **Speed limit.** Settings › Library › Download speed limit (none, 1 to 50 MB/s): a token bucket in front of every
+  chunk download.
+- **Steam Cloud.** For games Hearth starts directly (`HearthSteam.Core/Open/Cloud.cs`, `HearthSteam/OpenCloud.cs`),
+  through SteamKit2's public unified Cloud service messages (the app's file changelist, file downloads, upload batches:
+  `BeginAppUploadBatch`, per file `ClientBeginFileUpload` / its HTTP blocks / `ClientCommitFileUpload`, then
+  `CompleteAppUploadBatchBlocking`, completed as failed when a file didn't go up). Where files go comes from the app
+  info's Auto-Cloud rules (`ufs`: savefiles roots, paths, patterns, platforms, root overrides for Linux builds; path
+  tokens `{64BitSteamID}`, `{Steam3AccountID}`): Windows roots (`WinMyDocuments`, `WinAppDataLocal`/`LocalLow`/
+  `Roaming`, `WinSavedGames`) inside the game's Proton prefix (steamuser's profile in `compatdata/<id>/pfx`), Linux
+  roots in the home folder, `GameInstall` in the game's folder; never outside a root, links never followed. Before a
+  direct start (`cloud.before`, up to 25 seconds) newer cloud files come down (checked by SHA-1, unzipped when Steam
+  serves them zipped, their times kept); after the game exits (`cloud.after`) changed files go up in one batch.
+  Changed on both sides since the last sync on this device: Hearth asks with a sheet (keep this device's / keep the
+  cloud's / keep both: this device's go to `~/.local/share/Hearth/Steam Cloud copies/<app>/<time>`; "keep the cloud's"
+  still keeps them aside in Hearth's state folder), and nothing starts until it's answered. A file removed on one side
+  is never deleted on the other. The record of the last sync is `~/.local/state/hearth-steam/cloud/<app>.json`; the
+  log has counts and the app id only. Games with Steam Cloud but no rules Hearth can place (no `ufs` save rules, a
+  root it doesn't know, encrypted files), or any error or timeout, start through Valve's client, which syncs them.
+- **Beta branches.** A Steam game's ⋯ menu › Beta branch (signed in): the branches from the app info (PICS depots ›
+  branches), the default first; a password-protected beta asks for its password, checked with Steam through
+  SteamKit2's `CheckAppBetaPassword` (the password is never kept; the key Steam gives back is kept in the secret store
+  and decrypts that branch's manifest ids). Picking one remembers it and, for an installed game, queues the switch:
+  that branch's manifests (manifest request codes for the branch), recorded as `BetaKey` in the appmanifest's
+  UserConfig and MountedConfig like Steam does; automatic updates follow the game's branch.
+- **Workshop.** A Steam game's ⋯ menu › Workshop items: the player's subscriptions through SteamKit2's PublishedFile
+  service (`GetUserFiles`, "mysubscriptions"); a Workshop job downloads new and updated items into
+  `steamapps/workshop/content/<app>/<id>` (UGC manifests through the app's workshop depot with the same chunk checks
+  as games, or an old item's single file) and writes `steamapps/workshop/appworkshop_<app>.acf` as Steam does, so
+  the game and Valve's client see them; items no longer subscribed are removed (only when Steam gave a real
+  subscription list; an empty or failed one never removes anything); Unsubscribe (`Unsubscribe`) removes the item's
+  folder (links never followed). Installed games' Workshop items are checked with the automatic updates every 6 hours.
 
 ## 9. Playing Steam games in Game Mode
 
@@ -245,7 +297,8 @@ What made Steam games slow and awkward in Game Mode (0.6.59 logs, Flatpak Steam,
 
 What Hearth does now (`steam_launch.rs`, `gamemode.rs`, `padmouse.rs`):
 
-- **Steam kept ready.** With **Keep Steam ready in the background** on, Hearth starts Steam hidden (`-silent`)
+- **Steam kept ready.** (Not while Hearth's own Steam client is in use and signed in: section 8.) With **Keep Steam
+  ready in the background** on, Hearth starts Steam hidden (`-silent`)
   20 seconds after Game Mode comes up (on its own thread: nothing waits for it), only when Steam has been used on
   this device (an account in `loginusers.vdf`), not on a second seat and not in Steam Game Mode, and it isn't closed
   when idle. Play then hands the game to the running client. Steam isn't started with `nice`: every game Steam starts

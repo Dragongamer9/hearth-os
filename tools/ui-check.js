@@ -45,6 +45,88 @@ const path = require('path');
     if (SHOP.store !== 'gog' || !document.querySelector('#view [data-k="sf-t-gog"].on')) throw new Error('RB did not go to GOG: ' + SHOP.store);
     input('lb'); if (SHOP.store !== 'steam') throw new Error('LB did not go back to Steam');
   });
+  // Settings › Library › Steam engine when the engine isn't ready (0.6.59: it never started and the sign-in row just
+  // wasn't there): a Sign in row that says why, and a sheet that offers to start it again.
+  await step('steam engine not ready', () => {
+    const was = { light: S.set.steamLight, open: S.set.steamOpen, st: SENG.st };
+    try {
+      S.set.steamLight = true; S.set.steamOpen = false;
+      SENG.st = { installed: true, lightweight: true, mode: 'lightweight', classicRunning: false, status: { engine: 'unavailable', reason: "Steam's engine didn't start: Cannot marshal" } };
+      const h = steamEngineRows();
+      if (!/data-k="s-steamEngSign"/.test(h) || !/Can&#39;t sign in|Can't sign in/.test(h) || !/didn(&#39;|')t start/.test(h)) throw new Error('no sign-in row with the reason: ' + h.slice(0, 300));
+      SENG.st.status = { engine: 'stopped' };
+      if (!/Try starting it again/.test(steamEngineRows())) throw new Error('a stopped engine does not say so');
+      S.layers = []; steamEngSignIn();
+      if (S.layers.at(-1) !== 'sheet' || !/Can't sign in to Steam yet/.test(sheet.title) || !sheet.items.some(i => /Start the engine again/.test(i.label))) throw new Error('the sign-in sheet does not explain: ' + JSON.stringify(sheet && sheet.title));
+      closeAll();
+      SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: false } }; S.set.steamLight = false; S.set.steamOpen = true;
+      if (!/Sign in to Steam/.test(steamEngineRows()) || /Can't sign in/.test(steamEngineRows())) throw new Error('a ready engine does not offer the normal sign-in');
+      // Open is the default: a once-only explainer with Got it, and no Library pill without Hearth's host.
+      S.steamExplain = true;
+      if (!/data-k="s-steamExplain"/.test(steamEngineRows()) || !/Turn it off here any time/.test(steamEngineRows())) throw new Error('no explainer for the new default');
+      S.steamExplain = false;
+      if (/s-steamExplain/.test(steamEngineRows())) throw new Error('the explainer stays after Got it');
+      if (steamOpenLibPill() !== '') throw new Error('the Library sign-in pill shows without Hearth');
+    } finally { S.set.steamLight = was.light; S.set.steamOpen = was.open; SENG.st = was.st; }
+  });
+  // Steam Cloud conflict sheet (Hearth's Steam client): three answers, controller-friendly (a sheet), nothing deleted.
+  await step('steam cloud conflict', () => {
+    S.layers = [];
+    steamCloudConflict({ id: 'steam:620', title: 'Portal 2' }, { files: 2, when: 'before' }, true);
+    if (S.layers.at(-1) !== 'sheet' || !/Portal 2: which saves\?/.test(sheet.title)) throw new Error('no conflict sheet: ' + (sheet && sheet.title));
+    const labels = sheet.items.map(i => i.label).join(' | ');
+    if (!/Keep this device's saves/.test(labels) || !/Keep the Steam Cloud saves/.test(labels) || !/Keep both/.test(labels)) throw new Error('conflict answers: ' + labels);
+    if (!/2 save files changed/.test(sheet.sub) || !/Nothing is deleted without asking/.test(sheet.sub)) throw new Error('conflict text: ' + sheet.sub);
+    if (!document.querySelector('#sheet.open')) throw new Error('the sheet is not shown');
+    closeAll();
+  });
+  // A Steam game's beta branch picker and Workshop list (Hearth's Steam client), from the engine's answers.
+  await step('steam betas and workshop', () => {
+    const g = { id: 'steam:620', title: 'Portal 2', src: 'steam', inst: true };
+    S.layers = [];
+    steamBetaSheet(g, { chosen: 'beta', branches: [{ name: 'public' }, { name: 'beta', description: 'Next update' }, { name: 'secret', password: true, unlocked: false }] });
+    if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3) throw new Error('beta picker: ' + JSON.stringify(sheet && sheet.items));
+    if (sheet.items[0].label !== 'Default (no beta)' || sheet.items[1].icon !== 'check' || !/needs a password/.test(sheet.items[2].label) || sheet.items[2].icon !== 'lock') throw new Error('beta picker rows: ' + sheet.items.map(i => i.label + '/' + i.icon).join(' | '));
+    closeAll();
+    steamWorkshopSheet(g, { complete: true, items: [{ id: '3000000001', title: 'Big Map', size: 2e9, installed: true, needsUpdate: true }, { id: '42', title: 'Skin', installed: false }] });
+    if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3 || !/Download 2 new or updated items/.test(sheet.items[0].label)) throw new Error('workshop list: ' + JSON.stringify(sheet && sheet.items.map(i => i.label)));
+    if (!/Big Map · update waiting · 2\.0 GB/.test(sheet.items[1].label) || !/Skin · not downloaded yet/.test(sheet.items[2].label)) throw new Error('workshop rows: ' + sheet.items.map(i => i.label).join(' | '));
+    closeAll();
+    steamWorkshopSheet(g, { complete: false, items: [] });
+    if (!/didn't give your subscriptions/.test(sheet.sub)) throw new Error('workshop without a list: ' + sheet.sub);
+    closeAll();
+    // Only offered with Hearth's Steam client signed in (never in the preview, which has no Hearth).
+    if (gameOptionItems(g).some(i => /Beta branch|Workshop items/.test(i.label))) throw new Error('beta/workshop offered without Hearth');
+    if (!/^Workshop items 50%/.test(dlInfo({ engine: { kind: 'workshop' }, state: 'downloading', progress: 0.5 }).label)) throw new Error('workshop downloads are not labelled');
+  });
+  // Downloads › Hearth's Steam client's queue: up / down / pause / cancel per game, the automatic update label, and
+  // Settings › Library's automatic updates and speed limit.
+  await step('downloads controls', () => {
+    const it = { g: { id: 'steam:620', src: 'steam', title: 'Portal 2', engine: { position: 1, auto: false } }, state: 'queued' };
+    const row = dlButtons(it, false);
+    for (const k of ['dq-up-steam:620', 'dq-down-steam:620', 'dq-pp-steam:620', 'dq-x-steam:620']) if (!row.includes(`data-k="${k}"`)) throw new Error('no ' + k + ' in ' + row.slice(0, 200));
+    if (!/data-act="dlMove" data-v="up"/.test(row) || !/data-act="dlMove" data-v="down"/.test(row)) throw new Error('move buttons do not move');
+    const paused = dlButtons({ ...it, state: 'paused' }, false);
+    if (!/data-act="dlResume"/.test(paused)) throw new Error('a paused download has no Resume');
+    const big = dlButtons({ ...it, state: 'downloading' }, true);
+    if (!/data-act="dlPause"/.test(big) || !/data-act="dlCancel"/.test(big)) throw new Error('the current download has no Pause / Cancel');
+    if (!/^Automatic update 50%/.test(dlInfo({ engine: { auto: true }, state: 'downloading', progress: 0.5 }).label)) throw new Error('automatic updates are not labelled');
+    if (etaText({ speed: 1e6, total: 4e8, done: 1e8 }) !== '5 min left') throw new Error('time left: ' + etaText({ speed: 1e6, total: 4e8, done: 1e8 }));
+    const was = { open: S.set.steamOpen, light: S.set.steamLight, st: SENG.st };
+    try {
+      S.set.steamOpen = true; S.set.steamLight = false; SENG.st = { installed: true, open: true, status: { engine: 'ready', signedIn: true, kind: 'open' } };
+      S.steamAuto = 'idle'; S.steamLimit = 5120;
+      const h = steamEngineRows();
+      if (!/data-k="s-steamAuto"/.test(h) || !/When no game is running/.test(h)) throw new Error('no automatic updates row');
+      if (!/data-k="s-steamLimit"/.test(h) || !/5\.\d MB\/s/.test(h)) throw new Error('no speed limit row: ' + h.slice(0, 200));
+      S.layers = []; act({ dataset: { act: 'steamAuto' } });
+      if (S.layers.at(-1) !== 'sheet' || sheet.items.length !== 3) throw new Error('the automatic updates sheet is wrong');
+      closeAll();
+      S.layers = []; act({ dataset: { act: 'steamLimit' } });
+      if (S.layers.at(-1) !== 'sheet' || !sheet.items.some(i => i.label === 'No limit')) throw new Error('the speed limit sheet is wrong');
+      closeAll();
+    } finally { S.set.steamOpen = was.open; S.set.steamLight = was.light; SENG.st = was.st; }
+  });
   try {
     const owned = await shopOpen('gog', 'Hollow Pines');   // in the preview's library, installed
     if (!owned || owned.act !== 'shopLib' || owned.v !== 'play') errors.push('store: a game in your library offers ' + JSON.stringify(owned));

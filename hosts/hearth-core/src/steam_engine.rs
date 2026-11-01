@@ -6,7 +6,11 @@
 //!
 //! Hearth never stores or logs what's typed to sign in: it's handed to the service, which hands it to steamclient.
 //!
-//! Open (experimental, off by default) is the same service started with HEARTH_STEAM_ENGINE=open: Hearth's own
+//! Default: Open, for new installs and for everyone who never chose an engine (once, with a short
+//! explainer in Settings; Classic stays one switch away). Until the player signs in to it, everything behaves like
+//! Classic. Steam's own Game Mode (Decky) always uses Valve's client.
+//!
+//! Open is the same service started with HEARTH_STEAM_ENGINE=open: Hearth's own
 //! clean-room Steam client on SteamKit2, with no steamclient at all. It signs in, lists the owned library, and
 //! installs, updates and verifies games into the user's Steam libraries (normal appmanifest records, so the Downloads
 //! page and Valve's client see them). DRM-free games it answers with how to start them, and Hearth starts them itself
@@ -25,6 +29,8 @@ pub const PROGRAM: &str = "/usr/lib/hearth-steam/hearth-steam";
 /// After letting go for the normal client, don't start the engine again for this long.
 const COOLDOWN_MS: u64 = 5 * 60_000;
 const TICK_MS: u64 = 30_000;
+/// The Open engine only lets go when switching engines or on an error it can't stand by for: back sooner.
+const OPEN_COOLDOWN_MS: u64 = 60_000;
 
 /// Is the engine part of this system (a build where it didn't build goes without it)?
 pub fn installed() -> bool { Path::new(PROGRAM).exists() }
@@ -80,13 +86,23 @@ pub fn ask(req: &Value, timeout: Duration) -> Answer { ask_at(&socket_path(), re
 pub enum Mode { Classic, Lightweight, Open }
 
 impl Mode {
-    /// From library.json's "steamEngine" (anything unknown is Classic).
+    /// From library.json's "steamEngine": nothing chosen is Open (the default); anything unknown is Classic.
     pub fn from_setting(v: &Value) -> Mode {
-        match v.as_str() { Some("lightweight") => Mode::Lightweight, Some("open") => Mode::Open, _ => Mode::Classic }
+        match v.as_str() { Some("lightweight") => Mode::Lightweight, Some("open") => Mode::Open, None if v.is_null() => Mode::Open, _ => Mode::Classic }
     }
     pub fn name(self) -> &'static str { match self { Mode::Classic => "classic", Mode::Lightweight => "lightweight", Mode::Open => "open" } }
     /// The service runs for this mode.
     pub fn service(self) -> bool { self != Mode::Classic }
+}
+
+/// The engine actually used: Steam's own Game Mode (the Decky session) always uses Valve's client.
+pub fn effective(mode: Mode, steam_game_mode: bool) -> Mode { if steam_game_mode { Mode::Classic } else { mode } }
+
+/// The one-time switch to the default (pure, for the tests): Some(settings to write) when the player never chose an
+/// engine. The explainer flag makes Settings › Library say once what changed and how to turn it off.
+pub fn migrate(stored: &serde_json::Map<String, Value>) -> Option<Vec<(&'static str, Value)>> {
+    if stored.get("steamEngine").map(|v| !v.is_null()).unwrap_or(false) { return None; }
+    Some(vec![("steamEngine", json!("open")), ("steamEngineExplain", json!(true))])
 }
 
 /// Which client does a Steam action.
@@ -149,23 +165,36 @@ pub fn release() {
     crate::bridge::log("steam engine: let go for the normal Steam client");
 }
 
+/// Valve's client is about to start. The Open engine stands by (stays signed in, stops its downloads, writes nothing
+/// until Valve's client has closed); the Lightweight engine (or an Open engine that doesn't answer) lets go.
+pub fn step_aside() {
+    let path = socket_path();
+    if !path.exists() { return; }
+    match ask_at(&path, &json!({"cmd": "standby"}), Duration::from_secs(7)) {
+        Answer::Ok(_) => crate::bridge::log("steam engine: standing by while the normal Steam client runs"),
+        _ => release(),
+    }
+}
+
 /// Tries an action with the lightweight engine. Some(answer) when it did it; None when the normal client must
 /// (the engine has been told to let go by then).
 pub fn try_do(mode: Mode, req: Value, timeout: Duration) -> Option<Value> {
+    if !mode.service() { return None; }
+    let mode = effective(mode, crate::gamescope::inside() && crate::gamescope::steam_mode());
     if !mode.service() { return None; }
     let cmd = req["cmd"].as_str().unwrap_or("").to_string();
     let status = ask(&json!({"cmd": "status"}), Duration::from_secs(2));
     match route(mode, installed(), crate::steam::client_running(), &status) {
         Route::Classic(why) => {
             crate::bridge::log(&format!("steam engine: {cmd} with the normal Steam client ({why})"));
-            if status.up() { release(); }
+            if status.up() { if why == "the other engine is running" { release(); } else { step_aside(); } }
             None
         }
         Route::Lightweight => match outcome(ask(&req, timeout)) {
             Outcome::Done(v) => { crate::bridge::log(&format!("steam engine: {cmd} done by the lightweight engine")); Some(v) }
             Outcome::Fallback { why, release: r } => {
                 crate::bridge::log(&format!("steam engine: {cmd} falls back to the normal Steam client ({why})"));
-                if r { release(); }
+                if r { step_aside(); }
                 None
             }
         },
@@ -196,6 +225,144 @@ pub fn owned_games() -> Option<Vec<Value>> {
     match ask(&json!({"cmd": "library"}), Duration::from_secs(5)) {
         Answer::Ok(v) if v["loading"] != true => v["apps"].as_array().cloned().filter(|a| !a.is_empty()),
         _ => None,
+    }
+}
+
+/// Open: the engine's download queue ({appid, state, paused, position, done, total, speed, eta, kind, auto}), when it's
+/// the engine in use and running. None otherwise.
+pub fn engine_downloads() -> Option<Vec<Value>> {
+    if current_mode() != Mode::Open || !socket_path().exists() { return None; }
+    match ask(&json!({"cmd": "downloads"}), Duration::from_millis(900)) {
+        Answer::Ok(v) => v["downloads"].as_array().cloned(),
+        _ => None,
+    }
+}
+
+/// The Open engine's queue merged into the Downloads page's list (pure, for the tests). Its jobs carry "engine"
+/// {position, paused, eta, kind, auto} (so the page offers pause, move and cancel for them) and its speed and byte
+/// counts; queued jobs without an install record yet are added from `dto` (the game's library entry).
+pub fn merge_downloads(active: &mut Vec<Value>, jobs: &[Value], dto: impl Fn(&str) -> Option<Value>) {
+    for j in jobs {
+        let pos = j["position"].as_i64().unwrap_or(-1);
+        let Some(app) = j["appid"].as_u64() else { continue };
+        if pos < 0 { continue; }
+        let id = format!("steam:{app}");
+        let paused = j["paused"] == true;
+        let i = match active.iter().position(|a| a["id"] == id.as_str()) {
+            Some(i) => i,
+            None => match dto(&id) {
+                Some(mut d) => { d["state"] = json!(if paused { "paused" } else { "queued" }); active.push(d); active.len() - 1 }
+                None => continue,
+            },
+        };
+        let e = &mut active[i];
+        e["engine"] = json!({"position": pos, "paused": paused, "eta": j["eta"], "kind": j["kind"], "auto": j["auto"] == true, "state": j["state"], "error": j["error"]});
+        if paused { e["state"] = json!("paused"); e["bytesPerSec"] = json!(0); }
+        else if matches!(j["state"].as_str(), Some("downloading" | "verifying" | "preparing")) {
+            e["bytesPerSec"] = j["speed"].clone();
+            if e["state"] == "queued" || e["state"] == "paused" { e["state"] = json!(if e["installed"] == true { "updating" } else { "downloading" }); }
+        } else if e["state"] == "downloading" || e["state"] == "updating" { e["state"] = json!("queued"); e["bytesPerSec"] = json!(0); }
+        if let (Some(d), Some(t)) = (j["done"].as_u64(), j["total"].as_u64()) {
+            if t > 0 { e["bytesDone"] = json!(d); e["bytesTotal"] = json!(t); e["progress"] = json!((d as f64 / t as f64).min(1.0)); }
+        }
+    }
+}
+
+/// Open: a Downloads page control for a Steam game ("pause", "resume", "move" with "up"/"down"/"top", "cancel"; no app:
+/// all). Err when the Open engine isn't the one doing it (the caller then does what it did before).
+pub fn download_op(op: &str, app: Option<u32>, to: Option<&str>) -> Result<Value, String> {
+    if current_mode() != Mode::Open { return Err("Hearth's Steam client isn't in use.".into()); }
+    let mut req = json!({"cmd": op});
+    if let Some(a) = app { req["appid"] = json!(a); }
+    if let Some(t) = to { req["to"] = json!(t); }
+    match ask(&req, Duration::from_secs(5)) {
+        Answer::Ok(v) => Ok(v),
+        Answer::No { error, .. } => Err(error),
+        Answer::Down(e) => Err(e),
+    }
+}
+
+/// Open: Hearth's download settings and whether a game runs, sent to the engine when they change (and once a
+/// minute, so a restarted engine has them).
+pub fn push_config(cfg: Value) {
+    if current_mode() != Mode::Open || !socket_path().exists() { return; }
+    static LAST: Mutex<(String, u64)> = Mutex::new((String::new(), 0));
+    let text = cfg.to_string();
+    let t = now();
+    {
+        let mut l = LAST.lock().unwrap_or_else(|p| p.into_inner());
+        if l.0 == text && t.saturating_sub(l.1) < 60_000 { return; }
+        *l = (text, t);
+    }
+    let mut req = cfg;
+    req["cmd"] = json!("config");
+    let _ = ask(&req, Duration::from_secs(2));
+}
+
+/// Settings › Library › Automatic updates: "off", "idle" (the default: when no game is running) or "always".
+pub fn auto_update_setting(v: &Value) -> &'static str { match v.as_str() { Some("off") => "off", Some("always") => "always", _ => "idle" } }
+
+/// What Steam Cloud says before a direct start (the Open engine syncs a game's Auto-Cloud saves itself).
+#[derive(Debug, PartialEq)]
+pub enum CloudBefore {
+    /// Synced (or nothing to do): start it.
+    Ready,
+    /// Changed both here and in the cloud: ask the player first ({files, when}); nothing starts.
+    Conflict(Value),
+    /// Anything else (saves Hearth can't place, an error, no answer): start it through Valve's client, which syncs.
+    ValveClient(String),
+}
+
+/// The decision from the engine's answer (pure, for the tests).
+pub fn cloud_before_outcome(a: &Answer) -> CloudBefore {
+    match a {
+        Answer::Ok(v) if v["conflict"] == true => CloudBefore::Conflict(json!({"files": v["files"], "when": "before"})),
+        Answer::Ok(v) if v["supported"] == false => CloudBefore::ValveClient(format!("Steam Cloud: {}", v["why"].as_str().unwrap_or("saves Hearth can't place"))),
+        Answer::Ok(_) => CloudBefore::Ready,
+        Answer::No { code, error } => CloudBefore::ValveClient(format!("{code}: {error}")),
+        Answer::Down(e) => CloudBefore::ValveClient(format!("no answer: {e}")),
+    }
+}
+
+/// Open: Steam Cloud before a direct start (up to 25 seconds; longer means Valve's client starts it instead).
+pub fn cloud_before(app: u32) -> CloudBefore {
+    crate::watchdog::long_task();
+    cloud_before_outcome(&ask(&json!({"cmd": "cloud.before", "appid": app}), Duration::from_secs(25)))
+}
+
+/// Open: Steam Cloud after the game exits (changed saves go up). Some({conflict, files}) when the player must choose.
+pub fn cloud_after(app: u32) -> Option<Value> {
+    match ask(&json!({"cmd": "cloud.after", "appid": app}), Duration::from_secs(180)) {
+        Answer::Ok(v) => Some(v),
+        Answer::No { code, error } => { crate::bridge::log(&format!("steam (open): {app}: Steam Cloud after the game: {code}: {error}")); None }
+        Answer::Down(e) => { crate::bridge::log(&format!("steam (open): {app}: Steam Cloud after the game: {e}")); None }
+    }
+}
+
+/// Open: the player's answer to a Steam Cloud conflict ("local", "cloud" or "both").
+pub fn cloud_resolve(app: u32, choice: &str) -> Result<Value, String> {
+    if !matches!(choice, "local" | "cloud" | "both") { return Err("Keep this device's saves, the cloud's, or both.".into()); }
+    match ask(&json!({"cmd": "cloud.resolve", "appid": app, "choice": choice}), Duration::from_secs(150)) {
+        Answer::Ok(v) => Ok(v),
+        Answer::No { error, .. } => Err(error),
+        Answer::Down(_) => Err("Hearth's Steam client isn't running; Valve's Steam client will ask about these saves instead.".into()),
+    }
+}
+
+/// Open: a game page's beta and Workshop requests, handed to the engine as they are (only these commands; the beta
+/// password goes to the engine and on to Steam, never logged or kept).
+pub const GAME_CALLS: [&str; 6] = ["betas", "beta.password", "beta.set", "workshop", "workshop.sync", "workshop.unsubscribe"];
+
+pub fn game_call(a: &Value) -> Result<Value, String> {
+    let cmd = a["cmd"].as_str().unwrap_or("");
+    if !GAME_CALLS.contains(&cmd) { return Err("Unknown request.".into()); }
+    if current_mode() != Mode::Open { return Err("Turn on Hearth's Steam client in Settings › Library first.".into()); }
+    let mut req = json!({"cmd": cmd, "appid": a["appid"]});
+    for k in ["password", "branch", "item"] { if !a[k].is_null() { req[k] = a[k].clone(); } }
+    match ask(&req, Duration::from_secs(45)) {
+        Answer::Ok(v) => Ok(v),
+        Answer::No { error, .. } => Err(if error.is_empty() { "Steam said no.".into() } else { error }),
+        Answer::Down(_) => Err("Hearth's Steam client isn't running right now. Try again in a moment.".into()),
     }
 }
 
@@ -235,30 +402,44 @@ static MODE: Mutex<Mode> = Mutex::new(Mode::Classic);
 pub fn current_mode() -> Mode { *MODE.lock().unwrap_or_else(|p| p.into_inner()) }
 pub fn note_mode(mode: Mode) { *MODE.lock().unwrap_or_else(|p| p.into_inner()) = mode; }
 
-/// Should the engine be started now (pure, for the tests)?
-pub fn should_start(on: bool, installed: bool, classic_running: bool, socket_there: bool, released_at: u64, now: u64) -> bool {
-    on && installed && !classic_running && !socket_there && (released_at == 0 || now.saturating_sub(released_at) >= COOLDOWN_MS)
+/// Should the engine be started now (pure, for the tests)? The Open engine runs alongside Valve's client (standing
+/// by, so the player can still sign in to it); the Lightweight engine loads Valve's steamclient, so it waits until
+/// Valve's client has closed and a while after letting go.
+pub fn should_start(mode: Mode, installed: bool, classic_running: bool, socket_there: bool, released_at: u64, now: u64) -> bool {
+    if !mode.service() || !installed || socket_there { return false; }
+    if mode == Mode::Open { return released_at == 0 || now.saturating_sub(released_at) >= OPEN_COOLDOWN_MS; }
+    !classic_running && (released_at == 0 || now.saturating_sub(released_at) >= COOLDOWN_MS)
 }
 
-/// Every 30 seconds (from the library's tick): the engine runs while Lightweight is on and the normal client
-/// isn't running (again 5 minutes after it let go), and stops when Classic is chosen.
-pub fn tick(mode: Mode) {
+/// Every 30 seconds (from the library's tick): the engine runs while it's chosen (Lightweight: when the normal client
+/// isn't running, again 5 minutes after it let go; Open: alongside it, standing by), and stops when Classic is
+/// chosen. Returns whether the Open engine is signed in (None: not asked this time), which decides whether Valve's
+/// client is kept ready (steam_launch::keep_ready_effective).
+pub fn tick(mode: Mode) -> Option<bool> {
+    let mode = effective(mode, crate::gamescope::inside() && crate::gamescope::steam_mode());
     note_mode(mode);
-    let on = mode.service();
     let t = now();
     let released_at = {
         let mut s = STATE.lock().unwrap_or_else(|p| p.into_inner());
-        if t.saturating_sub(s.last_tick) < TICK_MS { return; }
+        if t.saturating_sub(s.last_tick) < TICK_MS { return None; }
         s.last_tick = t;
         s.released_at
     };
     let there = socket_path().exists();
-    if !on { if there { release(); systemctl("stop"); } return; }
-    if should_start(on, installed(), crate::steam::client_running(), there, released_at, t) {
+    if !mode.service() { if there { release(); systemctl("stop"); } return Some(false); }
+    if should_start(mode, installed(), crate::steam::client_running(), there, released_at, t) {
         crate::bridge::log(&format!("steam engine: starting the {} engine", mode.name()));
         choose_kind(mode);
         systemctl("start");
     }
+    if mode != Mode::Open { return Some(false); }
+    if !there { return None; }
+    Some(open_signed_in(&ask(&json!({"cmd": "status"}), Duration::from_secs(2))))
+}
+
+/// Is the Open engine signed in, from its status (pure, for the tests)?
+pub fn open_signed_in(status: &Answer) -> bool {
+    matches!(status, Answer::Ok(s) if s["kind"] == "open" && s["signedIn"] == true)
 }
 
 /// Settings › Library › Steam engine changed.
@@ -267,7 +448,7 @@ pub fn set(mode: Mode) {
     STATE.lock().unwrap_or_else(|p| p.into_inner()).released_at = 0;
     // Whatever runs now lets go first (switching between Lightweight and Open restarts the service as the other one).
     release(); systemctl("stop");
-    if mode.service() && installed() && !crate::steam::client_running() {
+    if mode.service() && installed() && (mode == Mode::Open || !crate::steam::client_running()) {
         // A stop that's still under way would swallow the start: wait until the socket is gone.
         for _ in 0..30 { if !socket_path().exists() { break; } std::thread::sleep(Duration::from_millis(100)); }
         choose_kind(mode);
@@ -296,8 +477,15 @@ pub fn sign_in(a: &Value) -> Result<Value, String> {
     match ask(&req, Duration::from_secs(30)) {
         Answer::Ok(v) => Ok(v),
         Answer::No { error, .. } => Err(if error.is_empty() { "Steam said no.".into() } else { error }),
-        Answer::Down(_) => Err("The lightweight Steam engine isn't running. Turn it on in Settings › Library, or use the normal Steam client.".into()),
+        Answer::Down(_) => Err(sign_in_down_message(installed(), crate::steam::client_running())),
     }
+}
+
+/// Why signing in can't happen when the engine doesn't answer at all (pure, for the tests): never an empty error.
+pub fn sign_in_down_message(installed: bool, classic_running: bool) -> String {
+    if !installed { return "Hearth's Steam engine isn't part of this build. The normal Steam client is used.".into(); }
+    if classic_running { return "The normal Steam client is running, so Hearth's Steam engine has stepped aside. Sign in here once Steam has closed.".into(); }
+    "Hearth's Steam engine isn't running (it stopped or didn't start). Choose \"Start the engine again\" in Settings › Library, or keep using the normal Steam client.".into()
 }
 
 #[cfg(test)]
@@ -333,7 +521,7 @@ mod tests {
         assert_eq!(Mode::from_setting(&json!("open")), Mode::Open);
         assert_eq!(Mode::from_setting(&json!("lightweight")), Mode::Lightweight);
         assert_eq!(Mode::from_setting(&json!("classic")), Mode::Classic);
-        assert_eq!(Mode::from_setting(&json!(null)), Mode::Classic);   // off by default
+        assert_eq!(Mode::from_setting(&json!(null)), Mode::Open);   // the default now
         assert_eq!(Mode::from_setting(&json!("something")), Mode::Classic);
         assert!(!Mode::Classic.service() && Mode::Open.service() && Mode::Lightweight.service());
         // Classic never asks the engine anything.
@@ -373,6 +561,69 @@ mod tests {
     }
 
     #[test]
+    fn sign_in_errors_are_never_empty() {
+        for (i, c) in [(false, false), (true, true), (true, false)] {
+            let m = sign_in_down_message(i, c);
+            assert!(m.len() > 20 && m.contains("Steam"), "{m}");
+        }
+        assert!(sign_in_down_message(true, false).contains("Start the engine again"));
+        assert!(sign_in_down_message(true, true).contains("normal Steam client is running"));
+    }
+
+    #[test]
+    fn the_open_engines_queue_on_the_downloads_page() {
+        let mut active = vec![json!({"id": "steam:10", "state": "downloading", "installed": false, "bytesPerSec": 0})];
+        let jobs = vec![
+            json!({"appid": 10, "state": "downloading", "paused": false, "position": 0, "done": 50, "total": 200, "speed": 7000, "eta": 1, "kind": "install"}),
+            json!({"appid": 20, "state": "queued", "paused": true, "position": 1, "done": 0, "total": 0, "speed": 0, "kind": "auto", "auto": true}),
+            json!({"appid": 30, "state": "queued", "paused": false, "position": 2, "kind": "update"}),
+            json!({"appid": 40, "state": "done", "position": -1}),
+            json!({"appid": 50, "state": "queued", "position": 3}),
+        ];
+        merge_downloads(&mut active, &jobs, |id| match id {
+            "steam:20" | "steam:30" | "steam:40" => Some(json!({"id": id, "state": "installed", "installed": true})),
+            _ => None,   // not in the library: left out
+        });
+        assert_eq!(active.len(), 3);
+        assert_eq!(active[0]["engine"]["position"], 0);
+        assert_eq!(active[0]["bytesPerSec"], 7000);
+        assert_eq!(active[0]["bytesTotal"], 200);
+        assert_eq!(active[0]["progress"], 0.25);
+        let b = active.iter().find(|a| a["id"] == "steam:20").unwrap();
+        assert_eq!(b["state"], "paused");
+        assert_eq!(b["engine"]["auto"], true);
+        let c = active.iter().find(|a| a["id"] == "steam:30").unwrap();
+        assert_eq!(c["state"], "queued");
+        assert!(!active.iter().any(|a| a["id"] == "steam:40"), "finished jobs aren't downloads");
+        // Classic: never asked, nothing merged.
+        assert!(engine_downloads().is_none() || current_mode() == Mode::Open);
+        assert!(download_op("pause", None, None).is_err() || current_mode() == Mode::Open);
+        assert_eq!(auto_update_setting(&json!(null)), "idle");
+        assert_eq!(auto_update_setting(&json!("off")), "off");
+        assert_eq!(auto_update_setting(&json!("always")), "always");
+        assert_eq!(auto_update_setting(&json!("weird")), "idle");
+    }
+
+    #[test]
+    fn steam_cloud_before_a_direct_start() {
+        assert_eq!(cloud_before_outcome(&Answer::Ok(json!({"ok": true, "supported": true, "downloaded": 2}))), CloudBefore::Ready);
+        assert_eq!(cloud_before_outcome(&Answer::Ok(json!({"ok": true, "conflict": true, "files": 3}))), CloudBefore::Conflict(json!({"files": 3, "when": "before"})));
+        // Anything unsure starts through Valve's client, which syncs the saves itself.
+        assert!(matches!(cloud_before_outcome(&Answer::Ok(json!({"supported": false, "why": "x"}))), CloudBefore::ValveClient(w) if w.contains("Steam Cloud")));
+        assert!(matches!(cloud_before_outcome(&Answer::No { code: "steam_error".into(), error: "e".into() }), CloudBefore::ValveClient(_)));
+        assert!(matches!(cloud_before_outcome(&Answer::Down("timed out".into())), CloudBefore::ValveClient(_)));
+        assert!(cloud_resolve(1, "delete everything").is_err());
+    }
+
+    #[test]
+    fn game_page_requests_are_limited() {
+        assert!(game_call(&json!({"cmd": "release"})).is_err(), "only beta and Workshop requests");
+        assert!(game_call(&json!({"cmd": "signin.password"})).is_err());
+        if current_mode() != Mode::Open { assert!(game_call(&json!({"cmd": "betas", "appid": 10})).unwrap_err().contains("Settings")); }
+        assert!(GAME_CALLS.contains(&"workshop.unsubscribe"));
+    }
+
+    #[test]
     fn reads_answers() {
         assert_eq!(Answer::from_line("{\"ok\":true,\"id\":1}\n"), Answer::Ok(json!({"ok": true, "id": 1})));
         assert_eq!(Answer::from_line("{\"ok\":false,\"code\":\"vac\",\"error\":\"VAC\"}"), Answer::No { code: "vac".into(), error: "VAC".into() });
@@ -383,14 +634,56 @@ mod tests {
 
     #[test]
     fn starts_only_when_it_should() {
+        use Mode::*;
         let t = 10 * 60_000;
-        assert!(should_start(true, true, false, false, 0, t));
-        assert!(!should_start(false, true, false, false, 0, t));
-        assert!(!should_start(true, false, false, false, 0, t));
-        assert!(!should_start(true, true, true, false, 0, t));
-        assert!(!should_start(true, true, false, true, 0, t));
-        assert!(!should_start(true, true, false, false, t - 60_000, t));
-        assert!(should_start(true, true, false, false, t - COOLDOWN_MS, t));
+        assert!(should_start(Lightweight, true, false, false, 0, t));
+        assert!(!should_start(Classic, true, false, false, 0, t));
+        assert!(!should_start(Lightweight, false, false, false, 0, t));
+        assert!(!should_start(Lightweight, true, true, false, 0, t));
+        assert!(!should_start(Lightweight, true, false, true, 0, t));
+        assert!(!should_start(Lightweight, true, false, false, t - 60_000, t));
+        assert!(should_start(Lightweight, true, false, false, t - COOLDOWN_MS, t));
+        // Open runs alongside Valve's client (standing by), so the player can sign in whenever.
+        assert!(should_start(Open, true, true, false, 0, t));
+        assert!(!should_start(Open, false, false, false, 0, t));
+        assert!(!should_start(Open, true, false, true, 0, t));
+        assert!(!should_start(Open, true, false, false, t - 10_000, t));
+        assert!(should_start(Open, true, true, false, t - OPEN_COOLDOWN_MS, t));
+    }
+
+    #[test]
+    fn open_is_the_default_once_and_can_be_turned_off() {
+        let mut m = serde_json::Map::new();
+        let w = migrate(&m).expect("never chosen: switched once");
+        assert!(w.contains(&("steamEngine", json!("open"))) && w.contains(&("steamEngineExplain", json!(true))));
+        for (k, v) in w { m.insert(k.into(), v); }
+        assert_eq!(migrate(&m), None, "only once");
+        assert_eq!(Mode::from_setting(&m["steamEngine"]), Mode::Open);
+        // Chosen before (Classic, Lightweight or Open): left alone; turning it off sticks.
+        for e in ["classic", "lightweight", "open"] {
+            let mut c = serde_json::Map::new();
+            c.insert("steamEngine".into(), json!(e));
+            assert_eq!(migrate(&c), None, "{e}");
+        }
+        m.insert("steamEngine".into(), json!("classic"));
+        assert_eq!(migrate(&m), None);
+        assert_eq!(Mode::from_setting(&m["steamEngine"]), Mode::Classic);
+        // Steam's own Game Mode (Decky) uses Valve's client whatever is chosen.
+        assert_eq!(effective(Mode::Open, true), Mode::Classic);
+        assert_eq!(effective(Mode::Lightweight, true), Mode::Classic);
+        assert_eq!(effective(Mode::Open, false), Mode::Open);
+    }
+
+    #[test]
+    fn signed_in_only_from_the_open_engine() {
+        assert!(open_signed_in(&Answer::Ok(json!({"kind": "open", "signedIn": true, "engine": "ready"}))));
+        assert!(!open_signed_in(&Answer::Ok(json!({"kind": "open", "signedIn": false}))));
+        assert!(!open_signed_in(&Answer::Ok(json!({"signedIn": true}))), "the Lightweight engine");
+        assert!(!open_signed_in(&Answer::Down("x".into())));
+        assert!(!open_signed_in(&Answer::No { code: "not_ready".into(), error: String::new() }));
+        // Not signed in: everything goes to Valve's client, exactly as with Classic.
+        let st = Answer::Ok(json!({"kind": "open", "engine": "ready", "signedIn": false}));
+        assert_eq!(route(Mode::Open, true, false, &st), Route::Classic("not signed in to the engine"));
     }
 
     #[test]

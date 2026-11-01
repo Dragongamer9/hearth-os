@@ -1487,6 +1487,7 @@ const I = {
   shell:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/></svg>',
   pause:'<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/></svg>',
   up:'<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  down:'<svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>',
   globe:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5S9.5 6.1 12 3.5z"/></svg>',
   info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>',
   display:'<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6"/></svg>',
@@ -1913,6 +1914,9 @@ const playable = g => g.inst || g.cloud;
 function dlInfo(g){
   const pct = g.progress!=null ? Math.round(g.progress*100) : null;
   // Steam downloads say what Steam is doing ("Verifying", "Waiting for Steam", "Stopped: …").
+  if(g.engine && g.engine.auto && g.state!=='paused') return {pct, label:'Automatic update'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
+  if(g.engine && g.engine.kind==='workshop' && g.state!=='paused') return {pct, label:'Workshop items'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
+  if(g.engine && g.engine.kind==='verify' && g.state!=='paused') return {pct, label:'Checking files'+(pct!=null&&g.state!=='queued'?` ${pct}%`:'')};
   return {pct, label: (g.stage || STATE_LABEL[g.state]) + (pct!=null && g.state!=='queued' && !/^Stopped/.test(g.stage||'') ? ` ${pct}%` : '')};
 }
 function cover(g, opts={}){
@@ -4507,6 +4511,13 @@ function colEdit(id){
     {label:'Delete collection', icon:'trash', run:async()=>{ try{ if(host) await call('library.collection.remove',{id}); COLS=COLS.filter(x=>x.id!==id); GAMES.forEach(g=>{ if(g.cols) g.cols=g.cols.filter(x=>x!==id); }); S.tab='all'; toast(`Deleted ${c.name}. The games are still in your library.`); render(null,true); }catch(e){ toast(e.message); } }}]});
 }
 const SORTS = [['recent','Recently played'],['alpha','A–Z'],['hours','Play time'],['added','Date added']];
+// Library: a gentle prompt to sign in to Hearth's own Steam client (Open, the default) while it isn't; never forced,
+// everything works with Valve's client meanwhile. Gone once signed in or Classic is chosen.
+function steamOpenLibPill(){
+  if(!LINUX||!host||!S.set.steamOpen||S.steamOpenSigned) return '';
+  const st=SENG.st||{}; if(st.installed===false||(st.status||{}).signedIn) return '';
+  return `<button class="pill" data-f data-k="lib-steamOpen" data-act="steamLibSignIn">${I.user}Sign in to Hearth's Steam client</button>`;
+}
 function viewLibrary(){
   if(!libTabs().some(t=>t[0]===S.tab)) S.tab='all';
   if(mkKind()) return mkPage('library');   // Experimental · Keyboard & mouse: their own toolbar and sidebar
@@ -4517,7 +4528,7 @@ function viewLibrary(){
     <span class="glyph lbrb">RB</span>
   </div>
   <div class="libmeta"><span>${L.length} game${L.length===1?'':'s'}</span>
-    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}${hmLibPill()}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
+    <div class="lmr">${S.tab==='beacon'?beaconLibPills():''}${hmLibPill()}${steamOpenLibPill()}<button class="pill" data-f data-k="lib-stores" data-act="stores">${I.user}Stores &amp; accounts${ACC.list?` · ${ACC.list.filter(a=>a.signedIn).length} signed in`:''}</button>
     ${(HOSTINFO.features||[]).includes('screenshots')?`<button class="pill" data-f data-k="lib-shots" data-act="shots">${I.display}Screenshots</button>`:''}
     ${lkOn()?`<button class="pill" data-f data-k="lib-link" data-act="lkGet">${I.dl}Get from another Hearth</button>`:''}
     ${S.tab.startsWith('c:')?`<button class="pill" data-f data-k="col-edit" data-act="colEdit" data-id="${esc(S.tab.slice(2))}">Edit collection</button>`:`<button class="pill" data-f data-k="col-new" data-act="colNew">+ Collection</button>`}
@@ -5289,7 +5300,9 @@ function viewGame(){
 // Downloads: the one downloading now (big), what's next, and what finished while Hearth was open.
 const DL_DONE = [];   // ids installed this session, newest first
 function dlItems(){
-  if(host) return GAMES.filter(isActive).map(g=>({g, state:g.state, pct:dlInfo(g).pct, label:dlInfo(g).label, done:g.bytesDone, total:g.bytesTotal, speed:g.state==='downloading'?g.speed:0}));
+  // Hearth's Steam client's downloads in its queue's order (they can be moved), then the others.
+  if(host) return GAMES.filter(isActive).map(g=>({g, state:g.state, pct:dlInfo(g).pct, label:dlInfo(g).label, done:g.bytesDone, total:g.bytesTotal, speed:(g.state==='downloading'||(g.engine&&g.state==='updating'))?g.speed:0}))
+    .sort((a,b)=>(a.g.engine?a.g.engine.position:1e6)-(b.g.engine?b.g.engine.position:1e6));
   // The preview's queue (a game that isn't in the library is left out: the dock's ring reads this on every screen).
   return DOWNLOADS.filter(d=>G(d.g)).map(d=>{ const g=G(d.g); const tot=parseFloat(g.size)*1e9||0; return {g, state:d.p>=1?'updating':d.p>0?'downloading':'queued', pct:Math.round(d.p*100), label:d.state,
     done:tot*d.p, total:tot, speed:d.speed?parseFloat(d.speed)*1e6:0}; });
@@ -5318,7 +5331,7 @@ function speedGraph(pts=DLS.speeds, gid='dlg'){
     ${[.25,.5,.75].map(f=>`<line x1="0" y1="${H*f}" x2="${W}" y2="${H*f}" stroke="var(--panel3)" stroke-width="1"/>`).join('')}
     <path d="${area}" fill="url(#${gid})" stroke="none"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
 }
-const ours = it => !host || it.g.installKind==='nimbus';   // downloads Hearth runs itself (Epic, GOG) can be paused
+const ours = it => !host || it.g.installKind==='nimbus' || !!it.g.engine;   // downloads Hearth runs itself (Epic, GOG, Hearth's Steam client) can be paused
 function dlButtons(it, big){
   const g=it.g, id=esc(g.id), paused=it.state==='paused';
   // A Steam install Steam hasn't taken up yet can be cancelled here; after that it's Steam's (Manage in Steam).
@@ -5327,6 +5340,11 @@ function dlButtons(it, big){
     : waiting ? `<button class="ib" data-f data-k="dq-x-${id}" data-act="dlCancel" data-id="${id}" aria-label="Cancel">${I.x}</button>` : '';
   if(big) return `${paused?`<button class="pill" data-f data-k="dc-pp" data-act="dlResume" data-id="${id}">${I.play} Resume</button>`:`<button class="pill" data-f data-k="dc-pp" data-act="dlPause" data-id="${id}">${I.pause} Pause</button>`}
     <button class="pill ghost" data-f data-k="dc-x" data-act="dlCancel" data-id="${id}">${I.x} Cancel</button>`;
+  // Hearth's Steam client's queue: move up / down too.
+  if(g.engine) return `<button class="ib" data-f data-k="dq-up-${id}" data-act="dlMove" data-v="up" data-id="${id}" aria-label="Move up">${I.up}</button>
+    <button class="ib" data-f data-k="dq-down-${id}" data-act="dlMove" data-v="down" data-id="${id}" aria-label="Move down">${I.down}</button>
+    <button class="ib" data-f data-k="dq-pp-${id}" data-act="${paused?'dlResume':'dlPause'}" data-id="${id}" aria-label="${paused?'Resume':'Pause'}">${paused?I.play:I.pause}</button>
+    <button class="ib" data-f data-k="dq-x-${id}" data-act="dlCancel" data-id="${id}" aria-label="Cancel">${I.x}</button>`;
   return `<button class="ib" data-f data-k="dq-first-${id}" data-act="dlFirst" data-id="${id}" aria-label="Start now">${I.up}</button>
     <button class="ib" data-f data-k="dq-pp-${id}" data-act="${paused?'dlResume':'dlPause'}" data-id="${id}" aria-label="${paused?'Resume':'Pause'}">${paused?I.play:I.pause}</button>
     <button class="ib" data-f data-k="dq-x-${id}" data-act="dlCancel" data-id="${id}" aria-label="Cancel">${I.x}</button>`;
@@ -5358,7 +5376,9 @@ function viewDownloads(){
     h += `<div class="dl-sum"><div><b>No downloads</b><small>Everything is up to date</small></div>
       ${st&&st.totalBytes?`<div class="dl-disk"><small>${gbs(st.freeBytes)} free of ${gbs(st.totalBytes)}</small><div class="storage"><i style="width:${Math.round((1-st.freeBytes/st.totalBytes)*100)}%"></i></div></div>`:''}</div>`;
   }
-  if(next.length) h += `<div class="dl-h"><h2>Up next · ${next.length}</h2></div>${next.map((it,i)=>{ const g=it.g; return `
+  const ctl=items.filter(ours), allPaused=ctl.length>0&&ctl.every(i=>i.state==='paused');
+  const allBtn = host&&ctl.length>1 ? `<button class="pill ghost" data-f data-k="dd-all" data-act="${allPaused?'dlResumeAll':'dlPauseAll'}">${allPaused?I.play+' Resume all':I.pause+' Pause all'}</button>` : '';
+  if(next.length) h += `<div class="dl-h"><h2>Up next · ${next.length}</h2>${allBtn}</div>${next.map((it,i)=>{ const g=it.g; return `
       <div class="dl-q"><div class="thumb"><div class="art" style="position:absolute;inset:0;${artBg(g)}"></div>${artImg(g,['wide','hero','cover'])}</div>
         <div class="rt"><b>${esc(g.title)}</b><small>${esc(it.label)}${it.total?` · ${it.done?gbs(it.done)+' of ':''}${gbs(it.total)}`:''} · ${SOURCES[g.src]}</small>
           ${it.pct?`<div class="bar"><i style="width:${it.pct}%"></i></div>`:''}</div>
@@ -5369,7 +5389,8 @@ function viewDownloads(){
         <button class="pill" data-f data-k="dd-${g.id}" data-act="play" data-id="${esc(g.id)}">${I.play} Play</button></div>`).join('')}`;
   if(!items.length && !done.length) h += `<div class="empty"><div class="muted" style="margin-bottom:16px">Nothing is downloading. Find a game to install in your library.</div>
       <button class="pill" style="display:inline-flex" data-f data-k="d-lib" data-act="nav" data-view="library">${I.lib} Library</button></div>`;
-  if(host && items.some(i=>i.g.src==='steam')) h += note('Steam downloads its games in the background, without its window. To pause or reorder them, use Manage in Steam.');
+  if(host && items.some(i=>i.g.src==='steam'&&!i.g.engine)) h += note('Steam downloads its games in the background, without its window. To pause or reorder them, use Manage in Steam.');
+  if(host && items.some(i=>i.g.engine)) h += note('Hearth\'s Steam client downloads one game at a time, in this order. Paused and moved downloads keep what they have and carry on from there, also after a restart.');
   if(host && items.some(i=>i.g.installKind==='nimbus')) h += note('Epic and GOG games download one at a time. Paused downloads keep what they have and carry on from there, also after a restart.');
   if(typeof hpDownloadsSection==='function') h += hpDownloadsSection();   // Other downloads (hearth-play.js)
   return h + '</div>';
@@ -7996,7 +8017,7 @@ function oskSettingAct(a, d){
 // hosts/hearth-steam with Valve's steamclient) or Open (experimental: Hearth's own Steam client on SteamKit2, same
 // service). Anything they can't do is done by the normal client (steam_engine.rs).
 const SENG={st:null, qr:null, watching:0};
-function steamEngRefresh(){ if(!host) return Promise.resolve(); return call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
+function steamEngRefresh(){ if(!host) return Promise.resolve(); return call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; if(r&&r.open&&r.status&&r.status.kind==='open') S.steamOpenSigned=!!r.status.signedIn; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
 function steamEngLine(e){
   const s=e.status||{};
   if(e.installed===false) return 'Not part of this build of Hearth OS: Steam games use the normal Steam client';
@@ -8005,13 +8026,32 @@ function steamEngLine(e){
   if(s.engine==='starting') return 'Starting…';
   if(s.engine==='ready') return s.signedIn?`Ready · signed in as ${esc(s.account||'')}`+(s.libraryLoading?' · reading your library':''):'Ready · sign in below. Until then the normal Steam client is used';
   if(s.engine==='unavailable'||s.engine==='error') return 'Not available: '+esc(s.reason||'it didn\'t start')+'. The normal Steam client is used';
-  return 'Off right now · the normal Steam client is used';
+  return 'Not running (it stopped or didn\'t start) · the normal Steam client is used';
 }
+// Why signing in to the engine isn't possible right now (plain text), or '' when it is.
+function steamEngNotReady(e){
+  const s=(e&&e.status)||{};
+  if(s.engine==='ready') return '';
+  if(e&&e.installed===false) return 'Hearth\'s Steam engine isn\'t part of this build, so there\'s nothing to sign in to. The normal Steam client is used.';
+  if(e&&e.classicRunning) return 'The normal Steam client is running, so it does the work for now. You can sign in here once it has closed.';
+  if(s.engine==='bootstrapping') return 'Getting Steam\'s engine from Valve. You can sign in when it\'s ready.';
+  if(s.engine==='starting') return (s.reason?s.reason+'. ':'')+'Still starting. You can sign in in a moment.';
+  if(s.engine==='unavailable'||s.engine==='error') return 'Can\'t sign in: '+(s.reason||'the engine didn\'t start')+'. The normal Steam client is used meanwhile.';
+  return 'The engine isn\'t running (it stopped or didn\'t start). Try starting it again. The normal Steam client is used meanwhile.';
+}
+const STEAM_AU={off:'Off', idle:'When no game is running', always:'Always'};
+function steamConfig(args, done){ if(!host){ Object.assign(S, done); return render(null,true); } call('steam.engine.config',args).then(r=>{ S.steamAuto=r.autoUpdate; S.steamLimit=r.limitKBps; render(null,true); }).catch(e=>toast(e.message)); }
 function steamEngineRows(){
   const light=!!S.set.steamLight, open=!!S.set.steamOpen, on=light||open, e=SENG.st||{}, s=e.status||{};
   let h=`<button class="row" data-f data-k="s-steamLight" data-act="toggle" data-key="steamLight"><div class="rt"><b>Lightweight Steam engine (experimental)</b><small>${light?steamEngLine(e):'Off: the normal Steam client does everything (Classic). On: Steam\'s own engine runs with no Steam window; anything it can\'t do (VAC games, errors) still uses the normal client'}</small></div><div class="sw ${light?'on':''}"></div></button>`;
-  h+=`<button class="row" data-f data-k="s-steamOpen" data-act="toggle" data-key="steamOpen"><div class="rt"><b>Open Steam client (experimental)</b><small>${open?steamEngLine(e):'Hearth\'s own open-source Steam client: your library, installs and updates without Steam running. DRM-free games start directly; Steamworks and VAC games, and anything it can\'t do, still use the normal Steam client'}</small></div><div class="sw ${open?'on':''}"></div></button>`;
+  if(open && S.steamExplain) h+=`<div class="note" data-k="s-steamExplain">Hearth now uses its own open-source Steam client for installing, updating and checking games and for your library. Games that need Valve's Steam client to start (Steam DRM, VAC, Steamworks) still start through it, and anything Hearth's client can't do falls back to it. Until you sign in below, everything works like before. Turn it off here any time. <button class="pill" data-f data-k="s-steamExplainOk" data-act="steamExplainOk">${I.check}Got it</button></div>`;
+  h+=`<button class="row" data-f data-k="s-steamOpen" data-act="toggle" data-key="steamOpen"><div class="rt"><b>Hearth's Steam client (open source)</b><small>${open?steamEngLine(e):'Hearth\'s own open-source Steam client: your library, installs and updates without Steam running. DRM-free games start directly; Steamworks and VAC games, and anything it can\'t do, still use the normal Steam client'}</small></div><div class="sw ${open?'on':''}"></div></button>`;
+  if(open){
+    h+=`<button class="row" data-f data-k="s-steamAuto" data-act="steamAuto"><div class="rt"><b>Automatic updates</b><small>Installed Steam games update by themselves through Hearth's Steam client. Never during a game unless Always</small></div><div class="rv">${STEAM_AU[S.steamAuto||'idle']} ›</div></button>`;
+    h+=`<button class="row" data-f data-k="s-steamLimit" data-act="steamLimit"><div class="rt"><b>Download speed limit</b><small>For Hearth's Steam client's downloads</small></div><div class="rv">${S.steamLimit?fmtSpeed(S.steamLimit*1024):'No limit'} ›</div></button>`;
+  }
   if(on && SENG.qr) h+=`<div class="mfqr"><div class="mfqrcode" role="img" aria-label="QR code to sign in to Steam">${SENG.qr}</div><div class="rt"><h2>Sign in with the Steam app</h2><p>Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code. Hearth finishes by itself.</p><div class="mfbtns"><button class="btn" data-f data-k="s-steamEngQrX" data-act="steamEngCancel">${I.x}Cancel</button></div></div></div>`;
+  else if(on && s.engine!=='ready' && SENG.st) h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>Sign in to Steam</b><small>${esc(steamEngNotReady(e))}</small></div><div class="rv">›</div></button>`;
   else if(on && s.engine==='ready') h+=`<button class="row" data-f data-k="s-steamEngSign" data-act="steamEngSignIn"><span class="ricon">${I.user}</span><div class="rt"><b>${s.signedIn?'Steam: '+esc(s.account||'signed in'):'Sign in to Steam'}</b><small>${s.signedIn?(open?'Sign out of the open Steam client':'Sign out of the lightweight engine'):(open?'For the open Steam client':'For the lightweight engine')+': with the Steam app on your phone, or your name and password. Hearth doesn\'t keep what you type'}</small></div><div class="rv">›</div></button>`;
   return h;
 }
@@ -8019,7 +8059,7 @@ function steamEngWatch(){
   const n=++SENG.watching, until=Date.now()+5*60000;
   const step=()=>{ if(n!==SENG.watching) return;
     call('steam.engine.status',{},8000).then(r=>{ SENG.st=r; const s=r.status||{}, si=s.signIn||{};
-      if(s.signedIn){ SENG.qr=null; SENG.watching++; toast('Signed in to Steam as '+(s.account||'you')); }
+      if(s.signedIn){ SENG.qr=null; SENG.watching++; if(s.kind==='open') S.steamOpenSigned=true; toast('Signed in to Steam as '+(s.account||'you')); }
       else if(si.state==='failed'){ SENG.qr=null; SENG.watching++; toast(si.error||'Steam didn\'t sign you in'); }
       else { if(si.qrSvg) SENG.qr=si.qrSvg; if(Date.now()<until) setTimeout(step,2000); else { SENG.qr=null; call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); } }
       if(S.view==='settings') render(null,true);
@@ -8041,9 +8081,14 @@ async function steamEngPassword(){
 }
 function steamEngSignIn(){
   const s=((SENG.st||{}).status)||{};
-  if(s.signedIn) return openSheet({title:'Sign out of Steam?', sub:'The lightweight engine signs out. Games start with the normal Steam client until you sign in again.', items:[
+  const why=steamEngNotReady(SENG.st||{});
+  if(why){ const mode=S.set.steamOpen?'open':'lightweight';
+    return openSheet({title:'Can\'t sign in to Steam yet', sub:why, items:[
+      {label:'Start the engine again', icon:'refresh', run:()=>call('steam.engine.set',{engine:mode}).then(()=>{ toast('Starting Hearth\'s Steam engine…'); setTimeout(steamEngRefresh,2500); setTimeout(steamEngRefresh,8000); }).catch(e=>toast(e.message))},
+      {label:'Check again', icon:'info', run:()=>steamEngRefresh().then(()=>{ const w=steamEngNotReady(SENG.st||{}); toast(w||'Ready: you can sign in now'); })}]}); }
+  if(s.signedIn) return openSheet({title:'Sign out of Steam?', sub:(S.set.steamOpen?'The open Steam client':'The lightweight engine')+' signs out. Games start with the normal Steam client until you sign in again.', items:[
     {label:'Sign out', icon:'x', run:()=>call('steam.engine.signIn',{method:'signout'}).then(steamEngRefresh).catch(e=>toast(e.message))}]});
-  openSheet({title:'Sign in to Steam', sub:'For the lightweight engine. What you type goes to Steam only.', items:[
+  openSheet({title:'Sign in to Steam', sub:(S.set.steamOpen?'For the open Steam client':'For the lightweight engine')+'. What you type goes to Steam only.', items:[
     {label:'Use the Steam app on my phone', icon:'layout', run:()=>call('steam.engine.signIn',{method:'qr'},45000).then(r=>{ SENG.qr=r.qrSvg||null; steamEngWatch(); }).catch(e=>toast(e.message))},
     {label:'Type my name and password', icon:'kbd', run:()=>setTimeout(steamEngPassword,50)}]});
 }
@@ -8051,7 +8096,7 @@ function pageSources(){
   const n=k=> host ? ` · ${LIB.counts[k]??0} game${(LIB.counts[k]??0)===1?'':'s'}` : '';
   const owned = host && LIB.counts.steamOwned!=null ? ` · ${LIB.counts.steamOwned} owned` : '';
   return sgrid(swRow('srcSteam','Steam','Your Steam games: installed ones, and the ones you own'+n('steam').replace('game','installed game')+owned)
-    +(LINUX?swRow('steamKeepReady','Keep Steam ready in the background','Steam starts hidden when Game Mode comes up (if you\'ve used it here before) and stays running, so your Steam games start right away'):'')
+    +(LINUX?swRow('steamKeepReady','Keep Steam ready in the background',(S.set.steamOpen&&S.steamOpenSigned&&S.set.steamKeepReady?'Not needed right now: Hearth\'s own Steam client is signed in, so Valve\'s Steam client starts only for games that need it and closes again afterwards. ':'')+'Steam starts hidden when Game Mode comes up (if you\'ve used it here before) and stays running, so your Steam games start right away'):'')
     +swRow('steamOnDemand','Start Steam only when needed','Steam starts hidden when you play, install or message a friend, and closes again when nothing needs it. Off: it runs all the time, hidden')
     +(LINUX&&host?steamEngineRows():'')
     +swRow('srcEpic','Epic Games',(LINUX?'Your Epic account and games installed by '+APP+' or Heroic':'Your Epic account and games installed by '+APP+' or the Epic Games Launcher')+n('epic'))
@@ -10047,7 +10092,7 @@ function act(el){
       else if(host && k==='steamOnDemand') call('library.setSteamOnDemand',{on}).catch(undo);
       else if(host && k==='steamKeepReady') call('library.setSteamKeepReady',{on}).catch(undo);
       else if(host && (k==='steamLight'||k==='steamOpen')){ const other=k==='steamLight'?'steamOpen':'steamLight', was=S.set[other]; if(on) S.set[other]=false;
-        call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Open Steam client on (experimental)':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
+        call('steam.engine.set',{engine:on?(k==='steamOpen'?'open':'lightweight'):'classic'}).then(()=>{ toast(on?(k==='steamOpen'?'Hearth\'s Steam client on':'Lightweight Steam engine on (experimental)'):'Back to the normal Steam client'); setTimeout(steamEngRefresh,1500); }).catch(e=>{ S.set[other]=was; undo(e); }); }
       else send({type:'setting',key:d.key,value:S.set[d.key]});
       if(S.layers.includes('qam')){ renderQam(); setFocus($(`#qam [data-k="q-${d.key}"]`),true); } else render('s-'+d.key);
       return; }
@@ -10084,6 +10129,9 @@ function act(el){
     case 'dlPause': return dlCall('game.pauseInstall', d.id, 'dc-pp');
     case 'dlResume': return dlCall('game.resumeInstall', d.id, 'dc-pp');
     case 'dlFirst': return dlCall('game.installFirst', d.id).then(()=>dlCall('game.resumeInstall', d.id));
+    case 'dlMove': return dlCall('game.moveInstall', d.id, null, {to:d.v});
+    case 'dlPauseAll': return call('downloads.pauseAll').then(()=>{ toast('Downloads paused'); startDownloadPoll(); }).catch(e=>toast(e.message));
+    case 'dlResumeAll': return call('downloads.resumeAll').then(()=>{ toast('Downloads carry on'); startDownloadPoll(); }).catch(e=>toast(e.message));
     case 'dlCancel': { const g=G(d.id); return openSheet({title:`Cancel ${g?g.title:'this download'}?`, sub:'What it downloaded so far is kept, so installing it again later carries on from there.', items:[{label:'Cancel download', icon:'x', run:()=>dlCall('game.cancelInstall', d.id)}]}); }
     case 'dlSteam': return call('steam.downloads').catch(e=>toast(e.message));
     case 'dlClearRecent': DL_DONE.length=0; DLS.recent=[]; return call('downloads.clearRecent').then(()=>render(null,true)).catch(e=>toast(e.message));
@@ -10122,6 +10170,10 @@ function act(el){
     case 'addManual': return addManual();
     case 'rescan': return loadLibrary(true, true);
     case 'steamEngSignIn': return steamEngSignIn();
+    case 'steamLibSignIn': closeAll(); S.settingsTab='sources'; S.sfront=false; navigate('settings'); return setTimeout(steamEngSignIn,150);
+    case 'steamAuto': return openSheet({title:'Automatic updates', sub:'Hearth\'s Steam client looks for updates to your installed Steam games every 20 minutes.', items:Object.entries(STEAM_AU).map(([k,l])=>({label:l+(k==='always'?' (also during games)':''), icon:(S.steamAuto||'idle')===k?'check':'', run:()=>steamConfig({autoUpdate:k},{steamAuto:k})}))});
+    case 'steamLimit': return openSheet({title:'Download speed limit', items:[0,1024,2560,5120,10240,25600,51200].map(k=>({label:k?fmtSpeed(k*1024):'No limit', icon:(S.steamLimit||0)===k?'check':'', run:()=>steamConfig({limitKBps:k},{steamLimit:k})}))});
+    case 'steamExplainOk': S.steamExplain=false; if(host) call('steam.engine.explained').catch(()=>{}); return render('s-steamOpen');
     case 'steamEngCancel': SENG.qr=null; SENG.watching++; call('steam.engine.signIn',{method:'cancel'}).catch(()=>{}); return render('s-steamEngSign');
     case 'xodusGet': return (XO.s&&XO.s.installed) ? call('xodus.install',{},30000).then(r=>{ XO.s=r; render('xo-up',true); }).catch(e=>toast(e.message)) : xodusPick(true);
     case 'xodusFolder': return xodusPick(false);
@@ -10218,6 +10270,20 @@ function hideLaunch(){
 }
 // mod (Beacon's games, Play with…): a mod id to play with this time, '@none' without mods; left out: Beacon's choice.
 // save: 'skip' (saves follow you already checked), 'pull' (bring Hearth Storage's save first), or left out.
+// Steam Cloud conflict (Hearth's Steam client syncs Auto-Cloud saves of games it starts directly): which saves to keep.
+// Nothing is deleted without asking; with "both" this device's saves are kept in a folder the toast names.
+function steamCloudConflict(g, c, relaunch){
+  if(!g) return;
+  const n=(c&&c.files)||1, when=c&&c.when==='after'?'while you played':'since they last matched';
+  const pick = choice => call('steam.cloudResolve',{id:g.id, choice},180000).then(r=>{
+    toast(choice==='local'?'Your saves on this device went to Steam Cloud':choice==='cloud'?'The Steam Cloud saves are here now':`Both kept: this device's saves are in ${(r&&r.copies)||'Hearth\'s Steam Cloud copies folder'}`);
+    if(relaunch) launch(g);
+  }).catch(e=>toast(e.message));
+  openSheet({title:`${g.title}: which saves?`, sub:`${n} save file${n===1?'':'s'} changed both on this device and in Steam Cloud ${when}. Nothing is deleted without asking.`, items:[
+    {label:'Keep this device\'s saves', icon:'pad', run:()=>pick('local')},
+    {label:'Keep the Steam Cloud saves', icon:'dl', run:()=>pick('cloud')},
+    {label:'Keep both (this device\'s go in a folder)', icon:'check', run:()=>pick('both')}]});
+}
 function launch(g, mod, save){
   if(isFrozen(g)) return quickResume(g.id);
   if(S.running===g.id){ closeAll(); return send({type:'resume'}); }
@@ -10241,6 +10307,8 @@ function launch(g, mod, save){
     return;
   }
   const start = () => call('game.launch',mod?{id:g.id, mod}:{id:g.id}).then(r=>{
+    // Steam Cloud (Hearth's Steam client): saves changed here and in the cloud. Asked first; nothing has started.
+    if(r && r.cloudConflict){ hideLaunch(); return steamCloudConflict(g, r.cloudConflict, true); }
     if(r && r.tracked===false){ // shortcut Nimbus can't watch
       launchTimer=setTimeout(()=>{ hideLaunch(); toast(`Started ${g.title}`); }, 2500);
       return;
@@ -11049,8 +11117,39 @@ function gameOptionItems(g){
     if(g.inst && !added) items.push({label:'Mods',icon:'lib',run:()=>beaconModsPage(g)});
     items.push({label:'Open Beacon',icon:'sliders',run:()=>beaconOpen()});
   }
+  // Hearth's Steam client (signed in): the game's beta branch and its Workshop items.
+  if(LINUX && host && g.src==='steam' && g.inst && S.set.steamOpen && S.steamOpenSigned){
+    items.push({label:'Beta branch…',icon:'sliders',run:()=>steamBetas(g)});
+    items.push({label:'Workshop items…',icon:'lib',run:()=>steamWorkshop(g)});
+  }
   gamingGameItems(g, items);   // Hearth's gaming apps (block below)
   return items;
+}
+// ---------- Beta branches and Workshop items (Hearth's Steam client, hosts/hearth-steam) ----------
+const steamApp = g => +String(g.id).replace(/^steam:/,'');
+function steamEng(cmd, args){ return call('steam.engine.call',{cmd, ...args},60000); }
+function steamBetas(g){ return steamEng('betas',{appid:steamApp(g)}).then(r=>steamBetaSheet(g,r)).catch(e=>toast(e.message)); }
+function steamBetaSheet(g, r){
+  const chosen=r.chosen||'', items=(r.branches||[]).map(b=>{ const name=b.name==='public'?'':b.name, locked=b.password&&!b.unlocked;
+    return {label:(name?b.name:'Default (no beta)')+(b.description?` · ${b.description}`:'')+(locked?' · needs a password':''), icon:chosen===name?'check':locked?'lock':'', run:()=>steamBetaPick(g, b)}; });
+  openSheet({title:`${g.title}: branch`, sub:'Betas are test versions of the game. Switching downloads that branch (see Downloads); the default branch switches back.', items});
+}
+async function steamBetaPick(g, b){
+  const appid=steamApp(g), name=b.name==='public'?'':b.name;
+  if(b.password && !b.unlocked){
+    const pw=await openPrompt({title:`Password for the ${b.name} beta`, secret:true, osk:true}); if(!pw) return;
+    try{ await steamEng('beta.password',{appid, password:pw}); }catch(e){ return toast(e.message); }
+  }
+  try{ const r=await steamEng('beta.set',{appid, branch:name}); toast(r.queued?`${g.title} is switching to ${name||'the default branch'}: see Downloads`:`${g.title} uses ${name||'the default branch'}`); }
+  catch(e){ toast(e.message); }
+}
+function steamWorkshop(g){ return steamEng('workshop',{appid:steamApp(g)}).then(r=>steamWorkshopSheet(g,r)).catch(e=>toast(e.message)); }
+function steamWorkshopSheet(g, r){
+  const list=r.items||[], waiting=list.filter(i=>!i.installed||i.needsUpdate).length;
+  const items=[{label:waiting?`Download ${waiting} new or updated item${waiting===1?'':'s'}`:'Check for updates now', icon:'dl', run:()=>steamEng('workshop.sync',{appid:steamApp(g)}).then(x=>toast(x.queued?'Workshop items are in Downloads':'Already in Downloads')).catch(e=>toast(e.message))}];
+  for(const i of list) items.push({label:`${i.title||('Item '+i.id)} · ${i.installed?(i.needsUpdate?'update waiting':'installed'):'not downloaded yet'}${i.size?' · '+gbs(i.size):''}`, icon:i.installed?'check':'', run:()=>openSheet({title:`Unsubscribe from ${i.title||'this item'}?`, sub:'It leaves your Steam Workshop subscriptions and its files are removed from this device.', items:[
+    {label:'Unsubscribe and remove', icon:'trash', run:()=>steamEng('workshop.unsubscribe',{appid:steamApp(g), item:String(i.id)}).then(()=>toast('Unsubscribed')).catch(e=>toast(e.message))}]})});
+  openSheet({title:`${g.title}: Workshop`, sub:list.length?`${list.length} subscribed item${list.length===1?'':'s'}. Hearth puts them where the game and Steam look for them.`:(r.complete===false?'Steam didn\'t give your subscriptions right now. Try again later.':'No Workshop subscriptions for this game. Subscribe on the Steam Workshop, then come back.'), items});
 }
 // ---------- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves, Mods ----------
 // Separate programs on Hearth OS (host.info feature "gamingApps"); the host opens them full screen in Game Mode
@@ -12096,9 +12195,9 @@ function downloadOptions(g){
     {label:'Cancel download',icon:'x',run:()=>cancelInstall(g)},
     {label:'Game details',icon:'info',run:()=>navigate('game',{game:g.id})}]});
 }
-async function dlCall(method, id, focusKey){
-  if(!host){ const g=G(id); if(g){ g.state = method==='game.pauseInstall' ? 'paused' : 'downloading'; } return render(focusKey||null,true); }
-  try{ await call(method,{id}); }catch(e){ toast(e.message); }
+async function dlCall(method, id, focusKey, extra){
+  if(!host){ const g=G(id); if(g && method!=='game.moveInstall'){ g.state = method==='game.pauseInstall' ? 'paused' : 'downloading'; } return render(focusKey||null,true); }
+  try{ await call(method,{id, ...(extra||{})}); }catch(e){ toast(e.message); }
   startDownloadPoll(); setTimeout(()=>{ if(S.view==='downloads') render(focusKey||null,true); }, 400);
 }
 async function cancelInstall(g){
@@ -13043,7 +13142,7 @@ function fromHost(d){
           ach:null, art:d.art||{}, path:d.path||'', canRemove:!!d.canRemove,
           inst:d.installed!==false, cloud:!!d.cloud, state:d.state||'installed', progress:d.progress, bytesDone:d.bytesDone, bytesTotal:d.bytesTotal, speed:d.bytesPerSec,
           canUninstall:!!d.canUninstall, note:d.note||null, installKind:d.installKind||null, system:d.system||null, beacon:d.beacon||null, stage:d.stage||null,
-          sharedFrom:d.sharedFrom||null, borrowed:!!d.borrowed, inUse:d.inUse||null};
+          sharedFrom:d.sharedFrom||null, borrowed:!!d.borrowed, inUse:d.inUse||null, engine:d.engine||null};
 }
 async function loadLibrary(rescan, announce){
   if(!host) return;
@@ -13057,7 +13156,7 @@ async function loadLibrary(rescan, announce){
     S.set.steamBg = lib.steamBackground!==false;
     S.set.steamOnDemand = lib.steamOnDemand!==false;
     S.set.steamKeepReady = lib.steamKeepReady!==false;
-    S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; if(LINUX) steamEngRefresh();
+    S.set.steamLight = lib.steamLightweight===true; S.set.steamOpen = lib.steamOpen===true; S.steamExplain = lib.steamEngineExplain===true; S.steamKeepActive = lib.steamKeepReadyActive!==false; S.steamOpenSigned = lib.steamOpenSignedIn===true; S.steamAuto = lib.steamAutoUpdate||'idle'; S.steamLimit = lib.steamLimitKBps||0; if(LINUX) steamEngRefresh();
     if(GAMES.some(isActive)) startDownloadPoll();
     if(announce) toast(`Found ${GAMES.length} game${GAMES.length===1?'':'s'}`);
   }catch(e){ toast("Couldn't load your library: "+e.message); }
@@ -13105,6 +13204,7 @@ function onSysEvent(name, data){
   if(name==='game.ready') return gameReady(data.id);
   if(name==='game.slow') return gameSlow(data);
   if(name==='steam.launch') return steamLaunchStage(data);
+  if(name==='steam.cloudConflict') return steamCloudConflict(G(data.id)||{id:data.id, title:data.title||'A Steam game'}, data, false);
   if(name==='update') return OVERLAY ? null : onUpdate(data);
   if(name==='pad'){
     if(HOSTSCREEN.picker && !OVERLAY) return;           // a file picker is open: its own controller helper has it

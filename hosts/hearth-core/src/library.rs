@@ -620,6 +620,10 @@ impl Library {
             if bps == 0 && clog_fresh && a["state"] == "downloading" { bps = clog.rate.unwrap_or(0); clog_used = true; }
             a["bytesPerSec"] = json!(bps);
         }
+        // Hearth's own Steam client (Open): its queue, with pause / move / cancel on the Downloads page.
+        if let Some(jobs) = crate::steam_engine::engine_downloads() {
+            crate::steam_engine::merge_downloads(&mut active, &jobs, |id| self.games.get(id).map(|g| self.dto(g)));
+        }
         let gone: Vec<String> = self.steam_bytes.keys().filter(|id| !active.iter().any(|a| a["id"] == id.as_str())).cloned().collect();
         for id in gone {
             self.steam_bytes.remove(&id);
@@ -722,7 +726,22 @@ impl Library {
                 let mode = self.steam_engine_mode();
                 // Open engine: a DRM-free game is started by Hearth itself (natively or with Proton through umu); everything
                 // else (Steamworks, VAC, a failed first start…) starts through Valve's client below.
-                let direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
+                let mut direct = if mode == crate::steam_engine::Mode::Open && app_num > 0 && !steam::client_running() { crate::steam_engine::launch_info(mode, app_num) } else { None };
+                // Steam Cloud first (the engine syncs Auto-Cloud saves): a conflict asks the player before anything
+                // starts; anything unsure starts it through Valve's client, which syncs them itself.
+                if direct.as_ref().map(|i| i["cloud"] == true).unwrap_or(false) {
+                    match crate::steam_engine::cloud_before(app_num) {
+                        crate::steam_engine::CloudBefore::Ready => {}
+                        crate::steam_engine::CloudBefore::Conflict(c) => {
+                            crate::bridge::log(&format!("steam (open): {app_num}: saves changed here and in Steam Cloud; asking before it starts"));
+                            return Ok(json!({"tracked": true, "cloudConflict": {"id": id, "title": g.title, "files": c["files"], "when": "before"}}));
+                        }
+                        crate::steam_engine::CloudBefore::ValveClient(why) => {
+                            crate::bridge::log(&format!("steam (open): {app_num}: {why}; starting it through Valve's client"));
+                            direct = None;
+                        }
+                    }
+                }
                 if let Some(info) = direct {
                     let opts = crate::game_options::get(&self.store, id);
                     match crate::steam_engine::launch_direct(&info, &opts, app_num, app_id) {
@@ -878,10 +897,14 @@ impl Library {
         let mut events = self.beacon_tick();
         // Steam: installs it should take up, and closing it when nothing needs it ("Start Steam only when needed").
         if self.store.source_on("steam") {
-            crate::steam_engine::tick(self.steam_engine_mode());
+            // The Open engine signed in or not decides whether Valve's client is kept ready (steam_launch.rs).
+            crate::steam_engine::push_config(json!({"autoUpdate": self.steam_auto_update(), "limitKBps": self.steam_limit_kbps(), "gameRunning": self.running.is_some()}));
+            if let Some(signed) = crate::steam_engine::tick(self.steam_engine_mode()) {
+                if (self.store.data["steamOpenSignedIn"] == true) != signed { let _ = self.store.update(|d| { d.insert("steamOpenSignedIn".into(), json!(signed)); }); }
+            }
             let steam_game = self.running.iter().chain(self.frozen.iter()).any(|r| r.id.starts_with("steam:") || r.track.steam_app_id.is_some());
             // Kept ready (Settings › Library, on by default): never closed when idle (steam_launch.rs).
-            events.extend(crate::steam_ctl::tick(&self.home, crate::steam_launch::may_close_idle(self.steam_on_demand(), self.steam_keep_ready()), steam_game));
+            events.extend(crate::steam_ctl::tick(&self.home, crate::steam_launch::may_close_idle(self.steam_on_demand(), self.steam_keep_ready_effective()), steam_game));
         }
         events.extend(self.tick_running());
         if now_ms().saturating_sub(self.in_use_checked) > 10_000 { self.refresh_in_use(); }
@@ -982,6 +1005,20 @@ impl Library {
         crate::seat_share::release(std::path::Path::new(crate::seat_share::IN_USE), &r.id, &crate::seat_share::me());
         // Saves follow you (Hearth Storage): this game's save goes to the server, if it's one Hearth Link follows.
         crate::link::game_closed(&r.id);
+        // Steam Cloud (Hearth's Steam client, a game Hearth started directly): changed saves go up once it has closed;
+        // when the cloud changed meanwhile too, the page asks which to keep.
+        if let Some(app) = r.id.strip_prefix("steam:").and_then(|a| a.parse::<u32>().ok()) {
+            if r.track.pid.is_some() && crate::steam_engine::current_mode() == crate::steam_engine::Mode::Open {
+                let (id, title) = (r.id.clone(), self.games.get(&r.id).map(|g| g.title.clone()).unwrap_or_default());
+                std::thread::spawn(move || {
+                    if let Some(v) = crate::steam_engine::cloud_after(app) {
+                        if v["conflict"] == true {
+                            crate::stores::notify(json!({"type": "event", "name": "steam.cloudConflict", "data": {"id": id, "title": title, "files": v["files"], "when": "after"}}));
+                        }
+                    }
+                });
+            }
+        }
         // Epic cloud saves go up once the game has closed.
         // GOG cloud saves go up once the game has closed.
         if let Some(gid) = r.id.strip_prefix("gog:") {
@@ -1194,9 +1231,17 @@ impl Library {
     /// "Keep Steam ready in the background" (on by default): Steam started hidden when Game Mode comes up, never closed
     /// when idle, so Play hands the game to a running Steam (steam_launch.rs).
     pub fn steam_keep_ready(&self) -> bool { self.store.data["steamKeepReady"] != false }
+    /// Hearth's Steam client: automatic updates ("off", "idle", "always") and the download speed limit (KB/s, 0 none).
+    pub fn steam_auto_update(&self) -> &'static str { crate::steam_engine::auto_update_setting(&self.store.data["steamAutoUpdate"]) }
+    pub fn steam_limit_kbps(&self) -> u64 { self.store.data["steamLimitKBps"].as_u64().unwrap_or(0) }
+    /// Kept ready right now: not while the Open engine is the one in use and signed in (Valve's client then starts only
+    /// for a game that needs it, and closes again when idle).
+    pub fn steam_keep_ready_effective(&self) -> bool {
+        crate::steam_launch::keep_ready_effective(self.steam_keep_ready(), crate::steam_engine::effective(self.steam_engine_mode(), crate::gamescope::inside() && crate::gamescope::steam_mode()), self.store.data["steamOpenSignedIn"] == true)
+    }
     /// Settings › Library › Steam engine is Lightweight (steam_engine.rs; Classic, the normal client, by default).
     pub fn steam_lightweight(&self) -> bool { self.steam_engine_mode() == crate::steam_engine::Mode::Lightweight }
-    /// Settings › Library › Steam engine: Classic (default), Lightweight or Open (both experimental).
+    /// Settings › Library › Steam engine: Open (the default), Classic or Lightweight (experimental).
     pub fn steam_engine_mode(&self) -> crate::steam_engine::Mode { crate::steam_engine::Mode::from_setting(&self.store.data["steamEngine"]) }
 
     pub fn get(&mut self, rescan: bool) -> Value {
@@ -1206,7 +1251,7 @@ impl Library {
         let collections: Vec<Value> = self.store.data["collections"].as_array().map(|a| a.iter()
             .map(|c| json!({"id": c["id"], "name": c["name"], "count": c["games"].as_array().map(|g| g.len()).unwrap_or(0)})).collect()).unwrap_or_default();
         json!({ "games": games, "sources": self.store.data["sources"], "collections": collections, "counts": self.counts,
-                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
+                "runningId": self.running_id(), "steamBackground": self.store.data["steamBackground"], "steamOnDemand": self.steam_on_demand(), "steamKeepReady": self.steam_keep_ready(), "steamKeepReadyActive": self.steam_keep_ready_effective(), "steamOpenSignedIn": self.store.data["steamOpenSignedIn"] == true, "steamEngineExplain": self.store.data["steamEngineExplain"] == true, "steamAutoUpdate": self.steam_auto_update(), "steamLimitKBps": self.steam_limit_kbps(), "steamLightweight": self.steam_lightweight(), "steamOpen": self.steam_engine_mode() == crate::steam_engine::Mode::Open, "quickResume": self.quick_state() })
     }
 }
 
