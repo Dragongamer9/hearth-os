@@ -165,6 +165,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- [x] Fix: the keyboard over a game (Guide + X) didn't type into the game. The first Guide + X after Quick Access had been open closed itself right away, and with Handheld Daemon (Anatase) the keys went to Quick Access's window instead of the game. It now stays open, the controller drives it, letters, Enter, Backspace and the arrows reach the game (native and Proton), and B or Guide closes it and gives the controller back. Each typed batch is in the log with how it was sent (needs testing on a device)
 - [x] Battle.net is set up through Faugus Launcher (preinstalled on Anatase and Peppermint): one press, Blizzard games in the Library and Play through Battle.net as before; Battle.net set up before keeps working (needs testing on a device)
 - [x] Fix: the controller did nothing in Hearth Plasma, Hearth GNOME and Hearth COSMIC (Hearth Classic was fine). Plasma and COSMIC never started their controller helper (their autostart folder isn't read on a real sign-in); the session now starts it itself once the desktop is up, once, only in Hearth's desktops. In Hearth GNOME the session mode is handed to GNOME Shell's service, and if Hearth's controller extension still doesn't start, the pointer, clicks and keys work anyway and the reason is logged. Send logs now include plasma.log, gnome.log, cosmic.log and whether Quickshell is installed (needs testing on a device)
 

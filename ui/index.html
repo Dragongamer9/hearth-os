@@ -8533,7 +8533,8 @@ function appsBody(){
 
 // ---------- overlay window mode ----------
 const OV = {shown:false};
-function overlayClose(){ send({type:'overlay', action:'close'}); }
+// why: what closed it, for Hearth's log ("overlay: closing Quick Access (its page closed it: why)").
+function overlayClose(why){ send({type:'overlay', action:'close', why: why||'B, Guide or the panel emptied'}); }
 async function overlayShown(){
   ovoskClose();
   OV.shown=true; OV.busy=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
@@ -8579,15 +8580,20 @@ function ovoskAdapter(){
 function ovoskDraw(){ const t=OVOSK.el && OVOSK.el.querySelector('.ovosk-typed'); if(t) t.textContent = OVOSK.typed || 'Typing into the game'; }
 function overlayOsk(){
   OV.shown=true; document.body.classList.remove('ov-closed'); QA_IN.open=performance.now();
+  // The keyboard is on from here, before Quick Access (left open from the last time, or opened by the same Guide
+  // press) is closed under it: closing the last panel checks whether the overlay is empty 50 ms later
+  // (overlayEmptyCheck), and the keyboard isn't a panel. It closed itself right after opening because of that
+  // ("In-game keyboard doesn't interact with the game", 0.6.59).
+  OVOSK.on=true;
   while(S.layers.length) closeLayer();
-  if(!OSKOK){ toast('The on-screen keyboard is missing'); return overlayClose(); }
+  if(!OSKOK){ OVOSK.on=false; toast('The on-screen keyboard is missing'); return overlayClose('the keyboard is missing'); }
   if(!OVOSK.el){
     OVOSK.el=document.createElement('div'); OVOSK.el.id='ovosk';
     OVOSK.el.innerHTML='<div class="ovosk-typed"></div><div class="ovosk-kb"></div><div class="ovosk-hint">B or Guide + X closes the keyboard</div>';
     document.body.appendChild(OVOSK.el);
   }
   if(!OVOSK.engine) OVOSK.engine=HearthOSK.createEngine({host:'web', mode:'text', enterLabel:'Enter', adapter:ovoskAdapter(),
-    onHide: ()=>overlayClose(), onHaptic: (st,ms)=>{ try{ HearthOSK.rumble(st,ms); }catch(e){} },
+    onHide: ()=>overlayClose('the keyboard: B'), onHaptic: (st,ms)=>{ try{ HearthOSK.rumble(st,ms); }catch(e){} },
     onSound: k=>{ if(k==='key') blip(820,.018,.02); else if(k==='move') blip(700,.012,.015); }});
   OVOSK.engine.reset('text', 'Enter');
   if(OVOSK.view) OVOSK.view.destroy();
@@ -8595,6 +8601,7 @@ function overlayOsk(){
   OVOSK.engine.setActive(true); OVOSK.engine.setHints(true);
   OVOSK.on=true; OVOSK.typed=''; ovoskDraw();
   document.body.classList.add('ovosk');
+  cancelAnimationFrame(OVOSK.raf);
   const tick=()=>{ if(!OVOSK.on) return; try{ OVOSK.engine.tick(); }catch(e){} OVOSK.raf=requestAnimationFrame(tick); };
   OVOSK.raf=requestAnimationFrame(tick);
   if(OVERLAY) requestAnimationFrame(()=>requestAnimationFrame(()=>send({type:'overlay', action:'painted'})));
@@ -8609,7 +8616,8 @@ function ovoskClose(){
 }
 /** A controller press while the keyboard is open over the game: all of them are the keyboard's. */
 function ovoskInput(k){
-  if(k==='guide') return overlayClose();
+  // Guide closes it; not one right after it opened (the Guide of the Guide + X that opened it, passed on late).
+  if(k==='guide'){ if(qaSince() < 400) return; return overlayClose('the keyboard: Guide'); }
   if(qaSince() < 250 && k==='x') return;          // the X of the Guide + X that opened it, delivered late
   OVOSK.engine.handle(k, 'press');
 }
@@ -9368,7 +9376,7 @@ function closeLayer(){
 }
 function closeAll(){ while(S.layers.length) closeLayer(); }
 // The overlay with nothing open in it is just an invisible window holding the controller: close it.
-function overlayEmptyCheck(){ if(OVERLAY && OV.shown && !S.layers.length) overlayClose(); }
+function overlayEmptyCheck(){ if(OVERLAY && OV.shown && !S.layers.length && !OVOSK.on) overlayClose('the panel emptied'); }
 // While the overlay is open, tell Hearth every second that this page is alive (it reloads a frozen one).
 if(OVERLAY) setInterval(()=>{ if(OV.shown) send({type:'overlay', action:'alive'}); }, 1000);
 function toggleLayer(id){ if(S.layers.at(-1)===id){ closeLayer(); resumeIfGame(id); } else { closeAll(); openLayer(id); } }

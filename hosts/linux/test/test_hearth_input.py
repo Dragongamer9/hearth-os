@@ -837,13 +837,13 @@ class Daemon(unittest.TestCase):
     def test_typing_for_the_keyboard(self):
         d, peer = self.make(), Peer()
         r = d.command(peer, {'cmd': 'type', 'text': 'Hi!é', 'layout': 'us'}, 0)
-        self.assertEqual(r, {'ok': True, 'layout': 'us', 'skipped': 'é'})
+        self.assertEqual(r, {'ok': True, 'layout': 'us', 'skipped': 'é', 'via': 'keyboard', 'keys': 3, 'xdotool': 0, 'display': None})
         d.type_tick(5)
         e = E()
         downs = [c for t, c, v in d.out.kbd.events if v == 1]
         self.assertEqual(downs, [e.KEY_LEFTSHIFT, e.KEY_H, e.KEY_I, e.KEY_LEFTSHIFT, e.KEY_1])
         self.assertEqual(len(d.out.kbd.events), 10)
-        self.assertEqual(d.command(peer, {'cmd': 'key', 'key': 'bksp', 'n': 3}, 6), {'ok': True})
+        self.assertEqual(d.command(peer, {'cmd': 'key', 'key': 'bksp', 'n': 3}, 6), {'ok': True, 'via': 'keyboard'})
         d.type_tick(10)
         self.assertEqual(len([1 for t, c, v in d.out.kbd.events if c == e.KEY_BACKSPACE and v == 1]), 3)
         self.assertFalse(d.command(peer, {'cmd': 'key', 'key': 'rm -rf'}, 11)['ok'])
@@ -852,6 +852,41 @@ class Daemon(unittest.TestCase):
         # A display name that isn't one is ignored (never passed to xdotool).
         r = d.command(peer, {'cmd': 'type', 'text': 'é', 'display': ':0; reboot'}, 12)
         self.assertEqual(r['skipped'], 'é')
+
+    def test_typing_route_and_log(self):
+        """The keyboard over a game (0.6.59: "In-game keyboard doesn't interact with the game"): what a typed batch
+        goes through is in the answer and in the log (counts only, never the text); a virtual keyboard made for it
+        gets OUT_SETTLE before the first press (gamescope finds new keyboards a moment later); characters the layout
+        can't type go to xdotool on the display Hearth names (gamescope's keyboard focus display), letters, Enter,
+        Backspace and the arrows to the virtual keyboard."""
+        import io
+        import unittest.mock as um
+        d, peer = self.make(), Peer()
+        e = E()
+        err = io.StringIO()
+        with um.patch.object(hi, 'LOG', True), um.patch.object(hi.sys, 'stderr', err), \
+                um.patch.object(hi.shutil, 'which', lambda n: '/usr/bin/xdotool' if n == 'xdotool' else None):
+            r = d.command(peer, {'cmd': 'type', 'text': 'ab\u00e9', 'layout': 'us', 'display': ':1'}, 100.0)
+            self.assertEqual((r['via'], r['keys'], r['xdotool'], r['display'], r['skipped']), ('keyboard+xdotool', 2, 1, ':1', ''))
+            self.assertGreaterEqual(d.typing[0][0], 100.0 + hi.OUT_SETTLE)     # just made: the first press waits
+            self.assertEqual(d.typing[-1][1], ('xdo', '\u00e9', ':1'))
+            for k in ('enter', 'bksp', 'left', 'right', 'up', 'down'):
+                self.assertEqual(d.command(peer, {'cmd': 'key', 'key': k, 'n': 1}, 100.1)['ok'], True, k)
+            calls = []
+            with um.patch.object(hi.subprocess, 'run', lambda *a, **k: calls.append((a, k)) or type('R', (), {'returncode': 0, 'stderr': b''})()), \
+                    um.patch.object(hi.time, 'monotonic', lambda: 150.0):
+                d.type_tick(200.0)
+            self.assertEqual(calls[0][0][0][:2], ['xdotool', 'type'])
+            self.assertEqual(calls[0][1]['env']['DISPLAY'], ':1')
+        downs = [c for t, c, v in d.out.kbd.events if v == 1]
+        self.assertEqual(downs, [e.KEY_A, e.KEY_B, e.KEY_ENTER, e.KEY_BACKSPACE, e.KEY_LEFT, e.KEY_RIGHT, e.KEY_UP, e.KEY_DOWN])
+        text = err.getvalue()
+        self.assertIn('typed 3 characters: 2 on the virtual keyboard (layout us), 1 through xdotool on :1, 0 skipped', text)
+        self.assertIn('key enter x1 on the virtual keyboard', text)
+        self.assertNotIn('\u00e9', text)                                       # what was typed is never logged
+        # A second batch on the same keyboard doesn't wait again.
+        r = d.command(peer, {'cmd': 'type', 'text': 'c', 'layout': 'us'}, 300.0)
+        self.assertEqual(d.typing[0][0], 300.0)
 
     def test_feed_and_held_buttons(self):
         dev = Dev()

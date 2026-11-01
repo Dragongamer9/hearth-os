@@ -66,6 +66,7 @@ GUIDE_CHORD = 0.35      # s Guide is held over a layout before it counts as Guid
 TYPE_HOLD = 0.03        # s each typed key stays down (games that look once a frame miss shorter presses)
 TYPE_GAP = 0.015        # s between typed keys
 TYPE_MAX = 2000         # characters in one type command
+OUT_SETTLE = 0.3        # s a new virtual keyboard gets before typing on it (gamescope's libinput has to find it first)
 PULSE = 0.06            # s a tap holds its key (games that look once a frame miss a press-and-release)
 SCROLL_REPEAT = (0.35, 0.09)   # a held scroll button: first repeat after, then every
 MOUSE_SPEED = 1800.0    # px/s with the stick fully over, sensitivity 1
@@ -1472,6 +1473,7 @@ class Daemon:
         self.out_retry = 0.0
         self.guide_wait = None   # when Guide went down over a layout: X before GUIDE_CHORD is the keyboard chord
         self.typing = []         # (time, what) still to do for the on-screen keyboard: (code, down) or ('xdo', text, display)
+        self.out_ready = 0.0     # when a just-made virtual keyboard may be typed on
 
     # ------------------------------------------------------------------ devices
     def scan(self):
@@ -1609,6 +1611,7 @@ class Daemon:
             log(self.error)
             return False
         self.error = None
+        self.out_ready = now + OUT_SETTLE
         self.out.osd_cb = lambda text: self.broadcast({'t': 'osd', 'text': text})
         return True
 
@@ -1622,7 +1625,7 @@ class Daemon:
     # ------------------------------------------------------------------ typing for the on-screen keyboard
     def queue_keys(self, keys, now):
         """One character or key: modifiers and the key down, then up again a moment later, after what's queued."""
-        t = max(now, self.typing[-1][0] + TYPE_GAP) if self.typing else now
+        t = max(now, self.out_ready, self.typing[-1][0] + TYPE_GAP if self.typing else now)
         for k in keys:
             self.typing.append((t, (k, True)))
         for k in reversed(keys):
@@ -1639,8 +1642,10 @@ class Daemon:
         display = m.get('display') if isinstance(m.get('display'), str) and DISPLAY_RE.match(m.get('display')) else None
         xdotool = shutil.which('xdotool') if display else None
         if not self.ensure_out(now):
+            log('typing %d characters: no virtual keyboard (%s)' % (len(text), self.error))
             return {'ok': False, 'error': self.error or 'no virtual keyboard'}
         skipped, other = '', ''
+        n_keys = n_xdo = 0
         for ch in text:
             keys = char_keys(ch, layout)
             if keys is not None:
@@ -1648,13 +1653,21 @@ class Daemon:
                     self.typing.append((self.typing[-1][0] + TYPE_GAP if self.typing else now, ('xdo', other, display)))
                     other = ''
                 self.queue_keys([TYPE_MODS[x] for x in mods] + keys, now)
+                n_keys += 1
             elif xdotool and not mods:
                 other += ch          # typed through the X server (xdotool remaps a spare key for it)
+                n_xdo += 1
             else:
                 skipped += ch
         if other:
             self.typing.append((self.typing[-1][0] + TYPE_GAP if self.typing else now, ('xdo', other, display)))
-        return {'ok': True, 'layout': keymap_layout(layout)[0], 'skipped': skipped}
+        name = keymap_layout(layout)[0]
+        via = '+'.join(v for v, n in (('keyboard', n_keys), ('xdotool', n_xdo)) if n) or 'none'
+        # Counts only, never what was typed (it can be a password or a chat message).
+        log('typed %d characters: %d on the virtual keyboard (layout %s%s), %d through xdotool%s, %d skipped' % (
+            len(text), n_keys, name, ' + ' + '+'.join(mods) if mods else '', n_xdo, ' on ' + display if n_xdo else '', len(skipped)))
+        return {'ok': True, 'layout': name, 'skipped': skipped, 'via': via, 'keys': n_keys, 'xdotool': n_xdo,
+                'display': display if n_xdo else None}
 
     def type_key(self, m, now):
         name = m.get('key')
@@ -1669,19 +1682,26 @@ class Daemon:
         n = m.get('n', 1)
         n = max(1, min(200, n)) if isinstance(n, int) and not isinstance(n, bool) else 1
         if not self.ensure_out(now):
+            log('key %s: no virtual keyboard (%s)' % (name, self.error))
             return {'ok': False, 'error': self.error or 'no virtual keyboard'}
         for _ in range(n):
             self.queue_keys([TYPE_MODS[x] for x in mods] + [code], now)
-        return {'ok': True}
+        log('key %s%s x%d on the virtual keyboard' % ('+'.join(mods) + '+' if mods else '', name, n))
+        return {'ok': True, 'via': 'keyboard'}
 
     def type_tick(self, now):
         while self.typing and self.typing[0][0] <= now:
             _, what = self.typing.pop(0)
             if what[0] == 'xdo':
+                env = {'DISPLAY': what[2], 'PATH': os.environ.get('PATH', '/usr/bin:/bin')}
+                if os.environ.get('XAUTHORITY'):
+                    env['XAUTHORITY'] = os.environ['XAUTHORITY']
                 try:
-                    subprocess.run(['xdotool', 'type', '--delay', '12', '--', what[1]], timeout=10, check=False,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   env={'DISPLAY': what[2], 'PATH': os.environ.get('PATH', '/usr/bin:/bin')})
+                    r = subprocess.run(['xdotool', 'type', '--delay', '12', '--', what[1]], timeout=10, check=False,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env)
+                    if r.returncode != 0:
+                        log('typing %d characters through xdotool on %s failed (exit %d): %s' % (
+                            len(what[1]), what[2], r.returncode, (r.stderr or b'').decode('utf-8', 'replace').strip()[:200]))
                 except (OSError, subprocess.SubprocessError) as err:
                     log('typing through xdotool: %s' % err)
                 now = time.monotonic()

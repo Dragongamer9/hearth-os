@@ -1,6 +1,9 @@
 # Hearth Input end to end: the real daemon (hosts/linux/desktop/shell/hearth-input) with real evdev and uinput.
 # Fake controllers (Xbox 360 pad, Bluetooth Xbox controller, DualSense) are made with /dev/uinput; the test talks
 # to the daemon's socket the way Hearth does and reads its virtual keyboard and mouse (tools/e2e-hearth-input.py).
+# Also the keyboard over a game (Guide + X, docs/OSK.md), whose typing goes through Hearth Input: HHD's overlay app's
+# protocol (hosts/linux/test/overlay-protocol.test.js: the game keeps gamescope's keyboard focus) and, when run by
+# hand, the page itself (tools/ui-check.js: it stays open and types).
 name: Hearth Input e2e
 
 on:
@@ -13,8 +16,15 @@ on:
       - 'hosts/linux/test/fixtures/input-layout-cases.json'
       - 'hosts/linux/test/test_hearth_input.py'
       - 'tools/e2e-hearth-input.py'
+      - 'hosts/linux/src/overlay/**'
+      - 'hosts/linux/test/overlay-protocol.test.js'
       - '.github/workflows/hearth-input-e2e.yml'
   workflow_dispatch:
+    inputs:
+      page:
+        description: Also check Hearth's page (tools/ui-check.js, every screen, with the keyboard over a game)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,6 +47,11 @@ jobs:
       - name: Unit tests
         run: /usr/bin/python3 -m unittest discover -s hosts/linux/test -q
 
+      - name: HHD's overlay app (the keyboard over a game keeps the game's keyboard focus)
+        run: |
+          set -o pipefail
+          node --test hosts/linux/test/overlay-protocol.test.js 2>&1 | tee proto.log || { echo "::error title=overlay protocol::$(grep -E -B2 -A12 '^not ok|AssertionError' proto.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+
       - name: End-to-end test
         # As root: the fake controllers' /dev/input nodes are root:input, and the daemon must open them.
         run: |
@@ -55,3 +70,20 @@ jobs:
               c = c.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
               print('::notice title=e2e report %d/%d::%s' % (n, len(chunks), c))
           PY
+
+  # Hearth's page (by hand, page ticked): every screen without a script error, and the keyboard over a game stays open
+  # after Quick Access, types through osk.type / osk.key, and B closes it.
+  page:
+    if: github.event_name == 'workflow_dispatch' && inputs.page
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Hearth's page
+        run: |
+          set -o pipefail
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          node ui-check.js 2>&1 | tee ui.log || { echo "::error title=ui-check::$(grep -iE 'keyboard over a game|error|fail' ui.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }

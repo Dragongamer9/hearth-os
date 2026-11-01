@@ -1237,7 +1237,12 @@ impl GameMode {
     /// Messages from the overlay page.
     pub fn from_overlay(self: &Arc<Self>, m: &Value) -> bool {
         match (m["type"].as_str().unwrap_or(""), m["action"].as_str().unwrap_or("")) {
-            ("overlay", "close") => self.close_for("its page closed it: B, Guide or the panel emptied"),
+            // What closed it, as the page says (the keyboard's B or Guide, the panel emptied, ...): HHD's own close and
+            // older pages don't say.
+            ("overlay", "close") => {
+                let why: String = m["why"].as_str().unwrap_or("B, Guide, the panel emptied or Handheld Daemon").chars().filter(|c| !c.is_control()).take(80).collect();
+                self.close_for(&format!("its page closed it: {why}"))
+            }
             ("overlay", "alive") => self.overlay_alive.store(now(), Ordering::SeqCst),
             ("overlay", "painted") => self.reveal_overlay(),
             ("overlay", "home") => {
