@@ -166,6 +166,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## 0.6.63 (released)
+
+- [x] Steam Game Mode: Steam's games start again (Steam was told to start games on gamescope's second X display, which gamescope was never asked to make, so games never opened; gamescope now makes it, as SteamOS does); the logs now include the game-launch lines of Steam's own logs
+
 ## 0.6.62 (released)
 
 - [x] Steam Game Mode, the rest of Hearth's Game Mode (Experimental, needs testing on a device): Quick Resume (put the running game aside, resume, close; it carries on by itself when Steam brings it back) and game streaming (Sunshine on/off, pair Moonlight with its PIN) in Quick Access › Hearth, Hearth Friends (read only) and Hearth Link / Hearth Storage (Sync now, Wake) pages, Friends, Hearth Link and Couch Co-op in Steam's main menu, Hearth's keyboard waits behind its button in Hearth's windows opened from Steam, put aside now pauses Flathub Steam's games too, and the in-game page's button goes on to the game's page instead of itself; docs/STEAM-GAME-MODE.md has the table of what's ported

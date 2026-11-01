@@ -376,6 +376,11 @@ pub fn report(version: &str) -> String {
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Steam Game Mode (Decky plugin)", decky_report(Path::new("/"), &crate::paths::home(),
         &sh("for u in hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
+    // Steam's own logs (native and Flathub Steam): game launches and what stopped them ("games won't start in
+    // Steam Game Mode"), only the launch, compatibility and error lines, no account lines.
+    section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
+        for f in console_log.txt console-linux.txt compat_log.txt; do [ -s \"$d/$f\" ] || continue; echo \"--- $d/$f\" | sed \"s|$HOME|~|\"; \
+        grep -aiE 'gameaction|launch|appid|compat|pressure|xwayland|display|exited|error|fail|proton|reaper' \"$d/$f\" | grep -aivE 'account|login|password|token|steamid|persona' | tail -120; done; done"));
     section("Storage (drives and space)", crate::diskspace::report());
     section("Power (hearth-power)", sh(&format!("python3 '{}' status", crate::paths::desktop_dir().join("shell/hearth-power").display())));
     // "Pressing power turns the screen off but the fans keep running": whether it really slept, how deeply, who
