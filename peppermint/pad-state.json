@@ -1,0 +1,32 @@
+{
+ "running": true,
+ "ready": true,
+ "problem": "",
+ "sent": {
+  "keys": false,
+  "pause": false,
+  "app": "terminal"
+ },
+ "mouse": true,
+ "lastAction": "bar",
+ "radial": {
+  "open": false,
+  "sel": -1
+ },
+ "osk": {
+  "open": false,
+  "typed": "qq",
+  "panel": "letters",
+  "layout": "en-us",
+  "sel": {
+   "r": 1,
+   "c": 0
+  },
+  "available": true,
+  "uinput": true
+ },
+ "focus": "org.gnome.Console",
+ "title": "Console",
+ "shellKeyboard": false,
+ "gnomeKeyboardOff": true
+}
