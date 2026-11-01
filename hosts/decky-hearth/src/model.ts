@@ -115,8 +115,9 @@ export const DESTS: Dest[] = [
   { id: "library", title: "Hearth Library", route: "/hearth/library" },
   { id: "downloads", title: "Downloads", route: "/hearth/downloads" },
   { id: "theater", title: "Theater", app: "hearth-app:theater" },
-  { id: "mods", title: "Hearth Mods", app: "hearth-app:mods" },
+  { id: "mods", title: "Hearth Mods", route: "/hearth/mods" },
   { id: "storage", title: "Storage", route: "/hearth/storage" },
+  { id: "recomps", title: "Recomps", route: "/hearth/recomps" },
 ];
 
 /** Hearth's Store's tabs, in its order (ui/index.html SHOP_STORES), plus free games. */

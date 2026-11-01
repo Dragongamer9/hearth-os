@@ -377,6 +377,23 @@ class CoreService(unittest.TestCase):
         data = re.search(r'pub const DATA: &\[&str\] = &\[(.*?)\];', rs).group(1)
         self.assertEqual(set(re.findall(r'"([^"]+)"', data)), set(self.m.DATA))
 
+    def test_page_calls_match_hearth_core_and_need_it_running(self):
+        rs = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'core_service.rs').read_text()
+        for const, mine in (('BRIDGE_CALLS', self.m.BRIDGE_CALLS), ('MODS_CALLS', self.m.MODS_CALLS)):
+            body = re.search(r'pub const %s: &\[\(&str, &\[&str\]\)\] = &\[(.*?)\];' % const, rs, re.S).group(1)
+            self.assertEqual(tuple(re.findall(r'\("([^"]+)"', body)), mine, const)
+        seen = []
+        ok = lambda c, a: (seen.append((c, a)), {'ok': True, 'data': {'done': True}})[1]
+        self.assertEqual(self.m.page_call('call', 'game.install', {'id': 'gog:1'}, core=ok), {'done': True})
+        self.assertEqual(seen[-1], ('call', {'method': 'game.install', 'args': {'id': 'gog:1'}}))
+        self.assertEqual(self.m.page_call('mods-call', 'toggle', {'id': 'gog:1', 'm': 'a', 'on': True}, core=ok), {'done': True})
+        self.assertEqual(seen[-1][1]['call'], 'toggle')
+        n = len(seen)
+        self.assertIn('error', self.m.page_call('call', 'accounts.signIn', {}, core=ok))
+        self.assertIn('error', self.m.page_call('mods-call', 'nexus_sign_in', {}, core=ok))
+        self.assertEqual(len(seen), n, 'not on the list: never sent')
+        self.assertIn("isn't running", self.m.page_call('call', 'recomps.list', {}, core=lambda c, a: None)['error'])
+
     def test_answers_from_the_core_and_the_command_line_when_it_is_not_running(self):
         self.assertIsNone(self.m.core_call('ping', path=self.path), 'not running: None')
         self.serve(lambda r: {'id': r['id'], 'ok': True, 'data': {'service': 'hearth-core', 'version': '9', 'asked': r}})

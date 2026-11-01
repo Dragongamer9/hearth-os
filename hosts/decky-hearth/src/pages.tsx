@@ -4,8 +4,8 @@
 import * as DUI from "@decky/ui";
 import { DialogButton, Focusable, Navigation } from "@decky/ui";
 import { ReactNode, useEffect, useState } from "react";
-import { logError, useArt, useAsk } from "./api";
-import { gamePage, openApp, playGame, say } from "./actions";
+import { hearthCall, logError, useArt, useAsk } from "./api";
+import { gamePage, openApp, playGame, say, steamPage } from "./actions";
 import { DESTS, Game, Home, STORE_TABS, artCandidates, bytes, downloadLine, driveLine, homeShelves, percent, played, validId } from "./model";
 import { Boundary, C, Chips, CoverArt, Page, Shelf, blip, go, onFocus } from "./ui";
 import { guard } from "./state";
@@ -15,9 +15,9 @@ let brandNow: Brand | null = null;
 export function setBrand(b: Brand | null) { brandNow = b; }
 export const brand = () => brandNow;
 
-function Btn(props: { label: string; primary?: boolean; onClick: () => void }) {
+function Btn(props: { label: string; primary?: boolean; autoFocus?: boolean; onClick: () => void }) {
   return (
-    <DialogButton className={"ht-btn" + (props.primary ? " primary" : "")} onClick={() => { blip("ok"); props.onClick(); }} {...({ onGamepadFocus: onFocus } as any)}>
+    <DialogButton className={"ht-btn" + (props.primary ? " primary" : "")} onClick={() => { blip("ok"); props.onClick(); }} {...({ onGamepadFocus: onFocus, autoFocus: props.autoFocus } as any)}>
       {props.label}
     </DialogButton>
   );
@@ -96,15 +96,15 @@ function Hero(props: { game: Game | null }) {
 
 // ---------------------------------------------------------------- Store
 
-interface StoreItem { store: string; id: string; title: string; wide?: string | null; tall?: string | null; icon?: string | null; sub?: string; price?: { final?: string; base?: string | null; discount?: number; free?: boolean } }
+interface StoreItem { store: string; id: string; title: string; wide?: string | null; tall?: string | null; icon?: string | null; sub?: string; url?: string | null; price?: { final?: string; base?: string | null; discount?: number; free?: boolean } }
 interface StorePageData { store: string; sections: { id: string; title: string; items: StoreItem[] }[]; inApp?: boolean; stale?: boolean }
 
-function StoreTile(props: { it: StoreItem }) {
+function StoreTile(props: { it: StoreItem; onPick: (it: StoreItem) => void }) {
   const it = props.it;
   const { src, failed } = useArt([it.wide, it.tall, it.icon].filter((x): x is string => !!x), "store");
   const p: NonNullable<StoreItem["price"]> = it.price || {};
   return (
-    <DialogButton className="ht-tile" style={{ width: 276, height: 160 }} onClick={() => { blip("ok"); openApp("hearth-app:store"); say(`Opening Hearth Store for ${it.title}`); }}
+    <DialogButton className="ht-tile" style={{ width: 276, height: 160 }} onClick={() => { blip("ok"); props.onPick(it); }}
       {...({ onGamepadFocus: onFocus } as any)}>
       {src && <img src={src} onError={failed} style={{ height: 112, bottom: "auto", objectFit: it.wide ? "cover" : "contain" }} />}
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 48, padding: "6px 10px", background: C.panel, textAlign: "left" }}>
@@ -118,7 +118,7 @@ function StoreTile(props: { it: StoreItem }) {
   );
 }
 
-function StoreSections(props: { store: string }) {
+function StoreSections(props: { store: string; onPick: (it: StoreItem) => void }) {
   const d = useAsk<StorePageData>("store", props.store, 10 * 60000);
   if (!d) return <div className="ht-dim" style={{ marginTop: 16 }}>Asking {props.store === "free" ? "the stores" : "the store"}…</div>;
   if ((d as any).error) return <div className="ht-card" style={{ marginTop: 16 }}>Couldn't load this store: {(d as any).error}<div style={{ marginTop: 10 }}><Btn label="Open Hearth Store" onClick={() => openApp("hearth-app:store")} /></div></div>;
@@ -135,7 +135,7 @@ function StoreSections(props: { store: string }) {
         <div key={s.id}>
           <h2>{s.title}</h2>
           <Focusable className="ht-shelf" {...({ "flow-children": "horizontal" } as any)}>
-            {s.items.slice(0, 24).map((it) => <StoreTile key={it.store + it.id} it={it} />)}
+            {s.items.slice(0, 24).map((it) => <StoreTile key={it.store + it.id} it={it} onPick={props.onPick} />)}
           </Focusable>
         </div>
       ))}
@@ -143,16 +143,116 @@ function StoreSections(props: { store: string }) {
   );
 }
 
-/** Hearth Store: Hearth's store tabs (Steam, Epic, GOG, free games, Xbox, Battle.net, Recomps) to browse; buying,
- *  claiming and installing open Hearth Store itself. */
+const STORE_NAMES: Record<string, string> = { steam: "Steam", epic: "Epic Games", gog: "GOG", xbox: "Xbox", recomps: "Hearth Recomps", battlenet: "Battle.net" };
+
+/** The store's own page for a game (buy, claim, wish list), in Steam's browser: Steam's store for Steam's games, the
+ *  store's website otherwise, signed in there. Hearth never sees payment details or passwords. */
+function openStorePage(it: StoreItem) {
+  const nav: any = Navigation;
+  if (it.store === "steam" && /^\d+$/.test(it.id)) {
+    try { const S = (window as any).SteamClient; if (S?.URL?.ExecuteSteamURL) { S.URL.ExecuteSteamURL(`steam://store/${it.id}`); return; } } catch { /* the web page below */ }
+  }
+  const url = it.url || (it.store === "steam" ? `https://store.steampowered.com/app/${it.id}` : "");
+  if (!url || !/^https:\/\//.test(url)) { say("This store has no web page for it: open Hearth Store"); openApp("hearth-app:store"); return; }
+  try { if (nav.NavigateToExternalWeb) { nav.NavigateToExternalWeb(url); return; } } catch { /* below */ }
+  try { window.open(url, "_blank"); } catch { say("Couldn't open the store's page"); }
+}
+
+/** The game in your library a store item is (same id, or same title in that store), when you own it. */
+export function ownedGame(it: { store: string; id: string; title: string }, lib: LibraryData | null): Game | undefined {
+  if (!lib || (lib as any).error || !Array.isArray(lib.tabs)) return undefined;
+  const all = lib.tabs.flatMap((t) => t.items);
+  const t = it.title.trim().toLowerCase();
+  return all.find((g) => g.id === `${it.store}:${it.id}`) || all.find((g) => g.source === it.store && g.title.trim().toLowerCase() === t);
+}
+
+/** Hearth's download of a game (downloads page shape), or undefined. */
+function useDownload(id: string | undefined) {
+  const d = useAsk<DownloadsData>("downloads", "", 0, id ? 2000 : 0);
+  if (!id || !d || (d as any).error || !Array.isArray(d.active)) return undefined;
+  return d.active.find((x) => x.id === id);
+}
+
+function StoreDetail(props: { it: StoreItem; onClose: () => void }) {
+  const it = props.it;
+  const lib = useAsk<LibraryData>("library", "", 5000, 5000);
+  const g = ownedGame(it, lib as LibraryData | null);
+  const dl = useDownload(g?.id);
+  const [busy, setBusy] = useState("");
+  const art = useArt([it.wide, it.tall, it.icon].filter((x): x is string => !!x), "store detail").src;
+  const p: NonNullable<StoreItem["price"]> = it.price || {};
+  const name = STORE_NAMES[it.store] || it.store;
+  const recomp = it.store === "recomps";
+  const install = async () => {
+    if (!g) return;
+    if (g.source === "steam") { steamPage(g.id.slice(6)); return; }   // Steam installs its own games, with its own dialog
+    setBusy("install");
+    const r = await hearthCall("game.install", { id: g.id });
+    setBusy("");
+    say(r.error || `Installing ${g.title}: progress shows here and in Downloads`);
+  };
+  return (
+    <Focusable {...({ "flow-children": "vertical", onCancelButton: props.onClose, onCancelActionDescription: "Back to the store" } as any)} className="ht-card" style={{ marginTop: 16, display: "flex", gap: 18 }}>
+      {art && <img src={art} style={{ width: 360, height: 168, objectFit: "cover", borderRadius: 10, flex: "none" }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: C.accent }}>{name}</div>
+        <div style={{ fontSize: 28, fontWeight: 800, margin: "2px 0 4px" }}>{it.title}</div>
+        <div className="ht-dim">{[it.sub, p.discount ? `-${p.discount}%` : "", p.final, p.base && p.discount ? `was ${p.base}` : ""].filter(Boolean).join(" · ")}</div>
+        <div className="ht-dim" style={{ marginTop: 4 }}>
+          {g ? (g.installed ? "In your library, installed" : "In your library") : recomp ? "Free: installs from the project's own releases" : `Buying and claiming happen on ${name}'s own page, signed in there.`}
+        </div>
+        {dl && (
+          <div style={{ marginTop: 10 }}>
+            <div className="ht-dim">{downloadLine(dl)}</div>
+            <div className="ht-bar"><i style={{ width: `${percent(dl.progress)}%` }} /></div>
+          </div>
+        )}
+        <Focusable style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }} {...({ "flow-children": "horizontal" } as any)}>
+          {g?.installed && <Btn primary autoFocus label="Play" onClick={() => playGame(g)} />}
+          {g && !g.installed && !dl && <Btn primary autoFocus label={busy ? "Starting…" : g.source === "steam" ? "Install in Steam" : "Install"} onClick={install} />}
+          {dl && <Btn label="Cancel download" onClick={async () => { const r = await hearthCall("game.cancelInstall", { id: g!.id }); if (r.error) say(r.error); }} />}
+          {recomp && <Btn primary autoFocus label="Install in Recomps" onClick={() => go("/hearth/recomps")} />}
+          {!g && !recomp && <Btn primary autoFocus label={p.free ? `Get it on ${name}` : `Buy on ${name}`} onClick={() => openStorePage(it)} />}
+          {g && !recomp && <Btn label={`${name} page`} onClick={() => openStorePage(it)} />}
+          <Btn label="Back" onClick={props.onClose} />
+        </Focusable>
+      </div>
+    </Focusable>
+  );
+}
+
+/** Hearth's downloads in progress, small, at the top of the Store (nothing when none). */
+function DownloadStrip() {
+  const d = useAsk<DownloadsData>("downloads", "", 0, 3000);
+  if (!d || (d as any).error || !Array.isArray(d.active) || !d.active.length) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      {d.active.slice(0, 3).map((x) => (
+        <div key={x.id} className="ht-card" style={{ padding: "10px 14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><b>{x.title}</b><span className="ht-dim">{downloadLine(x)}</span></div>
+          <div className="ht-bar"><i style={{ width: `${percent(x.progress)}%` }} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Hearth Store: Hearth's store tabs (Steam, Epic, GOG, free games, Xbox, Battle.net, Recomps) to browse. A game opens
+ *  its details: buy or claim on the store's own page (Steam's browser), install when it's yours, with progress. */
 export function StorePage() {
   const [store, setStore] = useState("steam");
+  const [sel, setSel] = useState<StoreItem | null>(null);
   return (
     <Boundary part="store" onError={guard.fail}>
       <Page title="Hearth Store" wallpaper={brandNow?.wallpaper}>
-        <div className="ht-dim">Browse every store Hearth has. Press a game to open it in Hearth Store (buy, claim, install).</div>
-        <Chips items={STORE_TABS} value={store} onChange={setStore} />
-        <StoreSections key={store} store={store} />
+        <div className="ht-dim">Browse every store Hearth has. Press a game to buy, claim or install it.</div>
+        <DownloadStrip />
+        {sel ? <StoreDetail it={sel} onClose={() => setSel(null)} /> : (
+          <>
+            <Chips items={STORE_TABS} value={store} onChange={setStore} />
+            <StoreSections key={store} store={store} onPick={setSel} />
+          </>
+        )}
         <div style={{ marginTop: 22 }}><Btn label="Open Hearth Store" onClick={() => openApp("hearth-app:store")} /></div>
       </Page>
     </Boundary>
@@ -243,7 +343,8 @@ export function DownloadsPage() {
 
 interface StorageData { drives: { name: string; kind: string; mount: string; size: number; used: number; free: number; readOnly: boolean; steamLibs: number }[] }
 
-/** Settings › Storage, the summary: each drive and how full it is. Moving and cleaning up open Hearth's Settings. */
+/** Settings › Storage, the summary: each drive and how full it is (from `nimbus --steam-mode-data` when Hearth's core
+ *  isn't running). /hearth/storage is StorageManagePage (manage.tsx): moving and cleaning up too. */
 export function StoragePage() {
   const d = useAsk<StorageData>("storage", "", 60000);
   return (
@@ -258,7 +359,7 @@ export function StoragePage() {
             <div className="ht-bar"><i style={{ width: `${x.size ? Math.round((x.used / x.size) * 100) : 0}%` }} /></div>
           </div>
         ))}
-        <div style={{ marginTop: 10 }}><Btn label="Move games, clean up: open Hearth Settings" onClick={() => openApp("hearth-app:settings")} /></div>
+        <div style={{ marginTop: 10 }}><Btn label="Move games, clean up" onClick={() => go("/hearth/storage")} /></div>
       </Page>
     </Boundary>
   );

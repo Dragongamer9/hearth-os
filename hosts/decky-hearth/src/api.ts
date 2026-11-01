@@ -127,3 +127,34 @@ export function usePic(ref: string | null | undefined): string {
   }, [ref]);
   return u;
 }
+
+// ---- The Steam pages' changes (Store installs, Mods, Storage, Recomps): through Hearth's core service only
+// (main.py page_call → core_service.rs `call` / `mods-call` / `games-disk`). Never throws: {error} instead.
+const callRaw = callable<[method: string, args: any], any>("hearth_call");
+const modsRaw = callable<[call: string, args: any], any>("hearth_mods_call");
+const diskRaw = callable<[mount: string], any>("hearth_games_disk");
+async function safe<T>(p: () => Promise<any>): Promise<Answer<T>> {
+  let v: any;
+  try { v = await p(); } catch (e) { v = { error: String(e) }; }
+  return v && typeof v === "object" ? v : { error: "Hearth gave no answer" } as any;
+}
+/** One of Hearth's own calls (core_service.rs BRIDGE_CALLS). */
+export const hearthCall = <T = any>(method: string, args: Record<string, unknown> = {}) => safe<T>(() => callRaw(method, args));
+/** One of Hearth Mods' calls (core_service.rs MODS_CALLS). */
+export const modsCall = <T = any>(call: string, args: Record<string, unknown> = {}) => safe<T>(() => modsRaw(call, args));
+/** "Use this disk for games": Hearth's install folder on that drive. */
+export const gamesDisk = (mount: string) => safe<{ installRoot: string; drive: string }>(() => diskRaw(mount));
+
+/** A call's answer for a page, asked again every `every` ms (0: once) and when `bump` changes. */
+export function usePoll<T = any>(get: () => Promise<Answer<T>>, every: number, deps: unknown[]): [Answer<T> | null, () => void] {
+  const [v, setV] = useState<Answer<T> | null>(null);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const go = () => get().then((r) => { if (live) setV(r); }).catch(() => {});
+    go();
+    const t = every ? setInterval(go, every) : undefined;
+    return () => { live = false; if (t) clearInterval(t); };
+  }, [...deps, n, every]);
+  return [v, () => setN((x) => x + 1)];
+}

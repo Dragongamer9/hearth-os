@@ -109,5 +109,36 @@ for (const [name, which, want, focus] of [
   await page.screenshot({ path: join(out, name + ".png") });
   console.log(`drew ${name}${missing.length ? " (missing " + missing.join(", ") + ")" : ""}`);
 }
+// The pages that change things (manage.tsx) and the Store's details with a download's progress, taller so the whole
+// page shows. "click": buttons pressed first (by their text), as a controller's A would.
+for (const [name, which, want, clicks, height] of [
+  ["takeover-store-detail", "store", ["Cyberpunk 2077: Phantom Liberty", "In your library", "Cancel download", "42%", "GOG page"], ["GOG", "Cyberpunk 2077: Phantom Liberty"], 800],
+  ["takeover-mods", "mods", ["Hearth Mods", "Skyrim Special Edition", "SkyUI", "Turn off", "Turn on", "Uninstall", "Immersive Weather", "Install"], [], 1100],
+  ["takeover-storage", "storage", ["Storage", "This device", "SD card", "Use this disk for games", "Move to SD card", "Move in Steam's Storage", "Uninstall in Steam", "Uninstall it in Battle.net.", "Stop", "Portal 2", "Delete 2 items"], ["Find things to clean up"], 1900],
+  ["takeover-recomps", "recomps", ["Hearth Recomps", "Zelda 64: Recompiled", "Play", "Banjo: Recompiled", "Downloading", "Cancel", "Install"], [], 900],
+]) {
+  await page.setViewportSize({ width: 1280, height });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${theme}</style><style>body{margin:0;width:1280px;height:${height}px;overflow:hidden;position:relative;background:#0c1016;font-family:"Segoe UI","Noto Sans",sans-serif}
+.DialogButton{border:none;color:#e9eef4;background:rgba(233,238,244,.1);border-radius:6px;font:inherit;cursor:pointer}
+.DialogButton{background:#1d2531 !important}.DialogButton.gpfocus{background:#3fd0b8 !important;color:#06231e !important}</style></head>
+<body><div id="root" style="position:absolute;inset:0"></div><script>window.HEARTH_PAGE=${JSON.stringify(which)};window.HEARTH_LOGO=${JSON.stringify(logo)};window.HEARTH_WALL=${JSON.stringify(wall)};</script><script>${js}</script></body></html>`;
+  writeFileSync(join(out, name + ".html"), html);
+  await page.setContent(html);
+  await page.waitForTimeout(1500);
+  for (const c of clicks) {
+    const ok = await page.evaluate((t) => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim().startsWith(t)); if (b) b.click(); return !!b; }, c);
+    if (!ok) errors.push(`${name}: no button "${c}" to press`);
+    await page.waitForTimeout(1500);
+  }
+  // The first button focused, as Steam would (autoFocus) for the controller.
+  await page.evaluate(() => { const b = document.querySelector(".ht-btn.primary") || document.querySelector(".ht-btn"); if (b) b.classList.add("gpfocus"); });
+  await page.waitForTimeout(300);
+  const text = await page.evaluate(() => document.body.innerText);
+  const missing = want.filter((w) => !text.toLowerCase().includes(w.toLowerCase()));
+  if (missing.length) errors.push(`${name}: missing ${missing.join(", ")}`);
+  if (/couldn't be shown/i.test(text)) errors.push(`${name}: a Hearth part fell back to its error`);
+  await page.screenshot({ path: join(out, name + ".png") });
+  console.log(`drew ${name}${missing.length ? " (missing " + missing.join(", ") + ")" : ""}`);
+}
 await browser.close();
 if (errors.length) { console.log(`::error title=takeover pictures::${errors.join(" | ").slice(0, 3000)}`); process.exit(1); }

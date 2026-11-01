@@ -27,6 +27,8 @@ const games = [
   G("xodus:halo", "Halo MCC", "xodus", "Xbox PC", "xbox", { added: 7 }),
   G("recomps:zelda64", "Zelda 64", "recomps", "Recomps", "recomps", { added: 6 }),
   G("emu:snes:smw", "Super Mario World", "emu", "Emulators", "emu", { added: 5 }),
+  // Bought in the store, downloading through Hearth (the Store's details show its progress).
+  G("gog:phantom", "Cyberpunk 2077: Phantom Liberty", "gog", "GOG", "gog", { installed: false, state: "downloading", added: 0 }),
   G("steam:620", "Portal 2", "steam", "Steam", "steam", { added: 4 }),
   G("epic:fortnite", "Fortnite", "epic", "Epic", "epic", { added: 3 }),
   // The cases behind 0.6.60's blank cards: a webp from Hearth's art cache (nimbus-art://cache/…), a picture that
@@ -54,10 +56,14 @@ const stores = {
     { id: "specials", title: "Specials", items: ["Hades II", "Dead Cells", "Disco Elysium", "Outer Wilds", "Inscryption"].map((t) => item("steam", t, "$19.79", 67)) },
     { id: "free", title: "Free to play", items: ["Dota 2", "Warframe", "Path of Exile 2", "Apex Legends"].map((t) => item("steam", t, "Free")) },
   ] },
+  gog: { store: "gog", sections: [
+    { id: "featured", title: "Featured", items: [{ ...item("gog", "Cyberpunk 2077: Phantom Liberty", "$29.99"), id: "phantom", url: "https://www.gog.com/en/game/cyberpunk_2077_phantom_liberty", sub: "Expansion" },
+      ...["The Witcher 3", "Baldur's Gate 3", "Disco Elysium"].map((t) => item("gog", t, "$39.99"))] },
+  ] },
 };
 const answers = {
   home, library: { tabs: TABS.map(([id, title]) => ({ id, title, count: byTab(id).length, installed: byTab(id).length, items: byTab(id) })).filter((t) => t.count) },
-  downloads: { active: [{ id: "gog:x", title: "Cyberpunk 2077: Phantom Liberty", store: "GOG", state: "downloading", progress: 0.42, bytesPerSec: 31e6 }] },
+  downloads: { active: [{ id: "gog:phantom", title: "Cyberpunk 2077: Phantom Liberty", store: "GOG", state: "downloading", progress: 0.42, bytesPerSec: 31e6, bytesDone: 21e9, bytesTotal: 50e9 }] },
   storage: { drives: [{ name: "This device", kind: "internal", mount: "/var", size: 512e9, used: 380e9, free: 132e9, readOnly: false, steamLibs: 1 }] },
   info: { protondb: { label: "Gold" }, achievements: { total: 40, done: 12 } },
 };
@@ -88,7 +94,44 @@ const gameView = { id: "epic:alan-wake-2", title: "Alan Wake 2", source: "epic",
   input: { layout: "shooter", name: "Shooter / action", choices: [{ id: "off", label: "Off (the game's own controls)" }, { id: "shooter", label: "Shooter / action" },
     { id: "pointclick", label: "Point-and-click / strategy" }, { id: "retro", label: "Retro / arrow keys" }, { id: "mouse", label: "Mouse only" }, { id: "rts", label: "Strategy (RTS)" }] },
   protonChoices: [{ id: "", label: "Default" }, { id: "GE-Proton", label: "GE-Proton (newest)" }, { id: "Proton 9.0", label: "Proton 9.0" }] };
+// The Steam pages' changes (manage.tsx, the Store's details): what Hearth's core answers through `call` / `mods-call`.
+const GB = 1e9;
+const calls = {
+  "diskspace.status": () => ({
+    drives: [{ id: "/var", name: "This device", kind: "internal", mount: "/var", fs: "btrfs", size: 512 * GB, used: 380 * GB, free: 132 * GB, readOnly: false, games: true, steamLibs: ["/var/home/you/.local/share/Steam"] },
+             { id: "/run/media/you/sd", name: "SD card", kind: "sd", mount: "/run/media/you/sd", fs: "ext4", size: 256 * GB, used: 61 * GB, free: 195 * GB, readOnly: false, games: true, steamLibs: [] }],
+    games: [{ id: "steam:292030", title: "The Witcher 3", source: "steam", store: "Steam", drive: "/var", size: 52 * GB, canMove: true, uninstall: "game" },
+            { id: "epic:alan-wake-2", title: "Alan Wake 2", source: "epic", store: "Epic", drive: "/var", size: 88 * GB, canMove: true, uninstall: "game" },
+            { id: "gog:cyberpunk", title: "Cyberpunk 2077", source: "gog", store: "GOG", drive: "/run/media/you/sd", size: 61 * GB, canMove: true, uninstall: "game" },
+            { id: "recomp:zelda64", title: "Zelda 64: Recompiled", source: "recomps", store: "Recomps", drive: "/var", size: 0.3 * GB, canMove: true, uninstall: "recomp" },
+            { id: "battlenet:d4", title: "Diablo IV", source: "battlenet", store: "Battle.net", drive: "/var", size: 90 * GB, canMove: false, moveWhy: "Move it with Battle.net", uninstall: null, uninstallWhy: "Uninstall it in Battle.net." }],
+    job: { state: "moving", phase: "copy", title: "Hades", done: 6.2 * GB, total: 9.8 * GB }, scan: { state: "idle" } }),
+  "diskspace.cleanList": () => ({ items: [
+    { key: "shader:620", kind: "Shader cache", title: "Portal 2", where: "This device", bytes: 1.4 * GB, selectable: true, on: true },
+    { key: "mesa", kind: "Mesa shader cache", title: "Graphics driver caches", where: "This device", bytes: 0.9 * GB, selectable: true, on: true },
+    { key: "prefix:epic-old", kind: "Proton prefix", title: "Old Epic game", where: "This device", bytes: 2.2 * GB, selectable: true, on: false, confirm: true, saves: ["Documents/My Games/Old"], why: "has saves" },
+  ] }),
+  "recomps.list": () => ({ consoles: { n64: "Nintendo 64", gamecube: "GameCube", x360: "Xbox 360" }, recomps: [
+    { id: "zelda64", title: "Zelda 64: Recompiled", console: "n64", needs: "Majora's Mask (USA) ROM", installed: true, version: "1.2.0", copy: "/home/you/roms/mm.z64" },
+    { id: "banjo", title: "Banjo: Recompiled", console: "n64", needs: "Banjo-Kazooie (USA, v1.0) ROM", installed: false, job: { busy: true, stage: "Downloading BanjoRecompiled-Linux.zip…", progress: 0.63 } },
+    { id: "sonic-unleashed", title: "Unleashed Recompiled", console: "x360", needs: "Sonic Unleashed (your own copy)", installed: false },
+    { id: "sm64", title: "Super Mario 64 (sm64ex)", console: "n64", needs: "Super Mario 64 (USA) ROM", installed: false },
+  ] }),
+};
+const modsCalls = {
+  list: () => ({ value: [{ id: "steam:489830", title: "Skyrim Special Edition", mods: 4, modsOn: 3 }, { id: "gog:cyberpunk", title: "Cyberpunk 2077", mods: 2, modsOn: 2 }] }),
+  mods_of: (a) => ({ title: "Skyrim Special Edition", beacon: false, mods: [
+    { id: "skyui", name: "SkyUI", enabled: true, targetLabel: "Data folder", size: 3.1e6 },
+    { id: "hdtex", name: "HD Textures", enabled: true, targetLabel: "Data folder", size: 2.4e9 },
+    { id: "sep", name: "— Gameplay —", kind: "separator" },
+    { id: "lanterns", name: "Sky Lanterns", enabled: false, targetLabel: "Data folder", size: 2.1e7 },
+    { id: "fixes", name: "Community Fixes", enabled: true, targetLabel: "Game folder", size: 4e5 }] }),
+  downloads_list: () => ({ items: [{ id: "d1", name: "Immersive Weather · Main file", state: "done", game: "steam:489830", size: 5.6e7 }] }),
+};
 const handlers = {
+  hearth_call: (m, a) => (calls[m] ? calls[m](a) : { ok: true }),
+  hearth_mods_call: (c, a) => (modsCalls[c] ? modsCalls[c](a) : {}),
+  hearth_games_disk: (m) => ({ installRoot: m + "/Games", drive: "SD card" }),
   hearth_data: (what, arg) => (what === "store" ? stores[arg] || stores.steam : answers[what] || { error: "no mock" }),
   core_status: () => ({ running: true, version: "0.0.0" }),
   hearth_front: (appid, game, overlay) => ({ game: game || null, front: !overlay, overlay, layout: game ? "Shooter / action" : null, active: !!game && !overlay }),
