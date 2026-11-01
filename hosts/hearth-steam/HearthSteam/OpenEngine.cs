@@ -3,6 +3,7 @@ using HearthSteam.Open;
 using QRCoder;
 using SteamKit2;
 using SteamKit2.Authentication;
+using SteamKit2.Discovery;
 
 namespace HearthSteam;
 
