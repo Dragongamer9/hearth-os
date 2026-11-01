@@ -300,6 +300,25 @@ try:
     alice.call('settings', {'sharePlaying': True})
     ok('"who sees what you\'re playing" off hides it')
 
+    # ---- gaming activity (Friends › Activity): off until turned on, then an encrypted card in the friend's chat
+    card = {'playing': None, 'recent': [{'title': 'Portal 2', 'minutes': 600, 'lastPlayed': 1700000000000, 'path': '/home/alice/secret'}],
+            'top': [{'title': 'Portal 2', 'minutes': 600}], 'totalMinutes': 600, 'gamesPlayed': 1}
+    r = alice.call('setActivity', {'activity': card})
+    if not r.get('off'):
+        fail('activity was sent while sharing was off: %r' % r)
+    alice.call('settings', {'shareActivity': True})
+    r = alice.call('setActivity', {'activity': card})
+    if r.get('sent', 0) < 1:
+        fail('the activity card was not sent to any friend: %r' % r)
+    if not alice.call('setActivity', {'activity': card}).get('same'):
+        fail('the same activity card was sent twice')
+    a = wait('bob gets alice\'s activity', lambda: [x for x in bob.call('activity') if x.get('userId') == ids[alice]], 45)
+    if a[0].get('totalMinutes') != 600 or a[0]['recent'][0].get('title') != 'Portal 2' or 'secret' in json.dumps(a[0]):
+        fail('the activity card is not right: %r' % a[0])
+    if [m for m in bob.call('messages', {'roomId': room})['messages'] if 'Portal 2' in json.dumps(m) and m.get('kind') not in ('game',)]:
+        fail('the activity card showed up as a chat message')
+    ok('activity: off by default, then an encrypted card with titles and play time only, not shown as a message')
+
     # ---- game invite and Play together
     alice.call('invite', {'roomId': room, 'game': {'title': 'Portal 2', 'store': 'steam', 'id': 'steam:620', 'appId': '620', 'server': '192.168.1.20:27015'}})
     g = wait('bob gets the game invite', lambda: [x for x in bob.call('messages', {'roomId': room})['messages'] if x.get('kind') == 'game'])

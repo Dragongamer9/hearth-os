@@ -247,6 +247,31 @@ pub fn parse_status(msg: &str) -> (Option<String>, bool) {
     (Some(g.trim().to_string()).filter(|g| !g.is_empty()), j)
 }
 
+// ------------------------------------------------------------------------------------------------ activity
+
+/// The event type of a gaming-activity card (Hearth core's play/activity.rs: what you played lately and for how
+/// long), sent end-to-end encrypted into each friend's direct chat when "Share my activity" is on.
+pub const ACTIVITY_EVENT: &str = "io.hearthos.activity";
+
+fn slim_game(g: &Value) -> Option<Value> {
+    let t = clip(g["title"].as_str()?.trim(), 120);
+    if t.is_empty() { return None; }
+    Some(json!({"title": t, "minutes": g["minutes"].as_u64().unwrap_or(0).min(10_000_000), "lastPlayed": g["lastPlayed"].as_u64().unwrap_or(0)}))
+}
+
+/// The card's content from what the core sends (only titles and times; at most 5 recent and 3 top games), or None.
+pub fn activity_content(a: &Value) -> Option<Value> {
+    if !a.is_object() { return None; }
+    let list = |k: &str, n: usize| -> Vec<Value> { a[k].as_array().into_iter().flatten().filter_map(slim_game).take(n).collect() };
+    Some(json!({
+        "playing": slim_game(&a["playing"]), "recent": list("recent", 5), "top": list("top", 3),
+        "totalMinutes": a["totalMinutes"].as_u64().unwrap_or(0).min(100_000_000), "gamesPlayed": a["gamesPlayed"].as_u64().unwrap_or(0).min(1_000_000),
+    }))
+}
+
+/// A friend's card as received: the same checks (whatever their app sent, only the known fields, clipped).
+pub fn parse_activity(content: &Value) -> Option<Value> { activity_content(content) }
+
 // ------------------------------------------------------------------------------------------------ settings
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -266,10 +291,13 @@ pub struct Settings {
     pub homeserver: String,
     /// The "keep your encrypted chats: a recovery key" question was answered (or skipped) for this sign-in.
     pub recovery_asked: bool,
+    /// Send your gaming activity (recently played, play time) to your friends in your chats with them. Off until
+    /// turned on (Game Mode › Friends › Activity).
+    pub share_activity: bool,
 }
 
 impl Default for Settings {
-    fn default() -> Self { Settings { friends_only: true, share_playing: true, presence: "online".into(), previews: true, muted: vec![], homeserver: DEFAULT_HOMESERVER.into(), recovery_asked: false } }
+    fn default() -> Self { Settings { friends_only: true, share_playing: true, presence: "online".into(), previews: true, muted: vec![], homeserver: DEFAULT_HOMESERVER.into(), recovery_asked: false, share_activity: false } }
 }
 
 impl Settings {
@@ -293,6 +321,7 @@ impl Settings {
     pub fn patch(&mut self, p: &Value) {
         if let Some(b) = p["friendsOnly"].as_bool() { self.friends_only = b; }
         if let Some(b) = p["sharePlaying"].as_bool() { self.share_playing = b; }
+        if let Some(b) = p["shareActivity"].as_bool() { self.share_activity = b; }
         if let Some(b) = p["previews"].as_bool() { self.previews = b; }
         if let Some(s) = p["presence"].as_str() { if ["online", "unavailable", "offline"].contains(&s) { self.presence = s.into(); } }
     }
@@ -592,6 +621,26 @@ mod tests {
         assert_eq!(parse_status("Playing Portal 2 · Joinable"), (Some("Portal 2".into()), true));
         assert_eq!(parse_status("Playing Hades"), (Some("Hades".into()), false));
         assert_eq!(parse_status("brb"), (None, false));
+    }
+
+    #[test]
+    fn activity_cards() {
+        let a = json!({"playing": {"title": "Portal 2", "minutes": 600, "id": "steam:620"}, "recent": [{"title": "A", "minutes": 5, "path": "/home/x"}, {"title": ""}, {"nope": 1}],
+                       "top": [{"title": "B"}, {"title": "C"}, {"title": "D"}, {"title": "E"}], "totalMinutes": 605, "gamesPlayed": 2, "token": "secret"});
+        let c = activity_content(&a).unwrap();
+        assert_eq!(c["playing"]["title"], "Portal 2");
+        assert!(c["playing"].get("id").is_none() && !c.to_string().contains("/home/x") && !c.to_string().contains("secret"), "only titles and times: {c}");
+        assert_eq!(c["recent"].as_array().unwrap().len(), 1, "empty and nameless games are dropped");
+        assert_eq!(c["top"].as_array().unwrap().len(), 3);
+        assert_eq!(c["totalMinutes"], 605);
+        assert!(activity_content(&json!("x")).is_none());
+        let p = parse_activity(&json!({"playing": null, "recent": [{"title": "x".repeat(500)}]})).unwrap();
+        assert!(p["playing"].is_null());
+        assert_eq!(p["recent"][0]["title"].as_str().unwrap().len(), 120);
+        assert!(!Settings::default().share_activity, "sharing activity is off until turned on");
+        let mut s = Settings::default();
+        s.patch(&json!({"shareActivity": true}));
+        assert!(s.share_activity);
     }
 
     #[test]

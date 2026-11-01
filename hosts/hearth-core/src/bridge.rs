@@ -1302,6 +1302,8 @@ impl Bridge {
             // ---- Hearth Link (Settings › Hearth Link, Library › Get from another Hearth)
             m if m.starts_with("link.") => crate::link::bridge_call(self, m, a),
             // ---- end of Hearth Link
+            // ---- Discover, game details, achievements, artwork, profile, downloads (play/, docs/HYDRA-FEATURES.md)
+            m if m.starts_with("play.") => crate::play::bridge_call(self, m, a),
             _ => Err(format!("{method} isn't in the Rust version of Hearth yet")),
         }
     }
@@ -1337,7 +1339,7 @@ impl Bridge {
     }
     /// Opens a picker for the request in hand without holding the bridge (picker.rs) and answers it when the picker
     /// closes: the choice comes back as {type:'internal', what:'picked'} and `picked` finishes the call.
-    fn pick_later(&self, method: &str, a: &Value, ask: crate::picker::Ask) -> Result<Value, String> {
+    pub(crate) fn pick_later(&self, method: &str, a: &Value, ask: crate::picker::Ask) -> Result<Value, String> {
         let (m, args, id, to) = (method.to_string(), a.clone(), self.cur_id.clone(), self.cur_label.clone());
         crate::picker::open(&self.pick_file, &self.pick_folder, ask, method, move |path| crate::stores::notify(crate::picker::picked_message(&m, &args, path, &id, &to)))?;
         Ok(json!(DEFERRED))
@@ -1359,6 +1361,7 @@ impl Bridge {
             // Hearth Recomps: your copy of a game (checked in the background), or a folder with the port in it.
             "recomps.pickGame" => match path { Some(f) => self.recomps.set_game(a["id"].as_str().unwrap_or(""), &f, false, self.emit.clone()).map(|v| { let mut v = v; v["file"] = json!(f); v }), None => Ok(Value::Null) },
             "recomps.adopt" => match path { Some(d) => { let s = crate::recomps::adopt(a["id"].as_str().unwrap_or(""), &d)?; self.library.scan(); Ok(s) } None => Ok(Value::Null) },
+            m if m.starts_with("play.") => crate::play::picked(self, m, a, path),   // Library › Find games in a folder
             _ => Err(format!("Nothing waits for a picker in {method}")),
         }
     }
