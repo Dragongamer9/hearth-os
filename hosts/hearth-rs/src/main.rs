@@ -796,6 +796,9 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--play-now") {
         std::process::exit(hearth_core::desktop_games::play_now(args.get(2).map(String::as_str).unwrap_or("")));
     }
+    // Steam's Game Mode takeover (Experimental): what the Hearth Decky plugin's pages show, as one line of JSON. No
+    // window, nothing listens (hearth-core steam_takeover.rs).
+    if has("--steam-mode-data") { std::process::exit(hearth_core::steam_takeover::run(&args)); }
     let windowed = has("--windowed");
     // Started by Hearth's Electron window app (Chromium): no window here, everything else as usual.
     if has("--core-stdio") { std::process::exit(core_ipc::run(windowed)); }

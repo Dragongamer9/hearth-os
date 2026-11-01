@@ -5,6 +5,10 @@ Runs as you (no root flag) inside Decky Loader and only talks to Hearth's own co
   nimbus --list-games      your installed games from Hearth's library, as JSON (hosts/hearth-core desktop_games.rs)
   nimbus --play-now ID     plays one the way Hearth's Play button does, and waits until it has closed
   nimbus-mode game         back to Hearth's Game Mode
+  nimbus --steam-mode-data WHAT [ARG]
+                           what the takeover's pages show (Hearth's home, Store, Library, Downloads, Storage, a game's
+                           facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs). Nothing listens on a
+                           port or socket for this: Decky's own channel to this backend is the only way in.
 
 Nothing is sent anywhere: game pictures from the web are fetched only to hand them to Steam as the shortcut's art.
 """
@@ -33,7 +37,14 @@ LINKS = [
     {'id': 'hearth-app:mods', 'title': 'Hearth Mods', 'program': 'hearth-mods', 'args': []},
     {'id': 'hearth-app:theater', 'title': 'Hearth Theater', 'program': 'hearth-theater', 'args': ['--fullscreen']},
     {'id': 'hearth-app:store', 'title': 'Hearth Store', 'program': 'nimbus', 'args': ['--windowed', '--page', 'shop']},
+    {'id': 'hearth-app:hearth', 'title': 'Hearth', 'program': 'nimbus', 'args': ['--windowed']},
+    {'id': 'hearth-app:settings', 'title': 'Hearth Settings', 'program': 'nimbus', 'args': ['--windowed', '--settings']},
 ]
+# The takeover's questions for Hearth (steam_takeover.rs), how long each may take, and which argument each takes.
+DATA = {'home': 60, 'library': 60, 'store': 90, 'downloads': 30, 'storage': 30, 'info': 40, 'power': 20, 'power-mode': 40}
+STORE_PAGES = ('steam', 'gog', 'epic', 'xbox', 'free', 'recomps', 'battlenet')
+POWER_MODES = ('efficiency', 'balanced', 'performance')
+ERRORS_KEPT = 50
 
 
 def log(msg):
@@ -264,7 +275,92 @@ def save_json(name, value):
     os.replace(tmp, os.path.join(d, name))
 
 
-DEFAULT_SETTINGS = {'theme': True, 'homeRow': True}
+# The same keys and defaults as src/model.ts DEFAULTS: the takeover (master switch and its parts) is on by default.
+DEFAULT_SETTINGS = {'theme': True, 'homeRow': True, 'takeover': True, 'tkHome': True, 'tkMenu': True, 'tkLibraryTabs': True,
+                    'tkGamePage': True, 'tkSounds': False}
+
+
+def data_args(what, arg):
+    """The command line for one of the takeover's questions, or None when it isn't one this asks."""
+    if what not in DATA:
+        return None
+    arg = arg if isinstance(arg, str) else ''
+    if what == 'store':
+        if arg not in STORE_PAGES:
+            return None
+        return ['--steam-mode-data', what, arg]
+    if what == 'info':
+        return ['--steam-mode-data', what, arg] if valid_id(arg) else None
+    if what == 'power-mode':
+        return ['--steam-mode-data', what, arg] if arg in POWER_MODES else None
+    return ['--steam-mode-data', what]
+
+
+def hearth_data(what, arg='', run=subprocess.run):
+    """Asks Hearth one of the takeover's questions. Always a dict: Hearth's answer, or {'error': ...}."""
+    args = data_args(what, arg)
+    if not args:
+        return {'error': "That isn't something the Hearth plugin asks"}
+    app = find_program('nimbus')
+    if not app:
+        return {'error': "Hearth isn't installed here"}
+    try:
+        r = run([app] + args, capture_output=True, text=True, timeout=DATA[what], env=clean_env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {'error': 'Hearth didn\'t answer (%s)' % e}
+    lines = (r.stdout or '').strip().splitlines()
+    try:
+        v = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        v = None
+    if not isinstance(v, dict):
+        return {'error': (r.stderr or 'Hearth gave no answer').strip()[-300:] or 'Hearth gave no answer'}
+    return v
+
+
+PICTURE_KINDS = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif'}
+
+
+def picture_url(ref):
+    """A picture on this device as a data: address for the takeover's pages (Steam's window can't open files); only
+    from the places art_allowed allows, and only pictures. Web pictures aren't read here (the page loads them)."""
+    if not isinstance(ref, str) or not ref:
+        return ''
+    if ref.startswith('file://'):
+        ref = urllib.request.url2pathname(ref[7:])
+    if not ref.startswith('/'):
+        return ''
+    real = os.path.realpath(ref)
+    ext = os.path.splitext(real)[1].lower()
+    roots = ALLOWED_ROOTS + (os.path.realpath(home()).rstrip('/') + '/',)
+    if ext not in PICTURE_KINDS or not any(real.startswith(r) for r in roots):
+        return ''
+    try:
+        if os.path.getsize(real) > ART_LIMIT:
+            return ''
+        with open(real, 'rb') as f:
+            data = f.read()
+    except OSError:
+        return ''
+    ok = kind_of(data) or (data[:4] == b'RIFF' and data[8:12] == b'WEBP' and 'webp') or (data[:3] == b'GIF' and 'gif')
+    return 'data:%s;base64,%s' % (PICTURE_KINDS[ext], base64.b64encode(data).decode()) if ok else ''
+
+
+def note_error(part, message, name='errors.log'):
+    """A part of the takeover that turned itself off (Steam changed a screen): kept in a short log for Quick Access."""
+    line = '%s: %s' % (str(part)[:40], str(message).replace('\n', ' ')[:400])
+    log('takeover part off: ' + line)
+    path = os.path.join(settings_dir(), name)
+    try:
+        with open(path) as f:
+            lines = f.read().splitlines()
+    except OSError:
+        lines = []
+    lines = (lines + [line])[-ERRORS_KEPT:]
+    os.makedirs(settings_dir(), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    return lines
 
 
 def startup_movie(pdir=None, home_dir=None):
@@ -313,6 +409,39 @@ class Plugin:
         save_json('shortcuts.json', clean)
         return clean
 
+    async def hearth_data(self, what, arg=''):
+        return hearth_data(what, arg)
+
+    async def get_picture(self, ref):
+        return picture_url(ref)
+
+    async def get_target(self, game_id):
+        if not valid_id(game_id) or game_id.startswith('steam:'):
+            return {'ok': False, 'error': "That isn't a game Hearth plays from here"}
+        app = find_program('nimbus')
+        if not app:
+            return {'ok': False, 'error': "Hearth isn't installed here"}
+        t = shortcut(app, ['--play-now', game_id], steam_is_flatpak())
+        t['ok'] = True
+        return t
+
+    async def get_link(self, link_id):
+        _, links = targets([], steam_is_flatpak())
+        return next((l for l in links if l['id'] == link_id), None)
+
+    async def log_error(self, part, message):
+        try:
+            note_error(part, message)
+        except OSError as e:
+            log('takeover log: %s' % e)
+
+    async def get_errors(self):
+        try:
+            with open(os.path.join(settings_dir(), 'errors.log')) as f:
+                return f.read().splitlines()[-ERRORS_KEPT:]
+        except OSError:
+            return []
+
     async def switch_to_hearth(self):
         prog = find_program('nimbus-mode')
         if not prog:
@@ -323,6 +452,11 @@ class Plugin:
         return {'ok': True}
 
     async def _main(self):
+        # Parts that turned themselves off last time get their chance again (Steam may have been fixed): a fresh log.
+        try:
+            os.remove(os.path.join(settings_dir(), 'errors.log'))
+        except OSError:
+            pass
         try:
             movie = startup_movie()
             if movie:
