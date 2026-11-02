@@ -457,6 +457,11 @@ pub fn report(version: &str) -> String {
     // driver that didn't make the HDMI 2.1 fast link (FRL), or a mode Hearth chose.
     section("Screen: modes and what it says it can do (EDID)", sh(&format!("{{ {SCREEN_SH} }}")));
     section("Graphics driver and the screen link", sh(&format!("{{ {DRIVER_SH} }}")));
+    section("Sound (PipeWire)", sh("echo \"RealtimeKit (sound priority): $(busctl --system status org.freedesktop.RealtimeKit1 >/dev/null 2>&1 && echo running || echo missing)\"; \
+        echo; pactl info 2>&1 | grep -E 'Server Name|Default Sink|Default Sample'; echo; pw-metadata -n settings 0 2>&1 | grep -E 'clock' ; \
+        echo; echo '--- outputs'; pactl list short sinks 2>&1; echo; echo '--- what is playing'; pactl list short sink-inputs 2>&1; \
+        echo; echo '--- priority of the sound programs'; ps -eLo pid,cls,rtprio,ni,comm 2>/dev/null | grep -E 'pipewire|wireplumber|data-loop' | head -12; \
+        echo; echo '--- sound messages (this boot)'; journalctl --user -b --no-pager -o short -u pipewire -u pipewire-pulse -u wireplumber 2>&1 | grep -viE 'SEND_OBJECT_MESSAGE' | tail -40"));
     section("Bluetooth", sh("bluetoothctl devices; bluetoothctl show | grep -E 'Powered|Discoverable|Pairable'"));
     section("System journal: controllers, power, display (this boot)", cap(&sh("journalctl -b --no-pager -n 400 -u inputplumber -u hhd -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"), 80_000));
     section("System journal: errors (this boot)", cap(&without_dump_details(&sh("journalctl -b --no-pager -p err -n 400")), 80_000));
