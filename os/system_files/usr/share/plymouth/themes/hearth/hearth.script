@@ -1,9 +1,10 @@
 # Hearth boot splash (Plymouth script theme).
-# The Hearth mark fades in over a warm dark background, the fire behind it breathes and flickers,
-# and three embers pulse below the name. Asks for the disk password on encrypted installs.
+# The Hearth mark fades in over a dark slate background (Hearth OS 1.1's Steam-style look), the fire behind it
+# breathes and flickers, and three embers pulse below the name. Asks for the disk password on encrypted installs.
+# The default of three presets (hearth, hearth-steam, hearth-minimal: Settings › Boot & startup).
 
-Window.SetBackgroundTopColor(0.075, 0.055, 0.047);
-Window.SetBackgroundBottomColor(0.027, 0.020, 0.020);
+Window.SetBackgroundTopColor(0.106, 0.157, 0.220);
+Window.SetBackgroundBottomColor(0.055, 0.075, 0.102);
 
 W = Window.GetWidth();
 H = Window.GetHeight();
@@ -99,7 +100,7 @@ fun display_password_callback(text, count) {
   entry.sprite.SetOpacity(1);
   label = text;
   if (label == "") label = "Password";
-  img = Image.Text(label, 0.937, 0.894, 0.839, 1, "Sans 16");
+  img = Image.Text(label, 0.863, 0.898, 0.929, 1, "Sans 16");
   prompt.sprite.SetImage(img);
   prompt.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), entry.y - img.GetHeight() - Math.Int(short * 0.02), 20);
   prompt.sprite.SetOpacity(1);
@@ -127,7 +128,7 @@ fun display_normal_callback() {
 Plymouth.SetDisplayNormalFunction(display_normal_callback);
 
 fun message_callback(text) {
-  img = Image.Text(text, 0.937, 0.894, 0.839, 0.7, "Sans 12");
+  img = Image.Text(text, 0.863, 0.898, 0.929, 0.7, "Sans 12");
   msg.sprite.SetImage(img);
   msg.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), msg.y, 10);
 }

@@ -368,7 +368,7 @@ These aren't made here: those files belong to the main build, the installer and 
    could also read `/usr/share/nimbus/image-info.json` (written by this build and the CachyOS build), so the
    player counter can tell the bases apart.
 6. **Shared Debian-family pieces**: `hearth-bls-grub`, its units, the `10_blscfg.cfg` override, the wheel polkit
-   and sudoers files and the sysusers drop-in exist in both `os-bases/ubuntu` and `os-bases/peppermint`. Once
+   and sudoers files and the sysusers drop-in exist in both `archive/os-bases/ubuntu` and `os-bases/peppermint`. Once
    both settle, they could move to one shared folder.
 
 **No other desktops.** Mantel (Hearth Classic: labwc + Quickshell) is the only desktop. Hearth Plasma and Hearth GNOME were removed: their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter, gnome-session, gnome-control-center, GNOME Files / Console / Text Editor; the KDE and GNOME portals) aren't installed. What Mantel and Hearth's KDE apps use stays: polkit-kde-agent-1, Breeze, kde-cli-tools, plasma-integration, Kirigami, the KDE apps themselves (hosts/hearth-kde) and SDDM.

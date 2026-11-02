@@ -1,0 +1,15 @@
+{
+  "name": "Hearth Link",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "hearth",
+      "network",
+      "transfer"
+    ],
+    "description": "Your Hearth devices in Quick Access: which are online, games sent and fetched between them, Hearth Storage (sync, saves, update cache, device health) and pairing a new device.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}

@@ -1,0 +1,134 @@
+# Hearth boot splash preset "hearth-steam" (Settings › Boot & startup): the Hearth mark over slate blue, a blue
+# halo breathing behind it, and a light sweeping along a thin track below the name (Steam-style look).
+# Chosen with plymouth.splash=hearth-steam on the kernel command line (hearth-bls-grub adds it). Asks for the disk
+# password on encrypted installs, like the default.
+
+Window.SetBackgroundTopColor(0.106, 0.157, 0.220);
+Window.SetBackgroundBottomColor(0.059, 0.078, 0.106);
+
+W = Window.GetWidth();
+H = Window.GetHeight();
+X0 = Window.GetX();
+Y0 = Window.GetY();
+short = Math.Min(W, H);
+
+size = Math.Int(short * 0.24);
+logo.image = Image("logo.png").Scale(size, size);
+logo.sprite = Sprite(logo.image);
+logo.x = X0 + Math.Int(W / 2 - size / 2);
+logo.y = Y0 + Math.Int(H / 2 - size / 2 - short * 0.07);
+logo.sprite.SetPosition(logo.x, logo.y, 10);
+
+hsize = Math.Int(size * 2.1);
+halo.sprite = Sprite(Image("halo.png").Scale(hsize, hsize));
+halo.sprite.SetPosition(logo.x + Math.Int(size / 2 - hsize / 2), logo.y + Math.Int(size / 2 - hsize / 2), 5);
+
+word.src = Image("wordmark.png");
+word.w = Math.Int(size * 0.9);
+word.h = Math.Int(word.src.GetHeight() * word.w / word.src.GetWidth());
+word.sprite = Sprite(word.src.Scale(word.w, word.h));
+word.y = logo.y + size + Math.Int(short * 0.045);
+word.sprite.SetPosition(X0 + Math.Int(W / 2 - word.w / 2), word.y, 10);
+
+track.w = Math.Int(Math.Min(W * 0.5, short * 0.5));
+track.h = Math.Max(2, Math.Int(short * 0.003));
+track.x = X0 + Math.Int(W / 2 - track.w / 2);
+track.y = word.y + word.h + Math.Int(short * 0.07);
+track.sprite = Sprite(Image("track.png").Scale(track.w, track.h));
+track.sprite.SetPosition(track.x, track.y, 8);
+sweep.w = Math.Int(track.w * 0.45);
+sweep.h = Math.Max(8, Math.Int(short * 0.03));
+sweep.sprite = Sprite(Image("sweep.png").Scale(sweep.w, sweep.h));
+sweep.sprite.SetOpacity(0);
+
+msg.sprite = Sprite();
+msg.y = Y0 + H - Math.Int(short * 0.08);
+dots_y = track.y;
+
+frame = 0;
+status = "normal";
+
+fun clamp01(v) {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+fun refresh_callback() {
+  global.frame++;
+  t = global.frame;
+  fade = clamp01(t / 30);
+  logo.sprite.SetOpacity(fade);
+  word.sprite.SetOpacity(fade * 0.95);
+  halo.sprite.SetOpacity(fade * (0.30 + 0.16 * Math.Sin(t * 0.04)));
+  # One sweep every 1.6 s (80 frames at 50 fps): left to right along the track, fading in and out at the ends.
+  p = t / 80 - Math.Int(t / 80);
+  sx = track.x - sweep.w / 2 + p * track.w;
+  sweep.sprite.SetPosition(Math.Int(sx), track.y + Math.Int(track.h / 2 - sweep.h / 2), 9);
+  if (global.status == "normal") {
+    sweep.sprite.SetOpacity(fade * clamp01(Math.Sin(p * 3.14159)));
+    track.sprite.SetOpacity(fade * 0.8);
+  } else {
+    sweep.sprite.SetOpacity(0);
+    track.sprite.SetOpacity(0);
+  }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# --- disk password
+entry.image = Image("entry.png");
+bullet.image = Image("bullet.png");
+entry.w = Math.Int(Math.Min(W * 0.8, short * 0.62));
+entry.h = Math.Int(entry.w * entry.image.GetHeight() / entry.image.GetWidth());
+entry.sprite = Sprite(entry.image.Scale(entry.w, entry.h));
+entry.x = X0 + Math.Int(W / 2 - entry.w / 2);
+entry.y = dots_y - Math.Int(entry.h / 2);
+entry.sprite.SetPosition(entry.x, entry.y, 20);
+entry.sprite.SetOpacity(0);
+prompt.sprite = Sprite();
+bsize = Math.Int(entry.h * 0.3);
+bullet.small = bullet.image.Scale(bsize, bsize);
+nbullets = 0;
+
+fun hide_bullets() {
+  for (i = 0; i < global.nbullets; i++) global.bullets[i].SetOpacity(0);
+}
+
+fun display_password_callback(text, count) {
+  global.status = "password";
+  entry.sprite.SetOpacity(1);
+  label = text;
+  if (label == "") label = "Password";
+  img = Image.Text(label, 0.863, 0.898, 0.929, 1, "Sans 16");
+  prompt.sprite.SetImage(img);
+  prompt.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), entry.y - img.GetHeight() - Math.Int(short * 0.02), 20);
+  prompt.sprite.SetOpacity(1);
+  hide_bullets();
+  maxb = Math.Int((entry.w - entry.h) / (bsize * 1.6));
+  shown = Math.Min(count, maxb);
+  start = X0 + Math.Int(W / 2 - (shown * bsize * 1.6) / 2);
+  for (i = 0; i < shown; i++) {
+    if (i >= global.nbullets) {
+      global.bullets[i] = Sprite(bullet.small);
+      global.nbullets = i + 1;
+    }
+    global.bullets[i].SetPosition(start + Math.Int(i * bsize * 1.6 + bsize * 0.3), entry.y + Math.Int(entry.h / 2 - bsize / 2), 21);
+    global.bullets[i].SetOpacity(1);
+  }
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+  global.status = "normal";
+  entry.sprite.SetOpacity(0);
+  prompt.sprite.SetOpacity(0);
+  hide_bullets();
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+fun message_callback(text) {
+  img = Image.Text(text, 0.863, 0.898, 0.929, 0.7, "Sans 12");
+  msg.sprite.SetImage(img);
+  msg.sprite.SetPosition(X0 + Math.Int(W / 2 - img.GetWidth() / 2), msg.y, 10);
+}
+Plymouth.SetMessageFunction(message_callback);

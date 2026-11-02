@@ -22,6 +22,8 @@ pub const CALLS: &[&str] = &[
     "downloads_list", "download_nxm", "download_file", "download_pause", "download_resume", "download_remove", "downloads_clear", "install_download",
     "wj_engine", "wj_fetch_engine", "wj_gallery", "wj_jobs", "wj_defaults", "wj_start", "wj_resume", "wj_cancel", "wj_forget", "wj_repair", "wj_guide_skip",
     "open_page", "open_url", "free_space",
+    // Play modded (hearth-gaming launch.rs: the organizer's view, the script extender or Hearth's Play) and Add to Steam.
+    "play", "steam_entries", "add_to_steam", "remove_from_steam",
     // The Hearth Mod Organizer (hearth-gaming organizer/gamemode.rs).
     "organizer_game", "organizer_set_profile", "organizer_plugin_toggle", "organizer_plugin_move", "organizer_fomod_finish",
 ];
@@ -61,8 +63,15 @@ pub fn request_at(path: &Path, name: &str, args: &Value, timeout: Duration) -> R
 fn start_worker(path: &Path) -> Result<(), String> {
     let exe = crate::gaming_apps::find("hearth-mods").ok_or("Hearth Mods isn't installed. It comes with Hearth OS.")?;
     crate::bridge::log("hearth mods: starting its worker (hearth-mods --serve)");
+    // Its own output goes to mods/logs/worker.log (Send logs has it).
+    let logs = crate::paths::data_dir().join("mods").join("logs");
+    let _ = std::fs::create_dir_all(&logs);
+    let lf = logs.join("worker.log");
+    if std::fs::metadata(&lf).map(|m| m.len() > 1_000_000).unwrap_or(false) { let _ = std::fs::rename(&lf, logs.join("worker.log.old")); }
+    let out = std::fs::OpenOptions::new().create(true).append(true).open(&lf).map(std::process::Stdio::from).unwrap_or_else(|_| std::process::Stdio::null());
+    let err = std::fs::OpenOptions::new().create(true).append(true).open(&lf).map(std::process::Stdio::from).unwrap_or_else(|_| std::process::Stdio::null());
     std::process::Command::new(exe).arg("--serve").current_dir(crate::paths::home())
-        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null()).stdout(out).stderr(err)
         .spawn().map(crate::procs::detach).map_err(|e| format!("Couldn't start Hearth Mods ({e})"))?;
     for _ in 0..50 {
         if UnixStream::connect(path).is_ok() { return Ok(()); }
@@ -135,7 +144,7 @@ mod tests {
     #[test]
     fn the_list_of_calls() {
         for c in ["mods_of", "toggle", "move_mod", "remove_mod", "check_updates", "nexus_search", "nexus_browse", "nexus_files", "download_file", "install_download",
-                  "download_pause", "download_resume", "wj_gallery", "wj_start", "wj_resume", "wj_guide_skip", "accounts_list", "account_begin", "mega_sign_in", "status"] {
+                  "download_pause", "download_resume", "wj_gallery", "wj_start", "wj_resume", "wj_guide_skip", "accounts_list", "account_begin", "mega_sign_in", "status", "play", "add_to_steam"] {
             assert!(allowed(c), "{c}");
         }
         for c in ["organizer_game", "organizer_set_profile", "organizer_plugin_toggle", "organizer_plugin_move", "organizer_fomod_finish"] { assert!(allowed(c), "{c}"); }

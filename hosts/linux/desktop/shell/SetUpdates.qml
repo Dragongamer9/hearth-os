@@ -1,5 +1,7 @@
 // Hearth Settings › Updates: the running version, look for an update, download it (with progress). The
-// update is put in place for the next restart. Runs hearth-admin (pkexec).
+// update is put in place for the next restart. Runs hearth-admin (pkexec). Go back to the version before (bootc keeps
+// it; hearth-admin rollback makes it start next, and again before restarting undoes that): moved from the archived Game
+// Mode's Settings › Updates (docs/SETTINGS-MOVE.md).
 // On Peppermint also the writable system (hearth-unlock): the Unlocked switch (locking applies from the next restart),
 // Turn my changes back on after a safe start, Put my packages back again, and the notice Hearth shows.
 import QtQuick
@@ -21,8 +23,10 @@ SetPage {
     // From 1.0 on Hearth OS is MAJOR.MINOR: 1.0.0 shows as "1.0" (0.x stays whole; docs/UPDATES.md, "Version numbers").
     function shown(v) { const m = /^(\d+)\.(\d+)\.0$/.exec(v || ""); return m && Number(m[1]) >= 1 ? m[1] + "." + m[2] : v; }
     function ver(i) { return i && i.version ? shown(i.version) : (i && i.timestamp ? i.timestamp.slice(0, 10) : ""); }
+    property string lastCmd: ""
     function start(cmd) {
         if (admin.running) return;
+        lastCmd = cmd;
         error = ""; line = cmd === "update" ? "Starting…" : cmd === "update-check" ? "Looking for updates…" : "";
         phase = cmd === "update" ? "updating" : cmd === "update-check" ? "checking" : "idle";
         progress = cmd === "update" ? 0 : -1;
@@ -71,12 +75,14 @@ SetPage {
                 else if (l.startsWith("progress: ")) {
                     const m = l.match(/^progress: ([\d.]+) ?(.*)$/);
                     if (m) { page.progress = parseFloat(m[1]) / 100; if (m[2]) page.line = m[2]; }
-                } else if (l.startsWith("{")) { try { page.status = JSON.parse(l); } catch (e) {} }
+                } else if (l.startsWith("{") && page.lastCmd !== "rollback") { try { page.status = JSON.parse(l); } catch (e) {} }
             }
         }
         onExited: code => {
             if (code === 126 || code === 127) page.error = "Not allowed (Hearth's polkit rule is missing).";
             page.phase = "idle"; page.progress = -1; page.line = "";
+            // rollback prints bootc's own status: read Hearth's summary of it again.
+            if (page.lastCmd === "rollback") Qt.callLater(() => page.start("update-status"));
         }
     }
 
@@ -147,6 +153,33 @@ SetPage {
         visible: page.canAdmin && page.phase === "idle" && !(page.status && page.status.available) && !(page.status && page.status.staged)
         icon: "update"; title: "Update anyway"; sub: "Downloads anything new for Hearth and its apps"
         onActivated: page.start("update")
+    }
+    // ---- Go back to the version before (shown only when the system reports one, and no update waits for a restart)
+    readonly property bool canGoBack: page.canAdmin && page.phase === "idle" && !!(page.status && page.status.rollback && page.ver(page.status.rollback)) && !(page.status && page.status.staged)
+    property bool askBack: false
+    SetHeader { visible: page.canGoBack; text: "If something broke" }
+    SetRow {
+        visible: page.canGoBack && !page.status.rollbackQueued
+        icon: "restart"; title: "Go back to " + page.ver(page.status ? page.status.rollback : null)
+        sub: "If something broke after the last update: the version before this one starts at the next restart. Your games and files stay."
+        onActivated: page.askBack = !page.askBack
+    }
+    SetRow {
+        visible: page.canGoBack && !page.status.rollbackQueued && page.askBack
+        icon: "check"; title: "Yes, go back at the next restart"
+        sub: "Hearth updates again by itself later. Changed your mind before restarting? Stay on " + page.ver(page.status ? page.status.booted : null) + " shows up here."
+        onActivated: { page.askBack = false; page.start("rollback"); }
+    }
+    SetRow {
+        visible: page.canGoBack && !!page.status.rollbackQueued
+        icon: "restart"; title: "Restart to go back to " + page.ver(page.status ? page.status.rollback : null)
+        sub: "It starts at the next restart. Your games and files stay."
+        onActivated: Quickshell.execDetached(["systemctl", "reboot"])
+    }
+    SetRow {
+        visible: page.canGoBack && !!page.status.rollbackQueued
+        icon: "close"; title: "Stay on " + page.ver(page.status ? page.status.booted : null); sub: "Don't go back after all"
+        onActivated: page.start("rollback")
     }
     Text {
         visible: page.error !== ""

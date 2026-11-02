@@ -1196,7 +1196,7 @@ class SetupNew(AdminNewBase):
         self.assertTrue(lines[-1].startswith('error: usage'))
 
 class ShareSetup(AdminBase):
-    """Shared games: the hearth-games group, the shared folder, the in-use folder (docs/MULTI-SEAT.md)."""
+    """Shared games: the hearth-games group, the shared folder, the in-use folder (docs/archive/MULTI-SEAT.md)."""
 
     def setUp(self):
         super().setUp()

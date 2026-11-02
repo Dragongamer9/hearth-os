@@ -1,0 +1,24 @@
+# Hearth: Decky Loader, built into Hearth OS (docs/STEAM-GAME-MODE.md), for the account named after the @.
+# Never started at boot (no install section): nimbus-session starts hearth-decky@<you>.service when Steam Game Mode starts and
+# stops it when Steam Game Mode ends; 49-hearth-decky.rules lets it do that without a password. Decky runs as root (it
+# needs to), with your ~/homebrew for its plugins and settings. The program is the image's pinned release
+# (/usr/lib/hearth-decky, os-bases/peppermint/build.sh); a Decky installed with its own installer (plugin_loader.service)
+# is left alone and this one doesn't start next to it.
+[Unit]
+Description=Decky Loader for %i (Hearth Steam Game Mode)
+After=network.target
+ConditionPathExists=/usr/lib/hearth-decky/PluginLoader
+ConditionPathExists=!/etc/systemd/system/plugin_loader.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky run %i
+RuntimeDirectory=hearth-decky-%i
+Restart=on-failure
+RestartSec=3
+KillMode=process
+TimeoutStopSec=15
+Environment=LOG_LEVEL=INFO

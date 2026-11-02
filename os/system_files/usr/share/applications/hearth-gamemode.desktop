@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Game Mode
-Comment=Back to Hearth's Game Mode (Super+G)
+Comment=Back to Game Mode: Steam's, on the full screen (Super+G)
 Exec=nimbus-mode game
 Icon=hearth
 Type=Application

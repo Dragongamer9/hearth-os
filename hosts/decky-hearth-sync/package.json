@@ -1,6 +1,6 @@
 {
   "name": "decky-hearth-sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Hearth Sync: keeps Hearth's non-Steam games (Epic, GOG, Battle.net, Xbox, emulators, recomps, Beacon, your own) in Steam's library, with their pictures",
   "type": "module",
   "scripts": {

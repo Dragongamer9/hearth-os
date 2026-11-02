@@ -3,6 +3,9 @@
 //! "player://job" events and finish with "player://job-done". MPRIS presses arrive as "player://remote".
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_player::{awake, media, net, server::Server, store, tags, tools};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -364,7 +367,7 @@ fn main() {
         mpris: tokio::sync::OnceCell::new(),
     });
 
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .manage(app.clone())
         .invoke_handler(tauri::generate_handler![
             init, open_paths, folder_tracks, list_dir, media_url, proxy_url, probe, subtitle_vtt, subtitle_file_vtt, art_url,
@@ -377,7 +380,7 @@ fn main() {
                 .inner_size(1180.0, 720.0)
                 .min_inner_size(480.0, 320.0)
                 .fullscreen(full)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = w.set_focus();
             #[cfg(target_os = "linux")]

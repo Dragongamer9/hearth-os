@@ -913,7 +913,7 @@ pub fn command(ctx: &Ctx, args: &[String]) -> Result<Value, String> {
 }
 
 /// Hearth Mods' own list for the same game mustn't be deployed at the same time.
-fn refuse_simple_list(ctx: &Ctx, inst: &Instance) -> Result<(), String> {
+pub(crate) fn refuse_simple_list(ctx: &Ctx, inst: &Instance) -> Result<(), String> {
     if inst.rec.library_id.is_empty() { return Ok(()); }
     let Some(g) = ctx.games.iter().find(|g| g.id == inst.rec.library_id) else { return Ok(()) };
     let gm = crate::mods::GameMods::open(&ctx.data, g);

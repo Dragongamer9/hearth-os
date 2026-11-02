@@ -9,3 +9,4 @@ Type=Application
 Categories=System;Utility;
 Keywords=log;logs;journal;journalctl;events;errors;debug;report;bug;
 StartupWMClass=io.github.dragongamer9.hearth.logs
+X-Hearth-Controller=true

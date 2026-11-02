@@ -15,6 +15,11 @@ Hearth dark token (bg, panel, text, ember...) and becomes the chosen look's toke
 shades in between keep their place. Written to ~/.config/nimbus/theme/ (and the KDE scheme to
 ~/.local/share/color-schemes/HearthLive.colors and, while it's Hearth's, ~/.config/kdeglobals). When labwc's part changes, Desktop Mode's labwc folder is
 refreshed (hearth-system labwc-config) and labwc reloads.
+
+Hearth's own apps (Paint, Photos, Text, Terminal, Disks, Tools... the Tauri ones) take the look from
+~/.config/hearth/theme.css (CSS variables: --bg, --panel, --text, --muted, --ember/--accent, --focus, --r, --font...)
+and ~/.config/hearth/theme.json (the same tokens), written here too; hosts/hearth-apptheme/apptheme.rs puts them in
+every app window and follows changes while it's open.
 """
 import json
 import os
@@ -29,6 +34,11 @@ HOME = os.path.expanduser('~')
 CONF = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
 DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
 OUT = os.path.join(CONF, 'nimbus', 'theme')
+sys.path.insert(0, os.path.join(DESKTOP, 'shell'))
+try:
+    import hearth_settings_io as hsio   # docs/SETTINGS-PERSISTENCE.md
+except ImportError:
+    hsio = None
 TOKENS = ('bg', 'bg2', 'panel', 'panel2', 'panel3', 'line', 'text', 'muted', 'danger', 'ember', 'flame', 'ink')
 KEEP = {'#ffffff', '#000000', '#8fd18a', '#7fd18b', '#ffd166'}   # white, black, the greens and warning yellow stay
 KDE_MARK = '# Written by Hearth (Settings > Appearance); delete this line to keep your own settings.'
@@ -37,6 +47,10 @@ GNOME_ACCENTS = {'blue': '#3584e4', 'teal': '#2190a4', 'green': '#3a944a', 'yell
 
 
 def load(path, default):
+    if hsio and path.startswith(DATA):
+        # Your own settings (desktop.json, library.json): a damaged file comes back from its .bak rather than the
+        # look silently switching to the defaults.
+        return hsio.load_json(path, default)
     try:
         with open(path) as f:
             return json.load(f)
@@ -150,8 +164,55 @@ def gnome_accent(c):
     return min((n for n in GNOME_ACCENTS if n != 'slate'), key=dist)
 
 
+APP_FONT_STACK = 'system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif'
+APP_DIR = os.path.join(CONF, 'hearth')
+
+
+def mix(a, b, t):
+    """a with t of b mixed in (0..1)."""
+    return hexc([x + (y - x) * t for x, y in zip(rgb(a), rgb(b))])
+
+
+def app_tokens(pal, look, mode, accent):
+    """The tokens Hearth's apps use (the same names as their own CSS: --bg, --panel, --ember...)."""
+    m = Mapper(pal, look, mode, accent)
+    lk = pal.get(look, {})
+    c = {k: hexc(v) for k, v in m.tgt.items()}
+    c['faint'] = mix(c['bg'], c['muted'], 0.64)
+    c['accent'] = c['ember']
+    c['focus'] = c['ember']
+    c['glow'] = mix(c['bg'], c['ember'], 0.10 if mode == 'dark' else 0.08)
+    c['chrome'] = c['bg2']        # Hearth Text, Terminal and Office call bg2 chrome and ink accentInk
+    c['accentInk'] = c['ink']
+    cap = int(lk.get('corner') or 0)
+    font = lk.get('font') if lk.get('font') not in (None, '', 'sans-serif') else ''
+    return {'look': look, 'mode': mode, 'accent': m.accent, 'label': lk.get('label', look),
+            'font': ('"%s", ' % font if font else '') + APP_FONT_STACK,
+            'radius': min(14, cap) if cap else 14, 'corner': cap or 999, 'colors': c}
+
+
+def app_css(t):
+    order = ('bg', 'bg2', 'panel', 'panel2', 'panel3', 'line', 'text', 'muted', 'faint', 'danger', 'ember', 'accent',
+             'flame', 'ink', 'focus', 'glow', 'chrome', 'accentInk')
+    v = ['color-scheme:%s' % t['mode']] + ['--%s:%s' % (k, t['colors'][k]) for k in order if k in t['colors']]
+    v += ['--r:%dpx' % t['radius'], '--corner:%dpx' % t['corner'], '--font:%s' % t['font']]
+    return ('/* Written by hearth-theme (%s, %s, accent %s): the look for Hearth\'s apps. */\n:root:root{%s}\n'
+            % (t['look'], t['mode'], t['accent'], ';'.join(v)))
+
+
+def write_apps(pal, look, mode, accent):
+    t = app_tokens(pal, look, mode, accent)
+    write(os.path.join(APP_DIR, 'theme.json'), json.dumps(t, indent=1) + '\n')
+    write(os.path.join(APP_DIR, 'theme.css'), app_css(t))
+
+
 def main():
     pal, look, mode, accent = choice()
+    if '--app-css' in sys.argv:       # the CSS for the given look (tests, apptheme.rs's built-in default)
+        i = sys.argv.index('--app-css')
+        a = sys.argv[i + 1:i + 4] + ['steam', 'dark', ''][len(sys.argv[i + 1:i + 4]):]
+        sys.stdout.write(app_css(app_tokens(pal, a[0], a[1], a[2].lower())))
+        return 0
     if '--show' in sys.argv:
         m = Mapper(pal, look, mode, accent)
         print(json.dumps({'look': look, 'mode': mode, 'accent': m.accent, 'colors': {k: hexc(v) for k, v in m.tgt.items()}}))
@@ -167,6 +228,8 @@ def main():
     labwc_changed |= write(os.path.join(OUT, 'themerc-override'), themerc)
     labwc_changed |= write(os.path.join(OUT, 'labwc.json'), json.dumps({'cornerRadius': int(lk.get('windowCorner') or 10),
                                                                          'font': lk.get('font') if lk.get('font') not in (None, 'sans-serif') else 'sans'}) + '\n')
+    # Hearth's own apps (hosts/hearth-apptheme): theme.css and theme.json in ~/.config/hearth.
+    write_apps(pal, look, mode, accent)
     # Qt / KDE apps through qt6ct / qt5ct.
     write(os.path.join(OUT, 'hearth-qt.conf'), m.text(read(os.path.join(HERE, 'hearth-qt.conf')), 'qt'))
     # GTK 3 / 4.
@@ -188,8 +251,15 @@ def main():
     # palette: the same colours there, while kdeglobals is missing or still carries Hearth's mark (yours is kept).
     kg = os.path.join(CONF, 'kdeglobals')
     cur = read(kg)
+    # [UiSettings] ColorScheme: KF6 apps (KCalc, Konsole, Kate, Okular...) pick their colour scheme with
+    # KColorSchemeManager, which reads it from the app's config and then kdeglobals. Without it, outside Plasma they
+    # fall back to a light Breeze, whatever qt6ct's palette says (KCalc stayed light in Desktop Mode). [Icons] for
+    # the KDE platform theme (Plasma's) when it's used instead of qt6ct.
+    # "Hearth" (not HearthLive): KDE matches the scheme by its Name= in older releases and by its file name in newer
+    # ones, and color-schemes/Hearth.colors (the live copy written above) has both.
     if not cur or cur.startswith(KDE_MARK):
-        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde))
+        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde).rstrip('\n') + '\n\n[UiSettings]\nColorScheme=Hearth\n'
+              '\n[Icons]\nTheme=%s\n' % ('breeze' if mode == 'light' else 'breeze-dark'))
     if labwc_changed:
         rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
         system = os.path.join(DESKTOP, 'shell', 'hearth-system')

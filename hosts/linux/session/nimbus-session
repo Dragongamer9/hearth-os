@@ -166,6 +166,64 @@ SESSION_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf"
 # gamescope's screen mode options with their values (-W 1920, --nested-refresh=60, -r 59.94...), for sed -E.
 MODE_ARGS_RE='(^|[[:space:]"])(-[WHr][[:space:]]+|--(output-width|output-height|nested-refresh)[=[:space:]]+)[^[:space:]"]+'
 has_mode_args() { printf ' %s\n' "$1" | grep -Eq "$MODE_ARGS_RE"; }
+# The chosen screen mode taken out of session.conf when gamescope can't start with it (docs/SETTINGS-PERSISTENCE.md:
+# settings are never lost or changed without telling you). Only that line's mode options change, every other line
+# stays; written atomically (a temporary file, flushed, renamed) under the lock Hearth's own writers use, with the old
+# file kept as session.conf.bak. Your choice is kept in display-reverted.json and Game Mode offers it again.
+strip_mode_args() {
+  [ -f "$SESSION_CONF" ] || return 0
+  sdir="$(dirname "$SESSION_CONF")"
+  (
+    command -v flock >/dev/null 2>&1 && flock -w 5 9
+    t="$(mktemp "$sdir/.session.conf.XXXXXX")" || exit 0
+    if sed -E "/^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=/ s/$MODE_ARGS_RE/\\1/g" "$SESSION_CONF" >"$t" && [ -s "$t" ]; then
+      chmod --reference="$SESSION_CONF" "$t" 2>/dev/null
+      sync "$t" 2>/dev/null
+      cmp -s "$SESSION_CONF" "$t" || { cp -p "$SESSION_CONF" "$SESSION_CONF.bak" 2>/dev/null; mv -f "$t" "$SESSION_CONF"; }
+    fi
+    rm -f "$t"
+  ) 9>"$sdir/.session.conf.lock"
+  note_reverted "$1"
+}
+# What you had chosen, for Settings › Display's "Try again" (JSON: the options as one string, quotes escaped).
+note_reverted() {
+  sdir="$(dirname "$SESSION_CONF")"
+  mkdir -p "$sdir" 2>/dev/null
+  esc="$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  rt="$sdir/.display-reverted.$$"
+  printf '{"args": "%s", "at": %s}\n' "$esc" "$(date +%s)" >"$rt" 2>/dev/null && { sync "$rt" 2>/dev/null; true; } && mv -f "$rt" "$sdir/display-reverted.json"
+  rm -f "$rt"
+}
+# ---- The screen's real modes (os/system_files/usr/libexec/nimbus/hearth-screen, docs/STEAM-GAME-MODE.md "Screen modes").
+# A mode the connected screen doesn't list (-W/-H/-r from Settings › Display, a TV that only has 2560 × 1440 at
+# 60 Hz, another screen plugged in) made gamescope abort (code 134) instead of starting. Before gamescope starts, the
+# chosen mode is checked against the kernel's list of the screen's modes, the one gamescope picks from: not there,
+# and this start uses the screen's own mode. session.conf isn't changed (the same screen plugged back in gets your
+# mode again); Game Mode says so with "Try again" (display-reverted.json). A mode on trial (display-pending.json: just
+# picked, or Try again) is always really tried, and anything the check can't tell (several screens, no access, the
+# built-in screen's refresh rates) is left to gamescope as before.
+# (test_hearth_display_modes.py runs these lines, between the >>> and <<< marks.)
+# >>> mode precheck
+SCREEN_HELPER="${HEARTH_SCREEN_HELPER:-/usr/libexec/nimbus/hearth-screen}"
+mode_not_listed() {
+  [ -z "$HEARTH_SEAT" ] && has_mode_args "$1" && [ -f "$SCREEN_HELPER" ] && have python3 || return 1
+  [ -e "$(dirname "$SESSION_CONF")/display-pending.json" ] && return 1
+  # shellcheck disable=SC2086
+  why="$(timeout 5 python3 "$SCREEN_HELPER" check -- $1 2>/dev/null)"
+  [ $? -eq 1 ] || return 1
+  log "screen mode: $why; the screen's own mode this time (session.conf kept as it is)"
+  note_reverted "$1"
+  return 0
+}
+# <<< mode precheck
+# The ROG Ally's built-in screen for gamescope: its real refresh range (48 Hz up to the panel's own), when gamescope's
+# own scripts don't know the panel. Only a gamescope display script in ~/.config/gamescope/scripts; never a setting.
+panel_script() {
+  [ -z "$HEARTH_SEAT" ] && [ -f "$SCREEN_HELPER" ] && have python3 || return 0
+  r="$(timeout 5 python3 "$SCREEN_HELPER" panel-script 2>/dev/null)"
+  case "$r" in written|removed) log "built-in screen for gamescope: $r" ;; esac
+  return 0
+}
 run_game() {
   log "game mode"
   # Settings › Display writes gamescope's options (resolution, refresh rate) here: read again every time, so a new
@@ -182,6 +240,10 @@ run_game() {
     NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
     export WEBKIT_DISABLE_DMABUF_RENDERER=1
   fi
+  if mode_not_listed "$NIMBUS_GAMESCOPE_ARGS"; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+  fi
+  panel_script
   [ -n "$HEARTH_SEAT" ] && [ -n "$ENV_GAMESCOPE_ARGS" ] && NIMBUS_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS $ENV_GAMESCOPE_ARGS"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
@@ -249,7 +311,7 @@ run_game() {
     gs_fails=$((gs_fails + 1))
     if [ "$gs_fails" -ge 2 ]; then
       log "gamescope couldn't start with the chosen screen mode ($NIMBUS_GAMESCOPE_ARGS); back to the screen's own mode"
-      [ -f "$SESSION_CONF" ] && sed -i -E "/^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=/ s/$MODE_ARGS_RE/\\1/g" "$SESSION_CONF"
+      strip_mode_args "$NIMBUS_GAMESCOPE_ARGS"
       rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display-pending.json"
       NIMBUS_GAMESCOPE_ARGS="$(printf ' %s' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")"
       # Options that still name a mode (not ones Hearth wrote) aren't tried over and over.
@@ -427,7 +489,7 @@ input_stop() {
 
 # >>> steam game mode
 # ---- Steam Game Mode (docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs it, with
-# Decky Loader and the Hearth plugin when they're installed. Hearth OS's Game Mode: where the session starts, and what
+# Decky Loader (built in) and Hearth Sync. Hearth OS's Game Mode: where the session starts, and what
 # every "game" request opens. Where it goes afterwards (STEAM_BACK: Desktop Mode, or Hearth's own Game Mode with the
 # developer switch / on the live USB):
 #   Steam or gamescope missing, safe graphics on, or Steam ending with an error within STEAM_MODE_MIN_SECS: STEAM_BACK,
@@ -466,10 +528,38 @@ steam_cant_reason() {
   elif [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then echo "safe graphics are on this time"
   fi
 }
-# Decky Loader, when Hearth installed it (hearth-admin decky-install): its root service runs only while Steam Game
-# Mode does, never at boot or in Hearth's modes. Never waited on for long, never fatal.
+# Decky Loader, built into Hearth OS (hearth-decky@.service, docs/STEAM-GAME-MODE.md): its root service runs only while
+# Steam Game Mode does, never at boot or in Desktop Mode. systemctl starts your own instance without a password
+# (49-hearth-decky.rules); the service brings Hearth Sync up to date and removes an install from before. Steam's CEF
+# remote debugging flag and ~/homebrew are made here first, before Steam starts (Steam reads the flag when it starts).
+# A Decky from its own installer (plugin_loader.service) runs by itself and is left alone. Older images: Hearth's
+# downloaded install (hearth-admin decky-install), through pkexec as before. Never waited on for long, never fatal.
 DECKY_UNIT="${HEARTH_DECKY_UNIT:-/etc/systemd/system/hearth-decky.service}"
+DECKY_BUILTIN="${HEARTH_DECKY_BUILTIN:-/usr/lib/systemd/system/hearth-decky@.service}"
+DECKY_UPSTREAM="${HEARTH_DECKY_UPSTREAM:-/etc/systemd/system/plugin_loader.service}"
+decky_user_side() {
+  mkdir -p "$HOME/homebrew/settings" "$HOME/homebrew/data" "$HOME/homebrew/logs" 2>/dev/null || return 0
+  made=""
+  for f in "$HOME/.steam/steam/.cef-enable-remote-debugging" "$HOME/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"; do
+    d="${f%/*}"
+    case "$f" in *com.valvesoftware.Steam*) [ -d "$d" ] || continue ;; esac
+    [ -e "$f" ] && continue
+    mkdir -p "$d" 2>/dev/null && : >"$f" 2>/dev/null && made="$made$f
+"
+  done
+  [ -n "$made" ] && printf '%s' "$made" >>"$HOME/homebrew/.hearth-made-this" 2>/dev/null
+  return 0
+}
 decky_ctl() {
+  [ -f "$DECKY_UPSTREAM" ] && return 0
+  if [ -f "$DECKY_BUILTIN" ] && have systemctl; then
+    du="${USER:-$(id -un 2>/dev/null)}"
+    [ -n "$du" ] || return 0
+    [ "$1" = start ] && decky_user_side
+    timeout 20 systemctl --no-ask-password "$1" "hearth-decky@$du.service" >/dev/null 2>&1 \
+      || log "steam game mode: decky $1 didn't work (Steam Game Mode goes on without Decky)"
+    return 0
+  fi
   [ -f "$DECKY_UNIT" ] && [ -x /usr/libexec/nimbus/hearth-admin ] && have pkexec || return 0
   timeout 15 pkexec /usr/libexec/nimbus/hearth-admin "decky-$1" >/dev/null 2>&1 || log "steam game mode: decky-$1 didn't work (Steam Game Mode goes on without Decky)"
   return 0
@@ -522,6 +612,15 @@ run_steam_mode() {
   NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
+  # Hearth Recovery › Safe graphics this time: the screen's own mode here too.
+  if [ -f /run/hearth/safe-graphics ] && [ -n "$MODE_ARGS_RE" ]; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+  fi
+  # (The screen-mode helpers are defined above this block: present in the session, absent in the block's own tests.)
+  if command -v mode_not_listed >/dev/null 2>&1 && mode_not_listed "$NIMBUS_GAMESCOPE_ARGS"; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+  fi
+  command -v panel_script >/dev/null 2>&1 && panel_script
   # Steam's "Switch to Desktop" (and Game Mode) runs steamos-session-select: Hearth's own comes first on Steam's PATH and
   # asks this session (nothing about the login screen or the next start changes).
   sbin="$RUN/hearth-steam-bin"; mkdir -p "$sbin"
@@ -554,10 +653,19 @@ run_steam_mode() {
       shost=1; log "steam game mode: multi-seat: hosting the other players' screens"
     fi
   fi
+  # Hearth's startup animation (Settings › Boot & startup, hearth-boot-look): the chosen one into Steam's override folder.
+  # Time-limited, never fatal: Steam starts the same way whatever happens here.
+  bl=/usr/libexec/nimbus/hearth-boot-look
+  if [ -f "$bl" ] && have python3; then timeout 10 python3 "$bl" movie-apply >/dev/null 2>&1 || log "steam game mode: startup animation not applied"; fi
   decky_ctl start
   echo $$ >"$RUN/hearth-steam-mode.pid"
   steam_core_start
   steam_input_start
+  # A chosen screen mode gamescope can't start with (it ends within seconds): that mode goes, as in Hearth's Game Mode
+  # (strip_mode_args: kept in display-reverted.json, Game Mode says so with "Try again"), and Steam Game Mode starts
+  # once more at the screen's own mode, instead of counting as Steam failing.
+  s_retry=1
+  while :; do
   started=$(date +%s)
   # What gamescope-session-steam (SteamOS, Bazzite, ChimeraOS) tells Steam, in a subshell so nothing stays for later modes.
   # shellcheck disable=SC2086
@@ -576,6 +684,15 @@ run_steam_mode() {
     exec gamescope -e -f --xwayland-count 2 $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal
   )
   rc=$?
+  [ "$rc" -ne 0 ] && [ "$s_retry" = 1 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ] && [ ! -s "$NEXT" ] \
+    && command -v has_mode_args >/dev/null 2>&1 && has_mode_args "$NIMBUS_GAMESCOPE_ARGS" || break
+  s_retry=0
+  log "steam game mode: gamescope couldn't start with the chosen screen mode (code $rc, $NIMBUS_GAMESCOPE_ARGS); once more at the screen's own mode"
+  strip_mode_args "$NIMBUS_GAMESCOPE_ARGS"
+  rm -f "$(dirname "$SESSION_CONF")/display-pending.json"
+  NIMBUS_GAMESCOPE_ARGS="$(printf ' %s' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")"
+  has_mode_args "$NIMBUS_GAMESCOPE_ARGS" && break
+  done
   rm -f "$RUN/hearth-steam-mode.pid"
   steam_core_stop
   steam_input_stop
@@ -680,11 +797,14 @@ steam_auto_after() {
 }
 # <<< steam game mode
 
-# ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) is Hearth's app,
-# shown once on a fresh install. Until it's done (or skipped: Hearth writes setupDone in library.json), "game" means
-# Hearth's app for it (mode "setup", Hearth's Game Mode code); after it, Steam Game Mode. Hearth's app switches to
-# Steam Game Mode itself when setup finishes, and a setup run that ends without asking for anything goes there too.
+# ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) was Hearth's app,
+# shown once on a fresh install. From Hearth OS 1.1 the USB installer asks everything first-time setup asked (language,
+# Wi-Fi, your account, the time zone), so a new install starts straight in Steam Game Mode (Steam asks for its own
+# sign-in) and the old Game Mode screens aren't needed: setup is only pending with HEARTH_LEGACY_SETUP=1 in
+# session.conf (a developer switch). Until it's done (or skipped: Hearth writes setupDone in library.json), "game" then
+# means Hearth's app for it (mode "setup"); a setup run that ends without asking for anything goes to Steam Game Mode.
 setup_pending() {
+  [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || return 1
   [ -z "$HEARTH_SEAT" ] && can_game || return 1
   ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
 }

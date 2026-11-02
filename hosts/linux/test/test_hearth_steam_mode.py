@@ -22,6 +22,8 @@ MODE = ROOT / 'hosts/linux/session/nimbus-mode'
 DECKY = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-decky'
 ADMIN = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-admin'
 RULES = ROOT / 'os/system_files/usr/share/polkit-1/rules.d/49-hearth-admin.rules'
+DECKY_RULES = ROOT / 'os/system_files/usr/share/polkit-1/rules.d/49-hearth-decky.rules'
+DECKY_TEMPLATE = ROOT / 'os/system_files/usr/lib/systemd/system/hearth-decky@.service'
 STEAMOS_UPDATE = ROOT / 'os/system_files/usr/libexec/nimbus/hearth-steamos-update'
 
 
@@ -70,7 +72,8 @@ class SteamModeSession(unittest.TestCase):
             f.write('log() { echo "$*" >>"$LOG"; }\nhave() { command -v "$1" >/dev/null 2>&1; }\n')
             f.write(before + '\n' + block() + '\nrun_steam_mode\necho "rc=$?"\n')
         env = {'PATH': self.bin, 'HOME': os.path.join(self.tmp, 'home'), 'STEAM_MODE_MIN_SECS': '20',
-               'HEARTH_DECKY_UNIT': os.path.join(self.tmp, 'no-decky.service')}
+               'HEARTH_DECKY_UNIT': os.path.join(self.tmp, 'no-decky.service'),
+               'HEARTH_DECKY_BUILTIN': os.path.join(self.tmp, 'no-decky@.service'), 'USER': 'player'}
         env.update(extra_env or {})
         r = subprocess.run(['/bin/sh', script], env=env, capture_output=True, text=True, timeout=60)
         self.assertIn('rc=0', r.stdout, r.stderr)
@@ -217,6 +220,42 @@ class SteamModeSession(unittest.TestCase):
         self.run_mode()
         self.assertFalse(os.path.exists(calls), 'no Decky unit: nothing asked')
         # (/usr/libexec/nimbus/hearth-admin isn't on a CI runner, so decky_ctl stays quiet there too.)
+
+    def test_builtin_decky_starts_with_steam_and_stops_after_without_pkexec(self):
+        calls = os.path.join(self.tmp, 'systemctl-calls')
+        pk = os.path.join(self.tmp, 'pkexec-calls')
+        seen = os.path.join(self.tmp, 'seen')
+        home = os.path.join(self.tmp, 'home')
+        cef = os.path.join(home, '.steam/steam/.cef-enable-remote-debugging')
+        self.fake('systemctl', 'echo "$@" >>%s' % calls)
+        self.fake('pkexec', 'echo "$@" >>%s' % pk)
+        # Steam starts after the CEF flag is there and Decky was asked to start.
+        self.fake('gamescope', '[ -e %s ] && grep -q start %s && echo ready >%s; exit 0' % (cef, calls, seen))
+        self.fake('steam', 'exit 0')
+        unit = os.path.join(self.tmp, 'hearth-decky@.service')
+        open(unit, 'w').write('[Service]\n')
+        self.run_mode({'HEARTH_DECKY_BUILTIN': unit, 'HEARTH_DECKY_UPSTREAM': os.path.join(self.tmp, 'none')})
+        time.sleep(0.5)   # (stop runs in the background)
+        lines = open(calls).read().split('\n')
+        self.assertIn('--no-ask-password start hearth-decky@player.service', lines)
+        self.assertIn('--no-ask-password stop hearth-decky@player.service', lines)
+        self.assertEqual(open(seen).read().strip(), 'ready', 'the CEF flag and Decky before Steam')
+        for d in ('settings', 'data', 'logs'):
+            self.assertTrue(os.path.isdir(os.path.join(home, 'homebrew', d)))
+        self.assertIn(cef, open(os.path.join(home, 'homebrew/.hearth-made-this')).read())
+        self.assertFalse(os.path.exists(pk), 'no password prompt, no pkexec')
+
+    def test_deckys_own_install_means_the_builtin_one_stays_off(self):
+        calls = os.path.join(self.tmp, 'systemctl-calls')
+        self.fake('systemctl', 'echo "$@" >>%s' % calls)
+        self.fake('gamescope', 'exit 0')
+        self.fake('steam', 'exit 0')
+        unit = os.path.join(self.tmp, 'hearth-decky@.service')
+        up = os.path.join(self.tmp, 'plugin_loader.service')
+        for f in (unit, up):
+            open(f, 'w').write('[Service]\n')
+        self.run_mode({'HEARTH_DECKY_BUILTIN': unit, 'HEARTH_DECKY_UPSTREAM': up})
+        self.assertFalse(os.path.exists(calls))
 
     def fake_core(self, body):
         """A stand-in for Hearth's app that knows --core-service (the session checks for the word first)."""
@@ -454,7 +493,8 @@ class StartInSteamGameMode(unittest.TestCase):
             f.write('echo "start=$mode"\n')
             f.write('if [ "$mode" = steam ]; then steam_auto_before; run_steam_mode; steam_auto_after; fi\necho "next=$(cat "$NEXT" 2>/dev/null)"\n')
         env = {'PATH': self.bin, 'HOME': self.home, 'RUN_DIR': self.run_dir, 'STEAM_MODE_MIN_SECS': '20',
-               'HEARTH_DECKY_UNIT': os.path.join(self.tmp, 'no-decky.service'), 'HEARTH_CMDLINE': self.cmdline,
+               'HEARTH_DECKY_UNIT': os.path.join(self.tmp, 'no-decky.service'),
+               'HEARTH_DECKY_BUILTIN': os.path.join(self.tmp, 'no-decky@.service'), 'HEARTH_CMDLINE': self.cmdline,
                'HEARTH_SAFE_FLAG': os.path.join(self.tmp, 'no-safe'),
                'HEARTH_PAD_HELD': os.path.join(self.tmp, 'no-pad-held'), 'USER': 'player'}
         env.update(extra_env or {})
@@ -748,6 +788,29 @@ class DeckyHelper(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/dist/index.js')).read(), '// new version')
         self.assertNotIn('plugin', self.m.start_stop('stop'))
 
+    def test_hearth_link_ships_next_to_hearth_sync(self):
+        self.ship_plugin()
+        d = os.path.join(self.root, 'usr/share/hearth/decky-hearth-link')
+        os.makedirs(os.path.join(d, 'dist'))
+        open(os.path.join(d, 'plugin.json'), 'w').write('{"name": "Hearth Link", "author": "Dragongamer9"}')
+        open(os.path.join(d, 'dist', 'index.js'), 'w').write('// built')
+        r = self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+        self.assertEqual(r['others'], {'decky-hearth-link': True})
+        link = os.path.join(self.home, 'homebrew/plugins/decky-hearth-link')
+        self.assertTrue(os.path.isfile(os.path.join(link, 'dist/index.js')))
+        self.assertNotIn('decky-hearth-link', self.m.start_stop('start'), 'the same plugin: left as it is')
+        open(os.path.join(d, 'dist', 'index.js'), 'w').write('// new version')
+        self.assertEqual(self.m.start_stop('start')['decky-hearth-link'], 'updated')
+        self.assertEqual(open(os.path.join(link, 'dist/index.js')).read(), '// new version')
+        self.m.remove(self.user)
+        self.assertFalse(os.path.exists(link))
+
+    def test_an_image_without_hearth_link_is_fine(self):
+        self.ship_plugin()
+        r = self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+        self.assertEqual(r['others'], {})
+        self.assertNotIn('decky-hearth-link', self.m.start_stop('start'))
+
     def old_plugin(self, meta='{"name": "Hearth", "author": "Dragongamer9"}', folder='decky-hearth'):
         d = os.path.join(self.home, 'homebrew/plugins', folder)
         os.makedirs(os.path.join(d, 'dist'))
@@ -816,6 +879,81 @@ class DeckyHelper(unittest.TestCase):
         self.assertEqual(r['via'], 'decky')
         self.assertTrue(r['plugin'])
         self.assertFalse(os.path.exists(os.path.join(self.root, 'etc/systemd/system/hearth-decky.service')))
+
+    def build_in(self):
+        d = os.path.join(self.root, 'usr/lib/hearth-decky')
+        os.makedirs(d)
+        open(os.path.join(d, 'PluginLoader'), 'wb').write(b'\x7fELF' + b'\0' * 64)
+        os.chmod(os.path.join(d, 'PluginLoader'), 0o755)
+        open(os.path.join(d, 'version'), 'w').write('v3.3.1\n')
+        u = os.path.join(self.root, 'usr/lib/systemd/system')
+        os.makedirs(u)
+        shutil.copy(DECKY_TEMPLATE, u)
+
+    def test_builtin_prepare_makes_the_user_side_and_hearth_sync(self):
+        self.ship_plugin()
+        self.build_in()
+        self.assertTrue(self.m.builtin())
+        self.assertEqual(self.m.builtin_version(), 'v3.3.1')
+        old = self.old_plugin()
+        out = self.m.prepare(self.user)
+        self.assertEqual(out['plugin'], 'updated')
+        self.assertEqual(out['oldPlugin'], 'removed')
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, '.steam/steam/.cef-enable-remote-debugging')))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/plugin.json')))
+        self.assertNotIn('plugin', self.m.prepare(self.user), 'the same plugin: left as it is')
+        env = self.m.decky_env(self.home, 'x', base={})
+        self.assertEqual(env['UNPRIVILEGED_USER'], 'x')
+        self.assertEqual(env['PRIVILEGED_PATH'], os.path.join(self.home, 'homebrew'))
+        self.assertEqual(env['KEEP_SYSTEMD_SERVICE'], '1')
+
+    def test_builtin_migrates_an_install_from_before(self):
+        self.ship_plugin()
+        self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+        old_unit = os.path.join(self.root, 'etc/systemd/system/hearth-decky.service')
+        self.assertTrue(os.path.isfile(old_unit))
+        self.build_in()
+        out = self.m.prepare(self.user)
+        self.assertTrue(out['migrated'])
+        self.assertFalse(os.path.exists(old_unit))
+        self.assertFalse(os.path.exists(os.path.join(self.root, 'var/lib/hearth-decky')))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/plugin.json')))
+        # A hearth-decky.service someone wrote themselves is never removed.
+        open(old_unit, 'w').write('[Service]\nExecStart=/opt/mine\n')
+        self.assertNotIn('migrated', self.m.prepare(self.user))
+        self.assertTrue(os.path.isfile(old_unit))
+
+    def test_builtin_install_downloads_nothing_and_remove_is_refused(self):
+        self.ship_plugin()
+        self.build_in()
+        r = self.m.install(self.user, download=lambda: self.fail('must not download'))
+        self.assertEqual(r['via'], 'builtin')
+        self.assertEqual(r['version'], 'v3.3.1')
+        self.assertTrue(r['plugin'])
+        with self.assertRaises(ValueError):
+            self.m.remove(self.user)
+
+    def test_builtin_doesnt_start_next_to_deckys_own(self):
+        self.build_in()
+        up = os.path.join(self.root, 'etc/systemd/system/plugin_loader.service')
+        os.makedirs(os.path.dirname(up))
+        open(up, 'w').write('[Service]\n')
+        with self.assertRaises(ValueError):
+            self.m.prepare(self.user)
+        t = DECKY_TEMPLATE.read_text()
+        self.assertIn('ConditionPathExists=!/etc/systemd/system/plugin_loader.service', t)
+        self.assertIn('User=root', t)
+        self.assertIn('ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky run %i', t)
+        self.assertNotIn('[Install]', t)
+
+    def test_builtin_polkit_rule_is_only_your_own_instance(self):
+        r = DECKY_RULES.read_text()
+        self.assertIn('"org.freedesktop.systemd1.manage-units"', r)
+        self.assertIn('action.lookup("unit") == "hearth-decky@" + subject.user + ".service"', r)
+        self.assertIn("subject.local && subject.active)", r)
+        self.assertNotIn("isInGroup", r, "every account gets Decky (the owner's choice)")
+        self.assertIn('["start", "stop", "restart"]', r)
 
     def test_only_peoples_accounts(self):
         with self.assertRaises(ValueError):

@@ -1,4 +1,4 @@
-# Hearth Plasma (docs/PLASMA.md): checks Hearth's Plasma files and draws Hearth Plasma for real, next to Hearth Classic.
+# Hearth Plasma (docs/archive/PLASMA.md): checks Hearth's Plasma files and draws Hearth Plasma for real, next to Hearth Classic.
 #   1. lint: qmlformat must parse every Hearth widget (org.hearth.*), qmllint's findings are shown; every metadata.json
 #      is JSON, the layout script is valid JavaScript, and Plasma's own tools find the look-and-feel package, the
 #      desktop theme and the widgets (kpackagetool6, plasma-apply-lookandfeel); the session's Python tests run.

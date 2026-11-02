@@ -5,6 +5,12 @@
 //!                (SteamOS...): room it can give, what's in the way
 //!   start(plan)  installs; progress goes to the page as 'osInstall' events ({state, stage, pct, text...})
 //!   restart()    restarts into the installed Hearth
+//! The 1.1 USB installer (ui/installer.html) also uses:
+//!   screen(name) the installer's screen, on the serial console as "HEARTH-UI screen=<name>" (only under CI's
+//!                `hearth.ci`, which drives the screens in a virtual PC and screenshots each one)
+//!   tz_guess()   the time zone for where this PC is (online only; ipapi.co), else the USB's own
+//!   rotate(turn) the screen turned 0-3 quarter turns clockwise (handhelds whose panel is portrait): wlr-randr in cage
+//!   poweroff()   turns the PC off
 
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
@@ -79,7 +85,7 @@ impl OsInstaller {
         }
         let mut child = Command::new("pkexec").args([ENGINE, "run"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
             .map_err(|e| { self.state.lock().unwrap()["state"] = json!("failed"); e.to_string() })?;
-        if let Some(mut i) = child.stdin.take() { let _ = i.write_all(plan.to_string().as_bytes()); }
+        if let Some(mut i) = child.stdin.take() { let _ = i.write_all(plan_for_engine(plan, under_ci()).to_string().as_bytes()); }
         let state = self.state.clone();
         let push = |s: &Value| { let mut s = s.clone(); s["available"] = json!(true); crate::stores::notify(json!({"type": "event", "name": "osInstall", "data": s})); };
         let read = |r: Box<dyn std::io::Read + Send>, state: Arc<Mutex<Value>>| std::thread::spawn(move || {
@@ -115,6 +121,59 @@ impl OsInstaller {
     pub fn restart(&self) -> bool { Command::new("systemctl").arg("reboot").spawn().is_ok() }
 }
 
+/// CI's end-to-end test (`hearth.ci` on the kernel command line) reads the serial console.
+pub fn under_ci() -> bool { std::fs::read_to_string("/proc/cmdline").map(|c| c.split_whitespace().any(|w| w == "hearth.ci")).unwrap_or(false) }
+
+/// The plan as the engine gets it: under CI the installed system talks on the serial console too.
+pub fn plan_for_engine(plan: &Value, ci: bool) -> Value {
+    let mut p = plan.clone();
+    if ci && p.is_object() {
+        p["kargs"] = json!(["console=ttyS0,115200", "console=tty0", "plymouth.ignore-serial-consoles"]);
+    }
+    p
+}
+
+/// The screen the installer shows, for the CI test that drives it (nothing happens on a real PC).
+pub fn screen(name: &str) {
+    if !under_ci() { return; }
+    let name: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
+    if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open("/dev/ttyS0") { let _ = writeln!(f, "HEARTH-UI screen={name}"); }
+    crate::bridge::log(&format!("osinstall: screen {name}"));
+}
+
+/// A time zone name as the engine accepts it ("America/Chicago").
+pub fn valid_tz(z: &str) -> bool {
+    !z.is_empty() && z.len() < 64 && !z.contains("..") && z.chars().all(|c| c.is_ascii_alphanumeric() || "_+/-".contains(c))
+        && std::path::Path::new("/usr/share/zoneinfo").join(z).is_file()
+}
+
+/// Where this PC is, by its internet address (one request, 6 s at most): {"zone": "...", "how": "online"}, or the
+/// USB's own zone with "how": "default" when offline.
+pub fn tz_guess() -> Value {
+    if let Ok(r) = crate::http::request("GET", "https://ipapi.co/timezone/", &[], None, 6) {
+        let z = r.text.trim();
+        if r.ok() && valid_tz(z) { return json!({"zone": z, "how": "online"}); }
+    }
+    json!({"zone": "UTC", "how": "default"})
+}
+
+/// wlr-randr's transform for a number of quarter turns clockwise.
+pub fn transform(turn: u32) -> &'static str { match turn % 4 { 1 => "90", 2 => "180", 3 => "270", _ => "normal" } }
+
+/// Turns every screen cage shows (the installer is the only thing on it).
+pub fn rotate(turn: u32) -> Result<(), String> {
+    let list = crate::system::run_timeout("wlr-randr", &[], std::time::Duration::from_secs(5))?;
+    let outputs: Vec<String> = list.lines().filter(|l| !l.starts_with(' ') && !l.trim().is_empty())
+        .filter_map(|l| l.split_whitespace().next().map(str::to_string)).collect();
+    if outputs.is_empty() { return Err("No screen found".into()); }
+    for o in outputs {
+        crate::system::run_timeout("wlr-randr", &["--output", &o, "--transform", transform(turn)], std::time::Duration::from_secs(5))?;
+    }
+    Ok(())
+}
+
+pub fn poweroff() -> bool { Command::new("systemctl").arg("poweroff").spawn().is_ok() }
+
 /// "Install with Mantel": Mantel opens its install window when it starts. And Mantel's "use Hearth's
 /// installer" asks the other way round (the live USB's welcome screen then opens the installer).
 fn handoff_file() -> std::path::PathBuf { std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-open-installer") }
@@ -131,6 +190,12 @@ mod tests {
         assert_eq!(parse_line("stage: {\"stage\":\"copy\",\"pct\":40,\"text\":\"Copying\"}").unwrap().1["pct"], 40);
         assert_eq!(parse_line("error: Disk too small").unwrap(), ("error", json!("Disk too small")));
         assert!(parse_line("random noise").is_none());
+        assert_eq!(transform(1), "90");
+        assert_eq!(transform(4), "normal");
+        assert_eq!(plan_for_engine(&json!({"mode": "whole"}), false), json!({"mode": "whole"}));
+        assert_eq!(plan_for_engine(&json!({"mode": "whole"}), true)["kargs"][0], "console=ttyS0,115200");
+        assert!(!valid_tz("../etc/passwd"));
+        assert!(!valid_tz(""));
         assert_eq!(answer(0, "hello\n{\"disks\":[]}\n", "x").unwrap(), json!({"disks": []}));
         assert_eq!(answer(0, "error: nope\n{\"a\":1}", "x").unwrap_err(), "nope");
         assert_eq!(answer(1, "something broke", "x").unwrap_err(), "something broke");

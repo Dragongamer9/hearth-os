@@ -4,6 +4,9 @@
 //! while it runs (from Hearth Files) adds a tab to the window that's already open.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_text::{admin, cli, files, settings, textfile};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -112,7 +115,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
 
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         // A second `hearth-text FILE` (Hearth Files opening another file) hands its files to this window.
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             let l = match cli::parse(argv.into_iter().skip(1)) { Ok(cli::Parsed::Run(l)) => l, _ => return };
@@ -131,7 +134,7 @@ fn main() {
                 .title("Text")
                 .inner_size(1040.0, 720.0)
                 .min_inner_size(420.0, 300.0)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = w.set_focus();
             Ok(())

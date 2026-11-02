@@ -25,6 +25,9 @@
 // open are dropped in mods/nxm-inbox/ by the handler and picked up here within a second.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_gaming::downloads;
 use hearth_gaming::games::{self, GameEntry};
 use hearth_gaming::nexus;
@@ -32,6 +35,7 @@ use hearth_gaming::wabbajack;
 use hearth_gaming::mods::{self, GameMods, Staged};
 use hearth_gaming::organizer;
 use hearth_gaming::util;
+use hearth_gaming::launch;
 use hearth_gaming::service;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -182,6 +186,16 @@ fn nexus_files(url: &str) -> Result<Value, String> {
               "page": nexus::files_page(&domain, mod_id, None), "premium": acct.premium, "files": list, "adult": info["contains_adult_content"]}))
 }
 
+/// A Nexus mod's page facts for the details panel (summary, endorsements, version...), without its files.
+fn nexus_mod(domain: &str, mod_id: u64) -> Result<Value, String> {
+    let acct = nexus::account().ok_or("Sign in to Nexus Mods to see its page here.")?;
+    if domain.is_empty() || mod_id == 0 || !domain.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') { return Err("That isn't a Nexus mod.".into()); }
+    let info = nexus::mod_info(&acct.key, domain, mod_id)?;
+    Ok(json!({"name": info["name"], "summary": info["summary"], "author": info["author"], "version": info["version"], "picture": info["picture_url"],
+              "endorsements": info["endorsement_count"], "downloads": info["mod_downloads"], "updated": info["updated_timestamp"], "adult": info["contains_adult_content"],
+              "page": nexus::files_page(domain, mod_id, None)}))
+}
+
 fn wj_defaults(title: &str, gname: &str) -> Value {
     let info = wabbajack::game_info(gname);
     let list = if GAMES.lock().unwrap_or_else(|e| e.into_inner()).is_empty() { load_games() } else { GAMES.lock().unwrap_or_else(|e| e.into_inner()).clone() };
@@ -244,6 +258,27 @@ fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
         "set_deploy" => change(&s(a, "id"), |gm, g| gm.set_mode(g, &s(a, "mode"))),
         "set_nexus_game" => { let g = game(&s(a, "id"))?; GameMods::open(&data_root(), &g).set_nexus_game(&s(a, "domain"))?; Ok(summary(&g)) }
         "check_updates" => check_updates(&s(a, "id")),
+        // The page's game hero and details panel: pictures, playing the game modded, file conflicts, notes.
+        "art" => { let g = game(&s(a, "id"))?; let k = s(a, "kind"); Ok(g.art.get(&k).and_then(|v| games::art_data(v)).map(Value::String).unwrap_or(Value::Null)) }
+        "play" => { let g = game(&s(a, "id"))?; if g.beacon { games::open_beacon().map(null) } else { launch::spawn_watched("play modded", &["--play-modded".into(), g.id.clone()]) } }
+        // Add to Steam (launch.rs): the entries Hearth Sync turns into Steam shortcuts.
+        "steam_entries" => {
+            let g = game(&s(a, "id"))?;
+            let inst = organizer::gamemode::for_game(&organizer::Ctx::system(Vec::new()), &g.id);
+            Ok(json!({"inSteam": launch::in_steam(&launch::shortcuts_file(), &g.id), "instance": inst.as_ref().map(|i| i.rec.id.clone()), "mo2": inst.as_ref().map(|i| launch::mo2_exe(i).is_some()).unwrap_or(false),
+                      "hearthSync": util::home().join("homebrew/plugins/decky-hearth-sync").is_dir() || std::path::Path::new("/usr/share/hearth/decky/decky-hearth-sync").is_dir()}))
+        }
+        "add_to_steam" => {
+            let g = game(&s(a, "id"))?;
+            let inst = organizer::gamemode::for_game(&organizer::Ctx::system(Vec::new()), &g.id).map(|i| i.rec.id.clone());
+            let kinds: Vec<String> = a["kinds"].as_array().map(|v| v.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            let me = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("/usr/bin/hearth-mods"));
+            launch::add_to_steam(&launch::shortcuts_file(), &me, &g, inst.as_deref(), &kinds.iter().map(|k| k.as_str()).collect::<Vec<_>>())
+        }
+        "remove_from_steam" => launch::remove_from_steam(&launch::shortcuts_file(), &s(a, "id")),
+        "mod_conflicts" => { let g = game(&s(a, "id"))?; GameMods::open(&data_root(), &g).conflicts(&g, &s(a, "m")) }
+        "set_note" => { let _w = WORK.lock().unwrap_or_else(|e| e.into_inner()); let g = game(&s(a, "id"))?; GameMods::open(&data_root(), &g).set_note(&s(a, "m"), &s(a, "note"))?; Ok(summary(&g)) }
+        "nexus_mod" => nexus_mod(&s(a, "domain"), u(a, "modId")),
         // Nexus Mods
         "nexus_account" => Ok(nexus::account().map(|x| x.public()).unwrap_or(Value::Null)),
         "nexus_sign_in" => nexus::sign_in(&s(a, "key")).map(|x| x.public()),
@@ -325,12 +360,9 @@ fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
         }
         // Plays through the organizer in its own process (it waits for the game, then takes the mods away again).
         "organizer_run" => {
-            let me = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hearth-mods"));
-            let mut c = std::process::Command::new(me);
-            c.arg("--organizer").arg(s(a, "id")).arg("run");
-            if !s(a, "exe").is_empty() { c.arg("--exe").arg(s(a, "exe")); }
-            c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-                .spawn().map(|mut ch| { std::thread::spawn(move || { let _ = ch.wait(); }); Value::Null }).map_err(|e| format!("Couldn't start it ({e})"))
+            let mut args = vec!["--organizer".to_string(), s(a, "id"), "run".to_string()];
+            if !s(a, "exe").is_empty() { args.push("--exe".into()); args.push(s(a, "exe")); }
+            launch::spawn_watched("organizer run", &args)
         }
         "organizer_game" | "organizer_set_profile" | "organizer_plugin_toggle" | "organizer_plugin_move" | "organizer_fomod_finish" => {
             let _w = WORK.lock().unwrap_or_else(|e| e.into_inner());
@@ -432,6 +464,15 @@ fn cli(args: &[String]) -> Option<i32> {
     if util::has_arg(args, "--downloads") { print(&downloads::list()); return Some(0); }
     if util::has_arg(args, "--modlists") { return Some(match wabbajack::gallery(true) { Ok(v) => { print(&v); 0 } Err(e) => { eprintln!("{e}"); 1 } }); }
     if util::has_arg(args, "--wabbajack-engine") { return Some(match wabbajack::fetch_engine() { Ok(v) => { print(&v); 0 } Err(e) => { eprintln!("{e}"); 1 } }); }
+    // What Play modded and the Steam shortcuts run (launch.rs): the game with its mods, or Mod Organizer 2 itself.
+    if let Some(v) = pos("--play-modded", 1) {
+        load_games();
+        return Some(match game(&v[0]).and_then(|g| launch::play_modded(&g)) { Ok(v) => { print(&v); 0 } Err(e) => { launch::log(&format!("play modded: {e}")); print(&json!({"ok": false, "error": e})); 1 } });
+    }
+    if let Some(v) = pos("--run-mo2", 1) {
+        let ctx = organizer::Ctx::system(load_games());
+        return Some(match ctx.open(&v[0]).and_then(|i| launch::run_mo2(&i)) { Ok(v) => { print(&v); 0 } Err(e) => { print(&json!({"ok": false, "error": e})); 1 } });
+    }
     if let Some(i) = args.iter().position(|a| a == "--organizer") {
         let rest: Vec<String> = args[i + 1..].to_vec();
         let ctx = organizer::Ctx::system(load_games());
@@ -481,7 +522,7 @@ fn main() {
     become_worker();
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![info, call, pick_path])
         .setup(move |app| {
@@ -490,7 +531,7 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

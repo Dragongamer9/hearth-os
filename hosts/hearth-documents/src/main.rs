@@ -3,6 +3,9 @@
 //! pages through the "media" scheme, and remembers where you were through the state commands.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_documents::{cbz, kind, state};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -158,7 +161,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     pick_drawing();
 
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Startup { target, selftest: std::env::var_os("HEARTH_DOCUMENTS_SELFTEST").is_some() })
@@ -176,7 +179,7 @@ fn main() {
                 .inner_size(1200.0, 860.0)
                 .min_inner_size(420.0, 320.0)
                 .fullscreen(start_fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = w.set_focus();
             Ok(())

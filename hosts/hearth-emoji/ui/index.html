@@ -13,21 +13,21 @@
 }
 * { box-sizing:border-box; }
 html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
-body { font:400 15px/1.35 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; overflow:hidden; user-select:none; -webkit-user-select:none;
-  background:radial-gradient(900px 500px at 90% -20%, #2a170d 0%, transparent 60%), var(--bg); }
+body { font:400 15px/1.35 var(--font, system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif); overflow:hidden; user-select:none; -webkit-user-select:none;
+  background:radial-gradient(900px 500px at 90% -20%, var(--glow, #2a170d) 0%, transparent 60%), var(--bg); }
 button, input { font:inherit; color:inherit; }
 .app { display:grid; grid-template-rows:auto auto 1fr auto; height:100%; }
 header { display:flex; gap:10px; align-items:center; padding:12px 14px 8px; }
-.search { flex:1; display:flex; align-items:center; gap:8px; background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:0 12px; height:42px; }
-.search:focus-within { border-color:var(--ember); box-shadow:0 0 0 2px rgba(255,138,61,.25); }
+.search { flex:1; display:flex; align-items:center; gap:8px; background:var(--bg2); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:0 12px; height:42px; }
+.search:focus-within { border-color:var(--ember); box-shadow:0 0 0 2px color-mix(in srgb, var(--ember) 25%, transparent); }
 .search svg { width:18px; height:18px; color:var(--muted); flex:none; }
 .search input { flex:1; background:none; border:0; outline:none; font-size:16px; min-width:0; }
 .tones { display:flex; gap:4px; }
 .tone { width:28px; height:28px; border-radius:50%; border:2px solid transparent; padding:0; font-size:17px; line-height:1; background:var(--panel2); cursor:pointer; }
 .tone.on { border-color:var(--ember); }
-.x { width:36px; height:36px; border-radius:10px; border:1px solid var(--line); background:var(--panel2); cursor:pointer; }
+.x { width:36px; height:36px; border-radius:min(10px, var(--corner, 10px)); border:1px solid var(--line); background:var(--panel2); cursor:pointer; }
 nav { display:flex; gap:4px; padding:0 14px 8px; overflow-x:auto; scrollbar-width:none; }
-nav button { flex:none; height:34px; min-width:38px; padding:0 9px; border-radius:10px; border:1px solid transparent; background:transparent; cursor:pointer; font-size:18px; display:flex; gap:6px; align-items:center; }
+nav button { flex:none; height:34px; min-width:38px; padding:0 9px; border-radius:min(10px, var(--corner, 10px)); border:1px solid transparent; background:transparent; cursor:pointer; font-size:18px; display:flex; gap:6px; align-items:center; }
 nav button span { font-size:12px; color:var(--muted); }
 nav button.on { background:var(--panel2); border-color:var(--line); }
 nav button.on span { color:var(--text); }
@@ -35,12 +35,12 @@ main { overflow:auto; padding:2px 14px 10px; scrollbar-width:thin; scrollbar-col
 h2 { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:10px 2px 6px; font-weight:650; }
 .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(46px, 1fr)); gap:4px; }
 .grid.wide { grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
-.cell { height:46px; border-radius:10px; border:0; background:transparent; font-size:27px; line-height:1; cursor:pointer; outline:none; padding:0;
+.cell { height:46px; border-radius:min(10px, var(--corner, 10px)); border:0; background:transparent; font-size:27px; line-height:1; cursor:pointer; outline:none; padding:0;
   font-family:"Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif; transition:transform .1s var(--ease), background .1s; }
 .grid.sym .cell { font-family:system-ui, "Noto Sans", "DejaVu Sans", sans-serif; font-size:22px; }
 .grid.wide .cell { font-size:16px; font-family:system-ui, "Noto Sans CJK JP", "Noto Sans", sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 8px; }
 .cell:hover { background:var(--panel2); }
-.cell:focus { background:var(--panel3); box-shadow:0 0 0 3px var(--ember), 0 0 18px rgba(255,138,61,.35); }
+.cell:focus { background:var(--panel3); box-shadow:0 0 0 3px var(--ember), 0 0 18px color-mix(in srgb, var(--ember) 35%, transparent); }
 .cell:active { transform:scale(.92); }
 .empty { color:var(--muted); padding:30px 4px; text-align:center; }
 footer { display:flex; align-items:center; gap:16px; padding:8px 14px 11px; border-top:1px solid var(--line); background:rgba(0,0,0,.18); min-height:44px; }
@@ -48,12 +48,12 @@ footer { display:flex; align-items:center; gap:16px; padding:8px 14px 11px; bord
 .now b { font-size:24px; font-family:"Noto Color Emoji", system-ui, sans-serif; font-weight:400; }
 .now span { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hints { display:flex; gap:12px; color:var(--muted); font-size:12px; flex-wrap:wrap; justify-content:flex-end; }
-.hints i { font-style:normal; display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 5px; border-radius:6px; background:var(--panel3); color:var(--text); margin-right:4px; font-size:11px; }
-.osk { position:fixed; left:14px; right:14px; bottom:56px; background:var(--panel); border:1px solid #4a372b; border-radius:16px; padding:10px; display:grid; grid-template-columns:repeat(10, 1fr); gap:5px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
-.osk button { height:40px; border-radius:9px; border:1px solid var(--line); background:var(--panel3); cursor:pointer; outline:none; }
+.hints i { font-style:normal; display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 5px; border-radius:min(6px, var(--corner, 6px)); background:var(--panel3); color:var(--text); margin-right:4px; font-size:11px; }
+.osk { position:fixed; left:14px; right:14px; bottom:56px; background:var(--panel); border:1px solid color-mix(in srgb, var(--line) 93%, var(--flame)); border-radius:min(16px, var(--corner, 16px)); padding:10px; display:grid; grid-template-columns:repeat(10, 1fr); gap:5px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+.osk button { height:40px; border-radius:min(9px, var(--corner, 9px)); border:1px solid var(--line); background:var(--panel3); cursor:pointer; outline:none; }
 .osk button:focus { box-shadow:0 0 0 3px var(--ember); }
 .osk .wide { grid-column:span 2; }
-.toast { position:fixed; left:50%; bottom:60px; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:8px 14px; border-radius:10px; }
+.toast { position:fixed; left:50%; bottom:60px; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:8px 14px; border-radius:min(10px, var(--corner, 10px)); }
 @media (max-width: 560px) { .hints { display:none; } }
 </style>
 </head>
@@ -72,6 +72,7 @@ footer { display:flex; align-items:center; gap:16px; padding:8px 14px 11px; bord
     <div class="hints" id="hints"></div>
   </footer>
 </div>
+<script src="hearth-gamepad.js"></script>
 <script src="emoji-data.js"></script>
 <script>
 'use strict';
@@ -285,7 +286,7 @@ function oskMove(dir) {
 // ---------------------------------------------------------------- controller (standard mapping)
 const held = {}; let lastMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
   const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, menu: 0 };
   for (const g of pads) {
@@ -314,9 +315,8 @@ function pad() {
     else if (k === 'lb') stepCat(-1);
     else if (k === 'rb') stepCat(1);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 
 // ---------------------------------------------------------------- start
 renderCats(); hints();

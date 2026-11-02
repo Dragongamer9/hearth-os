@@ -194,8 +194,8 @@ SetPage {
     }
     SetRow {
         visible: !!page.st && (page.st.peers || []).length > 0
-        icon: "store"; title: "Get a game from another Hearth"; sub: "Picked in Game Mode: Library › Get from another Hearth. Select to switch to Game Mode."
-        onActivated: Quickshell.execDetached(["nimbus-mode", "game"])
+        icon: "store"; title: "Get a game from another Hearth"; sub: "Pick the game in your library's Get from another Hearth. Opens in the Hearth app's window for now."
+        onActivated: { Quickshell.execDetached(["nimbus", "--windowed", "--page", "library"]); SettingsNav.toast("Opening your library in the Hearth app…"); }
     }
     Repeater {
         model: page.st ? (page.st.signInHints || []) : []
@@ -224,7 +224,8 @@ SetPage {
     }
     // Hearth Storage (hosts/hearth-link storage.rs, saves.rs, health.rs), in the same sections as Game Mode's page:
     // this device's role, servers & devices (health, remove), shared folders, backups & saves, advanced. Browsing,
-    // moving games, media and downloads are in Game Mode (Settings › Hearth Storage); shared folders on other
+    // moving games, media and downloads open in the Hearth app's window for now (--page storage, docs/SETTINGS-MOVE.md
+    // "Interim"); shared folders on other
     // devices show up in Hearth Files.
     property var devs: null
     property string removing: ""
@@ -330,9 +331,15 @@ SetPage {
     SetSwitch {
         visible: !!page.stc && !!page.stc.server
         icon: "display"; title: "Windows sharing (SMB)"
-        sub: "The shared folders for Windows PCs on this network (port 445, this network only). Set its password in Game Mode."
+        sub: "The shared folders for Windows PCs on this network (port 445, this network only). Its password, media and downloads: Hearth Storage's extras, below."
         checked: !!page.stc && !!page.stc.smb
         onToggled: v => page.run(["storage-set", "smb", v ? "on" : "off"])
+    }
+    SetRow {
+        visible: !!page.stc && !!page.stc.server
+        icon: "open"; title: "Hearth Storage's extras"
+        sub: "The Windows sharing password, browsing the game archive, media and downloads. Opens in the Hearth app's window for now."
+        onActivated: { Quickshell.execDetached(["nimbus", "--windowed", "--page", "storage"]); SettingsNav.toast("Opening Hearth Storage in the Hearth app…"); }
     }
     Text {
         visible: page.message !== ""

@@ -996,6 +996,11 @@ impl Bridge {
             "osinstall.start" => self.osinstall.start(&a["plan"]),
             "osinstall.restart" => Ok(json!(self.osinstall.restart())),
             "osinstall.useMantel" => Ok(json!(crate::osinstall::handoff(true))),
+            // The 1.1 USB installer (ui/installer.html)
+            "osinstall.screen" => { crate::osinstall::screen(a["name"].as_str().unwrap_or("")); Ok(Value::Null) }
+            "osinstall.tzGuess" => self.later(|| Ok(crate::osinstall::tz_guess())),
+            "osinstall.rotate" => crate::osinstall::rotate(a["turn"].as_u64().unwrap_or(0) as u32).map(|_| Value::Null),
+            "osinstall.poweroff" => Ok(json!(crate::osinstall::poweroff())),
             // Updates to the app itself
             // Hearth app updates without a system update (appchannel.rs, docs/APP-UPDATES.md): Settings › Updates.
             "appUpdates.status" => Ok(crate::appchannel::status()),
@@ -1034,6 +1039,19 @@ impl Bridge {
             }
             // A new Game Mode mode on trial: keep it, or go back now (Game Mode restarts).
             "display.keep" => { crate::display::keep(); Ok(self.display_get()) }
+            // Game Mode's own appearance and button swaps, kept in a file as well as in WebKit's localStorage (ui/index.html
+            // uiPrefsLoad; docs/SETTINGS-PERSISTENCE.md). Only short string values; merged, so other keys stay.
+            "uiprefs.get" => Ok(crate::settings_file::read_json(&paths::config_dir().join("game-mode-ui.json"))),
+            "uiprefs.set" => {
+                let ch: serde_json::Map<String, Value> = a["values"].as_object().cloned().unwrap_or_default().into_iter()
+                    .filter(|(k, v)| k.starts_with("nimbus.") && k.len() < 60 && v.as_str().map(|s| s.len() < 64 << 10).unwrap_or(false)).collect();
+                crate::settings_file::merge_json(&paths::config_dir().join("game-mode-ui.json"), &ch).map(Value::Object).map_err(|e| e.to_string())
+            }
+            "display.revertedDismiss" => { crate::display::dismiss_reverted(); Ok(self.display_get()) }
+            "display.retry" => {
+                if crate::display::retry_reverted() { self.restart_game_mode(); }
+                Ok(self.display_get())
+            }
             "display.revert" => {
                 if crate::display::revert() { self.restart_game_mode(); }
                 Ok(self.display_get())
@@ -1472,21 +1490,21 @@ impl Bridge {
 impl Bridge {
     /// 100, or 150 with louder-than-100% sound turned on (Settings › Audio).
     pub fn max_volume(&self) -> u32 {
-        let prefs: Value = std::fs::read(paths::config_dir().join("buttons.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+        let prefs = crate::settings_file::read_json(&paths::config_dir().join("buttons.json"));
         if prefs["overamp"] == true { 150 } else { 100 }
     }
     pub fn button_prefs(&self) -> Value {
-        let saved: Value = std::fs::read(paths::config_dir().join("buttons.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+        let saved = crate::settings_file::read_json(&paths::config_dir().join("buttons.json"));
         let pick = |k: &str, d: &str| saved[k].as_str().filter(|v| POWER_ACTIONS.contains(v)).unwrap_or(d).to_string();
         json!({"press": pick("press", "sleep"), "hold": pick("hold", "menu"), "overamp": saved["overamp"] == true, "maxVolume": self.max_volume(),
                "watching": {"devices": [], "problems": ["Only in Game Mode"]}})
     }
     pub fn set_button_prefs(&mut self, a: &Value) -> Result<Value, String> {
-        let mut cur = self.button_prefs();
-        for k in ["press", "hold"] { if let Some(v) = a[k].as_str().filter(|v| POWER_ACTIONS.contains(v)) { cur[k] = json!(v); } }
-        if let Some(o) = a["overamp"].as_bool() { cur["overamp"] = json!(o); }
-        let save = json!({"press": cur["press"], "hold": cur["hold"], "overamp": cur["overamp"]});
-        paths::write_atomic(&paths::config_dir().join("buttons.json"), format!("{}\n", serde_json::to_string_pretty(&save).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+        // Only what was sent, merged into the latest buttons.json (Desktop Mode's Buttons.qml writes it too).
+        let mut change = serde_json::Map::new();
+        for k in ["press", "hold"] { if let Some(v) = a[k].as_str().filter(|v| POWER_ACTIONS.contains(v)) { change.insert(k.into(), json!(v)); } }
+        if let Some(o) = a["overamp"].as_bool() { change.insert("overamp".into(), json!(o)); }
+        crate::settings_file::merge_json(&paths::config_dir().join("buttons.json"), &change).map_err(|e| e.to_string())?;
         Ok(self.button_prefs())
     }
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
@@ -1867,6 +1885,7 @@ impl Bridge {
         let b = system::brightness();
         d["supported"] = json!(b.is_some());
         d["brightness"] = json!(b.unwrap_or(0));
+        d["reverted"] = crate::display::reverted();
         d
     }
     /// An event for the UI ({type:'event', name, data}), like the status the top bar refreshes every 30 s.
@@ -2041,8 +2060,12 @@ fn features() -> Vec<&'static str> {
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
 /// page of Settings (only the ones listed here; "hhd" is Settings › Controls › Handheld Daemon). Null: the usual start.
+/// Mantel's Settings opens the rest of PAGES in a window for what doesn't have its own app yet (docs/SETTINGS-MOVE.md,
+/// "Interim"): Library sources, Import, Settings › Storage's moves, Hearth Storage's extras, a backup's restore, the
+/// store accounts, the library and downloads (Epic and GOG installs, getting a game from another Hearth) and Recomps.
 pub fn start_page(args: &[String]) -> Value {
-    const PAGES: &[&str] = &["hhd", "settings", "shop"];   // shop: the Hearth Decky plugin's Store link (Steam Game Mode)
+    const PAGES: &[&str] = &["hhd", "settings", "shop",   // shop: the Hearth Decky plugin's Store link (Steam Game Mode)
+        "sources", "import", "diskspace", "storage", "system", "stores", "library", "downloads", "recomps"];
     let mut start = Value::Null;
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
@@ -2227,6 +2250,9 @@ mod tests {
         assert_eq!(a(&["nimbus", "--windowed", "--page", "shop"]), json!("shop"));
         assert_eq!(a(&["nimbus", "--settings", "--page", "hhd"]), json!("hhd"));
         // Pages Hearth doesn't know, or none given: the usual start (or Settings, when asked for too).
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "diskspace"]), json!("diskspace"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page=recomps"]), json!("recomps"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "seats"]), Value::Null);
         assert_eq!(a(&["nimbus", "--page", "rm -rf"]), Value::Null);
         assert_eq!(a(&["nimbus", "--page"]), Value::Null);
         assert_eq!(a(&["nimbus", "--page", "nope", "--settings"]), json!("settings"));

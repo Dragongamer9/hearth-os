@@ -9,13 +9,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
+const { writeSettings, readSettings, mergeSettings } = require('./settings-file');
 
 const HELPER = '/usr/libexec/nimbus/hearth-admin';
 const NO_AUTOLOGIN = '/etc/nimbus/no-autologin';
 
 /** Mantel's settings file; "lockOnWake" there is shared by Mantel and Game Mode. */
 const desktopJson = () => path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'nimbus', 'desktop.json');
-function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } }
+function readJson(file) { return readSettings(file); }
 
 const confDir = () => path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'nimbus');
 
@@ -34,8 +35,7 @@ function writeStartMode(file, mode) {
   const line = `NIMBUS_START_MODE=${mode}`;
   if (/^\s*NIMBUS_START_MODE=.*$/m.test(text)) text = text.replace(/^\s*NIMBUS_START_MODE=.*$/m, line);
   else text = (text && !text.endsWith('\n') ? text + '\n' : text) + line + '\n';
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
+  writeSettings(file, text);
 }
 
 /** The JSON line and progress lines hearth-admin prints. */
@@ -109,10 +109,7 @@ class SystemAdmin extends EventEmitter {
   }
   /** Ask for the password after sleep (Game Mode and Mantel both read this). */
   setLockOnWake(on) {
-    const o = readJson(this.desktopFile);
-    o.lockOnWake = !!on;
-    fs.mkdirSync(path.dirname(this.desktopFile), { recursive: true });
-    fs.writeFileSync(this.desktopFile, JSON.stringify(o, null, 2) + '\n');
+    mergeSettings(this.desktopFile, { lockOnWake: !!on });
     return this.login();
   }
   /** The desktop's (Mantel's) wallpaper: '' fireside, 'anim:lava', 'anim:aurora', or a picture file. */
@@ -130,10 +127,7 @@ class SystemAdmin extends EventEmitter {
       fs.copyFileSync(picture, dst);
       v = dst;
     } else if (v && !/^anim:(lava|aurora)$/.test(v)) throw new Error('Unknown wallpaper');
-    const o = readJson(this.desktopFile);
-    o.wallpaper = v;
-    fs.mkdirSync(path.dirname(this.desktopFile), { recursive: true });
-    fs.writeFileSync(this.desktopFile, JSON.stringify(o, null, 2) + '\n');
+    mergeSettings(this.desktopFile, { wallpaper: v });
     return v;
   }
   /** Checks this user's password the way the login screen does (pam_unix's helper). An account with no

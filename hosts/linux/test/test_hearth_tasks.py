@@ -9,6 +9,8 @@ import pathlib
 import tempfile
 import unittest
 
+os.environ['XDG_STATE_HOME'] = tempfile.mkdtemp()   # hearth_settings_io's notices stay out of your home
+
 PATH = pathlib.Path(__file__).resolve().parent.parent / 'desktop' / 'shell' / 'hearth-tasks'
 loader = importlib.machinery.SourceFileLoader('hearth_tasks', str(PATH))
 spec = importlib.util.spec_from_loader('hearth_tasks', loader)
@@ -379,10 +381,17 @@ class Startup(unittest.TestCase):
         data = json.loads(pathlib.Path(lib).read_text())
         self.assertEqual(data, {'favorites': ['steam:1'], 'steamBackground': False})
         self.assertFalse(ht.steam_background(lib))
+        # Damaged (a power cut on an older version): put back from library.json.bak, the favorites kept.
         write(lib, '{broken')
-        self.assertTrue(ht.steam_background(lib))
+        self.assertTrue(ht.steam_background(lib))                   # the last good copy said True
+        ht.set_steam_background(False, lib)
+        self.assertEqual(json.loads(pathlib.Path(lib).read_text())['favorites'], ['steam:1'])
+        # Damaged with no good copy: never replaced with just this one setting.
+        os.remove(lib + '.bak')
+        write(lib, '{broken')
         with self.assertRaises(ht.Fail):
             ht.set_steam_background(True, lib)
+        self.assertEqual(pathlib.Path(lib).read_text(), '{broken')
 
     def test_steam_name(self):
         lib = os.path.join(self.tmp.name, 'steamapps')

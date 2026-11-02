@@ -239,6 +239,22 @@ class Backend(unittest.TestCase):
         self.assertEqual([x['id'] for x in g], ['epic:Min'])
         self.assertEqual(g[0]['launch'], ['xdg-open', 'com.epicgames.launcher://apps/Min?action=launch&silent=true'])
 
+    def test_hearth_mods_add_to_steam_entries(self):
+        exe = '/usr/bin/hearth-mods'
+        good = {'id': 'hearth-mods:modded:steam:489830', 'title': 'Skyrim Special Edition (Modded)', 'game': 'steam:489830', 'kind': 'modded',
+                'launch': [exe, '--play-modded', 'steam:489830'], 'cwd': '/home/you', 'cover': '/art/c.jpg', 'hero': '/art/h.jpg', 'added': 1700000000000}
+        mo2 = dict(good, id='hearth-mods:mo2:steam:489830', kind='mo2', title='Skyrim Special Edition — Mod Organizer 2', launch=[exe, '--run-mo2', 'skyrimse'])
+        self.w('.local/share/nimbus/mods/steam-shortcuts.json', [good, mo2,
+               dict(good, id='hearth-mods:modded:x:1', launch=['/bin/sh', '-c', 'evil']), dict(good, id='other:1'), dict(good, kind='nope', id='hearth-mods:nope:x:2'), 'junk'])
+        g = self.m.mods_entries(which=lambda p: p == exe)
+        self.assertEqual([x['id'] for x in g], [good['id'], mo2['id']], 'only entries that run hearth-mods')
+        self.assertEqual((g[0]['source'], g[0]['launch'], g[0]['cover'], g[0]['via']), ('mods', good['launch'], '/art/c.jpg', 'hearth-mods'))
+        out = self.m.merge([], g)
+        self.assertEqual(out[0]['storeName'], 'Modded games')
+        self.assertEqual(shlex.split(out[0]['options'])[3:], [exe, '--play-modded', 'steam:489830'])
+        self.assertEqual(out[0]['wide'], '/art/h.jpg')
+        self.assertIn(self.m.mods_file(), [os.path.join(self.tmp, 'home', '.local/share/nimbus/mods/steam-shortcuts.json')])
+
     def test_same_game_twice_is_one_shortcut_newest_install_wins(self):
         hearth = self.m.clean_games([{'id': 'gog:1', 'title': 'Game', 'source': 'gog', 'cover': '/hearth-cover.png'}])
         old = self.m._game('gog:1', 'Game', 'gog', ['/g/start.sh'], '/g', 100, 'minigalaxy', {'wide': '/w.jpg'})
@@ -255,7 +271,7 @@ class Backend(unittest.TestCase):
         meta = json.load(open(HERE / 'plugin.json'))
         self.assertEqual(meta['name'], 'Hearth Sync')
         mine = json.load(open(HERE / 'package.json'))['version']
-        other = json.load(open(HERE.parent / 'decky-hearth' / 'package.json'))['version']
+        other = json.load(open(HERE.parents[1] / 'archive' / 'hosts' / 'decky-hearth' / 'package.json'))['version']
         self.assertEqual(mine, other, 'the same version as Hearth\'s other packages')
 
     def test_frontend_takes_nothing_over(self):

@@ -22,6 +22,11 @@ Scope {
     property var steamFallback: null   // SteamFallback.qml
     property bool mouseOn: true
     property string problem: ""
+    // The controller app in front that has the controller (hearth-pad's owner {app}): the helper stands aside for
+    // it (docs/CONTROLLER-FOCUS.md); ownerMouse: Guide + R3 gave the pointer back in it.
+    property string owner: ""
+    property bool ownerMouse: false
+    property string simDir: ""          // checks only (desktop-test.yml): hearth-pad with a simulated controller
 
     readonly property var active: ToplevelManager.activeToplevel
     // The controller types arrow keys / Enter / Esc instead of moving the pointer in Hearth's own menus
@@ -33,9 +38,36 @@ Scope {
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
+    // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
+    // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
+    readonly property string frontApp: active !== null ? (active.appId || "") : ""
+    function sendFocus() { send({ cmd: "focus", app: frontApp, title: active !== null ? (active.title || "") : "" }); }
+    onFrontAppChanged: sendFocus()
+
+    // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Friends, the
+    // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
+    // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
+    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.friendsShown || DeskState.overlayShown
+    property var beforeMenu: null
+    onMenuOpenChanged: {
+        if (menuOpen) { beforeMenu = active; refocus.stop(); }
+        else refocus.restart();
+    }
+    Timer {
+        id: refocus
+        interval: 180
+        onTriggered: {
+            const w = pad.beforeMenu;
+            pad.beforeMenu = null;
+            if (!w || pad.menuOpen) return;
+            const cur = ToplevelManager.activeToplevel;
+            if ((cur === w || cur === null) && ToplevelManager.toplevels.values.indexOf(w) >= 0) w.activate();
+        }
+    }
 
     function send(o) { if (proc.running) proc.write(JSON.stringify(o) + "\n"); }
     function sync() {
+        sendFocus();
         send({ cmd: "keys", on: keysContext });
         send({ cmd: "pause", on: fullscreenApp });
         send({ cmd: "mouse", on: mouseOn });
@@ -57,12 +89,15 @@ Scope {
     function openKeyboard() { keyboard.openKb(); }
     function closeKeyboard() { keyboard.closeKb(); }
     function setMouse(on) { mouseOn = on; send({ cmd: "mouse", on: on }); help.toast("Controller mouse " + (on ? "on" : "off")); }
+    // The Hearth menu's Controller mouse over a controller app: the pointer in that app (like Guide + R3), on / off.
+    function toggleMouse() { if (owner !== "") send({ cmd: "padmouse" }); else setMouse(!mouseOn); }
 
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-pad").toString().replace(/^file:\/\//, ""))
 
     Process {
         id: proc
         command: ["python3", pad.helper]
+        environment: pad.simDir !== "" ? { "HEARTH_PAD_SIM": pad.simDir } : ({})
         running: true
         stdinEnabled: true
         stdout: SplitParser { onRead: line => pad.handle(line) }
@@ -86,6 +121,7 @@ Scope {
         case "help": help.toggle(); break;
         case "toast": help.toast(m.text); break;
         case "mouse": mouseOn = m.on; break;
+        case "owner": owner = m.app || ""; ownerMouse = m.mouse === true; break;
         }
     }
 
@@ -99,7 +135,7 @@ Scope {
         case "close": if (active) active.close(); break;
         case "game": Quickshell.execDetached(["nimbus-mode", "game"]); break;
         case "screenshot": Quickshell.execDetached(["sh", "-c", "sleep 0.4; exec sh \"$0\" screenshot", share + "/desktop/open.sh"]); break;
-        case "mouse": setMouse(!mouseOn); break;
+        case "mouse": toggleMouse(); break;
         case "help": help.shown = true; break;
         }
     }
@@ -116,4 +152,18 @@ Scope {
         function onCloseRequested() { pad.closeKeyboard(); }
     }
     Component.onCompleted: keyboard.pad = pad
+
+    // For checks (desktop-test.yml): what's in front and who has the controller; hearth-pad again with a simulated
+    // controller (HEARTH_PAD_SIM: presses from <dir>/in, what it would send in <dir>/out.log).
+    IpcHandler {
+        target: "pad"
+        function state(): string {
+            return JSON.stringify({ front: pad.frontApp, title: pad.active !== null ? (pad.active.title || "") : "", owner: pad.owner,
+                                    ownerMouse: pad.ownerMouse, keys: pad.keysContext, menuOpen: pad.menuOpen, running: proc.running, problem: pad.problem });
+        }
+        function sim(dir: string): void {
+            pad.simDir = dir;
+            if (proc.running) { proc.running = false; restart.start(); } else proc.running = true;
+        }
+    }
 }

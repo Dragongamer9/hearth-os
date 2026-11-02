@@ -19,12 +19,17 @@ Scope {
         { id: "wifi", icon: "wifi", label: "Wi-Fi" },
         { id: "bluetooth", icon: "bt", label: "Bluetooth" },
         { id: "link", icon: "desktops", label: "Hearth Link" },   // SetLink.qml: your Hearth devices
+        { id: "remote", icon: "wired", label: "Remote play" },   // SetRemote.qml: Sunshine and Moonlight
         { id: "sound", icon: "vol", label: "Sound" },
         { id: "notifications", icon: "bell", label: "Notifications" },
         { id: "display", icon: "display", label: "Display" },
         { id: "appearance", icon: "palette", label: "Appearance" },
+        // ---- Boot & startup (SetBoot.qml): boot splash preset, Steam Game Mode's startup animation
+        { id: "boot", icon: "power", label: "Boot & startup" },
+        // ---- end Boot & startup
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
+        { id: "handheld", icon: "pad", label: "Handheld" },        // SetHandheld.qml: Handheld Daemon's settings
         { id: "keyboard", icon: "kbd", label: "Keyboard" },
         { id: "mouse", icon: "mouse", label: "Mouse & touchpad" },
         { id: "printers", icon: "printer", label: "Printers" },
@@ -34,6 +39,11 @@ Scope {
         // ---- end Accessibility
         { id: "defaults", icon: "grid", label: "Default apps" },
         { id: "apps", icon: "store", label: "Apps" },
+        // ---- moved from the archived Game Mode's Settings (docs/SETTINGS-MOVE.md)
+        { id: "games", icon: "pad", label: "Games & stores" },     // SetGames.qml
+        { id: "storage", icon: "folder", label: "Storage" },       // SetStorage.qml
+        { id: "steam", icon: "window", label: "Steam Game Mode" }, // SetSteam.qml
+        // ---- end moved
         { id: "clipboard", icon: "clipboard", label: "Clipboard" },
         { id: "users", icon: "user", label: "Users" },
         { id: "signin", icon: "lock", label: "Sign-in" },
@@ -47,8 +57,11 @@ Scope {
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", apps: "SetApps.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
-        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */ })
+        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */,
+        remote: "SetRemote.qml", games: "SetGames.qml", storage: "SetStorage.qml", steam: "SetSteam.qml" /* moved from the archived Game Mode */,
+        handheld: "SetHandheld.qml" /* Handheld Daemon */, boot: "SetBoot.qml" /* Boot & startup */ })
 
+    Component.onCompleted: SettingsNav.settingsApp = app
     function open(p) {
         if (p && files[p]) page = p;
         shown = true;

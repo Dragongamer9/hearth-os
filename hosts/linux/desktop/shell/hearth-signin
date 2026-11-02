@@ -4,6 +4,7 @@ keyboard work normally). Run by labwc's autostart when Desktop Mode starts.
 
   hearth-signin desktop-start   take Game Mode's request, if any, and open Hearth in a window at that sign-in
   hearth-signin take            print the store a fresh request asks for (and remove the request), or nothing
+  hearth-signin open <store>    a sign-in asked for in Desktop Mode (Settings › Games & stores): the same window
 
 Game Mode's Hearth writes $XDG_STATE_HOME/hearth/desktop-signin.json ({"store": "epic", "at": <seconds>}) and
 switches to Desktop Mode. A request is used once, and only when it's under 10 minutes old. Hearth opens with
@@ -144,6 +145,11 @@ def desktop_start(wait=3.0):
         return 0
     log('%s: asked for in Game Mode' % store)
     time.sleep(wait)          # let the taskbar and the rest of the desktop come up first
+    return start(store)
+
+
+def start(store):
+    """Opens Hearth in a window at that store's sign-in, or hands it to the one that's open."""
     pid = running_hearth()
     if pid:
         hand_over(store)
@@ -162,6 +168,13 @@ def main(argv):
     what = argv[1] if len(argv) > 1 else ''
     if what == 'desktop-start':
         return desktop_start()
+    if what == 'open':
+        store = argv[2] if len(argv) > 2 else ''
+        if store not in VALID:
+            print('hearth-signin: not a store: %r (one of %s)' % (store[:40], ', '.join(VALID)), file=sys.stderr)
+            return 2
+        log('%s: asked for in Settings' % store)
+        return start(store)
     if what == 'take':
         s = take()
         if s:

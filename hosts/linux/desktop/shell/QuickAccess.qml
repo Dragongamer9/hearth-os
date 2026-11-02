@@ -17,6 +17,7 @@ PanelWindow {
     signal mouseToggled(bool enable)
     signal keyboardRequested()
     signal settingsRequested()
+    signal pageRequested(string page)    // a page of Hearth Settings (Handheld: Handheld Daemon's settings)
     function toggle() { shown = !shown; }
 
     visible: shown || closing.running
@@ -38,7 +39,10 @@ PanelWindow {
     property bool wifiKnown: false
     property string profile: ""          // power-saver | balanced | performance; "" = not available
 
-    function refresh() { brightRead.running = true; wifiRead.running = true; ppdRead.running = true; weatherRead.running = true; }
+    function refresh() { brightRead.running = true; wifiRead.running = true; ppdRead.running = true; weatherRead.running = true; hhdRead.running = true; }
+    // Handheld Daemon running (its API socket, or its token for the local port): a way to its settings (Settings › Handheld).
+    property bool hhdOn: false
+    Process { id: hhdRead; command: ["sh", "-c", "test -S /run/hhd/api || test -s /tmp/hhd/token"]; onExited: code => root.hhdOn = code === 0 }
     function run(cmd) { Quickshell.execDetached(cmd); }
 
     Process {
@@ -88,6 +92,7 @@ PanelWindow {
         if (brightness >= 0) rows.push(["brightness"]);
         rows.push(["night", "mouse", "wifi"]);
         if (profile !== "") rows.push(["power-saver", "balanced", "performance"]);
+        if (hhdOn) rows.push(["handheld"]);
         rows.push(["settings", "keyboard", "game", "sleep"]);
         return rows;
     }
@@ -115,6 +120,7 @@ PanelWindow {
         case "wifi": setWifi(!wifiOn); break;
         case "power-saver": case "balanced": case "performance": setProfile(id); break;
         case "settings": shown = false; root.settingsRequested(); break;
+        case "handheld": shown = false; root.pageRequested("handheld"); break;
         case "keyboard": shown = false; root.keyboardRequested(); break;
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
@@ -243,6 +249,11 @@ PanelWindow {
                     }
                 }
 
+                Action {
+                    visible: root.hhdOn
+                    navId: "handheld"; icon: "input-gaming-symbolic"; label: "Handheld settings (controller, power, lights)"
+                    implicitHeight: 52
+                }
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 4

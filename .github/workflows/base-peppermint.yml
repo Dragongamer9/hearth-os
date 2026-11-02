@@ -13,7 +13,7 @@ on:
         default: true
   push:
     branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
+    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-apptheme/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -372,7 +372,7 @@ jobs:
           mkdir -p /tmp/electron && cp -a dist/linux-unpacked/. /tmp/electron/
       # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin the image ships, built and packed
       # into hearth-decky-sync.tar; build.sh puts it in /usr/share/hearth/decky-hearth-sync, where Settings › System › Steam
-      # Game Mode's Decky install takes it from. The older Hearth plugin (hosts/decky-hearth) isn't shipped for now.
+      # Game Mode's Decky install takes it from. The older Hearth plugin (archive/hosts/decky-hearth) isn't shipped for now.
       # Never fails the image: without it, Steam Game Mode works without Hearth's games in Steam's library.
       - name: Build Hearth Sync (Decky plugin)
         continue-on-error: true
@@ -385,6 +385,32 @@ jobs:
           pnpm build
           ./package.sh /tmp/decky-out
           tar -C /tmp/decky-out/decky-hearth-sync -cf "$GITHUB_WORKSPACE/hearth-decky-sync.tar" .
+      # Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): shipped next to Hearth Sync the same way, into
+      # /usr/share/hearth/decky-hearth-music. Never fails the image.
+      - name: Build Hearth Music (Decky plugin)
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth-music
+          npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          tar -C /tmp/decky-out/decky-hearth-music -cf "$GITHUB_WORKSPACE/hearth-decky-music.tar" .
+      # ---- Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): another Decky plugin, built the same way
+      # into hearth-decky-link.tar for /usr/share/hearth/decky-hearth-link. Never fails the image.
+      - name: Build Hearth Link (Decky plugin)
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth-link
+          command -v pnpm >/dev/null || npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          tar -C /tmp/decky-out/decky-hearth-link -cf "$GITHUB_WORKSPACE/hearth-decky-link.tar" .
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -405,6 +431,8 @@ jobs:
             hearth-browser.tar
             hearth-electron.tar
             hearth-decky-sync.tar
+            hearth-decky-music.tar
+            hearth-decky-link.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
   # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
@@ -460,9 +488,9 @@ jobs:
     # The KDE apps never hold the image back (if they failed, it's made without them).
     if: ${{ !cancelled() && needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 240
     permissions:
-      contents: read
+      contents: write   # the boot look screenshots (ci/boot-look)
       packages: write
     env:
       PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
@@ -518,6 +546,8 @@ jobs:
           python3 tools/hearth_version.py date "${{ needs.app.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
           echo "::notice title=version::${{ needs.app.outputs.version }} (shown as $(python3 tools/hearth_version.py show "${{ needs.app.outputs.version }}"), released: $(cat os/system_files/usr/share/nimbus/version-date))"
           if [ -f hearth-decky-sync.tar ]; then mkdir -p os/nimbus-app/decky-hearth-sync && tar -C os/nimbus-app/decky-hearth-sync -xf hearth-decky-sync.tar || rm -rf os/nimbus-app/decky-hearth-sync; fi
+          if [ -f hearth-decky-music.tar ]; then mkdir -p os/nimbus-app/decky-hearth-music && tar -C os/nimbus-app/decky-hearth-music -xf hearth-decky-music.tar || rm -rf os/nimbus-app/decky-hearth-music; fi
+          if [ -f hearth-decky-link.tar ]; then mkdir -p os/nimbus-app/decky-hearth-link && tar -C os/nimbus-app/decky-hearth-link -xf hearth-decky-link.tar || rm -rf os/nimbus-app/decky-hearth-link; fi
 
       - name: Build
         run: |
@@ -565,6 +595,8 @@ jobs:
           check "hearth-import is installed" "test -x /usr/libexec/nimbus/hearth-import && command -v rsync"
           check "hearth-takeover and its tools are installed" "test -x /usr/libexec/nimbus/hearth-takeover && command -v sfdisk && command -v partx && command -v efibootmgr && command -v btrfs"
           check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
+          check "Decky Loader is built in (the pinned PluginLoader, its version, the hearth-decky@ template, not enabled)" "test -x /usr/lib/hearth-decky/PluginLoader && head -c 4 /usr/lib/hearth-decky/PluginLoader | od -An -tx1 | tr -d ' \\n' | grep -qx 7f454c46 && grep -qx 'v[0-9.]*' /usr/lib/hearth-decky/version && grep -q 'ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky run %i' /usr/lib/systemd/system/hearth-decky@.service && grep -qx 'User=root' /usr/lib/systemd/system/hearth-decky@.service && ! grep -q '^\\[Install\\]' /usr/lib/systemd/system/hearth-decky@.service && ! ls /etc/systemd/system/*.wants/hearth-decky@* 2>/dev/null | grep -q ."
+          check "nimbus-session can start your own Decky without a password (49-hearth-decky.rules: your instance, every account)" "grep -q 'hearth-decky@. + subject.user' /usr/share/polkit-1/rules.d/49-hearth-decky.rules && python3 /usr/libexec/nimbus/hearth-decky 2>&1 | grep -q 'run USER'"
           check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
           echo "--- Make a bootable USB (Hearth Disks)"
           check "the USB maker's root helper (hearth-usb) is installed and hearth-admin hands it usb-* commands" "test -x /usr/libexec/nimbus/hearth-usb && python3 -m py_compile /usr/libexec/nimbus/hearth-usb && grep -q usb-raw /usr/libexec/nimbus/hearth-admin"
@@ -712,6 +744,14 @@ jobs:
           check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && command -v gnome-keyring-daemon && python3 -c 'import evdev'"
           check "WebKitGTK 4.1, PipeWire, Bluetooth, NetworkManager, Flatpak" "ls /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0 && command -v pipewire && command -v bluetoothctl && command -v nmcli && command -v flatpak"
           check "the boot splash is Hearth's" "plymouth-set-default-theme | grep -qx hearth"
+          # ---- Hearth OS 1.1's boot look (GRUB theme, splash presets, Steam Game Mode startup animations)
+          check "the splash presets are in the image (hearth, hearth-steam, hearth-minimal)" "for t in hearth hearth-steam hearth-minimal; do test -f /usr/share/plymouth/themes/\$t/\$t.plymouth && test -f /usr/share/plymouth/themes/\$t/\$t.script || exit 1; done"
+          check "every splash preset is in the initramfs (switching never rebuilds it)" "f=\$(ls /usr/lib/modules/*/initramfs.img | head -1); lsinitrd \$f 2>/dev/null | grep -q usr/share/plymouth/themes/hearth-steam/hearth-steam.script && lsinitrd \$f 2>/dev/null | grep -q usr/share/plymouth/themes/hearth-minimal/hearth-minimal.script"
+          check "the GRUB theme and its fonts (Hearth Regular/Bold, made from Inter)" "test -f /usr/share/hearth/grub-theme/theme.txt && test -f /usr/share/hearth/grub-theme/background.png && grep -aq 'Hearth Regular 22' /usr/share/hearth/grub-theme/hearth-regular-22.pf2 && grep -aq 'Hearth Bold 28' /usr/share/hearth/grub-theme/hearth-bold-28.pf2"
+          check "hearth-bls-grub writes the theme only behind its checks (sourced after the entries)" "grep -q 'hearth-theme.cfg' /usr/libexec/nimbus/hearth-bls-grub && grep -q 'insmod gfxmenu' /usr/libexec/nimbus/hearth-bls-grub"
+          check "Settings › Boot & startup and its helper (hearth-boot-look; hearth-admin boot-splash)" "test -x /usr/libexec/nimbus/hearth-boot-look && test -f /usr/share/nimbus/desktop/shell/SetBoot.qml && grep -q 'boot-splash' /usr/libexec/nimbus/hearth-admin && python3 /usr/libexec/nimbus/hearth-boot-look status | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d[\"movie\"][\"list\"])==4 and len(d[\"splash\"][\"presets\"])==3'"
+          check "the startup animations (4, for 16:9 and 16:10, VP9 WebM)" "test \$(ls /usr/share/hearth/startup-movies/hearth-*-16x9.webm /usr/share/hearth/startup-movies/hearth-*-16x10.webm | wc -l) -eq 8"
+          check "Steam Game Mode puts the chosen startup animation in place (nimbus-session)" "grep -q 'movie-apply' /usr/bin/nimbus-session"
           echo "--- Handheld Daemon"
           check "Handheld Daemon is installed and its Python modules load" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service && /usr/lib/hhd/bin/python3 -c 'import hhd, adjustor, evdev, yaml, rich, Xlib, serial, pyroute2, gi, dbus'"
           check "Handheld Daemon starts at boot" "test -L /etc/systemd/system/multi-user.target.wants/hhd.service"
@@ -875,6 +915,21 @@ jobs:
       - name: Writable system (hearth-unlock)
         timeout-minutes: 30
         run: bash .github/scripts/hearth-unlock-check.sh localhost/hearth-peppermint:latest image
+
+      # REQUIRED: Hearth OS 1.1's boot look in a virtual PC: the image installed by Hearth's installer engine, then
+      # started with the GRUB theme, each splash preset, a missing preset, a missing and a broken theme (each must
+      # reach the login prompt), and with Secure Boot (report only). Screenshots: the ci/boot-look branch.
+      - name: Boot look in a virtual PC (GRUB theme, splash presets, broken-theme fallbacks)
+        timeout-minutes: 75
+        run: bash .github/scripts/boot-look-vm.sh localhost/hearth-peppermint:latest "$PWD/boot-look"
+      - name: Publish the boot look screenshots (ci/boot-look)
+        if: always()
+        run: |
+          [ -d boot-look ] || exit 0
+          mkdir -p /tmp/bl-pub && cp -r boot-look/. /tmp/bl-pub/ && cd /tmp/bl-pub && git init -q && git checkout -q -b bl
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Boot look ($GITHUB_RUN_ID)" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/boot-look || true
 
       - name: Check the Qt renderer in the image
         continue-on-error: true

@@ -7,7 +7,7 @@ name: Hearth Sync plugin
 on:
   push:
     branches: [bughunt, feature/hearth-sync]
-    paths: ['hosts/decky-hearth-sync/**', 'hosts/linux/test/test_hearth_steam_mode.py', 'os/system_files/usr/libexec/nimbus/hearth-decky',
+    paths: ['hosts/decky-hearth-sync/**', 'os/system_files/usr/bin/hearth-steam-import', 'hosts/linux/test/test_hearth_steam_mode.py', 'os/system_files/usr/libexec/nimbus/hearth-decky',
             'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/logs.rs',
             'hosts/hearth-rs/src/main.rs', '.github/workflows/decky-hearth-sync.yml']
   workflow_dispatch:

@@ -215,6 +215,8 @@ S.hit = (x, y) => {
 // ------------------------------------------------------------------ drawing
 let drawQueued = false;
 S.draw = () => { if (drawQueued) return; drawQueued = true; requestAnimationFrame(() => { drawQueued = false; S.paint(); }); };
+// A new look (Settings › Appearance) reaches the headers drawn on the canvas.
+window.addEventListener('hearth-theme', () => { try { if (S.cv && S.cv.offsetParent) S.draw(); } catch (e) {} });
 S.paint = () => {
   const m = S.meta(); if (!m || !S.xs) return;
   const g = $('#sgrid'); const W = g.clientWidth, Hh = g.clientHeight;
@@ -222,7 +224,12 @@ S.paint = () => {
   if (S.cv.width !== Math.round(W * dpr) || S.cv.height !== Math.round(Hh * dpr)) { S.cv.width = Math.round(W * dpr); S.cv.height = Math.round(Hh * dpr); S.cv.style.width = W + 'px'; S.cv.style.height = Hh + 'px'; }
   const ctx = S.ctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const light = !document.documentElement.classList.contains('light') ? false : true;
-  const C = { bg: '#ffffff', grid: '#e2e2e2', head: light ? '#f3eee9' : '#211915', headText: light ? '#6b5a4c' : '#a69484', headSel: light ? '#ffd9bf' : '#4a2c18', headLine: light ? '#ddd2c8' : '#3b2e26', sel: 'rgba(255,138,61,0.14)', selLine: '#ff8a3d' };
+  // The headers follow the look (Hearth's Settings › Appearance, or View › Light window); the sheet itself is paper.
+  const tok = (n, d) => (getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d);
+  const acc = tok('--accent', '#ff8a3d');
+  const C = { bg: '#ffffff', grid: '#e2e2e2', head: light ? '#f3eee9' : tok('--chrome', '#211915'), headText: light ? '#6b5a4c' : tok('--muted', '#a69484'),
+    headSel: light ? '#ffd9bf' : `color-mix(in srgb, ${acc} 22%, ${tok('--panel', '#1c1512')})`, headLine: light ? '#ddd2c8' : tok('--line', '#3b2e26'),
+    sel: `color-mix(in srgb, ${acc} 14%, transparent)`, selLine: acc };
   ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, Hh);
   const sl = S.scroll.scrollLeft, st = S.scroll.scrollTop, fr = m.freeze.r, fc = m.freeze.c;
   const fxw = S.xs[fc], fyh = S.ys[fr];
@@ -327,7 +334,7 @@ S.paint = () => {
   const sr = S.rangeRect(n);
   const single = n.r === n.r2 && n.c === n.c2;
   if (!single) { ctx.fillStyle = C.sel; ctx.fillRect(sr.x, sr.y, sr.w, sr.h); }
-  if (S.clip && S.clip.sid === S.sid()) { const cr = S.rangeRect(S.clip.n); ctx.setLineDash([5, 3]); ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.strokeRect(cr.x, cr.y, cr.w - 1, cr.h - 1); ctx.setLineDash([]); }
+  if (S.clip && S.clip.sid === S.sid()) { const cr = S.rangeRect(S.clip.n); ctx.setLineDash([5, 3]); ctx.strokeStyle = C.selLine; ctx.lineWidth = 2; ctx.strokeRect(cr.x, cr.y, cr.w - 1, cr.h - 1); ctx.setLineDash([]); }
   ctx.strokeStyle = C.selLine; ctx.lineWidth = 2;
   ctx.strokeRect(sr.x - 0.5, sr.y - 0.5, sr.w, sr.h);
   if (S.fillTo) { const fr2 = S.rangeRect(norm(S.fillTo)); ctx.setLineDash([4, 3]); ctx.strokeStyle = '#7a6a5d'; ctx.lineWidth = 1.5; ctx.strokeRect(fr2.x - 0.5, fr2.y - 0.5, fr2.w, fr2.h); ctx.setLineDash([]); }

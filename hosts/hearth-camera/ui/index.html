@@ -7,25 +7,25 @@
 <link rel="stylesheet" href="hearth.css">
 <style>
 main { display:grid; grid-template-columns:1fr minmax(17em, 21em); gap:var(--gut); }
-.stage { position:relative; min-height:0; border-radius:18px; overflow:hidden; background:#000; border:1px solid var(--line); display:grid; place-items:center; }
+.stage { position:relative; min-height:0; border-radius:min(18px, var(--corner, 18px)); overflow:hidden; background:#000; border:1px solid var(--line); display:grid; place-items:center; }
 #preview { width:100%; height:100%; object-fit:contain; display:block; }
 .over { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
 .count { font-size:7em; font-weight:700; color:#fff; text-shadow:0 6px 40px rgba(0,0,0,.7); }
 .flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
 .flash.go { animation:flash .45s ease-out; }
 @keyframes flash { 0% { opacity:.85; } 100% { opacity:0; } }
-.badge { position:absolute; top:.8em; left:.8em; display:flex; gap:.5em; align-items:center; background:rgba(15,11,9,.75); padding:.35em .8em; border-radius:99px; font-variant-numeric:tabular-nums; }
+.badge { position:absolute; top:.8em; left:.8em; display:flex; gap:.5em; align-items:center; background:color-mix(in srgb, var(--bg) 75%, transparent); padding:.35em .8em; border-radius:99px; font-variant-numeric:tabular-nums; }
 .nocam { text-align:center; color:var(--muted); padding:2em; }
 .nocam h2 { color:var(--text); }
 .side { display:flex; flex-direction:column; gap:.8em; min-height:0; }
 .shoot { display:flex; align-items:center; gap:1em; }
-.shutter { width:5em; height:5em; border-radius:50%; border:3px solid #f4ece3; display:grid; place-items:center; background:transparent; flex:none; }
-.shutter i { width:3.9em; height:3.9em; border-radius:50%; background:#f4ece3; display:block; transition:.2s var(--ease); }
+.shutter { width:5em; height:5em; border-radius:50%; border:3px solid var(--text); display:grid; place-items:center; background:transparent; flex:none; }
+.shutter i { width:3.9em; height:3.9em; border-radius:50%; background:var(--text); display:block; transition:.2s var(--ease); }
 .shutter.video i { background:var(--rec); }
 .shutter.on i { width:1.9em; height:1.9em; border-radius:.4em; }
 .shutter[disabled] { opacity:.4; }
 .recent { display:grid; grid-template-columns:repeat(auto-fill, minmax(5.2em, 1fr)); gap:.45em; }
-.thumb { position:relative; aspect-ratio:4/3; border-radius:10px; overflow:hidden; background:var(--panel3); border:1px solid var(--line); display:grid; place-items:center; color:var(--ember); }
+.thumb { position:relative; aspect-ratio:4/3; border-radius:min(10px, var(--corner, 10px)); overflow:hidden; background:var(--panel3); border:1px solid var(--line); display:grid; place-items:center; color:var(--ember); }
 .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
 .thumb svg { width:1.6em; height:1.6em; }
 .thumb small { position:absolute; left:.3em; bottom:.2em; font-size:.62em; color:#fff; text-shadow:0 1px 4px #000; }
@@ -59,6 +59,7 @@ main { display:grid; grid-template-columns:1fr minmax(17em, 21em); gap:var(--gut
 </div>
 <div id="layer"></div>
 <div id="toast"></div>
+<script src="hearth-gamepad.js"></script>
 <script src="nav.js"></script>
 <script>
 'use strict';

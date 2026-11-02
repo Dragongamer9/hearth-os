@@ -1,4 +1,4 @@
-# Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (hosts/decky-hearth) built and packed
+# Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (archive/hosts/decky-hearth) built and packed
 # like Decky's plugin template does, its backend's tests and its pure parts' unit tests, pictures of its theme over a
 # static stand-in for Steam's UI and of the takeover's real pages (Hearth's home, Store, Library) with made-up games,
 # the session's Steam Game Mode and the Decky helper (hosts/linux/test/test_hearth_steam_mode.py), and the Rust side
@@ -10,7 +10,7 @@ on:
     # feature/decky-hearth, feature/steam-menus: a new workflow can't be started by hand until it's on the default
     # branch (remove them once it is).
     branches: [bughunt, feature/steam-only, feature/decky-hearth, feature/steam-menus, feature/steam-pages, feature/steam-coop, feature/steam-seats, feature/steam-rest]
-    paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/hearth-core/src/multiplay.rs', 'hosts/hearth-core/src/bridge.rs', 'hosts/linux/test/test_hearth_steam_mode.py',
+    paths: ['archive/hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/hearth-core/src/multiplay.rs', 'hosts/hearth-core/src/bridge.rs', 'hosts/linux/test/test_hearth_steam_mode.py',
             'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_takeover.rs', 'hosts/hearth-core/src/core_service.rs',
             'hosts/hearth-rs/src/main.rs',
             'os/system_files/usr/libexec/nimbus/hearth-decky', 'os/system_files/usr/libexec/nimbus/hearth-coop', '.github/workflows/decky-hearth.yml']
@@ -28,7 +28,7 @@ jobs:
       - name: Backend tests
         run: |
           set -o pipefail
-          python3 -m unittest discover -s hosts/decky-hearth/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
+          python3 -m unittest discover -s archive/hosts/decky-hearth/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
           grep -q '^OK' /tmp/py.log || { echo "::error title=plugin backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
       - uses: actions/setup-node@v4
         with:
@@ -36,15 +36,15 @@ jobs:
       - name: Unit tests of the takeover's pure parts (src/model.ts)
         run: |
           set -o pipefail
-          node --experimental-strip-types --test --test-reporter=tap hosts/decky-hearth/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
+          node --experimental-strip-types --test --test-reporter=tap archive/hosts/decky-hearth/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
           grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=plugin unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=plugin unit tests::$(grep -E '^# (tests|pass|fail)' /tmp/unit.log | tr '\n' ' ')"
       - name: Build and pack (pnpm build, then Decky's layout and a zip)
-        working-directory: hosts/decky-hearth
+        working-directory: archive/hosts/decky-hearth
         run: |
           set -o pipefail
           npm install -g pnpm@9 >/dev/null
-          v=$(grep -m1 '^version' ../hearth-core/Cargo.toml | cut -d'"' -f2)
+          v=$(grep -m1 '^version' ../../../hosts/hearth-core/Cargo.toml | cut -d'"' -f2)
           sed -i "s/\"version\": \".*\"/\"version\": \"$v\"/" package.json
           pnpm install --no-frozen-lockfile 2>&1 | tail -5
           if ! pnpm build > /tmp/build.log 2>&1; then
@@ -65,8 +65,8 @@ jobs:
       - name: The theme over a stand-in for Steam's UI, the takeover's pages, Hearth in Steam's menu, Quick Access and in-game (pictures)
         run: |
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
-          cp hosts/decky-hearth/tests/render-mock.mjs tools/render-mock.mjs
-          cp hosts/decky-hearth/tests/render-takeover.mjs tools/render-takeover.mjs
+          cp archive/hosts/decky-hearth/tests/render-mock.mjs tools/render-mock.mjs
+          cp archive/hosts/decky-hearth/tests/render-takeover.mjs tools/render-takeover.mjs
           HEARTH_ROOT="$PWD" node tools/render-mock.mjs "$RUNNER_TEMP/shots"
           HEARTH_ROOT="$PWD" node tools/render-takeover.mjs "$RUNNER_TEMP/shots"
       - name: Keep the pictures (ci/decky-hearth-shots)

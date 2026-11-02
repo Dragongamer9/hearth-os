@@ -456,23 +456,29 @@ impl Executable {
 
 /// The command that starts it: Windows programs with umu-run in the game's Proton folder (as Hearth starts Steam
 /// games itself: GAMEID umu-<app>, STORE steam, PROTONPATH), Linux programs as they are.
-pub fn command_for(inst: &Instance, ex: &Executable) -> (String, Vec<String>, Vec<(String, String)>, PathBuf) {
+/// The command line for one of the instance's programs: Windows ones through umu (Proton) in the instance's prefix
+/// with the game's Steam app id and the Proton the prefix was made with (launch.rs); `umu` is umu-run's path, or the
+/// reason it isn't there.
+pub fn command_for(inst: &Instance, ex: &Executable, umu: Result<String, String>) -> Result<(String, Vec<String>, Vec<(String, String)>, PathBuf), String> {
     let args: Vec<String> = split_args(&ex.args);
     let cwd = ex.cwd.clone().filter(|c| c.is_dir()).or_else(|| ex.binary.parent().map(Path::to_path_buf)).unwrap_or_else(|| PathBuf::from("/"));
-    if !ex.windows() { return (ex.binary.to_string_lossy().to_string(), args, Vec::new(), cwd); }
-    let mut env = Vec::new();
-    let pfx = inst.wine_prefix();
-    let compat = if pfx.file_name().map(|n| n == "pfx").unwrap_or(false) { pfx.parent().map(Path::to_path_buf).unwrap_or_else(|| pfx.clone()) } else { pfx.clone() };
-    env.push(("WINEPREFIX".to_string(), pfx.to_string_lossy().to_string()));
-    env.push(("STEAM_COMPAT_DATA_PATH".to_string(), compat.to_string_lossy().to_string()));
+    if !ex.windows() { return Ok((ex.binary.to_string_lossy().to_string(), args, Vec::new(), cwd)); }
+    let umu = umu?;
     let app = inst.steam_app.or(if inst.kind.steam > 0 { Some(inst.kind.steam) } else { None });
-    env.push(("GAMEID".to_string(), app.map(|a| format!("umu-{a}")).unwrap_or_else(|| "umu-default".into())));
-    if app.is_some() { env.push(("STORE".to_string(), "steam".to_string())); }
-    env.push(("PROTONPATH".to_string(), std::env::var("HEARTH_PROTON").ok().filter(|p| !p.is_empty()).unwrap_or_else(|| "GE-Proton".into())));
+    let (steam, libs) = steam_dirs();
+    let env = crate::launch::umu_env(&inst.wine_prefix(), app, steam.as_deref(), &libs);
     let mut a = vec![ex.binary.to_string_lossy().to_string()];
     a.extend(args);
-    ("umu-run".to_string(), a, env, cwd)
+    Ok((umu, a, env, cwd))
 }
+#[cfg(target_os = "linux")]
+fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) {
+    let s = hearth_core::steam::steam_path(&crate::util::home());
+    let libs = s.as_deref().map(hearth_core::steam::libraries).unwrap_or_default();
+    (s, libs)
+}
+#[cfg(not(target_os = "linux"))]
+fn steam_dirs() -> (Option<PathBuf>, Vec<PathBuf>) { (None, Vec::new()) }
 
 /// "a \"b c\" d" → [a, b c, d]
 pub fn split_args(s: &str) -> Vec<String> {
@@ -491,55 +497,46 @@ pub fn split_args(s: &str) -> Vec<String> {
 
 fn has(cmd: &str) -> bool { std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file())).unwrap_or(false) }
 
-/// Processes (other than this one) working in the game's folder: their working folder or command line is in it.
-fn game_processes(dir: &Path) -> Vec<u32> {
-    let me = std::process::id();
-    let want = dir.to_string_lossy().to_string();
-    let Ok(rd) = std::fs::read_dir("/proc") else { return Vec::new() };
-    rd.flatten().filter_map(|e| e.file_name().to_string_lossy().parse::<u32>().ok()).filter(|&p| p != me).filter(|p| {
-        let cwd = std::fs::read_link(format!("/proc/{p}/cwd")).map(|c| c.starts_with(dir)).unwrap_or(false);
-        cwd || std::fs::read(format!("/proc/{p}/cmdline")).map(|c| String::from_utf8_lossy(&c).replace('\\', "/").contains(&want)).unwrap_or(false)
-    }).collect()
-}
+fn game_processes(dir: &Path) -> Vec<u32> { crate::launch::processes_in(dir) }
 
 /// Mounts the view, starts the program and waits for it (and anything it started in the game's folder) to end,
 /// then takes the view away again. Used by `hearth-mods --organizer <instance> run` (the library's Play).
 pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
-    if !ex.binary.is_file() { return Err(format!("{} isn't there ({}).", ex.title, ex.binary.display())); }
-    let a = deploy(inst, std::process::id(), true)?;
-    let (cmd, args, env, cwd) = command_for(inst, ex);
-    let via_steam = cmd == "umu-run" && !has("umu-run");
+    use crate::launch::log;
+    let t = format!("organizer {}", inst.rec.title);
+    if !ex.binary.is_file() { let m = format!("{} isn't there ({}).", ex.title, ex.binary.display()); log(&format!("{t}: {m}")); return Err(m); }
+    // Without umu (none on the system and Hearth's own couldn't be fetched) a Steam game is started by Steam itself:
+    // only its own program (script extenders need umu), with the mods laid over it all the same.
+    let planned = command_for(inst, ex, if ex.windows() { crate::launch::umu() } else { Ok(String::new()) });
+    let app = inst.steam_app.or(if inst.kind.steam > 0 { Some(inst.kind.steam) } else { None });
+    if let Err(e) = &planned {
+        log(&format!("{t}: {e}"));
+        if app.is_none() || !has("steam") { return Err(e.clone()); }
+    }
+    let a = deploy(inst, std::process::id(), true).map_err(|e| { log(&format!("{t}: couldn't lay the mods over the game: {e}")); e })?;
+    log(&format!("{t}: the mods are laid over the game ({})", a.mode));
     let game_dir = inst.game_dir.clone().unwrap_or_else(|| a.target.clone());
-    let started = if via_steam {
-        // No umu-launcher: Steam starts the game itself (only its own exe: script extenders need umu).
-        match inst.steam_app.or(if inst.kind.steam > 0 { Some(inst.kind.steam) } else { None }) {
-            Some(app) if has("steam") => std::process::Command::new("steam").arg("-applaunch").arg(app.to_string()).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string()),
-            _ => Err("umu-launcher isn't installed, so Windows programs can't be started from here.".to_string()),
-        }
-    } else {
-        let mut c = std::process::Command::new(&cmd);
-        c.args(&args).current_dir(&cwd).stdin(std::process::Stdio::null());
-        for (k, v) in &env { c.env(k, v); }
-        c.spawn().map_err(|e| format!("Couldn't start {} ({e})", ex.title))
-    };
     let mut result = json!({"ok": true, "title": ex.title, "mode": a.mode, "notes": a.notes});
-    match started {
-        Ok(mut child) => {
-            let st = child.wait();
-            result["exit"] = json!(st.ok().and_then(|s| s.code()));
-            // Steam hands the game over: wait for it to appear (two minutes at most), then for it to end.
-            if via_steam {
-                let t0 = std::time::Instant::now();
-                while game_processes(&game_dir).is_empty() && t0.elapsed().as_secs() < 120 { std::thread::sleep(std::time::Duration::from_secs(2)); }
-            }
+    let started = match planned {
+        Ok((cmd, args, env, cwd)) => crate::launch::run_logged(&format!("{t}: {}", ex.title), &cmd, &args, &env, &cwd, Some(&game_dir)),
+        Err(_) => {
+            let app = app.unwrap_or(0);
+            log(&format!("{t}: starting it through Steam (steam -applaunch {app}): without umu, Steam starts the game's own program"));
+            let r = std::process::Command::new("steam").arg("-applaunch").arg(app.to_string()).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())
+                .and_then(|mut c| c.wait().map_err(|e| e.to_string()));
             let t0 = std::time::Instant::now();
+            while game_processes(&game_dir).is_empty() && t0.elapsed().as_secs() < 120 { std::thread::sleep(std::time::Duration::from_secs(2)); }
             while !game_processes(&game_dir).is_empty() && t0.elapsed().as_secs() < 24 * 3600 { std::thread::sleep(std::time::Duration::from_secs(2)); }
+            r.map(|s| s.code())
         }
+    };
+    match started {
+        Ok(code) => result["exit"] = json!(code),
         Err(e) => { result["ok"] = json!(false); result["error"] = json!(e); }
     }
     match undeploy(inst, true) {
-        Ok(u) => result["undeploy"] = u,
-        Err(e) => { result["undeploy"] = json!({"undeployed": false, "error": e}); }
+        Ok(u) => { log(&format!("{t}: the mods are taken away again")); result["undeploy"] = u }
+        Err(e) => { log(&format!("{t}: couldn't take the mods away: {e}")); result["undeploy"] = json!({"undeployed": false, "error": e}); }
     }
     Ok(result)
 }

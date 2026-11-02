@@ -54,7 +54,7 @@ const Nav = (() => {
   });
   const held = {}; let lastMove = 0;
   function poll() {
-    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    const pads = HearthGamepad.pads();
     const now = performance.now();
     const st = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, rb: false, start: false };
     for (const g of pads) {
@@ -76,9 +76,8 @@ const Nav = (() => {
       else if (k === 'b') back();
       else if (!layerOpen() && H[k]) H[k]();
     }
-    requestAnimationFrame(poll);
   }
-  requestAnimationFrame(poll);
+  HearthGamepad.loop(poll);
 
   // Little helpers every app uses.
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

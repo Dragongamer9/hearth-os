@@ -728,7 +728,7 @@ const held = {};
 let lastPadMove = 0;
 const BTN = { a: 0, b: 1, x: 2, y: 3, lb: 4, rb: 5, lt: 6, rt: 7, view: 8, start: 9, ls: 10, rs: 11, up: 12, down: 13, left: 14, right: 15 };
 function padFrame() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   if (pads.length) {
     const now = performance.now();
     const st = {}, ax = { lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0 };
@@ -762,7 +762,6 @@ function padFrame() {
       if (px || py) panBy(-px * 18, -py * 18);
     }
   }
-  requestAnimationFrame(padFrame);
 }
 function padButton(k, ui) {
   if (k === 'b') { back(); return; }
@@ -786,7 +785,7 @@ function padButton(k, ui) {
     case 'rs': zoomCycle(); break;
   }
 }
-requestAnimationFrame(padFrame);
+HearthGamepad.loop(padFrame);
 window.addEventListener('gamepadconnected', () => toast('Controller connected'));
 
 // Files dropped on the window open there.

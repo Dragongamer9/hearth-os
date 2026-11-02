@@ -46,6 +46,8 @@ PanelWindow {
         id: board
         anchors { fill: parent; leftMargin: 8; rightMargin: 8; topMargin: cfg.position === "top" ? 0 : 6; bottomMargin: cfg.position === "top" ? 6 : 0 }
         vm: root.vm
+        looks: OskThemes.themes
+        look: OskThemes.resolve(root.cfg.theme)
         onTapped: (r, c) => { if (root.engine) { root.engine.setHints(false); root.engine.tap(r, c); } }
         onLongPressed: (r, c) => { if (root.engine) root.engine.longPress(r, c); }
         onAltPicked: i => { if (root.engine) root.engine.pickAlt(i); }

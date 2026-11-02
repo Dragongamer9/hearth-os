@@ -44,7 +44,7 @@ STORES = {'epic': ('epic', 'Epic'), 'gog': ('gog', 'GOG'), 'battlenet': ('battle
           'emu': ('emu', 'Emulators'), 'recomps': ('recomps', 'Recomps'), 'recomp': ('recomps', 'Recomps'),
           'beacon': ('beacon', 'Beacon'), 'manual': ('manual', 'Added by hand'), 'device': ('manual', 'Added by hand'),
           'ea': ('ea', 'EA'), 'ubisoft': ('ubisoft', 'Ubisoft'), 'amazon': ('amazon', 'Amazon'), 'itch': ('itch', 'itch.io'),
-          'heroic': ('heroic', 'Heroic'), 'lutris': ('lutris', 'Lutris')}
+          'heroic': ('heroic', 'Heroic'), 'lutris': ('lutris', 'Lutris'), 'mods': ('mods', 'Modded games')}
 OTHER = ('other', 'Other games')
 # The old Hearth plugin's settings folder names (Decky names it after the plugin's folder or its name).
 OLD_PLUGIN_SETTINGS = ('decky-hearth', 'Hearth')
@@ -323,22 +323,83 @@ def _fetch(url):
 
 
 
-def load_json(name, default):
+# ---- Settings files the safe way (docs/SETTINGS-PERSISTENCE.md; the same rules and file names as Hearth OS's
+# hearth_settings_io.py, kept here because a Decky plugin ships on its own): atomic (temporary file, fsync, rename),
+# the last good version kept as FILE.bak, a damaged file put back from it, never replaced with the defaults.
+def _safe_write(path, data):
+    import fcntl
+    import tempfile
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    lock = os.open(os.path.join(d, '.' + os.path.basename(path) + '.lock'), os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        with open(os.path.join(settings_dir(), name)) as f:
-            v = json.load(f)
-        return v if isinstance(v, type(default)) else default
-    except (OSError, ValueError):
-        return default
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            st = os.stat(path)
+            with open(path, 'rb') as f:
+                cur = f.read()
+        except OSError:
+            st, cur = None, None
+        if cur == data:
+            return
+        for target, content in (((path + '.bak'), cur), (path, data)):
+            if content is None or not content.strip():
+                continue
+            fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(target) + '.', suffix='.tmp', dir=d)
+            try:
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(content)
+                    f.flush()
+                    os.fsync(f.fileno())
+                if st is not None:
+                    os.chmod(tmp, st.st_mode & 0o7777)
+                    try:
+                        os.chown(tmp, st.st_uid, st.st_gid)
+                    except OSError:
+                        pass
+                os.replace(tmp, target)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+        try:
+            dfd = os.open(d, os.O_RDONLY)
+            os.fsync(dfd)
+            os.close(dfd)
+        except OSError:
+            pass
+    finally:
+        os.close(lock)
+
+
+def _read_settings(path):
+    """The JSON in PATH; damaged: the copy in PATH.bak (and put back). None when neither can be read."""
+    for p in (path, path + '.bak'):
+        try:
+            with open(p) as f:
+                v = json.load(f)
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            continue
+        if p != path:
+            try:
+                _safe_write(path, json.dumps(v).encode())
+            except OSError:
+                pass
+        return v
+    return None
+
+
+def load_json(name, default):
+    v = _read_settings(os.path.join(settings_dir(), name))
+    return v if isinstance(v, type(default)) else default
 
 
 def save_json(name, value):
-    d = settings_dir()
-    os.makedirs(d, exist_ok=True)
-    tmp = os.path.join(d, name + '.tmp')
-    with open(tmp, 'w') as f:
-        json.dump(value, f)
-    os.replace(tmp, os.path.join(d, name))
+    _safe_write(os.path.join(settings_dir(), name), json.dumps(value).encode())
 
 
 
@@ -397,7 +458,7 @@ def library_stamp(home_dir=None):
     h = home_dir or home()
     others = [os.path.join(h, '.config', 'minigalaxy', 'config.json'), os.path.join(h, 'GOG Games'), os.path.join(h, '.cache', 'minigalaxy', 'covers')]
     others += [os.path.join(h, r, f[1]) for r in HEROIC_ROOTS for f in HEROIC] + [os.path.join(h, r) for r in EGL_ROOTS]
-    for p in [d, os.path.join(d, 'library.json'), os.path.join(d, 'art-cache'), os.path.join(d, 'legendary', 'installed.json')] + others:
+    for p in [d, os.path.join(d, 'library.json'), os.path.join(d, 'art-cache'), os.path.join(d, 'legendary', 'installed.json'), mods_file(h)] + others:
         try:
             out.append(int(os.stat(p).st_mtime_ns))
         except OSError:
@@ -705,10 +766,47 @@ def merge(items, extras, app='/usr/bin/nimbus', home_dir=None):
     return out
 
 
+# ---- Hearth Mods' "Add to Steam" (hosts/hearth-gaming launch.rs): a modded game's ways in, as its own shortcuts.
+# Hearth Mods writes ~/.local/share/nimbus/mods/steam-shortcuts.json ([{id, title, game, kind, launch, cwd, cover, wide,
+# hero, logo, icon}]); each entry is a shortcut with a stable id (hearth-mods:<kind>:<game id>), so adding it again
+# updates it and taking it out of the file removes it. Only entries that run Hearth Mods' own program are taken.
+MODS_KINDS = ('modded', 'mo2', 'hearth')
+
+
+def mods_file(home_dir=None):
+    return os.path.join(home_dir or home(), '.local', 'share', 'nimbus', 'mods', 'steam-shortcuts.json')
+
+
+def mods_entries(home_dir=None, which=None):
+    h = home_dir or home()
+    raw = _json(mods_file(h))
+    out = []
+    for e in raw if isinstance(raw, list) else []:
+        if not isinstance(e, dict) or not valid_id(e.get('id')) or not str(e.get('id')).startswith('hearth-mods:') or e.get('kind') not in MODS_KINDS:
+            skipped('hearth mods: odd entry')
+            continue
+        launch = e.get('launch')
+        if not isinstance(launch, list) or not launch or not all(isinstance(a, str) and a and len(a) < 4096 for a in launch):
+            skipped('hearth mods: no program')
+            continue
+        prog = launch[0]
+        if os.path.basename(prog) != 'hearth-mods' or not os.path.isabs(prog) or not (which or os.path.isfile)(prog):
+            skipped('hearth mods: not hearth-mods')
+            continue
+        title = e.get('title') if isinstance(e.get('title'), str) else ''
+        if not title.strip():
+            continue
+        cwd = e.get('cwd') if isinstance(e.get('cwd'), str) and e.get('cwd').startswith('/') else h
+        art = {k: e.get(k) for k in ('cover', 'wide', 'hero', 'logo', 'icon') if isinstance(e.get(k), str)}
+        added = e.get('added') if isinstance(e.get('added'), (int, float)) and not isinstance(e.get('added'), bool) else 0
+        out.append(_game(e['id'], title.strip()[:200], 'mods', launch, cwd, int(added // 1000), 'hearth-mods', art))
+    return out
+
+
 def other_launchers(home_dir=None):
     """Every other launcher's games; a launcher whose files can't be read is skipped (counted)."""
     out = []
-    for f in (minigalaxy_games, heroic_games, egl_games):
+    for f in (minigalaxy_games, heroic_games, egl_games, mods_entries):
         try:
             out.extend(f(home_dir))
         except Exception as e:  # noqa: BLE001 - one launcher's odd files never stop the others
@@ -784,7 +882,102 @@ def shortcuts_map():
     return mine
 
 
+# ---- Steam games from other Steam folders (docs/HEARTH-SYNC.md "Games from other Steam folders"): the scan and the
+# import are hearth-steam-import's (os/system_files/usr/bin/hearth-steam-import, shipped here as steam_import.py). The
+# import only runs while Steam is closed, so from Game Mode it's armed: a small helper waits for Steam to close (the
+# panel restarts Steam), brings the games in, and leaves its result in import.json for the panel.
+IMPORT_PROGRAMS = ('/usr/bin/hearth-steam-import',)
+
+
+def importer():
+    """The importer module: this plugin's copy, or the system's hearth-steam-import. None when neither is there."""
+    import importlib.machinery
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for f in (os.path.join(here, 'steam_import.py'),) + IMPORT_PROGRAMS:
+        if os.path.isfile(f):
+            try:
+                loader = importlib.machinery.SourceFileLoader('hearth_steam_import', f)
+                spec = importlib.util.spec_from_loader('hearth_steam_import', loader)
+                m = importlib.util.module_from_spec(spec)
+                loader.exec_module(m)
+                return m
+            except Exception:
+                continue
+    return None
+
+
+def import_command():
+    here = os.path.dirname(os.path.abspath(__file__))
+    for f in IMPORT_PROGRAMS:
+        if os.path.isfile(f) and os.access(f, os.X_OK):
+            return [f]
+    py = find_program('python3')
+    own = os.path.join(here, 'steam_import.py')
+    return [py, own] if py and os.path.isfile(own) else None
+
+
+def import_scan():
+    m = importer()
+    if not m:
+        return {'ok': False, 'error': "the importer isn't on this system", 'games': [], 'skipped': []}
+    os.environ['HEARTH_STEAM_IMPORT_HOME'] = home()
+    try:
+        p = m.scan(home())
+    except Exception as e:  # noqa: BLE001 - shown in the panel, never breaks the plugin
+        return {'ok': False, 'error': str(e)[:200], 'games': [], 'skipped': []}
+    keep = ('appid', 'name', 'how', 'source', 'target', 'why')
+    slim = lambda gs: [{k: g[k] for k in keep if k in g} for g in gs][:200]
+    log('import scan: %d to bring in, %d skipped' % (len(p['games']), len(p['skipped'])))
+    return {'ok': True, 'target': p['target'], 'games': slim(p['games']), 'skipped': slim(p['skipped']), 'libraries': p['libraries'][:50]}
+
+
+def import_state():
+    """The armed import's state: {'pending': bool, 'result': {...} or None}."""
+    d = settings_dir()
+    pending = False
+    try:
+        pid = int(open(os.path.join(d, 'import.pid')).read().strip())
+        pending = os.path.exists('/proc/%d' % pid)
+    except (OSError, ValueError):
+        pass
+    res = load_json('import.json', {}) or None
+    return {'pending': pending, 'result': res}
+
+
+def arm_import(popen=subprocess.Popen):
+    """Starts the helper that waits for Steam to close and then brings the games in. True when started."""
+    cmd = import_command()
+    if not cmd:
+        return False
+    d = settings_dir()
+    os.makedirs(d, exist_ok=True)
+    try:
+        os.remove(os.path.join(d, 'import.json'))
+    except OSError:
+        pass
+    env = clean_env()
+    env['HEARTH_STEAM_IMPORT_HOME'] = home()
+    # The helper writes its JSON to import.json.tmp, renamed to import.json when it's done.
+    sh = '"$@" > "$0.tmp" 2>/dev/null; mv -f "$0.tmp" "$0"'
+    p = popen(['/bin/sh', '-c', sh, os.path.join(d, 'import.json')] + cmd + ['--yes', '--wait', '--json'],
+              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
+    with open(os.path.join(d, 'import.pid'), 'w') as f:
+        f.write(str(p.pid))
+    log('import armed: waits for Steam to close')
+    return True
+
+
 class Plugin:
+    async def import_scan(self):
+        return import_scan()
+
+    async def import_state(self):
+        return import_state()
+
+    async def import_arm(self):
+        return arm_import()
+
     async def get_games(self, force=False):
         r = list_games(force=bool(force))
         return r

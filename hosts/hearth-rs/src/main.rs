@@ -800,6 +800,9 @@ fn main() {
             Err(e) => { eprintln!("{e}"); std::process::exit(1); }
         }
     }
+    // Mantel's Settings app: one of Hearth's own calls (Remote play, Steam Game Mode, Storage, backups) as one line of
+    // JSON. No window is opened (hearth-core settings_cli.rs, docs/SETTINGS-MOVE.md).
+    if has("--settings-call") { std::process::exit(hearth_core::settings_cli::run(&args)); }
     // Mantel's Games section (Desktop Mode's launcher): the installed games as JSON. No window is opened.
     if has("--list-games") {
         println!("{}", if has("--with-cloud") { hearth_core::desktop_games::list_with_cloud_now() } else { hearth_core::desktop_games::list_now() });
@@ -903,7 +906,9 @@ fn main() {
         .setup(move |app| {
             let bridge = app.state::<Host>().0.clone();
             let zoom = bridge.lock().map(|b| b.zoom_pct()).unwrap_or(100);
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            // The installer USB (/etc/hearth-installer) shows only the installer (ui/installer.html, 1.1).
+            let page = if std::path::Path::new("/etc/hearth-installer").exists() && !windowed { "installer.html" } else { "index.html" };
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(page.into()))
                 .title("Hearth")
                 .fullscreen(!windowed)
                 .inner_size(1280.0, 800.0)

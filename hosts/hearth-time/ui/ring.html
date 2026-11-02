@@ -7,17 +7,17 @@
 <link rel="stylesheet" href="hearth.css">
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <style>
-body { background:radial-gradient(900px 600px at 50% 40%, #4a2210 0%, #1a0f0a 55%, var(--bg) 100%); }
+body { background:radial-gradient(900px 600px at 50% 40%, color-mix(in srgb, var(--bg) 78%, var(--ember)) 0%, color-mix(in srgb, var(--ember) 5%, var(--bg)) 55%, var(--bg) 100%); }
 .wrap { height:100%; display:grid; place-items:center; text-align:center; padding:var(--gut); }
 .pulse { width:min(46vmin, 15em); height:min(46vmin, 15em); border-radius:50%; display:grid; place-items:center; margin:0 auto 1.2em;
-  background:radial-gradient(circle, rgba(255,138,61,.35), rgba(255,138,61,.05) 65%, transparent 70%); animation:pulse 1.6s ease-in-out infinite; color:var(--ember); }
+  background:radial-gradient(circle, color-mix(in srgb, var(--ember) 35%, transparent), color-mix(in srgb, var(--ember) 5%, transparent) 65%, transparent 70%); animation:pulse 1.6s ease-in-out infinite; color:var(--ember); }
 .pulse svg { width:45%; height:45%; }
 @keyframes pulse { 0%,100% { transform:scale(.92); } 50% { transform:scale(1.04); } }
 .time { font-size:clamp(3.2em, 11vw, 7em); font-weight:200; font-variant-numeric:tabular-nums; line-height:1; }
 .what { font-size:1.5em; font-weight:600; margin:.3em 0 .1em; color:var(--flame); }
 .more { color:var(--muted); }
 .acts { display:flex; gap:1em; justify-content:center; margin-top:1.8em; flex-wrap:wrap; }
-.acts .btn { min-width:11em; min-height:3.4em; font-size:1.1em; border-radius:18px; }
+.acts .btn { min-width:11em; min-height:3.4em; font-size:1.1em; border-radius:min(18px, var(--corner, 18px)); }
 .hint { color:var(--faint); margin-top:1.2em; font-size:.85em; }
 </style>
 </head>
@@ -34,6 +34,7 @@ body { background:radial-gradient(900px 600px at 50% 40%, #4a2210 0%, #1a0f0a 55
   <div class="hint">A: choose · X: snooze · B: dismiss</div>
 </div></div>
 <div id="layer"></div>
+<script src="hearth-gamepad.js"></script>
 <script src="osk/hearth-osk.js"></script>
 <script src="hearth.js"></script>
 <script>

@@ -6,21 +6,26 @@
 //! Mode" setting (`set_default`) isn't offered any more: starting in it is always on; the session's pause after two
 //! failures uses the same DEFAULT_OFF_NOTE / DEFAULT_FAILS files.
 //!
-//! With Decky Loader (installed from Settings › System › Steam Game Mode, hearth-admin decky-install), the Hearth Decky
-//! plugin (hosts/decky-hearth) brings Hearth into Steam: your other stores' games with Play buttons, and a sync that adds
+//! With Decky Loader (built into Hearth OS: hearth-decky@.service, started only for Steam Game Mode), the Hearth Decky
+//! plugin (archive/hosts/decky-hearth) brings Hearth into Steam: your other stores' games with Play buttons, and a sync that adds
 //! them to Steam's library as shortcuts which play through Hearth (`hearth --play-now`, desktop_games.rs).
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// The Decky plugin the image ships: Hearth Sync (built by CI from hosts/decky-hearth-sync, docs/HEARTH-SYNC.md). The
-/// older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now; hearth-decky removes the copy it put in.
+/// older Hearth plugin (archive/hosts/decky-hearth, the takeover) isn't shipped for now; hearth-decky removes the copy it put in.
 pub const SHIPPED_PLUGIN: &str = "usr/share/hearth/decky-hearth-sync";
 /// Where hearth-decky puts each in Decky's plugins folder.
 pub const SYNC_PLUGIN_DIR: &str = "homebrew/plugins/decky-hearth-sync";
 pub const OLD_PLUGIN_DIR: &str = "homebrew/plugins/decky-hearth";
 /// Hearth's own Decky Loader service (hearth-decky, through hearth-admin): started only for Steam Game Mode.
 pub const HEARTH_UNIT: &str = "etc/systemd/system/hearth-decky.service";
+/// Decky Loader built into Hearth OS: the image's pinned PluginLoader and the service template nimbus-session starts
+/// for Steam Game Mode (hearth-decky@<you>.service, no password: 49-hearth-decky.rules).
+pub const BUILTIN_BINARY: &str = "usr/lib/hearth-decky/PluginLoader";
+pub const BUILTIN_VERSION: &str = "usr/lib/hearth-decky/version";
+pub const BUILTIN_UNIT: &str = "usr/lib/systemd/system/hearth-decky@.service";
 /// Decky Loader installed the usual way (its own installer): left alone, it starts by itself.
 pub const UPSTREAM_UNIT: &str = "etc/systemd/system/plugin_loader.service";
 /// The note nimbus-session leaves when Steam Game Mode couldn't start or ended right away (this sign-in only).
@@ -52,12 +57,17 @@ pub fn available() -> bool {
 pub fn decky_status(root: &Path, home: &Path) -> Value {
     let hearth = root.join(HEARTH_UNIT).is_file();
     let upstream = root.join(UPSTREAM_UNIT).is_file();
+    let builtin = root.join(BUILTIN_BINARY).is_file() && root.join(BUILTIN_UNIT).is_file();
+    let version = std::fs::read_to_string(root.join(BUILTIN_VERSION)).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let cef = [".steam/steam/.cef-enable-remote-debugging", ".var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"]
         .iter().any(|p| home.join(p).exists());
     json!({
-        "installed": hearth || upstream,
-        // Hearth's own install (started only for Steam Game Mode) or Decky's own installer's (always running).
-        "via": if hearth { json!("hearth") } else if upstream { json!("decky") } else { Value::Null },
+        "installed": hearth || upstream || builtin,
+        // Decky's own installer's (always running, wins), built into Hearth OS (started only for Steam Game Mode), or
+        // an older Hearth OS's download (hearth-decky.service; the built-in one replaces it at its first start).
+        "via": if upstream { json!("decky") } else if builtin { json!("builtin") } else if hearth { json!("hearth") } else { Value::Null },
+        "builtin": builtin,
+        "version": if builtin { json!(version) } else { Value::Null },
         // Hearth's plugin in place: Hearth Sync. "oldPlugin": the older Hearth plugin (the takeover) is still there.
         "plugin": home.join(SYNC_PLUGIN_DIR).join("plugin.json").is_file(),
         "oldPlugin": home.join(OLD_PLUGIN_DIR).join("plugin.json").is_file(),
@@ -155,8 +165,7 @@ pub fn default_status_in(conf: &Path, state: &Path, can: bool, signed_in: bool) 
 /// old note and failure count, so it gets its two chances again.
 pub fn set_default_in(conf: &Path, state: &Path, on: bool, can: bool) -> Result<(), String> {
     if on && !can { return Err("Starting in Steam Game Mode needs Steam installed and signed in, in Hearth OS's session.".into()); }
-    let text = std::fs::read_to_string(conf).unwrap_or_default();
-    crate::paths::write_atomic(conf, write_default(&text, on).as_bytes()).map_err(|e| e.to_string())?;
+    crate::settings_file::update_text(conf, |text| write_default(text, on)).map_err(|e| e.to_string())?;
     if on {
         let _ = std::fs::remove_file(state.join(DEFAULT_OFF_NOTE));
         let _ = std::fs::remove_file(state.join(DEFAULT_FAILS));
@@ -255,15 +264,23 @@ mod tests {
         assert_eq!(s["shipped"], false);
         assert_eq!(s["cefDebugging"], false);
         let mk = |p: PathBuf| { std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, "{}").unwrap(); };
-        mk(root.path().join(UPSTREAM_UNIT));
-        assert_eq!(decky_status(root.path(), home.path())["via"], "decky");
         mk(root.path().join(HEARTH_UNIT));
+        assert_eq!(decky_status(root.path(), home.path())["via"], "hearth");
+        mk(root.path().join(BUILTIN_BINARY));
+        mk(root.path().join(BUILTIN_UNIT));
+        std::fs::write(root.path().join(BUILTIN_VERSION), "v3.3.1\n").unwrap();
+        let b = decky_status(root.path(), home.path());
+        assert_eq!(b["via"], "builtin");
+        assert_eq!(b["builtin"], true);
+        assert_eq!(b["version"], "v3.3.1");
+        mk(root.path().join(UPSTREAM_UNIT));
+        assert_eq!(decky_status(root.path(), home.path())["via"], "decky", "Decky's own install wins");
         mk(root.path().join(SHIPPED_PLUGIN).join("plugin.json"));
         mk(home.path().join(SYNC_PLUGIN_DIR).join("plugin.json"));
         mk(home.path().join(".steam/steam/.cef-enable-remote-debugging"));
         let s = decky_status(root.path(), home.path());
         assert_eq!(s["installed"], true);
-        assert_eq!(s["via"], "hearth");
+        assert_eq!(s["via"], "decky");
         assert_eq!(s["plugin"], true);
         assert_eq!(s["oldPlugin"], false);
         assert_eq!(s["shipped"], true);

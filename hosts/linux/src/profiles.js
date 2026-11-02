@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { writeSettings, readSettings } = require('./settings-file');
 
 /** A person's own files and folders, relative to Hearth's data folder. */
 const OWN = ['library.json', 'profile', 'accounts', 'legendary/user.json', 'gog/auth.json'];
@@ -23,11 +24,11 @@ class Profiles {
     this.dir = dataDir;
     this.file = path.join(dataDir, 'profiles.json');
     let d = null;
-    try { d = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch {}
+    d = readSettings(this.file);   // damaged: profiles.json.bak, never one default profile saved over everyone's
     this.data = d && Array.isArray(d.list) && d.list.length ? d : { active: 'main', askAtStart: false, list: [{ id: 'main', name: null, color: COLORS[0], steam: null }] };
     if (!this.data.list.some(p => p.id === this.data.active)) this.data.active = this.data.list[0].id;
   }
-  save() { fs.mkdirSync(this.dir, { recursive: true }); const t = this.file + '.tmp'; fs.writeFileSync(t, JSON.stringify(this.data, null, 2)); fs.renameSync(t, this.file); }
+  save() { writeSettings(this.file, JSON.stringify(this.data, null, 2), { json: true }); }
   get active() { return this.data.active; }
   get list() { return this.data.list; }
   get askAtStart() { return !!this.data.askAtStart; }
@@ -50,7 +51,7 @@ class Profiles {
     fs.mkdirSync(dst, { recursive: true });
     let shared = [];
     try { shared = JSON.parse(fs.readFileSync(path.join(this.dir, 'library.json'), 'utf8')).manual || []; } catch {}
-    fs.writeFileSync(path.join(dst, 'library.json'), JSON.stringify({ manual: shared, profile: { name: clean, accent: p.color } }));
+    writeSettings(path.join(dst, 'library.json'), JSON.stringify({ manual: shared, profile: { name: clean, accent: p.color } }), { json: true });
     this.save();
     return p;
   }

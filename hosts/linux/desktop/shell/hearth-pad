@@ -14,11 +14,20 @@ It reads every connected controller from /dev/input and acts as a mouse and keyb
   View (tap)    show these controls                 L3           middle-click
   Guide + X     on-screen keyboard (open / close), like Steam + X
 
+Controller apps (docs/CONTROLLER-FOCUS.md): while the window in front is an app that reads the controller itself
+(listed in controller-apps.json, X-Hearth-Controller=true in its .desktop file, or claimed over the socket
+<runtime dir>/hearth/pad.sock), the app owns the controller: this helper sends no pointer, clicks or keys, so nothing
+happens twice and LB / RB can't switch the app away. Guide still opens the Hearth menu and Guide + X the keyboard
+(the controller is held for them meanwhile, so the app doesn't also act on those presses), and Guide + R3 gives the
+pointer back in that window (again: the app's). The shell says which window is in front: focus {app, title}.
+
 Talks to the shell with one JSON object per line: events out on stdout, commands in on stdin.
 Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-screen keyboard), launcher, help,
-     mouse {on}, toast {text}; while the keyboard is open: oskpad {b, down} (every button but Guide and RT) and
+     mouse {on}, toast {text}, owner {app, mouse} (the app that owns the controller now, '' for none; mouse: Guide + R3
+     gave the pointer back); while the keyboard is open: oskpad {b, down} (every button but Guide and RT) and
      oskaxes {lx, ly, rx, ry} (the left stick; the right one too with split sticks).
-In:  pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard focus is open:
+In:  focus {app, title} (the window in front: its Wayland app id), padmouse (the pointer in the controller app in
+     front, on / off), pause {on} (a fullscreen app is in front), keys {on} (a menu with keyboard focus is open:
      A is Enter, B is Esc), osk {open, split} (the keyboard opened or closed: Hearth's shared keyboard,
      desktop/shell/Keyboard.qml, does the typing; split: both sticks are its), emit {text, mods} and key {key, n, mods}
      (typing through uinput when wtype isn't there; US layout, ASCII), rumble {strength, ms},
@@ -71,6 +80,7 @@ import queue
 import threading
 import select
 import socket
+import struct
 import sys
 import time
 
@@ -171,6 +181,114 @@ def plasma_keys_context(cls, kind):
     return c in PLASMA_KEY_APPS or plasma_app(c) is not None
 
 
+HERE = os.path.dirname(os.path.realpath(__file__))
+CONTROLLER_APPS = os.path.join(HERE, 'controller-apps.json')
+DESKTOP_KEY = 'X-Hearth-Controller'
+DESKTOP_RESCAN = 30.0       # s: .desktop files are looked through again at most this often (a newly installed app)
+
+
+def app_key(app):
+    """A window's app id or a .desktop id, compared without case and without ".desktop"."""
+    a = str(app or '').strip().lower()
+    return a[:-len('.desktop')] if a.endswith('.desktop') else a
+
+
+def desktop_dirs():
+    home = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    dirs = [home] + [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+    return [os.path.join(d, 'applications') for d in dirs]
+
+
+def desktop_controller_ids(path):
+    """The ids a .desktop file with X-Hearth-Controller=true gives its windows: the file's own name and its
+    StartupWMClass. Empty when the key isn't there (or isn't true)."""
+    ids, on, section = set(), False, ''
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('['):
+                    section = line
+                    continue
+                if section != '[Desktop Entry]' or '=' not in line:
+                    continue
+                k, v = (x.strip() for x in line.split('=', 1))
+                if k == DESKTOP_KEY:
+                    on = v.lower() in ('true', '1', 'yes')
+                elif k == 'StartupWMClass' and v:
+                    ids.add(app_key(v))
+    except OSError:
+        return set()
+    if not on:
+        return set()
+    return ids | {app_key(os.path.basename(path))}
+
+
+class Owners:
+    """Which windows read the controller themselves, so the helper stays out of their way (docs/CONTROLLER-FOCUS.md).
+    Three ways in, any one is enough: the shared list (controller-apps.json, next to this helper), the .desktop key
+    X-Hearth-Controller=true, and a claim over the helper's socket (held while that connection stays open)."""
+
+    def __init__(self, path=CONTROLLER_APPS, dirs=None):
+        self.path = path
+        self.dirs = dirs
+        self.listed = set()
+        self.desktop = set()
+        self.claims = {}           # app id → the connections that claimed it
+        self.scanned = None
+        self.load()
+
+    def load(self):
+        try:
+            with open(self.path, encoding='utf-8') as f:
+                data = json.load(f)
+            self.listed = {app_key(a.get('id') if isinstance(a, dict) else a) for a in data.get('apps', [])} - {''}
+        except (OSError, ValueError, AttributeError) as err:
+            note('controller apps list unreadable (%s): only .desktop files and claims count' % err)
+            self.listed = set()
+
+    def scan(self, now):
+        if self.scanned is not None and now - self.scanned < DESKTOP_RESCAN:
+            return
+        self.scanned = now
+        found = set()
+        for d in (self.dirs if self.dirs is not None else desktop_dirs()):
+            try:
+                names = os.listdir(d)
+            except OSError:
+                continue
+            for n in names:
+                if n.endswith('.desktop'):
+                    found |= desktop_controller_ids(os.path.join(d, n))
+        self.desktop = found
+
+    def claim(self, app, who):
+        a = app_key(app)
+        if a:
+            self.claims.setdefault(a, set()).add(who)
+
+    def unclaim(self, app, who):
+        a = app_key(app)
+        s = self.claims.get(a)
+        if s is not None:
+            s.discard(who)
+            if not s:
+                del self.claims[a]
+
+    def drop(self, who):
+        for a in list(self.claims):
+            self.unclaim(a, who)
+
+    def owns(self, app, now=None):
+        a = app_key(app)
+        if not a:
+            return False
+        if a in self.listed or a in self.claims:
+            return True
+        self.scan(time.monotonic() if now is None else now)
+        return a in self.desktop
+
+
 def curve(v):
     """Stick value → speed factor: nothing inside the dead zone, then a smooth ramp."""
     m = abs(v)
@@ -183,8 +301,12 @@ def curve(v):
 class Pad:
     """What the controller does, without any device code (so it can be tested)."""
 
-    def __init__(self, out, game=False, osk_only=False, plasma=False, gnome=False):
+    def __init__(self, out, game=False, osk_only=False, plasma=False, gnome=False, owners=None):
         self.out = out             # .move(dx, dy) .wheel(v, h) .press(name, down) .send(obj)
+        self.owners = owners       # Owners: which windows read the controller themselves (None: never stand aside)
+        self.front = ''            # the window in front (its app id, from the shell: focus {app})
+        self.owner = ''            # that window when it reads the controller itself: the helper stays out of its way
+        self.owner_mouse = False   # Guide + R3: the pointer in that window anyway (until it leaves the front)
         self.game = game           # --game: Game Mode's controller mouse, nothing else
         self.osk_only = osk_only   # --osk: Hearth Plasma's keyboard only: Guide + X, and the keyboard while it's open
         self.plasma = plasma       # --plasma: Hearth Plasma's whole controller (plasma_* below)
@@ -220,6 +342,49 @@ class Pad:
     @property
     def paused(self):
         return self.fs_pause or self.user_off
+
+    @property
+    def owned(self):
+        """A controller app is in front and has the controller: no pointer, clicks or keys from here (only Guide's
+        chords). Not while a Hearth menu has the keys (it's in front of the app then, and the app isn't focused)."""
+        return bool(self.owner) and not self.owner_mouse and not self.keys_ctx
+
+    # ------------------------------------------------------------------ controller apps (docs/CONTROLLER-FOCUS.md)
+    def set_front(self, app, title=''):
+        """The shell: this window is in front now. Decides who has the controller."""
+        app = str(app or '')
+        if app != self.front:
+            self.owner_mouse = False
+        self.front = app
+        owner = app if (self.owners is not None and not self.game and app and self.owners.owns(app)) else ''
+        if owner != self.owner:
+            self.release_all()
+            if owner:
+                note('controller: %r in front reads the controller itself: desktop controls off (Guide: Hearth menu, '
+                     'Guide + R3: pointer)%s' % (owner, (' [%s]' % title[:60]) if title else ''))
+            else:
+                note('controller: %r in front: desktop controls on' % (app or 'the desktop'))
+            self.owner = owner
+            self.send_owner()
+
+    def send_owner(self):
+        self.out.send({'t': 'owner', 'app': self.owner, 'mouse': self.owner_mouse})
+
+    def pad_mouse(self):
+        """Guide + R3 (or the Hearth menu's Controller mouse) over a controller app: the pointer there, on / off."""
+        if not self.owner:
+            return
+        self.release_all()
+        self.owner_mouse = not self.owner_mouse
+        note('controller: pointer in %r %s' % (self.owner, 'on (Guide + R3)' if self.owner_mouse else 'off: the app has the controller again'))
+        self.out.send({'t': 'toast', 'text': 'Controller mouse in this app: ' + ('on (Guide + R3 to give it back)' if self.owner_mouse else 'off')})
+        self.send_owner()
+
+    def pad_mouse_chord(self):
+        if self.mode == 'radial':
+            self.close_radial()
+        self.guide_from = None
+        self.pad_mouse()
 
     def tap(self, *keys):
         for k in keys:
@@ -324,6 +489,8 @@ class Pad:
             return
         if name == 'x' and down and 'guide' in self.held:
             return self.osk_chord()
+        if name == 'r3' and down and 'guide' in self.held and self.owner:
+            return self.pad_mouse_chord()
         if self.osk_only and self.mode != 'osk':
             return
 
@@ -331,7 +498,7 @@ class Pad:
             return self.radial_button(name, down, now)
         if self.mode == 'osk':
             return self.osk_button(name, down, now)
-        if self.paused:
+        if self.paused or self.owned:
             return
         if self.plasma:
             return self.plasma_button(name, down, now)
@@ -354,8 +521,12 @@ class Pad:
 
     @property
     def wants_grab(self):
-        """--osk / --plasma: the controller is the keyboard's alone while it's open."""
-        return (self.osk_only or self.plasma) and self.mode == 'osk'
+        """--osk / --plasma: the controller is the keyboard's alone while it's open. Over a controller app: the
+        controller is Hearth's alone while the Hearth menu or the keyboard is open (or Guide + R3's pointer is on), so
+        the app doesn't act on the same presses; the rest of the time it's never held (the app reads it)."""
+        if (self.osk_only or self.plasma) and self.mode == 'osk':
+            return True
+        return bool(self.owner) and (self.mode in ('radial', 'osk') or self.owner_mouse)
 
     def game_button(self, name, down, now):
         if down and name in ('view', 'menu') and 'view' in self.held and 'menu' in self.held:
@@ -495,7 +666,7 @@ class Pad:
                 self.out.send({'t': 'oskaxes', 'lx': round(ax[0], 3), 'ly': round(ax[1], 3), 'rx': round(ax[2], 3), 'ry': round(ax[3], 3)})
             if self.osk_split:
                 return
-        elif self.paused or self.osk_only:
+        elif self.paused or self.osk_only or self.owned:
             return
 
         # Pointer (right stick), in every mode but the radial menu.
@@ -523,9 +694,16 @@ class Pad:
         c = m.get('cmd')
         if self.gnome and self.gnome_command(m):
             return
-        if c == 'pause':
+        if c == 'focus':
+            self.set_front(m.get('app', ''), str(m.get('title') or ''))
+        elif c == 'padmouse':
+            self.pad_mouse()
+        elif c in ('claim', 'release') and self.owners is not None:
+            (self.owners.claim if c == 'claim' else self.owners.unclaim)(m.get('app', ''), m.get('who', 'shell'))
+            self.set_front(self.front)
+        elif c == 'pause':
             if bool(m.get('on')) != self.fs_pause:
-                note('paused: a fullscreen window is in front' if m.get('on') else 'resumed')
+                note(('paused: Hearth is in front' if self.game else 'paused: a fullscreen window is in front') if m.get('on') else 'resumed')
             self.fs_pause = bool(m.get('on'))
             if self.paused and self.mode == 'desk':
                 self.release_all()
@@ -1192,6 +1370,158 @@ def describe_inputs(evdev):
     return out
 
 
+# ---------------------------------------------------------------------- controller apps' socket
+
+class OwnerLink:
+    """<runtime dir>/hearth/pad.sock: a program says "my window reads the controller itself" (one JSON object per line):
+      {"claim": "<app id>"}     held while this connection stays open (or until release)
+      {"release": "<app id>"}
+      {"status": true}          → {"front": ..., "owner": ..., "mouse": ...}
+    Every line is answered with one line. This user's only (folder 0700, socket 0600, SO_PEERCRED checked); the
+    list (controller-apps.json) and the .desktop key need none of this: it's for apps that can't be listed ahead."""
+    MAX = 8
+
+    def __init__(self, path):
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        old = os.umask(0o177)
+        try:
+            self.srv.bind(path)
+        finally:
+            os.umask(old)
+        self.srv.listen(4)
+        self.cli = {}              # fd → [socket, buffer]
+
+    def fds(self):
+        return [self.srv.fileno()] + list(self.cli)
+
+    def close_cli(self, fd, pad):
+        c = self.cli.pop(fd, None)
+        if c:
+            try:
+                c[0].close()
+            except OSError:
+                pass
+        if pad.owners is not None:
+            pad.owners.drop(fd)
+            pad.set_front(pad.front)
+
+    def read(self, fd, pad):
+        if fd == self.srv.fileno():
+            c, _ = self.srv.accept()
+            try:
+                pid, uid, gid = struct.unpack('3i', c.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+            except OSError:
+                uid = -1
+            if uid != os.getuid() or len(self.cli) >= self.MAX:
+                c.close()
+                return
+            c.setblocking(False)
+            self.cli[c.fileno()] = [c, b'']
+            return
+        c = self.cli.get(fd)
+        if not c:
+            return
+        try:
+            data = c[0].recv(4096)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b''
+        if not data or len(c[1]) > 65536:
+            return self.close_cli(fd, pad)
+        c[1] += data
+        while b'\n' in c[1]:
+            line, c[1] = c[1].split(b'\n', 1)
+            try:
+                m = json.loads(line.decode('utf-8', 'replace'))
+            except ValueError:
+                continue
+            if not isinstance(m, dict):
+                continue
+            if m.get('claim') or m.get('release'):
+                pad.command({'cmd': 'claim' if m.get('claim') else 'release', 'app': m.get('claim') or m.get('release'), 'who': fd})
+                if m.get('claim'):
+                    note('controller: %r claimed over the socket' % str(m.get('claim'))[:80])
+            try:
+                c[0].sendall((json.dumps({'ok': True, 'front': pad.front, 'owner': pad.owner, 'mouse': pad.owner_mouse}) + '\n').encode())
+            except OSError:
+                return self.close_cli(fd, pad)
+
+
+# ---------------------------------------------------------------------- HEARTH_PAD_SIM (checks without uinput)
+
+class SimOutput:
+    """HEARTH_PAD_SIM=<folder> (desktop-test.yml, where there's no /dev/uinput or controller): what would go to the
+    virtual mouse and keyboard is written to <folder>/out.log instead, one line each."""
+
+    def __init__(self, folder):
+        self.path = os.path.join(folder, 'out.log')
+        self.rumbler = None
+
+    def _w(self, text):
+        with open(self.path, 'a') as f:
+            f.write(text + '\n')
+
+    def move(self, dx, dy):
+        self._w('move %d %d' % (dx, dy))
+
+    def wheel(self, v, h):
+        self._w('wheel %d %d' % (v, h))
+
+    def press(self, name, down):
+        self._w('press %s %d' % (name, 1 if down else 0))
+
+    def send(self, obj):
+        emit(obj)
+
+    def rumble(self, strength, ms):
+        pass
+
+
+class SimController:
+    """HEARTH_PAD_SIM: a controller made of lines appended to <folder>/in: {"b": "a", "down": true} or
+    {"axes": [lx, ly, rx, ry]}."""
+
+    def __init__(self, folder):
+        self.path = os.path.join(folder, 'in')
+        self.pos = 0
+        self.btn = {}
+        self.ax = {'lx': 0.0, 'ly': 0.0, 'rx': 0.0, 'ry': 0.0}
+        open(self.path, 'a').close()
+        self.pos = os.path.getsize(self.path)
+
+    def poll(self):
+        try:
+            with open(self.path) as f:
+                f.seek(self.pos)
+                data = f.read()
+                self.pos = f.tell()
+        except OSError:
+            return 0
+        n = 0
+        for line in data.splitlines():
+            try:
+                m = json.loads(line)
+            except ValueError:
+                continue
+            n += 1
+            if 'b' in m:
+                self.btn[str(m['b'])] = bool(m.get('down'))
+            elif isinstance(m.get('axes'), list) and len(m['axes']) == 4:
+                self.ax = dict(zip(('lx', 'ly', 'rx', 'ry'), (max(-1.0, min(1.0, float(v))) for v in m['axes'])))
+        return n
+
+
+def owner_socket_path():
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+    return os.path.join(run, 'hearth', 'pad.sock')
+
+
 # ---------------------------------------------------------------------- Hearth Plasma's D-Bus side (--plasma)
 
 PLASMA_BUS = 'org.hearth.Pad'
@@ -1284,21 +1614,31 @@ def plasma_bus(inbox):
 
 
 def main():
-    try:
-        import evdev
-    except ImportError:
-        note('python3-evdev is missing: no controller support')
-        emit({'t': 'error', 'text': 'Controller support needs python3-evdev.'})
-        return 2
-    try:
-        out = Output(evdev)
-    except (OSError, evdev.UInputError) as err:
-        note('no access to /dev/uinput: %s' % err)
-        emit({'t': 'error', 'text': 'Controller support needs access to /dev/uinput (%s).' % err})
-        return 3
-    note('started; input devices: ' + '; '.join(describe_inputs(evdev)))
-    e = evdev.ecodes
-    bmap = button_map(e)
+    sim_dir = os.environ.get('HEARTH_PAD_SIM') or ''
+    sim = None
+    if sim_dir:
+        # Checks only (desktop-test.yml): no evdev, uinput or controllers; see SimOutput / SimController.
+        os.makedirs(sim_dir, exist_ok=True)
+        evdev, e, bmap = None, None, {}
+        out = SimOutput(sim_dir)
+        sim = SimController(sim_dir)
+        note('started (simulated controller in %s)' % sim_dir)
+    else:
+        try:
+            import evdev
+        except ImportError:
+            note('python3-evdev is missing: no controller support')
+            emit({'t': 'error', 'text': 'Controller support needs python3-evdev.'})
+            return 2
+        try:
+            out = Output(evdev)
+        except (OSError, evdev.UInputError) as err:
+            note('no access to /dev/uinput: %s' % err)
+            emit({'t': 'error', 'text': 'Controller support needs access to /dev/uinput (%s).' % err})
+            return 3
+        note('started; input devices: ' + '; '.join(describe_inputs(evdev)))
+        e = evdev.ecodes
+        bmap = button_map(e)
     game = '--game' in sys.argv[1:]
     plasma = '--plasma' in sys.argv[1:]
     gnome = '--gnome' in sys.argv[1:] and not plasma
@@ -1310,8 +1650,20 @@ def main():
         stats['moved'] += abs(dx) + abs(dy)
         real_move(dx, dy)
     out.move = counted_move
-    pad = CosmicPad(out) if '--cosmic' in sys.argv[1:] else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome)
+    cosmic = '--cosmic' in sys.argv[1:]
+    # Hearth Classic (Mantel): controller apps own the controller while they're in front (docs/CONTROLLER-FOCUS.md).
+    classic = not (game or plasma or gnome or osk_only or cosmic)
+    owners = Owners() if classic else None
+    pad = CosmicPad(out) if cosmic else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome, owners=owners)
     standalone = '--standalone' in sys.argv[1:]
+    olink = None
+    if classic and not standalone:
+        try:
+            olink = OwnerLink(owner_socket_path())
+        except OSError as err:
+            note('controller apps socket: %s (the list and .desktop files still work)' % err)
+    if owners is not None:
+        note('controller apps: %d listed, %d by .desktop files' % (len(owners.listed), (owners.scan(time.monotonic()) or len(owners.desktop))))
     if game:
         note('Game Mode controller mouse')
     if standalone:
@@ -1324,6 +1676,8 @@ def main():
 
     def rumble(strength, ms):
         """A short rumble (force feedback) on every controller that has it."""
+        if e is None:
+            return
         strength = max(0.0, min(1.0, strength))
         ms = max(5, min(200, ms))
         for c in pads.values():
@@ -1375,34 +1729,46 @@ def main():
     inbuf = ''
     while True:
         now = time.monotonic()
-        if now >= next_scan:
+        if now >= next_scan and evdev is not None:
             before = set(pads)
             pads = gamepads(evdev, pads)
             if set(pads) != before:
                 note('controllers: ' + (', '.join('%s %r' % (p, c.dev.name) for p, c in pads.items()) or 'none'))
-            next_scan = now + 3
+            # A controller switched on (or Handheld Daemon's virtual one coming back) is found within a second while
+            # there's none; every 3 s otherwise.
+            next_scan = now + (3 if pads else 1)
+        if sim is not None:
+            stats['events'] += sim.poll()
         while plasma and not inbox.empty():
             m = inbox.get_nowait()
             if m.get('cmd') == 'probe':
                 emit({'t': 'probe', 'text': m.get('text', '')})
             else:
                 pad.command(m)
-        if osk_only or plasma:
-            # Hearth Plasma's keyboard: the controller is held while it's open, so apps don't also get the presses.
-            for c in pads.values():
-                if getattr(c, 'grabbed', False) != pad.wants_grab:
-                    try:
-                        c.dev.grab() if pad.wants_grab else c.dev.ungrab()
-                    except OSError:
-                        pass             # someone else holds it: don't keep trying
-                    c.grabbed = pad.wants_grab
+        # Hearth Plasma's keyboard, and the Hearth menu / keyboard over a controller app: the controller is held
+        # (EVIOCGRAB) only meanwhile, so the app doesn't also act on the presses; never while the app has it.
+        want = pad.wants_grab
+        for c in pads.values():
+            if getattr(c, 'grabbed', False) != want:
+                try:
+                    c.dev.grab() if want else c.dev.ungrab()
+                except OSError:
+                    pass             # someone else holds it: don't keep trying
+                c.grabbed = want
         fds = {c.dev.fd: (p, c) for p, c in pads.items()}
         try:
             link_fds = set(link.fds()) if link else set()
-            ready, _, _ = select.select(list(fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], 0.008)
+            olink_fds = set(olink.fds()) if olink else set()
+            ready, _, _ = select.select(list(fds) + list(olink_fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], 0.008)
         except (OSError, ValueError):
-            ready, link_fds = [], set()
+            ready, link_fds, olink_fds = [], set(), set()
         for fd in ready:
+            if fd in olink_fds:
+                try:
+                    olink.read(fd, pad)
+                except OSError:
+                    pass
+                continue
             if fd in link_fds:
                 for line in link.read(fd, pad):
                     try:
@@ -1440,7 +1806,7 @@ def main():
                     pass
         now = time.monotonic()
         state = set()
-        for c in pads.values():
+        for c in list(pads.values()) + ([sim] if sim is not None else []):
             for n in names:
                 if c.btn.get(n) or c.btn.get(n + '_axis'):
                     state.add(n)
@@ -1449,14 +1815,16 @@ def main():
                 pad.button(n, n in state, now)
         pressed = state
         clip = lambda v: max(-1.0, min(1.0, v))
-        pad.axes(*(clip(sum(c.ax[k] for c in pads.values())) for k in ('lx', 'ly', 'rx', 'ry')))
+        sources = list(pads.values()) + ([sim] if sim is not None else [])
+        pad.axes(*(clip(sum(c.ax[k] for c in sources)) for k in ('lx', 'ly', 'rx', 'ry')))
         pad.tick(now, min(0.05, now - last))
         last = now
         # Every 30 s with input: what came in and what the pointer did (why "the mouse doesn't move" shows in logs).
         if now - stats['since'] >= 30:
             if stats['events']:
-                note('last 30 s: %d controller events, pointer moved %d px%s%s' % (stats['events'], stats['moved'],
-                     ', paused (a fullscreen window)' if pad.fs_pause else '', ', turned off' if pad.user_off else ''))
+                note('last 30 s: %d controller events, pointer moved %d px%s%s%s' % (stats['events'], stats['moved'],
+                     ', paused (a fullscreen window)' if pad.fs_pause else '', ', turned off' if pad.user_off else '',
+                     (', %r has the controller' % pad.owner) if pad.owned else ''))
             stats.update(events=0, moved=0, since=now)
         if pad.done:
             return 0

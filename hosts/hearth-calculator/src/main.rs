@@ -4,6 +4,9 @@
 //! clipboard.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use serde_json::Value;
 use std::path::PathBuf;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -60,7 +63,7 @@ fn main() {
     let full = args.iter().any(|a| a == "--fullscreen");
     #[cfg(target_os = "linux")]
     pick_drawing();
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![store_get, store_set, clipboard_read, clipboard_write])
         .setup(move |app| {
@@ -69,7 +72,7 @@ fn main() {
                 .inner_size(820.0, 640.0)
                 .min_inner_size(340.0, 480.0)
                 .fullscreen(full)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = w.set_focus();
             Ok(())

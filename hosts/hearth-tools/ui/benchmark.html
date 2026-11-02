@@ -6,35 +6,36 @@
 <title>Hearth Benchmark</title>
 <link rel="stylesheet" href="common.css">
 <style>
-.hero { display:flex; gap:1.2em; align-items:center; padding:.9em 1.1em; border-radius:18px; background:linear-gradient(120deg, #2a1a10, var(--panel)); border:1px solid #4a372b; margin-bottom:.8em; flex-wrap:wrap; }
+.hero { display:flex; gap:1.2em; align-items:center; padding:.9em 1.1em; border-radius:min(18px, var(--corner, 18px)); background:linear-gradient(120deg, color-mix(in srgb, var(--bg) 89%, var(--ember)), var(--panel)); border:1px solid color-mix(in srgb, var(--line) 93%, var(--flame)); margin-bottom:.8em; flex-wrap:wrap; }
 .hero .big { font-size:1.35em; font-weight:700; }
 .score { font-size:2.6em; font-weight:800; line-height:1; background:linear-gradient(180deg, var(--flame), var(--ember)); -webkit-background-clip:text; background-clip:text; color:transparent; font-variant-numeric:tabular-nums; }
 .score.sm { font-size:1.5em; }
 .modes { display:grid; gap:.8em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 16em), 1fr)); margin-bottom:.8em; }
 .mode { text-align:left; display:flex; flex-direction:column; gap:.3em; padding:.9em 1em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); }
 .mode b { font-size:1.08em; } .mode small { color:var(--muted); }
-.mode.primary { background:linear-gradient(140deg, #3b2214, var(--panel)); border-color:#6a442b; }
+.mode.primary { background:linear-gradient(140deg, color-mix(in srgb, var(--bg2) 85%, var(--ember)), var(--panel)); border-color:color-mix(in srgb, var(--line) 76%, var(--ember)); }
 .section { margin:.9em 0 .45em; color:var(--muted); font-size:.82em; text-transform:uppercase; letter-spacing:.08em; }
 .tiles { display:grid; gap:.6em; grid-template-columns:repeat(auto-fill, minmax(8.5em, 1fr)); }
-.tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.55em .75em; }
+.tile { background:var(--panel); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:.55em .75em; }
 .tile .k { color:var(--muted); font-size:.78em; } .tile .v { font-size:1.35em; font-weight:700; font-variant-numeric:tabular-nums; }
 .tile.hot .v { color:var(--danger); }
 .tests { display:flex; flex-direction:column; gap:.35em; }
-.trow { display:grid; grid-template-columns:1.6em 1fr auto; gap:.6em; align-items:center; padding:.45em .7em; border-radius:10px; background:var(--panel); border:1px solid var(--line); }
+.trow { display:grid; grid-template-columns:1.6em 1fr auto; gap:.6em; align-items:center; padding:.45em .7em; border-radius:min(10px, var(--corner, 10px)); background:var(--panel); border:1px solid var(--line); }
 .trow.on { border-color:var(--ember); }
 .res { display:grid; gap:.7em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 19em), 1fr)); }
 .rcard { display:flex; flex-direction:column; gap:.35em; }
 .rcard .top { display:flex; align-items:baseline; gap:.5em; }
 .rcard .top b { flex:1; }
 .graphs { display:grid; gap:.6em; grid-template-columns:repeat(auto-fill, minmax(min(100%, 22em), 1fr)); }
-.graph { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.5em .7em; }
+.graph { background:var(--panel); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:.5em .7em; }
 .graph .h { display:flex; justify-content:space-between; font-size:.82em; color:var(--muted); }
 .graph svg { width:100%; height:4.2em; display:block; }
 .chg.up { color:var(--good); } .chg.down { color:var(--danger); }
-.warnbox { border:1px solid #6a4a1f; background:#2a1f10; color:#ffe2a8; border-radius:12px; padding:.6em .8em; margin:.5em 0; font-size:.9em; }
+.warnbox { border:1px solid color-mix(in srgb, var(--panel2) 66%, var(--ember)); background:color-mix(in srgb, var(--flame) 10%, var(--bg)); color:color-mix(in srgb, var(--text) 49%, var(--flame)); border-radius:min(12px, var(--corner, 12px)); padding:.6em .8em; margin:.5em 0; font-size:.9em; }
 </style>
 </head>
 <body>
+<script src="hearth-gamepad.js"></script>
 <script src="common.js"></script>
 <script>
 'use strict';

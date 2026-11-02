@@ -679,7 +679,7 @@ H.padPress = (b) => {
   else if (b === 'Back') H.openBarMenu(0, true);
 };
 function padLoop() {
-  const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   if (!pads.length) { H.pad.running = false; return; }
   const now = performance.now();
   const p = pads[0];
@@ -694,9 +694,8 @@ function padLoop() {
   const [ax, ay, rx, ry] = [p.axes[0] || 0, p.axes[1] || 0, p.axes[2] || 0, p.axes[3] || 0];
   if (Math.hypot(ax, ay) > 0.6 && now > H.pad.axesT) { H.padPress(Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'Right' : 'Left') : (ay > 0 ? 'Down' : 'Up')); H.pad.axesT = now + 180; }
   if (Math.hypot(rx, ry) > 0.2) { const s = H.app && H.app.scroller && H.app.scroller(); if (s) s.scrollBy(rx * 24, ry * 24); }
-  requestAnimationFrame(padLoop);
 }
-window.addEventListener('gamepadconnected', () => { if (!H.pad.running) { H.pad.running = true; requestAnimationFrame(padLoop); } });
+window.addEventListener('gamepadconnected', () => { if (!H.pad.running) { H.pad.running = true; HearthGamepad.loop(padLoop); } });
 
 // ------------------------------------------------------------------ toolbar helpers the apps use
 H.tbtn = (icon, title, run, opts = {}) => {

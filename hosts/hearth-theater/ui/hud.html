@@ -2,14 +2,16 @@
 <!-- The viewer's hint bar (#bar) and messages (#toast), drawn in small views over the site (electron/main.js). -->
 <html><head><meta charset="utf-8"><title>Hearth Theater</title>
 <style>
-  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 500 15px/1.3 system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif; }
-  .bar, .toast { position: fixed; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity .25s; color: #f4ece3; border: 1px solid #4a372b; }
-  .bar { bottom: 22px; display: flex; gap: 18px; flex-wrap: nowrap; justify-content: center; max-width: 96vw; padding: 12px 20px; border-radius: 16px;
-    background: rgba(23,17,14,.94); box-shadow: 0 10px 30px rgba(0,0,0,.5); white-space: nowrap; }
-  .bar span { color: #a69484; }
-  .bar b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-right: 6px; border-radius: 99px; background: #33271f; color: #f4ece3; font-size: 12px; }
-  .bar .t { color: #ff8a3d; font-weight: 650; }
-  .toast { top: 20px; padding: 9px 16px; border-radius: 12px; background: rgba(38,29,24,.96); }
+  /* Hearth's warm colours as the fallback; the desktop's look (electron/main.js puts theme.css in) replaces them. */
+  :root { --bg2:#17110e; --panel2:#261d18; --panel3:#33271f; --line:#3b2e26; --text:#f4ece3; --muted:#a69484; --ember:#ff8a3d; --flame:#ffd166; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 500 15px/1.3 var(--font, system-ui, "Segoe UI", Cantarell, "Noto Sans", sans-serif); }
+  .bar, .toast { position: fixed; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity .25s; color: var(--text); border: 1px solid color-mix(in srgb, var(--line) 93%, var(--flame)); }
+  .bar { bottom: 22px; display: flex; gap: 18px; flex-wrap: nowrap; justify-content: center; max-width: 96vw; padding: 12px 20px; border-radius: min(16px, var(--corner, 16px));
+    background: color-mix(in srgb, var(--bg2) 94%, transparent); box-shadow: 0 10px 30px rgba(0,0,0,.5); white-space: nowrap; }
+  .bar span { color: var(--muted); }
+  .bar b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-right: 6px; border-radius: 99px; background: var(--panel3); color: var(--text); font-size: 12px; }
+  .bar .t { color: var(--ember); font-weight: 650; }
+  .toast { top: 20px; padding: 9px 16px; border-radius: min(12px, var(--corner, 12px)); background: color-mix(in srgb, var(--panel2) 96%, transparent); }
   .on { opacity: 1; }
 </style></head>
 <body>

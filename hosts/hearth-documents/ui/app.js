@@ -822,7 +822,7 @@ const held = {};
 let lastPadMove = 0;
 const BTN = { a: 0, b: 1, x: 2, y: 3, lb: 4, rb: 5, view: 8, start: 9, up: 12, down: 13, left: 14, right: 15 };
 function padFrame() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   if (pads.length) {
     const now = performance.now(), st = {}, ax = { lx: 0, ly: 0, ry: 0, lt: 0, rt: 0 };
     const dz = v => Math.abs(v) < 0.2 ? 0 : v;
@@ -850,7 +850,6 @@ function padFrame() {
       if (Math.abs(z) > 0.3 && now - (S.lastZoom || 0) > 220) { S.lastZoom = now; zoom(z > 0 ? 1 : -1); }
     }
   }
-  requestAnimationFrame(padFrame);
 }
 function padButton(k, ui) {
   if (k === 'b') { back(); return; }
@@ -872,7 +871,7 @@ function padButton(k, ui) {
     case 'start': if (S.kind === 'epub') applyTheme({ light: 'sepia', sepia: 'dark', dark: 'light' }[S.theme] || 'light'); else if (S.kind) toggleDark(); break;
   }
 }
-requestAnimationFrame(padFrame);
+HearthGamepad.loop(padFrame);
 window.addEventListener('gamepadconnected', () => toast('Controller connected'));
 
 // Files dropped on the window open here.

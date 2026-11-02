@@ -226,7 +226,7 @@ its queue the next time it runs.
 
 ### Couch co-op in Steam Game Mode (Experimental, needs testing on a device)
 
-Hearth's Couch Co-op (docs/COUCH-COOP.md) inside Steam's Game Mode, with the same engine (`hearth-coop`):
+Hearth's Couch Co-op (docs/archive/COUCH-COOP.md) inside Steam's Game Mode, with the same engine (`hearth-coop`):
 
 - **Quick Access › Hearth Players** (also a **Players** section in Decky's Hearth tab): the controllers connected, in
   **Hearth's player order**. Players 1 to 4 get the first four; more wait. **Move up** / **Move down** change it,
@@ -258,7 +258,7 @@ holds the controllers; two identical controllers without serial numbers keep the
 
 ### Multi-seat beside Steam Game Mode (Experimental, needs testing on a device)
 
-With multi-seat (docs/MULTI-SEAT.md) set up, **player 1 can play in Steam's Game Mode while the other players keep their own
+With multi-seat (docs/archive/MULTI-SEAT.md) set up, **player 1 can play in Steam's Game Mode while the other players keep their own
 Hearth Game Mode**, each on their own account, screen (or part of one, or a stream) and controllers. Nothing changes when
 multi-seat isn't set up or is off: Steam Game Mode starts exactly as before.
 
@@ -373,10 +373,14 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
 
 1. Nothing to turn on: the device starts in Steam Game Mode. If Steam isn't signed in yet, Steam asks you to sign in on
    its own screen; Hearth never sees or keeps your Steam password.
-2. Optional, once: **Settings › System › Steam Game Mode › Decky Loader and the Hearth plugin › Install** (in Hearth's
-   Settings, in Desktop Mode). It asks for your administrator password (it adds a service that runs as root, see
-   Security below), downloads Decky Loader's newest stable release from its GitHub page, adds the Hearth plugin that
-   comes with Hearth OS, and turns on Steam's remote debugging, which Decky needs.
+2. Nothing to install: **Decky Loader is built into Hearth OS** (a pinned stable release, checked against its SHA-256
+   when the image is built, in `/usr/lib/hearth-decky`; it's updated with Hearth OS). When Steam Game Mode starts, the
+   session turns on Steam's remote debugging (Decky needs it), makes `~/homebrew` and starts
+   `hearth-decky@<you>.service` (as root, as Decky needs) without a password prompt (`49-hearth-decky.rules`: only your
+   own instance, only from the session at the device, for every account); the service puts Hearth Sync in place
+   and removes an earlier downloaded install (`hearth-decky.service`, `/var/lib/hearth-decky`). It stops when Steam
+   Game Mode ends. A Decky you installed with Decky's own installer (`plugin_loader.service`) is left alone, and the
+   built-in one doesn't start next to it. Decky's own "update" button doesn't apply (it works in a temporary folder).
 3. With Decky installed, press the **…** (Quick Access) button and open the **plug** tab, then **Hearth**. Press
    **Sync to Steam library** to see your Hearth games in Steam's library.
 4. Desktop Mode: Steam's own **Power › Switch to Desktop**, or Quick Access › Hearth › **Desktop Mode**. Back from
@@ -486,6 +490,26 @@ on-screen keyboard, Discord status, and
 Hearth's Settings (open Hearth in Desktop Mode for those). Xbox Cloud Gaming games aren't added to Steam (they need Hearth's stream
 window).
 
+## Screen modes
+
+gamescope starts at the screen's own mode unless Settings › Display chose another (`-W`/`-H`/`-r` in
+`~/.config/nimbus/session.conf`). Before gamescope starts, in Game Mode and in Steam Game Mode, the session asks
+`/usr/libexec/nimbus/hearth-screen check` whether the connected screen lists that mode (the kernel's own list, with
+refresh rates: the list gamescope picks from):
+
+- **Listed**, or it can't be told (several screens, the built-in screen's refresh rates): gamescope gets it, as before.
+- **Not listed** (a TV that has 2560 × 1440 only at 60 Hz, another screen plugged in): this start uses the screen's own
+  mode. session.conf isn't changed, so the screen that has the mode gets it again; Game Mode says so and offers
+  **Try again**, which really tries it (on trial, switched back after 20 seconds unless kept).
+- gamescope ending within seconds with a chosen mode: Steam Game Mode starts once more at the screen's own mode (the
+  mode is kept in `display-reverted.json` for Try again) instead of counting as Steam failing.
+
+**ROG Ally built-in screen.** gamescope ships a display script for the ROG Ally / Ally X panels; a panel it doesn't know
+(the ROG Xbox Ally's) gets `~/.config/gamescope/scripts/hearth-builtin-panel.lua`, made at every start from the panel's
+own EDID and timings: refresh rates 48 Hz up to the panel's own (120 Hz), made like gamescope's Ally script (same pixel
+clock, longer vertical front porch). It matches only that panel, and gamescope's own script wins when it knows it.
+Send logs › "Screen" shows each screen's modes with refresh rates, its EDID, and gamescope's own messages.
+
 ## Limits (Experimental)
 
 - **Valve's updates can break Decky** (Decky patches Steam's screens), and with it the Hearth plugin and look. Steam
@@ -522,7 +546,7 @@ window).
 | OS updates from Steam | `os/system_files/usr/libexec/nimbus/hearth-steamos-update` (Steam's `steamos-update`, put on Steam's PATH by `run_steam_mode`), `main.py` `update_*` |
 | Send logs' section | `hosts/hearth-core/src/logs.rs` (`decky_report`) |
 | Decky install, start/stop (root) | `os/system_files/usr/libexec/nimbus/hearth-decky` through `hearth-admin decky-*` |
-| The plugin | `hosts/decky-hearth` (`src/index.tsx` panel and start, `src/shortcuts.ts`, `src/theme.ts`, `main.py`) |
+| The plugin | `archive/hosts/decky-hearth` (`src/index.tsx` panel and start, `src/shortcuts.ts`, `src/theme.ts`, `main.py`) |
 | The takeover | `src/patches.tsx` (Steam's screens, each guarded), `src/pages.tsx` (Hearth's pages), `src/model.ts` (switches, guard, pure helpers, unit-tested), `src/api.ts`, `src/ui.tsx` |
 | Hearth's answers for the pages | `hearth --steam-mode-data home\|library\|store <s>\|downloads\|storage\|info <id>\|power\|power-mode <m>` (`hosts/hearth-core/src/steam_takeover.rs`) |
 | Hearth's core in Steam Game Mode | `nimbus --core-service --while <running mark>` (`hosts/hearth-core/src/core_service.rs`: socket, `COMMANDS`, `front` for Hearth Input), started by `nimbus-session` (`steam_core_start` / `steam_core_stop`, `steam_input_start`), the plugin's `core_call` (`main.py`) |
@@ -530,7 +554,7 @@ window).
 | Multi-seat beside Steam Game Mode | `nimbus-session` (`steam_seats_on`, the host and `gamescope-args` in `run_steam_mode`), `src/coop.tsx` (`SeatsBody`), `src/model.ts` (`seatState`, `seatAction`, `seatTargets`, `seatsLine`, `seatDone`), `main.py` (`seats_call`, `SEATS_OPS`), `core_service.rs` (`seats`, `SEATS_OPS`, `seat_pad_ok`), `hearth-seats start\|stop --seat N`, `hearth-admin seats-start\|seats-stop --seat N` |
 | Steam's main menu, Quick Access tabs, in-game section | `src/patches.tsx` (`HearthMenuItems`), `src/qam.tsx` (`syncQamTabs` through Decky's tab list, the tabs, `ThisGame`), `src/ingame.tsx` (`/hearth/now`, `/hearth/home`), `src/core.ts` (the running game, the 2-second `front`), `src/model.ts` (`menuPlaces`, `runningGame`, `frontMessage`, `qamPlan`) |
 | Quick Resume, Sunshine, Hearth Friends, Hearth Link | `src/rest.tsx`, `main.py` (`rest_call`, `ASIDE_OPS`, `LINK_OPS`, `REMOTE_OPS`), `core_service.rs` (`aside`, `aside_follow`, `friends`, `link`, `remote`), `procs.rs` (SteamAppId) |
-| The look | `hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
+| The look | `archive/hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
 | CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures, and pictures of Steam's main menu, Hearth's Quick Access tabs and the in-game section over static stand-ins, as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |
 
 To try a build of the plugin without a new image: download `decky-hearth` from a run of the Hearth Decky plugin

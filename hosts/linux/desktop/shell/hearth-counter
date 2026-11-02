@@ -1,0 +1,135 @@
+#!/usr/bin/python3
+"""hearth-counter: Hearth OS's player count, now that the Hearth app (the archived Game Mode, which sent it) no longer
+runs all the time (docs/SETTINGS-MOVE.md). The same "I'm here" the app sent, with the same content and as often:
+
+  POST https://hearth-counter.game305-cl.workers.dev/v1/ping   {"id": <device id>, "v": <version>, "k": <edition>}
+
+  id  a hash of this device's machine id (sha1 of "hearth-counter:<machine-id>", first 32 hex digits: the same id the
+      app sent, hearth-core bridge.rs counter_device_id). On the live USB, a random id kept in
+      ~/.local/share/nimbus/counter-id (the app kept a random one too).
+  v   Hearth OS's version (/usr/share/nimbus/version)
+  k   the edition: live, peppermint, anatase, ubuntu, cachyos, nvidia / amd (Bazzite), other (bridge.rs edition)
+
+Nothing else: no names, games, accounts or addresses. The app sent it 20 seconds after it started and then every 10
+minutes while it ran; hearth-counter.timer (a systemd user timer, os-bases/peppermint/build.sh) runs `hearth-counter
+ping` 20 seconds after you sign in and every 10 minutes after, in Steam Game Mode and in Desktop Mode alike.
+
+The off switch: Settings › About › Privacy › Count me in the player count (on unless turned off, as before), kept as
+"countMe" in ~/.local/share/nimbus/desktop.json (Settings.qml). Off: nothing is sent.
+
+  hearth-counter ping      send it once (if counting is on)
+  hearth-counter payload   print what would be sent (nothing is sent)
+"""
+import hashlib
+import json
+import os
+import secrets
+import sys
+import urllib.request
+
+URL = 'https://hearth-counter.game305-cl.workers.dev/v1/ping'
+EDITIONS = {'anatase': 'anatase', 'ubuntu': 'ubuntu', 'cachyos': 'cachyos', 'peppermint': 'peppermint'}
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def data_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'nimbus')
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def counting(root=''):
+    """The off switch: desktop.json's countMe; on unless it's false."""
+    try:
+        return json.loads(read(os.path.join(data_dir(), 'desktop.json')) or '{}').get('countMe') is not False
+    except (ValueError, AttributeError):
+        return True
+
+
+def live(root=''):
+    return os.path.exists(root + '/etc/hearth-live')
+
+
+def device_id(root=''):
+    """The app's own id (bridge.rs counter_device_id); on the live USB (or without a machine id) a random one, kept."""
+    mid = read(root + '/etc/machine-id').strip()
+    if not live(root) and len(mid) >= 16:
+        return hashlib.sha1(('hearth-counter:' + mid).encode()).hexdigest()[:32]
+    p = os.path.join(data_dir(), 'counter-id')
+    have = read(p).strip()
+    if len(have) == 32 and all(c in '0123456789abcdef' for c in have):
+        return have
+    new = secrets.token_hex(16)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, 'w') as f:
+            f.write(new + '\n')
+    except OSError:
+        pass
+    return new
+
+
+def edition(root=''):
+    """bridge.rs edition(): live, the image's base, or the Bazzite build's Nvidia / AMD."""
+    if live(root):
+        return 'live'
+    try:
+        base = json.loads(read(root + '/usr/share/nimbus/image-info.json') or '{}').get('base')
+    except ValueError:
+        base = None
+    if base:
+        return EDITIONS.get(base, 'other')
+    info = read(root + '/usr/share/ublue-os/image-info.json')
+    if info:
+        return 'nvidia' if 'nvidia' in info.lower() else 'amd'
+    return 'other'
+
+
+def version(root=''):
+    return read(root + '/usr/share/nimbus/version').strip()
+
+
+def payload(root=''):
+    return {'id': device_id(root), 'v': version(root), 'k': edition(root)}
+
+
+def ping(root='', send=None):
+    """Sends it when counting is on. Returns what was sent, or None."""
+    if not counting(root):
+        return None
+    body = payload(root)
+    data = json.dumps(body).encode()
+    if send is None:
+        req = urllib.request.Request(URL, data=data, method='POST', headers={'content-type': 'application/json'})
+        try:
+            urllib.request.urlopen(req, timeout=15).read()
+        except Exception:
+            pass        # offline: the next one in 10 minutes
+    else:
+        send(URL, data)
+    return body
+
+
+def main(argv):
+    what = argv[1] if len(argv) > 1 else ''
+    if what == 'ping':
+        ping()
+        return 0
+    if what == 'payload':
+        print(json.dumps(payload()))
+        return 0
+    print(__doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

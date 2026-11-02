@@ -102,6 +102,27 @@ ipcMain.handle('theater:call', (e, cmd, args) => {
 });
 
 // ------------------------------------------------------------------ the main window
+// ---- Hearth's look (Settings › Appearance): ~/.config/hearth/theme.css, written by hearth-theme (the same file and
+// tokens as the Tauri apps, hosts/hearth-apptheme), put into Theater's own pages (never into sites) and followed live.
+const THEME_FILE = process.env.HEARTH_THEME_CSS || path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'hearth', 'theme.css');
+const THEME_DEFAULT = "/* Written by hearth-theme (steam, dark, accent #1a9fff): the look for Hearth's apps. */\n:root:root{color-scheme:dark;--bg:#171a21;--bg2:#1b2838;--panel:#1e2633;--panel2:#24303f;--panel3:#2a475e;--line:#32404f;--text:#dce5ed;--muted:#8f98a0;--faint:#646b72;--danger:#e5484d;--ember:#1a9fff;--accent:#1a9fff;--flame:#66c0f4;--ink:#06121d;--focus:#1a9fff;--glow:#172737;--chrome:#1b2838;--accentInk:#06121d;--r:4px;--corner:4px;--font:\"Inter\", system-ui, \"Segoe UI\", Cantarell, \"Noto Sans\", sans-serif}\n";   // Steam-style dark, the default look (apptheme.rs's DEFAULT_CSS)
+const themed = new Map();   // webContents -> key of the inserted CSS
+function themeCss() {
+  try { const s = fs.readFileSync(THEME_FILE, 'utf8'); if (s.includes('--bg:')) return s; } catch {}
+  return process.platform === 'linux' ? THEME_DEFAULT : '';
+}
+function themeOne(wc) {
+  if (wc.isDestroyed()) { themed.delete(wc); return; }
+  const old = themed.get(wc);
+  wc.insertCSS(themeCss()).then(key => { themed.set(wc, key); if (old) wc.removeInsertedCSS(old).catch(() => {}); }).catch(() => {});
+}
+function themePage(wc) {
+  wc.on('dom-ready', () => { themed.delete(wc); themeOne(wc); });
+  wc.once('destroyed', () => themed.delete(wc));
+}
+try { fs.watchFile(THEME_FILE, { interval: 1500 }, () => { for (const wc of [...themed.keys()]) themeOne(wc); }).unref(); } catch {}
+// ---- end of Hearth's look
+
 function serveUi() {
   protocol.handle('theater', req => {
     let rel;
@@ -115,10 +136,11 @@ function serveUi() {
 
 function makeMain() {
   win = new BrowserWindow({
-    title: 'Hearth Theater', width: 1280, height: 800, minWidth: 640, minHeight: 440, fullscreen: FULL, backgroundColor: '#0f0b09', autoHideMenuBar: true, show: false,
+    title: 'Hearth Theater', width: 1280, height: 800, minWidth: 640, minHeight: 440, fullscreen: FULL, backgroundColor: (/--bg:(#[0-9a-fA-F]{6})/.exec(themeCss()) || [0, '#0f0b09'])[1], autoHideMenuBar: true, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false },
   });
   win.on('page-title-updated', e => e.preventDefault());
+  themePage(win.webContents);
   win.once('ready-to-show', () => { win.show(); log('main window: shown'); });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('theater://')) e.preventDefault(); });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -184,6 +206,7 @@ function openViewer(m) {
     if (!hud[k] || hud[k].webContents.isDestroyed()) {
       hud[k] = new WebContentsView({ webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false } });
       hud[k].setBackgroundColor('#00000000');
+      themePage(hud[k].webContents);
       hud[k].webContents.loadURL(`theater://app/hud.html#${k}`).catch(() => {});
     }
     win.contentView.addChildView(hud[k]);   // on top of the site

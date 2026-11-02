@@ -138,9 +138,10 @@ SetPage {
         if (prev && prev.other) { const o = outs.find(x => x.name === prev.other); if (o && o.enabled) lines.push([lineFor(o), o.name]); }
         saveLines(lines);
     }
-    // [[line, screen name]...] into display.sh, replacing those screens' lines and keeping the others'.
+    // [[line, screen name]...] into display.sh, replacing those screens' lines and keeping the others'. Under the
+    // lock Hearth's own writer uses, flushed to the drive, the old one kept as display.sh.bak (SETTINGS-PERSISTENCE.md).
     function saveLines(lines) {
-        Quickshell.execDetached(["sh", "-c", 'f="$HOME/.config/nimbus/display.sh"; mkdir -p "$HOME/.config/nimbus" || exit 1; keep=$(grep "^wlr-randr " "$f" 2>/dev/null); new=""; while [ $# -ge 2 ]; do keep=$(printf "%s\n" "$keep" | grep -vF -- "--output \'$2\' "); new="$new$1\n"; shift 2; done; { printf "#!/bin/sh\n# Written by Hearth Settings › Display\n"; [ -n "$keep" ] && printf "%s\n" "$keep"; printf "$new"; } > "$f.tmp" && chmod +x "$f.tmp" && mv -f "$f.tmp" "$f"', "sh"].concat([].concat.apply([], lines)));
+        Quickshell.execDetached(["sh", "-c", 'd="$HOME/.config/nimbus"; f="$d/display.sh"; mkdir -p "$d" || exit 1; exec 9>"$d/.display.sh.lock"; flock 9 2>/dev/null; keep=$(grep "^wlr-randr " "$f" 2>/dev/null); new=""; while [ $# -ge 2 ]; do keep=$(printf "%s\n" "$keep" | grep -vF -- "--output \'$2\' "); new="$new$1\n"; shift 2; done; t=$(mktemp "$d/.display.sh.XXXXXX") || exit 1; { printf "#!/bin/sh\n# Written by Hearth Settings › Display\n"; [ -n "$keep" ] && printf "%s\n" "$keep"; printf "$new"; } > "$t" && chmod +x "$t" && sync "$t" 2>/dev/null; [ -s "$f" ] && cp -p "$f" "$f.bak"; mv -f "$t" "$f"', "sh"].concat([].concat.apply([], lines)));
     }
     function revert() {
         countdown = 0;
@@ -236,8 +237,8 @@ SetPage {
     Text { visible: !page.out; text: "Display settings work in Desktop Mode (wlr-randr)."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
     Text { visible: page.problem !== ""; text: page.problem; color: "#ff9b8f"; wrapMode: Text.Wrap; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: 14 }
 
-    // Nvidia: how Game Mode's Hearth app draws (the same choice as its Settings › Display). Here too, so a
-    // black Game Mode screen can be fixed from Desktop Mode.
+    // Nvidia: how the Hearth app draws (first-time setup, its windows; the same choice as its Settings › Display), so a
+    // black screen there can be fixed from Desktop Mode.
     property string nvDrawing: "auto"
     readonly property string nvFile: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/nvidia-drawing"
     FileView { id: nvRead; path: page.nvFile; onLoaded: page.nvDrawing = (text().trim() || "auto"); onLoadFailed: page.nvDrawing = "auto" }
@@ -246,7 +247,7 @@ SetPage {
     SetHeader { text: "Nvidia"; visible: page.hasNvidia }
     SetChoice {
         visible: page.hasNvidia
-        title: "How Game Mode draws"; sub: "Fast is smooth on newer drivers. Compatible is slower but works everywhere: pick it if Game Mode shows a black screen. Applies the next time Game Mode starts."
+        title: "How the Hearth app draws"; sub: "Fast is smooth on newer drivers. Compatible is slower but works everywhere: pick it if first-time setup or the Hearth app's window shows a black screen. Steam Game Mode isn't affected."
         options: [{ value: "auto", label: "Automatic" }, { value: "fast", label: "Fast" }, { value: "compatible", label: "Compatible" }]
         current: page.nvDrawing
         onChosen: v => { page.nvDrawing = v; Quickshell.execDetached(["sh", "-c", v === "auto" ? "rm -f \"$1\"" : "mkdir -p \"$(dirname \"$1\")\" && printf %s \"$2\" > \"$1\"", "sh", page.nvFile, v]); }

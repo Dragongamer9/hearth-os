@@ -1,4 +1,4 @@
-"""Tests for Hearth COSMIC (docs/COSMIC.md): the desktop choice and the fallback in nimbus-session (a broken or missing
+"""Tests for Hearth COSMIC (docs/archive/COSMIC.md): the desktop choice and the fallback in nimbus-session (a broken or missing
 COSMIC always ends in Hearth Classic), the desktop choice in hearth-plasma and admin.rs, hearth-pad's COSMIC mode
 (CosmicPad), and the defaults made from COSMIC's own (hearth-cosmic-defaults). The session runs for real with
 stand-ins for labwc and COSMIC."""

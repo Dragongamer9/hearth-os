@@ -29,6 +29,15 @@ import subprocess
 import sys
 import time
 
+# Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
+# from .bak when damaged, never overwritten with defaults. The module sits next to this file; a copy of this helper
+# run on its own elsewhere keeps working without it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
 PROC = '/proc'
 SYS = '/sys'
 
@@ -117,6 +126,8 @@ def save_state(name, data):
 
 
 def write_atomic(path, text):
+    if hsio:
+        return hsio.write_text(path, text)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + '.tmp'
     with open(tmp, 'w') as f:
@@ -1010,6 +1021,9 @@ def hearth_running(procs=None):
 
 def steam_background(path=None):
     path = path or library_file()
+    if hsio:
+        data = hsio.load_json(path, {})
+        return data.get('steamBackground', True) is not False
     try:
         with open(path) as f:
             data = json.load(f)
@@ -1021,6 +1035,14 @@ def steam_background(path=None):
 
 def set_steam_background(on, path=None):
     path = path or library_file()
+    if hsio and os.path.exists(path):
+        # Merged under the lock Hearth's own library writer uses (hearth-core settings_file): only this key changes,
+        # and a damaged file comes back from library.json.bak instead of being replaced.
+        with open(path, 'rb') as f:
+            raw = f.read()
+        if hsio._valid_json_object(raw) or os.path.exists(path + '.bak'):
+            hsio.merge_json(path, {'steamBackground': bool(on)})
+            return
     data = {}
     if os.path.exists(path):
         try:

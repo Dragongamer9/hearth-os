@@ -110,13 +110,21 @@ conf="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
 grep -hE '^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=' "$conf/session.conf" 2>/dev/null || echo "session.conf: no gamescope options (gamescope starts at the screen's own mode)"
 [ -f "$conf/display-pending.json" ] && echo "a new mode is waiting to be kept: $(cat "$conf/display-pending.json")"
 [ -n "$GAMESCOPE_MODE_SAVE_FILE" ] && echo "GAMESCOPE_MODE_SAVE_FILE=$GAMESCOPE_MODE_SAVE_FILE"
+echo "--- the kernel's modes with their refresh rates (hearth-screen; * = the screen's preferred mode)"
+python3 /usr/libexec/nimbus/hearth-screen list 2>&1 | head -20
+s="${XDG_CONFIG_HOME:-$HOME/.config}/gamescope/scripts/hearth-builtin-panel.lua"
+[ -f "$s" ] && echo "built-in screen script for gamescope: $(sed -n 1,2p "$s" | tr '\n' ' ')"
+[ -f "$conf/display-reverted.json" ] && echo "a mode the session couldn't use (Game Mode offers Try again): $(cat "$conf/display-reverted.json")"
+echo "--- gamescope's own messages about the screen (this boot)"
+journalctl -b --no-pager -o cat 2>/dev/null | grep -aE '^\[gamescope\].*(drm|DRM|mode|connector|flip|commit|abort|Error|backend)|^gamescope: .*Assertion' | grep -av 'appid clash' | tail -40
 for c in /sys/class/drm/card*-*; do
   [ -r "$c/status" ] || continue
   st=$(cat "$c/status")
   echo; echo "--- ${c##*/}: $st, $(cat "$c/enabled" 2>/dev/null), $(cat "$c/dpms" 2>/dev/null)"
   [ "$st" = connected ] || continue
   echo "kernel's modes (sizes only): $(paste -sd' ' "$c/modes" 2>/dev/null)"
-  [ -s "$c/edid" ] || { echo "(no EDID)"; continue; }
+  # sysfs gives edid a size of 0 (known only once read): read a byte, never test the size (-s was always "no EDID").
+  [ -n "$(head -c 1 "$c/edid" 2>/dev/null | od -An -tx1)" ] || { echo "(no EDID)"; continue; }
   d=""
   if command -v edid-decode >/dev/null 2>&1; then d=$(edid-decode "$c/edid" 2>&1)
   elif command -v di-edid-decode >/dev/null 2>&1; then d=$(di-edid-decode "$c/edid" 2>&1)
@@ -280,7 +288,9 @@ pub fn report(version: &str) -> String {
         section("Hearth log", keep(&lines, 1500));
     }
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
-                      (data.join("labwc.log"), "Desktop Mode compositor (labwc)")] {
+                      (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
+                      (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
+                       "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
     // Hearth Plasma, Hearth GNOME and Hearth COSMIC: each desktop's own log (the desktop's messages, and what
@@ -377,9 +387,26 @@ pub fn report(version: &str) -> String {
         .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Steam Game Mode (Decky plugin)", decky_report(Path::new("/"), &crate::paths::home(),
-        &sh("for u in hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
+        &sh("for u in \"hearth-decky@$(id -un).service\" hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
     // Steam's own logs (native and Flathub Steam): game launches and what stopped them ("games won't start in
     // Steam Game Mode"), only the launch, compatibility and error lines, no account lines.
+    // Hearth Mods (docs/MODS.md): every step of the last modded starts (what ran, exit codes, the program's output),
+    // its worker's own output, and Proton's log of the last modded start (PROTON_LOG, mods/logs/steam-<app>.log).
+    {
+        let d = data.join("mods").join("logs");
+        let mut body = String::new();
+        for (f, n) in [("launch.log", 200), ("worker.log", 120)] {
+            if let Ok(t) = std::fs::read_to_string(d.join(f)) { body.push_str(&format!("--- {f}\n{}\n\n", tail(&t, n))); }
+        }
+        let mut protons: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path())
+            .filter(|p| p.file_name().map(|n| { let n = n.to_string_lossy(); n.starts_with("steam-") && n.ends_with(".log") }).unwrap_or(false))
+            .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p))).collect();
+        protons.sort();
+        if let Some((_, p)) = protons.last() {
+            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- Proton's log of the last modded start ({})\n{}\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&tail(&t, 300), 60_000))); }
+        }
+        if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
+    }
     section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
         for f in console_log.txt console-linux.txt compat_log.txt; do [ -s \"$d/$f\" ] || continue; echo \"--- $d/$f\" | sed \"s|$HOME|~|\"; \
         grep -aiE 'gameaction|launch|appid|compat|pressure|xwayland|display|exited|error|fail|proton|reaper' \"$d/$f\" | grep -aivE 'account|login|password|token|steamid|persona' | tail -120; done; done"));
@@ -430,6 +457,11 @@ pub fn report(version: &str) -> String {
     // driver that didn't make the HDMI 2.1 fast link (FRL), or a mode Hearth chose.
     section("Screen: modes and what it says it can do (EDID)", sh(&format!("{{ {SCREEN_SH} }}")));
     section("Graphics driver and the screen link", sh(&format!("{{ {DRIVER_SH} }}")));
+    section("Sound (PipeWire)", sh("echo \"RealtimeKit (sound priority): $(busctl --system status org.freedesktop.RealtimeKit1 >/dev/null 2>&1 && echo running || echo missing)\"; \
+        echo; pactl info 2>&1 | grep -E 'Server Name|Default Sink|Default Sample'; echo; pw-metadata -n settings 0 2>&1 | grep -E 'clock' ; \
+        echo; echo '--- outputs'; pactl list short sinks 2>&1; echo; echo '--- what is playing'; pactl list short sink-inputs 2>&1; \
+        echo; echo '--- priority of the sound programs'; ps -eLo pid,cls,rtprio,ni,comm 2>/dev/null | grep -E 'pipewire|wireplumber|data-loop' | head -12; \
+        echo; echo '--- sound messages (this boot)'; journalctl --user -b --no-pager -o short -u pipewire -u pipewire-pulse -u wireplumber 2>&1 | grep -viE 'SEND_OBJECT_MESSAGE' | tail -40"));
     section("Bluetooth", sh("bluetoothctl devices; bluetoothctl show | grep -E 'Powered|Discoverable|Pairable'"));
     section("System journal: controllers, power, display (this boot)", cap(&sh("journalctl -b --no-pager -n 400 -u inputplumber -u hhd -u steamos-manager -u powerstation -u bluetooth -u tuned -u tuned-ppd"), 80_000));
     section("System journal: errors (this boot)", cap(&without_dump_details(&sh("journalctl -b --no-pager -p err -n 400")), 80_000));
@@ -571,6 +603,8 @@ mod tests {
             assert!(SLEEP_SH.contains(k), "{k}");
         }
         assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));
+        // sysfs's edid always says 0 bytes: a size test (-s) reported "(no EDID)" for every screen.
+        assert!(!SCREEN_SH.contains("-s \"$c/edid\"") && SCREEN_SH.contains("hearth-screen list"));
         assert!(DRIVER_SH.contains("/proc/cmdline") && DRIVER_SH.contains("modinfo -F version nvidia") && DRIVER_SH.contains("driver_version"));
     }
     #[test]

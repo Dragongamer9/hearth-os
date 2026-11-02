@@ -80,7 +80,7 @@ pub fn list_now() -> Value { list(&read_library()) }
 /// `hearth --list-games --with-cloud`.
 pub fn list_with_cloud_now() -> Value { list_with_cloud(&read_library()) }
 
-// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (hosts/decky-hearth) adds Hearth's
+// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (archive/hosts/decky-hearth) adds Hearth's
 // games to Steam as non-Steam shortcuts that run `hearth --play-now <id>`. No window opens: the game starts the way the
 // library's Play button starts it (Proton, Epic, GOG, Beacon, Battle.net, emulators...), and this process waits until
 // it has closed, so Steam shows it as running for as long as it plays and its overlay and focus follow it.

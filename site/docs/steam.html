@@ -30,9 +30,9 @@
   </div>
 </nav>
 <div class="wrap layout">
-  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="steam.html" class="cur" aria-current="page">Steam Game Mode</a><div class="sub"><a href="#what">What changes</a><a href="#menu">Hearth in Steam's main menu</a><a href="#quick-access">Hearth tabs in Quick Access</a><a href="#this-game">The game you're playing</a><a href="#pages">Store, Mods, Storage and Recomps</a><a href="#rest">Quick Resume, streaming, Friends and Hearth Link</a><a href="#coop">Couch co-op and multi-seat</a><a href="#your-games">Your Hearth games in Steam</a><a href="#try">How to try it</a><a href="#hearth-game-mode">Hearth's Game Mode is still here</a><a href="#back">Getting back to Hearth's Game Mode</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
+  <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="steam.html" class="cur" aria-current="page">Steam Game Mode</a><div class="sub"><a href="#what">What changes</a><a href="#menu">Hearth in Steam's main menu</a><a href="#quick-access">Hearth tabs in Quick Access</a><a href="#this-game">The game you're playing</a><a href="#pages">Store, Mods, Storage and Recomps</a><a href="#rest">Quick Resume, streaming, Friends and Hearth Link</a><a href="#coop">Couch co-op and multi-seat</a><a href="#your-games">Your Hearth games in Steam</a><a href="#try">How to try it</a><a href="#hearth-game-mode">Hearth's old Game Mode</a><a href="#back">If Steam's Game Mode won't start</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 1.0</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="peppermint">Debian</option><option value="anatase">Anatase (Fedora, archived)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 1.1</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="peppermint">Debian</option><option value="anatase">Anatase (Fedora, archived)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Steam Game Mode</h1>
     <p class="lead">Steam's own Game Mode is now Hearth's first priority, with Hearth built into it. Hearth's Game Mode stays as the fallback and as an option.</p>
 
@@ -109,8 +109,7 @@ for Moonlight's 4-digit PIN.</li>
 many play and how the screen is shared, then <b>Play split-screen</b> or <b>Add to Steam library</b>. Either way it becomes
 one Steam shortcut, so Steam shows it running and <b>Exit game</b> closes everyone's copy.</p>
 <p><b>Multi-seat</b>: with multi-seat set up, player 1 can play in Steam's Game Mode while the other players keep their own
-Hearth Game Mode, each on their own account, screen and controllers. Quick Access › Hearth Players › Seats starts and stops
-players and hands out controllers. Setting multi-seat up stays in Hearth's Game Mode.</p>
+Hearth Game Mode, each on their own account, screen and controllers. Multi-seat and couch co-op are hidden for now.</p>
 
 </section><section><h2 id="your-games">Your Hearth games in Steam</h2>
 <p>Quick Access › Hearth › <b>Sync to Steam library</b> adds your Epic, GOG, Battle.net, Xbox PC, Beacon, emulator and added games
@@ -119,33 +118,25 @@ and counts the play time. <b>Remove Hearth's shortcuts</b> takes them out again.
 
 </section><section><h2 id="try">How to try it</h2>
 <ol>
-<li>Open <b>Settings › System › Steam Game Mode (Experimental)</b>.</li>
+<li>In Desktop Mode, open <b>Settings › Steam Game Mode</b>.</li>
 <li>Optional, once: <b>Decky Loader and the Hearth plugin › Install</b>. It asks for your password. Without it you still get
 Steam's Game Mode, just without Hearth inside it.</li>
 <li><b>Switch to Steam Game Mode</b> (also in the power menu). If Steam isn't signed in yet, sign in on Steam's own screen.</li>
-<li>Want it every time? Turn on <b>Start in Steam Game Mode</b> in the same place. It's off by default and set per device.</li>
 </ol>
 <div class="note warn"><p><b>About Decky:</b> Decky Loader runs as root while Steam Game Mode runs, and it turns on Steam's local
 remote debugging. Only install Decky plugins you trust. <b>Remove</b> in Settings takes it all away again.</p></div>
 
-</section><section><h2 id="hearth-game-mode">Hearth's Game Mode is still here</h2>
-<p>Hearth's own Game Mode isn't going away. We'll keep looking after it.</p>
-<ul>
-<li><b>It's the fallback.</b> If Steam's Game Mode can't start (no Steam, safe graphics, or Steam fails in its first 20 seconds),
-Hearth's Game Mode starts instead. If Start in Steam Game Mode keeps failing, it turns itself off.</li>
-<li><b>It's an option for everyone.</b> Prefer it? Keep using it. It's still the default; Steam's Game Mode is something you
-turn on.</li>
-<li><b>It runs the extra seats.</b> In multi-seat, players 2 to 4 always get Hearth's Game Mode.</li>
-<li><b>Some things are only there</b>, for now: Hearth's Settings, editing Hearth Input layouts, favourites and collections,
-parental controls, per-game power settings, chats in Hearth Friends, and setting up couch co-op and multi-seat.</li>
-</ul>
+</section><section><h2 id="hearth-game-mode">Hearth's old Game Mode</h2>
+<p>Hearth's own full-screen Game Mode is archived. It still runs Hearth OS's first-time setup once after installing, and it's
+the very last fallback; you won't see it anywhere else. Everything you set there is now in Desktop Mode's Settings or in
+an app of its own (Mods, Saves, Controller Lab, Friends, Theater, Hearth Link...). Developers can bring it back with
+<code>HEARTH_LEGACY_GAME_MODE=1</code>.</p>
 
-</section><section><h2 id="back">Getting back to Hearth's Game Mode</h2>
+</section><section><h2 id="back">If Steam's Game Mode won't start</h2>
 <p>All of these work with just a controller:</p>
 <ul>
-<li>Quick Access › Hearth › <b>Switch to Hearth Game Mode</b>.</li>
-<li>Steam's <b>Power › Switch to Desktop</b>, then <b>Return to Game Mode</b>.</li>
-<li>Hold <b>B</b> or <b>Guide</b> while the device starts: Steam's Game Mode is skipped that time.</li>
+<li>Desktop Mode opens by itself and says why, with <b>Try Steam Game Mode again</b>.</li>
+<li>Hold <b>B</b> or <b>Guide</b> while the device starts: it starts in Desktop Mode that time.</li>
 <li><b>Hearth Recovery</b> (hold Volume Down while it starts).</li>
 </ul>
 <p>Switching never touches the boot menu or the login screen.</p>

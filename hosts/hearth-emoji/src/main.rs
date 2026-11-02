@@ -4,6 +4,9 @@
 // controller.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use serde_json::{json, Value};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
@@ -41,7 +44,7 @@ fn close(app: tauri::AppHandle) { app.exit(0); }
 fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![init, set_tone, pick, close])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -51,7 +54,7 @@ fn main() {
                 .center()
                 .always_on_top(true)
                 .skip_taskbar(true)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

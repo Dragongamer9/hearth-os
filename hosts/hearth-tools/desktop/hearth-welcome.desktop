@@ -9,3 +9,4 @@ Type=Application
 Categories=System;Utility;
 Keywords=welcome;tips;help;tour;guide;docs;how;faq;controller;
 StartupWMClass=io.github.dragongamer9.hearth.welcome
+X-Hearth-Controller=true

@@ -227,6 +227,8 @@ def mods(bindir, work):
     m2 = ms[1]['id'] if len(ms) > 1 else 'm1'
     check('a second mod from a folder wins the file they share (lower in the list)', read(os.path.join(hk, 'Data/a.txt')) == 'mod two a', read(os.path.join(hk, 'Data/a.txt')))
     check('the first one shows it was replaced', ms and ms[0].get('overriddenBy') == ['Other Mod'], ms[:1])
+    check('and the second which mods it beats (the page\'s conflict lens)', len(ms) > 1 and ms[1].get('beats') == ['Cool Mod v1.2'], ms[1:2])
+    check('the page sees when the mods last went in', (out.get('summary', {}).get('deployedAt') or 0) > 0, out.get('summary', {}).get('deployedAt'))
     run([exe, '--move', g, m2, '-1'], env)
     check('load order: moving it up lets the first win again', read(os.path.join(hk, 'Data/a.txt')) == 'mod one a', read(os.path.join(hk, 'Data/a.txt')))
     run([exe, '--disable', g, m1], env)

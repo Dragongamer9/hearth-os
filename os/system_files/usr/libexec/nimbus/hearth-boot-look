@@ -1,0 +1,287 @@
+#!/usr/bin/python3
+"""hearth-boot-look: the boot splash preset and Steam Game Mode's startup animation (Settings › Boot & startup).
+
+  hearth-boot-look status            JSON: the splash presets and which one starts, the startup animations and
+                                     which one Steam Game Mode plays
+  hearth-boot-look splash NAME       (root, through `hearth-admin boot-splash NAME`) the splash for the next
+                                     starts: hearth (default), hearth-steam or hearth-minimal. Written to
+                                     /etc/hearth/boot-splash; hearth-bls-grub puts plymouth.splash=NAME on the
+                                     menu's entries. Nothing is rebuilt: every preset is in each version's
+                                     start-up files, and a version without that preset shows its default
+  hearth-boot-look movie ID|steam    the startup animation Steam Game Mode plays (yours, not system-wide): one of
+                                     Hearth's (flame, sweep, reveal, embers) or steam (Steam's own). Applied now
+                                     if Steam has been set up, else the next time Steam Game Mode starts
+  hearth-boot-look movie-apply       (nimbus-session, as Steam Game Mode starts) puts the chosen animation in
+                                     Steam's override folder (~/.steam/root/config/uioverrides/movies)
+
+Steam (SteamOS / Steam Deck UI) plays deck_startup.webm from that folder, and its own Settings › Customization ›
+Startup Movie lists the .webm files there, so Hearth's animations are placed there under their own names too
+(hearth-flame.webm ...) for picking in Steam itself. Only files Hearth put there are ever replaced or removed
+(their checksums are kept in .hearth-movies.json); a deck_startup.webm of your own is left alone.
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+SPLASH_CONF = os.environ.get('HEARTH_SPLASH_CONF', '/etc/hearth/boot-splash')
+THEMES = os.environ.get('HEARTH_PLYMOUTH_THEMES', '/usr/share/plymouth/themes')
+BLS_GRUB = os.environ.get('HEARTH_BLS_GRUB', '/usr/libexec/nimbus/hearth-bls-grub')
+MOVIES = os.environ.get('HEARTH_MOVIES', '/usr/share/hearth/startup-movies')
+HOME = os.environ.get('HOME', '')
+CHOICE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config'), 'hearth', 'startup-movie')
+DRM = os.environ.get('HEARTH_DRM', '/sys/class/drm')
+STEAM_NAME = 'deck_startup.webm'
+LEDGER = '.hearth-movies.json'
+
+SPLASHES = [
+    {'id': 'hearth', 'label': 'Hearth flame', 'about': 'The Hearth flame on slate, with a breathing ember glow (default)'},
+    {'id': 'hearth-steam', 'label': 'Steam-style', 'about': 'The Hearth mark on slate blue, with a blue light sweep'},
+    {'id': 'hearth-minimal', 'label': 'Minimal', 'about': 'A small Hearth mark on plain slate, nothing moving'},
+]
+MOVIE_LIST = [
+    {'id': 'flame', 'label': 'Flame ignition', 'about': 'A spark lights the Hearth flame'},
+    {'id': 'sweep', 'label': 'Slate light sweep', 'about': 'A blue light sweeps across and reveals Hearth OS'},
+    {'id': 'reveal', 'label': 'Logo reveal', 'about': 'The Hearth arch draws itself, then the flame'},
+    {'id': 'embers', 'label': 'Rising embers', 'about': 'Embers drift up and gather into the mark'},
+]
+MOVIE_IDS = [m['id'] for m in MOVIE_LIST]
+
+
+def fail(msg):
+    print('error: ' + msg, flush=True)
+    sys.exit(1)
+
+
+# ------------------------------------------------------------------ saving a choice
+# Both choices are settings (docs/SETTINGS-PERSISTENCE.md): saved all at once with FILE.bak through Hearth's shared
+# helper when it's here (hearth_settings_io, Mantel's shell folder), else a temporary file, fsync and rename; read back
+# from FILE.bak when the file is damaged, never quietly replaced by the default.
+def _settings_io():
+    for share in (os.environ.get('NIMBUS_SHARE'), '/usr/share/nimbus', '/usr/local/share/nimbus'):
+        if share and os.path.isfile(os.path.join(share, 'desktop', 'shell', 'hearth_settings_io.py')):
+            sys.path.insert(0, os.path.join(share, 'desktop', 'shell'))
+            break
+    try:
+        import hearth_settings_io
+        return hearth_settings_io
+    except ImportError:
+        return None
+
+
+def save_choice(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    hio = _settings_io()
+    if hio:
+        hio.write_text(path, value + '\n')
+        return
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(value + '\n')
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def read_choice(path, allowed, default):
+    for p in (path, path + '.bak'):
+        try:
+            with open(p) as f:
+                v = f.read().strip()
+        except OSError:
+            continue
+        if v in allowed:
+            return v
+    return default
+
+
+# ------------------------------------------------------------------ boot splash
+def splash_current():
+    if not os.path.exists(SPLASH_CONF):
+        return 'hearth'          # the default is kept as no file (a .bak alone is an older choice: not used)
+    return read_choice(SPLASH_CONF, [s['id'] for s in SPLASHES], 'hearth')
+
+
+def splash_set(name):
+    if name not in [s['id'] for s in SPLASHES]:
+        fail('unknown splash: choose hearth, hearth-steam or hearth-minimal')
+    if not os.path.isfile(os.path.join(THEMES, name, name + '.plymouth')):
+        fail("this version of Hearth OS doesn't have that splash")
+    if not os.path.isfile(BLS_GRUB):
+        fail("the splash can't be changed on this edition")
+    os.makedirs(os.path.dirname(SPLASH_CONF), exist_ok=True)
+    if name == 'hearth':
+        try:
+            os.remove(SPLASH_CONF)
+        except FileNotFoundError:
+            pass
+    else:
+        save_choice(SPLASH_CONF, name)
+    # The menu is rewritten the way it is at every start; if that fails, the old menu stays as it was.
+    r = subprocess.run(['sh', BLS_GRUB], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        fail('the boot menu couldn\'t be updated: ' + ((r.stderr or r.stdout).strip().splitlines() or ['?'])[-1])
+    print(json.dumps({'ok': True, 'splash': name}))
+
+
+# ------------------------------------------------------------------ startup animations
+def screen_aspect():
+    """'16x10' or '16x9' from the first connected screen's preferred mode (portrait panels too)."""
+    try:
+        for c in sorted(os.listdir(DRM)):
+            d = os.path.join(DRM, c)
+            try:
+                with open(os.path.join(d, 'status')) as f:
+                    if f.read().strip() != 'connected':
+                        continue
+                with open(os.path.join(d, 'modes')) as f:
+                    mode = f.readline().strip()
+            except OSError:
+                continue
+            m = re.match(r'(\d+)x(\d+)', mode)
+            if m:
+                w, h = sorted((int(m.group(1)), int(m.group(2))), reverse=True)
+                return '16x10' if 1.52 <= w / h <= 1.68 else '16x9'
+    except OSError:
+        pass
+    return '16x9'
+
+
+def movie_file(mid, aspect):
+    for a in (aspect, '16x9', '16x10'):
+        p = os.path.join(MOVIES, f'hearth-{mid}-{a}.webm')
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def movie_choice():
+    if not os.path.exists(CHOICE):
+        return 'steam'
+    return read_choice(CHOICE, MOVIE_IDS, 'steam')
+
+
+def steam_dirs():
+    """Steam's override folders that exist (Steam has been set up there): the system Steam's and Flathub's."""
+    out = []
+    for root in (os.path.join(HOME, '.steam', 'root'), os.path.join(HOME, '.var/app/com.valvesoftware.Steam/.local/share/Steam'),
+                 os.path.join(HOME, '.var/app/com.valvesoftware.Steam/data/Steam')):
+        if os.path.isdir(os.path.join(root, 'config')):
+            real = os.path.realpath(root)
+            if real not in [os.path.realpath(o[0]) for o in out]:
+                out.append((root, os.path.join(root, 'config', 'uioverrides', 'movies')))
+    return [m for _, m in out]
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for b in iter(lambda: f.read(1 << 20), b''):
+            h.update(b)
+    return h.hexdigest()
+
+
+def put(src, dst, ledger):
+    """Copy src to dst unless it's already there; only over a file Hearth put there (or nothing)."""
+    name = os.path.basename(dst)
+    if os.path.lexists(dst):
+        try:
+            now = digest(dst)
+        except OSError:
+            return False
+        if now == digest(src):
+            ledger[name] = now
+            return True
+        if ledger.get(name) != now:
+            return False          # someone else's file: left alone
+    tmp = dst + '.hearth-tmp'
+    shutil.copyfile(src, tmp)
+    os.replace(tmp, dst)
+    ledger[name] = digest(dst)
+    return True
+
+
+def remove_ours(path, ledger):
+    name = os.path.basename(path)
+    if os.path.isfile(path) and ledger.get(name):
+        try:
+            if digest(path) == ledger[name]:
+                os.remove(path)
+        except OSError:
+            pass
+    ledger.pop(name, None)
+
+
+def movie_apply():
+    choice, aspect = movie_choice(), screen_aspect()
+    done = []
+    for d in steam_dirs():
+        os.makedirs(d, exist_ok=True)
+        lp = os.path.join(d, LEDGER)
+        try:
+            with open(lp) as f:
+                ledger = json.load(f)
+            if not isinstance(ledger, dict):
+                ledger = {}
+        except (OSError, ValueError):
+            ledger = {}
+        # Every Hearth animation under its own name (Steam's Startup Movie setting lists them).
+        for m in MOVIE_IDS:
+            src = movie_file(m, aspect)
+            if src:
+                put(src, os.path.join(d, f'hearth-{m}.webm'), ledger)
+        own = os.path.join(d, STEAM_NAME)
+        kept = True
+        if choice == 'steam':
+            remove_ours(own, ledger)
+        else:
+            src = movie_file(choice, aspect)
+            kept = bool(src) and put(src, own, ledger)
+        with open(lp + '.tmp', 'w') as f:
+            json.dump(ledger, f)
+        os.replace(lp + '.tmp', lp)
+        done.append({'dir': d, 'applied': kept})
+    return {'ok': True, 'choice': choice, 'aspect': aspect, 'steam': done}
+
+
+def movie_set(mid):
+    if mid != 'steam' and mid not in MOVIE_IDS:
+        fail('unknown animation')
+    if mid != 'steam' and not movie_file(mid, '16x9'):
+        fail("this version of Hearth OS doesn't have that animation")
+    save_choice(CHOICE, mid)
+    r = movie_apply()
+    r['later'] = not r['steam']
+    print(json.dumps(r))
+
+
+def status():
+    print(json.dumps({
+        'splash': {'current': splash_current(), 'canChange': os.path.isfile(BLS_GRUB),
+                   'presets': [dict(s, available=os.path.isfile(os.path.join(THEMES, s['id'], s['id'] + '.plymouth'))) for s in SPLASHES]},
+        'movie': {'current': movie_choice(), 'aspect': screen_aspect(), 'steamReady': bool(steam_dirs()),
+                  'list': [dict(m, file=movie_file(m['id'], screen_aspect()) or '') for m in MOVIE_LIST if movie_file(m['id'], '16x9')]},
+    }))
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'status' and len(argv) == 2:
+        status()
+    elif cmd == 'splash' and len(argv) == 3:
+        if os.geteuid() != 0:
+            fail('needs root (hearth-admin boot-splash)')
+        splash_set(argv[2])
+    elif cmd == 'movie' and len(argv) == 3:
+        movie_set(argv[2])
+    elif cmd == 'movie-apply' and len(argv) == 2:
+        print(json.dumps(movie_apply()))
+    else:
+        fail('usage: hearth-boot-look status | splash hearth|hearth-steam|hearth-minimal | movie ID|steam | movie-apply')
+
+
+if __name__ == '__main__':
+    main(sys.argv)

@@ -299,7 +299,9 @@ class Editions(unittest.TestCase):
 
     def test_hhd_editions_install_it(self):
         for base in ('anatase', 'ubuntu', 'cachyos', 'peppermint'):
-            text = (self.ROOT / 'os-bases' / base / 'build.sh').read_text()
+            # Ubuntu and CachyOS are archived (archive/os-bases); their builds still do it.
+            bdir = self.ROOT / ('archive/os-bases' if base in ('ubuntu', 'cachyos') else 'os-bases') / base
+            text = (bdir / 'build.sh').read_text()
             self.assertIn('ln -sfn /usr/share/nimbus/desktop/shell/hearth-overlay /usr/bin/hhd-ui', text, base)
             self.assertIn('Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay', text, base)
             wf = (self.ROOT / '.github' / 'workflows' / f'base-{base}.yml').read_text()

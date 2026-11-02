@@ -15,9 +15,25 @@ Used by hearth-controller (Settings › Controls) and hearth-power (power limit 
                                Settings › Controls shows ("Handheld Daemon": gyro, back buttons, fan, lights)
   hearth-hhd get [KEY ...]     JSON: the whole state flattened to dotted keys, or just these keys
   hearth-hhd set KEY VALUE     change one of those extra controls (only those: see EXTRAS), then print status
+  hearth-hhd page              JSON: every setting HHD shows for this device, for Mantel's Settings › Handheld page
+                               (SetHandheld.qml), drawn from HHD's own settings tree (GET /api/v1/settings) with the
+                               values from its state (GET /api/v1/state) and its section names (GET /api/v1/sections),
+                               so a newer HHD's options appear by themselves. {"running": false} without HHD.
+  hearth-hhd apply KEY JSON    change one setting on that page: JSON is the value (true, "dualsense", 15); checked
+                               against HHD's settings tree first (its kind, choices and limits; never a hidden one),
+                               then POST /api/v1/state. Prints the page as it is afterwards.
 
 Only the settings in EXTRAS can be changed with "set", and only to a value HHD itself offers for this device
-(its settings tree says which): Hearth never writes anything else into HHD.
+(its settings tree says which). "apply" (the Handheld page, Hearth's own HHD app in place of hhd-ui) can change any
+setting HHD shows, checked the same way against its tree.
+
+HHD's API (hhd-dev/hhd, src/hhd/http/api.py): /run/hhd/api is a UNIX socket (mode 0666) whose handler has no token;
+127.0.0.1:5335 wants "Authorization: Bearer <token>" when HHD's http token setting is on (the token is in
+/etc/hhd/.token and copied to /tmp/hhd/token, src/hhd/__main__.py). GET /api/v1/settings = the settings tree
+({section: {plugin: container}}; types container, mode, bool, multiple, discrete, int, float, color, action, display,
+custom; src/hhd/plugins/settings.py), GET /api/v1/state (?poll waits for the next change), POST /api/v1/state with
+{dotted key: value} (answers with the state after HHD applied it), GET /api/v1/sections = section names, GET
+/api/v1/version = {"version": 5}.
 
 Python standard library only. Output is one JSON line; failures print "error: ..." and exit 1.
 """
@@ -337,6 +353,218 @@ def status():
     return {'running': True, 'controllers': controllers(st, sets), 'tdp': tdp_info(st, sets), 'controls': extras(st, sets)}
 
 
+# ---------------------------------------------------------------------- the whole page (Settings › Handheld)
+# Tags that keep a setting off the page and out of reach (hhd-ui hides the same; hearth-core hhd.rs SKIP_TAGS), and
+# tags of settings shown only with "Show advanced settings".
+SKIP_TAGS = {'hidden', 'hide', 'hhd-update-decky', 'hhd-version-display-decky', 'theme-selector'}
+ADVANCED_TAGS = {'advanced', 'expert'}
+# Where Steam has its own controls while Steam Game Mode runs (the page is in Desktop Mode's Settings): said on the page.
+STEAM_NOTES = {
+    'tdp': "In Steam Game Mode, Steam's Quick Access › Performance sets the power limit (TDP) and GPU clock through "
+           "Handheld Daemon; these are what Desktop Mode uses, and what Steam starts from.",
+    'controllers': "In Steam Game Mode, Steam Input maps buttons per game on top of the controller set here; HHD's "
+                   "Quick Access button opens Steam's.",
+}
+DEFAULT_SECTIONS = {'tdp': 'Power', 'rgb': 'RGB', 'controllers': 'Controller', 'gamemode': 'General', 'hhd': 'Settings'}
+
+
+def _tags(node):
+    t = node.get('tags') if isinstance(node, dict) else None
+    return set(x for x in t if isinstance(x, str)) if isinstance(t, list) else set()
+
+
+def skipped(node):
+    return not isinstance(node, dict) or bool(_tags(node) & SKIP_TAGS)
+
+
+def lookup(st, key):
+    v = st
+    for part in key.split('.'):
+        if not isinstance(v, dict):
+            return None
+        v = v.get(part)
+    return v
+
+
+def find(sets, key):
+    """(entry, is_mode_choice) in HHD's settings tree for a dotted key, or None (also for anything hidden, there or
+    above it, and for containers and modes themselves, which have no value)."""
+    parts = key.split('.')
+    if len(parts) < 3 or not isinstance(sets, dict) or not isinstance(sets.get(parts[0]), dict):
+        return None
+    node = sets[parts[0]].get(parts[1])
+    if skipped(node):
+        return None
+    rest = parts[2:]
+    for i, part in enumerate(rest):
+        t = node.get('type')
+        if t == 'mode' and part == 'mode' and i == len(rest) - 1:
+            return node, True
+        if t == 'mode':
+            node = (node.get('modes') or {}).get(part)
+        elif t == 'container':
+            node = (node.get('children') or {}).get(part)
+        else:
+            return None
+        if skipped(node):
+            return None
+    if node.get('type') in (None, 'container', 'mode'):
+        return None
+    return node, False
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def check_value(node, is_mode, value, current, key):
+    """The value to send for a setting, or HhdError (as hearth-core hhd.rs check_value)."""
+    name = _title(node, key.rsplit('.', 1)[-1].replace('_', ' '))
+    if is_mode:
+        m = (node.get('modes') or {}).get(value) if isinstance(value, str) else None
+        if skipped(m):
+            raise HhdError("that isn't one of the choices for " + name)
+        return value
+    t = node.get('type')
+    if t == 'bool':
+        if not isinstance(value, bool):
+            raise HhdError(name + ' is either on or off')
+        return value
+    if t == 'action':
+        if value is not True:
+            raise HhdError(name + ' is a button: it only runs')
+        return True
+    if t == 'multiple':
+        if not isinstance(value, str) or value not in (node.get('options') or {}):
+            raise HhdError("that isn't one of the choices for " + name)
+        return value
+    if t == 'discrete':
+        for o in node.get('options') or []:
+            if (_num(o) and _num(value) and abs(o - value) < 1e-9) or o == value:
+                return o
+        raise HhdError("that isn't one of the choices for " + name)
+    if t in ('int', 'float'):
+        if not _num(value) or (t == 'int' and float(value) != int(value)):
+            raise HhdError(name + ' takes a ' + ('whole number' if t == 'int' else 'number'))
+        if _num(node.get('min')) and value < node['min']:
+            raise HhdError('%s can\'t be lower than %s' % (name, node['min']))
+        if _num(node.get('max')) and value > node['max']:
+            raise HhdError('%s can\'t be higher than %s' % (name, node['max']))
+        return int(value) if t == 'int' else float(value)
+    if t == 'custom' and 'dropdown' in _tags(node):
+        opts = (current or {}).get('options') if isinstance(current, dict) else None
+        if not isinstance(value, str) or not isinstance(opts, dict) or value not in opts:
+            raise HhdError("that isn't one of the choices for " + name)
+        return {'options': opts, 'value': value}
+    raise HhdError(name + " can't be changed here")
+
+
+def _opts(pairs):
+    return [{'id': str(k), 'label': _title(v, str(k))} for k, v in pairs]
+
+
+def page_items(node, keyparts, st, depth=0, advanced=False, out=None):
+    """The page's rows for one entry of the settings tree, in HHD's order: groups (a container's title), and settings
+    with their kind and value. A mode shows its choice, then the settings of the mode in use."""
+    out = [] if out is None else out
+    if skipped(node):
+        return out
+    adv = advanced or bool(_tags(node) & ADVANCED_TAGS)
+    t = node.get('type')
+    key = '.'.join(keyparts)
+    base = {'key': key, 'title': _title(node, keyparts[-1].replace('_', ' ').capitalize()), 'hint': node.get('hint') or '',
+            'depth': depth, 'advanced': adv}
+    if t == 'container':
+        kids = [(k, c) for k, c in (node.get('children') or {}).items() if not skipped(c)]
+        if not kids:
+            return out
+        if depth > 0 and node.get('title'):
+            out.append(dict(base, kind='group'))
+        for k, c in kids:
+            page_items(c, keyparts + [k], st, depth + 1 if depth > 0 and node.get('title') else depth, adv, out)
+        return out
+    if t == 'mode':
+        modes = [(k, m) for k, m in (node.get('modes') or {}).items() if not skipped(m)]
+        cur = lookup(st, key + '.mode')
+        if not modes:
+            return out
+        out.append(dict(base, key=key + '.mode', kind='choice', value=str(cur) if cur is not None else '', options=_opts(modes)))
+        m = (node.get('modes') or {}).get(cur)
+        if isinstance(m, dict) and not skipped(m):
+            for k, c in (m.get('children') or {}).items():
+                page_items(c, keyparts + [str(cur), k], st, depth + 1, adv, out)
+        return out
+    val = lookup(st, key)
+    if t == 'bool':
+        out.append(dict(base, kind='bool', value=bool(val)))
+    elif t == 'multiple' and isinstance(node.get('options'), dict):
+        out.append(dict(base, kind='choice', value=str(val) if val is not None else '', options=_opts(node['options'].items())))
+    elif t == 'discrete' and isinstance(node.get('options'), list):
+        unit = node.get('unit') or ''
+        out.append(dict(base, kind='choice', value=str(val) if val is not None else '',
+                        options=[{'id': str(o), 'label': str(o) + (' ' + unit if unit else ''), 'raw': o} for o in node['options']]))
+    elif t in ('int', 'float'):
+        lo, hi = node.get('min'), node.get('max')
+        if not (_num(lo) and _num(hi) and hi > lo):
+            lo, hi = node.get('smin'), node.get('smax')
+        if _num(lo) and _num(hi) and hi > lo:
+            out.append(dict(base, kind='number', value=val if _num(val) else lo, min=lo, max=hi, int=t == 'int',
+                            step=node.get('step') if _num(node.get('step')) and node.get('step') > 0 else (1 if t == 'int' else (hi - lo) / 20),
+                            unit=node.get('unit') or ''))
+    elif t == 'action':
+        out.append(dict(base, kind='action'))
+    elif t == 'display':
+        if val is not None and val != '':
+            out.append(dict(base, kind='text', value=val if isinstance(val, str) else json.dumps(val)))
+    elif t == 'color' and isinstance(val, dict):
+        try:
+            out.append(dict(base, kind='color', value='#%02x%02x%02x' % (int(val.get('red', 0)), int(val.get('green', 0)), int(val.get('blue', 0)))))
+        except (TypeError, ValueError):
+            pass
+    elif t == 'custom' and 'dropdown' in _tags(node) and isinstance(val, dict) and isinstance(val.get('options'), dict):
+        out.append(dict(base, kind='choice', value=str(val.get('value')), options=_opts(val['options'].items())))
+    return out
+
+
+def page(st=None, sets=None, names=None):
+    if st is None:
+        if not available():
+            return {'running': False}
+        st, sets = state(), settings()
+        try:
+            names = request('GET', '/api/v1/sections', timeout=3)
+        except HhdError:
+            names = None
+    names = names if isinstance(names, dict) else {}
+    names = names.get('sections', names) if isinstance(names.get('sections', names), dict) else {}
+    order = list(names) + [k for k in sets if k not in names]
+    sections = []
+    for sec in order:
+        plugins = sets.get(sec)
+        if not isinstance(plugins, dict):
+            continue
+        items = []
+        for pid, node in plugins.items():
+            page_items(node, [sec, pid], st, 0, False, items)
+        if any(i['kind'] != 'group' for i in items):
+            sections.append({'id': sec, 'title': _title(names.get(sec), DEFAULT_SECTIONS.get(sec, sec.replace('_', ' ').title())),
+                             'steamNote': STEAM_NOTES.get(sec, ''), 'items': items})
+    return {'running': True, 'version': st.get('version') if isinstance(st, dict) else None,
+            'controllers': [c['name'] for c in controllers(st, sets)], 'sections': sections}
+
+
+def apply_change(key, value):
+    if not available():
+        raise HhdError('Handheld Daemon is not running')
+    st, sets = state(), settings()
+    found = find(sets, key)
+    if not found:
+        raise HhdError("Hearth can't change that setting")
+    v = check_value(found[0], found[1], value, lookup(st, key), key)
+    set_state({key: v})
+    return page()
+
+
 def main(argv):
     cmd, args = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
     try:
@@ -345,12 +573,20 @@ def main(argv):
         elif cmd == 'get':
             u = unroll(state())
             out = {k: u.get(k) for k in args} if args else u
+        elif cmd == 'page' and not args:
+            out = page()
+        elif cmd == 'apply' and len(args) == 2:
+            try:
+                value = json.loads(args[1])
+            except ValueError:
+                raise HhdError('the value must be JSON')
+            out = apply_change(args[0], value)
         elif cmd == 'set' and len(args) == 2:
             if not available():
                 raise HhdError('Handheld Daemon is not running')
             out = set_extra(args[0], parse_value(args[1]))
         else:
-            print('usage: hearth-hhd status | get [KEY ...] | set KEY VALUE')
+            print('usage: hearth-hhd status | get [KEY ...] | set KEY VALUE | page | apply KEY JSON')
             sys.exit(2)
     except HhdError as e:
         print('error: ' + str(e))

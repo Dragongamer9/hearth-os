@@ -12,7 +12,7 @@ main { display:grid; grid-template-columns:minmax(18em, 1.15fr) minmax(16em, 1fr
 .hero h2 { font-size:1.2em; margin:0; }
 .hero p { margin:.15em 0 0; }
 .hero .row { grid-column:1 / -1; margin-top:.5em; }
-.big { width:4.6em; height:4.6em; border-radius:50%; display:grid; place-items:center; background:var(--panel3); border:2px solid #5a3f2c; }
+.big { width:4.6em; height:4.6em; border-radius:50%; display:grid; place-items:center; background:var(--panel3); border:2px solid color-mix(in srgb, var(--ember) 17%, var(--line)); }
 .big i { width:2.1em; height:2.1em; border-radius:50%; background:var(--rec); display:block; transition:.2s var(--ease); }
 .big[disabled] { opacity:.45; }
 .big.on i { border-radius:.35em; width:1.6em; height:1.6em; }
@@ -20,12 +20,12 @@ main { display:grid; grid-template-columns:minmax(18em, 1.15fr) minmax(16em, 1fr
 .big.mic svg { width:2.1em; height:2.1em; }
 .timer { font-size:2.3em; font-weight:650; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
 .status { display:flex; align-items:center; gap:.5em; }
-.meter { grid-column:1 / -1; height:.6em; border-radius:9px; background:var(--panel3); overflow:hidden; }
-.meter i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--good), var(--flame) 70%, var(--rec)); border-radius:9px; transition:width .12s linear; }
+.meter { grid-column:1 / -1; height:.6em; border-radius:min(9px, var(--corner, 9px)); background:var(--panel3); overflow:hidden; }
+.meter i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--good), var(--flame) 70%, var(--rec)); border-radius:min(9px, var(--corner, 9px)); transition:width .12s linear; }
 .facts { color:var(--muted); font-size:.82em; display:flex; flex-wrap:wrap; gap:.2em 1em; }
 .warn { color:var(--flame); font-size:.85em; margin-top:.5em; }
 .keys { color:var(--muted); font-size:.8em; display:flex; flex-wrap:wrap; gap:.3em 1.1em; }
-.keys kbd { font:inherit; background:var(--panel3); border-radius:6px; padding:.05em .4em; color:var(--text); }
+.keys kbd { font:inherit; background:var(--panel3); border-radius:min(6px, var(--corner, 6px)); padding:.05em .4em; color:var(--text); }
 .listhead { display:flex; align-items:baseline; gap:.6em; margin:0 0 .5em; }
 .listhead h2 { margin:0; font-size:1em; }
 .right { display:grid; grid-template-rows:auto 1fr; min-height:0; }
@@ -48,6 +48,7 @@ main { display:grid; grid-template-columns:minmax(18em, 1.15fr) minmax(16em, 1fr
 </div>
 <div id="layer"></div>
 <div id="toast"></div>
+<script src="hearth-gamepad.js"></script>
 <script src="nav.js"></script>
 <script>
 'use strict';

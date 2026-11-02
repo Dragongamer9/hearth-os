@@ -72,7 +72,7 @@ KVER=$(basename "${KDIRS[0]}")
   util-linux fdisk parted gdisk efibootmgr btrfs-progs e2fsprogs xfsprogs dosfstools ntfs-3g exfatprogs \
   rsync cpio zstd skopeo podman pciutils usbutils lsof procps psmisc \
   network-manager wpasupplicant iw bluez bluez-obexd openssh-client \
-  pipewire pipewire-audio pipewire-pulse pipewire-alsa pipewire-jack wireplumber libspa-0.2-bluetooth alsa-utils \
+  pipewire pipewire-audio pipewire-pulse pipewire-alsa pipewire-jack wireplumber libspa-0.2-bluetooth alsa-utils rtkit \
   upower udisks2 fwupd flatpak xdg-user-dirs xdg-utils \
   plymouth plymouth-themes \
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
@@ -307,8 +307,8 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin that keeps Hearth's non-Steam games
-# in Steam's library. Only files, copied into Decky's plugins folder when you install Decky from Settings › System
-# (hearth-admin decky-install) and refreshed when Steam Game Mode starts. No service is enabled here and nothing runs at
+# in Steam's library. Only files, copied into Decky's plugins folder by the built-in Decky's service (hearth-decky run)
+# each time Steam Game Mode starts, when it changed. No service is enabled here and nothing runs at
 # boot. The older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now. Not in this build: skipped.
 if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-sync/dist/index.js ]; then
   mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-sync && cp -a /ctx/nimbus-app/decky-hearth-sync /usr/share/hearth/decky-hearth-sync \
@@ -316,6 +316,38 @@ if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/
     || { echo "warning: Hearth Sync didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-sync; }
 else
   echo "warning: Hearth Sync isn't in this build; Steam Game Mode goes without it"
+fi
+# ---- Decky Loader, built in (docs/STEAM-GAME-MODE.md): a pinned stable release of Decky's PluginLoader, checked against
+# its SHA-256 (and that it's a program of the expected size), in /usr/lib/hearth-decky with its version. It runs only
+# while Steam Game Mode does: nimbus-session starts hearth-decky@<you>.service (os/system_files, User=root as Decky needs,
+# not enabled) without a password (49-hearth-decky.rules). Decky is updated with Hearth OS: bump all three lines together.
+DECKY_VERSION=v3.3.1
+DECKY_SHA256=7bb73b0502c49e7194f34f9ce4ddb6777764e9277d7a5e54665f66460d50c315
+DECKY_SIZE=35277600
+curl -fsSL --retry 3 -o /tmp/PluginLoader "https://github.com/SteamDeckHomebrew/decky-loader/releases/download/$DECKY_VERSION/PluginLoader"
+echo "$DECKY_SHA256  /tmp/PluginLoader" | sha256sum -c -
+test "$(stat -c %s /tmp/PluginLoader)" = "$DECKY_SIZE"
+test "$(head -c 4 /tmp/PluginLoader | od -An -tx1 | tr -d ' \n')" = 7f454c46
+install -Dm755 /tmp/PluginLoader /usr/lib/hearth-decky/PluginLoader
+echo "$DECKY_VERSION" > /usr/lib/hearth-decky/version
+rm -f /tmp/PluginLoader
+test -f /usr/lib/systemd/system/hearth-decky@.service
+echo "Decky Loader $DECKY_VERSION built in"
+# Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): theme songs in Steam's library, shipped and copied
+# into Decky's plugins folder the same way (hearth-decky PLUGINS). Only files. Not in this build: skipped.
+if [ -f /ctx/nimbus-app/decky-hearth-music/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-music/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-music && cp -a /ctx/nimbus-app/decky-hearth-music /usr/share/hearth/decky-hearth-music \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth-music && echo "Hearth Music (Decky plugin) added" \
+    || { echo "warning: Hearth Music didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-music; }
+else
+  echo "warning: Hearth Music isn't in this build; Steam Game Mode goes without it"
+fi
+# Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): the second Decky plugin, copied and refreshed by
+# hearth-decky the same way. Only files; skipped when not in this build.
+if [ -f /ctx/nimbus-app/decky-hearth-link/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-link/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-link && cp -a /ctx/nimbus-app/decky-hearth-link /usr/share/hearth/decky-hearth-link \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth-link && echo "Hearth Link (Decky plugin) added" \
+    || { echo "warning: Hearth Link didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-link; }
 fi
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
@@ -854,6 +886,33 @@ chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/op
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
+# Hearth OS's player count (desktop/shell/hearth-counter): the anonymous "I'm here" the Hearth app sent while it ran,
+# 20 seconds after signing in and every 10 minutes, in Steam Game Mode and Desktop Mode alike. Off in Settings › About ›
+# Privacy (countMe in desktop.json). docs/SETTINGS-MOVE.md.
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-counter
+install -d /usr/lib/systemd/user/timers.target.wants
+cat > /usr/lib/systemd/user/hearth-counter.service <<'UNIT'
+[Unit]
+Description=Hearth OS player count (anonymous; off in Settings › About › Privacy)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-counter ping
+TimeoutStartSec=30
+UNIT
+cat > /usr/lib/systemd/user/hearth-counter.timer <<'UNIT'
+[Unit]
+Description=Hearth OS player count, every 10 minutes while you're signed in
+
+[Timer]
+OnActiveSec=20s
+OnUnitActiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+ln -sf ../hearth-counter.timer /usr/lib/systemd/user/timers.target.wants/hearth-counter.timer
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*
@@ -876,6 +935,8 @@ cat > /usr/share/nimbus/image-info.json <<INFO
 {"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
+# The Hearth app itself: the archived Game Mode in a window. Kept for what opens it at one page (Mantel's Settings,
+# store sign-ins, Steam shortcuts of Hearth's games) but hidden from menus (docs/SETTINGS-MOVE.md).
 cat > /usr/share/applications/nimbus.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth
@@ -884,6 +945,7 @@ Exec=/usr/bin/nimbus --windowed
 Icon=hearth
 Type=Application
 Categories=Game;
+NoDisplay=true
 DESKTOP
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look
@@ -1459,6 +1521,33 @@ ls -la /usr/lib/bootupd/updates/
 
 # ------------------------------------------------------------------ boot splash and initramfs
 plymouth-set-default-theme hearth
+# Boot splash presets (Settings › Boot & startup, hearth-boot-look): every preset goes into the initramfs, so choosing
+# one only adds plymouth.splash=<preset> to the boot menu's entries (hearth-bls-grub) and nothing is ever rebuilt on
+# the device. Plymouth's own dracut module brings only the default theme; this lists the others' files.
+chmod 755 /usr/libexec/nimbus/hearth-boot-look
+mkdir -p /usr/lib/dracut/dracut.conf.d
+{
+  echo "# Written by os-bases/peppermint/build.sh: Hearth's boot splash presets in the initramfs (hearth-boot-look)."
+  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal -type f | sort | tr '\n' ' ')"
+} > /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
+cat /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
+# GRUB's Hearth theme (hearth-bls-grub copies /usr/share/hearth/grub-theme to /boot): its fonts made from Inter, the
+# Steam-style look's font (GRUB reads only its own .pf2 format). Without them GRUB keeps its plain text menu.
+GT=/usr/share/hearth/grub-theme
+if command -v grub-mkfont >/dev/null; then
+  inter() { fc-match -f '%{file}' "Inter:style=$1" 2>/dev/null; }
+  reg=$(inter Regular); bold=$(inter Bold)
+  case "$reg" in *[Ii]nter*) ;; *) reg=$(fc-match -f '%{file}' 'DejaVu Sans' 2>/dev/null); bold=$(fc-match -f '%{file}' 'DejaVu Sans:style=Bold' 2>/dev/null) ;; esac
+  for sz in 18 22; do
+    grub-mkfont -n Hearth -s "$sz" -r 0x20-0x7E,0xA0-0x17F,0x2010-0x2027 -o "$GT/hearth-regular-$sz.pf2" "$reg" || echo "warning: no GRUB font Hearth Regular $sz"
+  done
+  for sz in 22 28; do
+    grub-mkfont -n Hearth -s "$sz" -r 0x20-0x7E,0xA0-0x17F,0x2010-0x2027 -o "$GT/hearth-bold-$sz.pf2" "$bold" || echo "warning: no GRUB font Hearth Bold $sz"
+  done
+  ls -la "$GT"
+else
+  echo "warning: no grub-mkfont: GRUB's menu stays plain text (the theme needs its fonts)"
+fi
 ls -d /usr/lib/dracut/modules.d/*ostree >/dev/null 2>&1 || { echo "ostree's dracut module is missing: this image couldn't boot"; exit 1; }
 export DRACUT_NO_XATTR=1
 dracut --force --kver "$KVER" "/usr/lib/modules/$KVER/initramfs.img"
@@ -1466,6 +1555,9 @@ chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 lsinitrd "/usr/lib/modules/$KVER/initramfs.img" > /tmp/initramfs-files.txt
 grep -q ostree-prepare-root /tmp/initramfs-files.txt || { echo "the initramfs has no ostree-prepare-root"; exit 1; }
 grep -q plymouth /tmp/initramfs-files.txt || echo "warning: the initramfs has no boot splash"
+for t in hearth hearth-steam hearth-minimal; do
+  grep -q "usr/share/plymouth/themes/$t/$t.script" /tmp/initramfs-files.txt || echo "warning: the initramfs has no $t splash preset"
+done
 
 # ------------------------------------------------------------------ tidy up
 rm -f /usr/sbin/policy-rc.d

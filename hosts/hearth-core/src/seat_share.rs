@@ -1,4 +1,4 @@
-//! Multi-seat shared games (docs/MULTI-SEAT.md, "Sharing games"). hearth-admin seats-setup puts every player's
+//! Multi-seat shared games (docs/archive/MULTI-SEAT.md, "Sharing games"). hearth-admin seats-setup puts every player's
 //! account in the hearth-games group and makes a shared games folder; each player's Hearth then offers its Epic and
 //! GOG installs to the others (hearth-seats share-publish writes <shared folder>/.hearth/library-<user>.json and
 //! lets the group read the game folders). This reads the other players' lists, and keeps the "In use by …" notes:

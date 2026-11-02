@@ -15,6 +15,8 @@ PanelWindow {
     visible: shown || message !== ""
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-help"
+    // Never takes the keyboard (or a WebKit app's controller) from the window in front: docs/CONTROLLER-FOCUS.md
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
