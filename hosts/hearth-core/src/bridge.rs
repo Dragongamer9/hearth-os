@@ -1269,6 +1269,9 @@ impl Bridge {
             // Game Mode starts again to share the screens out (or to stop sharing them): the session's next round
             // (signing out instead left you at the sign-in screen without automatic sign-in).
             "seats.restartGameMode" => { self.restart_game_mode(); Ok(Value::Null) }
+            // First-time setup finished (ui setupFinish): Hearth leaves and the session opens its Game Mode, which is
+            // Steam Game Mode on Hearth OS (or Desktop Mode with the reason, when Steam Game Mode can't start).
+            "session.restartGameMode" => { self.restart_game_mode(); Ok(Value::Null) }
             "seats.stop" => crate::multiplay::ask(crate::multiplay::SEATS, &["stop"]),
             "seats.assignPad" => {
                 let seat = a["seat"].as_u64().unwrap_or(1).to_string();
@@ -1552,9 +1555,14 @@ impl Bridge {
     /// First-start setup: only on Hearth, the OS, and only for a fresh install. An install already in use
     /// before setup existed (games played, accounts, the import offer) counts as set up.
     pub fn setup_done(&mut self) -> bool {
+        // Not Hearth OS: no first-start setup. Saved, so a Hearth session (nimbus-session setup_pending, which reads
+        // library.json) knows too.
+        if !crate::admin::can_admin() {
+            if self.library.store.data["setupDone"].is_null() { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
+            return true;
+        }
         let d = &self.library.store.data;
         if !d["setupDone"].is_null() && d["setupDone"] != false { return true; }
-        if !crate::admin::can_admin() { return true; }
         let used = d["stats"].as_object().map(|o| !o.is_empty()).unwrap_or(false) || d["manual"].as_array().map(|a| !a.is_empty()).unwrap_or(false)
             || d["importOffered"] == true || d["profile"].is_object();
         if used { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
@@ -2022,6 +2030,9 @@ fn features() -> Vec<&'static str> {
     if crate::theater::available() { f.push("theater"); }
     // Steam Game Mode (Experimental): the power menu's and Settings › System's switch, where it can run.
     if crate::steam_mode::available() { f.push("steamMode"); }
+    // Hearth OS's Game Mode is Steam Game Mode (nimbus-session exports HEARTH_STEAM_ONLY=1 unless Hearth's own Game Mode
+    // is switched back on): first-time setup hands over to it when it finishes.
+    if crate::steam_mode::steam_only(std::env::var("HEARTH_STEAM_ONLY").ok().as_deref()) { f.push("steamOnly"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

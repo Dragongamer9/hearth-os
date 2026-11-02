@@ -417,25 +417,28 @@ real devices.</p></div>
 a Steam Deck run them. Hearth is built right into it through Decky Loader and the <b>Hearth Decky plugin</b>.</p>
 <p>You keep everything that's Steam's: the library, game pages, store, downloads, friends and chat, the overlay, Quick
 Access and the on-screen keyboard. Hearth adds its own stores, pages and tools on top. It doesn't replace Steam's.</p>
-<p>Hearth's own Game Mode stays too. <a href="#hearth-game-mode">More about that below.</a></p>
+<p><span class="ver">Next update</span> Hearth OS is now Debian + Mantel (Desktop Mode) + Steam Game Mode: the device starts
+in Steam Game Mode and every Game Mode button opens it. If Steam can't start (not installed, safe graphics, Steam
+closing right away or failing twice), Mantel opens and says why, with a <b>Try Steam Game Mode again</b> button.
+Hearth's own Game Mode is archived (first-time setup still runs in Hearth's app once), and multi-seat and Couch Co-op
+are hidden for now.</p>
 
 {h2('menu', 'Hearth in Steam\'s main menu')}
 <p><span class="ver">Next update</span> Press the Steam (or Xbox) button. Below Steam's own entries, in Hearth's look:</p>
 <ul>
 <li><b>Now playing</b>, while a game runs: opens Hearth's section for that game.</li>
 <li><b>Hearth</b>: Hearth Home, Hearth Store, Hearth Library, Theater, Hearth Mods, Storage, Downloads, Hearth Friends,
-Hearth Link and Couch Co-op.</li>
-<li><b>Hearth power</b>, next to Steam's Power: <b>Switch to Hearth Game Mode</b> and <b>Desktop Mode</b>.</li>
+Hearth Link.</li>
+<li><b>Hearth power</b>, next to Steam's Power: <b>Desktop Mode</b>.</li>
 </ul>
 
 {h2('quick-access', 'Hearth tabs in Quick Access')}
 <p><span class="ver">Next update</span> Press the <b>…</b> button. Hearth's tabs sit next to Steam's:</p>
 <div class="tbl"><table>
 <tr><th>Tab</th><th>What's in it</th></tr>
-<tr><td><b>Hearth</b></td><td>This game, Quick Resume, game streaming, Hearth tools (keyboard, screenshot, record), Switch to Hearth Game Mode, Hearth OS updates</td></tr>
+<tr><td><b>Hearth</b></td><td>This game, Quick Resume, game streaming, Hearth tools (keyboard, screenshot, record), Desktop Mode, Hearth OS updates</td></tr>
 <tr><td><b>Hearth Performance</b></td><td>Hearth's power mode (Saver, Balanced, Performance). Frame limit, refresh rate and TDP stay in Steam's own Performance tab, so the two never fight.</td></tr>
 <tr><td><b>Hearth Controller</b></td><td>What Hearth Input is doing, the running game's Hearth Input layout, and Edit layouts in Hearth</td></tr>
-<tr><td><b>Hearth Players</b></td><td>Couch co-op: your controllers as P1 to P4, move them up or down, rumble one to tell which is which, and split-screen games. Seats for multi-seat.</td></tr>
 </table></div>
 
 {h2('this-game', 'The game you\'re playing')}

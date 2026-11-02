@@ -1,18 +1,27 @@
 #!/bin/sh
 # Started by the login screen when you pick the "Nimbus" session.
 #
-# One session, two modes, switched without logging out (like SteamOS's Game Mode and Desktop Mode):
-#   Game Mode     Nimbus fullscreen in gamescope (Valve's compositor, the same one SteamOS uses)
-#   Desktop Mode  the labwc window manager with the Nimbus taskbar, launcher and notifications (Quickshell)
+# Hearth OS is Debian + Mantel (Desktop Mode) + Steam Game Mode (docs/STEAM-GAME-MODE.md). One session, switched
+# without logging out (like SteamOS):
+#   Steam Game Mode  Valve's Steam gamepad UI in gamescope, with Decky Loader and the Hearth plugin (the default)
+#   Desktop Mode     Mantel: the labwc window manager with the Hearth taskbar, launcher and notifications
+#                    (Quickshell), or the desktop picked in Settings (Hearth Plasma / GNOME / COSMIC)
+# Every request for "game" (nimbus-mode game, Mantel's Game Mode buttons, Steam's own Game Mode switch,
+# NIMBUS_START_MODE, hearth.mode=game) is Steam Game Mode. When Steam Game Mode can't start (no Steam, safe graphics,
+# Steam ends right away, or it fails twice), the session opens Desktop Mode instead and leaves the reason in
+# $XDG_RUNTIME_DIR/hearth-steam-mode-failed, which Mantel shows with a "Try Steam Game Mode again" button.
+# Hearth's own Game Mode (Hearth fullscreen in gamescope) is archived: it runs only for first-time setup on a fresh
+# install (once, then Steam Game Mode), on the live USB (the installer), as the very last resort when nothing else
+# can run, or with HEARTH_LEGACY_GAME_MODE=1 (a developer switch, off by default).
 #
 # To switch, a mode writes the next one to $XDG_RUNTIME_DIR/nimbus-next and ends itself
 # (nimbus-mode does both). A mode that ends without asking for another one ends the session.
 #
 # Settings in ~/.config/nimbus/session.conf (shell syntax):
-#   NIMBUS_START_MODE=desktop             start in Desktop Mode instead of Game Mode
+#   NIMBUS_START_MODE=desktop             start in Desktop Mode instead of Steam Game Mode
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
-#   HEARTH_STEAM_DEFAULT=1                start in Steam Game Mode (Experimental) instead of Hearth's Game Mode; turns
-#                                         itself off when it can't work (see "Start in Steam Game Mode" below)
+#   HEARTH_LEGACY_GAME_MODE=1             developer switch: Hearth's own Game Mode back as "Game Mode" (archived)
+#   HEARTH_LEGACY_MULTIPLAYER=1           developer switch: multi-seat and Couch Co-op back (dropped for now)
 #   HEARTH_DESKTOP=plasma                 Desktop Mode is Hearth Plasma (KDE Plasma 6 in Hearth's look) instead of
 #                                         Hearth Classic (labwc + Mantel); see docs/PLASMA.md
 #   HEARTH_DESKTOP=gnome                  Desktop Mode is Hearth GNOME (GNOME Shell with Hearth's extensions); docs/GNOME.md
@@ -61,6 +70,16 @@ unset a d f
 # rate and graphics card come from hearth-seats this way): kept, after session.conf's, every Game Mode start.
 ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
+# Hearth's own Game Mode is archived (see the top): only with the developer switch, and on the live USB / installer,
+# whose installer is Hearth's app.
+legacy_game() {
+  [ "${HEARTH_LEGACY_GAME_MODE:-0}" = 1 ] || [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ]
+}
+# Multi-seat and Couch Co-op are dropped for now (their code stays): off unless the developer switch is on.
+multiplayer_on() { [ "${HEARTH_LEGACY_MULTIPLAYER:-0}" = 1 ]; }
+# For Hearth's app (hearth-core features "steamOnly", "coop", "seats"): what this session does.
+if legacy_game; then unset HEARTH_STEAM_ONLY; else export HEARTH_STEAM_ONLY=1; fi
+if multiplayer_on; then export HEARTH_LEGACY_MULTIPLAYER=1; else unset HEARTH_LEGACY_MULTIPLAYER; fi
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
 [ -z "$NIMBUS_APP" ] && [ -x /usr/bin/nimbus ] && NIMBUS_APP=/usr/bin/nimbus
 export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
@@ -126,7 +145,7 @@ if [ -z "${QT_QPA_PLATFORMTHEME+x}" ]; then
 fi
 # <<< portal dialogs
 
-# Steam's own Game Mode was an option in 0.2.8 and 0.2.9 and has been taken out: Game Mode is always Hearth's.
+# Steam's own Game Mode was an option in 0.2.8 and 0.2.9 (a different way than today's Steam Game Mode below).
 # The old choice (~/.config/nimbus/game-mode) is removed so nothing reads it again.
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
 
@@ -213,7 +232,7 @@ run_game() {
   [ -n "$HEARTH_SEAT" ] && [ -n "$HEARTH_SEAT_WINDOWED" ] && full=""
   # A host that fails within seconds three times in a row (a crash on start) isn't tried again this session:
   # normal Game Mode instead of restarting it every two seconds forever.
-  if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ] && [ "${HOST_FAILS:-0}" -lt 3 ]; then
+  if [ -z "$HEARTH_SEAT" ] && multiplayer_on && [ -f "$SEATS" ] && [ "${HOST_FAILS:-0}" -lt 3 ]; then
     if python3 "$SEATS" host-check 2>/dev/null; then
       log "multi-seat: hosting the other players' screens"
       host_started=$(date +%s)
@@ -288,6 +307,26 @@ end_stopped_games() {
 desktop_choice() {
   d=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
   case "$d" in plasma) echo plasma ;; gnome) echo gnome ;; cosmic) echo cosmic ;; *) echo classic ;; esac
+}
+
+# Steam Game Mode didn't start and Desktop Mode opened instead: Mantel (Hearth Classic) shows why with a "Try Steam
+# Game Mode again" button itself (desktop/shell/SteamFallback.qml). On Hearth Plasma, GNOME and COSMIC the same comes
+# as a notification with that button (notify-send). Once per failure ($RUN/hearth-steam-notice-shown), in the
+# background, never waited on.
+steam_notice_other() {
+  [ -s "$RUN/hearth-steam-mode-failed" ] && [ "$(desktop_choice)" != classic ] && [ -z "$HEARTH_SEAT" ] && have notify-send || return 0
+  (
+    sleep "${HEARTH_NOTICE_DELAY:-12}"
+    note="$RUN/hearth-steam-mode-failed"; shown="$RUN/hearth-steam-notice-shown"
+    [ -s "$note" ] || exit 0
+    [ -e "$shown" ] && [ ! "$note" -nt "$shown" ] && exit 0
+    pgrep -u "$(id -u)" -x labwc >/dev/null 2>&1 && exit 0     # Hearth Classic after all: Mantel shows it
+    : >"$shown"
+    a=$(timeout 900 notify-send -a Hearth -u critical -i steam --action=retry="Try Steam Game Mode again" --wait \
+      "Steam Game Mode didn't start" "$(head -c 300 "$note"). You're in Desktop Mode." 2>/dev/null)
+    [ "$a" = retry ] && exec nimbus-mode steam
+  ) </dev/null >/dev/null 2>&1 &
+  return 0
 }
 
 run_desktop() {
@@ -734,13 +773,15 @@ input_stop() {
 }
 
 # >>> steam game mode
-# ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS
-# runs it, with Decky Loader and the Hearth plugin when they're installed. Chosen for ONE time only: Hearth's power menu
-# or Settings › System write "steam" to nimbus-next (or `nimbus-mode steam`). The switch itself is never saved (starting
-# in it is a separate opt-in, "Start in Steam Game Mode" below, that turns itself off when it fails); when Steam's ends,
-# for whatever reason, Hearth's Game Mode comes back
-# (Desktop Mode when that was asked for). Steam or gamescope missing, safe graphics, or Steam ending with an error
-# within STEAM_MODE_MIN_SECS: straight back to Hearth's, with a note Settings shows ($RUN/hearth-steam-mode-failed).
+# ---- Steam Game Mode (docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs it, with
+# Decky Loader and the Hearth plugin when they're installed. Hearth OS's Game Mode: where the session starts, and what
+# every "game" request opens. Where it goes afterwards (STEAM_BACK: Desktop Mode, or Hearth's own Game Mode with the
+# developer switch / on the live USB):
+#   Steam or gamescope missing, safe graphics on, or Steam ending with an error within STEAM_MODE_MIN_SECS: STEAM_BACK,
+#   with the reason in $RUN/hearth-steam-mode-failed (Mantel shows it with "Try Steam Game Mode again"; Settings too).
+#   A Switch asked for (Steam's Switch to Desktop, nimbus-mode desktop/steam/game): that.
+#   Steam ending by itself otherwise: Steam Game Mode again (as SteamOS does), unless steam_auto_after says it failed
+#   twice (then STEAM_BACK, and it stays there until you try again).
 # (test_hearth_steam_mode.py runs these lines, between the >>> and <<< marks.)
 STEAM_FLATPAK=com.valvesoftware.Steam
 STEAM_MODE_MIN_SECS="${STEAM_MODE_MIN_SECS:-20}"
@@ -757,7 +798,21 @@ steam_flatpak_in_use() {
   [ "$fl" -nt "$nl" ]
 }
 can_steam_mode() { [ -z "$HEARTH_SEAT" ] && have gamescope && { have steam || steam_flatpak; }; }
-steam_mode_failed() { log "steam game mode: $1; back to Hearth's Game Mode"; echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; }
+# Where the session goes when Steam Game Mode can't run or failed: Desktop Mode; Hearth's own Game Mode only with the
+# developer switch (or on the live USB, where Hearth's app is the installer).
+steam_back() { if command -v legacy_game >/dev/null 2>&1 && legacy_game; then echo game; else echo desktop; fi; }
+steam_back_name() { [ "$(steam_back)" = game ] && echo "Hearth's Game Mode" || echo "Desktop Mode"; }
+steam_mode_failed() {
+  log "steam game mode: $1; $(steam_back_name) instead"
+  echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null
+  steam_back >"$NEXT"
+}
+# Why Steam Game Mode can't start at all right now ("" when it can).
+steam_cant_reason() {
+  if ! can_steam_mode; then echo "Steam or gamescope isn't installed"
+  elif [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then echo "safe graphics are on this time"
+  fi
+}
 # Decky Loader, when Hearth installed it (hearth-admin decky-install): its root service runs only while Steam Game
 # Mode does, never at boot or in Hearth's modes. Never waited on for long, never fatal.
 DECKY_UNIT="${HEARTH_DECKY_UNIT:-/etc/systemd/system/hearth-decky.service}"
@@ -803,12 +858,14 @@ steam_input_stop() { command -v input_stop >/dev/null 2>&1 && input_stop; return
 # Every call is time-limited and its failure ignored: none of it can stop Steam Game Mode from starting.
 STEAM_SEATS="${HEARTH_SEATS_HELPER:-/usr/libexec/nimbus/hearth-seats}"
 STEAM_SEATS_CONFIG="${HEARTH_SEATS_CONFIG:-/etc/hearth/seats.json}"
-steam_seats_on() { [ -z "$HEARTH_SEAT" ] && [ -f "$STEAM_SEATS" ] && have python3 && grep -Eq '"enabled": *true' "$STEAM_SEATS_CONFIG" 2>/dev/null; }
+# Multi-seat is dropped for now (HEARTH_LEGACY_MULTIPLAYER=1 brings it back): off, so none of this runs.
+steam_seats_on() { [ "${HEARTH_LEGACY_MULTIPLAYER:-0}" = 1 ] && [ -z "$HEARTH_SEAT" ] && [ -f "$STEAM_SEATS" ] && have python3 && grep -Eq '"enabled": *true' "$STEAM_SEATS_CONFIG" 2>/dev/null; }
 run_steam_mode() {
-  log "steam game mode (experimental, this time only)"
+  log "steam game mode"
   rm -f "$RUN/hearth-steam-mode-failed"
-  if ! can_steam_mode; then steam_mode_failed "Steam or gamescope isn't installed"; echo game >"$NEXT"; return 0; fi
-  if [ -f /run/hearth/safe-graphics ]; then steam_mode_failed "safe graphics are on this time"; echo game >"$NEXT"; return 0; fi
+  started=$(date +%s); next_now=""
+  why="$(steam_cant_reason)"
+  if [ -n "$why" ]; then steam_mode_failed "$why"; return 0; fi
   NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
@@ -871,44 +928,44 @@ run_steam_mode() {
   steam_input_stop
   decky_ctl stop &
   next_now="$(cat "$NEXT" 2>/dev/null)"
-  if [ "$next_now" != game ] && [ "$next_now" != desktop ]; then
-    if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ]; then steam_mode_failed "Steam ended right away (code $rc)"
-    else log "steam game mode ended (code $rc); Hearth's Game Mode next"; fi
-    echo game >"$NEXT"
-  fi
+  case "$next_now" in
+    game|desktop|steam|logout) log "steam game mode ended (code $rc); $next_now asked for" ;;
+    *)
+      if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ]; then steam_mode_failed "Steam ended right away (code $rc)"
+      elif [ "$(steam_back)" = game ]; then log "steam game mode ended (code $rc); Hearth's Game Mode next"; echo game >"$NEXT"
+      else log "steam game mode ended by itself (code $rc); Steam Game Mode again"; echo steam >"$NEXT"; fi ;;
+  esac
   return 0
 }
-# ---- Start in Steam Game Mode (Experimental, Settings › System › Steam Game Mode; docs/STEAM-GAME-MODE.md): per device,
-# off unless you turn it on (HEARTH_STEAM_DEFAULT=1 in session.conf). Only where the session would start in Hearth's
-# Game Mode, once per sign-in, never for an extra multi-seat player or the live USB / installer. Skipped this time with
-# hearth.mode=game on the kernel command line, or B or Guide held on a controller as the session starts. Turns itself
-# off (session.conf back to 0, the reason in $SD_STATE/steam-default-off for Settings, a log line) when Steam or
-# gamescope is missing, safe graphics are on, Steam isn't signed in, Steam ends with an error within
-# STEAM_MODE_MIN_SECS, or Steam Game Mode ends by itself (no Switch asked for) before STEAM_DEFAULT_GOOD_SECS twice
-# within STEAM_DEFAULT_WINDOW. Each start is counted as a failure first and cleared by a good run, so a start that hangs
-# or takes the device down counts too.
+# ---- Steam Game Mode failing twice (docs/STEAM-GAME-MODE.md "When Steam Game Mode can't start"): every Steam Game Mode
+# run is counted as a failure first ($SD_FAILS, a time per line) and cleared by a good one (still running after
+# STEAM_DEFAULT_GOOD_SECS, or a Switch you asked for), so a start that hangs or takes the device down counts too. Two
+# failures within STEAM_DEFAULT_WINDOW: Steam Game Mode is paused ($SD_STATE/steam-default-off, the reason inside) and
+# the session opens Desktop Mode, at once and at every start after, until you try again (Mantel's "Try Steam Game
+# Mode again", Game Mode buttons, `nimbus-mode steam`): a request you make always runs, and a good run ends the pause.
+# The session never goes back and forth between Steam Game Mode and Desktop Mode by itself.
 STEAM_DEFAULT_GOOD_SECS="${STEAM_DEFAULT_GOOD_SECS:-120}"
 STEAM_DEFAULT_WINDOW="${STEAM_DEFAULT_WINDOW:-600}"
 SD_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nimbus"
 SD_FAILS="$SD_STATE/steam-default-fails"
-steam_default_on() {
-  [ "$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_STEAM_DEFAULT=["'"'"']*\([0-9a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)" = 1 ]
-}
-steam_default_off() {
-  log "steam game mode default: turned off by itself: $1; the device starts in Hearth's Game Mode"
-  [ -f "$SESSION_CONF" ] && sed -i 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_STEAM_DEFAULT=.*/HEARTH_STEAM_DEFAULT=0/' "$SESSION_CONF"
-  mkdir -p "$SD_STATE" 2>/dev/null; echo "$1" >"$SD_STATE/steam-default-off" 2>/dev/null
+SD_OFF="$SD_STATE/steam-default-off"
+steam_paused() { [ -s "$SD_OFF" ]; }
+steam_pause() {
+  log "steam game mode: paused: $1; Desktop Mode until you try Steam Game Mode again"
+  mkdir -p "$SD_STATE" 2>/dev/null; echo "$1" >"$SD_OFF" 2>/dev/null
+  echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null
   rm -f "$SD_FAILS"
 }
-# Steam has a signed-in account in the folder of the Steam that run_steam_mode will start.
-steam_signed_in() {
-  steam_flatpak_in_use && return 0
-  if have steam && { [ ! -e /usr/share/nimbus/steam-flatpak ] || ! steam_flatpak; }; then
-    for f in "$HOME/.local/share/Steam/config/loginusers.vdf" "$HOME/.steam/steam/config/loginusers.vdf"; do [ -s "$f" ] && return 0; done
-    return 1
-  fi
-  for f in "$HOME/.var/app/$STEAM_FLATPAK/.local/share/Steam/config/loginusers.vdf" "$HOME/.var/app/$STEAM_FLATPAK/data/Steam/config/loginusers.vdf"; do [ -s "$f" ] && return 0; done
-  return 1
+steam_unpause() { rm -f "$SD_OFF" "$SD_FAILS"; }
+# The failed runs in the last STEAM_DEFAULT_WINDOW (printed, one time per line).
+steam_recent_fails() {
+  now=$(date +%s)
+  [ -f "$SD_FAILS" ] || return 0
+  while read -r t; do
+    case "$t" in ''|*[!0-9]*) continue ;; esac
+    [ $(( now - t )) -lt "$STEAM_DEFAULT_WINDOW" ] && echo "$t"
+  done <"$SD_FAILS"
+  return 0
 }
 # B or Guide held on a controller during the first seconds (hearth-pad-held reads the buttons' state, like Hearth
 # Recovery does; nothing else is read or changed).
@@ -916,98 +973,124 @@ steam_skip_held() {
   ph="${HEARTH_PAD_HELD:-/usr/libexec/nimbus/hearth-pad-held}"
   [ -f "$ph" ] && have python3 && timeout 6 python3 "$ph" --window 2.5 >/dev/null 2>&1
 }
-steam_default_wanted() {
-  steam_default_on || return 1
-  [ -z "$HEARTH_SEAT" ] || return 1
-  if [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ]; then return 1; fi
-  if grep -qwF hearth.mode=game "${HEARTH_CMDLINE:-/proc/cmdline}" 2>/dev/null; then
-    log "steam game mode default: hearth.mode=game on the kernel command line; Hearth's Game Mode this time"; return 1
+# Where the session starts when it would start in Steam Game Mode: prints steam or desktop (and why, in the log and
+# the failure note). Desktop Mode with hearth.mode=desktop on the kernel command line, B or Guide held as the session
+# starts, Steam Game Mode paused, two failed starts in the window, or Steam unable to run at all.
+steam_start_mode() {
+  if grep -qwF hearth.mode=desktop "${HEARTH_CMDLINE:-/proc/cmdline}" 2>/dev/null; then
+    log "start: hearth.mode=desktop on the kernel command line; Desktop Mode this time"; echo desktop; return 0
   fi
-  if steam_skip_held; then log "steam game mode default: B or Guide held; Hearth's Game Mode this time"; return 1; fi
-  if ! can_steam_mode; then steam_default_off "Steam or gamescope isn't installed"; return 1; fi
-  if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then steam_default_off "safe graphics were on"; return 1; fi
-  if ! steam_signed_in; then steam_default_off "Steam isn't signed in"; return 1; fi
-  return 0
+  if steam_skip_held; then log "start: B or Guide held; Desktop Mode this time"; echo desktop; return 0; fi
+  if steam_paused; then
+    log "start: Steam Game Mode is paused ($(cat "$SD_OFF")); Desktop Mode"
+    echo "$(cat "$SD_OFF")" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; echo desktop; return 0
+  fi
+  if [ "$(steam_recent_fails | grep -c .)" -ge 2 ]; then
+    steam_pause "Steam Game Mode didn't start properly twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"; echo desktop; return 0
+  fi
+  why="$(steam_cant_reason)"
+  if [ -n "$why" ]; then log "start: steam game mode: $why; Desktop Mode instead"; echo "$why" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; echo desktop; return 0; fi
+  echo steam
 }
-# Before each Steam Game Mode run while the default is on: the starts that failed in the last STEAM_DEFAULT_WINDOW
-# (one is added now and taken away again by a good run or a Switch you asked for). Two already: off, no start.
+# Before each Steam Game Mode run: this run counted as a failure until it proves good.
 SD_TIMER=""
-steam_default_before() {
-  steam_default_on || return 0
+steam_auto_before() {
   mkdir -p "$SD_STATE" 2>/dev/null
-  now=$(date +%s); kept=""
-  if [ -f "$SD_FAILS" ]; then
-    while read -r t; do
-      case "$t" in ''|*[!0-9]*) continue ;; esac
-      [ $(( now - t )) -lt "$STEAM_DEFAULT_WINDOW" ] && kept="$kept$t
-"
-    done <"$SD_FAILS"
-  fi
-  if [ "$(printf '%s' "$kept" | grep -c .)" -ge 2 ]; then
-    steam_default_off "Steam Game Mode didn't start properly twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"; return 1
-  fi
-  printf '%s%s\n' "$kept" "$now" >"$SD_FAILS" 2>/dev/null
+  kept="$(steam_recent_fails)"
+  printf '%s%s\n' "${kept:+$kept
+}" "$(date +%s)" >"$SD_FAILS" 2>/dev/null
   # A run still going after STEAM_DEFAULT_GOOD_SECS is a good one, even if the device is turned off from Steam later.
-  ( sleep "$STEAM_DEFAULT_GOOD_SECS"; [ -f "$RUN/hearth-steam-mode.pid" ] && rm -f "$SD_FAILS" ) >/dev/null 2>&1 &
+  ( sleep "$STEAM_DEFAULT_GOOD_SECS"; [ -f "$RUN/hearth-steam-mode.pid" ] && rm -f "$SD_FAILS" "$SD_OFF" ) >/dev/null 2>&1 &
   SD_TIMER=$!
   return 0
 }
-# After it: uses run_steam_mode's own started / next_now and its failure note.
-steam_default_after() {
+# After it: uses run_steam_mode's own started / next_now and its failure note. Two failures: paused, Desktop Mode.
+steam_auto_after() {
   [ -n "$SD_TIMER" ] && kill "$SD_TIMER" 2>/dev/null; SD_TIMER=""
-  steam_default_on || return 0
-  if [ -s "$RUN/hearth-steam-mode-failed" ]; then steam_default_off "$(cat "$RUN/hearth-steam-mode-failed")"; return 0; fi
+  n=$(steam_recent_fails | grep -c .)
+  if [ -s "$RUN/hearth-steam-mode-failed" ]; then
+    [ "$n" -ge 2 ] && steam_pause "$(cat "$RUN/hearth-steam-mode-failed") (twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes)"
+    return 0
+  fi
   ran=$(( $(date +%s) - ${started:-0} ))
-  if [ "$ran" -ge "$STEAM_DEFAULT_GOOD_SECS" ]; then rm -f "$SD_FAILS"; return 0; fi
+  if [ "$ran" -ge "$STEAM_DEFAULT_GOOD_SECS" ]; then steam_unpause; return 0; fi
   case "$next_now" in
-    game|desktop)   # a Switch you asked for: not a failure
-      [ -f "$SD_FAILS" ] && { sed '$d' "$SD_FAILS" >"$SD_FAILS.new" && mv -f "$SD_FAILS.new" "$SD_FAILS"; }; return 0 ;;
+    game|desktop|steam|logout)   # a Switch you asked for: not a failure
+      [ -f "$SD_FAILS" ] && { sed '$d' "$SD_FAILS" >"$SD_FAILS.new" && mv -f "$SD_FAILS.new" "$SD_FAILS"; }
+      rm -f "$SD_OFF"; return 0 ;;
   esac
-  n=$(grep -c . "$SD_FAILS" 2>/dev/null); n=${n:-0}
-  if [ "$n" -ge 2 ]; then steam_default_off "Steam Game Mode closed by itself twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"
-  else log "steam game mode default: Steam Game Mode closed by itself after ${ran}s ($n of 2 before starting in it turns off)"; fi
+  if [ "$n" -ge 2 ]; then
+    steam_pause "Steam Game Mode closed by itself twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"
+    steam_back >"$NEXT"
+  else log "steam game mode: closed by itself after ${ran}s ($n of 2 before Desktop Mode takes over)"; fi
   return 0
 }
 # <<< steam game mode
 
+# ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) is Hearth's app,
+# shown once on a fresh install. Until it's done (or skipped: Hearth writes setupDone in library.json), "game" means
+# Hearth's app for it (mode "setup", Hearth's Game Mode code); after it, Steam Game Mode. Hearth's app switches to
+# Steam Game Mode itself when setup finishes, and a setup run that ends without asking for anything goes there too.
+setup_pending() {
+  [ -z "$HEARTH_SEAT" ] && can_game || return 1
+  ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
+}
+# What a request for a mode means: "game" is Steam Game Mode (Hearth's own only with the developer switch / live USB,
+# or first-time setup while it's pending).
+resolve_mode() {
+  case "$1" in
+    game) if legacy_game; then echo game; elif setup_pending; then echo setup; else echo steam; fi ;;
+    *) echo "$1" ;;
+  esac
+}
+
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
-# Steam Game Mode is one time only, never where the session starts.
-[ "$mode" = steam ] && mode=game
+case "$mode" in desktop) ;; *) mode=game ;; esac
 # Hearth Recovery on the device › Desktop Mode this time (until the next restart).
 [ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
-# Extra multi-seat players have Game Mode only, even when their session.conf says to start in Desktop Mode.
-[ -n "$HEARTH_SEAT" ] && mode=game
-# Start in Steam Game Mode (off unless turned on in Settings; steam_default_wanted has every rule and way out).
-SD_FIRST=""
-if [ "$mode" = game ] && steam_default_wanted && steam_default_before; then
-  log "steam game mode default: starting in Steam Game Mode (hold B or Guide as the session starts to skip it)"; mode=steam; SD_FIRST=1
-fi
+# Extra multi-seat players have Hearth's Game Mode only (multi-seat is dropped for now; kept for HEARTH_LEGACY_MULTIPLAYER).
+if [ -n "$HEARTH_SEAT" ]; then mode=game; else mode="$(resolve_mode "$mode")"; fi
+# Starting in Steam Game Mode: steam_start_mode has every way out (hearth.mode=desktop, B or Guide held, paused...).
+[ "$mode" = steam ] && mode="$(steam_start_mode)"
 rm -f "$NEXT"
 while :; do
-  # Fall back to whichever mode can run.
+  # Fall back to whichever mode can run: the device always ends up somewhere usable.
   # Desktop Mode's autostart reads the note: if its taskbar can't start either, it stays put instead of asking for
   # Game Mode again (that restarted Desktop Mode about once a minute, forever).
-  if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
-  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc, Plasma and GNOME missing)"; can_game && mode=game || exit 1; fi
+  if [ "$mode" = setup ] && ! can_game; then log "first-time setup: Hearth's app or gamescope missing; Steam Game Mode"; mode=steam; fi
+  if [ "$mode" = game ] && ! can_game; then
+    log "hearth's game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"
+    if [ -n "$HEARTH_SEAT" ] || legacy_game || [ -s "$RUN/hearth-steam-mode-failed" ]; then mode=desktop; else mode=steam; fi
+  fi
+  if [ "$mode" = desktop ] && ! can_desktop; then
+    log "desktop mode unavailable (labwc, Plasma, GNOME and COSMIC missing)"
+    if [ -z "$HEARTH_SEAT" ] && [ ! -s "$RUN/hearth-steam-mode-failed" ] && can_steam_mode; then mode=steam
+    elif can_game; then log "last resort: Hearth's Game Mode"; mode=game
+    else exit 1; fi
+  fi
 
   # The mode this session is in, for programs started outside it: Handheld Daemon's overlay app
   # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick
   # Access the Game Mode way (in gamescope) instead of sending every press to a Desktop Mode that's gone.
-  echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null
-  [ "$mode" = steam ] && [ -z "$SD_FIRST" ] && { steam_default_before || :; }
-  SD_FIRST=""
-  if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop
+  if [ "$mode" = setup ]; then echo game >"$RUN/nimbus-mode-now" 2>/dev/null; else echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null; fi
+  sd=""; [ "$mode" = steam ] && ! legacy_game && { steam_auto_before; sd=1; }
+  if [ "$mode" = game ] || [ "$mode" = setup ]; then
+    [ "$mode" = setup ] && log "first-time setup in Hearth's app (once; Steam Game Mode after)"
+    input_start; run_game; code=$?; input_stop
   elif [ "$mode" = steam ]; then run_steam_mode; code=$?
-  else run_desktop; code=$?; fi
-  [ "$mode" = steam ] && steam_default_after
+  else steam_notice_other; run_desktop; code=$?; fi
+  [ -n "$sd" ] && steam_auto_after
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
+  # First-time setup that ended without asking for anything (Hearth closed or gave up): Steam Game Mode, never no screen.
+  [ "$mode" = setup ] && [ -z "$next" ] && { log "first-time setup ended (code $code); Steam Game Mode next"; next=steam; }
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   [ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game     # ...and never Steam Game Mode
-  [ "$mode" = steam ] && [ "$next" = steam ] && next=game        # Steam Game Mode never follows itself
   case "$next" in
-    game|desktop|steam) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
+    game|desktop|steam)
+      to="$next"; [ -z "$HEARTH_SEAT" ] && to="$(resolve_mode "$next")"
+      log "switching to $to"; settle "$mode"; log "starting $to mode"; mode="$to" ;;
     *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;
   esac
 done

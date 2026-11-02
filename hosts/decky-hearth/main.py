@@ -1,10 +1,11 @@
-"""The Hearth Decky plugin's backend (Steam Game Mode, Experimental; docs/STEAM-GAME-MODE.md).
+"""The Hearth Decky plugin's backend (Steam Game Mode, Hearth OS's Game Mode; docs/STEAM-GAME-MODE.md).
 
 Runs as you (no root flag) inside Decky Loader and only talks to Hearth's own command line on this device:
 
   nimbus --list-games      your installed games from Hearth's library, as JSON (hosts/hearth-core desktop_games.rs)
   nimbus --play-now ID     plays one the way Hearth's Play button does, and waits until it has closed
-  nimbus-mode game         back to Hearth's Game Mode
+  nimbus-mode desktop      Hearth's Desktop Mode (switch_to_hearth's `nimbus-mode game` stays for the archived
+                           Hearth Game Mode; the plugin no longer offers it)
   nimbus --steam-mode-data WHAT [ARG]
                            what the takeover's pages show (Hearth's home, Store, Library, Downloads, Storage, a game's
                            facts, the power mode), as JSON (hosts/hearth-core steam_takeover.rs).

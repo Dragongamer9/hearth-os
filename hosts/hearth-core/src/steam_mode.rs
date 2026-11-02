@@ -1,8 +1,10 @@
-//! Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs
-//! it, as a one-time switch from Hearth's Game Mode (the power menu, or Settings › System). nimbus-session runs it
-//! (`run_steam_mode`) and always comes back to Hearth's Game Mode afterwards: the switch is never saved, and a Steam
-//! that's missing or fails right away falls back to it at once. Starting in Steam Game Mode is a separate per-device
-//! opt-in (`set_default`, off by default) that the session turns off by itself when it fails.
+//! Steam Game Mode (docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs it. Hearth OS is
+//! Debian + Mantel (Desktop Mode) + Steam Game Mode: nimbus-session starts in it and every "Game Mode" request opens it
+//! (`run_steam_mode`); when it can't start or fails twice the session opens Desktop Mode instead, with the reason in
+//! FAILED_NOTE (Mantel shows it with "Try Steam Game Mode again"). Hearth's own Game Mode is archived (first-time setup,
+//! the live USB's installer, or the developer switch HEARTH_LEGACY_GAME_MODE=1). The old per-device "Start in Steam Game
+//! Mode" setting (`set_default`) isn't offered any more: starting in it is always on; the session's pause after two
+//! failures uses the same DEFAULT_OFF_NOTE / DEFAULT_FAILS files.
 //!
 //! With Decky Loader (installed from Settings › System › Steam Game Mode, hearth-admin decky-install), the Hearth Decky
 //! plugin (hosts/decky-hearth) brings Hearth into Steam: your other stores' games with Play buttons, and a sync that adds
@@ -18,6 +20,7 @@ pub const HEARTH_UNIT: &str = "etc/systemd/system/hearth-decky.service";
 /// Decky Loader installed the usual way (its own installer): left alone, it starts by itself.
 pub const UPSTREAM_UNIT: &str = "etc/systemd/system/plugin_loader.service";
 /// The note nimbus-session leaves when Steam Game Mode couldn't start or ended right away (this sign-in only).
+/// Desktop Mode (Mantel's SteamFallback.qml) shows it once with "Try Steam Game Mode again".
 pub const FAILED_NOTE: &str = "hearth-steam-mode-failed";
 
 fn runtime_dir() -> PathBuf { PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())) }
@@ -57,7 +60,11 @@ pub fn decky_status(root: &Path, home: &Path) -> Value {
     })
 }
 
-/// The reason Steam Game Mode fell back to Hearth's last time this sign-in, if it did.
+/// Whether this session's Game Mode is Steam Game Mode (nimbus-session's HEARTH_STEAM_ONLY=1): host.info "steamOnly".
+pub fn steam_only(var: Option<&str>) -> bool { var == Some("1") }
+
+/// The reason Steam Game Mode fell back to Desktop Mode last time this sign-in, if it did.
+
 pub fn last_failure(run_dir: &Path) -> Option<String> {
     std::fs::read_to_string(run_dir.join(FAILED_NOTE)).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
@@ -193,7 +200,7 @@ pub fn switch_now(run_dir: &Path, can: bool) -> Result<(), String> {
     if !can { return Err("Steam Game Mode needs Steam and Hearth's session (Hearth OS).".into()); }
     let _ = std::fs::remove_file(run_dir.join(FAILED_NOTE));
     std::fs::write(run_dir.join("nimbus-next"), "steam\n").map_err(|e| e.to_string())?;
-    crate::bridge::log("steam game mode: switching (one time; Hearth's Game Mode comes back when Steam's ends)");
+    crate::bridge::log("steam game mode: switching");
     Ok(())
 }
 pub fn switch() -> Result<(), String> { switch_now(&runtime_dir(), available()) }
@@ -201,6 +208,13 @@ pub fn switch() -> Result<(), String> { switch_now(&runtime_dir(), available()) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn steam_only_only_when_the_session_says_so() {
+        assert!(steam_only(Some("1")));
+        assert!(!steam_only(None));
+        assert!(!steam_only(Some("0")));
+    }
 
     #[test]
     fn offered_only_where_it_can_run() {

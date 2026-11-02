@@ -4260,24 +4260,19 @@ async function restoreBackup(){
 // ---------- Settings › System › Web browser: Hearth Browser (Firefox), and Aloha (optional, Linux) ----------
 const BROWSER = {s:null};
 const ART = {s:null};
-// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Steam's gamepad UI in gamescope, this time only (the
-// session comes back to Hearth's Game Mode afterwards, and a restart always starts Hearth's), with Decky Loader and the
-// Hearth plugin (hosts/decky-hearth), installed here.
+// ---- Steam Game Mode (docs/STEAM-GAME-MODE.md): Hearth OS's Game Mode, Steam's gamepad UI in gamescope (the session
+// always starts in it; when it can't, Desktop Mode opens and says why), with Decky Loader and the Hearth plugin
+// (hosts/decky-hearth), installed here. Hearth's own Game Mode is archived, and so is the old "Start in Steam Game
+// Mode" setting (it's always on now): sgmDefault stays for the developer switch's sake but isn't offered.
 const SGM = {s:null, busy:false};
 function loadSteamMode(){ if(host && LINUX && hasFeat('steamMode')) call('steamMode.status').then(r=>{ SGM.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
 function steamModeRows(){
-  const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode (Experimental)')+note('Loading…'); }
+  const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode')+note('Loading…'); }
   const d=s.decky||{};
-  let h = shead('Steam Game Mode (Experimental)');
-  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS. This time only: when Steam closes, or from the Hearth panel in Quick Access, you're back in ${APP}'s Game Mode.${(s.startDefault||{}).on?'':` Restarting starts ${APP}'s.`}</small></div><div class="rv">›</div></button>`
+  let h = shead('Steam Game Mode');
+  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS: where the device starts. Back to Desktop Mode: Steam's Power › Switch to Desktop, or Quick Access › Hearth › Desktop Mode.</small></div><div class="rv">›</div></button>`
     + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and the Hearth plugin</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth plugin in place':d.shipped?' · Hearth plugin not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Brings '+APP+'\'s games, look and apps into Steam. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy===true?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
-  if(s.lastFailure) h += note(`Last try came back to ${APP}'s Game Mode: ${esc(s.lastFailure)}.`);
-  // Start in Steam Game Mode (per device, off by default): only offered where Steam is installed and signed in. The
-  // session turns it off by itself when it fails and says why (offNote). Ways back: docs/STEAM-GAME-MODE.md.
-  const sd=s.startDefault||{};
-  if(sd.on || sd.can) h += sgrid(`<button class="row" data-f data-k="sy-sgm-default" data-act="sgmDefault"><div class="rt"><b>Start in Steam Game Mode</b><small>The device starts in Steam's Game Mode instead of ${APP}'s. To skip it once, hold B or Guide while the device starts. To stop it: Quick Access › Hearth in Steam, or turn this off. It turns itself off if Steam fails to start.</small></div>${SGM.busy==='default'?'<span class="mini-spin"></span>':`<div class="sw ${sd.on?'on':''}"></div>`}</button>`);
-  else if(s.available && sd.signedIn===false) h += note(`Start in Steam Game Mode: sign in to Steam first (Switch to Steam Game Mode once and sign in there).`);
-  if(sd.offNote && !sd.on) h += note(`Start in Steam Game Mode was turned off by itself: ${esc(sd.offNote)}. The device starts in ${APP}'s Game Mode.`);
+  if(s.lastFailure) h += note(`Steam Game Mode didn't start last time, so Desktop Mode opened instead: ${esc(s.lastFailure)}. Switch to Steam Game Mode tries again.`);
   return h;
 }
 function sgmDefault(){
@@ -6731,7 +6726,7 @@ function loadLogin(){ if(host) call('login.get').then(r=>{ LOGIN.s=r; refreshUI(
 function pageSignin(){
   if(!host) return note('Sign-in settings work in the '+APP+' app.');
   const L=LOGIN.s; if(!L) return note('Loading…');
-  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
+  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Steam Game Mode';
   let h='';
   if(L.canAdmin) h += `<button class="row" data-f data-k="li-auto" data-act="loginAuto"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign in automatically</b><small>${L.autologin?'Starts straight into '+APP+' when you turn it on, like a console':'Shows the login screen when you turn it on'}</small></div><div class="sw ${L.autologin?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-wake" data-act="loginWake"><span class="ricon">${I.lock}</span><div class="rt"><b>Ask for my password after sleep</b><small>${L.lockOnWake?'Locked when it wakes up, in Game Mode and on the desktop':'Wakes straight back to where you were'}</small></div><div class="sw ${L.lockOnWake?'on':''}"></div></button>`;
@@ -6749,9 +6744,9 @@ async function loginAuto(){
 }
 function loginStart(){
   const cur=LOGIN.s&&LOGIN.s.startMode;
-  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
+  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Steam Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
   openSheet({title:'Start in', sub:'What you see after signing in', items:[
-    {label:'Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
+    {label:'Steam Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
     {label:'Desktop Mode', icon:cur==='desktop'?'check':'', run:()=>pick('desktop')}]});
 }
 async function loginPass(){
@@ -9722,7 +9717,7 @@ function renderPower(){
     ${keepR?`<button class="mitem" data-f data-k="p-restart-close" data-act="pwr" data-p="restart" data-sure="1">${I.restart}Restart and close games</button>`:''}
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
     <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
-    ${LINUX&&hasFeat('steamMode')?`<button class="mitem" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode${tag('experimental')}</button>`:''}
+    ${LINUX&&hasFeat('steamMode')?`<button class="mitem" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode</button>`:''}
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
@@ -10538,7 +10533,7 @@ function power(p, sure){
     }
   }
   closeAll();
-  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',steam:'Switching to Steam Game Mode (this time only)…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
+  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',steam:'Switching to Steam Game Mode…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
@@ -12737,6 +12732,13 @@ function setupGo(d){
 function setupFinish(){
   if(host) call('setup.done').catch(()=>{});
   HOSTINFO.setupDone=true; S.history=[];
+  // Hearth OS: first-time setup runs once in Hearth's app, then the device goes to its Game Mode, Steam Game Mode
+  // (nimbus-session's "setup" run; host.info feature steamOnly).
+  if(host && LINUX && hasFeat('steamOnly')){
+    toast('Setup is done. Starting Steam Game Mode…');
+    call('setup.done').catch(()=>{}).finally(()=>setTimeout(()=>call('session.restartGameMode').catch(e=>toast(e.message)), 1000));
+    return;
+  }
   navigate('home',{},false);
   toast(`Welcome to ${APP}. Settings has everything from setup, any time.`);
 }
