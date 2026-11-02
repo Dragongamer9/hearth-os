@@ -425,7 +425,7 @@ class HandheldDaemonPage(unittest.TestCase):
         self.assertIn('const PAGES: &[&str] = &["hhd"', self.bridge)
         self.assertIn("i.start==='hhd'", self.ui)
         qml = (SHELL / 'SetController.qml').read_text()
-        self.assertIn('["nimbus", "--windowed", "--page", "hhd"]', qml)
+        self.assertIn('SettingsNav.openPage("handheld")', qml)   # Mantel's own page now (SetHandheld.qml)
         self.assertIn('data-act="hhdOpen"', self.ui)
         self.assertNotIn('Its other settings are in its own app', self.ui)
         self.assertIn("navigate('hhd'", (ROOT / 'tools' / 'ui-check.js').read_text())
@@ -447,6 +447,98 @@ class HandheldDaemonPage(unittest.TestCase):
         for k, ok in [('tdp.unified.tdp.mode', True), ('tdp.asus.tdp.custom.tdp', True), ('tdp.unified.tdp.custom.boost', True),
                       ('tdp.unified.fan_full_speed', False), ('tdp.unified.tdp.balanced.x', False), ('controllers.rog_ally.imu', False)]:
             self.assertEqual(bool(js.match(k)), ok, k)
+
+
+
+class MantelHandheldPage(unittest.TestCase):
+    """Settings › Handheld (SetHandheld.qml): hearth-hhd page / apply, drawn from HHD's settings tree (the preview's
+    whole ROG Ally from ui/index.html, the same made-up HHD desktop-test.yml serves for its screenshots)."""
+
+    def setUp(self):
+        import re
+        ui = (ROOT / 'ui' / 'index.html').read_text()
+        self.mock = json.loads(re.search(r'^const HHD_MOCK = (\{.*\});$', ui, re.M).group(1))
+        self.page = hh.page(self.mock['state'], self.mock['settings'], self.mock.get('sections'))
+
+    def items(self):
+        return {i['key']: i for s in self.page['sections'] for i in s['items']}
+
+    def test_every_section_and_kind_from_the_tree(self):
+        self.assertTrue(self.page['running'])
+        ids = [s['id'] for s in self.page['sections']]
+        for sec in ('tdp', 'rgb', 'controllers', 'hhd'):
+            self.assertIn(sec, ids)
+        it = self.items()
+        self.assertEqual(it['controllers.rog_ally.controller_mode.mode']['kind'], 'choice')
+        self.assertEqual(it['controllers.rog_ally.imu']['kind'], 'bool')
+        self.assertEqual(it['tdp.unified.tdp.mode']['kind'], 'choice')
+        kinds = {i['kind'] for i in it.values()}
+        for k in ('choice', 'bool', 'number', 'action', 'text'):
+            self.assertIn(k, kinds)
+        # Only the settings of the emulation mode in use.
+        mode = it['controllers.rog_ally.controller_mode.mode']['value']
+        for k in it:
+            if k.startswith('controllers.rog_ally.controller_mode.') and k != 'controllers.rog_ally.controller_mode.mode':
+                self.assertTrue(k.startswith('controllers.rog_ally.controller_mode.%s.' % mode), k)
+        # Where Steam takes over in Steam Game Mode is said.
+        notes = {s['id']: s['steamNote'] for s in self.page['sections']}
+        self.assertIn('Steam', notes['tdp'])
+        self.assertIn('Steam', notes['controllers'])
+
+    def test_hidden_settings_never_appear_and_cant_be_set(self):
+        sets = json.loads(json.dumps(self.mock['settings']))
+        sets['controllers']['rog_ally']['children']['imu']['tags'] = ['hidden']
+        p = hh.page(self.mock['state'], sets, None)
+        self.assertNotIn('controllers.rog_ally.imu', {i['key'] for s in p['sections'] for i in s['items']})
+        self.assertIsNone(hh.find(sets, 'controllers.rog_ally.imu'))
+        self.assertTrue(set(re_list(ROOT / 'hosts/hearth-core/src/hhd.rs')) <= hh.SKIP_TAGS)
+
+    def test_changes_are_checked_against_the_tree(self):
+        sets, st = self.mock['settings'], self.mock['state']
+        node, is_mode = hh.find(sets, 'controllers.rog_ally.controller_mode.mode')
+        self.assertTrue(is_mode)
+        self.assertEqual(hh.check_value(node, True, 'dualsense', None, 'k'), 'dualsense')
+        with self.assertRaises(hh.HhdError):
+            hh.check_value(node, True, 'no-such-mode', None, 'k')
+        node, _ = hh.find(sets, 'controllers.rog_ally.imu')
+        self.assertIs(hh.check_value(node, False, False, None, 'k'), False)
+        with self.assertRaises(hh.HhdError):
+            hh.check_value(node, False, 'yes', None, 'k')
+        num = next(i for i in self.items().values() if i['kind'] == 'number')
+        node, _ = hh.find(sets, num['key'])
+        with self.assertRaises(hh.HhdError):
+            hh.check_value(node, False, num['max'] + 1000, None, num['key'])
+        self.assertIsNone(hh.find(sets, 'controllers.rog_ally'), 'a container has no value')
+
+    def test_apply_sends_only_that_key_and_answers_with_the_page(self):
+        sent = []
+        mock_state = self.mock['state']
+        with mock.patch.object(hh, 'available', return_value=True), \
+                mock.patch.object(hh, 'state', return_value=mock_state), \
+                mock.patch.object(hh, 'settings', return_value=self.mock['settings']), \
+                mock.patch.object(hh, 'request', return_value=self.mock.get('sections') or {}), \
+                mock.patch.object(hh, 'set_state', side_effect=lambda c: sent.append(c)):
+            out = hh.apply_change('controllers.rog_ally.imu', False)
+            self.assertEqual(sent, [{'controllers.rog_ally.imu': False}])
+            self.assertTrue(out['running'])
+            with self.assertRaises(hh.HhdError):
+                hh.apply_change('hhd.http.no_such', True)
+        with mock.patch.object(hh, 'available', return_value=False):
+            self.assertEqual(hh.page(), {'running': False})
+
+    def test_page_is_in_settings_and_quick_access(self):
+        app = (SHELL / 'SettingsApp.qml').read_text()
+        self.assertIn('{ id: "handheld"', app)
+        self.assertIn('handheld: "SetHandheld.qml"', app)
+        qml = (SHELL / 'SetHandheld.qml').read_text()
+        for w in ('helper: "hearth-hhd"', 'job.run(["page"]', '"apply", key, JSON.stringify(value)', "Handheld Daemon isn't running", 'steamNote'):
+            self.assertIn(w, qml)
+        self.assertIn('"handheld"', (SHELL / 'QuickAccess.qml').read_text())
+
+
+def re_list(path):
+    import re
+    return re.findall(r'"([^"]+)"', re.search(r'pub const SKIP_TAGS: &\[&str\] = &\[([^\]]*)\]', path.read_text()).group(1))
 
 
 if __name__ == '__main__':

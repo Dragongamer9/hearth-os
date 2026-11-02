@@ -1,22 +1,31 @@
 #!/usr/bin/python3
-"""hearth-decky: Decky Loader for Hearth's Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md), as root.
+"""hearth-decky: Decky Loader for Hearth's Steam Game Mode (docs/STEAM-GAME-MODE.md), as root.
 
-Run by hearth-admin (decky-install asks for an administrator's password, 49-hearth-admin.rules; the others don't):
+Decky Loader is built into Hearth OS: the image ships a pinned stable release in /usr/lib/hearth-decky (PluginLoader and
+its version, os-bases/peppermint/build.sh) and a service template, hearth-decky@.service (User=root, as Decky needs; not
+started at boot). nimbus-session starts hearth-decky@<you>.service when Steam Game Mode starts and stops it afterwards,
+without a password (49-hearth-decky.rules: only your own instance, only from the active session at the device, only
+for administrators). The service runs:
 
-  hearth-decky install USER   Decky Loader's latest stable release from its GitHub releases (the same file its own
-                              installer fetches) into /var/lib/hearth-decky (root's, so nothing running as you can
-                              change what runs as root), a service that is NOT started at boot (nimbus-session starts
-                              it only for Steam Game Mode), ~USER/homebrew for Decky's plugins and settings, Steam's
-                              CEF remote debugging turned on for USER (Decky needs it), and the plugin the image ships,
-                              Hearth Sync (/usr/share/hearth/decky-hearth-sync, docs/HEARTH-SYNC.md), put in Decky's
-                              plugins folder; the older Hearth plugin Hearth put there (decky-hearth) is taken away
-  hearth-decky remove USER    the service, the program, Hearth's plugins and the CEF debugging file Hearth made;
-                              Decky's settings and other plugins in ~/homebrew stay
-  hearth-decky start|stop     the service (only Hearth's own; a Decky installed with Decky's installer runs by itself);
-                              start first brings Hearth Sync up to date and takes the older Hearth plugin away
+  hearth-decky run USER       get ready, then become Decky Loader: ~USER/homebrew and Steam's CEF remote debugging for
+                              USER (Decky needs it), Hearth Sync (/usr/share/hearth/decky-hearth-sync, docs/HEARTH-SYNC.md)
+                              brought up to date in Decky's plugins folder, the older Hearth plugin Hearth put there taken
+                              away, and an install from before (hearth-decky.service and /var/lib/hearth-decky) removed
 
-Prints one JSON line ({"ok": true, ...}); errors print "error: ..." and exit 1. Paths can be moved for tests with
-HEARTH_DECKY_ROOT (a folder standing in for /).
+Older Hearth OS versions downloaded Decky when asked (hearth-admin decky-install, an administrator's password); those
+commands stay for images without the built-in one and for clean-up:
+
+  hearth-decky install USER   built in: only the user side and Hearth Sync (nothing downloaded). Otherwise Decky Loader's
+                              latest stable release from its GitHub releases into /var/lib/hearth-decky and
+                              hearth-decky.service (never started at boot), as before
+  hearth-decky remove USER    an install from before: its service, program, Hearth's plugins and the CEF debugging file
+                              Hearth made (Decky's settings and other plugins in ~/homebrew stay). Refused for the
+                              built-in one (it runs only in Steam Game Mode anyway)
+  hearth-decky start|stop     the service of an install from before (the built-in one is started by nimbus-session)
+
+A Decky installed with Decky's own installer (plugin_loader.service) is always left alone: it runs by itself, and the
+built-in one doesn't start next to it. Prints one JSON line ({"ok": true, ...}); errors print "error: ..." and exit 1.
+Paths can be moved for tests with HEARTH_DECKY_ROOT (a folder standing in for /).
 """
 import filecmp
 import json
@@ -48,6 +57,31 @@ def upstream_unit():
 
 def lib_dir():
     return path('var/lib/hearth-decky')
+
+
+def builtin_dir():
+    """The image's own Decky Loader (os-bases/peppermint/build.sh): PluginLoader and version."""
+    return path('usr/lib/hearth-decky')
+
+
+def builtin_binary():
+    return os.path.join(builtin_dir(), 'PluginLoader')
+
+
+def builtin_unit():
+    return path('usr/lib/systemd/system/hearth-decky@.service')
+
+
+def builtin():
+    """Whether this image has Decky Loader built in (the program and the service template)."""
+    return os.path.isfile(builtin_binary()) and os.path.isfile(builtin_unit())
+
+
+def builtin_version():
+    try:
+        return open(os.path.join(builtin_dir(), 'version')).read().strip() or None
+    except OSError:
+        return None
 
 
 def shipped_plugin():
@@ -238,6 +272,11 @@ def install(user, download=None, machine=None):
         as_user(pw, lambda: user_side(home))
         plugin = copy_plugin(home)
         return {'ok': True, 'via': 'decky', 'plugin': plugin, 'oldPluginRemoved': remove_old_plugin(home)}
+    if builtin():
+        # Nothing to download: the image has Decky. Only the user side, Hearth Sync, and the old install gone.
+        out = prepare(pw.pw_name)
+        return {'ok': True, 'via': 'builtin', 'version': builtin_version(), 'plugin': out.get('plugin') != 'not shipped',
+                'oldPluginRemoved': out.get('oldPlugin') == 'removed', 'migrated': out.get('migrated', False)}
     download = download or (lambda: pick_asset(json.loads(fetch(RELEASES)), machine or os.uname().machine))
     got = download()
     if not got:
@@ -271,6 +310,8 @@ def install(user, download=None, machine=None):
 def remove(user):
     pw = person(user)
     home = home_of(pw)
+    if builtin() and not os.path.isfile(unit_path()):
+        raise ValueError('Decky Loader is part of Hearth OS; it runs only while Steam Game Mode does')
     if os.path.isfile(unit_path()):
         systemctl('stop', UNIT_NAME)
         os.remove(unit_path())
@@ -341,6 +382,86 @@ def start_stop(verb):
     return out
 
 
+def hearth_made(unit):
+    """Whether a hearth-decky.service file is the one an older Hearth OS wrote (unit_text's first line)."""
+    try:
+        with open(unit) as f:
+            return f.readline().startswith('# Hearth: Decky Loader')
+    except OSError:
+        return False
+
+
+def migrate():
+    """An install from before Decky was built in (hearth-admin decky-install): its service file and its downloaded
+    program go; the built-in one takes over. That service was never enabled and only ran during Steam Game Mode, which
+    starts the built-in one instead now, so nothing is running from it. True when something was removed."""
+    done = False
+    if hearth_made(unit_path()):
+        os.remove(unit_path())
+        done = True
+    for f in ('PluginLoader', 'version'):
+        p = os.path.join(lib_dir(), f)
+        if os.path.isfile(p):
+            os.remove(p)
+            done = True
+    try:
+        os.rmdir(lib_dir())
+    except OSError:
+        pass
+    return done
+
+
+def decky_env(home, user, base=None):
+    """What Decky Loader is told (as in Decky's own service): the person and their ~/homebrew."""
+    hb = os.path.join(home, 'homebrew')
+    env = dict(base if base is not None else os.environ)
+    env.update({'UNPRIVILEGED_PATH': hb, 'PRIVILEGED_PATH': hb, 'UNPRIVILEGED_USER': user,
+                'KEEP_SYSTEMD_SERVICE': '1', 'LOG_LEVEL': env.get('LOG_LEVEL') or 'INFO'})
+    return env
+
+
+def prepare(user):
+    """Everything before the built-in Decky Loader starts for USER (see run). Returns what it did."""
+    pw = person(user)
+    home = home_of(pw)
+    out = {'ok': True}
+    if os.path.isfile(upstream_unit()):
+        raise ValueError('Decky Loader from its own installer is here; it runs by itself')
+    if not builtin():
+        raise ValueError('this Hearth OS has no built-in Decky Loader')
+    try:
+        if migrate():
+            out['migrated'] = True
+    except OSError as e:
+        out['migrated'] = 'couldn\'t (%s)' % e
+    as_user(pw, lambda: user_side(home))
+    try:
+        if plugin_outdated(home):
+            out['plugin'] = 'updated' if copy_plugin(home) else 'not shipped'
+        elif not os.path.isfile(os.path.join(shipped_plugin(), 'plugin.json')):
+            out['plugin'] = 'not shipped'
+    except OSError as e:
+        out['plugin'] = 'couldn\'t update (%s)' % e
+    try:
+        if remove_old_plugin(home):
+            out['oldPlugin'] = 'removed'
+    except OSError as e:
+        out['oldPlugin'] = 'couldn\'t remove (%s)' % e
+    return out
+
+
+def run(user):
+    """The built-in service's program (hearth-decky@USER.service): prepare, then become Decky Loader. Decky works in the
+    service's runtime folder (its own updater would download there; Decky is updated with Hearth OS instead)."""
+    out = prepare(user)
+    pw = person(user)
+    print('hearth-decky: ' + json.dumps(out), flush=True)
+    work = os.environ.get('RUNTIME_DIRECTORY', '').split(':')[0] or '/tmp'
+    os.chdir(work)
+    binary = builtin_binary()
+    os.execve(binary, [binary], decky_env(home_of(pw), pw.pw_name))
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     try:
@@ -348,8 +469,13 @@ def main(argv):
             out = install(argv[2]) if cmd == 'install' else remove(argv[2])
         elif cmd in ('start', 'stop') and len(argv) == 2:
             out = start_stop(cmd)
+        elif cmd == 'run' and len(argv) == 3:
+            run(argv[2])
+            return
+        elif cmd == 'prepare' and len(argv) == 3:
+            out = prepare(argv[2])
         else:
-            fail('usage: hearth-decky install USER | remove USER | start | stop')
+            fail('usage: hearth-decky run USER | prepare USER | install USER | remove USER | start | stop')
     except (ValueError, OSError) as e:
         fail(str(e))
     print(json.dumps(out), flush=True)

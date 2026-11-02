@@ -96,6 +96,7 @@ ShellRoot {
         onMouseToggled: enable => pad.setMouse(enable)
         onKeyboardRequested: pad.openKeyboard()
         onSettingsRequested: settings.open("")
+        onPageRequested: p => settings.open(p)
     }
     RadialMenu { id: radial; mouseOn: pad.mouseOn }
     Keyboard { id: keyboard }

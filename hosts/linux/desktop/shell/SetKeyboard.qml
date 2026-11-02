@@ -188,7 +188,88 @@ SetPage {
         options: [{ value: "wheel", label: "Ember Wheel" }, { value: "split", label: "Split sticks" }, { value: "off", label: "Off" }]
         current: page.oskGet("fast"); onChosen: v => page.oskSet("fast", v)
     }
-    SetChoice { title: "Look"; options: Osk.HearthOSK.THEMES.map(t => ({ value: t[0], label: t[1] })); current: page.oskGet("theme"); onChosen: v => page.oskSet("theme", v) }
+    // Its look in Desktop Mode (OskThemes.qml): only colours and shapes, the keys work the same in each.
+    Text {
+        Layout.fillWidth: true; Layout.leftMargin: 4; Layout.topMargin: 6
+        text: "Look"
+        color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold
+    }
+    GridLayout {
+        Layout.fillWidth: true
+        columns: page.width > 760 ? 3 : 2
+        columnSpacing: 8; rowSpacing: 8
+        Repeater {
+            model: OskThemes.list
+            delegate: SetBase {
+                id: tile
+                required property var modelData
+                readonly property var t: OskThemes.themes[modelData.id] || ({})
+                readonly property bool inUse: OskThemes.resolve(page.oskGet("theme")) === modelData.id
+                readonly property real kr: t.kr === undefined ? 4 : t.kr < 0 ? 7 : Math.min(t.kr, 6)
+                Layout.fillWidth: true
+                implicitHeight: 128
+                border.color: activeFocus ? Theme.accent : inUse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55) : "transparent"
+                onActivated: page.oskSet("deskTheme", modelData.id)
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: modelData.label
+                Accessible.checked: inUse
+                // a small keyboard in this look: three rows of keys, one picked, a wide space bar
+                Rectangle {
+                    id: mini
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                    height: 64
+                    radius: Math.min(tile.t.br === undefined ? 10 : tile.t.br, 10)
+                    color: tile.t.bg || "#222"
+                    border.color: tile.t.bbc || "transparent"
+                    clip: true
+                    Rectangle {
+                        visible: !!tile.t.glow
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: parent.height * 0.7; radius: parent.radius
+                        gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 1; color: tile.t.glow || "transparent" } }
+                    }
+                    Column {
+                        anchors { fill: parent; margins: 6 }
+                        spacing: 3
+                        Repeater {
+                            model: 3
+                            delegate: Row {
+                                id: mrow
+                                required property int index
+                                spacing: 3
+                                readonly property int n: mrow.index === 2 ? 5 : 8
+                                Repeater {
+                                    model: mrow.n
+                                    delegate: Rectangle {
+                                        required property int index
+                                        readonly property bool wide: mrow.index === 2 && index === 2
+                                        readonly property bool lit: mrow.index === 1 && index === 3
+                                        readonly property bool modk: mrow.index === 2 && index !== 2
+                                        width: wide ? (mini.width - 12 - 3 * 4) - 4 * ((mini.width - 12 - 7 * 3) / 8) : (mini.width - 12 - 7 * 3) / 8
+                                        height: (mini.height - 12 - 6) / 3
+                                        radius: tile.t.kr !== undefined && tile.t.kr < 0 ? height / 2 : tile.kr
+                                        color: lit ? tile.t.sel : modk ? tile.t.mod : tile.t.key
+                                        border.width: lit ? 1.5 : tile.t.kb ? 1 : 0
+                                        border.color: lit ? (tile.t.accent || "#fff") : (tile.t.kbc || "transparent")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                ColumnLayout {
+                    anchors { left: parent.left; right: parent.right; top: mini.bottom; topMargin: 6; leftMargin: 12; rightMargin: 12 }
+                    spacing: 1
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { Layout.fillWidth: true; text: tile.modelData.label; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                        Text { visible: tile.inUse; text: "✓"; color: Theme.accent; font.pixelSize: 14; font.weight: Font.Bold }
+                    }
+                    Text { Layout.fillWidth: true; text: tile.modelData.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight }
+                }
+            }
+        }
+    }
     SetChoice { title: "Size"; options: [{ value: "s", label: "Small" }, { value: "m", label: "Medium" }, { value: "l", label: "Large" }]; current: page.oskGet("size"); onChosen: v => page.oskSet("size", v) }
     SetChoice { title: "Shape"; sub: "Split puts the halves at the edges, under your thumbs on a handheld's touchscreen"; options: [{ value: "full", label: "Full" }, { value: "split", label: "Split" }]; current: page.oskGet("shape"); onChosen: v => page.oskSet("shape", v) }
     SetChoice { title: "Position"; options: [{ value: "bottom", label: "Bottom" }, { value: "top", label: "Top" }]; current: page.oskGet("position"); onChosen: v => page.oskSet("position", v) }

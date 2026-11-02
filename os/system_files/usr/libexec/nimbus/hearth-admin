@@ -28,9 +28,10 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      window). Always asks for an administrator's password (49-hearth-admin.rules)
   hearth-admin decky-install | decky-remove | decky-start | decky-stop
                                      Steam Game Mode's Decky Loader and the Hearth plugin (see hearth-decky,
-                                     docs/STEAM-GAME-MODE.md). decky-install always asks for an administrator's
-                                     password (it adds a service that runs as root); start/stop are used by
-                                     nimbus-session around Steam Game Mode only
+                                     docs/STEAM-GAME-MODE.md). Decky is built into Hearth OS now (hearth-decky@.service,
+                                     started by nimbus-session with systemctl): these remain for images without it and
+                                     for an install from before. decky-install always asks for an administrator's
+                                     password (without the built-in one it adds a service that runs as root)
   hearth-admin tdp-info              JSON: how this device's power limit can be set, its range and value
                                      (read-only; works without root)
   hearth-admin tdp WATTS             set the power limit: ASUS firmware attributes, asus-nb-wmi, or ryzenadj

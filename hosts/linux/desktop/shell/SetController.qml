@@ -106,13 +106,13 @@ SetPage {
             onActivated: page.run(["reset"])
         }
 
-        // Handheld Daemon's own settings (fan curve, power modes, lights, stick ranges...): Hearth's page for them,
-        // in a window (the same page as Game Mode's Settings › Controls › Handheld Daemon).
+        // Handheld Daemon's own settings (fan curve, power modes, lights, stick ranges...): Settings › Handheld
+        // (SetHandheld.qml), Hearth's own app for them.
         SetHeader { visible: !!(page.ctl && page.ctl.backend === "hhd"); text: "Handheld Daemon" }
         SetRow {
             visible: !!(page.ctl && page.ctl.backend === "hhd")
-            icon: "gear"; title: "Handheld Daemon settings"; sub: "Everything for the built-in controller, power limit, fan and lights. Opens in Hearth."
-            onActivated: { Quickshell.execDetached(["nimbus", "--windowed", "--page", "hhd"]); SettingsNav.toast("Opening Handheld Daemon settings"); }
+            icon: "gear"; title: "Handheld Daemon settings"; sub: "Everything for the built-in controller, power limit, fan and lights: Settings › Handheld"
+            onActivated: SettingsNav.openPage("handheld")
         }
 
         SetHeader { text: "Help" }

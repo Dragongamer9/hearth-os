@@ -25,6 +25,7 @@ Scope {
         { id: "appearance", icon: "palette", label: "Appearance" },
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
+        { id: "handheld", icon: "pad", label: "Handheld" },        // SetHandheld.qml: Handheld Daemon's settings
         { id: "keyboard", icon: "kbd", label: "Keyboard" },
         { id: "mouse", icon: "mouse", label: "Mouse & touchpad" },
         { id: "printers", icon: "printer", label: "Printers" },
@@ -47,8 +48,10 @@ Scope {
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", apps: "SetApps.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
-        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */ })
+        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */,
+        handheld: "SetHandheld.qml" /* Handheld Daemon */ })
 
+    Component.onCompleted: SettingsNav.settingsApp = app
     function open(p) {
         if (p && files[p]) page = p;
         shown = true;

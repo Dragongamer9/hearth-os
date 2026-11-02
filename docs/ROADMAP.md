@@ -168,6 +168,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- Settings › Handheld: Hearth's own Handheld Daemon app (every HHD setting from its own settings tree, advanced ones behind a switch, notes where Steam takes over in Steam Game Mode, "isn't running" on desktops), also from Quick Access and Settings › Controller.
+- On-screen keyboard looks for Mantel: Steam-style (default, follows your accent and dark/light), Hearth warm, High contrast, Frosted and Pocket, next to the first four, picked in Settings › Keyboard.
+- Decky Loader built into the image (pinned v3.3.1, checksum-checked at build), started for Steam Game Mode by hearth-decky@<you>.service without a password; earlier downloaded installs move over by themselves.
+
 ## 1.0 (released 2026-11-02)
 
 Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).

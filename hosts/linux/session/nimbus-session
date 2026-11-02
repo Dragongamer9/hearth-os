@@ -427,7 +427,7 @@ input_stop() {
 
 # >>> steam game mode
 # ---- Steam Game Mode (docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs it, with
-# Decky Loader and the Hearth plugin when they're installed. Hearth OS's Game Mode: where the session starts, and what
+# Decky Loader (built in) and Hearth Sync. Hearth OS's Game Mode: where the session starts, and what
 # every "game" request opens. Where it goes afterwards (STEAM_BACK: Desktop Mode, or Hearth's own Game Mode with the
 # developer switch / on the live USB):
 #   Steam or gamescope missing, safe graphics on, or Steam ending with an error within STEAM_MODE_MIN_SECS: STEAM_BACK,
@@ -466,10 +466,38 @@ steam_cant_reason() {
   elif [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then echo "safe graphics are on this time"
   fi
 }
-# Decky Loader, when Hearth installed it (hearth-admin decky-install): its root service runs only while Steam Game
-# Mode does, never at boot or in Hearth's modes. Never waited on for long, never fatal.
+# Decky Loader, built into Hearth OS (hearth-decky@.service, docs/STEAM-GAME-MODE.md): its root service runs only while
+# Steam Game Mode does, never at boot or in Desktop Mode. systemctl starts your own instance without a password
+# (49-hearth-decky.rules); the service brings Hearth Sync up to date and removes an install from before. Steam's CEF
+# remote debugging flag and ~/homebrew are made here first, before Steam starts (Steam reads the flag when it starts).
+# A Decky from its own installer (plugin_loader.service) runs by itself and is left alone. Older images: Hearth's
+# downloaded install (hearth-admin decky-install), through pkexec as before. Never waited on for long, never fatal.
 DECKY_UNIT="${HEARTH_DECKY_UNIT:-/etc/systemd/system/hearth-decky.service}"
+DECKY_BUILTIN="${HEARTH_DECKY_BUILTIN:-/usr/lib/systemd/system/hearth-decky@.service}"
+DECKY_UPSTREAM="${HEARTH_DECKY_UPSTREAM:-/etc/systemd/system/plugin_loader.service}"
+decky_user_side() {
+  mkdir -p "$HOME/homebrew/settings" "$HOME/homebrew/data" "$HOME/homebrew/logs" 2>/dev/null || return 0
+  made=""
+  for f in "$HOME/.steam/steam/.cef-enable-remote-debugging" "$HOME/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"; do
+    d="${f%/*}"
+    case "$f" in *com.valvesoftware.Steam*) [ -d "$d" ] || continue ;; esac
+    [ -e "$f" ] && continue
+    mkdir -p "$d" 2>/dev/null && : >"$f" 2>/dev/null && made="$made$f
+"
+  done
+  [ -n "$made" ] && printf '%s' "$made" >>"$HOME/homebrew/.hearth-made-this" 2>/dev/null
+  return 0
+}
 decky_ctl() {
+  [ -f "$DECKY_UPSTREAM" ] && return 0
+  if [ -f "$DECKY_BUILTIN" ] && have systemctl; then
+    du="${USER:-$(id -un 2>/dev/null)}"
+    [ -n "$du" ] || return 0
+    [ "$1" = start ] && decky_user_side
+    timeout 20 systemctl --no-ask-password "$1" "hearth-decky@$du.service" >/dev/null 2>&1 \
+      || log "steam game mode: decky $1 didn't work (Steam Game Mode goes on without Decky)"
+    return 0
+  fi
   [ -f "$DECKY_UNIT" ] && [ -x /usr/libexec/nimbus/hearth-admin ] && have pkexec || return 0
   timeout 15 pkexec /usr/libexec/nimbus/hearth-admin "decky-$1" >/dev/null 2>&1 || log "steam game mode: decky-$1 didn't work (Steam Game Mode goes on without Decky)"
   return 0
