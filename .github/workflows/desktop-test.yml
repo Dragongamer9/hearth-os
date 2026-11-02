@@ -171,7 +171,8 @@ jobs:
           ipc settings close
           # ---- Moved from the old Game Mode (docs/SETTINGS-MOVE.md): each new or changed page, with the controller.
           mkdir -p shots/settings-move
-          sm() { ipc settings page "$1"; sleep 2; grim "shots/settings-move/$2.png" || true; }
+          # (Closed first: a fresh window puts the controller on the page list, so Right goes into the page.)
+          sm() { ipc settings close; ipc settings page "$1"; sleep 2; grim "shots/settings-move/$2.png" || true; }
           sm remote 01-remote-play
           sm games 02-games-and-stores
           wtype -k Right; sleep 1; for i in 1 2 3 4 5 6 7 8 9; do wtype -k Down; done; sleep 1; grim shots/settings-move/03-games-and-stores-apps.png || true
@@ -188,7 +189,7 @@ jobs:
           mkdir -p /usr/libexec/nimbus
           printf '%s\n' '#!/bin/sh' 'case "$1" in update-status) echo "{\"booted\":{\"version\":\"1.0.0\",\"image\":\"ghcr.io/dragongamer9/hearth-peppermint:testing\"},\"staged\":null,\"available\":null,\"rollback\":{\"version\":\"0.6.63\"},\"rollbackQueued\":false}" ;; esac' > /usr/libexec/nimbus/hearth-admin
           printf '#!/bin/sh\nexec "$@"\n' > /tmp/fakebin/pkexec; chmod +x /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
-          ipc settings page about; sm updates 13-updates-go-back
+          sm updates 13-updates-go-back
           wtype -k Right; sleep 1; for i in 1 2 3 4; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
           rm -f /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
           ipc settings close
