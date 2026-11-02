@@ -1,0 +1,56 @@
+# Hearth Sync
+
+Hearth Sync is a small Decky plugin (`hosts/decky-hearth-sync`) for Steam Game Mode. Its one job: keep the games you
+have outside Steam in Steam's library, so you can find and start them from Steam like any other game.
+
+It is what Hearth OS ships in Decky now. The older Hearth plugin (`hosts/decky-hearth`, the one that took over Steam's
+screens) isn't shipped for now; its code stays in the repo.
+
+## What it adds
+
+- Every installed game in Hearth's library that isn't a Steam game: Epic, GOG, Battle.net, Xbox (the Xbox Cloud Gaming
+  tile), emulators, recomps, Beacon and games you added by hand.
+- Games installed with **Minigalaxy** (GOG; Hearth OS comes with it), read from `~/.config/minigalaxy` and its install
+  folder (each game's `gameinfo` or `goggame-<id>.info`). Linux games run their `start.sh`; Windows games run in the
+  game's own Wine prefix, the way Minigalaxy starts them. DOSBox and ScummVM games are left to Minigalaxy.
+- Games installed with **Heroic** (Epic, GOG, Amazon), started through Heroic's own `heroic://launch` link.
+- Games installed with Epic's **Epic Games Launcher for Linux** (preview), started through its
+  `com.epicgames.launcher://` link. Hearth OS doesn't include that launcher (it isn't open source); get it from Epic.
+  This part is unverified: Epic hasn't documented the launcher's files, so Hearth Sync looks for install manifests
+  shaped like the Windows launcher's under `~/.local/share/com.epicgames.eglv2/`, and only adds them when something on
+  the device opens `com.epicgames.launcher://` links.
+
+A game installed through two launchers gets one shortcut: the newest install wins.
+
+Each shortcut gets the game's portrait cover, wide picture, hero and logo (from Hearth's art cache and the other
+launchers' pictures), and goes into a Steam collection named after its store ("Epic", "GOG", "Battle.net",
+"Emulators"...), when Steam's collections can be reached.
+
+## When it syncs
+
+When Steam Game Mode starts, and then a quick check every 5 minutes. The check only re-reads your games when their
+files changed (or every 30 minutes), and only touches Steam when something changed. Missing pictures are tried again
+every 30 minutes.
+
+## What it never touches
+
+Only shortcuts Hearth Sync made itself (it keeps a list). Your own non-Steam shortcuts and other tools' shortcuts stay
+as they are. The first time, it takes over the game shortcuts the older Hearth plugin made, so nothing appears twice.
+It never changes Steam's screens, and it never signs in to anything. If Steam changes in a way it doesn't expect, it
+turns itself off with a note in its panel instead of breaking Steam.
+
+## Quick Access
+
+Quick Access › Hearth Sync shows how many games are synced, when it last synced and any problems, with **Sync now**,
+a switch per store (all on; turning one off removes that store's shortcuts) and **Remove all Hearth Sync shortcuts**.
+
+## Starting a game
+
+Hearth's games start with `nimbus --play-now <id>` (Hearth's own launch logic; Steam's environment is cleaned first),
+so Steam tracks the play time. Minigalaxy games start directly. Heroic and Epic Games Launcher games start through
+their launcher, which returns right away, so Steam may not count their play time.
+
+## Logs
+
+The plugin's log is in `~/homebrew/logs/Hearth Sync/` (counts and reasons only, never paths or addresses) and goes into
+Hearth's bug reports along with whether the older Hearth plugin is still there.

@@ -1,0 +1,15 @@
+{
+  "name": "Hearth Sync",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "hearth",
+      "library",
+      "shortcuts"
+    ],
+    "description": "Keeps the games in Hearth's library that aren't Steam games (Epic, GOG, Battle.net, Xbox, emulators, recomps, Beacon, games you added) in Steam's library, with their pictures, in a collection per store.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}

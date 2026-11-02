@@ -11,8 +11,12 @@
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// The Hearth Decky plugin as the image ships it (built by CI from hosts/decky-hearth).
-pub const SHIPPED_PLUGIN: &str = "usr/share/hearth/decky-hearth";
+/// The Decky plugin the image ships: Hearth Sync (built by CI from hosts/decky-hearth-sync, docs/HEARTH-SYNC.md). The
+/// older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now; hearth-decky removes the copy it put in.
+pub const SHIPPED_PLUGIN: &str = "usr/share/hearth/decky-hearth-sync";
+/// Where hearth-decky puts each in Decky's plugins folder.
+pub const SYNC_PLUGIN_DIR: &str = "homebrew/plugins/decky-hearth-sync";
+pub const OLD_PLUGIN_DIR: &str = "homebrew/plugins/decky-hearth";
 /// Hearth's own Decky Loader service (hearth-decky, through hearth-admin): started only for Steam Game Mode.
 pub const HEARTH_UNIT: &str = "etc/systemd/system/hearth-decky.service";
 /// Decky Loader installed the usual way (its own installer): left alone, it starts by itself.
@@ -51,7 +55,9 @@ pub fn decky_status(root: &Path, home: &Path) -> Value {
         "installed": hearth || upstream,
         // Hearth's own install (started only for Steam Game Mode) or Decky's own installer's (always running).
         "via": if hearth { json!("hearth") } else if upstream { json!("decky") } else { Value::Null },
-        "plugin": home.join("homebrew/plugins/decky-hearth/plugin.json").is_file(),
+        // Hearth's plugin in place: Hearth Sync. "oldPlugin": the older Hearth plugin (the takeover) is still there.
+        "plugin": home.join(SYNC_PLUGIN_DIR).join("plugin.json").is_file(),
+        "oldPlugin": home.join(OLD_PLUGIN_DIR).join("plugin.json").is_file(),
         "shipped": root.join(SHIPPED_PLUGIN).join("plugin.json").is_file(),
         "cefDebugging": cef,
     })
@@ -231,6 +237,7 @@ mod tests {
         assert_eq!(s["installed"], false);
         assert!(s["via"].is_null());
         assert_eq!(s["plugin"], false);
+        assert_eq!(s["oldPlugin"], false);
         assert_eq!(s["shipped"], false);
         assert_eq!(s["cefDebugging"], false);
         let mk = |p: PathBuf| { std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, "{}").unwrap(); };
@@ -238,12 +245,13 @@ mod tests {
         assert_eq!(decky_status(root.path(), home.path())["via"], "decky");
         mk(root.path().join(HEARTH_UNIT));
         mk(root.path().join(SHIPPED_PLUGIN).join("plugin.json"));
-        mk(home.path().join("homebrew/plugins/decky-hearth/plugin.json"));
+        mk(home.path().join(SYNC_PLUGIN_DIR).join("plugin.json"));
         mk(home.path().join(".steam/steam/.cef-enable-remote-debugging"));
         let s = decky_status(root.path(), home.path());
         assert_eq!(s["installed"], true);
         assert_eq!(s["via"], "hearth");
         assert_eq!(s["plugin"], true);
+        assert_eq!(s["oldPlugin"], false);
         assert_eq!(s["shipped"], true);
         assert_eq!(s["cefDebugging"], true);
     }

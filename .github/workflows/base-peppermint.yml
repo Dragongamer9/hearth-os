@@ -370,20 +370,21 @@ jobs:
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
           mkdir -p /tmp/electron && cp -a dist/linux-unpacked/. /tmp/electron/
-      # ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
-      # packed into hearth-decky.tar; build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
-      # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
-      - name: Build the Hearth Decky plugin
+      # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin the image ships, built and packed
+      # into hearth-decky-sync.tar; build.sh puts it in /usr/share/hearth/decky-hearth-sync, where Settings › System › Steam
+      # Game Mode's Decky install takes it from. The older Hearth plugin (hosts/decky-hearth) isn't shipped for now.
+      # Never fails the image: without it, Steam Game Mode works without Hearth's games in Steam's library.
+      - name: Build Hearth Sync (Decky plugin)
         continue-on-error: true
         run: |
           set -e
-          cd hosts/decky-hearth
+          cd hosts/decky-hearth-sync
           npm install -g pnpm@9 >/dev/null
           sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
           pnpm install --no-frozen-lockfile >/dev/null
           pnpm build
           ./package.sh /tmp/decky-out
-          tar -C /tmp/decky-out/decky-hearth -cf "$GITHUB_WORKSPACE/hearth-decky.tar" .
+          tar -C /tmp/decky-out/decky-hearth-sync -cf "$GITHUB_WORKSPACE/hearth-decky-sync.tar" .
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -403,7 +404,7 @@ jobs:
           path: |
             hearth-browser.tar
             hearth-electron.tar
-            hearth-decky.tar
+            hearth-decky-sync.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
   # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
@@ -512,7 +513,7 @@ jobs:
           mkdir -p os/system_files/usr/share/nimbus
           python3 tools/app-bundle.py abi > os/system_files/usr/share/nimbus/app-abi
           echo "::notice title=app ABI::$(cat os/system_files/usr/share/nimbus/app-abi)"
-          if [ -f hearth-decky.tar ]; then mkdir -p os/nimbus-app/decky-hearth && tar -C os/nimbus-app/decky-hearth -xf hearth-decky.tar || rm -rf os/nimbus-app/decky-hearth; fi
+          if [ -f hearth-decky-sync.tar ]; then mkdir -p os/nimbus-app/decky-hearth-sync && tar -C os/nimbus-app/decky-hearth-sync -xf hearth-decky-sync.tar || rm -rf os/nimbus-app/decky-hearth-sync; fi
 
       - name: Build
         run: |
