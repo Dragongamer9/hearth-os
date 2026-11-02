@@ -682,6 +682,11 @@ class Update(unittest.TestCase):
         self.assertIn('no network', r['message'])
         self.m.STEAMOS_UPDATE = os.path.join(self.tmp, 'missing')
         self.assertIn("isn't installed", self.m.update_check()['message'])
+        # 1.0 and later show as MAJOR.MINOR; the version itself stays whole for the panel's logic.
+        self.fake('echo "Update available: 1.0.0"; exit 0\n')
+        r = self.m.update_check(prog=self.prog)
+        self.assertEqual((r['version'], r['message']), ('1.0.0', 'An update is available (1.0)'))
+        self.assertEqual([self.m.shown_version(v) for v in ('1.10.0', '0.6.63', '1.0.1', '')], ['1.10', '0.6.63', '1.0.1', ''])
 
     def wait(self):
         import time

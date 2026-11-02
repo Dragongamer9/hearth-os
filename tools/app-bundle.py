@@ -7,7 +7,7 @@
       image (/usr/share/nimbus/app-abi); release.yml puts the same tag in each bundle's manifest. A bundle only runs on
       an image with exactly its tag, so a bundle never meets image-side files it wasn't built with.
 
-  app-bundle.py pack --src DIR --version V --edition E [--arch x86_64] [--abi TAG] [--min-image V] [--commit SHA] --out PREFIX
+  app-bundle.py pack --src DIR --version V --edition E [--arch x86_64] [--abi TAG] [--min-image V] [--commit SHA] [--date YYYY-MM-DD] --out PREFIX
       Packs DIR (nimbus, electron/...) into PREFIX.tar.zst and writes PREFIX.json, the manifest (every file's SHA-256,
       size and mode; the archive's SHA-256 and size). release.yml signs PREFIX.json (ssh-keygen -Y sign -n hearth-app).
 
@@ -119,6 +119,9 @@ def pack(a):
         'min_image_version': a.min_image,
         'max_image_version': '',
         'commit': a.commit,
+        # The release date shown next to the number (docs/UPDATES.md, "Version numbers"): from the version's
+        # docs/ROADMAP.md heading, "## 1.0 (released 2026-11-02)"; left out when there's none.
+        **({'date': a.date} if a.date else {}),
         'archive': os.path.basename(archive),
         'sha256': sha256(archive),
         'size': os.path.getsize(archive),
@@ -142,12 +145,17 @@ def main():
     k.add_argument('--abi', default='')
     k.add_argument('--min-image', default='')
     k.add_argument('--commit', default='')
+    k.add_argument('--date', default=None, help='release date YYYY-MM-DD (default: from docs/ROADMAP.md)')
     k.add_argument('--level', default='10')
     k.add_argument('--out', required=True)
     a = p.parse_args()
     if a.cmd == 'abi':
         print(abi_tag())
     else:
+        if a.date is None:
+            sys.path.insert(0, os.path.join(ROOT, 'tools'))
+            import hearth_version
+            a.date = hearth_version.date_for(a.version) or ''
         pack(a)
 
 

@@ -390,6 +390,10 @@ impl Bridge {
         match method {
             "host.info" => Ok(json!({
                 "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version, "autoReport": self.auto_report(),
+                // This version's release date (built in from docs/ROADMAP.md), and the Hearth OS image's version and date
+                // (/usr/share/nimbus/version, version-date): Settings › About shows "Hearth OS 1.0 · November 2, 2026".
+                "versionDate": crate::version::date_of_build(&self.version),
+                "imageVersion": crate::version::image().0, "imageDate": crate::version::image().1,
                 // Drawn the compatible way (no DMA-BUF): the page turns its heavy effects down (body.lite).
                 "compatDrawing": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() && crate::renderer::running() == "webkit",
                 // The engine drawing these screens: "webkit" (Tauri), "chromium" (the Electron window app) or "qt"

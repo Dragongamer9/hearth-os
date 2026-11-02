@@ -128,12 +128,18 @@ public sealed class UpdateService
     /// </summary>
     private static readonly System.Text.RegularExpressions.Regex LegacyTag = new(@"^v?0\.[3-5]\.\d+-linux\.");
 
+    /// <summary>
+    /// Is candidate newer? Missing parts count as 0 (System.Version alone ranks 1.0 below 1.0.0), so "1.0", "1.0.0"
+    /// and 1.0.0.0 (the assembly's) are the same, 1.0.0 is newer than 0.6.63 and 1.10.0 newer than 1.9.0
+    /// (docs/UPDATES.md, "Version numbers").
+    /// </summary>
     public static bool IsNewer(string candidate, string current)
     {
         static Version Parse(string s)
         {
-            var core = s.Split('-', '+')[0];
-            return Version.TryParse(core.Count(c => c == '.') == 0 ? core + ".0" : core, out var v) ? v : new Version(0, 0);
+            var core = s.Trim().TrimStart('v', 'V').Split('-', '+')[0];
+            var n = core.Split('.').Select(p => int.TryParse(p, out var x) && x >= 0 ? x : 0).Concat(new[] { 0, 0, 0, 0 }).Take(4).ToArray();
+            return new Version(n[0], n[1], n[2], n[3]);
         }
         return Parse(candidate) > Parse(current);
     }

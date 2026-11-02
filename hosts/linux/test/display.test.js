@@ -107,3 +107,15 @@ test('the old 0.3-0.5 Linux previews (and the bridge) are ignored; plain 0.3+ re
   const { newer } = require('../src/updates');
   assert.equal(newer('v0.4.0-linux.100', '0.4.0-linux.16'), true);
 });
+
+test('updates: 1.0 and later (MAJOR.MINOR, tags say v1.0.0) compare by number', () => {
+  const { newer } = require('../src/updates');
+  assert.equal(newer('v1.0.0', '0.6.63'), true);
+  assert.equal(newer('v1.0', '0.6.63'), true);
+  assert.equal(newer('0.6.0', '0.5.9'), true);
+  assert.equal(newer('v1.10.0', '1.9.0'), true);
+  assert.equal(newer('1.10', '1.9'), true);
+  assert.equal(newer('v1.0', '1.0.0'), false);
+  assert.equal(newer('v1.0.0', '1.0'), false);
+  assert.equal(newer('v0.6.63', '1.0.0'), false);
+});

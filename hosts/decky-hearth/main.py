@@ -928,6 +928,13 @@ UPDATE = {'state': 'idle', 'pct': None, 'message': '', 'version': ''}
 _update_lock = threading.Lock()
 
 
+def shown_version(v):
+    """Hearth OS versions as people see them (docs/UPDATES.md, "Version numbers"): from 1.0 on MAJOR.MINOR, so 1.0.0 is
+    "1.0" and 1.10.0 "1.10"; 0.x (0.6.63) and 1.0.1 stay whole."""
+    m = re.match(r'^(v?)(\d+)\.(\d+)\.0(?=$|[+-])', v or '')
+    return m.group(1) + m.group(2) + '.' + m.group(3) + v[m.end():] if m and int(m.group(2)) >= 1 else (v or '')
+
+
 def update_result(mode, code, out, err):
     """What the updater's answer means for the panel: {state, pct, message, version}.
     check: 0 available, 7 up to date; apply: 0 ready for a restart, 7 nothing new; anything else failed."""
@@ -940,7 +947,7 @@ def update_result(mode, code, out, err):
     if code == 7:
         return {'state': 'none', 'pct': None, 'message': 'Hearth OS is up to date', 'version': ''}
     if code == 0 and mode == 'check':
-        return {'state': 'available', 'pct': None, 'message': 'An update is available' + (' (%s)' % version if version else ''), 'version': version}
+        return {'state': 'available', 'pct': None, 'message': 'An update is available' + (' (%s)' % shown_version(version) if version else ''), 'version': version}
     if code == 0:
         return {'state': 'ready', 'pct': 100, 'message': 'Ready: restart to finish updating (the version before stays installed)', 'version': version}
     return {'state': 'error', 'pct': None, 'message': msg.replace('Hearth OS: ', '') or 'The update failed', 'version': ''}

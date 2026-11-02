@@ -34,12 +34,19 @@ const val = x => x != null && x !== '' && !(Array.isArray(x) && !x.length);
 const kv = rows => `<dl class="kv">${rows.filter(r => val(r[1])).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
 const meter = (label, used, total) => total ? `<div class="meter"><span>${esc(label)}</span><span class="muted">${human(used)} of ${human(total)}</span><span class="bar" style="grid-column:span 2"><i style="width:${Math.min(100, used / total * 100).toFixed(1)}%"></i></span></div>` : '';
 
+// Hearth OS versions as people see them (docs/UPDATES.md, "Version numbers"): 1.0.0 is "1.0" (0.x stays whole), with
+// the release date when the image has one: "1.0 · November 2, 2026".
+function hearthShown(os) {
+  const v = String(os.hearth || ''), m = /^(\d+)\.(\d+)\.0$/.exec(v), d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(os.hearthDate || '');
+  const date = d ? new Date(+d[1], d[2] - 1, +d[3]).toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'}) : '';
+  return (m && +m[1] >= 1 ? m[1] + '.' + m[2] : v) + (date ? ' · ' + date : '');
+}
 function sections() {
   const d = D, f = d.fetch || {}, dev = d.device || {}, os = d.os || {}, cpu = d.cpu || {}, mem = d.memory || {};
   const out = [];
   out.push(['Device', [['Model', [dev.vendor, dev.product].filter(Boolean).join(' ') || f.device], ['Version', dev.version], ['Kind', dev.chassis], ['Name on the network', dev.hostname || f.host],
     ['Board', dev.board], ['Firmware', dev.bios], ['Starts with', dev.firmware], ['Secure Boot', dev.secureBoot == null ? '' : dev.secureBoot ? 'On' : 'Off']]]);
-  out.push(['System', [['Hearth OS', os.hearth ? `${os.hearth}${os.edition ? ' · ' + os.edition + ' edition' : ''}` : ''], ['Built on', os.editionDetail || os.name], ['Image', os.imageRef ? `${os.imageRef}:${os.imageTag || ''}` : ''],
+  out.push(['System', [['Hearth OS', os.hearth ? `${hearthShown(os)}${os.edition ? ' · ' + os.edition + ' edition' : ''}` : ''], ['Built on', os.editionDetail || os.name], ['Image', os.imageRef ? `${os.imageRef}:${os.imageTag || ''}` : ''],
     ['Kernel', os.kernel ? `Linux ${os.kernel} (${os.arch})` : f.kernel], ['Desktop', [os.desktop, os.session].filter(Boolean).join(' · ')], ['Running for', up(os.uptime || f.uptimeSeconds)], ['System tools', os.toolsVersion]]]);
   out.push(['Processor', [['Name', cpu.name || (f.cpu && f.cpu.name)], ['Cores', cpu.cores ? `${cpu.cores} cores, ${cpu.threads} threads` : cpu.threads], ['Top speed', cpu.maxMhz ? (cpu.maxMhz / 1000).toFixed(2) + ' GHz' : ''],
     ['Speed now', cpu.nowMhz ? (cpu.nowMhz / 1000).toFixed(2) + ' GHz' : ''], ['Power mode', cpu.governor], ['Virtual machines', cpu.virtualization ? cpu.virtualization + ' supported' : ''], ['Load', cpu.load]]]);
@@ -82,7 +89,7 @@ function render() {
     }).join('')}<div class="row"><button class="btn small f" id="disks">Open Disks</button></div></section>` : '';
   $('#main').innerHTML = `<div class="scroll" style="flex:1">
     <div class="hero"><span class="logo" style="width:3.2em;height:3.2em;border-radius:16px;display:grid;place-items:center;background:linear-gradient(140deg,var(--ember),#c2410c);color:var(--ink)">${H.icons.hearth}</span>
-      <div class="grow"><div class="big">${esc(model)}</div><div class="muted">${esc(os.hearth ? `Hearth OS ${os.hearth}${os.edition ? ' · ' + os.edition : ''}` : (f.os || ''))}</div>
+      <div class="grow"><div class="big">${esc(model)}</div><div class="muted">${esc(os.hearth ? `Hearth OS ${hearthShown(os)}${os.edition ? ' · ' + os.edition : ''}` : (f.os || ''))}</div>
       <div class="chips">${[d.cpu && d.cpu.name, (d.gpus || [])[0] && d.gpus[0].name, d.memory && d.memory.total && human(d.memory.total) + ' memory'].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`).join('')}</div></div></div>
     <div class="grid">${cards}${driveCard}</div></div>`;
   if ($('#disks')) $('#disks').onclick = () => H.call('app.open', { what: 'disks' }).catch(() => H.toast('Open Disks from the app menu'));

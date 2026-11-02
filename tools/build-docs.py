@@ -12,6 +12,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 R2 = 'https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/'
 VERSION = re.search(r'<Version>([^<]+)</Version>', open(os.path.join(ROOT, 'hosts/windows/Nimbus.Host/Nimbus.Host.csproj')).read()).group(1)
 ROADMAP = open(os.path.join(ROOT, 'docs/ROADMAP.md')).read()
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import hearth_version  # noqa: E402  (MAJOR.MINOR display and release dates; docs/UPDATES.md, "Version numbers")
+SHOWN = hearth_version.show(VERSION)   # 1.0.0 -> "1.0"; 0.6.63 stays
 
 PAGES = [
     ('index', 'Overview', 'Start here'),
@@ -119,7 +122,7 @@ def page(slug, title, lead, body):
 <div class="wrap layout">
   <aside class="side" aria-label="Sections">{''.join(side)}</aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS {VERSION}</span>{picker()}</div>
+    <div class="crumb"><span>Docs · for Hearth OS {SHOWN}</span>{picker()}</div>
     <h1>{title}</h1>
     <p class="lead">{lead}</p>
 {wrap_sections(body)}
@@ -291,6 +294,9 @@ so you can copy back anything you need. After 30 days it's deleted.</li>
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
 {h2('versions', 'Versions')}
+<p>From 1.0 on, Hearth OS versions have two numbers: the first changes with a big release (1.0, then 2.0), the
+second with each update after it (1.1, 1.2 … 1.10). Settings › About shows the version with the day it came out, like
+<b>Hearth OS 1.0 · November 2, 2026</b>. Versions before 1.0 kept their three numbers (0.6.63).</p>
 <p>What changed in each version, and what's coming next: <a href="releases.html">release notes</a>.</p>
 '''
 
@@ -758,21 +764,36 @@ def roadmap_sections():
     return out
 
 
+def nice_date(d):
+    """2026-11-02 -> November 2, 2026 (the page's own script shows it in the reader's language)."""
+    if not d:
+        return ''
+    y, m, day = (int(x) for x in d.split('-'))
+    months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    return f'<time datetime="{d}">{months[m - 1]} {day}, {y}</time>'
+
+
+def rel_title(v, date):
+    """"Hearth OS 1.0 · November 2, 2026", or just "Hearth OS 0.6.63" when the heading has no date."""
+    return f'Hearth OS {hearth_version.show(v)}' + (f' · {nice_date(date)}' if date else '')
+
+
 def releases_body():
     secs = roadmap_sections()
     vers = []
     for head, items in secs:
-        m = re.match(r'^(\d+)\.(\d+)\.(\d+)(\s*\(released\))?$', head)
+        # "1.0", "1.0 (released)", "1.0 (released 2026-11-02)", "0.6.63 (released)": two or three parts, any major.
+        m = hearth_version.HEADING.match('## ' + head)
         if not m:
             continue
         done = [re.sub(r'^\[x\]\s*', '', i) for i in items if not i.startswith('[ ]')]
         if not done:
             continue
-        vers.append(((int(m[1]), int(m[2]), int(m[3])), head.split()[0], done))
-    vers.sort(reverse=True)
+        vers.append((hearth_version.key(m[1], 4), m[1], done, m[2]))
+    vers.sort(key=lambda x: x[0], reverse=True)
     nxt = [i for h, items in secs if h in ('Later', 'Hearth Browser, next') for i in items]
     nxt = [re.sub(r'^\[[ x]\]\s*', '', i) for i in nxt]
-    body = [h2('latest', f'Hearth OS {vers[0][1]}' + ' <span class="ver">Latest</span>')]
+    body = [h2('latest', rel_title(vers[0][1], vers[0][3]) + ' <span class="ver">Latest</span>')]
     body.append('<ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in vers[0][2]) + '</ul>')
     body.append('<p>Installed systems update themselves; see <a href="updates.html">updates</a>.</p>')
     if nxt:
@@ -780,9 +801,12 @@ def releases_body():
         body.append('<p>Planned, in no fixed order. Something missing? <a href="requests.html">Ask for it</a>.</p>')
         body.append('<ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in nxt) + '</ul>')
     body.append(h2('earlier', 'Earlier versions'))
-    for _, v, items in vers[1:]:
-        body.append(f'<details class="q" id="v{v}"><summary>Hearth OS {v} <span class="cnt">{len(items)} change{"s" if len(items) != 1 else ""}</span></summary>'
+    for _, v, items, date in vers[1:]:
+        body.append(f'<details class="q" id="v{v}"><summary>{rel_title(v, date)} <span class="cnt">{len(items)} change{"s" if len(items) != 1 else ""}</span></summary>'
                     '<div class="a"><ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in items) + '</ul></div></details>')
+    # Dates in the reader's own language (the English text above stays for no script).
+    body.append('<script>[].forEach.call(document.querySelectorAll("time[datetime]"),function(t){var m=/^(\\d{4})-(\\d\\d)-(\\d\\d)$/.exec(t.getAttribute("datetime"));'
+                'if(m)try{t.textContent=new Date(+m[1],m[2]-1,+m[3]).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});}catch(e){}});</script>')
     return '\n'.join(body)
 
 

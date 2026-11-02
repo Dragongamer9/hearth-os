@@ -1593,6 +1593,14 @@ if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHos
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : (window.nimbusHost || null);
 // Which platform we're on; host.info fills in the details at boot. Text that names Windows things checks this.
 const HOSTINFO = {platform: (window.nimbusHost && window.nimbusHost.platform==='android') || (!window.nimbusHost && /[?&]preview=android/.test(location.search)) ? 'android' : window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
+// Hearth OS version numbers as people see them (docs/UPDATES.md, "Version numbers"): from 1.0 on MAJOR.MINOR, so
+// 1.0.0 (what the build files say) shows as "1.0" and 1.10.0 as "1.10"; 0.x (0.6.63) and 1.0.1 stay whole. A release
+// date (YYYY-MM-DD) goes next to it in the reader's language: "1.0 · November 2, 2026"; without one, just the number.
+function verShow(v){ v=String(v==null?'':v).trim(); const m=/^(v?)(\d+)\.(\d+)\.0(?=$|[+-])/.exec(v); return m&&+m[2]>=1 ? m[1]+m[2]+'.'+m[3]+v.slice(m[0].length) : v; }
+function verDate(d){ const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(String(d||'')); if(!m) return ''; try{ return new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}); }catch(e){ return ''; } }
+function verWithDate(v,d){ const t=verDate(d); return verShow(v)+(t&&v?' · '+t:''); }
+// The release date of the Hearth OS image (system installs) or of this app, when it's for that same version.
+function verDateOf(v){ const same=(a,b)=>!!a&&!!b&&verShow(a).replace(/^v/,'')===verShow(b).replace(/^v/,''); return same(v,HOSTINFO.imageVersion)?HOSTINFO.imageDate:same(v,HOSTINFO.version)?HOSTINFO.versionDate:''; }
 const LINUX = HOSTINFO.platform==='linux';
 // Hearth for Android (hosts/android): Android runs the device (Wi-Fi, Bluetooth, the screen), so Settings shows
 // only what the app does and opens Android's own pages for the rest (androidPage below).
@@ -3921,7 +3929,7 @@ const DG_DEMO_UPD = {state:'idle', error:null, status:{booted:{version:'Preview 
   available:{version:'Preview 3', timestamp:'2026-10-28T09:00:00Z'}, rollback:{version:'Preview 1', timestamp:'2026-10-02T18:00:00Z'}, rollbackQueued:false}};
 function pageDfUpdates(){
   if(!host && !SYSUPD.s) SYSUPD.s=JSON.parse(JSON.stringify(DG_DEMO_UPD));   // the browser preview
-  const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?x.version:'';
+  const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?verShow(x.version):'';
   const when=x=>{ const t=x&&x.timestamp&&Date.parse(x.timestamp); return t?new Date(t).toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'}):''; };
   let h=pageSystemUpdate({df:true});
   if(!u) return h+unlockRows()+dgRecoveryRows();
@@ -4398,14 +4406,14 @@ function discordQam(mini){
 function pageAbout(){
   const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?(ANDROID&&HOSTINFO.version||'…'):'Browser preview');
   const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
-  let h = `<div class="about-head"><div class="amark">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${APP} ${esc(ver||'')}</h3>
+  let h = `<div class="about-head"><div class="amark">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${sysVer?'Hearth OS '+esc(verWithDate(sysVer, verDateOf(sysVer))):APP+' '+esc(verWithDate(ver||'', verDateOf(ver)))}</h3>
       <div class="muted">${LINUX?(HOSTINFO.system?osEditionName():'Hearth for Linux'):ANDROID?'Hearth for Android':'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
       ${ANDROID?'':`<button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button>`}</div>`;
   h += shead('This device');
   let d='';
   if(i.device) d += infoRow('ab-dev','Device', i.device);
   d += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':ANDROID?'Android':'Windows'));
-  if(sysVer) d += infoRow('ab-img','Hearth OS version', sysVer);
+  if(sysVer) d += infoRow('ab-img','Hearth OS version', verWithDate(sysVer, verDateOf(sysVer)));
   if(i.cpu) d += infoRow('ab-cpu','Processor', i.cpu + (i.cores?` · ${i.cores} threads`:''));
   if(i.gpu) d += infoRow('ab-gpu','Graphics', i.gpu);
   if(i.memoryBytes) d += infoRow('ab-ram','Memory', gb(i.memoryBytes)+' RAM');
@@ -5893,7 +5901,7 @@ function stgHealthLine(d){
     b&&b.percent!=null?`Battery ${b.percent}%${b.charging?' (charging)':''}`:'',
     d.free!=null?lkBytes(d.free)+' free':'',
     d.lastBackup?'Backed up '+stgAgo(d.lastBackup):d.lastBackup===0?'Not backed up yet':'',
-    d.version?`Hearth ${esc(d.version)}${d.upToDate===false?` (${esc(d.newest)} is out)`:''}`:'',
+    d.version?`Hearth ${esc(verShow(d.version))}${d.upToDate===false?` (${esc(verShow(d.newest))} is out)`:''}`:'',
     boot.fellBack?'Last update didn\'t start: went back to the previous version':boot.good===false?'Start not confirmed yet':''].filter(Boolean).join(' · ');
 }
 function stgHealthTag(d){
@@ -6687,8 +6695,8 @@ function onUpdate(s){
   UPD.status=s;
   if(s && s.state==='available' && s.latest && UPD.notified!==s.latest.version){
     UPD.notified=s.latest.version;
-    NOTIFS.unshift({i:'dl', t:`${APP} ${s.latest.version} is available`, s:'Select to open Settings › Updates', go:'updates'});
-    updateBadge(); toast(`${APP} ${s.latest.version} is available. See Settings › Updates.`);
+    NOTIFS.unshift({i:'dl', t:`${APP} ${verShow(s.latest.version)} is available`, s:'Select to open Settings › Updates', go:'updates'});
+    updateBadge(); toast(`${APP} ${verShow(s.latest.version)} is available. See Settings › Updates.`);
   }
   if(s && s.state==='error' && s.error) toast(s.error);
   refreshUI();
@@ -6699,11 +6707,11 @@ function pageUpdates(){
   if(LINUX && HOSTINFO.system) return pageSystemUpdate();
   const s=UPD.status;
   if(!s) return note('Checking…');
-  const L=s.latest, mb=b=>b?` (${(b/1e6).toFixed(0)} MB)`:'';
+  const L=s.latest, mb=b=>b?` (${(b/1e6).toFixed(0)} MB)`:'', LV=L?verWithDate(L.version, L.published):'';
   const line = {idle:'Not checked yet', checking:'Checking for updates…', upToDate:'You have the latest version',
-    available:`Version ${L?.version} is available${mb(L?.size)}`, downloading:`Downloading ${L?.version}… ${Math.round((s.progress||0)*100)}%`,
-    ready:`Version ${L?.version} is ready to install`, error:s.error||'Something went wrong'}[s.state] || s.state;
-  let h = `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${APP} ${esc(s.current)}</b><small>${esc(line)}${s.lastChecked?` · checked ${ago(s.lastChecked).toLowerCase()}`:''}</small></div>
+    available:`Version ${LV} is available${mb(L?.size)}`, downloading:`Downloading ${verShow(L?.version)}… ${Math.round((s.progress||0)*100)}%`,
+    ready:`Version ${verShow(L?.version)} is ready to install`, error:s.error||'Something went wrong'}[s.state] || s.state;
+  let h = `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${APP} ${esc(verWithDate(s.current, verDateOf(s.current)))}</b><small>${esc(line)}${s.lastChecked?` · checked ${ago(s.lastChecked).toLowerCase()}`:''}</small></div>
     ${s.state==='checking'||s.state==='downloading'?'<span class="mini-spin"></span>':''}</div>`;
   if(s.state==='downloading') h += `<div class="row"><div class="rt"><div class="bar"><i style="width:${Math.round((s.progress||0)*100)}%"></i></div></div></div>`;
   if(s.state==='available' && s.canInstallHere)
@@ -6716,7 +6724,7 @@ function pageUpdates(){
   if(!s.canInstallHere) h += note(LINUX && HOSTINFO.system ? 'This is the Hearth OS install, so it updates together with the system: Hearth downloads updates in the background and applies them the next time you restart.'
     : LINUX ? 'This copy of '+APP+' runs from source, so it can only check for updates. The AppImage from GitHub Releases updates itself.'
     : `This is a development copy of ${APP}. Updates install into <code>${esc(s.installFolder)}</code>, the copy that install-shell.cmd set up.`);
-  if(L && L.notes && ['available','ready','downloading'].includes(s.state)) h += shead("What's new") + note(esc(L.notes).replace(/\n/g,'<br>'));
+  if(L && L.notes && ['available','ready','downloading'].includes(s.state)) h += shead(`What's new in ${esc(LV)}`) + note(esc(L.notes).replace(/\n/g,'<br>'));
   return h;
 }
 
@@ -6766,7 +6774,7 @@ async function loginHost(){
 // between system updates; the version built into the system always stays as the fallback (hearth-core appchannel.rs).
 const APPUPD = {s:null};
 function loadAppUpd(){ if(host && LINUX && HOSTINFO.system) call('appUpdates.status').then(r=>{ APPUPD.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
-function appUpdLabel(u){ const run=u.running||u.builtin||'?'; return u.running ? `${APP} app: ${run} (built-in ${u.builtin||'?'})` : `${APP} app: built-in ${u.builtin||'?'}`; }
+function appUpdLabel(u){ const run=verShow(u.running||u.builtin||'?'), bi=verShow(u.builtin||'?'); return u.running ? `${APP} app: ${run} (built-in ${bi})` : `${APP} app: built-in ${bi}`; }
 function appUpdRows(){
   if(!LINUX || !HOSTINFO.system) return '';
   const u=APPUPD.s;
@@ -6776,15 +6784,15 @@ function appUpdRows(){
   const pct=Math.round((u.progress||0)*100), L=u.latest;
   const line = u.unavailable ? u.unavailable
     : u.state==='checking' ? 'Checking for an app update…'
-    : u.state==='downloading' ? `Downloading ${L&&L.version||''}… ${pct}%`
-    : u.state==='installed' || (u.bundle && u.bundle!==u.running) ? `${u.bundle} is ready. It's used the next time ${APP} starts.`
-    : u.state==='available' ? `${L&&L.version} is available`
+    : u.state==='downloading' ? `Downloading ${verShow(L&&L.version||'')}… ${pct}%`
+    : u.state==='installed' || (u.bundle && u.bundle!==u.running) ? `${verShow(u.bundle)} is ready. It's used the next time ${APP} starts.`
+    : u.state==='available' ? `${verWithDate(L&&L.version, L&&(L.date||L.published))} is available`
     : u.state==='error' ? (u.error||'Something went wrong')
     : u.note ? u.note : 'Up to date';
   h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${esc(appUpdLabel(u))}</b><small>${esc(line)}${u.lastCheck?` · checked ${ago(u.lastCheck).toLowerCase()}`:''}</small></div>${u.state==='checking'||u.state==='downloading'?'<span class="mini-spin"></span>':''}</div>`;
   h += `<button class="row" data-f data-k="au-mode" data-act="appUpdMode"><span class="ricon">${I.refresh}</span><div class="rt"><b>Hearth app updates</b><small>${APP}'s own screens and app update by themselves in minutes, between system updates. The version built into the system always stays as the fallback.</small></div><div class="rv">${modes[u.mode]||'Automatic'} ›</div></button>`;
   if(!u.unavailable && u.mode!=='off' && u.state!=='checking' && u.state!=='downloading')
-    h += `<button class="row" data-f data-k="au-check" data-act="appUpdCheck"><span class="ricon">${I.dl}</span><div class="rt"><b>${u.state==='available'&&u.mode==='ask'?'Get '+esc(L&&L.version||'the update'):'Check for an app update'}</b></div></button>`;
+    h += `<button class="row" data-f data-k="au-check" data-act="appUpdCheck"><span class="ricon">${I.dl}</span><div class="rt"><b>${u.state==='available'&&u.mode==='ask'?'Get '+esc(verShow(L&&L.version)||'the update'):'Check for an app update'}</b></div></button>`;
   if(u.bundle && u.bundle!==u.running)
     h += `<button class="row" data-f data-k="au-restart" data-act="appUpdRestart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP} now</b><small>Takes a few seconds. If ${esc(u.bundle)} doesn't come up, ${APP} goes back to its built-in version by itself.</small></div></button>`;
   if(u.running || u.bundle)
@@ -6887,17 +6895,17 @@ function pageSystemUpdate(o={}){
   const u=SYSUPD.s;
   let h=shead('System', u&&u.state!=='idle');
   if(!u) return h+note('Checking…');
-  const st=u.status||{}, v=x=>x&&x.version?x.version:'';
+  const st=u.status||{}, v=x=>x&&x.version?verShow(x.version):'';
   if(u.state==='updating'){
     h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${st.available?`Getting version ${esc(v(st.available))}`:'Getting the newest version'}</small></div></div>`;
     return h + sysUpdCard(u) + note('Hearth also updates by itself in the background and finishes the next time you restart.') + appUpdRows() + newOsRows();
   }
   const line = u.state==='checking' ? 'Checking for updates…'
     : st.staged ? `Version ${v(st.staged)} is downloaded. Restart to finish.`
-    : st.available ? `Version ${v(st.available)} is available`
+    : st.available ? `Version ${v(st.available)}${verDate(st.available.timestamp)?' · '+verDate(st.available.timestamp):''} is available`
     : u.error ? u.error
     : 'Up to date';
-  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${esc(line)}</small></div>
+  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(verWithDate(v(st.booted), verDateOf(st.booted&&st.booted.version)))}</b><small>${esc(line)}</small></div>
       ${u.state!=='idle'?'<span class="mini-spin"></span>':''}</div>`;
   if(u.state==='idle'){
     if(st.staged) h += `<button class="row" data-f data-k="su-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to finish updating</b><small>Takes a minute. If something's wrong, the previous version is still in the boot menu.</small></div></button>`;
@@ -6913,14 +6921,14 @@ function pageSystemUpdate(o={}){
 // this one; hearth-admin rollback makes it the one that starts next, and running it again before restarting undoes
 // that). Shown only when the system reports a previous version.
 function rollbackRows(st){
-  const rb=st && st.rollback, v=x=>x&&x.version?x.version:'';
+  const rb=st && st.rollback, v=x=>x&&x.version?verShow(x.version):'';
   if(!LINUX || !HOSTINFO.system || !rb || !v(rb) || st.staged) return '';
   if(st.rollbackQueued) return `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(rb))}</b><small>Hearth OS ${esc(v(rb))} starts at the next restart. Your games and files stay.</small></div></button>`
     + `<button class="row" data-f data-k="su-rollback" data-act="sysRollback" data-undo="1"><span class="ricon">${I.x}</span><div class="rt"><b>Stay on ${esc(v(st.booted))}</b><small>Don't go back after all</small></div></button>`;
   return `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Go back to ${esc(v(rb))}</b><small>If something broke after the last update: restarts into the version before this one. Your games and files stay.</small></div><div class="rv">›</div></button>`;
 }
 function sysRollback(undo){
-  const st=(SYSUPD.s&&SYSUPD.s.status)||{}, v=x=>x&&x.version?x.version:'';
+  const st=(SYSUPD.s&&SYSUPD.s.status)||{}, v=x=>x&&x.version?verShow(x.version):'';
   const go=()=>call('system.update.rollback',{},180000).then(r=>{ if(r) SYSUPD.s=r; const q=SYSUPD.s&&SYSUPD.s.status&&SYSUPD.s.status.rollbackQueued; toast(q?`Hearth OS ${v(st.rollback)} starts at the next restart`:`Staying on ${v(st.booted)}`); render(q?'su-rbgo':'su-rollback',true); }).catch(e=>toast(e.message));
   if(undo) return go();
   openSheet({title:`Go back to Hearth OS ${v(st.rollback)}?`, sub:`The version before this one (${v(st.booted)}) starts at your next restart. Your games, saves and files stay. Hearth updates again by itself later; if the problem is still there then, send logs from Settings › System › Help & logs.`, items:[
@@ -8803,8 +8811,8 @@ function scOut(){ const d=((S.sys.audio||{}).devices||[]).find(x=>x.isDefault); 
 function scBatt(){ const b=S.sys.battery; return !b ? '' : b.present===false ? 'Plugged in (no battery)' : b.pct==null ? '' : `${b.pct}%${b.charging?' · charging':''}`; }
 function scPmode(){ const m=PMODES.find(x=>x[0]===S.sys.powerMode); return m ? m[1] : ''; }
 function scVersion(){
-  if(LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted && SYSUPD.s.status.booted.version) return SYSUPD.s.status.booted.version;
-  return UPD.status ? UPD.status.current : host ? (HOSTINFO.version||'…') : 'Browser preview';
+  if(LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted && SYSUPD.s.status.booted.version) return verShow(SYSUPD.s.status.booted.version);
+  return UPD.status ? verShow(UPD.status.current) : host ? verShow(HOSTINFO.version||'…') : 'Browser preview';
 }
 function scUpdate(){
   if(LINUX && HOSTINFO.system){ const u=SYSUPD.s; if(!u) return host?'Checking…':''; const st=u.status||{}; return u.state==='updating'?'Updating…':u.state==='checking'?'Checking…':st.staged?'Restart to finish updating':st.available?'An update is available':u.error?'Couldn\'t check':'Up to date'; }

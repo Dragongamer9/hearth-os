@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       keep:
-        description: 'Release to keep public, e.g. v0.0.17 (empty: the newest version)'
+        description: 'Release to keep public, e.g. v1.0.0 (empty: the newest version)'
         type: string
         default: ''
 
@@ -28,8 +28,9 @@ jobs:
           set -euo pipefail
           all=$(gh api --paginate "repos/$REPO/releases?per_page=100" -q '.[] | [.id, .tag_name, .draft, .prerelease] | @tsv')
           if [ -z "$KEEP" ]; then
-            # Newest full 0.0.x release (v0.3-v0.5 tags are from before the renumbering).
-            KEEP=$(printf '%s\n' "$all" | awk -F'\t' '$3=="false" && $4=="false" && $2 ~ /^v0\.0\.[0-9]+$/ {print $2}' | sort -V | tail -1)
+            # Newest full release: plain vX.Y or vX.Y.Z of any major (v1.0.0 is newer than v0.6.63, v1.10.0 than v1.9.0;
+            # sort -V orders them by number). Old "-linux.N" previews and "-old-" renamed drafts never match.
+            KEEP=$(printf '%s\n' "$all" | awk -F'\t' '$3=="false" && $4=="false" && $2 ~ /^v[0-9]+\.[0-9]+(\.[0-9]+)?$/ {print $2}' | sort -V | tail -1)
           fi
           [ -n "$KEEP" ] || { echo "No release to keep"; exit 1; }
           echo "Keeping $KEEP"
