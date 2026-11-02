@@ -168,7 +168,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
-- Hearth Mods is laid out again, game first: a Library of your games with their art, each game's hero (mods on, load order health, last deployed, Play modded), the mod list as a priority ladder with drag or controller moving, conflict badges and a details panel, and Modlists, Downloads, Organizer, Accounts and Settings in a side rail.
+- Hearth Mods' Play modded starts Skyrim and other Bethesda games through their script extender with the right Proton (it only asked Steam, which ran the plain launcher), logs every step for Send logs, and Add to Steam puts a game's Modded, Hearth Mod Organizer and Mod Organizer 2 entries in Steam with its art. Hearth Mods is also laid out again, game first: a Library of your games with their art, each game's hero (mods on, load order health, last deployed, Play modded), the mod list as a priority ladder with drag or controller moving, conflict badges and a details panel, and Modlists, Downloads, Organizer, Accounts and Settings in a side rail.
 - Hearth's own apps follow the desktop's look (Settings › Appearance: Steam-style or Hearth, dark or light, the accent), live while they're open: the Tauri apps, Theater and Hearth Browser through ~/.config/hearth/theme.css / theme.json (hosts/hearth-apptheme), and KDE apps (Hearth Files, KCalc, Konsole, Kate, Okular) through kdeglobals' colour scheme when they're next opened, which also fixes KCalc staying light in Desktop Mode.
 
 ## 1.0 (released 2026-11-02)

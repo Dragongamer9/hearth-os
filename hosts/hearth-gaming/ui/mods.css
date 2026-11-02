@@ -241,6 +241,10 @@ footer b.btnA, footer b.btnB, footer b.btnX, footer b.btnY { border:1.5px solid 
 footer .ctx { margin-left:auto; color:var(--faint); }
 
 /* ---------------------------------------------------------------- sizes: handhelds, narrow windows, TVs */
+@media (max-width: 1440px) {
+  .hero .acts { gap:.4em; }
+  .btn.big { padding:.5em .85em; font-size:.92em; gap:.35em; }
+}
 @media (max-width: 1180px) {
   .work { grid-template-columns:minmax(0, 1fr) minmax(15em, 20em); }
   .hero h1 { font-size:1.8em; }

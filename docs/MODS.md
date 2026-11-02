@@ -27,6 +27,24 @@ and **Settings**; on a game's page it also has the games' covers, to switch game
   the featured (official) lists and the gallery with search and game filters. **Downloads** groups the queue into
   needs you, downloading and finished. **Settings**: the Wabbajack engine, adult lists, the Nexus account.
 
+### Play modded and Add to Steam (`src/launch.rs`)
+
+- **Play modded** runs `hearth-mods --play-modded <game>` (from the window, and from Game Mode through the worker):
+  a game with an organizer instance through the organizer (the mods laid over it while it runs); a game on Hearth
+  Mods' own list through its script extender when it's in the game folder (`skse64_loader.exe` for Skyrim SE: Steam's
+  own Play only ever starts `SkyrimSELauncher.exe`), else through Hearth (`nimbus --play-now`). Windows programs run
+  with umu-launcher (the system's, else Hearth's own copy from hearth-core `tools.rs`) in the game's Steam prefix, with
+  the Steam Proton the prefix was made with (`compatdata/<app>/version`), `SteamAppId` and Steam's folder so a Steam
+  DRM game finds the running Steam client. A start that fails within a few seconds comes back to the page as an error.
+- Every step (what ran, exit codes, the program's output) goes to Hearth's log and `mods/logs/launch.log`; Proton's
+  log of each modded start is `mods/logs/steam-<app>.log`, and the worker's own output `mods/logs/worker.log`. Send
+  logs has them all in "Hearth Mods (modded starts)".
+- **Add to Steam** (a game's hero and ⋯): "<Game> (Modded)" (`--play-modded`), "<Game> — Hearth Mod Organizer"
+  (`--organizer <instance> run`) and "<Game> — Mod Organizer 2" (`--run-mo2 <instance>`: the instance's
+  ModOrganizer.exe under Proton). Hearth Mods keeps them in `mods/steam-shortcuts.json` and never writes Steam's files;
+  Hearth Sync (docs/HEARTH-SYNC.md) makes them non-Steam shortcuts with the game's art in Steam's Game Mode, one per
+  entry id, so adding again updates them; taking them out removes the shortcuts.
+
 The look is the desktop's (theme.css tokens, Steam-style dark by default). The page is `ui/mods.html`, `ui/mods.css`
 and `ui/mods.js`; opened in a browser it answers from its own sample data.
 

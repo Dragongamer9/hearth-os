@@ -204,19 +204,6 @@ pub fn art_data(v: &str) -> Option<String> {
     Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
-/// Plays a game the way the library does: a Steam game through Steam, anything else through Hearth (`hearth
-/// --windowed --play <id>`, which hands the game to a Hearth window that's already open).
-pub fn play(g: &GameEntry) -> Result<(), String> {
-    let quiet = |c: &mut std::process::Command| { c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()); };
-    if g.id.is_empty() || g.id.len() > 200 || !g.id.contains(':') || g.id.chars().any(|c| c.is_control() || c == '"' || c == '\\') { return Err("That isn't a game Hearth knows.".into()); }
-    let mut c = match (g.source.as_str(), g.steam_app) {
-        ("steam", Some(app)) => { let mut c = std::process::Command::new("xdg-open"); c.arg(format!("steam://rungameid/{app}")); c }
-        _ => { let mut c = std::process::Command::new("hearth"); c.args(["--windowed", "--play", &g.id]); c }
-    };
-    quiet(&mut c);
-    c.spawn().map(|mut ch| { std::thread::spawn(move || { let _ = ch.wait(); }); }).map_err(|e| format!("Couldn't start the game ({e})"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,8 +219,6 @@ mod tests {
         std::fs::write(&txt, "no").unwrap();
         assert_eq!(art_data(txt.to_str().unwrap()), None, "only pictures");
         assert_eq!(art_data(t.path().join("missing.jpg").to_str().unwrap()), None);
-        let g = GameEntry { id: "x".into(), ..Default::default() };
-        assert!(play(&g).is_err(), "not a library id");
     }
     #[test]
     fn steam_folders() {

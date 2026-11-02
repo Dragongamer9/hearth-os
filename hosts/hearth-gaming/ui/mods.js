@@ -57,6 +57,7 @@ const I = {
   pause: svg('<path d="M9 6v12M15 6v12"/>'),
   check: svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
   warn: svg('<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4M12 17v.2"/>'),
+  steamadd: svg('<rect x="3.5" y="5" width="12" height="14" rx="2"/><path d="M9.5 9.5v5M7 12h5M19.5 8.5v7M16 12h7"/>'),
   link: svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
 };
 
@@ -258,12 +259,14 @@ function gameView() {
        <button class="btn big f" data-key="dep" data-oa="${S.org.deployed ? 'undeploy' : 'deploy'}">${I.deploy}${S.org.deployed ? 'Take mods out' : 'Deploy now'}</button>
        <button class="btn big f" data-key="add" data-oa="add">${I.plus}Add mods</button>
        ${S.view.game ? `<button class="btn big f" data-key="nx" data-act="nexusGet">${I.globe}Browse Nexus</button>` : ''}
+       ${S.view.game ? `<button class="btn big f" data-key="steam" data-act="addToSteam">${I.steamadd}Add to Steam</button>` : ''}
        <button class="btn big f" data-key="more" data-act="more" aria-label="More">${I.more}</button>`
     : `<button class="btn primary big f" data-key="play" data-act="play">${I.play}Play modded</button>
        <button class="btn big f" data-key="dep" data-act="deployMode">${I.deploy}Deploy: ${esc(deployLabel(S.sum))}</button>
        <button class="btn big f" data-key="add" data-act="add">${I.plus}Add mods</button>
        <button class="btn big f" data-key="nx" data-act="nexusGet">${I.globe}Browse Nexus</button>
        ${wj ? `<button class="btn big f" data-key="wjg" data-act="gameModlists" data-wj="${esc(wj)}">${I.modlists}Install a modlist</button>` : ''}
+       <button class="btn big f" data-key="steam" data-act="addToSteam">${I.steamadd}Add to Steam</button>
        <button class="btn big f" data-key="more" data-act="more" aria-label="More">${I.more}</button>`) : '';
   const hero = `<section class="hero"><div class="art" ${artAttr(g?.id, g?.art?.hero ? 'hero' : wideOf(g || {}))}></div>
     <div class="hero-in"> <div class="cover ${g?.art?.cover ? '' : 'noart'}" ${artAttr(g?.id, 'cover')}>${g?.art?.cover ? '' : esc((title || '?')[0])}</div>
@@ -1103,11 +1106,12 @@ async function act(a, b) {
     if (a === 'toAccounts') return setSection('accounts');
     if (a === 'backToLib') { S.view = null; S.sel = null; render(); return KIT.focusFirst('.sec.on'); }
     if (a === 'beacon') return KIT.invoke('open_beacon').then(() => KIT.toast('Opening Beacon…'));
-    if (a === 'play') { await KIT.invoke('play', { id: S.view.id }); return KIT.toast(`Starting ${game(S.view.id)?.title || 'the game'}…`); }
+    if (a === 'play') { try { await KIT.invoke('play', { id: S.view.id }); } catch (e) { return KIT.alert('It didn\'t start', `<p>${esc(KIT.err(e)).replace(/\n/g, '<br>')}</p><p class="msg small">Every step is in Hearth's log: Settings › System › Send logs.</p>`, false); } return KIT.toast(`Starting ${game(S.view.id)?.title || 'the game'} with its mods…`); }
     if (a === 'deployMode') return deployMode();
     if (a === 'add') return addMod();
     if (a === 'nexusGet') return nexusGet();
     if (a === 'more') return gameMore();
+    if (a === 'addToSteam') return addToSteam();
     if (a === 'checkUpdates') return checkUpdates();
     if (a === 'gameModlists') { S.wjGame = b.dataset.wj; return setSection('modlists'); }
     if (a === 'wjGame') { S.wjGame = b.dataset.g; return render(); }
@@ -1289,7 +1293,7 @@ async function orgAction(a) {
     const ex = s.executables.filter(e => e.present);
     let pickEx = ex[0]?.title;
     if (ex.length > 1) { pickEx = await KIT.choose('Play', ex.map(e => ({ id: e.title, label: e.title, sub: e.extender ? 'Script extender' : e.from === 'mo2' ? 'From Mod Organizer 2' : '' }))); if (!pickEx) return; }
-    try { await KIT.invoke('organizer_run', { id: S.view.id, exe: pickEx || null }); KIT.toast('Starting…'); setTimeout(() => reloadView(), 4000); } catch (e) { KIT.alert('That didn\'t work', esc(KIT.err(e)), false); }
+    try { await KIT.invoke('organizer_run', { id: S.view.id, exe: pickEx || null }); KIT.toast('Starting with its mods…'); setTimeout(() => reloadView(), 4000); } catch (e) { KIT.alert('It didn\'t start', `<p>${esc(KIT.err(e)).replace(/\n/g, '<br>')}</p><p class="msg small">Every step is in Hearth's log: Settings › System › Send logs.</p>`, false); }
     return;
   }
   if (a === 'launcher') {
@@ -1309,26 +1313,50 @@ async function orgAction(a) {
     if (c === 'inis') return orgDo(['profile-settings', '--local-inis', cur.localInis ? 'off' : 'on']);
   }
 }
+/** Add to Steam: the game's ways in as Steam shortcuts with its art (Hearth Sync makes them; adding again updates). */
+async function addToSteam() {
+  const gid = S.view.game || S.view.id, g = game(gid); if (!g) return;
+  let st;
+  try { st = await KIT.invoke('steam_entries', { id: gid }); } catch (e) { return KIT.alert('Add to Steam', esc(KIT.err(e)), false); }
+  const has = new Set(st.inSteam || []), now = k => has.has(k) ? 'In Steam' : '';
+  const items = [{ id: 'modded', label: `${g.title} (Modded)`, sub: st.instance ? 'Starts the game with the organizer\'s mods laid over it' : 'Starts the game with its mods (through its script extender when it has one)', end: now('modded') }];
+  if (st.instance) items.push({ id: 'hearth', label: `${g.title} — Hearth Mod Organizer`, sub: 'Hearth\'s own organizer: runs natively, lays the mods over the game while it runs', end: now('hearth') });
+  if (st.instance && st.mo2) items.push({ id: 'mo2', label: `${g.title} — Mod Organizer 2`, sub: 'The original Mod Organizer 2, under Proton', end: now('mo2') });
+  if (items.length > 1) items.push({ id: 'all', label: 'All of these', sub: `${items.length} shortcuts` });
+  if (has.size) items.push({ id: 'remove', label: 'Take them out of Steam', sub: 'Hearth Sync removes the shortcuts' });
+  const note = `Hearth Sync adds them to Steam's library with the game's pictures${st.hearthSync ? ', in Steam\'s Game Mode' : ' (in Steam\'s Game Mode, with Hearth Sync)'}. Adding again updates them, never twice.${st.instance ? '' : ' Mod Organizer entries come with an organizer instance for this game.'}`;
+  const a = await KIT.choose('Add to Steam', items, note);
+  if (!a) return;
+  try {
+    if (a === 'remove') { await KIT.invoke('remove_from_steam', { id: gid }); return KIT.toast('Taken out: Steam drops them at the next sync'); }
+    const kinds = a === 'all' ? items.filter(x => ['modded', 'hearth', 'mo2'].includes(x.id)).map(x => x.id) : [a];
+    const r = await KIT.invoke('add_to_steam', { id: gid, kinds });
+    KIT.toast(`${plural(r.added.length, 'shortcut')} for Steam: ${r.added.length === 1 ? items.find(x => x.id === kinds[0]).label : g.title}`);
+  } catch (e) { KIT.alert('Add to Steam', esc(KIT.err(e)), false); }
+}
+
 /** The game page's ⋯: the things you need now and then. */
 async function gameMore() {
   if (S.view.type === 'inst') {
     const i = S.org.instance, g = game(S.view.game);
-    const items = [{ id: 'profile', label: `Profile: ${i.profile}`, sub: 'Switch, make a new one, own saves and game settings' }];
+    const items = [{ id: 'steam', label: 'Add to Steam…', sub: 'Modded, Mod Organizer 2 and Hearth Mod Organizer, as Steam shortcuts' }, { id: 'profile', label: `Profile: ${i.profile}`, sub: 'Switch, make a new one, own saves and game settings' }];
     if (i.wabbajack) items.push({ id: 'launcher', label: `Play with: ${i.launcher === 'mo2' ? 'Mod Organizer 2' : 'Hearth'}`, sub: 'What Play modded starts' });
     if (i.plugins) items.push({ id: 'sort', label: 'Sort plugins', sub: 'Masters first, then by what each needs' });
     items.push({ id: 'folder', label: 'Open the instance\'s folder' });
     if (g?.install || i.gameDir) items.push({ id: 'gamefolder', label: 'Open the game folder' });
     const a = await KIT.choose(i.title, items);
+    if (a === 'steam') return addToSteam();
     if (a === 'gamefolder') return KIT.invoke('open_folder', { path: g?.install || i.gameDir }).catch(e => KIT.toast(KIT.err(e)));
     if (a) return orgAction(a);
     return;
   }
   const g = game(S.view.id), s = S.sum;
-  const items = [{ id: 'deploy', label: `How mods go in: ${deployLabel(s)}`, sub: 'Links, copies or the overlay' }, { id: 'nexus', label: s.nexus ? `Nexus game: ${s.nexus}` : 'Which game is it on Nexus Mods?', sub: 'For downloads and update checks' }];
+  const items = [{ id: 'steam', label: 'Add to Steam…', sub: 'Play it modded from Steam\'s library' }, { id: 'deploy', label: `How mods go in: ${deployLabel(s)}`, sub: 'Links, copies or the overlay' }, { id: 'nexus', label: s.nexus ? `Nexus game: ${s.nexus}` : 'Which game is it on Nexus Mods?', sub: 'For downloads and update checks' }];
   if (s.mods.some(m => m.nexus)) items.push({ id: 'updates', label: 'Check for updates', sub: 'Asks Nexus Mods for newer files of your mods' });
   items.push({ id: 'game', label: 'Open the game folder' });
   if (s.mods.length) items.push({ id: 'store', label: 'Open Hearth\'s copies of the mods' });
   const a = await KIT.choose(g.title, items);
+  if (a === 'steam') return addToSteam();
   if (a === 'deploy') return deployMode();
   if (a === 'nexus') {
     const v = await ask('Nexus game', 'The name in its Nexus address: nexusmods.com/<b>this part</b>/mods', s.nexus || '');
@@ -1465,6 +1493,10 @@ const DEMO = (() => {
       return { files: f, wins: m.beats.length * 6, loses: m.overriddenBy.length * 6 }; }
     if (cmd === 'check_updates') return { checked: 6, premium: false, updates: [{ mod: 'm7', name: 'Appearance Menu Mod', domain: 'cyberpunk2077', modId: 790, newer: { fileId: 9, name: 'Appearance Menu Mod', version: '2.7' }, page: 'https://www.nexusmods.com/cyberpunk2077/mods/790?tab=files' }, { mod: 'm0', name: 'Cyber Engine Tweaks', domain: 'cyberpunk2077', modId: 107, newer: { fileId: 8, name: 'Cyber Engine Tweaks', version: '1.33.0' }, page: 'https://www.nexusmods.com/cyberpunk2077/mods/107?tab=files' }] };
     if (cmd === 'nexus_mod') return { name: 'x', summary: a.modId === 790 ? 'Change NPC appearances, spawn companions and props, take photos with full control of the scene. A must for photo mode.' : 'A scripting framework other mods are built on: an in-game console, hotkeys and a Lua API.', author: a.modId === 790 ? 'MxOdin and CtrlAltDeletus' : 'yamashi and the CET team', version: a.modId === 790 ? '2.7' : '1.33.0', endorsements: a.modId === 790 ? 61240 : 88310, downloads: a.modId === 790 ? 2914000 : 6120000, picture: art(a.modId === 790 ? '1086940' : '367520', 'hero', String(a.modId)) };
+    if (cmd === 'steam_entries') return { inSteam: a.id === 'steam:489830' ? ['modded'] : [], instance: a.id === 'steam:489830' ? 'skyrimse' : null, mo2: a.id === 'steam:489830', hearthSync: true };
+    if (cmd === 'add_to_steam') return { added: a.kinds.map(k => `hearth-mods:${k}:${a.id}`) };
+    if (cmd === 'remove_from_steam') return { removed: 1 };
+    if (cmd === 'play') return { started: true };
     if (cmd === 'nexus_account') return { name: 'Dragongamer9', premium: false, checked: now - 6e5 };
     if (cmd === 'downloads_list') return dls;
     if (cmd === 'accounts_list') return [{ id: 'loverslab', name: 'LoversLab', signedIn: false, registered: false }, { id: 'mega', name: 'MEGA', signedIn: true, registered: true, who: 'you@example.com', since: now - day }, { id: 'google', name: 'Google', signedIn: false, registered: true }];

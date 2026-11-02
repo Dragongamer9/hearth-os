@@ -44,7 +44,7 @@ STORES = {'epic': ('epic', 'Epic'), 'gog': ('gog', 'GOG'), 'battlenet': ('battle
           'emu': ('emu', 'Emulators'), 'recomps': ('recomps', 'Recomps'), 'recomp': ('recomps', 'Recomps'),
           'beacon': ('beacon', 'Beacon'), 'manual': ('manual', 'Added by hand'), 'device': ('manual', 'Added by hand'),
           'ea': ('ea', 'EA'), 'ubisoft': ('ubisoft', 'Ubisoft'), 'amazon': ('amazon', 'Amazon'), 'itch': ('itch', 'itch.io'),
-          'heroic': ('heroic', 'Heroic'), 'lutris': ('lutris', 'Lutris')}
+          'heroic': ('heroic', 'Heroic'), 'lutris': ('lutris', 'Lutris'), 'mods': ('mods', 'Modded games')}
 OTHER = ('other', 'Other games')
 # The old Hearth plugin's settings folder names (Decky names it after the plugin's folder or its name).
 OLD_PLUGIN_SETTINGS = ('decky-hearth', 'Hearth')
@@ -397,7 +397,7 @@ def library_stamp(home_dir=None):
     h = home_dir or home()
     others = [os.path.join(h, '.config', 'minigalaxy', 'config.json'), os.path.join(h, 'GOG Games'), os.path.join(h, '.cache', 'minigalaxy', 'covers')]
     others += [os.path.join(h, r, f[1]) for r in HEROIC_ROOTS for f in HEROIC] + [os.path.join(h, r) for r in EGL_ROOTS]
-    for p in [d, os.path.join(d, 'library.json'), os.path.join(d, 'art-cache'), os.path.join(d, 'legendary', 'installed.json')] + others:
+    for p in [d, os.path.join(d, 'library.json'), os.path.join(d, 'art-cache'), os.path.join(d, 'legendary', 'installed.json'), mods_file(h)] + others:
         try:
             out.append(int(os.stat(p).st_mtime_ns))
         except OSError:
@@ -705,10 +705,47 @@ def merge(items, extras, app='/usr/bin/nimbus', home_dir=None):
     return out
 
 
+# ---- Hearth Mods' "Add to Steam" (hosts/hearth-gaming launch.rs): a modded game's ways in, as its own shortcuts.
+# Hearth Mods writes ~/.local/share/nimbus/mods/steam-shortcuts.json ([{id, title, game, kind, launch, cwd, cover, wide,
+# hero, logo, icon}]); each entry is a shortcut with a stable id (hearth-mods:<kind>:<game id>), so adding it again
+# updates it and taking it out of the file removes it. Only entries that run Hearth Mods' own program are taken.
+MODS_KINDS = ('modded', 'mo2', 'hearth')
+
+
+def mods_file(home_dir=None):
+    return os.path.join(home_dir or home(), '.local', 'share', 'nimbus', 'mods', 'steam-shortcuts.json')
+
+
+def mods_entries(home_dir=None, which=None):
+    h = home_dir or home()
+    raw = _json(mods_file(h))
+    out = []
+    for e in raw if isinstance(raw, list) else []:
+        if not isinstance(e, dict) or not valid_id(e.get('id')) or not str(e.get('id')).startswith('hearth-mods:') or e.get('kind') not in MODS_KINDS:
+            skipped('hearth mods: odd entry')
+            continue
+        launch = e.get('launch')
+        if not isinstance(launch, list) or not launch or not all(isinstance(a, str) and a and len(a) < 4096 for a in launch):
+            skipped('hearth mods: no program')
+            continue
+        prog = launch[0]
+        if os.path.basename(prog) != 'hearth-mods' or not os.path.isabs(prog) or not (which or os.path.isfile)(prog):
+            skipped('hearth mods: not hearth-mods')
+            continue
+        title = e.get('title') if isinstance(e.get('title'), str) else ''
+        if not title.strip():
+            continue
+        cwd = e.get('cwd') if isinstance(e.get('cwd'), str) and e.get('cwd').startswith('/') else h
+        art = {k: e.get(k) for k in ('cover', 'wide', 'hero', 'logo', 'icon') if isinstance(e.get(k), str)}
+        added = e.get('added') if isinstance(e.get('added'), (int, float)) and not isinstance(e.get('added'), bool) else 0
+        out.append(_game(e['id'], title.strip()[:200], 'mods', launch, cwd, int(added // 1000), 'hearth-mods', art))
+    return out
+
+
 def other_launchers(home_dir=None):
     """Every other launcher's games; a launcher whose files can't be read is skipped (counted)."""
     out = []
-    for f in (minigalaxy_games, heroic_games, egl_games):
+    for f in (minigalaxy_games, heroic_games, egl_games, mods_entries):
         try:
             out.extend(f(home_dir))
         except Exception as e:  # noqa: BLE001 - one launcher's odd files never stop the others

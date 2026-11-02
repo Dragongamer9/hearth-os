@@ -380,6 +380,23 @@ pub fn report(version: &str) -> String {
         &sh("for u in hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
     // Steam's own logs (native and Flathub Steam): game launches and what stopped them ("games won't start in
     // Steam Game Mode"), only the launch, compatibility and error lines, no account lines.
+    // Hearth Mods (docs/MODS.md): every step of the last modded starts (what ran, exit codes, the program's output),
+    // its worker's own output, and Proton's log of the last modded start (PROTON_LOG, mods/logs/steam-<app>.log).
+    {
+        let d = data.join("mods").join("logs");
+        let mut body = String::new();
+        for (f, n) in [("launch.log", 200), ("worker.log", 120)] {
+            if let Ok(t) = std::fs::read_to_string(d.join(f)) { body.push_str(&format!("--- {f}\n{}\n\n", tail(&t, n))); }
+        }
+        let mut protons: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path())
+            .filter(|p| p.file_name().map(|n| { let n = n.to_string_lossy(); n.starts_with("steam-") && n.ends_with(".log") }).unwrap_or(false))
+            .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p))).collect();
+        protons.sort();
+        if let Some((_, p)) = protons.last() {
+            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- Proton's log of the last modded start ({})\n{}\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&tail(&t, 300), 60_000))); }
+        }
+        if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
+    }
     section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
         for f in console_log.txt console-linux.txt compat_log.txt; do [ -s \"$d/$f\" ] || continue; echo \"--- $d/$f\" | sed \"s|$HOME|~|\"; \
         grep -aiE 'gameaction|launch|appid|compat|pressure|xwayland|display|exited|error|fail|proton|reaper' \"$d/$f\" | grep -aivE 'account|login|password|token|steamid|persona' | tail -120; done; done"));
