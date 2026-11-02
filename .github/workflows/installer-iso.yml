@@ -7,11 +7,8 @@
 name: Hearth installer ISO
 
 on:
-  # Changes to the installer USB on the work branch build it and boot-test it (never uploaded from here).
-  # On rust-host it carries the Rust app instead of the Electron one.
-  push:
-    branches: [linux-host, rust-host]
-    paths: ['os/installer/**', 'os/live/src/hearth-install', 'os/live/src/hearth-live-prep', '.github/workflows/installer-iso.yml']
+  # The small online installer isn't offered any more (the offline USB, edition: peppermint, and the Recovery USB
+  # are): no automatic builds on push; run by hand only.
   workflow_dispatch:
     inputs:
       upload:

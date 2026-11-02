@@ -35,74 +35,15 @@ pub fn write_start_mode(text: &str, mode: &str) -> String {
     }
 }
 
-/// Desktop Mode's desktop (Settings › Desktop Mode › Desktop): HEARTH_DESKTOP in session.conf, read by nimbus-session
-/// at every Desktop Mode start. "classic" (labwc + Mantel, always installed: the fallback), "plasma" or "gnome". The same rules
-/// are in desktop/plasma/hearth-plasma (desktop, desktop-set).
-pub fn read_desktop_choice(text: &str) -> &'static str {
-    let mut val = "classic";
-    for l in text.lines() {
-        let t = l.trim_start();
-        let t = t.strip_prefix("export").map(str::trim_start).unwrap_or(t);
-        if let Some(v) = t.strip_prefix("HEARTH_DESKTOP=") {
-            val = match v.trim().trim_matches(|c| c == '"' || c == '\'') { "plasma" => "plasma", "gnome" => "gnome", "cosmic" => "cosmic", _ => "classic" };
-        }
-    }
-    val
-}
-fn is_desktop_line(l: &str) -> bool {
-    let t = l.trim_start();
-    t.strip_prefix("export").map(str::trim_start).unwrap_or(t).starts_with("HEARTH_DESKTOP=")
-}
-/// Sets HEARTH_DESKTOP, keeping everything else in the file.
-pub fn write_desktop_choice(text: &str, desktop: &str) -> String {
-    let line = format!("HEARTH_DESKTOP={desktop}");
-    if text.lines().any(is_desktop_line) {
-        let mut out: Vec<String> = text.lines().map(|l| if is_desktop_line(l) { line.clone() } else { l.to_string() }).collect();
-        out.push(String::new());
-        out.join("\n")
-    } else {
-        format!("{}{}{line}\n", text, if !text.is_empty() && !text.ends_with('\n') { "\n" } else { "" })
-    }
-}
-/// Whether Hearth Plasma can run here: Plasma 6 and Hearth's look-and-feel package are installed.
-pub fn plasma_installed() -> bool {
-    let have = |b: &str| ["/usr/bin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
-    have("startplasma-wayland") && have("kwin_wayland") && have("plasmashell") && Path::new("/usr/share/plasma/look-and-feel/org.hearth.desktop").is_dir()
-}
-/// Whether Hearth GNOME can run here: GNOME Shell, its session and Hearth's session mode (docs/GNOME.md).
-pub fn gnome_installed() -> bool {
-    let have = |b: &str| ["/usr/bin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
-    have("gnome-shell") && have("gnome-session") && Path::new("/usr/share/gnome-shell/modes/hearth.json").is_file()
-}
-// ---- Hearth COSMIC (docs/COSMIC.md): Anatase only; Hearth Deepin isn't available on any edition (docs/DEEPIN.md).
-/// Whether Hearth COSMIC can run here: COSMIC and Hearth's COSMIC defaults (made at image build time) are installed.
-pub fn cosmic_installed() -> bool {
-    let have = |b: &str| ["/usr/bin", "/usr/sbin", "/usr/local/bin"].iter().any(|d| Path::new(d).join(b).exists());
-    have("start-cosmic") && have("cosmic-comp") && have("cosmic-panel") && Path::new("/usr/share/hearth-cosmic/data/cosmic").is_dir()
-}
-// ---- end Hearth COSMIC
+/// Desktop Mode's desktop: Mantel (Hearth Classic, labwc + Quickshell), always. Hearth Plasma, GNOME and COSMIC are
+/// gone and Settings has no desktop choice any more; an old HEARTH_DESKTOP=plasma|gnome|cosmic|deepin in session.conf
+/// is ignored here and by nimbus-session. `login.desktop` / `login.setDesktop` stay for older pages: they always say
+/// classic, and only classic can be "picked" (nothing is written).
 pub fn desktop() -> Value {
-    let run = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-    let fell: Vec<&str> = ["plasma", "gnome"].into_iter().filter(|d| Path::new(&run).join(format!("hearth-{d}-failed")).exists()).collect();
-    json!({
-        "desktop": read_desktop_choice(&std::fs::read_to_string(session_conf()).unwrap_or_default()),
-        "plasma": plasma_installed(),
-        "gnome": gnome_installed(),
-        "fellBack": !fell.is_empty(),
-        "fellBackFrom": fell.first().copied().unwrap_or(""),
-        "cosmic": cosmic_installed(),
-        "cosmicFellBack": Path::new(&run).join("hearth-cosmic-failed").exists(),
-        "deepin": false,
-    })
+    json!({"desktop": "classic", "plasma": false, "gnome": false, "cosmic": false, "deepin": false, "fellBack": false, "fellBackFrom": "", "cosmicFellBack": false})
 }
 pub fn set_desktop(desktop_name: &str) -> Result<Value, String> {
-    if !["classic", "plasma", "gnome", "cosmic"].contains(&desktop_name) { return Err("The desktop is classic, plasma, gnome or cosmic".into()); }
-    if desktop_name == "cosmic" && !cosmic_installed() { return Err("Hearth COSMIC isn't available on this edition.".into()); }
-    if desktop_name == "plasma" && !plasma_installed() { return Err("Hearth Plasma isn't installed on this system.".into()); }
-    if desktop_name == "gnome" && !gnome_installed() { return Err("Hearth GNOME isn't installed on this system.".into()); }
-    let f = session_conf();
-    let text = std::fs::read_to_string(&f).unwrap_or_default();
-    crate::paths::write_atomic(&f, write_desktop_choice(&text, desktop_name).as_bytes()).map_err(|e| e.to_string())?;
+    if desktop_name != "classic" { return Err("Mantel is Hearth's only desktop now.".into()); }
     Ok(desktop())
 }
 
@@ -268,18 +209,17 @@ mod tests {
     #[test]
     fn start_mode_file() {
         assert_eq!(read_start_mode("FOO=1\nNIMBUS_START_MODE=\"desktop\"\n"), "desktop");
-        assert_eq!(read_desktop_choice(""), "classic");
-        assert_eq!(read_desktop_choice("FOO=1\nexport HEARTH_DESKTOP=\"plasma\"\n"), "plasma");
-        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=plasma\nHEARTH_DESKTOP=gnome\n"), "gnome");
-        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=gnome\nHEARTH_DESKTOP=kde\n"), "classic");
-        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=cosmic\n"), "cosmic");
-        assert_eq!(read_desktop_choice("HEARTH_DESKTOP=deepin\n"), "classic");
-        assert_eq!(write_desktop_choice("FOO=1", "plasma"), "FOO=1\nHEARTH_DESKTOP=plasma\n");
-        assert_eq!(write_desktop_choice("HEARTH_DESKTOP=plasma\nNIMBUS_START_MODE=game\n", "classic"), "HEARTH_DESKTOP=classic\nNIMBUS_START_MODE=game\n");
         assert_eq!(read_start_mode(""), "game");
         assert_eq!(write_start_mode("FOO=1\nNIMBUS_START_MODE=game\n", "desktop"), "FOO=1\nNIMBUS_START_MODE=desktop\n");
         assert_eq!(write_start_mode("FOO=1", "game"), "FOO=1\nNIMBUS_START_MODE=game\n");
         assert_eq!(write_start_mode("", "game"), "NIMBUS_START_MODE=game\n");
+    }
+    #[test]
+    fn mantel_is_the_only_desktop() {
+        assert_eq!(desktop()["desktop"], "classic");
+        for d in ["plasma", "gnome", "cosmic"] { assert_eq!(desktop()[d], false); }
+        assert!(set_desktop("classic").is_ok());
+        for d in ["plasma", "gnome", "cosmic", "deepin", ""] { assert!(set_desktop(d).is_err()); }
     }
     #[test]
     fn helper_output() {

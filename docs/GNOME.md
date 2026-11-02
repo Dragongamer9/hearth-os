@@ -1,5 +1,9 @@
 # Hearth GNOME
 
+> **Removed.** Mantel (Hearth Classic) is Hearth's only desktop now: Hearth GNOME isn't in Hearth OS any more, Settings has no
+> desktop choice, and an old `HEARTH_DESKTOP=...` line in `session.conf` (or the login screen's old entry) simply opens
+> Mantel. The rest of this page describes the removed desktop and is kept for history.
+
 **Status: Beta Experimental. It hasn't been tried on a device yet.** It's built into Hearth OS on Anatase and
 Peppermint. CI checks it with `gnome-test.yml` and with the image checks in `base-anatase.yml` / `base-peppermint.yml`.
 

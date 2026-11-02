@@ -371,6 +371,4 @@ These aren't made here: those files belong to the main build, the installer and 
    and sudoers files and the sysusers drop-in exist in both `os-bases/ubuntu` and `os-bases/peppermint`. Once
    both settle, they could move to one shared folder.
 
-**Hearth Plasma.** KDE Plasma 6 (the workspace only, no recommends, plus Dolphin) is installed as Desktop Mode's second desktop, in Hearth's look; Hearth Classic (labwc + Mantel) stays and is the fallback, and SDDM stays the display manager. See docs/PLASMA.md.
-
-**Hearth GNOME.** GNOME Shell (minimal, no recommends: shell, session, Settings, portal, plus GNOME Files, Console and Text Editor shown only there) is installed as Desktop Mode's third desktop, with Hearth's own Shell extensions; SDDM stays the display manager. See docs/GNOME.md.
+**No other desktops.** Mantel (Hearth Classic: labwc + Quickshell) is the only desktop. Hearth Plasma and Hearth GNOME were removed: their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter, gnome-session, gnome-control-center, GNOME Files / Console / Text Editor; the KDE and GNOME portals) aren't installed. What Mantel and Hearth's KDE apps use stays: polkit-kde-agent-1, Breeze, kde-cli-tools, plasma-integration, Kirigami, the KDE apps themselves (hosts/hearth-kde) and SDDM.

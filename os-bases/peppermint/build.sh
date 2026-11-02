@@ -210,31 +210,18 @@ if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then
 touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
-# ------------------------------------------------------------------ Hearth Plasma (docs/PLASMA.md)
-# KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
-# /usr/share/hearth-plasma). Only the workspace (no recommends, no kde-standard app bundle) plus Dolphin for folders.
-# Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
-# plasma-workspace needs gdb (its crash handler), whose libdebuginfod has to match the elfutils libraries the newer
-# kernel/Mesa brought from backports: taken from backports too, or apt can't solve it.
+# ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
+# Mantel (labwc + Quickshell) is Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone, and
+# their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter,
+# gnome-session, gnome-control-center and GNOME's apps; their portals) aren't installed any more. What stays:
+#   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
+#   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
+#   kde-cli-tools, plasma-integration, qml6-module-org-kde-kirigami
+#                        for the KDE apps Hearth ships (hosts/hearth-kde: Hearth Files from Dolphin, Terminal, Text,
+#                        Reader, Capture, Calculator); install.sh brings those apps and their KDE Frameworks itself
+# plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
-"${APT[@]}" plasma-workspace kwin-wayland plasma-desktop
-optional plasma-nm plasma-pa powerdevil kscreen kscreenlocker bluedevil polkit-kde-agent-1 xdg-desktop-portal-kde \
-  breeze kde-cli-tools systemsettings plasma-integration qml6-module-org-kde-kirigami libplasma5support6 dolphin \
-  kde-config-screenlocker spectacle qml-module-org-kde-plasma-plasma5support qml6-module-org-kde-plasma-plasma5support
-for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/null || { echo "::error title=Hearth Plasma::$b is missing"; exit 1; }; done
-
-# ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
-# GNOME Shell (trixie's release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell extensions
-# (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal (no recommends, no
-# GNOME app bundle, no GDM: SDDM stays), plus GNOME's own apps for the kinds it has (Files, Console, Text Editor: one
-# app of each kind per desktop, through the app-kinds table's GNOME entries below). Hearth Classic stays the fallback.
-gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
-"${APT[@]}" gnome-shell mutter gnome-session gnome-control-center
-optional xdg-desktop-portal-gnome nautilus gnome-console gnome-text-editor
-for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
-gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
-mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
-echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
+optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
@@ -260,6 +247,12 @@ fi
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Debian-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
+# Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's pieces in the shared system files (still used by other bases):
+# not in this image, where Mantel is the only desktop.
+rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth /usr/share/plasma/plasmoids/org.hearth.* \
+  /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json /usr/share/gnome-shell/extensions/*@hearthos.fun
+rm -f /usr/share/applications/hearth-cosmic-*.desktop
+rmdir --ignore-fail-on-non-empty -p /usr/share/plasma/plasmoids /usr/share/plasma/look-and-feel /usr/share/plasma/desktoptheme /usr/share/gnome-shell/modes /usr/share/gnome-shell/extensions 2>/dev/null || true
 chmod 440 /etc/sudoers.d/hearth-wheel
 
 # ------------------------------------------------------------------ Hearth icon set (branding/icons)
@@ -852,11 +845,9 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
-# The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
-# Plasma (hidden by its TryExec where Plasma isn't installed).
-for s in hearth-classic hearth-plasma hearth-gnome; do
-  sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
-done
+# "Hearth Classic" on the login screen too (Mantel; the only desktop now: no Hearth Plasma / GNOME / COSMIC entries).
+sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
+rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's

@@ -34,8 +34,8 @@ kept code.
 The session writes why in `$XDG_RUNTIME_DIR/hearth-steam-mode-failed` (and its log, `~/.local/share/nimbus/session.log`)
 and opens Desktop Mode. **Mantel** (Hearth Classic) shows **"Steam Game Mode didn't start"** with the reason and two
 choices, **Try Steam Game Mode again** (`nimbus-mode steam`) and **Stay in Desktop Mode**, with a controller (Up/Down,
-A, B) or a mouse (`hosts/linux/desktop/shell/SteamFallback.qml`). On Hearth Plasma, GNOME and COSMIC the same comes as a
-notification with that button. It's shown once per failure (`$XDG_RUNTIME_DIR/hearth-steam-notice-shown`), and Settings
+A, B) or a mouse (`hosts/linux/desktop/shell/SteamFallback.qml`). (Mantel is the only desktop; the notification Hearth
+Plasma, GNOME and COSMIC got instead is gone with them.) It's shown once per failure (`$XDG_RUNTIME_DIR/hearth-steam-notice-shown`), and Settings
 › System › Steam Game Mode shows the last reason too.
 
 It never loops: the session doesn't go back and forth between Steam Game Mode and Desktop Mode by itself. Every Steam
