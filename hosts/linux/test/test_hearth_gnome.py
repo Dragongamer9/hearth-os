@@ -2,6 +2,11 @@
 broken or missing GNOME always ends in Hearth Classic, never without a desktop), desktop/gnome/hearth-gnome (what the
 Shell extensions ask for), hearth-pad's GNOME mode (--gnome), and Hearth's GNOME files (session mode, extensions,
 the per-desktop app overrides). The session runs for real with stand-ins for labwc and GNOME."""
+import unittest
+# Hearth GNOME is gone: Mantel is the only desktop (nimbus-session never starts it, Settings has no desktop choice,
+# the image doesn't install it). These tests are for the removed desktop; the file stays for its dispatch-only
+# workflow and history. What replaced it is tested in test_hearth_mantel_only.py.
+raise unittest.SkipTest('Hearth GNOME was removed: Mantel is the only desktop')
 import sys
 sys.dont_write_bytecode = True
 import importlib.machinery

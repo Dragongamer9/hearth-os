@@ -659,7 +659,9 @@ class NimbusModeSteam(unittest.TestCase):
         self.mode('game')
         self.assertEqual(open(os.path.join(self.tmp, 'nimbus-next')).read().strip(), 'game')
         # setsid runs in the background: wait for it.
-        for _ in range(400):  # up to 20 s: a busy CI runner was slower than 5 s once
+        # Up to 20 s by the clock (a busy CI runner was slower than 5 s once; other test files stub time.sleep out).
+        end = time.monotonic() + 20
+        while time.monotonic() < end:
             if os.path.exists(self.calls) and 'setsid' in open(self.calls).read():
                 break
             time.sleep(0.05)

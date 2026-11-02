@@ -50,7 +50,8 @@ pub fn without_dump_details(journal: &str) -> String {
     out.join("\n")
 }
 
-/// The other desktops' logs in ~/.local/share/nimbus (nimbus-session's run_plasma / run_gnome / run_cosmic write them).
+/// The other desktops' logs in ~/.local/share/nimbus, written by an earlier Hearth's Plasma / GNOME / COSMIC (gone now:
+/// Mantel is the only desktop); still in a report when an old one is there.
 const DESKTOP_LOGS: [(&str, &str); 4] = [("plasma.log", "Hearth Plasma"), ("gnome.log", "Hearth GNOME"), ("cosmic.log", "Hearth COSMIC"),
                                          ("cosmic-companion.log", "Hearth COSMIC companion")];
 
@@ -575,7 +576,8 @@ mod tests {
     #[test]
     fn desktop_logs_are_the_ones_the_session_writes() {
         let session = include_str!("../../linux/session/nimbus-session");
-        for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
+        // Mantel is the only desktop: the session doesn't write these any more (a report still shows old ones).
+        for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]

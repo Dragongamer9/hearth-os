@@ -1,6 +1,11 @@
 """Tests for Hearth Plasma: the desktop choice and the fallback in hosts/linux/session/nimbus-session (a broken or
 missing Plasma always ends in Hearth Classic, never without a desktop), and desktop/plasma/hearth-plasma (what Hearth's
 Plasma widgets and Settings' desktop choice use). The session runs for real with stand-ins for labwc and Plasma."""
+import unittest
+# Hearth Plasma is gone: Mantel is the only desktop (nimbus-session never starts it, Settings has no desktop choice,
+# the image doesn't install it). These tests are for the removed desktop; the file stays for its dispatch-only
+# workflow and history. What replaced it is tested in test_hearth_mantel_only.py.
+raise unittest.SkipTest('Hearth Plasma was removed: Mantel is the only desktop')
 import sys
 sys.dont_write_bytecode = True
 import importlib.machinery

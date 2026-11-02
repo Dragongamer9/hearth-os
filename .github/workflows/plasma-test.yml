@@ -13,12 +13,8 @@
 name: Hearth Plasma test
 
 on:
+  # Hearth Plasma is gone (Mantel is the only desktop): no runs on push any more, by hand only.
   workflow_dispatch:
-  push:
-    branches: [main, bughunt, 'feature/desktop-plasma', 'feature/plasma-mantel']
-    paths: ['os/system_files/usr/share/plasma/**', 'os/system_files/usr/share/hearth-plasma/**', 'hosts/linux/desktop/plasma/**',
-            'os/system_files/usr/share/kwin/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/desktop/shell/hearth-companion', 'hosts/linux/desktop/shell/osk-plasma.qml',
-            'tools/e2e-plasma-pad.py', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_plasma.py', '.github/workflows/plasma-test.yml']
 
 permissions:
   contents: write    # the screenshots branch

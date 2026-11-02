@@ -1,5 +1,9 @@
 # Hearth Plasma
 
+> **Removed.** Mantel (Hearth Classic) is Hearth's only desktop now: Hearth Plasma isn't in Hearth OS any more, Settings has no
+> desktop choice, and an old `HEARTH_DESKTOP=...` line in `session.conf` (or the login screen's old entry) simply opens
+> Mantel. The rest of this page describes the removed desktop and is kept for history.
+
 **Status: Beta Experimental, not tried on a device yet.** Usable entirely with a controller (see "With a controller"). Built into Hearth OS on Anatase and Peppermint, checked by
 CI (`plasma-test.yml`, the image checks in `base-anatase.yml` / `base-peppermint.yml`).
 
