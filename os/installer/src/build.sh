@@ -108,7 +108,8 @@ echo "Hearth installer" >/etc/system-release
 
 # The person using it: "liveuser", no password, may do anything (it's an installer USB).
 # (dialout: the installer may tell CI's virtual PC which screen it shows, on the serial console, only under hearth.ci)
-getent group dialout >/dev/null || groupadd -r dialout
+# (Fedora's bootc base lists dialout only through nss-altfiles/systemd, which useradd doesn't read: put it in /etc/group.)
+grep -q '^dialout:' /etc/group || { getent group dialout >> /etc/group || groupadd -r dialout; }
 useradd -m -d /var/home/liveuser -G wheel,dialout -c "Hearth installer" liveuser
 passwd -d liveuser
 # Its home folder is made at every start (on this base image /var isn't carried onto the USB as built).
