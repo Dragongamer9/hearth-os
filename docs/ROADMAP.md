@@ -168,6 +168,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- [x] Game Mode and Steam Game Mode start at a mode the screen really has: a chosen resolution or refresh rate the connected screen doesn't list (the Nvidia PC's 2560 × 1440 at 120 Hz on a TV that has it only at 60 Hz, which made gamescope abort) is skipped for that start with a notice and Try again, session.conf kept as it is; Steam Game Mode retries once at the screen's own mode instead of failing; the ROG Ally's built-in screen gets its real 48–120 Hz range for Steam when gamescope doesn't know the panel (ROG Xbox Ally); Send logs now shows each screen's EDID and its modes with refresh rates (it said "no EDID" for every screen).
 - [x] Settings are always remembered and never change by themselves: every settings file is saved all at once with a backup copy, a damaged one comes back from that copy instead of resetting to the defaults, two programs saving at once both keep their change, and when Game Mode has to drop a screen mode that won't start it tells you and offers it again (docs/SETTINGS-PERSISTENCE.md; needs testing on a device)
 
 ## 1.0 (released 2026-11-02)

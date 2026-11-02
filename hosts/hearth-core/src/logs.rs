@@ -110,13 +110,21 @@ conf="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
 grep -hE '^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=' "$conf/session.conf" 2>/dev/null || echo "session.conf: no gamescope options (gamescope starts at the screen's own mode)"
 [ -f "$conf/display-pending.json" ] && echo "a new mode is waiting to be kept: $(cat "$conf/display-pending.json")"
 [ -n "$GAMESCOPE_MODE_SAVE_FILE" ] && echo "GAMESCOPE_MODE_SAVE_FILE=$GAMESCOPE_MODE_SAVE_FILE"
+echo "--- the kernel's modes with their refresh rates (hearth-screen; * = the screen's preferred mode)"
+python3 /usr/libexec/nimbus/hearth-screen list 2>&1 | head -20
+s="${XDG_CONFIG_HOME:-$HOME/.config}/gamescope/scripts/hearth-builtin-panel.lua"
+[ -f "$s" ] && echo "built-in screen script for gamescope: $(sed -n 1,2p "$s" | tr '\n' ' ')"
+[ -f "$conf/display-reverted.json" ] && echo "a mode the session couldn't use (Game Mode offers Try again): $(cat "$conf/display-reverted.json")"
+echo "--- gamescope's own messages about the screen (this boot)"
+journalctl -b --no-pager -o cat 2>/dev/null | grep -aE '^\[gamescope\].*(drm|DRM|mode|connector|flip|commit|abort|Error|backend)|^gamescope: .*Assertion' | grep -av 'appid clash' | tail -40
 for c in /sys/class/drm/card*-*; do
   [ -r "$c/status" ] || continue
   st=$(cat "$c/status")
   echo; echo "--- ${c##*/}: $st, $(cat "$c/enabled" 2>/dev/null), $(cat "$c/dpms" 2>/dev/null)"
   [ "$st" = connected ] || continue
   echo "kernel's modes (sizes only): $(paste -sd' ' "$c/modes" 2>/dev/null)"
-  [ -s "$c/edid" ] || { echo "(no EDID)"; continue; }
+  # sysfs gives edid a size of 0 (known only once read): read a byte, never test the size (-s was always "no EDID").
+  [ -n "$(head -c 1 "$c/edid" 2>/dev/null | od -An -tx1)" ] || { echo "(no EDID)"; continue; }
   d=""
   if command -v edid-decode >/dev/null 2>&1; then d=$(edid-decode "$c/edid" 2>&1)
   elif command -v di-edid-decode >/dev/null 2>&1; then d=$(di-edid-decode "$c/edid" 2>&1)
@@ -573,6 +581,8 @@ mod tests {
             assert!(SLEEP_SH.contains(k), "{k}");
         }
         assert!(SCREEN_SH.contains("GAMESCOPE_DISPLAY_MODE_LIST_EXTERNAL") && SCREEN_SH.contains("edid-decode"));
+        // sysfs's edid always says 0 bytes: a size test (-s) reported "(no EDID)" for every screen.
+        assert!(!SCREEN_SH.contains("-s \"$c/edid\"") && SCREEN_SH.contains("hearth-screen list"));
         assert!(DRIVER_SH.contains("/proc/cmdline") && DRIVER_SH.contains("modinfo -F version nvidia") && DRIVER_SH.contains("driver_version"));
     }
     #[test]

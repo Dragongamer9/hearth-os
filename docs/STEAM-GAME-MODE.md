@@ -486,6 +486,26 @@ on-screen keyboard, Discord status, and
 Hearth's Settings (open Hearth in Desktop Mode for those). Xbox Cloud Gaming games aren't added to Steam (they need Hearth's stream
 window).
 
+## Screen modes
+
+gamescope starts at the screen's own mode unless Settings › Display chose another (`-W`/`-H`/`-r` in
+`~/.config/nimbus/session.conf`). Before gamescope starts, in Game Mode and in Steam Game Mode, the session asks
+`/usr/libexec/nimbus/hearth-screen check` whether the connected screen lists that mode (the kernel's own list, with
+refresh rates: the list gamescope picks from):
+
+- **Listed**, or it can't be told (several screens, the built-in screen's refresh rates): gamescope gets it, as before.
+- **Not listed** (a TV that has 2560 × 1440 only at 60 Hz, another screen plugged in): this start uses the screen's own
+  mode. session.conf isn't changed, so the screen that has the mode gets it again; Game Mode says so and offers
+  **Try again**, which really tries it (on trial, switched back after 20 seconds unless kept).
+- gamescope ending within seconds with a chosen mode: Steam Game Mode starts once more at the screen's own mode (the
+  mode is kept in `display-reverted.json` for Try again) instead of counting as Steam failing.
+
+**ROG Ally built-in screen.** gamescope ships a display script for the ROG Ally / Ally X panels; a panel it doesn't know
+(the ROG Xbox Ally's) gets `~/.config/gamescope/scripts/hearth-builtin-panel.lua`, made at every start from the panel's
+own EDID and timings: refresh rates 48 Hz up to the panel's own (120 Hz), made like gamescope's Ally script (same pixel
+clock, longer vertical front porch). It matches only that panel, and gamescope's own script wins when it knows it.
+Send logs › "Screen" shows each screen's modes with refresh rates, its EDID, and gamescope's own messages.
+
 ## Limits (Experimental)
 
 - **Valve's updates can break Decky** (Decky patches Steam's screens), and with it the Hearth plugin and look. Steam

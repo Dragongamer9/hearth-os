@@ -127,6 +127,7 @@ class ConfFiles(unittest.TestCase):
         src = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text()
         regex = re.search(r"^MODE_ARGS_RE='[^']*'$", src, re.M).group(0)
         fn = re.search(r'^strip_mode_args\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)
+        fn += re.search(r'^note_reverted\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)
         with tempfile.TemporaryDirectory() as d:
             conf = os.path.join(d, 'nimbus', 'session.conf')
             os.makedirs(os.path.dirname(conf))
