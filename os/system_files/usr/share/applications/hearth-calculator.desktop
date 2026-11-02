@@ -10,3 +10,4 @@ Categories=Utility;Calculator;
 Keywords=calculator;calc;maths;math;scientific;programmer;hex;binary;convert;units;
 StartupNotify=true
 StartupWMClass=hearth-calculator
+X-Hearth-Controller=true

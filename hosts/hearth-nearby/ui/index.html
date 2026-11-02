@@ -131,6 +131,7 @@ textarea.inp { min-height:7em; resize:vertical; }
   <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Choose files</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
 </div>
 <div id="layer"></div>
+<script src="hearth-gamepad.js"></script>
 <script>
 'use strict';
 const T = window.__TAURI__;
@@ -414,7 +415,7 @@ document.addEventListener('keydown', e => {
 // Controllers (the standard mapping): D-pad or left stick moves, A chooses, B goes back, X files, Y looks again.
 const held = {}; let lastPadMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
   const state = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false };
   for (const g of pads) {
@@ -435,9 +436,8 @@ function pad() {
     else if (k === 'y') { if (!S.dlg) $('[data-act="refresh"]').click(); }
     else move(k);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
 setInterval(() => { if (!S.dlg && document.visibilityState === 'visible') load(); }, 4000);
 load().then(() => ($('.dev') || $('[data-act="pick"]'))?.focus());

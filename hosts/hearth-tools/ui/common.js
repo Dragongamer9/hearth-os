@@ -204,7 +204,7 @@ const H = (() => {
   // Controllers (the standard mapping).
   const held = {}; let lastMove = 0;
   function pad() {
-    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    const pads = HearthGamepad.pads();
     const now = performance.now();
     const st = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, rb: false };
     for (const g of pads) {
@@ -222,9 +222,8 @@ const H = (() => {
       if (k === 'a') choose(); else if (k === 'b') back(); else if (k === 'x') S.alt && S.alt(); else if (k === 'y') S.refresh && S.refresh();
       else if (k === 'lb') cycleTab(-1); else if (k === 'rb') cycleTab(1); else move(k);
     }
-    requestAnimationFrame(pad);
   }
-  requestAnimationFrame(pad);
+  HearthGamepad.loop(pad);
 
   async function copy(text) {
     try { await navigator.clipboard.writeText(text); toast('Copied'); return; } catch (e) { /* older WebKit: below */ }

@@ -184,6 +184,7 @@ footer b { display:inline-grid; place-items:center; min-width:1.6em; height:1.6e
   <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
 </div>
 <div id="layer"></div>
+<script src="hearth-gamepad.js"></script>
 <script src="osk/hearth-osk.js"></script>
 <script>
 'use strict';
@@ -509,9 +510,9 @@ document.addEventListener('focusin', e => {
 // Controllers (the standard mapping): D-pad or left stick moves, A chooses, B goes back, Y looks again.
 const held = {}; let lastPadMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
-  if (sharedOsk() && HearthOSK.isOpen()) { for (const k in held) held[k] = now; requestAnimationFrame(pad); return; }
+  if (sharedOsk() && HearthOSK.isOpen()) { for (const k in held) held[k] = now; return; }
   const state = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, rb: false };
   for (const g of pads) {
     const bt = i => g.buttons[i]?.pressed;
@@ -533,9 +534,8 @@ function pad() {
     else if (k === 'x') { if (S.view === 'usb' && U.step === 'run') usbClick({ dataset: { u: 'cancel' } }); }
     else move(k);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
 
 // Drives come and go: look again every few seconds while nothing is open (less often on Windows, where looking

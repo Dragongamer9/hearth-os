@@ -12,6 +12,7 @@ Keywords=video;movie;film;music;song;audio;player;podcast;radio;playlist;subtitl
 StartupNotify=true
 StartupWMClass=hearth-player
 Actions=music;podcasts;
+X-Hearth-Controller=true
 
 [Desktop Action music]
 Name=Music

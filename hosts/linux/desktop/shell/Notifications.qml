@@ -30,6 +30,8 @@ Scope {
         visible: server.trackedNotifications.values.length > 0
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "nimbus-notifications"
+        // Never takes the keyboard (or a WebKit app's controller) from the window in front: docs/CONTROLLER-FOCUS.md
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         anchors { top: true; right: true }
         margins { top: 12; right: 12 }

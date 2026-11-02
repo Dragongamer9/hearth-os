@@ -174,13 +174,13 @@ const KIT = (() => {
 
   // Controllers (the standard mapping): D-pad or left stick moves, A chooses, B back, X and Y the page's own, LB/RB tabs.
   const held = {}; let lastMove = 0;
-  K.rawPads = () => (navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []);
+  K.rawPads = () => (HearthGamepad.pads());
   function frame() {
     const pads = K.rawPads();
     const now = performance.now();
-    if (K.capture && !K.dialogOpen()) { try { K.capture(pads, now); } catch (e) { console.error(e); } requestAnimationFrame(frame); return; }
+    if (K.capture && !K.dialogOpen()) { try { K.capture(pads, now); } catch (e) { console.error(e); } return; }
     // The shared keyboard reads the controller itself while it's open.
-    if (K.sharedOsk() && HearthOSK.isOpen()) { for (const k in held) held[k] = now; requestAnimationFrame(frame); return; }
+    if (K.sharedOsk() && HearthOSK.isOpen()) { for (const k in held) held[k] = now; return; }
     const st = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, rb: false, start: false };
     for (const g of pads) {
       const bt = i => g.buttons[i]?.pressed;
@@ -204,9 +204,8 @@ const KIT = (() => {
       else if (k === 'start') { if (!K.dialogOpen()) K.onStart?.(); }
       else K.move(k);
     }
-    requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  HearthGamepad.loop(frame);
   /** Whether the controller is the last thing used (then focus follows choices into the details). */
   K.usingPad = () => K.pad;
   return K;
