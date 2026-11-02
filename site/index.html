@@ -450,7 +450,7 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
       </div>
       <div class="desk" data-name="Hearth COSMIC">
         <figure><div class="screen"><img src="img/desk-cosmic.webp" width="1600" height="900" loading="lazy" alt="Hearth COSMIC with Hearth's Quick Access open on the right."></div></figure>
-        <div><h3 class="h3">Hearth COSMIC <span class="chip beta">New in 0.6.59, Beta Experimental</span> <span class="chip">Anatase only</span></h3>
+        <div><h3 class="h3">Hearth COSMIC <span class="chip beta">New in 0.6.59, Beta Experimental</span> <span class="chip">Anatase only, archived</span></h3>
           <p>System76's COSMIC desktop in Hearth's look, with Hearth's launcher, Quick Access, the Hearth menu and the on-screen keyboard. It's on Anatase, where Fedora packages COSMIC; Debian doesn't have it yet, so Peppermint shows it as not available.</p></div>
       </div>
       <div class="desk" data-name="Hearth Deepin">
@@ -535,29 +535,24 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
 <section id="editions" class="band">
   <div class="wrap">
     <div class="head">
-      <h2 class="h2">Two editions, one Hearth</h2>
-      <p class="lede">The same Game Mode, desktops and apps on two different foundations. Pick the one that suits how you like your system, and switch later in Settings.</p>
+      <h2 class="h2">Hearth OS on Peppermint</h2>
+      <p class="lede">Hearth OS is now built on Peppermint (Debian) only. The Anatase edition (Fedora) is archived: it gets no more updates, and installs that have it keep working on the version they have.</p>
     </div>
     <div class="eds">
-      <div class="ed ana">
-        <h3>Anatase</h3>
-        <p class="base">Built on Fedora</p>
-        <p>Locked and immutable. The system can't be changed by accident, so it behaves the same on every device. Add apps as Flatpaks or AppImages.</p>
-        <dl>
-          <dt>System</dt><dd>Read-only, replaced whole on update</dd>
-          <dt>Installing software</dt><dd>Flatpaks, AppImages</dd>
-          <dt>Desktops</dt><dd>Classic, Plasma, GNOME, COSMIC</dd>
-        </dl>
-      </div>
       <div class="ed pep">
-        <h3>Peppermint</h3>
+        <h3>Peppermint <span class="chip">Main edition</span></h3>
         <p class="base">Built on Debian</p>
-        <p>From 0.6.59, writable by default: apt and .deb files install on the system and stay there, and come back after an update. A lock switch in Settings makes it read-only again. <span class="chip beta">Beta Experimental</span></p>
+        <p>From 0.6.59, writable by default: apt and .deb files install on the system and stay there, and come back after an update. A lock switch in Settings makes it read-only again.</p>
         <dl>
           <dt>System</dt><dd>Writable, with a lock switch</dd>
           <dt>Installing software</dt><dd>apt, .deb files, Flatpaks</dd>
           <dt>Desktops</dt><dd>Classic, Plasma, GNOME</dd>
         </dl>
+      </div>
+      <div class="ed ana">
+        <h3>Anatase <span class="chip">Archived</span></h3>
+        <p class="base">Built on Fedora</p>
+        <p>No more updates from November 2026. A PC on Anatase keeps working on its last version; to keep getting updates, install Hearth OS on Peppermint (your games on a separate drive stay).</p>
       </div>
     </div>
     <div class="safety">
@@ -589,15 +584,15 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
     </div>
     <div class="get">
       <div class="box main">
-        <h3>Offline USB</h3>
-        <p>Everything on the stick, so it installs without internet. Also lets you try Game Mode first.</p>
-        <p class="v" data-file="hearth-os-live.iso"></p>
-        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 9 GB</small></a>
-        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso.sha256">SHA-256 checksum</a>
+        <h3>Offline USB (Peppermint)</h3>
+        <p>Hearth OS on Peppermint on the stick, so it installs without internet. It updates itself to the newest version after installing.</p>
+        <p class="v" data-file="hearth-os-peppermint.iso"></p>
+        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 4.3 GB</small></a>
+        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256">SHA-256 checksum</a>
       </div>
       <div class="box">
         <h3>Small installer</h3>
-        <p>A quick download that fetches Hearth OS while it installs. Needs internet.</p>
+        <p>A quick download that fetches Hearth OS while it installs. Needs internet. Choose Peppermint when it asks.</p>
         <p class="v" data-file="hearth-os-installer.iso"></p>
         <a class="btn line" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 1.6 GB</small></a>
         <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso.sha256">SHA-256 checksum</a>
@@ -610,7 +605,7 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
         <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256">SHA-256 checksum</a>
       </div>
     </div>
-    <p class="small" style="margin-top:20px">Peppermint, Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
+    <p class="small" style="margin-top:20px">Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
 
     <div class="ember-row" id="ember">
       <div>
@@ -645,7 +640,7 @@ footer .legal a{font-size:inherit;text-decoration:underline;color:var(--dust)}
       <div>
         <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. For installing, a USB stick of 16 GB or more and a drive of 64 GB or more.</p></details>
         <details><summary>Can I go back to the last version?</summary><p>Yes. Updates keep the previous system in the boot menu; pick it, or use Settings › System › Updates. A version that fails to start twice in a row goes back by itself, and holding Volume Down while it starts opens Hearth Recovery. If nothing starts, the <a href="#recovery">Recovery USB</a> can start the previous version.</p></details>
-        <details><summary>Which edition should I pick?</summary><p>Anatase if you want a system that can't be changed by accident. Peppermint if you want to install Debian packages with apt. Both get the same Hearth, the same updates and the same Recovery, and you can switch in Settings.</p></details>
+        <details><summary>Which edition should I pick?</summary><p>Peppermint: it's the only edition that gets updates now. It's writable like a normal Debian system (apt and .deb files), with a lock switch in Settings that makes it read-only. Anatase is archived.</p></details>
       </div>
       <div>
         <details><summary>Does it work with anti-cheat games?</summary><p>Nothing is injected into games; the overlay is an ordinary window. Couch co-op doesn't support anti-cheat games.</p></details>

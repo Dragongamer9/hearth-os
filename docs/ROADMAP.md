@@ -168,6 +168,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- [x] Peppermint is the main Hearth OS; Anatase is archived (no more Anatase builds or updates from November 2026, installs keep their last version). The website offers Peppermint only (the Peppermint offline USB and the small installer)
 - [x] Steam Game Mode: the Hearth plugin updates with Hearth OS (Decky kept the copy from the day it was installed, so Steam Game Mode still showed an older Hearth plugin, without the newer pages, covers and fixes); it's replaced by the image's own each time Steam Game Mode starts when it differs
 - [x] Hearth's open Steam client: when a Steam server answers "TryAnotherCM" (it can't sign anyone in), the next try goes to a different Steam server (switching between TCP and WebSocket) instead of the same kind again, and the log says which server answered
 
