@@ -1,0 +1,64 @@
+[
+ {
+  "t": "ready"
+ },
+ {
+  "t": "help"
+ },
+ {
+  "t": "radial",
+  "open": true,
+  "sel": -1
+ },
+ {
+  "t": "radial",
+  "open": false,
+  "pick": -1
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "launcher"
+ },
+ {
+  "t": "radial",
+  "open": true,
+  "sel": -1
+ },
+ {
+  "t": "radial",
+  "open": true,
+  "sel": 2
+ },
+ {
+  "t": "radial",
+  "open": false,
+  "pick": 2
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ },
+ {
+  "t": "osk",
+  "open": true
+ }
+]

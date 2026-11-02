@@ -1,0 +1,9 @@
+2026-11-02 02:02:55 started; input devices: event0 'Microsoft Vmbus HID-compliant Mouse'; event1 'AT Translated Set 2 keyboard'; event2 'PC Speaker'; event3 'Microsoft X-Box 360 pad' (controller); event4 'Hearth controller pointer'; event5 'Hearth controller keyboard'
+2026-11-02 02:02:55 Hearth Plasma controller
+2026-11-02 02:02:55 serving org.hearth.Pad for KWin
+2026-11-02 02:02:55 controllers: /dev/input/event3 'Microsoft X-Box 360 pad'
+2026-11-02 02:02:57 KWin scripting: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+2026-11-02 02:02:57 Quick Access shortcut: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.plasmashell was not provided by any .service files
+2026-11-02 02:03:25 last 30 s: 50 controller events, pointer moved 1632 px
+2026-11-02 02:03:55 last 30 s: 64 controller events, pointer moved 0 px
+2026-11-02 02:04:25 last 30 s: 60 controller events, pointer moved 0 px

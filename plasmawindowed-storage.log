@@ -1,0 +1,10 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Failed to create wl_display (Connection refused)
+qt.qpa.plugin: Could not load the Qt platform plugin "wayland" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: linuxfb, vkkhrdisplay, wayland-brcm, wayland-egl, wayland, vnc, xcb, minimal, eglfs, minimalegl, offscreen.
+

@@ -1,0 +1,29 @@
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: KWin answers through hearth-pad (org.hearth.Pad)::FAILED. first probe: None
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: right stick moves the pointer::FAILED. cursor None -> None
+::notice title=Controller: View shows the controls::passed. 
+::notice title=Controller: Guide + X asks for the on-screen keyboard::passed. events: [{'t': 'radial', 'open': True, 'sel': -1}, {'t': 'radial', 'open': False, 'pick': -1}, {'t': 'osk', 'open': True}]
+activateLauncherMenu: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.plasmashell was not provided by any .service files
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Menu opens Plasma's launcher::FAILED. in front: None
+::error title=Controller: D-pad and A start an app from the launcher::FAILED. the test app did not start; pad.log says what was in front
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: the Hearth menu opens Hearth Quick Access::FAILED. picked: True, in front: None
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: B closes it::FAILED. in front: None
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::notice title=Controller: View + B closes the window::passed. in front before: None
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Hearth Files (Dolphin) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Terminal (Konsole) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Text (Kate) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Reader (Okular) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Calculator (KCalc) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+probe: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.kde.KWin was not provided by any .service files
+::error title=Controller: Capture (Spectacle) with the controller::FAILED. in front: None, keys: False, keyboard: True, closed with View + B: True
+controller checks: 3 passed, 12 failed
