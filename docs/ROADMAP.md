@@ -171,6 +171,9 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Settings are always remembered and never change by themselves: every settings file is saved all at once with a backup copy, a damaged one comes back from that copy instead of resetting to the defaults, two programs saving at once both keep their change, and when Game Mode has to drop a screen mode that won't start it tells you and offers it again (docs/SETTINGS-PERSISTENCE.md; needs testing on a device)
 - Hearth's old Game Mode is hidden everywhere (it only runs first-time setup): its settings are now in Desktop Mode's Settings (new Remote play, Games & stores, Storage and Steam Game Mode pages; Go back a version in Updates; logs and backup in About) or in their own apps (docs/SETTINGS-MOVE.md) (needs testing on a device)
 - Hearth's own apps follow the desktop's look (Settings › Appearance: Steam-style or Hearth, dark or light, the accent), live while they're open: the Tauri apps, Theater and Hearth Browser through ~/.config/hearth/theme.css / theme.json (hosts/hearth-apptheme), and KDE apps (Hearth Files, KCalc, Konsole, Kate, Okular) through kdeglobals' colour scheme when they're next opened, which also fixes KCalc staying light in Desktop Mode.
+- Settings › Handheld: Hearth's own Handheld Daemon app (every HHD setting from its own settings tree, advanced ones behind a switch, notes where Steam takes over in Steam Game Mode, "isn't running" on desktops), also from Quick Access and Settings › Controller.
+- On-screen keyboard looks for Mantel: Steam-style (default, follows your accent and dark/light), Hearth warm, High contrast, Frosted and Pocket, next to the first four, picked in Settings › Keyboard.
+- Decky Loader built into the image (pinned v3.3.1, checksum-checked at build), started for Steam Game Mode by hearth-decky@<you>.service without a password; earlier downloaded installs move over by themselves.
 
 ## 1.0 (released 2026-11-02)
 

@@ -373,10 +373,14 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
 
 1. Nothing to turn on: the device starts in Steam Game Mode. If Steam isn't signed in yet, Steam asks you to sign in on
    its own screen; Hearth never sees or keeps your Steam password.
-2. Optional, once: **Settings › System › Steam Game Mode › Decky Loader and the Hearth plugin › Install** (in Hearth's
-   Settings, in Desktop Mode). It asks for your administrator password (it adds a service that runs as root, see
-   Security below), downloads Decky Loader's newest stable release from its GitHub page, adds the Hearth plugin that
-   comes with Hearth OS, and turns on Steam's remote debugging, which Decky needs.
+2. Nothing to install: **Decky Loader is built into Hearth OS** (a pinned stable release, checked against its SHA-256
+   when the image is built, in `/usr/lib/hearth-decky`; it's updated with Hearth OS). When Steam Game Mode starts, the
+   session turns on Steam's remote debugging (Decky needs it), makes `~/homebrew` and starts
+   `hearth-decky@<you>.service` (as root, as Decky needs) without a password prompt (`49-hearth-decky.rules`: only your
+   own instance, only from the session at the device, for every account); the service puts Hearth Sync in place
+   and removes an earlier downloaded install (`hearth-decky.service`, `/var/lib/hearth-decky`). It stops when Steam
+   Game Mode ends. A Decky you installed with Decky's own installer (`plugin_loader.service`) is left alone, and the
+   built-in one doesn't start next to it. Decky's own "update" button doesn't apply (it works in a temporary folder).
 3. With Decky installed, press the **…** (Quick Access) button and open the **plug** tab, then **Hearth**. Press
    **Sync to Steam library** to see your Hearth games in Steam's library.
 4. Desktop Mode: Steam's own **Power › Switch to Desktop**, or Quick Access › Hearth › **Desktop Mode**. Back from

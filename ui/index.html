@@ -4307,7 +4307,7 @@ function steamModeRows(){
   const d=s.decky||{};
   let h = shead('Steam Game Mode');
   h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS: where the device starts. Back to Desktop Mode: Steam's Power › Switch to Desktop, or Quick Access › Hearth › Desktop Mode.</small></div><div class="rv">›</div></button>`
-    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and Hearth Sync</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth Sync in place':d.shipped?' · Hearth Sync not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Adds your non-Steam games (Epic, GOG, emulators and more) to Steam\'s library with covers. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy===true?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
+    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and Hearth Sync</b><small>${d.via==='builtin'?'Built into Hearth OS'+(d.version?' (Decky Loader '+esc(d.version)+')':'')+(d.plugin?', Hearth Sync in place':'')+'. Starts by itself with Steam Game Mode, no password; Steam\'s remote debugging is on for it.':d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth Sync in place':d.shipped?' · Hearth Sync not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Adds your non-Steam games (Epic, GOG, emulators and more) to Steam\'s library with covers. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${d.via==='builtin'?'<div class="rv">Built in</div>':SGM.busy===true?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
   if(s.lastFailure) h += note(`Steam Game Mode didn't start last time, so Desktop Mode opened instead: ${esc(s.lastFailure)}. Switch to Steam Game Mode tries again.`);
   return h;
 }
@@ -4318,7 +4318,8 @@ function sgmDefault(){
   return go();
 }
 function sgmDecky(){
-  const d=(SGM.s&&SGM.s.decky)||{}; const action=d.installed&&d.via==='hearth'?'remove':'install';
+  const d=(SGM.s&&SGM.s.decky)||{}; if(d.via==='builtin') return toast('Decky Loader is built into Hearth OS: it starts with Steam Game Mode');
+  const action=d.installed&&d.via==='hearth'?'remove':'install';
   const go=()=>{ SGM.busy=true; render('sy-decky',true); call('steamMode.decky',{action},900000).then(r=>{ SGM.s=r; toast(action==='install'?'Decky Loader and the Hearth plugin are installed. Switch to Steam Game Mode to try them.':'Decky Loader removed'); }).catch(e=>toast(e.message)).finally(()=>{ SGM.busy=false; render('sy-decky',true); }); };
   if(action==='remove') return openSheet({title:'Remove Decky Loader?', sub:'Its service, the Hearth plugin and Steam\'s remote debugging go. Your other Decky plugins and their settings stay in ~/homebrew.', items:[{label:'Remove', icon:'x', run:go}]});
   return openSheet({title:'Install Decky Loader?', sub:'Downloads Decky Loader from its GitHub releases and adds the Hearth plugin. Decky runs as root while Steam Game Mode runs, and Steam\'s remote debugging is turned on (any program on this device can then control Steam). Experimental: a Steam update can break Decky.', items:[{label:'Install', icon:'dl', run:go}]});

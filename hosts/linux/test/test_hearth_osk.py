@@ -120,6 +120,30 @@ class DesktopMode(unittest.TestCase):
         for part in ('suggestions', 'popup', 'wheel', 'split', 'ember', 'sparks'):
             self.assertIn(part, b)
 
+    def test_desktop_looks(self):
+        """Mantel's keyboard looks (OskThemes.qml): Steam-style by default and following Appearance, the new ones and
+        the first four, picked in Settings › Keyboard as deskTheme; the keys' behaviour isn't part of a look."""
+        import re
+        t = read(SHELL, 'OskThemes.qml')
+        ids = re.findall(r'\{ id: "([a-z]+)", label:', t)
+        self.assertEqual(ids[:5], ['steam', 'warm', 'contrast', 'frost', 'pocket'])
+        for old in ('hearth', 'ember', 'slate', 'daylight'):   # the engine's own looks stay pickable
+            self.assertIn(old, ids)
+        for i in ids:
+            self.assertRegex(t, r'\n\s+%s: ' % i, i)
+        self.assertIn('return "steam";', t)
+        self.assertIn('Theme.accent', t)
+        self.assertIn('Theme.dark', t)
+        self.assertIn('deskTheme', t)
+        b = read(SHELL, 'Keyboard.qml')
+        self.assertIn('looks: OskThemes.themes', b)
+        self.assertIn('look: OskThemes.resolve(root.cfg.theme)', b)
+        self.assertNotRegex(read(SHELL, 'OskBoard.qml'), r'OskThemes\.(themes|resolve)', "the Qt renderer's copy has no OskThemes")
+        self.assertNotIn('MouseArea', t, 'a look has no input of its own')
+        kb = read(SHELL, 'SetKeyboard.qml')
+        self.assertIn('model: OskThemes.list', kb)
+        self.assertIn('page.oskSet("deskTheme", modelData.id)', kb)
+
     def test_browser_uses_it(self):
         mjs = read(ROOT, 'os', 'system_files', 'usr', 'share', 'hearth-browser', 'firefox', 'hearth', 'hearth.sys.mjs')
         self.assertIn('resource://hearth/osk/hearth-osk.js', mjs)

@@ -154,6 +154,9 @@ jobs:
           echo "XDG_DATA_DIRS=$XDG_DATA_DIRS"
           case ":$XDG_DATA_DIRS:" in *":$UF:"*) ;; *) echo "::error title=icons::nimbus-session doesn't put your Flatpak apps in XDG_DATA_DIRS"; touch shots/FAILED ;; esac
           case ":$XDG_DATA_DIRS:" in *":$SF:"*) ;; *) echo "::error title=icons::nimbus-session doesn't put the system's Flatpak apps in XDG_DATA_DIRS"; touch shots/FAILED ;; esac
+          # Desktop Mode's settings file there from the start (the shell watches it once it exists: the keyboard looks'
+          # light-mode pictures below change it while the shell runs).
+          mkdir -p "$HOME/.local/share/nimbus"; [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -328,6 +331,68 @@ jobs:
             echo "::warning title=on-screen keyboard::foot or wtype is missing here: the typing test didn't run"
           fi
           # ---- end of the on-screen keyboard
+          # ---- The on-screen keyboard's looks (OskThemes.qml, Settings › Keyboard › Look): each one, dark and light for the
+          # ones that follow Settings › Appearance (deskTheme in osk.json, mode in desktop.json; both files are watched).
+          # Pictures: osk-look-<look>-<mode>.png, and Settings › Keyboard's look picker.
+          oskset() {  # file key value ("" removes it)
+            python3 - "$@" <<'PY'
+          import json, os, sys
+          p, k, v = sys.argv[1:4]
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          if v: d[k] = v
+          else: d.pop(k, None)
+          os.makedirs(os.path.dirname(p), exist_ok=True)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          }
+          OSKJ="$HOME/.config/nimbus/osk.json"; DESKJ="$HOME/.local/share/nimbus/desktop.json"
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call keyboard open; sleep 2
+          for mode in dark light; do
+            oskset "$DESKJ" mode "$mode"; sleep 2
+            for look in steam warm contrast frost pocket hearth ember slate daylight; do
+              if [ "$mode" = light ]; then case "$look" in hearth|ember|slate|daylight) continue ;; esac; fi
+              oskset "$OSKJ" deskTheme "$look"; sleep 1.5
+              grim "shots/osk-look-$look-$mode.png" || true
+            done
+          done
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call keyboard close; sleep 1
+          oskset "$DESKJ" mode dark; oskset "$OSKJ" deskTheme pocket; sleep 2
+          ipc settings page keyboard
+          if command -v wtype >/dev/null; then
+            wtype -k Right; sleep 0.5
+            # (tabbing down the page: pictures at a few depths, the look tiles are in one of them)
+            t=0; for want in 22 28 34 40 46; do while [ "$t" -lt "$want" ]; do wtype -k Tab; t=$((t+1)); done; sleep 1; grim "shots/osk-look-settings-$want.png" || true; done
+          fi
+          ipc settings close
+          oskset "$OSKJ" deskTheme ""
+          # ---- Settings › Handheld (SetHandheld.qml: Hearth's own Handheld Daemon app). First without HHD (what a desktop
+          # shows), then with a stand-in HHD (.github/scripts/fake-hhd.py: the preview's ROG Ally on 127.0.0.1:5335) and
+          # its token file (Quick Access then offers Handheld settings). Pictures: hhd-*.png, hhd-page.json.
+          ipc settings page handheld; sleep 2; grim shots/hhd-0-not-running.png || true; ipc settings close
+          python3 .github/scripts/fake-hhd.py ui/index.html &
+          FAKEHHD=$!; sleep 2
+          mkdir -p /tmp/hhd && echo fake-token > /tmp/hhd/token
+          python3 hosts/linux/desktop/shell/hearth-hhd page > shots/hhd-page.json 2>&1 || true
+          grep -q '"running": true' shots/hhd-page.json || { echo "::error title=Handheld::hearth-hhd page didn't read the stand-in HHD: $(head -c 300 shots/hhd-page.json)"; touch shots/FAILED; }
+          python3 hosts/linux/desktop/shell/hearth-hhd apply controllers.rog_ally.imu false > /dev/null 2>shots/hhd-apply.txt \
+            && python3 hosts/linux/desktop/shell/hearth-hhd get controllers.rog_ally.imu >> shots/hhd-apply.txt 2>&1 || true
+          grep -q '"controllers.rog_ally.imu": false' shots/hhd-apply.txt || { echo "::error title=Handheld::a change didn't reach HHD: $(head -c 300 shots/hhd-apply.txt)"; touch shots/FAILED; }
+          ipc settings page handheld; sleep 3; grim shots/hhd-1-page.png || true
+          if command -v wtype >/dev/null; then
+            wtype -k Right; sleep 0.5; wtype -k Return; sleep 3; grim shots/hhd-2-advanced.png || true   # Show advanced settings
+            for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/hhd-3-controller.png || true
+            for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/hhd-4-more.png || true
+            for i in $(seq 1 14); do wtype -k Down; done; sleep 1; grim shots/hhd-5-settings.png || true
+          fi
+          ipc settings close
+          ipc quick toggle; sleep 1; grim shots/hhd-6-quick-access.png || true; ipc quick toggle
+          python3 hosts/linux/desktop/shell/hearth-hhd apply tdp.unified.tdp.mode '"custom"' > /dev/null 2>&1 || true
+          ipc settings page handheld; sleep 3; grim shots/hhd-7-custom-power.png || true; ipc settings close
+          oskset "$DESKJ" mode light; sleep 2
+          ipc settings page handheld; sleep 3; grim shots/hhd-8-light.png || true; ipc settings close
+          oskset "$DESKJ" mode dark; sleep 2
+          kill "$FAKEHHD" 2>/dev/null || true; rm -f /tmp/hhd/token
           # App icons: every kind of app above resolves (Icon= names through hicolor and Flatpak's exports, a pixmap,
           # an absolute path, windows by app id and StartupWMClass), and they show in the launcher, on the taskbar
           # and on a notification.
@@ -398,7 +463,7 @@ jobs:
           # Report: problems in the shell log (not the expected "no uinput/evdev here") fail the test.
           # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files.
           bad=$(grep -iE "ERROR|WARN|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" 2>/dev/null \
-            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -25 || true)
+            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -25 || true)
           if [ -n "$bad" ] || grep -q "not running" shots/quickshell-running.txt; then
             msg=$( { cat shots/quickshell-running.txt; echo "$bad"; tail -15 "$LOG" 2>/dev/null; } | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g")
             echo "::error title=shell::$msg"

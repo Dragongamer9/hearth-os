@@ -8,6 +8,8 @@ import Quickshell
 
 Singleton {
     property var navTarget: null
+    property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
+    function openPage(p) { if (settingsApp) settingsApp.open(p); }
     property var appsNav: null        // Apps' list (AppStore.qml)
     property var clipboard: null      // the clipboard history picker (Clipboard.qml), for Settings › Clipboard
     property var apps: null           // Apps (AppStore.qml): archived, always null now (Bazaar is the app store)

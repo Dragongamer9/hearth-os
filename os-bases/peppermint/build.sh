@@ -307,8 +307,8 @@ ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin that keeps Hearth's non-Steam games
-# in Steam's library. Only files, copied into Decky's plugins folder when you install Decky from Settings › System
-# (hearth-admin decky-install) and refreshed when Steam Game Mode starts. No service is enabled here and nothing runs at
+# in Steam's library. Only files, copied into Decky's plugins folder by the built-in Decky's service (hearth-decky run)
+# each time Steam Game Mode starts, when it changed. No service is enabled here and nothing runs at
 # boot. The older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now. Not in this build: skipped.
 if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-sync/dist/index.js ]; then
   mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-sync && cp -a /ctx/nimbus-app/decky-hearth-sync /usr/share/hearth/decky-hearth-sync \
@@ -317,6 +317,22 @@ if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/
 else
   echo "warning: Hearth Sync isn't in this build; Steam Game Mode goes without it"
 fi
+# ---- Decky Loader, built in (docs/STEAM-GAME-MODE.md): a pinned stable release of Decky's PluginLoader, checked against
+# its SHA-256 (and that it's a program of the expected size), in /usr/lib/hearth-decky with its version. It runs only
+# while Steam Game Mode does: nimbus-session starts hearth-decky@<you>.service (os/system_files, User=root as Decky needs,
+# not enabled) without a password (49-hearth-decky.rules). Decky is updated with Hearth OS: bump all three lines together.
+DECKY_VERSION=v3.3.1
+DECKY_SHA256=7bb73b0502c49e7194f34f9ce4ddb6777764e9277d7a5e54665f66460d50c315
+DECKY_SIZE=35277600
+curl -fsSL --retry 3 -o /tmp/PluginLoader "https://github.com/SteamDeckHomebrew/decky-loader/releases/download/$DECKY_VERSION/PluginLoader"
+echo "$DECKY_SHA256  /tmp/PluginLoader" | sha256sum -c -
+test "$(stat -c %s /tmp/PluginLoader)" = "$DECKY_SIZE"
+test "$(head -c 4 /tmp/PluginLoader | od -An -tx1 | tr -d ' \n')" = 7f454c46
+install -Dm755 /tmp/PluginLoader /usr/lib/hearth-decky/PluginLoader
+echo "$DECKY_VERSION" > /usr/lib/hearth-decky/version
+rm -f /tmp/PluginLoader
+test -f /usr/lib/systemd/system/hearth-decky@.service
+echo "Decky Loader $DECKY_VERSION built in"
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
 # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its

@@ -379,7 +379,7 @@ pub fn report(version: &str) -> String {
         .map(|v| v["sources"]["steam"] != Value::Bool(false)).unwrap_or(true);
     section("Steam", crate::steam::report(&crate::paths::home(), steam_on));
     section("Steam Game Mode (Decky plugin)", decky_report(Path::new("/"), &crate::paths::home(),
-        &sh("for u in hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
+        &sh("for u in \"hearth-decky@$(id -un).service\" hearth-decky.service plugin_loader.service; do printf '%s: ' \"$u\"; systemctl is-active \"$u\" 2>/dev/null || true; done")));
     // Steam's own logs (native and Flathub Steam): game launches and what stopped them ("games won't start in
     // Steam Game Mode"), only the launch, compatibility and error lines, no account lines.
     section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
