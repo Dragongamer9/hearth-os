@@ -72,7 +72,7 @@ const shots = [
   ["hearth-link-storage-asleep", "storage-asleep", async () => show("Hearth Storage"),
     ["Asleep or away", "Wake", "Tower is asleep", "battery 14%", "only 40 GB free", "has an update", "last backup 12 days ago", "two different saves"]],
   ["hearth-link-sync-off", "devices", async () => { await show("Sync between your devices"); },
-    ["Sync between your devices", "Sync Decky plugins", "Off: plugins and their settings stay", "Saves follow you", "Steam Cloud games already sync through Steam",
+    ["Sync Decky plugins", "Off: plugins and their settings stay", "Saves follow you", "Steam Cloud games already sync through Steam",
      "Sync Hearth settings", "Off: Hearth's settings stay"]],
   ["hearth-link-sync-on", "sync-on", async () => { await show("Sync between your devices"); await focus("Install CSS Loader"); },
     ["never sign-ins", "Install CSS Loader", "Version 2.1.2 · on Living room PC", "Install PowerTools", "on Tower (offline)",
