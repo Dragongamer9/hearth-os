@@ -9,6 +9,9 @@
 //!   g/ui/<key>                              appearance, layouts, Made for, controller choices (the UI's own)
 //!   g/input/<file>                          Hearth Input controller layouts (config/input)
 //!   g/beacon/custom                         Beacon's games added by hand (custom-games.json)
+//!   g/x/<ns>/<key>                          one key of a settings file the Hearth Link Decky plugin shares (prefs.json:
+//!                                           Hearth's look, keyboard, music and button settings, Decky plugins' settings
+//!                                           and which plugins you have; each only while its switch is on, on that device)
 //! and play time: every device's own minutes and last played per game, added up (never overwritten).
 //!
 //! Rules: newest change wins, per field (time, then device id on a tie); a removed thing is a field set to null,
@@ -62,6 +65,31 @@ impl Sources {
     }
     fn inbox(&self) -> PathBuf { self.link.join("inbox.json") }
     fn ui(&self) -> PathBuf { self.link.join("ui.json") }
+    fn prefs(&self) -> PathBuf { self.link.join("prefs.json") }
+}
+
+/// prefs.json (written by the Hearth Link Decky plugin, decky-hearth-link/link_sync.py, and here, both under its
+/// lock through hearth_core::settings_file): {"local": {ns: {key: {"v", "t"}}}, "remote": {ns: {key: {"v", "t"}}}}.
+/// "local" is this device's value of each key and when it changed; "remote" is what came from another device, for
+/// the plugin to put in place (one key at a time, only while that switch is on).
+pub fn prefs_file() -> PathBuf { crate::home_dir().join("prefs.json") }
+pub fn valid_ns(s: &str) -> bool { valid_part(s) && s.len() <= 160 }
+
+/// prefs.json's local values as fields, and when each changed (the plugin's time, never later than now).
+fn prefs_local(src: &Sources) -> (BTreeMap<String, Value>, BTreeMap<String, u64>) {
+    let pr = read_json(&src.prefs());
+    let (mut vals, mut times) = (BTreeMap::new(), BTreeMap::new());
+    let now = crate::now_ms();
+    for (ns, m) in pr["local"].as_object().into_iter().flatten() {
+        if !valid_ns(ns) { continue; }
+        for (k, e) in m.as_object().into_iter().flatten() {
+            if !valid_part(k) || e["v"].is_null() { continue; }
+            let key = format!("g/x/{ns}/{k}");
+            if let Some(t) = e["t"].as_u64().filter(|t| *t > 0 && *t <= now) { times.insert(key.clone(), t); }
+            vals.insert(key, e["v"].clone());
+        }
+    }
+    (vals, times)
 }
 
 pub fn inbox_file() -> PathBuf { crate::home_dir().join("inbox.json") }
@@ -96,6 +124,7 @@ pub fn valid_key(k: &str) -> bool {
         ["g", "ui", x] => valid_part(x) && x.len() <= 60,
         ["g", "input", f] => valid_input_file(f),
         ["g", "beacon", "custom"] => true,
+        ["g", "x", ns, x] => valid_ns(ns) && valid_part(x),
         _ => false,
     }
 }
@@ -167,6 +196,7 @@ pub fn extract(src: &Sources) -> (String, BTreeMap<String, Value>, BTreeMap<Stri
     }
     let bc = read_json(&src.beacon_custom);
     if !bc.is_null() { out.insert("g/beacon/custom".into(), bc); }
+    out.extend(prefs_local(src).0);
     let mut stats = BTreeMap::new();
     for (gid, s) in lib["stats"].as_object().into_iter().flatten() {
         if !valid_part(gid) { continue; }
@@ -220,9 +250,10 @@ impl SyncState {
     pub fn load(link: &Path) -> SyncState { std::fs::read(link.join("sync.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() }
     pub fn save(&self, link: &Path) -> Result<(), String> { crate::write_atomic(&link.join("sync.json"), serde_json::to_string(self).unwrap().as_bytes()) }
 
-    fn stamp(&mut self, k: &str, v: Value, me: &str) {
+    fn stamp(&mut self, k: &str, v: Value, me: &str) { self.stamp_at(k, v, me, crate::now_ms()); }
+    fn stamp_at(&mut self, k: &str, v: Value, me: &str, t: u64) {
         self.rev += 1;
-        self.fields.insert(k.to_string(), Field { v, t: crate::now_ms(), d: me.to_string(), seq: self.rev });
+        self.fields.insert(k.to_string(), Field { v, t, d: me.to_string(), seq: self.rev });
     }
 
     /// Finds what changed on this device since last time. True when something did.
@@ -232,12 +263,16 @@ impl SyncState {
         let pending: BTreeSet<String> = inbox["profiles"].as_object().into_iter().flatten()
             .flat_map(|(p, x)| x["set"].as_object().into_iter().flatten().map(move |(k, _)| format!("p/{p}/{k}"))).collect();
         let before = self.rev;
+        let times = prefs_local(src).1;
         for (k, v) in &cur {
             if pending.contains(k) { continue; }
             let h = hash_of(v);
             if self.shadow.get(k) == Some(&h) { continue; }
             self.shadow.insert(k.clone(), h);
-            if self.fields.get(k).map(|f| &f.v) != Some(v) { self.stamp(k, v.clone(), me); }
+            if self.fields.get(k).map(|f| &f.v) != Some(v) {
+                // A shared setting keeps the time it changed (an older one loses to what another device has).
+                match times.get(k) { Some(t) => self.stamp_at(k, v.clone(), me, *t), None => self.stamp(k, v.clone(), me) }
+            }
         }
         // Gone since last time: only this profile's and the device's own (another profile's fields aren't here).
         let mine = format!("p/{pid}/");
@@ -298,6 +333,7 @@ impl SyncState {
         let mut patch = json!({"profiles": {}});
         let mut ui = read_json(&src.ui());
         let mut ui_changed = false;
+        let mut prefs: Vec<(String, String, Value, u64)> = Vec::new();
         for k in changed {
             let Some(f) = self.fields.get(k).cloned() else { continue };
             let parts: Vec<&str> = k.split('/').collect();
@@ -310,6 +346,7 @@ impl SyncState {
                 ["g", "beacon", "custom"] => {
                     if !f.v.is_null() { crate::write_atomic(&src.beacon_custom, serde_json::to_string_pretty(&f.v).unwrap().as_bytes())?; }
                 }
+                ["g", "x", ns, key] => prefs.push((ns.to_string(), key.to_string(), f.v.clone(), f.t)),
                 ["g", "ui", key] => {
                     if !ui.is_object() { ui = json!({}); }
                     ui["remote"][*key] = json!({"v": f.v, "t": f.t});
@@ -348,6 +385,22 @@ impl SyncState {
             self.applied.insert(pg.clone(), others.max(prev));
         }
         if ui_changed { crate::write_atomic(&src.ui(), serde_json::to_string(&ui).unwrap().as_bytes())?; }
+        if !prefs.is_empty() {
+            // Under prefs.json's lock (the plugin writes it too): "remote" for the plugin to put in place, and "local"
+            // the same, so the next scan doesn't take it for a change made here.
+            hearth_core::settings_file::update_json(&src.prefs(), |m| {
+                for (ns, key, v, t) in &prefs {
+                    for side in ["remote", "local"] {
+                        let s = m.entry(side).or_insert_with(|| json!({}));
+                        if !s.is_object() { *s = json!({}); }
+                        let n = s.as_object_mut().unwrap().entry(ns.clone()).or_insert_with(|| json!({}));
+                        if !n.is_object() { *n = json!({}); }
+                        let n = n.as_object_mut().unwrap();
+                        if v.is_null() { n.remove(key); } else { n.insert(key.clone(), json!({"v": v, "t": t})); }
+                    }
+                }
+            }).map_err(|e| format!("{}: {e}", src.prefs().display()))?;
+        }
         if patch["profiles"].as_object().map(|m| !m.is_empty()).unwrap_or(false) { inbox_add(&src.inbox(), &patch)?; }
         Ok(())
     }
@@ -474,6 +527,30 @@ mod tests {
         hearth_applies(&sa); hearth_applies(&sb);
         assert_eq!(read_json(&sa.data.join("library.json"))["profile"]["name"], "New");
         assert_eq!(read_json(&sb.data.join("library.json"))["profile"]["name"], "New");
+    }
+
+    #[test]
+    fn shared_settings_keep_their_own_time_and_land_in_remote() {
+        let root = tempfile::tempdir().unwrap();
+        let (sa, sb) = (device(root.path(), "a"), device(root.path(), "b"));
+        // A changed its look at t=2000, B at t=1000 (an older change): A's wins on both; B's own key stays.
+        write(&sa.prefs(), json!({"local": {"hearth:desktop": {"look": {"v": "hearth", "t": 2000}}}}));
+        write(&sb.prefs(), json!({"local": {"hearth:desktop": {"look": {"v": "steam", "t": 1000}, "mode": {"v": "light", "t": 1500}}}}));
+        let (mut a, mut b) = (SyncState::default(), SyncState::default());
+        exchange(&mut a, "A", &sa, &mut b, "B", &sb);
+        let pa = read_json(&sa.prefs());
+        let pb = read_json(&sb.prefs());
+        assert_eq!(pb["remote"]["hearth:desktop"]["look"], json!({"v": "hearth", "t": 2000}));
+        assert_eq!(pb["local"]["hearth:desktop"]["look"]["v"], "hearth");
+        assert_eq!(pa["remote"]["hearth:desktop"]["mode"], json!({"v": "light", "t": 1500}));
+        assert!(pa["remote"]["hearth:desktop"].get("look").is_none());
+        // A round with nothing new changes nothing (what came in isn't taken for a change made here).
+        let rev = (a.rev, b.rev);
+        exchange(&mut a, "A", &sa, &mut b, "B", &sb);
+        assert_eq!((a.rev, b.rev), rev);
+        assert!(valid_key("g/x/decky:CSS Loader:settings.json/theme"));
+        assert!(!valid_key("g/x/../x"));
+        assert!(!valid_key("g/x/ns/a/b"));
     }
 
     #[test]

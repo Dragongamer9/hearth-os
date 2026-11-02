@@ -40,11 +40,13 @@
 //! - fleet.rs: update every device at once (each by its own boot-safety, hold-back, battery and "someone's playing"
 //!   rules; never restarted for you)
 //! - inputs.rs: controller layouts from your other devices (Hearth Input; pull only, checked here)
+//! - decky.rs: a Decky plugin's files for another of your devices (installed there only through Decky's own prompt)
 //! - ai.rs: local AI over Hearth Link (a device's own model server, shared with the paired devices; off by default)
 //! - node.rs: the service: connections, the requests from other devices and from the UI
 //! - ipc.rs: the UI's (and `hearth-link call`'s) way in: a Unix socket only this user can open
 
 pub mod ai;
+pub mod decky;
 pub mod discovery;
 pub mod fleet;
 pub mod handoff;

@@ -398,6 +398,19 @@ jobs:
           pnpm build
           ./package.sh /tmp/decky-out
           tar -C /tmp/decky-out/decky-hearth-music -cf "$GITHUB_WORKSPACE/hearth-decky-music.tar" .
+      # ---- Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): another Decky plugin, built the same way
+      # into hearth-decky-link.tar for /usr/share/hearth/decky-hearth-link. Never fails the image.
+      - name: Build Hearth Link (Decky plugin)
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth-link
+          command -v pnpm >/dev/null || npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          tar -C /tmp/decky-out/decky-hearth-link -cf "$GITHUB_WORKSPACE/hearth-decky-link.tar" .
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -419,6 +432,7 @@ jobs:
             hearth-electron.tar
             hearth-decky-sync.tar
             hearth-decky-music.tar
+            hearth-decky-link.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
   # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
@@ -533,6 +547,7 @@ jobs:
           echo "::notice title=version::${{ needs.app.outputs.version }} (shown as $(python3 tools/hearth_version.py show "${{ needs.app.outputs.version }}"), released: $(cat os/system_files/usr/share/nimbus/version-date))"
           if [ -f hearth-decky-sync.tar ]; then mkdir -p os/nimbus-app/decky-hearth-sync && tar -C os/nimbus-app/decky-hearth-sync -xf hearth-decky-sync.tar || rm -rf os/nimbus-app/decky-hearth-sync; fi
           if [ -f hearth-decky-music.tar ]; then mkdir -p os/nimbus-app/decky-hearth-music && tar -C os/nimbus-app/decky-hearth-music -xf hearth-decky-music.tar || rm -rf os/nimbus-app/decky-hearth-music; fi
+          if [ -f hearth-decky-link.tar ]; then mkdir -p os/nimbus-app/decky-hearth-link && tar -C os/nimbus-app/decky-hearth-link -xf hearth-decky-link.tar || rm -rf os/nimbus-app/decky-hearth-link; fi
 
       - name: Build
         run: |
