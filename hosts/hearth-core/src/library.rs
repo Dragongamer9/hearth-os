@@ -136,6 +136,8 @@ pub struct Library {
     beacon_next: Arc<Mutex<Option<crate::beacon::Snapshot>>>,
     beacon_busy: Arc<std::sync::atomic::AtomicBool>,
     beacon_checked: u64,
+    /// Show demo (demo.rs): the arguments for the next start of the demo game (its seat's role), used once.
+    pub demo_args: Option<Vec<String>>,
 }
 
 fn norm(s: &str) -> String { s.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect() }
@@ -144,7 +146,7 @@ impl Library {
     pub fn new(store: Store, home: PathBuf) -> Library {
         Library { running: None, store, games: BTreeMap::new(), counts: BTreeMap::new(), home, queue: Arc::new(Mutex::new(stores::Queue::new())),
                   accounts: Arc::new(Mutex::new(stores::AccState::default())), queue_restored: false, steam_bytes: HashMap::new(), speeds: vec![], download_sig: String::new(), frozen: vec![], quick_saved: String::new(),
-                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0 }
+                  beacon: Default::default(), beacon_loaded: false, beacon_next: Arc::new(Mutex::new(None)), beacon_busy: Arc::new(std::sync::atomic::AtomicBool::new(false)), beacon_checked: 0, demo_args: None }
     }
 
     /// Games you added yourself (kept in library.json "manual").
@@ -198,6 +200,8 @@ impl Library {
             counts.insert("beacon".to_string(), list.iter().filter(|g| g.installed).count());
             for g in list { all.entry(g.id.clone()).or_insert(g); }
         }
+        // Show demo's game (Quad Mech), once it's downloaded (demo.rs).
+        if let Some(g) = crate::demo::library_game() { all.insert(g.id.clone(), g); }
         let manual = self.manual_games();
         counts.insert("manual".to_string(), manual.len());
         for g in manual { all.entry(g.id.clone()).or_insert(g); }
@@ -484,6 +488,15 @@ impl Library {
                 let home = crate::paths::home().to_string_lossy().to_string();
                 let broad = ["/", "/usr/bin", "/usr/local/bin", "/bin", "/opt", home.as_str()].contains(&dir.as_str()) || exe.ends_with(".desktop");
                 crate::procs::Track { pid: Some(pid), dirs: if broad { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
+            }
+            "demo" => {
+                // Show demo's game: its seat's arguments when Show demo started it (demo.rs), else its own menu.
+                let exe = g.exe.clone().unwrap_or_default();
+                let args = self.demo_args.take().unwrap_or_default().join(" ");
+                let opts = crate::game_options::get(&self.store, id);
+                let pid = crate::manual::launch(&exe, &args, &opts, app_id)?;
+                let dir = std::path::Path::new(&exe).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                crate::procs::Track { pid: Some(pid), dirs: if dir.is_empty() { vec![] } else { vec![dir] }, app_id: Some(app_id), ..Default::default() }
             }
             "emu" => {
                 let pid = crate::emulators::launch(g.exe.as_deref().unwrap_or(""), g.system_key.unwrap_or(""), &self.home, app_id)?;

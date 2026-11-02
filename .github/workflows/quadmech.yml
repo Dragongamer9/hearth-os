@@ -1,0 +1,230 @@
+# Quad Mech, Hearth's multi-seat demo game (games/quadmech, Godot 4.3): what Settings › Multi-seat › Show demo and
+# Home's "Show the Quad Mech demo" download (docs/DEMO.md).
+# - Godot 4.3-stable's Linux editor and export templates come from Godot's GitHub release, checked against that
+#   release's SHA512-SUMS.txt and against the hashes pinned here (both must match).
+# - The textures are generated (tools/gen_textures.py, fixed seeds), then the project is imported and exported for
+#   Linux and Windows (one file each, the game's data inside), and zipped with the library art (art/*.png).
+# - Smoke tests: the Linux build runs its self-test (--selftest: the mechs walk, aim and fire by themselves) without a
+#   screen and must exit 0; then two copies play each other on this machine (host + --join=auto), as two seats do.
+# - quadmech.json says the version and each zip's address, SHA-256 and size; Hearth and Ember accept only this
+#   repository's release addresses (hosts/hearth-core/src/demo.rs, hosts/windows/Nimbus.Host/Services/DemoService.cs).
+# - On main (or when release.yml calls this for a new release): the zips and quadmech.json go on release v<version>
+#   under fixed names, so https://github.com/Dragongamer9/hearth-os/releases/latest/download/quadmech.json always works.
+#   Elsewhere they're an artifact.
+name: Quad Mech (Show demo)
+
+on:
+  push:
+    branches: [main, linux-host]
+    paths: ['games/quadmech/**', '.github/workflows/quadmech.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Also put it on the current release (main or a v* tag only)'
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      publish:
+        description: 'Put it on the release (release.yml, for a new release)'
+        type: boolean
+        default: true
+      tag:
+        description: 'The release (vX.Y.Z) it goes on'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  GODOT_RELEASE: '4.3-stable'
+  GODOT_TEMPLATES_DIR: '4.3.stable'
+  GODOT_EDITOR: 'Godot_v4.3-stable_linux.x86_64'
+  # sha512 of the files in https://github.com/godotengine/godot/releases/tag/4.3-stable (also checked against its SHA512-SUMS.txt)
+  GODOT_EDITOR_SHA512: 'fd52bb4ba8acc30ca5accd1c566d470ad7282f891ccc0995dfafabcf92bcf76280ce182bf9d80ebd885f3ed2165d01e1fc3f2928436b15498dfbd98656c2a45a'
+  GODOT_TEMPLATES_SHA512: '476366caf0fd45a8f24136cf9cf1dc0bc2b96f7c82d53e5f82200b55aefd07b286d283fd6f1ce29e0de70648c5a51d3b12f96c6d4fafd4e8c4878ecda6406d6a'
+  # The only release addresses Hearth and Ember accept for the demo.
+  RELEASE_BASE: 'https://github.com/Dragongamer9/hearth-os/releases/download'
+
+jobs:
+  quadmech:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          # The game's version: build date and commit. The release it goes on: the tag, or Hearth's version.
+          echo "game=$(date -u +%Y%m%d)-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          if [ -n "$INPUT_TAG" ]; then tag="$INPUT_TAG"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then tag="${{ github.ref_name }}"
+          else
+            v=$(grep -m1 -E '^version *=' hosts/hearth-rs/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+            [ -n "$v" ] || v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+            tag="v$v"
+          fi
+          [[ "$tag" =~ ^v[0-9A-Za-z._-]+$ ]] || { echo "::error title=Version::unusual release tag $tag"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Quad Mech::game $(date -u +%Y%m%d)-$(git rev-parse --short=7 HEAD), release $tag"
+
+      - name: Godot ${{ env.GODOT_RELEASE }} (checked against SHA512-SUMS.txt)
+        run: |
+          set -e
+          d="$RUNNER_TEMP/godot"; mkdir -p "$d"; cd "$d"
+          base="https://github.com/godotengine/godot/releases/download/$GODOT_RELEASE"
+          for f in SHA512-SUMS.txt "$GODOT_EDITOR.zip" "Godot_v${GODOT_RELEASE}_export_templates.tpz"; do
+            curl -fsSL --proto '=https' --retry 3 --connect-timeout 20 -m 900 -o "$f" "$base/$f" \
+              || { echo "::error title=Godot download::$base/$f didn't download"; exit 1; }
+          done
+          check() {   # file, pinned hash
+            want=$(awk -v f="$1" '$2 == f || $2 == "*"f {print $1}' SHA512-SUMS.txt)
+            got=$(sha512sum "$1" | cut -d' ' -f1)
+            [ -n "$want" ] || { echo "::error title=Godot checksum::$1 isn't in SHA512-SUMS.txt"; exit 1; }
+            [ "$got" = "$want" ] || { echo "::error title=Godot checksum::$1 doesn't match SHA512-SUMS.txt"; exit 1; }
+            [ "$got" = "$2" ] || { echo "::error title=Godot checksum::$1 doesn't match the hash pinned in quadmech.yml"; exit 1; }
+          }
+          check "$GODOT_EDITOR.zip" "$GODOT_EDITOR_SHA512"
+          check "Godot_v${GODOT_RELEASE}_export_templates.tpz" "$GODOT_TEMPLATES_SHA512"
+          unzip -q "$GODOT_EDITOR.zip"
+          chmod +x "$GODOT_EDITOR"
+          echo "GODOT=$d/$GODOT_EDITOR" >> "$GITHUB_ENV"
+          t="$HOME/.local/share/godot/export_templates/$GODOT_TEMPLATES_DIR"
+          mkdir -p "$t"
+          unzip -q "Godot_v${GODOT_RELEASE}_export_templates.tpz" 'templates/linux_*.x86_64' 'templates/windows_*_x86_64*.exe' 'templates/version.txt' -d tpl
+          mv tpl/templates/* "$t/"
+          echo "::notice title=Godot::$("$d/$GODOT_EDITOR" --headless --version 2>/dev/null | tail -1), templates $(cat "$t/version.txt")"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Textures (tools/gen_textures.py)
+        working-directory: games/quadmech
+        run: |
+          set -o pipefail
+          python3 -m pip install --quiet 'numpy==2.1.3' 'pillow==11.0.0' 'scipy==1.14.1' 2>&1 | tail -5
+          if ! python3 tools/gen_textures.py textures/ 2>&1 | tee tex.log; then
+            echo "::error title=Textures::$(tail -15 tex.log | tr '\n' '|' | cut -c1-1500)"; exit 1
+          fi
+          n=$(ls textures/*.png | wc -l); want=$(ls textures/*.png.import | wc -l)
+          [ "$n" -eq "$want" ] || { echo "::error title=Textures::$n textures made, $want expected"; exit 1; }
+
+      - name: Import and export (Linux, Windows)
+        working-directory: games/quadmech
+        run: |
+          set -o pipefail
+          note() { echo "::error title=$1::$( (grep -E -i 'error|failed|missing' "$2" | head -25; echo ===; tail -25 "$2") | tr '\n' '|' | cut -c1-3800)"; }
+          # Godot 4.3 imports with --import; the first run may report errors about resources that aren't imported
+          # yet, so it's run twice and only the second must be clean of script errors.
+          timeout 900 "$GODOT" --headless --path . --import > import.log 2>&1 || true
+          if ! timeout 900 "$GODOT" --headless --path . --import > import2.log 2>&1; then note "Godot import" import2.log; exit 1; fi
+          if grep -E 'SCRIPT ERROR|Parse Error' import2.log; then note "Godot import (script errors)" import2.log; exit 1; fi
+          mkdir -p build/linux build/windows
+          timeout 900 "$GODOT" --headless --path . --export-release "Linux" build/linux/QuadMech.x86_64 > export-linux.log 2>&1 || true
+          timeout 900 "$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/QuadMech.exe > export-windows.log 2>&1 || true
+          for f in build/linux/QuadMech.x86_64:export-linux.log build/windows/QuadMech.exe:export-windows.log; do
+            bin=${f%%:*}; log=${f##*:}
+            size=$(stat -c %s "$bin" 2>/dev/null || echo 0)
+            [ "$size" -gt 20000000 ] || { note "Godot export ($bin, $size bytes)" "$log"; exit 1; }
+          done
+          chmod 755 build/linux/QuadMech.x86_64
+          echo "::notice title=Exported::Linux $(du -h build/linux/QuadMech.x86_64 | cut -f1), Windows $(du -h build/windows/QuadMech.exe | cut -f1)"
+
+      - name: Smoke test (self-test without a screen)
+        working-directory: games/quadmech
+        run: |
+          # Exported Godot games take --headless (no screen, no sound). If this build can't run that way, the same test
+          # runs on a virtual screen with OpenGL (Mesa's software renderer).
+          run_selftest() { timeout 180 "$@" > smoke.log 2>&1; rc=$?; grep -q 'selftest done' smoke.log && [ $rc -eq 0 ]; }
+          if run_selftest build/linux/QuadMech.x86_64 --headless -- --selftest=10; then
+            echo "::notice title=Smoke test::headless: $(grep -c ' t=' smoke.log) reports, $(grep 'selftest done' smoke.log)"
+          else
+            cp smoke.log smoke-headless.log
+            echo "::warning title=Smoke test::headless run failed (exit $rc), trying a virtual screen: $(tail -8 smoke.log | tr '\n' '|' | cut -c1-900)"
+            sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 libxcursor1 libxinerama1 libxrandr2 libxi6 >/dev/null
+            if ! run_selftest xvfb-run -a -s '-screen 0 1280x720x24' build/linux/QuadMech.x86_64 --rendering-driver opengl3 -- --selftest=10 --quality=low; then
+              echo "::error title=Smoke test::the self-test didn't finish (exit $rc): $( (cat smoke-headless.log | tail -15; echo ===; tail -25 smoke.log) | tr '\n' '|' | cut -c1-3800)"
+              exit 1
+            fi
+            echo "::notice title=Smoke test::virtual screen (OpenGL): $(grep 'selftest done' smoke.log)"
+          fi
+
+      - name: Two copies on one machine (host + join, as two seats)
+        working-directory: games/quadmech
+        continue-on-error: true
+        run: |
+          # Seat 1 hosts, seat 2 finds it by itself (--join=auto: the game also asks on this machine) and joins.
+          set +e
+          timeout 120 build/linux/QuadMech.x86_64 --headless -- --host --mode=coop --name=Seat1 --players=kbm --selftest=40 > seat1.log 2>&1 &
+          sleep 4
+          timeout 120 build/linux/QuadMech.x86_64 --headless -- --join=auto --name=Seat2 --players=kbm --selftest=30 > seat2.log 2>&1
+          rc=$?
+          wait || true
+          if grep -q 'roster=2' seat2.log && [ $rc -eq 0 ]; then
+            echo "::notice title=Two seats::seat 2 joined seat 1: $(grep 'roster=2' seat2.log | tail -1 | cut -c1-300)"
+          else
+            echo "::warning title=Two seats::seat 2 didn't see two players (exit $rc): $( (tail -8 seat1.log; echo ===; tail -10 seat2.log) | tr '\n' '|' | cut -c1-2500)"
+          fi
+
+      - name: Zips and quadmech.json
+        working-directory: games/quadmech
+        env:
+          GAME_VERSION: ${{ steps.v.outputs.game }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          set -e
+          mkdir -p out
+          # Flat zips: the game, and the library art (cover, wide, hero). The Linux game keeps its executable bit.
+          (cd build/linux && cp ../../art/cover.png ../../art/wide.png ../../art/hero.png . && zip -q -9 -X ../../out/QuadMech-linux-x86_64.zip QuadMech.x86_64 cover.png wide.png hero.png)
+          (cd build/windows && cp ../../art/cover.png ../../art/wide.png ../../art/hero.png . && zip -q -9 -X ../../out/QuadMech-windows-x64.zip QuadMech.exe cover.png wide.png hero.png)
+          python3 - <<'EOF'
+          import hashlib, json, os
+          out, base, tag = 'out', os.environ['RELEASE_BASE'], os.environ['TAG']
+          def entry(name):
+              p = os.path.join(out, name)
+              h = hashlib.sha256()
+              with open(p, 'rb') as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b''):
+                      h.update(chunk)
+              return {'url': '%s/%s/%s' % (base, tag, name), 'sha256': h.hexdigest(), 'size': os.path.getsize(p)}
+          m = {'name': 'Quad Mech', 'version': os.environ['GAME_VERSION'], 'godot': os.environ['GODOT_RELEASE'],
+               'files': {'linux': entry('QuadMech-linux-x86_64.zip'), 'windows': entry('QuadMech-windows-x64.zip')}}
+          for k, f in m['files'].items():
+              assert f['size'] < 400 * 1024 * 1024, k   # Hearth's and Ember's download cap
+          with open(os.path.join(out, 'quadmech.json'), 'w') as f:
+              json.dump(m, f, indent=1)
+          print(json.dumps(m))
+          EOF
+          unzip -Z out/QuadMech-linux-x86_64.zip | grep -q '^-rwx.*QuadMech.x86_64$' || { echo "::error title=Zip::QuadMech.x86_64 lost its executable bit"; exit 1; }
+          echo "::notice title=Zips::Linux $(du -h out/QuadMech-linux-x86_64.zip | cut -f1), Windows $(du -h out/QuadMech-windows-x64.zip | cut -f1)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quadmech-${{ steps.v.outputs.game }}
+          path: games/quadmech/out/*
+          if-no-files-found: error
+
+      - name: Put it on the release
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (inputs.publish && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+        working-directory: games/quadmech
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          # release.yml makes the release; when this runs from a push it may not be there yet.
+          for i in $(seq 1 40); do gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break; sleep 30; done
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "::warning title=No release::$TAG isn't released yet; the demo stays an artifact"; exit 0; fi
+          gh release upload "$TAG" out/QuadMech-linux-x86_64.zip out/QuadMech-windows-x64.zip out/quadmech.json --clobber --repo "$GITHUB_REPOSITORY"
+          echo "::notice title=Released::https://github.com/Dragongamer9/hearth-os/releases/latest/download/quadmech.json"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: quadmech-logs
+          path: games/quadmech/*.log
+          if-no-files-found: ignore

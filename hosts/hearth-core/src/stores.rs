@@ -869,6 +869,8 @@ pub fn pump(queue: Arc<Mutex<Queue>>) {
 static NOTIFY: std::sync::OnceLock<crate::system::bt_scan::Emit> = std::sync::OnceLock::new();
 pub fn set_notify(e: crate::system::bt_scan::Emit) { let _ = NOTIFY.set(e); }
 pub fn notify(v: Value) { if let Some(e) = NOTIFY.get() { e(v); } }
+/// Has the app set up `notify` yet (background watchers wait for it, so nothing they send is lost)?
+pub fn notify_ready() -> bool { NOTIFY.get().is_some() }
 
 #[derive(Default)]
 pub struct AccState { pub busy: std::collections::HashSet<String>, pub errors: std::collections::HashMap<String, String> }

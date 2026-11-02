@@ -49,6 +49,8 @@ pub struct Bridge {
     power_back: Option<Value>,
     browser: std::sync::Arc<std::sync::Mutex<Value>>,
     pub app_updates: crate::appupdate::AppUpdates,
+    /// Show demo (demo.rs): Quad Mech's download and the demo's jobs.
+    pub demo: crate::demo::Demo,
     /// The call being answered (calls that answer later, from background work, reply to it themselves).
     cur_id: Value,
 }
@@ -68,6 +70,8 @@ impl Bridge {
             let home = b.library.home.clone();
             std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(8)); crate::steam::ensure_running_silent(&home); });
         }
+        // Show demo: each seat's Hearth starts the demo game when its request appears (demo.rs).
+        crate::demo::watch_autostart();
         b
     }
     pub fn with(library: Library, profiles: crate::profiles::Profiles, version: &str) -> Bridge {
@@ -76,7 +80,7 @@ impl Bridge {
                  pick_file: Arc::new(|_| None), pick_folder: Arc::new(|_, _| None), sign_in: Arc::new(|_| None), stream: Arc::new(|_| {}), zoom: Arc::new(|_| {}), osinstall: crate::osinstall::OsInstaller::new(), importer: crate::importer::Importer::new(), guide: crate::guide::Guide::new(),
                  buttons: Arc::new(std::sync::Mutex::new(json!({"devices": [], "problems": ["Only in Game Mode"]}))), host: Arc::new(|_, _| {}),
                  parental_since: 0, parental_warned: false, per_game: None, power_seen: None, power_back: None, browser: Arc::new(std::sync::Mutex::new(json!({"state": "idle", "progress": null, "line": "", "error": null}))),
-                 app_updates: crate::appupdate::AppUpdates::new(version), cur_id: Value::Null }
+                 app_updates: crate::appupdate::AppUpdates::new(version), demo: crate::demo::Demo::new(), cur_id: Value::Null }
     }
 
     /// Messages from the host's own background work: {type:'internal', what, ...}. Returns what to send the page.
@@ -107,9 +111,34 @@ impl Bridge {
             }
             "epicSignedIn" => self.importer.finish_pending_epic(self.pending_epic()),
             "streamClosed" => if self.library.running.as_ref().map(|r| r.cloud).unwrap_or(false) { out.push(self.library.exited()); },
+            // Show demo (demo.rs): this seat's copy of the game, started through the library like any game.
+            "demoLaunch" => match self.demo_launch(v) {
+                Ok(()) => {
+                    out.push(Bridge::event("quickResume", self.library.quick_state()));
+                    out.push(Bridge::event("demo.launched", json!({"role": v["role"], "attract": v["attract"] == true})));
+                }
+                Err(e) => { log(&format!("demo: couldn't start: {e}")); out.push(Bridge::event("demo.done", json!({"action": "start", "ok": false, "error": e}))); }
+            },
+            // Player 1 stopped the demo: this extra seat's copy closes.
+            "demoStopSeat" => if self.library.running.as_ref().map(|r| r.id == crate::demo::GAME_ID).unwrap_or(false) {
+                self.library.close_running();
+                out.push(Bridge::event("demo.done", json!({"action": "stop", "ok": true, "restartGameMode": false})));
+            },
             _ => {}
         }
         out
+    }
+
+    /// Starts Show demo's game for this seat: the arguments come from demo.rs's fixed sets, never from the message.
+    fn demo_launch(&mut self, v: &Value) -> Result<(), String> {
+        let args = crate::demo::launch_args(v)?;
+        if !self.library.games.contains_key(crate::demo::GAME_ID) { self.library.scan(); }
+        let pc = self.profiles.can_play(Some(crate::demo::GAME_ID), chrono::Local::now(), 0.0);
+        if pc["ok"] != true { return Err(pc["reason"].as_str().unwrap_or("Not now").to_string()); }
+        self.library.demo_args = Some(args);
+        let r = self.library.launch(crate::demo::GAME_ID);
+        self.library.demo_args = None;
+        r.map(|_| ())
     }
 
     /// The Steam account signed in on this device: (name, avatar picture).
@@ -586,6 +615,15 @@ impl Bridge {
             // off this thread.
             m if m.starts_with("beacon.") => { let id = self.cur_id.clone(); crate::beacon::bridge_call(self, m, a, id) }
             "game.options.set" => { let id = req("id")?; crate::game_options::set(&mut self.library.store, &id, &a["options"])?; self.game_options(&id) }
+            // Show demo (demo.rs, docs/DEMO.md): Quad Mech on two seats of this screen, or here.
+            "demo.status" => { let (id, d) = (self.cur_id.clone(), self.demo.clone()); crate::space::answer_later(id, move || Ok(d.status())); Ok(json!(DEFERRED)) }
+            "demo.install" => Ok(self.demo.install(self.emit.clone())),
+            "demo.start" => self.demo.start(a["mode"].as_str().filter(|m| !m.is_empty()).map(str::to_string), self.emit.clone()),
+            "demo.stop" => {
+                if self.library.running.as_ref().map(|r| r.id == crate::demo::GAME_ID).unwrap_or(false) { self.library.close_running(); }
+                if self.library.frozen.iter().any(|f| f.id == crate::demo::GAME_ID) { let _ = self.library.close_frozen(crate::demo::GAME_ID); }
+                Ok(self.demo.stop(self.emit.clone()))
+            }
             "game.launch" => {
                 let id = req("id")?;
                 // Parental controls: allowed games and play time a day.
@@ -900,7 +938,7 @@ impl Bridge {
     pub fn game_options(&self, id: &str) -> Result<Value, String> {
         let g = self.library.games.get(id).ok_or("That game isn't in the library anymore.")?;
         let own_proton = (g.source == "epic" || g.source == "gog") && g.can_uninstall;   // installed by Hearth, started with Proton
-        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
+        let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "demo" => "native", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", _ if own_proton => "proton", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
                   "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
@@ -1292,6 +1330,7 @@ fn features() -> Vec<&'static str> {
     if crate::guide::controller_available() { f.push("remap"); }
     if crate::multiplay::coop_available() { f.push("coop"); }
     if crate::multiplay::seats_available() { f.push("seats"); }
+    f.push("demo");   // Show demo (demo.rs): two seats on one screen on Hearth OS, the game on this screen elsewhere
     if std::env::var_os("HEARTH_SEAT").is_some() { f.push("extraSeat"); }
     if std::path::Path::new("/sys/module/nvidia").exists() { f.push("nvidiaDrawing"); }
     f
