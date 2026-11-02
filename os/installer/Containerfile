@@ -1,5 +1,5 @@
-# Hearth's small installer USB: just enough to install Hearth OS. It boots straight into the Hearth app's
-# install screens (Connect a controller, Wi-Fi, Install), and the installer downloads Hearth OS itself while it
+# Hearth's installer USB: just enough to install Hearth OS, nothing else (no "try it" mode). It boots through the
+# Hearth splash straight into the installer (ui/installer.html, drawn by the Hearth app: 1.1), and the installer downloads Hearth OS itself while it
 # installs, so the USB stays small (about 2 GB instead of 7). One USB for every PC, and the universal installer:
 # its install screens offer Hearth OS on Anatase (recommended, ghcr.io/dragongamer9/hearth-os:latest, one image for
 # every graphics card) and the Beta Experimental editions on Ubuntu, CachyOS and Peppermint (their :testing images).
@@ -8,7 +8,7 @@
 FROM quay.io/fedora/fedora-bootc:43
 # The Hearth app (built by the workflow into os/nimbus-app, from this commit) and the helpers the installer uses.
 COPY os/nimbus-app /usr/lib/nimbus
-COPY os/system_files/usr/libexec/nimbus/hearth-import /usr/libexec/nimbus/hearth-import
+COPY os/system_files/usr/share/plymouth/themes /plymouth-themes
 COPY os/installer/src /src
 COPY os/live/src /live
 RUN --mount=type=cache,target=/var/cache/libdnf5 /src/build.sh && rm -rf /src /live

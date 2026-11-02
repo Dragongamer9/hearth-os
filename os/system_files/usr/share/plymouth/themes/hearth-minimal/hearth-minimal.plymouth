@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Hearth (minimal)
+Description=Hearth boot splash preset: a small Hearth mark on plain slate, no motion
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/hearth-minimal
+ScriptFile=/usr/share/plymouth/themes/hearth-minimal/hearth-minimal.script

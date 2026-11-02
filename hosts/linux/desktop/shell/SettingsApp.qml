@@ -24,6 +24,9 @@ Scope {
         { id: "notifications", icon: "bell", label: "Notifications" },
         { id: "display", icon: "display", label: "Display" },
         { id: "appearance", icon: "palette", label: "Appearance" },
+        // ---- Boot & startup (SetBoot.qml): boot splash preset, Steam Game Mode's startup animation
+        { id: "boot", icon: "power", label: "Boot & startup" },
+        // ---- end Boot & startup
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
         { id: "handheld", icon: "pad", label: "Handheld" },        // SetHandheld.qml: Handheld Daemon's settings
@@ -56,7 +59,7 @@ Scope {
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
         accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */,
         remote: "SetRemote.qml", games: "SetGames.qml", storage: "SetStorage.qml", steam: "SetSteam.qml" /* moved from the archived Game Mode */,
-        handheld: "SetHandheld.qml" /* Handheld Daemon */ })
+        handheld: "SetHandheld.qml" /* Handheld Daemon */, boot: "SetBoot.qml" /* Boot & startup */ })
 
     Component.onCompleted: SettingsNav.settingsApp = app
     function open(p) {

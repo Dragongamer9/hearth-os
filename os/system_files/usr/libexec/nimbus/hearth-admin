@@ -61,6 +61,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin hibernate-reboot      restart and keep games: save memory to the drive (hibernate), restart by
                                      itself and come back with the games where they were. Only this one
                                      hibernation restarts: the setting is a runtime file that is removed again
+  hearth-admin boot-splash hearth|hearth-steam|hearth-minimal
+                                     the boot splash preset for the next starts (hearth-boot-look; Settings ›
+                                     Boot & startup): nothing rebuilt, the boot menu gets plymouth.splash=
   hearth-admin timezone ZONE         the time zone (one from timedatectl list-timezones)
   hearth-admin ntp on|off            set the time from the internet, or not
   hearth-admin time-set "YYYY-MM-DD HH:MM"
@@ -2755,6 +2758,10 @@ def main(argv):
         space('grow', args)
     elif cmd == 'space-clear-journal' and len(argv) == 2:
         space('clear-journal', [])
+    elif cmd == 'boot-splash' and len(argv) == 3 and argv[2] in ('hearth', 'hearth-steam', 'hearth-minimal'):
+        # The boot splash preset (hearth-boot-look checks it again and rewrites the menu with hearth-bls-grub).
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-boot-look')
+        os.execv(sys.executable, [sys.executable, helper, 'splash', argv[2]])
     elif cmd == 'timezone' and len(argv) == 3:
         timezone(argv[2])
     elif cmd == 'ntp' and len(argv) == 3:

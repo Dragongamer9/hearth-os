@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Hearth
-Description=Hearth boot splash: the Hearth mark with a breathing ember glow
+Description=Hearth boot splash: the Hearth flame on slate, with a breathing ember glow (the default preset)
 ModuleName=script
 
 [script]

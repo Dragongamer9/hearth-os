@@ -174,6 +174,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - Settings › Handheld: Hearth's own Handheld Daemon app (every HHD setting from its own settings tree, advanced ones behind a switch, notes where Steam takes over in Steam Game Mode, "isn't running" on desktops), also from Quick Access and Settings › Controller.
 - On-screen keyboard looks for Mantel: Steam-style (default, follows your accent and dark/light), Hearth warm, High contrast, Frosted and Pocket, next to the first four, picked in Settings › Keyboard.
 - Decky Loader built into the image (pinned v3.3.1, checksum-checked at build), started for Steam Game Mode by hearth-decky@<you>.service without a password; earlier downloaded installs move over by themselves.
+- [x] New USB installer, install-only, in the Steam-style look: full screen and controller-first (touch, mouse and an on-screen keyboard too), Welcome and screen rotation, Wi-Fi (optional), choose the drive (hold A to erase), you, time zone, install, remove the USB, restart into Steam Game Mode; first-time setup is folded in, so the old Game Mode screens no longer run after installing (needs testing on a device)
+- [x] Hearth GRUB theme: the boot menu (still shown as before) in a slate Steam-style look with the Hearth flame, blue highlight and clean names ("Hearth OS 1.1", "... (previous version)"); if anything of the theme is missing GRUB shows its plain menu and starts the same way (needs testing on a device)
+- [x] Boot splash presets: Hearth flame on slate (default), Steam-style blue and minimal, chosen in Settings › Boot & startup without rebuilding anything; if a splash can't show, the start goes on in text (needs testing on a device)
+- [x] Hearth startup animations for Steam Game Mode: four original ones (flame ignition, slate light sweep, logo reveal, rising embers) for 16:9 and 16:10, picked in Settings › Boot & startup and listed in Steam's own Startup Movie setting (needs testing on a device)
 
 ## 1.0 (released 2026-11-02)
 

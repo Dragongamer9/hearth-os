@@ -996,6 +996,11 @@ impl Bridge {
             "osinstall.start" => self.osinstall.start(&a["plan"]),
             "osinstall.restart" => Ok(json!(self.osinstall.restart())),
             "osinstall.useMantel" => Ok(json!(crate::osinstall::handoff(true))),
+            // The 1.1 USB installer (ui/installer.html)
+            "osinstall.screen" => { crate::osinstall::screen(a["name"].as_str().unwrap_or("")); Ok(Value::Null) }
+            "osinstall.tzGuess" => self.later(|| Ok(crate::osinstall::tz_guess())),
+            "osinstall.rotate" => crate::osinstall::rotate(a["turn"].as_u64().unwrap_or(0) as u32).map(|_| Value::Null),
+            "osinstall.poweroff" => Ok(json!(crate::osinstall::poweroff())),
             // Updates to the app itself
             // Hearth app updates without a system update (appchannel.rs, docs/APP-UPDATES.md): Settings › Updates.
             "appUpdates.status" => Ok(crate::appchannel::status()),

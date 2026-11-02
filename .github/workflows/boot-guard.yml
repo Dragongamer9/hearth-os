@@ -31,6 +31,11 @@ on:
       - 'tools/app-bundle.py'
       - 'hosts/linux/test/test_hearth_app_channel.py'
       - 'hosts/linux/session/nimbus-watchdog'
+      - 'os-bases/peppermint/system_files/usr/libexec/nimbus/hearth-bls-grub'
+      - 'os-bases/peppermint/system_files/usr/share/hearth/grub-theme/**'
+      - 'os/system_files/usr/libexec/nimbus/hearth-boot-look'
+      - 'os/system_files/usr/share/plymouth/**'
+      - 'hosts/linux/test/test_hearth_bls_grub.py'
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -62,6 +67,17 @@ jobs:
             grep -v -E '^$|\.\.\. ok$' /tmp/r.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
           fi
           cat /tmp/r.txt
+      # Hearth OS 1.1's boot look: hearth-bls-grub's names, the GRUB theme (copied whole, sourced after the entries,
+      # switched on only when it's all there; GRUB's own grub-script-check reads the files), the splash presets and
+      # Steam Game Mode's startup animations (hearth-boot-look).
+      - name: GRUB menu names, theme and splash presets (hearth-bls-grub, hearth-boot-look)
+        run: |
+          cd hosts/linux
+          if ! python3 -m unittest discover -s test -p 'test_hearth_bls_grub.py' -v > /tmp/b.txt 2>&1; then
+            grep -v -E '^$|\.\.\. ok$' /tmp/b.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          grep -E 'skipped|^Ran|^OK' /tmp/b.txt | tail -n 5
+          sh -n ../../os-bases/peppermint/system_files/usr/libexec/nimbus/hearth-bls-grub
       - name: Writable system tests (hearth-unlock, hearth-admin unlock, the .deb installer going native)
         run: |
           cd hosts/linux
@@ -73,7 +89,7 @@ jobs:
           node --test test/polkit-rules.test.js 2>&1 | tail -n 8
       - name: Scripts compile, units parse
         run: |
-          python3 -m py_compile os-bases/peppermint/system_files/usr/bin/hearth-unlock os/system_files/usr/libexec/nimbus/hearth-admin
+          python3 -m py_compile os-bases/peppermint/system_files/usr/bin/hearth-unlock os/system_files/usr/libexec/nimbus/hearth-admin os/system_files/usr/libexec/nimbus/hearth-boot-look
           bash -n .github/scripts/hearth-unlock-check.sh
           sh -n os-bases/peppermint/system_files/usr/lib/systemd/system-generators/hearth-etc-guard
           # every Hearth file the image builds use is in git (hearth-unlock was once hidden by .gitignore's bin/)

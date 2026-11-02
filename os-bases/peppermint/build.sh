@@ -1505,6 +1505,33 @@ ls -la /usr/lib/bootupd/updates/
 
 # ------------------------------------------------------------------ boot splash and initramfs
 plymouth-set-default-theme hearth
+# Boot splash presets (Settings › Boot & startup, hearth-boot-look): every preset goes into the initramfs, so choosing
+# one only adds plymouth.splash=<preset> to the boot menu's entries (hearth-bls-grub) and nothing is ever rebuilt on
+# the device. Plymouth's own dracut module brings only the default theme; this lists the others' files.
+chmod 755 /usr/libexec/nimbus/hearth-boot-look
+mkdir -p /usr/lib/dracut/dracut.conf.d
+{
+  echo "# Written by os-bases/peppermint/build.sh: Hearth's boot splash presets in the initramfs (hearth-boot-look)."
+  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal -type f | sort | tr '\n' ' ')"
+} > /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
+cat /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
+# GRUB's Hearth theme (hearth-bls-grub copies /usr/share/hearth/grub-theme to /boot): its fonts made from Inter, the
+# Steam-style look's font (GRUB reads only its own .pf2 format). Without them GRUB keeps its plain text menu.
+GT=/usr/share/hearth/grub-theme
+if command -v grub-mkfont >/dev/null; then
+  inter() { fc-match -f '%{file}' "Inter:style=$1" 2>/dev/null; }
+  reg=$(inter Regular); bold=$(inter Bold)
+  case "$reg" in *[Ii]nter*) ;; *) reg=$(fc-match -f '%{file}' 'DejaVu Sans' 2>/dev/null); bold=$(fc-match -f '%{file}' 'DejaVu Sans:style=Bold' 2>/dev/null) ;; esac
+  for sz in 18 22; do
+    grub-mkfont -n Hearth -s "$sz" -r 0x20-0x7E,0xA0-0x17F,0x2010-0x2027 -o "$GT/hearth-regular-$sz.pf2" "$reg" || echo "warning: no GRUB font Hearth Regular $sz"
+  done
+  for sz in 22 28; do
+    grub-mkfont -n Hearth -s "$sz" -r 0x20-0x7E,0xA0-0x17F,0x2010-0x2027 -o "$GT/hearth-bold-$sz.pf2" "$bold" || echo "warning: no GRUB font Hearth Bold $sz"
+  done
+  ls -la "$GT"
+else
+  echo "warning: no grub-mkfont: GRUB's menu stays plain text (the theme needs its fonts)"
+fi
 ls -d /usr/lib/dracut/modules.d/*ostree >/dev/null 2>&1 || { echo "ostree's dracut module is missing: this image couldn't boot"; exit 1; }
 export DRACUT_NO_XATTR=1
 dracut --force --kver "$KVER" "/usr/lib/modules/$KVER/initramfs.img"
@@ -1512,6 +1539,9 @@ chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 lsinitrd "/usr/lib/modules/$KVER/initramfs.img" > /tmp/initramfs-files.txt
 grep -q ostree-prepare-root /tmp/initramfs-files.txt || { echo "the initramfs has no ostree-prepare-root"; exit 1; }
 grep -q plymouth /tmp/initramfs-files.txt || echo "warning: the initramfs has no boot splash"
+for t in hearth hearth-steam hearth-minimal; do
+  grep -q "usr/share/plymouth/themes/$t/$t.script" /tmp/initramfs-files.txt || echo "warning: the initramfs has no $t splash preset"
+done
 
 # ------------------------------------------------------------------ tidy up
 rm -f /usr/sbin/policy-rc.d

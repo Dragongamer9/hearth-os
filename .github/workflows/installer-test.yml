@@ -3,23 +3,64 @@
 # that edition, then checks the result: partitions, Hearth OS deployed, boot loader, boot entry, user.
 name: Installer test
 
+# With iso_run (the run number of an "installer-iso" run), it instead boots THAT run's ISO in a virtual PC and goes
+# through every installer screen as a person does (tools/e2e-ui.sh): screenshots of each screen, hold Enter to erase,
+# the install, Restart, then the installed system started from the disk (ci/e2e-ui-test branch).
 on:
   workflow_dispatch:
     inputs:
       edition:
-        description: 'Which edition to install (anatase, or a Beta Experimental one: ubuntu, cachyos, peppermint)'
+        description: 'Which edition to install (peppermint; the others are archived)'
         type: choice
-        options: [anatase, ubuntu, cachyos, peppermint]
-        default: anatase
+        options: [peppermint, anatase, ubuntu, cachyos]
+        default: peppermint
+      iso_run:
+        description: 'Run ID of an installer-iso run: test its ISO through the installer screens instead'
+        type: string
+        default: ''
   push:
     branches: [linux-host, main]
     paths: ['os/live/src/hearth-install', '.github/workflows/installer-test.yml']
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
+  ui:
+    if: inputs.iso_run != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+      - name: That run's ISO
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.iso_run }}
+          github-token: ${{ github.token }}
+          path: /mnt/iso
+      - name: Through every installer screen, install, start the installed system
+        run: |
+          sudo chown -R "$(id -u)" /mnt/iso || true
+          ISO=$(find /mnt/iso -name '*.iso' | head -1)
+          [ -n "$ISO" ] || { echo "::error title=Installer UI test::no ISO in run ${{ inputs.iso_run }}"; exit 1; }
+          sudo apt-get install -y -qq xorriso >/dev/null
+          label=$(xorriso -indev "$ISO" -pvd_info 2>/dev/null | sed -n 's/^Volume Id *: *//p' | head -1)
+          echo "::notice title=Installer UI test::$(basename "$ISO") ($label)"
+          bash tools/e2e-ui.sh "$ISO" "${label:-Hearth-Install}" e2e
+      - name: Publish the screenshots and serial logs (ci/e2e-ui-test)
+        if: always()
+        run: |
+          [ -d e2e ] || exit 0
+          mkdir -p /tmp/e2e-pub && cp -r e2e/. /tmp/e2e-pub/ && cd /tmp/e2e-pub && git init -q && git checkout -q -b e2e
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Installer UI test ($GITHUB_RUN_ID)" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/e2e-ui-test || true
+
   install:
+    if: inputs.iso_run == '' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -37,7 +78,7 @@ jobs:
           echo "IMG=$img" >> "$GITHUB_ENV"
       - name: Install Hearth OS onto it
         run: |
-          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"%s","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP" "${{ inputs.edition || 'anatase' }}")
+          plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"America/Chicago","edition":"%s","firmware":false,"signin":"always","kargs":["console=ttyS0,115200"]}' "$LOOP" "${{ inputs.edition || 'peppermint' }}")
           # The live USB's installer tools: os/live/src/build.sh adds the ones the Hearth OS image hasn't got.
           cat > /tmp/run.sh <<'EOF'
           need=""
@@ -117,6 +158,7 @@ jobs:
   # then Hearth installs next to it. Checks SteamOS is found, its home is made smaller but still fine, both
   # are in Hearth's boot menu, and the result boots.
   beside-steamos:
+    if: inputs.iso_run == '' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
