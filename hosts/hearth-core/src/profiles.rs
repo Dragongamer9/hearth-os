@@ -38,14 +38,16 @@ fn move_path(src: &Path, dst: &Path) {
 impl Profiles {
     pub fn open(dir: &Path) -> Profiles {
         let file = dir.join("profiles.json");
-        let mut data = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(|d| d["list"].as_array().map(|l| !l.is_empty()).unwrap_or(false))
+        // A damaged profiles.json comes back from profiles.json.bak (settings_file), never as one default profile
+        // saved over everyone's.
+        let mut data = crate::settings_file::read(&file).map().map(Value::Object).filter(|d| d["list"].as_array().map(|l| !l.is_empty()).unwrap_or(false))
             .unwrap_or_else(|| json!({"active": "main", "askAtStart": false, "list": [{"id": "main", "name": null, "color": COLORS[0], "steam": null}]}));
         let active = data["active"].clone();
         if !data["list"].as_array().unwrap().iter().any(|p| p["id"] == active) { data["active"] = data["list"][0]["id"].clone(); }
         Profiles { dir: dir.to_path_buf(), data }
     }
     pub fn save(&self) -> Result<(), String> {
-        crate::paths::write_atomic(&self.dir.join("profiles.json"), serde_json::to_string_pretty(&self.data).unwrap().as_bytes()).map_err(|e| e.to_string())
+        crate::settings_file::write_json(&self.dir.join("profiles.json"), &self.data).map(|_| ()).map_err(|e| e.to_string())
     }
     pub fn active(&self) -> String { self.data["active"].as_str().unwrap_or("main").to_string() }
     pub fn list(&self) -> Vec<Value> { self.data["list"].as_array().cloned().unwrap_or_default() }
@@ -66,7 +68,7 @@ impl Profiles {
         let dst = self.stash(&id);
         std::fs::create_dir_all(&dst).map_err(|e| e.to_string())?;
         let shared = std::fs::read(self.dir.join("library.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).map(|d| d["manual"].clone()).filter(|m| m.is_array()).unwrap_or(json!([]));
-        std::fs::write(dst.join("library.json"), json!({"manual": shared, "profile": {"name": clean, "accent": color}}).to_string()).map_err(|e| e.to_string())?;
+        crate::settings_file::write_json(&dst.join("library.json"), &json!({"manual": shared, "profile": {"name": clean, "accent": color}})).map(|_| ()).map_err(|e| e.to_string())?;
         self.save()?;
         Ok(p)
     }

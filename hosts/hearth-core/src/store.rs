@@ -2,35 +2,54 @@
 //! per-game settings. Kept as JSON so keys this host doesn't know yet survive untouched.
 
 use serde_json::{json, Map, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub struct Store { pub file: PathBuf, pub data: Value }
+pub struct Store { pub file: PathBuf, pub data: Value, seen: Option<(std::time::SystemTime, u64)> }
 
 fn defaults() -> Value {
     json!({ "favorites": [], "hidden": [], "manual": [], "stats": {}, "steamBackground": true, "autoUpdateCheck": true,
             "sources": { "steam": true, "epic": true, "gog": true, "xbox": true, "emu": true } })
 }
 
+/// The saved object with the defaults filled in where keys are missing (never over a saved value).
+fn with_defaults(saved: Map<String, Value>) -> Value {
+    let mut m = saved;
+    if let Value::Object(d) = defaults() { crate::settings_file::with_defaults(&mut m, &d); }
+    Value::Object(m)
+}
+fn stamp_of(file: &Path) -> Option<(std::time::SystemTime, u64)> {
+    std::fs::metadata(file).ok().and_then(|m| Some((m.modified().ok()?, m.len())))
+}
+
 impl Store {
+    /// A damaged file is put back from library.json.bak (settings_file); with no good copy it's kept as
+    /// library.json.broken-<time> and Hearth starts with the defaults, but never saves them over it unasked.
     pub fn open(file: PathBuf) -> Store {
-        let mut data = defaults();
-        // A damaged file starts fresh rather than stop Hearth from starting.
-        if let Some(Value::Object(saved)) = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
-            let d = data.as_object_mut().unwrap();
-            let sources = d["sources"].clone();
-            for (k, v) in saved { d.insert(k, v); }
-            let mut merged = sources.as_object().cloned().unwrap_or_default();
-            if let Some(s) = d.get("sources").and_then(|v| v.as_object()) { for (k, v) in s { merged.insert(k.clone(), v.clone()); } }
-            d.insert("sources".into(), Value::Object(merged));
-        }
-        Store { file, data }
+        let saved = crate::settings_file::read(&file).map().unwrap_or_default();
+        let seen = stamp_of(&file);
+        Store { file, data: with_defaults(saved), seen }
     }
+    /// Writes what's in memory, merged over the latest file: see `update`.
     pub fn save(&self) -> std::io::Result<()> {
-        crate::paths::write_atomic(&self.file, serde_json::to_string_pretty(&self.data).unwrap_or_default().as_bytes())
+        let mine = self.data.as_object().cloned().unwrap_or_default();
+        crate::settings_file::update_json_opt(&self.file, false, |m| { for (k, v) in mine { m.insert(k, v); } }).map(|_| ())
     }
+    /// Changes the library file. Merge on write: the latest file is read under the lock (nimbus --play-now, Hearth's
+    /// core service, Mantel's Task Manager and Hearth Link write it too), `change` is applied to that, and it's
+    /// written; a copy held in memory since this process started never puts back what another one changed.
     pub fn update(&mut self, change: impl FnOnce(&mut Map<String, Value>)) -> std::io::Result<()> {
-        if let Value::Object(m) = &mut self.data { change(m); }
-        self.save()
+        let (file, seen, mine) = (self.file.clone(), self.seen, self.data.clone());
+        let (m, _) = crate::settings_file::update_json_opt(&self.file, false, |m| {
+            // The file changed since we read it (checked with the lock held): start from it, with defaults for missing
+            // keys only; else from ours (which may hold changes made in memory).
+            let fresh = stamp_of(&file) != seen;
+            let mut base = if fresh { with_defaults(std::mem::take(m)) } else { mine };
+            if let Value::Object(b) = &mut base { change(b); }
+            if let Value::Object(b) = base { *m = b; }
+        })?;
+        self.data = Value::Object(m);
+        self.seen = stamp_of(&self.file);
+        Ok(())
     }
     pub fn source_on(&self, k: &str) -> bool { self.data["sources"][k] != Value::Bool(false) }
     pub fn list_has(&self, list: &str, id: &str) -> bool {
@@ -82,6 +101,34 @@ mod tests {
         s.insert("g".into(), json!(7));
         object_at(s, "g".into(), json!({"minutes": 0}))["minutes"] = json!(3);
         assert_eq!(d["stats"]["g"], json!({"minutes": 3}));
+    }
+    #[test]
+    fn another_writer_s_change_is_never_put_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("library.json");
+        std::fs::write(&f, r#"{"favorites":["steam:1"],"steamBackground":true}"#).unwrap();
+        let mut hearth = Store::open(f.clone());                 // Hearth keeps its copy in memory
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // Mantel's Task Manager (hearth-tasks) turns Steam-in-the-background off meanwhile.
+        crate::settings_file::merge_json(&f, &json!({"steamBackground": false}).as_object().unwrap().clone()).unwrap();
+        hearth.set_in("favorites", "gog:2", true).unwrap();
+        let again = Store::open(f);
+        assert_eq!(again.data["steamBackground"], json!(false));
+        assert_eq!(again.data["favorites"], json!(["steam:1", "gog:2"]));
+        assert_eq!(hearth.data["steamBackground"], json!(false));
+    }
+    #[test]
+    fn a_damaged_file_comes_back_from_its_copy_not_as_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("library.json");
+        let mut s = Store::open(f.clone());
+        s.update(|d| { d.insert("setupDone".into(), json!(true)); d.insert("steamBackground".into(), json!(false)); }).unwrap();
+        s.set_in("favorites", "steam:1", true).unwrap();
+        std::fs::write(&f, b"").unwrap();                         // a power cut on an older version
+        let again = Store::open(f.clone());
+        assert_eq!(again.data["setupDone"], json!(true));
+        assert_eq!(again.data["steamBackground"], json!(false));
+        assert!(serde_json::from_slice::<Value>(&std::fs::read(&f).unwrap()).unwrap()["setupDone"] == json!(true));
     }
     #[test]
     fn keeps_what_it_does_not_know() {

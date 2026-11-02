@@ -32,14 +32,16 @@ Singleton {
     PwObjectTracker { objects: [root.sink].filter(Boolean) }
 
     // ---------------------------------------------------------------- settings
-    function save() {
-        file.setText(JSON.stringify({ press: press, hold: hold, overamp: overamp }, null, 2) + "\n");
-    }
+    // Only the key you changed is merged into the latest file (Game Mode's Settings writes it too):
+    // docs/SETTINGS-PERSISTENCE.md.
     function set(key, value) {
         root[key] = value;
         if (key === "overamp" && !value && sink && sink.audio && sink.audio.volume > 1) sink.audio.volume = 1;
-        save();
+        const o = {};
+        o[key] = value;
+        writer.merge(o);
     }
+    SettingsWriter { id: writer; path: file.path }
     FileView {
         id: file
         path: Quickshell.env("HOME") + "/.config/nimbus/buttons.json"
@@ -49,10 +51,10 @@ Singleton {
             try {
                 const o = JSON.parse(text());
                 const ok = ["sleep", "menu", "shutdown", "nothing"];
-                root.press = ok.includes(o.press) ? o.press : "sleep";
-                root.hold = ok.includes(o.hold) ? o.hold : "menu";
-                root.overamp = o.overamp === true;
-            } catch (e) {}
+                if (!writer.owns("press")) root.press = ok.includes(o.press) ? o.press : "sleep";
+                if (!writer.owns("hold")) root.hold = ok.includes(o.hold) ? o.hold : "menu";
+                if (!writer.owns("overamp")) root.overamp = o.overamp === true;
+            } catch (e) { writer.repair(); }
         }
     }
 

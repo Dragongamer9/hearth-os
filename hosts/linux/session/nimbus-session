@@ -166,6 +166,29 @@ SESSION_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf"
 # gamescope's screen mode options with their values (-W 1920, --nested-refresh=60, -r 59.94...), for sed -E.
 MODE_ARGS_RE='(^|[[:space:]"])(-[WHr][[:space:]]+|--(output-width|output-height|nested-refresh)[=[:space:]]+)[^[:space:]"]+'
 has_mode_args() { printf ' %s\n' "$1" | grep -Eq "$MODE_ARGS_RE"; }
+# The chosen screen mode taken out of session.conf when gamescope can't start with it (docs/SETTINGS-PERSISTENCE.md:
+# settings are never lost or changed without telling you). Only that line's mode options change, every other line
+# stays; written atomically (a temporary file, flushed, renamed) under the lock Hearth's own writers use, with the old
+# file kept as session.conf.bak. Your choice is kept in display-reverted.json and Game Mode offers it again.
+strip_mode_args() {
+  [ -f "$SESSION_CONF" ] || return 0
+  sdir="$(dirname "$SESSION_CONF")"
+  (
+    command -v flock >/dev/null 2>&1 && flock -w 5 9
+    t="$(mktemp "$sdir/.session.conf.XXXXXX")" || exit 0
+    if sed -E "/^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=/ s/$MODE_ARGS_RE/\\1/g" "$SESSION_CONF" >"$t" && [ -s "$t" ]; then
+      chmod --reference="$SESSION_CONF" "$t" 2>/dev/null
+      sync "$t" 2>/dev/null
+      cmp -s "$SESSION_CONF" "$t" || { cp -p "$SESSION_CONF" "$SESSION_CONF.bak" 2>/dev/null; mv -f "$t" "$SESSION_CONF"; }
+    fi
+    rm -f "$t"
+  ) 9>"$sdir/.session.conf.lock"
+  # What you had chosen, for Settings › Display's "Try again" (JSON: the options as one string, quotes escaped).
+  esc="$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  rt="$sdir/.display-reverted.$$"
+  printf '{"args": "%s", "at": %s}\n' "$esc" "$(date +%s)" >"$rt" 2>/dev/null && { sync "$rt" 2>/dev/null; true; } && mv -f "$rt" "$sdir/display-reverted.json"
+  rm -f "$rt"
+}
 run_game() {
   log "game mode"
   # Settings › Display writes gamescope's options (resolution, refresh rate) here: read again every time, so a new
@@ -249,7 +272,7 @@ run_game() {
     gs_fails=$((gs_fails + 1))
     if [ "$gs_fails" -ge 2 ]; then
       log "gamescope couldn't start with the chosen screen mode ($NIMBUS_GAMESCOPE_ARGS); back to the screen's own mode"
-      [ -f "$SESSION_CONF" ] && sed -i -E "/^[[:space:]]*(export[[:space:]]+)?NIMBUS_GAMESCOPE_ARGS=/ s/$MODE_ARGS_RE/\\1/g" "$SESSION_CONF"
+      strip_mode_args "$NIMBUS_GAMESCOPE_ARGS"
       rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display-pending.json"
       NIMBUS_GAMESCOPE_ARGS="$(printf ' %s' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")"
       # Options that still name a mode (not ones Hearth wrote) aren't tried over and over.

@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { run, has, readText } = require('./util');
+const { writeSettings } = require('./settings-file');
 
 const CONF_DIR = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'nimbus');
 const SCALES = [100, 125, 150, 175, 200];
@@ -110,8 +111,7 @@ function gamescopeArgs(set) {
   const kept = args.replace(/(^|\s)-(W|H|r)\s+\S+/g, '').replace(/(^|\s)--(output-width|output-height|nested-refresh)[= ]\S+/g, '').trim();
   const next = [kept, set].filter(Boolean).join(' ');
   const line = `NIMBUS_GAMESCOPE_ARGS="${next}"`;
-  fs.mkdirSync(CONF_DIR, { recursive: true });
-  fs.writeFileSync(file, m ? text.replace(/^NIMBUS_GAMESCOPE_ARGS="[^"]*"/m, line) : (text && !text.endsWith('\n') ? text + '\n' : text) + line + '\n');
+  writeSettings(file, m ? text.replace(/^NIMBUS_GAMESCOPE_ARGS="[^"]*"/m, line) : (text && !text.endsWith('\n') ? text + '\n' : text) + line + '\n');
   return next;
 }
 
@@ -223,8 +223,7 @@ class DisplayModes {
     const lines = old.split('\n').filter(l => l.startsWith('wlr-randr ') && !mine(l));
     lines.push(`${ours}${c.mode ? ` --mode '${c.mode}'` : ''}${c.scale ? ` --scale ${c.scale}` : ''}`);
     fs.mkdirSync(CONF_DIR, { recursive: true });
-    fs.writeFileSync(file + '.tmp', `#!/bin/sh\n# Written by Nimbus › Settings › Display\n${lines.join('\n')}\n`, { mode: 0o755 });
-    fs.renameSync(file + '.tmp', file);
+    writeSettings(file, `#!/bin/sh\n# Written by Nimbus › Settings › Display\n${lines.join('\n')}\n`, { mode: 0o755 });
   }
 }
 

@@ -53,6 +53,15 @@ import tempfile
 import threading
 import time
 
+# Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
+# from .bak when damaged, never overwritten with defaults. The module sits next to this file; a copy of this helper
+# run on its own elsewhere keeps working without it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 PICKER_QML = os.path.join(HERE, 'picker.qml')
 BUS_NAME = 'org.freedesktop.impl.portal.desktop.hearth'
@@ -298,6 +307,8 @@ def state_file():
 
 
 def load_state():
+    if hsio:
+        return hsio.load_json(state_file(), {})
     try:
         with open(state_file()) as f:
             d = json.load(f)
@@ -308,6 +319,9 @@ def load_state():
 
 def save_state(d):
     try:
+        if hsio:
+            hsio.write_json(state_file(), d, None)
+            return
         os.makedirs(os.path.dirname(state_file()), exist_ok=True)
         tmp = state_file() + '.tmp'
         with open(tmp, 'w') as f:

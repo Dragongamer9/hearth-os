@@ -2005,6 +2005,26 @@ const HEARTH_MARK = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512
 // =====================================================================
 const LOOK = {layout:'shelf', textSize:'normal', reduceMotion:false, clock24:false, battPct:true, soundPack:'soft', style:'classic'};
 try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}')); }catch(e){}
+// Appearance and the button swaps are also kept in a file (uiprefs: ~/.config/nimbus/game-mode-ui.json), their one
+// source of truth on Hearth OS: WebKit's localStorage can lose its last changes in a power cut, or everything when its
+// folder is reset (docs/SETTINGS-PERSISTENCE.md). Older versions kept them only here: copied to the file once.
+const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY'];
+function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(()=>{}); }
+function uiPrefsLoad(){
+  if(!host) return;
+  call('uiprefs.get').then(f=>{
+    f=f||{}; const missing={}; let changed=false;
+    UIPREF_KEYS.forEach(k=>{ let mine=null; try{ mine=localStorage.getItem(k); }catch(e){}
+      if(typeof f[k]!=='string'){ if(mine!=null) missing[k]=mine; return; }
+      if(f[k]!==mine){ try{ localStorage.setItem(k, f[k]); }catch(e){} changed=true; } });
+    if(Object.keys(missing).length) call('uiprefs.set',{values:missing}).catch(()=>{});
+    if(!changed) return;
+    try{ Object.assign(LOOK, JSON.parse(f['nimbus.look']||'{}')); }catch(e){}
+    if(typeof f['nimbus.swapAB']==='string') PAD.swapAB=f['nimbus.swapAB']==='1';
+    if(typeof f['nimbus.swapXY']==='string') PAD.swapXY=f['nimbus.swapXY']==='1';
+    applyLook(); refreshUI();
+  }).catch(()=>{});
+}
 const LAYOUTS = [
   {id:'shelf', name:'Shelf', desc:'Big shelves of your games under the art of the last one you played, with the menu at the side.'},
   {id:'tiles', name:'Tiles', desc:'A dashboard: your latest game as a big tile, recent games and shortcuts around it, tabs along the top.'},
@@ -2055,7 +2075,7 @@ function applyLook(){
   b.style.zoom = (TEXT_SIZES.find(t=>t[0]===LOOK.textSize)||TEXT_SIZES[1])[2];
   renderTopNav(); if(typeof tick==='function') tick();
 }
-function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); if(typeof lkUiSync==='function') lkUiSync(); }
+function saveLook(){ try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} uiPrefSave('nimbus.look', JSON.stringify(LOOK)); applyLook(); if(typeof lkUiSync==='function') lkUiSync(); }
 function renderTopNav(){
   const n=$('#topnav'); if(!n) return;
   const items=[['home','Home'],['library','Library'],...(shopOn()?[['shop','Store']]:[]),...(ANDROID?[]:[['downloads','Downloads']]),['settings','Settings']];
@@ -6179,7 +6199,7 @@ function lkUiSync(){
   let seen={}; try{ seen=JSON.parse(localStorage.getItem('hearth.linkSeen')||'{}')||{}; }catch(e){}
   call('link.ui.sync',{values:{'nimbus.look':LOOK}, seen},8000).then(r=>{
     const n=(r&&r.newer)||{}; let changed=false;
-    if(n['nimbus.look'] && n['nimbus.look'].v && typeof n['nimbus.look'].v==='object'){ Object.assign(LOOK, n['nimbus.look'].v); try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} applyLook(); changed=true; }
+    if(n['nimbus.look'] && n['nimbus.look'].v && typeof n['nimbus.look'].v==='object'){ Object.assign(LOOK, n['nimbus.look'].v); try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} uiPrefSave('nimbus.look', JSON.stringify(LOOK)); applyLook(); changed=true; }
     Object.keys(n).forEach(k=>{ seen[k]=n[k].t; });
     try{ localStorage.setItem('hearth.linkSeen', JSON.stringify(seen)); }catch(e){}
     if(changed){ refreshUI(); call('link.ui.sync',{values:{'nimbus.look':LOOK}, seen},8000).catch(()=>{}); }
@@ -8209,11 +8229,13 @@ class DeskPreviewRFB extends EventTarget {
 // ---- Settings › Keyboard: Hearth's on-screen keyboard (ui/osk/hearth-osk.js). Saved here (localStorage) and, on
 // Hearth OS, in ~/.config/nimbus/osk.json (osk.set), which Desktop Mode's keyboard follows too.
 const OSK_FAST = [['wheel','Ember Wheel'],['split','Split sticks'],['off','Off']];
-function oskSave(){
+// Only the changed key goes to osk.json (merged there with what Desktop Mode set: docs/SETTINGS-PERSISTENCE.md);
+// sending the whole set put back values Desktop Mode had changed since this page read the file.
+function oskSave(key){
   if(!OSKOK) return;
   const s=HearthOSK.settings();
   try{ localStorage.setItem('hearth.osk', JSON.stringify(s)); }catch(e){}
-  if(host) call('osk.set',{settings:s}).catch(()=>{});
+  if(host) call('osk.set',{settings: key ? {[key]: s[key]} : s}).catch(()=>{});
 }
 function oskBoot(){
   if(!OSKOK) return;
@@ -8222,6 +8244,9 @@ function oskBoot(){
   if(!host) return;
   call('osk.get').then(r=>{
     if(!r) return;
+    // osk.json is the one copy on Hearth OS; settings an older version kept only in this page are moved there once.
+    if(!(r.settings && Object.keys(r.settings).length)){ let mine=null; try{ mine=JSON.parse(localStorage.getItem('hearth.osk')||'null'); }catch(e){}
+      if(mine && typeof mine==='object' && Object.keys(mine).length) call('osk.set',{settings:mine}).catch(()=>{}); }
     HearthOSK.configure({settings: r.settings && Object.keys(r.settings).length ? r.settings : undefined, systemLayouts: r.systemLayouts||[],
       learned: r.learned && r.learned.learned ? r.learned : undefined});
     if(S.view==='settings' && S.settingsTab==='keyboard') render(null,true);
@@ -8256,11 +8281,11 @@ function pageKeyboard(){
       + `<button class="row" data-f data-k="kb-try" data-act="oskTry"><span class="ricon">${I.kbd}</span><div class="rt"><b>Try the keyboard</b><small>Type something with your controller, touch or the mouse</small></div><div class="rv">›</div></button>`);
 }
 function oskSettingAct(a, d){
-  if(a==='oskSet'){ const s=HearthOSK.settings(); HearthOSK.setSetting(d.key, d.v==='toggle' ? !s[d.key] : d.v); oskSave(); return render(d.v==='toggle'?'kb-'+d.key:`kb-${d.key}-${d.v}`); }
+  if(a==='oskSet'){ const s=HearthOSK.settings(); HearthOSK.setSetting(d.key, d.v==='toggle' ? !s[d.key] : d.v); oskSave(d.key); return render(d.v==='toggle'?'kb-'+d.key:`kb-${d.key}-${d.v}`); }
   if(a==='oskLay'){
     let l=HearthOSK.settings().layouts.slice();
     if(l.includes(d.v)) { if(l.length>1) l=l.filter(x=>x!==d.v); } else l.push(d.v);
-    HearthOSK.setSetting('layouts', l); oskSave(); return render('kb-lay-'+d.v);
+    HearthOSK.setSetting('layouts', l); oskSave('layouts'); return render('kb-lay-'+d.v);
   }
   if(a==='oskClear') return openSheet({title:'Clear learned words?', sub:'Word suggestions go back to the word list. This keyboard and Desktop Mode\'s forget them.', items:[
     {label:'Clear', icon:'trash', run:()=>{ HearthOSK.clearLearned(); if(host) call('osk.clear').catch(()=>{}); toast('Learned words cleared'); render('kb-clear'); }}]});
@@ -9676,7 +9701,7 @@ function loadOverlaySettings(){
 /** Hearth's Quick Access style (overlay.settings): this page's copy follows it (HHD's overlay app can't see Hearth's storage). */
 function qaStyleFrom(r){
   if(!r || (r.qaStyle!=='dock' && r.qaStyle!=='side') || r.qaStyle===LOOK.qaStyle) return;
-  LOOK.qaStyle=r.qaStyle; try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){}
+  LOOK.qaStyle=r.qaStyle; try{ localStorage.setItem('nimbus.look', JSON.stringify(LOOK)); }catch(e){} uiPrefSave('nimbus.look', JSON.stringify(LOOK));
   if(S.layers.includes('qam')) renderQam();
 }
 // ==== end of the top dock
@@ -10300,7 +10325,7 @@ function act(el){
     case 'sheet': return sheetPick(+d.i);
     case 'hint': return hintAction(d.h);
     case 'padMouseMode': return call('pad.setMouseMode',{mode:d.v}).then(s=>{ PAD.mouseMode=s.mouseMode; PAD.mouseOn=s.mouseOn; render('cm-'+d.v); }).catch(e=>toast(e.message));
-    case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} return render('ctl-swap'+d.v.toLowerCase()); }
+    case 'padSwap': { const k='swap'+d.v; PAD[k]=!PAD[k]; try{ localStorage.setItem('nimbus.'+k, PAD[k]?'1':'0'); }catch(e){} uiPrefSave('nimbus.'+k, PAD[k]?'1':'0'); return render('ctl-swap'+d.v.toLowerCase()); }
     case 'inputMode': INPUT.mode=d.v; try{ localStorage.setItem('nimbus.inputMode', d.v); }catch(e){} renderFooter(); return render('ctl-'+d.v);
     case 'pkey': return promptKey(d.c);
     case 'oskField': return oskField(d.v);
@@ -14146,12 +14171,21 @@ if(host){ NOTIFS=[]; GAMES.length=0; }
 updateBadge();
 render();
 applyLook();
+uiPrefsLoad();
 loadHostInfo();
 // Game Mode came back with a new display mode on trial (Settings › Display): keep it, or it switches back by itself
 // after 20 seconds (Hearth does that even if this screen can't be seen).
 function checkDisplayTrial(){
   if(!host) return;
   call('display.get').then(d=>{
+    // The session had to go back to the screen's own mode (gamescope couldn't start with yours): say so, keep your
+    // choice, offer it again (docs/SETTINGS-PERSISTENCE.md: no setting changes by itself without telling you).
+    if(d && d.reverted && d.reverted.args && !d.pending){
+      openSheet({title:'Your screen mode was switched back', sub:`Game Mode couldn't start with ${d.reverted.args.trim()}, so it went back to the screen's own mode. Your choice is kept; you can try it again.`,
+        items:[{label:'Try again',icon:'restart',run:()=>{ toast('Trying your screen mode again…'); call('display.retry').catch(e=>toast(e.message)); }},
+               {label:'OK',icon:'check',run:()=>{ call('display.revertedDismiss').catch(()=>{}); }}]});
+      return;
+    }
     if(!d || !d.pending) return;
     Object.assign(S.sys.display,d);
     let left=18;

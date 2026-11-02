@@ -366,7 +366,8 @@ pub fn default_layout(id: &str) -> &'static str {
 /// choice of its own (and would start Off) uses it; any game can also choose it ("global"). Broken: off, none.
 pub const GLOBAL_FILE: &str = "global.json";
 pub fn global_in(dir: &Path) -> Value {
-    let v: Value = std::fs::read_to_string(dir.join(GLOBAL_FILE)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    // Damaged: back from global.json.bak (settings_file) before it counts as off.
+    let v: Value = crate::settings_file::read(&dir.join(GLOBAL_FILE)).map().map(Value::Object).unwrap_or(Value::Null);
     let layout = migrate(&v["layout"]).ok().filter(|l| l.is_object() && validate(l).is_ok()).unwrap_or(Value::Null);
     json!({"enabled": v["enabled"] == true && !layout.is_null(), "layout": layout})
 }
@@ -385,7 +386,7 @@ fn write_private(dir: &Path, name: &str, v: &Value) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
     }
-    crate::paths::write_atomic(&dir.join(name), serde_json::to_string_pretty(v).unwrap_or_default().as_bytes()).map_err(|e| e.to_string())
+    crate::settings_file::write_json(&dir.join(name), v).map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// A game's saved choice, checked: {"layout", "custom", "prefs"}. No file: the game's default (default_layout).
@@ -393,12 +394,16 @@ fn write_private(dir: &Path, name: &str, v: &Value) -> Result<(), String> {
 pub fn load_in(dir: &Path, id: &str) -> Value {
     let off = json!({"layout": "off", "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)});
     let Ok(name) = file_name(id) else { return off };
-    let Ok(text) = std::fs::read_to_string(dir.join(name)) else {
+    let Ok(text) = std::fs::read_to_string(dir.join(&name)) else {
         let d = default_layout(id);
         let d = if d == "off" && global_in(dir)["enabled"] == true { "global" } else { d };
         return json!({"layout": d, "custom": null, "prefs": check_prefs(&Value::Null).unwrap_or(Value::Null)});
     };
-    let Ok(v) = serde_json::from_str::<Value>(&text) else { return off };
+    let v = match serde_json::from_str::<Value>(&text) {
+        Ok(v) => v,
+        // Damaged: the last good copy (settings_file restores it from .bak) before the game counts as Off.
+        Err(_) => match crate::settings_file::read(&dir.join(&name)).map() { Some(m) => Value::Object(m), None => return off },
+    };
     let custom = if v["custom"].is_object() && validate(&v["custom"]).is_ok() { migrate(&v["custom"]).unwrap_or(Value::Null) } else { Value::Null };
     let prefs = check_prefs(&v["prefs"]).unwrap_or_else(|_| check_prefs(&Value::Null).unwrap_or(Value::Null));
     let layout = match v["layout"].as_str() {

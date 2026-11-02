@@ -81,6 +81,15 @@ import sys
 import time
 import urllib.parse
 
+# Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
+# from .bak when damaged, never overwritten with defaults. The module sits next to this file; a copy of this helper
+# run on its own elsewhere keeps working without it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
 CHUNK = 4 * 1024 * 1024
 EXTRA_TYPES = {
     '.mkv': 'video/x-matroska', '.webm': 'video/webm', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime',
@@ -2225,6 +2234,8 @@ def prefs_file():
 
 
 def prefs_get():
+    if hsio:
+        return hsio.load_json(prefs_file(), {})
     try:
         with open(prefs_file(), encoding='utf-8') as f:
             v = json.load(f)
@@ -2241,6 +2252,15 @@ def prefs_set(text):
         raise Fail('Settings have to be JSON')
     if not isinstance(new, dict):
         raise Fail('Settings have to be a JSON object')
+    if hsio:
+        # Read, merged and written under one lock: two Files windows saving at once both keep their change.
+        def apply(cur):
+            cur.update(new)
+            folders = cur.get('folders')
+            if isinstance(folders, dict) and len(folders) > 400:
+                cur['folders'] = dict(list(folders.items())[-400:])
+        hsio.update_json(prefs_file(), apply, None)
+        return {'ok': True}
     cur = prefs_get()
     cur.update(new)
     folders = cur.get('folders')

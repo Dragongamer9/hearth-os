@@ -24,11 +24,27 @@ elif os.path.isfile(arg):
 else:
     print('error: no such picture: ' + arg)
     sys.exit(1)
+# Only "wallpaper" changes, merged into the latest file under the lock Settings uses (hearth_settings_io): a damaged
+# desktop.json comes back from desktop.json.bak instead of being replaced by this one setting.
+for share in (os.environ.get('NIMBUS_SHARE'), '/usr/share/nimbus', '/usr/local/share/nimbus'):
+    if share and os.path.isfile(os.path.join(share, 'desktop', 'shell', 'hearth_settings_io.py')):
+        sys.path.insert(0, os.path.join(share, 'desktop', 'shell'))
+        break
+try:
+    import hearth_settings_io
+except ImportError:
+    hearth_settings_io = None
+if hearth_settings_io:
+    hearth_settings_io.merge_json(path, {'wallpaper': value})
+    sys.exit(0)
 try:
     with open(path, encoding='utf-8') as f:
         conf = json.load(f)
-except (OSError, ValueError):
+except FileNotFoundError:
     conf = {}
+except (OSError, ValueError):
+    print("error: Hearth's desktop settings file can't be read; change the wallpaper in Settings › Appearance")
+    sys.exit(1)
 conf['wallpaper'] = value
 os.makedirs(os.path.dirname(path), exist_ok=True)
 # Written as UTF-8, not \u escapes: Settings › Appearance reads the chosen picture's path from this file as

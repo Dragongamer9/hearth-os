@@ -168,6 +168,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- [x] Settings are always remembered and never change by themselves: every settings file is saved all at once with a backup copy, a damaged one comes back from that copy instead of resetting to the defaults, two programs saving at once both keep their change, and when Game Mode has to drop a screen mode that won't start it tells you and offers it again (docs/SETTINGS-PERSISTENCE.md; needs testing on a device)
+
 ## 1.0 (released 2026-11-02)
 
 Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).
