@@ -168,6 +168,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- [x] New website design: hearthos.fun and its docs redone for Hearth OS on Debian with Steam Game Mode, Mantel and Hearth Sync, in a deep blue-slate look with a bright blue accent (Anybody and Figtree, both served from the site), dark and light; what's coming in the next update is marked as such, and what's archived or paused (Hearth's Game Mode, Anatase, multi-seat and couch co-op) is said plainly
 - [x] Hearth OS is now simply Debian-based: the Peppermint edition is shown as "Debian" ("Hearth OS on Debian", os-release PRETTY_NAME "Hearth OS (Debian 13)") in the installer, Settings, the website and the docs, and it's the default and recommended edition; Anatase is archived in the installer and Switch edition too. The optional Xfce session is off by default. Internal names stay the same (image hearth-peppermint, edition id peppermint, VARIANT_ID), so existing installs keep updating
 - [x] Peppermint is the main Hearth OS; Anatase is archived (no more Anatase builds or updates from November 2026, installs keep their last version). The website offers Peppermint only (the Peppermint offline USB and the small installer)
 - [x] Steam Game Mode: the Hearth plugin updates with Hearth OS (Decky kept the copy from the day it was installed, so Steam Game Mode still showed an older Hearth plugin, without the newer pages, covers and fixes); it's replaced by the image's own each time Steam Game Mode starts when it differs

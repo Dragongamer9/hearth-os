@@ -92,10 +92,11 @@ def page(slug, title, lead, body):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{full_title}</title>
 <meta name="description" content="{html.escape(lead)}">
-<meta name="theme-color" content="#110a07">
+<meta name="theme-color" content="#171a21">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="../img/logo.svg" type="image/svg+xml">
 <link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
 <script>try{{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
 <link rel="stylesheet" href="docs.css">
 </head>
@@ -788,12 +789,12 @@ ASK_CSS = '''
 .ask{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:18px;margin:14px 0 8px}
 .ask label{display:grid;gap:5px;font-size:13.5px;font-weight:600;color:var(--text)}
 .ask .req,.ask .opt{font-weight:400;color:var(--muted)}
-.ask input,.ask select,.ask textarea{font:inherit;font-size:14.5px;font-weight:400;color:var(--text);background:var(--code);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;width:100%}
+.ask input,.ask select,.ask textarea{font:inherit;font-size:14.5px;font-weight:400;color:var(--text);background:var(--code);border:1px solid var(--line2);border-radius:3px;padding:9px 11px;width:100%}
 .ask textarea{resize:vertical;line-height:1.5}
 .ask input:focus,.ask select:focus,.ask textarea:focus{outline:3px solid var(--focus);outline-offset:0;border-color:var(--ember)}
 .ask .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .ask .send{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.ask button{font:inherit;font-weight:700;font-size:15px;color:var(--ink);background:var(--ember);border:0;border-radius:999px;padding:10px 18px;cursor:pointer}
+.ask button{font:inherit;font-weight:700;font-size:15px;color:var(--ink);background:var(--ember);border:0;border-radius:3px;padding:10px 18px;cursor:pointer}
 .ask button:hover{background:var(--ember2)}
 .ask button:disabled{opacity:.6;cursor:default}
 .ask .msg{font-size:14px;color:var(--soft)}
