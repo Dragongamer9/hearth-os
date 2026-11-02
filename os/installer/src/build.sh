@@ -33,7 +33,9 @@ plymouth-set-default-theme hearth
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
   --add "dmsquash-live dmsquash-live-autooverlay plymouth" \
   "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
-lsinitrd "/usr/lib/modules/${KVER}/initramfs.img" | grep -q 'plymouth/themes/hearth/hearth.script' || echo "warning: no Hearth splash in the USB's initramfs"
+lsinitrd "/usr/lib/modules/${KVER}/initramfs.img" > /tmp/initrd-files.txt || true
+grep -q 'plymouth/themes/hearth/hearth.script' /tmp/initrd-files.txt || echo "warning: no Hearth splash in the USB's initramfs"
+grep -E 'plymouth/themes/|plymouthd.conf' /tmp/initrd-files.txt | head -20 || true
 # Titanoboa wants the EFI boot files under /boot/efi. Fedora's base image keeps them in a different place than
 # Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
 dnf install -y shim-x64 grub2-efi-x64
@@ -106,6 +108,7 @@ echo "Hearth installer" >/etc/system-release
 
 # The person using it: "liveuser", no password, may do anything (it's an installer USB).
 # (dialout: the installer may tell CI's virtual PC which screen it shows, on the serial console, only under hearth.ci)
+getent group dialout >/dev/null || groupadd -r dialout
 useradd -m -d /var/home/liveuser -G wheel,dialout -c "Hearth installer" liveuser
 passwd -d liveuser
 # Its home folder is made at every start (on this base image /var isn't carried onto the USB as built).
