@@ -168,6 +168,8 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+- Hearth's old Game Mode is hidden everywhere (it only runs first-time setup): its settings are now in Desktop Mode's Settings (new Remote play, Games & stores, Storage and Steam Game Mode pages; Go back a version in Updates; logs and backup in About) or in their own apps (docs/SETTINGS-MOVE.md) (needs testing on a device)
+
 ## 1.0 (released 2026-11-02)
 
 Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).

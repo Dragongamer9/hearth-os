@@ -163,6 +163,26 @@ class Start(Base):
         popen.assert_not_called()
         self.assertFalse(os.path.exists(self.s.route_path()))
 
+    def test_settings_opens_a_sign_in_straight_away(self):
+        # Mantel's Settings › Games & stores: `hearth-signin open <store>`, no request file needed.
+        app = os.path.join(self.tmp, 'nimbus')
+        with open(app, 'w') as f:
+            f.write('#!/bin/sh\n')
+        os.chmod(app, 0o755)
+        os.environ['NIMBUS_APP'] = app
+        with mock.patch.object(self.s, 'running_hearth', return_value=None), mock.patch.object(self.s.subprocess, 'Popen') as popen:
+            self.assertEqual(self.s.main(['hearth-signin', 'open', 'gog']), 0)
+        self.assertEqual(popen.call_args[0][0], [app, '--windowed', '--signin', 'gog'])
+        with mock.patch.object(self.s, 'running_hearth', return_value=77), mock.patch.object(self.s.subprocess, 'Popen') as popen:
+            self.assertEqual(self.s.main(['hearth-signin', 'open', 'xbox']), 0)
+        popen.assert_not_called()
+        with open(self.s.route_path()) as f:
+            self.assertEqual(json.load(f)['store'], 'xbox')
+        with mock.patch.object(self.s.subprocess, 'Popen') as popen:
+            self.assertEqual(self.s.main(['hearth-signin', 'open', '; rm -rf']), 2)
+            self.assertEqual(self.s.main(['hearth-signin', 'open']), 2)
+        popen.assert_not_called()
+
     def test_stale_request_opens_nothing(self):
         self.request('epic', time.time() - 700)
         with mock.patch.object(self.s.subprocess, 'Popen') as popen:

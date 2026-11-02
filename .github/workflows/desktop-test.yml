@@ -98,6 +98,28 @@ jobs:
           esac
           FAKE
           sed -i 's/^          //' /tmp/fakebin/hearth-friends; chmod +x /tmp/fakebin/hearth-friends
+          # The Hearth app (nimbus) stand-in for Mantel's Settings pages moved from the old Game Mode (docs/SETTINGS-MOVE.md):
+          # `--settings-call <method>` answers like hearth-core settings_cli.rs; `--windowed --page <page>` notes the page.
+          cat > /tmp/fakebin/nimbus <<'FAKE'
+          #!/bin/sh
+          [ "$1" = --windowed ] && { echo "$*" >> "$HOME/nimbus-pages"; exit 0; }
+          [ "$1" = --send-logs ] && { echo "Sent. Your code: ABCD-EFGH-JK"; exit 0; }
+          [ "$1" = --settings-call ] || exit 2
+          case "$2" in
+            remote.status) echo '{"ok":true,"value":{"installed":true,"on":true,"clients":[{"name":"Living room TV","uuid":"a1"},{"name":"Pixel 8","uuid":"b2"}],"needsLogin":false,"addresses":["192.168.1.20"],"moonlight":false}}' ;;
+            steamMode.status) echo '{"ok":true,"value":{"available":true,"steam":"native","gamescope":true,"inSession":false,"decky":{"installed":true,"via":"hearth","plugin":true,"shipped":true},"lastFailure":"Steam ended right away (code 1)"}}' ;;
+            diskspace.status) echo '{"ok":true,"value":{"drives":[{"name":"This device","mount":"/","size":512000000000,"used":301000000000,"free":211000000000,"games":true,"readOnly":false},{"name":"SD card","mount":"/run/media/deck/SD","size":256000000000,"used":214000000000,"free":42000000000,"games":true,"readOnly":false}],"games":[{"title":"Baldur'"'"'s Gate 3","store":"GOG","drive":"/run/media/deck/SD","size":122000000000},{"title":"Cyberpunk 2077","store":"Steam","drive":"/","size":71000000000},{"title":"Hades II","store":"Steam","drive":"/","size":9800000000},{"title":"Celeste","store":"Added","drive":"/","size":1200000000}],"warn":{"on":true,"gb":15},"low":[],"job":null}}' ;;
+            diskspace.cleanList) echo '{"ok":true,"value":{"items":[{"key":"shader:1","title":"Shader cache: Cyberpunk 2077","where":"~/.steam/steam/steamapps/shadercache/1091500","bytes":3400000000,"saves":[],"selectable":true,"on":true,"confirm":false},{"key":"prefix:2","title":"Proton prefix: a game that is gone","where":"~/Games/Prefixes/old","bytes":1900000000,"saves":["Saves"],"cloud":true,"selectable":true,"on":false,"confirm":true}]}}' ;;
+            diskspace.setWarn) echo '{"ok":true,"value":{"on":true,"gb":15}}' ;;
+            backup.status) echo '{"ok":true,"value":{"destinations":[{"path":"/run/media/deck/HEARTH","label":"HEARTH (USB drive)","removable":true},{"path":"/tmp/home/Backups","label":"Backups folder (on this device)","removable":false}],"backups":[{"file":"/tmp/home/Backups/hearth-backup-2026-11-01.tar.zst","at":1793000000000,"bytes":42000000}]}}' ;;
+            *) echo '{"ok":false,"error":"not in this test"}'; exit 1 ;;
+          esac
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/nimbus; chmod +x /tmp/fakebin/nimbus
+          # The image's own "Hearth" menu entry (os-bases/peppermint/build.sh), to check Mantel's launcher leaves it out.
+          mkdir -p "$HOME/.local/share/applications"
+          sed -n '/^cat > \/usr\/share\/applications\/nimbus.desktop <<DESKTOP$/,/^DESKTOP$/p' os-bases/peppermint/build.sh | sed '1d;$d' > "$HOME/.local/share/applications/nimbus.desktop"
+          grep -q '^Name=Hearth$' "$HOME/.local/share/applications/nimbus.desktop" || { echo "::error title=settings move::couldn't take nimbus.desktop from build.sh"; touch shots/FAILED; }
           export PATH="/tmp/fakebin:$PATH"
           printf '[Desktop Entry]\nType=Application\nName=Autostart test\nExec=touch %s/autostarted\n' "$HOME" > "$HOME/.config/autostart/test.desktop"
           printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=steam -silent %%U\n' > "$HOME/.config/autostart/steam.desktop"
@@ -143,10 +165,39 @@ jobs:
           ipc help toggle; grim shots/5-controls.png || true; ipc help toggle
           # Hearth Settings, every page
           n=6
-          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps; do
+          for p in wifi bluetooth sound notifications display appearance power controller keyboard mouse defaults signin browser claude updates about install apps remote games storage steam; do
             ipc settings page "$p"; grim "shots/$n-settings-$p.png" || true; n=$((n+1))
           done
           ipc settings close
+          # ---- Moved from the old Game Mode (docs/SETTINGS-MOVE.md): each new or changed page, with the controller.
+          mkdir -p shots/settings-move
+          sm() { ipc settings page "$1"; sleep 2; grim "shots/settings-move/$2.png" || true; }
+          sm remote 01-remote-play
+          sm games 02-games-and-stores
+          wtype -k Right; sleep 1; for i in 1 2 3 4 5 6 7 8 9; do wtype -k Down; done; sleep 1; grim shots/settings-move/03-games-and-stores-apps.png || true
+          sm storage 04-storage
+          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; wtype -k Return; sleep 3; grim shots/settings-move/05-storage-clean-up.png || true
+          for i in 1 2 3 4; do wtype -k Down; done; sleep 1; grim shots/settings-move/06-storage-low-space.png || true
+          sm steam 07-steam-game-mode
+          sm about 08-about-help-backup
+          wtype -k Right; sleep 1; for i in $(seq 1 16); do wtype -k Down; done; sleep 1; grim shots/settings-move/09-about-backup.png || true
+          sm link 10-hearth-link
+          sm accessibility 11-accessibility
+          sm power 12-power
+          # Updates with the version before kept (a stand-in hearth-admin through a stand-in pkexec, for this shot only).
+          mkdir -p /usr/libexec/nimbus
+          printf '%s\n' '#!/bin/sh' 'case "$1" in update-status) echo "{\"booted\":{\"version\":\"1.0.0\",\"image\":\"ghcr.io/dragongamer9/hearth-peppermint:testing\"},\"staged\":null,\"available\":null,\"rollback\":{\"version\":\"0.6.63\"},\"rollbackQueued\":false}" ;; esac' > /usr/libexec/nimbus/hearth-admin
+          printf '#!/bin/sh\nexec "$@"\n' > /tmp/fakebin/pkexec; chmod +x /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
+          ipc settings page about; sm updates 13-updates-go-back
+          wtype -k Right; sleep 1; for i in 1 2 3 4; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
+          rm -f /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
+          ipc settings close
+          # The launcher: no "Hearth" (the old Game Mode in a window), even with its menu entry installed.
+          ipc launcher toggle; grim shots/settings-move/15-launcher-no-hearth.png || true; ipc launcher close
+          quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call launcher listed > shots/settings-move/launcher-apps.txt 2>&1 || true
+          if grep -qx 'nimbus' shots/settings-move/launcher-apps.txt; then echo "::error title=settings move::Mantel's launcher lists the Hearth app (the old Game Mode)"; touch shots/FAILED; fi
+          grep -q '^hearth' shots/settings-move/launcher-apps.txt || echo "::warning title=settings move::the launcher listed nothing to compare: $(head -c 300 shots/settings-move/launcher-apps.txt)"
+          cat "$HOME/nimbus-pages" > shots/settings-move/pages-opened.txt 2>/dev/null || true
           # ---- Settings › Default apps: what hearth-system lists, and a choice made, read back and reset.
           { python3 hosts/linux/desktop/shell/hearth-system defaults; python3 hosts/linux/desktop/shell/hearth-system default-set terminal foot.desktop;
             python3 hosts/linux/desktop/shell/hearth-system defaults | python3 -c 'import json, sys; k = {x["kind"]: x for x in json.load(sys.stdin)["kinds"]}; print("terminal now:", k["terminal"]["current"], k["terminal"]["yours"])';

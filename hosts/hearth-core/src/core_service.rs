@@ -367,7 +367,11 @@ fn with_bridge<R>(f: impl FnOnce(&mut crate::bridge::Bridge) -> R) -> R {
 
 const CALL_WAIT: Duration = Duration::from_secs(110);
 
-fn bridge_call(method: &str, args: &Value) -> Result<Value, String> {
+fn bridge_call(method: &str, args: &Value) -> Result<Value, String> { bridge_call_within(method, args, CALL_WAIT) }
+
+/// The same, waiting up to `wait` for work answered later (Mantel's Settings, settings_cli.rs: installing Decky Loader
+/// or cleaning up takes minutes, and the call's process must not end before it's done).
+pub(crate) fn bridge_call_within(method: &str, args: &Value, wait: Duration) -> Result<Value, String> {
     let h = hub();
     let id = 1_000_000 + h.next.fetch_add(1, Ordering::SeqCst);
     let reply = with_bridge(|b| b.handle(&json!({"type": "call", "id": id, "method": method, "args": args})));
@@ -378,7 +382,7 @@ fn bridge_call(method: &str, args: &Value) -> Result<Value, String> {
             let mut m = h.answers.lock().unwrap_or_else(|p| p.into_inner());
             loop {
                 if let Some(v) = m.remove(&id) { break v; }
-                if start.elapsed() > CALL_WAIT { return Err("Hearth is still working on it; look again in a moment.".into()); }
+                if start.elapsed() > wait { return Err("Hearth is still working on it; look again in a moment.".into()); }
                 m = h.cv.wait_timeout(m, Duration::from_millis(500)).map(|x| x.0).unwrap_or_else(|p| p.into_inner().0);
             }
         }

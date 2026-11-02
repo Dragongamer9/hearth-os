@@ -458,6 +458,22 @@ const path = require('path');
     if (isExpired('gog') || NOTIFS.some(x => x.expired) || document.querySelector('#nbadge.warn')) throw new Error("signing in again didn't clear it");
   });
   await step('expired leave', () => { closeAll(); S.layers = []; navigate('home', {}, false); });
+  // Mantel's Settings opens what has no app of its own yet at one page (`nimbus --windowed --page <page>`,
+  // docs/SETTINGS-MOVE.md "Interim"): each lands where it says, Settings pages without the front page.
+  await step('start pages from Mantel', () => {
+    // (Import and Storage are Hearth OS pages: elsewhere, Settings' front page.)
+    const want = {sources: ['settings', 'sources'], import: ['settings', stabShown('import') ? 'import' : ''], diskspace: ['settings', stabShown('diskspace') ? 'diskspace' : ''],
+      downloads: ['downloads'], stores: ['stores'], library: ['library'], recomps: ['shop']};
+    for (const [p, [view, tab]] of Object.entries(want)) {
+      closeAll(); S.layers = []; navigate('home', {}, false);
+      openStartPage(p);
+      if (S.view !== view) throw new Error(`--page ${p} opened ${S.view}, not ${view}`);
+      if (tab && (S.settingsTab !== tab || S.sfront)) throw new Error(`--page ${p} opened Settings at ${S.sfront ? 'the front page' : S.settingsTab}`);
+      if (tab === '' && !S.sfront) throw new Error(`--page ${p} (not on this system) didn't open Settings' front page`);
+      if (p === 'recomps' && SHOP.store !== 'recomps') throw new Error('--page recomps opened the Store at ' + SHOP.store);
+    }
+    closeAll(); S.layers = []; navigate('home', {}, false);
+  });
   // Settings › Controls › Handheld Daemon: every section, with advanced settings shown and hidden, a choice list,
   // a slider moved, and a change made (the preview's HHD is a ROG Ally's).
   await step('screen hhd', async () => { S.layers = []; navigate('hhd', {}, false); await new Promise(r => setTimeout(r, 600)); if (!HHDP.schema) throw new Error('Handheld Daemon page has no settings'); });

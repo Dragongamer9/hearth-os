@@ -876,6 +876,8 @@ cat > /usr/share/nimbus/image-info.json <<INFO
 {"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
+# The Hearth app itself: the archived Game Mode in a window. Kept for what opens it at one page (Mantel's Settings,
+# store sign-ins, Steam shortcuts of Hearth's games) but hidden from menus (docs/SETTINGS-MOVE.md).
 cat > /usr/share/applications/nimbus.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth
@@ -884,6 +886,7 @@ Exec=/usr/bin/nimbus --windowed
 Icon=hearth
 Type=Application
 Categories=Game;
+NoDisplay=true
 DESKTOP
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look

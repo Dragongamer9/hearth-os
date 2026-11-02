@@ -1,4 +1,5 @@
-// Hearth Settings › About: what this device is.
+// Hearth Settings › About: what this device is, help and logs, and backing up Hearth (the last two moved from the
+// archived Game Mode's Settings › System: docs/SETTINGS-MOVE.md).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -75,5 +76,69 @@ SetPage {
             implicitHeight: 52
             title: modelData[0]; value: modelData[1]
         }
+    }
+
+    // ------------------------------------------------ Help and logs
+    property string logsMsg: ""
+    property bool sending: false
+    Process {
+        id: sendLogs
+        command: ["nimbus", "--send-logs", "Sent from Settings › About"]
+        stdout: StdioCollector { id: sendOut }
+        stderr: StdioCollector { id: sendErr }
+        onExited: code => {
+            page.sending = false;
+            const m = /code: (\S+)/.exec(sendOut.text || "");
+            page.logsMsg = code === 0 && m ? "Sent. Share this code with the developer: " + m[1] : "Couldn't send them: " + ((sendErr.text || "").trim().split("\n").pop() || "the Hearth app isn't on this system");
+        }
+    }
+    SetHeader { text: "Help and logs" }
+    SetRow {
+        icon: "file"; title: "Logs"
+        sub: "Read the system's and Hearth's logs, search them, and save or send them"
+        onActivated: { Quickshell.execDetached(["hearth-tools", "--app", "logs"]); SettingsNav.toast("Opening Logs…"); }
+    }
+    SetRow {
+        icon: "update"; title: page.sending ? "Sending…" : "Send logs to the developer"
+        sub: "Hearth's and the system's logs, personal details taken out, sent to Hearth OS's bug-report service. You get a short code to share; they're kept 14 days."
+        onActivated: if (!page.sending) { page.sending = true; page.logsMsg = ""; sendLogs.running = true; }
+    }
+    Text {
+        visible: page.logsMsg !== ""
+        Layout.fillWidth: true
+        text: page.logsMsg; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+
+    // ------------------------------------------------ Backup (hearth-core backup.rs through HearthCall)
+    property var backup: null      // backup.status: {destinations: [{path, label, removable}], backups}
+    property string backupMsg: ""
+    property bool backingUp: false
+    HearthCall { id: core }
+    Component.onCompleted: core.call("backup.status", {}, v => page.backup = v, e => page.backupMsg = e)
+    SetHeader { text: "Backup" }
+    Repeater {
+        model: page.backup ? (page.backup.destinations || []).slice(0, 4) : []
+        delegate: SetRow {
+            required property var modelData
+            icon: "folder"; title: "Back up Hearth to " + modelData.label
+            sub: "Settings, profiles, favorites, collections, play time and your own games. Store sign-ins stay out."
+            onActivated: {
+                if (page.backingUp) return;
+                page.backingUp = true; page.backupMsg = "Backing up…";
+                core.call("backup.create", { dest: String(modelData.path), signins: false },
+                    () => { page.backingUp = false; page.backupMsg = "Backed up to " + modelData.label; core.call("backup.status", {}, v => page.backup = v); },
+                    e => { page.backingUp = false; page.backupMsg = e; });
+            }
+        }
+    }
+    SetRow {
+        icon: "restart"; title: "Restore from a backup"
+        sub: (page.backup && (page.backup.backups || []).length ? page.backup.backups.length + " found. " : "") + "On a new device, or after a reinstall. Opens in the Hearth app's window for now."
+        onActivated: core.openPage("system", "Opening Restore in the Hearth app…")
+    }
+    Text {
+        visible: page.backupMsg !== ""
+        Layout.fillWidth: true
+        text: page.backupMsg; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 }
