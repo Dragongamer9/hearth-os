@@ -295,6 +295,64 @@ class Plan(SeatsBase):
         self.assertTrue(any('Connect a TV' in r for r in plan['reasons']))
 
 
+class DemoPlan(SeatsBase):
+    """Show demo (docs/DEMO.md): two seats on one screen for the Quad Mech demo."""
+    def test_nothing_set_up_proposes_a_two_player_split(self):
+        standard_sys(self.hs.SYS)
+        d = self.hs.demo_plan()
+        self.assertEqual((d['possible'], d['how'], d['configured']), (True, 'setup', False))
+        self.assertEqual(d['controllers'], 2)
+        lay = d['layout']
+        self.assertEqual(lay['mode'], 'split')
+        self.assertEqual([(s['seat'], s['user'], s['mode'], s['region']) for s in lay['seats']],
+                         [(1, 'bob', 'split', 0), (2, 'hearth-p2', 'split', 1)])
+        self.assertEqual(len({s['output'] for s in lay['seats']}), 1)            # one screen, two parts
+        self.assertEqual([s['pads'] for s in lay['seats']], [['usb:1-2'], ['uniq:aa:bb:cc:dd:ee:ff']])
+        self.assertEqual(d['seats'], [{'seat': 2, 'user': 'hearth-p2', 'dir': os.path.join(self.hs.SEAT_RUN, 'hearth-p2')}])
+        # The layout passes the same friendly checks as Settings › Multi-seat's.
+        self.hs.check_layout(self.hs.normalize_layout(lay), self.hs.scan())
+        json.dumps(d)
+
+    def test_no_screen_not_possible(self):
+        FakeSys(self.hs.SYS).gpu('card0', '0000:03:00.0', outputs=[('HDMI-A-1', False, None, None)])
+        d = self.hs.demo_plan()
+        self.assertFalse(d['possible'])
+        self.assertIn('TV or monitor', d['reason'])
+        self.assertEqual(d['controllers'], 0)
+
+    def test_existing_split_or_nested_is_used(self):
+        standard_sys(self.hs.SYS)
+        write(self.hs.CONFIG, json.dumps({'enabled': False, 'mode': 'split', 'split': {'layout': 'columns'}, 'seats': [
+            {'seat': 1, 'user': 'bob', 'mode': 'split'}, {'seat': 2, 'user': 'hearth-p2', 'mode': 'split', 'region': 1},
+            {'seat': 3, 'user': 'hearth-p3', 'mode': 'stream'}]}))
+        d = self.hs.demo_plan()
+        self.assertEqual((d['possible'], d['how'], d['configured'], d['enabled'], d['host_running']), (True, 'existing', True, False, False))
+        self.assertEqual([s['user'] for s in d['seats']], ['hearth-p2'])        # streamed players aren't on this screen
+        self.assertIsNone(d['layout'])
+        write(os.path.join(self.hs.SEAT_RUN, 'host.pid'), str(os.getpid()))
+        self.assertTrue(self.hs.demo_plan()['host_running'])
+
+    def test_gpu_only_set_up_plays_on_this_screen(self):
+        standard_sys(self.hs.SYS, two_gpus=True)
+        write(self.hs.CONFIG, json.dumps({'enabled': True, 'mode': 'gpu', 'seats': [{'seat': 1, 'user': 'bob'}, {'seat': 2, 'user': 'hearth-p2'}]}))
+        d = self.hs.demo_plan()
+        self.assertFalse(d['possible'])
+        self.assertIn('this screen', d['reason'])
+
+    def test_extra_player_cant_set_up(self):
+        standard_sys(self.hs.SYS)
+        self.hs.main_user = lambda: {'name': 'hearth-p2', 'uid': 1001}
+        d = self.hs.demo_plan()
+        self.assertFalse(d['possible'])
+
+    def test_command_line(self):
+        standard_sys(self.hs.SYS)
+        out = io.StringIO()
+        with mock.patch('sys.stdout', out):
+            self.assertEqual(self.hs.main(['hearth-seats', 'demo-plan']), 0)
+        self.assertEqual(json.loads(out.getvalue())['how'], 'setup')
+
+
 class Session(SeatsBase):
     def test_parse_env(self):
         env = self.hs.parse_env('# c\nHEARTH_SEAT_MODE=gpu\nPULSE_SINK=\'alsa_output.x y\'\nbad-key=1\n')

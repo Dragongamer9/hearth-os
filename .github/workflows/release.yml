@@ -177,6 +177,8 @@ jobs:
     needs: [version, windows, linux, rust, ui]
     if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.publish.outputs.created }}
     steps:
       - uses: actions/checkout@v4
 
@@ -186,6 +188,7 @@ jobs:
           merge-multiple: true
 
       - name: Publish the release (new versions only)
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -195,8 +198,21 @@ jobs:
           notes="$(git log -1 --pretty=%B)"
           gh release create "$tag" builds/* --target "${{ github.sha }}" --latest \
             --title "Hearth OS $v (Hearth for Linux, Ember for Windows)" --notes "$notes"
+          echo "created=true" >> "$GITHUB_OUTPUT"
           # Only the newest release stays public: older ones become drafts (hidden, nothing deleted; see
           # tidy-releases.yml). Current copies only look for newer releases, so they aren't affected.
           gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
             -q ".[] | select(.draft == false and .tag_name != \"$tag\") | .id" |
             while read -r id; do gh api -X PATCH "repos/${{ github.repository }}/releases/$id" -F draft=true >/dev/null; done
+
+  # Show demo's game (Quad Mech, games/quadmech): built and added to every new release, so
+  # releases/latest/download/quadmech.json is always there for Hearth and Ember (docs/DEMO.md).
+  quadmech:
+    needs: [version, release]
+    if: needs.release.outputs.created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/quadmech.yml
+    with:
+      publish: true
+      tag: v${{ needs.version.outputs.version }}

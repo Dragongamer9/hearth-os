@@ -136,6 +136,8 @@ public sealed class LibraryService : IDisposable
                 ["gog"] = On("gog") ? Task.Run(() => Accounts.Installed("gog").Concat(GogScanner.Scan()).ToList()) : Task.FromResult(new List<Game>()),
                 ["xbox"] = On("xbox") ? Task.Run(XboxScanner.Scan) : Task.FromResult(new List<Game>()),
                 ["manual"] = Task.Run(ManualGames),
+                // Show demo's game (Quad Mech), once downloaded (Services/DemoService.cs).
+                ["demo"] = Task.Run(Services.DemoService.LibraryGames),
                 // Beacon (BFME and friends), when its Windows version is installed: through beacon.exe.
                 ["beacon"] = On("beacon") ? Task.Run(Beacon.Scan) : Task.FromResult(new List<Game>()),
             };
@@ -404,7 +406,7 @@ public sealed class LibraryService : IDisposable
     // ------------------------------------------------------------------ launching
 
     /// <summary>Starts the game. Returns false when Nimbus can't watch its process (it then won't show as running).</summary>
-    public async Task<bool> LaunchAsync(string id, string? beaconMod = null)
+    public async Task<bool> LaunchAsync(string id, string? beaconMod = null, string? args = null)
     {
         if (!_games.TryGetValue(id, out var g)) throw new InvalidOperationException("That game isn't in the library anymore. Try rescanning.");
         // Put aside with Quick Resume: carry on where it was.
@@ -454,7 +456,8 @@ public sealed class LibraryService : IDisposable
             // GOG cloud saves come down first, for GOG games Ember installed.
             if (GogDir(g.Id) is { } gd && Options(g.Id).CloudSaves)
                 try { await Accounts.Gog.SyncSavesAsync(g.Id["gog:".Length..], gd, "down"); } catch (Exception ex) { SystemBridge.Log("gog saves: " + ex.Message); }
-            Process.Start(new ProcessStartInfo(g.Exe, g.Args ?? "")
+            // Show demo's game gets its mode's arguments (DemoService.BuildArgs); every other game its own.
+            Process.Start(new ProcessStartInfo(g.Exe, (g.Source == "demo" ? args : null) ?? g.Args ?? "")
             {
                 UseShellExecute = true,                                 // allows .lnk/.url and games that need admin
                 WorkingDirectory = g.WorkDir ?? Path.GetDirectoryName(g.Exe) ?? "",

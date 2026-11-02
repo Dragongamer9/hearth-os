@@ -48,6 +48,8 @@ public sealed class SystemBridge : IDisposable
     private readonly PerfService _perf = new();
     /// <summary>Hearth Task Manager (mantel-tasks.html).</summary>
     private readonly TaskService _tasks = new();
+    /// <summary>Show demo (Quad Mech on this screen; docs/DEMO.md).</summary>
+    private readonly DemoService _demo;
     /// <summary>Hearth Files (mantel-files.html).</summary>
     public FileService Files { get; }
     /// <summary>Other pages (the in-game overlay) that also receive events.</summary>
@@ -90,6 +92,7 @@ public sealed class SystemBridge : IDisposable
         _bt.ScanDone += () => Event("bt.scanDone", new { });
         _bt.Pin += (pin, confirm) => Event("bt.pin", new { pin, confirm });
         Files = new FileService((n, d) => Event(n, d));
+        _demo = new DemoService((n, d) => Event(n, d));
         _gm = new GameModeBridge(this, ui);
 
         Updater = new Nimbus.Host.Updates.UpdateService(() => Games.AutoUpdateCheck);
@@ -306,7 +309,7 @@ public sealed class SystemBridge : IDisposable
                     // PC between players without third-party tools) or the Linux-only ones (remap through
                     // InputPlumber, Handheld Daemon, xodus, Nvidia drawing).
                     features = new[] { "beaconInstall", "desktopMode", "mantel", "quickResume", "profiles", "friends", "restartApp", "sendLogs", "exportLogs",
-                                       "screenshots", "gameSettings", "hearthInput", "collections", "pause" },
+                                       "screenshots", "gameSettings", "hearthInput", "collections", "pause", "demo" },
                     user = Environment.UserName,
                     deviceId = CounterDeviceId(),
                 };
@@ -426,6 +429,27 @@ public sealed class SystemBridge : IDisposable
                 return await Games.AddManualAsync(dlg.FileName);
             }
             case "library.remove": await Games.RemoveManualAsync(Req(a, "id")); return null;
+            // Show demo (Services/DemoService.cs): Quad Mech split-screen on this screen (no multi-seat on Windows).
+            case "demo.status": return await _demo.StatusAsync(Pad?.Connected ?? 0);
+            case "demo.install":
+                return _demo.Install(Pad?.Connected ?? 0, () => { if (!_ui.IsDisposed) _ui.BeginInvoke((MethodInvoker)(async () => { await Games.GetAsync(true); Event("library.changed", new { }); })); });
+            case "demo.start":
+            {
+                if (DemoService.Installed() is null) throw new InvalidOperationException("Download the demo first.");
+                var (attract, mode) = DemoService.Pick(Str(a, "mode"), Pad?.Connected ?? 0);
+                CheckCanPlay(DemoService.GameId);
+                if (Games.AllGames.All(g => g.Id != DemoService.GameId)) await Games.GetAsync(true);
+                var tracked = await Games.LaunchAsync(DemoService.GameId, null, DemoService.BuildArgs(attract));
+                Event("quickResume", Games.QuickState());
+                Event("demo.launched", new { role = "local", attract });
+                Event("demo.done", new { action = "start", ok = true, mode, seats = false, restartGameMode = false });
+                return new { starting = true, tracked, mode };
+            }
+            case "demo.stop":
+                if (Games.RunningId == DemoService.GameId) await Games.CloseRunningAsync();
+                if (Games.IsFrozen(DemoService.GameId)) await Games.QuickCloseAsync(DemoService.GameId);
+                Event("demo.done", new { action = "stop", ok = true, restartGameMode = false });
+                return new { stopped = true };
             case "game.launch":
             {
                 var id = Req(a, "id");

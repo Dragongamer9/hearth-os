@@ -26,6 +26,7 @@ Run by the Hearth app as the signed-in (main) user; the parts that need root go 
   hearth-seats stream-unpair --seat N --uuid UUID
   hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]
                                        split screen: each player's volume, or only player 1's sound
+  hearth-seats demo-plan               JSON: can Show demo (docs/DEMO.md) split this screen into two seats, and how
 
 Used by the system itself (not by the app):
   hearth-seats session                 an extra player's session (run by hearth-seat@.service as that player)
@@ -1652,6 +1653,44 @@ def host_run(cmd):
     return code if code is not None else 1
 
 
+# ---------------------------------------------------------------------------------------------- Show demo
+DEMO_REQUEST = 'demo.json'   # in a player's SEAT_RUN folder: what Hearth's "Show demo" asks their Hearth to start
+
+
+def demo_plan(info=None):
+    """Show demo (docs/DEMO.md): can this PC show the Quad Mech demo on two seats of one screen, and how?
+    "existing": multi-seat is set up with a player on another screen or part of this one (their SEAT_RUN folder is
+    where player 1's Hearth leaves the demo request); "setup": nothing is set up yet, and a two-player split screen
+    (plan's "split" layout) can be set up; otherwise not possible, with why (the demo then plays on this screen)."""
+    c = load_config()
+    info = info or scan()
+    out = {'possible': False, 'how': None, 'reason': None, 'configured': bool(c), 'enabled': bool(c and c.get('enabled')),
+           'host_running': False, 'seats': [], 'layout': None, 'controllers': len(info.get('pads') or [])}
+    if c:
+        extra = [s for s in c.get('seats', []) if s.get('seat') != 1 and seat_kind(c, s) in HOST_KINDS
+                 and PLAYER_RE.fullmatch(str(s.get('user', '')))]
+        out['host_running'] = bool(os.path.exists(os.path.join(SEAT_RUN, 'host.pid'))
+                                   and pid_alive(read(os.path.join(SEAT_RUN, 'host.pid'))))
+        if not extra:
+            out['reason'] = ('Multi-seat is set up without a second screen or a split screen, so the demo plays on '
+                             'this screen.')
+            return out
+        out.update(possible=True, how='existing',
+                   seats=[{'seat': s['seat'], 'user': s['user'], 'dir': os.path.join(SEAT_RUN, s['user'])} for s in extra])
+        return out
+    if PLAYER_RE.fullmatch(info['users']['main']['name']):
+        out['reason'] = 'Only player 1 can set up multi-seat.'
+        return out
+    gpus = info.get('gpus') or []
+    if not any(connected_outputs(g) for g in gpus):
+        out['reason'] = 'Connect a TV or monitor to split it into two seats.'
+        return out
+    layout = propose_layout('split', gpus, info.get('pads') or [], info['users']['main']['name'])
+    out.update(possible=True, how='setup', layout=layout,
+               seats=[{'seat': 2, 'user': 'hearth-p2', 'dir': os.path.join(SEAT_RUN, 'hearth-p2')}])
+    return out
+
+
 # ---------------------------------------------------------------------------------------------- command line
 def arg(argv, name):
     if name in argv:
@@ -1725,6 +1764,8 @@ def main(argv):
                 raise Fail('usage: hearth-seats audio [--seat N --volume 0-100] [--only-p1 on|off]')
             print(json.dumps(audio_cmd(int(seat) if seat else None, int(vol) if vol else None,
                                        None if only is None else only == 'on')))
+        elif cmd == 'demo-plan':
+            print(json.dumps(demo_plan()))
         elif cmd == 'stream-run':
             return stream_run()
         elif cmd == 'sunshine':
@@ -1732,7 +1773,7 @@ def main(argv):
         else:
             raise Fail('usage: hearth-seats scan | plan | setup --seats JSON [--start] | start | stop | status | '
                        'assign-pad --pad ID --seat N | remove [--delete-users] | wait-button | stream-info | '
-                       'stream-pair --seat N --pin PIN | stream-unpair --seat N --uuid UUID | audio')
+                       'stream-pair --seat N --pin PIN | stream-unpair --seat N --uuid UUID | audio | demo-plan')
     except Fail as e:
         fail(str(e))
     return 0
