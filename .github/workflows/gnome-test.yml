@@ -1,4 +1,4 @@
-# Hearth GNOME (docs/GNOME.md): checks Hearth's GNOME Shell extensions and runs Hearth GNOME for real in each base,
+# Hearth GNOME (docs/archive/GNOME.md): checks Hearth's GNOME Shell extensions and runs Hearth GNOME for real in each base,
 # next to Hearth Classic. Per base (Anatase: Fedora 44, Peppermint: Debian trixie), in a privileged container with the
 # runner's uinput (.github/scripts/gnome-check.sh):
 #   1. GNOME's minimal set as the images install it, and what it adds;

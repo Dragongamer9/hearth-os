@@ -18,6 +18,10 @@ on:
   push:
     branches: [main, linux-host]
     tags: ['v*']
+    # A push that only changes text (READMEs, docs, the website) can't be a release (that needs a new <Version> in
+    # Nimbus.Host.csproj), so it doesn't rebuild everything. GitHub doesn't apply path filters to tag pushes, so a
+    # vX.Y.Z tag still always runs.
+    paths-ignore: ['**.md', 'docs/**', 'site/**']
   pull_request:
   workflow_dispatch:
 

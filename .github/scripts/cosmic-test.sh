@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hearth COSMIC's test (cosmic-test.yml; docs/COSMIC.md), run as root inside Anatase's Fedora (a fedora:45 container,
+# Hearth COSMIC's test (cosmic-test.yml; docs/archive/COSMIC.md), run as root inside Anatase's Fedora (a fedora:45 container,
 # privileged, with the host's /dev so uinput devices show up):
 #   1. COSMIC installed from desktop/cosmic/fedora-packages, exactly as os-bases/anatase/build.sh does, and how much it
 #      adds; Hearth's COSMIC defaults made by hearth-cosmic-defaults, as at image build time.

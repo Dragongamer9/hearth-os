@@ -11,6 +11,7 @@ __pycache__/
 # Hearth OS files that go to /usr/bin
 !os/system_files/usr/bin/
 !os-bases/*/system_files/usr/bin/
+!archive/os-bases/*/system_files/usr/bin/
 hosts/electron/node_modules/
 hosts/electron/dist/
 tools/qa-shots/
@@ -18,3 +19,11 @@ tools/dock-shots/
 tools/overlay-shots/
 site-shots/
 site-shots-tmp/
+tools/*-shots/
+!tools/site-shots/
+
+# Editor and merge leftovers
+*.orig
+*.rej
+*.swp
+.DS_Store

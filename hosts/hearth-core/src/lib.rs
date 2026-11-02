@@ -72,7 +72,7 @@ pub mod signin_handoff;
 pub mod signins;
 pub mod space;
 pub mod settings_file;   // the safe way settings files are read and written (docs/SETTINGS-PERSISTENCE.md)
-pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
+pub mod seat_share;   // Multi-seat: games shared between the players (docs/archive/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;
 pub mod settings_cli;   // Mantel's Settings asking Hearth's core (`--settings-call`, docs/SETTINGS-MOVE.md)

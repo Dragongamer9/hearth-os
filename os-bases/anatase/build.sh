@@ -8,7 +8,7 @@
 #    (~/.local/share/Steam) are found right after the move; Flathub's Steam at first boot if that can't be had.
 #  - /usr/share/nimbus/image-info.json says this is the Anatase edition (Hearth's edition(); the move from the
 #    Bazzite-based Hearth checks it), and hearth-clean-install finishes that move at the first start.
-# See docs/BASE-ANATASE.md.
+# See docs/archive/BASE-ANATASE.md.
 set -ouex pipefail
 
 FEDORA=$(rpm -E %fedora)
@@ -70,7 +70,7 @@ test -x /usr/lib/nimbus/nimbus
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
-# ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
+# ---- The Hearth Decky plugin (archive/hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
 # copied into Decky's plugins folder when you install Decky from Settings › System (hearth-admin decky-install). No
 # service is enabled here and nothing runs at boot. Not in this build: skipped with a warning.
 if [ -f /ctx/nimbus-app/decky-hearth/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth/dist/index.js ]; then
@@ -636,7 +636,7 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nim
 for s in hearth-classic hearth-plasma hearth-gnome; do
   sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
 done
-# Hearth COSMIC (docs/COSMIC.md), hidden by its TryExec if COSMIC didn't install.
+# Hearth COSMIC (docs/archive/COSMIC.md), hidden by its TryExec if COSMIC didn't install.
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-cosmic.desktop > /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
@@ -728,7 +728,7 @@ fi
 # on the login screen needs evdev (above).
 python3 -c 'import sqlite3, json'
 
-# ------------------------------------------------------------------ Hearth Plasma (docs/PLASMA.md)
+# ------------------------------------------------------------------ Hearth Plasma (docs/archive/PLASMA.md)
 # KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
 # /usr/share/hearth-plasma). Only the workspace: no KDE app bundle (Dolphin and the rest come with Anatase or not at
 # all). Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
@@ -741,7 +741,7 @@ for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/
 # Manager, Hearth's autologin), nothing else becomes the display manager.
 echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || echo none)"
 
-# ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
+# ------------------------------------------------------------------ Hearth GNOME (docs/archive/GNOME.md)
 # GNOME Shell (Fedora's current release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell
 # extensions (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal, plus GNOME's
 # own apps for the kinds it has (Files, Console, Text Editor: one app of each kind per desktop, through the
@@ -764,7 +764,7 @@ fi
 gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
 mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
 echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
-# ------------------------------------------------------------------ Hearth COSMIC (docs/COSMIC.md)
+# ------------------------------------------------------------------ Hearth COSMIC (docs/archive/COSMIC.md)
 # System76's COSMIC as another Desktop Mode desktop, in Hearth's look (desktop/cosmic, desktop/shell/desk-cosmic.qml).
 # COSMIC's workspace with its own Files, Terminal and Edit (each desktop shows one app of each kind; in COSMIC these
 # take the place of Hearth's). Not its store, player, wallpapers or system monitor. Its login screen (greetd +
@@ -894,7 +894,7 @@ fi
 
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
 # Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
-# Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. LizardByte's COPR
+# Sunshine per streamed player, see docs/archive/MULTI-SEAT.md); Settings › Remote play uses it too. LizardByte's COPR
 # (the package is "Sunshine"), else the release's Fedora RPM. Optional: without it Hearth says streaming isn't available.
 if ! rpm -q Sunshine >/dev/null 2>&1 && ! rpm -q sunshine >/dev/null 2>&1; then
   if dnf5 -y copr enable lizardbyte/stable && dnf5 -y install Sunshine; then
@@ -1297,7 +1297,7 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # Calculator stay installed as "… (classic)". Never stops the image build.
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
 
-# ------------------------------------------------------------------ Hearth COSMIC's defaults (docs/COSMIC.md)
+# ------------------------------------------------------------------ Hearth COSMIC's defaults (docs/archive/COSMIC.md)
 # Made from COSMIC's own now that every Hearth app's menu entry exists (the panel's pinned apps are only the installed
 # ones). Without them, Hearth COSMIC counts as not installed and Hearth Classic opens instead.
 if [ "${HEARTH_COSMIC_OK:-0}" = 1 ]; then

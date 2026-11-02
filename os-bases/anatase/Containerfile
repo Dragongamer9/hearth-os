@@ -1,7 +1,7 @@
 # Hearth OS on Anatase: the next Hearth OS. Anatase (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
 # Handheld Daemon, Valve's gamescope and its own SteamOS Manager) with the Hearth session (Game Mode + Desktop Mode)
 # as what it boots into. Replaces the Bazzite build (os/Containerfile) once it's been tried on devices; until then
-# it's published as ghcr.io/dragongamer9/hearth-os:testing. See docs/BASE-ANATASE.md.
+# it's published as ghcr.io/dragongamer9/hearth-os:testing. See docs/archive/BASE-ANATASE.md.
 # Built by .github/workflows/base-anatase.yml from the repository root:
 #   podman build -f os-bases/anatase/Containerfile -t hearth-os .
 # os/nimbus-app must hold the Hearth app build (hearth, browser/, and browser-cef/ if built); CI puts it there.

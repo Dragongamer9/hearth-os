@@ -3,7 +3,7 @@
 # Updates › Switch edition. Kept for reference; it only runs by hand, with "archived" typed in.
 #
 # Builds Hearth on CachyOS (Beta Experimental): CachyOS made into a bootc image with the Hearth session, from
-# os-bases/cachyos (see docs/BASE-CACHYOS.md). Published as ghcr.io/dragongamer9/hearth-cachyos:testing (never
+# archive/os-bases/cachyos (see docs/archive/BASE-CACHYOS.md). Published as ghcr.io/dragongamer9/hearth-cachyos:testing (never
 # :latest: this isn't the main Hearth).
 # Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
 name: Hearth OS (CachyOS base, archived)
@@ -187,7 +187,7 @@ jobs:
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" -e "^ *downloading" -e "^ *installing" -e "^ *upgrading" -e "^ *checking" -e "^ *loading" -e "^ *resolving" -e "^ *Compiling " /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
-          sudo podman build --pull=newer -f os-bases/cachyos/Containerfile --build-arg BASE_IMAGE="$BASE_IMAGE" \
+          sudo podman build --pull=newer -f archive/os-bases/cachyos/Containerfile --build-arg BASE_IMAGE="$BASE_IMAGE" \
             --build-arg NIMBUS_VERSION="$v" -t hearth-cachyos:latest .
           # What build.sh couldn't find in the repositories (optional packages): a warning, not a failure.
           missing=$(grep -o 'Not installed (not in the repositories): .*' /tmp/step.log | tail -1 || true)

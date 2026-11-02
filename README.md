@@ -1,126 +1,130 @@
 <p align="center">
-  <img src="site/img/logo.svg" width="96" alt="Hearth OS logo">
+  <img src="site/img/logo.svg" width="88" alt="Hearth OS logo">
 </p>
 
 <h1 align="center">Hearth OS</h1>
 
 <p align="center">
-  <b>Your whole library, by the fire.</b><br>
-  A controller-first gaming system for handhelds and PCs: Steam, Epic, GOG and Xbox Cloud Gaming in one library you drive with a gamepad, and a full desktop one button away.
+  <b>Steam Game Mode on the couch. Mantel on the desk.</b><br>
+  A free, Debian-based OS for gaming PCs and handhelds.
 </p>
 
 <p align="center">
-  <a href="https://dragongamer9.github.io/hearth-os/"><b>Website</b></a> ·
-  <a href="https://dragongamer9.github.io/hearth-os/#download"><b>Download</b></a> ·
-  <a href="https://github.com/Dragongamer9/hearth-os/releases"><b>Releases</b></a> ·
+  <a href="https://hearthos.fun"><b>Website</b></a> ·
+  <a href="https://hearthos.fun/#download"><b>Download</b></a> ·
+  <a href="https://hearthos.fun/docs/"><b>Docs</b></a> ·
+  <a href="https://hearthos.fun/docs/releases.html"><b>Release notes</b></a> ·
   <a href="docs/ROADMAP.md"><b>Roadmap</b></a> ·
   <a href="https://github.com/Dragongamer9/hearth-os/issues"><b>Report a problem</b></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Dragongamer9/hearth-os/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Dragongamer9/hearth-os?label=release&color=f08a3c"></a>
-  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-e8a33d">
-  <img alt="Built on Debian" src="https://img.shields.io/badge/built%20on-Debian%2013-a80030">
-  <img alt="Also on Windows 11" src="https://img.shields.io/badge/also%20on-Windows%2011%20(Ember)-555">
+  <a href="https://github.com/Dragongamer9/hearth-os/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Dragongamer9/hearth-os?label=release&color=1a9fff"></a>
+  <img alt="Built on Debian 13" src="https://img.shields.io/badge/built%20on-Debian%2013-a80030">
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-555"></a>
 </p>
 
 <p align="center">
-  <img src="site/img/desk-classic.webp" width="840" alt="Mantel, Hearth OS's desktop">
+  <img src="docs/img/mantel-settings.webp" width="840" alt="Mantel, Hearth's desktop, in the Steam-style look with Settings open">
 </p>
 
-> **Beta.** Hearth OS and Ember are still being built and aren't ready to be your everyday system yet. Updates come out often and install themselves from Settings › Updates. Keep a backup of anything important.
+Hearth OS starts straight into **Steam Game Mode**, the same full-screen gamepad interface SteamOS uses. Your games
+from other stores show up in Steam's library too, and **Mantel**, Hearth's own desktop, is one press away.
 
-## What's in it
+## What's in 1.0
 
-| | |
-|---|---|
-| 🎮 **Game Mode** | Steam's own Game Mode, like SteamOS. Hearth Sync puts your Epic, GOG, Xbox Cloud Gaming, emulator and own games in Steam's library, with covers. |
-| 🕹️ **Hearth Input** | Play games that have no controller support: per-game controller layouts turn the controller into a keyboard and mouse, with ready-made layouts for shooters, strategy and retro games, gyro aiming and back paddles. *(Beta Experimental)* |
-| 🖥️ **Mantel** | A real desktop, still in reach of your thumbs: pinned apps, window snapping, Alt+Tab, virtual desktops, desktop icons, Bazaar for Flathub apps, clipboard history and full settings. |
-| ⚡ **Handhelds** | Built on Debian with Handheld Daemon: every controller, gyro, power, fan and light setting inside Hearth, and Quick Access over games for power, frame rate and more. ROG Ally, Legion Go, Steam Deck and most desktops and laptops. |
-| 🏰 **Beacon** | [Beacon](https://github.com/Dragongamer9/beacon), the launcher for Battle for Middle-earth, Age of the Ring, LOTR: Conquest and other classics, built right into the library with its mods. |
-| 🔄 **Looks after itself** | An image-based system: the whole OS updates as one piece in the background, and a bad update is undone by picking the previous entry at start. |
+- **Steam Game Mode** is the Game Mode. Turn the device on and you're in Steam, ready for the controller. If Steam
+  can't start, Mantel opens with the reason and a button to try again.
+- **Hearth Sync**, a small Decky plugin, puts your games from outside Steam into Steam's library with their covers and
+  a collection per store, and keeps them in sync: Epic and GOG through Heroic, Minigalaxy (preinstalled), Epic's Linux
+  launcher, Battle.net, Xbox Cloud Gaming, emulators, recomps, Beacon and games you add yourself.
+- **Mantel**, the desktop (Hearth Classic: labwc + Quickshell), works with a controller or a mouse and keyboard. It
+  has a Steam-style look by default, new wallpapers, accent colours, light and dark modes, the Hearth menu on the
+  Guide button, an on-screen keyboard, Hearth Link and Hearth Storage. Bazaar is the app store (Flathub).
+- **Debian 13 underneath**, image-based (bootc): one image for AMD, Intel and Nvidia. It's a normal writable system
+  (apt and .deb files work) and can be locked in Settings.
+- **Updates that can't strand you.** See below.
 
 <p align="center">
-  <img src="site/img/game-library.webp" width="410" alt="The library">
-  <img src="site/img/mantel-cabin.webp" width="410" alt="Mantel, Hearth's desktop">
+  <img src="docs/img/mantel-quick-access.webp" width="640" alt="Mantel's Quick Access panel">
 </p>
 
-## Editions
+## Install
 
-| Edition | Base | Status |
+Download both from [hearthos.fun](https://hearthos.fun/#download) and write them to USB sticks (for example with
+Hearth Disks, balenaEtcher or Ventoy):
+
+| | | |
 |---|---|---|
-| **Hearth OS on Debian** | Debian 13 "trixie", image-based (bootc): a normal writable system (apt and .deb files install anywhere), can be locked in Settings; one image for AMD, Intel and Nvidia | Main edition |
-| Hearth OS on Anatase | [Anatase](https://anatase.org) (Fedora, image-based): locked and immutable | Archived (no more updates) |
-| Hearth OS on Ubuntu | Ubuntu 26.04 LTS, without snaps | Archived for now |
-| Hearth OS on CachyOS | CachyOS, performance-tuned | Archived for now |
-| **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
-| Hearth for Android | An app on Android 8.0+ phones, handhelds and TVs | **Archived** (on hold; the code stays in `hosts/android`) |
+| **Hearth OS USB** (offline installer, Debian) | about 4.3 GB | [hearth-os-peppermint.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256) |
+| **Recovery USB** (reinstall keeping your files, copy files off, start the previous version) | about 5 GB | [hearth-recovery.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256) |
 
-Hearth OS on Bazzite is archived: 0.1.3 was its last update, and it moves to the new Hearth OS from Settings › Updates.
+The installer needs no internet. Step by step: [hearthos.fun/docs/install.html](https://hearthos.fun/docs/install.html).
 
-## Get it
+## Updates and going back
 
-- **ISO (offline installer, one for every graphics card):** coming soon on the [website](https://dragongamer9.github.io/hearth-os/#download).
-- **Already on Bazzite, Bluefin, Aurora or Fedora Atomic?** Switch with one command, then restart *(Beta Experimental)*:
-  ```sh
-  sudo bootc switch ghcr.io/dragongamer9/hearth-os:latest
-  ```
-  Going back: pick the previous entry in the boot menu, or `sudo bootc rollback`.
-- **On Hearth OS on Bazzite:** Settings › Updates › Move to a new Hearth OS.
-- **Ember for Windows 11** (PowerShell):
-  ```powershell
-  irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
-  ```
-- **Hearth app on another Linux:** the [AppImage](https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-linux-x86_64.AppImage).
-- **Hearth for Android** *(archived)*: on hold while the focus is Hearth OS and Ember. The code stays in `hosts/android` ([docs/ANDROID.md](docs/ANDROID.md)); its build only runs by hand. The last APK is on the v0.2.2 release.
+- The whole system updates as one piece in the background. Check for updates from Steam's own settings or from
+  Settings › System › Updates; the device never restarts by itself.
+- The previous version always stays in the boot menu. Pick it to go back, or use Settings › System › Updates.
+- A version that fails to start twice in a row goes back by itself. Holding **Volume Down** while it starts opens
+  Hearth Recovery, so a handheld can be rescued without a keyboard.
+- If nothing starts, the Recovery USB can start the previous version or reinstall while keeping your files.
 
-## Try the interface in a browser
+More: [hearthos.fun/docs/updates.html](https://hearthos.fun/docs/updates.html).
 
-Open `ui/index.html` in Chrome or Edge: it runs against a built-in demo library. Plug in an Xbox-style controller and press any button, or use the keyboard.
+## Version numbers
 
-| Action | Controller | Keyboard |
-|---|---|---|
-| Move | D-pad / left stick | Arrow keys or W A S D |
-| Select | A | Enter / Space |
-| Back | B | Esc / Backspace |
-| Main menu | Start (☰) | M |
-| Quick Access | View (⧉) | Q |
-| Search | Y | / |
-| Switch tabs | LB / RB | Tab / Shift+Tab, [ ] |
+From 1.0 on, versions are **MAJOR.MINOR** with a release date: Hearth OS 1.0, then 1.1, 1.2 … 1.10, and 2.0 for the
+next big change. Build files and git tags use three parts (`1.0.0`). Details: [docs/UPDATES.md](docs/UPDATES.md).
+What's planned next (1.1: a new Steam-style installer, startup animations, boot splash presets and a GRUB theme) is
+in the [roadmap](docs/ROADMAP.md).
 
-## For developers
+## Ember (Windows 11)
 
-```
-hearth-os/
-  ui/index.html            The whole interface (HTML/CSS/JS), shared by every host; runs in any browser
-  hosts/hearth-core/       Rust: the library, stores, Quick Resume, Handheld Daemon, power, settings bridge
-  hosts/hearth-rs/         Rust: the Linux app (Tauri v2), Game Mode inside gamescope
-  hosts/linux/             Linux session, Mantel (labwc + Quickshell) and helpers; the Electron app (overlay)
-  os/system_files/usr/share/hearth-browser/  Hearth Browser: Mozilla's Firefox with Hearth's settings (Linux and Windows)
-  hosts/windows/           Ember: .NET 8 + WebView2 host
-  hosts/android/           Hearth for Android: Kotlin + WebView host
-  os/                      Shared system files, the live ISO (os/live) and the small installer (os/installer)
-  os-bases/                The editions: anatase, ubuntu, cachyos, peppermint (bootc images)
-  site/                    The website (GitHub Pages)
-  docs/                    Design notes and guides
+Ember is Hearth on Windows 11: it replaces Explorer, or runs on top of it, and keeps Hearth's own Game Mode. Get it
+from the [latest release](https://github.com/Dragongamer9/hearth-os/releases/latest/download/Nimbus-win-x64.zip) or
+in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Dragongamer9/hearth-os/main/tools/install-nimbus.ps1 | iex
 ```
 
-- **The bridge** between the interface and a host: [docs/bridge.md](docs/bridge.md)
-- **Linux app and session:** [hosts/linux/README.md](hosts/linux/README.md) · **the OS:** [os/README.md](os/README.md) · **Rust host:** [docs/RUST.md](docs/RUST.md)
-- **Editions:** [Debian](docs/BASE-PEPPERMINT.md) · archived: [Anatase](docs/BASE-ANATASE.md), [Ubuntu](docs/BASE-UBUNTU.md), [CachyOS](docs/BASE-CACHYOS.md)
-- **Features:** [Couch Co-op](docs/COUCH-COOP.md) · [Multi-seat](docs/MULTI-SEAT.md) · [Moving games and growing Hearth](docs/MOVE-AND-GROW.md) · [Beacon](docs/BEACON.md) · [Mantel](docs/MANTEL-PARITY.md)
-- **Ember (Windows):** [docs/EMBER.md](docs/EMBER.md)
-- **Hearth for Android:** [docs/ANDROID.md](docs/ANDROID.md)
+More: [docs/EMBER.md](docs/EMBER.md).
 
-Every push is built and tested on GitHub Actions; a version bump on `main` is a release, and it only ships if it can update itself.
+## Where things are
 
-The project used to be called Nimbus. Internal names (program files, data folders like `~/.config/nimbus`, release file names) stay "Nimbus" so existing installs keep updating.
+```
+os-bases/peppermint/     The Debian image (bootc): Containerfile, build.sh and its own system files
+os/                      Shared system files (os/system_files), the installer USB (os/live), Recovery (os/recovery)
+hosts/linux/             The Linux session and Mantel (desktop/shell: Quickshell QML; desktop/labwc; desktop/theme)
+hosts/decky-hearth-sync/ Hearth Sync, the Decky plugin for Steam Game Mode
+hosts/hearth-core/       Rust: library, stores, settings, updates, Hearth Link and the rest of Hearth's core
+hosts/hearth-rs/         Rust: the Hearth app (Tauri); first-time setup and the fallback Game Mode
+hosts/hearth-*/          Hearth's apps (Terminal, Disks, Photos, Text, Tools …)
+hosts/windows/           Ember: .NET 8 + WebView2
+ui/                      The web interface shared by Ember and Hearth's own Game Mode
+site/                    hearthos.fun (site/docs is built by tools/build-docs.py)
+docs/                    Design notes and guides; docs/archive holds docs of archived parts
+archive/                 Archived code, kept so it can come back (see below)
+tools/                   Build, check and release helpers
+```
+
+Every push is built and tested on GitHub Actions. A version change on `main` is a release. The project used to be
+called Nimbus; internal names (`~/.config/nimbus`, release file names, the `hearth-peppermint` image) stay as they
+are so existing installs keep updating.
+
+## Archived
+
+Kept in the repository, but not built or shipped: Hearth's own Game Mode on Linux (its code still runs first-time
+setup and the fallback), the Anatase (Fedora), Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
+COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer, Hearth's app
+store and Hearth for Android. What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
 
 ## License
 
-Hearth OS (including Ember, Mantel and Hearth's apps) is free software, licensed under the **GNU General Public License v3.0 or later** ([LICENSE](LICENSE)). You may use, study, share and change it; if you share a changed version, it must stay under the same license with its source available.
+Hearth OS (including Ember, Mantel and Hearth's apps) is free software under the **GNU General Public License v3.0
+or later** ([LICENSE](LICENSE)). Parts from other projects keep their own licenses (Debian, gamescope, Decky Loader,
+Handheld Daemon and the libraries the apps use).
 
-Parts that come from other projects keep their own licenses (for example the Linux base images, gamescope, Handheld Daemon, and the libraries the apps are built with).
-
-Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft, Universal Blue or the Anatase project. Steam, Epic Games, GOG and Xbox are trademarks of their owners.
+Hearth OS is an independent project, not affiliated with Valve, Epic Games, GOG, Microsoft or Debian. Steam, Epic
+Games, GOG and Xbox are trademarks of their owners.

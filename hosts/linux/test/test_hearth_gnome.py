@@ -1,4 +1,4 @@
-"""Tests for Hearth GNOME (docs/GNOME.md): the desktop choice and the fallback in hosts/linux/session/nimbus-session (a
+"""Tests for Hearth GNOME (docs/archive/GNOME.md): the desktop choice and the fallback in hosts/linux/session/nimbus-session (a
 broken or missing GNOME always ends in Hearth Classic, never without a desktop), desktop/gnome/hearth-gnome (what the
 Shell extensions ask for), hearth-pad's GNOME mode (--gnome), and Hearth's GNOME files (session mode, extensions,
 the per-desktop app overrides). The session runs for real with stand-ins for labwc and GNOME."""

@@ -1,8 +1,25 @@
 # Archived parts of Hearth OS
 
-Code that's kept in the repository but not built, shipped or tested, so it can come back later.
+Parts that aren't in Hearth OS 1.0 but are kept in the repository so they can come back later. Archived code isn't
+built, shipped or tested automatically; its workflows run by hand only (some ask you to type "archived" first). Code
+that was moved lives in `archive/` under its old path, and its docs in `docs/archive/`.
 
-## Hearth's app store (Apps) — archived 2026-10-24
+## Overview
+
+| Part | Archived | Code | Docs |
+|---|---|---|---|
+| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0); installs keep their last version | `os-bases/anatase` (stays: it shares checks and scripts with the Debian build); workflow `base-anatase.yml` | [BASE-ANATASE](archive/BASE-ANATASE.md) |
+| Hearth OS on Ubuntu and on CachyOS | 2026-10-22 | `archive/os-bases/ubuntu`, `archive/os-bases/cachyos`; `base-ubuntu.yml` / `base-cachyos.yml` (by hand, type "archived") | [BASE-UBUNTU](archive/BASE-UBUNTU.md), [BASE-CACHYOS](archive/BASE-CACHYOS.md) |
+| Hearth OS on Bazzite | 0.1.3 was its last update | `os/build_files`, `os/Containerfile` (stay: `os/` also holds the shared system files, the installer and Recovery) | |
+| Hearth's own Game Mode | 1.0: Steam Game Mode replaced it | stays in place (`ui/`, `hosts/hearth-rs`, `hosts/hearth-core`): it still runs first-time setup and the fallback; Ember keeps its own Game Mode | |
+| Multi-seat and Couch Co-op | 1.0 (hidden) | stays in place (`hosts/hearth-core`, `os/system_files/usr/libexec/nimbus/hearth-seats`, `hearth-coop`) | [MULTI-SEAT](archive/MULTI-SEAT.md), [COUCH-COOP](archive/COUCH-COOP.md) |
+| Hearth Plasma, Hearth GNOME, Hearth COSMIC, Hearth Deepin | 1.0: Mantel is the only desktop | stays in place for now (`hosts/linux/desktop/{plasma,gnome,cosmic}`, their parts in `os/system_files`): the image build, tests and Hearth's core still refer to them | [PLASMA](archive/PLASMA.md), [GNOME](archive/GNOME.md), [COSMIC](archive/COSMIC.md), [DEEPIN](archive/DEEPIN.md) |
+| The old Hearth Decky plugin (Steam takeover) | 1.0: Hearth Sync (`hosts/decky-hearth-sync`) replaced it | `archive/hosts/decky-hearth`; `decky-hearth.yml` | [STEAM-GAME-MODE](STEAM-GAME-MODE.md) |
+| The small online installer | 1.0: the offline Debian USB and the Recovery USB are offered | stays in place (`os/installer`); `installer-iso.yml` by hand | |
+| Hearth for Android and Hearth Linux on Android | 2026-10-21 | `archive/hosts/android`; `android.yml` (by hand, type "archived") | [ANDROID](archive/ANDROID.md), [ANDROID-LINUX](archive/ANDROID-LINUX.md) |
+| Hearth's app store (Apps) | 2026-10-24: Bazaar replaced it | `archive/app-store` | below |
+
+## Hearth's app store (Apps): archived 2026-10-24
 
 Hearth OS ships **Bazaar** (`io.github.kolunmi.Bazaar`, a full Flathub store) as its app store on every edition
 instead. Hearth's own store didn't show apps reliably.
@@ -36,7 +53,3 @@ The image builds no longer install `hearth-apps.desktop`, and nothing outside `a
 (and the launcher's Uninstall… to `appStore.open(entry.id)`), the `hearth-apps.desktop` entry back in
 `os-bases/anatase/build.sh` and `os-bases/peppermint/build.sh`, and the store check back in `base-anatase.yml` and
 `base-peppermint.yml` (see the git history of this change).
-
-## Also archived
-
-See docs/ROADMAP.md › Archived: Hearth OS on Bazzite, on Ubuntu and on CachyOS, and Hearth for Android.

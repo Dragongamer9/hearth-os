@@ -765,7 +765,8 @@ def releases_body():
             continue
         vers.append((hearth_version.key(m[1], 4), m[1], done, m[2]))
     vers.sort(key=lambda x: x[0], reverse=True)
-    nxt = [i for h, items in secs if h in ('Later', 'Hearth Browser, next') for i in items]
+    # Coming next: the roadmap's open Planned items (and a "Later" section, if a roadmap has one).
+    nxt = [i for h, items in secs if h in ('Planned', 'Later') for i in items if not i.startswith('[x]')]
     nxt = [re.sub(r'^\[[ x]\]\s*', '', i) for i in nxt]
     body = [h2('latest', rel_title(vers[0][1], vers[0][3]) + ' <span class="ver">Latest</span>')]
     body.append('<ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in vers[0][2]) + '</ul>')
@@ -774,10 +775,20 @@ def releases_body():
         body.append(h2('next', 'Coming next'))
         body.append('<p>Planned, in no fixed order. Something missing? <a href="requests.html">Ask for it</a>.</p>')
         body.append('<ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in nxt) + '</ul>')
-    body.append(h2('earlier', 'Earlier versions'))
-    for _, v, items, date in vers[1:]:
-        body.append(f'<details class="q" id="v{v}"><summary>{rel_title(v, date)} <span class="cnt">{len(items)} change{"s" if len(items) != 1 else ""}</span></summary>'
-                    '<div class="a"><ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in items) + '</ul></div></details>')
+    def rel(v, items, date):
+        return (f'<details class="q" id="v{v}"><summary>{rel_title(v, date)} <span class="cnt">{len(items)} change{"s" if len(items) != 1 else ""}</span></summary>'
+                '<div class="a"><ul>' + ''.join(f'<li>{md_inline(i)}</li>' for i in items) + '</ul></div></details>')
+    # Earlier 1.x+ releases, then everything before 1.0 under its own heading (it includes parts archived since).
+    newer = [x for x in vers[1:] if x[0][0] >= 1]
+    older = [x for x in vers[1:] if x[0][0] < 1]
+    if newer:
+        body.append(h2('earlier', 'Earlier versions'))
+        body += [rel(v, items, date) for _, v, items, date in newer]
+    if older:
+        body.append(h2('archived', 'Earlier (archived)'))
+        body.append('<p>Hearth OS before 1.0. These notes include editions and features that are archived now, such as '
+                    'Hearth\'s own Game Mode, the Anatase edition, multi-seat and Couch Co-op.</p>')
+        body += [rel(v, items, date) for _, v, items, date in older]
     # Dates in the reader's own language (the English text above stays for no script).
     body.append('<script>[].forEach.call(document.querySelectorAll("time[datetime]"),function(t){var m=/^(\\d{4})-(\\d\\d)-(\\d\\d)$/.exec(t.getAttribute("datetime"));'
                 'if(m)try{t.textContent=new Date(+m[1],m[2]-1,+m[3]).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});}catch(e){}});</script>')

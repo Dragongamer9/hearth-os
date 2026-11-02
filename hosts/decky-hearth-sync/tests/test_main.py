@@ -271,7 +271,7 @@ class Backend(unittest.TestCase):
         meta = json.load(open(HERE / 'plugin.json'))
         self.assertEqual(meta['name'], 'Hearth Sync')
         mine = json.load(open(HERE / 'package.json'))['version']
-        other = json.load(open(HERE.parent / 'decky-hearth' / 'package.json'))['version']
+        other = json.load(open(HERE.parents[1] / 'archive' / 'hosts' / 'decky-hearth' / 'package.json'))['version']
         self.assertEqual(mine, other, 'the same version as Hearth\'s other packages')
 
     def test_frontend_takes_nothing_over(self):

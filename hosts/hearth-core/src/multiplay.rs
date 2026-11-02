@@ -1,7 +1,7 @@
 //! Couch Co-op (several players on one screen, each with their own copy of a game: hearth-coop) and
 //! Multi-seat (a separate Game Mode per screen: hearth-seats). Both helpers are part of Hearth OS; they print
-//! "progress: N text" lines and one JSON answer ("error: ..." on failure). See docs/COUCH-COOP.md and
-//! docs/MULTI-SEAT.md.
+//! "progress: N text" lines and one JSON answer ("error: ..." on failure). See docs/archive/COUCH-COOP.md and
+//! docs/archive/MULTI-SEAT.md.
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
