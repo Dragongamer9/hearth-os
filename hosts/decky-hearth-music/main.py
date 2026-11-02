@@ -8,11 +8,12 @@ song; this file finds it, in this order:
      steamapps/common/<Game> Soundtrack) and, conservatively, an audio file in the game's folder whose name says it's
      the main/title theme
   3. Apple's official 30-second preview from the iTunes Search API (itunes.apple.com/search), the best match for
-     "<title> main theme" / "<title> soundtrack", fetched once and kept in ~/.cache/hearth-music; the panel shows
-     the track, artist and a link to it. No match: silence. Never YouTube or anything that downloads from it.
+     "<title> main theme" / "<title> soundtrack", streamed from Apple's address and never stored (the frontend
+     plays it directly; if Steam's browser can't, this backend passes it on from memory); the panel shows the
+     track, artist and a link to it. No match: silence. Never YouTube or anything that downloads from it.
 
 Apple's API is asked at most once every few seconds and 20 times a minute; answers (and "no match") are kept for weeks
-(lookups.json), so a game is looked up once. Nothing else is sent anywhere. The log gets counts and reasons only.
+(lookups.json), so a game is looked up once. Only those answers are kept, never Apple's audio. Nothing else is sent anywhere. The log gets counts and reasons only.
 """
 import asyncio
 import base64
@@ -396,25 +397,6 @@ def lookup(title, get=None, now=None):
     return {'match': match}
 
 
-def preview_file(appid, match, fetch=None):
-    """Apple's preview for this game, fetched once into ~/.cache/hearth-music/previews."""
-    d = os.path.join(cache_dir(), 'previews')
-    name = hashlib.sha1(match['preview'].encode()).hexdigest()[:20] + '.m4a'
-    p = os.path.join(d, name)
-    if os.path.isfile(p) and os.path.getsize(p) > 0:
-        return p
-    if not allowed_preview(match['preview']):
-        return None
-    data = (fetch or _fetch)(match['preview'])
-    if not data or len(data) > PREVIEW_LIMIT:
-        return None
-    os.makedirs(d, exist_ok=True)
-    with open(p + '.tmp', 'wb') as f:
-        f.write(data)
-    os.replace(p + '.tmp', p)
-    return p
-
-
 def _fetch(url):
     req = urllib.request.Request(url, headers={'User-Agent': 'HearthMusic/1 (Hearth OS)'})
     with urllib.request.urlopen(req, timeout=20) as r:
@@ -424,16 +406,21 @@ def _fetch(url):
 # ---- the song, and its sound
 
 def keyed(path):
-    """Files the frontend may ask for are only those this backend chose (keys, never paths, cross the bridge)."""
+    """Files (and Apple preview addresses) the frontend may ask for are only those this backend chose: keys, never
+    paths, cross the bridge."""
     k = hashlib.sha1(path.encode('utf-8', 'surrogateescape')).hexdigest()[:24]
     _keys[k] = path
     return k
 
 
+def is_url(v):
+    return isinstance(v, str) and v.startswith('https://')
+
+
 _keys = {}
 
 
-def find_song(appid, title, collections=None, online=True, get=None, fetch=None, h=None):
+def find_song(appid, title, collections=None, online=True, get=None, h=None):
     appid = str(appid or '')
     title = str(title or '')[:200]
     p = picked(appid, collections)
@@ -451,23 +438,51 @@ def find_song(appid, title, collections=None, online=True, get=None, fetch=None,
     m = lk.get('match')
     if not m:
         return {'source': None, 'why': 'no theme song found'}
-    try:
-        path = preview_file(appid, m, fetch=fetch)
-    except (OSError, ValueError):
-        path = None
-    if not path:
-        return {'source': None, 'why': "Apple's preview couldn't be fetched"}
-    return {'source': 'apple', 'key': keyed(path), 'title': m['track'], 'artist': m['artist'], 'album': m['album'], 'link': m['link']}
+    if not allowed_preview(m.get('preview') or ''):
+        return {'source': None, 'why': 'no theme song found'}
+    # Streamed: the frontend plays Apple's address itself; the key is for the fallback through this backend.
+    return {'source': 'apple', 'url': m['preview'], 'key': keyed(m['preview']), 'title': m['track'], 'artist': m['artist'],
+            'album': m['album'], 'link': m['link']}
 
 
-def audio(key, transcode=False, run=subprocess.run):
+def ffmpeg():
+    return shutil.which('ffmpeg') or ('/usr/bin/ffmpeg' if os.path.isfile('/usr/bin/ffmpeg') else None)
+
+
+def stream_preview(url, transcode=False, run=subprocess.run, fetch=None):
+    """Apple's preview passed on when Steam's browser can't play its address itself: fetched into memory and handed
+    over (with transcode, piped through ffmpeg into Ogg Opus). Nothing of it is written to disk."""
+    if not allowed_preview(url):
+        return None
+    data = (fetch or _fetch)(url)
+    if not data or len(data) > PREVIEW_LIMIT:
+        return None
+    mime = 'audio/mp4'
+    if transcode:
+        ff = ffmpeg()
+        if not ff:
+            return None
+        r = run([ff, '-nostdin', '-v', 'error', '-i', 'pipe:0', '-vn', '-c:a', 'libopus', '-b:a', '128k', '-f', 'ogg', 'pipe:1'],
+                input=data, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
+        if getattr(r, 'returncode', 1) != 0 or not r.stdout:
+            return None
+        data, mime = r.stdout, 'audio/ogg'
+    return {'data': base64.b64encode(data).decode('ascii'), 'mime': mime}
+
+
+def audio(key, transcode=False, run=subprocess.run, fetch=None):
     """The sound of a song this backend chose: {'data': base64, 'mime': ...}. With transcode, made into Ogg Opus first
-    with ffmpeg (for a format Steam's browser can't play), kept in the cache."""
+    with ffmpeg (for a format Steam's browser can't play; your own files' conversions are kept in the cache)."""
     path = _keys.get(str(key))
+    if is_url(path):
+        try:
+            return stream_preview(path, transcode, run=run, fetch=fetch)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
     if not path or not os.path.isfile(path):
         return None
     if transcode:
-        ff = shutil.which('ffmpeg') or ('/usr/bin/ffmpeg' if os.path.isfile('/usr/bin/ffmpeg') else None)
+        ff = ffmpeg()
         if not ff:
             return None
         out = os.path.join(cache_dir(), 'ogg', hashlib.sha1(path.encode('utf-8', 'surrogateescape')).hexdigest()[:24] + '.ogg')

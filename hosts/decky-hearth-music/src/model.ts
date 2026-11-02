@@ -5,7 +5,7 @@ export interface Settings { enabled: boolean; volume: number; delay: number; whe
 export const DEFAULTS: Settings = { enabled: true, volume: 0.35, delay: 1.5, where: "pages", online: true, toast: true };
 
 /** A song the backend found: where it's from and (for Apple's previews) the credit. */
-export interface Song { source: "pick" | "soundtrack" | "game" | "apple" | null; key?: string; title?: string; artist?: string;
+export interface Song { source: "pick" | "soundtrack" | "game" | "apple" | null; key?: string; url?: string; title?: string; artist?: string;
   album?: string; link?: string; why?: string; later?: boolean; via?: string; name?: string }
 
 /** What Steam shows right now, as Hearth Music reads it. */

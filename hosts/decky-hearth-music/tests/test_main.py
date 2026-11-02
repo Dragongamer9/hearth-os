@@ -130,15 +130,14 @@ class Backend(unittest.TestCase):
     # ---- where the song comes from
     def test_order_pick_then_soundtrack_then_apple(self):
         apple = lambda term: [it('Celeste Main Theme', 'Celeste (Original Soundtrack)')]
-        fetched = []
-        s = self.m.find_song('504230', 'Celeste', [], get=apple, fetch=lambda u: fetched.append(u) or b'\0\0\0 ftypM4A ' + b'0' * 100)
+        s = self.m.find_song('504230', 'Celeste', [], get=apple)
         self.assertEqual((s['source'], s['title'], s['artist']), ('apple', 'Celeste Main Theme', 'Composer'))
-        self.assertEqual(len(fetched), 1)
-        self.m.find_song('504230', 'Celeste', [], get=apple, fetch=lambda u: fetched.append(u))
-        self.assertEqual(len(fetched), 1, 'the preview is kept after the first play')
-        a = self.m.audio(s['key'])
+        self.assertEqual(s['url'], 'https://audio-ssl.itunes.apple.com/p/a.m4a', 'streamed from Apple\'s address')
+        fetched = []
+        a = self.m.audio(s['key'], fetch=lambda u: fetched.append(u) or b'\0\0\0 ftypM4A ' + b'0' * 100)
         self.assertEqual(a['mime'], 'audio/mp4')
         self.assertTrue(base64.b64decode(a['data']).startswith(b'\0\0\0 ftyp'))
+        self.assertEqual(fetched, [s['url']])
         # a soundtrack you own wins over Apple
         write(os.path.join(self.steam, 'steamapps/music/Celeste Original Soundtrack/02 - Resurrections.mp3'))
         write(os.path.join(self.steam, 'steamapps/music/Celeste Original Soundtrack/01 - Prologue.mp3'))
@@ -155,6 +154,31 @@ class Backend(unittest.TestCase):
             self.m.set_pick('app', '1', os.path.join(self.home, 'notes.txt'))
         self.m.set_pick('collection', 'Platformers', '')
         self.assertEqual(self.m.find_song('504230', 'Celeste', ['Platformers'], get=apple)['source'], 'soundtrack')
+
+    def test_apple_previews_are_never_written_to_disk(self):
+        apple = lambda term: [it('Celeste Main Theme', 'Celeste (Original Soundtrack)')]
+        before = set()
+        for d, _, fs in os.walk(self.tmp):
+            before.update(os.path.join(d, f) for f in fs)
+        s = self.m.find_song('504230', 'Celeste', [], get=apple)
+        audio = b'\0\0\0 ftypM4A ' + b'0' * 100
+        self.m.audio(s['key'], fetch=lambda u: audio)
+        seen = {}
+
+        def run(cmd, **kw):
+            seen['cmd'], seen['input'] = cmd, kw.get('input')
+            return types.SimpleNamespace(returncode=0, stdout=b'OggS' + b'1' * 10)
+        self.m.shutil.which = lambda n: '/usr/bin/ffmpeg'
+        a = self.m.audio(s['key'], transcode=True, run=run, fetch=lambda u: audio)
+        self.assertEqual(a['mime'], 'audio/ogg')
+        self.assertEqual((seen['cmd'][seen['cmd'].index('-i') + 1], seen['cmd'][-1], seen['input']), ('pipe:0', 'pipe:1', audio), 'piped, not via files')
+        self.assertFalse(os.path.exists(os.path.join(self.m.cache_dir(), 'previews')), 'nothing under previews/')
+        after = set()
+        for d, _, fs in os.walk(self.tmp):
+            after.update(os.path.join(d, f) for f in fs)
+        self.assertEqual(sorted(os.path.relpath(f, self.tmp) for f in after - before), ['home/.cache/hearth-music/lookups.json'],
+                         'only the lookup answer is kept')
+        self.assertIsNone(self.m.stream_preview('https://evil.example/a.m4a', fetch=lambda u: audio))
 
     def test_soundtrack_folder_in_common_and_theme_named_track(self):
         lib = os.path.join(self.tmp, 'drive/SteamLibrary')
@@ -209,7 +233,7 @@ class Backend(unittest.TestCase):
 
     def test_never_youtube(self):
         src = open(HERE / 'main.py').read().lower() + ''.join(open(f).read().lower() for f in (HERE / 'src').glob('*.ts*'))
-        for bad in ('youtube.com', 'youtu.be', 'googlevideo', 'yt-dlp', 'youtube-dl', 'ytdl', 'pytube', 'invidious', 'piped'):
+        for bad in ('youtube.com', 'youtu.be', 'googlevideo', 'yt-dlp', 'youtube-dl', 'ytdl', 'pytube', 'invidious', 'piped.video', 'pipedapi'):
             self.assertNotIn(bad, src, bad)
 
     def test_plugin_json_and_version(self):

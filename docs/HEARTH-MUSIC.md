@@ -21,8 +21,8 @@ In this order:
    `media=music`): it searches "<title> main theme", then "<title> soundtrack" if the first wasn't clearly right, and
    takes the result whose album or track name holds the game's title (or its short form without edition words or
    subtitle) together with a soundtrack album or a theme-named track; covers, tributes, remixes, karaoke, lo-fi and
-   8-bit versions are left out, and the preview must come from Apple's own servers. The preview is fetched once and
-   kept in `~/.cache/hearth-music/previews`. The panel and the "Now playing" note show the track, the artist,
+   8-bit versions are left out, and the preview must come from Apple's own servers. The preview is streamed from
+   Apple's address and never stored (see "How it works"). The panel and the "Now playing" note show the track, the artist,
    "Preview courtesy of Apple Music" and an *Open in Apple Music* link. No good match: silence.
    Can be turned off (*Apple Music previews*); then nothing is ever sent anywhere.
 
@@ -30,7 +30,8 @@ Hearth Music never uses YouTube or anything that downloads from it.
 
 Apple asks for about 20 calls a minute at most: Hearth Music waits a few seconds between calls, stops for the minute
 when it reaches 20, and keeps every answer in `~/.cache/hearth-music/lookups.json`: a match for 30 days, "no match"
-for 7 days, a failed call for an hour. So each game is looked up once.
+for 7 days, a failed call for an hour. So each game is looked up once. Only these answers are kept; Apple's audio
+never is.
 
 ## Quick Access panel
 
@@ -54,14 +55,20 @@ The frontend reads Steam's gamepad UI the way Hearth Sync and the older Hearth p
 If Steam's page and running game can't be read at all, Hearth Music turns itself off with a note in its panel.
 
 Songs play in Steam's own browser (an HTML audio element in the plugin's page), so they go out with Steam's sound and
-follow Game Mode's volume; two elements crossfade (equal power, 1.5 s). The backend (`main.py`) finds the song and
-hands its bytes over; a format Steam's browser can't decode is made into Ogg Opus with ffmpeg first (kept in
-`~/.cache/hearth-music/ogg`). Only files the backend chose can be asked for (by key, never by path).
+follow Game Mode's volume; two elements crossfade (equal power, 1.5 s).
+
+- **Apple's previews are streamed**, following Apple's terms: the audio element plays the https preview address
+  directly. If Steam's browser refuses it (its page's rules, a mixed origin), the backend fetches the preview into
+  memory and passes it on, through ffmpeg into Ogg Opus by pipe when needed. Nothing of it is written to disk; only
+  the lookup answers (`lookups.json`) are kept.
+- **Your own files** (picks, soundtracks, game files) are handed over by the backend; a format Steam's browser can't
+  decode is made into Ogg Opus with ffmpeg first (kept in `~/.cache/hearth-music/ogg`). Only files the backend chose
+  can be asked for (by key, never by path).
 
 ## Tests
 
-`.github/workflows/decky-hearth-music.yml`: the backend's tests (matching, the order of sources, caching and Apple's
-rate limit with made-up answers, fake Steam folders, hearth-decky shipping it), the pure parts' unit tests, the build
+`.github/workflows/decky-hearth-music.yml`: the backend's tests (matching, the order of sources, the lookup cache and
+Apple's rate limit with made-up answers, Apple's previews never written to disk, fake Steam folders, hearth-decky shipping it), the pure parts' unit tests, the build
 and Decky's zip, and pictures of the real panel and the "Now playing" note over stand-ins (branch
 `ci/hearth-music-shots`).
 
@@ -69,6 +76,4 @@ and Decky's zip, and pictures of the real panel and the "Now playing" note over 
 
 Steam's internals aren't documented: the router path, the tile's React props and `RegisterForGameActionStart` are
 read the way other Decky plugins read them, but haven't been checked on this Steam build. Whether Steam's browser plays
-Apple's AAC previews directly (otherwise the ffmpeg fallback) is also unchecked. Apple's terms for previews expect them
-to be streamed and credited; Hearth Music credits and links each preview and keeps a local copy so a game is fetched
-once, which is the owner's call.
+Apple's preview addresses directly (otherwise the backend's in-memory stream, transcoded if needed) is also unchecked.

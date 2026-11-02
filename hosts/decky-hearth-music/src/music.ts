@@ -49,6 +49,16 @@ async function start(appid: number, my: number) {
     changed();
     if (!song?.source || !song.key) { player.stop(); return; }
     if (player.playing() === song.key) return;
+    let streamed = false;
+    if (song.url) {
+      // Apple's preview: streamed straight from Apple's address. If Steam's browser refuses it, the backend passes
+      // it on from memory below (never stored).
+      try { await player.playUrl(song.key, song.url); streamed = true; } catch (e: any) {
+        report(`preview stream refused (${String(e?.message || e).slice(0, 40)}): through the backend`).catch(() => {});
+      }
+      if (my !== seq) return;
+    }
+    if (!streamed) {
     let data = await getAudio(song.key, false);
     if (my !== seq || !data) return;
     try { await player.play(song.key, data); } catch (e: any) {
@@ -56,6 +66,7 @@ async function start(appid: number, my: number) {
       data = await getAudio(song.key, true);   // a format Steam's browser can't play: made into Ogg Opus by the backend
       if (my !== seq || !data) return;
       await player.play(song.key, data);
+    }
     }
     if (state.settings.toast && !toasted.has(appid)) {
       toasted.add(appid);

@@ -1,10 +1,10 @@
 // CI only (render-panel.mjs): a stand-in for @decky/api and for Steam's state. window.HM_STATE picks the scene:
-// apple, soundtrack, pick, game, nomatch, running, off, changed, library. No Steam, no network: the "song" is a
-// short tone made here.
+// apple, soundtrack, pick, game, nomatch, running, off, changed, library. No Steam, no network: Apple's preview
+// address doesn't resolve, so the panel goes through the backend's stream fallback, whose "song" is a tone made here.
 import { S } from "./steam-state.js";
 const songs = {
-  apple: { source: "apple", key: "k1", title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", link: "https://music.apple.com/us/album/elden-ring/1" },
-  library: { source: "apple", key: "k1", title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", link: "https://music.apple.com/us/album/elden-ring/1" },
+  apple: { source: "apple", key: "k1", url: "https://preview.invalid/a.m4a", title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", link: "https://music.apple.com/us/album/elden-ring/1" },
+  library: { source: "apple", key: "k1", url: "https://preview.invalid/a.m4a", title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", link: "https://music.apple.com/us/album/elden-ring/1" },
   soundtrack: { source: "soundtrack", key: "k2", title: "01 Stardew Valley Overture" },
   pick: { source: "pick", key: "k3", title: "My Witcher Mix", via: "collection", name: "RPGs" },
   game: { source: "game", key: "k4", title: "main_theme" },

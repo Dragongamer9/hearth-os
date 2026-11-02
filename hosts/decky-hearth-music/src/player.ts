@@ -1,8 +1,9 @@
 // Plays the songs in Steam's own browser (the plugin's page, an HTML audio element), so the sound goes out with
 // Steam's and follows Steam Game Mode's volume. Two elements crossfade; each song loops until the next one or silence.
+// Apple's previews are streamed from their https address (playUrl); files come from the backend as bytes (play).
 import { CROSSFADE, clamp, fadeAt } from "./model";
 
-interface Track { el: HTMLAudioElement; url: string; key: string; vol: number; timer: any }
+interface Track { el: HTMLAudioElement; url: string; blob: boolean; key: string; vol: number; timer: any }
 
 function blobUrl(b64: string, mime: string): string {
   const bin = atob(b64);
@@ -25,7 +26,7 @@ function ramp(t: Track, to: number, ms: number, done?: () => void) {
 function drop(t: Track) {
   clearInterval(t.timer);
   try { t.el.pause(); t.el.removeAttribute("src"); t.el.load(); } catch { /* gone */ }
-  try { URL.revokeObjectURL(t.url); } catch { /* gone */ }
+  if (t.blob) { try { URL.revokeObjectURL(t.url); } catch { /* gone */ } }
 }
 
 export class Player {
@@ -36,8 +37,19 @@ export class Player {
 
   /** Starts a song (crossfading from the one playing). Throws "unsupported" when Steam's browser can't decode it. */
   async play(key: string, data: { data: string; mime: string }, fadeMs = CROSSFADE): Promise<void> {
-    const el = new Audio();
-    const t: Track = { el, url: blobUrl(data.data, data.mime), key, vol: 0, timer: null };
+    return this.start({ el: new Audio(), url: blobUrl(data.data, data.mime), blob: true, key, vol: 0, timer: null }, fadeMs);
+  }
+
+  /** Streams a song from its https address (Apple's previews: played, never stored). Throws when Steam's browser
+   *  won't load or play it (its page's rules, the network), so the caller can go through the backend instead. */
+  async playUrl(key: string, url: string, fadeMs = CROSSFADE): Promise<void> {
+    const t: Track = { el: new Audio(), url, blob: false, key, vol: 0, timer: null };
+    t.el.preload = "auto";
+    return this.start(t, fadeMs);
+  }
+
+  private async start(t: Track, fadeMs: number): Promise<void> {
+    const el = t.el;
     el.loop = true;
     el.volume = 0;
     el.src = t.url;
