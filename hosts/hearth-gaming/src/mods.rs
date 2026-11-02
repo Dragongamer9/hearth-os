@@ -42,6 +42,9 @@ pub struct ModRec {
     /// Where it came from on Nexus Mods (for update checks).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus: Option<NexusRef>,
+    /// Your own note about it (the page's details panel).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -70,6 +73,9 @@ pub struct State {
     /// The Nexus game, when it's known (for downloads and update checks).
     #[serde(default)]
     pub nexus: String,
+    /// When the mods were last put in place (ms; 0 never).
+    #[serde(default)]
+    pub deployed_at: u64,
 }
 
 /// What a deploy has put in place. Shared by Hearth Mods' own list and the Hearth Mod Organizer's link deploy
@@ -174,24 +180,76 @@ impl GameMods {
     pub fn summary(&self, g: &GameEntry) -> Value {
         let desired = self.desired(g).0;
         let names: BTreeMap<&str, &str> = self.state.mods.iter().map(|m| (m.id.as_str(), m.name.as_str())).collect();
+        let having = self.having(g);
         let mods: Vec<Value> = self.state.mods.iter().enumerate().map(|(i, m)| {
             let root = self.root_of(g, m).ok();
-            let (mut beaten, mut wins) = (BTreeSet::new(), 0usize);
+            let (mut beaten, mut wins, mut beats) = (BTreeSet::new(), 0usize, BTreeSet::new());
             if m.enabled { if let Some(r) = &root {
                 for f in &m.files {
-                    match desired.get(&r.join(f).to_string_lossy().to_string()) {
+                    let abs = r.join(f).to_string_lossy().to_string();
+                    match desired.get(&abs) {
                         Some(w) if w != &m.id => { beaten.insert(names.get(w.as_str()).copied().unwrap_or("another mod")); }
-                        _ => wins += 1,
+                        _ => {
+                            wins += 1;
+                            for o in having.get(&abs).into_iter().flatten().filter(|o| *o != &m.id) { beats.insert(names.get(o.as_str()).copied().unwrap_or("another mod")); }
+                        }
                     }
                 }
             } }
             json!({"id": m.id, "name": m.name, "enabled": m.enabled, "order": i, "target": m.target, "sub": m.sub, "root": root, "files": m.files.len(),
-                   "size": m.size, "added": m.added, "source": m.source, "overriddenBy": beaten, "winning": wins, "nexus": m.nexus,
+                   "size": m.size, "added": m.added, "source": m.source, "overriddenBy": beaten, "winning": wins, "beats": beats, "nexus": m.nexus, "note": m.note,
                    "targetLabel": TARGETS.iter().find(|t| t.0 == m.target).map(|t| t.1).unwrap_or("")})
         }).collect();
         json!({"game": g.id, "title": g.title, "mods": mods, "targets": targets_for(g), "deployed": self.state.ledger.deployed.len(), "originals": self.state.ledger.originals.len(), "folder": self.dir,
-               "deploy": self.mode(), "modes": DEPLOY_MODES.iter().map(|m| json!({"id": m.0, "label": m.1})).collect::<Vec<_>>(), "nexus": self.state.nexus,
+               "deploy": self.mode(), "deployedAt": self.state.deployed_at, "modes": DEPLOY_MODES.iter().map(|m| json!({"id": m.0, "label": m.1})).collect::<Vec<_>>(), "nexus": self.state.nexus,
                "overlay": if self.mode() == "overlay" { json!({"mounted": overlay::mounted(g.install.as_deref()), "upper": self.dir.join("upper"), "changed": util::tree_size(&self.dir.join("upper"))}) } else { Value::Null }})
+    }
+
+    /// Every file of the turned-on mods (full path) → the mods that have it, in load order.
+    fn having(&self, g: &GameEntry) -> BTreeMap<String, Vec<String>> {
+        let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for m in self.state.mods.iter().filter(|m| m.enabled) {
+            let Ok(root) = self.root_of(g, m) else { continue };
+            for f in &m.files { if let Some(rel) = util::clean_rel(f) { out.entry(root.join(rel).to_string_lossy().to_string()).or_default().push(m.id.clone()); } }
+        }
+        out
+    }
+
+    /// One mod's files that another turned-on mod also has: each with who wins it ("wins" over the mods listed,
+    /// "loses" to the one that wins). For the page's Conflicts panel. A mod that's off is compared as if it were on.
+    pub fn conflicts(&self, g: &GameEntry, id: &str) -> Result<Value, String> {
+        let i = self.find(id)?;
+        let mut st = self.state.clone();
+        st.mods[i].enabled = true;
+        let probe = GameMods { dir: self.dir.clone(), state: st };
+        let m = &probe.state.mods[i];
+        let root = probe.root_of(g, m)?;
+        let having = probe.having(g);
+        let names: BTreeMap<&str, &str> = probe.state.mods.iter().map(|m| (m.id.as_str(), m.name.as_str())).collect();
+        let name = |x: &String| names.get(x.as_str()).copied().unwrap_or("another mod").to_string();
+        let mut files = Vec::new();
+        let (mut wins, mut loses) = (0usize, 0usize);
+        for f in &m.files {
+            let Some(rel) = util::clean_rel(f) else { continue };
+            let who = having.get(&root.join(rel).to_string_lossy().to_string()).cloned().unwrap_or_default();
+            if who.len() < 2 { continue; }
+            let winner = who.last().cloned().unwrap_or_default();
+            if winner == m.id {
+                wins += 1;
+                files.push(json!({"path": f, "status": "wins", "over": who.iter().filter(|x| **x != m.id).map(name).collect::<Vec<_>>()}));
+            } else {
+                loses += 1;
+                files.push(json!({"path": f, "status": "loses", "to": name(&winner)}));
+            }
+        }
+        Ok(json!({"mod": m.id, "name": m.name, "enabled": self.state.mods[i].enabled, "files": files, "wins": wins, "loses": loses, "total": m.files.len()}))
+    }
+
+    /// Keeps your note about a mod.
+    pub fn set_note(&mut self, id: &str, note: &str) -> Result<(), String> {
+        let i = self.find(id)?;
+        self.state.mods[i].note = note.trim().chars().take(2000).collect();
+        self.save()
     }
 
     /// Every file the turned-on mods want in place → the mod that wins it. Mods whose folder is missing are left out
@@ -267,6 +325,7 @@ impl GameMods {
             sync_files(&dir, &mut ledger, &want, linking, &mut |l: &Ledger| { let mut s = st.clone(); s.ledger = l.clone(); let _ = save_state(&dir, &s); })
         };
         self.state.ledger = ledger;
+        self.state.deployed_at = util::now_ms();
         let _ = self.save();
         let mut p = problems;
         p.append(&mut rep.problems);
@@ -321,7 +380,7 @@ impl GameMods {
         if rels.is_empty() { let _ = std::fs::remove_dir_all(&dest); return Err("That mod has no files in it.".into()); }
         let name = if name.trim().is_empty() { staged.name.clone() } else { name.trim().chars().take(120).collect() };
         self.state.mods.push(ModRec { id, name, enabled: enable, target: target.into(), sub: sub.trim_matches('/').into(), size: files.iter().map(|f| std::fs::metadata(f).map(|m| m.len()).unwrap_or(0)).sum(),
-            files: rels, added: util::now_ms(), source: staged.source.clone(), nexus: staged.nexus.clone() });
+            files: rels, added: util::now_ms(), source: staged.source.clone(), nexus: staged.nexus.clone(), note: String::new() });
         self.save()?;
         Ok(if enable { self.deploy(g) } else { Report::default() })
     }
@@ -685,6 +744,22 @@ mod tests {
         assert_eq!(read(&game.join("Data/a.txt")), "mod two a");
         let sum = gm.summary(&g);
         assert_eq!(sum["mods"][0]["overriddenBy"][0], "Other mod");
+        // The page's conflict data: who beats whom, file by file, and when the mods last went in.
+        assert_eq!(sum["mods"][1]["beats"][0], "Cool Mod");
+        assert_eq!(sum["mods"][0]["beats"].as_array().map(|a| a.len()), Some(0));
+        assert!(sum["deployedAt"].as_u64().unwrap_or(0) > 0, "{sum}");
+        let id1 = gm.state.mods[0].id.clone();
+        let c = gm.conflicts(&g, &id1).unwrap();
+        assert_eq!((c["loses"].as_u64(), c["wins"].as_u64(), c["total"].as_u64()), (Some(1), Some(0), Some(2)), "{c}");
+        assert_eq!(c["files"][0]["path"], "Data/a.txt");
+        assert_eq!(c["files"][0]["to"], "Other mod");
+        let c2 = gm.conflicts(&g, &gm.state.mods[1].id.clone()).unwrap();
+        assert_eq!((c2["files"][0]["status"].as_str(), c2["files"][0]["over"][0].as_str()), (Some("wins"), Some("Cool Mod")));
+        assert!(gm.conflicts(&g, "nope").is_err());
+        // A note stays with the mod, also after reopening.
+        gm.set_note(&id1, "  Needs the patch below  ").unwrap();
+        assert_eq!(GameMods::open(&data, &g).state.mods[0].note, "Needs the patch below");
+        assert_eq!(gm.summary(&g)["mods"][0]["note"], "Needs the patch below");
         // Load order: move the second mod up; now the first wins.
         let id2 = gm.state.mods[1].id.clone();
         gm.move_by(&g, &id2, -1).unwrap();

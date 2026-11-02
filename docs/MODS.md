@@ -1,8 +1,34 @@
 # Hearth Mods: Nexus Mods and Wabbajack
 
 Hearth Mods (`hearth-mods`, `hosts/hearth-gaming`) came in 0.6.1 with Controller Lab and Saves. For 0.6.5 it gets
-Nexus Mods downloads, a choice of how mods go into a game, and Wabbajack modlists. The page has four tabs (LB / RB):
-**Games**, **Downloads**, **Modlists** and **Accounts** (Nexus Mods, LoversLab, MEGA, Google).
+Nexus Mods downloads, a choice of how mods go into a game, and Wabbajack modlists. After 1.0 the page was laid out
+again, game first (below).
+
+## The page
+
+A rail on the left has the sections (LB / RB): **Library**, **Modlists**, **Downloads**, **Organizer**, **Accounts**
+and **Settings**; on a game's page it also has the games' covers, to switch game.
+
+- **Library**: your moddable games as art cards (the library's pictures: the art cache's copy, sent to the page as a
+  `data:` address by the `art` call), modded ones first. A game opens with its **hero**: its art, how many mods are on,
+  how healthy the load order is (fully overridden mods, plugins missing masters), when the mods last went in
+  (`deployedAt`) and how, and the actions: **Play modded** (`play`: Steam games through Steam, others through
+  `hearth --windowed --play`), **Deploy** (how mods go in), **Add mods**, **Browse Nexus**, **Install a modlist**
+  (Wabbajack games) and ⋯ for the rest.
+- Under it, the **mod list** is a priority ladder (lower wins): on/off switches, badges for what a mod overrides, what
+  overrides it and updates on Nexus, search and filters (on, off, conflicts, updates). The selected mod's
+  **conflict lens** marks the mods it beats and the ones that beat it. Mouse and touch drag a mod by its handle;
+  with a controller, A picks a mod up, up/down moves it, A drops it, B puts it back; X turns it on or off, Y has the
+  rest. The **details panel**: about (its Nexus page's summary, endorsements and version through `nexus_mod`, files,
+  where it goes), conflicts file by file (`mod_conflicts`, or the organizer's `conflicts`) and your notes (`set_note`).
+- A game with a Hearth Mod Organizer instance shows the organizer's list in the same place, with its separators, the
+  Plugins tab and the profile in the hero; the **Organizer** section lists every instance.
+- **Modlists**: installs in progress with each file Hearth fetches and its state, the sign-ins the list needs, then
+  the featured (official) lists and the gallery with search and game filters. **Downloads** groups the queue into
+  needs you, downloading and finished. **Settings**: the Wabbajack engine, adult lists, the Nexus account.
+
+The look is the desktop's (theme.css tokens, Steam-style dark by default). The page is `ui/mods.html`, `ui/mods.css`
+and `ui/mods.js`; opened in a browser it answers from its own sample data.
 
 ## Code
 
@@ -18,7 +44,7 @@ Nexus Mods downloads, a choice of how mods go into a game, and Wabbajack modlist
 | `src/apps/mods.rs` | Every call by name (`dispatch`: the window's and Game Mode's), the command line, the nxm inbox |
 | `src/service.rs` | The worker: one hearth-mods process holds the queue, the installs and the sign-ins and answers the others over a Unix socket |
 | `hearth-core/src/hearth_mods.rs` | Game Mode's way in: `mods.call` asks the worker (starting `hearth-mods --serve` when none runs), only the calls in its list |
-| `ui/mods.html` | The page (preview data when opened in a browser) |
+| `ui/mods.html`, `mods.css`, `mods.js` | The page (preview data when opened in a browser) |
 | `hearth-core/src/library.rs` `modlist_games()` | Installed modlists in Hearth's library (`mods/modlists/<id>.json` + `.desktop`) |
 
 The page uses the shared on-screen keyboard (`ui/osk`, copied to `hosts/hearth-gaming/ui/osk` by

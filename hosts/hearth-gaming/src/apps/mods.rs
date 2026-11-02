@@ -185,6 +185,16 @@ fn nexus_files(url: &str) -> Result<Value, String> {
               "page": nexus::files_page(&domain, mod_id, None), "premium": acct.premium, "files": list, "adult": info["contains_adult_content"]}))
 }
 
+/// A Nexus mod's page facts for the details panel (summary, endorsements, version...), without its files.
+fn nexus_mod(domain: &str, mod_id: u64) -> Result<Value, String> {
+    let acct = nexus::account().ok_or("Sign in to Nexus Mods to see its page here.")?;
+    if domain.is_empty() || mod_id == 0 || !domain.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') { return Err("That isn't a Nexus mod.".into()); }
+    let info = nexus::mod_info(&acct.key, domain, mod_id)?;
+    Ok(json!({"name": info["name"], "summary": info["summary"], "author": info["author"], "version": info["version"], "picture": info["picture_url"],
+              "endorsements": info["endorsement_count"], "downloads": info["mod_downloads"], "updated": info["updated_timestamp"], "adult": info["contains_adult_content"],
+              "page": nexus::files_page(domain, mod_id, None)}))
+}
+
 fn wj_defaults(title: &str, gname: &str) -> Value {
     let info = wabbajack::game_info(gname);
     let list = if GAMES.lock().unwrap_or_else(|e| e.into_inner()).is_empty() { load_games() } else { GAMES.lock().unwrap_or_else(|e| e.into_inner()).clone() };
@@ -247,6 +257,12 @@ fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
         "set_deploy" => change(&s(a, "id"), |gm, g| gm.set_mode(g, &s(a, "mode"))),
         "set_nexus_game" => { let g = game(&s(a, "id"))?; GameMods::open(&data_root(), &g).set_nexus_game(&s(a, "domain"))?; Ok(summary(&g)) }
         "check_updates" => check_updates(&s(a, "id")),
+        // The page's game hero and details panel: pictures, playing the game modded, file conflicts, notes.
+        "art" => { let g = game(&s(a, "id"))?; let k = s(a, "kind"); Ok(g.art.get(&k).and_then(|v| games::art_data(v)).map(Value::String).unwrap_or(Value::Null)) }
+        "play" => { let g = game(&s(a, "id"))?; if g.beacon { games::open_beacon() } else { games::play(&g) }.map(null) }
+        "mod_conflicts" => { let g = game(&s(a, "id"))?; GameMods::open(&data_root(), &g).conflicts(&g, &s(a, "m")) }
+        "set_note" => { let _w = WORK.lock().unwrap_or_else(|e| e.into_inner()); let g = game(&s(a, "id"))?; GameMods::open(&data_root(), &g).set_note(&s(a, "m"), &s(a, "note"))?; Ok(summary(&g)) }
+        "nexus_mod" => nexus_mod(&s(a, "domain"), u(a, "modId")),
         // Nexus Mods
         "nexus_account" => Ok(nexus::account().map(|x| x.public()).unwrap_or(Value::Null)),
         "nexus_sign_in" => nexus::sign_in(&s(a, "key")).map(|x| x.public()),
