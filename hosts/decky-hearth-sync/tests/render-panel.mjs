@@ -25,7 +25,7 @@ const css = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:re
 .qam-body{flex:1;display:flex;flex-direction:column;min-width:0}.qam-title{font-size:18px;font-weight:700;padding:16px 16px 8px}
 .ScrollPanel{padding:0 12px 20px;overflow:hidden}.qam-section{margin-bottom:6px}.qam-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#8d99a8;padding:8px 4px 4px}
 .qam-row{padding:3px 4px}.qam-field{display:flex;flex-direction:column;gap:4px;padding:2px 0}.qam-label{font-size:14px}.qam-desc{font-size:11.5px;color:#8d99a8}.Text{font-size:14px}
-.DialogButton{border:none;color:#e9eef4;background:#3d4450;border-radius:4px;font:inherit}.qam-btn{width:100%;padding:9px 12px;font-size:14px}.gpfocus{background:#fff;color:#0e141b}
+.DialogButton{border:none;color:#e9eef4;background:#3d4450;border-radius:4px;font:inherit}.qam-btn{width:100%;padding:9px 12px;font-size:14px}.qam-btn.gpfocus{background:#fff;color:#0e141b}.qam-switch.gpfocus{outline:2px solid #fff;outline-offset:2px}
 .qam-line{display:flex;justify-content:space-between;align-items:center}.qam-switch{width:40px;height:22px;border-radius:11px;background:#273140;position:relative}
 .qam-switch i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#e9eef4}.qam-switch.on{background:#1a9fff}.qam-switch.on i{left:21px}`;
 const page0 = (st) => `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root"></div><script>window.HS_STATE=${JSON.stringify(st)};</script><script>${res.outputFiles[0].text}</script></body></html>`;
@@ -35,7 +35,9 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 const btn = (label) => page.evaluate((l) => { const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l)); if (b) b.click(); return !!b; }, label);
 const focus = (label) => page.evaluate((l) => { document.querySelectorAll(".gpfocus").forEach((x) => x.classList.remove("gpfocus"));
-  const b = [...document.querySelectorAll(".qam-btn, .qam-field")].find((x) => x.textContent.includes(l)); if (b) b.classList.add("gpfocus"); }, label);
+  const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l))
+    || [...document.querySelectorAll(".qam-field")].find((x) => x.textContent.includes(l))?.querySelector(".qam-switch");
+  if (b) b.classList.add("gpfocus"); }, label);
 // [picture, state, what to do, what it must show]
 const shots = [
   ["hearth-sync-panel", "synced", async () => focus("Sync now"), ["Hearth Sync", "10 games synced", "4 minutes ago", "Sync now", "Epic", "GOG", "Battle.net", "Emulators", "Recomps", "Remove all Hearth Sync shortcuts"]],
