@@ -1,0 +1,57 @@
+1793617304903 [theater core] ===== Hearth Theater 0.1.0 starting (--read-catalogs) =====
+1793617304903 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1793617304903 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1793617305765 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41, reading catalogs; profile /home/runner/work/_temp/theater/chromium
+1793617305775 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1793617305776 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio --read-catalogs
+1793617305789 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1793617305790 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1793617305790 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1793617306013 [theater window] reader: reading http://127.0.0.1:8761/ (catalog)
+[17691:1102/110146.756027:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1793617309617 [theater window] reader: read http://127.0.0.1:8761/ (3 rows, 0 results)
+1793617309631 [theater core] f1: 3 rows, 8 titles, search "", sources ["json-ld"], error ""
+1793617309636 [theater window] reader: reading http://127.0.0.1:8762/ (catalog)
+1793617312517 [theater window] reader: read http://127.0.0.1:8762/ (1 rows, 0 results)
+1793617312520 [theater core] f2: 1 rows, 4 titles, search "", sources ["cards", "open-graph"], error ""
+1793617312526 [theater window] reader: reading http://127.0.0.1:8763/ (catalog)
+1793617315408 [theater window] reader: read http://127.0.0.1:8763/ (2 rows, 0 results)
+1793617315413 [theater core] f3: 2 rows, 7 titles, search "", sources ["rss", "sitemap", "open-graph"], error ""
+1793617315420 [theater window] reader: reading http://127.0.0.1:8764/ (catalog)
+1793617318319 [theater window] reader: read http://127.0.0.1:8764/ (3 rows, 0 results)
+1793617318327 [theater core] f4: 3 rows, 12 titles, search "http://127.0.0.1:8764/search?q={searchTerms}", sources ["cards"], error ""
+1793617318328 [theater core] core: the window app closed; leaving
+1793617318329 [theater window] core: ended (0)
+1793617318456 [theater core] ===== Hearth Theater 0.1.0 starting (windowed) =====
+1793617318456 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1793617318456 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1793617318712 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41; profile /home/runner/work/_temp/theater/chromium
+1793617318723 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1793617318751 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio
+1793617318764 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1793617318766 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1793617318766 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+[17884:1102/110158.809958:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[17959:1102/110158.943331:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1793617319029 [theater window] main window: home screen loaded
+1793617319068 [theater window] main window: shown
+1793617333272 [theater window] core: ended (null)
+1793617337295 [theater core] ===== Hearth Theater 0.1.0 starting (--fullscreen --open http://127.0.0.1:8770/) =====
+1793617337295 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1793617337295 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1793617337521 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41, full screen; profile /home/runner/work/_temp/theater/chromium
+1793617337531 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1793617337577 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio --fullscreen --open http://127.0.0.1:8770/
+1793617337589 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1793617337589 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1793617337590 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1793617337590 [theater core] viewer: opening http://127.0.0.1:8770/
+1793617337609 [theater window] viewer: going to http://127.0.0.1:8770/
+[18086:1102/110217.631601:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1793617337843 [theater window] viewer: page title "Pointer test"
+1793617337870 [theater window] main window: shown
+1793617337939 [theater window] viewer: loaded http://127.0.0.1:8770/
+1793617337954 [theater window] main window: home screen loaded
+1793617340443 [theater window] test: pointer to the page's (400, 340), the screen's (440, 370), then A
+1793617341254 [theater window] viewer: page title "trusted-click-ok"
+1793617341404 [theater window] core: ended (null)
