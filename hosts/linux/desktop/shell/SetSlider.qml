@@ -19,7 +19,7 @@ SetBase {
         anchors { fill: parent; leftMargin: 16; rightMargin: 18 }
         spacing: 14
         Rectangle {
-            Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 10; color: Theme.panel3
+            Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: Theme.r(10); color: Theme.panel3
             Icon { anchors.centerIn: parent; name: sl.icon; size: 20 }
         }
         ColumnLayout {

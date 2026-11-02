@@ -78,7 +78,7 @@ KVER=$(basename "${KDIRS[0]}")
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
   python3-pyroute2 libusb-1.0-0 \
   shim-signed grub-efi-amd64-signed
-optional power-profiles-daemon fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
+optional power-profiles-daemon fonts-inter fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
 
 # ------------------------------------------------------------------ graphics and Steam (AMD, Intel; Nvidia below)
 # Mesa from trixie-backports with its 32-bit half (they must be the same version), then Steam (contrib) on top so

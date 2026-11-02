@@ -24,7 +24,7 @@ SetBase {
         Rectangle {
             visible: row.icon !== ""
             Layout.preferredWidth: 38; Layout.preferredHeight: 38
-            radius: 10
+            radius: Theme.r(10)
             color: Theme.panel3
             Icon { anchors.centerIn: parent; name: row.icon; size: 20; color: row.danger ? Theme.danger : Theme.text }
         }

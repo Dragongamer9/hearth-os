@@ -105,7 +105,7 @@ Scope {
             anchors.centerIn: parent
             width: Math.min(parent.width - 48, 640)
             height: Math.min(parent.height - 96, 620)
-            radius: 20
+            radius: Theme.r(20)
             color: Theme.panel
             border.color: Theme.line
             MouseArea { anchors.fill: parent }
@@ -157,7 +157,7 @@ Scope {
                         readonly property bool lit: cb.current === index
                         width: ListView.view.width
                         height: modelData.kind === "image" ? 112 : Math.min(84, Math.max(52, txt.implicitHeight + 24))
-                        radius: 12
+                        radius: Theme.r(12)
                         color: lit ? Theme.panel3 : rowMouse.containsMouse ? Theme.panel2 : Theme.bg2
                         border.width: 2
                         border.color: lit ? Theme.accent : "transparent"
@@ -196,7 +196,7 @@ Scope {
                         Rectangle {
                             id: del
                             anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 10 }
-                            width: 32; height: 32; radius: 8
+                            width: 32; height: 32; radius: Theme.r(8)
                             visible: row.lit || rowMouse.containsMouse || delMouse.containsMouse
                             color: delMouse.containsMouse ? Theme.panel3 : "transparent"
                             Icon { anchors.centerIn: parent; name: "close"; size: 16; color: Theme.muted }
@@ -209,7 +209,7 @@ Scope {
                         visible: cb.items.length > 0
                         Rectangle {
                             anchors { fill: parent; topMargin: 8 }
-                            radius: 12
+                            radius: Theme.r(12)
                             readonly property bool lit: cb.current === cb.items.length
                             color: lit ? Theme.panel3 : clearMouse.containsMouse ? Theme.panel2 : "transparent"
                             border.width: 2

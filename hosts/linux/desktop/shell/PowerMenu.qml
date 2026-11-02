@@ -43,7 +43,7 @@ PanelWindow {
         anchors.centerIn: parent
         width: 360
         height: col.implicitHeight + 40
-        radius: 20
+        radius: Theme.r(20)
         color: Theme.glass
         border.color: Theme.line
         focus: root.shown
@@ -69,7 +69,7 @@ PanelWindow {
                     readonly property bool lit: root.sel === index
                     Layout.fillWidth: true
                     implicitHeight: 52
-                    radius: 12
+                    radius: Theme.r(12)
                     color: lit ? Theme.accent : area.containsMouse ? Theme.panel3 : Theme.panel2
                     RowLayout {
                         anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
