@@ -28,7 +28,7 @@ sudo apt-get install -y -qq qemu-system-x86 ovmf socat python3-pil btrfs-progs >
 note "export $IMAGE"
 sudo skopeo copy -q "containers-storage:$IMAGE" "oci:$W/oci:hearth" || { ann error "couldn't export the image"; exit 1; }
 echo ghcr.io/dragongamer9/hearth-peppermint:testing > "$W/oci.ref"
-truncate -s 48G "$W/disk.img"
+truncate -s 80G "$W/disk.img"   # sparse; hearth-install needs at least 64 GiB (MIN_DISK)
 LOOP=$(sudo losetup -fP --show "$W/disk.img")
 plan=$(printf '{"mode":"whole","disk":"%s","user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-look","timezone":"UTC","edition":"peppermint","firmware":false,"signin":"auto","kargs":["console=ttyS0,115200","console=tty0","plymouth.ignore-serial-consoles"]}' "$LOOP")
 echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host -v /dev:/dev -v /run/udev:/run/udev \
