@@ -182,6 +182,8 @@ def main():
     kde = re.sub(r'(?m)^ColorScheme=.*$', 'ColorScheme=HearthLive', kde)
     write(os.path.join(OUT, 'Hearth.colors'), kde)
     write(os.path.join(DATA, 'color-schemes', 'HearthLive.colors'), kde)
+    # Hearth Files (built from Dolphin) reads color-schemes/Hearth.colors when nothing else themes it: yours comes first.
+    write(os.path.join(DATA, 'color-schemes', 'Hearth.colors'), re.sub(r'(?m)^(Name|ColorScheme)=.*$', r'\1=Hearth', kde))
     # KDE apps (Hearth's file manager built from Dolphin, KCalc...) take their colours from kdeglobals, not from qt6ct's
     # palette: the same colours there, while kdeglobals is missing or still carries Hearth's mark (yours is kept).
     kg = os.path.join(CONF, 'kdeglobals')
