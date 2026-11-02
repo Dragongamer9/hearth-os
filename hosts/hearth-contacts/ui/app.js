@@ -575,7 +575,7 @@ function oskPress(k) {
 // Controllers (the standard mapping): D-pad or left stick moves, A chooses, B goes back, X new, Y search, Menu (Start) the main actions.
 const held = {}; let lastPadMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
   const st = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, menu: false };
   for (const g of pads) {
@@ -585,7 +585,7 @@ function pad() {
     st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.menu ||= bt(9);
   }
   // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after).
-  if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(st)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(pad); return; }
+  if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(st)) held[k] = on ? (held[k] || now) : 0; return; }
   for (const [k, on] of Object.entries(st)) {
     if (!on) { held[k] = 0; continue; }
     const first = !held[k];
@@ -600,9 +600,8 @@ function pad() {
     else if (k === 'menu') { if (free) showDialog(`<h2>Contacts</h2><div class="chips"><button class="chip f" data-act="import" data-autofocus>Import a .vcf file</button><button class="chip f" data-act="export">Export</button><button class="chip f" data-act="accounts">Accounts and sync</button></div><div class="drow"><button class="btn f" data-dlg="close">Close</button></div>`); }
     else move(k);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
 
 // ---------------------------------------------------------------- start

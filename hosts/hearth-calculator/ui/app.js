@@ -459,7 +459,7 @@ function move(dir) {
 // D-pad/stick moves, A presses, B deletes, X clears, Y equals, LB/RB switch mode, View shows history, Menu copies.
 const held = {}; let lastPadMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
   const s = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, select: 0, start: 0 };
   for (const g of pads) {
@@ -483,7 +483,6 @@ function pad() {
     else if (k === 'select') toggleSide();
     else if (k === 'start') copy();
   }
-  requestAnimationFrame(pad);
 }
 
 // ---------------------------------------------------------------- saved state (history, memory, mode)
@@ -504,7 +503,7 @@ function save() {
   }
   $('#histBtn').classList.toggle('on', !st.sideClosed && !window.matchMedia('(max-width: 720px)').matches);
   buildPad(); render(); renderSide();
-  requestAnimationFrame(pad);
+  HearthGamepad.loop(pad);
   document.body.dataset.ready = '1';
 })();
 

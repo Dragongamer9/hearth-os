@@ -1076,7 +1076,7 @@ function choose() {
 // Elsewhere the D-pad moves, A chooses, B goes back, LB/RB switch tabs.
 const held = {}; let lastPadMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
   const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, lt: 0, rt: 0, start: 0, select: 0 };
   for (const g of pads) {
@@ -1096,7 +1096,6 @@ function pad() {
     lastPadMove = now; S.pad = true; document.body.classList.add('pad'); wake();
     padPress(k);
   }
-  requestAnimationFrame(pad);
 }
 function padPress(k) {
   const bare = playKeys();
@@ -1142,7 +1141,7 @@ window.addEventListener('gamepadconnected', () => { const h = $('#hint'); if (h)
   if (l.files?.length) await openAndPlay(l.files);
   else if (l.view === 'music') { const m = S.places.find(p => p.kind === 'music'); setView('open'); if (m) openDir(m.path); }
   if (l.fullscreen) setFull(true);
-  requestAnimationFrame(pad);
+  HearthGamepad.loop(pad);
   refreshShows(false);
   document.body.dataset.ready = '1';
 })().catch(e => { document.body.dataset.ready = 'error'; console.error(e); toast(String(e.message || e)); });

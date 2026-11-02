@@ -357,7 +357,7 @@ function showPadHints(on) { $('#hints').hidden = !on; $('#cross').hidden = !on; 
 const held = {}; let lastPadMove = 0, lastFrame = performance.now();
 function pad() {
   const now = performance.now(), dt = Math.min(50, now - lastFrame); lastFrame = now;
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const st = { up: false, down: false, left: false, right: false, a: false, b: false, x: false, y: false, lb: false, menu: false, view: false };
   let lx = 0, ly = 0, zoom = 0;
   for (const g of pads) {
@@ -369,7 +369,7 @@ function pad() {
     st.a ||= bt(0); st.b ||= bt(1); st.x ||= bt(2); st.y ||= bt(3); st.lb ||= bt(4); st.view ||= bt(8); st.menu ||= bt(9);
   }
   // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after).
-  if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(st)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(pad); return; }
+  if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(st)) held[k] = on ? (held[k] || now) : 0; return; }
   const onMap = map && (document.activeElement === map.getCanvas() || document.activeElement === document.body);
   if (map && (lx || ly || Math.abs(zoom) > .05)) {
     S.pad = true; showPadHints(true);
@@ -398,9 +398,8 @@ function pad() {
     else if (k === 'menu') { $('[data-act="layers"]').click(); }
     else if (k === 'view') { $('[data-act="saved"]').click(); }
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 window.addEventListener('gamepadconnected', () => { showPadHints(true); });
 
 // ---------------------------------------------------------------- without the app (opening the page in a browser)

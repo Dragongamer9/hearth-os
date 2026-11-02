@@ -72,6 +72,7 @@ footer { display:flex; align-items:center; gap:16px; padding:8px 14px 11px; bord
     <div class="hints" id="hints"></div>
   </footer>
 </div>
+<script src="hearth-gamepad.js"></script>
 <script src="emoji-data.js"></script>
 <script>
 'use strict';
@@ -285,7 +286,7 @@ function oskMove(dir) {
 // ---------------------------------------------------------------- controller (standard mapping)
 const held = {}; let lastMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now();
   const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, menu: 0 };
   for (const g of pads) {
@@ -314,9 +315,8 @@ function pad() {
     else if (k === 'lb') stepCat(-1);
     else if (k === 'rb') stepCat(1);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 
 // ---------------------------------------------------------------- start
 renderCats(); hints();

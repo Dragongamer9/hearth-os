@@ -84,6 +84,7 @@ footer b { display:inline-grid; place-items:center; min-width:20px; height:20px;
 </div>
 <div class="drop">Drop a .ttf or .otf font to look at it and install it</div>
 <div id="layer"></div>
+<script src="hearth-gamepad.js"></script>
 <script>
 'use strict';
 const T = window.__TAURI__;
@@ -283,7 +284,7 @@ document.addEventListener('drop', e => { e.preventDefault(); document.body.class
 // Controllers (standard mapping): D-pad/stick moves, A chooses, B back, X preview text, Y install a font, LB/RB size.
 const held = {}; let lastMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now(); const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0 };
   for (const g of pads) { const bt = i => g.buttons[i]?.pressed, ax = g.axes[0] || 0, ay = g.axes[1] || 0;
     st.up ||= bt(12) || ay < -.6; st.down ||= bt(13) || ay > .6; st.left ||= bt(14) || ax < -.6; st.right ||= bt(15) || ax > .6;
@@ -302,9 +303,8 @@ function pad() {
     else if (k === 'y') browse('');
     else if (k === 'lb') stepSize(-1); else if (k === 'rb') stepSize(1);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 
 async function load() {
   try { S.fams = await invoke('list'); } catch (e) { toast(String(e)); S.fams = []; }

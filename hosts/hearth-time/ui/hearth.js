@@ -165,7 +165,7 @@ const H = (() => {
   // The standard mapping: D-pad or left stick moves, A chooses, B goes back; X, Y, LB, RB, Start: each page's own.
   const held = {}; let lastMove = 0;
   function poll() {
-    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    const pads = HearthGamepad.pads();
     const now = performance.now();
     const s = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, start: 0, select: 0 };
     for (const g of pads) {
@@ -175,7 +175,7 @@ const H = (() => {
       s.a ||= bt(0); s.b ||= bt(1); s.x ||= bt(2); s.y ||= bt(3); s.lb ||= bt(4); s.rb ||= bt(5); s.select ||= bt(8); s.start ||= bt(9);
     }
     // The on-screen keyboard reads the controller itself while it's open (held buttons stay held for after).
-    if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(s)) held[k] = on ? (held[k] || now) : 0; requestAnimationFrame(poll); return; }
+    if (window.HearthOSK && HearthOSK.isOpen()) { for (const [k, on] of Object.entries(s)) held[k] = on ? (held[k] || now) : 0; return; }
     for (const [k, on] of Object.entries(s)) {
       if (!on) { held[k] = 0; continue; }
       const first = !held[k];
@@ -188,9 +188,8 @@ const H = (() => {
       else if (dir) { if (oskTarget || !H.onPadDir || H.onPadDir(k) !== true) move(k); }
       else if (H.buttons[k]) H.buttons[k]();
     }
-    requestAnimationFrame(poll);
   }
-  requestAnimationFrame(poll);
+  HearthGamepad.loop(poll);
 
   // ------------------------------------------------------------------------------------------- on-screen keyboard
   // Hearth's shared keyboard (osk/, docs/OSK.md); the small one below only if its files are missing.

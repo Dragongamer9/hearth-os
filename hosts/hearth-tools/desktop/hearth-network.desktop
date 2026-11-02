@@ -9,3 +9,4 @@ Type=Application
 Categories=System;Utility;
 Keywords=network;internet;speed;test;wifi;wi-fi;ping;traceroute;dns;lookup;connections;bandwidth;
 StartupWMClass=io.github.dragongamer9.hearth.network
+X-Hearth-Controller=true

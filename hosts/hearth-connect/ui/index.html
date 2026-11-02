@@ -101,6 +101,7 @@ textarea.inp { min-height:6em; resize:vertical; }
   <footer><span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>Y</b>Look again</span><span id="hint"></span></footer>
 </div>
 <div id="layer"></div>
+<script src="hearth-gamepad.js"></script>
 <script>
 'use strict';
 const T = window.__TAURI__;
@@ -366,7 +367,7 @@ document.addEventListener('keydown', e => {
 });
 const held = {}; let lastPadMove = 0;
 function pad() {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const now = performance.now(), state = { up: false, down: false, left: false, right: false, a: false, b: false, y: false };
   for (const g of pads) {
     const bt = i => g.buttons[i]?.pressed, ax = g.axes[0] || 0, ay = g.axes[1] || 0;
@@ -381,9 +382,8 @@ function pad() {
     S.pad = true; lastPadMove = now;
     if (k === 'a') choose(); else if (k === 'b') back(); else if (k === 'y') { if (!S.dlg) $('[data-act="refresh"]').click(); } else move(k);
   }
-  requestAnimationFrame(pad);
 }
-requestAnimationFrame(pad);
+HearthGamepad.loop(pad);
 window.addEventListener('gamepadconnected', () => { $('#hint').textContent = 'Controller connected'; });
 setInterval(() => { if (!S.dlg && document.visibilityState === 'visible') load(); }, 5000);
 load().then(() => ($('.dev.sel') || $('#detail .f'))?.focus());

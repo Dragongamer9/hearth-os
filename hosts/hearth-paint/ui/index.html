@@ -120,6 +120,7 @@ footer b { display:inline-grid; place-items:center; min-width:18px; height:18px;
   <footer><span class="hint" id="hint"></span><span id="pos"></span><span id="dims"></span><span id="padhints"></span></footer>
 </div>
 <div id="layer"></div>
+<script src="hearth-gamepad.js"></script>
 <script>
 'use strict';
 const T = window.__TAURI__;
@@ -666,7 +667,7 @@ function showCursor() { const c = $('#padCursor'); c.style.display = S.padCanvas
 function toCanvasMode(on) { S.padCanvas = on; if (on) { document.activeElement?.blur(); } else focusables()[0]?.focus(); showCursor(); hint(); }
 const held = {}; let padDown = false, lastT = 0;
 function padLoop(now) {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const dt = Math.min(50, now - (lastT || now)); lastT = now;
   const st = { up: 0, down: 0, left: 0, right: 0, a: 0, b: 0, x: 0, y: 0, lb: 0, rb: 0, lt: 0, rt: 0, view: 0, menu: 0 };
   let lx = 0, ly = 0, rx = 0, ry = 0;
@@ -707,9 +708,8 @@ function padLoop(now) {
     else if (k === 'view') toCanvasMode(false);
     else if (k === 'menu') save();
   }
-  requestAnimationFrame(padLoop);
 }
-requestAnimationFrame(padLoop);
+HearthGamepad.loop(padLoop);
 function menuSheet() {
   const items = [['new', 'New picture'], ['open', 'Open…'], ['save', 'Save'], ['saveas', 'Save as…'], ['paste', 'Paste a picture'], ['shot', 'Take a screenshot'], ['crop', 'Crop to the selection'], ['rotate', 'Turn right'], ['flip', 'Flip'], ['resize', 'Picture size…'], ['redo', 'Redo'], ['fit', 'Fit to the window']];
   dialog(`<h2>Paint</h2><div class="files">${items.map(([a, l]) => `<button class="file f" data-act="m-${a}">${l}</button>`).join('')}</div><div class="row"><button class="btn f" data-act="d-close">Close</button></div>`);

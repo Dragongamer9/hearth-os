@@ -400,6 +400,74 @@ jobs:
           ipc settings page handheld; sleep 3; grim shots/hhd-8-light.png || true; ipc settings close
           oskset "$DESKJ" mode dark; sleep 2
           kill "$FAKEHHD" 2>/dev/null || true; rm -f /tmp/hhd/token
+          # ---- Controller apps own the controller (docs/CONTROLLER-FOCUS.md): hearth-pad with a simulated controller
+          # (HEARTH_PAD_SIM: there's no uinput here), a stand-in controller app (foot with Mods' app id, typing into a
+          # file), then a notification, the volume OSD, Quick Access and the Hearth menu over it. The app keeps the
+          # keyboard focus (what's typed keeps landing in it), the helper sends nothing while it's in front, Guide + R3
+          # gives the pointer back, and another window gets the desktop controls again. Pictures: pad-*.png, pad.log.
+          if command -v foot >/dev/null && command -v wtype >/dev/null; then
+            SIM=/tmp/padsim; rm -rf "$SIM"; mkdir -p "$SIM"; : > "$SIM/in"
+            pq() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call pad "$@" 2>&1 | tail -n1; }
+            pin() { for l in "$@"; do printf '%s\n' "$l" >> "$SIM/in"; sleep 0.25; done; }
+            tap() { pin "{\"b\":\"$1\",\"down\":true}" "{\"b\":\"$1\",\"down\":false}"; }
+            sent() { if [ -f "$SIM/out.log" ]; then wc -l < "$SIM/out.log"; else echo 0; fi; }
+            perr() { echo "::error title=controller focus::$*"; touch shots/FAILED; }
+            pq sim "$SIM"; sleep 4
+            pq state > shots/pad-state-0.json
+            rm -f "$HOME/pad-typed.txt"
+            foot --app-id hearth-mods --title "Mods (stand-in)" sh -c "cat > $HOME/pad-typed.txt" >/dev/null 2>&1 &
+            PADAPP=$!; sleep 4
+            pq state > shots/pad-state-1.json
+            grep -q '"owner":"hearth-mods"' shots/pad-state-1.json || perr "Mods in front didn't get the controller: $(cat shots/pad-state-1.json)"
+            grim shots/pad-1-app-has-controller.png || true
+            n0=$(sent)
+            tap a; tap b; tap y; tap lb; tap rb; tap down; pin '{"axes":[0,0,1,0.5]}'; sleep 0.6; pin '{"axes":[0,0,0,0]}'
+            n1=$(sent)
+            [ "$n1" = "$n0" ] || perr "the helper still sent $((n1-n0)) things while Mods had the controller: $(tail -n $((n1-n0)) "$SIM/out.log" | tr '\n' '|')"
+            # Things popping up over it: the app keeps the keyboard (what's typed goes on landing in it; one line each,
+            # the terminal hands cat whole lines).
+            say() { wtype "$1"; wtype -k Return; sleep 0.5; }
+            say one
+            (timeout 15 notify-send -a "Test App" "Download finished" "A notification over a controller app" || true) &
+            for i in 1 2 3 4 5 6; do grim "shots/pad-frame-$i.png" || true; sleep 0.4; done
+            say two
+            ipc brightness up; grim shots/pad-2-osd.png || true
+            say three
+            ipc quick toggle; grim shots/pad-3-quick-access.png || true; ipc quick toggle
+            sleep 1; say four; sleep 0.5
+            pq state > shots/pad-state-2.json
+            grep -q '"front":"hearth-mods"' shots/pad-state-2.json || perr "Mods isn't in front any more: $(cat shots/pad-state-2.json)"
+            grim shots/pad-4-after-quick-access.png || true
+            # Guide: the Hearth menu over it (B closes it); Guide + R3: the pointer in the app (A clicks), then back.
+            pin '{"b":"guide","down":true}'; sleep 0.6; grim shots/pad-5-hearth-menu.png || true; pin '{"b":"guide","down":false}'; tap b
+            pin '{"b":"guide","down":true}' '{"b":"r3","down":true}' '{"b":"r3","down":false}' '{"b":"guide","down":false}'
+            sleep 0.3; grim shots/pad-6-pointer-in-app.png || true
+            pq state > shots/pad-state-3.json
+            grep -q '"ownerMouse":true' shots/pad-state-3.json || perr "Guide + R3 didn't give the pointer back: $(cat shots/pad-state-3.json)"
+            n2=$(sent); tap a; n3=$(sent)
+            [ "$n3" -gt "$n2" ] || perr "A didn't click with Guide + R3's pointer on"
+            pin '{"b":"guide","down":true}' '{"b":"r3","down":true}' '{"b":"r3","down":false}' '{"b":"guide","down":false}'
+            # Another window: the desktop controls are back.
+            foot --app-id plain-window --title "Not a controller app" sh -c 'sleep 60' >/dev/null 2>&1 &
+            PLAIN=$!; sleep 4
+            pq state > shots/pad-state-4.json
+            grep -q '"owner":""' shots/pad-state-4.json || perr "another window kept the controller app's mode: $(cat shots/pad-state-4.json)"
+            n4=$(sent); tap a; n5=$(sent)
+            [ "$n5" -gt "$n4" ] || perr "A didn't click in a window that isn't a controller app"
+            grim shots/pad-7-desktop-controls-back.png || true
+            kill "$PADAPP" "$PLAIN" 2>/dev/null || true; sleep 1
+            got=$(tr '\n' ' ' < "$HOME/pad-typed.txt" 2>/dev/null | sed 's/ $//' || true); printf '%s' "$got" > shots/pad-typed.txt
+            [ "$got" = "one two three four" ] || perr "typing into the controller app while things popped up over it gave '$got' (wanted 'one two three four'): it lost the keyboard"
+            cp "$SIM/out.log" shots/pad-sim-out.log 2>/dev/null || true
+            cp "$HOME/.local/share/nimbus/pad.log" shots/pad.log 2>/dev/null || true
+            grep -q "'hearth-mods' in front reads the controller itself" shots/pad.log || perr "pad.log doesn't say Mods got the controller"
+            grep -q "in front: desktop controls on" shots/pad.log || perr "pad.log doesn't say the desktop controls came back"
+            echo "controller focus: $(grep -c 'controller:' shots/pad.log) mode lines in pad.log; typed '$got'"
+            pq sim ""; sleep 1
+          else
+            echo "::warning title=controller focus::foot or wtype is missing here: the check didn't run"
+          fi
+          # ---- end of controller apps
           # App icons: every kind of app above resolves (Icon= names through hicolor and Flatpak's exports, a pixmap,
           # an absolute path, windows by app id and StartupWMClass), and they show in the launcher, on the taskbar
           # and on a notification.
