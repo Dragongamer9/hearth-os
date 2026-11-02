@@ -5,6 +5,9 @@
 // changes, prints, and exports PDFs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use base64::Engine;
 use hearth_office::{App, Launch, Parsed};
 use serde_json::{json, Value};
@@ -263,7 +266,7 @@ fn main() {
     let full = launch.fullscreen;
     let converting = launch.convert.is_some();
 
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(launch)
@@ -280,7 +283,7 @@ fn main() {
                 .min_inner_size(560.0, 420.0)
                 .fullscreen(full)
                 .visible(!converting || std::env::var_os("HEARTH_OFFICE_SHOW").is_some())
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = win.set_focus();
             Ok(())

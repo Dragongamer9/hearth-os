@@ -4,6 +4,9 @@
 // also has Make a bootable USB (usb_* calls, "usb://progress" and "usb://done"; library: src/usb).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, WebviewUrl, WebviewWindowBuilder};
@@ -156,7 +159,7 @@ fn main() {
     let usb_file = args.iter().position(|a| a == "--usb").and_then(|i| args.get(i + 1)).filter(|f| !f.starts_with('-'))
         .map(|f| f.strip_prefix("file://").unwrap_or(f).to_string()).filter(|f| std::path::Path::new(f).is_file());
     let init = if usb_first { format!("window.__DISKS_USB_FIRST = true; window.__DISKS_USB_FILE = {};", serde_json::to_string(&usb_file).unwrap_or_else(|_| "null".into())) } else { String::new() };
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(apptheme::plugin());
     #[cfg(target_os = "linux")]
     let builder = builder.plugin(tauri_plugin_dialog::init()).invoke_handler(tauri::generate_handler![list, plan, run,
         usb_cmds::usb_catalog, usb_cmds::usb_resolve, usb_cmds::usb_drives, usb_cmds::usb_check_file, usb_cmds::usb_pick_file, usb_cmds::usb_start,
@@ -171,7 +174,7 @@ fn main() {
                 .inner_size(1180.0, 760.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

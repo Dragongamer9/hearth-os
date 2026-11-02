@@ -25,6 +25,9 @@
 // open are dropped in mods/nxm-inbox/ by the handler and picked up here within a second.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_gaming::downloads;
 use hearth_gaming::games::{self, GameEntry};
 use hearth_gaming::nexus;
@@ -481,7 +484,7 @@ fn main() {
     become_worker();
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![info, call, pick_path])
         .setup(move |app| {
@@ -490,7 +493,7 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

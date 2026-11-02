@@ -6,7 +6,7 @@
 <title>System Info</title>
 <link rel="stylesheet" href="common.css">
 <style>
-.hero { display:flex; gap:1.1em; align-items:center; padding:.9em 1.1em; border-radius:18px; background:linear-gradient(120deg, #2a1a10, var(--panel)); border:1px solid #4a372b; margin-bottom:.8em; }
+.hero { display:flex; gap:1.1em; align-items:center; padding:.9em 1.1em; border-radius:min(18px, var(--corner, 18px)); background:linear-gradient(120deg, color-mix(in srgb, var(--bg) 89%, var(--ember)), var(--panel)); border:1px solid color-mix(in srgb, var(--line) 93%, var(--flame)); margin-bottom:.8em; }
 .hero .big { font-size:1.45em; font-weight:700; }
 .hero .chips { margin-top:.35em; }
 .card { display:flex; flex-direction:column; gap:.4em; }
@@ -88,7 +88,7 @@ function render() {
         <dl class="kv"><dt>Connected</dt><dd>${esc(x.connection || x.kind)}</dd><dt>Health</dt><dd>${esc(h.text || 'Not reported')}</dd>${h.tempC != null ? `<dt>Temperature</dt><dd>${h.tempC.toFixed(0)} °C</dd>` : ''}${h.powerOnHours != null ? `<dt>Used for</dt><dd>${h.powerOnHours.toLocaleString()} hours</dd>` : ''}${h.wearPct != null ? `<dt>Wear</dt><dd>${h.wearPct}% of its rated life</dd>` : ''}${used ? `<dt>Files</dt><dd>${human(used)}</dd>` : ''}</dl></div>`;
     }).join('')}<div class="row"><button class="btn small f" id="disks">Open Disks</button></div></section>` : '';
   $('#main').innerHTML = `<div class="scroll" style="flex:1">
-    <div class="hero"><span class="logo" style="width:3.2em;height:3.2em;border-radius:16px;display:grid;place-items:center;background:linear-gradient(140deg,var(--ember),#c2410c);color:var(--ink)">${H.icons.hearth}</span>
+    <div class="hero"><span class="logo" style="width:3.2em;height:3.2em;border-radius:min(16px, var(--corner, 16px));display:grid;place-items:center;background:linear-gradient(140deg,var(--ember),color-mix(in srgb, var(--ember) 75%, #000));color:var(--ink)">${H.icons.hearth}</span>
       <div class="grow"><div class="big">${esc(model)}</div><div class="muted">${esc(os.hearth ? `Hearth OS ${hearthShown(os)}${os.edition ? ' · ' + os.edition : ''}` : (f.os || ''))}</div>
       <div class="chips">${[d.cpu && d.cpu.name, (d.gpus || [])[0] && d.gpus[0].name, d.memory && d.memory.total && human(d.memory.total) + ' memory'].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`).join('')}</div></div></div>
     <div class="grid">${cards}${driveCard}</div></div>`;

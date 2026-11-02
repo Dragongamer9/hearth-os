@@ -45,7 +45,7 @@ const THEMES = {
 };
 
 const FONT = '"JetBrains Mono", "Cascadia Mono", "Cascadia Code", Consolas, "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono", "Symbols Nerd Font Mono", monospace';
-const DEFAULTS = { fontSize: 15, theme: 'ember', shell: '', opacity: 1, cursorStyle: 'block', cursorBlink: true, quickKeys: false };
+const DEFAULTS = { fontSize: 15, theme: 'hearth', shell: '', opacity: 1, cursorStyle: 'block', cursorBlink: true, quickKeys: false };
 
 let S = { ...DEFAULTS };          // settings
 let INFO = {};                    // what init() said: platform, shells, launch
@@ -67,7 +67,23 @@ function hexToRgba(hex, a) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-function theme() { return THEMES[S.theme] || THEMES.ember; }
+/// "Desktop look": the look chosen in Hearth's Settings › Appearance (window.hearthTheme, put in by the app:
+/// hosts/hearth-apptheme), with Ember's ANSI colours in dark looks and Daylight's in light ones. Ember without it.
+function desktopTheme() {
+  const h = window.hearthTheme;
+  if (!h || !/^#[0-9a-f]{6}$/i.test(h.bg || '')) return null;
+  const light = h.scheme === 'light', base = light ? THEMES.daylight : THEMES.ember;
+  return {
+    name: 'Desktop look', light,
+    ui: { bg: h.bg, chrome: h.bg2, panel: h.panel, panel2: h.panel2, panel3: h.panel3, line: h.line, text: h.text, muted: h.muted, accent: h.accent, accentInk: h.ink },
+    term: { ...base.term, background: h.bg, foreground: h.text, cursor: h.accent, cursorAccent: h.bg,
+      selectionBackground: hexToRgba(h.accent, light ? 0.25 : 0.32), selectionInactiveBackground: hexToRgba(h.accent, light ? 0.12 : 0.16) },
+  };
+}
+const themeNames = () => [['hearth', 'Desktop look'], ...Object.entries(THEMES).map(([k, t]) => [k, t.name])];
+function theme() { return (S.theme === 'hearth' && desktopTheme()) || THEMES[S.theme] || THEMES.ember; }
+// A new look in Settings › Appearance reaches an open terminal.
+window.addEventListener('hearth-theme', () => { if (S.theme === 'hearth') applySettings(); });
 
 /// The terminal colors with the background made see-through when Opacity asks for it.
 function termTheme() {
@@ -533,7 +549,7 @@ function renderSettings() {
   $('opacityHint').hidden = !(S.opacity < 0.999 && !seeThroughWindow);
   const set = (k, v) => { S[k] = v; applySettings(); saveSettings(); };
   const box = k => document.querySelector(`.choices[data-setting="${k}"]`);
-  choiceButtons(box('theme'), Object.entries(THEMES).map(([k, t]) => [k, t.name]), S.theme, v => set('theme', v));
+  choiceButtons(box('theme'), themeNames(), S.theme, v => set('theme', v));
   const shells = INFO.shells || [];
   const chosen = shells.some(s => s.id === S.shell) ? S.shell : (shells[0]?.id || '');
   choiceButtons(box('shell'), shells.map(s => [s.id, s.name]), chosen, v => set('shell', v));
@@ -813,7 +829,9 @@ function hookDrop() {
 async function start() {
   INFO = await invoke('init');
   S = { ...DEFAULTS, ...(INFO.settings || {}) };
-  if (!THEMES[S.theme]) S.theme = DEFAULTS.theme;
+  // Ember was the default before the Desktop look: follow the desktop unless another one was picked.
+  if (!S.themeV) { if (S.theme === 'ember') S.theme = 'hearth'; S.themeV = 2; }
+  if (!THEMES[S.theme] && S.theme !== 'hearth') S.theme = DEFAULTS.theme;
   S.opacity = Math.max(0.3, Math.min(1, Number(S.opacity) || 1));
   seeThroughWindow = S.opacity < 0.999;
   $('version').textContent = `Hearth Terminal ${INFO.version}`;

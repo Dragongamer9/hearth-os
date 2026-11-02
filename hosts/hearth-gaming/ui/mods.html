@@ -20,7 +20,7 @@
 .mod .end { grid-row:span 2; color:var(--muted); font-size:.85em; text-align:right; }
 .beacon { display:grid; place-items:center; text-align:center; gap:.8em; padding:2.4em 1em; }
 .tops { display:flex; flex-wrap:wrap; gap:.35em; margin:.3em 0; }
-.tops span { font-family:ui-monospace, monospace; font-size:.78em; background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:.15em .5em; }
+.tops span { font-family:ui-monospace, monospace; font-size:.78em; background:var(--bg2); border:1px solid var(--line); border-radius:min(8px, var(--corner, 8px)); padding:.15em .5em; }
 .one { display:grid; grid-template-rows:auto 1fr; gap:.8em; min-height:0; grid-column:1/-1; }
 .dl { display:grid; grid-template-columns:1fr auto; gap:.15em .8em; align-items:center; width:100%; padding:.65em .9em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); text-align:left; }
 .dl .n { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

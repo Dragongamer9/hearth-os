@@ -10,7 +10,7 @@
 .split { grid-template-columns:minmax(16em, 26em) 1fr; }
 .detail { display:grid; grid-template-rows:auto 1fr; gap:.8em; min-height:0; }
 .folders { display:flex; flex-direction:column; gap:.45em; }
-.folder { display:grid; grid-template-columns:1fr auto; gap:.1em .8em; padding:.55em .8em; border-radius:12px; background:var(--bg2); border:1px solid var(--line); width:100%; }
+.folder { display:grid; grid-template-columns:1fr auto; gap:.1em .8em; padding:.55em .8em; border-radius:min(12px, var(--corner, 12px)); background:var(--bg2); border:1px solid var(--line); width:100%; }
 .folder .path { grid-column:1; }
 .folder .end { grid-row:span 2; align-self:center; color:var(--muted); font-size:.85em; }
 .big { font-size:1.6em; font-weight:700; }

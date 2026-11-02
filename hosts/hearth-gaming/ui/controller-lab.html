@@ -19,27 +19,27 @@
 .pad text { fill:var(--text); font:600 13px system-ui, sans-serif; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
 .pad text.dim { fill:var(--muted); font-size:10px; }
 .pad .ring { fill:var(--bg2); stroke:var(--line); stroke-width:1.5; }
-.pad .dz { fill:rgba(255,209,102,.13); stroke:var(--flame); stroke-width:1; stroke-dasharray:3 3; }
+.pad .dz { fill:color-mix(in srgb, var(--flame) 13%, transparent); stroke:var(--flame); stroke-width:1; stroke-dasharray:3 3; }
 .pad .stick { fill:var(--ember); }
 .pad .stick.on { fill:var(--flame); stroke:#fff; stroke-width:2; }
-.pad .trail { fill:none; stroke:rgba(255,138,61,.35); stroke-width:1.5; }
+.pad .trail { fill:none; stroke:color-mix(in srgb, var(--ember) 35%, transparent); stroke-width:1.5; }
 .pad .body { fill:var(--panel); stroke:var(--line); stroke-width:2; }
 .read { display:flex; flex-direction:column; gap:.6em; min-height:0; overflow:auto; padding:4px; }
 .meter { display:grid; grid-template-columns:5.5em 1fr 4.2em; gap:.6em; align-items:center; font-size:.85em; }
-.meter .bar { height:.7em; border-radius:9px; background:var(--panel3); overflow:hidden; }
+.meter .bar { height:.7em; border-radius:min(9px, var(--corner, 9px)); background:var(--panel3); overflow:hidden; }
 .meter .bar i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--ember), var(--flame)); }
 .meter .v { text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); }
 .num { font-variant-numeric:tabular-nums; }
-canvas { width:100%; height:5.2em; display:block; background:var(--bg2); border:1px solid var(--line); border-radius:10px; }
-.touch { position:relative; width:100%; aspect-ratio:2.2; background:var(--bg2); border:1px solid var(--line); border-radius:10px; }
+canvas { width:100%; height:5.2em; display:block; background:var(--bg2); border:1px solid var(--line); border-radius:min(10px, var(--corner, 10px)); }
+.touch { position:relative; width:100%; aspect-ratio:2.2; background:var(--bg2); border:1px solid var(--line); border-radius:min(10px, var(--corner, 10px)); }
 .touch i { position:absolute; width:1em; height:1em; margin:-.5em; border-radius:50%; background:var(--ember); box-shadow:0 0 12px var(--ember); }
 .touch.click { border-color:var(--ember); }
 .legend { display:flex; gap:.9em; font-size:.75em; color:var(--muted); }
 .legend span::before { content:""; display:inline-block; width:.7em; height:.7em; border-radius:2px; margin-right:.3em; background:var(--c); vertical-align:middle; }
 .tools { display:flex; flex-wrap:wrap; gap:.5em; }
 .testing { position:fixed; top:.6em; left:50%; transform:translateX(-50%); background:var(--ember); color:var(--ink); padding:.4em 1em; border-radius:99px; font-weight:700; z-index:5; font-size:.85em; }
-.hold { height:.3em; background:var(--ink); border-radius:9px; margin-top:.25em; width:0; }
-.player { display:inline-grid; place-items:center; width:2.3em; height:2.3em; border-radius:10px; background:var(--ember); color:var(--ink); font-weight:800; grid-row:span 2; }
+.hold { height:.3em; background:var(--ink); border-radius:min(9px, var(--corner, 9px)); margin-top:.25em; width:0; }
+.player { display:inline-grid; place-items:center; width:2.3em; height:2.3em; border-radius:min(10px, var(--corner, 10px)); background:var(--ember); color:var(--ink); font-weight:800; grid-row:span 2; }
 </style>
 </head>
 <body>
@@ -203,7 +203,7 @@ function graph(id, rows, range) {
   const c = document.getElementById(id); if (!c) return;
   const x = c.getContext('2d'); const w = c.width, h = c.height;
   x.clearRect(0, 0, w, h);
-  x.strokeStyle = '#3b2e26'; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke();
+  x.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#3b2e26'; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke();
   ['#ff8a3d', '#6fd08c', '#66c0f4'].forEach((col, j) => {
     x.strokeStyle = col; x.lineWidth = 2; x.beginPath();
     rows.forEach((r, i) => { const px = w - (rows.length - 1 - i) * (w / 150); const py = h / 2 - Math.max(-1, Math.min(1, r[j] / range)) * (h / 2 - 3); i ? x.lineTo(px, py) : x.moveTo(px, py); });

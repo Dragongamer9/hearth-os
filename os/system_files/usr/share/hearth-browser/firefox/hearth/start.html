@@ -17,7 +17,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; }
   body {
-    background: radial-gradient(ellipse at 50% 120%, rgba(255, 138, 61, .16), transparent 60%), var(--bg);
+    background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--ember) 16%, transparent), transparent 60%), var(--bg);
     color: var(--text);
     font: 18px/1.4 system-ui, "Noto Sans", "Segoe UI", sans-serif;
     display: flex; flex-direction: column; align-items: center;
@@ -28,26 +28,26 @@
   header h1 { font-size: 30px; font-weight: 600; margin: 0; letter-spacing: .2px; }
   form { width: min(720px, 100%); display: flex; gap: 10px; margin-bottom: 36px; }
   input[type=search] {
-    flex: 1; min-width: 0; height: 60px; padding: 0 22px; border-radius: 30px;
+    flex: 1; min-width: 0; height: 60px; padding: 0 22px; border-radius: min(30px, var(--corner, 30px));
     border: 2px solid var(--line); background: var(--bg2); color: var(--text); font: inherit; font-size: 20px;
   }
   input[type=search]::placeholder { color: var(--muted); }
   input[type=search]:focus { outline: none; border-color: var(--accent); }
   button {
-    height: 60px; padding: 0 26px; border-radius: 30px; border: 0; background: var(--accent); color: var(--ink);
+    height: 60px; padding: 0 26px; border-radius: min(30px, var(--corner, 30px)); border: 0; background: var(--accent); color: var(--ink);
     font: inherit; font-weight: 600; font-size: 19px; cursor: pointer;
   }
   button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
   nav { width: min(960px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
   nav a {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-    min-height: 128px; padding: 16px 10px; border-radius: 16px; background: var(--panel); border: 2px solid var(--line);
+    min-height: 128px; padding: 16px 10px; border-radius: min(16px, var(--corner, 16px)); background: var(--panel); border: 2px solid var(--line);
     color: var(--text); text-decoration: none; font-size: 17px; text-align: center;
   }
   nav a:hover { background: var(--panel2); }
   nav a:focus-visible { outline: none; border-color: var(--accent); background: var(--panel2); }
   nav a b {
-    width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center;
+    width: 52px; height: 52px; border-radius: min(14px, var(--corner, 14px)); display: grid; place-items: center;
     font-size: 24px; font-weight: 700; color: #fff; background: var(--c, var(--panel3));
   }
   footer { margin-top: auto; padding-top: 36px; color: var(--muted); font-size: 15px; text-align: center; }

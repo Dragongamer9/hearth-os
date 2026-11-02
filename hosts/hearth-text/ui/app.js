@@ -34,7 +34,7 @@ const THEMES = {
     },
   },
 };
-const DEFAULTS = { fontSize: 15, theme: 'ember', wrap: false, lineNumbers: true, recent: [] };
+const DEFAULTS = { fontSize: 15, theme: 'hearth', wrap: false, lineNumbers: true, recent: [] };
 const ENCODINGS = [['utf-8', 'UTF-8'], ['utf-16le', 'UTF-16 LE'], ['utf-16be', 'UTF-16 BE'], ['latin-1', 'Latin-1 (ISO-8859-1)']];
 const EOLS = [['lf', 'LF (Linux, macOS)'], ['crlf', 'CRLF (Windows)'], ['cr', 'CR (old Mac)']];
 const BIG_TEXT = 2 * 1024 * 1024;   // above this many characters: no colors or bracket matching (stays quick)
@@ -78,8 +78,27 @@ function setTitle(text) {
   try { T.window.getCurrentWindow().setTitle(text); } catch (_) { /* not in the app (tests) */ }
 }
 
+/// "Desktop look": the look chosen in Hearth's Settings › Appearance (window.hearthTheme, put in by the app:
+/// hosts/hearth-apptheme), with Ember's syntax colours in dark looks and Daylight's in light ones. Ember without it.
+function desktopTheme() {
+  const h = window.hearthTheme;
+  if (!h || !/^#[0-9a-f]{6}$/i.test(h.bg || '')) return null;
+  const light = h.scheme === 'light';
+  const syn = light ? Object.fromEntries(Object.entries(THEMES.daylight.vars).filter(([k]) => k.startsWith('syn-'))) : {};
+  const a = (c, p) => `color-mix(in srgb, ${c} ${p}%, transparent)`;
+  return {
+    name: 'Desktop look', light,
+    vars: { ...syn, bg: h.bg, chrome: h.bg2, panel: h.panel, panel2: h.panel2, panel3: h.panel3, line: h.line, text: h.text, muted: h.muted,
+      accent: h.accent, accentInk: h.ink, warn: h.flame, edbg: light ? `color-mix(in srgb, ${h.bg} 40%, #ffffff)` : `color-mix(in srgb, ${h.bg} 98%, ${h.text})`,
+      actline: a(h.accent, 6), sel: a(h.accent, light ? 22 : 30), selmatch: a(h.accent, light ? 12 : 14), match: a(h.flame, 26), 'match-now': a(h.accent, light ? 40 : 55),
+      ...(light ? { 'syn-def': h.text } : {}) },
+  };
+}
+// A new look in Settings › Appearance reaches an open window.
+window.addEventListener('hearth-theme', () => { if (S.theme === 'hearth') applyTheme(); });
+
 function applyTheme() {
-  const th = THEMES[S.theme] || THEMES.ember, r = document.documentElement;
+  const th = (S.theme === 'hearth' && desktopTheme()) || THEMES[S.theme] || THEMES.ember, r = document.documentElement;
   for (const k of new Set([...Object.keys(THEMES.night.vars), ...Object.keys(THEMES.daylight.vars)])) r.style.removeProperty('--' + k);
   for (const [k, v] of Object.entries(th.vars)) r.style.setProperty('--' + k, v);
   r.classList.toggle('light', !!th.light);
@@ -658,7 +677,7 @@ function mainMenu(anchor) {
 const recentMenu = () => (S.recent || []).map(r => ({ label: tidyPath(r.path), run: () => openPath(r.path) }))
   .concat([{ sep: true }, { label: 'Clear the list', run: () => { S.recent = []; saveSettings(); updateChrome(); } }]);
 const langMenu = () => E.LANGUAGES.map(l => ({ label: l.name, on: current.lang === l.id, run: () => { current.lang = l.id; current.ed.setLanguage(l.id); updateStatus(); } }));
-const themeMenu = () => Object.entries(THEMES).map(([k, th]) => ({ label: th.name, on: S.theme === k, run: () => { S.theme = k; applyTheme(); saveSettings(); } }));
+const themeMenu = () => [['hearth', { name: 'Desktop look' }], ...Object.entries(THEMES)].map(([k, th]) => ({ label: th.name, on: S.theme === k, run: () => { S.theme = k; applyTheme(); saveSettings(); } }));
 const zoomMenu = () => [
   { label: 'Bigger', key: 'Ctrl++', run: () => zoom(1) },
   { label: 'Smaller', key: 'Ctrl+−', run: () => zoom(-1) },
@@ -893,7 +912,9 @@ async function start() {
   if (!T) { document.body.textContent = 'Hearth Text needs its app window.'; return; }
   try { INFO = await invoke('init'); } catch (e) { toast('Couldn\'t start: ' + e, 8000); }
   S = { ...DEFAULTS, ...(INFO.settings || {}) };
-  if (!THEMES[S.theme]) S.theme = DEFAULTS.theme;
+  // Ember was the default before the Desktop look: follow the desktop unless another one was picked.
+  if (!S.themeV) { if (S.theme === 'ember') S.theme = 'hearth'; S.themeV = 2; }
+  if (!THEMES[S.theme] && S.theme !== 'hearth') S.theme = DEFAULTS.theme;
   if (!Array.isArray(S.recent)) S.recent = [];
   applyTheme();
   const l = INFO.launch || { files: [] };

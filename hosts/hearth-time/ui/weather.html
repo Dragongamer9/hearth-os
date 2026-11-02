@@ -8,8 +8,8 @@
 <link rel="stylesheet" href="osk/hearth-osk.css">
 <style>
 main { overflow:auto; display:flex; flex-direction:column; gap:var(--gut); padding-bottom:1em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
-.now { display:grid; grid-template-columns:auto 1fr auto; gap:.4em 1.6em; align-items:center; padding:1.1em 1.4em; border-radius:20px;
-  background:linear-gradient(135deg, rgba(255,138,61,.16), rgba(111,183,255,.06)), var(--panel); border:1px solid var(--line); }
+.now { display:grid; grid-template-columns:auto 1fr auto; gap:.4em 1.6em; align-items:center; padding:1.1em 1.4em; border-radius:min(20px, var(--corner, 20px));
+  background:linear-gradient(135deg, color-mix(in srgb, var(--ember) 16%, transparent), rgba(111,183,255,.06)), var(--panel); border:1px solid var(--line); }
 .now .wi { width:clamp(4.5em, 12vw, 7.5em); height:clamp(4.5em, 12vw, 7.5em); }
 .now .temp { font-size:clamp(3.2em, 9vw, 6em); font-weight:200; line-height:1; font-variant-numeric:tabular-nums; }
 .now .temp small { font-size:.4em; color:var(--muted); vertical-align:top; }
@@ -19,22 +19,22 @@ main { overflow:auto; display:flex; flex-direction:column; gap:var(--gut); paddi
 .facts dt { color:var(--muted); } .facts dd { margin:0; font-variant-numeric:tabular-nums; }
 h2 { font-size:1em; color:var(--muted); font-weight:600; margin:0 0 .5em; }
 .hours { display:flex; gap:.5em; overflow-x:auto; padding:4px 4px .5em; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent; }
-.hr { flex:none; width:5.2em; display:grid; justify-items:center; gap:.25em; padding:.6em .3em; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
-.hr.now1 { border-color:#6a4428; background:var(--panel2); }
+.hr { flex:none; width:5.2em; display:grid; justify-items:center; gap:.25em; padding:.6em .3em; border-radius:min(14px, var(--corner, 14px)); background:var(--panel); border:1px solid var(--line); }
+.hr.now1 { border-color:color-mix(in srgb, var(--panel3) 72%, var(--ember)); background:var(--panel2); }
 .hr .h { color:var(--muted); font-size:.8em; }
 .hr .t { font-weight:650; font-variant-numeric:tabular-nums; }
 .hr .p { color:var(--sky); font-size:.75em; min-height:1.2em; }
 .hr .wi { width:2em; height:2em; }
 .days { display:flex; flex-direction:column; gap:.4em; }
-.dy { display:grid; grid-template-columns:7em 2.2em 3.4em 3em 1fr 3em; gap:.8em; align-items:center; padding:.55em .9em; border-radius:12px; background:var(--panel); border:1px solid var(--line); }
+.dy { display:grid; grid-template-columns:7em 2.2em 3.4em 3em 1fr 3em; gap:.8em; align-items:center; padding:.55em .9em; border-radius:min(12px, var(--corner, 12px)); background:var(--panel); border:1px solid var(--line); }
 .dy .n { font-weight:600; }
 .dy .wi { width:1.9em; height:1.9em; }
 .dy .p { color:var(--sky); font-size:.85em; }
 .dy .lo { color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
 .dy .hi { font-variant-numeric:tabular-nums; }
-.range { position:relative; height:.45em; border-radius:9px; background:var(--panel3); }
-.range i { position:absolute; top:0; bottom:0; border-radius:9px; background:linear-gradient(90deg, #6fb7ff, #ffd166 60%, #ff8a3d); }
-.banner { padding:.6em 1em; border-radius:12px; background:#2a1d12; border:1px solid #5a3f2c; color:var(--flame); font-size:.9em; }
+.range { position:relative; height:.45em; border-radius:min(9px, var(--corner, 9px)); background:var(--panel3); }
+.range i { position:absolute; top:0; bottom:0; border-radius:min(9px, var(--corner, 9px)); background:linear-gradient(90deg, #6fb7ff, var(--flame) 60%, var(--ember)); }
+.banner { padding:.6em 1em; border-radius:min(12px, var(--corner, 12px)); background:color-mix(in srgb, var(--bg2) 91%, var(--ember)); border:1px solid color-mix(in srgb, var(--ember) 17%, var(--line)); color:var(--flame); font-size:.9em; }
 .welcome { max-width:34em; margin:4vh auto 0; text-align:center; }
 .welcome .wi { width:6em; height:6em; margin:0 auto .6em; display:block; }
 .results { display:flex; flex-direction:column; gap:.4em; margin-top:.8em; text-align:left; max-height:50vh; overflow:auto; padding:3px; }

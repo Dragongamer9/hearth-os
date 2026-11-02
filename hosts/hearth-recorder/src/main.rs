@@ -10,6 +10,9 @@
 // --json prints the answer as JSON (Quick Access reads it) and leaves out the "Recording" notification.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_recorder::plan::{Kind, Rect};
 use hearth_recorder::{control, probe, session, settings};
 use serde_json::{json, Value};
@@ -146,7 +149,7 @@ fn main() {
     // WebKit's newer GPU path draws a black window on some Nvidia drivers; Recorder doesn't need its speed.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![status, files, environment, start, stop, save_replay, set_settings, open, show, delete, rename])
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -155,7 +158,7 @@ fn main() {
                 .inner_size(1040.0, 720.0)
                 .min_inner_size(560.0, 460.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

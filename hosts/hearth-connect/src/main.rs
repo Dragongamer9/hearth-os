@@ -7,6 +7,9 @@
 // The window's page (ui/index.html) calls `call` (forwarded to the service) and hears "connect://event".
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -179,7 +182,7 @@ fn run_window(fullscreen: bool) {
     use tauri::{Emitter, WebviewUrl, WebviewWindowBuilder};
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
     let started = ensure_service();
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![call, autostart, turn_off, turn_on, open_path, list_dir])
         .setup(move |app| {
             if let Err(e) = &started { eprintln!("{e}"); }
@@ -196,7 +199,7 @@ fn run_window(fullscreen: bool) {
                 .inner_size(1180.0, 760.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

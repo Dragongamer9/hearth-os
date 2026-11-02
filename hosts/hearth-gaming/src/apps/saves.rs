@@ -10,6 +10,9 @@
 //   hearth-saves --refresh-manifest           download the save-location list again
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_gaming::games::{self, GameEntry};
 use hearth_gaming::manifest::{self, Manifest};
 use hearth_gaming::saves::{self, Scan};
@@ -286,7 +289,7 @@ fn main() {
     let fullscreen = util::has_arg(&args, "--fullscreen");
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![info, load, rescan, backup, backups, restore, delete_backup, set_schedule, run_auto, set_folder, destinations, places, browse, open_folder, make_folder])
         .setup(move |app| {
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("saves.html".into()))
@@ -294,7 +297,7 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

@@ -13,7 +13,7 @@ main.full { grid-template-columns:1fr; }
 .side { display:flex; flex-direction:column; gap:.6em; min-height:0; }
 .side h2 { margin:.1em 0 .2em; font-size:1.1em; }
 .side .list { display:flex; flex-direction:column; gap:.45em; overflow:auto; min-height:0; padding:3px; }
-.ev { display:grid; grid-template-columns:.35em 1fr; gap:.15em .7em; padding:.55em .8em; border-radius:12px; background:var(--panel); border:1px solid var(--line); text-align:left; width:100%; }
+.ev { display:grid; grid-template-columns:.35em 1fr; gap:.15em .7em; padding:.55em .8em; border-radius:min(12px, var(--corner, 12px)); background:var(--panel); border:1px solid var(--line); text-align:left; width:100%; }
 .ev .bar { grid-row:span 3; border-radius:4px; background:var(--c, var(--ember)); }
 .ev .tt { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; gap:.4em; align-items:center; }
 .ev .tt svg { width:.9em; height:.9em; color:var(--muted); flex:none; }
@@ -23,19 +23,19 @@ main.full { grid-template-columns:1fr; }
 .month { display:grid; grid-template-rows:auto 1fr; height:100%; min-height:0; }
 .dow { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; color:var(--muted); font-size:.8em; padding:0 4px .3em; text-align:center; }
 .cells { display:grid; grid-template-columns:repeat(7, 1fr); grid-template-rows:repeat(6, 1fr); gap:4px; min-height:0; padding:4px; }
-.cell { border-radius:12px; background:var(--panel); border:1px solid var(--line); padding:.3em .4em; text-align:left; overflow:hidden; display:flex; flex-direction:column; gap:2px; min-height:0; }
+.cell { border-radius:min(12px, var(--corner, 12px)); background:var(--panel); border:1px solid var(--line); padding:.3em .4em; text-align:left; overflow:hidden; display:flex; flex-direction:column; gap:2px; min-height:0; }
 .cell.out { background:var(--bg2); opacity:.6; }
-.cell.sel { border-color:#7a5236; background:var(--panel2); }
+.cell.sel { border-color:color-mix(in srgb, var(--line) 64%, var(--ember)); background:var(--panel2); }
 .cell .dn { font-size:.85em; font-weight:600; display:inline-grid; place-items:center; min-width:1.8em; height:1.8em; border-radius:50%; }
 .cell.today .dn { background:var(--ember); color:var(--ink); }
-.pill { font-size:.7em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:.05em .4em; border-radius:6px; background:color-mix(in srgb, var(--c, var(--ember)) 22%, transparent); color:var(--text); }
+.pill { font-size:.7em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:.05em .4em; border-radius:min(6px, var(--corner, 6px)); background:color-mix(in srgb, var(--c, var(--ember)) 22%, transparent); color:var(--text); }
 .pill.all { background:var(--c, var(--ember)); color:var(--ink); font-weight:600; }
 .pill.more { background:none; color:var(--muted); }
 
 /* Week / day */
 .tg { display:grid; grid-template-rows:auto auto 1fr; height:100%; min-height:0; }
 .tg .heads, .tg .alld { display:grid; grid-template-columns:3.6em repeat(var(--n), 1fr); gap:4px; }
-.tg .head { text-align:center; padding:.3em; border-radius:10px; }
+.tg .head { text-align:center; padding:.3em; border-radius:min(10px, var(--corner, 10px)); }
 .tg .head .d { font-size:1.4em; font-weight:600; }
 .tg .head.today .d { color:var(--ember); }
 .tg .head.sel { background:var(--panel2); }
@@ -47,7 +47,7 @@ main.full { grid-template-columns:1fr; }
 .tg .hours span { position:absolute; right:.4em; transform:translateY(-50%); font-size:.72em; color:var(--faint); }
 .tg .day { position:relative; border-left:1px solid var(--line);
   background:repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--hh) - 1px), rgba(255,255,255,.05) calc(var(--hh) - 1px), rgba(255,255,255,.05) var(--hh)); }
-.tg .blk { position:absolute; border-radius:8px; padding:.2em .4em; font-size:.75em; overflow:hidden; text-align:left;
+.tg .blk { position:absolute; border-radius:min(8px, var(--corner, 8px)); padding:.2em .4em; font-size:.75em; overflow:hidden; text-align:left;
   background:color-mix(in srgb, var(--c, var(--ember)) 30%, var(--panel)); border-left:3px solid var(--c, var(--ember)); }
 .tg .blk b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tg .blk span { color:var(--muted); }

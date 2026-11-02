@@ -11,6 +11,9 @@
 // The page (ui/index.html) asks for the state, answers requests and sends; events come back as "nearby://<name>".
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_nearby::send::{Outcome, Target, What};
 use hearth_nearby::service::{self, lock, Options, Service};
 use serde_json::{json, Value};
@@ -185,7 +188,7 @@ fn main() {
     // WebKit's newer GPU path draws a black window on some Nvidia drivers; Nearby Share doesn't need its speed.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    let app = tauri::Builder::default()
+    let app = tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![state, refresh, decide, cancel_receive, send, cancel_send, add_address, list_dir, places, set_alias, set_pin, trust, open_folder])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -200,7 +203,7 @@ fn main() {
                 .inner_size(1180.0, 760.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = app.get_webview_window("main");
             Ok(())

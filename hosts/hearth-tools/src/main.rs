@@ -3,6 +3,9 @@
 // "tools://job" events ({id, kind: "step" | "done", ...}). `cancel` stops a job.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -70,7 +73,7 @@ fn main() {
     // Each tool its own app id (Wayland), so the taskbar tells them apart; the .desktop files' StartupWMClass match.
     ctx.config_mut().identifier = format!("io.github.dragongamer9.hearth.{}", id.replace('-', ""));
     let (w, h) = match id { "system-info" => (1000.0, 760.0), "welcome" => (1060.0, 720.0), "passwords" => (1060.0, 720.0), "benchmark" => (1180.0, 760.0), _ => (1240.0, 800.0) };
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![call, start, cancel])
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App(page.into()))
@@ -78,7 +81,7 @@ fn main() {
                 .inner_size(w, h)
                 .min_inner_size(560.0, 440.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .initialization_script(&format!("window.__HEARTH__ = {boot};"))
                 .build()?;
             Ok(())

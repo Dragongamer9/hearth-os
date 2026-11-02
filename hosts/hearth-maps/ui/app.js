@@ -1,4 +1,5 @@
 'use strict';
+const tok = (n, d) => (getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d);   // a colour of the look (hosts/hearth-apptheme)
 // Hearth Maps' page: MapLibre GL draws OpenFreeMap's vector map; every request to a service (map pieces, search,
 // directions) goes through the Rust side, which keeps each service's rules (src/services.rs). Search runs only when
 // Enter (or Search) is pressed, never while typing (Nominatim's policy). The person's location is only asked for
@@ -211,8 +212,8 @@ function drawRoute() {
   const data = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: S.route ? S.route.line : [] } };
   if (map.getSource('route')) { map.getSource('route').setData(data); return; }
   map.addSource('route', { type: 'geojson', data });
-  map.addLayer({ id: 'route-casing', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#2a1206', 'line-width': 9, 'line-opacity': .7 } });
-  map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ff8a3d', 'line-width': 5 } });
+  map.addLayer({ id: 'route-casing', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': tok('--ink', '#2a1206'), 'line-width': 9, 'line-opacity': .7 } });
+  map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': tok('--ember', '#ff8a3d'), 'line-width': 5 } });
 }
 function clearRoute() { S.route = null; drawRoute(); if (fromMarker) { fromMarker.remove(); fromMarker = null; } }
 
