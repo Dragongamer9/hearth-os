@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Hearth (Steam-style)
+Description=Hearth boot splash preset: the Hearth flame on slate blue, with a blue light sweep
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/hearth-steam
+ScriptFile=/usr/share/plymouth/themes/hearth-steam/hearth-steam.script

@@ -1,0 +1,75 @@
+# Hearth OS's GRUB menu (Steam-style look). Made by tools/make-boot-art.py; fonts (hearth-*.pf2) are made from
+# Inter when the image is built. hearth-bls-grub copies this folder to /boot/grub2/themes/hearth and switches to it
+# only when GRUB has everything it needs; otherwise the menu is GRUB's plain text one.
+title-text: ""
+desktop-image: "background.png"
+desktop-image-scale-method: "stretch"
+desktop-color: "#121820"
+terminal-font: "Hearth Regular 18"
+terminal-left: "10%"
+terminal-top: "10%"
+terminal-width: "80%"
+terminal-height: "80%"
+terminal-border: "0"
+
++ image {
+  left = 50%-48
+  top = 12%
+  width = 96
+  height = 96
+  file = "logo.png"
+}
+
++ label {
+  left = 0
+  top = 12%+108
+  width = 100%
+  height = 40
+  align = "center"
+  text = "Hearth OS"
+  font = "Hearth Bold 28"
+  color = "#dce5ed"
+}
+
++ boot_menu {
+  left = 50%-300
+  top = 12%+176
+  width = 600
+  height = 50%
+  item_font = "Hearth Regular 22"
+  item_color = "#b8c4cf"
+  selected_item_font = "Hearth Bold 22"
+  selected_item_color = "#ffffff"
+  item_height = 50
+  item_padding = 18
+  item_spacing = 8
+  icon_width = 0
+  icon_height = 0
+  item_icon_space = 0
+  selected_item_pixmap_style = "select_*.png"
+  menu_pixmap_style = "menu_*.png"
+  scrollbar = false
+}
+
++ label {
+  id = "__timeout__"
+  left = 0
+  top = 100%-84
+  width = 100%
+  height = 24
+  align = "center"
+  text = "Starting in %d s"
+  font = "Hearth Regular 18"
+  color = "#8f98a0"
+}
+
++ label {
+  left = 0
+  top = 100%-52
+  width = 100%
+  height = 24
+  align = "center"
+  text = "Up and Down to choose    Enter to start    E to edit"
+  font = "Hearth Regular 18"
+  color = "#66727e"
+}
