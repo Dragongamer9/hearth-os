@@ -38,9 +38,11 @@ const focus = (label) => page.evaluate((l) => { document.querySelectorAll(".gpfo
   const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l))
     || [...document.querySelectorAll(".qam-field")].find((x) => x.textContent.includes(l))?.querySelector(".qam-switch");
   if (b) b.classList.add("gpfocus"); }, label);
-// Scrolls the panel so a section's title is at the top (the import section is below the first screenful).
-const scrollTo = (title) => page.evaluate((t) => { const el = [...document.querySelectorAll(".qam-section-title")].find((x) => x.textContent === t);
-  const sp = document.querySelector(".ScrollPanel"); if (el && sp) { sp.style.transform = `translateY(-${Math.max(0, el.offsetTop - 60)}px)`; } }, title);
+// Shows the panel from a section on (the sections above it hidden, as if scrolled down: the import section is below
+// the first screenful).
+const scrollTo = (title) => page.evaluate((t) => { const secs = [...document.querySelectorAll(".qam-section")];
+  const i = secs.findIndex((x) => x.querySelector(".qam-section-title")?.textContent === t);
+  secs.forEach((x, j) => { x.style.display = j < i ? "none" : ""; }); }, title);
 // [picture, state, what to do, what it must show]
 const shots = [
   ["hearth-sync-panel", "synced", async () => focus("Sync now"), ["Hearth Sync", "10 games synced", "4 minutes ago", "Sync now", "Epic", "GOG", "Battle.net", "Emulators", "Recomps", "Remove all Hearth Sync shortcuts"]],
