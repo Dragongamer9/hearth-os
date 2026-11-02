@@ -903,7 +903,9 @@ fn main() {
         .setup(move |app| {
             let bridge = app.state::<Host>().0.clone();
             let zoom = bridge.lock().map(|b| b.zoom_pct()).unwrap_or(100);
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            // The installer USB (/etc/hearth-installer) shows only the installer (ui/installer.html, 1.1).
+            let page = if std::path::Path::new("/etc/hearth-installer").exists() && !windowed { "installer.html" } else { "index.html" };
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(page.into()))
                 .title("Hearth")
                 .fullscreen(!windowed)
                 .inner_size(1280.0, 800.0)

@@ -6,7 +6,7 @@ name: Desktop Mode test
 on:
   push:
     branches: [main, linux-host]
-    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml']
+    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml', 'os/system_files/usr/libexec/nimbus/hearth-boot-look']
   pull_request:
     paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**']
   workflow_dispatch:
@@ -154,6 +154,13 @@ jobs:
           grep -q "terminal now: foot.desktop True" shots/default-apps.txt || { command -v foot >/dev/null && { echo "::error title=Default apps::picking foot as the terminal didn't stick: $(tr '\n' '|' < shots/default-apps.txt | cut -c1-600)"; touch shots/FAILED; }; }
           # ---- Settings › Accessibility (hearth-access), and labwc's magnifier on Super+= (zoomed in, then out again)
           ipc settings page accessibility; grim "shots/$n-settings-accessibility.png" || true; n=$((n+1))
+          # ---- Settings › Boot & startup (1.1): its helper, the splash presets and the startup animations as the image has them
+          mkdir -p /usr/libexec/nimbus /usr/share/hearth /usr/share/plymouth/themes
+          cp os/system_files/usr/libexec/nimbus/hearth-boot-look /usr/libexec/nimbus/ && chmod 755 /usr/libexec/nimbus/hearth-boot-look
+          cp -r os/system_files/usr/share/hearth/startup-movies /usr/share/hearth/ && cp -r os/system_files/usr/share/plymouth/themes/hearth* /usr/share/plymouth/themes/
+          printf '#!/bin/sh\necho hearth-bls-grub stand-in\n' > /usr/libexec/nimbus/hearth-bls-grub
+          ipc settings page boot; grim "shots/$n-settings-boot.png" || true; n=$((n+1))
+          python3 /usr/libexec/nimbus/hearth-boot-look status > shots/boot-look-status.json 2>&1 || { echo "::error title=Boot & startup::hearth-boot-look status failed"; touch shots/FAILED; }
           python3 hosts/linux/desktop/shell/hearth-access status > shots/accessibility-status.json 2>&1 || true
           ipc settings close
           if command -v wtype >/dev/null; then
@@ -402,7 +409,8 @@ jobs:
           ipc power menu; grim $o/steam-09-power-menu.png || true; ipc power close
           ipc settings page appearance; grim $o/steam-10-settings-appearance.png || true
           ipc settings page wifi; grim $o/steam-11-settings-wifi.png || true
-          ipc settings page sound; grim $o/steam-12-settings-sound.png || true; ipc settings close
+          ipc settings page sound; grim $o/steam-12-settings-sound.png || true
+          ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"
           ipc files open "$HOME/Documents"; grim $o/steam-13-files.png || true
           ipc fileprops open "$HOME/Documents/notes.txt"; grim $o/steam-14-file-properties.png || true; ipc fileprops close 2>/dev/null; ipc filemanager close

@@ -23,6 +23,9 @@ Scope {
         { id: "notifications", icon: "bell", label: "Notifications" },
         { id: "display", icon: "display", label: "Display" },
         { id: "appearance", icon: "palette", label: "Appearance" },
+        // ---- Boot & startup (SetBoot.qml): boot splash preset, Steam Game Mode's startup animation
+        { id: "boot", icon: "power", label: "Boot & startup" },
+        // ---- end Boot & startup
         { id: "power", icon: "power", label: "Power" },
         { id: "controller", icon: "pad", label: "Controller" },
         { id: "keyboard", icon: "kbd", label: "Keyboard" },
@@ -47,7 +50,8 @@ Scope {
         updates: "SetUpdates.qml", about: "SetAbout.qml", install: "SetInstall.qml",
         keyboard: "SetKeyboard.qml", apps: "SetApps.qml", printers: "SetPrinters.qml", datetime: "SetDateTime.qml", defaults: "SetDefaults.qml",
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
-        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */ })
+        accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */,
+        boot: "SetBoot.qml" /* Boot & startup */ })
 
     function open(p) {
         if (p && files[p]) page = p;

@@ -554,6 +554,10 @@ run_steam_mode() {
       shost=1; log "steam game mode: multi-seat: hosting the other players' screens"
     fi
   fi
+  # Hearth's startup animation (Settings › Boot & startup, hearth-boot-look): the chosen one into Steam's override folder.
+  # Time-limited, never fatal: Steam starts the same way whatever happens here.
+  bl=/usr/libexec/nimbus/hearth-boot-look
+  if [ -f "$bl" ] && have python3; then timeout 10 python3 "$bl" movie-apply >/dev/null 2>&1 || log "steam game mode: startup animation not applied"; fi
   decky_ctl start
   echo $$ >"$RUN/hearth-steam-mode.pid"
   steam_core_start
@@ -680,11 +684,14 @@ steam_auto_after() {
 }
 # <<< steam game mode
 
-# ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) is Hearth's app,
-# shown once on a fresh install. Until it's done (or skipped: Hearth writes setupDone in library.json), "game" means
-# Hearth's app for it (mode "setup", Hearth's Game Mode code); after it, Steam Game Mode. Hearth's app switches to
-# Steam Game Mode itself when setup finishes, and a setup run that ends without asking for anything goes there too.
+# ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) was Hearth's app,
+# shown once on a fresh install. From Hearth OS 1.1 the USB installer asks everything first-time setup asked (language,
+# Wi-Fi, your account, the time zone), so a new install starts straight in Steam Game Mode (Steam asks for its own
+# sign-in) and the old Game Mode screens aren't needed: setup is only pending with HEARTH_LEGACY_SETUP=1 in
+# session.conf (a developer switch). Until it's done (or skipped: Hearth writes setupDone in library.json), "game" then
+# means Hearth's app for it (mode "setup"); a setup run that ends without asking for anything goes to Steam Game Mode.
 setup_pending() {
+  [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || return 1
   [ -z "$HEARTH_SEAT" ] && can_game || return 1
   ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
 }

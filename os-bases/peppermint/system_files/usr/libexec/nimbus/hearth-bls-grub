@@ -12,6 +12,20 @@
 #
 # The same interface as the Ubuntu image's script, so one installer step serves both. Pure POSIX sh + sed/sort,
 # so it also runs from another system's live USB.
+#
+# Hearth OS 1.1 adds, none of which can stop the menu from working (each step is optional and checked):
+#   - clean names: "Hearth OS 1.1", "Hearth OS 1.0 (previous version)" (the version each entry's own system has in
+#     /usr/share/nimbus/version; without it, ostree's title without " (ostree:N)")
+#   - the look: Hearth's GRUB theme (/usr/share/hearth/grub-theme, next to this script's system) copied to
+#     /boot/grub2/themes/hearth and /boot/grub2/hearth-theme.cfg written; the menu sources that file only AFTER all
+#     of its entries, only if it's there, and the file only switches to the theme when GRUB has everything it needs
+#     (gfxterm, gfxmenu, png, the theme file). Anything missing: GRUB's plain text menu, exactly as before.
+#     Off: touch /etc/hearth/no-grub-theme (the theme files are then removed from /boot).
+#   - the boot splash preset (/etc/hearth/boot-splash: hearth, hearth-steam or hearth-minimal; Settings › Boot &
+#     startup): plymouth.splash=<preset> on each entry's kernel command line (not for the default, hearth). A
+#     version whose start-up files lack that preset shows its default splash instead (Plymouth falls back), and
+#     if Plymouth fails at all the start goes on in text.
+# Nothing here changes the entries' order, the default, the timeout or the automatic fallback (hearth-boot-guard).
 set -eu
 
 BOOT=/boot
@@ -24,6 +38,13 @@ OUT="$OUT_DIR/hearth-bls.cfg"
 mkdir -p "$OUT_DIR"
 TMP="$OUT.tmp.$$"
 trap 'rm -f "$TMP" "$TMP.list"' EXIT
+# This script's own system (/usr/libexec/nimbus/.. /..): where the theme comes from, also when an installer or Hearth
+# Recovery runs it from a deployment that isn't the running system.
+HERE=$(cd "$(dirname "$0")" 2>/dev/null && pwd) || HERE=/usr/libexec/nimbus
+OWN_ROOT=${HERE%/usr/libexec/nimbus}
+THEME_SRC="${HEARTH_GRUB_THEME_SRC:-$OWN_ROOT/usr/share/hearth/grub-theme}"
+THEME_OFF="${HEARTH_GRUB_THEME_OFF:-/etc/hearth/no-grub-theme}"
+SPLASH_CONF="${HEARTH_SPLASH_CONF:-/etc/hearth/boot-splash}"
 
 # "version<TAB>file" for each entry; ostree gives the default (newest) deployment the highest version.
 : > "$TMP.list"
@@ -37,6 +58,9 @@ done
 # The ostree root (where /ostree/boot.N lives): /sysroot on a running system; HEARTH_SYSROOT for an installer/recovery.
 SYSROOT="${HEARTH_SYSROOT:-}"
 [ -n "$SYSROOT" ] || { [ -d /sysroot/ostree ] && SYSROOT=/sysroot; }
+# An installer's --boot /mnt/target/boot: the ostree root is right above it (only for the names, below).
+NAMES_ROOT="$SYSROOT"
+[ -n "$NAMES_ROOT" ] || { [ -d "$BOOT/../ostree" ] && NAMES_ROOT="$BOOT/.."; }
 # ostree= names /ostree/boot.0/... or /ostree/boot.1/...; only one of the two exists after ostree swaps them. A menu
 # written at the wrong moment pointed every entry at the one that was then removed, and nothing could start (ROG Ally,
 # 0.6.53). Point each entry at the boot.N that really has it.
@@ -49,6 +73,83 @@ fix_ostree() {
 
 quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
+# "Hearth OS 1.1": the version of the system an entry starts (its deployment's /usr/share/nimbus/version, shown as
+# people see it: 1.1.0 -> 1.1), else ostree's own title without " (ostree:N)". Never fails.
+entry_name() {
+  t=$(printf '%s' "$1" | sed 's/[[:space:]]*(ostree:[0-9]*)[[:space:]]*$//')
+  p=$(printf '%s' "$2" | sed -n 's/.*ostree=\(\/ostree\/boot\.[01]\/[^ ]*\).*/\1/p')
+  v=""
+  if [ -n "$p" ] && [ -n "$NAMES_ROOT" ] && [ -r "$NAMES_ROOT$p/usr/share/nimbus/version" ]; then
+    v=$(head -n 1 "$NAMES_ROOT$p/usr/share/nimbus/version" 2>/dev/null | tr -cd '0-9A-Za-z.+-' | cut -c1-24) || v=""
+    v=$(printf '%s' "$v" | sed 's/^\([0-9][0-9]*\.[0-9][0-9]*\)\.0$/\1/')
+  fi
+  if [ -n "$v" ]; then printf 'Hearth OS %s' "$v"; else printf '%s' "${t:-Hearth OS}"; fi
+}
+
+# The boot splash preset for the kernel command line: only names from this fixed list, only when that preset is in
+# this script's own system (the default, hearth, needs nothing).
+SPLASH_ARG=""
+if [ -r "$SPLASH_CONF" ]; then
+  sp=$(head -n 1 "$SPLASH_CONF" 2>/dev/null | tr -cd 'a-z-') || sp=""
+  case "$sp" in
+    hearth-steam|hearth-minimal)
+      if [ -f "$OWN_ROOT/usr/share/plymouth/themes/$sp/$sp.plymouth" ]; then SPLASH_ARG=" plymouth.splash=$sp"; fi ;;
+  esac
+fi
+
+# Hearth's GRUB theme on /boot (GRUB reads only what's there): copied whole into a new folder, then swapped in, so
+# GRUB never sees half a theme. Prints "yes" when the theme is in place.
+theme_sync() {
+  dst="$OUT_DIR/themes/hearth"
+  if [ -e "$THEME_OFF" ] || [ ! -f "$THEME_SRC/theme.txt" ]; then
+    rm -rf "$dst" "$OUT_DIR/hearth-theme.cfg" 2>/dev/null || true
+    return 0
+  fi
+  # Already there and the same (a copy that was changed or broken on /boot is put back whole).
+  if [ -f "$dst/theme.txt" ] && [ "$(theme_stamp "$dst")" = "$(theme_stamp "$THEME_SRC")" ]; then echo yes; return 0; fi
+  new="$OUT_DIR/themes/.hearth-new.$$"
+  rm -rf "$new"
+  mkdir -p "$new" || return 0
+  if ! cp "$THEME_SRC"/* "$new"/ 2>/dev/null || [ ! -f "$new/theme.txt" ]; then rm -rf "$new"; return 0; fi
+  sync
+  rm -rf "$dst.old"
+  [ -d "$dst" ] && mv "$dst" "$dst.old"
+  if mv "$new" "$dst"; then rm -rf "$dst.old"; echo yes; else rm -rf "$new"; [ -d "$dst.old" ] && mv "$dst.old" "$dst"; fi
+  return 0
+}
+# What the theme is made of (names and contents; ostree gives every file the same date, so dates can't tell).
+theme_stamp() { { ls "$1"; cat "$1"/*; } 2>/dev/null | cksum | cut -d' ' -f1; }
+
+# GRUB's side of the theme (hearth-theme.cfg). Every step is checked first; the first one that's missing leaves the
+# plain text menu, which is what this menu always had. gfxmode=auto: the screen's own mode, as the text menu used.
+theme_cfg() {
+  cat <<'CFG'
+# Written by hearth-bls-grub: Hearth's look for this menu. Sourced after every entry is in the menu; if anything
+# here is missing or fails, GRUB keeps its plain text menu and starts exactly the same way.
+if [ -f "${prefix}/themes/hearth/theme.txt" ]; then
+  if insmod gfxterm; then
+    if insmod gfxmenu; then
+      if insmod png; then
+        set hearth_font_ok=0
+        for f in ${prefix}/themes/hearth/*.pf2; do
+          if [ -f "$f" ]; then
+            if loadfont "$f"; then set hearth_font_ok=1; fi
+          fi
+        done
+        if [ "${hearth_font_ok}" = "1" ]; then
+          if [ -z "${gfxmode}" ]; then set gfxmode=auto; fi
+          if terminal_output gfxterm; then
+            set theme="${prefix}/themes/hearth/theme.txt"
+            export theme
+          fi
+        fi
+      fi
+    fi
+  fi
+fi
+CFG
+}
+
 TAB=$(printf '\t')
 sort -t "$TAB" -k1,1nr "$TMP.list" | {
   echo "# Written by hearth-bls-grub from $ENTRIES: don't edit, it's rewritten on every update."
@@ -60,21 +161,31 @@ sort -t "$TAB" -k1,1nr "$TMP.list" | {
     opts=$(fix_ostree "$(sed -n 's/^options[[:space:]]\{1,\}//p' "$f" | head -1)")
     initrd=$(sed -n 's/^initrd[[:space:]]\{1,\}//p' "$f" | tr '\n' ' ')
     [ -n "$linux" ] || continue
-    title="${title:-Hearth OS}"
+    title=$(entry_name "${title:-Hearth OS}" "$opts")
     if [ "$n" -gt 0 ]; then title="$title (previous version)"; fi
     id=$(basename "$f" .conf)
     echo "menuentry $(quote "$title") --class hearth --class gnu-linux --id $(quote "$id") {"
     echo "  load_video"
     echo "  set gfxpayload=keep"
-    echo "  linux $linux $opts"
+    echo "  linux $linux $opts$SPLASH_ARG"
     if [ -n "$initrd" ]; then echo "  initrd $initrd"; fi
     echo "}"
     n=$((n + 1))
   done
+  # The look, last: every entry above is already in the menu whatever happens in it.
+  echo 'if [ -f "${prefix}/hearth-theme.cfg" ]; then source "${prefix}/hearth-theme.cfg"; fi'
 } > "$TMP"
 
 grep -q '^menuentry' "$TMP" || { echo "hearth-bls-grub: no usable entries in $ENTRIES; keeping the old menu" >&2; exit 1; }
+# The theme before the menu that sources it (the menu is the part that matters: a theme problem never stops it).
+look=$(theme_sync 2>/dev/null) || look=""
+if [ "$look" = yes ]; then
+  { theme_cfg > "$OUT_DIR/hearth-theme.cfg.tmp" && mv -f "$OUT_DIR/hearth-theme.cfg.tmp" "$OUT_DIR/hearth-theme.cfg"; } 2>/dev/null || \
+    rm -f "$OUT_DIR/hearth-theme.cfg.tmp" "$OUT_DIR/hearth-theme.cfg" 2>/dev/null || true
+else
+  rm -f "$OUT_DIR/hearth-theme.cfg" 2>/dev/null || true
+fi
 sync
 mv -f "$TMP" "$OUT"
 sync
-echo "hearth-bls-grub: wrote $(grep -c '^menuentry' "$OUT") entries to $OUT"
+echo "hearth-bls-grub: wrote $(grep -c '^menuentry' "$OUT") entries to $OUT (theme: ${look:-off}${SPLASH_ARG:+,$SPLASH_ARG})"

@@ -4,10 +4,12 @@ set -exo pipefail
 mkdir -p "$(realpath /root)" /var/lib/rpm-state
 
 # ---------------------------------------------------------------- what the installer needs
+# (1.1: install-only and a little smaller: no Xwayland, and Electron's libraries only for the Electron app.)
 dnf install -y \
   dracut-live grub2-efi-x64-cdboot xorriso isomd5sum \
-  cage xorg-x11-server-Xwayland mesa-dri-drivers libglvnd-egl \
-  gtk3 nss alsa-lib libXScrnSaver libxkbcommon at-spi2-atk cups-libs libdrm mesa-libgbm \
+  cage wlr-randr mesa-dri-drivers libglvnd-egl \
+  gtk3 libxkbcommon libdrm mesa-libgbm \
+  plymouth plymouth-scripts plymouth-plugin-script plymouth-plugin-label \
   NetworkManager NetworkManager-wifi wpa_supplicant bluez polkit pciutils usbutils \
   ntfsprogs ntfs-3g dosfstools e2fsprogs btrfs-progs xfsprogs lvm2 efibootmgr policycoreutils shadow-utils \
   rpm-ostree bootupd openssl \
@@ -22,11 +24,16 @@ test -n "$KVER"
 # Wi-Fi, Bluetooth and controller drivers are in kernel-modules. Without them nothing shows on screen.
 dnf install -y "kernel-modules-${KVER}" "kernel-modules-extra-${KVER}" || dnf install -y kernel-modules kernel-modules-extra
 ls "/usr/lib/modules/${KVER}/kernel/drivers/gpu/drm"
-# No boot splash on the installer USB: start-up waited for it to close, and the installer screen never came.
-dnf remove -y plymouth || true
+# The Hearth splash (Hearth OS's own default, the flame on slate) while the USB starts. Earlier the installer screen
+# waited for the splash to close and never came: now the installer's own service tells it to go (plymouth quit,
+# before cage starts, below), so nothing waits for it. If it can't show, the start goes on in text.
+mkdir -p /usr/share/plymouth/themes
+cp -a /plymouth-themes/hearth /usr/share/plymouth/themes/
+plymouth-set-default-theme hearth
 DRACUT_NO_XATTR=1 dracut -v --force --zstd --reproducible --no-hostonly \
-  --add "dmsquash-live dmsquash-live-autooverlay" --omit "plymouth" \
+  --add "dmsquash-live dmsquash-live-autooverlay plymouth" \
   "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
+lsinitrd "/usr/lib/modules/${KVER}/initramfs.img" | grep -q 'plymouth/themes/hearth/hearth.script' || echo "warning: no Hearth splash in the USB's initramfs"
 # Titanoboa wants the EFI boot files under /boot/efi. Fedora's base image keeps them in a different place than
 # Bazzite (bootupd's copy, or /usr/lib/efi), so take whichever is there.
 dnf install -y shim-x64 grub2-efi-x64
@@ -66,6 +73,8 @@ rm -f /etc/localtime; systemd-firstboot --timezone UTC || true
 # ---------------------------------------------------------------- the Hearth app and the installer
 # The Rust app (hosts/hearth-rs) is one file, "hearth", drawn by the system's WebKit.
 if [ -x /usr/lib/nimbus/hearth ]; then mv /usr/lib/nimbus/hearth /usr/lib/nimbus/nimbus; dnf install -y webkit2gtk4.1; fi
+# The Electron app (hosts/linux) needs Chromium's libraries.
+if [ -d /usr/lib/nimbus/resources ]; then dnf install -y nss alsa-lib libXScrnSaver at-spi2-atk cups-libs xorg-x11-server-Xwayland; fi
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 [ -f /usr/lib/nimbus/chrome-sandbox ] && chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox
 install -Dm755 /live/hearth-install /usr/libexec/nimbus/hearth-install
@@ -96,7 +105,8 @@ touch /etc/hearth-installer          # the Hearth app shows only the install scr
 echo "Hearth installer" >/etc/system-release
 
 # The person using it: "liveuser", no password, may do anything (it's an installer USB).
-useradd -m -d /var/home/liveuser -G wheel -c "Hearth installer" liveuser
+# (dialout: the installer may tell CI's virtual PC which screen it shows, on the serial console, only under hearth.ci)
+useradd -m -d /var/home/liveuser -G wheel,dialout -c "Hearth installer" liveuser
 passwd -d liveuser
 # Its home folder is made at every start (on this base image /var isn't carried onto the USB as built).
 mkdir -p /usr/lib/tmpfiles.d
@@ -147,9 +157,11 @@ chmod 755 /usr/libexec/hearth-installer-cage
 cat >/etc/systemd/system/hearth-installer.service <<'UNIT'
 [Unit]
 Description=Hearth installer (the Hearth app, full screen)
-After=systemd-user-sessions.service NetworkManager.service bluetooth.service
-Conflicts=getty@tty1.service
+After=systemd-user-sessions.service NetworkManager.service bluetooth.service plymouth-start.service
+Conflicts=getty@tty1.service plymouth-quit.service
 [Service]
+# The splash goes as the installer comes (as display managers do); never waited on, never fatal.
+ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
 User=liveuser
 WorkingDirectory=/var/home/liveuser
 Environment=HOME=/var/home/liveuser

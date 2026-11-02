@@ -460,9 +460,9 @@ jobs:
     # The KDE apps never hold the image back (if they failed, it's made without them).
     if: ${{ !cancelled() && needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 240
     permissions:
-      contents: read
+      contents: write   # the boot look screenshots (ci/boot-look)
       packages: write
     env:
       PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
@@ -712,6 +712,14 @@ jobs:
           check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && command -v gnome-keyring-daemon && python3 -c 'import evdev'"
           check "WebKitGTK 4.1, PipeWire, Bluetooth, NetworkManager, Flatpak" "ls /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0 && command -v pipewire && command -v bluetoothctl && command -v nmcli && command -v flatpak"
           check "the boot splash is Hearth's" "plymouth-set-default-theme | grep -qx hearth"
+          # ---- Hearth OS 1.1's boot look (GRUB theme, splash presets, Steam Game Mode startup animations)
+          check "the splash presets are in the image (hearth, hearth-steam, hearth-minimal)" "for t in hearth hearth-steam hearth-minimal; do test -f /usr/share/plymouth/themes/\$t/\$t.plymouth && test -f /usr/share/plymouth/themes/\$t/\$t.script || exit 1; done"
+          check "every splash preset is in the initramfs (switching never rebuilds it)" "f=\$(ls /usr/lib/modules/*/initramfs.img | head -1); lsinitrd \$f 2>/dev/null | grep -q usr/share/plymouth/themes/hearth-steam/hearth-steam.script && lsinitrd \$f 2>/dev/null | grep -q usr/share/plymouth/themes/hearth-minimal/hearth-minimal.script"
+          check "the GRUB theme and its fonts (Hearth Regular/Bold, made from Inter)" "test -f /usr/share/hearth/grub-theme/theme.txt && test -f /usr/share/hearth/grub-theme/background.png && grep -aq 'Hearth Regular 22' /usr/share/hearth/grub-theme/hearth-regular-22.pf2 && grep -aq 'Hearth Bold 28' /usr/share/hearth/grub-theme/hearth-bold-28.pf2"
+          check "hearth-bls-grub writes the theme only behind its checks (sourced after the entries)" "grep -q 'hearth-theme.cfg' /usr/libexec/nimbus/hearth-bls-grub && grep -q 'insmod gfxmenu' /usr/libexec/nimbus/hearth-bls-grub"
+          check "Settings › Boot & startup and its helper (hearth-boot-look; hearth-admin boot-splash)" "test -x /usr/libexec/nimbus/hearth-boot-look && test -f /usr/share/nimbus/desktop/shell/SetBoot.qml && grep -q 'boot-splash' /usr/libexec/nimbus/hearth-admin && python3 /usr/libexec/nimbus/hearth-boot-look status | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d[\"movie\"][\"list\"])==4 and len(d[\"splash\"][\"presets\"])==3'"
+          check "the startup animations (4, for 16:9 and 16:10, VP9 WebM)" "test \$(ls /usr/share/hearth/startup-movies/hearth-*-16x9.webm /usr/share/hearth/startup-movies/hearth-*-16x10.webm | wc -l) -eq 8"
+          check "Steam Game Mode puts the chosen startup animation in place (nimbus-session)" "grep -q 'movie-apply' /usr/bin/nimbus-session"
           echo "--- Handheld Daemon"
           check "Handheld Daemon is installed and its Python modules load" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service && /usr/lib/hhd/bin/python3 -c 'import hhd, adjustor, evdev, yaml, rich, Xlib, serial, pyroute2, gi, dbus'"
           check "Handheld Daemon starts at boot" "test -L /etc/systemd/system/multi-user.target.wants/hhd.service"
@@ -875,6 +883,21 @@ jobs:
       - name: Writable system (hearth-unlock)
         timeout-minutes: 30
         run: bash .github/scripts/hearth-unlock-check.sh localhost/hearth-peppermint:latest image
+
+      # REQUIRED: Hearth OS 1.1's boot look in a virtual PC: the image installed by Hearth's installer engine, then
+      # started with the GRUB theme, each splash preset, a missing preset, a missing and a broken theme (each must
+      # reach the login prompt), and with Secure Boot (report only). Screenshots: the ci/boot-look branch.
+      - name: Boot look in a virtual PC (GRUB theme, splash presets, broken-theme fallbacks)
+        timeout-minutes: 75
+        run: bash .github/scripts/boot-look-vm.sh localhost/hearth-peppermint:latest "$PWD/boot-look"
+      - name: Publish the boot look screenshots (ci/boot-look)
+        if: always()
+        run: |
+          [ -d boot-look ] || exit 0
+          mkdir -p /tmp/bl-pub && cp -r boot-look/. /tmp/bl-pub/ && cd /tmp/bl-pub && git init -q && git checkout -q -b bl
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Boot look ($GITHUB_RUN_ID)" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/boot-look || true
 
       - name: Check the Qt renderer in the image
         continue-on-error: true
