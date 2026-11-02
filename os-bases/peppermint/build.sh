@@ -313,15 +313,16 @@ if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/c
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
-# ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
-# copied into Decky's plugins folder when you install Decky from Settings › System (hearth-admin decky-install). No
-# service is enabled here and nothing runs at boot. Not in this build: skipped with a warning.
-if [ -f /ctx/nimbus-app/decky-hearth/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth/dist/index.js ]; then
-  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth && cp -a /ctx/nimbus-app/decky-hearth /usr/share/hearth/decky-hearth \
-    && chmod -R a+rX /usr/share/hearth/decky-hearth && echo "Hearth Decky plugin added" \
-    || { echo "warning: the Hearth Decky plugin didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth; }
+# ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin that keeps Hearth's non-Steam games
+# in Steam's library. Only files, copied into Decky's plugins folder when you install Decky from Settings › System
+# (hearth-admin decky-install) and refreshed when Steam Game Mode starts. No service is enabled here and nothing runs at
+# boot. The older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now. Not in this build: skipped.
+if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-sync/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-sync && cp -a /ctx/nimbus-app/decky-hearth-sync /usr/share/hearth/decky-hearth-sync \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth-sync && echo "Hearth Sync (Decky plugin) added" \
+    || { echo "warning: Hearth Sync didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-sync; }
 else
-  echo "warning: the Hearth Decky plugin isn't in this build; Steam Game Mode goes without it"
+  echo "warning: Hearth Sync isn't in this build; Steam Game Mode goes without it"
 fi
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
@@ -1327,6 +1328,15 @@ else
   echo "warning: couldn't install Faugus Launcher from ${FAUGUS_DEB:-$FAUGUS_API}; Battle.net uses Hearth's own setup instead"
 fi
 rm -f /tmp/faugus-launcher_all.deb
+
+# ------------------------------------------------------------------ Minigalaxy (GOG)
+# Minigalaxy (github.com/sharkwouter/minigalaxy, GPL), the simple open-source GOG client, from Debian's own repositories.
+# Hearth Sync (docs/HEARTH-SYNC.md) adds the games it installs to Steam's library. Optional: skipped with a warning.
+if have_pkg minigalaxy && "${APT[@]}" minigalaxy; then
+  echo "Minigalaxy installed"
+else
+  echo "warning: couldn't install Minigalaxy from Debian's repositories; Hearth works without it"
+fi
 
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
 # Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one

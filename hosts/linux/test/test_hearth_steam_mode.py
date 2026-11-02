@@ -689,9 +689,9 @@ class DeckyHelper(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def ship_plugin(self):
-        d = os.path.join(self.root, 'usr/share/hearth/decky-hearth')
+        d = os.path.join(self.root, 'usr/share/hearth/decky-hearth-sync')
         os.makedirs(os.path.join(d, 'dist'))
-        open(os.path.join(d, 'plugin.json'), 'w').write('{"name": "Hearth"}')
+        open(os.path.join(d, 'plugin.json'), 'w').write('{"name": "Hearth Sync", "author": "Dragongamer9"}')
         open(os.path.join(d, 'dist', 'index.js'), 'w').write('// built')
 
     def test_service_never_starts_at_boot_and_keeps_its_file(self):
@@ -725,13 +725,13 @@ class DeckyHelper(unittest.TestCase):
         self.assertTrue(os.access(binary, os.X_OK))
         unit = open(os.path.join(self.root, 'etc/systemd/system/hearth-decky.service')).read()
         self.assertIn('ExecStart=' + binary, unit)
-        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth/plugin.json')))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/plugin.json')))
         cef = os.path.join(self.home, '.steam/steam/.cef-enable-remote-debugging')
         self.assertTrue(os.path.isfile(cef))
         self.m.remove(self.user)
         self.assertFalse(os.path.exists(binary))
         self.assertFalse(os.path.exists(os.path.join(self.root, 'etc/systemd/system/hearth-decky.service')))
-        self.assertFalse(os.path.exists(os.path.join(self.home, 'homebrew/plugins/decky-hearth')))
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync')))
         self.assertFalse(os.path.exists(cef), 'the CEF debugging file Hearth made is taken away again')
 
     def test_start_brings_the_images_new_plugin(self):
@@ -741,10 +741,56 @@ class DeckyHelper(unittest.TestCase):
             self.m.unit_text(self.home, 'x', '/var/lib/hearth-decky/PluginLoader'))
         self.m.copy_plugin(self.home, owner_root=False)
         self.assertNotIn('plugin', self.m.start_stop('start'), 'the same plugin: left as it is')
-        open(os.path.join(self.root, 'usr/share/hearth/decky-hearth/dist/index.js'), 'w').write('// new version')
+        open(os.path.join(self.root, 'usr/share/hearth/decky-hearth-sync/dist/index.js'), 'w').write('// new version')
         self.assertEqual(self.m.start_stop('start')['plugin'], 'updated')
-        self.assertEqual(open(os.path.join(self.home, 'homebrew/plugins/decky-hearth/dist/index.js')).read(), '// new version')
+        self.assertEqual(open(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/dist/index.js')).read(), '// new version')
         self.assertNotIn('plugin', self.m.start_stop('stop'))
+
+    def old_plugin(self, meta='{"name": "Hearth", "author": "Dragongamer9"}', folder='decky-hearth'):
+        d = os.path.join(self.home, 'homebrew/plugins', folder)
+        os.makedirs(os.path.join(d, 'dist'))
+        open(os.path.join(d, 'plugin.json'), 'w').write(meta)
+        return d
+
+    def test_hearth_sync_replaces_the_old_hearth_plugin_hearth_put_there(self):
+        self.ship_plugin()
+        old = self.old_plugin()
+        r = self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+        self.assertTrue(r['plugin'])
+        self.assertTrue(r['oldPluginRemoved'])
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/dist/index.js')))
+
+    def test_start_takes_the_old_plugin_away_and_adds_hearth_sync(self):
+        # An install from before Hearth Sync: Decky with the old Hearth plugin only.
+        self.ship_plugin()
+        os.makedirs(os.path.join(self.root, 'etc/systemd/system'))
+        open(os.path.join(self.root, 'etc/systemd/system/hearth-decky.service'), 'w').write(
+            self.m.unit_text(self.home, 'x', '/var/lib/hearth-decky/PluginLoader'))
+        old = self.old_plugin()
+        out = self.m.start_stop('start')
+        self.assertEqual(out['plugin'], 'updated')
+        self.assertEqual(out['oldPlugin'], 'removed')
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/plugin.json')))
+        self.assertNotIn('oldPlugin', self.m.start_stop('start'), 'nothing left to remove')
+
+    def test_a_plugin_that_isnt_hearths_is_never_removed(self):
+        self.ship_plugin()
+        for meta in ('{"name": "Some Store Plugin", "author": "someone"}', '{"name": "Hearth", "author": "someone else"}', 'not json'):
+            d = self.old_plugin(meta)
+            self.assertFalse(self.m.old_plugin_ours(self.home))
+            self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+            self.assertTrue(os.path.isdir(d), meta)
+            self.m.remove(self.user)
+            self.assertTrue(os.path.isdir(d), meta)
+            shutil.rmtree(d)
+        # A link named like it (pointing at someone's own folder) is left alone too.
+        real = self.old_plugin(folder='mine')
+        os.symlink(real, os.path.join(self.home, 'homebrew/plugins/decky-hearth'))
+        self.assertFalse(self.m.old_plugin_ours(self.home))
+        self.assertFalse(self.m.remove_old_plugin(self.home))
+        self.assertTrue(os.path.isdir(real))
 
     def test_a_cef_file_you_had_stays_on_remove(self):
         cef = os.path.join(self.home, '.steam/steam/.cef-enable-remote-debugging')
