@@ -159,7 +159,7 @@ INDEX = f'''
   <a href="install.html"><b>Installing</b><span>Downloads, making the USB stick, installing next to Windows or on its own.</span></a>
   <a href="updates.html"><b>Updates and editions</b><span>How updates work, going back to the last version, switching edition.</span></a>
   <a href="using.html"><b>Using Hearth</b><span>Game Mode, the desktop (Mantel), the keyboard, the power button, sending logs.</span></a>
-  <a href="steam.html"><b>Steam Game Mode</b><span>Hearth built into Steam's own Game Mode, and Hearth's Game Mode as the fallback.</span></a>
+  <a href="steam.html"><b>Steam Game Mode</b><span>Steam's own Game Mode, Hearth Sync for your other games, and Desktop Mode as the fallback.</span></a>
   <a href="troubleshooting.html"><b>Troubleshooting</b><span>Fixes for known problems, how to get unstuck, and how to tell us.</span></a>
   <a href="requests.html"><b>Requests</b><span>Ask for a feature, a change, device support or a new edition.</span></a>
 </div>
@@ -238,7 +238,7 @@ If an install fails on your hardware, <a href="troubleshooting.html#logs">send t
 
 {h2('first', 'The first start')}
 <ul>
-<li>Hearth starts in Game Mode. Sign in to Steam and your other stores from <b>Settings › Games › Game stores &amp; accounts</b>.</li>
+<li>Hearth starts in Steam Game Mode: sign in to Steam on its own screen. Epic, GOG and Xbox sign in from Desktop Mode's <b>Settings › Games &amp; stores</b>.</li>
 <li class="ed" data-ed="anatase">Steam installs itself (from Flathub) the first time the device is online, so after an offline install it appears a few minutes after you connect.</li>
 <li class="ed" data-ed="ubuntu cachyos peppermint">Steam is already installed (from the edition's own packages).</li>
 <li>An installed system starts at the version the ISO was made with, and <a href="updates.html">updates itself</a> to the newest one once it's online.</li>
@@ -255,10 +255,10 @@ From the Bazzite-based Hearth OS, use <b>Settings › Updates › Move to a new 
 UPDATES = f'''
 {h2('how', 'How updates work')}
 <ul>
-<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › System › Updates › Check automatically</b>).</li>
+<li>Hearth checks for updates when it starts and every 6 hours (<b>Settings › Updates</b> in Desktop Mode).</li>
 <li>An update downloads in the background while you play. It's used <b>the next time you restart</b>.</li>
 <li>The whole system is replaced in one piece, so an update can't half-install. The version before it stays on the drive.</li>
-<li>To update now: <b>Settings › System › Updates › Check for updates</b>, then restart when it says it's ready.</li>
+<li>To update now: <b>Settings › Updates › Look for updates</b>, then restart when it says it's ready.</li>
 </ul>
 <p>From a terminal in Desktop Mode, the same update:</p>
 {cmd('update-now', 'pkexec /usr/libexec/nimbus/hearth-admin update')}
@@ -266,7 +266,7 @@ UPDATES = f'''
 {h2('rollback', 'Going back to the last version')}
 <p>If a new version has a problem, go back to the one before it.</p>
 <h3>From Settings</h3>
-<p><b>Settings › System › Updates › Go back to</b> (the version before) makes it the one that starts next, then restart.
+<p><b>Settings › Updates › Go back to</b> (the version before) makes it the one that starts next, then restart.
 Changed your mind before restarting? The same place offers <b>Stay on</b> the version you have. It's there on the Hearth OS
 images (Anatase) while the older version is still kept, and not while a new update waits for a restart.</p>
 <h3>From the boot menu</h3>
@@ -303,37 +303,20 @@ second with each update after it (1.1, 1.2 … 1.10). Settings › About shows t
 # ------------------------------------------------------------------ Using Hearth
 USING = f'''
 {h2('modes', 'Game Mode and Desktop Mode')}
-<p><b>Game Mode</b> is the console-style screen Hearth starts in. <b>Desktop Mode</b> (Mantel) is a full desktop with windows,
-a file manager and a terminal.</p>
+<p><b>Game Mode</b> is Steam's own Game Mode, the console-style screen Hearth starts in (like SteamOS). <b>Desktop Mode</b>
+(Mantel) is a full desktop with windows, a file manager, a terminal and Hearth's Settings.</p>
 <ul>
-<li>To the desktop: <b>Power › Switch to desktop</b> in Game Mode.</li>
-<li>Back to Game Mode: the <b>Game Mode</b> button at the bottom right of the desktop.</li>
-<li><b>Settings › You › Sign-in › Start in</b> picks which one you see after signing in.</li>
+<li>To the desktop: Steam's <b>Power › Switch to Desktop</b>.</li>
+<li>Back to Game Mode: the <b>Game Mode</b> button on the desktop's taskbar, or the power menu.</li>
+<li><b>Settings › Sign-in › Start in</b> picks which one you see after signing in.</li>
+<li>If Steam's Game Mode can't start, Desktop Mode opens and says why, with <b>Try Steam Game Mode again</b>.</li>
 </ul>
-<p>Steam's own Game Mode, with Hearth built in, is the other way to play: see <a href="steam.html">Steam Game Mode</a>.</p>
+<p>More about Game Mode: <a href="steam.html">Steam Game Mode</a>.</p>
 
-{h2('controller', 'Controller')}
-<div class="tbl"><table>
-<tr><th>Button</th><th>In Game Mode</th></tr>
-<tr><td>A / B</td><td>Select / back</td></tr>
-<tr><td>Y</td><td>Search</td></tr>
-<tr><td>Menu (☰)</td><td>The dock (main menu); B closes it</td></tr>
-<tr><td>View (⧉)</td><td>Quick Access: volume, brightness, power, Wi-Fi</td></tr>
-<tr><td>Xbox / Guide</td><td>Over a game: the overlay (back to Hearth, close the game, settings)</td></tr>
-<tr><td>View + Menu together</td><td>Controller mouse on or off (for launchers and installers a controller can't drive)</td></tr>
-</table></div>
-<p>The controller mouse: right stick moves the pointer, A or RT clicks, X or LT right-clicks, left stick scrolls, B is Esc.</p>
-
-{h2('menu', 'The dock and Settings')}
-<p>Menu (☰) opens the <b>dock</b> along the bottom: Home, Library, Store, Friends, Downloads, Hearth Link, then Search,
-Settings, Power and your profile. Left and right move along it; the item you're on shows a card above it (who's online,
-the download queue with <b>Pause all</b>, your devices...), and up goes into the card's buttons. While you browse, a small
-copy sits at the bottom edge for the mouse. Over a game it shows the game instead: <b>Resume</b>, <b>Quick Access</b>,
-<b>Invite a friend</b>, <b>Exit game</b>, a screenshot, recording and performance.</p>
-<p>Prefer the old menu? <b>Settings › You › Appearance › Menu style › Side menu (classic)</b>.</p>
-<p><b>Settings</b> has six groups along the top (You, Connections, Display &amp; sound, Controls &amp; power, Games, System), each
-with a summary on the left and its pages on the right. Inside a group, LB and RB move between its pages and B goes back.
-<b>Search</b> (Y, or the search button in Settings) finds settings too: type "refresh" to get to the refresh rate.</p>
+{h2('menu', 'Settings')}
+<p>Desktop Mode's <b>Settings</b> (the taskbar's Hearth menu, Quick Access, or Super+I) has every Hearth setting: Wi-Fi,
+Bluetooth, Hearth Link, Remote play, sound, display, power, controllers, Games &amp; stores, Storage, Steam Game Mode,
+updates and more. Up and Down pick a page, A or Right go into it, B comes back. Steam's own settings stay in Steam.</p>
 
 {h2('keyboard', 'The on-screen keyboard')}
 <p>Laid out like SteamOS's, at the bottom of the screen. With a controller:</p>
@@ -350,19 +333,19 @@ with a summary on the left and its pages on the right. Inside a group, LB and RB
 <p>The ← and → keys move the text cursor. A USB or Bluetooth keyboard works too.</p>
 
 {h2('power', 'The power button')}
-<p><b>Settings › Controls &amp; power › Power &amp; sleep › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
+<p><b>Settings › Power › Power button</b> sets what a quick <b>Press</b> and a <b>Hold</b> do (sleep, the power menu, turn off).
 Holding the button for several seconds always turns the device off.</p>
 
 {h2('display', 'Display and performance')}
 <ul>
-<li><b>Settings › Display &amp; sound › Display › Renderer</b>: on Nvidia graphics Hearth uses Electron (Chromium) to draw Game Mode, which is much smoother there. It's chosen automatically.</li>
-<li><b>Settings › Controls &amp; power › Power &amp; sleep</b>: power mode and the power limit (TDP) on handhelds.</li>
+<li><b>Settings › Display</b>: resolution, refresh rate, scale and brightness.</li>
+<li><b>Settings › Power</b>: power mode and the power limit (TDP) on handhelds. In Game Mode, Steam's Quick Access has its own.</li>
 </ul>
 
-{h2('profiles', 'Profiles and stores')}
+{h2('profiles', 'Accounts and stores')}
 <ul>
-<li>Each Hearth profile can sign in to its own Steam account. With more than one profile, each sees its own Steam games.</li>
-<li>Stores are signed in to from <b>Settings › Games › Game stores &amp; accounts</b>. Beacon (the Battle for Middle-earth launcher) is built in.</li>
+<li>Each person gets their own account (<b>Settings › Users</b>), with their own Steam account and games.</li>
+<li>Epic, GOG and Xbox sign in from <b>Settings › Games &amp; stores</b>; Hearth Sync puts those games in Steam's library. Beacon (the Battle for Middle-earth launcher) is built in.</li>
 </ul>
 
 {h2('apps', "Hearth's own apps")}
@@ -390,7 +373,7 @@ Holding the button for several seconds always turns the device off.</p>
 system and stays through Hearth OS updates. Sign in with your Claude account in the browser when it asks.</p>
 <ul>
 <li><b>Claude Desktop</b> (the app: chat, Cowork and Claude Code sessions): <b>Get Claude</b> in Desktop Mode's app menu, or
-<b>Hearth Settings › Claude</b>, or in Game Mode <b>Settings › System › Device › Claude</b>. Hearth downloads Anthropic's own package from
+<b>Hearth Settings › Claude</b>. Hearth downloads Anthropic's own package from
 downloads.claude.ai, checks it against Anthropic's signing key, installs it and opens it.</li>
 <li><b>Updates:</b> Anthropic's Linux app doesn't update itself, so Hearth checks for a newer one every day and installs it
 (if Claude is open, the next time it's closed). <b>Check for an update</b> on the same page does it now.</li>
@@ -406,7 +389,7 @@ Removing keeps your chats (they're in your Claude account) and settings.</p>
 {only('peppermint', '<div class="note"><p>On Debian you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
 
 {h2('logs', 'Sending logs')}
-<p>When something goes wrong, <b>Settings › System › Help &amp; logs › Send logs to the developer</b>. You get a short code (like
+<p>When something goes wrong, <b>Settings › About › Send logs to the developer</b>. You get a short code (like
 <code>ABCD-EFGH-JK</code>): share it when you report the problem. Logs are kept 14 days, personal details are taken out
 before they're sent, and only someone with the code can read them.</p>
 '''
@@ -486,8 +469,7 @@ for Moonlight's 4-digit PIN.</li>
 many play and how the screen is shared, then <b>Play split-screen</b> or <b>Add to Steam library</b>. Either way it becomes
 one Steam shortcut, so Steam shows it running and <b>Exit game</b> closes everyone's copy.</p>
 <p><b>Multi-seat</b>: with multi-seat set up, player 1 can play in Steam's Game Mode while the other players keep their own
-Hearth Game Mode, each on their own account, screen and controllers. Quick Access › Hearth Players › Seats starts and stops
-players and hands out controllers. Setting multi-seat up stays in Hearth's Game Mode.</p>
+Hearth Game Mode, each on their own account, screen and controllers. Multi-seat and couch co-op are hidden for now.</p>
 
 {h2('your-games', 'Your Hearth games in Steam')}
 <p>Quick Access › Hearth › <b>Sync to Steam library</b> adds your Epic, GOG, Battle.net, Xbox PC, Beacon, emulator and added games
@@ -496,33 +478,25 @@ and counts the play time. <b>Remove Hearth's shortcuts</b> takes them out again.
 
 {h2('try', 'How to try it')}
 <ol>
-<li>Open <b>Settings › System › Steam Game Mode (Experimental)</b>.</li>
+<li>In Desktop Mode, open <b>Settings › Steam Game Mode</b>.</li>
 <li>Optional, once: <b>Decky Loader and the Hearth plugin › Install</b>. It asks for your password. Without it you still get
 Steam's Game Mode, just without Hearth inside it.</li>
 <li><b>Switch to Steam Game Mode</b> (also in the power menu). If Steam isn't signed in yet, sign in on Steam's own screen.</li>
-<li>Want it every time? Turn on <b>Start in Steam Game Mode</b> in the same place. It's off by default and set per device.</li>
 </ol>
 <div class="note warn"><p><b>About Decky:</b> Decky Loader runs as root while Steam Game Mode runs, and it turns on Steam's local
 remote debugging. Only install Decky plugins you trust. <b>Remove</b> in Settings takes it all away again.</p></div>
 
-{h2('hearth-game-mode', 'Hearth\'s Game Mode is still here')}
-<p>Hearth's own Game Mode isn't going away. We'll keep looking after it.</p>
-<ul>
-<li><b>It's the fallback.</b> If Steam's Game Mode can't start (no Steam, safe graphics, or Steam fails in its first 20 seconds),
-Hearth's Game Mode starts instead. If Start in Steam Game Mode keeps failing, it turns itself off.</li>
-<li><b>It's an option for everyone.</b> Prefer it? Keep using it. It's still the default; Steam's Game Mode is something you
-turn on.</li>
-<li><b>It runs the extra seats.</b> In multi-seat, players 2 to 4 always get Hearth's Game Mode.</li>
-<li><b>Some things are only there</b>, for now: Hearth's Settings, editing Hearth Input layouts, favourites and collections,
-parental controls, per-game power settings, chats in Hearth Friends, and setting up couch co-op and multi-seat.</li>
-</ul>
+{h2('hearth-game-mode', 'Hearth\'s old Game Mode')}
+<p>Hearth's own full-screen Game Mode is archived. It still runs Hearth OS's first-time setup once after installing, and it's
+the very last fallback; you won't see it anywhere else. Everything you set there is now in Desktop Mode's Settings or in
+an app of its own (Mods, Saves, Controller Lab, Friends, Theater, Hearth Link...). Developers can bring it back with
+<code>HEARTH_LEGACY_GAME_MODE=1</code>.</p>
 
-{h2('back', 'Getting back to Hearth\'s Game Mode')}
+{h2('back', 'If Steam\'s Game Mode won\'t start')}
 <p>All of these work with just a controller:</p>
 <ul>
-<li>Quick Access › Hearth › <b>Switch to Hearth Game Mode</b>.</li>
-<li>Steam's <b>Power › Switch to Desktop</b>, then <b>Return to Game Mode</b>.</li>
-<li>Hold <b>B</b> or <b>Guide</b> while the device starts: Steam's Game Mode is skipped that time.</li>
+<li>Desktop Mode opens by itself and says why, with <b>Try Steam Game Mode again</b>.</li>
+<li>Hold <b>B</b> or <b>Guide</b> while the device starts: it starts in Desktop Mode that time.</li>
 <li><b>Hearth Recovery</b> (hold Volume Down while it starts).</li>
 </ul>
 <p>Switching never touches the boot menu or the login screen.</p>
@@ -531,10 +505,10 @@ parental controls, per-game power settings, chats in Hearth Friends, and setting
 # ------------------------------------------------------------------ Troubleshooting
 TROUBLE = f'''
 <div class="note"><p>Each fix says which version it's for. Most known problems are fixed by updating:
-<b>Settings › System › Updates › Check for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
+<b>Settings › Updates › Look for updates</b>. Under every command, tell us whether it worked: that's how we know which fixes need work.</p></div>
 
 {h2('logs', 'First: send a log')}
-<p><b>Settings › System › Help &amp; logs › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
+<p><b>Settings › About › Send logs to the developer</b>, then share the code. The log shows what Hearth saw at the moment
 it went wrong, so send it right after the problem happens.</p>
 
 {h2('terminal', 'Getting to a terminal')}
@@ -646,8 +620,8 @@ signed in on it: sign in to Steam on that profile.</p>
 {h2('install-failed', 'Installing fails')}
 <ul>
 <li>Check the ISO's checksum (see <a href="install.html#download">Downloads</a>) and write the <b>offline USB</b> again: a damaged download is the most common cause.</li>
-<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › System › Updates</b> and update.</li>
-<li>From the live USB, <b>Settings › System › Help &amp; logs › Send logs to the developer</b> includes the installer's log.</li>
+<li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › Updates</b> and update.</li>
+<li>From the live USB, <b>Settings › About › Send logs to the developer</b> includes the installer's log.</li>
 </ul>
 
 {h2('ask', 'Still stuck? Tell us')}

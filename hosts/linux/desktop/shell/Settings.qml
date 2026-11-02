@@ -20,10 +20,11 @@ Singleton {
     property string look: "steam"        // Mantel's look: "hearth" (warm) or "steam" (Steam-style blue-slate); Settings › Appearance
     property string mode: "dark"         // "dark" or "light"
     property string accent: ""           // "#rrggbb", or "" for the look's own (Hearth: your profile's accent)
+    property bool countMe: true          // Hearth OS's anonymous player count (hearth-counter reads it); Settings › About › Privacy
     property bool loaded: false
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
-        "screenOffMinutes", "sleepMinutes", "look", "mode", "accent"]
+        "screenOffMinutes", "sleepMinutes", "look", "mode", "accent", "countMe"]
     onNightLightChanged: save("nightLight")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
@@ -36,6 +37,7 @@ Singleton {
     onLookChanged: save("look")
     onModeChanged: save("mode")
     onAccentChanged: save("accent")
+    onCountMeChanged: save("countMe")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

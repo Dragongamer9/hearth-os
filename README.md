@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img src="site/img/game-home.webp" width="840" alt="Hearth's Game Mode home screen">
+  <img src="site/img/desk-classic.webp" width="840" alt="Mantel, Hearth OS's desktop">
 </p>
 
 > **Beta.** Hearth OS and Ember are still being built and aren't ready to be your everyday system yet. Updates come out often and install themselves from Settings › Updates. Keep a backup of anything important.
@@ -34,11 +34,10 @@
 
 | | |
 |---|---|
-| 🎮 **Game Mode** | One library for Steam, Epic, GOG, Xbox Cloud Gaming, emulators and your own games. Install, play and uninstall Epic and GOG games without their launchers. Quick Resume keeps several games paused in memory, the way SteamOS and Xbox do. |
+| 🎮 **Game Mode** | Steam's own Game Mode, like SteamOS. Hearth Sync puts your Epic, GOG, Xbox Cloud Gaming, emulator and own games in Steam's library, with covers. |
 | 🕹️ **Hearth Input** | Play games that have no controller support: per-game controller layouts turn the controller into a keyboard and mouse, with ready-made layouts for shooters, strategy and retro games, gyro aiming and back paddles. *(Beta Experimental)* |
 | 🖥️ **Mantel** | A real desktop, still in reach of your thumbs: pinned apps, window snapping, Alt+Tab, virtual desktops, desktop icons, Bazaar for Flathub apps, clipboard history and full settings. |
 | ⚡ **Handhelds** | Built on Debian with Handheld Daemon: every controller, gyro, power, fan and light setting inside Hearth, and Quick Access over games for power, frame rate and more. ROG Ally, Legion Go, Steam Deck and most desktops and laptops. |
-| 🛋️ **Play together** | Couch Co-op splits one screen for 2–4 players, even in games without split-screen; Multi-seat gives each screen its own Game Mode. *(Beta Experimental)* |
 | 🏰 **Beacon** | [Beacon](https://github.com/Dragongamer9/beacon), the launcher for Battle for Middle-earth, Age of the Ring, LOTR: Conquest and other classics, built right into the library with its mods. |
 | 🔄 **Looks after itself** | An image-based system: the whole OS updates as one piece in the background, and a bad update is undone by picking the previous entry at start. |
 

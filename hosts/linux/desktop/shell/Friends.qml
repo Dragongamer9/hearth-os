@@ -442,7 +442,7 @@ Scope {
                         Text {
                             anchors.centerIn: parent; width: parent.width - 30; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
                             visible: fr.rows.length === 0
-                            text: "No friends yet. Add them from Game Mode's Friends screen, or share your address: " + (fr.st ? fr.st.userId : "")
+                            text: "No friends yet. Share your address with them, and their friend request shows up here: " + (fr.st ? fr.st.userId : "")
                             color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                         }
                     }

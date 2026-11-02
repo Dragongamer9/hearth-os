@@ -62,8 +62,11 @@ PanelWindow {
     color: "#b0080b10"
 
     // Every app with a .desktop file, A–Z, filtered by what you type.
+    // Not the Hearth app itself (nimbus.desktop, "Hearth"): that's the archived Game Mode in a window, hidden everywhere
+    // people look (docs/SETTINGS-MOVE.md); HEARTH_LEGACY_GAME_MODE=1 (the developer switch) shows it again.
+    readonly property bool legacyGame: Quickshell.env("HEARTH_LEGACY_GAME_MODE") === "1"
     readonly property var apps: Array.from(DesktopEntries.applications.values)
-        .filter(a => !a.noDisplay && !root.hiddenIds[a.id] && !/^(qt5ct|qt6ct)$/.test(a.id || ""))
+        .filter(a => !a.noDisplay && !root.hiddenIds[a.id] && !/^(qt5ct|qt6ct)$/.test(a.id || "") && (root.legacyGame || !/^nimbus(\.desktop)?$/.test(a.id || "")))
         .sort((a, b) => a.name.localeCompare(b.name))
     // Hearth's own apps (and Beacon, Xodus Nexus, and Bazaar, the app store Hearth OS picks): never in the folder.
     function ours(a) { return /^(hearth|nimbus|beacon|xodus-nexus$|io\.github\.kolunmi\.Bazaar$)/i.test(a.id || "") || /^Hearth\b/.test(a.name || ""); }

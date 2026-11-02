@@ -854,6 +854,33 @@ chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/op
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
+# Hearth OS's player count (desktop/shell/hearth-counter): the anonymous "I'm here" the Hearth app sent while it ran,
+# 20 seconds after signing in and every 10 minutes, in Steam Game Mode and Desktop Mode alike. Off in Settings › About ›
+# Privacy (countMe in desktop.json). docs/SETTINGS-MOVE.md.
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-counter
+install -d /usr/lib/systemd/user/timers.target.wants
+cat > /usr/lib/systemd/user/hearth-counter.service <<'UNIT'
+[Unit]
+Description=Hearth OS player count (anonymous; off in Settings › About › Privacy)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-counter ping
+TimeoutStartSec=30
+UNIT
+cat > /usr/lib/systemd/user/hearth-counter.timer <<'UNIT'
+[Unit]
+Description=Hearth OS player count, every 10 minutes while you're signed in
+
+[Timer]
+OnActiveSec=20s
+OnUnitActiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+ln -sf ../hearth-counter.timer /usr/lib/systemd/user/timers.target.wants/hearth-counter.timer
 # Hearth Input (controller layouts for games; python3-evdev and the uinput rule are already in the image).
 if [ -f /usr/share/nimbus/desktop/shell/hearth-input ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-input; fi
 chmod 755 /usr/libexec/nimbus/*
@@ -876,6 +903,8 @@ cat > /usr/share/nimbus/image-info.json <<INFO
 {"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
+# The Hearth app itself: the archived Game Mode in a window. Kept for what opens it at one page (Mantel's Settings,
+# store sign-ins, Steam shortcuts of Hearth's games) but hidden from menus (docs/SETTINGS-MOVE.md).
 cat > /usr/share/applications/nimbus.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth
@@ -884,6 +913,7 @@ Exec=/usr/bin/nimbus --windowed
 Icon=hearth
 Type=Application
 Categories=Game;
+NoDisplay=true
 DESKTOP
 
 # ------------------------------------------------------------------ Hearth Settings and the Hearth look

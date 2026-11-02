@@ -2055,8 +2055,12 @@ fn features() -> Vec<&'static str> {
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a
 /// page of Settings (only the ones listed here; "hhd" is Settings › Controls › Handheld Daemon). Null: the usual start.
+/// Mantel's Settings opens the rest of PAGES in a window for what doesn't have its own app yet (docs/SETTINGS-MOVE.md,
+/// "Interim"): Library sources, Import, Settings › Storage's moves, Hearth Storage's extras, a backup's restore, the
+/// store accounts, the library and downloads (Epic and GOG installs, getting a game from another Hearth) and Recomps.
 pub fn start_page(args: &[String]) -> Value {
-    const PAGES: &[&str] = &["hhd", "settings", "shop"];   // shop: the Hearth Decky plugin's Store link (Steam Game Mode)
+    const PAGES: &[&str] = &["hhd", "settings", "shop",   // shop: the Hearth Decky plugin's Store link (Steam Game Mode)
+        "sources", "import", "diskspace", "storage", "system", "stores", "library", "downloads", "recomps"];
     let mut start = Value::Null;
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
@@ -2241,6 +2245,9 @@ mod tests {
         assert_eq!(a(&["nimbus", "--windowed", "--page", "shop"]), json!("shop"));
         assert_eq!(a(&["nimbus", "--settings", "--page", "hhd"]), json!("hhd"));
         // Pages Hearth doesn't know, or none given: the usual start (or Settings, when asked for too).
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "diskspace"]), json!("diskspace"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page=recomps"]), json!("recomps"));
+        assert_eq!(a(&["nimbus", "--windowed", "--page", "seats"]), Value::Null);
         assert_eq!(a(&["nimbus", "--page", "rm -rf"]), Value::Null);
         assert_eq!(a(&["nimbus", "--page"]), Value::Null);
         assert_eq!(a(&["nimbus", "--page", "nope", "--settings"]), json!("settings"));

@@ -237,8 +237,8 @@ SetPage {
     Text { visible: !page.out; text: "Display settings work in Desktop Mode (wlr-randr)."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
     Text { visible: page.problem !== ""; text: page.problem; color: "#ff9b8f"; wrapMode: Text.Wrap; Layout.fillWidth: true; font.family: Theme.font; font.pixelSize: 14 }
 
-    // Nvidia: how Game Mode's Hearth app draws (the same choice as its Settings › Display). Here too, so a
-    // black Game Mode screen can be fixed from Desktop Mode.
+    // Nvidia: how the Hearth app draws (first-time setup, its windows; the same choice as its Settings › Display), so a
+    // black screen there can be fixed from Desktop Mode.
     property string nvDrawing: "auto"
     readonly property string nvFile: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/nvidia-drawing"
     FileView { id: nvRead; path: page.nvFile; onLoaded: page.nvDrawing = (text().trim() || "auto"); onLoadFailed: page.nvDrawing = "auto" }
@@ -247,7 +247,7 @@ SetPage {
     SetHeader { text: "Nvidia"; visible: page.hasNvidia }
     SetChoice {
         visible: page.hasNvidia
-        title: "How Game Mode draws"; sub: "Fast is smooth on newer drivers. Compatible is slower but works everywhere: pick it if Game Mode shows a black screen. Applies the next time Game Mode starts."
+        title: "How the Hearth app draws"; sub: "Fast is smooth on newer drivers. Compatible is slower but works everywhere: pick it if first-time setup or the Hearth app's window shows a black screen. Steam Game Mode isn't affected."
         options: [{ value: "auto", label: "Automatic" }, { value: "fast", label: "Fast" }, { value: "compatible", label: "Compatible" }]
         current: page.nvDrawing
         onChosen: v => { page.nvDrawing = v; Quickshell.execDetached(["sh", "-c", v === "auto" ? "rm -f \"$1\"" : "mkdir -p \"$(dirname \"$1\")\" && printf %s \"$2\" > \"$1\"", "sh", page.nvFile, v]); }

@@ -95,14 +95,14 @@ SetPage {
             visible: modelData !== "none"
             readonly property bool here: (page.av.desktopFilters || ["none", "invert"]).indexOf(modelData) >= 0
             icon: "palette"; title: page.filterNames[modelData] || modelData
-            sub: (page.filterSubs[modelData] || "") + (here ? "" : ". Game Mode only: Desktop Mode's window manager can't show it yet")
+            sub: (page.filterSubs[modelData] || "") + (here ? "" : ". Not in Desktop Mode yet: its window manager can't show it")
             checked: page.s.filter === modelData
             onToggled: v => page.change({ filter: v ? modelData : "none" }, true)
         }
     }
     Text {
         Layout.fillWidth: true; Layout.leftMargin: 4
-        text: "In Desktop Mode colours are inverted with the screen's colour ramp, so Night light has to be off for it. Every filter works in Game Mode."
+        text: "In Desktop Mode colours are inverted with the screen's colour ramp, so Night light has to be off for it."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
 
@@ -137,15 +137,10 @@ SetPage {
         onToggled: v => page.change({ largePointer: v }, true)
     }
 
-    // ------------------------------------------------ Game Mode
-    SetHeader { text: "In Game Mode" }
-    SetSlider {
-        icon: "pad"; title: "Zoom"
-        value: ((page.s.gameZoom || 1) - 1) / 3
-        step: 0.25 / 3
-        valueText: (page.s.gameZoom || 1) <= 1 ? "Off" : (page.s.gameZoom || 1).toFixed(2).replace(/0$/, "") + "×"
-        onMoved: v => page.change({ gameZoom: Math.round((1 + v * 3) * 4) / 4 })
-    }
+    // ------------------------------------------------ More
+    // (The archived Game Mode's own zoom, gameZoom, isn't offered: Steam Game Mode has its own magnifier in Steam's
+    // Settings › Accessibility. hearth-access still keeps the setting. docs/SETTINGS-MOVE.md.)
+    SetHeader { text: "More" }
     SetRow {
         icon: "kbd"; title: "Emoji and symbols"; sub: "Super+. opens the picker, in any app"; chevron: false
         onActivated: Quickshell.execDetached(["hearth-emoji"])
