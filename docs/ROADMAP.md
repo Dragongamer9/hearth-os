@@ -1,172 +1,33 @@
 # Hearth OS roadmap
 
-Hearth OS is one controller-first UI with two homes: **Hearth** (Linux: an installable OS built on Bazzite, plus
-an app/session for other distros, with **Mantel** as its desktop) and **Ember** (the Windows 11 shell).
-Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
+Hearth OS is a free, Debian-based OS for gaming PCs and handhelds: it starts in **Steam Game Mode**, with **Hearth
+Sync** putting your games from other stores into Steam's library, and **Mantel**, Hearth's own desktop, one press away.
+**Ember** is Hearth on Windows 11. Versions are MAJOR.MINOR with a date (docs/UPDATES.md), and the owner picks every
+number. Work lands on `bughunt` and goes out on `main` when it's tested. What's archived: docs/ARCHIVED.md.
+
+## Next (unreleased)
 
 ## Planned
 
-**Desktop update (after 0.6.57; the owner picks the number)**
-- [x] Desktop selector in Settings (and at sign-in): Hearth Classic (today's labwc + Mantel), Hearth Plasma, later Hearth GNOME; switching keeps your files and settings, the old desktop stays selectable as the fallback (falls back to Hearth Classic by itself when Plasma can't start; see docs/PLASMA.md; needs testing on a device)
-- [ ] Hearth Plasma: KDE Plasma 6 themed one-to-one with today's desktop (every part screenshotted and matched side by side: taskbar/dock, launcher, notifications, quick settings, windows, lock screen); Mantel's best parts (Hearth Link, Hearth Storage, quick settings, launcher) as Plasma widgets
-  - [x] Plasma 6 in both images (minimal set), Hearth global theme, desktop theme, defaults and layout; Hearth Launcher, Quick Access, Hearth Link, Hearth Storage and Game Mode widgets; screenshot CI next to Hearth Classic (docs/PLASMA.md; needs testing on a device)
-  - [x] Full controller control, everything Hearth Classic does (hearth-pad --plasma with a KWin script): pointer, triggers, scrolling, D-pad and A/B in Plasma's launcher, tray, Quick Access, taskbar (View + A) and KDE apps, the Hearth menu (Guide), the keyboard (Guide + X, Y, by itself on KRunner/Konsole and reported text fields), window switching (LB/RB, Overview) and closing (View + B), clipboard history, the Game Mode button; Hearth Files, Terminal, Text, Reader, Capture and Calculator each with Mantel-like controls; checked in CI with a virtual controller (docs/PLASMA.md; needs testing on a device)
-  - [ ] Owner's choice: Plasma keeps Plasma's own look in Hearth's theme instead of copying Mantel. Still different from Mantel: the launcher is a popup above the taskbar, Plasma's lock screen and notifications, a 24-hour clock with the date; Hearth Friends isn't on Plasma's taskbar; text fields in KDE apps open the keyboard by themselves only where KWin reports them (else Y)
-- [x] Hearth Files built from Dolphin: everything Dolphin does plus Hearth's own (hearth:// Hearth Storage places, controller navigation, Hearth look); Hearth Storage as a KIO plugin so every KDE app's file dialogs can open files on the home server (docs/KDE-APPS.md; built and tested in CI on both bases, needs testing on a device)
-- [ ] KDE apps rebuilt as Hearth apps (GPL kept, KDE credited, Hearth names/icons): Hearth Terminal (Konsole), Hearth Text (Kate), document viewer (Okular), Hearth Capture (Spectacle), Hearth Calculator (KCalc); kept as they are: Photos, Contacts, Time, Paint, Office and the other Hearth apps
-  - Done: in both images with Hearth's menu entries, names, icons and colors, the KDE ones the defaults, the old ones kept as "(classic)" (docs/KDE-APPS.md). Not yet: Capture (Spectacle) didn't install on Peppermint in the last image build (Anatase has it); the apps' own window titles and About boxes still say Konsole, Kate, Okular, Spectacle, KCalc (needs each rebuilt the way Dolphin is)
-- [x] Hearth GNOME: GNOME Shell (each base's current release) as the third desktop, its own look in Hearth's colours with a floating bottom bar, Hearth Launcher, Quick Access, Hearth Link, Hearth Storage and Game Mode (Super+G) as in-house Shell extensions, full controller control (hearth-pad's GNOME mode: pointer, GNOME Shell's focus, Hearth menu, Hearth's on-screen keyboard), GNOME's own Files, Console and Text Editor in Hearth's look and controller-driven (one app of each kind per desktop), the same 60 s / crash fallback to Hearth Classic, screenshot and controller CI on both bases (docs/GNOME.md) (needs testing on a device)
-- [x] Hearth COSMIC: System76's COSMIC as another Desktop Mode desktop on Anatase, in Hearth's look (Hearth's colours, ember accent, Fireside, a floating bottom bar like Mantel's), with Hearth's launcher, Quick Access, Hearth Link, Hearth Storage, Hearth menu, on-screen keyboard and Game Mode (Super+G), full controller use (hearth-pad's COSMIC mode, per-app keys for COSMIC Files, Terminal and Edit), and the same fallback to Hearth Classic; not on Peppermint (Debian has no COSMIC packages); about 650 MB more on Anatase (docs/COSMIC.md; needs testing on a device)
-- [ ] Hearth Deepin: not possible for now, neither edition has a Deepin desktop (Fedora retired its Deepin packages, Debian trixie has only a few Deepin apps); shown as "not available on this edition" (docs/DEEPIN.md)
-- [ ] Later: tiling desktops for power users: Hearth niri (scrolling tiling) and a similar one such as Hyprland, with the same Hearth look, controller control and fallback to Hearth Classic
-  - Controller idea: D-pad/left stick moves focus, right stick scrolls the strip, LB/RB workspaces; hold LT for window mode (D-pad moves/swaps, triggers resize through ⅓/½/⅔/full, A full screen, Y float, X into/out of a column, B close); Guide = Hearth menu (new apps open as a column), Guide+X keyboard, radial menu for the rest, niri's overview picked with the stick; ember glow on the focused window, rumble at the strip's ends, a "Tiling" preset in Hearth Input. Sent as `niri msg action …` / `hyprctl dispatch …` from hearth-pad
-- [ ] Later: a bigger Hearth menu (Guide) in every desktop and over games: running apps to switch to, the current game's controls (put aside, screenshot, clip, performance overlay, controller layout, mods on/off), Friends and messages, notifications, media, volume and brightness, Hearth Link devices (Continue on this device), desktop switcher, power, and tiles you can pin and reorder
-- [x] Fix: Steam games freezing when Quick Access opens over them (HHD editions): Handheld Daemon stopped Steam (SIGSTOP) while Quick Access held the controllers and the game froze with it, and Steam stayed stopped for good when HHD's overlay app died meanwhile; Hearth now lets Steam run again at once, holds Steam's virtual controllers instead so the game still gets no Quick Access presses, and lets Steam go after Quick Access closes and whenever HHD's overlay app goes away (needs testing on a device)
+**1.1**
 
-**Input overhaul (Hearth Input; docs/HEARTH-INPUT.md, docs/OSK.md)**
-- [x] Fixes: Sony pads' X and Y swapped on the desktop and in Quick Access; a Bluetooth Xbox controller's Xbox button (KEY_HOMEPAGE) not seen, which also kept a layout's grab with no way to open Quick Access; xpad's d-pad buttons ignored on the desktop; triggers, L3 and R3 not reaching Quick Access (needs testing on a device)
-- [x] Guide + X opens Hearth's on-screen keyboard over any game or app in Game Mode (see-through, the game keeps its focus and gets none of the presses; types through Hearth Input's virtual keyboard for gamescope's layout, xdotool for the rest); B or Guide + X closes it; works whoever holds the controller (Hearth, Hearth Input, InputPlumber) (needs testing on a device)
-- [x] Guide + X in Hearth Classic (Mantel's keyboard) and Hearth Plasma (the same keyboard as a layer-shell window, typing through uinput) (needs testing on a device)
-- [x] Layouts version 2: action sets, layers (hold = mode shift, or toggle), long / double / release presses, chords, turbo and toggle; sticks as d-pad, scroll wheel and flick stick; gyro always, by button with a ratchet, or while touching the right stick, yaw or roll; version 1 files migrated; still only keys, buttons and the mouse (needs testing on a device)
-- [x] The editor with the controller, in Game Mode and in Quick Access over the running game, with an overview and Try it (needs testing on a device)
-- [x] A global layout for games without their own; layouts from your other devices over Hearth Link (pull only, checked again) (needs testing on a device)
-- [ ] Capacitive stick touch for "gyro while touching" (today: while the right stick is moved), and a desktop layout for Hearth Classic's own controller mapping
+- [ ] A new Steam-style USB installer that only installs (the Recovery USB stays the place to repair and go back)
+- [ ] Hearth startup animations, picked in Steam's Startup Movie setting or in Hearth Sync
+- [ ] Boot splash presets, switched safely, with a plain text start as the fallback
+- [ ] A Hearth GRUB theme; the boot menu stays visible as it is today
 
-**After that**
-- [x] Hearth Recomps: Hearth's own store for native PC ports of console games (N64Recomp, Harbour Masters, Xbox 360 recompilations and more: 107 in the catalogue), installed and updated from their GitHub releases, your own copy of the game checked and set up, Library › Recomps with Play (docs/RECOMPS.md; needs testing on a device)
-- [x] Battle.net: one-press setup through Faugus Launcher (official app in Proton), Blizzard games in the Library, Battle.net in the Store (see docs/STORE.md; needs testing on a device)
-- [x] Xodus Nexus integrated like Beacon (preinstalled, Xbox games in the Library, Stores card, controller layout, pinned) (needs testing on a device)
-- [x] Multi-seat: player 1's GOG games on every seat, shared Epic installs, Steam Family games per seat ("In use by …"), shared installs
-- [x] Hearth Storage (NAS on Hearth Link): share drives/folders with paired devices (Hearth Files), game archive with fast copy-back, automatic save/screenshot backups, media streaming, works away from home, optional SMB share (per folder, read-only option, generated sign-in), wake on network (automatic, and a Wake button)
-- [x] Dragonfire look (from the concept art): a darker ember theme for Game Mode and Desktop Mode, fully usable with a controller
-  - Game Mode home: big hero for the last game (Play / Details), Continue Playing, Library, Installed Launchers row, bottom bar (Home, Search, Quick Settings, Hearth, Capture, Overlay, Exit)
-  - Performance rings (CPU, GPU, RAM, FPS) with temperature, watts, controller battery and the power mode
-  - Friends & Party panel (only with real friends lists from the stores)
-  - Updates & Recovery page: update timeline, snapshots before updates, restore, reinstall keeping files (ties into "safety first"); any writable mode keeps the previous version startable, like hearth-unlock
-  - Desktop Mode: Control Center window, monitor/status side cards, now-playing widget
-  - No store-owned covers in screenshots, no macOS-style window buttons in Game Mode
-- [ ] Qt renderer phases 2–4 (see docs/RENDERERS.md; part of phase 2 done: notifications, Wi-Fi/Bluetooth in Quick Access, game settings, achievements and ProtonDB, Library filters)
-- [ ] Discord: "Playing X" status and Discord in Quick Access: built, hidden until the owner puts the Discord application ID in /etc/hearth/discord.conf (`app_id=…`) or builds with HEARTH_DISCORD_APP_ID; needs testing with a real ID
-- [x] Hearth Link ideas: "Continue on this device" (Game Mode), update every device at once (download once shipped in 0.6.57)
-- [x] Ventoy (multi-ISO) mode in the USB maker: Hearth Disks › Make a bootable USB › Several ISOs (pinned upstream Ventoy, checksum-checked; Hearth editions, Recovery, the list, your own ISOs) (needs testing on a real stick)
-- [x] Local AI over Hearth Link (first version: a device's own Ollama/llama-server shared with paired devices; answers come whole, not streamed)
-- [x] Hearth Mods: automatic downloads from more sites for Wabbajack modlists. An Accounts tab (Nexus Mods, LoversLab, MEGA, Google), each signed in by you and with Sign out; MEGA files download on their own (anonymously, or with your MEGA account); LoversLab and Google sign-ins are built and wait for Hearth's own registration with each (docs/MODS.md); everything still not automatic (LoversLab until then, Vector Plexus, manual-download sites, failed files) goes through a guided Hearth Browser flow: Hearth opens each file's page, you press Download, it checks the file against the list and opens the next, "3 of 12 LoversLab files", then the install carries on by itself (needs testing with a real LoversLab account)
-- [ ] Hearth Mod Organizer: Hearth's own Mod Organizer 2-compatible organizer, native in Rust (docs/MODS.md; MO2 credited)
-  - [x] Instances with MO2's layout and files: profiles (modlist.txt, plugins.txt/loadorder.txt, own saves and inis), mods with meta.ini, overwrite (needs testing on a device)
-  - [x] The game's folder never changed: the mods merged by priority without regard to case and laid over the Data folder with fuse-overlayfs while playing, links as the fallback (folder put back byte-identical), what the game writes goes to overwrite, undone after a crash at the next sign-in (needs testing on a device)
-  - [x] Conflicts per mod and per file, .mohidden files; Bethesda plugins (headers, masters, light plugins, missing masters, load order, BSA/BA2 list) for Skyrim SE/AE/LE/VR, Enderal SE, Fallout 4/4 VR/NV/3, Oblivion, Starfield (needs testing on a device)
-  - [x] Installers: plain archives (Data folder found), FOMOD (steps, groups, conditions, chosen with a controller), BAIN basics (needs testing on a device)
-  - [x] Wabbajack lists run natively through it (an MO2 folder imported in place), Windows Mod Organizer 2 kept as the fallback per list; any MO2 folder can be imported (needs testing with a real list)
-  - [x] Play from Game Mode's Library: view mounted, the game or its script extender (SKSE, F4SE...) started with Proton through umu, view taken away when it ends (needs testing on a device)
-  - [x] JSON commands (`hearth-mods --organizer …`) for the Game Mode mod screens, and an Organizer tab in the Desktop Mods app (needs testing on a device)
-  - [ ] LOOT masterlist sorting (today: your order with what the game requires fixed)
-  - [ ] Files for the game's own folder (script extender loaders, ENB: MO2's Root Builder)
-  - [ ] Nexus downloads straight into an instance, mod categories, notes and update checks; FOMOD scripts and BAIN wizards
-- [x] Hearth Mods in Game Mode: mods managed and installed from Game Mode itself with the controller, no separate window. A game's page shows its mods (the Mods card; the Launcher's Mods & saves tab) and its Mods screen has Installed (on/off, load order, uninstall, conflicts, update checks), Nexus Mods (popular, new, search, a mod's files, installing with progress), its Wabbajack modlist with Play, plus Downloads (also in Quick Access), Modlists (gallery, install, the guided "N of M files · Fetch them" flow, Resume) and Accounts; notifications when a download or install finishes or fails and when files need fetching. Profiles, Bethesda plugins and FOMOD installer screens are ready for the Mod Organizer engine (docs/MODS.md; needs testing on a device)
-- [x] New website design: hearthos.fun redone around the Fireside look, with real Hearth screenshots, the desktop choice, both editions, what's new, and a website check in CI (links, images, page weight, screenshots at phone and desktop width)
-- [x] Peppermint writable out of the box, bootc kept: apt and .deb files install anywhere and stay across restarts; what you add with apt comes back by itself after an update; updates, going back, the automatic fallback and Recovery keep working, the previous version keeps its own packages, and a change that stops Hearth from starting gets a safe start without it; lock it again in Settings (Game Mode and Desktop) or `hearth-unlock --lock`; .deb files install on the system instead of the Debian box while unlocked; Anatase stays the immutable edition (needs testing on a device)
-- [x] Hearth Theater lists each site's own shows, movies and videos on its home screen: rows named after the site's sections (Popular, New episodes...) on the Anime/TV/Movies/Other shelves, read inside Theater's own web view with your sign-ins (JSON-LD, Open Graph, RSS/Atom, oEmbed, sitemap, then repeated cards); posters cached, background refresh, title-level Continue and Favorites, per-site Refresh now / hide rows / remove, and Search across all your sites with the on-screen keyboard (docs/THEATER.md) (needs testing on a device)
-- [x] Hearth's own take on Hydra Launcher's features (docs/HYDRA-FEATURES.md): Discover (suggestions from what you play, games you haven't played, free and open-source games), game pages with description, system requirements and how long to beat (IGDB, your own key), achievements from official services (Steam Web API, RetroAchievements: your own keys), Change pictures (SteamGridDB, your own key), Find games in a folder, Downloads › Other downloads (queue, pause/resume, speed limit; web addresses, free and open-source games, itch.io), Friends › Activity (shared only when you turn it on), Theme files, Settings › Games › Integrations. Not built on purpose: download sources/repacks, warez and file hosters, debrid, torrents, crack achievement files (needs testing on a device)
-- [x] Fix: Hearth Theater not loading on Nvidia RTX 50 (WebKitGTK's drawing): Theater's windows now drawn by Hearth's own Chromium (the Electron build Game Mode uses on Nvidia); the viewer's controller pointer is a real mouse (uinput, XTest on X11) so clicks work in every page, frame, player and popup and bot checks/captchas can be passed (plain Chromium user agent, its own kept cookies, no scripts on challenge pages, sign-in/check popups allowed, RT on-screen keyboard); Theater's own log in Send logs (docs/THEATER.md) (needs testing on a device)
-- [ ] Support page/donations: built (Settings › About › Support Hearth OS and the website), hidden until the owner fills in a link in ui/support-links.js and site/support-links.js
-- [x] One app of each kind per desktop: Hearth Classic shows Hearth's classic apps, Hearth Plasma the KDE-based ones, apps with no other of their kind everywhere; each desktop's own default apps; one table for GNOME, COSMIC and Deepin to register their apps in (docs/APP-KINDS.md) (needs testing on a device)
+**Later**
 
-## Done
-
-- Game Mode in gamescope, Mantel desktop (labwc + Quickshell) with its own settings app, switching between them
-- Hearth OS images for AMD/Intel (`hearth`) and Nvidia (`hearth-nvidia`), updates that roll back, live ISOs
-- Library for Steam, Epic, GOG, Xbox Cloud and your own games; downloads page; in-game overlay; art kept offline
-- Power modes and power limit (TDP), controller remapping, volume/power buttons, Aloha Browser install
-- Website (GitHub Pages), releases that hide older ones
-
-## 0.0.18 (released)
-
-- [x] Game Mode ↔ Desktop switch can't freeze
-- [x] Detailed system update progress (download speed, time left, install and app steps)
-- [x] Ember Desktop Mode: the Windows desktop and back (shortcut, tray, Ctrl+Alt+G, Xbox button), start-in setting
-- [x] Import games and files: from Windows, SteamOS / Steam Deck and other Linux, other drives and SD cards
-      (Steam, Epic, GOG, Heroic, Lutris, Proton saves, personal files; copy or move)
-- [ ] Fixes from 0.0.17 testing
-
-## 0.0.19 (released)
-
-- [x] Remove the old system: erase other systems' partitions on Hearth's drive, grow Hearth into the space
-- [x] Live USB: Install next to Windows (checks, shrinks Windows, opens the installer with Use free space)
-- [x] Ember: Switch to Hearth OS (make room on C:, write the installer USB, restart into it)
-- [x] Mantel for Ember: Hearth's taskbar, launcher and wallpapers over Windows' desktop
-- [x] Games load behind Hearth's starting screen and come forward when ready; slow Proton first starts explained
-- [x] Offer to import games once on first start
-
-## 0.0.20
-
-- [x] Full Mantel for Ember: no Explorer at all, Ember hosts the tray (experimental)
-- [x] Full on-screen keyboard in Mantel (Linux)
-- [ ] Download the installer from inside Ember (needs the ISOs on SourceForge)
-- [x] First-start setup on a fresh Hearth OS (Wi-Fi, store sign-ins, the controller, importing games)
-- [x] Mantel lock screen (Super+L, power menu, on waking)
-- [x] Ember as the shell starts your startup apps
-- [x] External monitor brightness on Windows (DDC/CI)
-- [x] Import games from Lutris
-- [x] Overlay rework: stays on screen see-through and only changes visibility and input (Game Bar style), one focus owner so the screen stops jumping back, Ember closes a stuck overlay
-- [x] Live player counter: Hearth and Ember report in, the count shows on the website and About page (off switch in Settings › System › Privacy)
-
-## 0.0.21 (released)
-
-- [x] Hearth's own installer instead of Fedora's: screens in the Hearth app (controller) and Mantel (mouse and keyboard), no-password option
-- [x] Sign-in choices: sign in automatically or not, ask for the password after sleep (Game Mode lock screen too)
-- [x] Ember: Desktop style and wallpaper in Settings › Shell
-
-## 0.0.22
-
-- [x] Hearth's own login screen (SDDM theme like the lock screen, controller works on it)
-- [x] Hearth Browser, first version: tabs, address bar with suggestions, bookmarks, history, downloads, find, zoom, start page, settings
-- [x] Ember: Hearth Settings window in Mantel; taskbar down the side on upright screens
-- [x] Overlay doesn't flash black when opened over a fullscreen game
-- [x] Ember's full Mantel looks and works like Hearth OS's: floating taskbar, launcher, Quick Access, power menu, Hearth menu (Xbox button), controls card, volume bar, fireside wallpaper, Hearth's controller layout
-
-## 0.0.25 (released)
-
-- [x] Quick Resume, like Xbox: starting another game puts the one you're playing aside, frozen where you left it (up to 5); kept through Sleep and Hearth restarting, and through Shut down and Restart where the PC allows it (one switch: with games open, Shut down and Restart hibernate and come back to them; Shut down and close games really closes them)
-- [x] Library is fast again in the Rust app (covers load in the background, off-screen tiles aren't drawn)
-- [x] Xbox Series controllers pair over Bluetooth
-- [x] Installer download shows percent, GB, speed and time left, every second
-- [x] Quick Access over a game no longer moves the game underneath: Hearth takes the controller while it's open
-
-## 0.0.24 (released)
-
-- [x] Hearth is now a Rust app (about 11 MB instead of about 250 MB with Electron): same screens, less memory, faster start
-- [x] Installer USB: boots into Hearth, finds every Linux and Windows on the PC (SteamOS too), connects a controller by itself, downloads Hearth OS while installing
-- [x] Store sign-in pages work with just a controller
-
-## 0.0.23 (released)
-
-- [x] Profiles on Hearth: "Who's playing?", each person's own Steam account, Epic/GOG/Xbox sign-ins, favorites and play time; installed games shared
-- [x] Faster Game Mode ↔ Desktop switches
-- [x] Games with a launcher (press Play, the launcher closes, the game starts) come to the front
-- [x] Game pages: ProtonDB rating ("On Linux: Gold") and your Steam achievements
-- [x] Per-game frame-rate cap and power limit, for every game including Steam's
-- [x] Performance overlay levels in Quick Access (Off, FPS, Simple, Detailed, Everything)
-- [x] Pause a running game (frozen, no power used) from Quick Access
-- [x] Library collections and a Show filter
-- [x] Parental controls: PIN, play time a day, allowed games
-- [x] Remote play: stream to Moonlight (Sunshine set up from Settings), and Moonlight to play another PC here
-- [x] Backup and restore to a USB drive or this device
-- [x] Emulators: ROMs folder (EmuDeck folders too) with box art, played with RetroArch
-- [x] Themes and sound packs; the desktop wallpaper from Hearth's Appearance settings
-- [x] Epic cloud saves for games Hearth installs
-- [ ] More stores (itch.io, Amazon)
-
-## Archived
-
-- Hearth OS on Ubuntu and on CachyOS: archived 2026-10-22, to focus on Anatase and Peppermint until they're solid; they come back after that. No builds (base-ubuntu.yml / base-cachyos.yml run by hand only, with "archived" typed in), not offered by the installer or Switch edition; systems on them see a notice and can switch to Anatase or Peppermint. Code in `os-bases/ubuntu` and `os-bases/cachyos`.
-- Hearth's own app store (Apps in Mantel, `hearth-apps`): archived 2026-10-24, it wasn't showing apps; Hearth OS ships Bazaar (Flathub) as its app store on Anatase and Peppermint instead, in every place the store was. Code in `archive/app-store`, see docs/ARCHIVED.md.
-- Hearth for Android (and Hearth Linux on Android): archived 2026-10-21; focus is Hearth OS and Ember. Code in `hosts/android`, build by hand only.
-
-## 0.2.6 (released)
-
-- [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
-
-## Next (unreleased)
+- [ ] Heroic Games Launcher preinstalled
+- [ ] An install helper for Epic's Linux launcher, once an official download is confirmed
+- [ ] An app-update signing key, to turn on fast app updates between system updates (docs/APP-UPDATES.md)
+- [ ] A cosign key for signing the OS images (`SIGNING_SECRET`); then signature checks turned on in Hearth OS
+- [ ] Hearth Mod Organizer: LOOT masterlist sorting; files for the game's own folder (script extender loaders, ENB:
+      MO2's Root Builder); Nexus downloads straight into an instance, mod categories, notes and update checks; FOMOD
+      scripts and BAIN wizards (docs/MODS.md)
+- [ ] Support page and donations: built, hidden until the owner fills in a link in ui/support-links.js and
+      site/support-links.js
+- [ ] Ember: app pop-up notifications in full Mantel on Windows (Windows only shares them with packaged apps)
 
 ## 1.0 (released 2026-11-02)
 
@@ -182,6 +43,12 @@ Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0
 - [x] Peppermint is the main Hearth OS; Anatase is archived (no more Anatase builds or updates from November 2026, installs keep their last version). The website offers Peppermint only (the Peppermint offline USB and the small installer)
 - [x] Steam Game Mode: the Hearth plugin updates with Hearth OS (Decky kept the copy from the day it was installed, so Steam Game Mode still showed an older Hearth plugin, without the newer pages, covers and fixes); it's replaced by the image's own each time Steam Game Mode starts when it differs
 - [x] Hearth's open Steam client: when a Steam server answers "TryAnotherCM" (it can't sign anyone in), the next try goes to a different Steam server (switching between TCP and WebSocket) instead of the same kind again, and the log says which server answered
+
+# Archive (before 1.0)
+
+The releases before 1.0, kept as they were. They include editions and features that are archived now (Hearth's own
+Game Mode, Anatase, Ubuntu, CachyOS, Bazzite, Hearth Plasma / GNOME / COSMIC, multi-seat, Couch Co-op, Hearth for
+Android): see docs/ARCHIVED.md. The plans from before 1.0 are in the git history of this file.
 
 ## 0.6.63 (released)
 
@@ -426,6 +293,10 @@ Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0
 - [x] Hearth on Nvidia through Chromium: the same Hearth core with an Electron (Chromium) window on Nvidia graphics, chosen at start (WebKit's DMA-BUF drawing fails on RTX 50 cards); Settings › Display › Drawing engine; back to WebKit after two failed starts
 - [x] Installer: its messages in Hearth's log, and the installer's logs in bug reports sent from the USB
 
+## 0.2.6 (released)
+
+- [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
+
 ## 0.2.5 (released)
 
 - [x] Switch edition (Settings › Updates): from one edition to another (Anatase, Ubuntu, CachyOS, Peppermint), keeping your games
@@ -613,19 +484,79 @@ Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0
 - [x] Faster moving through a big library; a library speed test in CI
 - [x] Installer test in CI: installs onto a disk image and boots it
 
-## Later
+## 0.0.25 (released)
 
+- [x] Quick Resume, like Xbox: starting another game puts the one you're playing aside, frozen where you left it (up to 5); kept through Sleep and Hearth restarting, and through Shut down and Restart where the PC allows it (one switch: with games open, Shut down and Restart hibernate and come back to them; Shut down and close games really closes them)
+- [x] Library is fast again in the Rust app (covers load in the background, off-screen tiles aren't drawn)
+- [x] Xbox Series controllers pair over Bluetooth
+- [x] Installer download shows percent, GB, speed and time left, every second
+- [x] Quick Access over a game no longer moves the game underneath: Hearth takes the controller while it's open
 
-## Not started
+## 0.0.24 (released)
 
-- App pop-up notifications in full Mantel on Windows (Windows only shares them with packaged apps)
+- [x] Hearth is now a Rust app (about 11 MB instead of about 250 MB with Electron): same screens, less memory, faster start
+- [x] Installer USB: boots into Hearth, finds every Linux and Windows on the PC (SteamOS too), connects a controller by itself, downloads Hearth OS while installing
+- [x] Store sign-in pages work with just a controller
 
-## Waiting on setup
+## 0.0.23 (released)
 
-- SourceForge project for the ISOs (then the website's download buttons go live)
-- Cosign key for signing the OS images (`SIGNING_SECRET`); then turn on signature checks in Hearth OS
+- [x] Profiles on Hearth: "Who's playing?", each person's own Steam account, Epic/GOG/Xbox sign-ins, favorites and play time; installed games shared
+- [x] Faster Game Mode ↔ Desktop switches
+- [x] Games with a launcher (press Play, the launcher closes, the game starts) come to the front
+- [x] Game pages: ProtonDB rating ("On Linux: Gold") and your Steam achievements
+- [x] Per-game frame-rate cap and power limit, for every game including Steam's
+- [x] Performance overlay levels in Quick Access (Off, FPS, Simple, Detailed, Everything)
+- [x] Pause a running game (frozen, no power used) from Quick Access
+- [x] Library collections and a Show filter
+- [x] Parental controls: PIN, play time a day, allowed games
+- [x] Remote play: stream to Moonlight (Sunshine set up from Settings), and Moonlight to play another PC here
+- [x] Backup and restore to a USB drive or this device
+- [x] Emulators: ROMs folder (EmuDeck folders too) with box art, played with RetroArch
+- [x] Themes and sound packs; the desktop wallpaper from Hearth's Appearance settings
+- [x] Epic cloud saves for games Hearth installs
+- [ ] More stores (itch.io, Amazon)
 
-## Hearth Browser, next
+## 0.0.22
 
-- [x] Controller: move between links with the D-pad in Game Mode (A opens, B goes back, Hearth's focus ring)
-- [x] Hearth Browser on Windows (Ember): Ember sets up its own Firefox with Hearth's parts (Services/HearthBrowser.cs; the Electron/CEF browser it replaced isn't packaged)
+- [x] Hearth's own login screen (SDDM theme like the lock screen, controller works on it)
+- [x] Hearth Browser, first version: tabs, address bar with suggestions, bookmarks, history, downloads, find, zoom, start page, settings
+- [x] Ember: Hearth Settings window in Mantel; taskbar down the side on upright screens
+- [x] Overlay doesn't flash black when opened over a fullscreen game
+- [x] Ember's full Mantel looks and works like Hearth OS's: floating taskbar, launcher, Quick Access, power menu, Hearth menu (Xbox button), controls card, volume bar, fireside wallpaper, Hearth's controller layout
+
+## 0.0.21 (released)
+
+- [x] Hearth's own installer instead of Fedora's: screens in the Hearth app (controller) and Mantel (mouse and keyboard), no-password option
+- [x] Sign-in choices: sign in automatically or not, ask for the password after sleep (Game Mode lock screen too)
+- [x] Ember: Desktop style and wallpaper in Settings › Shell
+
+## 0.0.20
+
+- [x] Full Mantel for Ember: no Explorer at all, Ember hosts the tray (experimental)
+- [x] Full on-screen keyboard in Mantel (Linux)
+- [ ] Download the installer from inside Ember (needs the ISOs on SourceForge)
+- [x] First-start setup on a fresh Hearth OS (Wi-Fi, store sign-ins, the controller, importing games)
+- [x] Mantel lock screen (Super+L, power menu, on waking)
+- [x] Ember as the shell starts your startup apps
+- [x] External monitor brightness on Windows (DDC/CI)
+- [x] Import games from Lutris
+- [x] Overlay rework: stays on screen see-through and only changes visibility and input (Game Bar style), one focus owner so the screen stops jumping back, Ember closes a stuck overlay
+- [x] Live player counter: Hearth and Ember report in, the count shows on the website and About page (off switch in Settings › System › Privacy)
+
+## 0.0.19 (released)
+
+- [x] Remove the old system: erase other systems' partitions on Hearth's drive, grow Hearth into the space
+- [x] Live USB: Install next to Windows (checks, shrinks Windows, opens the installer with Use free space)
+- [x] Ember: Switch to Hearth OS (make room on C:, write the installer USB, restart into it)
+- [x] Mantel for Ember: Hearth's taskbar, launcher and wallpapers over Windows' desktop
+- [x] Games load behind Hearth's starting screen and come forward when ready; slow Proton first starts explained
+- [x] Offer to import games once on first start
+
+## 0.0.18 (released)
+
+- [x] Game Mode ↔ Desktop switch can't freeze
+- [x] Detailed system update progress (download speed, time left, install and app steps)
+- [x] Ember Desktop Mode: the Windows desktop and back (shortcut, tray, Ctrl+Alt+G, Xbox button), start-in setting
+- [x] Import games and files: from Windows, SteamOS / Steam Deck and other Linux, other drives and SD cards
+      (Steam, Epic, GOG, Heroic, Lutris, Proton saves, personal files; copy or move)
+- [ ] Fixes from 0.0.17 testing
