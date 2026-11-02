@@ -92,10 +92,11 @@ def page(slug, title, lead, body):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{full_title}</title>
 <meta name="description" content="{html.escape(lead)}">
-<meta name="theme-color" content="#110a07">
+<meta name="theme-color" content="#171a21">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="../img/logo.svg" type="image/svg+xml">
 <link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
 <script>try{{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}}catch(e){{}}</script>
 <link rel="stylesheet" href="docs.css">
 </head>
@@ -194,12 +195,11 @@ It gets no more updates: <a href="updates.html#switch">switch to Debian</a> and 
 # ------------------------------------------------------------------ Installing
 INSTALL = f'''
 {h2('download', 'Downloads')}
-<p>Pick one. The <b>offline</b> USBs carry the whole system and install without internet. The small installer
-downloads the system while it installs.</p>
+<p>The <b>offline USB</b> carries the whole system and installs without internet. Keep a <b>Recovery USB</b> too,
+for a device that won't start.</p>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
 <tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (archived)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
-<tr><td><a href="{R2}hearth-os-installer.iso">Small installer</a></td><td>1.6 GB</td><td>Needed</td></tr>
 <tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Debian, offline USB</a> (recommended)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
 <tr><td><a href="{R2}hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
@@ -639,7 +639,7 @@ signed in on it: sign in to Steam on that profile.</p>
 
 {h2('install-failed', 'Installing fails')}
 <ul>
-<li>Try the <b>offline USB</b> for your edition instead of the small installer (no download to go wrong).</li>
+<li>Check the ISO's checksum (see <a href="install.html#download">Downloads</a>) and write the <b>offline USB</b> again: a damaged download is the most common cause.</li>
 <li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › System › Updates</b> and update.</li>
 <li>From the live USB, <b>Settings › System › Help &amp; logs › Send logs to the developer</b> includes the installer's log.</li>
 </ul>
@@ -791,12 +791,12 @@ ASK_CSS = '''
 .ask{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:18px;margin:14px 0 8px}
 .ask label{display:grid;gap:5px;font-size:13.5px;font-weight:600;color:var(--text)}
 .ask .req,.ask .opt{font-weight:400;color:var(--muted)}
-.ask input,.ask select,.ask textarea{font:inherit;font-size:14.5px;font-weight:400;color:var(--text);background:var(--code);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;width:100%}
+.ask input,.ask select,.ask textarea{font:inherit;font-size:14.5px;font-weight:400;color:var(--text);background:var(--code);border:1px solid var(--line2);border-radius:3px;padding:9px 11px;width:100%}
 .ask textarea{resize:vertical;line-height:1.5}
 .ask input:focus,.ask select:focus,.ask textarea:focus{outline:3px solid var(--focus);outline-offset:0;border-color:var(--ember)}
 .ask .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .ask .send{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.ask button{font:inherit;font-weight:700;font-size:15px;color:var(--ink);background:var(--ember);border:0;border-radius:999px;padding:10px 18px;cursor:pointer}
+.ask button{font:inherit;font-weight:700;font-size:15px;color:var(--ink);background:var(--ember);border:0;border-radius:3px;padding:10px 18px;cursor:pointer}
 .ask button:hover{background:var(--ember2)}
 .ask button:disabled{opacity:.6;cursor:default}
 .ask .msg{font-size:14px;color:var(--soft)}
