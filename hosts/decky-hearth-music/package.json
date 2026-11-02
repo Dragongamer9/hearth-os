@@ -1,6 +1,6 @@
 {
   "name": "decky-hearth-music",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Hearth Music: plays the highlighted game's theme song while you browse Steam's library in Game Mode",
   "type": "module",
   "scripts": {
