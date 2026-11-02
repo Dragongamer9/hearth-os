@@ -27,8 +27,8 @@ jobs:
           dnf -y install dbus-daemon libnotify wl-clipboard wtype slurp >/dev/null || true
           # A Wayland app whose app id can be set (a stand-in Flatpak window for the taskbar's icon check).
           dnf -y install foot hicolor-icon-theme >/dev/null || true
-          # Mantel's Steam-style look: its font (Inter, openly licensed), a KDE app and a GTK 4 app to see apps follow it.
-          dnf -y install rsms-inter-fonts kcalc gtk4-devel-tools >/dev/null || true
+          # Mantel's Steam-style look: its font (Inter, openly licensed) and a KDE app to see apps follow it.
+          dnf -y install rsms-inter-fonts kcalc >/dev/null || true
           # Hearth Files as the file chooser: xdg-desktop-portal, GLib's D-Bus for Python (hearth-portal), a GTK 3 app.
           dnf -y install xdg-desktop-portal python3-gobject gtk3 dbus-tools shared-mime-info >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
@@ -412,12 +412,11 @@ jobs:
           export QT_QPA_PLATFORMTHEME=qt6ct
           command -v foot >/dev/null && { foot --title "Hearth Terminal" sh -c 'sleep 600' >/dev/null 2>&1 & }
           command -v kcalc >/dev/null && { kcalc >/dev/null 2>&1 & }
-          command -v gtk4-widget-factory >/dev/null && { gtk4-widget-factory >/dev/null 2>&1 & }
           sleep 8; grim $o/steam-17-windows.png || true
           command -v qt6ct >/dev/null && { qt6ct >/dev/null 2>&1 & sleep 5; grim $o/steam-18-qt-palette.png || true; pkill -x qt6ct || true; }
-          pkill -x gtk4-widget-factory || true; sleep 2
+          pkill -x foot || true; sleep 2
           grim $o/steam-19-kde-app.png || true
-          pkill -x foot || true; pkill -x kcalc || true; unset QT_QPA_PLATFORMTHEME; sleep 2
+          pkill -x kcalc || true; unset QT_QPA_PLATFORMTHEME; sleep 2
           # ---- every Slate wallpaper (moving ones as a still: software rendering here holds them still)
           for w in anim:tide anim:ridges anim:motes builtin:slate-dusk builtin:slate-contours builtin:slate-horizon builtin:slate-facets builtin:slate-nebula builtin:slate-ridges; do
             set_look steam dark "" "$w"; sleep 2; grim "$o/wall-${w#*:}.png" || true
