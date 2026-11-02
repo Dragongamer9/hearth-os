@@ -2,15 +2,15 @@
 // in Steam Game Mode's Quick Access. Everything goes to Hearth Link on this device (main.py, an allow-list of its
 // commands). Nothing of Steam's screens is changed; the only Steam call is its own restart, offered after a Steam game
 // was copied here, and only while Steam has it.
-import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow, ProgressBarWithInfo, TextField, staticClasses } from "@decky/ui";
+import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow, ProgressBarWithInfo, TextField, ToggleField, staticClasses } from "@decky/ui";
 import { definePlugin } from "@decky/api";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { FaNetworkWired } from "react-icons/fa";
 import {
   Answer, Down, Game, Job, POLL, STORAGE_POLL, Status, afterCopy, active, ago, bytes, canWake, deviceLine, healthSummary, hasStorage,
-  jobActions, jobLine, lanCodeOk, left, netCodeOk, percent, sendable, serverOf, showCode,
+  SyncInfo, availableLine, jobActions, jobLine, lanCodeOk, left, netCodeOk, percent, sendable, serverOf, showCode, syncLines,
 } from "./model";
-import { StorageInfo, games, getStatus, getStorage, linkCall, restartSteam, startLink, steamCanRestart } from "./link";
+import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo } from "./link";
 
 const warn = { color: "#ffb37a" };
 const dim = { fontSize: 12, color: "#8d99a8" };
@@ -150,7 +150,7 @@ function Storage(p: { s: Status; info: StorageInfo | null; act: (cmd: string, ar
               <ButtonItem layout="below" description={g.size ? bytes(g.size) : undefined} onClick={() => p.act("storage.cache.get", { game: g.game }, `Getting ${g.title} from Hearth Storage`)}>Get {g.title}</ButtonItem>
             </PanelSectionRow>
           ))}
-          <Field label="Saves that follow you" description={info.saves.error || (info.saves.follow ? (info.saves.games.length ? `${info.saves.games.length} game${info.saves.games.length === 1 ? "" : "s"}` : "No saves synced yet") : "Off (Settings › Hearth Link › Hearth Storage)")} />
+          <Field label="Saves that follow you" description={info.saves.error || (info.saves.follow ? (info.saves.games.length ? `${info.saves.games.length} game${info.saves.games.length === 1 ? "" : "s"}` : "No saves synced yet") : "Off (the switch under Sync between your devices)")} />
           {info.saves.follow && info.saves.games.slice(0, 6).map((g, i) => (
             <Line key={i} style={g.conflict ? { ...dim, ...warn } : dim}>{g.title} · {g.conflict ? "two different saves: pick one in Hearth" : g.pending ? "waiting to sync" : `synced ${ago(g.at, p.now)}`}</Line>
           ))}
@@ -162,6 +162,48 @@ function Storage(p: { s: Status; info: StorageInfo | null; act: (cmd: string, ar
           {h && !h.warnings.length && <Line style={dim}>All good</Line>}
         </>
       )}
+    </PanelSection>
+  );
+}
+
+// Sync between your devices: three switches, each this device's own (Decky plugins and Hearth settings start off;
+// saves that follow you is Hearth Link's own setting, shown as it is). Nothing changes until you turn one on.
+function Sync(p: { s: Status; act: (cmd: string, args: any, done?: string) => Promise<boolean>; say: (t: string, bad?: boolean) => void }) {
+  const { s } = p;
+  const [info, setInfo] = useState<SyncInfo | null>(null);
+  const [getting, setGetting] = useState("");
+  const load = () => syncInfo().then(setInfo).catch(() => {});
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  const sw = info?.switches || { plugins: false, settings: false };
+  const lines = syncLines(sw, s.storage.savesFollow, hasStorage(s));
+  const flip = async (name: "plugins" | "settings", on: boolean) => {
+    const r = await setSync(name, on).catch((e) => ({ ok: false, error: String(e) } as any));
+    if (!r.ok) p.say(r.error || "Couldn't change that", true);
+    load();
+  };
+  const install = async (folder: string, name: string) => {
+    setGetting(folder);
+    const r = await fetchPlugin(folder).catch((e) => ({ ok: false, error: String(e) }));
+    if (!r.ok) { setGetting(""); p.say(r.error || `Couldn't get ${name}`, true); return; }
+    const ok = await deckyInstall(r);
+    setGetting("");
+    p.say(ok ? `Decky asks before it installs ${name}` : `This Decky can't install it from here: get ${name} from the Decky store`, !ok);
+    load();
+  };
+  return (
+    <PanelSection title="Sync between your devices">
+      <PanelSectionRow><ToggleField label="Sync Decky plugins" description={lines.plugins} checked={sw.plugins} disabled={!info} onChange={(v: boolean) => flip("plugins", v)} /></PanelSectionRow>
+      {sw.plugins && info?.available.map((a) => (
+        <PanelSectionRow key={a.folder}>
+          <ButtonItem layout="below" disabled={!!getting || !a.online} description={availableLine(a)} onClick={() => install(a.folder, a.name)}>
+            {getting === a.folder ? `Getting ${a.name}…` : `Install ${a.name}`}
+          </ButtonItem>
+        </PanelSectionRow>
+      ))}
+      {sw.plugins && info && !info.available.length && <Line style={dim}>This device has every plugin your other devices have.</Line>}
+      <PanelSectionRow><ToggleField label="Saves follow you" description={lines.saves} checked={s.storage.savesFollow}
+        onChange={(v: boolean) => p.act("storage.saves.set", { follow: v }, v ? "Saves follow you" : "Saves stay on each device")} /></PanelSectionRow>
+      <PanelSectionRow><ToggleField label="Sync Hearth settings" description={lines.settings} checked={sw.settings} disabled={!info} onChange={(v: boolean) => flip("settings", v)} /></PanelSectionRow>
     </PanelSection>
   );
 }
@@ -290,6 +332,7 @@ function Panel() {
         </PanelSection>
       )}
 
+      {s.peers.length > 0 && <Sync s={s} act={act} say={(t, bad) => setMsg({ t, bad })} />}
       {storageOn && <Storage s={s} info={info} act={act} now={now} />}
       <Pairing s={s} act={act} now={now} />
     </>

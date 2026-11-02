@@ -32,6 +32,7 @@ body::before{content:"";position:absolute;inset:0 460px 0 0;background:linear-gr
 .DialogButton{border:none;color:#e9eef4;background:#3d4450;border-radius:4px;font:inherit}.DialogButton:disabled{opacity:.45}.qam-btn{width:100%;padding:9px 12px;font-size:14px;text-align:center}.qam-drop{text-align:left;background:#23262e}
 .qam-btn.gpfocus{background:#fff;color:#0e141b;opacity:1}.qam-input{background:#0b1016;border:1px solid #3d4450;border-radius:4px;color:#e9eef4;padding:8px;font-size:18px;letter-spacing:.1em}
 .qam-line{display:flex;justify-content:space-between;align-items:center;gap:8px}.qam-bar{height:6px;border-radius:3px;background:#273140;overflow:hidden}.qam-bar i{display:block;height:100%;background:#1a9fff}
+.qam-toggle{width:auto;padding:5px 14px;font-size:14px;background:#23262e}.qam-toggle.on{background:#1a9fff;color:#fff}
 .qam-bar.ind i{background:linear-gradient(90deg,#1a9fff,#67c1ff)}.qam-prog{padding:6px 0}`;
 const page0 = (st) => `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="root"></div><script>window.HL_STATE=${JSON.stringify(st)};</script><script>${res.outputFiles[0].text}</script></body></html>`;
 const browser = await chromium.launch();
@@ -49,6 +50,8 @@ const show = (title) => page.evaluate((t) => {
 const type = (text) => page.evaluate((t) => { const i = document.querySelector(".qam-input"); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
   set.call(i, t); i.dispatchEvent(new Event("input", { bubbles: true })); }, text);
 const wait = (ms) => page.waitForTimeout(ms);
+const toggle = (label) => page.evaluate((l) => { const f = [...document.querySelectorAll(".qam-kv")].find((x) => x.querySelector(".qam-label")?.textContent === l);
+  const b = f && f.querySelector(".qam-toggle"); if (b) b.click(); return !!b; }, label);
 // [picture, state, what to do, what it must show]
 const shots = [
   ["hearth-link-devices", "devices", async () => focus("Get a game from Living room PC"),
@@ -68,6 +71,16 @@ const shots = [
     ["Hearth Storage", "Tower", "3.2 TB free", "Sync now", "Download once", "2 games to get from Tower · 1 update", "Get Elden Ring", "Baldur's Gate 3", "Saves that follow you", "Hades · synced", "Update cache", "Hearth OS 1.0 kept", "Device health", "4 devices · 4 online", "All good"]],
   ["hearth-link-storage-asleep", "storage-asleep", async () => show("Hearth Storage"),
     ["Asleep or away", "Wake", "Tower is asleep", "battery 14%", "only 40 GB free", "has an update", "last backup 12 days ago", "two different saves"]],
+  ["hearth-link-sync-off", "devices", async () => { await show("Sync between your devices"); },
+    ["Sync between your devices", "Sync Decky plugins", "Off: plugins and their settings stay", "Saves follow you", "Steam Cloud games already sync through Steam",
+     "Sync Hearth settings", "Off: Hearth's settings stay"]],
+  ["hearth-link-sync-on", "sync-on", async () => { await show("Sync between your devices"); await focus("Install CSS Loader"); },
+    ["never sign-ins", "Install CSS Loader", "Version 2.1.2 · on Living room PC", "Install PowerTools", "on Tower (offline)",
+     "Screen modes, sound devices, power and network stay on each device"]],
+  ["hearth-link-sync-install", "sync-on", async () => { await show("Sync between your devices"); await btn("Install CSS Loader"); await wait(400); },
+    ["Decky asks before it installs CSS Loader"]],
+  ["hearth-link-sync-saves-off", "sync-saves-off", async () => { await show("Sync between your devices"); await toggle("Sync Hearth settings"); await wait(400); await show("Sync between your devices"); },
+    ["Off: a game's newest save", "Steam Cloud games already sync through Steam", "On: look, theme and colours"]],
   ["hearth-link-pairing-code", "pairing", async () => { await show("Pair a device"); await focus("Stop showing the code"); },
     ["This device's code", "482 913", "4:3", "Internet code", "HRTH-7QK2", "Stop showing the code"]],
   ["hearth-link-pairing-show", "devices", async () => { await show("Pair a device"); await focus("Show this device's code"); }, ["Show this device's code", "Enter an internet code"]],
@@ -91,6 +104,14 @@ for (const [name, st, act, wants] of shots) {
   if (name === "hearth-link-send-pick") {
     const dis = await page.evaluate(() => [...document.querySelectorAll(".qam-btn")].find((b) => b.textContent === "Send")?.disabled);
     if (dis !== false) errors.push(`${name}: Send isn't ready after picking a game and a device`);
+  }
+  if (name === "hearth-link-sync-off") {
+    const on = await page.evaluate(() => [...document.querySelectorAll(".qam-toggle")].map((b) => b.textContent));
+    if (on.join() !== "Off,On,Off") errors.push(`${name}: the switches should be Off (plugins), On (saves, as Hearth Link has it), Off (settings): ${on.join()}`);
+  }
+  if (name === "hearth-link-sync-install") {
+    const got = await page.evaluate(() => window.HL_INSTALLED);
+    if (!got || got[0] !== "utilities/install_plugin" || !String(got[1]).startsWith("file:///") || got[5] !== 0) errors.push(`${name}: Decky's own install wasn't asked: ${JSON.stringify(got)}`);
   }
   if (name === "hearth-link-not-running") {
     const acts = await page.evaluate(() => [...document.querySelectorAll(".qam-btn")].map((b) => b.textContent));

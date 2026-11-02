@@ -35,6 +35,8 @@ const STATES = {
   "pairing-join": () => ({ ...base(), nearby: [{ id: LAPTOP, name: "Kitchen laptop", pairing: true }], joining: null }),
   paired: () => ({ ...base(), pairEvent: { name: "Kitchen laptop", ok: true, error: "" } }),
   error: () => base(),
+  "sync-on": () => base(),
+  "sync-saves-off": () => ({ ...base(), storage: { ...base().storage, savesFollow: false } }),
   playing: () => ({ ...base(), playing: true }),
   "not-running": () => ({ running: false, installed: true, error: "Hearth Link isn't running on this device",
     last: { at: min(42), status: { me: base().me, peers, storage: base().storage } } }),
@@ -66,7 +68,15 @@ const storageInfo = () => {
       { name: "Tower", me: false, online: !asleep, lastSeen: min(asleep ? 180 : 0), free: 3.2e12, total: 4e12, battery: null, version: "1.0", upToDate: true, lastBackup: null, server: true }] },
   };
 };
+// The sync switches (main.py sync_info / set_sync / fetch_plugin): off unless the state turns them on.
+const sw = { plugins: st() === "sync-on", settings: st() === "sync-on" };
 const handlers = {
+  sync_info: () => ({ switches: { ...sw, plugins: sw.plugins || st() === "sync-on", settings: sw.settings || st() === "sync-on" },
+    available: st() === "sync-on" || sw.plugins ? [
+      { folder: "SDH-CssLoader", name: "CSS Loader", version: "2.1.2", from: DESK, fromName: "Living room PC", online: true },
+      { folder: "PowerTools", name: "PowerTools", version: "2.0.3", from: TOWER, fromName: "Tower", online: false }] : [] }),
+  set_sync: (name, on) => { sw[name] = on; return { ok: true, switches: { ...sw } }; },
+  fetch_plugin: (folder) => ({ ok: true, artifact: `file:///home/you/homebrew/settings/decky-hearth-link/incoming/${folder}.zip`, name: "CSS Loader", version: "2.1.2", hash: "a".repeat(64) }),
   status: () => STATES[st()](),
   storage: () => storageInfo(),
   start_link: () => ({ ok: true }),
@@ -81,3 +91,5 @@ export function callable(name) { return async (...a) => (handlers[name] ? handle
 export function definePlugin(f) { return f; }
 // Steam's restart, for the "Restart Steam to see it" button after a Steam game was copied.
 window.SteamClient = { User: { StartRestart: () => {} } };
+// Decky Loader's own install call (it would show its "Install …?" prompt).
+window.DeckyBackend = { call: async (route, ...a) => { window.HL_INSTALLED = [route, ...a]; return null; } };

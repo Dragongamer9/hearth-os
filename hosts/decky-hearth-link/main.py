@@ -4,8 +4,11 @@ Storage and pairing, in Steam Game Mode's Quick Access.
 Runs as you (no root flag) inside Decky Loader and only talks to Hearth Link on this device: the service's own socket,
 <runtime dir>/hearth-link/link.sock (hosts/hearth-link ipc.rs; one JSON line each way, the folder 0700 and the socket
 this user's, the other end checked to be this user too). Only the commands in CALLS are ever sent, each with only its
-checked arguments (the rest dropped); nothing that unpairs, changes settings, deletes or shows a password is in it
-(those stay in Settings > Hearth Link). The status the panel gets is cut short (short()): never the device's ticket,
+checked arguments (the rest dropped); nothing that unpairs, deletes or shows a password is in it (those stay in
+Settings > Hearth Link). The one setting it changes is saves that follow you (storage.saves.set, sent as Hearth Link's
+storage.set with only savesFollow).
+
+The sync switches (Decky plugins, Hearth settings) are this device's own, start off and live in link_sync.py. The status the panel gets is cut short (short()): never the device's ticket,
 its relay, its settings or addresses.
 
 When Hearth Link isn't running, the panel gets {'running': False, ...} and the last status it saw (last.json, the same
@@ -22,7 +25,11 @@ import socket
 import stat
 import struct
 import subprocess
+import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import link_sync  # noqa: E402
 
 try:
     import decky  # provided by Decky Loader
@@ -34,6 +41,8 @@ UNIT = 'hearth-link.service'
 NOT_RUNNING = "Hearth Link isn't running on this device"
 NOT_ALLOWED = "That isn't something the Hearth Link plugin asks"
 MAX_ANSWER = 8 * 1024 * 1024
+MAX_PLUGIN_ANSWER = 72 * 1024 * 1024                 # decky.fetch: a plugin's files as base64 (40 MiB at most)
+SYNC_EVERY = 30                                      # seconds between sync rounds while a switch is on
 
 PEER = re.compile(r'^[0-9a-f]{64}$')                 # a device id (hearth-link discovery.rs: 64 hex digits)
 HEXID = re.compile(r'^[0-9a-f]{8,64}$')              # transfer and offer ids (crate::hex of random bytes)
@@ -105,6 +114,12 @@ def _bool(v):
     return v is True
 
 
+def _strict_bool(v):
+    if isinstance(v, bool):
+        return v
+    raise ValueError('That has to be on or off')
+
+
 def _title(v):
     return text(v)
 
@@ -139,7 +154,10 @@ CALLS = {
     'storage.saves.status': {},
     'storage.updates.status': {},
     'storage.devices': {},
+    'storage.saves.set': {'follow': _strict_bool},
 }
+# Sent to Hearth Link as another command (only these arguments).
+SENT_AS = {'storage.saves.set': lambda a: ('storage.set', {'savesFollow': a['follow']})}
 TIMEOUTS = {'status': 8, 'games': 45, 'send': 30, 'get': 30, 'sync.now': 70, 'pair.join': 40, 'pair.open': 20,
             'storage.cache.status': 20, 'storage.cache.get': 30, 'storage.devices': 15}
 
@@ -186,7 +204,7 @@ def peer_uid(sock):
 IDS = [0]
 
 
-def link_call(cmd, args, path=None, timeout=None):
+def link_call(cmd, args, path=None, timeout=None, limit=MAX_ANSWER):
     """One request to Hearth Link. None when it isn't running; else {'ok': True, 'data': ...} or {'ok': False, 'error'}."""
     path = path or socket_path()
     if not link_safe(path):
@@ -206,7 +224,7 @@ def link_call(cmd, args, path=None, timeout=None):
             if not chunk:
                 break
             buf += chunk
-            if len(buf) > MAX_ANSWER:
+            if len(buf) > limit:
                 return {'ok': False, 'error': 'Hearth Link gave too long an answer'}
     except (OSError, socket.timeout) as e:
         if isinstance(e, (ConnectionRefusedError, FileNotFoundError)):
@@ -227,7 +245,8 @@ def call(cmd, args=None, link=None):
         req = request(cmd, args)
     except ValueError as e:
         return {'ok': False, 'error': str(e)}
-    r = (link or link_call)(cmd, req)
+    sent, sargs = SENT_AS[cmd](req) if cmd in SENT_AS else (cmd, req)
+    r = (link or link_call)(sent, sargs)
     if r is None:
         return {'ok': False, 'running': False, 'error': NOT_RUNNING}
     if r.get('ok') is True:
@@ -414,6 +433,75 @@ def start_link(run=subprocess.run):
     return {'ok': True}
 
 
+# ---- sync between your devices (link_sync.py)
+def sync_paths():
+    return link_sync.Paths(home(), settings_dir())
+
+
+def sync_info(link=None):
+    """The switches, and plugins on your other devices that aren't here (with the Plugins switch on)."""
+    p = sync_paths()
+    st = call('status', {}, link)
+    peers = st['data']['peers'] if st.get('ok') else []
+    return {'switches': link_sync.switches(p), 'available': link_sync.available(p, peers)}
+
+
+def set_sync(name, on):
+    try:
+        return {'ok': True, 'switches': link_sync.set_switch(sync_paths(), name, on)}
+    except ValueError as e:
+        return {'ok': False, 'error': str(e)}
+    except OSError as e:
+        return {'ok': False, 'error': "Couldn't save that: %s" % (e.strerror or e)}
+
+
+def sync_round(link=None):
+    """One round, when a switch is on and Hearth Link is running (it carries the changes)."""
+    p = sync_paths()
+    if not any(link_sync.switches(p).values()):
+        return {'ok': True, 'skipped': True}
+    st = call('status', {}, link)
+    if not st.get('ok'):
+        return {'ok': False, 'error': st.get('error') or NOT_RUNNING}
+    r = link_sync.tick(p, st['data']['me']['id'])
+    for e in r['errors']:
+        log('hearth link: sync: %s' % text(e, 200))
+    return dict(r, ok=True)
+
+
+def fetch_plugin(folder, link=None):
+    """A Decky plugin from one of your devices that has it, packed for Decky's own install (with its prompt):
+    {'ok', 'artifact', 'name', 'version', 'hash'}. Only with the Plugins switch on."""
+    p = sync_paths()
+    if not link_sync.switches(p).get('plugins'):
+        return {'ok': False, 'error': 'Turn on Sync Decky plugins first'}
+    if not link_sync.valid_folder(folder) or folder in link_sync.HEARTH_PLUGINS:
+        return {'ok': False, 'error': "That isn't a plugin Hearth Link copies"}
+    st = call('status', {}, link)
+    if not st.get('ok'):
+        return {'ok': False, 'error': st.get('error') or NOT_RUNNING}
+    peers = st['data']['peers']
+    want = next((a for a in link_sync.available(p, peers) if a['folder'] == folder), None)
+    if want is None:
+        return {'ok': False, 'error': "None of your devices has that plugin (or it's here already)"}
+    order = [x['id'] for x in peers if x['id'] == want['from'] and x['online']] + [x['id'] for x in peers if x['online'] and x['id'] != want['from']]
+    if not order:
+        return {'ok': False, 'error': '%s is offline' % want['fromName']}
+    err = "Couldn't get that plugin"
+    for peer in order[:4]:
+        r = (link or (lambda c, a: link_call(c, a, timeout=120, limit=MAX_PLUGIN_ANSWER)))('decky.fetch', {'peer': _peer(peer), 'folder': folder})
+        if r is None:
+            return {'ok': False, 'error': NOT_RUNNING}
+        if r.get('ok') is True:
+            try:
+                return link_sync.pack_zip(p, folder, r.get('data'))
+            except OSError as e:
+                return {'ok': False, 'error': "Couldn't keep it here: %s" % (e.strerror or e)}
+        err = text(r.get('error') or err, 200)
+    log('hearth link: plugin from another device: %s' % err)
+    return {'ok': False, 'error': err}
+
+
 async def _bg(fn, *a):
     return await asyncio.get_running_loop().run_in_executor(None, fn, *a)
 
@@ -431,8 +519,31 @@ class Plugin:
     async def start_link(self):
         return await _bg(start_link)
 
+    async def sync_info(self):
+        return await _bg(sync_info)
+
+    async def set_sync(self, name, on):
+        r = await _bg(set_sync, name, on)
+        if r.get('ok') and on:
+            await _bg(sync_round)
+        return r
+
+    async def fetch_plugin(self, folder):
+        return await _bg(fetch_plugin, folder)
+
     async def _main(self):
         log('Hearth Link plugin loaded')
+        self._sync = asyncio.get_running_loop().create_task(self._sync_loop())
+
+    async def _sync_loop(self):
+        while True:
+            try:
+                await _bg(sync_round)
+            except Exception as e:  # never stops the plugin
+                log('hearth link: sync round: %s' % text(e, 200))
+            await asyncio.sleep(SYNC_EVERY)
 
     async def _unload(self):
-        pass
+        t = getattr(self, '_sync', None)
+        if t:
+            t.cancel()

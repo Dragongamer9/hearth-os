@@ -24,3 +24,8 @@ export const ProgressBarWithInfo = (p) => h("div", { className: "qam-field qam-p
   h("div", { className: "qam-bar" + (p.indeterminate ? " ind" : "") }, h("i", { style: { width: `${p.indeterminate ? 30 : p.nProgress}%` } })),
   p.sOperationText ? h("div", { className: "qam-desc" }, p.sOperationText) : null,
   p.description ? h("div", { className: "qam-desc" }, p.description) : null);
+export const ToggleField = (p) => h("div", { className: "qam-field qam-kv" },
+  h("div", { className: "qam-line" }, h("span", { className: "qam-label" }, p.label),
+    h("button", { className: "DialogButton qam-toggle" + (p.checked ? " on" : ""), role: "switch", "aria-checked": !!p.checked, disabled: !!p.disabled,
+      onClick: () => p.onChange?.(!p.checked) }, p.checked ? "On" : "Off")),
+  p.description ? h("div", { className: "qam-desc" }, p.description) : null);

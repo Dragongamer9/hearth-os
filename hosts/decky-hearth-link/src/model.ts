@@ -149,3 +149,35 @@ export function healthSummary(h: Health, now: number): { line: string; warnings:
   }
   return { line: `${n} device${n === 1 ? "" : "s"} · ${on} online${h.serverOffline ? ` · ${h.serverName || "Hearth Storage"} is asleep` : ""}`, warnings };
 }
+
+// ---- Sync between your devices (main.py's sync_info / set_sync / fetch_plugin; link_sync.py)
+export interface Switches { plugins: boolean; settings: boolean }
+export interface Available { folder: string; name: string; version: string; from: string; fromName: string; online: boolean }
+export interface SyncInfo { switches: Switches; available: Available[] }
+export interface Packed { ok: boolean; error?: string; artifact?: string; name?: string; version?: string; hash?: string }
+
+/** What each switch says under it. Each is this device's own and starts off. */
+export function syncLines(sw: Switches, savesFollow: boolean, storage: boolean): { plugins: string; saves: string; settings: string } {
+  return {
+    plugins: sw.plugins
+      ? "On: your Decky plugins' settings follow you (never sign-ins), and plugins your other devices have can be installed here"
+      : "Off: plugins and their settings stay as they are on this device",
+    saves: `${savesFollow ? "On" : "Off"}: a game's newest save comes from Hearth Storage before it starts and goes back after.${storage ? "" : " Needs a Hearth Storage device."} Steam Cloud games already sync through Steam.`,
+    settings: sw.settings
+      ? "On: look, theme and colours, the on-screen keyboard's look, Hearth Music and button choices follow you. Screen modes, sound devices, power and network stay on each device"
+      : "Off: Hearth's settings stay as they are on this device",
+  };
+}
+
+/** A plugin from another device, as its button says it. */
+export function availableLine(a: Available): string {
+  return `${a.version ? `Version ${a.version} · ` : ""}on ${a.fromName}${a.online ? "" : " (offline)"}`;
+}
+
+/** The arguments for Decky Loader's own install call (utilities/install_plugin: artifact, name, version, hash,
+ *  install type 0 = install), which shows Decky's "Install …?" prompt first. Null when the packed plugin isn't
+ *  complete or isn't a local zip. */
+export function installArgs(r: Packed): [string, string, string, string, number] | null {
+  if (!r.ok || !r.artifact || !r.artifact.startsWith("file:///") || !r.artifact.endsWith(".zip") || !r.name || !/^[0-9a-f]{64}$/.test(r.hash || "")) return null;
+  return [r.artifact, r.name, r.version || "", r.hash!, 0];
+}

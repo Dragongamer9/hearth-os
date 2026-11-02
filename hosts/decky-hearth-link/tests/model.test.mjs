@@ -80,3 +80,27 @@ test("sizes and times", () => {
   assert.equal(M.duration(3 * 3600 + 600), "3 h 10 min");
   assert.equal(M.ago(0, 5), "never");
 });
+
+test("sync switches: what each says, and Steam Cloud is mentioned with saves", () => {
+  const off = M.syncLines({ plugins: false, settings: false }, false, false);
+  assert.match(off.plugins, /^Off/);
+  assert.match(off.settings, /^Off/);
+  assert.match(off.saves, /^Off/);
+  assert.match(off.saves, /Steam Cloud games already sync through Steam/);
+  assert.match(off.saves, /Needs a Hearth Storage device/);
+  const on = M.syncLines({ plugins: true, settings: true }, true, true);
+  assert.match(on.plugins, /never sign-ins/);
+  assert.match(on.settings, /Screen modes, sound devices, power and network stay on each device/);
+  assert.ok(!on.saves.includes("Needs a Hearth Storage"));
+});
+
+test("a plugin from another device goes to Decky's own install, only as a checked local zip", () => {
+  const a = { folder: "CSS Loader", name: "CSS Loader", version: "2.1.0", from: "b", fromName: "Desk", online: true };
+  assert.equal(M.availableLine(a), "Version 2.1.0 · on Desk");
+  assert.equal(M.availableLine({ ...a, version: "", online: false }), "on Desk (offline)");
+  const ok = { ok: true, artifact: "file:///home/you/homebrew/settings/decky-hearth-link/incoming/CSS Loader.zip", name: "CSS Loader", version: "2.1.0", hash: "f".repeat(64) };
+  assert.deepEqual(M.installArgs(ok), [ok.artifact, "CSS Loader", "2.1.0", "f".repeat(64), 0]);
+  assert.equal(M.installArgs({ ...ok, artifact: "https://evil.example/x.zip" }), null);
+  assert.equal(M.installArgs({ ...ok, hash: "nope" }), null);
+  assert.equal(M.installArgs({ ok: false, error: "x" }), null);
+});

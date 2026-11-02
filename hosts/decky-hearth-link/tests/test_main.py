@@ -15,6 +15,8 @@ import types
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE.parents[1] / 'hosts' / 'linux' / 'desktop' / 'shell'))   # hearth_settings_io (packed next to main.py)
+os.environ.setdefault('XDG_STATE_HOME', tempfile.mkdtemp())
 LOG = []
 A = 'a' * 64
 B = 'b' * 64
