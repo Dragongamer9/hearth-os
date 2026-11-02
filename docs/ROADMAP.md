@@ -168,6 +168,9 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+The next release is Hearth OS 1.0: from then on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).
+
+- [x] Ready for 1.0: version numbers are compared by number everywhere (1.0 is newer than 0.6.63, 1.10 newer than 1.9, "1.0" and "1.0.0" are the same), people see "1.0" for 1.0.0 (Settings, Mantel, hearthfetch, the Decky plugin, release titles and the website), and each release's date from its ROADMAP heading is shown next to it, offline on the device too (needs testing on a device)
 - [x] Hearth OS is now Debian + Mantel (Desktop Mode) + Steam Game Mode: the device starts in Steam's Game Mode and every Game Mode button opens it; if Steam can't start, Mantel opens with the reason and a "Try Steam Game Mode again" button (never back and forth). Hearth's own Game Mode is archived (first-time setup still runs in Hearth's app once), and multi-seat and Couch Co-op are hidden for now
 - [x] Hearth Sync: a small Decky plugin that keeps your non-Steam games (Epic, GOG, Battle.net, Xbox Cloud Gaming, emulators, recomps, Beacon, games you added, plus Minigalaxy, Heroic and the Epic Games Launcher) in Steam's library with their covers, in a collection per store; Hearth OS ships it instead of the Hearth takeover plugin (removed from Decky at the next start) and now comes with Minigalaxy
 - [x] Hearth OS is now simply Debian-based: the Peppermint edition is shown as "Debian" ("Hearth OS on Debian", os-release PRETTY_NAME "Hearth OS (Debian 13)") in the installer, Settings, the website and the docs, and it's the default and recommended edition; Anatase is archived in the installer and Switch edition too. The optional Xfce session is off by default. Internal names stay the same (image hearth-peppermint, edition id peppermint, VARIANT_ID), so existing installs keep updating

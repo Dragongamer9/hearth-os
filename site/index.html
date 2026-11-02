@@ -748,15 +748,17 @@ fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats').then(function(r)
 fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache: 'no-cache'}).then(function(r){ return r.json(); }).then(function(d){
   if (!d || typeof d !== 'object') return;
   var ok = function(v){ return typeof v === 'string' && /^[0-9][0-9A-Za-z.+-]{0,20}$/.test(v); };
+  // From 1.0 on Hearth OS is MAJOR.MINOR: 1.0.0 (the file's) shows as 1.0; 0.x stays whole (docs/UPDATES.md).
+  var shown = function(v){ var m = /^(\d+)\.(\d+)\.0$/.exec(v); return m && +m[1] >= 1 ? m[1] + '.' + m[2] : v; };
   [].forEach.call(document.querySelectorAll('.v[data-file]'), function(el){
     var e = d[el.getAttribute('data-file')]; if (!e || !ok(e.version)) return;
-    var t = 'Version ' + e.version;
+    var t = 'Version ' + shown(e.version);
     if (e.size > 0) t += ', ' + (e.size / 1e9).toFixed(1) + ' GB';
     if (typeof e.date === 'string' && /^\d{4}-\d\d-\d\d$/.test(e.date)) t += ', from ' + e.date;
     el.textContent = t;
     var small = el.parentNode.querySelector('.btn small'); if (small && e.size > 0) small.textContent = (e.size / 1e9).toFixed(1) + ' GB';
   });
-  var live = d['hearth-os-live.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + live.version;
+  var live = d['hearth-os-live.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + shown(live.version);
 }).catch(function(){});
 
 // Copy buttons.

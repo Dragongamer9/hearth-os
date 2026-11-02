@@ -171,11 +171,25 @@ pub fn gpu_label(vendor: u16, vendor_name: Option<&str>, device_name: Option<&st
     }
 }
 
-/// /usr/share/nimbus/image-info.json (Hearth OS's editions): (version, base).
+/// /usr/share/nimbus/image-info.json (Hearth OS's editions): (version as people see it, base).
 pub fn image_info(text: &str) -> Option<(Option<String>, Option<String>)> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
     let s = |k: &str| v[k].as_str().map(str::to_string).filter(|s| !s.is_empty());
-    Some((s("version").filter(|v| v != "0.0.0"), s("base")))
+    Some((s("version").filter(|v| v != "0.0.0").map(|v| shown_version(&v)), s("base")))
+}
+
+/// Hearth OS versions as people see them (docs/UPDATES.md, "Version numbers"): from 1.0 on MAJOR.MINOR, so 1.0.0 is
+/// "1.0" and 1.10.0 "1.10"; 0.x (0.6.63) and 1.0.1 stay whole. Ember's Windows version (1.0.0.0) the same.
+pub fn shown_version(v: &str) -> String {
+    let v = v.trim();
+    let mut parts: Vec<&str> = v.split('.').collect();
+    let num = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    if (parts.len() == 3 || parts.len() == 4) && parts.iter().all(|p| num(p)) && parts[0].parse::<u64>().map(|m| m >= 1).unwrap_or(false)
+        && parts[2..].iter().all(|p| *p == "0") {
+        parts.truncate(2);
+        return parts.join(".");
+    }
+    v.to_string()
 }
 
 /// Hearth OS's editions by their base's name in image-info.json.
@@ -312,6 +326,11 @@ mod tests {
         assert_eq!(linux_os_line(&os_release("NAME=Arch\nVERSION=rolling\n"), None, "x86_64"), "Arch rolling x86_64");
         assert_eq!(linux_os_line(&HashMap::new(), None, "x86_64"), "Linux x86_64");
         assert!(image_info("not json").is_none());
+        let img = image_info(r#"{"base": "peppermint", "version": "1.0.0"}"#).unwrap();
+        assert_eq!(linux_os_line(&osr, Some(&img), "x86_64"), "Hearth OS 1.0 (Debian edition) x86_64");
+        for (v, want) in [("1.0.0", "1.0"), ("1.10.0", "1.10"), ("1.0.0.0", "1.0"), ("1.0.1", "1.0.1"), ("0.6.63", "0.6.63"), ("0.6.0", "0.6.0"), ("1.0", "1.0")] {
+            assert_eq!(shown_version(v), want, "{v}");
+        }
         assert_eq!(edition_name("peppermint"), "Debian");
         assert_eq!(edition_name("anatase"), "Anatase");
         assert_eq!(edition_name("other"), "Other");

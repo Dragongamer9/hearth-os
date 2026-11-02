@@ -488,6 +488,10 @@ jobs:
           mkdir -p os/system_files/usr/share/nimbus
           python3 tools/app-bundle.py abi > os/system_files/usr/share/nimbus/app-abi
           echo "::notice title=app ABI::$(cat os/system_files/usr/share/nimbus/app-abi)"
+          # This version's release date, next to /usr/share/nimbus/version (Settings › About: "Hearth OS 1.0 · November 2,
+          # 2026"). From its docs/ROADMAP.md heading, "## 1.0 (released 2026-11-02)"; empty before the release has one.
+          python3 tools/hearth_version.py date "${{ needs.app.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
+          echo "::notice title=version::${{ needs.app.outputs.version }} (shown as $(python3 tools/hearth_version.py show "${{ needs.app.outputs.version }}"), released: $(cat os/system_files/usr/share/nimbus/version-date))"
 
       - name: Build
         run: |

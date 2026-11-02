@@ -237,7 +237,7 @@ fn ember() -> Option<String> {
     if let Some(local) = std::env::var_os("LOCALAPPDATA") { places.push(Path::new(&local).join("Nimbus").join("app").join("Nimbus.exe")); }
     let exe = places.into_iter().find(|p| p.is_file())?;
     let version = std::fs::read(&exe).ok().and_then(|b| parse::pe_product_version(&b));
-    Some(match version { Some(v) => format!("Ember {v}"), None => "Ember".into() })
+    Some(match version { Some(v) => format!("Ember {}", parse::shown_version(&v)), None => "Ember".into() })
 }
 
 /// Steam games installed (its install records), in every Steam library folder.

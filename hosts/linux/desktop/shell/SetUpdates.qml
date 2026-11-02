@@ -18,7 +18,9 @@ SetPage {
     property string line: ""
     property string error: ""
 
-    function ver(i) { return i && i.version ? i.version : (i && i.timestamp ? i.timestamp.slice(0, 10) : ""); }
+    // From 1.0 on Hearth OS is MAJOR.MINOR: 1.0.0 shows as "1.0" (0.x stays whole; docs/UPDATES.md, "Version numbers").
+    function shown(v) { const m = /^(\d+)\.(\d+)\.0$/.exec(v || ""); return m && Number(m[1]) >= 1 ? m[1] + "." + m[2] : v; }
+    function ver(i) { return i && i.version ? shown(i.version) : (i && i.timestamp ? i.timestamp.slice(0, 10) : ""); }
     function start(cmd) {
         if (admin.running) return;
         error = ""; line = cmd === "update" ? "Starting…" : cmd === "update-check" ? "Looking for updates…" : "";

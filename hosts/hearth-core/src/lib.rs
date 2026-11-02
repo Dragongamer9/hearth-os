@@ -7,6 +7,7 @@ pub mod admin;
 pub mod appid;
 pub mod appchannel;   // Hearth app updates without a system update (docs/APP-UPDATES.md)
 pub mod appupdate;
+pub mod version;   // MAJOR.MINOR as people see it (1.0.0 -> "1.0") and the release date
 pub mod artcache;
 pub mod backup;
 pub mod bazaar;   // Bazaar, Hearth OS's app store, opened from Game Mode's menu
