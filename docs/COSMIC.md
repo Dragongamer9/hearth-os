@@ -1,5 +1,9 @@
 # Hearth COSMIC
 
+> **Removed.** Mantel (Hearth Classic) is Hearth's only desktop now: Hearth COSMIC isn't in Hearth OS any more, Settings has no
+> desktop choice, and an old `HEARTH_DESKTOP=...` line in `session.conf` (or the login screen's old entry) simply opens
+> Mantel. The rest of this page describes the removed desktop and is kept for history.
+
 **Status: Beta Experimental, not tried on a device yet.** Built into Hearth OS on **Anatase only**, checked by CI
 (`cosmic-test.yml`, the image checks in `base-anatase.yml`).
 

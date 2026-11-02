@@ -205,5 +205,9 @@ mod tests {
         assert!(!legacy("v0.5.1"));
         assert!(!legacy("v0.3.0"));
         assert!(newer("v0.5.1", "0.5.0"));
+        // 1.0 and later (MAJOR.MINOR, tags say v1.0.0): docs/UPDATES.md, "Version numbers".
+        assert!(newer("v1.0.0", "0.6.63") && newer("v1.0", "0.6.63") && newer("v1.10.0", "1.9.0") && newer("1.10", "1.9"));
+        assert!(!newer("v1.0", "1.0.0") && !newer("v1.0.0", "1.0") && !newer("v0.6.63", "1.0.0"));
+        assert!(!legacy("v1.0.0") && !legacy("v1.0"));
     }
 }

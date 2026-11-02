@@ -509,7 +509,7 @@ PanelWindow {
                 Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
                 implicitWidth: bar.portrait ? 44 : gm.implicitWidth + 28
                 implicitHeight: bar.portrait ? 44 : 36
-                radius: 10
+                radius: Theme.r(10)
                 color: gmArea.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
                 Text { id: gm; visible: !bar.portrait; anchors.centerIn: parent; text: "Game Mode"; color: Theme.accentInk; font.bold: true; font.pixelSize: 13; font.family: Theme.font }
                 Icon { visible: bar.portrait; anchors.centerIn: parent; name: "input-gaming-symbolic"; size: 22; color: Theme.accentInk }
@@ -542,7 +542,7 @@ PanelWindow {
                     color: "transparent"
                     Rectangle {
                         anchors.fill: parent
-                        radius: 8
+                        radius: Theme.r(8)
                         color: Theme.panel2
                         border.color: Theme.line
                         Text { id: sdTip; anchors.centerIn: parent; text: "Show desktop (Super+D)"; color: Theme.text; font.pixelSize: 12; font.family: Theme.font }
@@ -582,7 +582,7 @@ PanelWindow {
         Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
         Rectangle {
             anchors.fill: parent
-            radius: 10
+            radius: Theme.r(10)
             color: area.containsMouse ? Theme.panel3 : btn.active ? Theme.panel2 : "transparent"
         }
         Item { id: holder; anchors.fill: parent; opacity: btn.dragging ? 0.75 : 1 }
@@ -651,7 +651,7 @@ PanelWindow {
             color: "transparent"
             Rectangle {
                 anchors.fill: parent
-                radius: 8
+                radius: Theme.r(8)
                 color: Theme.panel2
                 border.color: Theme.line
                 Text { id: tipText; anchors.centerIn: parent; text: btn.tip; color: Theme.text; font.pixelSize: 12; font.family: Theme.font }

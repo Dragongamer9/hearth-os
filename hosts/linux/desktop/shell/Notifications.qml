@@ -52,7 +52,7 @@ Scope {
 
                     width: list.width
                     implicitHeight: row.implicitHeight + 24
-                    radius: 14
+                    radius: Theme.r(14)
                     color: Theme.panel
                     border.color: modelData.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.line
 
@@ -118,7 +118,7 @@ Scope {
                                         required property var modelData
                                         implicitWidth: actText.implicitWidth + 20
                                         implicitHeight: 28
-                                        radius: 8
+                                        radius: Theme.r(8)
                                         color: actArea.containsMouse ? Theme.panel3 : Theme.panel2
                                         Text { id: actText; anchors.centerIn: parent; text: parent.modelData.text; color: Theme.text; font.pixelSize: 12; font.family: Theme.font }
                                         MouseArea { id: actArea; anchors.fill: parent; hoverEnabled: true; onClicked: parent.modelData.invoke() }

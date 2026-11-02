@@ -1,6 +1,6 @@
 {
   "name": "decky-hearth",
-  "version": "0.6.63",
+  "version": "1.0.0",
   "description": "Hearth in Steam Game Mode: Hearth's games, look and apps inside Steam's gamepad UI (Hearth OS, Experimental)",
   "type": "module",
   "scripts": {

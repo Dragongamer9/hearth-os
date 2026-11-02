@@ -13,6 +13,7 @@ import Quickshell.Services.Pam
 Scope {
     id: root
     property bool locked: false
+    onLockedChanged: DeskState.locked = locked
     property string typed: ""
     property string message: ""
     property bool busy: false

@@ -48,7 +48,7 @@ DESKTOP_IN_BOX = re.compile(r'^/usr/share/applications/[^/]+\.desktop$')
 # Shown in the window and kept in one place.
 LIMITS = ('The app runs in Hearth\'s Debian box (Debian 13). Most desktop apps work; drivers, system services and '
           'kernel modules can\'t be installed this way.')
-NATIVE_LIMITS = ('Hearth OS on Peppermint is unlocked, so this installs on the system itself, like on any Debian: '
+NATIVE_LIMITS = ('Hearth OS on Debian is unlocked, so this installs on the system itself, like on any Debian: '
                  'drivers and services work too, and it comes back by itself after an update.')
 UNLOCK = os.environ.get('HEARTH_UNLOCK_BIN', '/usr/bin/hearth-unlock')
 ADMIN = '/usr/libexec/nimbus/hearth-admin'

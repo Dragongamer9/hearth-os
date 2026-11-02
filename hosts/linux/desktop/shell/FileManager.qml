@@ -2080,7 +2080,7 @@ Scope {
                                     y: placeItem.headH
                                     width: parent.width
                                     height: modelData.section === "drives" ? 56 : 44
-                                    radius: 10
+                                    radius: Theme.r(10)
                                     color: lit ? Theme.accent : placeDrop.containsDrag ? Theme.panel3 : here ? Theme.panel3 : placeMouse.containsMouse ? Theme.panel2 : "transparent"
                                     border.width: placeDrop.containsDrag ? 2 : 0
                                     border.color: Theme.accent
@@ -2197,7 +2197,7 @@ Scope {
                                     readonly property bool lit: app.zone === "tabs" && app.tabFocus === index
                                     width: Math.min(220, tabLabel.implicitWidth + 58)
                                     height: 34
-                                    radius: 9
+                                    radius: Theme.r(9)
                                     color: on ? Theme.panel3 : tabMouse.containsMouse ? Theme.panel2 : "transparent"
                                     border.width: 2
                                     border.color: lit ? Theme.accent : "transparent"
@@ -2225,7 +2225,7 @@ Scope {
                                 }
                             }
                             Rectangle {
-                                width: 34; height: 34; radius: 9
+                                width: 34; height: 34; radius: Theme.r(9)
                                 color: newTabMouse.containsMouse ? Theme.panel2 : "transparent"
                                 border.width: 2
                                 border.color: app.zone === "tabs" && app.tabFocus >= app.tabs.length ? Theme.accent : "transparent"
@@ -2247,7 +2247,7 @@ Scope {
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 40
-                            radius: 10
+                            radius: Theme.r(10)
                             color: app.editingPath ? Theme.panel2 : "transparent"
                             border.width: 2
                             border.color: app.editingPath || app.toolLit("edit") ? Theme.accent : "transparent"
@@ -2332,7 +2332,7 @@ Scope {
                             readonly property bool focused: app.toolLit("search")
                             Layout.preferredWidth: win.width < 1000 ? 170 : 240
                             Layout.preferredHeight: 40
-                            radius: 10
+                            radius: Theme.r(10)
                             color: Theme.panel2
                             border.width: 2
                             border.color: search.activeFocus || focused ? Theme.accent : "transparent"
@@ -2528,7 +2528,7 @@ Scope {
                                     Rectangle {
                                         anchors.fill: parent
                                         visible: thumb.status === Image.Ready
-                                        radius: 8
+                                        radius: Theme.r(8)
                                         color: Theme.panel3
                                         Image {
                                             id: thumb
@@ -2670,7 +2670,7 @@ Scope {
                                     y: rowItem.groupStarts ? 34 : 0
                                     width: parent.width
                                     height: 44
-                                    radius: 10
+                                    radius: Theme.r(10)
                                     opacity: cut ? 0.45 : 1
                                     color: rowDrop.containsDrag ? Theme.panel3 : picked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
                                          : lit ? Theme.panel3 : rowMouse.containsMouse ? Theme.panel2 : "transparent"
@@ -2807,7 +2807,7 @@ Scope {
                                 visible: !!app.pick && app.pick.kind === "save"
                                 width: Math.max(200, Math.min(460, pickFlow.width - 200))
                                 height: 40
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: Theme.panel3
                                 border.width: 2
                                 border.color: pickField.activeFocus || app.pickLit("name") ? Theme.accent : "transparent"
@@ -3130,7 +3130,7 @@ Scope {
                             Rectangle {
                                 visible: !mi.modelData.sep
                                 anchors.fill: parent
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: mi.lit ? (mi.modelData.danger ? Theme.danger : Theme.accent) : miMouse.containsMouse ? Theme.panel3 : "transparent"
                                 Text {
                                     anchors { left: parent.left; leftMargin: 14; right: miKey.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -3199,7 +3199,7 @@ Scope {
                             Layout.fillWidth: true
                             visible: app.overlay === "input"
                             implicitHeight: 52
-                            radius: 12
+                            radius: Theme.r(12)
                             color: Theme.panel3
                             border.width: 2
                             border.color: field.activeFocus ? Theme.accent : "transparent"
@@ -3270,7 +3270,7 @@ Scope {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 44
                                 visible: !!app.cf && app.cf.list.length - app.cf.i > 1
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: Theme.panel2
                                 border.width: 2
                                 border.color: app.cf && app.cf.button === 3 ? Theme.accent : "transparent"
@@ -3278,7 +3278,7 @@ Scope {
                                     anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
                                     spacing: 10
                                     Rectangle {
-                                        Layout.preferredWidth: 22; Layout.preferredHeight: 22; radius: 6
+                                        Layout.preferredWidth: 22; Layout.preferredHeight: 22; radius: Theme.r(6)
                                         color: app.cf && app.cf.all ? Theme.accent : Theme.panel3
                                         border.width: 2; border.color: app.cf && app.cf.all ? Theme.accent : Theme.line
                                         Icon { anchors.centerIn: parent; visible: !!app.cf && app.cf.all; name: "check"; size: 14; color: Theme.accentInk }
@@ -3319,7 +3319,7 @@ Scope {
                                 contentHeight: pvText.implicitHeight
                                 clip: true
                                 boundsBehavior: Flickable.StopAtBounds
-                                Rectangle { anchors.fill: parent; color: Theme.bg2; radius: 10; z: -1 }
+                                Rectangle { anchors.fill: parent; color: Theme.bg2; radius: Theme.r(10); z: -1 }
                                 Text {
                                     id: pvText
                                     width: parent.width
@@ -3381,7 +3381,7 @@ Scope {
                                 readonly property bool lit: app.dlgIndex === index
                                 width: ListView.view.width
                                 height: 50
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: lit ? Theme.accent : apMouse.containsMouse ? Theme.panel3 : Theme.panel2
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 12; rightMargin: 14 }
@@ -3484,7 +3484,7 @@ Scope {
         signal clicked()
         implicitWidth: chipRow.implicitWidth + (label === "" ? 22 : 28)
         implicitHeight: 40
-        radius: 10
+        radius: Theme.r(10)
         opacity: dim ? 0.4 : 1
         color: primary ? (danger ? Theme.danger : Theme.accent)
              : chipMouse.containsMouse ? Theme.panel3 : flat ? "transparent" : Theme.panel2

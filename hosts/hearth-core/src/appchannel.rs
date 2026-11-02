@@ -233,6 +233,8 @@ pub struct Manifest {
     pub size: u64,
     #[serde(default)] pub archive: String,
     #[serde(default)] pub commit: String,
+    /// The release date (YYYY-MM-DD, from docs/ROADMAP.md) shown next to the number; "" in older bundles.
+    #[serde(default, skip_serializing_if = "String::is_empty")] pub date: String,
     pub files: Vec<FileEntry>,
 }
 
@@ -825,7 +827,8 @@ impl Updater {
                 return status();
             }
         };
-        let latest = json!({"version": m.version, "size": m.size, "commit": m.commit});
+        let date = crate::version::valid_date(&m.date).or_else(|| rel["published_at"].as_str().and_then(|p| crate::version::valid_date(p.get(..10)?)));
+        let latest = json!({"version": m.version, "size": m.size, "commit": m.commit, "date": date});
         let r = root();
         if current_version(&r).map(|c| !newer(&m.version, &c)).unwrap_or(false) {
             self.set(json!({"state": "upToDate", "latest": latest, "lastCheck": now_ms(), "note": null}));
@@ -938,6 +941,12 @@ mod tests {
         assert!(newer("v0.7.0", "0.6.99+app.4"));
         assert!(newer("0.6.6.1", "0.6.6"));
         assert_eq!(cmp_versions("0.6.60", "0.6.60.0"), std::cmp::Ordering::Equal);
+        // 1.0 and later (MAJOR.MINOR, files say 1.0.0): docs/UPDATES.md, "Version numbers".
+        assert!(newer("1.0.0", "0.6.63") && newer("1.0", "0.6.63") && newer("v1.0.0", "0.6.63+app.9"));
+        assert!(newer("0.6.0", "0.5.9") && newer("0.6.63", "0.6.9"));
+        assert!(newer("1.10.0", "1.9.0") && newer("1.10", "1.9") && newer("2.0", "1.10.0"));
+        assert_eq!(cmp_versions("1.0", "1.0.0"), std::cmp::Ordering::Equal);
+        assert!(newer("1.0.0+app.1", "1.0") && !newer("1.0+app.3", "1.1.0"));
         assert!(safe_version("0.6.61+app.2"));
         assert!(!safe_version("../x") && !safe_version("") && !safe_version("a/b") && !safe_version(".hidden"));
     }
@@ -976,7 +985,7 @@ mod tests {
     fn img() -> Image { Image { version: "0.6.60".into(), abi: "1-abc".into(), edition: "anatase".into(), arch: std::env::consts::ARCH.into(), keys: vec![[7u8; 32]] } }
     fn manifest(version: &str, files: Vec<FileEntry>) -> Manifest {
         Manifest { format: 1, version: version.into(), edition: "anatase".into(), arch: std::env::consts::ARCH.into(), abi: "1-abc".into(),
-                   min_image_version: String::new(), max_image_version: String::new(), sha256: "0".repeat(64), size: 1, archive: String::new(), commit: String::new(), files }
+                   min_image_version: String::new(), max_image_version: String::new(), sha256: "0".repeat(64), size: 1, archive: String::new(), commit: String::new(), date: String::new(), files }
     }
     fn file(path: &str, body: &[u8], mode: u32) -> FileEntry {
         use sha2::Digest;

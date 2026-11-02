@@ -61,7 +61,7 @@ const body = (kbd) => `
 </div>
 <div class="QuickAccessMenu"><div class="Tabs"><span class="Tab"></span><span class="Tab Selected"></span><span class="Tab"></span></div>
   <div class="TabContentColumn"><div class="Title">Hearth</div>
-    <div class="Field gpfocus">Switch to Hearth Game Mode<div class="FieldDescription">Steam closes and Hearth's own Game Mode comes back</div></div>
+    <div class="Field gpfocus">Desktop Mode<div class="FieldDescription">Hearth's Desktop Mode (Steam closes)</div></div>
     <div class="Field">Hearth look<div class="FieldDescription">Hearth's colours, focus, wallpaper and logo over Steam</div></div>
     <span class="Button">Sync to Steam library</span><span class="Button">Fortnite · Play</span><span class="Button">BFME II · Play</span>
   </div></div>`;

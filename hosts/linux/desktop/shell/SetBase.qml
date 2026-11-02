@@ -11,7 +11,7 @@ Rectangle {
     property bool usesLeftRight: false
 
     activeFocusOnTab: interactive
-    radius: 12
+    radius: Theme.r(12)
     color: hover.containsMouse && interactive ? Theme.panel3 : Theme.panel2
     border.width: 2
     border.color: activeFocus ? Theme.accent : "transparent"

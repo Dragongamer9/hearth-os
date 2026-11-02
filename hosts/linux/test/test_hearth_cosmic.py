@@ -2,6 +2,11 @@
 COSMIC always ends in Hearth Classic), the desktop choice in hearth-plasma and admin.rs, hearth-pad's COSMIC mode
 (CosmicPad), and the defaults made from COSMIC's own (hearth-cosmic-defaults). The session runs for real with
 stand-ins for labwc and COSMIC."""
+import unittest
+# Hearth COSMIC is gone: Mantel is the only desktop (nimbus-session never starts it, Settings has no desktop choice,
+# the image doesn't install it). These tests are for the removed desktop; the file stays for its dispatch-only
+# workflow and history. What replaced it is tested in test_hearth_mantel_only.py.
+raise unittest.SkipTest('Hearth COSMIC was removed: Mantel is the only desktop')
 import sys
 sys.dont_write_bytecode = True
 import importlib.machinery

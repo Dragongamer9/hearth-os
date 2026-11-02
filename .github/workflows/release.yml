@@ -1,6 +1,6 @@
 # Builds Hearth OS's apps for Windows (Ember) and Linux (Hearth).
 # - Every push and pull request: build both (catches compile errors) and run the Linux host's tests.
-# - Push to main with a new <Version> in Nimbus.Host.csproj: also publish GitHub Release vX.Y.Z (versions are 0.0.N)
+# - Push to main with a new <Version> in Nimbus.Host.csproj: also publish GitHub Release vX.Y.Z (1.0.0, 1.1.0 …; shown as "Hearth OS 1.0", docs/UPDATES.md)
 #   (the tag is created here) with both builds. Pushing a tag vX.Y.Z by hand does the same.
 #   The app checks the latest release and offers it in Settings › Updates. Older releases are then hidden
 #   (turned into drafts, nothing deleted), so only the newest one shows on GitHub.
@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      shown: ${{ steps.ver.outputs.shown }}
     steps:
       - uses: actions/checkout@v4
       - name: Work out the version
@@ -38,7 +39,9 @@ jobs:
           else v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1); fi
           [ -n "$v" ] || { echo "No <Version> in Nimbus.Host.csproj"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "Version: $v"
+          # What people see: 1.0.0 is "Hearth OS 1.0" (MAJOR.MINOR from 1.0 on; 0.x stays whole). The tag stays v1.0.0.
+          echo "shown=$(python3 tools/hearth_version.py show "$v")" >> "$GITHUB_OUTPUT"
+          echo "Version: $v (shown as $(python3 tools/hearth_version.py show "$v"), released $(python3 tools/hearth_version.py date "$v" || true))"
 
   # REQUIRED: Hearth's page must load and draw every screen without a script error (one error can leave the
   # app blank), or nothing is published.
@@ -302,7 +305,7 @@ jobs:
           python3 -c "import xml.dom.minidom as m; [m.parse(f) for f in ['desktop/labwc/rc.xml', 'desktop/labwc/menu.xml']]"
           sudo apt-get install -y -qq qt6-declarative-dev-tools >/dev/null
           for f in desktop/shell/*.qml; do /usr/lib/qt6/bin/qmlformat "$f" >/dev/null 2>/tmp/qml.txt || { echo "::error file=hosts/linux/$f,title=QML syntax error::$(head -5 /tmp/qml.txt | tr '\n' ' ')"; exit 1; }; done
-          python3 -m py_compile desktop/shell/hearth-pad desktop/shell/hearth-buttons desktop/shell/hearth-controller desktop/shell/hearth-power desktop/shell/hearth-browser desktop/shell/hearth-tasks desktop/shell/hearth-files ../../os/system_files/usr/libexec/nimbus/hearth-coop ../../os/system_files/usr/libexec/nimbus/hearth-seats ../../os/system_files/usr/libexec/nimbus/hearth-admin
+          python3 -m py_compile desktop/theme/hearth-theme desktop/shell/hearth-pad desktop/shell/hearth-buttons desktop/shell/hearth-controller desktop/shell/hearth-power desktop/shell/hearth-browser desktop/shell/hearth-tasks desktop/shell/hearth-files ../../os/system_files/usr/libexec/nimbus/hearth-coop ../../os/system_files/usr/libexec/nimbus/hearth-seats ../../os/system_files/usr/libexec/nimbus/hearth-admin
 
   # The Rust app (what Hearth OS runs since 0.0.24): Hearth-linux-x86_64, one file. It updates itself from this
   # release file when it isn't part of the system (on Hearth OS it updates with the system).
@@ -561,7 +564,7 @@ jobs:
           fi
           notes="$(git log -1 --pretty=%B)"
           gh release create "$tag" builds/* --target "${{ github.sha }}" --latest \
-            --title "Hearth OS $v (Hearth for Linux, Ember for Windows)" --notes "$notes"
+            --title "Hearth OS ${{ needs.version.outputs.shown }} (Hearth for Linux, Ember for Windows)" --notes "$notes"
           # Only the newest release stays public: older ones become drafts (hidden, nothing deleted; see
           # tidy-releases.yml). Current copies only look for newer releases, so they aren't affected.
           gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \

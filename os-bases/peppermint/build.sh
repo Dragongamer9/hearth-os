@@ -1,13 +1,13 @@
 #!/bin/bash
 # Turns Debian 13 "trixie" (Peppermint OS's base, prepared by os-bases/peppermint/Containerfile) into Hearth OS as
-# a bootc image: "Hearth OS (Peppermint edition)", Beta Experimental. Runs once, inside the image build.
+# a bootc image: "Hearth OS (Debian 13)", the main edition. Runs once, inside the image build.
 # The Hearth parts follow os/build_files/build.sh (the Bazzite build) and os-bases/cachyos/build.sh as closely as
 # possible; what's different is the base: apt instead of dnf/pacman, everything Bazzite already carried installed
 # here, and the bootc layout bootcrew's debian-bootc uses. See docs/BASE-PEPPERMINT.md.
 set -ouex pipefail
 
 NVIDIA="${NVIDIA:-1}"
-PEPPERMINT_DESKTOP="${PEPPERMINT_DESKTOP:-1}"
+PEPPERMINT_DESKTOP="${PEPPERMINT_DESKTOP:-0}"
 BPO=trixie-backports
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
@@ -78,7 +78,7 @@ KVER=$(basename "${KDIRS[0]}")
   python3 python3-evdev python3-dbus python3-gi python3-yaml python3-rich python3-xlib python3-serial \
   python3-pyroute2 libusb-1.0-0 \
   shim-signed grub-efi-amd64-signed
-optional power-profiles-daemon fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
+optional power-profiles-daemon fonts-inter fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji fonts-liberation fonts-dejavu-core
 
 # ------------------------------------------------------------------ graphics and Steam (AMD, Intel; Nvidia below)
 # Mesa from trixie-backports with its 32-bit half (they must be the same version), then Steam (contrib) on top so
@@ -210,48 +210,36 @@ if ! command -v fusermount >/dev/null && command -v fusermount3 >/dev/null; then
 touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
-# ------------------------------------------------------------------ Hearth Plasma (docs/PLASMA.md)
-# KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
-# /usr/share/hearth-plasma). Only the workspace (no recommends, no kde-standard app bundle) plus Dolphin for folders.
-# Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
-# plasma-workspace needs gdb (its crash handler), whose libdebuginfod has to match the elfutils libraries the newer
-# kernel/Mesa brought from backports: taken from backports too, or apt can't solve it.
+# ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
+# Mantel (labwc + Quickshell) is Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone, and
+# their sessions (plasma-workspace, kwin-wayland, plasma-desktop and Plasma's applets; gnome-shell, mutter,
+# gnome-session, gnome-control-center and GNOME's apps; their portals) aren't installed any more. What stays:
+#   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
+#   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
+#   kde-cli-tools, plasma-integration, qml6-module-org-kde-kirigami
+#                        for the KDE apps Hearth ships (hosts/hearth-kde: Hearth Files from Dolphin, Terminal, Text,
+#                        Reader, Capture, Calculator); install.sh brings those apps and their KDE Frameworks itself
+# plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
-"${APT[@]}" plasma-workspace kwin-wayland plasma-desktop
-optional plasma-nm plasma-pa powerdevil kscreen kscreenlocker bluedevil polkit-kde-agent-1 xdg-desktop-portal-kde \
-  breeze kde-cli-tools systemsettings plasma-integration qml6-module-org-kde-kirigami libplasma5support6 dolphin \
-  kde-config-screenlocker spectacle qml-module-org-kde-plasma-plasma5support qml6-module-org-kde-plasma-plasma5support
-for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/null || { echo "::error title=Hearth Plasma::$b is missing"; exit 1; }; done
-
-# ------------------------------------------------------------------ Hearth GNOME (docs/GNOME.md)
-# GNOME Shell (trixie's release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell extensions
-# (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal (no recommends, no
-# GNOME app bundle, no GDM: SDDM stays), plus GNOME's own apps for the kinds it has (Files, Console, Text Editor: one
-# app of each kind per desktop, through the app-kinds table's GNOME entries below). Hearth Classic stays the fallback.
-gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
-"${APT[@]}" gnome-shell mutter gnome-session gnome-control-center
-optional xdg-desktop-portal-gnome nautilus gnome-console gnome-text-editor
-for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
-gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
-mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
-echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
+optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
 
 # ------------------------------------------------------------------ the login screen (SDDM, as on Bazzite)
 # nimbus-autologin writes SDDM's autologin; the Hearth theme (os/system_files) is Qt 6, as trixie's SDDM is.
 # SDDM's login screen itself runs on X (its default), so the X server comes along.
 "${APT[@]}" sddm xserver-xorg-core xserver-xorg-input-libinput
 optional qml6-module-qtquick-virtualkeyboard qml6-module-qtmultimedia
+# AMD's X driver for the login screen's X server (it came with the Xfce session before that went off by default).
+optional xserver-xorg-video-amdgpu
 
-# ------------------------------------------------------------------ Peppermint's desktop (optional)
-# Xfce, Peppermint's own desktop, as a second session on the login screen: what Peppermint users know, and a way
-# back to a plain desktop if Hearth's session misbehaves. Minimal (no recommends): roughly 150 MB. Hearth's
-# session stays the default and the autologin. PEPPERMINT_DESKTOP=0 leaves it out.
+# ------------------------------------------------------------------ Xfce session (optional, off by default)
+# Hearth OS is Debian-based now; the Xfce session (a plain fallback desktop on the login screen) is off by default
+# and only built with --build-arg PEPPERMINT_DESKTOP=1. Minimal (no recommends): roughly 150 MB. Hearth's session
+# stays the default and the autologin.
 if [ "$PEPPERMINT_DESKTOP" = "1" ]; then
   "${APT[@]}" xfce4-session xfwm4 xfce4-panel xfdesktop4 xfce4-settings xfce4-terminal thunar
-  optional xserver-xorg-video-amdgpu xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin xfce4-notifyd network-manager-gnome
-  # Shown as "Peppermint desktop (Xfce)" so it's clear what it is.
+  optional xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin xfce4-notifyd network-manager-gnome
   if [ -f /usr/share/xsessions/xfce.desktop ]; then
-    sed -i -e 's/^Name=.*/Name=Peppermint desktop (Xfce)/' /usr/share/xsessions/xfce.desktop
+    sed -i -e 's/^Name=.*/Name=Xfce desktop/' /usr/share/xsessions/xfce.desktop
   fi
 fi
 
@@ -259,6 +247,12 @@ fi
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Debian-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
+# Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's pieces in the shared system files (still used by other bases):
+# not in this image, where Mantel is the only desktop.
+rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth /usr/share/plasma/plasmoids/org.hearth.* \
+  /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json /usr/share/gnome-shell/extensions/*@hearthos.fun
+rm -f /usr/share/applications/hearth-cosmic-*.desktop
+rmdir --ignore-fail-on-non-empty -p /usr/share/plasma/plasmoids /usr/share/plasma/look-and-feel /usr/share/plasma/desktoptheme /usr/share/gnome-shell/modes /usr/share/gnome-shell/extensions 2>/dev/null || true
 chmod 440 /etc/sudoers.d/hearth-wheel
 
 # ------------------------------------------------------------------ Hearth icon set (branding/icons)
@@ -312,15 +306,16 @@ if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/c
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
-# ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
-# copied into Decky's plugins folder when you install Decky from Settings › System (hearth-admin decky-install). No
-# service is enabled here and nothing runs at boot. Not in this build: skipped with a warning.
-if [ -f /ctx/nimbus-app/decky-hearth/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth/dist/index.js ]; then
-  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth && cp -a /ctx/nimbus-app/decky-hearth /usr/share/hearth/decky-hearth \
-    && chmod -R a+rX /usr/share/hearth/decky-hearth && echo "Hearth Decky plugin added" \
-    || { echo "warning: the Hearth Decky plugin didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth; }
+# ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin that keeps Hearth's non-Steam games
+# in Steam's library. Only files, copied into Decky's plugins folder when you install Decky from Settings › System
+# (hearth-admin decky-install) and refreshed when Steam Game Mode starts. No service is enabled here and nothing runs at
+# boot. The older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now. Not in this build: skipped.
+if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-sync/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-sync && cp -a /ctx/nimbus-app/decky-hearth-sync /usr/share/hearth/decky-hearth-sync \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth-sync && echo "Hearth Sync (Decky plugin) added" \
+    || { echo "warning: Hearth Sync didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-sync; }
 else
-  echo "warning: the Hearth Decky plugin isn't in this build; Steam Game Mode goes without it"
+  echo "warning: Hearth Sync isn't in this build; Steam Game Mode goes without it"
 fi
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
@@ -850,11 +845,9 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
-# The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
-# Plasma (hidden by its TryExec where Plasma isn't installed).
-for s in hearth-classic hearth-plasma hearth-gnome; do
-  sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
-done
+# "Hearth Classic" on the login screen too (Mantel; the only desktop now: no Hearth Plasma / GNOME / COSMIC entries).
+sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-classic.desktop > /usr/share/wayland-sessions/hearth-classic.desktop
+rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
@@ -880,7 +873,7 @@ CONF
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the CachyOS build
 # writes this same file).
 cat > /usr/share/nimbus/image-info.json <<INFO
-{"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie (Peppermint OS base)", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
+{"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
 cat > /usr/share/applications/nimbus.desktop <<DESKTOP
@@ -1327,6 +1320,15 @@ else
 fi
 rm -f /tmp/faugus-launcher_all.deb
 
+# ------------------------------------------------------------------ Minigalaxy (GOG)
+# Minigalaxy (github.com/sharkwouter/minigalaxy, GPL), the simple open-source GOG client, from Debian's own repositories.
+# Hearth Sync (docs/HEARTH-SYNC.md) adds the games it installs to Steam's library. Optional: skipped with a warning.
+if have_pkg minigalaxy && "${APT[@]}" minigalaxy; then
+  echo "Minigalaxy installed"
+else
+  echo "warning: couldn't install Minigalaxy from Debian's repositories; Hearth works without it"
+fi
+
 # ------------------------------------------------------------------ Sunshine (Multi-seat's streamed players, Remote play)
 # Settings › Multi-seat can stream an extra player's own Game Mode to Moonlight on a TV, phone, tablet or laptop (one
 # Sunshine per streamed player, see docs/MULTI-SEAT.md); Settings › Remote play uses it too. The archive's package
@@ -1422,9 +1424,9 @@ systemctl enable hearth-clean-install.service
 # still know what it is underneath.
 sed -i \
   -e 's/^NAME=.*/NAME="Hearth"/' \
-  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (Peppermint edition, Debian 13)"/' \
+  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (Debian 13)"/' \
   /usr/lib/os-release
-grep -q '^VARIANT_ID=' /usr/lib/os-release || printf 'VARIANT="Peppermint edition"\nVARIANT_ID=hearth-peppermint\n' >> /usr/lib/os-release
+grep -q '^VARIANT_ID=' /usr/lib/os-release || printf 'VARIANT="Debian edition"\nVARIANT_ID=hearth-peppermint\n' >> /usr/lib/os-release
 grep -q '^ID_LIKE=' /usr/lib/os-release || echo 'ID_LIKE=debian' >> /usr/lib/os-release
 
 # ------------------------------------------------------------------ boot loader for Hearth's installer (bootupd)

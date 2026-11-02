@@ -108,7 +108,7 @@
     {
       "id": "debian-netinst", "group": "linux", "family": "Debian", "name": "Debian", "flavour": "Network installer",
       "homepage": "https://www.debian.org/", "sizeHint": "800 MB",
-      "about": "Debian's small installer: it downloads the rest while installing. Hearth OS's Peppermint edition is built on Debian.",
+      "about": "Debian's small installer: it downloads the rest while installing. Hearth OS is built on Debian.",
       "resolve": { "kind": "dir", "dir": "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/" },
       "checksums": { "file": "{dir}SHA256SUMS", "pick": "^debian-(\\d+\\.\\d+\\.\\d+)-amd64-netinst\\.iso$" },
       "signature": { "kind": "detached", "of": "checksums", "file": "{dir}SHA256SUMS.sign", "key": "debian" }
@@ -269,27 +269,9 @@
       "note": "Microsoft only hands out the ISO through its own download page. Compare the SHA-256 Hearth shows with Microsoft's list under \"Verify your download\"."
     },
     {
-      "id": "hearth-live", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Offline USB (Anatase)",
-      "homepage": "https://hearthos.fun/", "sizeHint": "9 GB",
-      "about": "Hearth OS's Anatase edition: try it from the USB drive and install it without internet.",
-      "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso" },
-      "checksums": { "file": "{url}.sha256" },
-      "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",
-      "note": "Hearth publishes a SHA-256 next to each ISO."
-    },
-    {
-      "id": "hearth-installer", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Small online installer (Anatase)",
-      "homepage": "https://hearthos.fun/", "sizeHint": "1.6 GB",
-      "about": "The small installer: it downloads Hearth OS while installing.",
-      "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso" },
-      "checksums": { "file": "{url}.sha256" },
-      "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",
-      "note": "Hearth publishes a SHA-256 next to each ISO."
-    },
-    {
-      "id": "hearth-peppermint", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Peppermint edition",
+      "id": "hearth-peppermint", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Offline USB",
       "homepage": "https://hearthos.fun/docs/install.html", "sizeHint": "4 GB",
-      "about": "Hearth OS's Peppermint (Debian) edition.",
+      "about": "Hearth OS on Debian 13 on the USB drive, so it installs without internet.",
       "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso" },
       "checksums": { "file": "{url}.sha256" },
       "pinned": "Hearth OS's newest ISO at its fixed address on Hearth's download server.",

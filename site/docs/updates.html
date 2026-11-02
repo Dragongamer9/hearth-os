@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Updates and editions · Hearth OS docs</title>
 <meta name="description" content="Hearth OS updates itself in one piece. Here is how that works, how to go back, and how to switch edition.">
-<meta name="theme-color" content="#110a07">
+<meta name="theme-color" content="#171a21">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="../img/logo.svg" type="image/svg+xml">
 <link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
 <script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="stylesheet" href="docs.css">
 </head>
@@ -31,7 +32,7 @@
 <div class="wrap layout">
   <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html" class="cur" aria-current="page">Updates and editions</a><div class="sub"><a href="#how">How updates work</a><a href="#rollback">Going back to the last version</a><a href="#switch">Switching edition</a><a href="#versions">Versions</a></div><a href="using.html">Using Hearth</a><a href="steam.html">Steam Game Mode</a><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 0.6.63</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 1.0</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="peppermint">Debian</option><option value="anatase">Anatase (Fedora, archived)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Updates and editions</h1>
     <p class="lead">Hearth OS updates itself in one piece. Here is how that works, how to go back, and how to switch edition.</p>
 
@@ -60,8 +61,8 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 </section><section><h2 id="switch">Switching edition</h2>
-<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Ubuntu or CachyOS
-(archived for now) the same button moves you to Anatase or Peppermint.</p>
+<p>Move to Hearth OS on Debian without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Anatase, Ubuntu or CachyOS
+(archived) the same button moves you to Debian.</p>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
 <li><b>Set aside:</b> the rest of your home folder goes into a folder called <code>.old-hearth-</code> plus the date, for 30 days,
@@ -71,11 +72,14 @@ so you can copy back anything you need. After 30 days it's deleted.</li>
 <div class="note warn ed" data-ed="ubuntu cachyos peppermint"><p><b>Installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
 "podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
 <h3>Switching from a terminal</h3>
-<p>The same switch as the Settings button. Change <code>peppermint</code> to <code>anatase</code> for the other edition:</p>
+<p>The same switch as the Settings button (<code>peppermint</code> is the Debian edition's name inside Hearth):</p>
 <div class="cmd" data-cmd="switch-edition"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition peppermint</code></pre></div>
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
 </section><section><h2 id="versions">Versions</h2>
+<p>From 1.0 on, Hearth OS versions have two numbers: the first changes with a big release (1.0, then 2.0), the
+second with each update after it (1.1, 1.2 … 1.10). Settings › About shows the version with the day it came out, like
+<b>Hearth OS 1.0 · November 2, 2026</b>. Versions before 1.0 kept their three numbers (0.6.63).</p>
 <p>What changed in each version, and what's coming next: <a href="releases.html">release notes</a>.</p>
 </section>
 <div class="pager"><a href="install.html">← Installing</a><a href="using.html">Using Hearth →</a></div>

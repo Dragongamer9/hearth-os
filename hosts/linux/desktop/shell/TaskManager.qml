@@ -389,7 +389,7 @@ Scope {
                                 readonly property bool lit: tm.page === modelData.id
                                 width: ListView.view.width
                                 height: 48
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: lit ? (nav.activeFocus ? Theme.accent : Theme.panel3) : tabMouse.containsMouse ? Theme.panel2 : "transparent"
                                 Behavior on color { ColorAnimation { duration: Theme.quick } }
                                 RowLayout {
@@ -524,7 +524,7 @@ Scope {
                                     readonly property bool current: ListView.isCurrentItem
                                     width: ListView.view.width
                                     height: 58
-                                    radius: 12
+                                    radius: Theme.r(12)
                                     color: rowMouse.containsMouse ? Theme.panel3 : Theme.panel2
                                     border.width: 2
                                     border.color: current && list.activeFocus ? Theme.accent : "transparent"
@@ -534,7 +534,7 @@ Scope {
                                         spacing: 14
                                         Rectangle {
                                             Layout.preferredWidth: 38; Layout.preferredHeight: 38
-                                            radius: 10
+                                            radius: Theme.r(10)
                                             color: Theme.panel3
                                             IconImage {
                                                 anchors.centerIn: parent
@@ -633,7 +633,7 @@ Scope {
                                                 readonly property bool lit: win.sheetIndex === index
                                                 implicitWidth: btnText.implicitWidth + 32
                                                 implicitHeight: 40
-                                                radius: 10
+                                                radius: Theme.r(10)
                                                 color: lit ? (modelData.danger ? Theme.danger : Theme.accent) : btnMouse.containsMouse ? Theme.panel3 : Theme.panel2
                                                 Behavior on color { ColorAnimation { duration: Theme.quick } }
                                                 Text {
@@ -1016,7 +1016,7 @@ Scope {
         Layout.fillWidth: true
         implicitHeight: Math.max(64, swCol.implicitHeight + 24)
         activeFocusOnTab: interactive
-        radius: 12
+        radius: Theme.r(12)
         color: swMouse.containsMouse && interactive ? Theme.panel3 : Theme.panel2
         border.width: 2
         border.color: activeFocus ? Theme.accent : "transparent"
@@ -1047,7 +1047,7 @@ Scope {
             Rectangle {
                 visible: sw.icon !== ""
                 Layout.preferredWidth: 38; Layout.preferredHeight: 38
-                radius: 10
+                radius: Theme.r(10)
                 color: Theme.panel3
                 Icon { anchors.centerIn: parent; name: sw.icon; size: 20; color: Theme.text }
             }
@@ -1175,7 +1175,7 @@ Scope {
         property string value
         property bool hot: false
         implicitHeight: 60
-        radius: 10
+        radius: Theme.r(10)
         color: Theme.panel3
         ColumnLayout {
             anchors { fill: parent; margins: 10 }

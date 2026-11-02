@@ -13,6 +13,7 @@ Scope {
     id: root
     property bool hasWlopm: false
     property bool screenIsOff: false
+    onScreenIsOffChanged: DeskState.screenOff = screenIsOff
     Process {
         running: true
         command: ["sh", "-c", "command -v wlopm"]

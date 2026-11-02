@@ -2,6 +2,7 @@
 // Takes the freedesktop names used around the shell (e.g. "input-keyboard-symbolic") or Hearth's own
 // ("kbd"). The color picks the tone: Theme.accent → accent, Theme.accentInk → dark, Theme.muted → muted.
 import QtQuick
+import "icon-data.js" as IconData
 
 Item {
     id: root
@@ -25,13 +26,17 @@ Item {
         "emblem-system-symbolic": "gear"
     })
     readonly property string file: names[name] || name || "dot"
+    readonly property string hex: { const t = (x) => ("0" + Math.round(x * 255).toString(16)).slice(-2); return "#" + t(color.r) + t(color.g) + t(color.b); }
     readonly property string tone: Qt.colorEqual(color, Theme.accentInk) ? "ink"
         : Qt.colorEqual(color, Theme.accent) ? "accent"
         : Qt.colorEqual(color, Theme.muted) ? "muted" : "light"
 
     Image {
         anchors.fill: parent
-        source: Qt.resolvedUrl("icons/" + root.file + "-" + root.tone + ".svg")
+        // Drawn in exactly its colour (your accent, light mode's dark text) from icon-data.js; the tone files are
+        // the fallback for an icon that isn't in it.
+        source: IconData.icons[root.file] ? "data:image/svg+xml;utf8," + encodeURIComponent(IconData.icons[root.file].split("{c}").join(root.hex))
+            : Qt.resolvedUrl("icons/" + root.file + "-" + root.tone + ".svg")
         sourceSize: Qt.size(Math.ceil(root.size * 2), Math.ceil(root.size * 2))
         smooth: true
         fillMode: Image.PreserveAspectFit

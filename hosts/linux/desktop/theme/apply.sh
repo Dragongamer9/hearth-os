@@ -11,6 +11,16 @@ SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 MARK="# Written by Hearth Desktop Mode; delete this line to keep your own settings."
 
+# The look chosen in Settings › Appearance (Hearth or Steam-style, dark or light, the accent): hearth-theme writes
+# the Qt, GTK, KDE and labwc colours for it to ~/.config/nimbus/theme (and reloads labwc's window decorations).
+# Without python3 or if it fails, Hearth's own files below are used as before.
+HEARTH_THEME_DIR=""; HEARTH_SCHEME=dark; HEARTH_GNOME_ACCENT=orange
+if command -v python3 >/dev/null 2>&1 && [ -f "$SHARE/desktop/theme/hearth-theme" ]; then
+  eval "$(python3 "$SHARE/desktop/theme/hearth-theme" 2>/dev/null | grep -E "^HEARTH_[A-Z_]+='[^']*'\$")"
+fi
+QT_COLORS="$SHARE/desktop/theme/hearth-qt.conf"
+[ -n "$HEARTH_THEME_DIR" ] && [ -f "$HEARTH_THEME_DIR/hearth-qt.conf" ] && QT_COLORS="$HEARTH_THEME_DIR/hearth-qt.conf"
+
 for v in qt6ct qt5ct; do
   f="$CONF/$v/$v.conf"
   if [ ! -e "$f" ] || head -n 1 "$f" | grep -qF "$MARK"; then
@@ -18,9 +28,9 @@ for v in qt6ct qt5ct; do
     cat >"$f" <<CONF
 $MARK
 [Appearance]
-color_scheme_path=$SHARE/desktop/theme/hearth-qt.conf
+color_scheme_path=$QT_COLORS
 custom_palette=true
-icon_theme=breeze-dark
+icon_theme=$( [ "$HEARTH_SCHEME" = light ] && echo breeze || echo breeze-dark )
 standard_dialogs=xdgdesktopportal
 style=Breeze
 
@@ -48,6 +58,9 @@ for v in 4 3; do
   f="$CONF/gtk-$v.0/gtk.css"
   if [ ! -e "$f" ] || head -n 1 "$f" | grep -qF "$GTK_MARK"; then
     mkdir -p "$CONF/gtk-$v.0"
+    if [ -n "$HEARTH_THEME_DIR" ] && [ -f "$HEARTH_THEME_DIR/gtk$v.css" ]; then
+      cp "$HEARTH_THEME_DIR/gtk$v.css" "$f" 2>/dev/null; continue    # the look and accent are in it already
+    fi
     cp "$SHARE/desktop/theme/gtk/gtk$v.css" "$f" 2>/dev/null
     if [ -n "$ACCENT" ]; then
       # Text on the accent: dark on light accents, white on dark ones (as Theme.qml's accentInk).
@@ -65,10 +78,14 @@ if command -v flatpak >/dev/null 2>&1; then
 fi
 
 if command -v gsettings >/dev/null 2>&1; then
-  gsettings set org.gnome.desktop.interface color-scheme prefer-dark 2>/dev/null
-  gsettings set org.gnome.desktop.interface accent-color orange 2>/dev/null   # GNOME 47+ apps
+  gsettings set org.gnome.desktop.interface color-scheme "prefer-$HEARTH_SCHEME" 2>/dev/null
+  gsettings set org.gnome.desktop.interface accent-color "$HEARTH_GNOME_ACCENT" 2>/dev/null   # GNOME 47+ apps
   gsettings set org.gnome.desktop.interface cursor-theme breeze_cursors 2>/dev/null
   # GTK 3 apps: the libadwaita-like style when it's installed (Bazzite ships adw-gtk3), which reads gtk.css colours.
-  [ -d /usr/share/themes/adw-gtk3-dark ] && gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark 2>/dev/null
+  if [ "$HEARTH_SCHEME" = light ]; then
+    [ -d /usr/share/themes/adw-gtk3 ] && gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3 2>/dev/null
+  else
+    [ -d /usr/share/themes/adw-gtk3-dark ] && gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark 2>/dev/null
+  fi
 fi
 exit 0

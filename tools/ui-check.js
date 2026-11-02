@@ -2019,7 +2019,7 @@ const path = require('path');
         const st = { running: true, me: { id: 'a'.repeat(64), name: 'Deck', ticket: 'a'.repeat(64) }, settings: { sync: true }, peers: [], transfers: [], offers: [], sending: [], signInHints: [], shortCodes: true,
           pairing: { code: '482913', until: Date.now() + 290000, triesLeft: 4, netCode: null },
           pairEvent: { state: 'wrong', name: 'Nvidia-PC', triesLeft: 4, at: Date.now() },
-          nearby: [{ id: 'b'.repeat(64), name: 'Nvidia-PC', pairing: true, kind: 'desktop', edition: 'Anatase' }, { id: 'c'.repeat(64), name: 'Office', pairing: false, kind: 'laptop', edition: 'Peppermint' }] };
+          nearby: [{ id: 'b'.repeat(64), name: 'Nvidia-PC', pairing: true, kind: 'desktop', edition: 'Anatase' }, { id: 'c'.repeat(64), name: 'Office', pairing: false, kind: 'laptop', edition: 'Debian' }] };
         const calls = [];
         let joins = 0;
         call = async (m, a) => {
@@ -2031,7 +2031,7 @@ const path = require('path');
         LK.s = st; closeAll(); S.settingsTab = 'link'; navigate('settings', {}, false); render(null, true); await wait(150);
         const v = () => document.querySelector('#view').textContent;
         out.code = /482 913/.test(v()); out.wrongHere = /Nvidia-PC typed a wrong code \(4 tries left\)/.test(v());
-        out.kind = /Desktop · Anatase · Ready to pair/.test(v()); out.notReady = /Laptop · Peppermint · To pair, select Pair a device on it first/.test(v());
+        out.kind = /Desktop · Anatase · Ready to pair/.test(v()); out.notReady = /Laptop · Debian · To pair, select Pair a device on it first/.test(v());
         out.netBtn = !!document.querySelector('#view [data-k="lk-pnet"]');
         const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
         out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
@@ -2529,8 +2529,9 @@ const path = require('path');
     await hp.close();
   }
 
-  // Settings › System › Steam Game Mode › Start in Steam Game Mode (docs/STEAM-GAME-MODE.md): offered only with Steam
-  // signed in, asks first when turning on, and shows the session's note when it turned itself off.
+  // Settings › System › Steam Game Mode (docs/STEAM-GAME-MODE.md): Steam Game Mode is Hearth OS's Game Mode, so the old
+  // "Start in Steam Game Mode" switch is gone (always on); the session's last failure (Desktop Mode opened instead) shows.
+  // First-time setup hands over to Steam Game Mode when it finishes (feature steamOnly: session.restartGameMode).
   {
     const sp = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     sp.on('pageerror', e => errors.push('steam game mode default: ' + e.message));
@@ -2540,34 +2541,15 @@ const path = require('path');
       const r = await sp.evaluate(async () => {
         const out = [];
         HOSTINFO.features = [...(HOSTINFO.features || []), 'steamMode'];
-        const base = { available: true, steam: 'native', gamescope: true, inSession: true, decky: { installed: false }, lastFailure: null };
-        window.__sd = [];
-        const real = MOCK.call;
-        MOCK.call = (m, a) => {
-          if (m === 'steamMode.setDefault') { window.__sd.push(a.on); return Promise.resolve(Object.assign({}, base, { startDefault: { on: a.on, can: true, signedIn: true, offNote: null } })); }
-          if (m === 'steamMode.status') return Promise.resolve(SGM.s);
-          return real(m, a);
-        };
         const has = (html, k) => html.includes(`data-k="${k}"`);
-        SGM.s = Object.assign({}, base, { startDefault: { on: false, can: false, signedIn: false, offNote: null } });
-        let h = pageSystem();
-        if (has(h, 'sy-sgm-default')) out.push('offered without a Steam sign-in');
-        if (!/sign in to Steam first/.test(h)) out.push('no hint to sign in to Steam');
-        SGM.s = Object.assign({}, base, { startDefault: { on: false, can: true, signedIn: true, offNote: 'Steam ended right away (code 1)' } });
-        h = pageSystem();
-        if (!has(h, 'sy-sgm-default')) out.push('no Start in Steam Game Mode row with Steam signed in');
-        if (!/turned off by itself: Steam ended right away \(code 1\)/.test(h)) out.push("the session's note isn't shown");
-        if (!/hold B or Guide/.test(h)) out.push("the row doesn't say how to skip it");
-        sgmDefault();
-        if (S.layers.at(-1) !== 'sheet' || !/Switch to Hearth Game Mode/.test(sheet.sub || '')) out.push('turning it on did not ask first with the ways back');
-        else sheetPick(0);
-        await new Promise(res => setTimeout(res, 100));
-        if (JSON.stringify(window.__sd) !== '[true]' || !SGM.s.startDefault.on) out.push('turning on did not reach the host: ' + JSON.stringify(window.__sd));
-        h = pageSystem();
-        if (!/class="sw on"/.test(h.slice(h.indexOf('sy-sgm-default')))) out.push('the switch is not on afterwards');
-        if (/turned off by itself/.test(h)) out.push('the old note still shows while on');
-        sgmDefault(); await new Promise(res => setTimeout(res, 100));
-        if (JSON.stringify(window.__sd) !== '[true,false]') out.push('turning off asked first or did not reach the host: ' + JSON.stringify(window.__sd));
+        SGM.s = { available: true, steam: 'native', gamescope: true, inSession: true, decky: { installed: false }, lastFailure: 'Steam ended right away (code 1)',
+                  startDefault: { on: false, can: true, signedIn: true, offNote: 'Steam ended right away (code 1)' } };
+        const h = pageSystem();
+        if (has(h, 'sy-sgm-default') || /Start in Steam Game Mode/.test(h)) out.push('the old Start in Steam Game Mode switch is still offered');
+        if (!has(h, 'sy-sgm')) out.push('no Switch to Steam Game Mode row');
+        if (/Experimental\)/.test(h.slice(h.indexOf('Steam Game Mode') - 40, h.indexOf('Steam Game Mode') + 60))) out.push('still marked Experimental');
+        if (!/Desktop Mode opened instead: Steam ended right away \(code 1\)/.test(h)) out.push("the session's last failure isn't shown");
+        if (/Hearth's Game Mode|Switch to Hearth Game Mode/.test(h.slice(h.indexOf('Steam Game Mode')))) out.push("still mentions Hearth's own Game Mode");
         closeAll();
         return out;
       });

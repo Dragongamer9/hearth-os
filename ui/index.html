@@ -1593,6 +1593,14 @@ if(/[?&]overlay/.test(location.search) || (window.nimbusHost && window.nimbusHos
 const host = window.chrome && window.chrome.webview ? window.chrome.webview : (window.nimbusHost || null);
 // Which platform we're on; host.info fills in the details at boot. Text that names Windows things checks this.
 const HOSTINFO = {platform: (window.nimbusHost && window.nimbusHost.platform==='android') || (!window.nimbusHost && /[?&]preview=android/.test(location.search)) ? 'android' : window.nimbusHost || /[?&]preview=linux/.test(location.search) ? 'linux' : 'windows', name:null, host:null, session:false};
+// Hearth OS version numbers as people see them (docs/UPDATES.md, "Version numbers"): from 1.0 on MAJOR.MINOR, so
+// 1.0.0 (what the build files say) shows as "1.0" and 1.10.0 as "1.10"; 0.x (0.6.63) and 1.0.1 stay whole. A release
+// date (YYYY-MM-DD) goes next to it in the reader's language: "1.0 · November 2, 2026"; without one, just the number.
+function verShow(v){ v=String(v==null?'':v).trim(); const m=/^(v?)(\d+)\.(\d+)\.0(?=$|[+-])/.exec(v); return m&&+m[2]>=1 ? m[1]+m[2]+'.'+m[3]+v.slice(m[0].length) : v; }
+function verDate(d){ const m=/^(\d{4})-(\d\d)-(\d\d)/.exec(String(d||'')); if(!m) return ''; try{ return new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}); }catch(e){ return ''; } }
+function verWithDate(v,d){ const t=verDate(d); return verShow(v)+(t&&v?' · '+t:''); }
+// The release date of the Hearth OS image (system installs) or of this app, when it's for that same version.
+function verDateOf(v){ const same=(a,b)=>!!a&&!!b&&verShow(a).replace(/^v/,'')===verShow(b).replace(/^v/,''); return same(v,HOSTINFO.imageVersion)?HOSTINFO.imageDate:same(v,HOSTINFO.version)?HOSTINFO.versionDate:''; }
 const LINUX = HOSTINFO.platform==='linux';
 // Hearth for Android (hosts/android): Android runs the device (Wi-Fi, Bluetooth, the screen), so Settings shows
 // only what the app does and opens Android's own pages for the rest (androidPage below).
@@ -1689,7 +1697,7 @@ const MOCK = (()=>{
       {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. Starts and updates fast, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on (it has no signed boot loader). Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
+      {id:'peppermint',label:'Debian',about:'Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included.',beta:false,recommended:true,allowed:false,reason:'Not ready yet',warning:null}]}; },
     'osinstall.check':async({part})=>{ await wait(900); return part ? {target:{kind:'linux',name:'SteamOS',part,size:1.9e12,min:6e11,used:5.8e11,freeSpace:0,canGive:1.2e12},problems:[],suggested:512*2**30} : {windows:{size:1e12,min:3.1e11,canGive:6.6e11},target:{kind:'windows',name:'Windows',size:1e12,min:3.1e11,canGive:6.6e11,freeSpace:0},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
     'osinstall.useMantel':async()=>true,
     'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
@@ -1794,8 +1802,8 @@ const MOCK = (()=>{
       {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. A smaller system that starts and updates faster, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on. Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
-    'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[edition]||'the new Hearth OS';
+      {id:'peppermint',label:'Debian',about:'Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included.',beta:false,recommended:true,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
+    'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Hearth OS on Debian'}[edition]||'the new Hearth OS';
       st.newos={eligible:true,published:true,canAdmin:true,state:'moving',edition,label,progress:0.3,line:'Downloading',phases:{download:{pct:30,done:1.2e9,total:4e9,bps:3.1e7,eta:90},install:{pct:0}},stage:{phase:'download'},speeds:[]};
       setTimeout(()=>{ st.newos={eligible:true,published:true,canAdmin:true,state:'done',edition,label,line:'Restart to start the new Hearth OS.'}; onSysEvent('newOs',clone(st.newos)); },2500); return clone(st.newos); },
     'oldfiles.status':async()=>clone(st.oldf||{folders:[{name:'.old-hearth-2026-10-19',date:'2026-10-19',daysLeft:27,moved:['Documents','Downloads','Pictures','.config','.local/share/flatpak'],from:'Hearth OS (based on Bazzite)'}]}),
@@ -3921,7 +3929,7 @@ const DG_DEMO_UPD = {state:'idle', error:null, status:{booted:{version:'Preview 
   available:{version:'Preview 3', timestamp:'2026-10-28T09:00:00Z'}, rollback:{version:'Preview 1', timestamp:'2026-10-02T18:00:00Z'}, rollbackQueued:false}};
 function pageDfUpdates(){
   if(!host && !SYSUPD.s) SYSUPD.s=JSON.parse(JSON.stringify(DG_DEMO_UPD));   // the browser preview
-  const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?x.version:'';
+  const u=SYSUPD.s, st=(u&&u.status)||{}, v=x=>x&&x.version?verShow(x.version):'';
   const when=x=>{ const t=x&&x.timestamp&&Date.parse(x.timestamp); return t?new Date(t).toLocaleDateString([], {year:'numeric', month:'short', day:'numeric'}):''; };
   let h=pageSystemUpdate({df:true});
   if(!u) return h+unlockRows()+dgRecoveryRows();
@@ -4260,24 +4268,19 @@ async function restoreBackup(){
 // ---------- Settings › System › Web browser: Hearth Browser (Firefox), and Aloha (optional, Linux) ----------
 const BROWSER = {s:null};
 const ART = {s:null};
-// ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Steam's gamepad UI in gamescope, this time only (the
-// session comes back to Hearth's Game Mode afterwards, and a restart always starts Hearth's), with Decky Loader and the
-// Hearth plugin (hosts/decky-hearth), installed here.
+// ---- Steam Game Mode (docs/STEAM-GAME-MODE.md): Hearth OS's Game Mode, Steam's gamepad UI in gamescope (the session
+// always starts in it; when it can't, Desktop Mode opens and says why), with Decky Loader and the Hearth plugin
+// (hosts/decky-hearth), installed here. Hearth's own Game Mode is archived, and so is the old "Start in Steam Game
+// Mode" setting (it's always on now): sgmDefault stays for the developer switch's sake but isn't offered.
 const SGM = {s:null, busy:false};
 function loadSteamMode(){ if(host && LINUX && hasFeat('steamMode')) call('steamMode.status').then(r=>{ SGM.s=r; if(S.view==='settings') render(null,true); }).catch(()=>{}); }
 function steamModeRows(){
-  const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode (Experimental)')+note('Loading…'); }
+  const s=SGM.s; if(!s){ loadSteamMode(); return shead('Steam Game Mode')+note('Loading…'); }
   const d=s.decky||{};
-  let h = shead('Steam Game Mode (Experimental)');
-  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS. This time only: when Steam closes, or from the Hearth panel in Quick Access, you're back in ${APP}'s Game Mode.${(s.startDefault||{}).on?'':` Restarting starts ${APP}'s.`}</small></div><div class="rv">›</div></button>`
-    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and the Hearth plugin</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth plugin in place':d.shipped?' · Hearth plugin not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Brings '+APP+'\'s games, look and apps into Steam. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy===true?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
-  if(s.lastFailure) h += note(`Last try came back to ${APP}'s Game Mode: ${esc(s.lastFailure)}.`);
-  // Start in Steam Game Mode (per device, off by default): only offered where Steam is installed and signed in. The
-  // session turns it off by itself when it fails and says why (offNote). Ways back: docs/STEAM-GAME-MODE.md.
-  const sd=s.startDefault||{};
-  if(sd.on || sd.can) h += sgrid(`<button class="row" data-f data-k="sy-sgm-default" data-act="sgmDefault"><div class="rt"><b>Start in Steam Game Mode</b><small>The device starts in Steam's Game Mode instead of ${APP}'s. To skip it once, hold B or Guide while the device starts. To stop it: Quick Access › Hearth in Steam, or turn this off. It turns itself off if Steam fails to start.</small></div>${SGM.busy==='default'?'<span class="mini-spin"></span>':`<div class="sw ${sd.on?'on':''}"></div>`}</button>`);
-  else if(s.available && sd.signedIn===false) h += note(`Start in Steam Game Mode: sign in to Steam first (Switch to Steam Game Mode once and sign in there).`);
-  if(sd.offNote && !sd.on) h += note(`Start in Steam Game Mode was turned off by itself: ${esc(sd.offNote)}. The device starts in ${APP}'s Game Mode.`);
+  let h = shead('Steam Game Mode');
+  h += sgrid(`<button class="row" data-f data-k="sy-sgm" data-act="pwr" data-p="steam"><span class="ricon">${I.pad}</span><div class="rt"><b>Switch to Steam Game Mode</b><small>Steam's own gamepad screens, like SteamOS: where the device starts. Back to Desktop Mode: Steam's Power › Switch to Desktop, or Quick Access › Hearth › Desktop Mode.</small></div><div class="rv">›</div></button>`
+    + `<button class="row" data-f data-k="sy-decky" data-act="sgmDecky"><span class="ricon">${I.dl}</span><div class="rt"><b>Decky Loader and Hearth Sync</b><small>${d.installed?(d.via==='decky'?'Decky Loader (its own install)':'Installed')+(d.plugin?' · Hearth Sync in place':d.shipped?' · Hearth Sync not added yet':'')+'. Decky runs only while Steam Game Mode does.':'Adds your non-Steam games (Epic, GOG, emulators and more) to Steam\'s library with covers. Needs an administrator\'s password; turns on Steam\'s remote debugging (see the docs).'}</small></div>${SGM.busy===true?'<span class="mini-spin"></span>':`<div class="rv">${d.installed?'Remove':'Install'} ›</div>`}</button>`);
+  if(s.lastFailure) h += note(`Steam Game Mode didn't start last time, so Desktop Mode opened instead: ${esc(s.lastFailure)}. Switch to Steam Game Mode tries again.`);
   return h;
 }
 function sgmDefault(){
@@ -4376,7 +4379,7 @@ const CREDITS = LINUX
   : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['Firefox','Runs Hearth Browser (Mozilla)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
 // Which Hearth OS this is (host.info's edition): only the amd and nvidia editions are built on Bazzite.
 const onBazzite = () => /^(amd|nvidia)$/.test(HOSTINFO.edition||'');
-function osEditionName(){ return {anatase:'Hearth OS on Anatase', ubuntu:'Hearth OS on Ubuntu', cachyos:'Hearth OS on CachyOS', peppermint:'Hearth OS on Peppermint', live:'Hearth OS, from the USB stick'}[HOSTINFO.edition] || (onBazzite()?'Hearth OS, built on Bazzite':'Hearth OS'); }
+function osEditionName(){ return {anatase:'Hearth OS on Anatase', ubuntu:'Hearth OS on Ubuntu', cachyos:'Hearth OS on CachyOS', peppermint:'Hearth OS on Debian', live:'Hearth OS, from the USB stick'}[HOSTINFO.edition] || (onBazzite()?'Hearth OS, built on Bazzite':'Hearth OS'); }
 // Settings › About › Support Hearth OS: the donation links the owner filled in (support-links.js); hidden without any.
 function supportLinks(){
   const S0=window.HEARTH_SUPPORT; if(!S0 || !Array.isArray(S0.links)) return [];
@@ -4403,14 +4406,14 @@ function discordQam(mini){
 function pageAbout(){
   const i=SYSINFO.s||{}, ver=UPD.status ? UPD.status.current : (host?(ANDROID&&HOSTINFO.version||'…'):'Browser preview');
   const sysVer = LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted ? SYSUPD.s.status.booted.version : '';
-  let h = `<div class="about-head"><div class="amark">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${APP} ${esc(ver||'')}</h3>
+  let h = `<div class="about-head"><div class="amark">${LINUX||ANDROID?HEARTH_MARK:I.shell}</div><div style="flex:1"><h3>${sysVer?'Hearth OS '+esc(verWithDate(sysVer, verDateOf(sysVer))):APP+' '+esc(verWithDate(ver||'', verDateOf(ver)))}</h3>
       <div class="muted">${LINUX?(HOSTINFO.system?osEditionName():'Hearth for Linux'):ANDROID?'Hearth for Android':'Ember, the shell for Windows 11'} · part of Hearth OS</div></div>
       ${ANDROID?'':`<button class="pill" data-f data-k="ab-upd" data-act="goset" data-tab="updates">${I.refresh}Updates</button>`}</div>`;
   h += shead('This device');
   let d='';
   if(i.device) d += infoRow('ab-dev','Device', i.device);
   d += infoRow('ab-os','Operating system', i.osPretty || [i.os,i.osVersion].filter(Boolean).join(' ') || (LINUX?'Linux':ANDROID?'Android':'Windows'));
-  if(sysVer) d += infoRow('ab-img','Hearth OS version', sysVer);
+  if(sysVer) d += infoRow('ab-img','Hearth OS version', verWithDate(sysVer, verDateOf(sysVer)));
   if(i.cpu) d += infoRow('ab-cpu','Processor', i.cpu + (i.cores?` · ${i.cores} threads`:''));
   if(i.gpu) d += infoRow('ab-gpu','Graphics', i.gpu);
   if(i.memoryBytes) d += infoRow('ab-ram','Memory', gb(i.memoryBytes)+' RAM');
@@ -5898,7 +5901,7 @@ function stgHealthLine(d){
     b&&b.percent!=null?`Battery ${b.percent}%${b.charging?' (charging)':''}`:'',
     d.free!=null?lkBytes(d.free)+' free':'',
     d.lastBackup?'Backed up '+stgAgo(d.lastBackup):d.lastBackup===0?'Not backed up yet':'',
-    d.version?`Hearth ${esc(d.version)}${d.upToDate===false?` (${esc(d.newest)} is out)`:''}`:'',
+    d.version?`Hearth ${esc(verShow(d.version))}${d.upToDate===false?` (${esc(verShow(d.newest))} is out)`:''}`:'',
     boot.fellBack?'Last update didn\'t start: went back to the previous version':boot.good===false?'Start not confirmed yet':''].filter(Boolean).join(' · ');
 }
 function stgHealthTag(d){
@@ -6692,8 +6695,8 @@ function onUpdate(s){
   UPD.status=s;
   if(s && s.state==='available' && s.latest && UPD.notified!==s.latest.version){
     UPD.notified=s.latest.version;
-    NOTIFS.unshift({i:'dl', t:`${APP} ${s.latest.version} is available`, s:'Select to open Settings › Updates', go:'updates'});
-    updateBadge(); toast(`${APP} ${s.latest.version} is available. See Settings › Updates.`);
+    NOTIFS.unshift({i:'dl', t:`${APP} ${verShow(s.latest.version)} is available`, s:'Select to open Settings › Updates', go:'updates'});
+    updateBadge(); toast(`${APP} ${verShow(s.latest.version)} is available. See Settings › Updates.`);
   }
   if(s && s.state==='error' && s.error) toast(s.error);
   refreshUI();
@@ -6704,11 +6707,11 @@ function pageUpdates(){
   if(LINUX && HOSTINFO.system) return pageSystemUpdate();
   const s=UPD.status;
   if(!s) return note('Checking…');
-  const L=s.latest, mb=b=>b?` (${(b/1e6).toFixed(0)} MB)`:'';
+  const L=s.latest, mb=b=>b?` (${(b/1e6).toFixed(0)} MB)`:'', LV=L?verWithDate(L.version, L.published):'';
   const line = {idle:'Not checked yet', checking:'Checking for updates…', upToDate:'You have the latest version',
-    available:`Version ${L?.version} is available${mb(L?.size)}`, downloading:`Downloading ${L?.version}… ${Math.round((s.progress||0)*100)}%`,
-    ready:`Version ${L?.version} is ready to install`, error:s.error||'Something went wrong'}[s.state] || s.state;
-  let h = `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${APP} ${esc(s.current)}</b><small>${esc(line)}${s.lastChecked?` · checked ${ago(s.lastChecked).toLowerCase()}`:''}</small></div>
+    available:`Version ${LV} is available${mb(L?.size)}`, downloading:`Downloading ${verShow(L?.version)}… ${Math.round((s.progress||0)*100)}%`,
+    ready:`Version ${verShow(L?.version)} is ready to install`, error:s.error||'Something went wrong'}[s.state] || s.state;
+  let h = `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${APP} ${esc(verWithDate(s.current, verDateOf(s.current)))}</b><small>${esc(line)}${s.lastChecked?` · checked ${ago(s.lastChecked).toLowerCase()}`:''}</small></div>
     ${s.state==='checking'||s.state==='downloading'?'<span class="mini-spin"></span>':''}</div>`;
   if(s.state==='downloading') h += `<div class="row"><div class="rt"><div class="bar"><i style="width:${Math.round((s.progress||0)*100)}%"></i></div></div></div>`;
   if(s.state==='available' && s.canInstallHere)
@@ -6721,7 +6724,7 @@ function pageUpdates(){
   if(!s.canInstallHere) h += note(LINUX && HOSTINFO.system ? 'This is the Hearth OS install, so it updates together with the system: Hearth downloads updates in the background and applies them the next time you restart.'
     : LINUX ? 'This copy of '+APP+' runs from source, so it can only check for updates. The AppImage from GitHub Releases updates itself.'
     : `This is a development copy of ${APP}. Updates install into <code>${esc(s.installFolder)}</code>, the copy that install-shell.cmd set up.`);
-  if(L && L.notes && ['available','ready','downloading'].includes(s.state)) h += shead("What's new") + note(esc(L.notes).replace(/\n/g,'<br>'));
+  if(L && L.notes && ['available','ready','downloading'].includes(s.state)) h += shead(`What's new in ${esc(LV)}`) + note(esc(L.notes).replace(/\n/g,'<br>'));
   return h;
 }
 
@@ -6731,7 +6734,7 @@ function loadLogin(){ if(host) call('login.get').then(r=>{ LOGIN.s=r; refreshUI(
 function pageSignin(){
   if(!host) return note('Sign-in settings work in the '+APP+' app.');
   const L=LOGIN.s; if(!L) return note('Loading…');
-  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Game Mode';
+  const mode = L.startMode==='desktop' ? 'Desktop Mode' : 'Steam Game Mode';
   let h='';
   if(L.canAdmin) h += `<button class="row" data-f data-k="li-auto" data-act="loginAuto"><span class="ricon">${I.lock}</span><div class="rt"><b>Sign in automatically</b><small>${L.autologin?'Starts straight into '+APP+' when you turn it on, like a console':'Shows the login screen when you turn it on'}</small></div><div class="sw ${L.autologin?'on':''}"></div></button>`;
   h += `<button class="row" data-f data-k="li-wake" data-act="loginWake"><span class="ricon">${I.lock}</span><div class="rt"><b>Ask for my password after sleep</b><small>${L.lockOnWake?'Locked when it wakes up, in Game Mode and on the desktop':'Wakes straight back to where you were'}</small></div><div class="sw ${L.lockOnWake?'on':''}"></div></button>`;
@@ -6749,9 +6752,9 @@ async function loginAuto(){
 }
 function loginStart(){
   const cur=LOGIN.s&&LOGIN.s.startMode;
-  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
+  const pick=mode=>call('login.setStartMode',{mode}).then(r=>{ LOGIN.s=r; refreshUI(); toast('Starts in '+(mode==='desktop'?'Desktop':'Steam Game')+' Mode from the next sign-in'); }).catch(e=>toast(e.message));
   openSheet({title:'Start in', sub:'What you see after signing in', items:[
-    {label:'Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
+    {label:'Steam Game Mode', icon:cur!=='desktop'?'check':'', run:()=>pick('game')},
     {label:'Desktop Mode', icon:cur==='desktop'?'check':'', run:()=>pick('desktop')}]});
 }
 async function loginPass(){
@@ -6771,7 +6774,7 @@ async function loginHost(){
 // between system updates; the version built into the system always stays as the fallback (hearth-core appchannel.rs).
 const APPUPD = {s:null};
 function loadAppUpd(){ if(host && LINUX && HOSTINFO.system) call('appUpdates.status').then(r=>{ APPUPD.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
-function appUpdLabel(u){ const run=u.running||u.builtin||'?'; return u.running ? `${APP} app: ${run} (built-in ${u.builtin||'?'})` : `${APP} app: built-in ${u.builtin||'?'}`; }
+function appUpdLabel(u){ const run=verShow(u.running||u.builtin||'?'), bi=verShow(u.builtin||'?'); return u.running ? `${APP} app: ${run} (built-in ${bi})` : `${APP} app: built-in ${bi}`; }
 function appUpdRows(){
   if(!LINUX || !HOSTINFO.system) return '';
   const u=APPUPD.s;
@@ -6781,15 +6784,15 @@ function appUpdRows(){
   const pct=Math.round((u.progress||0)*100), L=u.latest;
   const line = u.unavailable ? u.unavailable
     : u.state==='checking' ? 'Checking for an app update…'
-    : u.state==='downloading' ? `Downloading ${L&&L.version||''}… ${pct}%`
-    : u.state==='installed' || (u.bundle && u.bundle!==u.running) ? `${u.bundle} is ready. It's used the next time ${APP} starts.`
-    : u.state==='available' ? `${L&&L.version} is available`
+    : u.state==='downloading' ? `Downloading ${verShow(L&&L.version||'')}… ${pct}%`
+    : u.state==='installed' || (u.bundle && u.bundle!==u.running) ? `${verShow(u.bundle)} is ready. It's used the next time ${APP} starts.`
+    : u.state==='available' ? `${verWithDate(L&&L.version, L&&(L.date||L.published))} is available`
     : u.state==='error' ? (u.error||'Something went wrong')
     : u.note ? u.note : 'Up to date';
   h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>${esc(appUpdLabel(u))}</b><small>${esc(line)}${u.lastCheck?` · checked ${ago(u.lastCheck).toLowerCase()}`:''}</small></div>${u.state==='checking'||u.state==='downloading'?'<span class="mini-spin"></span>':''}</div>`;
   h += `<button class="row" data-f data-k="au-mode" data-act="appUpdMode"><span class="ricon">${I.refresh}</span><div class="rt"><b>Hearth app updates</b><small>${APP}'s own screens and app update by themselves in minutes, between system updates. The version built into the system always stays as the fallback.</small></div><div class="rv">${modes[u.mode]||'Automatic'} ›</div></button>`;
   if(!u.unavailable && u.mode!=='off' && u.state!=='checking' && u.state!=='downloading')
-    h += `<button class="row" data-f data-k="au-check" data-act="appUpdCheck"><span class="ricon">${I.dl}</span><div class="rt"><b>${u.state==='available'&&u.mode==='ask'?'Get '+esc(L&&L.version||'the update'):'Check for an app update'}</b></div></button>`;
+    h += `<button class="row" data-f data-k="au-check" data-act="appUpdCheck"><span class="ricon">${I.dl}</span><div class="rt"><b>${u.state==='available'&&u.mode==='ask'?'Get '+esc(verShow(L&&L.version)||'the update'):'Check for an app update'}</b></div></button>`;
   if(u.bundle && u.bundle!==u.running)
     h += `<button class="row" data-f data-k="au-restart" data-act="appUpdRestart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart ${APP} now</b><small>Takes a few seconds. If ${esc(u.bundle)} doesn't come up, ${APP} goes back to its built-in version by itself.</small></div></button>`;
   if(u.running || u.bundle)
@@ -6892,17 +6895,17 @@ function pageSystemUpdate(o={}){
   const u=SYSUPD.s;
   let h=shead('System', u&&u.state!=='idle');
   if(!u) return h+note('Checking…');
-  const st=u.status||{}, v=x=>x&&x.version?x.version:'';
+  const st=u.status||{}, v=x=>x&&x.version?verShow(x.version):'';
   if(u.state==='updating'){
     h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${st.available?`Getting version ${esc(v(st.available))}`:'Getting the newest version'}</small></div></div>`;
     return h + sysUpdCard(u) + note('Hearth also updates by itself in the background and finishes the next time you restart.') + appUpdRows() + newOsRows();
   }
   const line = u.state==='checking' ? 'Checking for updates…'
     : st.staged ? `Version ${v(st.staged)} is downloaded. Restart to finish.`
-    : st.available ? `Version ${v(st.available)} is available`
+    : st.available ? `Version ${v(st.available)}${verDate(st.available.timestamp)?' · '+verDate(st.available.timestamp):''} is available`
     : u.error ? u.error
     : 'Up to date';
-  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(v(st.booted))}</b><small>${esc(line)}</small></div>
+  h += `<div class="row"><span class="ricon">${I.info}</span><div class="rt"><b>Hearth OS ${esc(verWithDate(v(st.booted), verDateOf(st.booted&&st.booted.version)))}</b><small>${esc(line)}</small></div>
       ${u.state!=='idle'?'<span class="mini-spin"></span>':''}</div>`;
   if(u.state==='idle'){
     if(st.staged) h += `<button class="row" data-f data-k="su-restart" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to finish updating</b><small>Takes a minute. If something's wrong, the previous version is still in the boot menu.</small></div></button>`;
@@ -6918,14 +6921,14 @@ function pageSystemUpdate(o={}){
 // this one; hearth-admin rollback makes it the one that starts next, and running it again before restarting undoes
 // that). Shown only when the system reports a previous version.
 function rollbackRows(st){
-  const rb=st && st.rollback, v=x=>x&&x.version?x.version:'';
+  const rb=st && st.rollback, v=x=>x&&x.version?verShow(x.version):'';
   if(!LINUX || !HOSTINFO.system || !rb || !v(rb) || st.staged) return '';
   if(st.rollbackQueued) return `<button class="row" data-f data-k="su-rbgo" data-act="pwr" data-p="restart"><span class="ricon">${I.restart}</span><div class="rt"><b>Restart to go back to ${esc(v(rb))}</b><small>Hearth OS ${esc(v(rb))} starts at the next restart. Your games and files stay.</small></div></button>`
     + `<button class="row" data-f data-k="su-rollback" data-act="sysRollback" data-undo="1"><span class="ricon">${I.x}</span><div class="rt"><b>Stay on ${esc(v(st.booted))}</b><small>Don't go back after all</small></div></button>`;
   return `<button class="row" data-f data-k="su-rollback" data-act="sysRollback"><span class="ricon">${I.restart}</span><div class="rt"><b>Go back to ${esc(v(rb))}</b><small>If something broke after the last update: restarts into the version before this one. Your games and files stay.</small></div><div class="rv">›</div></button>`;
 }
 function sysRollback(undo){
-  const st=(SYSUPD.s&&SYSUPD.s.status)||{}, v=x=>x&&x.version?x.version:'';
+  const st=(SYSUPD.s&&SYSUPD.s.status)||{}, v=x=>x&&x.version?verShow(x.version):'';
   const go=()=>call('system.update.rollback',{},180000).then(r=>{ if(r) SYSUPD.s=r; const q=SYSUPD.s&&SYSUPD.s.status&&SYSUPD.s.status.rollbackQueued; toast(q?`Hearth OS ${v(st.rollback)} starts at the next restart`:`Staying on ${v(st.booted)}`); render(q?'su-rbgo':'su-rollback',true); }).catch(e=>toast(e.message));
   if(undo) return go();
   openSheet({title:`Go back to Hearth OS ${v(st.rollback)}?`, sub:`The version before this one (${v(st.booted)}) starts at your next restart. Your games, saves and files stay. Hearth updates again by itself later; if the problem is still there then, send logs from Settings › System › Help & logs.`, items:[
@@ -6953,7 +6956,7 @@ function loadNewOs(){ if(LINUX && (!host || (HOSTINFO.system && /^(amd|nvidia|an
 function newOsChoice(id){ return ((NEWOS.s&&NEWOS.s.editions)||[]).find(e=>e.id===id); }
 function newOsRows(){
   const n=NEWOS.s; if(!n || !n.eligible) return '';
-  const sw=!!n.switch, curLabel={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[n.current]||'this edition';
+  const sw=!!n.switch, curLabel={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Hearth OS on Debian'}[n.current]||'this edition';
   let h=shead(sw?'Switch edition':'Move to a new Hearth OS', n.state==='moving');
   if(n.state==='moving') return h + sysUpdCard(n,{title:'Getting '+(n.label||'the new Hearth OS'), sub:'Keep playing: nothing changes until you restart', noApps:true});
   if(n.state==='done') return h + `<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>${esc(n.label||'The new Hearth OS')} is ready</b><small>Restart to start it. The first start takes a little longer: it keeps your games and puts everything else aside.</small></div></div>`
@@ -6962,7 +6965,7 @@ function newOsRows(){
   if(pick && pick.allowed) return h + newOsConfirmRows(n, pick);
   h += sw ? `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>You're on ${esc(curLabel)}</b><small>Switch to another edition of Hearth OS. Switching starts you fresh and keeps your games. You'll see exactly what's kept before anything starts, and ${esc(curLabel)} stays in the boot menu.</small></div></div>`
     : `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>Hearth OS is moving away from Bazzite</b><small>Choose the Hearth OS you want next. Moving starts you fresh and keeps your games. You'll see exactly what's kept before anything starts.</small></div></div>`;
-  if(n.archived) h += note(esc(curLabel)+' is archived for now: it gets no more updates. Switch to Anatase or Peppermint to keep getting them; your games come with you.');
+  if(n.archived) h += note(esc(curLabel)+' is archived for now: it gets no more updates. Switch to Hearth OS on Debian to keep getting them; your games come with you.');
   if(n.error) h += note(esc(n.error));
   if(!n.editions) return h + note('Checking which ones are ready…');
   h += n.editions.map(e=>{
@@ -7537,31 +7540,8 @@ const SHELL = {status:null};
 function loadShellStatus(){
   if(!host) return;
   call('shell.status').then(s=>{ SHELL.status=s; refreshUI(); }).catch(e=>toast(e.message));
-  // Which desktop Desktop Mode is (Hearth Classic / Hearth Plasma / Hearth GNOME): HEARTH_DESKTOP in session.conf (admin.rs desktop()).
-  if(LINUX) call('login.desktop').then(d=>{ SHELL.desktop=d; refreshUI(); }).catch(()=>{});
 }
-const DESKTOP_NAMES={classic:'Hearth Classic', plasma:'Hearth Plasma', gnome:'Hearth GNOME'};
-DESKTOP_NAMES.cosmic='Hearth COSMIC';   // docs/COSMIC.md (Anatase only)
-function deskRow(){
-  const d=SHELL.desktop; if(!d) return '';
-  const cur=DESKTOP_NAMES[d.desktop]||'Hearth Classic';
-  const sub = d.cosmicFellBack ? 'Hearth COSMIC didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
-    : d.fellBack ? (DESKTOP_NAMES[d.fellBackFrom]||'Hearth Plasma')+' didn\'t start this time, so Hearth Classic opened instead. Your files and settings are the same in all of them.'
-    : 'Hearth Classic (today\'s desktop), Hearth Plasma (KDE Plasma in the same look) or Hearth GNOME (GNOME in Hearth\'s look). Your files and settings stay; Game Mode doesn\'t change. Also on the login screen.';
-  return shead('Desktop')
-    + `<button class="row" data-f data-k="sh-desk" data-act="deskPick"><span class="ricon">${I.desk}</span><div class="rt"><b>Desktop</b><small>${sub}</small></div><div class="rv">${esc(cur)} ›</div></button>`;
-}
-function deskPick(){
-  const d=SHELL.desktop||{}; const cur=d.desktop||'classic';
-  const pick=desktop=>call('login.setDesktop',{desktop}).then(r=>{ SHELL.desktop=r; refreshUI(); toast(DESKTOP_NAMES[desktop]+' opens the next time you switch to Desktop Mode'); }).catch(e=>toast(e.message));
-  openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if another desktop can\'t start, Hearth Classic opens instead.', items:[
-    {label:'Hearth Classic', icon:cur==='classic'?'check':'', run:()=>pick('classic')},
-    {label:d.plasma?'Hearth Plasma':'Hearth Plasma (not installed on this system)', icon:cur==='plasma'?'check':'', run:()=>d.plasma?pick('plasma'):toast('Hearth Plasma comes with Hearth OS on Anatase and Peppermint')},
-    {label:d.gnome?'Hearth GNOME':'Hearth GNOME (not installed on this system)', icon:cur==='gnome'?'check':'', run:()=>d.gnome?pick('gnome'):toast('Hearth GNOME comes with Hearth OS on Anatase and Peppermint')},
-    // ---- Hearth COSMIC (docs/COSMIC.md) and Hearth Deepin (docs/DEEPIN.md: no edition can have it)
-    {label:d.cosmic?'Hearth COSMIC':'Hearth COSMIC (not available on this edition)', icon:cur==='cosmic'?'check':'', run:()=>d.cosmic?pick('cosmic'):toast('Hearth COSMIC comes with Hearth OS on Anatase')},
-    {label:'Hearth Deepin (not available on this edition)', icon:'', run:()=>toast('Deepin isn\'t packaged for Anatase (Fedora) or Peppermint (Debian), so Hearth Deepin can\'t be offered')}]});
-}
+// Desktop Mode is Mantel, the only desktop (Hearth Plasma, GNOME and COSMIC are gone): no desktop choice here.
 function pageShellLinux(){
   const s=SHELL.status;
   const state = !s ? 'Checking…'
@@ -7577,7 +7557,6 @@ function pageShellLinux(){
     else
       h += `<button class="row" data-f data-k="sh-make" data-act="shellMake"><span class="ricon">${I.shell}</span><div class="rt"><b>Add the ${APP} session</b><small>Asks for your password${s.gamescope?'':' · gamescope isn\'t installed yet'}</small></div><div class="rv">›</div></button>`;
   }
-  h += deskRow();
   h += shead('If something goes wrong')
     + `<button class="row" data-f data-k="sh-fe" data-act="pwr" data-p="desktop"><span class="ricon">${I.desk}</span><div class="rt"><b>Switch to desktop</b><small>${HOSTINFO.session?'Opens Mantel, the desktop (windows, taskbar). Return with the Game Mode menu item or Super+G':'Minimizes '+APP+''}</small></div></button>`
     + note(`Black screen? Press <b>Ctrl+Alt+F3</b> for a text console, sign in, and run <code>loginctl terminate-user $USER</code>. That brings back the login screen. If ${APP} keeps crashing, the session rolls back an update by itself, then gives up and returns to the login screen.`)
@@ -8808,8 +8787,8 @@ function scOut(){ const d=((S.sys.audio||{}).devices||[]).find(x=>x.isDefault); 
 function scBatt(){ const b=S.sys.battery; return !b ? '' : b.present===false ? 'Plugged in (no battery)' : b.pct==null ? '' : `${b.pct}%${b.charging?' · charging':''}`; }
 function scPmode(){ const m=PMODES.find(x=>x[0]===S.sys.powerMode); return m ? m[1] : ''; }
 function scVersion(){
-  if(LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted && SYSUPD.s.status.booted.version) return SYSUPD.s.status.booted.version;
-  return UPD.status ? UPD.status.current : host ? (HOSTINFO.version||'…') : 'Browser preview';
+  if(LINUX && HOSTINFO.system && SYSUPD.s && SYSUPD.s.status && SYSUPD.s.status.booted && SYSUPD.s.status.booted.version) return verShow(SYSUPD.s.status.booted.version);
+  return UPD.status ? verShow(UPD.status.current) : host ? verShow(HOSTINFO.version||'…') : 'Browser preview';
 }
 function scUpdate(){
   if(LINUX && HOSTINFO.system){ const u=SYSUPD.s; if(!u) return host?'Checking…':''; const st=u.status||{}; return u.state==='updating'?'Updating…':u.state==='checking'?'Checking…':st.staged?'Restart to finish updating':st.available?'An update is available':u.error?'Couldn\'t check':'Up to date'; }
@@ -9722,7 +9701,7 @@ function renderPower(){
     ${keepR?`<button class="mitem" data-f data-k="p-restart-close" data-act="pwr" data-p="restart" data-sure="1">${I.restart}Restart and close games</button>`:''}
     <button class="mitem" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>
     <button class="mitem" data-f data-k="p-desktop" data-act="pwr" data-p="desktop">${I.desk}${LINUX?'Switch to desktop':'Desktop Mode'}</button>
-    ${LINUX&&hasFeat('steamMode')?`<button class="mitem" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode${tag('experimental')}</button>`:''}
+    ${LINUX&&hasFeat('steamMode')?`<button class="mitem" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode</button>`:''}
     <button class="mitem" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`;
 }
 let query='';
@@ -10317,7 +10296,6 @@ function act(el){
     case 'shellReturn': return shellReturn();
     case 'emberStart': return emberStart();
     case 'emberStyle': return emberStyle();
-    case 'deskPick': return deskPick();
     case 'emberWall': return emberWall();
     case 'sheet': return sheetPick(+d.i);
     case 'hint': return hintAction(d.h);
@@ -10538,7 +10516,7 @@ function power(p, sure){
     }
   }
   closeAll();
-  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',steam:'Switching to Steam Game Mode (this time only)…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
+  const label={hibernate:'Turning off. Your games will be here when you turn it back on…',hibernateRestart:'Restarting. Your games will be here when it starts again…',sleep:'Going to sleep…',restart:'Restarting…',shutdown:'Shutting down…',signout:'Signing out…',steam:'Switching to Steam Game Mode…',desktop:LINUX?'Switching to Mantel…':'Switching to the desktop…',explorer:'Opening File Explorer…'}[p];
   send({type:'power', action:p});
   toast(host?label:label+' (simulated in the browser preview)');
 }
@@ -12737,6 +12715,13 @@ function setupGo(d){
 function setupFinish(){
   if(host) call('setup.done').catch(()=>{});
   HOSTINFO.setupDone=true; S.history=[];
+  // Hearth OS: first-time setup runs once in Hearth's app, then the device goes to its Game Mode, Steam Game Mode
+  // (nimbus-session's "setup" run; host.info feature steamOnly).
+  if(host && LINUX && hasFeat('steamOnly')){
+    toast('Setup is done. Starting Steam Game Mode…');
+    call('setup.done').catch(()=>{}).finally(()=>setTimeout(()=>call('session.restartGameMode').catch(e=>toast(e.message)), 1000));
+    return;
+  }
   navigate('home',{},false);
   toast(`Welcome to ${APP}. Settings has everything from setup, any time.`);
 }

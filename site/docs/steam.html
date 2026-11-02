@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Steam Game Mode · Hearth OS docs</title>
 <meta name="description" content="Steam&#x27;s own Game Mode is now Hearth&#x27;s first priority, with Hearth built into it. Hearth&#x27;s Game Mode stays as the fallback and as an option.">
-<meta name="theme-color" content="#110a07">
+<meta name="theme-color" content="#171a21">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="../img/logo.svg" type="image/svg+xml">
 <link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
 <script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="stylesheet" href="docs.css">
 </head>
@@ -31,7 +32,7 @@
 <div class="wrap layout">
   <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="steam.html" class="cur" aria-current="page">Steam Game Mode</a><div class="sub"><a href="#what">What changes</a><a href="#menu">Hearth in Steam's main menu</a><a href="#quick-access">Hearth tabs in Quick Access</a><a href="#this-game">The game you're playing</a><a href="#pages">Store, Mods, Storage and Recomps</a><a href="#rest">Quick Resume, streaming, Friends and Hearth Link</a><a href="#coop">Couch co-op and multi-seat</a><a href="#your-games">Your Hearth games in Steam</a><a href="#try">How to try it</a><a href="#hearth-game-mode">Hearth's Game Mode is still here</a><a href="#back">Getting back to Hearth's Game Mode</a></div><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 0.6.63</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 1.0</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="peppermint">Debian</option><option value="anatase">Anatase (Fedora, archived)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Steam Game Mode</h1>
     <p class="lead">Steam's own Game Mode is now Hearth's first priority, with Hearth built into it. Hearth's Game Mode stays as the fallback and as an option.</p>
 
@@ -45,25 +46,28 @@ real devices.</p></div>
 a Steam Deck run them. Hearth is built right into it through Decky Loader and the <b>Hearth Decky plugin</b>.</p>
 <p>You keep everything that's Steam's: the library, game pages, store, downloads, friends and chat, the overlay, Quick
 Access and the on-screen keyboard. Hearth adds its own stores, pages and tools on top. It doesn't replace Steam's.</p>
-<p>Hearth's own Game Mode stays too. <a href="#hearth-game-mode">More about that below.</a></p>
+<p><span class="ver">Next update</span> Hearth OS is now Debian + Mantel (Desktop Mode) + Steam Game Mode: the device starts
+in Steam Game Mode and every Game Mode button opens it. If Steam can't start (not installed, safe graphics, Steam
+closing right away or failing twice), Mantel opens and says why, with a <b>Try Steam Game Mode again</b> button.
+Hearth's own Game Mode is archived (first-time setup still runs in Hearth's app once), and multi-seat and Couch Co-op
+are hidden for now.</p>
 
 </section><section><h2 id="menu">Hearth in Steam's main menu</h2>
 <p><span class="ver">Next update</span> Press the Steam (or Xbox) button. Below Steam's own entries, in Hearth's look:</p>
 <ul>
 <li><b>Now playing</b>, while a game runs: opens Hearth's section for that game.</li>
 <li><b>Hearth</b>: Hearth Home, Hearth Store, Hearth Library, Theater, Hearth Mods, Storage, Downloads, Hearth Friends,
-Hearth Link and Couch Co-op.</li>
-<li><b>Hearth power</b>, next to Steam's Power: <b>Switch to Hearth Game Mode</b> and <b>Desktop Mode</b>.</li>
+Hearth Link.</li>
+<li><b>Hearth power</b>, next to Steam's Power: <b>Desktop Mode</b>.</li>
 </ul>
 
 </section><section><h2 id="quick-access">Hearth tabs in Quick Access</h2>
 <p><span class="ver">Next update</span> Press the <b>…</b> button. Hearth's tabs sit next to Steam's:</p>
 <div class="tbl"><table>
 <tr><th>Tab</th><th>What's in it</th></tr>
-<tr><td><b>Hearth</b></td><td>This game, Quick Resume, game streaming, Hearth tools (keyboard, screenshot, record), Switch to Hearth Game Mode, Hearth OS updates</td></tr>
+<tr><td><b>Hearth</b></td><td>This game, Quick Resume, game streaming, Hearth tools (keyboard, screenshot, record), Desktop Mode, Hearth OS updates</td></tr>
 <tr><td><b>Hearth Performance</b></td><td>Hearth's power mode (Saver, Balanced, Performance). Frame limit, refresh rate and TDP stay in Steam's own Performance tab, so the two never fight.</td></tr>
 <tr><td><b>Hearth Controller</b></td><td>What Hearth Input is doing, the running game's Hearth Input layout, and Edit layouts in Hearth</td></tr>
-<tr><td><b>Hearth Players</b></td><td>Couch co-op: your controllers as P1 to P4, move them up or down, rumble one to tell which is which, and split-screen games. Seats for multi-seat.</td></tr>
 </table></div>
 
 </section><section><h2 id="this-game">The game you're playing</h2>

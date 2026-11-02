@@ -189,7 +189,7 @@ PanelWindow {
                     readonly property bool lit: root.nav === index + 2
                     width: list.width
                     implicitHeight: crow.implicitHeight + 20
-                    radius: 12
+                    radius: Theme.r(12)
                     color: hover.containsMouse ? Theme.panel3 : Theme.panel2
                     border.width: 2
                     border.color: lit ? Theme.accent : "transparent"
@@ -256,7 +256,7 @@ PanelWindow {
                 id: calCard
                 Layout.fillWidth: true
                 implicitHeight: cal.implicitHeight + 20
-                radius: 12
+                radius: Theme.r(12)
                 color: "transparent"
                 border.width: 2
                 border.color: root.nav === root.calRow ? Theme.accent : "transparent"
@@ -412,7 +412,7 @@ PanelWindow {
         readonly property bool focused: root.nav === navIndex
         implicitWidth: crow2.implicitWidth + 24
         implicitHeight: detail ? 56 : 34
-        radius: 10
+        radius: Theme.r(10)
         color: lit ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : (ca.containsMouse ? Theme.panel3 : Theme.panel2)
         border.width: 2
         border.color: focused ? Theme.accent : "transparent"

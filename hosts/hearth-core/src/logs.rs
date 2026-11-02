@@ -50,20 +50,21 @@ pub fn without_dump_details(journal: &str) -> String {
     out.join("\n")
 }
 
-/// The other desktops' logs in ~/.local/share/nimbus (nimbus-session's run_plasma / run_gnome / run_cosmic write them).
+/// The other desktops' logs in ~/.local/share/nimbus, written by an earlier Hearth's Plasma / GNOME / COSMIC (gone now:
+/// Mantel is the only desktop); still in a report when an old one is there.
 const DESKTOP_LOGS: [(&str, &str); 4] = [("plasma.log", "Hearth Plasma"), ("gnome.log", "Hearth GNOME"), ("cosmic.log", "Hearth COSMIC"),
                                          ("cosmic-companion.log", "Hearth COSMIC companion")];
 
-/// Steam Game Mode (Decky plugin): whether Decky and its service are installed and running, the Hearth plugin's
-/// state, and the newest lines of the plugin's log (Decky writes each plugin's log to ~/homebrew/logs/<plugin>/, one
+/// Steam Game Mode (Decky plugin): whether Decky and its service are installed and running, Hearth Sync's state
+/// (docs/HEARTH-SYNC.md) and whether the older Hearth plugin is still there, and the newest lines of the plugin's log (Decky writes each plugin's log to ~/homebrew/logs/<plugin>/, one
 /// file per start; the plugin logs picture failures by reason and count, never paths) and the parts that turned
 /// themselves off (~/homebrew/settings/<plugin>/errors.log). `services` is what systemctl says about the services.
 pub fn decky_report(root: &Path, home: &Path, services: &str) -> String {
     let st = crate::steam_mode::decky_status(root, home);
-    let mut out = format!("Decky installed: {} (via {}), Hearth plugin: {}, shipped with Hearth: {}, Steam remote debugging: {}\n{}\n",
-        st["installed"], st["via"].as_str().unwrap_or("none"), st["plugin"], st["shipped"], st["cefDebugging"], services.trim_end());
+    let mut out = format!("Decky installed: {} (via {}), Hearth Sync: {}, shipped with Hearth: {}, old Hearth plugin still present: {}, Steam remote debugging: {}\n{}\n",
+        st["installed"], st["via"].as_str().unwrap_or("none"), st["plugin"], st["shipped"], st["oldPlugin"], st["cefDebugging"], services.trim_end());
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
-    for dir in ["homebrew/logs/Hearth", "homebrew/logs/decky-hearth"] {
+    for dir in ["homebrew/logs/Hearth Sync", "homebrew/logs/decky-hearth-sync", "homebrew/logs/Hearth", "homebrew/logs/decky-hearth"] {
         for e in std::fs::read_dir(home.join(dir)).into_iter().flatten().flatten() {
             let p = e.path();
             if p.extension().map(|x| x == "log").unwrap_or(false) {
@@ -73,10 +74,11 @@ pub fn decky_report(root: &Path, home: &Path, services: &str) -> String {
         }
     }
     match newest.and_then(|(_, p)| std::fs::read_to_string(&p).ok().map(|t| (p, t))) {
-        Some((p, t)) => out.push_str(&format!("\n--- Hearth plugin log ({}):\n{}\n", p.file_name().unwrap_or_default().to_string_lossy(), tail(&t, 300))),
-        None => out.push_str("\n--- Hearth plugin log: none found (the plugin hasn't run in Steam Game Mode yet)\n"),
+        Some((p, t)) => out.push_str(&format!("\n--- {} log ({}):\n{}\n", if p.to_string_lossy().contains("ync/") { "Hearth Sync" } else { "Old Hearth plugin" },
+            p.file_name().unwrap_or_default().to_string_lossy(), tail(&t, 300))),
+        None => out.push_str("\n--- Hearth Sync log: none found (the plugin hasn't run in Steam Game Mode yet)\n"),
     }
-    for dir in ["homebrew/settings/Hearth", "homebrew/settings/decky-hearth"] {
+    for dir in ["homebrew/settings/Hearth", "homebrew/settings/decky-hearth"] {   // the old plugin's parts (Hearth Sync has none)
         if let Ok(t) = std::fs::read_to_string(home.join(dir).join("errors.log")) {
             if !t.trim().is_empty() { out.push_str(&format!("\n--- Parts that turned themselves off:\n{}\n", tail(&t, 50))); }
         }
@@ -574,7 +576,8 @@ mod tests {
     #[test]
     fn desktop_logs_are_the_ones_the_session_writes() {
         let session = include_str!("../../linux/session/nimbus-session");
-        for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
+        // Mantel is the only desktop: the session doesn't write these any more (a report still shows old ones).
+        for (f, _) in DESKTOP_LOGS.iter().take(3) { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]
@@ -594,9 +597,15 @@ mod tests {
         std::fs::create_dir_all(home.join("homebrew/settings/decky-hearth")).unwrap();
         std::fs::write(home.join("homebrew/settings/decky-hearth/errors.log"), "tkMenu: not found\n").unwrap();
         let r = decky_report(&root, &home, "");
-        assert!(r.contains("Decky installed: true (via hearth)"), "{r}");
+        assert!(r.contains("Decky installed: true (via hearth)") && r.contains("Hearth Sync: false") && r.contains("old Hearth plugin still present: false"), "{r}");
         assert!(r.contains("art: not shown") && !r.contains("old start"), "the newest start's log: {r}");
         assert!(r.contains("tkMenu: not found"), "{r}");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let sync = home.join("homebrew/logs/Hearth Sync");
+        std::fs::create_dir_all(&sync).unwrap();
+        std::fs::write(sync.join("2026-11-02.log"), "sync: 3 in Steam; added 3\n").unwrap();
+        let r = decky_report(&root, &home, "");
+        assert!(r.contains("--- Hearth Sync log") && r.contains("sync: 3 in Steam"), "{r}");
         let _ = std::fs::remove_dir_all(&t);
     }
     #[test]

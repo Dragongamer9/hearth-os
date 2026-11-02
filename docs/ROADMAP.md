@@ -166,6 +166,23 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 - [x] Bug reports: what the desktop controller helper receives (and whether another program holds the controller); processor and Nvidia graphics load
 
+## Next (unreleased)
+
+## 1.0 (released 2026-11-02)
+
+Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).
+
+- [x] Ready for 1.0: version numbers are compared by number everywhere (1.0 is newer than 0.6.63, 1.10 newer than 1.9, "1.0" and "1.0.0" are the same), people see "1.0" for 1.0.0 (Settings, Mantel, hearthfetch, the Decky plugin, release titles and the website), and each release's date from its ROADMAP heading is shown next to it, offline on the device too (needs testing on a device)
+- [x] Mantel is now Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone (Settings no longer offers a desktop choice, and a device that had one picked simply opens Mantel), and Hearth Disks no longer offers the small online installer (the offline USB and the Recovery USB stay)
+- [x] Hearth OS is now Debian + Mantel (Desktop Mode) + Steam Game Mode: the device starts in Steam's Game Mode and every Game Mode button opens it; if Steam can't start, Mantel opens with the reason and a "Try Steam Game Mode again" button (never back and forth). Hearth's own Game Mode is archived (first-time setup still runs in Hearth's app once), and multi-seat and Couch Co-op are hidden for now
+- [x] Hearth Sync: a small Decky plugin that keeps your non-Steam games (Epic, GOG, Battle.net, Xbox Cloud Gaming, emulators, recomps, Beacon, games you added, plus Minigalaxy, Heroic and the Epic Games Launcher) in Steam's library with their covers, in a collection per store; Hearth OS ships it instead of the Hearth takeover plugin (removed from Decky at the next start) and now comes with Minigalaxy
+- [x] Mantel's Steam-style look is the default for new installs and updated PCs (Hearth's warm look stays in Settings › Appearance); the Inter font is in the image
+- [x] New website design: hearthos.fun and its docs redone for Hearth OS on Debian with Steam Game Mode, Mantel and Hearth Sync, in a deep blue-slate look with a bright blue accent (Anybody and Figtree, both served from the site), dark and light; what's coming in the next update is marked as such, and what's archived or paused (Hearth's Game Mode, Anatase, multi-seat and couch co-op) is said plainly; downloads are the offline USB and the Recovery USB (the small installer is no longer offered), and Mantel is the only desktop
+- [x] Hearth OS is now simply Debian-based: the Peppermint edition is shown as "Debian" ("Hearth OS on Debian", os-release PRETTY_NAME "Hearth OS (Debian 13)") in the installer, Settings, the website and the docs, and it's the default and recommended edition; Anatase is archived in the installer and Switch edition too. The optional Xfce session is off by default. Internal names stay the same (image hearth-peppermint, edition id peppermint, VARIANT_ID), so existing installs keep updating
+- [x] Peppermint is the main Hearth OS; Anatase is archived (no more Anatase builds or updates from November 2026, installs keep their last version). The website offers Peppermint only (the Peppermint offline USB and the small installer)
+- [x] Steam Game Mode: the Hearth plugin updates with Hearth OS (Decky kept the copy from the day it was installed, so Steam Game Mode still showed an older Hearth plugin, without the newer pages, covers and fixes); it's replaced by the image's own each time Steam Game Mode starts when it differs
+- [x] Hearth's open Steam client: when a Steam server answers "TryAnotherCM" (it can't sign anyone in), the next try goes to a different Steam server (switching between TCP and WebSocket) instead of the same kind again, and the log says which server answered
+
 ## 0.6.63 (released)
 
 - [x] Steam Game Mode: Steam's games start again (Steam was told to start games on gamescope's second X display, which gamescope was never asked to make, so games never opened; gamescope now makes it, as SteamOS does); the logs now include the game-launch lines of Steam's own logs

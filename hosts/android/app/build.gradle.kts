@@ -11,8 +11,9 @@ val hearthVersion: String = run {
     val line = if (cargo.exists()) cargo.readLines().firstOrNull { it.trim().startsWith("version") } else null
     Regex("\"([0-9]+\\.[0-9]+\\.[0-9]+)[^\"]*\"").find(line ?: "")?.groupValues?.get(1) ?: "0.2.1"
 }
-// 0.2.1 -> 201, 1.4.12 -> 10412: always higher for a newer Hearth.
-val hearthVersionCode: Int = hearthVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
+// 0.6.63 -> 6063, 1.0.0 -> 1000000, 1.10.0 -> 1010000: always higher for a newer Hearth, with room for 999 updates
+// per major and 999 fixes per update (the old a*10000+b*100+c ran 1.100 into 2.0). Android only needs it to grow.
+val hearthVersionCode: Int = hearthVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 1_000_000 + b * 1_000 + c }
 
 // Release signing: a real key when CI has one (secrets → environment), otherwise the debug key, so the release
 // APK always installs. See .github/workflows/android.yml.

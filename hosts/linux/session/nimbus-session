@@ -1,25 +1,32 @@
 #!/bin/sh
 # Started by the login screen when you pick the "Nimbus" session.
 #
-# One session, two modes, switched without logging out (like SteamOS's Game Mode and Desktop Mode):
-#   Game Mode     Nimbus fullscreen in gamescope (Valve's compositor, the same one SteamOS uses)
-#   Desktop Mode  the labwc window manager with the Nimbus taskbar, launcher and notifications (Quickshell)
+# Hearth OS is Debian + Mantel (Desktop Mode) + Steam Game Mode (docs/STEAM-GAME-MODE.md). One session, switched
+# without logging out (like SteamOS):
+#   Steam Game Mode  Valve's Steam gamepad UI in gamescope, with Decky Loader and the Hearth plugin (the default)
+#   Desktop Mode     Mantel: the labwc window manager with the Hearth taskbar, launcher and notifications
+#                    (Quickshell). Mantel is the only desktop (Hearth Plasma, GNOME and COSMIC are gone).
+# Every request for "game" (nimbus-mode game, Mantel's Game Mode buttons, Steam's own Game Mode switch,
+# NIMBUS_START_MODE, hearth.mode=game) is Steam Game Mode. When Steam Game Mode can't start (no Steam, safe graphics,
+# Steam ends right away, or it fails twice), the session opens Desktop Mode instead and leaves the reason in
+# $XDG_RUNTIME_DIR/hearth-steam-mode-failed, which Mantel shows with a "Try Steam Game Mode again" button.
+# Hearth's own Game Mode (Hearth fullscreen in gamescope) is archived: it runs only for first-time setup on a fresh
+# install (once, then Steam Game Mode), on the live USB (the installer), as the very last resort when nothing else
+# can run, or with HEARTH_LEGACY_GAME_MODE=1 (a developer switch, off by default).
 #
 # To switch, a mode writes the next one to $XDG_RUNTIME_DIR/nimbus-next and ends itself
 # (nimbus-mode does both). A mode that ends without asking for another one ends the session.
 #
 # Settings in ~/.config/nimbus/session.conf (shell syntax):
-#   NIMBUS_START_MODE=desktop             start in Desktop Mode instead of Game Mode
+#   NIMBUS_START_MODE=desktop             start in Desktop Mode instead of Steam Game Mode
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
-#   HEARTH_STEAM_DEFAULT=1                start in Steam Game Mode (Experimental) instead of Hearth's Game Mode; turns
-#                                         itself off when it can't work (see "Start in Steam Game Mode" below)
-#   HEARTH_DESKTOP=plasma                 Desktop Mode is Hearth Plasma (KDE Plasma 6 in Hearth's look) instead of
-#                                         Hearth Classic (labwc + Mantel); see docs/PLASMA.md
-#   HEARTH_DESKTOP=gnome                  Desktop Mode is Hearth GNOME (GNOME Shell with Hearth's extensions); docs/GNOME.md
-#   HEARTH_DESKTOP=cosmic                 Desktop Mode is Hearth COSMIC (System76's COSMIC in Hearth's look, Anatase
-#                                         only); see docs/COSMIC.md
-# `nimbus-session --desktop=classic|plasma|gnome` (the login screen's "Hearth Classic" / "Hearth Plasma" /
-# "Hearth GNOME") saves that choice first, so automatic sign-in keeps it.
+#   HEARTH_LEGACY_GAME_MODE=1             developer switch: Hearth's own Game Mode back as "Game Mode" (archived)
+#   HEARTH_LEGACY_MULTIPLAYER=1           developer switch: multi-seat and Couch Co-op back (dropped for now)
+#   HEARTH_DESKTOP=...                    ignored: Mantel is the only desktop now. An earlier Hearth wrote plasma,
+#                                         gnome or cosmic here (Settings › Desktop Mode); Desktop Mode is Mantel
+#                                         whatever it says, and the line is left alone.
+# `nimbus-session --desktop=...` (the login screen's old "Hearth Plasma" / "Hearth GNOME" / "Hearth COSMIC" entries)
+# is ignored the same way.
 # Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
 
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
@@ -35,24 +42,11 @@ mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
-# ---- Which desktop Desktop Mode is: Hearth Classic (labwc + Mantel, always installed: the fallback) or Hearth
-# Plasma. Picked in Settings › Desktop Mode, or on the login screen (--desktop=...), which saves it in session.conf.
+# ---- Desktop Mode is always Mantel (Hearth Classic). An old --desktop=plasma|gnome|cosmic|deepin from the login
+# screen of an earlier Hearth is only noted in the log, never acted on or saved.
 for a in "$@"; do
   case "$a" in
-    --desktop=classic|--desktop=plasma|--desktop=gnome)
-      d="${a#--desktop=}"; f="$CONF/session.conf"; mkdir -p "$CONF"; touch "$f"
-      if grep -q '^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=' "$f"; then
-        sed -i "s/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=.*/HEARTH_DESKTOP=$d/" "$f"
-      else echo "HEARTH_DESKTOP=$d" >>"$f"; fi
-      log "desktop: $d (picked on the login screen)" ;;
-    # ---- Hearth COSMIC (docs/COSMIC.md): the login screen's "Hearth COSMIC"
-    --desktop=cosmic)
-      f="$CONF/session.conf"; mkdir -p "$CONF"; touch "$f"
-      if grep -q '^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=' "$f"; then
-        sed -i "s/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=.*/HEARTH_DESKTOP=cosmic/" "$f"
-      else echo "HEARTH_DESKTOP=cosmic" >>"$f"; fi
-      log "desktop: cosmic (picked on the login screen)" ;;
-    # ---- end Hearth COSMIC
+    --desktop=*) [ "${a#--desktop=}" = classic ] || log "desktop: ${a#--desktop=} asked for on the login screen; Mantel is the only desktop now" ;;
   esac
 done
 unset a d f
@@ -61,6 +55,20 @@ unset a d f
 # rate and graphics card come from hearth-seats this way): kept, after session.conf's, every Game Mode start.
 ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
+# HEARTH_DESKTOP=plasma|gnome|cosmic|deepin left by an earlier Hearth: Mantel anyway (nothing here or in what this
+# session starts may act on it).
+case "${HEARTH_DESKTOP:-classic}" in classic) ;; *) log "desktop: HEARTH_DESKTOP=$HEARTH_DESKTOP from an earlier Hearth; Mantel is the only desktop now" ;; esac
+unset HEARTH_DESKTOP
+# Hearth's own Game Mode is archived (see the top): only with the developer switch, and on the live USB / installer,
+# whose installer is Hearth's app.
+legacy_game() {
+  [ "${HEARTH_LEGACY_GAME_MODE:-0}" = 1 ] || [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ]
+}
+# Multi-seat and Couch Co-op are dropped for now (their code stays): off unless the developer switch is on.
+multiplayer_on() { [ "${HEARTH_LEGACY_MULTIPLAYER:-0}" = 1 ]; }
+# For Hearth's app (hearth-core features "steamOnly", "coop", "seats"): what this session does.
+if legacy_game; then unset HEARTH_STEAM_ONLY; else export HEARTH_STEAM_ONLY=1; fi
+if multiplayer_on; then export HEARTH_LEGACY_MULTIPLAYER=1; else unset HEARTH_LEGACY_MULTIPLAYER; fi
 [ -z "$NIMBUS_APP" ] && [ -f "$CONF/app-path" ] && NIMBUS_APP="$(cat "$CONF/app-path")"
 [ -z "$NIMBUS_APP" ] && [ -x /usr/bin/nimbus ] && NIMBUS_APP=/usr/bin/nimbus
 export NIMBUS_SESSION=1 NIMBUS_APP NIMBUS_SHARE="$SHARE"
@@ -126,17 +134,12 @@ if [ -z "${QT_QPA_PLATFORMTHEME+x}" ]; then
 fi
 # <<< portal dialogs
 
-# Steam's own Game Mode was an option in 0.2.8 and 0.2.9 and has been taken out: Game Mode is always Hearth's.
+# Steam's own Game Mode was an option in 0.2.8 and 0.2.9 (a different way than today's Steam Game Mode below).
 # The old choice (~/.config/nimbus/game-mode) is removed so nothing reads it again.
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
-can_plasma() { have startplasma-wayland && have kwin_wayland && have plasmashell; }
-# Hearth GNOME: GNOME Shell and its session, and Hearth's session mode (the list of Hearth's extensions).
-GNOME_MODE_FILE="${HEARTH_GNOME_MODE_FILE:-/usr/share/gnome-shell/modes/hearth.json}"
-can_gnome() { have gnome-session && have gnome-shell && [ -f "$GNOME_MODE_FILE" ]; }
-can_cosmic() { have start-cosmic && have cosmic-comp && have cosmic-panel && [ -d /usr/share/hearth-cosmic/data/cosmic ]; }
-can_desktop() { have labwc || can_plasma || can_gnome || can_cosmic; }
+can_desktop() { have labwc; }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
 # console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
@@ -213,7 +216,7 @@ run_game() {
   [ -n "$HEARTH_SEAT" ] && [ -n "$HEARTH_SEAT_WINDOWED" ] && full=""
   # A host that fails within seconds three times in a row (a crash on start) isn't tried again this session:
   # normal Game Mode instead of restarting it every two seconds forever.
-  if [ -z "$HEARTH_SEAT" ] && [ -f "$SEATS" ] && [ "${HOST_FAILS:-0}" -lt 3 ]; then
+  if [ -z "$HEARTH_SEAT" ] && multiplayer_on && [ -f "$SEATS" ] && [ "${HOST_FAILS:-0}" -lt 3 ]; then
     if python3 "$SEATS" host-check 2>/dev/null; then
       log "multi-seat: hosting the other players' screens"
       host_started=$(date +%s)
@@ -284,331 +287,26 @@ end_stopped_games() {
   return 0
 }
 
-# The desktop picked for Desktop Mode, read again at every start (Settings can change it while Game Mode runs).
-desktop_choice() {
-  d=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  case "$d" in plasma) echo plasma ;; gnome) echo gnome ;; cosmic) echo cosmic ;; *) echo classic ;; esac
-}
+# Desktop Mode is Mantel, always (whatever an old session.conf says; see the top).
+desktop_choice() { echo classic; }
+
+# Steam Game Mode didn't start and Desktop Mode opened instead: Mantel shows why with a "Try Steam Game Mode again"
+# button itself (desktop/shell/SteamFallback.qml). (Hearth Plasma, GNOME and COSMIC got a notify-send instead; they're
+# gone, so there's nothing else to do here. Kept as a no-op for the call below.)
+steam_notice_other() { return 0; }
 
 run_desktop() {
   log "desktop mode"
   end_stopped_games || true
-  # Hearth GNOME, the same way as Hearth Plasma below: only when picked and it can run, and Hearth Classic for the
-  # rest of this sign-in whenever it didn't come up (HEARTH_GNOME_TIMEOUT, 60 s) or crashed straight away.
-  if [ "$(desktop_choice)" = gnome ] && [ -z "$HEARTH_SEAT" ]; then
-    if [ -f /run/hearth/safe-graphics ]; then log "gnome: safe graphics this time, Hearth Classic instead"
-    elif [ -e "$RUN/hearth-gnome-failed" ]; then log "gnome: didn't start earlier this sign-in, Hearth Classic instead"
-    elif ! can_gnome; then log "gnome: not installed (gnome-session, gnome-shell, Hearth's session mode), Hearth Classic instead"
-    else
-      run_gnome; grc=$?
-      [ "$grc" -ne 200 ] && return "$grc"
-      : >"$RUN/hearth-gnome-failed"
-      log "gnome: didn't start; falling back to Hearth Classic for this sign-in"
-      settle_gnome
-    fi
-    have labwc || return 1
-  fi
-  # Hearth Plasma when it's picked and can run; Hearth Classic otherwise, and whenever Plasma didn't come up
-  # (crashed, or no desktop within HEARTH_PLASMA_TIMEOUT seconds): for the rest of this sign-in, so a broken Plasma
-  # can never leave the device without a desktop. Game Mode doesn't change either way.
-  if [ "$(desktop_choice)" = plasma ] && [ -z "$HEARTH_SEAT" ]; then
-    if [ -f /run/hearth/safe-graphics ]; then log "plasma: safe graphics this time, Hearth Classic instead"
-    elif [ -e "$RUN/hearth-plasma-failed" ]; then log "plasma: didn't start earlier this sign-in, Hearth Classic instead"
-    elif ! can_plasma; then log "plasma: not installed (startplasma-wayland, kwin_wayland, plasmashell), Hearth Classic instead"
-    else
-      run_plasma; prc=$?
-      [ "$prc" -ne 200 ] && return "$prc"
-      : >"$RUN/hearth-plasma-failed"
-      log "plasma: didn't start; falling back to Hearth Classic for this sign-in"
-      settle_plasma
-    fi
-    have labwc || return 1
-  fi
-  # ---- Hearth COSMIC (docs/COSMIC.md): the same rules as Hearth Plasma's, with its own failure mark.
-  if [ "$(desktop_choice)" = cosmic ] && [ -z "$HEARTH_SEAT" ]; then
-    if [ -f /run/hearth/safe-graphics ]; then log "cosmic: safe graphics this time, Hearth Classic instead"
-    elif [ -e "$RUN/hearth-cosmic-failed" ]; then log "cosmic: didn't start earlier this sign-in, Hearth Classic instead"
-    elif ! can_cosmic; then log "cosmic: not installed (start-cosmic, cosmic-comp, cosmic-panel, Hearth's COSMIC defaults), Hearth Classic instead"
-    else
-      run_cosmic; crc=$?
-      [ "$crc" -ne 200 ] && return "$crc"
-      : >"$RUN/hearth-cosmic-failed"
-      log "cosmic: didn't start; falling back to Hearth Classic for this sign-in"
-      settle_cosmic
-    fi
-    have labwc || return 1
-  fi
-  # ---- end Hearth COSMIC
   run_classic
 }
 
-# ---- The controller in Hearth Plasma, Hearth GNOME and Hearth COSMIC (desktop/shell/hearth-companion): started by this
-# session once the desktop is up. Not through XDG autostart: Plasma 6 and COSMIC start autostart entries through
-# systemd's xdg-autostart generator, which only sees systemd's own XDG_CONFIG_DIRS, never this session's
-# /usr/share/hearth-plasma/xdg or /usr/share/hearth-cosmic/xdg, so the controller never started there (0.6.59).
-# hearth-companion runs it once per desktop, only with HEARTH_DESKTOP set to that desktop, and writes what it decided
-# (and why) to pad.log and the desktop's log. In the background and guarded: nothing here can stop a desktop starting
-# (at worst the desktop runs without the controller).
-COMPANION="$SHARE/desktop/shell/hearth-companion"
-companion_start() {   # desktop, its log, programs of the desktop whose environment names its Wayland display
-  cdesk=$1; clog=$2; shift 2
-  if [ ! -f "$COMPANION" ]; then
-    echo "$(date '+%F %T') controller: $COMPANION is missing, no controller helper" >>"$clog" 2>/dev/null
-    return 0
-  fi
-  (
-    sleep "${HEARTH_COMPANION_DELAY:-2}"
-    # The desktop's Wayland display: from one of its programs, else the newest Wayland socket here (the compositor's,
-    # made just now), else systemd's (the desktop puts it there).
-    wd=""
-    for n in "$@"; do
-      for p in $(pgrep -u "$(id -u)" -x "$n" 2>/dev/null); do
-        wd=$(tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | sed -n 's/^WAYLAND_DISPLAY=//p' | head -n 1)
-        [ -n "$wd" ] && break 2
-      done
-    done
-    [ -z "$wd" ] && wd=$(ls -t "$RUN"/wayland-[0-9] "$RUN"/wayland-[0-9][0-9] 2>/dev/null | head -n 1) && wd="${wd##*/}"
-    [ -z "$wd" ] && have systemctl && wd=$(timeout 4 systemctl --user show-environment 2>/dev/null | sed -n 's/^WAYLAND_DISPLAY=//p' | head -n 1)
-    unset LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG
-    export HEARTH_DESKTOP="$cdesk" WAYLAND_DISPLAY="$wd"
-    case "$cdesk" in
-      plasma) export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma ;;
-      gnome) export XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome DESKTOP_SESSION=gnome ;;
-      cosmic) export XDG_CURRENT_DESKTOP=COSMIC XDG_SESSION_DESKTOP=COSMIC DESKTOP_SESSION=cosmic ;;
-    esac
-    exec sh "$COMPANION" "$cdesk" session
-  ) </dev/null >>"$clog" 2>&1 &
-  return 0
-}
-# The controller of the desktop that ended (when it didn't end by itself): the companion first, so it doesn't start
-# the helper again.
+# Hearth Plasma / GNOME / COSMIC's controller helper (desktop/shell/hearth-companion) never starts now; this only
+# makes sure one left from before is gone between modes.
 companion_stop() {
   pkill -TERM -u "$(id -u)" -f 'desktop/shell/hearth-companion' 2>/dev/null
   return 0
 }
-
-# ---- Hearth Plasma: KDE Plasma 6 with Hearth's look (os/system_files/usr/share/plasma: the look-and-feel package
-# org.hearth.desktop, the Hearth desktop theme, Hearth's widgets; system-wide defaults in /usr/share/hearth-plasma/xdg,
-# put first in XDG_CONFIG_DIRS only for this session, so Plasma sessions outside Hearth keep their own look and your
-# own changes always win). docs/PLASMA.md.
-PLASMA_XDG=/usr/share/hearth-plasma/xdg
-PLASMA_TIMEOUT="${HEARTH_PLASMA_TIMEOUT:-60}"
-# The first time: Plasma settings from another Plasma (the base's own session) would hide Hearth's layout and look:
-# the panel layout and the look-and-feel choice are put aside (kept as *.before-hearth), once.
-plasma_first_run() {
-  cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
-  [ -e "$cfg/nimbus/plasma-set-up" ] && return 0
-  mkdir -p "$cfg/nimbus"
-  for f in plasma-org.kde.plasma.desktop-appletsrc plasmashellrc; do
-    [ -f "$cfg/$f" ] && mv -f "$cfg/$f" "$cfg/$f.before-hearth" && log "plasma: your earlier $f kept as $f.before-hearth"
-  done
-  if [ -f "$cfg/kdeglobals" ] && grep -q '^LookAndFeelPackage=' "$cfg/kdeglobals"; then
-    cp -f "$cfg/kdeglobals" "$cfg/kdeglobals.before-hearth"
-    sed -i '/^LookAndFeelPackage=/d' "$cfg/kdeglobals"
-  fi
-  : >"$cfg/nimbus/plasma-set-up"
-}
-# A process of this user by that name that's really running (not a zombie left by one that ended).
-alive() {
-  for p in $(pgrep -u "$(id -u)" -x "$1" 2>/dev/null); do
-    st=$(sed -n 's/^State:[[:space:]]*\([A-Za-z]\).*/\1/p' "/proc/$p/status" 2>/dev/null)
-    [ -n "$st" ] && [ "$st" != Z ] && return 0
-  done
-  return 1
-}
-run_plasma() {
-  log "desktop mode: Hearth Plasma"
-  PLASMA_LOG="$(dirname "$LOG")/plasma.log"
-  [ -f "$PLASMA_LOG" ] && [ "$(wc -c <"$PLASMA_LOG")" -gt 1000000 ] && mv -f "$PLASMA_LOG" "$PLASMA_LOG.old"
-  echo "--- $(date '+%F %T') Hearth Plasma" >>"$PLASMA_LOG"
-  plasma_first_run
-  (
-    # Plasma's own Qt theme and portals, not the ones Hearth Classic and Game Mode ask for.
-    unset QT_QPA_PLATFORMTHEME LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG
-    export HEARTH_DESKTOP=plasma XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma
-    case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$PLASMA_XDG:"*) ;; *) export XDG_CONFIG_DIRS="$PLASMA_XDG:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
-    exec startplasma-wayland
-  ) >>"$PLASMA_LOG" 2>&1 &
-  plasma_pid=$!
-  echo "$plasma_pid" >"$RUN/hearth-plasma.pid"
-  started=$(date +%s); up=0
-  # Up = KWin and the Plasma shell both running for this user.
-  while kill -0 "$plasma_pid" 2>/dev/null; do
-    if alive kwin_wayland && alive plasmashell; then up=1; break; fi
-    [ $(( $(date +%s) - started )) -ge "$PLASMA_TIMEOUT" ] && break
-    sleep 1
-  done
-  if [ "$up" = 0 ] && kill -0 "$plasma_pid" 2>/dev/null; then
-    log "plasma: no desktop after ${PLASMA_TIMEOUT}s"
-    kill -TERM "$plasma_pid" 2>/dev/null; sleep 3; kill -KILL "$plasma_pid" 2>/dev/null
-  fi
-  # The controller (quickshell osk-plasma.qml with hearth-pad --plasma), now that Plasma is up.
-  if [ "$up" = 1 ]; then log "plasma: up; starting the controller (hearth-companion plasma)"; companion_start plasma "$PLASMA_LOG" plasmashell; fi
-  wait "$plasma_pid"; rc=$?
-  rm -f "$RUN/hearth-plasma.pid"
-  if [ "$up" = 0 ]; then log "plasma ended before its desktop came up (code $rc)"; return 200; fi
-  # Up, then gone again within half a minute with an error and without asking for another mode: a crash on start.
-  if [ "$rc" -ne 0 ] && [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 30 ]; then
-    log "plasma crashed right after starting (code $rc)"; return 200
-  fi
-  log "plasma ended (code $rc)"
-  return "$rc"
-}
-# What Plasma leaves behind, so the next mode starts clean: its user services, KWin and the shell, and the
-# session's environment back to Hearth's (startplasma puts KDE's in systemd's and D-Bus's for everything it starts).
-settle_plasma() {
-  companion_stop
-  have systemctl && timeout 6 systemctl --user stop plasma-workspace.target >/dev/null 2>&1
-  pkill -KILL -u "$(id -u)" -x plasmashell 2>/dev/null; pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null
-  pkill -KILL -u "$(id -u)" -x kwin_wayland_wrapper 2>/dev/null; pkill -KILL -u "$(id -u)" -x startplasma-wayland 2>/dev/null
-  if have systemctl; then
-    timeout 4 systemctl --user unset-environment KDE_FULL_SESSION KDE_SESSION_VERSION KDE_APPLICATIONS_AS_SCOPE HEARTH_DESKTOP DESKTOP_SESSION >/dev/null 2>&1
-    timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_CONFIG_DIRS >/dev/null 2>&1
-  fi
-  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP >/dev/null 2>&1
-  rm -f "$RUN/hearth-plasma.pid"
-  return 0
-}
-
-# ---- Hearth GNOME: GNOME Shell (the base's own release) in Hearth's session mode "hearth"
-# (os/system_files/usr/share/gnome-shell/modes/hearth.json: Hearth's in-house extensions *@hearthos.fun, which bring
-# the look, the floating bar, the launcher, Quick Access, Hearth Link, Hearth Storage, the Game Mode button and the
-# controller). Every one is guarded: a missing or broken one leaves plain GNOME, never no desktop. docs/GNOME.md.
-GNOME_TIMEOUT="${HEARTH_GNOME_TIMEOUT:-60}"
-# One app of each kind: GNOME's Files, Console and Text Editor there, Hearth's of those kinds hidden; that's the
-# app-kinds table's GNOME entries (docs/APP-KINDS.md), read through XDG_CURRENT_DESKTOP=GNOME.
-gnome_first_run() {
-  cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
-  # GNOME's first-sign-in assistant and tour aren't Hearth's (they aren't installed; this keeps them away if a
-  # package ever brings them in).
-  [ -e "$cfg/gnome-initial-setup-done" ] || { mkdir -p "$cfg" && echo yes >"$cfg/gnome-initial-setup-done"; }
-  return 0
-}
-run_gnome() {
-  log "desktop mode: Hearth GNOME"
-  GNOME_LOG="$(dirname "$LOG")/gnome.log"
-  [ -f "$GNOME_LOG" ] && [ "$(wc -c <"$GNOME_LOG")" -gt 1000000 ] && mv -f "$GNOME_LOG" "$GNOME_LOG.old"
-  echo "--- $(date '+%F %T') Hearth GNOME" >>"$GNOME_LOG"
-  gnome_first_run
-  (
-    unset LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG
-    export HEARTH_DESKTOP=gnome XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome DESKTOP_SESSION=gnome \
-      XDG_SESSION_TYPE=wayland GNOME_SHELL_SESSION_MODE=hearth
-    # KDE-based apps keep Hearth's look (qt6ct with Hearth's palette, as in Hearth Classic).
-    if have qt6ct; then export QT_QPA_PLATFORMTHEME=qt6ct; else unset QT_QPA_PLATFORMTHEME; fi
-    # GNOME Shell runs as a systemd user service (org.gnome.Shell@wayland) with systemd's environment, not this one:
-    # without GNOME_SHELL_SESSION_MODE there it's plain GNOME, with none of Hearth's extensions (no controller, no Game
-    # Mode button). gnome-session normally hands it on itself; this makes sure. Taken out again when GNOME ends.
-    if have systemctl; then timeout 4 systemctl --user import-environment GNOME_SHELL_SESSION_MODE HEARTH_DESKTOP || true; fi
-    exec gnome-session
-  ) >>"$GNOME_LOG" 2>&1 &
-  gnome_pid=$!
-  echo "$gnome_pid" >"$RUN/hearth-gnome.pid"
-  started=$(date +%s); up=0
-  # Up = GNOME Shell (compositor and shell in one) running for this user.
-  while kill -0 "$gnome_pid" 2>/dev/null; do
-    if alive gnome-shell; then up=1; break; fi
-    [ $(( $(date +%s) - started )) -ge "$GNOME_TIMEOUT" ] && break
-    sleep 1
-  done
-  if [ "$up" = 0 ] && kill -0 "$gnome_pid" 2>/dev/null; then
-    log "gnome: no desktop after ${GNOME_TIMEOUT}s"
-    kill -TERM "$gnome_pid" 2>/dev/null; sleep 3; kill -KILL "$gnome_pid" 2>/dev/null
-  fi
-  # GNOME Shell's hearth-pad@hearthos.fun extension starts the controller; hearth-companion checks it did, says why
-  # not in pad.log and gnome.log, and then runs hearth-pad on its own (the pointer at least).
-  if [ "$up" = 1 ]; then log "gnome: up; checking the controller (hearth-companion gnome)"; companion_start gnome "$GNOME_LOG" gsd-media-keys gsd-power; fi
-  wait "$gnome_pid"; rc=$?
-  # Hearth's session mode out of systemd's environment again, whichever way GNOME ended (signing out included), so a
-  # plain GNOME session started later never comes up in Hearth's mode.
-  have systemctl && timeout 4 systemctl --user unset-environment GNOME_SHELL_SESSION_MODE >/dev/null 2>&1
-  rm -f "$RUN/hearth-gnome.pid"
-  if [ "$up" = 0 ]; then log "gnome ended before its desktop came up (code $rc)"; return 200; fi
-  if [ "$rc" -ne 0 ] && [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 30 ]; then
-    log "gnome crashed right after starting (code $rc)"; return 200
-  fi
-  log "gnome ended (code $rc)"
-  return "$rc"
-}
-# What GNOME leaves behind: its user services and processes, and the session's environment back to Hearth's
-# (gnome-session puts GNOME's in systemd's and D-Bus's for everything it starts).
-settle_gnome() {
-  companion_stop
-  have systemctl && timeout 6 systemctl --user stop gnome-session-manager.target gnome-session.target org.gnome.Shell@wayland.service >/dev/null 2>&1
-  for p in gnome-shell gnome-session-binary gnome-session-service gnome-session gnome-session-ctl; do pkill -KILL -u "$(id -u)" -x "$p" 2>/dev/null; done
-  if have systemctl; then
-    timeout 4 systemctl --user unset-environment GNOME_SHELL_SESSION_MODE GNOME_SETUP_DISPLAY HEARTH_DESKTOP DESKTOP_SESSION >/dev/null 2>&1
-    timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_DATA_DIRS >/dev/null 2>&1
-  fi
-  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_DATA_DIRS >/dev/null 2>&1
-  rm -f "$RUN/hearth-gnome.pid"
-  return 0
-}
-# ---- Hearth COSMIC: System76's COSMIC with Hearth's look (docs/COSMIC.md). Hearth's COSMIC defaults (theme, panel,
-# shortcuts, wallpaper; made at image build time by desktop/cosmic/hearth-cosmic-defaults from COSMIC's own) are in
-# /usr/share/hearth-cosmic/data/cosmic, put first in XDG_DATA_DIRS for this session only, so a plain COSMIC session
-# keeps its own look and your own changes (~/.config/cosmic) always win. Hearth's companion (the launcher, Quick
-# Access, the Hearth menu, the on-screen keyboard and the controller: desktop/shell/desk-cosmic.qml) is started by
-# this session once COSMIC is up (companion_start), only in this session.
-COSMIC_DATA=/usr/share/hearth-cosmic/data
-COSMIC_XDG=/usr/share/hearth-cosmic/xdg
-COSMIC_TIMEOUT="${HEARTH_COSMIC_TIMEOUT:-60}"
-run_cosmic() {
-  log "desktop mode: Hearth COSMIC"
-  COSMIC_LOG="$(dirname "$LOG")/cosmic.log"
-  [ -f "$COSMIC_LOG" ] && [ "$(wc -c <"$COSMIC_LOG")" -gt 1000000 ] && mv -f "$COSMIC_LOG" "$COSMIC_LOG.old"
-  echo "--- $(date '+%F %T') Hearth COSMIC" >>"$COSMIC_LOG"
-  (
-    # COSMIC's own Qt theme, portals and desktop name, not the ones Hearth Classic and Game Mode ask for.
-    unset QT_QPA_PLATFORMTHEME LABWC_PID WLR_NO_HARDWARE_CURSORS GDK_DEBUG XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP
-    export HEARTH_DESKTOP=cosmic DESKTOP_SESSION=cosmic
-    case ":$XDG_DATA_DIRS:" in *":$COSMIC_DATA:"*) ;; *) export XDG_DATA_DIRS="$COSMIC_DATA:$XDG_DATA_DIRS" ;; esac
-    case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$COSMIC_XDG:"*) ;; *) export XDG_CONFIG_DIRS="$COSMIC_XDG:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
-    # start-cosmic re-runs itself in a login shell; the variables above go through it (it only fills in unset ones).
-    exec start-cosmic
-  ) >>"$COSMIC_LOG" 2>&1 &
-  cosmic_pid=$!
-  echo "$cosmic_pid" >"$RUN/hearth-cosmic.pid"
-  started=$(date +%s); up=0
-  # Up = the compositor and the panel both running for this user.
-  while kill -0 "$cosmic_pid" 2>/dev/null; do
-    if alive cosmic-comp && alive cosmic-panel; then up=1; break; fi
-    [ $(( $(date +%s) - started )) -ge "$COSMIC_TIMEOUT" ] && break
-    sleep 1
-  done
-  if [ "$up" = 0 ] && kill -0 "$cosmic_pid" 2>/dev/null; then
-    log "cosmic: no desktop after ${COSMIC_TIMEOUT}s"
-    kill -TERM "$cosmic_pid" 2>/dev/null; sleep 3; kill -KILL "$cosmic_pid" 2>/dev/null
-  fi
-  # The companion and the controller (hearth-cosmic companion), now that COSMIC is up.
-  if [ "$up" = 1 ]; then log "cosmic: up; starting the controller (hearth-companion cosmic)"; companion_start cosmic "$COSMIC_LOG" cosmic-panel cosmic-bg cosmic-osd; fi
-  wait "$cosmic_pid"; rc=$?
-  rm -f "$RUN/hearth-cosmic.pid"
-  if [ "$up" = 0 ]; then log "cosmic ended before its desktop came up (code $rc)"; return 200; fi
-  if [ "$rc" -ne 0 ] && [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 30 ]; then
-    log "cosmic crashed right after starting (code $rc)"; return 200
-  fi
-  log "cosmic ended (code $rc)"
-  return "$rc"
-}
-# What COSMIC leaves behind, so the next mode starts clean.
-settle_cosmic() {
-  companion_stop
-  have systemctl && timeout 6 systemctl --user stop cosmic-session.target >/dev/null 2>&1
-  for p in cosmic-session cosmic-panel cosmic-comp cosmic-bg cosmic-osd cosmic-notifications cosmic-settings-daemon cosmic-idle cosmic-workspaces cosmic-app-library cosmic-launcher; do
-    pkill -KILL -u "$(id -u)" -x "$(printf '%.15s' "$p")" 2>/dev/null    # process names are cut at 15 characters
-  done
-  pkill -TERM -u "$(id -u)" -f 'desktop/shell/desk-cosmic.qml' 2>/dev/null
-  pkill -TERM -u "$(id -u)" -f 'desktop/cosmic/hearth-cosmic pad' 2>/dev/null; pkill -TERM -u "$(id -u)" -f 'hearth-pad --cosmic' 2>/dev/null
-  if have systemctl; then
-    timeout 4 systemctl --user unset-environment HEARTH_DESKTOP DESKTOP_SESSION DCONF_PROFILE >/dev/null 2>&1
-    timeout 4 systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_CONFIG_DIRS XDG_DATA_DIRS >/dev/null 2>&1
-  fi
-  have dbus-update-activation-environment && timeout 4 dbus-update-activation-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP >/dev/null 2>&1
-  rm -f "$RUN/hearth-cosmic.pid"
-  return 0
-}
-# ---- end Hearth COSMIC
 
 run_classic() {
   log "desktop mode: Hearth Classic"
@@ -689,12 +387,6 @@ settle() {
   fi
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
-  # Hearth Plasma's KWin and shell, when it was Plasma (only then: nothing of KDE's is touched otherwise).
-  [ "$1" = desktop ] && { [ -e "$RUN/hearth-plasma.pid" ] || pgrep -u "$(id -u)" -x kwin_wayland >/dev/null 2>&1; } && settle_plasma
-  # Hearth GNOME's shell and session, when it was GNOME.
-  [ "$1" = desktop ] && { [ -e "$RUN/hearth-gnome.pid" ] || pgrep -u "$(id -u)" -x gnome-shell >/dev/null 2>&1; } && settle_gnome
-  # Hearth COSMIC's, likewise only when it was COSMIC.
-  [ "$1" = desktop ] && { [ -e "$RUN/hearth-cosmic.pid" ] || pgrep -u "$(id -u)" -x cosmic-comp >/dev/null 2>&1; } && settle_cosmic
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   companion_stop
@@ -734,13 +426,15 @@ input_stop() {
 }
 
 # >>> steam game mode
-# ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS
-# runs it, with Decky Loader and the Hearth plugin when they're installed. Chosen for ONE time only: Hearth's power menu
-# or Settings › System write "steam" to nimbus-next (or `nimbus-mode steam`). The switch itself is never saved (starting
-# in it is a separate opt-in, "Start in Steam Game Mode" below, that turns itself off when it fails); when Steam's ends,
-# for whatever reason, Hearth's Game Mode comes back
-# (Desktop Mode when that was asked for). Steam or gamescope missing, safe graphics, or Steam ending with an error
-# within STEAM_MODE_MIN_SECS: straight back to Hearth's, with a note Settings shows ($RUN/hearth-steam-mode-failed).
+# ---- Steam Game Mode (docs/STEAM-GAME-MODE.md): Valve's Steam gamepad UI in gamescope, the way SteamOS runs it, with
+# Decky Loader and the Hearth plugin when they're installed. Hearth OS's Game Mode: where the session starts, and what
+# every "game" request opens. Where it goes afterwards (STEAM_BACK: Desktop Mode, or Hearth's own Game Mode with the
+# developer switch / on the live USB):
+#   Steam or gamescope missing, safe graphics on, or Steam ending with an error within STEAM_MODE_MIN_SECS: STEAM_BACK,
+#   with the reason in $RUN/hearth-steam-mode-failed (Mantel shows it with "Try Steam Game Mode again"; Settings too).
+#   A Switch asked for (Steam's Switch to Desktop, nimbus-mode desktop/steam/game): that.
+#   Steam ending by itself otherwise: Steam Game Mode again (as SteamOS does), unless steam_auto_after says it failed
+#   twice (then STEAM_BACK, and it stays there until you try again).
 # (test_hearth_steam_mode.py runs these lines, between the >>> and <<< marks.)
 STEAM_FLATPAK=com.valvesoftware.Steam
 STEAM_MODE_MIN_SECS="${STEAM_MODE_MIN_SECS:-20}"
@@ -757,7 +451,21 @@ steam_flatpak_in_use() {
   [ "$fl" -nt "$nl" ]
 }
 can_steam_mode() { [ -z "$HEARTH_SEAT" ] && have gamescope && { have steam || steam_flatpak; }; }
-steam_mode_failed() { log "steam game mode: $1; back to Hearth's Game Mode"; echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; }
+# Where the session goes when Steam Game Mode can't run or failed: Desktop Mode; Hearth's own Game Mode only with the
+# developer switch (or on the live USB, where Hearth's app is the installer).
+steam_back() { if command -v legacy_game >/dev/null 2>&1 && legacy_game; then echo game; else echo desktop; fi; }
+steam_back_name() { [ "$(steam_back)" = game ] && echo "Hearth's Game Mode" || echo "Desktop Mode"; }
+steam_mode_failed() {
+  log "steam game mode: $1; $(steam_back_name) instead"
+  echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null
+  steam_back >"$NEXT"
+}
+# Why Steam Game Mode can't start at all right now ("" when it can).
+steam_cant_reason() {
+  if ! can_steam_mode; then echo "Steam or gamescope isn't installed"
+  elif [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then echo "safe graphics are on this time"
+  fi
+}
 # Decky Loader, when Hearth installed it (hearth-admin decky-install): its root service runs only while Steam Game
 # Mode does, never at boot or in Hearth's modes. Never waited on for long, never fatal.
 DECKY_UNIT="${HEARTH_DECKY_UNIT:-/etc/systemd/system/hearth-decky.service}"
@@ -803,12 +511,14 @@ steam_input_stop() { command -v input_stop >/dev/null 2>&1 && input_stop; return
 # Every call is time-limited and its failure ignored: none of it can stop Steam Game Mode from starting.
 STEAM_SEATS="${HEARTH_SEATS_HELPER:-/usr/libexec/nimbus/hearth-seats}"
 STEAM_SEATS_CONFIG="${HEARTH_SEATS_CONFIG:-/etc/hearth/seats.json}"
-steam_seats_on() { [ -z "$HEARTH_SEAT" ] && [ -f "$STEAM_SEATS" ] && have python3 && grep -Eq '"enabled": *true' "$STEAM_SEATS_CONFIG" 2>/dev/null; }
+# Multi-seat is dropped for now (HEARTH_LEGACY_MULTIPLAYER=1 brings it back): off, so none of this runs.
+steam_seats_on() { [ "${HEARTH_LEGACY_MULTIPLAYER:-0}" = 1 ] && [ -z "$HEARTH_SEAT" ] && [ -f "$STEAM_SEATS" ] && have python3 && grep -Eq '"enabled": *true' "$STEAM_SEATS_CONFIG" 2>/dev/null; }
 run_steam_mode() {
-  log "steam game mode (experimental, this time only)"
+  log "steam game mode"
   rm -f "$RUN/hearth-steam-mode-failed"
-  if ! can_steam_mode; then steam_mode_failed "Steam or gamescope isn't installed"; echo game >"$NEXT"; return 0; fi
-  if [ -f /run/hearth/safe-graphics ]; then steam_mode_failed "safe graphics are on this time"; echo game >"$NEXT"; return 0; fi
+  started=$(date +%s); next_now=""
+  why="$(steam_cant_reason)"
+  if [ -n "$why" ]; then steam_mode_failed "$why"; return 0; fi
   NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
@@ -871,44 +581,44 @@ run_steam_mode() {
   steam_input_stop
   decky_ctl stop &
   next_now="$(cat "$NEXT" 2>/dev/null)"
-  if [ "$next_now" != game ] && [ "$next_now" != desktop ]; then
-    if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ]; then steam_mode_failed "Steam ended right away (code $rc)"
-    else log "steam game mode ended (code $rc); Hearth's Game Mode next"; fi
-    echo game >"$NEXT"
-  fi
+  case "$next_now" in
+    game|desktop|steam|logout) log "steam game mode ended (code $rc); $next_now asked for" ;;
+    *)
+      if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ]; then steam_mode_failed "Steam ended right away (code $rc)"
+      elif [ "$(steam_back)" = game ]; then log "steam game mode ended (code $rc); Hearth's Game Mode next"; echo game >"$NEXT"
+      else log "steam game mode ended by itself (code $rc); Steam Game Mode again"; echo steam >"$NEXT"; fi ;;
+  esac
   return 0
 }
-# ---- Start in Steam Game Mode (Experimental, Settings › System › Steam Game Mode; docs/STEAM-GAME-MODE.md): per device,
-# off unless you turn it on (HEARTH_STEAM_DEFAULT=1 in session.conf). Only where the session would start in Hearth's
-# Game Mode, once per sign-in, never for an extra multi-seat player or the live USB / installer. Skipped this time with
-# hearth.mode=game on the kernel command line, or B or Guide held on a controller as the session starts. Turns itself
-# off (session.conf back to 0, the reason in $SD_STATE/steam-default-off for Settings, a log line) when Steam or
-# gamescope is missing, safe graphics are on, Steam isn't signed in, Steam ends with an error within
-# STEAM_MODE_MIN_SECS, or Steam Game Mode ends by itself (no Switch asked for) before STEAM_DEFAULT_GOOD_SECS twice
-# within STEAM_DEFAULT_WINDOW. Each start is counted as a failure first and cleared by a good run, so a start that hangs
-# or takes the device down counts too.
+# ---- Steam Game Mode failing twice (docs/STEAM-GAME-MODE.md "When Steam Game Mode can't start"): every Steam Game Mode
+# run is counted as a failure first ($SD_FAILS, a time per line) and cleared by a good one (still running after
+# STEAM_DEFAULT_GOOD_SECS, or a Switch you asked for), so a start that hangs or takes the device down counts too. Two
+# failures within STEAM_DEFAULT_WINDOW: Steam Game Mode is paused ($SD_STATE/steam-default-off, the reason inside) and
+# the session opens Desktop Mode, at once and at every start after, until you try again (Mantel's "Try Steam Game
+# Mode again", Game Mode buttons, `nimbus-mode steam`): a request you make always runs, and a good run ends the pause.
+# The session never goes back and forth between Steam Game Mode and Desktop Mode by itself.
 STEAM_DEFAULT_GOOD_SECS="${STEAM_DEFAULT_GOOD_SECS:-120}"
 STEAM_DEFAULT_WINDOW="${STEAM_DEFAULT_WINDOW:-600}"
 SD_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nimbus"
 SD_FAILS="$SD_STATE/steam-default-fails"
-steam_default_on() {
-  [ "$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_STEAM_DEFAULT=["'"'"']*\([0-9a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)" = 1 ]
-}
-steam_default_off() {
-  log "steam game mode default: turned off by itself: $1; the device starts in Hearth's Game Mode"
-  [ -f "$SESSION_CONF" ] && sed -i 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_STEAM_DEFAULT=.*/HEARTH_STEAM_DEFAULT=0/' "$SESSION_CONF"
-  mkdir -p "$SD_STATE" 2>/dev/null; echo "$1" >"$SD_STATE/steam-default-off" 2>/dev/null
+SD_OFF="$SD_STATE/steam-default-off"
+steam_paused() { [ -s "$SD_OFF" ]; }
+steam_pause() {
+  log "steam game mode: paused: $1; Desktop Mode until you try Steam Game Mode again"
+  mkdir -p "$SD_STATE" 2>/dev/null; echo "$1" >"$SD_OFF" 2>/dev/null
+  echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null
   rm -f "$SD_FAILS"
 }
-# Steam has a signed-in account in the folder of the Steam that run_steam_mode will start.
-steam_signed_in() {
-  steam_flatpak_in_use && return 0
-  if have steam && { [ ! -e /usr/share/nimbus/steam-flatpak ] || ! steam_flatpak; }; then
-    for f in "$HOME/.local/share/Steam/config/loginusers.vdf" "$HOME/.steam/steam/config/loginusers.vdf"; do [ -s "$f" ] && return 0; done
-    return 1
-  fi
-  for f in "$HOME/.var/app/$STEAM_FLATPAK/.local/share/Steam/config/loginusers.vdf" "$HOME/.var/app/$STEAM_FLATPAK/data/Steam/config/loginusers.vdf"; do [ -s "$f" ] && return 0; done
-  return 1
+steam_unpause() { rm -f "$SD_OFF" "$SD_FAILS"; }
+# The failed runs in the last STEAM_DEFAULT_WINDOW (printed, one time per line).
+steam_recent_fails() {
+  now=$(date +%s)
+  [ -f "$SD_FAILS" ] || return 0
+  while read -r t; do
+    case "$t" in ''|*[!0-9]*) continue ;; esac
+    [ $(( now - t )) -lt "$STEAM_DEFAULT_WINDOW" ] && echo "$t"
+  done <"$SD_FAILS"
+  return 0
 }
 # B or Guide held on a controller during the first seconds (hearth-pad-held reads the buttons' state, like Hearth
 # Recovery does; nothing else is read or changed).
@@ -916,98 +626,124 @@ steam_skip_held() {
   ph="${HEARTH_PAD_HELD:-/usr/libexec/nimbus/hearth-pad-held}"
   [ -f "$ph" ] && have python3 && timeout 6 python3 "$ph" --window 2.5 >/dev/null 2>&1
 }
-steam_default_wanted() {
-  steam_default_on || return 1
-  [ -z "$HEARTH_SEAT" ] || return 1
-  if [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ]; then return 1; fi
-  if grep -qwF hearth.mode=game "${HEARTH_CMDLINE:-/proc/cmdline}" 2>/dev/null; then
-    log "steam game mode default: hearth.mode=game on the kernel command line; Hearth's Game Mode this time"; return 1
+# Where the session starts when it would start in Steam Game Mode: prints steam or desktop (and why, in the log and
+# the failure note). Desktop Mode with hearth.mode=desktop on the kernel command line, B or Guide held as the session
+# starts, Steam Game Mode paused, two failed starts in the window, or Steam unable to run at all.
+steam_start_mode() {
+  if grep -qwF hearth.mode=desktop "${HEARTH_CMDLINE:-/proc/cmdline}" 2>/dev/null; then
+    log "start: hearth.mode=desktop on the kernel command line; Desktop Mode this time"; echo desktop; return 0
   fi
-  if steam_skip_held; then log "steam game mode default: B or Guide held; Hearth's Game Mode this time"; return 1; fi
-  if ! can_steam_mode; then steam_default_off "Steam or gamescope isn't installed"; return 1; fi
-  if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then steam_default_off "safe graphics were on"; return 1; fi
-  if ! steam_signed_in; then steam_default_off "Steam isn't signed in"; return 1; fi
-  return 0
+  if steam_skip_held; then log "start: B or Guide held; Desktop Mode this time"; echo desktop; return 0; fi
+  if steam_paused; then
+    log "start: Steam Game Mode is paused ($(cat "$SD_OFF")); Desktop Mode"
+    echo "$(cat "$SD_OFF")" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; echo desktop; return 0
+  fi
+  if [ "$(steam_recent_fails | grep -c .)" -ge 2 ]; then
+    steam_pause "Steam Game Mode didn't start properly twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"; echo desktop; return 0
+  fi
+  why="$(steam_cant_reason)"
+  if [ -n "$why" ]; then log "start: steam game mode: $why; Desktop Mode instead"; echo "$why" >"$RUN/hearth-steam-mode-failed" 2>/dev/null; echo desktop; return 0; fi
+  echo steam
 }
-# Before each Steam Game Mode run while the default is on: the starts that failed in the last STEAM_DEFAULT_WINDOW
-# (one is added now and taken away again by a good run or a Switch you asked for). Two already: off, no start.
+# Before each Steam Game Mode run: this run counted as a failure until it proves good.
 SD_TIMER=""
-steam_default_before() {
-  steam_default_on || return 0
+steam_auto_before() {
   mkdir -p "$SD_STATE" 2>/dev/null
-  now=$(date +%s); kept=""
-  if [ -f "$SD_FAILS" ]; then
-    while read -r t; do
-      case "$t" in ''|*[!0-9]*) continue ;; esac
-      [ $(( now - t )) -lt "$STEAM_DEFAULT_WINDOW" ] && kept="$kept$t
-"
-    done <"$SD_FAILS"
-  fi
-  if [ "$(printf '%s' "$kept" | grep -c .)" -ge 2 ]; then
-    steam_default_off "Steam Game Mode didn't start properly twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"; return 1
-  fi
-  printf '%s%s\n' "$kept" "$now" >"$SD_FAILS" 2>/dev/null
+  kept="$(steam_recent_fails)"
+  printf '%s%s\n' "${kept:+$kept
+}" "$(date +%s)" >"$SD_FAILS" 2>/dev/null
   # A run still going after STEAM_DEFAULT_GOOD_SECS is a good one, even if the device is turned off from Steam later.
-  ( sleep "$STEAM_DEFAULT_GOOD_SECS"; [ -f "$RUN/hearth-steam-mode.pid" ] && rm -f "$SD_FAILS" ) >/dev/null 2>&1 &
+  ( sleep "$STEAM_DEFAULT_GOOD_SECS"; [ -f "$RUN/hearth-steam-mode.pid" ] && rm -f "$SD_FAILS" "$SD_OFF" ) >/dev/null 2>&1 &
   SD_TIMER=$!
   return 0
 }
-# After it: uses run_steam_mode's own started / next_now and its failure note.
-steam_default_after() {
+# After it: uses run_steam_mode's own started / next_now and its failure note. Two failures: paused, Desktop Mode.
+steam_auto_after() {
   [ -n "$SD_TIMER" ] && kill "$SD_TIMER" 2>/dev/null; SD_TIMER=""
-  steam_default_on || return 0
-  if [ -s "$RUN/hearth-steam-mode-failed" ]; then steam_default_off "$(cat "$RUN/hearth-steam-mode-failed")"; return 0; fi
+  n=$(steam_recent_fails | grep -c .)
+  if [ -s "$RUN/hearth-steam-mode-failed" ]; then
+    [ "$n" -ge 2 ] && steam_pause "$(cat "$RUN/hearth-steam-mode-failed") (twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes)"
+    return 0
+  fi
   ran=$(( $(date +%s) - ${started:-0} ))
-  if [ "$ran" -ge "$STEAM_DEFAULT_GOOD_SECS" ]; then rm -f "$SD_FAILS"; return 0; fi
+  if [ "$ran" -ge "$STEAM_DEFAULT_GOOD_SECS" ]; then steam_unpause; return 0; fi
   case "$next_now" in
-    game|desktop)   # a Switch you asked for: not a failure
-      [ -f "$SD_FAILS" ] && { sed '$d' "$SD_FAILS" >"$SD_FAILS.new" && mv -f "$SD_FAILS.new" "$SD_FAILS"; }; return 0 ;;
+    game|desktop|steam|logout)   # a Switch you asked for: not a failure
+      [ -f "$SD_FAILS" ] && { sed '$d' "$SD_FAILS" >"$SD_FAILS.new" && mv -f "$SD_FAILS.new" "$SD_FAILS"; }
+      rm -f "$SD_OFF"; return 0 ;;
   esac
-  n=$(grep -c . "$SD_FAILS" 2>/dev/null); n=${n:-0}
-  if [ "$n" -ge 2 ]; then steam_default_off "Steam Game Mode closed by itself twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"
-  else log "steam game mode default: Steam Game Mode closed by itself after ${ran}s ($n of 2 before starting in it turns off)"; fi
+  if [ "$n" -ge 2 ]; then
+    steam_pause "Steam Game Mode closed by itself twice within $(( STEAM_DEFAULT_WINDOW / 60 )) minutes"
+    steam_back >"$NEXT"
+  else log "steam game mode: closed by itself after ${ran}s ($n of 2 before Desktop Mode takes over)"; fi
   return 0
 }
 # <<< steam game mode
 
+# ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) is Hearth's app,
+# shown once on a fresh install. Until it's done (or skipped: Hearth writes setupDone in library.json), "game" means
+# Hearth's app for it (mode "setup", Hearth's Game Mode code); after it, Steam Game Mode. Hearth's app switches to
+# Steam Game Mode itself when setup finishes, and a setup run that ends without asking for anything goes there too.
+setup_pending() {
+  [ -z "$HEARTH_SEAT" ] && can_game || return 1
+  ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
+}
+# What a request for a mode means: "game" is Steam Game Mode (Hearth's own only with the developer switch / live USB,
+# or first-time setup while it's pending).
+resolve_mode() {
+  case "$1" in
+    game) if legacy_game; then echo game; elif setup_pending; then echo setup; else echo steam; fi ;;
+    *) echo "$1" ;;
+  esac
+}
+
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
-# Steam Game Mode is one time only, never where the session starts.
-[ "$mode" = steam ] && mode=game
+case "$mode" in desktop) ;; *) mode=game ;; esac
 # Hearth Recovery on the device › Desktop Mode this time (until the next restart).
 [ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
-# Extra multi-seat players have Game Mode only, even when their session.conf says to start in Desktop Mode.
-[ -n "$HEARTH_SEAT" ] && mode=game
-# Start in Steam Game Mode (off unless turned on in Settings; steam_default_wanted has every rule and way out).
-SD_FIRST=""
-if [ "$mode" = game ] && steam_default_wanted && steam_default_before; then
-  log "steam game mode default: starting in Steam Game Mode (hold B or Guide as the session starts to skip it)"; mode=steam; SD_FIRST=1
-fi
+# Extra multi-seat players have Hearth's Game Mode only (multi-seat is dropped for now; kept for HEARTH_LEGACY_MULTIPLAYER).
+if [ -n "$HEARTH_SEAT" ]; then mode=game; else mode="$(resolve_mode "$mode")"; fi
+# Starting in Steam Game Mode: steam_start_mode has every way out (hearth.mode=desktop, B or Guide held, paused...).
+[ "$mode" = steam ] && mode="$(steam_start_mode)"
 rm -f "$NEXT"
 while :; do
-  # Fall back to whichever mode can run.
+  # Fall back to whichever mode can run: the device always ends up somewhere usable.
   # Desktop Mode's autostart reads the note: if its taskbar can't start either, it stays put instead of asking for
   # Game Mode again (that restarted Desktop Mode about once a minute, forever).
-  if [ "$mode" = game ] && ! can_game; then log "game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"; mode=desktop; fi
-  if [ "$mode" = desktop ] && ! can_desktop; then log "desktop mode unavailable (labwc, Plasma and GNOME missing)"; can_game && mode=game || exit 1; fi
+  if [ "$mode" = setup ] && ! can_game; then log "first-time setup: Hearth's app or gamescope missing; Steam Game Mode"; mode=steam; fi
+  if [ "$mode" = game ] && ! can_game; then
+    log "hearth's game mode unavailable (gamescope or Nimbus missing)"; : >"$RUN/nimbus-game-unavailable"
+    if [ -n "$HEARTH_SEAT" ] || legacy_game || [ -s "$RUN/hearth-steam-mode-failed" ]; then mode=desktop; else mode=steam; fi
+  fi
+  if [ "$mode" = desktop ] && ! can_desktop; then
+    log "desktop mode unavailable (labwc missing)"
+    if [ -z "$HEARTH_SEAT" ] && [ ! -s "$RUN/hearth-steam-mode-failed" ] && can_steam_mode; then mode=steam
+    elif can_game; then log "last resort: Hearth's Game Mode"; mode=game
+    else exit 1; fi
+  fi
 
   # The mode this session is in, for programs started outside it: Handheld Daemon's overlay app
   # (desktop/shell/hearth-overlay) started for Desktop Mode ends itself once it says game again, so HHD starts Quick
   # Access the Game Mode way (in gamescope) instead of sending every press to a Desktop Mode that's gone.
-  echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null
-  [ "$mode" = steam ] && [ -z "$SD_FIRST" ] && { steam_default_before || :; }
-  SD_FIRST=""
-  if [ "$mode" = game ]; then input_start; run_game; code=$?; input_stop
+  if [ "$mode" = setup ]; then echo game >"$RUN/nimbus-mode-now" 2>/dev/null; else echo "$mode" >"$RUN/nimbus-mode-now" 2>/dev/null; fi
+  sd=""; [ "$mode" = steam ] && ! legacy_game && { steam_auto_before; sd=1; }
+  if [ "$mode" = game ] || [ "$mode" = setup ]; then
+    [ "$mode" = setup ] && log "first-time setup in Hearth's app (once; Steam Game Mode after)"
+    input_start; run_game; code=$?; input_stop
   elif [ "$mode" = steam ]; then run_steam_mode; code=$?
-  else run_desktop; code=$?; fi
-  [ "$mode" = steam ] && steam_default_after
+  else steam_notice_other; run_desktop; code=$?; fi
+  [ -n "$sd" ] && steam_auto_after
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
+  # First-time setup that ended without asking for anything (Hearth closed or gave up): Steam Game Mode, never no screen.
+  [ "$mode" = setup ] && [ -z "$next" ] && { log "first-time setup ended (code $code); Steam Game Mode next"; next=steam; }
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   [ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game     # ...and never Steam Game Mode
-  [ "$mode" = steam ] && [ "$next" = steam ] && next=game        # Steam Game Mode never follows itself
   case "$next" in
-    game|desktop|steam) log "switching to $next"; settle "$mode"; log "starting $next mode"; mode="$next" ;;
+    game|desktop|steam)
+      to="$next"; [ -z "$HEARTH_SEAT" ] && to="$(resolve_mode "$next")"
+      log "switching to $to"; settle "$mode"; log "starting $to mode"; mode="$to" ;;
     *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;
   esac
 done

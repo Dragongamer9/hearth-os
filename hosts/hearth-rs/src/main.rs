@@ -801,7 +801,10 @@ fn main() {
         }
     }
     // Mantel's Games section (Desktop Mode's launcher): the installed games as JSON. No window is opened.
-    if has("--list-games") { println!("{}", hearth_core::desktop_games::list_now()); std::process::exit(0); }
+    if has("--list-games") {
+        println!("{}", if has("--with-cloud") { hearth_core::desktop_games::list_with_cloud_now() } else { hearth_core::desktop_games::list_now() });
+        std::process::exit(0);
+    }
     // Steam's Game Mode (Experimental): a Hearth game added to Steam by the Hearth Decky plugin plays through Hearth
     // without a window, and this waits until it has closed (desktop_games.rs play_now).
     if args.get(1).map(String::as_str) == Some("--play-now") {

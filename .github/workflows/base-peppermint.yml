@@ -370,20 +370,21 @@ jobs:
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
           mkdir -p /tmp/electron && cp -a dist/linux-unpacked/. /tmp/electron/
-      # ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
-      # packed into hearth-decky.tar; build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
-      # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
-      - name: Build the Hearth Decky plugin
+      # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin the image ships, built and packed
+      # into hearth-decky-sync.tar; build.sh puts it in /usr/share/hearth/decky-hearth-sync, where Settings › System › Steam
+      # Game Mode's Decky install takes it from. The older Hearth plugin (hosts/decky-hearth) isn't shipped for now.
+      # Never fails the image: without it, Steam Game Mode works without Hearth's games in Steam's library.
+      - name: Build Hearth Sync (Decky plugin)
         continue-on-error: true
         run: |
           set -e
-          cd hosts/decky-hearth
+          cd hosts/decky-hearth-sync
           npm install -g pnpm@9 >/dev/null
           sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
           pnpm install --no-frozen-lockfile >/dev/null
           pnpm build
           ./package.sh /tmp/decky-out
-          tar -C /tmp/decky-out/decky-hearth -cf "$GITHUB_WORKSPACE/hearth-decky.tar" .
+          tar -C /tmp/decky-out/decky-hearth-sync -cf "$GITHUB_WORKSPACE/hearth-decky-sync.tar" .
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -403,7 +404,7 @@ jobs:
           path: |
             hearth-browser.tar
             hearth-electron.tar
-            hearth-decky.tar
+            hearth-decky-sync.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
   # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
@@ -512,7 +513,11 @@ jobs:
           mkdir -p os/system_files/usr/share/nimbus
           python3 tools/app-bundle.py abi > os/system_files/usr/share/nimbus/app-abi
           echo "::notice title=app ABI::$(cat os/system_files/usr/share/nimbus/app-abi)"
-          if [ -f hearth-decky.tar ]; then mkdir -p os/nimbus-app/decky-hearth && tar -C os/nimbus-app/decky-hearth -xf hearth-decky.tar || rm -rf os/nimbus-app/decky-hearth; fi
+          # This version's release date, next to /usr/share/nimbus/version (Settings › About: "Hearth OS 1.0 · November 2,
+          # 2026"). From its docs/ROADMAP.md heading, "## 1.0 (released 2026-11-02)"; empty before the release has one.
+          python3 tools/hearth_version.py date "${{ needs.app.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
+          echo "::notice title=version::${{ needs.app.outputs.version }} (shown as $(python3 tools/hearth_version.py show "${{ needs.app.outputs.version }}"), released: $(cat os/system_files/usr/share/nimbus/version-date))"
+          if [ -f hearth-decky-sync.tar ]; then mkdir -p os/nimbus-app/decky-hearth-sync && tar -C os/nimbus-app/decky-hearth-sync -xf hearth-decky-sync.tar || rm -rf os/nimbus-app/decky-hearth-sync; fi
 
       - name: Build
         run: |
@@ -666,7 +671,7 @@ jobs:
           # The log: /var starts empty in this image, so journald's default (Storage=auto) would keep the journal in
           # memory only (see os-bases/peppermint/system_files/usr/lib/systemd/journald.conf.d).
           check "the log is kept across restarts (Storage=persistent, not the default auto)" "systemd-analyze cat-config systemd/journald.conf 2>/dev/null | grep -q '^Storage=persistent'"
-          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Peppermint /usr/lib/os-release"
+          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q '^VARIANT_ID=hearth-peppermint' /usr/lib/os-release && grep -q 'Debian' /usr/lib/os-release"
           # ---- Hearth Paint, Emoji, Fonts and Settings › Accessibility (apps-create.yml)
           warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
           warn "the emoji picker is installed and finds its libraries" "test -x /usr/bin/hearth-emoji && ! ldd /usr/bin/hearth-emoji | grep -q 'not found'"
@@ -688,24 +693,14 @@ jobs:
           check "Steam is installed" "command -v steam && dpkg -l steam-installer | grep -q '^ii'"
           check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
           check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/nimbus.desktop"
-          # ---- Hearth Plasma (docs/PLASMA.md): the second desktop, with Hearth Classic kept as the fallback
-          check "Hearth Plasma: Plasma 6 is installed (startplasma-wayland, kwin_wayland, plasmashell)" "command -v startplasma-wayland && command -v kwin_wayland && command -v plasmashell"
-          check "Hearth Plasma: Hearth's look-and-feel package, desktop theme, defaults and widgets" "test -f /usr/share/plasma/look-and-feel/org.hearth.desktop/contents/layouts/org.kde.plasma.desktop-layout.js && test -f /usr/share/plasma/desktoptheme/hearth/colors && test -f /usr/share/hearth-plasma/xdg/kdeglobals && test -f /usr/share/plasma/plasmoids/org.hearth.launcher/contents/ui/main.qml && test -f /usr/share/nimbus/desktop/plasma/hearth-plasma"
-          check "Hearth Plasma: the login screen offers Hearth Classic and Hearth Plasma" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && grep -q 'nimbus-session --desktop=plasma' /usr/share/wayland-sessions/hearth-plasma.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-plasma.desktop"
-          check "Hearth Plasma: Hearth Classic stays (labwc) and the session falls back to it" "command -v labwc && grep -q 'falling back to Hearth Classic' /usr/bin/nimbus-session"
-          warn "Hearth Plasma: Plasma's script engine for widgets (plasma5support QML module)" "ls -d /usr/lib*/qt6/qml/org/kde/plasma/plasma5support /usr/lib/*/qt6/qml/org/kde/plasma/plasma5support 2>/dev/null | grep -q ."
-          # ---- end Hearth Plasma
-          # ---- Hearth GNOME (docs/GNOME.md): the third desktop, Hearth Classic kept as the fallback
-          check "Hearth GNOME: GNOME Shell and its session are installed" "command -v gnome-shell && command -v gnome-session"
-          check "Hearth GNOME: Hearth's session mode, extensions and helper" "python3 -m json.tool /usr/share/gnome-shell/modes/hearth.json && for e in theme bar launcher quick link storage gamemode pad; do test -f /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/extension.js && python3 -m json.tool /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/metadata.json >/dev/null || exit 1; done && test -f /usr/share/nimbus/desktop/gnome/hearth-gnome && test -f /usr/share/nimbus/desktop/gnome/hearth.js"
-          check "Hearth GNOME: the extensions are made for this GNOME" "v=\$(gnome-shell --version | grep -oE '[0-9]+' | head -1); grep -q \"\\\"\$v\\\"\" /usr/share/gnome-shell/extensions/hearth-pad@hearthos.fun/metadata.json"
-          check "Hearth GNOME: the login screen offers it" "grep -q 'nimbus-session --desktop=gnome' /usr/share/wayland-sessions/hearth-gnome.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-gnome.desktop"
-          check "Hearth GNOME: falls back to Hearth Classic" "grep -q 'gnome: didn.t start; falling back to Hearth Classic' /usr/bin/nimbus-session"
-          check "Hearth GNOME: GNOME's own Files, Console and Text Editor are Hearth GNOME's (app kinds)" "python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.Nautilus.desktop && python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.Console.desktop && python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.TextEditor.desktop && ! python3 /usr/libexec/hearth-app-kinds resolve Nimbus | grep -q org.gnome.Nautilus.desktop"
-          warn "Hearth GNOME: GNOME's portal" "test -f /usr/share/xdg-desktop-portal/portals/gnome.portal"
-          check "Hearth GNOME: the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
-          echo "::notice title=Hearth GNOME size::GNOME adds about $(cat /usr/share/nimbus/hearth-gnome-size-mb 2>/dev/null || echo '?') MB to this image"
-          # ---- end Hearth GNOME
+          # ---- Mantel is the only desktop (Hearth Plasma, GNOME and COSMIC are gone)
+          check "Mantel only: the login screen offers Hearth and Hearth Classic, no Plasma / GNOME / COSMIC entries of Hearth's" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && ! ls /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop 2>/dev/null | grep -q ."
+          check "Mantel only: Plasma's and GNOME's sessions aren't installed" "! command -v startplasma-wayland && ! command -v plasmashell && ! command -v gnome-shell && ! command -v gnome-session"
+          check "Mantel only: an old HEARTH_DESKTOP=plasma|gnome|cosmic still means Mantel" "grep -q 'Mantel is the only desktop now' /usr/bin/nimbus-session && grep -q '^desktop_choice() { echo classic; }' /usr/bin/nimbus-session"
+          check "Mantel only: the KDE pieces Mantel and Hearth's KDE apps use stay (polkit-kde agent, Breeze)" "ls /usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1 /usr/libexec/polkit-kde-authentication-agent-1 /usr/lib/polkit-kde-authentication-agent-1 2>/dev/null | grep -q . || ls /usr/libexec/polkit-mate-authentication-agent-1 /usr/lib/*/mate-polkit/polkit-mate-authentication-agent-1 /usr/bin/lxpolkit /usr/bin/lxqt-policykit-agent 2>/dev/null | grep -q ."
+          warn "Mantel only: the Breeze Qt style is there (Hearth's look for Qt apps)" "ls -d /usr/lib/*/qt6/plugins/styles/breeze6.so /usr/lib/*/qt6/plugins/styles/breeze*.so 2>/dev/null | grep -q ."
+          check "the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
+          # ---- end Mantel only
           echo "--- sleep like SteamOS: the power button suspends, the Ally's controller doesn't wake it, AMD's deep sleep"
           check "the power button sleeps at the sign-in screen too (logind: HandlePowerKey=suspend wins over every other logind setting)" "if command -v systemd-analyze; then systemd-analyze cat-config systemd/logind.conf | grep -E '^[[:space:]]*HandlePowerKey=' | tail -1 | grep -qx 'HandlePowerKey=suspend'; else grep -qx 'HandlePowerKey=suspend' /usr/lib/systemd/logind.conf.d/50-hearth-power.conf && ! grep -rqsE '^[[:space:]]*HandlePowerKey=' /etc/systemd/logind.conf /etc/systemd/logind.conf.d; fi"
           check "the Hearth session takes the power button while it runs (logind's handle-power-key inhibitor: one handler)" "grep -q 'systemd-inhibit --what=handle-power-key' /usr/bin/nimbus-session"
@@ -768,7 +763,6 @@ jobs:
           check "Bazaar is where the store was: Mantel's taskbar pin, Settings › Default apps › App store, the apps IPC target" "grep -q io.github.kolunmi.Bazaar /usr/share/nimbus/desktop/shell/hearth-desk && grep -q io.github.kolunmi.Bazaar.desktop /usr/share/nimbus/desktop/shell/hearth-system && grep -q 'target: \"apps\"' /usr/share/nimbus/desktop/shell/shell.qml && grep -q hearth-flatpak /usr/share/nimbus/desktop/shell/shell.qml"
           check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
           echo "--- nice to have"
-          warn "Peppermint's desktop (Xfce) is on the login screen" "grep -q 'Peppermint desktop' /usr/share/xsessions/xfce.desktop"
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
           warn "RyzenAdj is installed" "command -v ryzenadj"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"

@@ -27,6 +27,8 @@ jobs:
           dnf -y install dbus-daemon libnotify wl-clipboard wtype slurp >/dev/null || true
           # A Wayland app whose app id can be set (a stand-in Flatpak window for the taskbar's icon check).
           dnf -y install foot hicolor-icon-theme >/dev/null || true
+          # Mantel's Steam-style look: its font (Inter, openly licensed) and a KDE app to see apps follow it.
+          dnf -y install rsms-inter-fonts kcalc >/dev/null || true
           # Hearth Files as the file chooser: xdg-desktop-portal, GLib's D-Bus for Python (hearth-portal), a GTK 3 app.
           dnf -y install xdg-desktop-portal python3-gobject gtk3 dbus-tools shared-mime-info >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
@@ -343,6 +345,102 @@ jobs:
           if [ -n "$bad" ] || grep -q "not running" shots/quickshell-running.txt; then
             msg=$( { cat shots/quickshell-running.txt; echo "$bad"; tail -15 "$LOG" 2>/dev/null; } | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g")
             echo "::error title=shell::$msg"
+            touch shots/FAILED
+          fi
+
+      # Mantel's looks (Settings › Appearance): Desktop Mode started again with the Steam-style look, every surface,
+      # every wallpaper, the customization page and accent / light-mode variants, in shots/looks/.
+      - name: Looks (Steam-style, accents, light mode, wallpapers)
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p shots/looks
+          exec > >(tee shots/looks/step.log) 2>&1
+          set -x
+          pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"
+          set_look() {  # look mode accent wallpaper
+            python3 - "$D" "$@" <<'PY'
+          import json, sys
+          p, look, mode, accent, wall = sys.argv[1:6]
+          try: d = json.load(open(p))
+          except Exception: d = {}
+          d.update(look=look, mode=mode, accent=accent, wallpaper=wall, reduceMotion=False)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+            sleep 3
+          }
+          set_look steam dark "" ""
+          # As nimbus-session does: the look's files first, then Desktop Mode's labwc folder with them, then labwc.
+          sh hosts/linux/desktop/theme/apply.sh
+          ls -la "$HOME/.config/nimbus/theme" > shots/looks/theme-files.txt 2>&1 || true
+          python3 hosts/linux/desktop/theme/hearth-theme --show > shots/looks/theme.json 2>&1 || true
+          CONF=$(python3 hosts/linux/desktop/shell/hearth-system labwc-config)
+          labwc -C "$CONF" > shots/looks/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          o=shots/looks
+          # ---- Steam-style, dark: every surface
+          grim $o/steam-01-desktop.png || true
+          ipc launcher toggle; grim $o/steam-02-launcher.png || true
+          ipc launcher section games; grim $o/steam-03-launcher-games.png || true; ipc launcher close
+          ipc quick toggle; grim $o/steam-04-quick-access.png || true; ipc quick toggle
+          ipc menu open; grim $o/steam-05-hearth-menu.png || true; ipc menu close
+          (timeout 15 notify-send -a "Hearth" "Download finished" "Celeste is ready to play" || true) &
+          sleep 3; grim $o/steam-06-notification.png || true
+          grim -g "0,1010 1920x70" $o/steam-07-taskbar-closeup.png 2>/dev/null || true
+          ipc calendar open; grim $o/steam-08-clock-panel.png || true; ipc calendar close
+          ipc power menu; grim $o/steam-09-power-menu.png || true; ipc power close
+          ipc settings page appearance; grim $o/steam-10-settings-appearance.png || true
+          ipc settings page wifi; grim $o/steam-11-settings-wifi.png || true
+          ipc settings page sound; grim $o/steam-12-settings-sound.png || true; ipc settings close
+          mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"
+          ipc files open "$HOME/Documents"; grim $o/steam-13-files.png || true
+          ipc fileprops open "$HOME/Documents/notes.txt"; grim $o/steam-14-file-properties.png || true; ipc fileprops close 2>/dev/null; ipc filemanager close
+          ipc tasks open; grim $o/steam-15-task-manager.png || true; ipc tasks close
+          ipc clipboard open 2>/dev/null; grim $o/steam-16-clipboard.png || true; ipc clipboard close 2>/dev/null
+          # Window frames (labwc) and apps following the look: a terminal, a KDE app (Qt via qt6ct), a GTK 4 app.
+          export QT_QPA_PLATFORMTHEME=qt6ct
+          command -v foot >/dev/null && { foot --title "Hearth Terminal" sh -c 'sleep 600' >/dev/null 2>&1 & }
+          command -v kcalc >/dev/null && { kcalc >/dev/null 2>&1 & }
+          sleep 8; grim $o/steam-17-windows.png || true
+          command -v qt6ct >/dev/null && { qt6ct >/dev/null 2>&1 & sleep 5; grim $o/steam-18-qt-palette.png || true; pkill -x qt6ct || true; }
+          pkill -x foot || true; sleep 2
+          grim $o/steam-19-kde-app.png || true
+          pkill -x kcalc || true; unset QT_QPA_PLATFORMTHEME; sleep 2
+          # ---- every Slate wallpaper (moving ones as a still: software rendering here holds them still)
+          for w in anim:tide anim:ridges anim:motes builtin:slate-dusk builtin:slate-contours builtin:slate-horizon builtin:slate-facets builtin:slate-nebula builtin:slate-ridges; do
+            set_look steam dark "" "$w"; sleep 2; grim "$o/wall-${w#*:}.png" || true
+          done
+          # ---- variants: accents, light mode, Hearth's look
+          variant() {  # name look mode accent
+            set_look "$2" "$3" "$4" ""; sleep 3
+            ipc quick toggle; grim "$o/variant-$1-quick-access.png" || true; ipc quick toggle
+            ipc settings page appearance; grim "$o/variant-$1-appearance.png" || true; ipc settings close
+            ipc launcher toggle; grim "$o/variant-$1-launcher.png" || true; ipc launcher close
+          }
+          variant steam-violet steam dark "#9b7bff"
+          variant steam-moss steam dark "#5ba32b"
+          variant steam-light steam light ""
+          variant hearth-light hearth light ""
+          variant hearth-steamblue hearth dark "#1a9fff"
+          variant hearth-default hearth dark ""
+          cp "$HOME/.config/nimbus/theme/themerc-override" $o/themerc-override.txt 2>/dev/null || true
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          set +x
+          bad=$(grep -E "TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load|is not defined" "$LOG" 2>/dev/null \
+            | grep -viE "uinput|evdev|DBus|pipewire|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -15 || true)
+          if [ -n "$bad" ]; then
+            echo "::error title=looks::$(printf '%s' "$bad" | cut -c1-250 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
             touch shots/FAILED
           fi
 

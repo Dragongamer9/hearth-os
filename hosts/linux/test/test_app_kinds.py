@@ -123,7 +123,7 @@ class TableTest(unittest.TestCase):
     def test_session_sets_these_names(self):
         s = read(os.path.join(REPO, 'hosts/linux/session/nimbus-session'))
         self.assertIn('XDG_CURRENT_DESKTOP=Nimbus', s)
-        self.assertIn('XDG_CURRENT_DESKTOP=KDE', s)
+        self.assertNotIn('XDG_CURRENT_DESKTOP=KDE', s)               # Mantel is the only desktop now
         self.assertIn('/usr/share/hearth/app-kinds', s)              # the copies come first in XDG_DATA_DIRS
 
     def test_mistakes_are_found(self):

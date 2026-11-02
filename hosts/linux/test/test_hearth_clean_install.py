@@ -373,8 +373,8 @@ class Admin(unittest.TestCase):
             self.assertEqual(ha.new_os_image(e), 'ghcr.io/dragongamer9/hearth-%s:testing' % e)
             self.assertEqual(ha.new_os_image(e, True), 'ghcr.io/dragongamer9/hearth-%s:testing' % e)
         self.assertIsNone(ha.new_os_image('ghcr.io/evil/image:latest'))
-        self.assertEqual(ha.move_args([]), ('anatase', False))
-        self.assertEqual(ha.move_args(['--testing']), ('anatase', True))
+        self.assertEqual(ha.move_args([]), ('peppermint', False))
+        self.assertEqual(ha.move_args(['--testing']), ('peppermint', True))
         self.assertEqual(ha.move_args(['--edition', 'cachyos']), ('cachyos', False))
         self.assertEqual(ha.move_args(['--testing', '--edition', 'ubuntu']), ('ubuntu', True))
         for bad in (['--edition'], ['--edition', 'fedora'], ['--edition', 'ghcr.io/x/y:z'], ['--testing', '--testing'],

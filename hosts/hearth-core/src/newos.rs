@@ -1,6 +1,6 @@
 //! Moving to a new Hearth OS from the Bazzite-based one, as a clean install that keeps your games (Settings ›
-//! Updates): Hearth OS on Anatase (recommended), or one of the Beta Experimental editions (Ubuntu, CachyOS,
-//! Peppermint). Afterwards, on the new system, the files that were put aside (~/.old-hearth-<date>: Settings ›
+//! Updates): Hearth OS on Debian (edition id "peppermint", recommended); Anatase, Ubuntu and CachyOS are
+//! archived. Afterwards, on the new system, the files that were put aside (~/.old-hearth-<date>: Settings ›
 //! System, "Delete now" / "Restore a folder"; deleted after 30 days).
 //! The move itself is hearth-admin move-to-new-os --edition NAME (root, through pkexec; the edition picks the image
 //! from a fixed list there too); the first start of the new system (hearth-clean-install, in every edition's image)
@@ -28,15 +28,15 @@ pub const EDITIONS: &[Edition] = &[
               about: "Hearth OS built on Ubuntu. Still being tested: some things may not work yet." },
     Edition { id: "cachyos", label: "CachyOS", repo: "dragongamer9/hearth-cachyos", tag: "testing", beta: true,
               about: "Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet." },
-    Edition { id: "peppermint", label: "Peppermint", repo: "dragongamer9/hearth-peppermint", tag: "testing", beta: true,
-              about: "Hearth OS on Debian 13 (Peppermint OS's base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet." },
+    Edition { id: "peppermint", label: "Debian", repo: "dragongamer9/hearth-peppermint", tag: "testing", beta: false,
+              about: "Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included." },
 ];
 
 pub fn edition(id: &str) -> Option<&'static Edition> { EDITIONS.iter().find(|e| e.id == id) }
 
-/// Archived editions (October 2026): still known, so a system on one is recognised and can switch away, but never
+/// Archived editions (October 2026; Anatase November 2026): still known, so a system on one is recognised and can switch away, but never
 /// offered and never switched to. hearth-admin has the same list (ARCHIVED_EDITIONS).
-pub const ARCHIVED: &[&str] = &["ubuntu", "cachyos"];
+pub const ARCHIVED: &[&str] = &["ubuntu", "cachyos", "anatase"];
 pub fn archived(id: &str) -> bool { ARCHIVED.contains(&id) }
 
 /// The tag used: :testing when asked for (or the only one there is), else the edition's own.
@@ -202,7 +202,10 @@ pub fn start(emit: crate::system::bt_scan::Emit, edition_id: &str, testing: bool
     if !eligible() { return Err("Hearth OS can't switch from here.".into()); }
     let e = edition(edition_id).ok_or("Unknown choice")?;
     if current() == Some(e.id) { return Err(format!("This is already {}.", e.label)); }
-    if archived(e.id) { return Err(format!("Hearth OS on {} is archived: switch to Anatase or Peppermint instead.", e.label)); }
+    if archived(e.id) {
+        let name = if e.label.starts_with("Hearth OS") { e.label.to_string() } else { format!("Hearth OS on {}", e.label) };
+        return Err(format!("{} is archived: switch to Hearth OS on Debian instead.", name));
+    }
     if e.id == "cachyos" && !cpu_v3() { return Err("Hearth OS on CachyOS needs a newer processor.".into()); }
     if published_cached(e.repo, tag_for(e, testing)) == Some(false) { return Err(format!("{} isn't ready yet.", e.label)); }
     {
@@ -390,7 +393,11 @@ mod tests {
     #[test]
     fn choices() {
         assert_eq!(EDITIONS.len(), 4);
-        assert!(archived("ubuntu") && archived("cachyos") && !archived("anatase") && !archived("peppermint"));
+        assert!(archived("ubuntu") && archived("cachyos") && archived("anatase") && !archived("peppermint"));
+        let p = edition("peppermint").unwrap();
+        assert_eq!((p.label, p.beta), ("Debian", false));
+        assert!(!p.about.contains("Peppermint"));
+        assert_eq!(choice(p, Some(true), true, None)["recommended"], true);
         let a = edition("anatase").unwrap();
         assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:latest");
         assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:testing");

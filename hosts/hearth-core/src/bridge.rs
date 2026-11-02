@@ -390,6 +390,10 @@ impl Bridge {
         match method {
             "host.info" => Ok(json!({
                 "platform": "linux", "name": os_name(), "host": "Hearth (Rust)", "version": self.version, "autoReport": self.auto_report(),
+                // This version's release date (built in from docs/ROADMAP.md), and the Hearth OS image's version and date
+                // (/usr/share/nimbus/version, version-date): Settings › About shows "Hearth OS 1.0 · November 2, 2026".
+                "versionDate": crate::version::date_of_build(&self.version),
+                "imageVersion": crate::version::image().0, "imageDate": crate::version::image().1,
                 // Drawn the compatible way (no DMA-BUF): the page turns its heavy effects down (body.lite).
                 "compatDrawing": std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some() && crate::renderer::running() == "webkit",
                 // The engine drawing these screens: "webkit" (Tauri), "chromium" (the Electron window app) or "qt"
@@ -884,7 +888,7 @@ impl Bridge {
             // Settings › Updates: the new Hearth OS (on Anatase) as a clean install that keeps your games, from the
             // Bazzite-based one; and on the new one, Settings › System: the files put aside (~/.old-hearth-<date>).
             "newos.status" => self.later(|| Ok(crate::newos::status())),
-            "newos.move" => crate::newos::start(self.emit.clone(), a["edition"].as_str().unwrap_or("anatase"), a["testing"] == true),
+            "newos.move" => crate::newos::start(self.emit.clone(), a["edition"].as_str().unwrap_or("peppermint"), a["testing"] == true),
             "oldfiles.status" => Ok(crate::newos::old_files_status()),
             "oldfiles.delete" => { let name = req("name")?; self.later(move || crate::newos::delete(&name)) }
             "oldfiles.restore" => crate::newos::restore(&req("name")?, &req("item")?),
@@ -1269,6 +1273,9 @@ impl Bridge {
             // Game Mode starts again to share the screens out (or to stop sharing them): the session's next round
             // (signing out instead left you at the sign-in screen without automatic sign-in).
             "seats.restartGameMode" => { self.restart_game_mode(); Ok(Value::Null) }
+            // First-time setup finished (ui setupFinish): Hearth leaves and the session opens its Game Mode, which is
+            // Steam Game Mode on Hearth OS (or Desktop Mode with the reason, when Steam Game Mode can't start).
+            "session.restartGameMode" => { self.restart_game_mode(); Ok(Value::Null) }
             "seats.stop" => crate::multiplay::ask(crate::multiplay::SEATS, &["stop"]),
             "seats.assignPad" => {
                 let seat = a["seat"].as_u64().unwrap_or(1).to_string();
@@ -1552,9 +1559,14 @@ impl Bridge {
     /// First-start setup: only on Hearth, the OS, and only for a fresh install. An install already in use
     /// before setup existed (games played, accounts, the import offer) counts as set up.
     pub fn setup_done(&mut self) -> bool {
+        // Not Hearth OS: no first-start setup. Saved, so a Hearth session (nimbus-session setup_pending, which reads
+        // library.json) knows too.
+        if !crate::admin::can_admin() {
+            if self.library.store.data["setupDone"].is_null() { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
+            return true;
+        }
         let d = &self.library.store.data;
         if !d["setupDone"].is_null() && d["setupDone"] != false { return true; }
-        if !crate::admin::can_admin() { return true; }
         let used = d["stats"].as_object().map(|o| !o.is_empty()).unwrap_or(false) || d["manual"].as_array().map(|a| !a.is_empty()).unwrap_or(false)
             || d["importOffered"] == true || d["profile"].is_object();
         if used { let _ = self.library.store.update(|x| { x.insert("setupDone".into(), json!(now_ms())); }); }
@@ -2022,6 +2034,9 @@ fn features() -> Vec<&'static str> {
     if crate::theater::available() { f.push("theater"); }
     // Steam Game Mode (Experimental): the power menu's and Settings › System's switch, where it can run.
     if crate::steam_mode::available() { f.push("steamMode"); }
+    // Hearth OS's Game Mode is Steam Game Mode (nimbus-session exports HEARTH_STEAM_ONLY=1 unless Hearth's own Game Mode
+    // is switched back on): first-time setup hands over to it when it finishes.
+    if crate::steam_mode::steam_only(std::env::var("HEARTH_STEAM_ONLY").ok().as_deref()) { f.push("steamOnly"); }
     f
 }
 /// Where Hearth opens when started for one thing: `--settings` (Settings), `--page <page>` or `--page=<page>` for a

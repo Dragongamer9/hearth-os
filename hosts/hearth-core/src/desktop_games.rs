@@ -38,13 +38,23 @@ pub fn art_for_desktop(v: &str) -> String {
 /// One game as the launcher shows it.
 pub fn entry(g: &Game) -> Value {
     let art = |k: &str| g.art.iter().find(|(kind, _)| *kind == k).map(|(_, v)| art_for_desktop(v));
-    json!({"id": g.id, "title": g.title, "source": g.source, "cover": art("cover").or_else(|| art("portrait")), "wide": art("wide").or_else(|| art("hero")), "icon": art("icon")})
+    json!({"id": g.id, "title": g.title, "source": g.source, "cover": art("cover").or_else(|| art("portrait")), "wide": art("wide").or_else(|| art("hero")),
+           "hero": art("hero").or_else(|| art("wide")), "logo": art("logo"), "icon": art("icon"), "cloud": g.cloud})
 }
 
 /// The installed games you can play from the desktop (not hidden ones, not cloud games), A to Z.
 pub fn list(lib: &Library) -> Value {
     let mut games: Vec<&Game> = lib.games.values()
         .filter(|g| g.installed && !g.cloud && g.state == "installed" && !lib.store.list_has("hidden", &g.id)).collect();
+    games.sort_by_key(|g| g.title.to_lowercase());
+    Value::Array(games.into_iter().map(entry).collect())
+}
+
+/// `--list-games --with-cloud` (Hearth Sync, hosts/decky-hearth-sync): the same, plus the installed cloud tiles (Xbox
+/// Cloud Gaming; not each catalog title, which isn't installed), which play in Hearth's window.
+pub fn list_with_cloud(lib: &Library) -> Value {
+    let mut games: Vec<&Game> = lib.games.values()
+        .filter(|g| g.installed && (g.cloud || g.state == "installed") && !lib.store.list_has("hidden", &g.id)).collect();
     games.sort_by_key(|g| g.title.to_lowercase());
     Value::Array(games.into_iter().map(entry).collect())
 }
@@ -67,6 +77,8 @@ pub fn read_library() -> Library {
 
 /// `hearth --list-games`: the library read the way Hearth reads it, as JSON.
 pub fn list_now() -> Value { list(&read_library()) }
+/// `hearth --list-games --with-cloud`.
+pub fn list_with_cloud_now() -> Value { list_with_cloud(&read_library()) }
 
 // ---- Steam Game Mode (Experimental, docs/STEAM-GAME-MODE.md): the Hearth Decky plugin (hosts/decky-hearth) adds Hearth's
 // games to Steam as non-Steam shortcuts that run `hearth --play-now <id>`. No window opens: the game starts the way the
@@ -291,5 +303,17 @@ mod tests {
         assert_eq!(l[0]["cover"], "/games/c.png");
         assert_eq!(l[0]["wide"], "https://example.com/h.jpg");
         assert!(l[0]["icon"].is_null());
+        assert_eq!(l[0]["hero"], "https://example.com/h.jpg");
+        assert!(l[0]["logo"].is_null());
+        assert_eq!(l[0]["cloud"], false);
+        // Hearth Sync's list: the installed cloud tile too, never a catalog title that isn't installed.
+        let mut title = mk("xbox:halo", "Halo (cloud)", false);
+        title.cloud = true;
+        title.state = "cloud";
+        lib.games.insert(title.id.clone(), title);
+        let w = list_with_cloud(&lib);
+        let ids: Vec<&str> = w.as_array().unwrap().iter().map(|g| g["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["manual:a", "manual:b", "xbox:cloud"]);
+        assert_eq!(w[2]["cloud"], true);
     }
 }

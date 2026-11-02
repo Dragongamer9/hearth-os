@@ -1,7 +1,7 @@
 # Working on Hearth OS
 
 Hearth OS is a SteamOS-style OS: Game Mode (gamescope + the web UI in `ui/`) and Desktop Mode (Hearth Classic:
-labwc + the Mantel QML shell; Hearth Plasma: KDE Plasma 6). Editions: **Anatase** (Fedora bootc, `os-bases/anatase`)
+labwc + the Mantel QML shell, the only desktop; Hearth Plasma / GNOME / COSMIC are removed). Editions: **Anatase** (Fedora bootc, `os-bases/anatase`)
 and **Peppermint** (Debian bootc, `os-bases/peppermint`). Ember is the Windows 11 shell (`hosts/windows`). Website:
 hearthos.fun (`site/`, deployed from main). The owner is Dragongamer9.
 
