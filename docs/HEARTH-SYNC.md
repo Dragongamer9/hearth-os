@@ -20,6 +20,11 @@ screens) isn't shipped for now; its code stays in the repo.
   shaped like the Windows launcher's under `~/.local/share/com.epicgames.eglv2/`, and only adds them when something on
   the device opens `com.epicgames.launcher://` links.
 
+- What **Hearth Mods' Add to Steam** asked for (`~/.local/share/nimbus/mods/steam-shortcuts.json`, docs/MODS.md):
+  "<Game> (Modded)", "<Game> — Hearth Mod Organizer" and "<Game> — Mod Organizer 2", each running `hearth-mods`
+  (only entries that run Hearth Mods' own program are taken), with the game's pictures, in the "Modded games"
+  collection. Adding one again updates its shortcut; taking it out of the file removes it.
+
 A game installed through two launchers gets one shortcut: the newest install wins.
 
 Each shortcut gets the game's portrait cover, wide picture, hero and logo (from Hearth's art cache and the other

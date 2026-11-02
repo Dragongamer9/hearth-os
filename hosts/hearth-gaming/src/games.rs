@@ -30,6 +30,10 @@ pub struct GameEntry {
     pub save_dirs: Vec<PathBuf>,
     /// "game", or "emulator" for an emulator's saves.
     pub kind: String,
+    /// The library's pictures (cover, hero, wide, logo, icon): the art cache's file on this device when Hearth has
+    /// downloaded it, else the web address. Hearth Mods shows them (art_data).
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub art: std::collections::BTreeMap<String, String>,
 }
 
 impl GameEntry {
@@ -143,6 +147,7 @@ pub fn list() -> Vec<GameEntry> {
         let mut install = g.install_path.clone();
         if let Some(p) = install.clone() { if p.is_file() { install = p.parent().map(Path::to_path_buf); } }
         let mut e = GameEntry { id: g.id.clone(), title: g.title.clone(), source: g.source.to_string(), install, kind: "game".into(), steam_dir: steam_dir.clone(), ..Default::default() };
+        for (kind, v) in &g.art { if !v.is_empty() { e.art.entry(kind.to_string()).or_insert_with(|| hearth_core::desktop_games::art_for_desktop(v)); } }
         e.store = match g.source { "steam" | "epic" | "gog" => g.source.to_string(), _ => String::new() };
         match g.source {
             "steam" => {
@@ -184,9 +189,37 @@ pub fn open_beacon() -> Result<(), String> {
 #[cfg(not(target_os = "linux"))]
 pub fn open_beacon() -> Result<(), String> { Err("Beacon opens from Hearth here.".into()) }
 
+/// A picture for the page: a web address as it is; a picture file on this device (the art cache's copy, a game's own
+/// cover) as a data: address, since the page can't load files itself. Only image files, at most 12 MB.
+pub fn art_data(v: &str) -> Option<String> {
+    use base64::Engine;
+    let l = v.to_ascii_lowercase();
+    if l.starts_with("https://") || l.starts_with("http://") { return Some(v.to_string()); }
+    let p = Path::new(v.strip_prefix("file://").unwrap_or(v));
+    let ext = p.extension()?.to_string_lossy().to_ascii_lowercase();
+    let mime = match ext.as_str() { "jpg" | "jpeg" => "image/jpeg", "png" => "image/png", "webp" => "image/webp", "gif" => "image/gif", "avif" => "image/avif", _ => return None };
+    let md = std::fs::metadata(p).ok()?;
+    if !md.is_file() || md.len() > 12 * 1024 * 1024 { return None; }
+    let bytes = std::fs::read(p).ok()?;
+    Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pictures_for_the_page() {
+        let t = tempfile::tempdir().unwrap();
+        let png = t.path().join("abc.png");
+        std::fs::write(&png, [0x89u8, b'P', b'N', b'G']).unwrap();
+        assert_eq!(art_data(png.to_str().unwrap()).as_deref(), Some("data:image/png;base64,iVBORw=="));
+        assert_eq!(art_data(&format!("file://{}", png.display())).as_deref(), Some("data:image/png;base64,iVBORw=="));
+        assert_eq!(art_data("https://cdn.example/h.jpg").as_deref(), Some("https://cdn.example/h.jpg"));
+        let txt = t.path().join("secret.txt");
+        std::fs::write(&txt, "no").unwrap();
+        assert_eq!(art_data(txt.to_str().unwrap()), None, "only pictures");
+        assert_eq!(art_data(t.path().join("missing.jpg").to_str().unwrap()), None);
+    }
     #[test]
     fn steam_folders() {
         assert_eq!(steam_library_of(Path::new("/g/SteamLibrary/steamapps/common/Celeste")), Some(PathBuf::from("/g/SteamLibrary")));
