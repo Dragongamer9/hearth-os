@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""The screens' real modes, for Game Mode and Steam Game Mode (docs/STEAM-GAME-MODE.md "Screen modes").
+
+  hearth-screen list                 every connected screen: its modes (size @ refresh, preferred marked) and EDID id
+  hearth-screen check -- ARGS...     whether the screen lists the mode in gamescope's options (-W/-H/-r): exit 0 it
+                                     does (or there's nothing to check), 1 it doesn't (the reason is printed), 2 it
+                                     can't be told (no access, several screens, the built-in screen)
+  hearth-screen panel-script [DIR]   the built-in screen of a ROG Ally (RC71L, RC72LA, RC73...) as a gamescope display
+                                     script: its real refresh range for Steam's slider (48 Hz up to the panel's own
+                                     rate, made the way gamescope's own Ally script does: same pixel clock, longer
+                                     vertical front porch). Written to DIR (~/.config/gamescope/scripts) only when
+                                     gamescope's own scripts don't already know the panel; removed again when not needed.
+
+The modes come from the kernel (DRM_IOCTL_MODE_GETCONNECTOR, read-only: no probe, nothing changes on the screen),
+the very list gamescope picks from. Nothing here writes a setting: session.conf is never touched.
+"""
+import ctypes
+import fcntl
+import glob
+import os
+import re
+import sys
+
+# ---- the kernel's mode list ---------------------------------------------------------------------------------------
+
+
+class ModeInfo(ctypes.Structure):
+    _fields_ = [('clock', ctypes.c_uint32),
+                ('hdisplay', ctypes.c_uint16), ('hsync_start', ctypes.c_uint16), ('hsync_end', ctypes.c_uint16),
+                ('htotal', ctypes.c_uint16), ('hskew', ctypes.c_uint16),
+                ('vdisplay', ctypes.c_uint16), ('vsync_start', ctypes.c_uint16), ('vsync_end', ctypes.c_uint16),
+                ('vtotal', ctypes.c_uint16), ('vscan', ctypes.c_uint16),
+                ('vrefresh', ctypes.c_uint32), ('flags', ctypes.c_uint32), ('type', ctypes.c_uint32),
+                ('name', ctypes.c_char * 32)]
+
+
+class CardRes(ctypes.Structure):
+    _fields_ = [('fb_id_ptr', ctypes.c_uint64), ('crtc_id_ptr', ctypes.c_uint64), ('connector_id_ptr', ctypes.c_uint64),
+                ('encoder_id_ptr', ctypes.c_uint64), ('count_fbs', ctypes.c_uint32), ('count_crtcs', ctypes.c_uint32),
+                ('count_connectors', ctypes.c_uint32), ('count_encoders', ctypes.c_uint32),
+                ('min_width', ctypes.c_uint32), ('max_width', ctypes.c_uint32),
+                ('min_height', ctypes.c_uint32), ('max_height', ctypes.c_uint32)]
+
+
+class GetConnector(ctypes.Structure):
+    _fields_ = [('encoders_ptr', ctypes.c_uint64), ('modes_ptr', ctypes.c_uint64), ('props_ptr', ctypes.c_uint64),
+                ('prop_values_ptr', ctypes.c_uint64), ('count_modes', ctypes.c_uint32), ('count_props', ctypes.c_uint32),
+                ('count_encoders', ctypes.c_uint32), ('encoder_id', ctypes.c_uint32), ('connector_id', ctypes.c_uint32),
+                ('connector_type', ctypes.c_uint32), ('connector_type_id', ctypes.c_uint32), ('connection', ctypes.c_uint32),
+                ('mm_width', ctypes.c_uint32), ('mm_height', ctypes.c_uint32), ('subpixel', ctypes.c_uint32),
+                ('pad', ctypes.c_uint32)]
+
+
+def _iowr(nr, size):
+    return (3 << 30) | (size << 16) | (ord('d') << 8) | nr
+
+
+GETRESOURCES = _iowr(0xA0, ctypes.sizeof(CardRes))
+GETCONNECTOR = _iowr(0xA7, ctypes.sizeof(GetConnector))
+TYPE_NAMES = {1: 'VGA', 2: 'DVI-I', 3: 'DVI-D', 4: 'DVI-A', 5: 'Composite', 6: 'SVIDEO', 7: 'LVDS', 8: 'Component',
+              9: 'DIN', 10: 'DP', 11: 'HDMI-A', 12: 'HDMI-B', 13: 'TV', 14: 'eDP', 15: 'Virtual', 16: 'DSI', 17: 'DPI',
+              18: 'Writeback', 19: 'SPI', 20: 'USB'}
+INTERNAL = {'eDP', 'LVDS', 'DSI', 'DPI'}
+PREFERRED = 1 << 3
+# gamescope never starts with these (its g_badModes): many TVs list them and can't really show them.
+BAD_SIZES = {(4096, 2160)}
+
+
+def _connector(fd, cid):
+    c = GetConnector(connector_id=cid)
+    fcntl.ioctl(fd, GETCONNECTOR, c)          # counts only (not the master: the kernel doesn't probe)
+    n = c.count_modes
+    modes = (ModeInfo * max(n, 1))()
+    c2 = GetConnector(connector_id=cid, count_modes=n, modes_ptr=ctypes.addressof(modes) if n else 0)
+    fcntl.ioctl(fd, GETCONNECTOR, c2)
+    n = min(n, c2.count_modes)
+    out = []
+    for m in modes[:n]:
+        exact = m.clock * 1000.0 / (m.htotal * m.vtotal) if m.htotal and m.vtotal else float(m.vrefresh)
+        out.append({'w': m.hdisplay, 'h': m.vdisplay, 'refresh': m.vrefresh, 'exact': round(exact, 3),
+                    'preferred': bool(m.type & PREFERRED), 'clock': m.clock, 'htotal': m.htotal,
+                    'vsync_start': m.vsync_start, 'vsync_end': m.vsync_end, 'vtotal': m.vtotal})
+    return c2, out
+
+
+def read_screens(dev_glob='/dev/dri/card*', sys_root='/sys/class/drm'):
+    """Every connected connector: name, internal or not, modes in the kernel's order, EDID vendor/product."""
+    screens = []
+    for dev in sorted(glob.glob(dev_glob)):
+        if not re.fullmatch(r'card\d+', os.path.basename(dev)):
+            continue
+        try:
+            fd = os.open(dev, os.O_RDWR | os.O_CLOEXEC)
+        except OSError:
+            try:
+                fd = os.open(dev, os.O_RDONLY | os.O_CLOEXEC)
+            except OSError:
+                continue
+        try:
+            res = CardRes()
+            fcntl.ioctl(fd, GETRESOURCES, res)
+            ids = (ctypes.c_uint32 * max(res.count_connectors, 1))()
+            res2 = CardRes(count_connectors=res.count_connectors, connector_id_ptr=ctypes.addressof(ids))
+            fcntl.ioctl(fd, GETRESOURCES, res2)
+            for cid in ids[:min(res.count_connectors, res2.count_connectors)]:
+                c, modes = _connector(fd, cid)
+                if c.connection != 1:
+                    continue
+                kind = TYPE_NAMES.get(c.connector_type, 'Unknown')
+                name = '%s-%d' % (kind, c.connector_type_id)
+                edid = read_edid(os.path.join(sys_root, '%s-%s' % (os.path.basename(dev), name), 'edid'))
+                screens.append({'card': os.path.basename(dev), 'name': name, 'internal': kind in INTERNAL,
+                                'modes': modes, 'edid': edid})
+        except OSError:
+            continue
+        finally:
+            os.close(fd)
+    return screens
+
+
+# ---- EDID: who made the screen ------------------------------------------------------------------------------------
+
+def edid_id(data):
+    """(PNP vendor, product code) from an EDID's base block, or None."""
+    if len(data) < 128 or data[:8] != b'\x00\xff\xff\xff\xff\xff\xff\x00':
+        return None
+    v = (data[8] << 8) | data[9]
+    vendor = ''.join(chr(((v >> s) & 0x1f) + 64) for s in (10, 5, 0))
+    return vendor, data[10] | (data[11] << 8)
+
+
+def read_edid(path):
+    # sysfs says 0 bytes for edid (its size is only known once read), so it's read, never sized.
+    try:
+        with open(path, 'rb') as fh:
+            data = fh.read()
+    except OSError:
+        return None
+    ident = edid_id(data)
+    return {'vendor': ident[0], 'product': ident[1], 'bytes': len(data)} if ident else None
+
+
+# ---- check: is the chosen mode one the screen has? -----------------------------------------------------------------
+
+def mode_args(args):
+    """-W/-H/-r (and the long names) from gamescope's options: (w, h, r), None where not given."""
+    want = {'W': None, 'H': None, 'r': None}
+    long = {'--output-width': 'W', '--output-height': 'H', '--nested-refresh': 'r'}
+    toks = ' '.join(args).replace('"', ' ').split()
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        key, val = None, None
+        if t in ('-W', '-H', '-r') and i + 1 < len(toks):
+            key, val = t[1], toks[i + 1]
+            i += 1
+        elif t.split('=')[0] in long:
+            key = long[t.split('=')[0]]
+            val = t.split('=', 1)[1] if '=' in t else (toks[i + 1] if i + 1 < len(toks) else None)
+            if '=' not in t:
+                i += 1
+        if key and val is not None:
+            try:
+                want[key] = int(float(val) + 0.5)
+            except ValueError:
+                pass
+        i += 1
+    return want['W'], want['H'], want['r']
+
+
+def check(screens, args):
+    """(code, message): 0 listed or nothing asked, 1 not listed, 2 can't be told."""
+    w, h, r = mode_args(args)
+    if w is None and h is None and r is None:
+        return 0, 'no screen mode chosen'
+    if len(screens) != 1:
+        return 2, 'can\'t tell: %d screens connected' % len(screens)
+    s = screens[0]
+    if s['internal']:
+        # gamescope makes the built-in screen's refresh rates itself (its display scripts); only its size can be checked.
+        if w is not None and h is not None and not any(m['w'] == w and m['h'] == h for m in s['modes']):
+            return 1, '%s doesn\'t have %dx%d' % (s['name'], w, h)
+        return 2, 'the built-in screen: gamescope makes its refresh rates'
+    modes = [m for m in s['modes'] if (m['w'], m['h']) not in BAD_SIZES]
+    if not modes:
+        return 2, 'can\'t tell: %s lists no modes' % s['name']
+    # As gamescope's find_mode: a size without -r takes any of that size; -r alone, any with that rate.
+    hit = [m for m in modes if (w is None or m['w'] == w) and (h is None or m['h'] == h) and (r is None or m['refresh'] == r)]
+    if hit:
+        return 0, '%s has %s' % (s['name'], fmt(hit[0]))
+    same = sorted({m['refresh'] for m in modes if (w is None or m['w'] == w) and (h is None or m['h'] == h)}, reverse=True)
+    asked = '%sx%s%s' % (w if w is not None else '*', h if h is not None else '*', '@%d' % r if r is not None else '')
+    if same:
+        return 1, '%s doesn\'t have %s (that size only at %s Hz)' % (s['name'], asked, ', '.join(map(str, same)))
+    return 1, '%s doesn\'t have %s' % (s['name'], asked)
+
+
+def fmt(m):
+    return '%dx%d@%d%s' % (m['w'], m['h'], m['refresh'], '*' if m['preferred'] else '')
+
+
+# ---- the ROG Ally's built-in screen for gamescope -------------------------------------------------------------------
+
+ALLY_DMI = re.compile(r'(?<![A-Za-z0-9])RC7[1-9][A-Z]*(?![a-z0-9])')
+# Panels gamescope's own asus.rogally.lcd.lua already knows (its matches()): nothing to add for them.
+GAMESCOPE_KNOWS = {('TMX', 0x0002), ('BOE', 0x0C33)}
+SCRIPT = 'hearth-builtin-panel.lua'
+VRR_MIN = 48
+
+
+def is_ally(dmi_root='/sys/class/dmi/id'):
+    def rd(n):
+        try:
+            with open(os.path.join(dmi_root, n)) as fh:
+                return fh.read().strip()
+        except OSError:
+            return ''
+    return 'ASUS' in rd('sys_vendor').upper() and bool(ALLY_DMI.search(rd('product_name')))
+
+
+def front_porches(base, lo, hi):
+    """{refresh: vertical front porch} at the base mode's pixel clock, never shorter than the base mode's own."""
+    vsync = base['vsync_end'] - base['vsync_start']
+    vbp = base['vtotal'] - base['vsync_end']
+    base_vfp = base['vsync_start'] - base['h']
+    out = {}
+    for r in range(lo, hi + 1):
+        vtotal = (base['clock'] * 1000) // (base['htotal'] * r)
+        vfp = vtotal - base['h'] - vsync - vbp
+        if vfp >= base_vfp:
+            out[r] = vfp
+    return out
+
+
+def panel_script(screen):
+    """The gamescope display script for this built-in screen, or None when it can't be made safely."""
+    edid = screen.get('edid')
+    if not screen['internal'] or not edid or (edid['vendor'], edid['product']) in GAMESCOPE_KNOWS:
+        return None
+    modes = screen['modes']
+    base = next((m for m in modes if m['preferred']), modes[0] if modes else None)
+    if not base or not base['clock'] or not base['htotal']:
+        return None
+    # The panel's own fastest rate at its own size: the top of the range (never above what it lists).
+    hi = max(m['refresh'] for m in modes if (m['w'], m['h']) == (base['w'], base['h']))
+    hi = min(hi, base['refresh']) if base['refresh'] else hi
+    vfps = front_porches(base, VRR_MIN, hi)
+    if len(vfps) < 2 or hi not in vfps:
+        return None
+    rates = sorted(vfps)
+    key = 'hearth_%s_%04x' % (edid['vendor'].lower(), edid['product'])
+    table = ',\n'.join('    [%d] = %d' % (r, vfps[r]) for r in rates)
+    return '''-- Written by Hearth (hearth-screen panel-script) for this device's built-in screen: %(vendor)s 0x%(product)04X,
+-- %(w)dx%(h)d, %(lo)d-%(hi)d Hz. Made again at every Game Mode start; edits here are replaced.
+local vfps = {
+%(table)s
+}
+local rates = {}
+for r = %(lo)d, %(hi)d do if vfps[r] ~= nil then rates[#rates + 1] = r end end
+
+gamescope.config.known_displays.%(key)s = {
+    pretty_name = "ROG Ally built-in screen (Hearth)",
+    dynamic_refresh_rates = rates,
+    -- As gamescope's own ROG Ally script: the same pixel clock, a longer vertical front porch for lower rates.
+    dynamic_modegen = function(base_mode, refresh)
+        local vfp = vfps[refresh]
+        if vfp == nil or base_mode.hdisplay ~= %(w)d or base_mode.vdisplay ~= %(h)d then
+            return base_mode
+        end
+        local mode = base_mode
+        gamescope.modegen.adjust_front_porch(mode, vfp)
+        mode.vrefresh = gamescope.modegen.calc_vrefresh(mode)
+        return mode
+    end,
+    matches = function(display)
+        if display.vendor == "%(vendor)s" and display.product == 0x%(product)04X then
+            return 4000
+        end
+        return -1
+    end
+}
+''' % {'vendor': edid['vendor'], 'product': edid['product'], 'w': base['w'], 'h': base['h'], 'lo': rates[0], 'hi': rates[-1],
+       'table': table, 'key': key}
+
+
+def write_panel_script(screens, out_dir, ally):
+    """Writes (or removes) our script. Returns what it did."""
+    path = os.path.join(out_dir, SCRIPT)
+    internal = [s for s in screens if s['internal']]
+    text = panel_script(internal[0]) if ally and len(internal) == 1 else None
+    if text is None:
+        # Only when the built-in screen was read and doesn't need it (an unreadable screen leaves the last one).
+        if internal and os.path.exists(path):
+            os.remove(path)
+            return 'removed'
+        return 'not needed'
+    try:
+        with open(path, encoding='utf-8') as fh:
+            if fh.read() == text:
+                return 'unchanged'
+    except OSError:
+        pass
+    os.makedirs(out_dir, exist_ok=True)
+    tmp = '%s.%d.tmp' % (path, os.getpid())
+    with open(tmp, 'w', encoding='utf-8') as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+    return 'written'
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'list'
+    if cmd == 'list':
+        for s in read_screens():
+            e = s['edid']
+            print('%s %s (%s)%s: %s' % (s['card'], s['name'], 'built-in' if s['internal'] else 'external',
+                                        ' EDID %s 0x%04X' % (e['vendor'], e['product']) if e else ' no EDID',
+                                        ' '.join(fmt(m) for m in s['modes'])))
+        return 0
+    if cmd == 'check':
+        args = argv[2:]
+        if args[:1] == ['--']:
+            args = args[1:]
+        try:
+            screens = read_screens()
+        except Exception as e:   # never stop a start over this
+            print('can\'t tell: %s' % e)
+            return 2
+        code, msg = check(screens, args)
+        print(msg)
+        return code
+    if cmd == 'panel-script':
+        out = argv[2] if len(argv) > 2 else os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'gamescope', 'scripts')
+        try:
+            print(write_panel_script(read_screens(), out, is_ally()))
+        except Exception as e:
+            print('panel script: %s' % e)
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

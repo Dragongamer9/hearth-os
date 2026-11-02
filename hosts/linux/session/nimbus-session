@@ -183,11 +183,46 @@ strip_mode_args() {
     fi
     rm -f "$t"
   ) 9>"$sdir/.session.conf.lock"
-  # What you had chosen, for Settings › Display's "Try again" (JSON: the options as one string, quotes escaped).
+  note_reverted "$1"
+}
+# What you had chosen, for Settings › Display's "Try again" (JSON: the options as one string, quotes escaped).
+note_reverted() {
+  sdir="$(dirname "$SESSION_CONF")"
+  mkdir -p "$sdir" 2>/dev/null
   esc="$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   rt="$sdir/.display-reverted.$$"
   printf '{"args": "%s", "at": %s}\n' "$esc" "$(date +%s)" >"$rt" 2>/dev/null && { sync "$rt" 2>/dev/null; true; } && mv -f "$rt" "$sdir/display-reverted.json"
   rm -f "$rt"
+}
+# ---- The screen's real modes (os/system_files/usr/libexec/nimbus/hearth-screen, docs/STEAM-GAME-MODE.md "Screen modes").
+# A mode the connected screen doesn't list (-W/-H/-r from Settings › Display, a TV that only has 2560 × 1440 at
+# 60 Hz, another screen plugged in) made gamescope abort (code 134) instead of starting. Before gamescope starts, the
+# chosen mode is checked against the kernel's list of the screen's modes, the one gamescope picks from: not there,
+# and this start uses the screen's own mode. session.conf isn't changed (the same screen plugged back in gets your
+# mode again); Game Mode says so with "Try again" (display-reverted.json). A mode on trial (display-pending.json: just
+# picked, or Try again) is always really tried, and anything the check can't tell (several screens, no access, the
+# built-in screen's refresh rates) is left to gamescope as before.
+# (test_hearth_display_modes.py runs these lines, between the >>> and <<< marks.)
+# >>> mode precheck
+SCREEN_HELPER="${HEARTH_SCREEN_HELPER:-/usr/libexec/nimbus/hearth-screen}"
+mode_not_listed() {
+  [ -z "$HEARTH_SEAT" ] && has_mode_args "$1" && [ -f "$SCREEN_HELPER" ] && have python3 || return 1
+  [ -e "$(dirname "$SESSION_CONF")/display-pending.json" ] && return 1
+  # shellcheck disable=SC2086
+  why="$(timeout 5 python3 "$SCREEN_HELPER" check -- $1 2>/dev/null)"
+  [ $? -eq 1 ] || return 1
+  log "screen mode: $why; the screen's own mode this time (session.conf kept as it is)"
+  note_reverted "$1"
+  return 0
+}
+# <<< mode precheck
+# The ROG Ally's built-in screen for gamescope: its real refresh range (48 Hz up to the panel's own), when gamescope's
+# own scripts don't know the panel. Only a gamescope display script in ~/.config/gamescope/scripts; never a setting.
+panel_script() {
+  [ -z "$HEARTH_SEAT" ] && [ -f "$SCREEN_HELPER" ] && have python3 || return 0
+  r="$(timeout 5 python3 "$SCREEN_HELPER" panel-script 2>/dev/null)"
+  case "$r" in written|removed) log "built-in screen for gamescope: $r" ;; esac
+  return 0
 }
 run_game() {
   log "game mode"
@@ -205,6 +240,10 @@ run_game() {
     NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
     export WEBKIT_DISABLE_DMABUF_RENDERER=1
   fi
+  if mode_not_listed "$NIMBUS_GAMESCOPE_ARGS"; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+  fi
+  panel_script
   [ -n "$HEARTH_SEAT" ] && [ -n "$ENV_GAMESCOPE_ARGS" ] && NIMBUS_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS $ENV_GAMESCOPE_ARGS"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
@@ -573,6 +612,15 @@ run_steam_mode() {
   NIMBUS_GAMESCOPE_ARGS="$ENV_GAMESCOPE_ARGS"
   # shellcheck source=/dev/null
   [ -f "$SESSION_CONF" ] && . "$SESSION_CONF"
+  # Hearth Recovery › Safe graphics this time: the screen's own mode here too.
+  if [ -f /run/hearth/safe-graphics ] && [ -n "$MODE_ARGS_RE" ]; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+  fi
+  # (The screen-mode helpers are defined above this block: present in the session, absent in the block's own tests.)
+  if command -v mode_not_listed >/dev/null 2>&1 && mode_not_listed "$NIMBUS_GAMESCOPE_ARGS"; then
+    NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
+  fi
+  command -v panel_script >/dev/null 2>&1 && panel_script
   # Steam's "Switch to Desktop" (and Game Mode) runs steamos-session-select: Hearth's own comes first on Steam's PATH and
   # asks this session (nothing about the login screen or the next start changes).
   sbin="$RUN/hearth-steam-bin"; mkdir -p "$sbin"
@@ -613,6 +661,11 @@ run_steam_mode() {
   echo $$ >"$RUN/hearth-steam-mode.pid"
   steam_core_start
   steam_input_start
+  # A chosen screen mode gamescope can't start with (it ends within seconds): that mode goes, as in Hearth's Game Mode
+  # (strip_mode_args: kept in display-reverted.json, Game Mode says so with "Try again"), and Steam Game Mode starts
+  # once more at the screen's own mode, instead of counting as Steam failing.
+  s_retry=1
+  while :; do
   started=$(date +%s)
   # What gamescope-session-steam (SteamOS, Bazzite, ChimeraOS) tells Steam, in a subshell so nothing stays for later modes.
   # shellcheck disable=SC2086
@@ -631,6 +684,15 @@ run_steam_mode() {
     exec gamescope -e -f --xwayland-count 2 $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal
   )
   rc=$?
+  [ "$rc" -ne 0 ] && [ "$s_retry" = 1 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ] && [ ! -s "$NEXT" ] \
+    && command -v has_mode_args >/dev/null 2>&1 && has_mode_args "$NIMBUS_GAMESCOPE_ARGS" || break
+  s_retry=0
+  log "steam game mode: gamescope couldn't start with the chosen screen mode (code $rc, $NIMBUS_GAMESCOPE_ARGS); once more at the screen's own mode"
+  strip_mode_args "$NIMBUS_GAMESCOPE_ARGS"
+  rm -f "$(dirname "$SESSION_CONF")/display-pending.json"
+  NIMBUS_GAMESCOPE_ARGS="$(printf ' %s' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")"
+  has_mode_args "$NIMBUS_GAMESCOPE_ARGS" && break
+  done
   rm -f "$RUN/hearth-steam-mode.pid"
   steam_core_stop
   steam_input_stop
