@@ -168,7 +168,9 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
-The next release is Hearth OS 1.0: from then on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).
+## 1.0 (released 2026-11-02)
+
+Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).
 
 - [x] Ready for 1.0: version numbers are compared by number everywhere (1.0 is newer than 0.6.63, 1.10 newer than 1.9, "1.0" and "1.0.0" are the same), people see "1.0" for 1.0.0 (Settings, Mantel, hearthfetch, the Decky plugin, release titles and the website), and each release's date from its ROADMAP heading is shown next to it, offline on the device too (needs testing on a device)
 - [x] Mantel is now Hearth's only desktop: Hearth Plasma, Hearth GNOME and Hearth COSMIC are gone (Settings no longer offers a desktop choice, and a device that had one picked simply opens Mantel), and Hearth Disks no longer offers the small online installer (the offline USB and the Recovery USB stay)
