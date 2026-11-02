@@ -56,14 +56,53 @@ def fail(msg):
     sys.exit(1)
 
 
+# ------------------------------------------------------------------ saving a choice
+# Both choices are settings (docs/SETTINGS-PERSISTENCE.md): saved all at once with FILE.bak through Hearth's shared
+# helper when it's here (hearth_settings_io, Mantel's shell folder), else a temporary file, fsync and rename; read back
+# from FILE.bak when the file is damaged, never quietly replaced by the default.
+def _settings_io():
+    for share in (os.environ.get('NIMBUS_SHARE'), '/usr/share/nimbus', '/usr/local/share/nimbus'):
+        if share and os.path.isfile(os.path.join(share, 'desktop', 'shell', 'hearth_settings_io.py')):
+            sys.path.insert(0, os.path.join(share, 'desktop', 'shell'))
+            break
+    try:
+        import hearth_settings_io
+        return hearth_settings_io
+    except ImportError:
+        return None
+
+
+def save_choice(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    hio = _settings_io()
+    if hio:
+        hio.write_text(path, value + '\n')
+        return
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(value + '\n')
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def read_choice(path, allowed, default):
+    for p in (path, path + '.bak'):
+        try:
+            with open(p) as f:
+                v = f.read().strip()
+        except OSError:
+            continue
+        if v in allowed:
+            return v
+    return default
+
+
 # ------------------------------------------------------------------ boot splash
 def splash_current():
-    try:
-        with open(SPLASH_CONF) as f:
-            v = f.read().strip()
-    except OSError:
-        return 'hearth'
-    return v if v in [s['id'] for s in SPLASHES] else 'hearth'
+    if not os.path.exists(SPLASH_CONF):
+        return 'hearth'          # the default is kept as no file (a .bak alone is an older choice: not used)
+    return read_choice(SPLASH_CONF, [s['id'] for s in SPLASHES], 'hearth')
 
 
 def splash_set(name):
@@ -80,10 +119,7 @@ def splash_set(name):
         except FileNotFoundError:
             pass
     else:
-        tmp = SPLASH_CONF + '.tmp'
-        with open(tmp, 'w') as f:
-            f.write(name + '\n')
-        os.replace(tmp, SPLASH_CONF)
+        save_choice(SPLASH_CONF, name)
     # The menu is rewritten the way it is at every start; if that fails, the old menu stays as it was.
     r = subprocess.run(['sh', BLS_GRUB], capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
@@ -123,12 +159,9 @@ def movie_file(mid, aspect):
 
 
 def movie_choice():
-    try:
-        with open(CHOICE) as f:
-            v = f.read().strip()
-    except OSError:
+    if not os.path.exists(CHOICE):
         return 'steam'
-    return v if v in MOVIE_IDS else 'steam'
+    return read_choice(CHOICE, MOVIE_IDS, 'steam')
 
 
 def steam_dirs():
@@ -219,10 +252,7 @@ def movie_set(mid):
         fail('unknown animation')
     if mid != 'steam' and not movie_file(mid, '16x9'):
         fail("this version of Hearth OS doesn't have that animation")
-    os.makedirs(os.path.dirname(CHOICE), exist_ok=True)
-    with open(CHOICE + '.tmp', 'w') as f:
-        f.write(mid + '\n')
-    os.replace(CHOICE + '.tmp', CHOICE)
+    save_choice(CHOICE, mid)
     r = movie_apply()
     r['later'] = not r['steam']
     print(json.dumps(r))

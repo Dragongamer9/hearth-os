@@ -134,6 +134,8 @@ restart gets a new event number, which WebKit picks up by itself.
 `ui/pad/hearth-gamepad.js` (copied next to each app page by `tools/pad-sync.py`; `--check` runs in the tests) is how
 every Hearth WebKit app reads the controller now. Each app's change is small: the page loads it first, reads
 `HearthGamepad.pads()` instead of `navigator.getGamepads()`, and runs its loop with `HearthGamepad.loop(fn)`.
+The USB installer's screens (`ui/installer.html`, 1.1, shown by the Hearth app, `io.github.dragongamer9.hearth` in
+the list) load it straight from `ui/pad` (pad-sync's `PAGES`; no copy).
 
 - **The loop can't die**: an error in the app's handler is logged and the next frame comes anyway; frames come from
   `requestAnimationFrame`, and from a 100 ms timer when WebKitGTK stops giving frames.

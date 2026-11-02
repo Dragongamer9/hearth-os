@@ -56,7 +56,8 @@ class Pages(unittest.TestCase):
         opened = set()
         for f in SHELL.glob('*.qml'):
             t = f.read_text()
-            opened |= set(re.findall(r'openPage\("(\w+)"', t))
+            # (SettingsNav.openPage opens one of Mantel's own Settings pages, not a page of the Hearth app)
+            opened |= set(re.findall(r'(?<!SettingsNav\.)openPage\("(\w+)"', t))
             opened |= set(re.findall(r'"--windowed", "--page", "(\w+)"', t))
         self.assertTrue({'sources', 'diskspace', 'library', 'storage', 'system'} <= opened, opened)
         self.assertEqual(opened - pages, set())

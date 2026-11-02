@@ -52,7 +52,7 @@
     { "id": "io.github.dragongamer9.hearth.player", "name": "Player (by its app identifier)" },
     { "id": "io.github.dragongamer9.hearth.recorder", "name": "Recorder (by its app identifier)" },
     { "id": "io.github.dragongamer9.hearth.share", "name": "Share Screen (by its app identifier)" },
-    { "id": "io.github.dragongamer9.hearth", "name": "Hearth (Game Mode's app in a window)" },
+    { "id": "io.github.dragongamer9.hearth", "name": "Hearth (Game Mode's app in a window, and the USB installer's screens)" },
     { "id": "nimbus", "name": "Hearth (Chromium build)" }
   ]
 }

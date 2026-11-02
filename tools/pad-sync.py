@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """pad-sync: copies Hearth's controller reader (ui/pad/hearth-gamepad.js, docs/CONTROLLER-FOCUS.md) next to every app page
-that reads the controller, so there is one way the apps read it:
+that reads the controller (pages in PAGES load it from ui/pad itself), so there is one way the apps read it:
   python3 tools/pad-sync.py          copy
   python3 tools/pad-sync.py --check  only say which copies differ or which pages don't load it (exit 1);
                                      hosts/linux/test/test_hearth_pad_focus.py runs it
@@ -37,6 +37,11 @@ TARGETS = {
     'hosts/hearth-tools/ui': 'common.js',
 }
 TAG = '<script src="hearth-gamepad.js"></script>'
+# Pages next to ui/pad that load the reader from there (no copy): the page → its src. The USB installer's screens
+# (ui/installer.html, shown by the Hearth app, io.github.dragongamer9.hearth in desktop/shell/controller-apps.json).
+PAGES = {
+    'ui/installer.html': 'pad/hearth-gamepad.js',
+}
 
 
 def pages(folder):
@@ -69,6 +74,16 @@ def problems():
             bad.append('%s/%s reads navigator.getGamepads() itself: use HearthGamepad.pads()' % (dest, loop))
         if 'HearthGamepad.loop(' not in code:
             bad.append('%s/%s: its controller loop should run with HearthGamepad.loop(fn)' % (dest, loop))
+    for page, src in PAGES.items():
+        with open(os.path.join(ROOT, page), encoding='utf-8') as fh:
+            html = fh.read()
+        tag = '<script src="%s"></script>' % src
+        if html.find(tag) == -1 or html.find(tag) != html.find('<script'):
+            bad.append('%s: %s must be its first script' % (page, tag))
+        if 'navigator.getGamepads' in html:
+            bad.append('%s reads navigator.getGamepads() itself: use HearthGamepad.pads()' % page)
+        if 'HearthGamepad.loop(' not in html:
+            bad.append('%s: its controller loop should run with HearthGamepad.loop(fn)' % page)
     return bad
 
 

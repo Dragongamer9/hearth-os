@@ -41,6 +41,11 @@ never is.
   library), **Apple Music previews**, **Now playing note** (a short toast the first time a game's song plays).
 - **Song for <game>**: the picks above.
 
+These settings are kept in `~/homebrew/settings/decky-hearth-music/settings.json`, saved the safe way
+(docs/SETTINGS-PERSISTENCE.md: only the key you changed is merged into the latest file, atomically, with a `.bak`; a
+damaged file comes back from it). With Hearth Link's **Sync Hearth settings** on, they follow you to your other Hearth
+devices one key at a time (docs/HEARTH-LINK-PLUGIN.md); your picks (`picks.json`, file paths) stay on each device.
+
 ## How it works
 
 The frontend reads Steam's gamepad UI the way Hearth Sync and the older Hearth plugin do, every read guarded:

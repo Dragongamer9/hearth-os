@@ -9,7 +9,7 @@ import { collectionsOf, gameTitle, readPath, readRunning, steamMissing, watchFoc
 const findSong = callable<[appid: number, title: string, collections: string[]], Song>("find_song");
 const getAudio = callable<[key: string, transcode: boolean], { data: string; mime: string } | null>("audio");
 export const getSettings = callable<[], Settings>("get_settings");
-const saveSettings = callable<[s: Settings], Settings>("set_settings");
+const saveSettings = callable<[s: Partial<Settings>], Settings>("set_settings");   // only the keys changed
 export const setPick = callable<[kind: string, name: string, path: string], boolean>("set_pick");
 const report = callable<[line: string], void>("report");
 
@@ -26,7 +26,9 @@ const toasted = new Set<number>();
 let want = 0, timer: any = null, launchUntil = 0, seq = 0;
 
 export async function updateSettings(p: Partial<Settings>) {
-  state.settings = cleanSettings(await saveSettings(cleanSettings({ ...state.settings, ...p })).catch(() => ({ ...state.settings, ...p })));
+  // Only what changed goes to the backend, merged into the latest file (another device's change through Hearth Link's
+  // "Sync Hearth settings" is never written back over); it answers with every setting as it is now.
+  state.settings = cleanSettings({ ...state.settings, ...p, ...(await saveSettings(p).catch(() => ({}))) });
   player.setVolume(state.settings.volume);
   if (!state.settings.enabled) player.stop();
   changed();

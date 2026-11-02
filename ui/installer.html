@@ -158,6 +158,7 @@ h1{font-size:40px;font-weight:800;margin:6px 0 10px;letter-spacing:-.01em}
     </symbol>
   </defs>
 </svg>
+<script src="pad/hearth-gamepad.js"></script>
 <script>
 'use strict';
 // ------------------------------------------------------------------ the host (the Hearth app's bridge) or a pretend PC
@@ -708,10 +709,11 @@ document.addEventListener('click', e => {
 });
 
 // The controller (any the browser engine sees): D-pad / left stick move, A select (hold on hold buttons), B back,
-// X backspace and Y shift on the on-screen keyboard, Start finishes typing.
+// X backspace and Y shift on the on-screen keyboard, Start finishes typing. Read through Hearth's controller reader
+// (ui/pad/hearth-gamepad.js, docs/CONTROLLER-FOCUS.md): no presses while the window isn't in front, none carried over.
 const PAD = {prev: {}, rep: {}};
 function padLoop(now) {
-  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const pads = HearthGamepad.pads();
   const btn = {};
   for (const p of pads) {
     const b = i => p.buttons[i] && p.buttons[i].pressed;
@@ -727,7 +729,6 @@ function padLoop(now) {
     else if (!is && was && k === 'a' && holding) holdEnd();
   }
   PAD.prev = btn;
-  requestAnimationFrame(padLoop);
 }
 function padPress(k, first) {
   const el = cur();
@@ -739,7 +740,7 @@ function padPress(k, first) {
   if (k === 'y') { if ($('#osk').classList.contains('on')) return oskShift(); if (el && el.tagName === 'INPUT') return oskOpen(el); }
   if (k === 'start' && $('#osk').classList.contains('on')) return oskClose(true);
 }
-requestAnimationFrame(padLoop);
+HearthGamepad.loop(padLoop);
 
 function hints() {
   const pad = S.input === 'pad';

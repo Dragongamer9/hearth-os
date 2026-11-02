@@ -70,22 +70,120 @@ def cache_dir():
     return os.path.join(home(), '.cache', 'hearth-music')
 
 
-def load_json(name, default, folder=None):
+# ---- Settings files the safe way (docs/SETTINGS-PERSISTENCE.md; the same rules as Hearth OS's hearth_settings_io.py and
+# Hearth Sync's copy, kept here because a Decky plugin ships on its own): atomic (temporary file, fsync, rename) under
+# one lock, the last good version kept as FILE.bak, a damaged file put back from it, never replaced with the defaults.
+def _safe_write(path, data):
+    import fcntl
+    import tempfile
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    lock = os.open(os.path.join(d, '.' + os.path.basename(path) + '.lock'), os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        with open(os.path.join(folder or settings_dir(), name)) as f:
-            v = json.load(f)
-        return v if isinstance(v, type(default)) else default
-    except (OSError, ValueError):
-        return default
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _write_locked(path, data, tempfile)
+    finally:
+        os.close(lock)
+
+
+def _write_locked(path, data, tempfile):
+    d = os.path.dirname(path)
+    try:
+        st = os.stat(path)
+        with open(path, 'rb') as f:
+            cur = f.read()
+    except OSError:
+        st, cur = None, None
+    if cur == data:
+        return
+    for target, content in (((path + '.bak'), cur), (path, data)):
+        if content is None or not content.strip():
+            continue
+        fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(target) + '.', suffix='.tmp', dir=d)
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            if st is not None:
+                os.chmod(tmp, st.st_mode & 0o7777)
+                try:
+                    os.chown(tmp, st.st_uid, st.st_gid)
+                except OSError:
+                    pass
+            os.replace(tmp, target)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    try:
+        dfd = os.open(d, os.O_RDONLY)
+        os.fsync(dfd)
+        os.close(dfd)
+    except OSError:
+        pass
+
+
+def _read_json(path, repair=True):
+    """The JSON in PATH; damaged: the copy in PATH.bak (put back unless repair is False: the caller holds the lock and
+    writes the file itself). None when neither can be read."""
+    for p in (path, path + '.bak'):
+        try:
+            with open(p) as f:
+                v = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if p != path and repair:
+            try:
+                _safe_write(path, json.dumps(v).encode())
+            except OSError:
+                pass
+        return v
+    return None
+
+
+def load_json(name, default, folder=None):
+    v = _read_json(os.path.join(folder or settings_dir(), name))
+    return v if isinstance(v, type(default)) else default
 
 
 def save_json(name, value, folder=None):
-    d = folder or settings_dir()
+    _safe_write(os.path.join(folder or settings_dir(), name), json.dumps(value).encode())
+
+
+def save_cache(name, value):
+    """A cache file (Apple's answers): only replaced whole and atomically; it's no setting (losing it means asking again)."""
+    d = cache_dir()
     os.makedirs(d, exist_ok=True)
     tmp = os.path.join(d, name + '.tmp')
     with open(tmp, 'w') as f:
         json.dump(value, f)
     os.replace(tmp, os.path.join(d, name))
+
+
+def merge_settings(changes):
+    """Only the keys you changed, merged into the latest settings.json under its lock (Hearth Link's "Sync Hearth
+    settings" writes single keys into it too, hosts/decky-hearth-link/link_sync.py); unknown keys are kept."""
+    import fcntl
+    path = os.path.join(settings_dir(), 'settings.json')
+    os.makedirs(settings_dir(), exist_ok=True)
+    lock = os.open(os.path.join(settings_dir(), '.settings.json.lock'), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        cur = _read_json(path, repair=False)
+        cur = cur if isinstance(cur, dict) else {}
+        picked = clean_settings(dict(cur, **{k: v for k, v in (changes or {}).items() if k in DEFAULTS}))
+        new = dict(cur)
+        for k in (changes or {}):
+            if k in DEFAULTS:
+                new[k] = picked[k]
+        import tempfile
+        _write_locked(path, json.dumps(new).encode(), tempfile)
+        return clean_settings(new)
+    finally:
+        os.close(lock)
 
 
 def clean_settings(s):
@@ -392,7 +490,7 @@ def lookup(title, get=None, now=None):
     if len(cache) > 2000:
         for k in sorted(cache, key=lambda k: cache[k].get('at', 0) if isinstance(cache[k], dict) else 0)[:len(cache) - 2000]:
             cache.pop(k)
-    save_json('lookups.json', cache, cache_dir())
+    save_cache('lookups.json', cache)
     log('apple lookup: %s' % ('match' if match else 'no match'))
     return {'match': match}
 
@@ -506,9 +604,8 @@ class Plugin:
         return clean_settings(load_json('settings.json', {}))
 
     async def set_settings(self, settings):
-        s = clean_settings(settings)
-        save_json('settings.json', s)
-        return s
+        """The keys the panel changed (only those are written); returns all of them as they are now."""
+        return merge_settings(settings if isinstance(settings, dict) else {})
 
     async def find_song(self, appid, title, collections=None):
         s = clean_settings(load_json('settings.json', {}))

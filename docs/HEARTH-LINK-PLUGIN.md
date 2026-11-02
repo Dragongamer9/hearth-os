@@ -34,8 +34,9 @@ devices are on, and low battery, low space, an older Hearth OS or an old backup)
 - **Sync Decky plugins** (off until you turn it on). Your Decky plugins' settings follow you: `settings*.json` and
   `config.json` in `~/homebrew/settings/<plugin>`, one key at a time; a key that looks like a sign-in (token, password,
   secret, api key, auth, cookie, session…) or holds one is never shared and never replaced. Hearth's own plugins
-  (Hearth Sync, Hearth Link) are on every device already, so only Hearth Sync's `settings.json` travels (Hearth Link's
-  own switches and state stay on each device). The plugins your other devices have and this one hasn't are listed with
+  (Hearth Sync, Hearth Link, Hearth Music) are on every device already, so only Hearth Sync's `settings.json` travels
+  here (Hearth Link's own switches and state stay on each device; Hearth Music's panel settings go with **Sync Hearth
+  settings** below). The plugins your other devices have and this one hasn't are listed with
   **Install …**: Hearth Link copies that plugin's folder from a device that has it (`decky.fetch`, from the device that
   listed it first, then any other online one), the files are checked again and packed as a zip, and Decky Loader's own
   install is asked for it, which shows Decky's **Install …?** prompt: a plugin from another device is only installed
@@ -45,8 +46,10 @@ devices are on, and low battery, low space, an older Hearth OS or an old backup)
 - **Sync Hearth settings** (off until you turn it on). These follow you: Mantel's look, light or dark, accent colour,
   Hearth's own wallpapers (not a picture file of yours), reduce motion, 24-hour clock and night light
   (`desktop.json`); the on-screen keyboard's look and typing choices (`osk.json`, not its position); Game Mode's
-  appearance and button swaps (`game-mode-ui.json`); Hearth Music (Hearth Player's shuffle, repeat, cue and subtitles,
-  not its volume); the power button's press and hold (`buttons.json`). These stay on each device: screen modes
+  appearance and button swaps (`game-mode-ui.json`); Hearth Player's shuffle, repeat, cue and subtitles (not its
+  volume); Hearth Music's panel (`~/homebrew/settings/decky-hearth-music/settings.json`: on or off, volume, delay, in the
+  library too, Apple's previews and the now-playing note; never the songs you picked per game, which are file paths);
+  the power button's press and hold (`buttons.json`). These stay on each device: screen modes
   (`session.conf`, `display.sh`), sound devices, volume and louder-than-100%, HHD, TDP and power, network, pointer
   speed, power timers and lock on wake.
 
