@@ -928,7 +928,8 @@ class DeckyHelper(unittest.TestCase):
         r = DECKY_RULES.read_text()
         self.assertIn('"org.freedesktop.systemd1.manage-units"', r)
         self.assertIn('action.lookup("unit") == "hearth-decky@" + subject.user + ".service"', r)
-        self.assertIn('subject.local && subject.active && subject.isInGroup("wheel")', r)
+        self.assertIn("subject.local && subject.active)", r)
+        self.assertNotIn("isInGroup", r, "every account gets Decky (the owner's choice)")
         self.assertIn('["start", "stop", "restart"]', r)
 
     def test_only_peoples_accounts(self):

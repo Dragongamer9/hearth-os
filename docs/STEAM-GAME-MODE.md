@@ -377,7 +377,7 @@ switches turn any part off by hand, and **Hearth takeover** turns them all off a
    when the image is built, in `/usr/lib/hearth-decky`; it's updated with Hearth OS). When Steam Game Mode starts, the
    session turns on Steam's remote debugging (Decky needs it), makes `~/homebrew` and starts
    `hearth-decky@<you>.service` (as root, as Decky needs) without a password prompt (`49-hearth-decky.rules`: only your
-   own instance, only from the session at the device, only for administrators); the service puts Hearth Sync in place
+   own instance, only from the session at the device, for every account); the service puts Hearth Sync in place
    and removes an earlier downloaded install (`hearth-decky.service`, `/var/lib/hearth-decky`). It stops when Steam
    Game Mode ends. A Decky you installed with Decky's own installer (`plugin_loader.service`) is left alone, and the
    built-in one doesn't start next to it. Decky's own "update" button doesn't apply (it works in a temporary folder).
