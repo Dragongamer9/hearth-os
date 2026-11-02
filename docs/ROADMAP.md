@@ -21,13 +21,16 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] Heroic Games Launcher preinstalled
 - [ ] An install helper for Epic's Linux launcher, once an official download is confirmed
 - [ ] An app-update signing key, to turn on fast app updates between system updates (docs/APP-UPDATES.md)
-- [ ] A cosign key for signing the OS images (`SIGNING_SECRET`); then signature checks turned on in Hearth OS
 - [ ] Hearth Mod Organizer: LOOT masterlist sorting; files for the game's own folder (script extender loaders, ENB:
       MO2's Root Builder); Nexus downloads straight into an instance, mod categories, notes and update checks; FOMOD
       scripts and BAIN wizards (docs/MODS.md)
-- [ ] Support page and donations: built, hidden until the owner fills in a link in ui/support-links.js and
-      site/support-links.js
 - [ ] Ember: app pop-up notifications in full Mantel on Windows (Windows only shares them with packaged apps)
+
+## Waiting on setup
+
+- A cosign key for signing the OS images (`SIGNING_SECRET`); then signature checks turned on in Hearth OS
+- Support page and donations: built, hidden until the owner fills in a link in ui/support-links.js and
+      site/support-links.js
 
 ## 1.0 (released 2026-11-02)
 
