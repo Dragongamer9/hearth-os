@@ -2019,7 +2019,7 @@ const path = require('path');
         const st = { running: true, me: { id: 'a'.repeat(64), name: 'Deck', ticket: 'a'.repeat(64) }, settings: { sync: true }, peers: [], transfers: [], offers: [], sending: [], signInHints: [], shortCodes: true,
           pairing: { code: '482913', until: Date.now() + 290000, triesLeft: 4, netCode: null },
           pairEvent: { state: 'wrong', name: 'Nvidia-PC', triesLeft: 4, at: Date.now() },
-          nearby: [{ id: 'b'.repeat(64), name: 'Nvidia-PC', pairing: true, kind: 'desktop', edition: 'Anatase' }, { id: 'c'.repeat(64), name: 'Office', pairing: false, kind: 'laptop', edition: 'Peppermint' }] };
+          nearby: [{ id: 'b'.repeat(64), name: 'Nvidia-PC', pairing: true, kind: 'desktop', edition: 'Anatase' }, { id: 'c'.repeat(64), name: 'Office', pairing: false, kind: 'laptop', edition: 'Debian' }] };
         const calls = [];
         let joins = 0;
         call = async (m, a) => {
@@ -2031,7 +2031,7 @@ const path = require('path');
         LK.s = st; closeAll(); S.settingsTab = 'link'; navigate('settings', {}, false); render(null, true); await wait(150);
         const v = () => document.querySelector('#view').textContent;
         out.code = /482 913/.test(v()); out.wrongHere = /Nvidia-PC typed a wrong code \(4 tries left\)/.test(v());
-        out.kind = /Desktop · Anatase · Ready to pair/.test(v()); out.notReady = /Laptop · Peppermint · To pair, select Pair a device on it first/.test(v());
+        out.kind = /Desktop · Anatase · Ready to pair/.test(v()); out.notReady = /Laptop · Debian · To pair, select Pair a device on it first/.test(v());
         out.netBtn = !!document.querySelector('#view [data-k="lk-pnet"]');
         const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
         out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);

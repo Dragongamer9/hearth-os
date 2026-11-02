@@ -1689,7 +1689,7 @@ const MOCK = (()=>{
       {id:'anatase',label:'Hearth OS on Anatase',about:'The new Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. Starts and updates fast, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on (it has no signed boot loader). Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,allowed:false,reason:'Not ready yet',warning:null}]}; },
+      {id:'peppermint',label:'Debian',about:'Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included.',beta:false,recommended:true,allowed:false,reason:'Not ready yet',warning:null}]}; },
     'osinstall.check':async({part})=>{ await wait(900); return part ? {target:{kind:'linux',name:'SteamOS',part,size:1.9e12,min:6e11,used:5.8e11,freeSpace:0,canGive:1.2e12},problems:[],suggested:512*2**30} : {windows:{size:1e12,min:3.1e11,canGive:6.6e11},target:{kind:'windows',name:'Windows',size:1e12,min:3.1e11,canGive:6.6e11,freeSpace:0},problems:[],games:{count:14,size:4.1e11},suggested:448*2**30}; },
     'osinstall.useMantel':async()=>true,
     'osinstall.start':async()=>{ const steps=[['format',15,'Preparing the drive'],['download',20,'Downloading Hearth OS (4.8 GB)'],['download',46,'Downloading Hearth OS (4.8 GB)'],['download',72,'Downloading Hearth OS (4.8 GB)'],['boot',84,'Setting up starting up'],['user',90,'Creating your account'],['finish',97,'Finishing up']];
@@ -1794,8 +1794,8 @@ const MOCK = (()=>{
       {id:'anatase',label:'Hearth OS on Anatase',about:'The next Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. A smaller system that starts and updates faster, the same for every PC and handheld. Automatic fallback and Recovery included.',beta:false,recommended:true,published:true,allowed:true,reason:null,warning:null},
       {id:'ubuntu',label:'Ubuntu',about:'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:null},
       {id:'cachyos',label:'CachyOS',about:'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.',beta:true,recommended:false,published:true,allowed:true,reason:null,warning:'Secure Boot is on, and Hearth OS on CachyOS can\'t start with it on. Turn Secure Boot off in your PC\'s firmware settings (UEFI) before you restart, or choose another one.'},
-      {id:'peppermint',label:'Peppermint',about:'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.',beta:true,recommended:false,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
-    'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[edition]||'the new Hearth OS';
+      {id:'peppermint',label:'Debian',about:'Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included.',beta:false,recommended:true,published:false,allowed:false,reason:'Not ready yet',warning:null}]}),
+    'newos.move':async({edition})=>{ const label={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Hearth OS on Debian'}[edition]||'the new Hearth OS';
       st.newos={eligible:true,published:true,canAdmin:true,state:'moving',edition,label,progress:0.3,line:'Downloading',phases:{download:{pct:30,done:1.2e9,total:4e9,bps:3.1e7,eta:90},install:{pct:0}},stage:{phase:'download'},speeds:[]};
       setTimeout(()=>{ st.newos={eligible:true,published:true,canAdmin:true,state:'done',edition,label,line:'Restart to start the new Hearth OS.'}; onSysEvent('newOs',clone(st.newos)); },2500); return clone(st.newos); },
     'oldfiles.status':async()=>clone(st.oldf||{folders:[{name:'.old-hearth-2026-10-19',date:'2026-10-19',daysLeft:27,moved:['Documents','Downloads','Pictures','.config','.local/share/flatpak'],from:'Hearth OS (based on Bazzite)'}]}),
@@ -4376,7 +4376,7 @@ const CREDITS = LINUX
   : [['WebView2','Runs '+APP+'\'s interface (Microsoft Edge)'],['Firefox','Runs Hearth Browser (Mozilla)'],['legendary','Epic Games downloads'],['gogdl','GOG downloads (Heroic)']];
 // Which Hearth OS this is (host.info's edition): only the amd and nvidia editions are built on Bazzite.
 const onBazzite = () => /^(amd|nvidia)$/.test(HOSTINFO.edition||'');
-function osEditionName(){ return {anatase:'Hearth OS on Anatase', ubuntu:'Hearth OS on Ubuntu', cachyos:'Hearth OS on CachyOS', peppermint:'Hearth OS on Peppermint', live:'Hearth OS, from the USB stick'}[HOSTINFO.edition] || (onBazzite()?'Hearth OS, built on Bazzite':'Hearth OS'); }
+function osEditionName(){ return {anatase:'Hearth OS on Anatase', ubuntu:'Hearth OS on Ubuntu', cachyos:'Hearth OS on CachyOS', peppermint:'Hearth OS on Debian', live:'Hearth OS, from the USB stick'}[HOSTINFO.edition] || (onBazzite()?'Hearth OS, built on Bazzite':'Hearth OS'); }
 // Settings › About › Support Hearth OS: the donation links the owner filled in (support-links.js); hidden without any.
 function supportLinks(){
   const S0=window.HEARTH_SUPPORT; if(!S0 || !Array.isArray(S0.links)) return [];
@@ -6953,7 +6953,7 @@ function loadNewOs(){ if(LINUX && (!host || (HOSTINFO.system && /^(amd|nvidia|an
 function newOsChoice(id){ return ((NEWOS.s&&NEWOS.s.editions)||[]).find(e=>e.id===id); }
 function newOsRows(){
   const n=NEWOS.s; if(!n || !n.eligible) return '';
-  const sw=!!n.switch, curLabel={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Peppermint'}[n.current]||'this edition';
+  const sw=!!n.switch, curLabel={anatase:'Hearth OS on Anatase',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Hearth OS on Debian'}[n.current]||'this edition';
   let h=shead(sw?'Switch edition':'Move to a new Hearth OS', n.state==='moving');
   if(n.state==='moving') return h + sysUpdCard(n,{title:'Getting '+(n.label||'the new Hearth OS'), sub:'Keep playing: nothing changes until you restart', noApps:true});
   if(n.state==='done') return h + `<div class="row"><span class="ricon">${I.check}</span><div class="rt"><b>${esc(n.label||'The new Hearth OS')} is ready</b><small>Restart to start it. The first start takes a little longer: it keeps your games and puts everything else aside.</small></div></div>`
@@ -6962,7 +6962,7 @@ function newOsRows(){
   if(pick && pick.allowed) return h + newOsConfirmRows(n, pick);
   h += sw ? `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>You're on ${esc(curLabel)}</b><small>Switch to another edition of Hearth OS. Switching starts you fresh and keeps your games. You'll see exactly what's kept before anything starts, and ${esc(curLabel)} stays in the boot menu.</small></div></div>`
     : `<div class="row" data-f data-k="no-intro"><span class="ricon">${I.dl}</span><div class="rt"><b>Hearth OS is moving away from Bazzite</b><small>Choose the Hearth OS you want next. Moving starts you fresh and keeps your games. You'll see exactly what's kept before anything starts.</small></div></div>`;
-  if(n.archived) h += note(esc(curLabel)+' is archived for now: it gets no more updates. Switch to Anatase or Peppermint to keep getting them; your games come with you.');
+  if(n.archived) h += note(esc(curLabel)+' is archived for now: it gets no more updates. Switch to Hearth OS on Debian to keep getting them; your games come with you.');
   if(n.error) h += note(esc(n.error));
   if(!n.editions) return h + note('Checking which ones are ready…');
   h += n.editions.map(e=>{
@@ -7556,11 +7556,11 @@ function deskPick(){
   const pick=desktop=>call('login.setDesktop',{desktop}).then(r=>{ SHELL.desktop=r; refreshUI(); toast(DESKTOP_NAMES[desktop]+' opens the next time you switch to Desktop Mode'); }).catch(e=>toast(e.message));
   openSheet({title:'Desktop', sub:'Which desktop Desktop Mode opens. Hearth Classic always stays installed: if another desktop can\'t start, Hearth Classic opens instead.', items:[
     {label:'Hearth Classic', icon:cur==='classic'?'check':'', run:()=>pick('classic')},
-    {label:d.plasma?'Hearth Plasma':'Hearth Plasma (not installed on this system)', icon:cur==='plasma'?'check':'', run:()=>d.plasma?pick('plasma'):toast('Hearth Plasma comes with Hearth OS on Anatase and Peppermint')},
-    {label:d.gnome?'Hearth GNOME':'Hearth GNOME (not installed on this system)', icon:cur==='gnome'?'check':'', run:()=>d.gnome?pick('gnome'):toast('Hearth GNOME comes with Hearth OS on Anatase and Peppermint')},
+    {label:d.plasma?'Hearth Plasma':'Hearth Plasma (not installed on this system)', icon:cur==='plasma'?'check':'', run:()=>d.plasma?pick('plasma'):toast('Hearth Plasma comes with Hearth OS on Debian')},
+    {label:d.gnome?'Hearth GNOME':'Hearth GNOME (not installed on this system)', icon:cur==='gnome'?'check':'', run:()=>d.gnome?pick('gnome'):toast('Hearth GNOME comes with Hearth OS on Debian')},
     // ---- Hearth COSMIC (docs/COSMIC.md) and Hearth Deepin (docs/DEEPIN.md: no edition can have it)
     {label:d.cosmic?'Hearth COSMIC':'Hearth COSMIC (not available on this edition)', icon:cur==='cosmic'?'check':'', run:()=>d.cosmic?pick('cosmic'):toast('Hearth COSMIC comes with Hearth OS on Anatase')},
-    {label:'Hearth Deepin (not available on this edition)', icon:'', run:()=>toast('Deepin isn\'t packaged for Anatase (Fedora) or Peppermint (Debian), so Hearth Deepin can\'t be offered')}]});
+    {label:'Hearth Deepin (not available on this edition)', icon:'', run:()=>toast('Deepin isn\'t packaged for Debian, so Hearth Deepin can\'t be offered')}]});
 }
 function pageShellLinux(){
   const s=SHELL.status;

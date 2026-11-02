@@ -48,11 +48,12 @@ pub fn device_kind() -> String {
     }
 }
 
-/// Which Hearth OS this is ("Anatase", "Peppermint", ...): $HEARTH_LINK_EDITION, else the image's own description.
+/// Which Hearth OS this is ("Debian", "Anatase", ...): $HEARTH_LINK_EDITION, else the image's own description.
 pub fn edition() -> String {
     if let Ok(e) = std::env::var("HEARTH_LINK_EDITION") { return e.chars().take(24).collect(); }
     let own = std::fs::read_to_string("/usr/share/nimbus/image-info.json").ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
     if let Some(base) = own.as_ref().and_then(|v| v["base"].as_str()) {
+        if base == "peppermint" { return "Debian".into(); }   // Hearth OS on Debian (edition id "peppermint")
         let mut c = base.chars();
         return c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
     }

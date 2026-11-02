@@ -768,7 +768,6 @@ jobs:
           check "Bazaar is where the store was: Mantel's taskbar pin, Settings › Default apps › App store, the apps IPC target" "grep -q io.github.kolunmi.Bazaar /usr/share/nimbus/desktop/shell/hearth-desk && grep -q io.github.kolunmi.Bazaar.desktop /usr/share/nimbus/desktop/shell/hearth-system && grep -q 'target: \"apps\"' /usr/share/nimbus/desktop/shell/shell.qml && grep -q hearth-flatpak /usr/share/nimbus/desktop/shell/shell.qml"
           check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
           echo "--- nice to have"
-          warn "Peppermint's desktop (Xfce) is on the login screen" "grep -q 'Peppermint desktop' /usr/share/xsessions/xfce.desktop"
           warn "acpi_call (Legion Go power limits through HHD)" "find /usr/lib/modules -name 'acpi_call.ko*' | grep -q ."
           warn "RyzenAdj is installed" "command -v ryzenadj"
           warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"

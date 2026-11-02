@@ -25,8 +25,9 @@ PAGES = [
 ]
 
 
-# Ubuntu and CachyOS are archived for now (October 2026): back once Anatase and Peppermint are solid.
-EDITIONS = [('anatase', 'Anatase', 'Fedora'), ('peppermint', 'Peppermint', 'Debian')]
+# Hearth OS is Debian-based (edition id 'peppermint', shown as "Debian"). Anatase is archived (November 2026), Ubuntu
+# and CachyOS since October 2026. (id, name, base; base '' when the name already says it)
+EDITIONS = [('peppermint', 'Debian', ''), ('anatase', 'Anatase', 'Fedora, archived')]
 # Sections (by heading id) that only apply to some editions; everything else is for all of them.
 SECTION_EDS = {
     'podman': 'ubuntu cachyos peppermint',
@@ -54,7 +55,7 @@ def wrap_sections(body):
 
 
 def picker():
-    opts = '<option value="all">All editions</option>' + ''.join(f'<option value="{e}">{n} ({b})</option>' for e, n, b in EDITIONS)
+    opts = '<option value="all">All editions</option>' + ''.join(f'<option value="{e}">{n}{f" ({b})" if b else ""}</option>' for e, n, b in EDITIONS)
     return (f'<label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition">{opts}</select></label>'
             '<span class="edshow" hidden></span>')
 
@@ -139,10 +140,10 @@ def page(slug, title, lead, body):
 
 
 EDITION_NOTES = (
-    only('anatase', '''<p><b>Anatase</b> is Fedora underneath, as an image (bootc). It's the main edition: every change is tested on it first. It's locked and immutable: the system can't be changed, only updated in one piece.</p>
+    only('anatase', '''<p><b>Anatase</b> is Fedora underneath, as an image (bootc). <span class="ver">Archived</span> It gets no more updates: <a href="updates.html#switch">switch to Debian</a> to keep getting them. It's locked and immutable: the system can't be changed, only updated in one piece.</p>
 <ul>APPS<li>Steam: from Flathub, installed the first time the device is online.</li>
 <li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul>''')
-    + only('peppermint', '''<p><b>Peppermint</b> is Debian 13 "trixie" underneath (Peppermint OS's base), made into an image (bootc). <span class="ver">Beta Experimental</span></p>
+    + only('peppermint', '''<p><b>Debian</b>: Hearth OS on Debian 13 "trixie", made into an image (bootc). It's the main edition: every change is tested on it first.</p>
 <ul>APPS<li>It's a normal writable system: <code>sudo apt install</code> and .deb files (double-click one in Files) install anywhere and are kept across restarts. After an update, the packages you added come back by themselves.</li>
 <li>Updates still come as a whole new version, and the version before stays startable with its own packages. If something you install stops Hearth from starting, the next start leaves your changes off by itself.</li>
 <li>To lock it (the system as the image made it): <b>Settings › Updates &amp; Recovery › Unlocked system</b>, or <code>sudo hearth-unlock --lock</code>.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
@@ -171,13 +172,12 @@ An update can't half-install, and the version you had before stays on the drive 
 <p>Hearth looks and works the same on every edition. What changes is the Linux underneath it.</p>
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
-<tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The most tested edition, with the best hardware support. Locked and immutable: the system can't be changed.</td></tr>
-<tr><td><b>Peppermint</b></td><td>Debian 13</td><td>Beta Experimental</td><td>People who prefer Debian's slower, steady pace. A normal writable system: apt and .deb files install anywhere; it can be locked in Settings.</td></tr>
+<tr><td><b>Debian</b></td><td>Debian 13</td><td>Recommended</td><td>Everyone. The main edition, the one that gets updates. A normal writable system: apt and .deb files install anywhere; it can be locked in Settings.</td></tr>
+<tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Archived</td><td>No more updates (November 2026). Installs keep working on their last version. Locked and immutable: the system can't be changed.</td></tr>
 </table></div>
 <p>Both have the automatic fallback (an update that doesn't start goes back by itself) and Hearth Recovery. You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
-<div class="note"><p><b>Ubuntu and CachyOS are archived for now.</b> The focus is on making Anatase and Peppermint solid; the other
-editions come back after that. Already on one? It gets no more updates: <a href="updates.html#switch">switch to Anatase or Peppermint</a>
-and your games come with you.</p></div>
+<div class="note"><p><b>Anatase, Ubuntu and CachyOS are archived.</b> Hearth OS is Debian-based now. Already on one of them?
+It gets no more updates: <a href="updates.html#switch">switch to Debian</a> and your games come with you.</p></div>
 
 {h2('yours', 'About your edition')}
 <p class="ed" data-ed="all">Pick your edition above to see what's particular about it.</p>
@@ -195,17 +195,17 @@ and your games come with you.</p></div>
 INSTALL = f'''
 {h2('download', 'Downloads')}
 <p>Pick one. The <b>offline</b> USBs carry the whole system and install without internet. The small installer
-downloads the system while it installs, and offers every edition.</p>
+downloads the system while it installs.</p>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
-<tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (recommended)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
-<tr><td><a href="{R2}hearth-os-installer.iso">Small installer</a> (every edition)</td><td>1.6 GB</td><td>Needed</td></tr>
-<tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Peppermint, offline</a></td><td>about 4.3 GB</td><td>Not needed</td></tr>
+<tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (archived)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
+<tr><td><a href="{R2}hearth-os-installer.iso">Small installer</a></td><td>1.6 GB</td><td>Needed</td></tr>
+<tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Debian, offline USB</a> (recommended)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
 <tr><td><a href="{R2}hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example
-<a href="{R2}hearth-os-live.iso.sha256">hearth-os-live.iso.sha256</a>). On Linux:</p>
-{cmd('sha256-check', 'sha256sum hearth-os-live.iso')}
+<a href="{R2}hearth-os-peppermint.iso.sha256">hearth-os-peppermint.iso.sha256</a>). On Linux:</p>
+{cmd('sha256-check', 'sha256sum hearth-os-peppermint.iso')}
 <p>The result should match the text in the <code>.sha256</code> file.</p>
 
 {h2('usb', 'Making the USB stick')}
@@ -275,8 +275,8 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 {h2('switch', 'Switching edition')}
-<p>Move between Anatase and Peppermint without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Ubuntu or CachyOS
-(archived for now) the same button moves you to Anatase or Peppermint.</p>
+<p>Move to Hearth OS on Debian without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Anatase, Ubuntu or CachyOS
+(archived) the same button moves you to Debian.</p>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
 <li><b>Set aside:</b> the rest of your home folder goes into a folder called <code>.old-hearth-</code> plus the date, for 30 days,
@@ -286,7 +286,7 @@ so you can copy back anything you need. After 30 days it's deleted.</li>
 <div class="note warn ed" data-ed="ubuntu cachyos peppermint"><p><b>Installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
 "podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
 <h3>Switching from a terminal</h3>
-<p>The same switch as the Settings button. Change <code>peppermint</code> to <code>anatase</code> for the other edition:</p>
+<p>The same switch as the Settings button (<code>peppermint</code> is the Debian edition's name inside Hearth):</p>
 {cmd('switch-edition', 'pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition peppermint')}
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
@@ -397,7 +397,7 @@ for you. Then type <code>claude</code> in the Terminal. It keeps itself up to da
 <p><code>hearth-claude status</code>, <code>update</code> and <code>remove</code> do the rest (<code>remove-code</code> for Claude Code).
 Removing keeps your chats (they're in your Claude account) and settings.</p>
 {only('anatase', '<div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase, Hearth runs Anthropic\'s Debian build from your home folder: it should work, but Anthropic doesn\'t support it there yet. Claude Code is supported everywhere.</p></div>')}
-{only('peppermint', '<div class="note"><p>On Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
+{only('peppermint', '<div class="note"><p>On Debian you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
 
 {h2('logs', 'Sending logs')}
 <p>When something goes wrong, <b>Settings › System › Help &amp; logs › Send logs to the developer</b>. You get a short code (like
@@ -536,7 +536,7 @@ it went wrong, so send it right after the problem happens.</p>
 </ul>
 
 {h2('podman', 'Switching edition or updating fails: "podman executable not found"')}
-<p><span class="ver">Peppermint, Ubuntu, CachyOS · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span></p>
+<p><span class="ver">Debian, Ubuntu, CachyOS · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span></p>
 <p>Those images were missing a tool (podman) that switching and updating need, and updating to the fix needs it too.
 This runs the switch with podman unpacked into a temporary folder (nothing is installed; it's gone after the restart).
 Change <code>ubuntu</code> to the edition you want:</p>
@@ -594,7 +594,7 @@ factory reset says so and changes nothing.</li>
 <p><span class="ver">0.2.10 and earlier</span> <span class="ver fixed">Fixed in 0.3.0</span> Update. After updating, <b>Settings › Controls &amp; power › Power &amp; sleep › Power button</b> is followed.</p>
 
 {h2('brightness', 'Brightness doesn\'t change ("get write permission")')}
-<p><span class="ver">Peppermint, Ubuntu · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span>
+<p><span class="ver">Debian, Ubuntu · 0.3.0 and earlier</span> <span class="ver fixed">Fixed in 0.3.1</span>
 Update and restart. If you can't update yet, this gives your account permission (then restart):</p>
 {cmd('fix-brightness', 'sudo usermod -aG video $USER')}
 
@@ -649,7 +649,7 @@ Don't include passwords.</p>
     <textarea name="what" rows="5" maxlength="4000" required placeholder="What you did, what you expected, and what happened instead. Error messages word for word help a lot."></textarea></label>
   <div class="row2">
     <label>Edition
-      <select name="edition"><option value="">Not sure</option><option>Anatase</option><option>Peppermint</option><option>Ember (Windows)</option></select></label>
+      <select name="edition"><option value="">Not sure</option><option>Debian</option><option>Anatase</option><option>Ember (Windows)</option></select></label>
     <label>Hearth version <input name="version" maxlength="20" placeholder="e.g. 0.3.1 (Settings › Updates)"></label>
   </div>
   <div class="row2">
@@ -687,7 +687,7 @@ REQUESTS = f'''
     <label>What kind of request?
       <select name="type"><option>New feature</option><option>Change something</option><option>New edition</option><option>Device support</option><option>Other</option></select></label>
     <label>For which edition?
-      <select name="edition"><option value="">Every edition</option><option>Anatase</option><option>Peppermint</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
+      <select name="edition"><option value="">Every edition</option><option>Debian</option><option>Anatase</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
   </div>
   <label><span>In a few words <span class="req">(needed)</span></span>
     <input name="title" maxlength="120" required placeholder="e.g. Hearth OS on openSUSE, or a battery saver for handhelds"></label>

@@ -20,7 +20,7 @@
 <p align="center">
   <a href="https://github.com/Dragongamer9/hearth-os/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Dragongamer9/hearth-os?label=release&color=f08a3c"></a>
   <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-e8a33d">
-  <img alt="Built on Anatase" src="https://img.shields.io/badge/built%20on-Anatase%20(Fedora)-3c6df0">
+  <img alt="Built on Debian" src="https://img.shields.io/badge/built%20on-Debian%2013-a80030">
   <img alt="Also on Windows 11" src="https://img.shields.io/badge/also%20on-Windows%2011%20(Ember)-555">
 </p>
 
@@ -37,7 +37,7 @@
 | 🎮 **Game Mode** | One library for Steam, Epic, GOG, Xbox Cloud Gaming, emulators and your own games. Install, play and uninstall Epic and GOG games without their launchers. Quick Resume keeps several games paused in memory, the way SteamOS and Xbox do. |
 | 🕹️ **Hearth Input** | Play games that have no controller support: per-game controller layouts turn the controller into a keyboard and mouse, with ready-made layouts for shooters, strategy and retro games, gyro aiming and back paddles. *(Beta Experimental)* |
 | 🖥️ **Mantel** | A real desktop, still in reach of your thumbs: pinned apps, window snapping, Alt+Tab, virtual desktops, desktop icons, Bazaar for Flathub apps, clipboard history and full settings. |
-| ⚡ **Handhelds** | Built on Anatase with Handheld Daemon: every controller, gyro, power, fan and light setting inside Hearth, and Quick Access over games for power, frame rate and more. ROG Ally, Legion Go, Steam Deck and most desktops and laptops. |
+| ⚡ **Handhelds** | Built on Debian with Handheld Daemon: every controller, gyro, power, fan and light setting inside Hearth, and Quick Access over games for power, frame rate and more. ROG Ally, Legion Go, Steam Deck and most desktops and laptops. |
 | 🛋️ **Play together** | Couch Co-op splits one screen for 2–4 players, even in games without split-screen; Multi-seat gives each screen its own Game Mode. *(Beta Experimental)* |
 | 🏰 **Beacon** | [Beacon](https://github.com/Dragongamer9/beacon), the launcher for Battle for Middle-earth, Age of the Ring, LOTR: Conquest and other classics, built right into the library with its mods. |
 | 🔄 **Looks after itself** | An image-based system: the whole OS updates as one piece in the background, and a bad update is undone by picking the previous entry at start. |
@@ -51,10 +51,10 @@
 
 | Edition | Base | Status |
 |---|---|---|
-| **Hearth OS** | [Anatase](https://anatase.org) (Fedora, image-based): locked and immutable, one image for AMD, Intel and Nvidia | Main edition |
+| **Hearth OS on Debian** | Debian 13 "trixie", image-based (bootc): a normal writable system (apt and .deb files install anywhere), can be locked in Settings; one image for AMD, Intel and Nvidia | Main edition |
+| Hearth OS on Anatase | [Anatase](https://anatase.org) (Fedora, image-based): locked and immutable | Archived (no more updates) |
 | Hearth OS on Ubuntu | Ubuntu 26.04 LTS, without snaps | Archived for now |
 | Hearth OS on CachyOS | CachyOS, performance-tuned | Archived for now |
-| Hearth OS on Peppermint | Peppermint OS on Debian 13: a normal writable system (apt and .deb files install anywhere), can be locked in Settings | Beta Experimental |
 | **Ember** | Windows 11 (replaces Explorer, or runs on top of it) | Beta |
 | Hearth for Android | An app on Android 8.0+ phones, handhelds and TVs | **Archived** (on hold; the code stays in `hosts/android`) |
 
@@ -109,7 +109,7 @@ hearth-os/
 
 - **The bridge** between the interface and a host: [docs/bridge.md](docs/bridge.md)
 - **Linux app and session:** [hosts/linux/README.md](hosts/linux/README.md) · **the OS:** [os/README.md](os/README.md) · **Rust host:** [docs/RUST.md](docs/RUST.md)
-- **Editions:** [Anatase](docs/BASE-ANATASE.md) · [Peppermint](docs/BASE-PEPPERMINT.md) · archived for now: [Ubuntu](docs/BASE-UBUNTU.md), [CachyOS](docs/BASE-CACHYOS.md)
+- **Editions:** [Debian](docs/BASE-PEPPERMINT.md) · archived: [Anatase](docs/BASE-ANATASE.md), [Ubuntu](docs/BASE-UBUNTU.md), [CachyOS](docs/BASE-CACHYOS.md)
 - **Features:** [Couch Co-op](docs/COUCH-COOP.md) · [Multi-seat](docs/MULTI-SEAT.md) · [Moving games and growing Hearth](docs/MOVE-AND-GROW.md) · [Beacon](docs/BEACON.md) · [Mantel](docs/MANTEL-PARITY.md)
 - **Ember (Windows):** [docs/EMBER.md](docs/EMBER.md)
 - **Hearth for Android:** [docs/ANDROID.md](docs/ANDROID.md)

@@ -51,10 +51,10 @@ COPY --from=builder /output /
 ARG NIMBUS_VERSION=0.0.0
 # 1: Nvidia's open driver (from NVIDIA's own Debian 13 repository) in the same image as AMD/Intel; 0: leave it out.
 ARG NVIDIA=1
-# 1: Peppermint's desktop (Xfce) as an extra session on the login screen (Hearth's own session stays the default).
-ARG PEPPERMINT_DESKTOP=1
-LABEL org.opencontainers.image.title="Hearth (Peppermint edition)" \
-      org.opencontainers.image.description="Hearth: Peppermint OS / Debian 13 with a controller-first Game Mode and Desktop Mode (bootc, Beta Experimental)" \
+# 1: an Xfce desktop as an extra session on the login screen (off by default; Hearth's own session stays the default).
+ARG PEPPERMINT_DESKTOP=0
+LABEL org.opencontainers.image.title="Hearth OS (Debian edition)" \
+      org.opencontainers.image.description="Hearth OS: Debian 13 with a controller-first Game Mode and Desktop Mode (bootc)" \
       org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
       org.opencontainers.image.version="${NIMBUS_VERSION}" \
       containers.bootc=1 \

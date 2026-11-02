@@ -31,7 +31,7 @@
 <div class="wrap layout">
   <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html">Installing</a><a href="updates.html">Updates and editions</a><a href="using.html" class="cur" aria-current="page">Using Hearth</a><div class="sub"><a href="#modes">Game Mode and Desktop Mode</a><a href="#controller">Controller</a><a href="#menu">The dock and Settings</a><a href="#keyboard">The on-screen keyboard</a><a href="#power">The power button</a><a href="#display">Display and performance</a><a href="#profiles">Profiles and stores</a><a href="#apps">Hearth's own apps</a><a href="#claude">Installing Claude</a><a href="#logs">Sending logs</a></div><a href="steam.html">Steam Game Mode</a><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 0.6.63</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Anatase (Fedora)</option><option value="peppermint">Peppermint (Debian)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 0.6.63</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="peppermint">Debian</option><option value="anatase">Anatase (Fedora, archived)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Using Hearth</h1>
     <p class="lead">Game Mode, the desktop, the controller and keyboard, the power button, and sending logs.</p>
 
@@ -136,7 +136,7 @@ for you. Then type <code>claude</code> in the Terminal. It keeps itself up to da
 <p><code>hearth-claude status</code>, <code>update</code> and <code>remove</code> do the rest (<code>remove-code</code> for Claude Code).
 Removing keeps your chats (they're in your Claude account) and settings.</p>
 <div class="ed" data-ed="anatase"><div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase, Hearth runs Anthropic's Debian build from your home folder: it should work, but Anthropic doesn't support it there yet. Claude Code is supported everywhere.</p></div></div>
-<div class="ed" data-ed="peppermint"><div class="note"><p>On Peppermint you can also install <code>claude-desktop</code> with apt from Anthropic's repository, following Anthropic's instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div></div>
+<div class="ed" data-ed="peppermint"><div class="note"><p>On Debian you can also install <code>claude-desktop</code> with apt from Anthropic's repository, following Anthropic's instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div></div>
 
 </section><section><h2 id="logs">Sending logs</h2>
 <p>When something goes wrong, <b>Settings › System › Help &amp; logs › Send logs to the developer</b>. You get a short code (like

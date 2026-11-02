@@ -1,5 +1,9 @@
 # Hearth OS on Anatase
 
+**Archived (November 2026).** Hearth OS is Debian-based now ([Hearth OS on Debian](BASE-PEPPERMINT.md)). Anatase gets no
+more updates; its build workflows are disabled. Installs keep working on their last version and can switch to
+Debian from Settings › Updates. What follows is kept for reference.
+
 **Status: testing.** The image is built and checked by CI. It hasn't been booted on real hardware yet. It's
 published as `ghcr.io/dragongamer9/hearth-os:testing` only. `:latest` is promoted by hand from a `:testing` build
 that has been tried on devices, and it's what the Bazzite-based Hearth OS offers as the recommended move.

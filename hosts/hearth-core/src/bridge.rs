@@ -884,7 +884,7 @@ impl Bridge {
             // Settings › Updates: the new Hearth OS (on Anatase) as a clean install that keeps your games, from the
             // Bazzite-based one; and on the new one, Settings › System: the files put aside (~/.old-hearth-<date>).
             "newos.status" => self.later(|| Ok(crate::newos::status())),
-            "newos.move" => crate::newos::start(self.emit.clone(), a["edition"].as_str().unwrap_or("anatase"), a["testing"] == true),
+            "newos.move" => crate::newos::start(self.emit.clone(), a["edition"].as_str().unwrap_or("peppermint"), a["testing"] == true),
             "oldfiles.status" => Ok(crate::newos::old_files_status()),
             "oldfiles.delete" => { let name = req("name")?; self.later(move || crate::newos::delete(&name)) }
             "oldfiles.restore" => crate::newos::restore(&req("name")?, &req("item")?),
