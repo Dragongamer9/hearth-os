@@ -6,6 +6,9 @@
 //   hearth-maps --search "Berlin"  open and search
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_maps::{geo, locate, places, route, search, services::{self, Services}, tiles};
 use serde_json::{json, Value};
 use std::sync::{Mutex, OnceLock};
@@ -104,7 +107,7 @@ fn main() {
     std::thread::spawn(|| { let _ = svc(); });
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .manage(Launch(Mutex::new(launch)))
         .invoke_handler(tauri::generate_handler![config, tile, find, whats_here, directions, directions_in_browser, open_web, where_am_i, save_place, forget_place, set_view, clear_cache])
         .setup(move |app| {
@@ -113,7 +116,7 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(520.0, 400.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

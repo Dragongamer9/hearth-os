@@ -4,6 +4,9 @@
 // (io.github.dragongamer9.hearth.<app>), so the taskbar shows them as four apps with their own icons.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_time::{calendar, clock, notes, paths, ring, service, store, weather};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -338,7 +341,7 @@ fn main() {
 
     let mut ctx = tauri::generate_context!();
     ctx.config_mut().identifier = identifier;
-    let built = tauri::Builder::default()
+    let built = tauri::Builder::default().plugin(apptheme::plugin())
         .manage(Start { app, ring: ring_list, open })
         .invoke_handler(tauri::generate_handler![
             init, quit, open_app, open_folder,
@@ -354,7 +357,7 @@ fn main() {
                 .inner_size(size.0, size.1)
                 .min_inner_size(400.0, 360.0)
                 .fullscreen(fullscreen || ringing)
-                .background_color(tauri::window::Color(15, 11, 9, 255));
+                .background_color(apptheme::bg());
             if ringing { b = b.always_on_top(true).decorations(false); }
             let w = b.build()?;
             let _ = w.set_focus();

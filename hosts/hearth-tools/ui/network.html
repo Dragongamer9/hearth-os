@@ -11,7 +11,7 @@
 .gauge .v { font-size:2.4em; font-weight:750; font-variant-numeric:tabular-nums; line-height:1.1; }
 .gauge .u { color:var(--muted); }
 .gauge.live .v { color:var(--ember); }
-.out { font-family:var(--mono); font-size:.82em; white-space:pre-wrap; background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:.7em .9em; min-height:8em; user-select:text; -webkit-user-select:text; }
+.out { font-family:var(--mono); font-size:.82em; white-space:pre-wrap; background:var(--bg2); border:1px solid var(--line); border-radius:min(12px, var(--corner, 12px)); padding:.7em .9em; min-height:8em; user-select:text; -webkit-user-select:text; }
 .sig { display:inline-flex; gap:2px; align-items:flex-end; height:1em; vertical-align:middle; }
 .sig i { width:.28em; background:var(--panel3); border-radius:2px; }
 .sig i.on { background:var(--good); }

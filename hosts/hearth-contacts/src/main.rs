@@ -7,6 +7,9 @@
 //   hearth-contacts --list          every contact as JSON, without a window
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_contacts::{carddav, secrets, store::{self, Account, Store}, vcard::Contact};
 use serde_json::{json, Value};
 use std::sync::Mutex;
@@ -198,7 +201,7 @@ fn main() {
     let file = args.iter().find(|a| !a.starts_with("--") && a.as_str() != "").map(|a| a.strip_prefix("file://").map(|p| p.replace("%20", " ")).unwrap_or_else(|| a.clone()));
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_dialog::init())
         .manage(Launch(Mutex::new(file)))
         .invoke_handler(tauri::generate_handler![state, save, delete, move_to, preview_file, import_file, export_file, discover, add_account, remove_account, set_password, sync, launch_file, read_image, open_uri, open_map])
@@ -208,7 +211,7 @@ fn main() {
                 .inner_size(1180.0, 760.0)
                 .min_inner_size(560.0, 420.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             let _ = app.get_webview_window("main");
             Ok(())

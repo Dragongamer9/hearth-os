@@ -3,6 +3,9 @@
 // picker, and reaches the clipboard and the screen. `hearth-paint FILE` opens a picture.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use base64::Engine;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -65,7 +68,7 @@ fn main() {
     });
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .manage(Startup { file })
         .invoke_handler(tauri::generate_handler![init, open_image, save_image, browse, paste_image, copy_image, screenshot])
         .setup(move |app| {
@@ -74,7 +77,7 @@ fn main() {
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

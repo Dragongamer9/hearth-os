@@ -4,6 +4,9 @@
 //   hearth-share --serve SECONDS [--port P] [--no-sound]   share without a window for a while (prints the links)
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_share::{Options, Sharing};
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
@@ -115,7 +118,7 @@ fn main() {
     let fullscreen = args.iter().any(|a| a == "--fullscreen");
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .manage(App { share: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![status, start, stop, remote_status, remote_on, remote_pair, remote_unpair])
         .setup(move |app| {
@@ -124,7 +127,7 @@ fn main() {
                 .inner_size(1080.0, 720.0)
                 .min_inner_size(560.0, 440.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

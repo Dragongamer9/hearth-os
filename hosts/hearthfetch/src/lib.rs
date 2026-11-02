@@ -105,6 +105,23 @@ pub fn to_json(i: &Info) -> Value {
     Value::Object(m)
 }
 
+/// The accent of the look chosen in Hearth's Settings › Appearance, from ~/.config/hearth/theme.json (written by
+/// hearth-theme for Hearth's apps). $HEARTHFETCH_NO_THEME=1 leaves it out (tests).
+pub fn desktop_accent() -> Option<(u8, u8, u8)> {
+    if std::env::var_os("HEARTHFETCH_NO_THEME").is_some() {
+        return None;
+    }
+    let conf = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))?;
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(conf.join("hearth").join("theme.json")).ok()?).ok()?;
+    let h = v.get("accent")?.as_str()?.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    let n = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok();
+    Some((n(0)?, n(2)?, n(4)?))
+}
+
 /// The whole picture: the art on the left, the lines on the right, then the colour blocks.
 pub fn render(i: &Info, mode: Colors, with_logo: bool) -> String {
     let (accent, bold, reset) = match mode {
@@ -112,6 +129,13 @@ pub fn render(i: &Info, mode: Colors, with_logo: bool) -> String {
         Colors::X256 => ("\x1b[1;38;5;209m", "\x1b[1;38;5;221m", "\x1b[0m"),
         Colors::Plain => ("", "", ""),
     };
+    // The labels in the desktop's accent (Settings › Appearance: ~/.config/hearth/theme.json), the flame otherwise.
+    let themed = desktop_accent().map(|(r, g, b)| match mode {
+        Colors::True => format!("\x1b[1;38;2;{};{};{}m", r, g, b),
+        Colors::X256 => format!("\x1b[1;38;5;{}m", logo::x256(r, g, b)),
+        Colors::Plain => String::new(),
+    });
+    let accent = themed.as_deref().unwrap_or(accent);
     let mut right: Vec<String> = vec![];
     let user = i.user.clone().unwrap_or_else(|| "user".into());
     let host = i.host.clone().unwrap_or_else(|| "hearth".into());

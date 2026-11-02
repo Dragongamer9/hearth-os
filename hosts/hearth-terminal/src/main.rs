@@ -3,6 +3,9 @@
 //! pseudo-terminal (pty.rs), streamed to the page over a Tauri channel.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_terminal::{cli, keyboard, pty, settings, shells};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -189,7 +192,7 @@ fn main() {
     #[cfg(not(target_os = "linux"))]
     let our_env: Vec<String> = vec![];
 
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Terms::default())

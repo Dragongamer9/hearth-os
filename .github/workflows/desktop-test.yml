@@ -37,6 +37,10 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # The looks (Settings › Appearance) for labwc, Qt/KDE, GTK and Hearth's own apps (theme.css / theme.json).
+      - name: Looks and apps theme tests
+        run: python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+
       - name: Start Desktop Mode
         shell: bash
         run: |
@@ -431,6 +435,9 @@ jobs:
           variant steam-violet steam dark "#9b7bff"
           variant steam-moss steam dark "#5ba32b"
           variant steam-light steam light ""
+          # A KDE app (KCalc) in the light look: kdeglobals' [UiSettings] ColorScheme=Hearth (theme/hearth-theme).
+          sh hosts/linux/desktop/theme/apply.sh; cp "$HOME/.config/kdeglobals" $o/kdeglobals-light.txt 2>/dev/null || true
+          command -v kcalc >/dev/null && { QT_QPA_PLATFORMTHEME=qt6ct kcalc >/dev/null 2>&1 & sleep 8; grim $o/variant-steam-light-kde-app.png || true; pkill -x kcalc || true; sleep 1; }
           variant hearth-light hearth light ""
           variant hearth-steamblue hearth dark "#1a9fff"
           variant hearth-default hearth dark ""

@@ -8,7 +8,7 @@
 <style>
 .places { display:flex; gap:.6em; overflow-x:auto; padding:4px 4px .6em; scrollbar-width:thin; }
 .place { min-width:13em; text-align:left; padding:.6em .85em; border-radius:var(--r); background:var(--panel); border:1px solid var(--line); display:grid; gap:.25em; }
-.place.on { border-color:var(--ember); background:#2a1b12; }
+.place.on { border-color:var(--ember); background:color-mix(in srgb, var(--ember) 8%, var(--bg2)); }
 .place .n { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .place .m { color:var(--muted); font-size:.8em; }
 .explore { display:grid; grid-template-columns:minmax(18em, 1fr) minmax(20em, 1.15fr); grid-template-rows:minmax(0, 1fr); gap:var(--gut); min-height:0; flex:1; }
@@ -23,21 +23,21 @@
 .center span { color:var(--muted); font-size:.85em; overflow-wrap:anywhere; }
 .side { display:flex; flex-direction:column; min-height:0; gap:.5em; }
 .crumbs { display:flex; gap:.25em; flex-wrap:wrap; align-items:center; font-size:.88em; }
-.crumbs button { background:none; border:0; color:var(--muted); padding:.2em .35em; border-radius:8px; }
+.crumbs button { background:none; border:0; color:var(--muted); padding:.2em .35em; border-radius:min(8px, var(--corner, 8px)); }
 .crumbs button:last-child { color:var(--text); font-weight:600; }
 .items { display:flex; flex-direction:column; gap:.3em; }
 .item { display:grid; grid-template-columns:1fr auto auto; gap:.4em; align-items:center; }
-.item .name { display:grid; grid-template-columns:.8em 1fr auto; gap:.2em .7em; align-items:center; text-align:left; padding:.45em .7em; border-radius:11px; background:var(--panel); border:1px solid var(--line); min-width:0; }
+.item .name { display:grid; grid-template-columns:.8em 1fr auto; gap:.2em .7em; align-items:center; text-align:left; padding:.45em .7em; border-radius:min(11px, var(--corner, 11px)); background:var(--panel); border:1px solid var(--line); min-width:0; }
 .item .sw { width:.8em; height:.8em; border-radius:4px; grid-row:span 2; }
 .item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .item .s { font-variant-numeric:tabular-nums; text-align:right; grid-row:span 2; }
-.item .p { grid-column:2; height:.3em; border-radius:9px; background:var(--panel3); overflow:hidden; }
+.item .p { grid-column:2; height:.3em; border-radius:min(9px, var(--corner, 9px)); background:var(--panel3); overflow:hidden; }
 .item .p i { display:block; height:100%; }
 .item.sel .name { border-color:var(--ember); }
 .scanning { flex:1; display:grid; place-items:center; text-align:center; }
 .scanning .big { font-size:2em; font-weight:700; }
 .found { display:flex; flex-direction:column; gap:.35em; }
-.frow { display:grid; grid-template-columns:1fr auto auto auto; gap:.5em; align-items:center; padding:.45em .7em; border-radius:11px; background:var(--panel); border:1px solid var(--line); }
+.frow { display:grid; grid-template-columns:1fr auto auto auto; gap:.5em; align-items:center; padding:.45em .7em; border-radius:min(11px, var(--corner, 11px)); background:var(--panel); border:1px solid var(--line); }
 .frow .t { min-width:0; } .frow .t div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .frow .t small { color:var(--muted); display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width: 860px) { .explore { grid-template-columns:1fr; overflow:auto; } .chart { min-height:18em; } }
 </style>
@@ -47,6 +47,7 @@
 <script>
 'use strict';
 const { $, $$, esc, human } = H;
+const tok = (n, d) => (getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d);   // a colour of the look
 const COLORS = ['#ff8a3d', '#66c0f4', '#ffd166', '#6fd08c', '#b07cff', '#ff6f91', '#4fd1c5', '#e0a96d', '#9a8fb8', '#f6ad55'];
 const S = { places: [], place: null, root: null, path: null, view: null, list: null, scanning: false, job: null, progress: null, hl: null, tab: 'explore', quick: {} };
 
@@ -59,7 +60,7 @@ H.S.refresh = () => S.root && !S.scanning && scan(S.root);
 H.S.back = () => { if (S.tab === 'explore' && S.path && S.path !== S.root) { up(); return true; } return false; };
 H.S.alt = () => { const el = document.activeElement; const p = el && el.closest('[data-path]')?.dataset.path; if (p) trash([p]); };
 
-function color(i, depth) { const c = COLORS[i % COLORS.length]; return depth <= 1 ? c : `color-mix(in srgb, ${c} ${Math.max(35, 100 - depth * 18)}%, #1c1512)`; }
+function color(i, depth) { const c = COLORS[i % COLORS.length]; return depth <= 1 ? c : `color-mix(in srgb, ${c} ${Math.max(35, 100 - depth * 18)}%, ${tok('--panel', '#1c1512')})`; }
 const pct = (a, b) => b ? Math.round(a / b * 1000) / 10 : 0;
 
 async function loadPlaces() {
@@ -140,7 +141,7 @@ function drawChart() {
       const span = node.size ? (ch.size / node.size) * (a1 - a0) : 0;
       const idx = depth === 1 ? i : ci;
       if (span > 0.004) {
-        const fill = ch.kind === 'small' ? '#3b2e26' : ch.kind === 'mount' ? '#2b211b' : ch.kind === 'file' ? `color-mix(in srgb, ${COLORS[idx % COLORS.length]} 55%, #f4ece3)` : color(idx, depth);
+        const fill = ch.kind === 'small' ? tok('--line', '#3b2e26') : ch.kind === 'mount' ? tok('--panel2', '#2b211b') : ch.kind === 'file' ? `color-mix(in srgb, ${COLORS[idx % COLORS.length]} 55%, ${tok('--text', '#f4ece3')})` : color(idx, depth);
         paths.push(`<path d="${arc(c, c, hole + (depth - 1) * ring, hole + depth * ring - 1, a, a + span)}" fill="${fill}" data-arc="${esc(ch.path || '')}" data-kind="${ch.kind}" data-name="${esc(ch.name)}" data-size="${ch.size}"></path>`);
         if (ch.children && depth < 3) walk(ch, a, a + span, depth + 1, idx);
       }
@@ -184,7 +185,7 @@ function drawList() {
   const idxOf = new Map((S.view.children || []).map((c, i) => [c.path, i]));
   $('#items').innerHTML = top.length ? top.map(ch => {
     const i = idxOf.has(ch.path) ? idxOf.get(ch.path) : 0;
-    const sw = ch.kind === 'small' ? '#3b2e26' : ch.kind === 'mount' ? 'transparent;border:1px dashed var(--faint)' : ch.kind === 'file' ? `color-mix(in srgb, ${COLORS[i % COLORS.length]} 55%, #f4ece3)` : COLORS[i % COLORS.length];
+    const sw = ch.kind === 'small' ? 'var(--line)' : ch.kind === 'mount' ? 'transparent;border:1px dashed var(--faint)' : ch.kind === 'file' ? `color-mix(in srgb, ${COLORS[i % COLORS.length]} 55%, var(--text))` : COLORS[i % COLORS.length];
     const what = ch.kind === 'dir' ? `${(ch.files || 0).toLocaleString()} files` : ch.kind === 'mount' ? 'Another drive (not counted here)' : ch.kind === 'denied' ? 'Not allowed to look inside' : ch.kind === 'small' ? 'Small files, together' : 'File';
     const acts = ch.path && ch.kind !== 'mount' && ch.kind !== 'small' ? `<button class="btn small f" data-open="${esc(ch.path)}">Open</button><button class="btn small danger f" data-trash="${esc(ch.path)}">Trash</button>` : '<span></span><span></span>';
     return `<div class="item" data-path="${esc(ch.path || '')}"><button class="name f" data-go="${esc(ch.kind === 'dir' ? ch.path : '')}" title="${esc(ch.path || ch.name)}">

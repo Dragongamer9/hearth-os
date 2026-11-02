@@ -5,6 +5,9 @@
 //   hearth-controller-lab --dump [ms]   what it sees after [ms] (default 1000), as JSON, without a window
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use serde_json::{json, Value};
 
 #[cfg(target_os = "linux")]
@@ -153,7 +156,7 @@ fn main() {
     let fullscreen = args.iter().any(|a| a == "--fullscreen");
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .invoke_handler(tauri::generate_handler![state, rumble, set_axis, reset, layouts, apply_deadzone, info])
         .setup(move |app| {
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("controller-lab.html".into()))
@@ -161,7 +164,7 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(640.0, 480.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

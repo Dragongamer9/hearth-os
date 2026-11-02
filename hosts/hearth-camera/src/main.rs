@@ -7,6 +7,9 @@
 //   hearth-camera --video SECONDS [--device D] [--no-sound]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Hearth's look (Settings › Appearance), shared by Hearth's apps.
+#[path = "../../hearth-apptheme/apptheme.rs"]
+mod apptheme;
 use hearth_camera::{Camera, Engine};
 use hearth_media::http::{self, Request};
 use serde_json::{json, Value};
@@ -172,7 +175,7 @@ fn main() {
     let engine = Arc::new(Mutex::new(Engine::new()));
     let token = hearth_media::tools::token(12);
     let port = serve(engine.clone(), token.clone()).expect("Camera couldn't start its picture server");
-    tauri::Builder::default()
+    tauri::Builder::default().plugin(apptheme::plugin())
         .manage(App { engine, cams: Mutex::new(vec![]), port, token })
         .invoke_handler(tauri::generate_handler![init, select, mirror, status, photo, record, files, open, show, delete])
         .setup(move |app| {
@@ -181,7 +184,7 @@ fn main() {
                 .inner_size(1180.0, 760.0)
                 .min_inner_size(600.0, 440.0)
                 .fullscreen(fullscreen)
-                .background_color(tauri::window::Color(15, 11, 9, 255))
+                .background_color(apptheme::bg())
                 .build()?;
             Ok(())
         })

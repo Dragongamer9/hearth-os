@@ -17,7 +17,7 @@
   --bg: #0f0b09; --chrome: rgba(23, 17, 14, 1); --panel: #1c1512; --panel2: #261d18; --panel3: #33271f;
   --line: #3b2e26; --text: #f4ece3; --muted: #a69484; --accent: #ff8a3d; --accentInk: #2a1206; --danger: #ff5d5d;
   --ease: cubic-bezier(.2, .8, .2, 1);
-  font-family: "Segoe UI Variable Text", "Segoe UI", Inter, "Noto Sans", Cantarell, system-ui, sans-serif;
+  font-family: var(--font, "Segoe UI Variable Text", "Segoe UI", Inter, "Noto Sans", Cantarell, system-ui, sans-serif);
   color-scheme: dark;
 }
 :root.light { color-scheme: light; }
@@ -37,7 +37,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* ---------- top bar: tabs and buttons ---------- */
 #bar { flex: none; height: 52px; display: flex; align-items: center; gap: 4px; padding: 0 6px; background: var(--chrome); border-bottom: 1px solid var(--line); }
 #bar .sp { flex: 1; min-width: 8px; }
-.ibtn { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); flex: none; transition: background .14s, color .14s; }
+.ibtn { width: 44px; height: 44px; border-radius: min(10px, var(--corner, 10px)); display: grid; place-items: center; color: var(--muted); flex: none; transition: background .14s, color .14s; }
 .ibtn.narrow { width: 30px; }
 .ibtn:hover, .ibtn:focus-visible, .ibtn.kfocus { color: var(--text); background: var(--panel2); }
 .ibtn.on { color: var(--accent); }
@@ -45,19 +45,19 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 #tabs { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; flex: 0 1 auto; }
 #tabs::-webkit-scrollbar { display: none; }
-.tab { height: 40px; min-width: 120px; max-width: 230px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 14px; border-radius: 10px;
+.tab { height: 40px; min-width: 120px; max-width: 230px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 14px; border-radius: min(10px, var(--corner, 10px));
   color: var(--muted); background: transparent; flex: 0 1 auto; transition: background .14s, color .14s; }
 .tab:hover { background: var(--panel); }
 .tab.active { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
 .tab .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; text-align: left; }
-.tab .tx { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.tab .tx { width: 32px; height: 32px; border-radius: min(8px, var(--corner, 8px)); display: grid; place-items: center; color: var(--muted); }
 .tab .tx svg { width: 16px; height: 16px; }
 .tab .tx:hover { background: var(--panel3); color: var(--text); }
 .tab.ended .tt { font-style: italic; }
 
 /* ---------- find ---------- */
 #findbar { flex: none; display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--chrome); border-bottom: 1px solid var(--line); }
-#findInput { flex: 1; max-width: 420px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+#findInput { flex: 1; max-width: 420px; height: 40px; border-radius: min(10px, var(--corner, 10px)); border: 1px solid var(--line); background: var(--panel); color: var(--text);
   font: inherit; font-size: 15px; padding: 0 12px; outline: none; user-select: text; -webkit-user-select: text; }
 #findInput:focus { border-color: var(--accent); }
 #findCount { color: var(--muted); font-size: 13px; min-width: 70px; padding: 0 6px; }
@@ -72,20 +72,20 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .pane .xterm { height: 100%; }
 .pane .xterm-viewport { scrollbar-width: thin; scrollbar-color: var(--panel3) transparent; background: transparent !important; }
 .pane .xterm-viewport::-webkit-scrollbar { width: 10px; }
-.pane .xterm-viewport::-webkit-scrollbar-thumb { background: var(--panel3); border-radius: 5px; }
+.pane .xterm-viewport::-webkit-scrollbar-thumb { background: var(--panel3); border-radius: min(5px, var(--corner, 5px)); }
 
 /* ---------- quick keys (touch and controller) ---------- */
 #quick { flex: none; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: var(--chrome); border-top: 1px solid var(--line); scrollbar-width: none; }
-#quick button { min-width: 56px; height: 48px; padding: 0 12px; border-radius: 10px; background: var(--panel2); color: var(--text);
+#quick button { min-width: 56px; height: 48px; padding: 0 12px; border-radius: min(10px, var(--corner, 10px)); background: var(--panel2); color: var(--text);
   font-family: "JetBrains Mono", monospace; font-size: 16px; flex: none; }
 #quick button:active { background: var(--panel3); }
 #quick button.latched { background: var(--accent); color: var(--accentInk); }
 
 /* ---------- menus ---------- */
-#menu { position: fixed; z-index: 30; min-width: 220px; padding: 6px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line);
+#menu { position: fixed; z-index: 30; min-width: 220px; padding: 6px; border-radius: min(14px, var(--corner, 14px)); background: var(--panel); border: 1px solid var(--line);
   box-shadow: 0 14px 40px rgba(0, 0, 0, .45); }
 #menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; min-height: 44px; padding: 0 14px;
-  border-radius: 9px; text-align: left; font-size: 14.5px; }
+  border-radius: min(9px, var(--corner, 9px)); text-align: left; font-size: 14.5px; }
 #menu button:hover, #menu button:focus-visible, #menu button.kfocus { background: var(--panel3); }
 #menu button[disabled] { color: var(--muted); opacity: .55; cursor: default; }
 #menu button .k { color: var(--muted); font-size: 12.5px; }
@@ -101,12 +101,12 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .sbody section { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .sbody h2 { font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
 .stepper { display: flex; align-items: center; gap: 10px; }
-.stepper button { width: 52px; height: 48px; border-radius: 10px; background: var(--panel2); font-size: 22px; }
+.stepper button { width: 52px; height: 48px; border-radius: min(10px, var(--corner, 10px)); background: var(--panel2); font-size: 22px; }
 .stepper output { min-width: 70px; text-align: center; font-size: 17px; font-variant-numeric: tabular-nums; }
 .choices { display: flex; flex-wrap: wrap; gap: 8px; }
 .choices + .choices { margin-top: 8px; }
 .choices.column { flex-direction: column; align-items: stretch; }
-.choices button { min-height: 48px; padding: 0 16px; border-radius: 10px; background: var(--panel2); text-align: left; font-size: 15px; }
+.choices button { min-height: 48px; padding: 0 16px; border-radius: min(10px, var(--corner, 10px)); background: var(--panel2); text-align: left; font-size: 15px; }
 .choices button.sel { background: var(--accent); color: var(--accentInk); font-weight: 600; }
 .hint { color: var(--muted); font-size: 13px; margin-top: 8px; line-height: 1.4; }
 .about dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13.5px; }
@@ -115,9 +115,9 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* ---------- drop and toast ---------- */
 #drop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(0, 0, 0, .35); pointer-events: none; }
-#drop div { padding: 18px 26px; border-radius: 14px; border: 2px dashed var(--accent); background: var(--panel); font-size: 16px; }
+#drop div { padding: 18px 26px; border-radius: min(14px, var(--corner, 14px)); border: 2px dashed var(--accent); background: var(--panel); font-size: 16px; }
 #toast { position: fixed; z-index: 50; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
-  padding: 12px 20px; border-radius: 12px; background: var(--panel3); color: var(--text); font-size: 14.5px; box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+  padding: 12px 20px; border-radius: min(12px, var(--corner, 12px)); background: var(--panel3); color: var(--text); font-size: 14.5px; box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
   transition: opacity .2s, transform .2s var(--ease); max-width: calc(100vw - 40px); }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 

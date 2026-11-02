@@ -135,6 +135,64 @@ function styles() {
   }
 }
 
+// ------------------------------------------------------------------ the desktop's look
+// The look chosen in Hearth's Settings › Appearance (Steam-style or Hearth, dark or light, the accent):
+// ~/.config/hearth/theme.json, written by hearth-theme for all of Hearth's apps. Its colours replace theme.css's
+// (Firefox's window and the start page), and a change reaches open windows within a few seconds. Without the file
+// (Ember on Windows, an older Hearth OS) theme.css's own colours stay.
+const THEME_KEYS = { bg: "bg", bg2: "bg2", panel: "panel", panel2: "panel2", panel3: "panel3", line: "line", text: "text", muted: "muted", accent: "accent", ink: "ink" };
+let themeUri = null, themeStamp = -1;
+function themePath() {
+  try {
+    const conf = env("XDG_CONFIG_HOME") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, ".config");
+    return PathUtils.join(conf, "hearth", "theme.json");
+  } catch (e) { return ""; }
+}
+function themeCss(t) {
+  const c = (t && t.colors) || {}, ok = v => /^#[0-9a-fA-F]{6}$/.test(v || "");
+  if (!ok(c.bg)) return "";
+  const vars = pre => Object.entries(THEME_KEYS).filter(([, k]) => ok(c[k])).map(([n, k]) => `--${pre}${n}: ${c[k]} !important;`).join(" ");
+  const scheme = t.mode === "light" ? "light" : "dark";
+  const font = typeof t.font === "string" && !/[;{}<]/.test(t.font) ? t.font : "";
+  return `@-moz-document url("${BROWSER_DOC}") { :root { ${vars("hearth-")} } }
+    @-moz-document url("${START}") { :root { ${vars("")} color-scheme: ${scheme} !important; ${font ? `font-family: ${font} !important;` : ""} } }`;
+}
+function applyLook(t) {
+  const sss = Cc["@mozilla.org/content/style-sheet-service;1"].getService(Ci.nsIStyleSheetService);
+  if (themeUri && sss.sheetRegistered(themeUri, sss.USER_SHEET)) sss.unregisterSheet(themeUri, sss.USER_SHEET);
+  themeUri = null;
+  const css = themeCss(t);
+  if (!css) return;
+  themeUri = Services.io.newURI("data:text/css;charset=utf-8," + encodeURIComponent(css));
+  sss.loadAndRegisterSheet(themeUri, sss.USER_SHEET);
+  // Firefox's own parts (menus, dialogs) and what pages are told (prefers-color-scheme) follow dark / light.
+  const d = Services.prefs.getDefaultBranch("");
+  const light = t.mode === "light";
+  d.setIntPref("browser.theme.toolbar-theme", light ? 1 : 0);
+  d.setIntPref("browser.theme.content-theme", light ? 1 : 0);
+  d.setIntPref("layout.css.prefers-color-scheme.content-override", light ? 1 : 0);
+}
+async function followLook() {
+  const path = themePath();
+  if (!path) return;
+  try {
+    const st = await IOUtils.stat(path);
+    if (st.lastModified !== themeStamp) {
+      themeStamp = st.lastModified;
+      applyLook(await IOUtils.readJSON(path));
+    }
+  } catch (e) {
+    if (themeStamp !== 0) { themeStamp = 0; try { applyLook(null); } catch (_) {} }
+  }
+}
+function look() {
+  followLook();
+  try {
+    const { setInterval } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
+    setInterval(followLook, 3000);   // a stat of one small file
+  } catch (e) { report("look", e); }
+}
+
 // ------------------------------------------------------------------ the D-pad in web pages (Game Mode)
 // spatial-child.sys.mjs, as window actors in each page's process: arrows move the focus between links, buttons and
 // fields (before the page sees them); Esc goes back when the page didn't use it (after the page's own handlers).
@@ -439,6 +497,7 @@ export function start() {
   modePrefs();
   try { Services.prefs.setBoolPref("hearth.osk.open", false); } catch (e) {}
   styles();
+  look();
   spatial();
   Services.obs.addObserver(win => setUpWindow(win), "browser-delayed-startup-finished");
   Services.prefs.setIntPref("hearth.started", Math.floor(Date.now() / 1000));
