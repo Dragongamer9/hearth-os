@@ -83,6 +83,20 @@ class HearthTheme(unittest.TestCase):
             _, out = run_theme(d, {'look': '_comment', 'mode': 'purple', 'accent': 'red'})
             self.assertEqual((out / 'gtk4.css').read_text(), (THEME / 'gtk' / 'gtk4.css').read_text())
 
+    def test_kde_apps_get_it_through_kdeglobals_unless_its_yours(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_theme(d, {'look': 'steam', 'mode': 'dark', 'accent': ''})
+            kg = pathlib.Path(d, '.config', 'kdeglobals')
+            self.assertIn('ColorScheme=HearthLive', kg.read_text())
+            self.assertIn('DecorationFocus=26,159,255', kg.read_text())
+            kg.write_text('[General]\nColorScheme=Mine\n')
+            run_theme(d, {'look': 'steam', 'mode': 'light', 'accent': ''})
+            self.assertEqual(kg.read_text(), '[General]\nColorScheme=Mine\n')
+
+    def test_icon_data_matches_the_icons(self):
+        r = subprocess.run([sys.executable, str(ROOT / 'tools' / 'make-icon-data.py'), '--check'])
+        self.assertEqual(r.returncode, 0, 'shell/icon-data.js is out of date: run tools/make-icon-data.py')
+
     def test_labwc_folder_gets_the_look(self):
         with tempfile.TemporaryDirectory() as d:
             run_theme(d, {'look': 'steam', 'mode': 'dark', 'accent': ''})

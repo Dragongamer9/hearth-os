@@ -13,7 +13,7 @@ Hearth's own colour files (labwc/themerc-override, theme/hearth-qt.conf, theme/g
 are written for the Hearth dark look. Every other look is made from them: each colour is matched to the nearest
 Hearth dark token (bg, panel, text, ember...) and becomes the chosen look's token with the same small offset, so
 shades in between keep their place. Written to ~/.config/nimbus/theme/ (and the KDE scheme to
-~/.local/share/color-schemes/HearthLive.colors). When labwc's part changes, Desktop Mode's labwc folder is
+~/.local/share/color-schemes/HearthLive.colors and, while it's Hearth's, ~/.config/kdeglobals). When labwc's part changes, Desktop Mode's labwc folder is
 refreshed (hearth-system labwc-config) and labwc reloads.
 """
 import json
@@ -31,6 +31,7 @@ DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
 OUT = os.path.join(CONF, 'nimbus', 'theme')
 TOKENS = ('bg', 'bg2', 'panel', 'panel2', 'panel3', 'line', 'text', 'muted', 'danger', 'ember', 'flame', 'ink')
 KEEP = {'#ffffff', '#000000', '#8fd18a', '#7fd18b', '#ffd166'}   # white, black, the greens and warning yellow stay
+KDE_MARK = '# Written by Hearth (Settings > Appearance); delete this line to keep your own settings.'
 GNOME_ACCENTS = {'blue': '#3584e4', 'teal': '#2190a4', 'green': '#3a944a', 'yellow': '#c88800', 'orange': '#ed5b00',
                  'red': '#e62d42', 'pink': '#d56199', 'purple': '#9141ac', 'slate': '#6f8396'}
 
@@ -178,8 +179,15 @@ def main():
     # KDE colour scheme (Plasma, KDE apps that read kdeglobals): HearthLive.
     kde = m.text(read(os.path.join(HERE, 'Hearth.colors')), 'kde')
     kde = re.sub(r'(?m)^Name=.*$', 'Name=Hearth Live', kde)
+    kde = re.sub(r'(?m)^ColorScheme=.*$', 'ColorScheme=HearthLive', kde)
     write(os.path.join(OUT, 'Hearth.colors'), kde)
     write(os.path.join(DATA, 'color-schemes', 'HearthLive.colors'), kde)
+    # KDE apps (Hearth's file manager built from Dolphin, KCalc...) take their colours from kdeglobals, not from qt6ct's
+    # palette: the same colours there, while kdeglobals is missing or still carries Hearth's mark (yours is kept).
+    kg = os.path.join(CONF, 'kdeglobals')
+    cur = read(kg)
+    if not cur or cur.startswith(KDE_MARK):
+        write(kg, KDE_MARK + '\n' + re.sub(r'(?m)^#.*\n', '', kde))
     if labwc_changed:
         rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
         system = os.path.join(DESKTOP, 'shell', 'hearth-system')
