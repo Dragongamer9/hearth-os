@@ -128,6 +128,9 @@ jobs:
           echo "XDG_DATA_DIRS=$XDG_DATA_DIRS"
           case ":$XDG_DATA_DIRS:" in *":$UF:"*) ;; *) echo "::error title=icons::nimbus-session doesn't put your Flatpak apps in XDG_DATA_DIRS"; touch shots/FAILED ;; esac
           case ":$XDG_DATA_DIRS:" in *":$SF:"*) ;; *) echo "::error title=icons::nimbus-session doesn't put the system's Flatpak apps in XDG_DATA_DIRS"; touch shots/FAILED ;; esac
+          # Desktop Mode's settings file there from the start (the shell watches it once it exists: the keyboard looks'
+          # light-mode pictures below change it while the shell runs).
+          mkdir -p "$HOME/.local/share/nimbus"; [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -301,8 +304,8 @@ jobs:
           ipc settings page keyboard
           if command -v wtype >/dev/null; then
             wtype -k Right; sleep 0.5
-            for i in $(seq 1 60); do wtype -k Tab; done; sleep 1; grim shots/osk-look-settings-1.png || true
-            for i in $(seq 1 6); do wtype -k Tab; done; sleep 1; grim shots/osk-look-settings-2.png || true
+            # (tabbing down the page: pictures at a few depths, the look tiles are in one of them)
+            t=0; for want in 22 28 34 40 46; do while [ "$t" -lt "$want" ]; do wtype -k Tab; t=$((t+1)); done; sleep 1; grim "shots/osk-look-settings-$want.png" || true; done
           fi
           ipc settings close
           oskset "$OSKJ" deskTheme ""
@@ -321,9 +324,9 @@ jobs:
           ipc settings page handheld; sleep 3; grim shots/hhd-1-page.png || true
           if command -v wtype >/dev/null; then
             wtype -k Right; sleep 0.5; wtype -k Return; sleep 3; grim shots/hhd-2-advanced.png || true   # Show advanced settings
-            for i in $(seq 1 7); do wtype -k Down; done; sleep 1; grim shots/hhd-3-controller.png || true
-            for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/hhd-4-more.png || true
-            for i in $(seq 1 10); do wtype -k Down; done; sleep 1; grim shots/hhd-5-settings.png || true
+            for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/hhd-3-controller.png || true
+            for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/hhd-4-more.png || true
+            for i in $(seq 1 14); do wtype -k Down; done; sleep 1; grim shots/hhd-5-settings.png || true
           fi
           ipc settings close
           ipc quick toggle; sleep 1; grim shots/hhd-6-quick-access.png || true; ipc quick toggle

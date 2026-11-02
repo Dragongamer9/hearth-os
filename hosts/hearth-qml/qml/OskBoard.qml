@@ -14,13 +14,20 @@ Item {
     signal altPicked(int i)
 
     readonly property var s: vm && vm.settings ? vm.settings : ({})
-    readonly property var themes: ({
+    // Its look. Mantel's keyboard (Keyboard.qml) hands it the OskThemes.qml looks and the one picked in Settings ›
+    // Keyboard › Look (Steam-style by default, following Settings › Appearance). Without them (the Qt renderer's copy,
+    // hosts/hearth-qml) the engine's own four, by its "theme" setting.
+    property var looks: null
+    property string look: ""
+    readonly property var baseThemes: ({
         hearth: { bg: "#17171c", bg2: "#1f1f25", key: "#2b2b32", mod: "#222228", text: "#f3efe8", muted: "#a7a3ad", sel: "#f6f2ea", selText: "#141217", accent: Theme.accent, ink: Theme.accentInk },
-        ember: { bg: "#120c0a", bg2: "#1d1310", key: "#2a1a14", mod: "#1f1410", text: "#ffeadb", muted: "#c9a18a", sel: "#ffd9bd", selText: "#2a1206", accent: "#ff7a2f", ink: "#1d0b02" },
+        ember: { bg: "#120c0a", bg2: "#1d1310", key: "#2a1a14", mod: "#1f1410", text: "#ffeadb", muted: "#c9a18a", sel: "#ffd9bd", selText: "#2a1206", accent: "#ff7a2f", ink: "#1d0b02", glow: "#3a1a0c" },
         slate: { bg: "#1b2028", bg2: "#222833", key: "#2d3542", mod: "#252c37", text: "#eef2f7", muted: "#9aa6b6", sel: "#f2f6fb", selText: "#111722", accent: Theme.accent, ink: Theme.accentInk },
         daylight: { bg: "#e9e6e1", bg2: "#dedad3", key: "#ffffff", mod: "#d4d0c8", text: "#1d1b20", muted: "#6b6670", sel: "#1d1b20", selText: "#ffffff", accent: Theme.accent, ink: Theme.accentInk }
     })
-    readonly property var th: themes[s.theme] || themes.hearth
+    readonly property var th: (looks && looks[look]) || baseThemes[s.theme] || baseThemes.hearth
+    // The key corners of this look (-1: round keys) and the ember's around them.
+    function keyRadius(h) { return th.kr === undefined ? (s.size === "s" ? 9 : s.size === "l" ? 13 : 11) : th.kr < 0 ? h / 2 : th.kr; }
     readonly property int rowCount: vm && vm.rows ? vm.rows.length : 5
     readonly property real gap: s.size === "s" ? 5 : s.size === "l" ? 8 : 7
     readonly property real keyH: Math.round(Math.max(30, Math.min(s.size === "s" ? 54 : s.size === "l" ? 86 : 72, (height - 26 - topH - gap * rowCount) / rowCount)))
@@ -51,15 +58,15 @@ Item {
     Rectangle {
         id: bgRect
         anchors.fill: parent
-        radius: 20
-        color: board.overGame ? Qt.rgba(Qt.color(board.th.bg).r, Qt.color(board.th.bg).g, Qt.color(board.th.bg).b, 0.82) : board.th.bg
-        border.color: Qt.rgba(1, 1, 1, 0.06)
-        Rectangle {        // the ember theme's warm glow from below
-            visible: board.s.theme === "ember"
+        radius: board.th.br !== undefined ? board.th.br : 20
+        color: board.overGame ? Qt.rgba(Qt.color(board.th.bg).r, Qt.color(board.th.bg).g, Qt.color(board.th.bg).b, Math.min(Qt.color(board.th.bg).a, 0.82)) : board.th.bg
+        border.color: board.th.bbc !== undefined ? board.th.bbc : Qt.rgba(1, 1, 1, 0.06)
+        Rectangle {        // the warm looks' glow from below (Ember glow, Hearth warm)
+            visible: !!board.th.glow
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: parent.height * 0.7
             radius: parent.radius
-            gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 1; color: "#3a1a0c" } }
+            gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 1; color: board.th.glow || "transparent" } }
         }
     }
 
@@ -183,7 +190,7 @@ Item {
                 x: board.selX - 3; y: board.selY - 3
                 width: board.selItem ? board.selItem.width + 6 : 0
                 height: board.selItem ? board.selItem.height + 6 : 0
-                radius: 13
+                radius: board.keyRadius(height - 6) + 3
                 color: "transparent"
                 border.width: 3
                 border.color: board.th.accent
@@ -194,7 +201,7 @@ Item {
                 Rectangle {   // the warmth under it
                     anchors.fill: parent
                     anchors.margins: -6
-                    radius: 18
+                    radius: board.keyRadius(ember.height - 6) + 8
                     z: -1
                     color: board.th.accent
                     opacity: 0.22

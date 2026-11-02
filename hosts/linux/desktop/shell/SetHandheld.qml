@@ -44,7 +44,7 @@ SetPage {
         const o = (item.options || []).find(x => x.id === v);
         return o ? o.label : v;
     }
-    function short(item) {
+    function fewChoices(item) {
         const o = item.options || [];
         return o.length >= 2 && o.length <= 4 && o.reduce((a, x) => a + x.label.length, 0) <= 36;
     }
@@ -151,7 +151,7 @@ SetPage {
                     readonly property var d: modelData
                     Layout.fillWidth: true
                     Layout.leftMargin: Math.min(3, d.depth) * 22
-                    sourceComponent: d.kind === "bool" ? boolC : d.kind === "choice" ? (page.short(d) ? segC : listC)
+                    sourceComponent: d.kind === "bool" ? boolC : d.kind === "choice" ? (page.fewChoices(d) ? segC : listC)
                         : d.kind === "number" ? numC : d.kind === "action" ? actC : d.kind === "group" ? groupC
                         : d.kind === "color" ? colorC : textC
                 }

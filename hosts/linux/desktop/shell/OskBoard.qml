@@ -14,9 +14,18 @@ Item {
     signal altPicked(int i)
 
     readonly property var s: vm && vm.settings ? vm.settings : ({})
-    // Its look (OskThemes.qml: Settings › Keyboard › Look; Steam-style by default, following Settings › Appearance).
-    readonly property string themeId: OskThemes.resolve(s.theme)
-    readonly property var th: OskThemes.themes[themeId] || OskThemes.themes.steam
+    // Its look. Mantel's keyboard (Keyboard.qml) hands it the OskThemes.qml looks and the one picked in Settings ›
+    // Keyboard › Look (Steam-style by default, following Settings › Appearance). Without them (the Qt renderer's copy,
+    // hosts/hearth-qml) the engine's own four, by its "theme" setting.
+    property var looks: null
+    property string look: ""
+    readonly property var baseThemes: ({
+        hearth: { bg: "#17171c", bg2: "#1f1f25", key: "#2b2b32", mod: "#222228", text: "#f3efe8", muted: "#a7a3ad", sel: "#f6f2ea", selText: "#141217", accent: Theme.accent, ink: Theme.accentInk },
+        ember: { bg: "#120c0a", bg2: "#1d1310", key: "#2a1a14", mod: "#1f1410", text: "#ffeadb", muted: "#c9a18a", sel: "#ffd9bd", selText: "#2a1206", accent: "#ff7a2f", ink: "#1d0b02", glow: "#3a1a0c" },
+        slate: { bg: "#1b2028", bg2: "#222833", key: "#2d3542", mod: "#252c37", text: "#eef2f7", muted: "#9aa6b6", sel: "#f2f6fb", selText: "#111722", accent: Theme.accent, ink: Theme.accentInk },
+        daylight: { bg: "#e9e6e1", bg2: "#dedad3", key: "#ffffff", mod: "#d4d0c8", text: "#1d1b20", muted: "#6b6670", sel: "#1d1b20", selText: "#ffffff", accent: Theme.accent, ink: Theme.accentInk }
+    })
+    readonly property var th: (looks && looks[look]) || baseThemes[s.theme] || baseThemes.hearth
     // The key corners of this look (-1: round keys) and the ember's around them.
     function keyRadius(h) { return th.kr === undefined ? (s.size === "s" ? 9 : s.size === "l" ? 13 : 11) : th.kr < 0 ? h / 2 : th.kr; }
     readonly property int rowCount: vm && vm.rows ? vm.rows.length : 5
