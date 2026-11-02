@@ -1,0 +1,46 @@
+3:[02:05:12.699970] {Default Queue}  -> wl_display#1.get_registry(new id wl_registry#2)
+4:[02:05:12.701235] {Default Queue}  -> wl_display#1.sync(new id wl_callback#3)
+5:[02:05:12.720828] {Display Queue} wl_display#1.delete_id(3)
+80:[02:05:12.721262] {Default Queue}  -> wl_display#1.sync(new id wl_callback#3)
+81:[02:05:12.736890] {Display Queue} wl_display#1.delete_id(3)
+124:[33m  WARN[97m quickshell.io.socket[0m: Socket error for Socket(0x7068ffe5e740) QLocalSocket::PeerClosedError
+[02:05:12.736930] {Default Queue} wl_shm#10.format(875709016)
+[02:05:12.736934] {Default Queue} wl_output#17.geometry(0, 0, 0, 0, 0, "COSMIC", "WINIT-0", 6)
+[02:05:12.736948] {Default Queue} wl_output#17.mode(3, 1920, 1080, 60000)
+[02:05:12.736955] {Default Queue} wl_output#17.name("WINIT-0")
+[02:05:12.736962] {Default Queue} wl_output#17.description("COSMIC - WINIT-0 - WINIT-0")
+[02:05:12.736967] {Default Queue} wl_output#17.scale(1)
+[02:05:12.736982] {Default Queue} wl_output#17.done()
+[02:05:12.736986] {Default Queue} zxdg_output_v1#18.logical_position(0, 0)
+[02:05:12.736990] {Default Queue} zxdg_output_v1#18.logical_size(1920, 1080)
+[02:05:12.736993] {Default Queue} zxdg_output_v1#18.name("WINIT-0")
+[02:05:12.736996] {Default Queue} zxdg_output_v1#18.description("COSMIC - WINIT-0 - WINIT-0")
+[02:05:12.736999] {Default Queue} wl_output#17.done()
+[02:05:12.737039] {Default Queue} wl_seat#19.name("seat-0")
+[02:05:12.737043] {Default Queue} wl_seat#19.capabilities(7)
+[02:05:12.737050] {Default Queue}  -> wl_seat#19.get_keyboard(new id wl_keyboard#23)
+[02:05:12.737057] {Default Queue}  -> wl_seat#19.get_pointer(new id wl_pointer#24)
+[02:05:12.737062] {Default Queue}  -> wp_cursor_shape_manager_v1#11.get_pointer(new id wp_cursor_shape_device_v1#25, wl_pointer#24)
+[02:05:12.737082] {Default Queue}  -> zwp_pointer_gestures_v1#14.get_pinch_gesture(new id zwp_pointer_gesture_pinch_v1#26, wl_pointer#24)
+[02:05:12.737088] {Default Queue}  -> zwp_pointer_gestures_v1#14.get_swipe_gesture(new id zwp_pointer_gesture_swipe_v1#27, wl_pointer#24)
+[02:05:12.737094] {Default Queue}  -> wl_seat#19.get_touch(new id wl_touch#28)
+[02:05:12.737100] {Default Queue} wl_callback#3.done(0)
+[02:05:12.738119] {Default Queue}  -> wl_registry#2.bind(44, "xdg_wm_base", 6, new id [unknown]#3)
+[02:05:12.738140] {Default Queue}  -> wl_registry#2.bind(22, "zxdg_decoration_manager_v1", 1, new id [unknown]#29)
+[02:05:12.738148] {Default Queue}  -> wl_registry#2.bind(45, "xdg_activation_v1", 1, new id [unknown]#30)
+[02:05:12.738158] {Default Queue}  -> wl_registry#2.bind(46, "zxdg_exporter_v2", 1, new id [unknown]#31)
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/jh2o4runt/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[02:05:12.957326] {Default Queue} wl_keyboard#23.keymap(1, fd 24, 35412)
+[02:05:12.958832] {Default Queue} wl_keyboard#23.repeat_info(25, 600)
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[35:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[197:5]: Read of /tmp/home/.local/share/nimbus/osk-words.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[185:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[177:5]: Read of /tmp/home/.config/nimbus/osk.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Settings.qml[40:5]: Read of /tmp/home/.local/share/nimbus/desktop.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[43:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[134:5]: Read of /tmp/home/.config/nimbus/desk.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[97m quickshell.io.socket[0m: Socket error for Socket(0x7068ffe5e740) QLocalSocket::PeerClosedError

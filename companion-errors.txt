@@ -1,0 +1,1 @@
+     13 shots/cosmic-companion.log:[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?

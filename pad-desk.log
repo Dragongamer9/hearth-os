@@ -1,0 +1,8 @@
+app the companion sees: ''
+ok Guide: the Hearth menu: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok B closes it: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok Menu: Hearth launcher: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok D-pad in the launcher: expected KEY_RIGHT, got keys ['KEY_RIGHT'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok B (Esc) closes it: expected KEY_ESC, got keys ['KEY_ESC'], pointer {'move': 0, 'wheel': 0}, buttons []
+ok View: the controls: expected None, got keys [], pointer {'move': 0, 'wheel': 0}, buttons []
+ok View + B closes the window (Super+Q): expected KEY_LEFTMETA+KEY_Q, got keys ['KEY_LEFTMETA+KEY_Q'], pointer {'move': 0, 'wheel': 0}, buttons []
