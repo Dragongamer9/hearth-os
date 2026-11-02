@@ -271,12 +271,17 @@ export function updateView(u: UpdateStatus | null | undefined): { line: string; 
 export function menuPlaces(s: Settings, broken?: Set<string>): Dest[] {
   const home: Dest = { id: "home", title: "Hearth Home", route: partOn(s, "tkHome", broken) ? "/library/home" : "/hearth/home" };
   const by = (id: string) => DESTS.find((d) => d.id === id)!;
-  return [home, by("store"), by("library"), by("theater"), by("mods"), by("storage"), by("downloads"), by("friends"), by("link"), by("coop")];
+  // Couch Co-op is dropped for now (MULTIPLAYER): its page stays, but isn't in the menu.
+  return [home, by("store"), by("library"), by("theater"), by("mods"), by("storage"), by("downloads"), by("friends"), by("link"), ...(MULTIPLAYER ? [by("coop")] : [])];
 }
 
-/** Hearth's power options beside Steam's: back to Hearth's Game Mode, or Hearth's Desktop Mode. */
+/** Couch Co-op and multi-seat are dropped for now (Hearth OS is Debian + Mantel + Steam Game Mode): their parts stay in
+ *  the plugin but aren't shown. */
+export const MULTIPLAYER = false;
+
+/** Hearth's power option beside Steam's: Hearth's Desktop Mode. (Hearth's own Game Mode is archived: Steam Game Mode is
+ *  Hearth OS's Game Mode, so there's no "Switch to Hearth Game Mode" any more.) */
 export const MENU_POWER: [string, string, string][] = [
-  ["hearth-game", "Switch to Hearth Game Mode", "Steam closes and Hearth's own Game Mode comes back"],
   ["hearth-desktop", "Desktop Mode", "Hearth's Desktop Mode (Steam closes)"],
 ];
 
@@ -307,7 +312,8 @@ export const QAM_TABS: { id: number; key: "hearth" | "perf" | "controller" | "pl
   { id: 4801, key: "hearth", title: "Hearth" },
   { id: 4802, key: "perf", title: "Hearth Performance" },
   { id: 4803, key: "controller", title: "Hearth Controller" },
-  { id: 4804, key: "players", title: "Hearth Players" },
+  // { id: 4804, key: "players", title: "Hearth Players" }: Couch Co-op's players and multi-seat (dropped for now).
+  ...(MULTIPLAYER ? [{ id: 4804, key: "players" as const, title: "Hearth Players" }] : []),
 ];
 
 /** Which of Hearth's Quick Access tabs to add or take away so the list matches the switches. */

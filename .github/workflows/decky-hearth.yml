@@ -9,8 +9,8 @@ on:
   push:
     # feature/decky-hearth, feature/steam-menus: a new workflow can't be started by hand until it's on the default
     # branch (remove them once it is).
-    branches: [bughunt, feature/decky-hearth, feature/steam-menus, feature/steam-pages, feature/steam-coop, feature/steam-seats, feature/steam-rest]
-    paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/linux/test/test_hearth_steam_mode.py',
+    branches: [bughunt, feature/steam-only, feature/decky-hearth, feature/steam-menus, feature/steam-pages, feature/steam-coop, feature/steam-seats, feature/steam-rest]
+    paths: ['hosts/decky-hearth/**', 'hosts/linux/session/**', 'hosts/hearth-core/src/multiplay.rs', 'hosts/hearth-core/src/bridge.rs', 'hosts/linux/test/test_hearth_steam_mode.py',
             'hosts/hearth-core/src/steam_mode.rs', 'hosts/hearth-core/src/desktop_games.rs', 'hosts/hearth-core/src/steam_takeover.rs', 'hosts/hearth-core/src/core_service.rs',
             'hosts/hearth-rs/src/main.rs',
             'os/system_files/usr/libexec/nimbus/hearth-decky', 'os/system_files/usr/libexec/nimbus/hearth-coop', '.github/workflows/decky-hearth.yml']

@@ -158,6 +158,7 @@ ShellRoot {
     PowerMenu { id: powerMenu }
     Lock { id: lockScreen }
     LiveWelcome { id: liveWelcome; settingsApp: settings }
+    SteamFallback { id: steamFallback }   // "Steam Game Mode didn't start" with "Try Steam Game Mode again"
     Pad {
         id: pad
         settings: settings
@@ -165,6 +166,7 @@ ShellRoot {
         files: files
         powerMenu: powerMenu
         liveWelcome: liveWelcome
+        steamFallback: steamFallback
         launcher: launcher
         quick: quick
         radial: radial

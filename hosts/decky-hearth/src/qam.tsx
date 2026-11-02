@@ -13,7 +13,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { FaFire, FaGamepad, FaTachometerAlt, FaUsers } from "react-icons/fa";
 import { GameView, QAM_TABS, Settings, UpdateStatus, inputLine, layoutLabel, modsLine, partOn, protonLabel, qamPlan, tdpLine, updateView } from "./model";
 import { ask, setSettings } from "./api";
-import { Answer, gameView, inputSet, markShown, modsOf, setProton, tool, useFront } from "./core";
+import { Answer, gameView, inputSet, markShown, modsOf, setProton, switchToDesktop, tool, useFront } from "./core";
 import { guard, setSettingsLocal, settings, useLive } from "./state";
 import { Boundary, C, go } from "./ui";
 import { openApp, say } from "./actions";
@@ -22,7 +22,6 @@ import { PlayersBody, SeatsBody } from "./coop";
 import { QuickResumeBody, StreamingBody } from "./rest";
 
 const ACCENT = C.accent, INK = C.ink;
-const switchToHearth = callable<[], { ok: boolean; error?: string }>("switch_to_hearth");
 
 export async function changeSetting(k: keyof Settings, v: boolean) {
   const next = await setSettings({ ...settings, [k]: v });
@@ -251,9 +250,9 @@ export function UpdateRow() {
 export function SwitchButton() {
   return (
     <PanelSectionRow>
-      <ButtonItem layout="below" onClick={async () => { const r = await switchToHearth(); if (!r.ok) say(r.error ?? "Couldn't switch"); }}
-        description="Steam closes and Hearth's own Game Mode comes back">
-        Switch to Hearth Game Mode
+      <ButtonItem layout="below" onClick={async () => { const r = await switchToDesktop(); if (!r.ok) say(r.error ?? "Couldn't switch"); }}
+        description="Hearth's Desktop Mode (Steam closes)">
+        Desktop Mode
       </ButtonItem>
     </PanelSectionRow>
   );

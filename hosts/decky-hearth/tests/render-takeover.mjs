@@ -86,8 +86,8 @@ const frame = `.steam-menu{position:absolute;left:0;top:0;bottom:0;width:340px;b
 .Text{color:#e9eef4}`;
 const running = { appid: 3000000001, display_name: "Alan Wake 2" };
 for (const [name, which, want, focus] of [
-  ["steam-menu", "steam-menu", ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Switch to Hearth Game Mode", "Desktop Mode", "Alan Wake 2"], ".hearth-menu-item:nth-of-type(1)"],
-  ["qam-hearth", "qam-hearth", ["This game", "Alan Wake 2", "Quick Resume", "Put Alan Wake 2 aside", "Hearth Input layout", "Shooter / action", "GE-Proton (newest)", "7 mods, 5 on", "Screenshot", "Switch to Hearth Game Mode"], null],
+  ["steam-menu", "steam-menu", ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Desktop Mode", "Alan Wake 2"], ".hearth-menu-item:nth-of-type(1)"],
+  ["qam-hearth", "qam-hearth", ["This game", "Alan Wake 2", "Quick Resume", "Put Alan Wake 2 aside", "Hearth Input layout", "Shooter / action", "GE-Proton (newest)", "7 mods, 5 on", "Screenshot", "Desktop Mode"], null],
   ["qam-performance", "qam-perf", ["Power mode", "Balanced", "Power limit: 15 W", "Steam's own Performance tab"], null],
   ["qam-controller", "qam-controller", ["Shooter / action: on in the game (paused while Quick Access is open)", "Hearth Input in Steam Game Mode", "Edit layouts in Hearth"], null],
   ["qam-players", "qam-players", ["Players", "DualSense Wireless Controller", "P1", "P4", "Dragon", "Move up", "Move down", "Rumble", "Waits (4 players at most)", "1 more waits", "Split-screen games"], null],

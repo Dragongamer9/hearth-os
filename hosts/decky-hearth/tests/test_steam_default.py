@@ -68,16 +68,13 @@ class SteamDefault(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(state, 'steam-default-off')), 'turning on again clears the note')
         self.assertFalse(os.path.exists(os.path.join(state, 'steam-default-fails')))
 
-    def test_the_session_reads_what_the_plugin_writes(self):
-        # nimbus-session's own reader (steam_default_on) on the plugin's file.
+    def test_the_session_no_longer_reads_the_setting_but_shares_the_pause(self):
+        # Starting in Steam Game Mode is always on now (the plugin no longer shows the switch): nimbus-session ignores
+        # HEARTH_STEAM_DEFAULT, and its two-failures pause is the same steam-default-off note that turning it on clears.
         text = (ROOT / 'hosts/linux/session/nimbus-session').read_text()
-        start = text.index('steam_default_on() {')
-        fn = text[start:text.index('\n}\n', start) + 3]
-        for on in (True, False):
-            self.m.set_steam_default(on, self.home)
-            r = subprocess.run(['sh', '-c', 'SESSION_CONF="$1"\n' + fn + 'steam_default_on && echo on || echo off', 'sh', self.conf],
-                               capture_output=True, text=True)
-            self.assertEqual(r.stdout.strip(), 'on' if on else 'off', r.stderr)
+        self.assertNotIn('HEARTH_STEAM_DEFAULT', text)
+        self.assertIn('SD_OFF="$SD_STATE/steam-default-off"', text)
+        self.assertIn('SD_FAILS="$SD_STATE/steam-default-fails"', text)
 
 
 if __name__ == '__main__':

@@ -11,12 +11,16 @@ use std::process::{Command, Stdio};
 pub const COOP: &str = "/usr/libexec/nimbus/hearth-coop";
 pub const SEATS: &str = "/usr/libexec/nimbus/hearth-seats";
 
-pub fn coop_available() -> bool { Path::new(COOP).exists() && std::env::var_os("HEARTH_SEAT").is_none() }
+/// Couch Co-op and multi-seat are dropped for now (Hearth OS is Debian + Mantel + Steam Game Mode): their code stays,
+/// offered only with the developer switch HEARTH_LEGACY_MULTIPLAYER=1 (session.conf; nimbus-session exports it).
+pub fn multiplayer_on(var: Option<&str>) -> bool { var == Some("1") }
+fn multiplayer_switch() -> bool { multiplayer_on(std::env::var("HEARTH_LEGACY_MULTIPLAYER").ok().as_deref()) }
+pub fn coop_available() -> bool { multiplayer_switch() && Path::new(COOP).exists() && std::env::var_os("HEARTH_SEAT").is_none() }
 /// Multi-seat, a window of the split-screen host (player 1's, or another player's on the same card): the host
 /// gives only one window input at a time, and the web view only reads the controller in that one, so Hearth reads
 /// this player's controllers itself (hearth-seats sets HEARTH_SEAT_HOSTED).
 pub fn seat_hosted() -> bool { std::env::var_os("HEARTH_SEAT_HOSTED").is_some() }
-pub fn seats_available() -> bool { Path::new(SEATS).exists() && std::env::var_os("HEARTH_SEAT").is_none() }
+pub fn seats_available() -> bool { multiplayer_switch() && Path::new(SEATS).exists() && std::env::var_os("HEARTH_SEAT").is_none() }
 
 /// "progress: 40 Starting player 2" → (40, "Starting player 2")
 pub fn parse_progress(line: &str) -> Option<(u64, String)> {
@@ -78,6 +82,13 @@ pub fn spawn_job(name: &'static str, helper: &'static str, args: Vec<String>, em
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn multiplayer_is_dropped_unless_switched_back_on() {
+        assert!(!multiplayer_on(None), "couch co-op and multi-seat are off by default");
+        assert!(!multiplayer_on(Some("0")));
+        assert!(multiplayer_on(Some("1")));
+    }
     #[test]
     fn reads_progress_lines() {
         assert_eq!(parse_progress("progress: 40 Starting player 2"), Some((40, "Starting player 2".into())));

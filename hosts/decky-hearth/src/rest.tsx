@@ -140,7 +140,7 @@ export function FriendsPage() {
         <div className="ht-dim">Your friends on Hearth Friends and what they're playing. Steam's friends are in Steam's Friends &amp; Chat.</div>
         {!f && <div className="ht-dim" style={{ marginTop: 14 }}>Asking Hearth Friends…</div>}
         {f?.error && <div className="ht-card" style={{ marginTop: 14 }}>{f.error}</div>}
-        {f && !f.error && !f.signedIn && <div className="ht-card" style={{ marginTop: 14 }}>Hearth Friends isn't signed in on this device. Sign in from Hearth's Friends (Hearth Game Mode).</div>}
+        {f && !f.error && !f.signedIn && <div className="ht-card" style={{ marginTop: 14 }}>Hearth Friends isn't signed in on this device. Sign in from Hearth's Friends (Hearth in Desktop Mode).</div>}
         {f && !f.error && f.signedIn && !list.length && <div className="ht-card" style={{ marginTop: 14 }}>No friends yet. Add them in Hearth's Friends.</div>}
         <Focusable {...V} style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8, maxWidth: 720 }}>
           {list.map((x, i) => (

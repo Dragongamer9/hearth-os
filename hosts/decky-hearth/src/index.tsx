@@ -13,7 +13,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { applyTheme, removeTheme } from "./theme";
 import { Item, play, refreshTargets, removeAll, sync } from "./shortcuts";
-import { PARTS, Settings, partOn } from "./model";
+import { MULTIPLAYER, PARTS, Settings, partOn } from "./model";
 import { getErrors, getSettings, setSettings } from "./api";
 import { guard, setSettingsLocal, setShortcutMap, settings as liveSettings, useLive } from "./state";
 import { Brand, DownloadsPage, GamePage, LibraryPage, StorePage, setBrand } from "./pages";
@@ -69,27 +69,6 @@ async function change(k: keyof Settings, v: boolean) {
   if (k === "takeover" || k === "tkQam") syncQamTabs();
 }
 
-/** "Start in Steam Game Mode" (Hearth's Settings › System): turning it off here is a way back to Hearth's Game Mode
- *  with only a controller; the next start is Hearth's. (Hearth's session still checks Steam at every start.) */
-const getSteamDefault = callable<[], boolean>("get_steam_default");
-const setSteamDefault = callable<[on: boolean], { ok: boolean; on: boolean; error?: string }>("set_steam_default");
-function StartInSteam() {
-  const [on, setOn] = useState<boolean | null>(null);
-  useEffect(() => { getSteamDefault().then(setOn).catch(() => setOn(null)); }, []);
-  if (on === null) return null;
-  return (
-    <PanelSectionRow>
-      <ToggleField label="Start in Steam Game Mode"
-        description={on ? "Turn off to stop starting in Steam Game Mode: the device starts in Hearth's Game Mode again" : "Off: the device starts in Hearth's Game Mode"}
-        checked={on} onChange={async (v) => {
-          const r = await setSteamDefault(v).catch((e) => ({ ok: false, on, error: String(e) }));
-          setOn(r.on);
-          say(r.ok ? (r.on ? "The device starts in Steam Game Mode" : "The device starts in Hearth's Game Mode again") : `Couldn't change it: ${r.error}`);
-        }} />
-    </PanelSectionRow>
-  );
-}
-
 function Panel() {
   const games = useGames();
   const s = useLive();
@@ -115,7 +94,6 @@ function Panel() {
       <ThisGameSection />
       <PanelSection title="Hearth">
         <SwitchButton />
-        <StartInSteam />
         <PanelSectionRow>
           <ToggleField label="Hearth takeover" description="Hearth's home, pages and tabs in Steam's Game Mode (Steam's library, downloads and overlay stay)"
             checked={s.takeover} onChange={(v) => change("takeover", v)} />
@@ -139,8 +117,8 @@ function Panel() {
       </PanelSection>
       <PanelSection title="Performance"><PerformanceBody /></PanelSection>
       <PanelSection title="Controller"><ControllerBody /></PanelSection>
-      <PanelSection title="Players"><PlayersBody /></PanelSection>
-      <PanelSection title="Seats"><Boundary part="seats" fallback={null} onError={guard.fail}><SeatsBody /></Boundary></PanelSection>
+      {MULTIPLAYER && <PanelSection title="Players"><PlayersBody /></PanelSection>}
+      {MULTIPLAYER && <PanelSection title="Seats"><Boundary part="seats" fallback={null} onError={guard.fail}><SeatsBody /></Boundary></PanelSection>}
       <PanelSection title="Quick Resume"><Boundary part="aside" fallback={null} onError={guard.fail}><QuickResumeBody /></Boundary></PanelSection>
       <PanelSection title="Hearth tools"><ToolsBody /></PanelSection>
       <PanelSection title="Game streaming"><Boundary part="remote" fallback={null} onError={guard.fail}><StreamingBody /></Boundary></PanelSection>

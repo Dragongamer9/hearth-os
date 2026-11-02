@@ -1,8 +1,9 @@
 #!/bin/sh
 # Switches the Nimbus session between modes, or leaves it.
-#   nimbus-mode game      go to Game Mode
-#   nimbus-mode desktop   go to Desktop Mode
-#   nimbus-mode steam     go to Steam Game Mode (Experimental, this time only; docs/STEAM-GAME-MODE.md)
+#   nimbus-mode game      go to Game Mode: Steam Game Mode (docs/STEAM-GAME-MODE.md; first-time setup while it's
+#                         pending, Hearth's own Game Mode only with HEARTH_LEGACY_GAME_MODE=1 or on the live USB)
+#   nimbus-mode desktop   go to Desktop Mode (Mantel, or the desktop picked in Settings)
+#   nimbus-mode steam     go to Steam Game Mode (also "try again" after it didn't start)
 #   nimbus-mode logout    end the session (back to the login screen)
 #   nimbus-mode current   print the mode you're in
 
@@ -23,7 +24,9 @@ case "$1" in
   current)
     if [ -n "$LABWC_PID" ] || plasma_up || gnome_up || cosmic_up; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
   game|desktop|logout|steam)
-    [ "$1" = logout ] && rm -f "$RUN/nimbus-next" || echo "$1" >"$RUN/nimbus-next"
+    # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
+    # asked for and isn't started again.)
+    echo "$1" >"$RUN/nimbus-next"
     if [ -n "$LABWC_PID" ]; then
       labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID"
       # If an app keeps the desktop from closing, close it anyway so the switch can't hang.

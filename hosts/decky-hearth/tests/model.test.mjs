@@ -144,12 +144,13 @@ test("update row: check, update with progress, ready for a restart, errors", () 
 test("main menu: Hearth's places in Hearth's order, Home where the takeover has it, power options", () => {
   const s = { ...M.DEFAULTS };
   const p = M.menuPlaces(s);
-  assert.deepEqual(p.map((d) => d.title), ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Hearth Friends", "Hearth Link", "Couch Co-op"]);
+  assert.deepEqual(p.map((d) => d.title), ["Hearth Home", "Hearth Store", "Hearth Library", "Theater", "Hearth Mods", "Storage", "Downloads", "Hearth Friends", "Hearth Link"], "Couch Co-op is dropped for now");
   assert.equal(p[0].route, "/library/home", "Hearth's home is Steam's Home with the takeover");
   assert.equal(M.menuPlaces({ ...s, tkHome: false })[0].route, "/hearth/home");
   assert.equal(M.menuPlaces(s, new Set(["tkHome"]))[0].route, "/hearth/home", "turned off by itself: its own page");
   for (const d of p) assert.ok(d.route || d.app, d.id);
-  assert.deepEqual(M.MENU_POWER.map((x) => x[0]), ["hearth-game", "hearth-desktop"]);
+  assert.deepEqual(M.MENU_POWER.map((x) => x[0]), ["hearth-desktop"], "no Switch to Hearth Game Mode: Steam Game Mode is Hearth OS's Game Mode");
+  assert.equal(M.MULTIPLAYER, false, "couch co-op and multi-seat are hidden");
 });
 
 test("the game Steam runs: shortcuts are Hearth's games, Steam's own are steam:<id>", () => {
@@ -171,8 +172,8 @@ test("front: Hearth Input only gets a game when it's switched on", () => {
   assert.equal(M.frontMessage({ ...run, id: null }, M.DEFAULTS, undefined, false).game, "");
 });
 
-test("Quick Access tabs: four of Hearth's, added and taken away with the switch", () => {
-  assert.deepEqual(M.QAM_TABS.map((t) => t.key), ["hearth", "perf", "controller", "players"]);
+test("Quick Access tabs: three of Hearth's (Players is dropped with Couch Co-op), added and taken away with the switch", () => {
+  assert.deepEqual(M.QAM_TABS.map((t) => t.key), ["hearth", "perf", "controller"]);
   for (const t of M.QAM_TABS) assert.ok(t.id > 999, "never one of Steam's or Decky's ids");
   const ids = M.QAM_TABS.map((t) => t.id);
   assert.deepEqual(M.qamPlan(M.DEFAULTS, undefined, []), { add: ids, remove: [] });
