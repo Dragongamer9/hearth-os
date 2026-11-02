@@ -90,7 +90,7 @@ test('nothing while the window is not focused (a frozen held D-pad does not keep
   env.focused = false; env.fire('blur');
   for (let i = 0; i < 20; i++) env.frame();
   assert.strictEqual(seen.down, 1, 'no repeats while unfocused');
-  assert.deepStrictEqual(env.G.pads(), []);
+  assert.strictEqual(env.G.pads().length, 0);
 });
 
 test('a press held from before the focus came back does not count until let go', () => {
@@ -124,7 +124,7 @@ test('a hidden page gets nothing', () => {
   const env = page();
   env.connect();
   env.hidden = true;
-  assert.deepStrictEqual(env.G.pads(), []);
+  assert.strictEqual(env.G.pads().length, 0);
   env.hidden = false; env.docFire('visibilitychange');
   assert.strictEqual(env.G.pads().length, 1);
 });
