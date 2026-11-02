@@ -12,7 +12,8 @@ const NO_AUTOLOGIN: &str = "/etc/nimbus/no-autologin";
 
 pub fn session_conf() -> PathBuf { crate::paths::config_dir().join("session.conf") }
 fn desktop_json() -> PathBuf { crate::paths::data_dir().join("desktop.json") }
-fn read_json(p: &Path) -> Value { std::fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(json!({})) }
+// Settings files go through settings_file (docs/SETTINGS-PERSISTENCE.md): a damaged one comes back from its .bak.
+fn read_json(p: &Path) -> Value { crate::settings_file::read_json(p) }
 
 /// NIMBUS_START_MODE from session.conf (shell syntax): game or desktop.
 pub fn read_start_mode(text: &str) -> &'static str {
@@ -113,16 +114,13 @@ pub fn login() -> Value {
 }
 pub fn set_start_mode(mode: &str) -> Result<Value, String> {
     if mode != "game" && mode != "desktop" { return Err("Start mode is game or desktop".into()); }
-    let f = session_conf();
-    let text = std::fs::read_to_string(&f).unwrap_or_default();
-    crate::paths::write_atomic(&f, write_start_mode(&text, mode).as_bytes()).map_err(|e| e.to_string())?;
+    // Under session.conf's lock, the rest of the file kept, the old one kept as session.conf.bak.
+    crate::settings_file::update_text(&session_conf(), |text| write_start_mode(text, mode)).map_err(|e| e.to_string())?;
     Ok(login())
 }
 pub fn set_lock_on_wake(on: bool) -> Result<Value, String> {
-    let f = desktop_json();
-    let mut o = read_json(&f);
-    o["lockOnWake"] = json!(on);
-    crate::paths::write_atomic(&f, format!("{}\n", serde_json::to_string_pretty(&o).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+    // Only this key, merged into the latest desktop.json (Mantel's Settings writes the same file).
+    crate::settings_file::update_json(&desktop_json(), |o| { o.insert("lockOnWake".into(), json!(on)); }).map_err(|e| e.to_string())?;
     Ok(login())
 }
 /// Checks this user's password the way the login screen does (pam_unix's helper). No password: empty passes.
@@ -230,7 +228,7 @@ mod tests {
 
 // ------------------------------------------------------------------ the desktop's wallpaper (Desktop Mode)
 
-fn read_desktop() -> Value { std::fs::read(desktop_json()).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(Value::is_object).unwrap_or(json!({})) }
+fn read_desktop() -> Value { crate::settings_file::read_json(&desktop_json()) }
 pub fn desktop_wallpaper() -> String { read_desktop()["wallpaper"].as_str().unwrap_or("").to_string() }
 /// Sets it: '' (the default), anim:lava / anim:aurora, or a picture (copied to ~/.config/nimbus/wallpaper.<ext>,
 /// since a profile's background is put away while someone else's profile is in use).
@@ -245,8 +243,6 @@ pub fn set_desktop_wallpaper(value: &str, picture: Option<&Path>) -> Result<Stri
         std::fs::copy(pic, &dst).map_err(|e| e.to_string())?;
         v = dst.to_string_lossy().to_string();
     } else if !v.is_empty() && v != "anim:lava" && v != "anim:aurora" { return Err("Unknown wallpaper".into()); }
-    let mut o = read_desktop();
-    o["wallpaper"] = json!(v);
-    crate::paths::write_atomic(&desktop_json(), format!("{}\n", serde_json::to_string_pretty(&o).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+    crate::settings_file::update_json(&desktop_json(), |o| { o.insert("wallpaper".into(), json!(v)); }).map_err(|e| e.to_string())?;
     Ok(v)
 }

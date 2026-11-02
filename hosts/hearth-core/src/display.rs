@@ -145,10 +145,11 @@ pub fn gamescope_args_text(text: &str, set: Option<&str>) -> (String, String) {
 }
 fn gamescope_args(set: Option<&str>) -> String {
     let file = crate::admin::session_conf();
-    let text = std::fs::read_to_string(&file).unwrap_or_default();
-    let (args, out) = gamescope_args_text(&text, set);
-    // All at once: the session reads this file when Game Mode starts, right after a change restarts it.
-    if set.is_some() { let _ = crate::paths::write_atomic(&file, out.as_bytes()); }
+    let Some(_) = set else { return gamescope_args_text(&std::fs::read_to_string(&file).unwrap_or_default(), None).0 };
+    // All at once, under session.conf's lock, every other line kept (settings_file): the session reads this file when
+    // Game Mode starts, right after a change restarts it.
+    let mut args = String::new();
+    let _ = crate::settings_file::update_text(&file, |text| { let (a, out) = gamescope_args_text(text, set); args = a; out });
     args
 }
 /// The -W/-H options in gamescope's options, as they are ("-W 1280 -H 800"), without -r.
@@ -215,7 +216,7 @@ pub fn get(zoom: u32) -> Value {
     json!({"resolution": format!("{w} × {h}"), "scale": format!("{pct}%"), "width": w, "height": h, "refreshRate": rate.round() as u32,
            "modes": modes, "scalePercent": pct, "scaleRecommended": 100, "scales": SCALES,
            "backend": backend, "scaleIsInterface": zoom_scale, "appliesOnRestart": backend == "gamescope" && !gamescope_external_modes().is_empty(),
-           "pending": backend == "gamescope" && pending()})
+           "pending": backend == "gamescope" && pending(), "reverted": reverted()})
 }
 
 /// Changes the mode. Returns true when Game Mode has to restart for it (gamescope).
@@ -263,7 +264,7 @@ fn pending_save(before: &str) {
     // A second change while one is still on trial goes back to the options before both (not to the one on trial,
     // which may be the mode the screen can't show).
     if pending_before().is_some() { return; }
-    let _ = std::fs::write(pending_file(), json!({"before": before, "at": crate::library::now_ms()}).to_string());
+    let _ = crate::settings_file::write_json(&pending_file(), &json!({"before": before, "at": crate::library::now_ms()}));
 }
 
 /// Whether a new mode is waiting for "Keep" (display.get shows it; the UI asks).
@@ -279,13 +280,38 @@ fn pending_before() -> Option<String> {
 pub fn revert() -> bool {
     let Some(before) = pending_before() else { return false };
     let file = crate::admin::session_conf();
-    let text = std::fs::read_to_string(&file).unwrap_or_default();
     // Put back exactly what was there (our own options removed first, then the old ones of them added back).
     let old_ours: Vec<String> = regex::Regex::new(r"(^|\s)-(W|H|r)\s+\S+").unwrap().find_iter(&before).map(|m| m.as_str().trim().to_string()).collect();
-    let (_, out) = gamescope_args_text(&text, Some(&old_ours.join(" ")));
-    let _ = crate::paths::write_atomic(&file, out.as_bytes());
+    let _ = crate::settings_file::update_text(&file, |text| gamescope_args_text(text, Some(&old_ours.join(" "))).1);
     keep();
     crate::bridge::log(&format!("display: the new mode wasn't kept; back to \"{}\"", before));
+    true
+}
+
+// ------------------------------------------------------------------ a mode the session had to switch back
+// nimbus-session goes back to the screen's own mode when gamescope can't start twice with the one you chose. It keeps
+// your choice in display-reverted.json and Game Mode tells you, with "Try again" (on trial, as a new mode is) or OK:
+// the session never drops a setting of yours without saying so (docs/SETTINGS-PERSISTENCE.md).
+fn reverted_file() -> std::path::PathBuf { crate::paths::config_dir().join("display-reverted.json") }
+pub fn reverted() -> Value {
+    let v = crate::settings_file::read_json(&reverted_file());
+    if v["args"].as_str().map(|a| a.trim().is_empty()).unwrap_or(true) { return Value::Null; }
+    v
+}
+pub fn dismiss_reverted() { let _ = std::fs::remove_file(reverted_file()); }
+/// The mode options from the reverted choice ("-W 2560 -H 1440 -r 120").
+pub fn reverted_mode(args: &str) -> String {
+    regex::Regex::new(r"(^|\s)(-(W|H|r)\s+\S+|--(output-width|output-height|nested-refresh)[= ]\S+)").unwrap()
+        .find_iter(args).map(|m| m.as_str().trim().to_string()).collect::<Vec<_>>().join(" ")
+}
+/// "Try again": the reverted mode back in session.conf, on trial (switched back after 20 s unless kept).
+pub fn retry_reverted() -> bool {
+    let mode = reverted_mode(reverted()["args"].as_str().unwrap_or(""));
+    dismiss_reverted();
+    if mode.is_empty() { return false; }
+    let before = gamescope_args(None);
+    gamescope_args(Some(&mode));
+    pending_save(&before);
     true
 }
 
@@ -323,9 +349,8 @@ pub fn set_scale(pct: u32, zoom: u32) -> Result<Option<u32>, String> {
 fn save_wlr(output: &str, key: &str, value: &str) {
     let conf = crate::paths::config_dir();
     let sh = conf.join("display.sh");
-    let text = display_sh_text(&std::fs::read_to_string(&sh).unwrap_or_default(), output, key, value);
     let _ = std::fs::create_dir_all(&conf);
-    let _ = crate::paths::write_atomic(&sh, text.as_bytes());
+    let _ = crate::settings_file::update_text(&sh, |t| display_sh_text(t, output, key, value));
     let _ = crate::system::run("chmod", &["755", &sh.to_string_lossy()]);
 }
 
@@ -347,6 +372,12 @@ pub fn display_sh_text(old: &str, output: &str, key: &str, value: &str) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_reverted_mode_is_only_the_mode_options() {
+        assert_eq!(reverted_mode("--adaptive-sync -W 2560 -H 1440 -r 120 --hdr-enabled"), "-W 2560 -H 1440 -r 120");
+        assert_eq!(reverted_mode("--hdr-enabled"), "");
+    }
     #[test]
     fn gamescope_mode_list() {
         let m = parse_gamescope_modes("3840x2160@60 1920x1080@144 1920x1080@60 junk 0x0@60");

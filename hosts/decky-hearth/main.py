@@ -133,11 +133,7 @@ def set_steam_default(on, home_dir=None):
             text = f.read()
     except OSError:
         text = ''
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + '.decky-hearth.tmp'
-    with open(tmp, 'w') as f:
-        f.write(write_steam_default(text, on))
-    os.replace(tmp, path)
+    _safe_write(path, write_steam_default(text, on).encode())
     if on:
         for n in ('steam-default-off', 'steam-default-fails'):
             try:
@@ -625,22 +621,83 @@ def brand(pdir=None):
     return {'css': css, 'logo': data_url(os.path.join(pdir, 'assets', 'logo.svg')), 'wallpaper': data_url(wall)}
 
 
-def load_json(name, default):
+# ---- Settings files the safe way (docs/SETTINGS-PERSISTENCE.md; the same rules and file names as Hearth OS's
+# hearth_settings_io.py, kept here because a Decky plugin ships on its own): atomic (temporary file, fsync, rename),
+# the last good version kept as FILE.bak, a damaged file put back from it, never replaced with the defaults.
+def _safe_write(path, data):
+    import fcntl
+    import tempfile
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    lock = os.open(os.path.join(d, '.' + os.path.basename(path) + '.lock'), os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        with open(os.path.join(settings_dir(), name)) as f:
-            v = json.load(f)
-        return v if isinstance(v, type(default)) else default
-    except (OSError, ValueError):
-        return default
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            st = os.stat(path)
+            with open(path, 'rb') as f:
+                cur = f.read()
+        except OSError:
+            st, cur = None, None
+        if cur == data:
+            return
+        for target, content in (((path + '.bak'), cur), (path, data)):
+            if content is None or not content.strip():
+                continue
+            fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(target) + '.', suffix='.tmp', dir=d)
+            try:
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(content)
+                    f.flush()
+                    os.fsync(f.fileno())
+                if st is not None:
+                    os.chmod(tmp, st.st_mode & 0o7777)
+                    try:
+                        os.chown(tmp, st.st_uid, st.st_gid)
+                    except OSError:
+                        pass
+                os.replace(tmp, target)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+        try:
+            dfd = os.open(d, os.O_RDONLY)
+            os.fsync(dfd)
+            os.close(dfd)
+        except OSError:
+            pass
+    finally:
+        os.close(lock)
+
+
+def _read_settings(path):
+    """The JSON in PATH; damaged: the copy in PATH.bak (and put back). None when neither can be read."""
+    for p in (path, path + '.bak'):
+        try:
+            with open(p) as f:
+                v = json.load(f)
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            continue
+        if p != path:
+            try:
+                _safe_write(path, json.dumps(v).encode())
+            except OSError:
+                pass
+        return v
+    return None
+
+
+def load_json(name, default):
+    v = _read_settings(os.path.join(settings_dir(), name))
+    return v if isinstance(v, type(default)) else default
 
 
 def save_json(name, value):
-    d = settings_dir()
-    os.makedirs(d, exist_ok=True)
-    tmp = os.path.join(d, name + '.tmp')
-    with open(tmp, 'w') as f:
-        json.dump(value, f)
-    os.replace(tmp, os.path.join(d, name))
+    _safe_write(os.path.join(settings_dir(), name), json.dumps(value).encode())
 
 
 # The same keys and defaults as src/model.ts DEFAULTS: the takeover (master switch and its parts) is on by default.
@@ -1028,7 +1085,9 @@ class Plugin:
         return s
 
     async def set_settings(self, settings):
+        # Start from what's saved (defaults only for missing keys): a partial update never resets the other switches.
         s = dict(DEFAULT_SETTINGS)
+        s.update({k: v for k, v in load_json('settings.json', {}).items() if k in DEFAULT_SETTINGS})
         if isinstance(settings, dict):
             s.update({k: bool(v) for k, v in settings.items() if k in DEFAULT_SETTINGS})
         save_json('settings.json', s)

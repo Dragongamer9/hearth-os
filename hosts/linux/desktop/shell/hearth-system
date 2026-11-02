@@ -46,6 +46,15 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+# Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
+# from .bak when damaged, never overwritten with defaults. The module sits next to this file; a copy of this helper
+# run on its own elsewhere keeps working without it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
 sys.dont_write_bytecode = True     # hearth-files and hearth-browser are loaded from here: no .pyc next to them
 HERE = os.path.dirname(os.path.realpath(__file__))
 HOME = os.path.expanduser('~')
@@ -94,6 +103,8 @@ def run(cmd, timeout=30, input=None):
 
 
 def write_atomic(path, text, mode=0o644):
+    if hsio:
+        return hsio.write_text(path, text, mode)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + '.hearth-tmp'
     with open(tmp, 'w') as f:
@@ -108,6 +119,13 @@ def read(path, default=''):
             return f.read()
     except OSError:
         return default
+
+
+def saved_json(path):
+    """A settings file of ours: damaged ones come back from their .bak (hearth_settings_io), never as defaults saved over."""
+    if hsio:
+        return hsio.load_json(path, {})
+    return json.loads(read(path, '{}'))
 
 
 # ---------------------------------------------------------------------- date and time
@@ -235,7 +253,7 @@ def keyboard_status():
     opts = [o for o in env.get('XKB_DEFAULT_OPTIONS', '').split(',') if o]
     switch = next((o for o in opts if o.startswith('grp:')), '')
     try:
-        saved = json.loads(read(KEYBOARD_JSON, '{}'))
+        saved = saved_json(KEYBOARD_JSON)
     except ValueError:
         saved = {}
     names = {(l['layout'], l['variant']): l['name'] for l in keyboard_layouts()['layouts']}
@@ -329,7 +347,7 @@ def runtime_dir():
 
 def keyboard_saved():
     try:
-        saved = json.loads(read(KEYBOARD_JSON, '{}'))
+        saved = saved_json(KEYBOARD_JSON)
         return int(saved.get('delay') or REPEAT_DEFAULT['delay']), int(saved.get('rate') or REPEAT_DEFAULT['rate'])
     except (ValueError, TypeError, AttributeError):
         return REPEAT_DEFAULT['delay'], REPEAT_DEFAULT['rate']
@@ -358,7 +376,7 @@ def pointer_clean(raw):
 
 def pointer_saved():
     try:
-        return pointer_clean(json.loads(read(POINTER_JSON, '{}')))
+        return pointer_clean(saved_json(POINTER_JSON))
     except ValueError:
         return pointer_clean(None)
 

@@ -12,9 +12,7 @@ use crate::paths;
 pub fn settings_path() -> PathBuf { paths::config_dir().join("osk.json") }
 pub fn words_path() -> PathBuf { paths::data_dir().join("osk-words.json") }
 
-fn read_json(p: &Path) -> Value {
-    std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).filter(|v| v.is_object()).unwrap_or_else(|| json!({}))
-}
+fn read_json(p: &Path) -> Value { crate::settings_file::read_json(p) }
 
 /// The value of KEY= in an environment-style file (KEY=value, KEY="value").
 fn env_value(text: &str, key: &str) -> Option<String> {
@@ -51,13 +49,14 @@ pub fn get() -> Value {
     json!({"settings": read_json(&settings_path()), "learned": read_json(&words_path()), "systemLayouts": system_layouts()})
 }
 
-/// osk.set: the settings, as the page has them (only known keys, small values).
+/// osk.set: settings from the page (only known keys, small values), merged into the latest osk.json: keys the page
+/// didn't send stay as they are (Desktop Mode's Settings › Keyboard writes this file too; the page now sends only
+/// the key you changed). docs/SETTINGS-PERSISTENCE.md.
 pub fn set(settings: &Value) -> Result<(), String> {
     let Some(obj) = settings.as_object() else { return Err("settings must be an object".into()) };
     const KEYS: &[&str] = &["layouts", "suggestions", "learn", "autocap", "doubleSpace", "fast", "shape", "size", "position", "theme", "haptics", "trail"];
     let clean: serde_json::Map<String, Value> = obj.iter().filter(|(k, v)| KEYS.contains(&k.as_str()) && v.to_string().len() < 400).map(|(k, v)| (k.clone(), v.clone())).collect();
-    let text = serde_json::to_string_pretty(&Value::Object(clean)).map_err(|e| e.to_string())?;
-    paths::write_atomic(&settings_path(), text.as_bytes()).map_err(|e| format!("couldn't save the keyboard's settings: {e}"))
+    crate::settings_file::merge_json(&settings_path(), &clean).map(|_| ()).map_err(|e| format!("couldn't save the keyboard's settings: {e}"))
 }
 
 /// Two sets of learned words together (each word's higher count): Game Mode and Desktop Mode both add to the file.

@@ -71,6 +71,7 @@ pub mod signin_handoff;
 // ---- Store sign-ins kept through updates (backed up, put back when missing, said in the log at start)
 pub mod signins;
 pub mod space;
+pub mod settings_file;   // the safe way settings files are read and written (docs/SETTINGS-PERSISTENCE.md)
 pub mod seat_share;   // Multi-seat: games shared between the players (docs/MULTI-SEAT.md)
 pub mod steam;
 pub mod steam_ctl;

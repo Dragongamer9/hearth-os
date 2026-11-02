@@ -147,7 +147,9 @@ SetPage {
     // ------------------------------------------------ the on-screen keyboard
     property var osk: ({})
     function oskGet(k) { return osk[k] !== undefined ? osk[k] : Osk.HearthOSK.DEFAULTS[k]; }
-    function oskSet(k, v) { const o = Object.assign({}, osk); o[k] = v; osk = o; oskFile.setText(JSON.stringify(o, null, 2) + "\n"); }
+    // Only the changed key is merged into the latest osk.json (Game Mode's Settings › Keyboard writes it too).
+    function oskSet(k, v) { const o = Object.assign({}, osk); o[k] = v; osk = o; const c = {}; c[k] = v; oskWriter.merge(c); }
+    SettingsWriter { id: oskWriter; path: oskFile.path }
     function oskLayouts() { const l = oskGet("layouts"); return Array.isArray(l) && l.length ? l : ["auto"]; }
     function oskToggleLayout(id) {
         let l = oskLayouts().slice();
@@ -159,7 +161,7 @@ SetPage {
         path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/osk.json"
         watchChanges: true
         onFileChanged: reload()
-        onLoaded: { try { const o = JSON.parse(text()); if (o && typeof o === "object") page.osk = o; } catch (e) {} }
+        onLoaded: { try { const o = JSON.parse(text()); if (o && typeof o === "object") page.osk = o; } catch (e) { oskWriter.repair(); } }
     }
     FileView { id: oskWords; path: (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/nimbus/osk-words.json" }
 

@@ -155,8 +155,7 @@ pub fn default_status_in(conf: &Path, state: &Path, can: bool, signed_in: bool) 
 /// old note and failure count, so it gets its two chances again.
 pub fn set_default_in(conf: &Path, state: &Path, on: bool, can: bool) -> Result<(), String> {
     if on && !can { return Err("Starting in Steam Game Mode needs Steam installed and signed in, in Hearth OS's session.".into()); }
-    let text = std::fs::read_to_string(conf).unwrap_or_default();
-    crate::paths::write_atomic(conf, write_default(&text, on).as_bytes()).map_err(|e| e.to_string())?;
+    crate::settings_file::update_text(conf, |text| write_default(text, on)).map_err(|e| e.to_string())?;
     if on {
         let _ = std::fs::remove_file(state.join(DEFAULT_OFF_NOTE));
         let _ = std::fs::remove_file(state.join(DEFAULT_FAILS));

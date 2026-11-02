@@ -37,6 +37,15 @@ import subprocess
 import sys
 import time
 
+# Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
+# from .bak when damaged, never overwritten with defaults. The module sits next to this file; a copy of this helper
+# run on its own elsewhere keeps working without it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
 sys.dont_write_bytecode = True     # hearth-system loads this file: no .pyc next to it
 HOME = os.path.expanduser('~')
 CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
@@ -89,6 +98,8 @@ def spawn(cmd):
 
 
 def write_atomic(path, text):
+    if hsio:
+        return hsio.write_text(path, text)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + '.tmp'
     with open(tmp, 'w') as f:
@@ -120,6 +131,9 @@ def clean(raw):
 
 
 def saved():
+    if hsio:
+        # A damaged file comes back from accessibility.json.bak; it is never replaced with the defaults.
+        return clean(hsio.load_json(SETTINGS_JSON, None))
     try:
         with open(SETTINGS_JSON) as f:
             return clean(json.load(f))
@@ -128,6 +142,13 @@ def saved():
 
 
 def save(settings):
+    if hsio:
+        # Only what changed is written over the latest file (another window may have changed something else).
+        old = saved()
+        changed = {k: v for k, v in settings.items() if old.get(k) != v}
+        if changed or not os.path.exists(SETTINGS_JSON):
+            hsio.merge_json(SETTINGS_JSON, changed or settings)
+        return
     write_atomic(SETTINGS_JSON, json.dumps(settings, indent=2) + '\n')
 
 
