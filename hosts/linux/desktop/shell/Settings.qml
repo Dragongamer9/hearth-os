@@ -17,7 +17,7 @@ Singleton {
     property bool clipboardHistory: true // keep what you copy for Super+V (cliphist); Settings › Clipboard
     property int screenOffMinutes: 10    // turn the screen off after this long without use (0 = never); Settings › Power
     property int sleepMinutes: 0         // go to sleep after this long without use (0 = never); Settings › Power
-    property string look: "hearth"       // Mantel's look: "hearth" (warm) or "steam" (Steam-style blue-slate); Settings › Appearance
+    property string look: "steam"        // Mantel's look: "hearth" (warm) or "steam" (Steam-style blue-slate); Settings › Appearance
     property string mode: "dark"         // "dark" or "light"
     property string accent: ""           // "#rrggbb", or "" for the look's own (Hearth: your profile's accent)
     property bool loaded: false

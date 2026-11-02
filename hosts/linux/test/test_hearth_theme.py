@@ -78,10 +78,13 @@ class HearthTheme(unittest.TestCase):
             self.assertIn('@define-color window_bg_color #f6efe8;', gtk)
             self.assertIn('@define-color accent_bg_color #9b7bff;', gtk)
 
-    def test_bad_settings_fall_back_to_hearth(self):
+    def test_bad_settings_fall_back_to_the_steam_look(self):
+        # The Steam-style look is the default (November 2026): bad settings give it in dark, with its own accent.
         with tempfile.TemporaryDirectory() as d:
             _, out = run_theme(d, {'look': '_comment', 'mode': 'purple', 'accent': 'red'})
-            self.assertEqual((out / 'gtk4.css').read_text(), (THEME / 'gtk' / 'gtk4.css').read_text())
+            gtk = (out / 'gtk4.css').read_text()
+            self.assertIn('@define-color window_bg_color #171a21;', gtk)
+            self.assertIn('@define-color accent_bg_color #1a9fff;', gtk)
 
     def test_kde_apps_get_it_through_kdeglobals_unless_its_yours(self):
         with tempfile.TemporaryDirectory() as d:

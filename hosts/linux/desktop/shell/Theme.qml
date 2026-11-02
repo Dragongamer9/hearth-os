@@ -13,7 +13,7 @@ import Quickshell.Io
 Singleton {
     id: root
     property var palettes: ({})
-    readonly property string look: palettes[Settings.look] ? Settings.look : "hearth"
+    readonly property string look: palettes[Settings.look] ? Settings.look : "steam"
     readonly property string mode: Settings.mode === "light" ? "light" : "dark"
     readonly property bool dark: mode === "dark"
     readonly property bool steam: look === "steam"

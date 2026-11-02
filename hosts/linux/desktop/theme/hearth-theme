@@ -60,7 +60,7 @@ def valid(c):
 def choice():
     pal = load(os.path.join(HERE, 'palettes.json'), {})
     d = load(os.path.join(DATA, 'nimbus', 'desktop.json'), {})
-    look = d.get('look') if d.get('look') in pal and not str(d.get('look')).startswith('_') else 'hearth'
+    look = d.get('look') if d.get('look') in pal and not str(d.get('look')).startswith('_') else 'steam'
     mode = 'light' if d.get('mode') == 'light' else 'dark'
     accent = d.get('accent') if valid(d.get('accent')) else ''
     if not accent and look == 'hearth':
