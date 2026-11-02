@@ -138,9 +138,10 @@ SetPage {
         if (prev && prev.other) { const o = outs.find(x => x.name === prev.other); if (o && o.enabled) lines.push([lineFor(o), o.name]); }
         saveLines(lines);
     }
-    // [[line, screen name]...] into display.sh, replacing those screens' lines and keeping the others'.
+    // [[line, screen name]...] into display.sh, replacing those screens' lines and keeping the others'. Under the
+    // lock Hearth's own writer uses, flushed to the drive, the old one kept as display.sh.bak (SETTINGS-PERSISTENCE.md).
     function saveLines(lines) {
-        Quickshell.execDetached(["sh", "-c", 'f="$HOME/.config/nimbus/display.sh"; mkdir -p "$HOME/.config/nimbus" || exit 1; keep=$(grep "^wlr-randr " "$f" 2>/dev/null); new=""; while [ $# -ge 2 ]; do keep=$(printf "%s\n" "$keep" | grep -vF -- "--output \'$2\' "); new="$new$1\n"; shift 2; done; { printf "#!/bin/sh\n# Written by Hearth Settings › Display\n"; [ -n "$keep" ] && printf "%s\n" "$keep"; printf "$new"; } > "$f.tmp" && chmod +x "$f.tmp" && mv -f "$f.tmp" "$f"', "sh"].concat([].concat.apply([], lines)));
+        Quickshell.execDetached(["sh", "-c", 'd="$HOME/.config/nimbus"; f="$d/display.sh"; mkdir -p "$d" || exit 1; exec 9>"$d/.display.sh.lock"; flock 9 2>/dev/null; keep=$(grep "^wlr-randr " "$f" 2>/dev/null); new=""; while [ $# -ge 2 ]; do keep=$(printf "%s\n" "$keep" | grep -vF -- "--output \'$2\' "); new="$new$1\n"; shift 2; done; t=$(mktemp "$d/.display.sh.XXXXXX") || exit 1; { printf "#!/bin/sh\n# Written by Hearth Settings › Display\n"; [ -n "$keep" ] && printf "%s\n" "$keep"; printf "$new"; } > "$t" && chmod +x "$t" && sync "$t" 2>/dev/null; [ -s "$f" ] && cp -p "$f" "$f.bak"; mv -f "$t" "$f"', "sh"].concat([].concat.apply([], lines)));
     }
     function revert() {
         countdown = 0;

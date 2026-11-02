@@ -280,7 +280,9 @@ pub fn report(version: &str) -> String {
         section("Hearth log", keep(&lines, 1500));
     }
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
-                      (data.join("labwc.log"), "Desktop Mode compositor (labwc)")] {
+                      (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
+                      (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
+                       "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
         if let Ok(t) = std::fs::read_to_string(&f) { section(name, tail(&t, 400)); }
     }
     // Hearth Plasma, Hearth GNOME and Hearth COSMIC: each desktop's own log (the desktop's messages, and what

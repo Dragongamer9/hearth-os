@@ -24,24 +24,30 @@ Singleton {
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
         "screenOffMinutes", "sleepMinutes", "look", "mode", "accent"]
-    onNightLightChanged: save()
-    onWallpaperChanged: save()
-    onReduceMotionChanged: save()
-    onPointerSpeedChanged: save()
-    onLockOnWakeChanged: save()
-    onClock24Changed: save()
-    onClipboardHistoryChanged: save()
-    onScreenOffMinutesChanged: save()
-    onSleepMinutesChanged: save()
-    onLookChanged: save()
-    onModeChanged: save()
-    onAccentChanged: save()
-    function save() {
-        if (!loaded) return;
+    onNightLightChanged: save("nightLight")
+    onWallpaperChanged: save("wallpaper")
+    onReduceMotionChanged: save("reduceMotion")
+    onPointerSpeedChanged: save("pointerSpeed")
+    onLockOnWakeChanged: save("lockOnWake")
+    onClock24Changed: save("clock24")
+    onClipboardHistoryChanged: save("clipboardHistory")
+    onScreenOffMinutesChanged: save("screenOffMinutes")
+    onSleepMinutesChanged: save("sleepMinutes")
+    onLookChanged: save("look")
+    onModeChanged: save("mode")
+    onAccentChanged: save("accent")
+    // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
+    // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
+    // values read from the file are never written back. A file that can't be read is put back from its .bak; until
+    // then nothing here writes the defaults over it.
+    property bool applying: false
+    function save(k) {
+        if (!loaded || applying) return;
         const o = {};
-        for (const k of keys) o[k] = root[k];
-        file.setText(JSON.stringify(o, null, 2) + "\n");
+        o[k] = root[k];
+        writer.merge(o);
     }
+    SettingsWriter { id: writer; path: file.path }
 
     FileView {
         id: file
@@ -50,10 +56,19 @@ Singleton {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
-            try {
-                const o = JSON.parse(text());
-                for (const k of root.keys) if (o[k] !== undefined && typeof o[k] === typeof root[k]) root[k] = o[k];
-            } catch (e) {}
+            let o = null;
+            try { o = JSON.parse(text()); } catch (e) { o = null; }
+            if (!o || typeof o !== "object") {
+                // Damaged (a power cut on an older version): put back from desktop.json.bak; the watcher then
+                // loads it. Saves stay merges of the one key changed, so the defaults never replace the file.
+                console.warn("settings: desktop.json couldn't be read; restoring the last good copy");
+                writer.repair();
+                root.loaded = true;
+                return;
+            }
+            root.applying = true;
+            for (const k of root.keys) if (o[k] !== undefined && typeof o[k] === typeof root[k] && !writer.owns(k)) root[k] = o[k];
+            root.applying = false;
             root.loaded = true;
         }
         onLoadFailed: root.loaded = true

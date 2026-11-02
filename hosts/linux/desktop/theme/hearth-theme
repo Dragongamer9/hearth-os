@@ -29,6 +29,11 @@ HOME = os.path.expanduser('~')
 CONF = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
 DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
 OUT = os.path.join(CONF, 'nimbus', 'theme')
+sys.path.insert(0, os.path.join(DESKTOP, 'shell'))
+try:
+    import hearth_settings_io as hsio   # docs/SETTINGS-PERSISTENCE.md
+except ImportError:
+    hsio = None
 TOKENS = ('bg', 'bg2', 'panel', 'panel2', 'panel3', 'line', 'text', 'muted', 'danger', 'ember', 'flame', 'ink')
 KEEP = {'#ffffff', '#000000', '#8fd18a', '#7fd18b', '#ffd166'}   # white, black, the greens and warning yellow stay
 KDE_MARK = '# Written by Hearth (Settings > Appearance); delete this line to keep your own settings.'
@@ -37,6 +42,10 @@ GNOME_ACCENTS = {'blue': '#3584e4', 'teal': '#2190a4', 'green': '#3a944a', 'yell
 
 
 def load(path, default):
+    if hsio and path.startswith(DATA):
+        # Your own settings (desktop.json, library.json): a damaged file comes back from its .bak rather than the
+        # look silently switching to the defaults.
+        return hsio.load_json(path, default)
     try:
         with open(path) as f:
             return json.load(f)

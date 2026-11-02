@@ -169,6 +169,7 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 ## Next (unreleased)
 
 - [ ] Hearth Link in Steam Game Mode: a new Decky plugin (shipped next to Hearth Sync) shows your Hearth devices, sends and gets games between them, Hearth Storage (Sync now, download once, saves, update cache, device health) and pairs new devices from Quick Access (docs/HEARTH-LINK-PLUGIN.md; needs testing on a device)
+- [x] Settings are always remembered and never change by themselves: every settings file is saved all at once with a backup copy, a damaged one comes back from that copy instead of resetting to the defaults, two programs saving at once both keep their change, and when Game Mode has to drop a screen mode that won't start it tells you and offers it again (docs/SETTINGS-PERSISTENCE.md; needs testing on a device)
 
 ## 1.0 (released 2026-11-02)
 

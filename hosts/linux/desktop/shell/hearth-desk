@@ -40,6 +40,15 @@ import sys
 import tempfile
 import urllib.parse
 
+# Settings files are written and read the safe way (docs/SETTINGS-PERSISTENCE.md): atomic, with .bak, restored
+# from .bak when damaged, never overwritten with defaults. The module sits next to this file; a copy of this helper
+# run on its own elsewhere keeps working without it.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
 HERE = os.path.dirname(os.path.realpath(__file__))
 MAX_PINS = 40
 DEFAULTS = {'pins': [], 'desktopIcons': True, 'dnd': False, 'icons': {}, 'autoArrange': False, 'sortBy': 'name',
@@ -192,7 +201,11 @@ def load():
         state['pinnedOnce'] = [p for p in PIN_ONCE if p in state['pins']]
         return state
     except (OSError, ValueError):
-        return clean(None)
+        # Damaged (a power cut mid-write on an older version): the last good copy from desk.json.bak, never an
+        # empty taskbar saved over your pins.
+        if not hsio:
+            return clean(None)
+        state = clean(hsio.load_json(config_path(), None))
     if migrate(state):
         try:
             save(state)
@@ -203,6 +216,9 @@ def load():
 
 def save(state):
     path = config_path()
+    if hsio:
+        hsio.write_json(path, clean(state))
+        return
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.desk-', suffix='.json', dir=os.path.dirname(path))
     try:

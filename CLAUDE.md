@@ -20,6 +20,10 @@ hearthos.fun (`site/`, deployed from main). The owner is Dragongamer9.
    tokens, and never handle secrets.
 7. If a proxy or classifier blocks something, ask the owner; don't route around it.
 8. The owner has limited credits: be lean, batch fixes, don't re-run CI needlessly.
+9. **RED FLAG: Settings must always be remembered and never change by themselves: atomic writes, keep .bak, never
+   save defaults over a file that failed to parse, merge-on-write, one source of truth.** Use the helpers in
+   docs/SETTINGS-PERSISTENCE.md (`settings_file.rs`, `hearth_settings_io.py`, `SettingsWriter.qml`,
+   `settings-file.js`); a switch Hearth turns off by itself must tell the person and be reversible.
 
 ## Branches and releasing
 
