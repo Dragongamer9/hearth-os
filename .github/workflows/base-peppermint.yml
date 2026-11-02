@@ -372,7 +372,7 @@ jobs:
           mkdir -p /tmp/electron && cp -a dist/linux-unpacked/. /tmp/electron/
       # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin the image ships, built and packed
       # into hearth-decky-sync.tar; build.sh puts it in /usr/share/hearth/decky-hearth-sync, where Settings › System › Steam
-      # Game Mode's Decky install takes it from. The older Hearth plugin (hosts/decky-hearth) isn't shipped for now.
+      # Game Mode's Decky install takes it from. The older Hearth plugin (archive/hosts/decky-hearth) isn't shipped for now.
       # Never fails the image: without it, Steam Game Mode works without Hearth's games in Steam's library.
       - name: Build Hearth Sync (Decky plugin)
         continue-on-error: true

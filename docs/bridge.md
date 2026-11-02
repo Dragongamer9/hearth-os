@@ -8,7 +8,7 @@ and to the browser-preview `MOCK` in the UI.
 |---|---|---|
 | Windows | `window.chrome.webview` (WebView2) | `hosts/windows/Nimbus.Host/SystemBridge.cs`, `ShellForm.cs` |
 | Linux | `window.nimbusHost` (Electron preload, same API) | `hosts/linux/src/bridge.js`, `main.js` |
-| Android | `window.nimbusHost` with `platform: 'android'` (a shim over the WebView's `HearthAndroid` interface); a subset, see [ANDROID.md](ANDROID.md) | `hosts/android/app/src/main/java/dev/hearthos/android/Bridge.kt`, `MainActivity.kt` |
+| Android | `window.nimbusHost` with `platform: 'android'` (a shim over the WebView's `HearthAndroid` interface); a subset, see [ANDROID.md](archive/ANDROID.md) | `archive/hosts/android/app/src/main/java/dev/hearthos/android/Bridge.kt`, `MainActivity.kt` |
 | Browser preview | none, the UI uses its built-in `MOCK` | `ui/index.html` |
 | Linux, Qt renderer (Experimental) | no web page: native QML screens make the same calls over the core channel | `hosts/hearth-qml/qml/App.qml` ([RENDERERS.md](RENDERERS.md)) |
 

@@ -3,7 +3,7 @@
 //! Storage, a game's Hearth facts, the power mode in Quick Access).
 //!
 //! `hearth --steam-mode-data <what> [arg]` prints one line of JSON and exits. No window, no socket, no port: the
-//! plugin's backend (hosts/decky-hearth/main.py, running as you) starts it and reads the answer, so nothing new
+//! plugin's backend (archive/hosts/decky-hearth/main.py, running as you) starts it and reads the answer, so nothing new
 //! listens on the device. It only reads, except for the two things Hearth's own pages also do: `power-mode` (set
 //! through hearth-power, as Quick Access does) and the library's usual bookkeeping when Downloads is asked.
 //!

@@ -827,7 +827,7 @@ const path = require('path');
       if (overlay && !document.querySelector('#qam [data-act="gamePowerForget"]')) throw new Error('no way back to the usual power settings');
     }, overlay);
   }
-  // Hearth for Android (hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
+  // Hearth for Android (archive/hosts/android): the page with a pretend Android host (window.nimbusHost, platform 'android',
   // answering like Bridge.kt): only the Settings pages Android has, its own rows there, no Downloads, the Android
   // library tab, the Android power menu and "Add an app".
   const androidSteps = [];

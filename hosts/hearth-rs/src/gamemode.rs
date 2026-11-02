@@ -904,7 +904,7 @@ impl GameMode {
     /// Hearth OS on Anatase (and the other HHD editions): Handheld Daemon (HHD) runs the built-in controller. Its
     /// virtual controller is an ordinary one, so the Guide button comes through the controller reader (guide.rs) and
     /// opens Quick Access. HHD can't hold the Guide press back from the game the way InputPlumber does (see
-    /// docs/BASE-ANATASE.md). Where HHD's overlay app is Hearth's (hhd()), HHD shows Quick Access and holds the
+    /// docs/archive/BASE-ANATASE.md). Where HHD's overlay app is Hearth's (hhd()), HHD shows Quick Access and holds the
     /// controllers while it's open, and its QAM button opens it too (hhd_open); without it, HHD's QAM button sends
     /// Guide + A, and the chord guard keeps that A from picking something in Quick Access. HHD may start a little
     /// after Hearth: looked for for a minute.

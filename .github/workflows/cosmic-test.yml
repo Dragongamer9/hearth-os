@@ -1,4 +1,4 @@
-# Hearth COSMIC (docs/COSMIC.md): COSMIC installed the way the Anatase image does it, drawn for real next to Hearth
+# Hearth COSMIC (docs/archive/COSMIC.md): COSMIC installed the way the Anatase image does it, drawn for real next to Hearth
 # Classic, and driven with a virtual controller.
 #   - the session's and hearth-pad's Python tests (test_hearth_cosmic.py);
 #   - .github/scripts/cosmic-test.sh in Fedora 45 (Anatase's Fedora): COSMIC from desktop/cosmic/fedora-packages and how

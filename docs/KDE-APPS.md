@@ -16,7 +16,7 @@ Hearth Files' About adds what Hearth changed and where to find it.
 
 Kept as they are: Photos, Contacts, Time, Paint, Office and every other Hearth app.
 
-**With a controller in Hearth Plasma** (`hearth-pad --plasma`, `PLASMA_APPS` in `desktop/shell/hearth-pad`; docs/PLASMA.md):
+**With a controller in Hearth Plasma** (`hearth-pad --plasma`, `PLASMA_APPS` in `desktop/shell/hearth-pad`; docs/archive/PLASMA.md):
 in every one the D-pad moves, **A** is Enter, **B** Esc, **X** the context menu (Menu key), **Y** search, **LB/RB**
 tabs, **LT/RT** scroll, **View + B** closes; keyboard and mouse keep working.
 

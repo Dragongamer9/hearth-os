@@ -1,5 +1,5 @@
 # Builds Hearth OS on Anatase: the next Hearth OS (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
-# Handheld Daemon), from os-bases/anatase (see docs/BASE-ANATASE.md). Published as ghcr.io/dragongamer9/hearth-os:testing
+# Handheld Daemon), from os-bases/anatase (see docs/archive/BASE-ANATASE.md). Published as ghcr.io/dragongamer9/hearth-os:testing
 # only. :latest is what the Bazzite-based Hearth OS offers to move to (Settings › Updates); it's never published
 # from here: someone promotes a tried :testing build to :latest by hand.
 # Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
@@ -12,11 +12,8 @@ on:
         description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
         type: boolean
         default: true
-  # linux-host: test images (:testing). main (a release): also :latest, what Hearth OS on Anatase updates from and
-  # Move to a new Hearth OS offers. The app, the page and the shared system files are in it, so they count too.
-  push:
-    branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-anatase.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-friends/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
+  # Archived (Hearth OS 1.0 is Debian-based; docs/ARCHIVED.md): no builds on push any more, by hand only. It used to
+  # build on pushes to linux-host (:testing) and main (also :latest, what Anatase installs update from).
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
@@ -342,14 +339,14 @@ jobs:
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
           mkdir -p /tmp/app/electron && cp -a dist/linux-unpacked/. /tmp/app/electron/
-      # ---- The Hearth Decky plugin (hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
+      # ---- The Hearth Decky plugin (archive/hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
       # packed into hearth-app.tar (decky-hearth/); build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
       # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
       - name: Build the Hearth Decky plugin
         continue-on-error: true
         run: |
           set -e
-          cd hosts/decky-hearth
+          cd archive/hosts/decky-hearth
           npm install -g pnpm@9 >/dev/null
           sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.ver.outputs.version }}\"/" package.json
           pnpm install --no-frozen-lockfile >/dev/null
@@ -624,14 +621,14 @@ jobs:
           check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
           check "Steam is installed (or installed at first boot, started by Hearth's launcher)" "rpm -q steam || (test -f /usr/share/nimbus/steam-flatpak && grep -q hearth-steam /usr/bin/steam && test -L /etc/systemd/system/multi-user.target.wants/hearth-steam.service)"
           check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell"
-          # ---- Hearth Plasma (docs/PLASMA.md): the second desktop, with Hearth Classic kept as the fallback
+          # ---- Hearth Plasma (docs/archive/PLASMA.md): the second desktop, with Hearth Classic kept as the fallback
           check "Hearth Plasma: Plasma 6 is installed (startplasma-wayland, kwin_wayland, plasmashell)" "command -v startplasma-wayland && command -v kwin_wayland && command -v plasmashell"
           check "Hearth Plasma: Hearth's look-and-feel package, desktop theme, defaults and widgets" "test -f /usr/share/plasma/look-and-feel/org.hearth.desktop/contents/layouts/org.kde.plasma.desktop-layout.js && test -f /usr/share/plasma/desktoptheme/hearth/colors && test -f /usr/share/hearth-plasma/xdg/kdeglobals && test -f /usr/share/plasma/plasmoids/org.hearth.launcher/contents/ui/main.qml && test -f /usr/share/nimbus/desktop/plasma/hearth-plasma"
           check "Hearth Plasma: the login screen offers Hearth Classic and Hearth Plasma" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && grep -q 'nimbus-session --desktop=plasma' /usr/share/wayland-sessions/hearth-plasma.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-plasma.desktop"
           check "Hearth Plasma: Hearth Classic stays (labwc) and the session falls back to it" "command -v labwc && grep -q 'falling back to Hearth Classic' /usr/bin/nimbus-session"
           warn "Hearth Plasma: Plasma's script engine for widgets (plasma5support QML module)" "ls -d /usr/lib*/qt6/qml/org/kde/plasma/plasma5support /usr/lib/*/qt6/qml/org/kde/plasma/plasma5support 2>/dev/null | grep -q ."
           # ---- end Hearth Plasma
-          # ---- Hearth GNOME (docs/GNOME.md): the third desktop, Hearth Classic kept as the fallback
+          # ---- Hearth GNOME (docs/archive/GNOME.md): the third desktop, Hearth Classic kept as the fallback
           check "Hearth GNOME: GNOME Shell and its session are installed" "command -v gnome-shell && command -v gnome-session"
           check "Hearth GNOME: Hearth's session mode, extensions and helper" "python3 -m json.tool /usr/share/gnome-shell/modes/hearth.json && for e in theme bar launcher quick link storage gamemode pad; do test -f /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/extension.js && python3 -m json.tool /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/metadata.json >/dev/null || exit 1; done && test -f /usr/share/nimbus/desktop/gnome/hearth-gnome && test -f /usr/share/nimbus/desktop/gnome/hearth.js"
           check "Hearth GNOME: the extensions are made for this GNOME" "v=\$(gnome-shell --version | grep -oE '[0-9]+' | head -1); grep -q \"\\\"\$v\\\"\" /usr/share/gnome-shell/extensions/hearth-pad@hearthos.fun/metadata.json"
@@ -642,7 +639,7 @@ jobs:
           check "Hearth GNOME: the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
           echo "::notice title=Hearth GNOME size::GNOME adds about $(cat /usr/share/nimbus/hearth-gnome-size-mb 2>/dev/null || echo '?') MB to this image"
           # ---- end Hearth GNOME
-          # ---- Hearth COSMIC (docs/COSMIC.md): another Desktop Mode desktop, Hearth Classic stays the fallback
+          # ---- Hearth COSMIC (docs/archive/COSMIC.md): another Desktop Mode desktop, Hearth Classic stays the fallback
           check "Hearth COSMIC: COSMIC is installed (start-cosmic, cosmic-comp, cosmic-panel) with Hearth's defaults" "command -v start-cosmic && command -v cosmic-comp && command -v cosmic-panel && test -f /usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicPanel.Panel/v1/plugins_wings && test -f /usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v1/accent"
           check "Hearth COSMIC: the login screen offers it, the companion and its autostart are there" "grep -q 'nimbus-session --desktop=cosmic' /usr/share/wayland-sessions/hearth-cosmic.desktop && test -f /usr/share/nimbus/desktop/shell/desk-cosmic.qml && test -x /usr/share/nimbus/desktop/cosmic/hearth-cosmic && test -f /usr/share/hearth-cosmic/xdg/autostart/hearth-cosmic.desktop"
           check "Hearth COSMIC: COSMIC's own Files, Terminal and Edit are installed" "command -v cosmic-files && command -v cosmic-term && command -v cosmic-edit"

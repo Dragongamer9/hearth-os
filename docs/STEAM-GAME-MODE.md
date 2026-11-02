@@ -226,7 +226,7 @@ its queue the next time it runs.
 
 ### Couch co-op in Steam Game Mode (Experimental, needs testing on a device)
 
-Hearth's Couch Co-op (docs/COUCH-COOP.md) inside Steam's Game Mode, with the same engine (`hearth-coop`):
+Hearth's Couch Co-op (docs/archive/COUCH-COOP.md) inside Steam's Game Mode, with the same engine (`hearth-coop`):
 
 - **Quick Access › Hearth Players** (also a **Players** section in Decky's Hearth tab): the controllers connected, in
   **Hearth's player order**. Players 1 to 4 get the first four; more wait. **Move up** / **Move down** change it,
@@ -258,7 +258,7 @@ holds the controllers; two identical controllers without serial numbers keep the
 
 ### Multi-seat beside Steam Game Mode (Experimental, needs testing on a device)
 
-With multi-seat (docs/MULTI-SEAT.md) set up, **player 1 can play in Steam's Game Mode while the other players keep their own
+With multi-seat (docs/archive/MULTI-SEAT.md) set up, **player 1 can play in Steam's Game Mode while the other players keep their own
 Hearth Game Mode**, each on their own account, screen (or part of one, or a stream) and controllers. Nothing changes when
 multi-seat isn't set up or is off: Steam Game Mode starts exactly as before.
 
@@ -522,7 +522,7 @@ window).
 | OS updates from Steam | `os/system_files/usr/libexec/nimbus/hearth-steamos-update` (Steam's `steamos-update`, put on Steam's PATH by `run_steam_mode`), `main.py` `update_*` |
 | Send logs' section | `hosts/hearth-core/src/logs.rs` (`decky_report`) |
 | Decky install, start/stop (root) | `os/system_files/usr/libexec/nimbus/hearth-decky` through `hearth-admin decky-*` |
-| The plugin | `hosts/decky-hearth` (`src/index.tsx` panel and start, `src/shortcuts.ts`, `src/theme.ts`, `main.py`) |
+| The plugin | `archive/hosts/decky-hearth` (`src/index.tsx` panel and start, `src/shortcuts.ts`, `src/theme.ts`, `main.py`) |
 | The takeover | `src/patches.tsx` (Steam's screens, each guarded), `src/pages.tsx` (Hearth's pages), `src/model.ts` (switches, guard, pure helpers, unit-tested), `src/api.ts`, `src/ui.tsx` |
 | Hearth's answers for the pages | `hearth --steam-mode-data home\|library\|store <s>\|downloads\|storage\|info <id>\|power\|power-mode <m>` (`hosts/hearth-core/src/steam_takeover.rs`) |
 | Hearth's core in Steam Game Mode | `nimbus --core-service --while <running mark>` (`hosts/hearth-core/src/core_service.rs`: socket, `COMMANDS`, `front` for Hearth Input), started by `nimbus-session` (`steam_core_start` / `steam_core_stop`, `steam_input_start`), the plugin's `core_call` (`main.py`) |
@@ -530,7 +530,7 @@ window).
 | Multi-seat beside Steam Game Mode | `nimbus-session` (`steam_seats_on`, the host and `gamescope-args` in `run_steam_mode`), `src/coop.tsx` (`SeatsBody`), `src/model.ts` (`seatState`, `seatAction`, `seatTargets`, `seatsLine`, `seatDone`), `main.py` (`seats_call`, `SEATS_OPS`), `core_service.rs` (`seats`, `SEATS_OPS`, `seat_pad_ok`), `hearth-seats start\|stop --seat N`, `hearth-admin seats-start\|seats-stop --seat N` |
 | Steam's main menu, Quick Access tabs, in-game section | `src/patches.tsx` (`HearthMenuItems`), `src/qam.tsx` (`syncQamTabs` through Decky's tab list, the tabs, `ThisGame`), `src/ingame.tsx` (`/hearth/now`, `/hearth/home`), `src/core.ts` (the running game, the 2-second `front`), `src/model.ts` (`menuPlaces`, `runningGame`, `frontMessage`, `qamPlan`) |
 | Quick Resume, Sunshine, Hearth Friends, Hearth Link | `src/rest.tsx`, `main.py` (`rest_call`, `ASIDE_OPS`, `LINK_OPS`, `REMOTE_OPS`), `core_service.rs` (`aside`, `aside_follow`, `friends`, `link`, `remote`), `procs.rs` (SteamAppId) |
-| The look | `hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
+| The look | `archive/hosts/decky-hearth/defaults/hearth-theme.css` (also packed as a CSS Loader theme, stable part only) |
 | CI | `.github/workflows/decky-hearth.yml` (zip, theme and takeover pictures, and pictures of Steam's main menu, Hearth's Quick Access tabs and the in-game section over static stand-ins, as downloads and on the `ci/decky-hearth-shots` branch); images ship it in `/usr/share/hearth/decky-hearth` |
 
 To try a build of the plugin without a new image: download `decky-hearth` from a run of the Hearth Decky plugin

@@ -7,14 +7,14 @@
 //! failures uses the same DEFAULT_OFF_NOTE / DEFAULT_FAILS files.
 //!
 //! With Decky Loader (installed from Settings › System › Steam Game Mode, hearth-admin decky-install), the Hearth Decky
-//! plugin (hosts/decky-hearth) brings Hearth into Steam: your other stores' games with Play buttons, and a sync that adds
+//! plugin (archive/hosts/decky-hearth) brings Hearth into Steam: your other stores' games with Play buttons, and a sync that adds
 //! them to Steam's library as shortcuts which play through Hearth (`hearth --play-now`, desktop_games.rs).
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// The Decky plugin the image ships: Hearth Sync (built by CI from hosts/decky-hearth-sync, docs/HEARTH-SYNC.md). The
-/// older Hearth plugin (hosts/decky-hearth, the takeover) isn't shipped for now; hearth-decky removes the copy it put in.
+/// older Hearth plugin (archive/hosts/decky-hearth, the takeover) isn't shipped for now; hearth-decky removes the copy it put in.
 pub const SHIPPED_PLUGIN: &str = "usr/share/hearth/decky-hearth-sync";
 /// Where hearth-decky puts each in Decky's plugins folder.
 pub const SYNC_PLUGIN_DIR: &str = "homebrew/plugins/decky-hearth-sync";

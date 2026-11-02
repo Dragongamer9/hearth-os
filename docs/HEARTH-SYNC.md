@@ -3,7 +3,7 @@
 Hearth Sync is a small Decky plugin (`hosts/decky-hearth-sync`) for Steam Game Mode. Its one job: keep the games you
 have outside Steam in Steam's library, so you can find and start them from Steam like any other game.
 
-It is what Hearth OS ships in Decky now. The older Hearth plugin (`hosts/decky-hearth`, the one that took over Steam's
+It is what Hearth OS ships in Decky now. The older Hearth plugin (`archive/hosts/decky-hearth`, the one that took over Steam's
 screens) isn't shipped for now; its code stays in the repo.
 
 ## What it adds
