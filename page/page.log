@@ -1,0 +1,45 @@
+ok    an empty tab shows the start card
+ok    sample.sh is highlighted as a shell script
+ok    shell script has colored words (41)
+ok    the start card goes away once a file is open (it replaced the empty tab)
+ok    the empty tab was reused
+ok    app.py is Python
+ok    a changed file shows a dot on its tab
+ok    Ctrl+S saves the text with its encoding and line endings
+ok    saved: the dot goes away
+ok    Ctrl+Z undoes
+ok    Ctrl+Y redoes
+ok    find counts matches: 1 of 6
+ok    replace all with a regular expression and a group
+ok    match case
+ok    ignore case finds OSError
+ok    Esc closes find
+ok    go to line 12
+ok    a file you can't write says so
+ok    status shows Read-only
+ok    read-only text can't be typed into
+ok    editing as administrator is shown
+ok    saving as administrator goes through the admin path
+ok    CRLF and INI shown: Ln 1, Col 1
+INI / config
+Spaces: 4
+UTF-8
+CRLF
+100%
+ok    line endings can be changed (and it counts as a change)
+ok    saved with LF
+ok    Latin-1 shown
+ok    encoding can be changed
+ok    a huge log opens in part, read-only, as a log
+ok    F10 opens the menu
+ok    arrows move through the menu (Open recent  ›)
+ok    recent files submenu
+ok    Esc closes the menu
+ok    notes.md is Markdown
+ok    closing a changed tab asks
+ok    Cancel keeps the tab
+ok    closing the window asks
+ok    Don't save closes the window
+ok    no script errors
+
+all passed
