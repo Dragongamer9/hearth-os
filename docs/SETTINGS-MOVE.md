@@ -115,7 +115,7 @@ only meant something in the old Game Mode, dropped.
 | Steam Game Mode: switch, Decky Loader and Hearth Sync, last failure | **Moved** | Settings › Steam Game Mode (`SetSteam.qml`) |
 | Default apps | Mantel | Settings › Default apps |
 | Date and time, 24-hour clock | Mantel | Settings › Date & time |
-| Count me in the player count | Obsolete (follow-up) | The old app sent the ping; Mantel needs its own counter ping to keep it |
+| Count me in the player count | **Moved** | Settings › About › Privacy; `hearth-counter` (a systemd user timer: 20 s after signing in, then every 10 minutes, as the app did) sends the same anonymous ping |
 | Backup: back up Hearth | **Moved** | Settings › About › Backup |
 | Backup: restore from a backup | Interim | `--page system` (Hearth restarts after) |
 | Help & logs: save / send logs | **Moved** | Settings › About › Send logs to the developer (`nimbus --send-logs`), and the Logs app |
@@ -155,4 +155,4 @@ extras · restoring a backup · store sign-ins (the sign-in window) · Hearth In
 
 - The old Hearth Decky plugin's quick links (`hearth-app:` Steam shortcuts such as "Hearth Settings") stay on devices
   that had it; Hearth Sync leaves them alone. Removing them belongs in Hearth Sync.
-- The player count ping (Count me in) only came from the old app.
+- The old app kept its "Count me in" choice in its own browser storage, which Mantel can't read: someone who had turned it off there needs to turn it off again in Settings › About › Privacy.

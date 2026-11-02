@@ -78,6 +78,16 @@ SetPage {
         }
     }
 
+    // ------------------------------------------------ Privacy: the player count (hearth-counter, sent by a systemd user
+    // timer; the Hearth app sent it before). On unless turned off, as before.
+    SetHeader { text: "Privacy" }
+    SetSwitch {
+        icon: "user"; title: "Count me in the player count"
+        sub: "Hearth OS tells its counter it's running about every 10 minutes: a number made from this device, the edition and the version. No names, games or accounts."
+        checked: Settings.countMe
+        onToggled: on => { Settings.countMe = on; SettingsNav.toast(on ? "You're in the player count" : "You're no longer counted"); }
+    }
+
     // ------------------------------------------------ Help and logs
     property string logsMsg: ""
     property bool sending: false

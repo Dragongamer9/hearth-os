@@ -181,6 +181,7 @@ jobs:
           for i in 1 2 3 4; do wtype -k Down; done; sleep 1; grim shots/settings-move/06-storage-low-space.png || true
           sm steam 07-steam-game-mode
           sm about 08-about-help-backup
+          wtype -k Right; sleep 1; for i in $(seq 1 11); do wtype -k Down; done; sleep 1; grim shots/settings-move/08b-about-privacy.png || true
           wtype -k Right; sleep 1; for i in $(seq 1 16); do wtype -k Down; done; sleep 1; grim shots/settings-move/09-about-backup.png || true
           sm link 10-hearth-link
           sm accessibility 11-accessibility

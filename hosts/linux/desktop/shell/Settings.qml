@@ -20,10 +20,11 @@ Singleton {
     property string look: "steam"        // Mantel's look: "hearth" (warm) or "steam" (Steam-style blue-slate); Settings › Appearance
     property string mode: "dark"         // "dark" or "light"
     property string accent: ""           // "#rrggbb", or "" for the look's own (Hearth: your profile's accent)
+    property bool countMe: true          // Hearth OS's anonymous player count (hearth-counter reads it); Settings › About › Privacy
     property bool loaded: false
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
-        "screenOffMinutes", "sleepMinutes", "look", "mode", "accent"]
+        "screenOffMinutes", "sleepMinutes", "look", "mode", "accent", "countMe"]
     onNightLightChanged: save()
     onWallpaperChanged: save()
     onReduceMotionChanged: save()
@@ -36,6 +37,7 @@ Singleton {
     onLookChanged: save()
     onModeChanged: save()
     onAccentChanged: save()
+    onCountMeChanged: save()
     function save() {
         if (!loaded) return;
         const o = {};
