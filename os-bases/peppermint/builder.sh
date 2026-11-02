@@ -156,7 +156,7 @@ ninja -C /src/wayland-protocols/build install
 fetch quickshell-mirror/quickshell "$QUICKSHELL_REF" quickshell
 cmake -S /src/quickshell -B /src/quickshell/build -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr \
-  -DDISTRIBUTOR="Hearth OS (Peppermint edition)" -DCRASH_HANDLER=OFF -DHYPRLAND=OFF -DI3=OFF
+  -DDISTRIBUTOR="Hearth OS (Debian edition)" -DCRASH_HANDLER=OFF -DHYPRLAND=OFF -DI3=OFF
 cmake --build /src/quickshell/build
 DESTDIR=/output cmake --install /src/quickshell/build
 test -x /output/usr/bin/quickshell

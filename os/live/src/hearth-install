@@ -21,8 +21,8 @@ The plan:
    "give": 137438953472,                beside only: how much space to take (bytes)
    "user": {"name": "sam", "full": "Sam", "password": "..."},
    "hostname": "sams-deck", "timezone": "America/Chicago",
-   "edition": "anatase",                optional; which Hearth OS (EDITIONS: anatase, ubuntu, cachyos,
-                                        peppermint); defaults to Hearth OS on Anatase. Never a free-form image
+   "edition": "peppermint",             optional; which Hearth OS (EDITIONS: anatase, ubuntu, cachyos,
+                                        peppermint); defaults to Hearth OS on Debian. Never a free-form image
    "firmware": true}                    optional; false skips adding the boot entry (for tests)
 
 How (the same way Fedora's installer puts an atomic system on a drive, without the installer):
@@ -138,9 +138,8 @@ def check_plan(p):
 
 
 # ------------------------------------------------------------------ which Hearth OS
-# Every Hearth OS this installer can put on a drive: a fixed table, never a free-form image. Hearth OS on Anatase
-# (one image for AMD, Intel and Nvidia) is the one to install; the others are Beta Experimental editions and have
-# only :testing. The same list as the Hearth app's "Move to a new Hearth OS" (hosts/hearth-core/src/newos.rs).
+# Every Hearth OS this installer can put on a drive: a fixed table, never a free-form image. Hearth OS on Debian
+# (edition id 'peppermint', one image for AMD, Intel and Nvidia) is the one to install; the others are archived. The same list as the Hearth app's "Move to a new Hearth OS" (hosts/hearth-core/src/newos.rs).
 EDITIONS = {
     'anatase': {'image': 'ghcr.io/dragongamer9/hearth-os:latest', 'label': 'Hearth OS on Anatase', 'beta': False,
                 'about': 'The new Hearth OS. Locked and immutable: the system can\'t be changed and updates in one piece. Starts and updates fast, the same for every PC and handheld. Automatic fallback and Recovery included.'},
@@ -148,12 +147,12 @@ EDITIONS = {
                'about': 'Hearth OS built on Ubuntu. Still being tested: some things may not work yet.'},
     'cachyos': {'image': 'ghcr.io/dragongamer9/hearth-cachyos:testing', 'label': 'CachyOS', 'beta': True,
                 'about': 'Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet.'},
-    'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Peppermint', 'beta': True,
-                   'about': 'Hearth OS on Debian 13 (Peppermint OS\'s base). A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included. Still being tested: some things may not work yet.'},
+    'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Debian', 'beta': False,
+                   'about': 'Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included.'},
 }
-DEFAULT_EDITION = 'anatase'
-# Archived editions (October 2026): kept in the table so old plans are understood, but never offered or installed.
-ARCHIVED_EDITIONS = ('ubuntu', 'cachyos')
+DEFAULT_EDITION = 'peppermint'
+# Archived editions (October 2026; Anatase November 2026): kept in the table so old plans are understood, but never offered or installed.
+ARCHIVED_EDITIONS = ('ubuntu', 'cachyos', 'anatase')
 # CachyOS' image is built for x86-64-v3: every processor in /proc/cpuinfo needs these features.
 X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
 SB_VAR = '/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d0-aa4b-00e098032b8c'
@@ -163,10 +162,10 @@ SB_CACHYOS = ("Secure Boot is on, and Hearth OS on CachyOS can't start with it o
 
 
 def image_of(edition=None):
-    """The image of an edition in EDITIONS (default: Hearth OS on Anatase). Fail for anything else."""
+    """The image of an edition in EDITIONS (default: Hearth OS on Debian). Fail for anything else."""
     e = EDITIONS.get(edition or DEFAULT_EDITION)
     if not e:
-        raise Fail('unknown edition: choose Hearth OS on Anatase or Peppermint')
+        raise Fail('unknown edition: choose Hearth OS on Debian')
     return e['image']
 
 
@@ -180,14 +179,14 @@ def plan_edition(p):
     (older callers). Anything else is refused. CachyOS is refused on a processor without x86-64-v3."""
     ed, img = p.get('edition'), p.get('image')
     if ed is not None and (not isinstance(ed, str) or ed not in EDITIONS):
-        raise Fail('unknown edition: choose Hearth OS on Anatase or Peppermint')
+        raise Fail('unknown edition: choose Hearth OS on Debian')
     if img is not None:
         by_image = next((k for k, v in EDITIONS.items() if v['image'] == img), None)
         if not by_image or (ed and ed != by_image):
             raise Fail('bad image name')
         ed = by_image
     if ed in ARCHIVED_EDITIONS:
-        raise Fail('that edition is archived: choose Hearth OS on Anatase or Peppermint')
+        raise Fail('that edition is archived: choose Hearth OS on Debian')
     ed = ed or usb_edition()
     if ed == 'cachyos' and not cpu_v3():
         raise Fail(NO_V3)
@@ -243,13 +242,13 @@ def this_usb(path='/etc/hearth-live'):
             name = f.read().strip()
     except OSError:
         name = ''
-    if name in ('auto', 'installer'):
-        return 'installer'
+    if name in ('auto', 'installer') or name in ARCHIVED_EDITIONS:
+        return 'installer'   # an archived edition's USB can't install its own: it offers what the small installer does
     return name if name in EDITIONS else DEFAULT_EDITION
 
 
 def usb_edition(usb=None):
-    """The edition this USB installs when none is picked: the one it carries, or Hearth OS on Anatase."""
+    """The edition this USB installs when none is picked: the one it carries, or Hearth OS on Debian."""
     u = usb or this_usb()
     return DEFAULT_EDITION if u == 'installer' else u
 

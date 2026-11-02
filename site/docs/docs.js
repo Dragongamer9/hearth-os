@@ -69,7 +69,7 @@
 
   // The edition picker: what doesn't apply to the chosen edition is hidden on every page (remembered; ?ed= in a link
   // picks it too). data-ed="all" parts only show with All editions.
-  var NAMES = {anatase: 'Anatase', ubuntu: 'Ubuntu', cachyos: 'CachyOS', peppermint: 'Peppermint'};
+  var NAMES = {anatase: 'Anatase', ubuntu: 'Ubuntu', cachyos: 'CachyOS', peppermint: 'Debian'};
   function chosen(){
     var q = (location.search.match(/[?&]ed=([a-z]+)/) || [])[1];
     if(q && (NAMES[q] || q === 'all')){ store('hearth.docs.ed', q); return q; }

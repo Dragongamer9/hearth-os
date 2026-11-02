@@ -184,7 +184,7 @@ pub fn edition_name(base: &str) -> String {
         "anatase" => "Anatase".into(),
         "ubuntu" => "Ubuntu".into(),
         "cachyos" => "CachyOS".into(),
-        "peppermint" => "Peppermint".into(),
+        "peppermint" => "Debian".into(),
         other => { let mut c = other.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }
     }
 }
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(linux_os_line(&os_release("NAME=Arch\nVERSION=rolling\n"), None, "x86_64"), "Arch rolling x86_64");
         assert_eq!(linux_os_line(&HashMap::new(), None, "x86_64"), "Linux x86_64");
         assert!(image_info("not json").is_none());
-        assert_eq!(edition_name("peppermint"), "Peppermint");
+        assert_eq!(edition_name("peppermint"), "Debian");
         assert_eq!(edition_name("anatase"), "Anatase");
         assert_eq!(edition_name("other"), "Other");
     }

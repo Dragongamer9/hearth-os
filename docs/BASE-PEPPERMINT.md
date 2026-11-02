@@ -1,8 +1,10 @@
-# Hearth OS on Peppermint OS (Beta Experimental)
+# Hearth OS on Debian (the "peppermint" edition)
 
-**Status: Beta Experimental.** The image is built and checked by CI. It hasn't been booted on real hardware yet.
-It isn't the main Hearth. It's published as `ghcr.io/dragongamer9/hearth-peppermint:testing` and never as
-`:latest`.
+**Status: main edition (November 2026).** Hearth OS is Debian-based: this edition is shown to people as "Debian"
+("Hearth OS on Debian"). Its internal name stays `peppermint` everywhere it's an id (the image
+`ghcr.io/dragongamer9/hearth-peppermint:testing`, `VARIANT_ID=hearth-peppermint`, `os-bases/peppermint`, the
+edition id in the installer and in Settings), so existing installs keep updating. Peppermint OS itself adds almost
+nothing beyond Debian 13 trixie (the table below). Anatase is archived.
 
 The Peppermint build works like the other Hearth images (Bazzite in `os/`, CachyOS and Ubuntu in `os-bases/`):
 
@@ -53,7 +55,7 @@ Hearth replaces every one of those:
 |---|---|---|
 | Debian 13 trixie base + Debian repos (main, contrib, non-free, non-free-firmware) | **Yes**: this is the base | It *is* Peppermint's base. |
 | Debian kernel | **Yes, but from trixie-backports** | Handhelds need newer kernels than trixie's 6.12. Peppermint has no kernel of its own. |
-| Xfce desktop | **Optional, on by default** (`PEPPERMINT_DESKTOP=1`) as a second login-screen session, "Peppermint desktop (Xfce)" | It's the one recognisably Peppermint thing, and a plain fallback desktop. It costs roughly 150 MB, about 2% of the image; the X server is there anyway for SDDM's login screen. Hearth's session stays the default and the autologin. Build with `--build-arg PEPPERMINT_DESKTOP=0` to drop it. |
+| Xfce desktop | **Off by default** (`PEPPERMINT_DESKTOP=0`, November 2026) | Dropped with the move to "Hearth OS on Debian". Build with `--build-arg PEPPERMINT_DESKTOP=1` to add it back as a second login-screen session ("Xfce desktop"), roughly 150 MB. Hearth's session stays the default and the autologin either way. |
 | XLibre X server | No | Hearth is Wayland (gamescope, labwc). XLibre isn't in Debian's repositories, and Xfce runs on Debian's X.Org. |
 | Calamares installer | No | Hearth's own installer deploys the image (`ostree container image deploy` + bootupd). |
 | Peppermint updater (apt) | No | Hearth updates the system with `bootc upgrade` (a whole new version). apt still works for your own packages (see "Writable system"), and they come back after each update. |
@@ -62,9 +64,8 @@ Hearth replaces every one of those:
 
 Where Peppermint shows up:
 
-- The name: `PRETTY_NAME="Hearth OS (Peppermint edition, Debian 13)"`, `VARIANT_ID=hearth-peppermint`. `ID`
-  stays `debian`, so tools still know what's underneath.
-- The optional Xfce session.
+- The name: `PRETTY_NAME="Hearth OS (Debian 13)"`, `VARIANT="Debian edition"`, `VARIANT_ID=hearth-peppermint`
+  (unchanged: code detects the edition by it). `ID` stays `debian`, so tools still know what's underneath.
 - `/usr/share/nimbus/image-info.json` (`"base": "peppermint"`).
 
 If Peppermint later publishes a package repository (for example its PepVoid tools ported to Debian), `build.sh`
@@ -279,7 +280,7 @@ Locally, from the repository root, with the Hearth app unpacked into `os/nimbus-
 
 ```sh
 sudo podman build -f os-bases/peppermint/Containerfile --build-arg NIMBUS_VERSION=0.0.0 -t hearth-peppermint .
-# options: --build-arg NVIDIA=0 (no Nvidia driver)   --build-arg PEPPERMINT_DESKTOP=0 (no Xfce session)
+# options: --build-arg NVIDIA=0 (no Nvidia driver)   --build-arg PEPPERMINT_DESKTOP=1 (add the Xfce session)
 ```
 
 To switch an existing Hearth (or any bootc system) to it for testing:
@@ -321,7 +322,7 @@ desktop:
 - [ ] CI is green, and every check in "Check the image" passes (warnings noted).
 - [ ] Install with Hearth's installer (with the installer change), or `bootc install to-disk` +
       `hearth-bls-grub --boot`.
-- [ ] GRUB shows "Hearth OS (Peppermint edition, Debian 13)" and boots. The Hearth splash shows.
+- [ ] GRUB shows "Hearth OS (Debian 13)" and boots. The Hearth splash shows.
 - [ ] With Secure Boot **on** (AMD/Intel), it still boots through Debian's shim.
 - [ ] It autologins into Hearth's Game Mode. Steam bootstraps and launches in Game Mode. A Proton game runs.
 - [ ] The FPS limit, screenshot and performance overlay (`--mangoapp`) work in Game Mode.
@@ -334,8 +335,7 @@ desktop:
 - [ ] Settings › Updates: Update now stages `:testing`. Restart → new version. `bootc rollback` → GRUB menu
       updated, previous version boots.
 - [ ] A background update gets staged by the timer and doesn't reboot by itself.
-- [ ] Login screen (autologin off in Settings): Hearth theme, controller works, "Peppermint desktop (Xfce)"
-      session starts.
+- [ ] Login screen (autologin off in Settings): Hearth theme, controller works, Hearth's session starts.
 - [ ] Flatpak from Flathub installs and updates.
 - [ ] Writable: `hearth-unlock --status` says unlocked; `sudo apt install htop` works and survives a restart; a
       `.deb` double-clicked in Files installs on the system (password asked).

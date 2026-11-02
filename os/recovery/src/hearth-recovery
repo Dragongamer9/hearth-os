@@ -56,7 +56,7 @@ MAX_SEND = 600_000
 # The images Hearth OS installs from (the same table as hearth-install's EDITIONS): the only ones `update` deploys.
 EDITIONS = {
     'anatase': {'image': 'ghcr.io/dragongamer9/hearth-os:latest', 'label': 'Hearth OS on Anatase'},
-    'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Hearth OS on Peppermint'},
+    'peppermint': {'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing', 'label': 'Hearth OS on Debian'},
     'ubuntu': {'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing', 'label': 'Hearth OS on Ubuntu'},
     'cachyos': {'image': 'ghcr.io/dragongamer9/hearth-cachyos:testing', 'label': 'Hearth OS on CachyOS'},
 }

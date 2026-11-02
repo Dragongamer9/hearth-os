@@ -1,13 +1,13 @@
 #!/bin/bash
 # Turns Debian 13 "trixie" (Peppermint OS's base, prepared by os-bases/peppermint/Containerfile) into Hearth OS as
-# a bootc image: "Hearth OS (Peppermint edition)", Beta Experimental. Runs once, inside the image build.
+# a bootc image: "Hearth OS (Debian 13)", the main edition. Runs once, inside the image build.
 # The Hearth parts follow os/build_files/build.sh (the Bazzite build) and os-bases/cachyos/build.sh as closely as
 # possible; what's different is the base: apt instead of dnf/pacman, everything Bazzite already carried installed
 # here, and the bootc layout bootcrew's debian-bootc uses. See docs/BASE-PEPPERMINT.md.
 set -ouex pipefail
 
 NVIDIA="${NVIDIA:-1}"
-PEPPERMINT_DESKTOP="${PEPPERMINT_DESKTOP:-1}"
+PEPPERMINT_DESKTOP="${PEPPERMINT_DESKTOP:-0}"
 BPO=trixie-backports
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
@@ -241,17 +241,18 @@ echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gno
 # SDDM's login screen itself runs on X (its default), so the X server comes along.
 "${APT[@]}" sddm xserver-xorg-core xserver-xorg-input-libinput
 optional qml6-module-qtquick-virtualkeyboard qml6-module-qtmultimedia
+# AMD's X driver for the login screen's X server (it came with the Xfce session before that went off by default).
+optional xserver-xorg-video-amdgpu
 
-# ------------------------------------------------------------------ Peppermint's desktop (optional)
-# Xfce, Peppermint's own desktop, as a second session on the login screen: what Peppermint users know, and a way
-# back to a plain desktop if Hearth's session misbehaves. Minimal (no recommends): roughly 150 MB. Hearth's
-# session stays the default and the autologin. PEPPERMINT_DESKTOP=0 leaves it out.
+# ------------------------------------------------------------------ Xfce session (optional, off by default)
+# Hearth OS is Debian-based now; the Xfce session (a plain fallback desktop on the login screen) is off by default
+# and only built with --build-arg PEPPERMINT_DESKTOP=1. Minimal (no recommends): roughly 150 MB. Hearth's session
+# stays the default and the autologin.
 if [ "$PEPPERMINT_DESKTOP" = "1" ]; then
   "${APT[@]}" xfce4-session xfwm4 xfce4-panel xfdesktop4 xfce4-settings xfce4-terminal thunar
-  optional xserver-xorg-video-amdgpu xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin xfce4-notifyd network-manager-gnome
-  # Shown as "Peppermint desktop (Xfce)" so it's clear what it is.
+  optional xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin xfce4-notifyd network-manager-gnome
   if [ -f /usr/share/xsessions/xfce.desktop ]; then
-    sed -i -e 's/^Name=.*/Name=Peppermint desktop (Xfce)/' /usr/share/xsessions/xfce.desktop
+    sed -i -e 's/^Name=.*/Name=Xfce desktop/' /usr/share/xsessions/xfce.desktop
   fi
 fi
 
@@ -880,7 +881,7 @@ CONF
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the CachyOS build
 # writes this same file).
 cat > /usr/share/nimbus/image-info.json <<INFO
-{"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie (Peppermint OS base)", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
+{"image-name": "hearth-peppermint", "image-ref": "ghcr.io/dragongamer9/hearth-peppermint", "image-tag": "testing", "base": "peppermint", "base-detail": "Debian 13 trixie", "kernel": "${KVER}", "nvidia": ${NVIDIA}, "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
 cat > /usr/share/applications/nimbus.desktop <<DESKTOP
@@ -1422,9 +1423,9 @@ systemctl enable hearth-clean-install.service
 # still know what it is underneath.
 sed -i \
   -e 's/^NAME=.*/NAME="Hearth"/' \
-  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (Peppermint edition, Debian 13)"/' \
+  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (Debian 13)"/' \
   /usr/lib/os-release
-grep -q '^VARIANT_ID=' /usr/lib/os-release || printf 'VARIANT="Peppermint edition"\nVARIANT_ID=hearth-peppermint\n' >> /usr/lib/os-release
+grep -q '^VARIANT_ID=' /usr/lib/os-release || printf 'VARIANT="Debian edition"\nVARIANT_ID=hearth-peppermint\n' >> /usr/lib/os-release
 grep -q '^ID_LIKE=' /usr/lib/os-release || echo 'ID_LIKE=debian' >> /usr/lib/os-release
 
 # ------------------------------------------------------------------ boot loader for Hearth's installer (bootupd)
