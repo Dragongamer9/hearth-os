@@ -52,7 +52,8 @@ Singleton {
     function r(n) { const cap = lookDef.corner || 0; return cap > 0 ? Math.min(n, cap) : n; }
 
     FileView {
-        path: decodeURIComponent(Qt.resolvedUrl("../theme/palettes.json").toString().replace(/^file:\/\//, ""))
+        // (Qt.resolvedUrl can't reach outside the shell's folder: Quickshell answers qrc:/qs-blackhole there.)
+        path: Quickshell.shellDir + "/../theme/palettes.json"
         blockLoading: true
         onLoaded: { try { root.palettes = JSON.parse(text()); } catch (e) { console.warn("Theme: palettes.json: " + e); } }
     }
@@ -69,7 +70,7 @@ Singleton {
             if (root.appliedKey === "" ) { root.appliedKey = root.key; return; }   // the first settle: labwc's autostart already ran it
             if (root.appliedKey === root.key) return;
             root.appliedKey = root.key;
-            Quickshell.execDetached(["sh", decodeURIComponent(Qt.resolvedUrl("../theme/apply.sh").toString().replace(/^file:\/\//, ""))]);
+            Quickshell.execDetached(["sh", Quickshell.shellDir + "/../theme/apply.sh"]);
         }
     }
     Connections {
