@@ -23,6 +23,8 @@ Singleton {
     property bool overlayShown: false      // a menu, dialog or the clock's panel is open (Pad.qml: the controller types keys)
     property var mainDesktop: null         // the main screen's Desktop (for `quickshell ipc ... call desktop menu`)
     property var mainBar: null             // the main screen's taskbar (Super+1-9)
+    property bool locked: false            // the lock screen is up (Lock.qml): moving wallpapers pause
+    property bool screenOff: false         // the screen was turned off for idling (IdlePower.qml): they pause too
     property var shownDesktop: null        // Show desktop: {windows, front} that were minimized for it
 
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-desk").toString().replace(/^file:\/\//, ""))

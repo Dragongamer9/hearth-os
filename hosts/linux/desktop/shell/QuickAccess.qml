@@ -260,7 +260,7 @@ PanelWindow {
     component Focusable: Rectangle {
         property string navId
         readonly property bool focused: root.current === navId
-        radius: 12
+        radius: Theme.r(12)
         border.width: 2
         border.color: focused ? Theme.accent : "transparent"
         Behavior on border.color { ColorAnimation { duration: Theme.quick } }

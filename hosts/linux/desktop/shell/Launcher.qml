@@ -148,7 +148,7 @@ PanelWindow {
         anchors.centerIn: parent
         width: Math.min(parent.width - 80, 880)
         height: Math.min(parent.height - 120, 640)
-        radius: 20
+        radius: Theme.r(20)
         color: Theme.panel
         border.color: Theme.line
         MouseArea { anchors.fill: parent } // clicks inside don't close
@@ -168,7 +168,7 @@ PanelWindow {
                     visible: root.folderOpen && root.tab === "apps" && !search.text
                     implicitWidth: backText.implicitWidth + 28
                     implicitHeight: 38
-                    radius: 10
+                    radius: Theme.r(10)
                     color: backArea.containsMouse ? Theme.panel3 : Theme.panel2
                     Text { id: backText; anchors.centerIn: parent; text: "‹ System apps"; color: Theme.text; font.pixelSize: 14; font.family: Theme.font }
                     MouseArea { id: backArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.closeFolder(); search.forceActiveFocus(); } }
@@ -186,7 +186,7 @@ PanelWindow {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 48
-                radius: 12
+                radius: Theme.r(12)
                 color: Theme.bg2
                 border.color: search.activeFocus && !root.tabFocus ? Theme.accent : Theme.line
                 TextInput {
@@ -254,7 +254,7 @@ PanelWindow {
                         required property var modelData
                         implicitWidth: chipRow.implicitWidth + 20
                         implicitHeight: 36
-                        radius: 10
+                        radius: Theme.r(10)
                         color: chipArea.containsMouse ? Theme.panel3 : Theme.panel2
                         Row {
                             id: chipRow
@@ -289,7 +289,7 @@ PanelWindow {
                 cellHeight: root.tab === "games" ? 236 : 112
                 keyNavigationEnabled: true
                 highlightFollowsCurrentItem: true
-                highlight: Rectangle { radius: 14; color: Theme.panel3; border.color: root.tabFocus ? Theme.line : Theme.accent }
+                highlight: Rectangle { radius: Theme.r(14); color: Theme.panel3; border.color: root.tabFocus ? Theme.line : Theme.accent }
                 delegate: Item {
                     id: cell
                     required property var modelData
@@ -301,7 +301,7 @@ PanelWindow {
                     height: grid.cellHeight
                     Rectangle {
                         anchors { fill: parent; margins: 4 }
-                        radius: 14
+                        radius: Theme.r(14)
                         color: hover.containsMouse && grid.currentIndex !== cell.index ? Theme.panel2 : "transparent"
                     }
                     Column {
@@ -320,7 +320,7 @@ PanelWindow {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: 120
                             height: 168
-                            radius: 10
+                            radius: Theme.r(10)
                             color: Theme.panel3
                             Text {
                                 anchors.centerIn: parent
@@ -410,7 +410,7 @@ PanelWindow {
         readonly property bool current: root.tab === tb.key
         implicitWidth: tbText.implicitWidth + 36
         implicitHeight: 38
-        radius: 10
+        radius: Theme.r(10)
         color: tb.current ? Theme.accent : (tbArea.containsMouse ? Theme.panel3 : Theme.panel2)
         border.width: root.tabFocus && tb.current ? 2 : 0
         border.color: Theme.text
@@ -431,7 +431,7 @@ PanelWindow {
         property bool primary: false
         implicitWidth: abText.implicitWidth + 32
         implicitHeight: 40
-        radius: 10
+        radius: Theme.r(10)
         color: primary ? (abArea.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent) : (abArea.containsMouse ? Theme.panel3 : Theme.panel2)
         Text { id: abText; anchors.centerIn: parent; text: ab.label; color: ab.primary ? Theme.accentInk : Theme.text; font.pixelSize: 13; font.bold: ab.primary; font.family: Theme.font }
         MouseArea {

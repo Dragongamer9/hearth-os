@@ -1,0 +1,35 @@
+{
+  "_comment": "Mantel's looks (Settings › Appearance › Look and Mode). Read by shell/Theme.qml (the shell) and theme/hearth-theme (labwc, Qt, GTK and KDE colours). hearth/dark is the reference: hearth-theme turns Hearth's own colour files into any other look by mapping each colour from these tokens to the chosen ones. corner = the largest corner radius (0 = no cap).",
+  "hearth": {
+    "label": "Hearth",
+    "font": "sans-serif",
+    "corner": 0,
+    "windowCorner": 10,
+    "wallpaper": "",
+    "dark":  { "bg": "#0f0b09", "bg2": "#17110e", "panel": "#1c1512", "panel2": "#261d18", "panel3": "#33271f", "line": "#3b2e26",
+               "text": "#f4ece3", "muted": "#a69484", "danger": "#ff5d5d", "ember": "#ff8a3d", "flame": "#ffd166", "ink": "#2a1206", "glass": 0.92 },
+    "light": { "bg": "#f6efe8", "bg2": "#efe5db", "panel": "#fffaf5", "panel2": "#f3e9df", "panel3": "#e7d8c9", "line": "#d9c6b4",
+               "text": "#2a1c13", "muted": "#7a6656", "danger": "#d93636", "ember": "#e8702a", "flame": "#c98a00", "ink": "#2a1206", "glass": 0.94 }
+  },
+  "steam": {
+    "label": "Steam-style",
+    "font": "Inter",
+    "corner": 4,
+    "windowCorner": 4,
+    "wallpaper": "anim:tide",
+    "dark":  { "bg": "#171a21", "bg2": "#1b2838", "panel": "#1e2633", "panel2": "#24303f", "panel3": "#2a475e", "line": "#32404f",
+               "text": "#dce5ed", "muted": "#8f98a0", "danger": "#e5484d", "ember": "#1a9fff", "flame": "#66c0f4", "ink": "#06121d", "glass": 0.97 },
+    "light": { "bg": "#e6ebf0", "bg2": "#dbe2e9", "panel": "#f4f7fa", "panel2": "#e8edf2", "panel3": "#d2dce6", "line": "#c0ccd8",
+               "text": "#16202b", "muted": "#5b6876", "danger": "#c9363b", "ember": "#1a7fd4", "flame": "#1a9fff", "ink": "#ffffff", "glass": 0.97 }
+  },
+  "accents": [
+    { "name": "Steam blue", "color": "#1a9fff" },
+    { "name": "Sky", "color": "#66c0f4" },
+    { "name": "Ember", "color": "#ff8a3d" },
+    { "name": "Flame", "color": "#ffd166" },
+    { "name": "Moss", "color": "#5ba32b" },
+    { "name": "Mint", "color": "#3ccf91" },
+    { "name": "Violet", "color": "#9b7bff" },
+    { "name": "Rose", "color": "#ff5c8a" }
+  ]
+}

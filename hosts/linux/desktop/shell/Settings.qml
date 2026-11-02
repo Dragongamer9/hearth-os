@@ -9,7 +9,7 @@ import Quickshell.Io
 Singleton {
     id: root
     property bool nightLight: false      // warm the screen from sunset to sunrise
-    property string wallpaper: ""        // a picture file; "" = the animated fireside; "anim:lava" / "anim:aurora" = the other moving ones
+    property string wallpaper: ""        // a picture file; "" = the look's own (Hearth: the animated fireside, Steam-style: Slate Tide); "builtin:<name>" = one of images/wallpapers; "anim:lava" / "anim:aurora" = the other moving ones
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
     property bool lockOnWake: false      // lock the screen when the device goes to sleep (Desktop Mode)
@@ -17,10 +17,13 @@ Singleton {
     property bool clipboardHistory: true // keep what you copy for Super+V (cliphist); Settings › Clipboard
     property int screenOffMinutes: 10    // turn the screen off after this long without use (0 = never); Settings › Power
     property int sleepMinutes: 0         // go to sleep after this long without use (0 = never); Settings › Power
+    property string look: "hearth"       // Mantel's look: "hearth" (warm) or "steam" (Steam-style blue-slate); Settings › Appearance
+    property string mode: "dark"         // "dark" or "light"
+    property string accent: ""           // "#rrggbb", or "" for the look's own (Hearth: your profile's accent)
     property bool loaded: false
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
-        "screenOffMinutes", "sleepMinutes"]
+        "screenOffMinutes", "sleepMinutes", "look", "mode", "accent"]
     onNightLightChanged: save()
     onWallpaperChanged: save()
     onReduceMotionChanged: save()
@@ -30,6 +33,9 @@ Singleton {
     onClipboardHistoryChanged: save()
     onScreenOffMinutesChanged: save()
     onSleepMinutesChanged: save()
+    onLookChanged: save()
+    onModeChanged: save()
+    onAccentChanged: save()
     function save() {
         if (!loaded) return;
         const o = {};

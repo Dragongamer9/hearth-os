@@ -511,7 +511,7 @@ PanelWindow {
                     Rectangle {
                         anchors.fill: parent
                         visible: parent.containsDrag
-                        radius: 12
+                        radius: Theme.r(12)
                         color: "transparent"
                         border.color: Theme.accent
                         border.width: 2
@@ -520,7 +520,7 @@ PanelWindow {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 12
+                    radius: Theme.r(12)
                     color: tile.sel ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : hit.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
                     border.width: tile.sel || tile.focusRing ? 1 : 0
                     border.color: Theme.accent

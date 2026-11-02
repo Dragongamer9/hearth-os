@@ -11,7 +11,7 @@ Rectangle {
     signal submitted(string text)
     Layout.fillWidth: true
     implicitHeight: 52
-    radius: 12
+    radius: Theme.r(12)
     color: Theme.panel3
     border.width: 2
     border.color: input.activeFocus ? Theme.accent : "transparent"

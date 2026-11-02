@@ -34,7 +34,7 @@ SetBase {
                     readonly property bool lit: modelData.value === ch.current
                     Layout.fillWidth: true
                     implicitHeight: 40
-                    radius: 10
+                    radius: Theme.r(10)
                     color: lit ? Theme.accent : Theme.panel3
                     opacity: opt.modelData.disabled ? 0.45 : 1
                     Text { anchors.centerIn: parent; text: opt.modelData.label; color: opt.lit ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: opt.lit ? Font.DemiBold : Font.Normal }

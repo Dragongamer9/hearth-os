@@ -117,7 +117,7 @@ Scope {
                                 readonly property bool lit: app.page === modelData.id
                                 width: ListView.view.width
                                 height: 48
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: lit ? (nav.activeFocus ? Theme.accent : Theme.panel3) : mouse.containsMouse ? Theme.panel2 : "transparent"
                                 Behavior on color { ColorAnimation { duration: Theme.quick } }
                                 RowLayout {

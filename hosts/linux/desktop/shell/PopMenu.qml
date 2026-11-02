@@ -159,7 +159,7 @@ PanelWindow {
                     Rectangle {
                         visible: !row.sep
                         anchors.fill: parent
-                        radius: 10
+                        radius: Theme.r(10)
                         color: row.lit ? Theme.accent : "transparent"
                     }
                     RowLayout {

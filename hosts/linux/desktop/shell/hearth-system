@@ -50,6 +50,7 @@ sys.dont_write_bytecode = True     # hearth-files and hearth-browser are loaded 
 HERE = os.path.dirname(os.path.realpath(__file__))
 HOME = os.path.expanduser('~')
 CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+THEME_DIR = os.path.join(CONFIG, 'nimbus', 'theme')        # theme/hearth-theme's files for the chosen look
 ADMIN = '/usr/libexec/nimbus/hearth-admin'
 LABWC_DIR = os.path.normpath(os.path.join(HERE, '..', 'labwc'))
 LABWC_ENV = os.path.join(CONFIG, 'labwc', 'environment')
@@ -433,11 +434,15 @@ def labwc_config(src=None, dest=None):
         if name in ('environment', 'rc.xml'):
             continue
         link = os.path.join(dest, name)
+        target = os.path.join(src, name)
+        # The look chosen in Settings › Appearance (theme/hearth-theme writes its window colours).
+        if name == 'themerc-override' and os.path.isfile(os.path.join(THEME_DIR, name)):
+            target = os.path.join(THEME_DIR, name)
+        if os.path.islink(link) and os.readlink(link) == target:
+            continue
         if os.path.islink(link) or os.path.exists(link):
-            if os.path.islink(link) and os.readlink(link) == os.path.join(src, name):
-                continue
             os.remove(link)
-        os.symlink(os.path.join(src, name), link)
+        os.symlink(target, link)
     user = parse_env(read(LABWC_ENV))
     mine = {k: v for k, v in user.items() if k.startswith('XKB_DEFAULT_')}
     env = read(os.path.join(src, 'environment'))
@@ -454,12 +459,31 @@ def labwc_config(src=None, dest=None):
     rc = rc_with_repeat(read(os.path.join(src, 'rc.xml')), delay, rate)
     if os.path.exists(POINTER_JSON):
         rc = rc_with_pointer(rc, pointer_saved())
+    rc = rc_with_theme(rc)
     # ---- Accessibility: the magnifier's size and steps, window titles at your text size
     if access:
         rc = access.rc_with_access(rc)
     # ---- end Accessibility
     write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
+
+
+def rc_with_theme(text):
+    """rc.xml text with the chosen look's window corner radius and font (~/.config/nimbus/theme/labwc.json,
+    written by theme/hearth-theme); unchanged without it."""
+    try:
+        look = json.loads(read(os.path.join(THEME_DIR, 'labwc.json'), '{}'))
+    except ValueError:
+        return text
+    if not isinstance(look, dict):
+        return text
+    r = look.get('cornerRadius')
+    if isinstance(r, int) and not isinstance(r, bool) and 0 <= r <= 30:
+        text = re.sub(r'<cornerRadius>\d+</cornerRadius>', '<cornerRadius>%d</cornerRadius>' % r, text, count=1)
+    font = look.get('font')
+    if isinstance(font, str) and re.fullmatch(r'[A-Za-z0-9 _-]{1,40}', font):
+        text = re.sub(r'(<font place="[A-Za-z]+"><name>)sans(</name>)', lambda m: m.group(1) + font + m.group(2), text)
+    return text
 
 
 # ---- Accessibility (hearth-access, next to this file)

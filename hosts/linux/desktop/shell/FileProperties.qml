@@ -521,7 +521,7 @@ Scope {
                                 id: nameBox
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 44
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: pr.canRename ? Theme.panel3 : "transparent"
                                 border.width: 2
                                 border.color: nameField.activeFocus || pr.focusId === "name" ? Theme.accent : "transparent"
@@ -586,7 +586,7 @@ Scope {
                                 readonly property bool on: pr.tab === modelData.id
                                 width: tbText.implicitWidth + 32
                                 height: 38
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: on ? (pr.focusId === "tabs" ? Theme.accent : Theme.panel3) : tbMouse.containsMouse ? Theme.panel2 : "transparent"
                                 Text {
                                     id: tbText
@@ -743,7 +743,7 @@ Scope {
                                     Rectangle {
                                         width: !pr.single || !pr.info.total ? 0 : parent.width * Math.max(0, Math.min(1, 1 - pr.info.free / pr.info.total))
                                         height: parent.height
-                                        radius: 5
+                                        radius: Theme.r(5)
                                         color: pr.single && pr.info.total && pr.info.free / pr.info.total < 0.1 ? Theme.danger : Theme.accent
                                     }
                                 }
@@ -838,7 +838,7 @@ Scope {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 52
                                 visible: pr.single && !pr.info.dir
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: Theme.panel2
                                 border.width: 2
                                 border.color: pr.focusId === "exec" ? Theme.accent : "transparent"
@@ -896,7 +896,7 @@ Scope {
                                     readonly property bool lit: pr.focusId === "sum-" + modelData.id || pr.focusId === "copy-" + modelData.id
                                     Layout.fillWidth: true
                                     implicitHeight: sumCol.implicitHeight + 24
-                                    radius: 12
+                                    radius: Theme.r(12)
                                     color: Theme.panel2
                                     border.width: 2
                                     border.color: lit ? Theme.accent : "transparent"
@@ -1073,7 +1073,7 @@ Scope {
                                 readonly property bool lit: pr.pickIndex === index
                                 width: ListView.view.width
                                 height: 48
-                                radius: 10
+                                radius: Theme.r(10)
                                 color: lit ? Theme.accent : apMouse.containsMouse ? Theme.panel3 : Theme.panel2
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 12; rightMargin: 14 }
@@ -1193,7 +1193,7 @@ Scope {
         signal pressed()
         implicitWidth: sbText.implicitWidth + 30
         implicitHeight: 40
-        radius: 10
+        radius: Theme.r(10)
         opacity: dim ? 0.5 : 1
         color: primary ? Theme.accent : sbMouse.containsMouse ? Theme.panel3 : Theme.panel2
         border.width: 2
@@ -1225,7 +1225,7 @@ Scope {
         implicitHeight: 28
         width: 28
         height: 28
-        radius: 8
+        radius: Theme.r(8)
         opacity: enabled ? 1 : 0.45
         color: checked ? Theme.accent : Theme.panel3
         border.width: 2

@@ -121,7 +121,7 @@ PanelWindow {
                 visible: root.mode === "ask"
                 Layout.fillWidth: true
                 implicitHeight: 46
-                radius: 12
+                radius: Theme.r(12)
                 color: Theme.bg2
                 border.color: root.focusIndex === 0 ? Theme.accent : Theme.line
                 TextInput {
@@ -204,7 +204,7 @@ PanelWindow {
         signal picked()
         implicitWidth: bt.implicitWidth + 36
         implicitHeight: 42
-        radius: 10
+        radius: Theme.r(10)
         color: primary ? (ba.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent) : (ba.containsMouse ? Theme.panel3 : Theme.panel2)
         border.width: 2
         border.color: lit ? (primary ? Theme.text : Theme.accent) : "transparent"

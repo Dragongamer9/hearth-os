@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""Mantel's look for everything outside the shell: labwc's window decorations, Qt/KDE and GTK apps.
+
+  hearth-theme            write the files for the look chosen in Settings › Appearance and print shell lines
+                          (HEARTH_THEME_DIR=, HEARTH_SCHEME=dark|light, HEARTH_GNOME_ACCENT=) for theme/apply.sh
+  hearth-theme --show     print the chosen look and its colours as JSON
+
+The look, mode and accent are in ~/.local/share/nimbus/desktop.json ("look": "hearth"|"steam", "mode": "dark"|
+"light", "accent": "#rrggbb" or ""); with the Hearth look and no accent there, your profile's accent
+(~/.local/share/nimbus/library.json) is used, as before. Colours come from palettes.json next to this script.
+
+Hearth's own colour files (labwc/themerc-override, theme/hearth-qt.conf, theme/gtk/gtk*.css, theme/Hearth.colors)
+are written for the Hearth dark look. Every other look is made from them: each colour is matched to the nearest
+Hearth dark token (bg, panel, text, ember...) and becomes the chosen look's token with the same small offset, so
+shades in between keep their place. Written to ~/.config/nimbus/theme/ (and the KDE scheme to
+~/.local/share/color-schemes/HearthLive.colors). When labwc's part changes, Desktop Mode's labwc folder is
+refreshed (hearth-system labwc-config) and labwc reloads.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DESKTOP = os.path.dirname(HERE)
+HOME = os.path.expanduser('~')
+CONF = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+DATA = os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share')
+OUT = os.path.join(CONF, 'nimbus', 'theme')
+TOKENS = ('bg', 'bg2', 'panel', 'panel2', 'panel3', 'line', 'text', 'muted', 'danger', 'ember', 'flame', 'ink')
+KEEP = {'#ffffff', '#000000', '#8fd18a', '#7fd18b', '#ffd166'}   # white, black, the greens and warning yellow stay
+GNOME_ACCENTS = {'blue': '#3584e4', 'teal': '#2190a4', 'green': '#3a944a', 'yellow': '#c88800', 'orange': '#ed5b00',
+                 'red': '#e62d42', 'pink': '#d56199', 'purple': '#9141ac', 'slate': '#6f8396'}
+
+
+def load(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def rgb(h):
+    h = h.lstrip('#')
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def hexc(c):
+    return '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in c)
+
+
+def valid(c):
+    return isinstance(c, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', c) is not None
+
+
+def choice():
+    pal = load(os.path.join(HERE, 'palettes.json'), {})
+    d = load(os.path.join(DATA, 'nimbus', 'desktop.json'), {})
+    look = d.get('look') if d.get('look') in pal and not str(d.get('look')).startswith('_') else 'hearth'
+    mode = 'light' if d.get('mode') == 'light' else 'dark'
+    accent = d.get('accent') if valid(d.get('accent')) else ''
+    if not accent and look == 'hearth':
+        a = ((load(os.path.join(DATA, 'nimbus', 'library.json'), {}) or {}).get('profile') or {}).get('accent')
+        accent = a if valid(a) else ''
+    return pal, look, mode, accent.lower()
+
+
+def luminance(c):
+    r, g, b = (v / 255 for v in rgb(c))
+    return r * 0.2126 + g * 0.7152 + b * 0.0722
+
+
+class Mapper:
+    def __init__(self, pal, look, mode, accent):
+        ref = pal.get('hearth', {}).get('dark', {})
+        tgt = dict(pal.get(look, {}).get(mode, {}))
+        self.accent = accent or tgt.get('ember', '#ff8a3d')
+        tgt['ember'] = self.accent
+        # Text on the accent: dark on light accents, white on dark ones (as Theme.qml's accentInk).
+        dark_ink = pal.get(look, {}).get('dark', {}).get('ink', '#2a1206')
+        tgt['ink'] = dark_ink if luminance(self.accent) > 0.45 else '#ffffff'
+        self.ref = {k: rgb(ref[k]) for k in TOKENS if valid(ref.get(k))}
+        self.tgt = {k: rgb(tgt[k]) for k in TOKENS if valid(tgt.get(k))}
+        self.identity = look == 'hearth' and mode == 'dark' and self.accent == ref.get('ember')
+
+    def color(self, h):
+        h = h.lower()
+        if self.identity or h in KEEP:
+            return h
+        c = rgb(h)
+        best = min(self.ref, key=lambda k: sum((a - b) ** 2 for a, b in zip(c, self.ref[k])))
+        off = [a - b for a, b in zip(c, self.ref[best])]
+        return hexc([t + o for t, o in zip(self.tgt.get(best, self.ref[best]), off)])
+
+    def text(self, s, kind='css'):
+        s = re.sub(r'#([0-9a-fA-F]{6})(?![0-9a-fA-F])', lambda m: self.color('#' + m.group(1)), s)
+        if kind == 'qt':        # Qt palettes: #aarrggbb
+            s = re.sub(r'#([0-9a-fA-F]{2})([0-9a-fA-F]{6})(?![0-9a-fA-F])', lambda m: '#' + m.group(1) + self.color('#' + m.group(2))[1:], s)
+        elif kind == 'labwc':   # labwc: #rrggbbaa
+            s = re.sub(r'#([0-9a-fA-F]{6})([0-9a-fA-F]{2})(?![0-9a-fA-F])', lambda m: self.color('#' + m.group(1)) + m.group(2), s)
+        elif kind == 'kde':     # KDE colour files: r,g,b
+            s = re.sub(r'(?m)^(\w+=)(\d+),(\d+),(\d+)$',
+                       lambda m: m.group(1) + ','.join(str(v) for v in rgb(self.color(hexc(int(m.group(i)) for i in (2, 3, 4))))), s)
+        return s
+
+
+def cap_radii(s, cap, pattern):
+    if not cap:
+        return s
+    return re.sub(pattern, lambda m: m.group(1) + str(min(int(m.group(2)), cap)), s)
+
+
+def write(path, text):
+    """Write when different; True if it changed."""
+    try:
+        with open(path) as f:
+            if f.read() == text:
+                return False
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.replace(tmp, path)
+    return True
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def gnome_accent(c):
+    import colorsys
+    h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb(c)))
+    if s < 0.2:
+        return 'slate'
+    def dist(name):
+        h2 = colorsys.rgb_to_hsv(*(x / 255 for x in rgb(GNOME_ACCENTS[name])))[0]
+        d = abs(h - h2)
+        return min(d, 1 - d)
+    return min((n for n in GNOME_ACCENTS if n != 'slate'), key=dist)
+
+
+def main():
+    pal, look, mode, accent = choice()
+    if '--show' in sys.argv:
+        m = Mapper(pal, look, mode, accent)
+        print(json.dumps({'look': look, 'mode': mode, 'accent': m.accent, 'colors': {k: hexc(v) for k, v in m.tgt.items()}}))
+        return 0
+    m = Mapper(pal, look, mode, accent)
+    lk = pal.get(look, {})
+    cap = int(lk.get('corner') or 0)
+    labwc_changed = False
+    # labwc: window title bars, menus, Alt+Tab, snapping, corner radius and font.
+    themerc = m.text(read(os.path.join(DESKTOP, 'labwc', 'themerc-override')), 'labwc')
+    themerc = cap_radii(themerc, cap, r'(corner-radius:\s*)(\d+)')
+    themerc = themerc.replace('# Hearth colors', '# Written by hearth-theme (%s, %s, accent %s) from Hearth colors' % (look, mode, m.accent), 1)
+    labwc_changed |= write(os.path.join(OUT, 'themerc-override'), themerc)
+    labwc_changed |= write(os.path.join(OUT, 'labwc.json'), json.dumps({'cornerRadius': int(lk.get('windowCorner') or 10),
+                                                                         'font': lk.get('font') if lk.get('font') not in (None, 'sans-serif') else 'sans'}) + '\n')
+    # Qt / KDE apps through qt6ct / qt5ct.
+    write(os.path.join(OUT, 'hearth-qt.conf'), m.text(read(os.path.join(HERE, 'hearth-qt.conf')), 'qt'))
+    # GTK 3 / 4.
+    for v in (3, 4):
+        css = m.text(read(os.path.join(HERE, 'gtk', 'gtk%d.css' % v)))
+        css = cap_radii(css, cap, r'(border-radius:\s*)(\d+)')
+        if mode == 'light':
+            css = css.replace('rgba(0, 0, 0, 0.36)', 'rgba(0, 0, 0, 0.07)')
+        write(os.path.join(OUT, 'gtk%d.css' % v), css)
+    # KDE colour scheme (Plasma, KDE apps that read kdeglobals): HearthLive.
+    kde = m.text(read(os.path.join(HERE, 'Hearth.colors')), 'kde')
+    kde = re.sub(r'(?m)^Name=.*$', 'Name=Hearth Live', kde)
+    write(os.path.join(OUT, 'Hearth.colors'), kde)
+    write(os.path.join(DATA, 'color-schemes', 'HearthLive.colors'), kde)
+    if labwc_changed:
+        rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-labwc')
+        system = os.path.join(DESKTOP, 'shell', 'hearth-system')
+        if os.path.isdir(rt) and os.path.isfile(system):
+            subprocess.run([sys.executable, system, 'labwc-config'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+            subprocess.run(['labwc', '--reconfigure'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for k, v in (('HEARTH_THEME_DIR', OUT), ('HEARTH_SCHEME', mode), ('HEARTH_GNOME_ACCENT', gnome_accent(m.accent))):
+        if "'" not in v:
+            print("%s='%s'" % (k, v))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
