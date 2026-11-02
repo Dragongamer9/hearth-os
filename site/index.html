@@ -237,8 +237,9 @@ figcaption.cap{margin-top:12px;font-size:15px;color:var(--muted)}
 .side{display:grid;gap:16px}
 .ember{margin-top:clamp(40px,5vw,64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(24px,4vw,56px);align-items:start;padding-top:clamp(32px,4vw,48px);border-top:1px solid var(--rule)}
 @media (max-width:860px){.ember{grid-template-columns:minmax(0,1fr)}}
-.cmd{position:relative;margin:8px 0 14px;background:var(--deep);border-radius:4px}
-.cmd pre{margin:0;padding:14px 16px;padding-right:76px;overflow-x:auto;font:14px/1.6 var(--mono);color:var(--hi)}
+.cmd{position:relative;margin:8px 0 14px;background:var(--panel);border-radius:4px;box-shadow:0 0 0 1px var(--rule)}
+.ember .btn.line{background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.cmd pre{margin:0 72px 0 0;padding:14px 16px;overflow-x:auto;font:14px/1.6 var(--mono);color:var(--hi)}
 .cmd code{background:none;padding:0;white-space:pre}
 .cmd button{position:absolute;right:8px;top:8px;font:600 14px/1 var(--body);color:var(--hi);background:var(--raise);border:0;border-radius:3px;padding:9px 12px;cursor:pointer}
 
@@ -502,13 +503,6 @@ footer .legal a{font-size:inherit;color:var(--muted)}
         <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256">SHA-256 checksum</a>
       </div>
       <div class="side">
-        <div class="box alt">
-          <h3>Small installer</h3>
-          <p>A quick download that fetches Hearth OS while it installs. Needs internet. Choose Debian when it asks.</p>
-          <p class="v" data-file="hearth-os-installer.iso"></p>
-          <a class="btn line" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 1.6 GB</small></a>
-          <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-installer.iso.sha256">SHA-256 checksum</a>
-        </div>
         <div class="box alt" id="recovery">
           <h3>Recovery USB</h3>
           <p>Keep one in a drawer. It starts the previous version, reinstalls keeping your files, or copies them off.</p>

@@ -195,12 +195,11 @@ It gets no more updates: <a href="updates.html#switch">switch to Debian</a> and 
 # ------------------------------------------------------------------ Installing
 INSTALL = f'''
 {h2('download', 'Downloads')}
-<p>Pick one. The <b>offline</b> USBs carry the whole system and install without internet. The small installer
-downloads the system while it installs.</p>
+<p>The <b>offline USB</b> carries the whole system and installs without internet. Keep a <b>Recovery USB</b> too,
+for a device that won't start.</p>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
 <tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (archived)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
-<tr><td><a href="{R2}hearth-os-installer.iso">Small installer</a></td><td>1.6 GB</td><td>Needed</td></tr>
 <tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Debian, offline USB</a> (recommended)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
 <tr><td><a href="{R2}hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
@@ -637,7 +636,7 @@ signed in on it: sign in to Steam on that profile.</p>
 
 {h2('install-failed', 'Installing fails')}
 <ul>
-<li>Try the <b>offline USB</b> for your edition instead of the small installer (no download to go wrong).</li>
+<li>Check the ISO's checksum (see <a href="install.html#download">Downloads</a>) and write the <b>offline USB</b> again: a damaged download is the most common cause.</li>
 <li>If the install says it failed but the computer later starts Hearth OS anyway, it may have finished: check <b>Settings › System › Updates</b> and update.</li>
 <li>From the live USB, <b>Settings › System › Help &amp; logs › Send logs to the developer</b> includes the installer's log.</li>
 </ul>
