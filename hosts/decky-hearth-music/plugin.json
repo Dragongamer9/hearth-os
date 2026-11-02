@@ -1,0 +1,15 @@
+{
+  "name": "Hearth Music",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "hearth",
+      "music",
+      "library"
+    ],
+    "description": "Plays the theme song of the game you're looking at in Steam's library: a song you picked, the game's own soundtrack, or Apple Music's official 30-second preview. Fades out when you press Play.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}

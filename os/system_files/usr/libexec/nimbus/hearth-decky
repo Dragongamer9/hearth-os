@@ -50,8 +50,8 @@ def lib_dir():
     return path('var/lib/hearth-decky')
 
 
-def shipped_plugin():
-    return path('usr/share/hearth/decky-hearth-sync')
+def shipped_plugin(name=None):
+    return path('usr/share/hearth', name or PLUGIN_DIR)
 
 
 # Hearth Sync's folder in Decky's plugins folder, and the older Hearth plugin's (hosts/decky-hearth, the takeover: no
@@ -59,6 +59,13 @@ def shipped_plugin():
 PLUGIN_DIR = 'decky-hearth-sync'
 OLD_PLUGIN_DIR = 'decky-hearth'
 OLD_PLUGIN = {'name': 'Hearth', 'author': 'Dragongamer9'}
+# Other plugins the image ships next to Hearth Sync (/usr/share/hearth/<name>), handled the same way: copied on install,
+# brought up to date on start, taken away on remove. Hearth Music: docs/HEARTH-MUSIC.md.
+MORE_PLUGINS = ('decky-hearth-music',)
+
+
+def copy_more(home):
+    return {n: copy_plugin(home, name=n) for n in MORE_PLUGINS}
 
 
 def fail(msg):
@@ -177,14 +184,14 @@ def user_side(home):
             m.write('\n'.join(made) + '\n')
 
 
-def copy_plugin(home, owner_root=True):
-    """The image's plugin (Hearth Sync) into Decky's plugins folder (root's, as Decky keeps it). False when not shipped."""
-    src = shipped_plugin()
+def copy_plugin(home, owner_root=True, name=None):
+    """The image's plugin (Hearth Sync, or `name`) into Decky's plugins folder (root's, as Decky keeps it). False when not shipped."""
+    src = shipped_plugin(name)
     if not os.path.isfile(os.path.join(src, 'plugin.json')):
         return False
     plugins = os.path.join(home, 'homebrew', 'plugins')
     os.makedirs(plugins, exist_ok=True)
-    dst = os.path.join(plugins, PLUGIN_DIR)
+    dst = os.path.join(plugins, name or PLUGIN_DIR)
     tmp = dst + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.copytree(src, tmp, symlinks=False)
@@ -237,7 +244,7 @@ def install(user, download=None, machine=None):
         # Decky installed with its own installer: kept as it is, only the Hearth plugin is added.
         as_user(pw, lambda: user_side(home))
         plugin = copy_plugin(home)
-        return {'ok': True, 'via': 'decky', 'plugin': plugin, 'oldPluginRemoved': remove_old_plugin(home)}
+        return {'ok': True, 'via': 'decky', 'plugin': plugin, 'more': copy_more(home), 'oldPluginRemoved': remove_old_plugin(home)}
     download = download or (lambda: pick_asset(json.loads(fetch(RELEASES)), machine or os.uname().machine))
     got = download()
     if not got:
@@ -261,11 +268,12 @@ def install(user, download=None, machine=None):
             subprocess.run(['chcon', '-t', 'bin_t', binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     as_user(pw, lambda: user_side(home))
     plugin = copy_plugin(home)
+    more = copy_more(home)
     os.makedirs(os.path.dirname(unit_path()), exist_ok=True)
     with open(unit_path(), 'w') as f:
         f.write(unit_text(home, pw.pw_name, binary))
     systemctl('daemon-reload')
-    return {'ok': True, 'via': 'hearth', 'version': version, 'plugin': plugin, 'oldPluginRemoved': remove_old_plugin(home)}
+    return {'ok': True, 'via': 'hearth', 'version': version, 'plugin': plugin, 'more': more, 'oldPluginRemoved': remove_old_plugin(home)}
 
 
 def remove(user):
@@ -276,7 +284,8 @@ def remove(user):
         os.remove(unit_path())
         systemctl('daemon-reload')
     shutil.rmtree(lib_dir(), ignore_errors=True)
-    shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', PLUGIN_DIR), ignore_errors=True)
+    for n in (PLUGIN_DIR,) + MORE_PLUGINS:
+        shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', n), ignore_errors=True)
     remove_old_plugin(home)
     mark = os.path.join(home, 'homebrew', MARK)
     try:
@@ -303,13 +312,13 @@ def unit_home():
     return None
 
 
-def plugin_outdated(home):
-    """Hearth Sync in Decky's folder isn't the one this image ships (missing, or a Hearth OS update brought a new one)."""
-    src = shipped_plugin()
-    dst = os.path.join(home, 'homebrew', 'plugins', PLUGIN_DIR)
+def plugin_outdated(home, name=None):
+    """Hearth Sync (or `name`) in Decky's folder isn't the one this image ships (missing, or an update brought a new one)."""
+    src = shipped_plugin(name)
+    dst = os.path.join(home, 'homebrew', 'plugins', name or PLUGIN_DIR)
     if not os.path.isfile(os.path.join(src, 'plugin.json')):
         return False
-    for rel in ('plugin.json', 'package.json', 'main.py', 'dist/index.js'):
+    for rel in ('plugin.json', 'package.json', 'main.py', 'steam_import.py', 'dist/index.js'):
         a, b = os.path.join(src, rel), os.path.join(dst, rel)
         if not os.path.isfile(a):
             continue
@@ -332,6 +341,12 @@ def start_stop(verb):
                 out['plugin'] = 'updated' if copy_plugin(home) else 'not shipped'
         except OSError as e:
             out['plugin'] = 'couldn\'t update (%s)' % e
+        for n in MORE_PLUGINS:
+            try:
+                if home and plugin_outdated(home, n):
+                    out[n] = 'updated' if copy_plugin(home, name=n) else 'not shipped'
+            except OSError as e:
+                out[n] = 'couldn\'t update (%s)' % e
         try:
             if home and remove_old_plugin(home):
                 out['oldPlugin'] = 'removed'

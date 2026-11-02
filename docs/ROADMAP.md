@@ -168,6 +168,10 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 
 ## Next (unreleased)
 
+Hearth Music: a Decky plugin that plays the highlighted game's theme song in Steam Game Mode (your pick, the game's soundtrack, or Apple Music's 30-second preview), fading out when you press Play (docs/HEARTH-MUSIC.md).
+
+Steam games from other Steam folders (Flathub Steam's, unregistered SteamLibrary folders) can be brought into Steam from Hearth Sync's panel or with `hearth-steam-import` (docs/HEARTH-SYNC.md).
+
 ## 1.0 (released 2026-11-02)
 
 Hearth OS 1.0: from now on versions are MAJOR.MINOR (1.0, 1.1 … 1.10, then 2.0), shown with their date, "Hearth OS 1.0 · November 2, 2026" (docs/UPDATES.md).

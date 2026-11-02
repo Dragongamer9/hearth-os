@@ -7,6 +7,7 @@ import { definePlugin } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaSyncAlt } from "react-icons/fa";
 import { CHECK_EVERY, Item, Status, ago, storeList, storeOn } from "./model";
+import { ImportSection } from "./import";
 import { Settings, getSettings, getStatus, isBusy, listGames, onChange, removeAll, runSync, setSettings } from "./sync";
 
 function Panel() {
@@ -69,6 +70,7 @@ function Panel() {
           </PanelSectionRow>
         ))}
       </PanelSection>
+      <ImportSection />
       <PanelSection title="Clean up">
         <PanelSectionRow>
           <ButtonItem layout="below" disabled={busy} onClick={remove}
