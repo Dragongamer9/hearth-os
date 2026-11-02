@@ -1,0 +1,2 @@
+/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-portal:698: DeprecationWarning: Gio.DBusConnection.register_object is deprecated
+  conn.register_object(FM_PATH, node.interfaces[0], on_call, None, None)
