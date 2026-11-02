@@ -671,7 +671,7 @@ jobs:
           # The log: /var starts empty in this image, so journald's default (Storage=auto) would keep the journal in
           # memory only (see os-bases/peppermint/system_files/usr/lib/systemd/journald.conf.d).
           check "the log is kept across restarts (Storage=persistent, not the default auto)" "systemd-analyze cat-config systemd/journald.conf 2>/dev/null | grep -q '^Storage=persistent'"
-          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Peppermint /usr/lib/os-release"
+          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q '^VARIANT_ID=hearth-peppermint' /usr/lib/os-release && grep -q 'Debian' /usr/lib/os-release"
           # ---- Hearth Paint, Emoji, Fonts and Settings › Accessibility (apps-create.yml)
           warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
           warn "the emoji picker is installed and finds its libraries" "test -x /usr/bin/hearth-emoji && ! ldd /usr/bin/hearth-emoji | grep -q 'not found'"
