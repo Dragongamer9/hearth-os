@@ -882,7 +882,102 @@ def shortcuts_map():
     return mine
 
 
+# ---- Steam games from other Steam folders (docs/HEARTH-SYNC.md "Games from other Steam folders"): the scan and the
+# import are hearth-steam-import's (os/system_files/usr/bin/hearth-steam-import, shipped here as steam_import.py). The
+# import only runs while Steam is closed, so from Game Mode it's armed: a small helper waits for Steam to close (the
+# panel restarts Steam), brings the games in, and leaves its result in import.json for the panel.
+IMPORT_PROGRAMS = ('/usr/bin/hearth-steam-import',)
+
+
+def importer():
+    """The importer module: this plugin's copy, or the system's hearth-steam-import. None when neither is there."""
+    import importlib.machinery
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for f in (os.path.join(here, 'steam_import.py'),) + IMPORT_PROGRAMS:
+        if os.path.isfile(f):
+            try:
+                loader = importlib.machinery.SourceFileLoader('hearth_steam_import', f)
+                spec = importlib.util.spec_from_loader('hearth_steam_import', loader)
+                m = importlib.util.module_from_spec(spec)
+                loader.exec_module(m)
+                return m
+            except Exception:
+                continue
+    return None
+
+
+def import_command():
+    here = os.path.dirname(os.path.abspath(__file__))
+    for f in IMPORT_PROGRAMS:
+        if os.path.isfile(f) and os.access(f, os.X_OK):
+            return [f]
+    py = find_program('python3')
+    own = os.path.join(here, 'steam_import.py')
+    return [py, own] if py and os.path.isfile(own) else None
+
+
+def import_scan():
+    m = importer()
+    if not m:
+        return {'ok': False, 'error': "the importer isn't on this system", 'games': [], 'skipped': []}
+    os.environ['HEARTH_STEAM_IMPORT_HOME'] = home()
+    try:
+        p = m.scan(home())
+    except Exception as e:  # noqa: BLE001 - shown in the panel, never breaks the plugin
+        return {'ok': False, 'error': str(e)[:200], 'games': [], 'skipped': []}
+    keep = ('appid', 'name', 'how', 'source', 'target', 'why')
+    slim = lambda gs: [{k: g[k] for k in keep if k in g} for g in gs][:200]
+    log('import scan: %d to bring in, %d skipped' % (len(p['games']), len(p['skipped'])))
+    return {'ok': True, 'target': p['target'], 'games': slim(p['games']), 'skipped': slim(p['skipped']), 'libraries': p['libraries'][:50]}
+
+
+def import_state():
+    """The armed import's state: {'pending': bool, 'result': {...} or None}."""
+    d = settings_dir()
+    pending = False
+    try:
+        pid = int(open(os.path.join(d, 'import.pid')).read().strip())
+        pending = os.path.exists('/proc/%d' % pid)
+    except (OSError, ValueError):
+        pass
+    res = load_json('import.json', {}) or None
+    return {'pending': pending, 'result': res}
+
+
+def arm_import(popen=subprocess.Popen):
+    """Starts the helper that waits for Steam to close and then brings the games in. True when started."""
+    cmd = import_command()
+    if not cmd:
+        return False
+    d = settings_dir()
+    os.makedirs(d, exist_ok=True)
+    try:
+        os.remove(os.path.join(d, 'import.json'))
+    except OSError:
+        pass
+    env = clean_env()
+    env['HEARTH_STEAM_IMPORT_HOME'] = home()
+    # The helper writes its JSON to import.json.tmp, renamed to import.json when it's done.
+    sh = '"$@" > "$0.tmp" 2>/dev/null; mv -f "$0.tmp" "$0"'
+    p = popen(['/bin/sh', '-c', sh, os.path.join(d, 'import.json')] + cmd + ['--yes', '--wait', '--json'],
+              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
+    with open(os.path.join(d, 'import.pid'), 'w') as f:
+        f.write(str(p.pid))
+    log('import armed: waits for Steam to close')
+    return True
+
+
 class Plugin:
+    async def import_scan(self):
+        return import_scan()
+
+    async def import_state(self):
+        return import_state()
+
+    async def import_arm(self):
+        return arm_import()
+
     async def get_games(self, force=False):
         r = list_games(force=bool(force))
         return r

@@ -38,12 +38,22 @@ const focus = (label) => page.evaluate((l) => { document.querySelectorAll(".gpfo
   const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l))
     || [...document.querySelectorAll(".qam-field")].find((x) => x.textContent.includes(l))?.querySelector(".qam-switch");
   if (b) b.classList.add("gpfocus"); }, label);
+// Shows the panel from a section on (the sections above it hidden, as if scrolled down: the import section is below
+// the first screenful).
+const scrollTo = (title) => page.evaluate((t) => { const secs = [...document.querySelectorAll(".qam-section")];
+  const i = secs.findIndex((x) => x.querySelector(".qam-section-title")?.textContent === t);
+  secs.forEach((x, j) => { x.style.display = j < i ? "none" : ""; }); }, title);
 // [picture, state, what to do, what it must show]
 const shots = [
   ["hearth-sync-panel", "synced", async () => focus("Sync now"), ["Hearth Sync", "10 games synced", "4 minutes ago", "Sync now", "Epic", "GOG", "Battle.net", "Emulators", "Recomps", "Remove all Hearth Sync shortcuts"]],
   ["hearth-sync-panel-syncing", "syncing", async () => { await btn("Sync now"); await page.waitForTimeout(500); await focus("Syncing"); }, ["Syncing…"]],
   ["hearth-sync-panel-problem", "problem", async () => focus("Sync now"), ["turned itself off", "missing a picture", "Steam didn't take", "2 hours ago"]],
   ["hearth-sync-panel-stores", "toggles", async () => focus("Recomps"), ["7 games synced", "Recomps", "Added by hand"]],
+  ["hearth-sync-panel-import", "import", async () => { await scrollTo("Other Steam folders"); await focus("Bring them into Steam"); }, ["4 games Steam doesn't see yet", "Cyberpunk 2077", "moved (same drive)", "its drive's library added", "Red Dead Redemption 2: skipped", "Bring them into Steam"]],
+  ["hearth-sync-panel-import-confirm", "import-confirm", async () => { await btn("Bring them"); await page.waitForTimeout(300); await scrollTo("Other Steam folders"); await focus("Press again"); }, ["Press again: Steam restarts"]],
+  ["hearth-sync-panel-import-waiting", "import-waiting", async () => { await scrollTo("Other Steam folders"); }, ["Waiting for Steam to close"]],
+  ["hearth-sync-panel-import-done", "import-done", async () => { await scrollTo("Other Steam folders"); }, ["Last import: 3 moved, 1 from 1 added library folder, 2 skipped."]],
+  ["hearth-sync-panel-import-none", "synced", async () => { await scrollTo("Other Steam folders"); }, ["No Steam games in other Steam folders (1 Steam already has)"]],
   ["hearth-sync-panel-remove-confirm", "synced", async () => { await btn("Remove all"); await page.waitForTimeout(300); await focus("Press again"); }, ["Press again to remove them", "your other non-Steam games stay"]],
 ];
 for (const [name, st, act, wants] of shots) {

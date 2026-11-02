@@ -1,0 +1,76 @@
+# Hearth Music (docs/HEARTH-MUSIC.md): the Decky plugin that plays the highlighted game's theme song in Steam Game Mode
+# (hosts/decky-hearth-music), built and packed like Decky's plugin template does, its backend's tests (and hearth-decky
+# shipping it), its pure parts' unit tests, and pictures of its real Quick Access panel and "Now playing" note over
+# stand-ins. No Steam, no sign-in, nothing of Valve's is run, and Apple's API isn't called (made-up answers).
+name: Hearth Music plugin
+
+on:
+  push:
+    branches: [bughunt, feature/music-import]
+    paths: ['hosts/decky-hearth-music/**', 'os/system_files/usr/libexec/nimbus/hearth-decky', '.github/workflows/decky-hearth-music.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the pictures also go to the ci/hearth-music-shots branch, to look at in the browser
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/decky-hearth-music/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
+          grep -q '^OK' /tmp/py.log || { echo "::error title=Hearth Music backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests of the pure parts (src/model.ts)
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test --test-reporter=tap hosts/decky-hearth-music/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
+          grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=Hearth Music unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Music unit tests::$(grep -E '^# (tests|pass|fail)' /tmp/unit.log | tr '\n' ' ')"
+      - name: Build and pack (pnpm build, then Decky's layout and a zip)
+        working-directory: hosts/decky-hearth-music
+        run: |
+          set -o pipefail
+          npm install -g pnpm@9 >/dev/null
+          v=$(grep -m1 '^version' ../hearth-core/Cargo.toml | cut -d'"' -f2)
+          sed -i "s/\"version\": \".*\"/\"version\": \"$v\"/" package.json
+          pnpm install --no-frozen-lockfile 2>&1 | tail -5
+          if ! pnpm build > /tmp/build.log 2>&1; then
+            echo "::error title=Hearth Music build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          tail -5 /tmp/build.log
+          ./package.sh "$RUNNER_TEMP/out"
+          test -s "$RUNNER_TEMP/out/decky-hearth-music/dist/index.js"
+          test -s "$RUNNER_TEMP/out/decky-hearth-music/main.py"
+          grep -q '"name": "Hearth Music"' "$RUNNER_TEMP/out/decky-hearth-music/plugin.json"
+          (cd "$RUNNER_TEMP/out" && unzip -l decky-hearth-music.zip | tail -10)
+          echo "::notice title=Hearth Music::built $v, $(du -h "$RUNNER_TEMP/out/decky-hearth-music.zip" | cut -f1) zip, index.js $(du -h "$RUNNER_TEMP/out/decky-hearth-music/dist/index.js" | cut -f1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decky-hearth-music
+          path: ${{ runner.temp }}/out/decky-hearth-music.zip
+      - name: The Quick Access panel and the Now playing note (pictures)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cp hosts/decky-hearth-music/tests/render-panel.mjs tools/render-music-panel.mjs
+          HEARTH_ROOT="$PWD" node tools/render-music-panel.mjs "$RUNNER_TEMP/shots"
+      - name: Keep the pictures (ci/hearth-music-shots)
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r "$RUNNER_TEMP/shots" /tmp/shots-keep
+          git checkout -q --orphan ci/hearth-music-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/shots-keep/*.png shots/
+          git add -f shots
+          git commit -qm "Hearth Music's Quick Access panel over stand-ins ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/hearth-music-shots || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-music-panel-shots
+          path: ${{ runner.temp }}/shots

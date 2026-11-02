@@ -11,6 +11,8 @@ test -s "$HERE/dist/index.js"
 rm -rf "$P" && mkdir -p "$P/dist"
 cp "$HERE/dist/index.js" "$P/dist/"
 cp "$HERE/main.py" "$HERE/package.json" "$HERE/plugin.json" "$P/"
+# The Steam import (docs/HEARTH-SYNC.md): the system's hearth-steam-import, as a module next to main.py.
+cp "$ROOT/os/system_files/usr/bin/hearth-steam-import" "$P/steam_import.py"
 cp "$ROOT/LICENSE" "$P/LICENSE"
 (cd "$OUT" && rm -f decky-hearth-sync.zip && zip -qr decky-hearth-sync.zip decky-hearth-sync)
 echo "packed $P ($(du -sh "$P" | cut -f1))"

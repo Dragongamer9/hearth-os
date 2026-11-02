@@ -333,6 +333,15 @@ echo "$DECKY_VERSION" > /usr/lib/hearth-decky/version
 rm -f /tmp/PluginLoader
 test -f /usr/lib/systemd/system/hearth-decky@.service
 echo "Decky Loader $DECKY_VERSION built in"
+# Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): theme songs in Steam's library, shipped and copied
+# into Decky's plugins folder the same way (hearth-decky PLUGINS). Only files. Not in this build: skipped.
+if [ -f /ctx/nimbus-app/decky-hearth-music/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-music/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-music && cp -a /ctx/nimbus-app/decky-hearth-music /usr/share/hearth/decky-hearth-music \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth-music && echo "Hearth Music (Decky plugin) added" \
+    || { echo "warning: Hearth Music didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-music; }
+else
+  echo "warning: Hearth Music isn't in this build; Steam Game Mode goes without it"
+fi
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
 # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its

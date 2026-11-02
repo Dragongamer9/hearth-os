@@ -180,6 +180,9 @@ Releases are 0.0.N; work lands on `linux-host` and goes out when it's tested.
 - [x] Boot splash presets: Hearth flame on slate (default), Steam-style blue and minimal, chosen in Settings › Boot & startup without rebuilding anything; if a splash can't show, the start goes on in text (needs testing on a device)
 - [x] Hearth startup animations for Steam Game Mode: four original ones (flame ignition, slate light sweep, logo reveal, rising embers) for 16:9 and 16:10, picked in Settings › Boot & startup and listed in Steam's own Startup Movie setting (needs testing on a device)
 - [x] Apps with their own controller controls work reliably on the desktop: while one is in front, the desktop controls step aside (Guide still opens the Hearth menu, Guide + R3 gives you the pointer there), pop-ups and Quick Access no longer take the controller away from it, and the apps' controller reading no longer stops after a hiccup (docs/CONTROLLER-FOCUS.md) (needs testing on a device)
+Hearth Music: a Decky plugin that plays the highlighted game's theme song in Steam Game Mode (your pick, the game's soundtrack, or Apple Music's 30-second preview), fading out when you press Play (docs/HEARTH-MUSIC.md).
+
+Steam games from other Steam folders (Flathub Steam's, unregistered SteamLibrary folders) can be brought into Steam from Hearth Sync's panel or with `hearth-steam-import` (docs/HEARTH-SYNC.md).
 
 ## 1.0 (released 2026-11-02)
 

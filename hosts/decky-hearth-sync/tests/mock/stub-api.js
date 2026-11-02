@@ -20,9 +20,19 @@ const statusFor = () => ({
   toggles: { lastSync: ago(1), lastArtTry: ago(1), synced: 7, artMissing: 0, signature: "s", off: "", problems: [] },
 }[state()] || { lastSync: ago(12), lastArtTry: ago(12), synced: 10, artMissing: 0, signature: "s", off: "", problems: [] });
 const settingsFor = () => (state() === "toggles" ? { stores: { recomps: false, emu: false, manual: false } } : { stores: {} });
+// The import section (src/import.tsx): games in Flathub Steam's folder and on another drive, or none.
+const F = (appid, name, how, why) => ({ appid, name, how, why, source: how === "move" ? "/home/you/.var/app/com.valvesoftware.Steam/.local/share/Steam" : "/run/media/you/Games/SteamLibrary" });
+const importScan = () => (["import", "import-confirm", "import-waiting", "import-done"].includes(state())
+  ? { ok: true, target: "/home/you/.local/share/Steam", games: [F("1091500", "Cyberpunk 2077", "move"), F("292030", "The Witcher 3: Wild Hunt", "move"),
+      F("1245620", "ELDEN RING", "move"), F("413150", "Stardew Valley", "register")],
+    skipped: [F("570", "Dota 2", "move", "Steam already has it"), F("1174180", "Red Dead Redemption 2", "move", "a folder with its name is already in /home/you/.local/share/Steam")] }
+  : { ok: true, target: "/home/you/.local/share/Steam", games: [], skipped: [F("570", "Dota 2", "move", "Steam already has it")] });
+const importState = () => ({ "import-waiting": { pending: true, result: null },
+  "import-done": { pending: false, result: { ok: true, counts: { moved: 3, registered: 1, libraries: 1, skipped: 2, failed: 0 } } } }[state()] || { pending: false, result: null });
 const handlers = {
   get_games: (force) => (force && state() === "syncing" ? new Promise(() => {}) : { ok: true, error: null, games, signature: "s" }),
   get_status: () => statusFor(), set_status: (s) => s, get_settings: () => settingsFor(), set_settings: (s) => s,
+  import_scan: () => importScan(), import_state: () => importState(), import_arm: () => true,
   get_shortcuts: () => ({}), set_shortcuts: (m) => m, get_applied: () => ({}), set_applied: (a) => a, get_art: () => null, art_error: () => null, report: () => null,
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }

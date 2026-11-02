@@ -1,0 +1,443 @@
+#!/usr/bin/python3
+"""hearth-steam-import: brings Steam games from Steam folders the running Steam doesn't use into the Steam you use.
+
+Games installed while this PC used Flathub's Steam live in ~/.var/app/com.valvesoftware.Steam/.local/share/Steam (and
+in libraries that Steam had on other drives); other drives may also hold SteamLibrary folders Steam was never told
+about. Steam in ~/.local/share/Steam doesn't see them. This finds their appmanifest_<appid>.acf files whose game folder
+(steamapps/common/<installdir>) is there, and brings them in:
+
+  same drive as one of your Steam's libraries   moved there (a rename: instant), with the game's Proton prefix
+                                                (compatdata/<appid>, where its saves are) and shader cache
+  another drive                                 that folder is added to Steam's library list (libraryfolders.vdf),
+                                                nothing is copied; only a real library folder (steamapps inside,
+                                                not a whole Steam install)
+
+Nothing is ever overwritten: a game Steam already has, or whose folder is already at the target, is skipped and said
+so. Only while Steam is closed (--wait waits for it to close). libraryfolders.vdf is backed up next to itself first.
+
+  hearth-steam-import             lists what it found and asks before bringing anything in
+  hearth-steam-import --yes       brings them in without asking
+  hearth-steam-import --json      what it found, as JSON (nothing changed); with --yes, the result as JSON
+  hearth-steam-import --wait      with --yes: waits (up to 15 minutes) for Steam to close first
+
+Also used by Hearth Sync's Quick Access panel in Steam Game Mode (docs/HEARTH-SYNC.md), which ships a copy of this
+file as steam_import.py. Paths can be moved for tests with HEARTH_STEAM_IMPORT_HOME and HEARTH_STEAM_IMPORT_MOUNTS.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import sys
+import time
+
+FLATPAK = '.var/app/com.valvesoftware.Steam'
+LOG_NAME = 'steam-import.log'
+
+
+# ---- Valve's KeyValues text (libraryfolders.vdf, appmanifest_*.acf)
+
+def vdf_loads(text):
+    """Valve's text KeyValues as nested dicts (keys keep their case; a repeated key keeps the last value)."""
+    toks = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c.isspace():
+            i += 1
+        elif c == '/' and text.startswith('//', i):
+            j = text.find('\n', i)
+            i = n if j < 0 else j + 1
+        elif c in '{}':
+            toks.append(c)
+            i += 1
+        elif c == '"':
+            out = []
+            i += 1
+            while i < n and text[i] != '"':
+                if text[i] == '\\' and i + 1 < n:
+                    out.append({'n': '\n', 't': '\t'}.get(text[i + 1], text[i + 1]))
+                    i += 2
+                else:
+                    out.append(text[i])
+                    i += 1
+            toks.append(('s', ''.join(out)))
+            i += 1
+        else:
+            j = i
+            while j < n and not text[j].isspace() and text[j] not in '{}"':
+                j += 1
+            toks.append(('s', text[i:j]))
+            i = j
+    pos = 0
+
+    def block():
+        nonlocal pos
+        d = {}
+        while pos < len(toks):
+            t = toks[pos]
+            if t == '}':
+                pos += 1
+                return d
+            if t == '{' or pos + 1 >= len(toks):
+                raise ValueError('bad KeyValues text')
+            key = t[1]
+            nxt = toks[pos + 1]
+            pos += 2
+            if nxt == '{':
+                d[key] = block()
+            elif nxt == '}':
+                raise ValueError('bad KeyValues text')
+            else:
+                d[key] = nxt[1]
+        return d
+
+    return block()
+
+
+def vdf_dumps(d, indent=0):
+    q = lambda s: '"' + str(s).replace('\\', '\\\\').replace('"', '\\"') + '"'
+    out = []
+    for k, v in d.items():
+        if isinstance(v, dict):
+            out.append('\t' * indent + q(k))
+            out.append('\t' * indent + '{')
+            out.append(vdf_dumps(v, indent + 1).rstrip('\n'))
+            out.append('\t' * indent + '}')
+        else:
+            out.append('\t' * indent + q(k) + '\t\t' + q(v))
+    return '\n'.join(x for x in out if x != '') + '\n'
+
+
+def read_vdf(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return vdf_loads(f.read())
+    except (OSError, ValueError):
+        return None
+
+
+def lower_keys(d):
+    return {k.lower(): v for k, v in d.items()} if isinstance(d, dict) else {}
+
+
+# ---- where Steam is, and what it uses
+
+def home():
+    return os.environ.get('HEARTH_STEAM_IMPORT_HOME') or os.path.expanduser('~')
+
+
+def real(p):
+    return os.path.realpath(p)
+
+
+def active_root(h=None):
+    """The Steam this computer uses (native): ~/.steam/steam's target, or ~/.local/share/Steam."""
+    h = h or home()
+    for c in (os.path.join(h, '.steam/steam'), os.path.join(h, '.local/share/Steam'), os.path.join(h, '.steam/debian-installation')):
+        if os.path.isdir(os.path.join(c, 'steamapps')) or os.path.isfile(os.path.join(c, 'steam.sh')):
+            return real(c)
+    return real(os.path.join(h, '.local/share/Steam'))
+
+
+def vdf_file(root):
+    return os.path.join(root, 'steamapps', 'libraryfolders.vdf')
+
+
+def library_paths(root):
+    """The libraries a Steam install lists (its own root first), as real paths that exist."""
+    out = [real(root)]
+    d = lower_keys(read_vdf(vdf_file(root)) or {})
+    lf = d.get('libraryfolders') or d.get('libraryfolders'.lower()) or {}
+    if isinstance(lf, dict):
+        for k, v in lf.items():
+            p = v.get('path') if isinstance(v, dict) else (v if k.isdigit() else None)
+            if isinstance(p, str) and p and os.path.isdir(os.path.join(p, 'steamapps')):
+                rp = real(p)
+                if rp not in out:
+                    out.append(rp)
+    return out
+
+
+def mounts():
+    """Folders other drives are mounted under (where a SteamLibrary may be)."""
+    env = os.environ.get('HEARTH_STEAM_IMPORT_MOUNTS')
+    if env is not None:
+        return [m for m in env.split(':') if m]
+    user = os.path.basename(home())
+    return ['/run/media/' + user, '/media/' + user, '/mnt', '/run/media']
+
+
+def candidate_roots(h=None):
+    """Steam folders that may hold games: Flathub Steam's, the libraries it listed, SteamLibrary folders on drives."""
+    h = h or home()
+    seen, out = set(), []
+
+    def add(p):
+        if os.path.isdir(os.path.join(p, 'steamapps')):
+            rp = real(p)
+            if rp not in seen:
+                seen.add(rp)
+                out.append(rp)
+    for fp in (os.path.join(h, FLATPAK, '.local/share/Steam'), os.path.join(h, FLATPAK, 'data/Steam')):
+        if os.path.isdir(os.path.join(fp, 'steamapps')):
+            for p in library_paths(fp):
+                add(p)
+    for c in (os.path.join(h, '.local/share/Steam'), os.path.join(h, '.steam/debian-installation'), os.path.join(h, 'SteamLibrary')):
+        add(c)
+    for m in mounts():
+        for pat in ('*/SteamLibrary', '*/steamlibrary', '*/*/SteamLibrary', '*/Steam', '*/*/Steam', 'SteamLibrary'):
+            for p in sorted(glob.glob(os.path.join(m, pat))):
+                add(p)
+    return out
+
+
+def manifests(lib):
+    """(appid, name, installdir, manifest path) for each game in a library whose folder is there."""
+    out = []
+    for f in sorted(glob.glob(os.path.join(lib, 'steamapps', 'appmanifest_*.acf'))):
+        m = re.match(r'appmanifest_(\d+)\.acf$', os.path.basename(f))
+        st = lower_keys((lower_keys(read_vdf(f) or {})).get('appstate'))
+        if not m or not st:
+            continue
+        inst = st.get('installdir')
+        if not isinstance(inst, str) or not inst or '/' in inst or inst in ('.', '..'):
+            continue
+        if not os.path.isdir(os.path.join(lib, 'steamapps', 'common', inst)):
+            continue
+        out.append({'appid': m.group(1), 'name': str(st.get('name') or inst), 'installdir': inst, 'manifest': f})
+    return out
+
+
+def is_steam_install(p):
+    return os.path.isfile(os.path.join(p, 'steam.sh')) or os.path.isdir(os.path.join(p, 'ubuntu12_32'))
+
+
+def steam_running(proc='/proc'):
+    """Whether a Steam client (native or Flathub's) is running for anyone on this computer."""
+    try:
+        names = os.listdir(proc)
+    except OSError:
+        return False
+    for pid in names:
+        if not pid.isdigit():
+            continue
+        try:
+            with open(os.path.join(proc, pid, 'comm')) as f:
+                if f.read().strip() in ('steam', 'steamwebhelper'):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+# ---- the plan and doing it
+
+def scan(h=None):
+    """What can be brought in. {'target': root, 'libraries': [...], 'games': [...], 'skipped': [...]} where each game
+    says how ('move' to a library on the same drive, or 'register' its library folder) and skipped ones say why."""
+    h = h or home()
+    root = active_root(h)
+    libs = library_paths(root)
+    have = set()
+    for lib in libs:
+        for f in glob.glob(os.path.join(lib, 'steamapps', 'appmanifest_*.acf')):
+            m = re.match(r'appmanifest_(\d+)\.acf$', os.path.basename(f))
+            if m:
+                have.add(m.group(1))
+    games, skipped, libraries = [], [], []
+    for src in candidate_roots(h):
+        if src in libs:
+            continue
+        found = manifests(src)
+        if not found:
+            continue
+        try:
+            dev = os.stat(os.path.join(src, 'steamapps')).st_dev
+        except OSError:
+            continue
+        same = [l for l in libs if os.path.isdir(os.path.join(l, 'steamapps')) and os.stat(os.path.join(l, 'steamapps')).st_dev == dev]
+        how = 'move' if same else ('register' if not is_steam_install(src) and os.access(src, os.W_OK) else 'none')
+        libraries.append({'path': src, 'how': how, 'games': len(found)})
+        for g in found:
+            g = dict(g, source=src, how=how)
+            if g['appid'] in have:
+                skipped.append(dict(g, why='Steam already has it'))
+                continue
+            if how == 'none':
+                skipped.append(dict(g, why='on another drive, in a whole Steam install (not a library folder): move it by hand'))
+                continue
+            if how == 'move':
+                g['target'] = same[0]
+                if os.path.lexists(os.path.join(same[0], 'steamapps', 'common', g['installdir'])):
+                    skipped.append(dict(g, why='a folder with its name is already in ' + same[0]))
+                    continue
+            have.add(g['appid'])
+            games.append(g)
+    return {'target': root, 'libraries': libraries, 'games': games, 'skipped': skipped}
+
+
+def _move_game(g):
+    """Moves one game (folder, Proton prefix, shader cache, then its manifest last). Never overwrites; undoes the
+    moves made so far if one fails. Returns the notes (a prefix kept at the old place, and so on)."""
+    src, dst, a = os.path.join(g['source'], 'steamapps'), os.path.join(g['target'], 'steamapps'), g['appid']
+    parts = [(os.path.join(src, 'common', g['installdir']), os.path.join(dst, 'common', g['installdir']), True),
+             (os.path.join(src, 'compatdata', a), os.path.join(dst, 'compatdata', a), False),
+             (os.path.join(src, 'shadercache', a), os.path.join(dst, 'shadercache', a), False),
+             (g['manifest'], os.path.join(dst, 'appmanifest_%s.acf' % a), True)]
+    done, notes = [], []
+    try:
+        for s, d, needed in parts:
+            if not os.path.lexists(s):
+                continue
+            if os.path.lexists(d):
+                if needed:
+                    raise FileExistsError(d)
+                notes.append('%s kept at the old place (one is already there)' % os.path.basename(os.path.dirname(d)))
+                continue
+            os.makedirs(os.path.dirname(d), exist_ok=True)
+            os.rename(s, d)
+            done.append((s, d))
+    except OSError:
+        for s, d in reversed(done):
+            try:
+                os.rename(d, s)
+            except OSError:
+                pass
+        raise
+    return notes
+
+
+def _register(root, lib, appids):
+    """Adds `lib` to Steam's library list (libraryfolders.vdf), after a backup. True when added."""
+    f = vdf_file(root)
+    data = read_vdf(f) if os.path.isfile(f) else {'libraryfolders': {}}
+    if data is None:
+        raise ValueError("Steam's library list couldn't be read")
+    key = next((k for k in data if k.lower() == 'libraryfolders'), 'libraryfolders')
+    lf = data.setdefault(key, {})
+    for v in lf.values():
+        if isinstance(v, dict) and isinstance(v.get('path'), str) and real(v['path']) == real(lib):
+            return False
+    idx = 0
+    while str(idx) in lf:
+        idx += 1
+    lf[str(idx)] = {'path': lib, 'label': '', 'contentid': '0', 'totalsize': '0', 'update_clean_bytes_tally': '0',
+                    'time_last_update_verified': '0', 'apps': {a: '0' for a in appids}}
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    if os.path.isfile(f):
+        shutil.copy2(f, f + '.hearth-bak')
+    tmp = f + '.hearth-tmp'
+    with open(tmp, 'w') as out:
+        out.write(vdf_dumps(data))
+    os.replace(tmp, f)
+    return True
+
+
+def log_line(text, h=None):
+    d = os.path.join(h or home(), '.local/state/hearth')
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, LOG_NAME), 'a') as f:
+            f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + text + '\n')
+    except OSError:
+        pass
+
+
+def run_import(h=None, running=steam_running):
+    """Brings in what scan() found. Refuses while Steam runs. Returns counts and per-game results."""
+    if running():
+        raise RuntimeError('Steam is running: close it first')
+    plan = scan(h)
+    res = {'moved': [], 'registered': [], 'skipped': list(plan['skipped']), 'failed': [], 'notes': []}
+    regs = {}
+    for g in plan['games']:
+        if g['how'] == 'move':
+            try:
+                for n in _move_game(g):
+                    res['notes'].append('%s: %s' % (g['name'], n))
+                res['moved'].append(g)
+            except FileExistsError:
+                res['skipped'].append(dict(g, why='already at the target'))
+            except OSError as e:
+                res['failed'].append(dict(g, why=e.strerror or str(e)))
+        else:
+            regs.setdefault(g['source'], []).append(g)
+    for lib, gs in regs.items():
+        try:
+            _register(plan['target'], lib, [g['appid'] for g in gs])
+            res['registered'].append({'path': lib, 'games': [g['name'] for g in gs], 'count': len(gs)})
+        except (OSError, ValueError) as e:
+            res['failed'].extend(dict(g, why=str(e)) for g in gs)
+    res['counts'] = {'moved': len(res['moved']), 'registered': sum(r['count'] for r in res['registered']),
+                     'libraries': len(res['registered']), 'skipped': len(res['skipped']), 'failed': len(res['failed'])}
+    c = res['counts']
+    log_line('import: %d moved, %d in %d added libraries, %d skipped, %d failed' % (c['moved'], c['registered'], c['libraries'], c['skipped'], c['failed']), h)
+    return res
+
+
+def summary(plan):
+    lines = []
+    for g in plan['games']:
+        lines.append('  %s (%s): %s' % (g['name'], g['appid'], 'move to ' + g['target'] if g['how'] == 'move' else 'add library ' + g['source']))
+    for g in plan['skipped']:
+        lines.append('  skip %s (%s): %s' % (g['name'], g['appid'], g['why']))
+    return '\n'.join(lines)
+
+
+def main(argv):
+    args = set(argv[1:])
+    if args - {'--yes', '--json', '--wait', '-y', '-h', '--help'}:
+        print('usage: hearth-steam-import [--yes] [--json] [--wait]', file=sys.stderr)
+        return 2
+    if '-h' in args or '--help' in args:
+        print(__doc__)
+        return 0
+    yes = '--yes' in args or '-y' in args
+    as_json = '--json' in args
+    plan = scan()
+    if not yes:
+        if as_json:
+            print(json.dumps(plan))
+            return 0
+        if not plan['games']:
+            print('Nothing to bring in: Steam already sees every game found (%d skipped).' % len(plan['skipped']))
+            if plan['skipped']:
+                print(summary(plan))
+            return 0
+        print('Steam games in folders Steam (%s) isn\'t using:' % plan['target'])
+        print(summary(plan))
+        try:
+            ok = input('Bring %d game%s in? [y/N] ' % (len(plan['games']), '' if len(plan['games']) == 1 else 's')).strip().lower() in ('y', 'yes')
+        except EOFError:
+            ok = False
+        if not ok:
+            return 0
+    if steam_running():
+        if '--wait' not in args:
+            print('Steam is running: close it, then run this again (or add --wait).', file=sys.stderr)
+            return 1
+        else:
+            end = time.time() + 15 * 60
+            while steam_running() and time.time() < end:
+                time.sleep(1)
+    try:
+        res = run_import()
+    except RuntimeError as e:
+        print(('{"ok": false, "error": %s}' % json.dumps(str(e))) if as_json else 'error: ' + str(e), file=sys.stdout if as_json else sys.stderr)
+        return 1
+    if as_json:
+        print(json.dumps(dict(res, ok=True)))
+    else:
+        c = res['counts']
+        print('%d moved, %d brought in by adding %d library folder%s, %d skipped, %d failed.' % (
+            c['moved'], c['registered'], c['libraries'], '' if c['libraries'] == 1 else 's', c['skipped'], c['failed']))
+        for g in res['failed']:
+            print('  failed %s: %s' % (g['name'], g['why']))
+        for n in res['notes']:
+            print('  ' + n)
+    return 0 if not res['failed'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

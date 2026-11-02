@@ -49,6 +49,27 @@ turns itself off with a note in its panel instead of breaking Steam.
 Quick Access › Hearth Sync shows how many games are synced, when it last synced and any problems, with **Sync now**,
 a switch per store (all on; turning one off removes that store's shortcuts) and **Remove all Hearth Sync shortcuts**.
 
+## Games from other Steam folders
+
+Games installed while the PC used Flathub's Steam live in `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`, and
+other drives can hold `SteamLibrary` folders Steam was never told about; the Steam in `~/.local/share/Steam` doesn't see
+them. Hearth Sync's panel lists them under **Other Steam folders** (a game counts when its `appmanifest_<appid>.acf` and
+its `steamapps/common/<installdir>` folder are both there, and Steam doesn't already have it).
+
+**Bring them into Steam** (press twice) restarts Steam; while it's closed the games come in:
+
+- on the same drive as one of your Steam's libraries: moved there (a rename, instant): the game's folder, its Proton
+  prefix `compatdata/<appid>` (where the saves are) and its `shadercache/<appid>`, then the manifest last;
+- on another drive: that folder is added to Steam's library list (`steamapps/libraryfolders.vdf`, backed up first as
+  `libraryfolders.vdf.hearth-bak`); nothing is copied. Only a real library folder, never a whole Steam install.
+
+Nothing is overwritten: a game whose folder is already in the target is skipped and named; an existing Proton prefix
+at the target stays, and the old one is left where it was (said in the result). A move that fails halfway is undone.
+The panel shows the counts afterwards; `~/.local/state/hearth/steam-import.log` keeps them.
+
+From the desktop: `hearth-steam-import` (lists, then asks), `--yes`, `--json`, `--wait` (waits for Steam to close).
+It refuses while Steam runs.
+
 ## Starting a game
 
 Hearth's games start with `nimbus --play-now <id>` (Hearth's own launch logic; Steam's environment is cleaned first),
