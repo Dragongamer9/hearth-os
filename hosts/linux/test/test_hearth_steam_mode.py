@@ -748,6 +748,29 @@ class DeckyHelper(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.home, 'homebrew/plugins/decky-hearth-sync/dist/index.js')).read(), '// new version')
         self.assertNotIn('plugin', self.m.start_stop('stop'))
 
+    def test_hearth_link_ships_next_to_hearth_sync(self):
+        self.ship_plugin()
+        d = os.path.join(self.root, 'usr/share/hearth/decky-hearth-link')
+        os.makedirs(os.path.join(d, 'dist'))
+        open(os.path.join(d, 'plugin.json'), 'w').write('{"name": "Hearth Link", "author": "Dragongamer9"}')
+        open(os.path.join(d, 'dist', 'index.js'), 'w').write('// built')
+        r = self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+        self.assertEqual(r['others'], {'decky-hearth-link': True})
+        link = os.path.join(self.home, 'homebrew/plugins/decky-hearth-link')
+        self.assertTrue(os.path.isfile(os.path.join(link, 'dist/index.js')))
+        self.assertNotIn('decky-hearth-link', self.m.start_stop('start'), 'the same plugin: left as it is')
+        open(os.path.join(d, 'dist', 'index.js'), 'w').write('// new version')
+        self.assertEqual(self.m.start_stop('start')['decky-hearth-link'], 'updated')
+        self.assertEqual(open(os.path.join(link, 'dist/index.js')).read(), '// new version')
+        self.m.remove(self.user)
+        self.assertFalse(os.path.exists(link))
+
+    def test_an_image_without_hearth_link_is_fine(self):
+        self.ship_plugin()
+        r = self.m.install(self.user, download=lambda: ('v3.1.0', lambda: b'\x7fELF' + b'\0' * (2 * 1024 * 1024)))
+        self.assertEqual(r['others'], {})
+        self.assertNotIn('decky-hearth-link', self.m.start_stop('start'))
+
     def old_plugin(self, meta='{"name": "Hearth", "author": "Dragongamer9"}', folder='decky-hearth'):
         d = os.path.join(self.home, 'homebrew/plugins', folder)
         os.makedirs(os.path.join(d, 'dist'))

@@ -8,8 +8,8 @@ Run by hearth-admin (decky-install asks for an administrator's password, 49-hear
                               change what runs as root), a service that is NOT started at boot (nimbus-session starts
                               it only for Steam Game Mode), ~USER/homebrew for Decky's plugins and settings, Steam's
                               CEF remote debugging turned on for USER (Decky needs it), and the plugin the image ships,
-                              Hearth Sync (/usr/share/hearth/decky-hearth-sync, docs/HEARTH-SYNC.md), put in Decky's
-                              plugins folder; the older Hearth plugin Hearth put there (decky-hearth) is taken away
+                              Hearth Sync (/usr/share/hearth/decky-hearth-sync, docs/HEARTH-SYNC.md), and the others in
+                              PLUGINS (Hearth Link, docs/HEARTH-LINK-PLUGIN.md), put in Decky's plugins folder; the older Hearth plugin Hearth put there (decky-hearth) is taken away
   hearth-decky remove USER    the service, the program, Hearth's plugins and the CEF debugging file Hearth made;
                               Decky's settings and other plugins in ~/homebrew stay
   hearth-decky start|stop     the service (only Hearth's own; a Decky installed with Decky's installer runs by itself);
@@ -50,14 +50,17 @@ def lib_dir():
     return path('var/lib/hearth-decky')
 
 
-def shipped_plugin():
-    return path('usr/share/hearth/decky-hearth-sync')
+def shipped_plugin(name='decky-hearth-sync'):
+    return path('usr/share/hearth', name)
 
 
 # Hearth Sync's folder in Decky's plugins folder, and the older Hearth plugin's (hosts/decky-hearth, the takeover: no
 # longer shipped; its code stays in the repo).
 PLUGIN_DIR = 'decky-hearth-sync'
 OLD_PLUGIN_DIR = 'decky-hearth'
+# Every plugin the image ships (/usr/share/hearth/<folder>), each copied, refreshed and removed the same way; one the
+# image doesn't have is skipped.
+PLUGINS = (PLUGIN_DIR, 'decky-hearth-link')
 OLD_PLUGIN = {'name': 'Hearth', 'author': 'Dragongamer9'}
 
 
@@ -177,14 +180,15 @@ def user_side(home):
             m.write('\n'.join(made) + '\n')
 
 
-def copy_plugin(home, owner_root=True):
-    """The image's plugin (Hearth Sync) into Decky's plugins folder (root's, as Decky keeps it). False when not shipped."""
-    src = shipped_plugin()
+def copy_plugin(home, owner_root=True, name=PLUGIN_DIR):
+    """One of the image's plugins (Hearth Sync unless named) into Decky's plugins folder (root's, as Decky keeps it).
+    False when not shipped."""
+    src = shipped_plugin(name)
     if not os.path.isfile(os.path.join(src, 'plugin.json')):
         return False
     plugins = os.path.join(home, 'homebrew', 'plugins')
     os.makedirs(plugins, exist_ok=True)
-    dst = os.path.join(plugins, PLUGIN_DIR)
+    dst = os.path.join(plugins, name)
     tmp = dst + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.copytree(src, tmp, symlinks=False)
@@ -198,6 +202,11 @@ def copy_plugin(home, owner_root=True):
                 os.lchown(os.path.join(base, n), 0, 0)
         os.chmod(plugins, 0o755)
     return True
+
+
+def copy_others(home):
+    """The other plugins in PLUGINS: {folder: copied} for the ones the image ships."""
+    return {n: copy_plugin(home, name=n) for n in PLUGINS[1:] if os.path.isfile(os.path.join(shipped_plugin(n), 'plugin.json'))}
 
 
 def old_plugin_ours(home):
@@ -237,7 +246,7 @@ def install(user, download=None, machine=None):
         # Decky installed with its own installer: kept as it is, only the Hearth plugin is added.
         as_user(pw, lambda: user_side(home))
         plugin = copy_plugin(home)
-        return {'ok': True, 'via': 'decky', 'plugin': plugin, 'oldPluginRemoved': remove_old_plugin(home)}
+        return {'ok': True, 'via': 'decky', 'plugin': plugin, 'others': copy_others(home), 'oldPluginRemoved': remove_old_plugin(home)}
     download = download or (lambda: pick_asset(json.loads(fetch(RELEASES)), machine or os.uname().machine))
     got = download()
     if not got:
@@ -261,11 +270,12 @@ def install(user, download=None, machine=None):
             subprocess.run(['chcon', '-t', 'bin_t', binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     as_user(pw, lambda: user_side(home))
     plugin = copy_plugin(home)
+    others = copy_others(home)
     os.makedirs(os.path.dirname(unit_path()), exist_ok=True)
     with open(unit_path(), 'w') as f:
         f.write(unit_text(home, pw.pw_name, binary))
     systemctl('daemon-reload')
-    return {'ok': True, 'via': 'hearth', 'version': version, 'plugin': plugin, 'oldPluginRemoved': remove_old_plugin(home)}
+    return {'ok': True, 'via': 'hearth', 'version': version, 'plugin': plugin, 'others': others, 'oldPluginRemoved': remove_old_plugin(home)}
 
 
 def remove(user):
@@ -276,7 +286,8 @@ def remove(user):
         os.remove(unit_path())
         systemctl('daemon-reload')
     shutil.rmtree(lib_dir(), ignore_errors=True)
-    shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', PLUGIN_DIR), ignore_errors=True)
+    for name in PLUGINS:
+        shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', name), ignore_errors=True)
     remove_old_plugin(home)
     mark = os.path.join(home, 'homebrew', MARK)
     try:
@@ -303,10 +314,11 @@ def unit_home():
     return None
 
 
-def plugin_outdated(home):
-    """Hearth Sync in Decky's folder isn't the one this image ships (missing, or a Hearth OS update brought a new one)."""
-    src = shipped_plugin()
-    dst = os.path.join(home, 'homebrew', 'plugins', PLUGIN_DIR)
+def plugin_outdated(home, name=PLUGIN_DIR):
+    """A plugin in Decky's folder (Hearth Sync unless named) isn't the one this image ships (missing, or a Hearth OS
+    update brought a new one)."""
+    src = shipped_plugin(name)
+    dst = os.path.join(home, 'homebrew', 'plugins', name)
     if not os.path.isfile(os.path.join(src, 'plugin.json')):
         return False
     for rel in ('plugin.json', 'package.json', 'main.py', 'dist/index.js'):
@@ -332,6 +344,12 @@ def start_stop(verb):
                 out['plugin'] = 'updated' if copy_plugin(home) else 'not shipped'
         except OSError as e:
             out['plugin'] = 'couldn\'t update (%s)' % e
+        for name in PLUGINS[1:]:
+            try:
+                if home and plugin_outdated(home, name):
+                    out[name] = 'updated' if copy_plugin(home, name=name) else 'not shipped'
+            except OSError as e:
+                out[name] = 'couldn\'t update (%s)' % e
         try:
             if home and remove_old_plugin(home):
                 out['oldPlugin'] = 'removed'

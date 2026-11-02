@@ -1,0 +1,109 @@
+# Hearth Link (docs/HEARTH-LINK-PLUGIN.md): the Decky plugin the image ships next to Hearth Sync (hosts/decky-hearth-link),
+# built and packed like Decky's plugin template does, its backend's tests (the allow-list, the short status, a stand-in
+# Hearth Link on a socket), its pure parts' unit tests, pictures of every state of its real Quick Access panel over
+# stand-ins (onto ci/hearth-link-shots), the Decky helper's tests (it ships both plugins) and hearth-link's unit tests
+# (the status the panel reads). No Steam, no sign-in, nothing of Valve's is run.
+name: Hearth Link plugin
+
+on:
+  push:
+    branches: [bughunt, feature/link-plugin]
+    paths: ['hosts/decky-hearth-link/**', 'hosts/linux/test/test_hearth_steam_mode.py', 'os/system_files/usr/libexec/nimbus/hearth-decky',
+            'hosts/hearth-link/src/node.rs', '.github/workflows/decky-hearth-link.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the panel's picture also goes to the ci/hearth-link-shots branch, to look at in the browser
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/decky-hearth-link/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
+          grep -q '^OK' /tmp/py.log || { echo "::error title=Hearth Link backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - name: The Decky helper (ships Hearth Sync and Hearth Link)
+        run: |
+          set -o pipefail
+          python3 -m unittest -v hosts/linux/test/test_hearth_steam_mode.py 2>&1 | tee /tmp/t.log | tail -5 || true
+          python3 - <<'PY'
+          import sys, unittest
+          sys.path.insert(0, 'hosts/linux/test')
+          import test_hearth_steam_mode as t
+          r = unittest.TextTestRunner(verbosity=2).run(unittest.TestLoader().loadTestsFromTestCase(t.DeckyHelper))
+          sys.exit(0 if r.wasSuccessful() else 1)
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests of the pure parts (src/model.ts)
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test --test-reporter=tap hosts/decky-hearth-link/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
+          grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=Hearth Link unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Link unit tests::$(grep -E '^# (tests|pass|fail)' /tmp/unit.log | tr '\n' ' ')"
+      - name: Build and pack (pnpm build, then Decky's layout and a zip)
+        working-directory: hosts/decky-hearth-link
+        run: |
+          set -o pipefail
+          npm install -g pnpm@9 >/dev/null
+          v=$(grep -m1 '^version' ../hearth-core/Cargo.toml | cut -d'"' -f2)
+          sed -i "s/\"version\": \".*\"/\"version\": \"$v\"/" package.json
+          pnpm install --no-frozen-lockfile 2>&1 | tail -5
+          if ! pnpm build > /tmp/build.log 2>&1; then
+            echo "::error title=Hearth Link build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          tail -5 /tmp/build.log
+          ./package.sh "$RUNNER_TEMP/out"
+          test -s "$RUNNER_TEMP/out/decky-hearth-link/dist/index.js"
+          test -s "$RUNNER_TEMP/out/decky-hearth-link/main.py"
+          grep -q '"name": "Hearth Link"' "$RUNNER_TEMP/out/decky-hearth-link/plugin.json"
+          (cd "$RUNNER_TEMP/out" && unzip -l decky-hearth-link.zip | tail -10)
+          echo "::notice title=Hearth Link::built $v, $(du -h "$RUNNER_TEMP/out/decky-hearth-link.zip" | cut -f1) zip, index.js $(du -h "$RUNNER_TEMP/out/decky-hearth-link/dist/index.js" | cut -f1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decky-hearth-link
+          path: ${{ runner.temp }}/out/decky-hearth-link.zip
+      - name: The Quick Access panel (pictures of every state)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cp hosts/decky-hearth-link/tests/render-panel.mjs tools/render-panel.mjs
+          HEARTH_ROOT="$PWD" node tools/render-panel.mjs "$RUNNER_TEMP/shots"
+      - name: Keep the pictures (ci/hearth-link-shots)
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r "$RUNNER_TEMP/shots" /tmp/shots-keep
+          git checkout -q --orphan ci/hearth-link-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/shots-keep/*.png shots/
+          git add -f shots
+          git commit -qm "Hearth Link's Quick Access panel over stand-ins ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/hearth-link-shots || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-link-panel-shots
+          path: ${{ runner.temp }}/shots
+
+  link:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-link
+      - name: Test hearth-link (the status the panel reads)
+        working-directory: hosts/hearth-link
+        run: |
+          set -o pipefail
+          if ! cargo test --lib 2>&1 | tee test.log; then
+            echo "::error title=hearth-link::$( (grep -E -A8 '^(error|---- |thread .* panicked)' test.log | head -60; echo ===; tail -25 test.log) | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
+          echo "::notice title=hearth-link tests::$(grep -E '^test result' test.log | tr '\n' ' ')"

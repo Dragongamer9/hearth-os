@@ -697,8 +697,10 @@ impl Node {
         let now = crate::now_ms();
         let found = crate::lock(&self.found).clone();
         let peers: Vec<Value> = crate::lock(&self.peers).list.iter().map(|p| {
-            let online = found.get(&p.id).map(|f| now - f.at < 60_000).unwrap_or(false) || now.saturating_sub(p.last_seen) < 60_000;
-            json!({"id": p.id, "name": p.name, "pairedAt": p.paired_at, "lastSeen": p.last_seen, "online": online, "alwaysAccept": p.always_accept,
+            // On this network: heard announcing itself here lately (discovery); otherwise online means over the internet.
+            let lan = found.get(&p.id).map(|f| now.saturating_sub(f.at) < 60_000).unwrap_or(false);
+            let online = lan || now.saturating_sub(p.last_seen) < 60_000;
+            json!({"id": p.id, "name": p.name, "pairedAt": p.paired_at, "lastSeen": p.last_seen, "online": online, "lan": lan, "alwaysAccept": p.always_accept,
                    "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id)})
         }).collect();
         let paired: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();

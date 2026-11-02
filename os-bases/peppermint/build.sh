@@ -317,6 +317,13 @@ if [ -f /ctx/nimbus-app/decky-hearth-sync/plugin.json ] && [ -f /ctx/nimbus-app/
 else
   echo "warning: Hearth Sync isn't in this build; Steam Game Mode goes without it"
 fi
+# Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): the second Decky plugin, copied and refreshed by
+# hearth-decky the same way. Only files; skipped when not in this build.
+if [ -f /ctx/nimbus-app/decky-hearth-link/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth-link/dist/index.js ]; then
+  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth-link && cp -a /ctx/nimbus-app/decky-hearth-link /usr/share/hearth/decky-hearth-link \
+    && chmod -R a+rX /usr/share/hearth/decky-hearth-link && echo "Hearth Link (Decky plugin) added" \
+    || { echo "warning: Hearth Link didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth-link; }
+fi
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
 # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its
