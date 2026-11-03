@@ -1,0 +1,65 @@
+/* Hearth Classic: the old Hearth Game Mode's look (ui/index.html :root, .topbar, .tile, focus) over Steam's Game Mode
+   (hosts/decky-hearth-look, docs/HEARTH-LOOK.md). Hearth's own design only: its colours, corners, double-ring focus
+   glow, top bar, side menu and wallpaper. Built from the archived takeover's theme (archive/hosts/decky-hearth).
+
+   Three layers, most stable first:
+   1. Steam's own colour and corner variables (--gp...), which Steam's gamepad UI uses everywhere;
+   2. Steam's unhashed focus classes (.gpfocus, .gpfocuswithin) and plain elements;
+   3. Steam's components by their readable names: a double-braced Map:Key is filled in at run time with Steam's hashed class name,
+      from @decky/ui's class map called Map (gamepadTabbedPageClasses, quickAccessMenuClasses, ...) or, when Map isn't
+      one of those, from findClassModule (the class module that has both Map and Key). A line whose name Steam no
+      longer has is left out, so a Steam update can only make the look plainer. If the names the look needs most are
+      gone (src/model.ts REQUIRED), none of it is applied and the panel says "Hearth Classic paused".
+   One rule per line in layer 3. WALLPAPER and LOGO between percent signs are Hearth's pictures (a line with an
+   empty one is left out). */
+
+/* ---- 1. Steam's variables, Hearth's values */
+:root{--hearth-bg:#0c1016;--hearth-bg2:#121821;--hearth-panel:#161d27;--hearth-panel2:#1d2531;--hearth-panel3:#273140;--hearth-line:#2a3443;--hearth-text:#e9eef4;--hearth-dim:#8d99a8;--hearth-faint:#5d6978;--hearth-accent:#3fd0b8;--hearth-accent2:#2aa892;--hearth-ink:#06231e;--hearth-r:10px;--hearth-ease:cubic-bezier(.2,.8,.2,1);--hearth-font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Noto Sans",Cantarell,sans-serif}
+:root{--gpSystemDarkestGrey:#0c1016 !important;--gpSystemDarkerGrey:#161d27 !important;--gpSystemDarkGrey:#273140 !important;--gpSystemGrey:#5d6978 !important;--gpSystemLightGrey:#8d99a8 !important;--gpSystemLighterGrey:#c3ccd6 !important;--gpSystemLightestGrey:#e9eef4 !important}
+:root{--gpStoreDarkestGrey:#0c1016 !important;--gpStoreDarkerGrey:#121821 !important;--gpStoreDarkGrey:#1d2531 !important;--gpStoreGrey:#273140 !important}
+:root{--gpColor-Blue:#3fd0b8 !important;--gpColor-BlueHi:#6ee2cf !important;--gpColor-Green:#3fd0b8 !important;--gpColor-GreenHi:#6ee2cf !important;--gpColor-Orange:#ffb547 !important;--gpColor-Yellow:#ffb547 !important;--gpColor-Red:#ff6b6b !important;--gpColor-RedHi:#ff8a8a !important}
+:root{--gpCornerSmall:6px !important;--gpCornerMedium:10px !important;--gpCornerLarge:14px !important}
+:root{--gpBackground-LightSofter:rgba(233,238,244,.06) !important;--gpBackground-LightSoft:rgba(233,238,244,.1) !important;--gpBackground-LightMedium:rgba(233,238,244,.16) !important;--gpBackground-Neutral-LightSofter:rgba(233,238,244,.06) !important}
+
+/* ---- 2. focus, font, background: Hearth's double ring (a dark gap, then the accent) and its soft glow */
+body,input,textarea,button{font-family:var(--hearth-font) !important}
+body{background:#0c1016 !important;color:#e9eef4}
+.gpfocus{outline:none !important;box-shadow:0 0 0 2px #0c1016,0 0 0 4px #3fd0b8,0 8px 30px rgba(63,208,184,.18) !important;transition:box-shadow .16s var(--hearth-ease),transform .16s var(--hearth-ease) !important}
+.gpfocuswithin{outline:none !important}
+::selection{background:rgba(63,208,184,.35)}
+::-webkit-scrollbar{width:0 !important;height:0 !important}
+
+/* ---- 3. Steam's components (resolved at run time) */
+/* Library and home: Hearth's wallpaper behind the pages, darkened like Hearth's home */
+.{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:linear-gradient(180deg,rgba(12,16,22,.3),rgba(12,16,22,.82) 55%,rgba(12,16,22,.96)),url(%WALLPAPER%) center/cover fixed !important}
+/* Hearth's top bar (ui/index.html .topbar): the dark gradient and the faint line under it */
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:linear-gradient(#121821,rgba(18,24,33,.6)) !important;border-bottom:1px solid rgba(255,255,255,.03) !important}
+.{{gamepadTabbedPageClasses:Tab}}{border-radius:16px !important;color:#8d99a8 !important;font-weight:600 !important;letter-spacing:.02em}
+.{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:#3fd0b8 !important;color:#06231e !important}
+/* Game pages: Hearth's play bar and Play button */
+.{{PlayBar:PlayBar}}{background:rgba(18,24,33,.92) !important;border-top:1px solid #2a3443 !important;backdrop-filter:blur(8px)}
+.{{PlayButtonContainer:PlayButton}}{background:#3fd0b8 !important;color:#06231e !important;border-radius:10px !important;font-weight:700 !important}
+.{{PlayButtonContainer:PlayButton}}.gpfocus{background:#6ee2cf !important}
+/* Quick Access menu */
+.{{quickAccessMenuClasses:Title}}{color:#e9eef4 !important;font-weight:600 !important;letter-spacing:.02em}
+.{{quickAccessMenuClasses:Tabs}}{background:#0c1016 !important}
+.{{quickAccessMenuClasses:Tab}}{border-radius:10px !important}
+.{{quickAccessMenuClasses:Tab}}.{{quickAccessMenuClasses:Selected}}{background:#1d2531 !important;color:#e9eef4 !important;box-shadow:inset 3px 0 0 #3fd0b8 !important}
+/* Hearth's side menu (the Steam button's menu): Hearth's panel, Hearth's logo, rounded focus */
+.{{MainNavMenuContainer:MainNavMenuContainer}}{background:linear-gradient(180deg,#121821,#0c1016) !important;border-right:1px solid #2a3443 !important}
+.{{MainNavMenuContainer:MainNavMenuContainer}} .gpfocus{background:#1d2531 !important;border-radius:10px !important}
+.{{MainNavMenuContainer:SteamLogo}}{background:url(%LOGO%) left center/contain no-repeat !important}
+.{{MainNavMenuContainer:SteamLogo}} svg,.{{MainNavMenuContainer:SteamLogo}} img{opacity:0 !important}
+/* Dialogs, settings rows and buttons: Hearth's rows and pills */
+.{{gamepadDialogClasses:GamepadDialogContent}}{background:#121821 !important;border-radius:14px !important}
+.{{gamepadDialogClasses:Field}}{border-radius:10px !important}
+.{{gamepadDialogClasses:Field}}.gpfocus{background:#1d2531 !important}
+.{{gamepadDialogClasses:FieldDescription}}{color:#8d99a8 !important}
+.{{gamepadDialogClasses:Button}}{background:#1d2531 !important;border-radius:10px !important;color:#e9eef4 !important}
+.{{gamepadDialogClasses:Button}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
+/* Footer hints, like Hearth's footer */
+.{{footerClasses:BasicFooter}}{background:#121821 !important;border-top:1px solid #2a3443 !important;color:#8d99a8 !important}
+/* On-screen keyboard: Hearth's keys */
+.{{VirtualKeyboardContainer:VirtualKeyboardContainer}}{background:#121821 !important;border-top:1px solid #2a3443 !important}
+.{{VirtualKeyboardContainer:Key}}{background:#1d2531 !important;border-radius:8px !important;color:#e9eef4 !important;box-shadow:inset 0 -2px 0 rgba(0,0,0,.35) !important}
+.{{VirtualKeyboardContainer:Key}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}

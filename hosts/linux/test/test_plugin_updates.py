@@ -765,7 +765,8 @@ class HearthOnly(unittest.TestCase):
 
     def test_each_plugin_starts_nothing_off_hearth_and_logs_once(self):
         self.system(STEAMOS_RELEASE)
-        for name, folder in (('Hearth Sync', 'decky-hearth-sync'), ('Hearth Link', 'decky-hearth-link'), ('Hearth Music', 'decky-hearth-music')):
+        for name, folder in (('Hearth Sync', 'decky-hearth-sync'), ('Hearth Link', 'decky-hearth-link'), ('Hearth Music', 'decky-hearth-music'),
+                             ('Hearth Classic', 'decky-hearth-look')):
             logs = []
             fake = types.ModuleType('decky')
             fake.DECKY_USER_HOME = os.path.join(self.tmp, 'home')

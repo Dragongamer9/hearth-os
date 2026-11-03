@@ -1,0 +1,256 @@
+// Hearth Classic's pure parts (no Steam, no Decky): the settings, the check for Steam's modules, the skin's template,
+// the set of patches, and the home screen's data. tests/model.test.mjs runs these in Node.
+
+// ---------------------------------------------------------------- settings
+
+export type Look = "steam" | "classic";
+export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean }
+/** Off until the person turns it on (Quick Access › Hearth Classic). Never changed by the plugin itself. */
+export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true };
+
+export function normalize(raw: unknown): Settings {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const b = (k: keyof Settings) => (typeof r[k] === "boolean" ? (r[k] as boolean) : (DEFAULTS[k] as boolean));
+  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper") };
+}
+
+// ---------------------------------------------------------------- Steam's modules
+
+/** Steam's class names the look can't do without: the Library and home's tabbed page, the dialogs and Quick Access.
+ *  If any is missing, Steam changed its layout and Hearth Classic pauses (Steam's normal look) instead of half-applying. */
+export const REQUIRED: [string, string][] = [
+  ["gamepadTabbedPageClasses", "TabHeaderRowWrapper"],
+  ["gamepadDialogClasses", "Field"],
+  ["quickAccessMenuClasses", "Title"],
+];
+
+export type Resolve = (map: string, key: string) => string | undefined;
+
+export interface SteamCheck { missing: string[]; router: boolean }
+/** What of Steam's UI the look needs and can't find (`router`: Decky's route patching, for the home screen). */
+export function checkSteam(resolve: Resolve, router: boolean): SteamCheck {
+  const missing: string[] = [];
+  for (const [m, k] of REQUIRED) {
+    let v: string | undefined;
+    try { v = resolve(m, k); } catch { v = undefined; }
+    if (!v) missing.push(m + "." + k);
+  }
+  if (!router) missing.push("routerHook");
+  return { missing, router };
+}
+
+export type State = "off" | "on" | "paused";
+export const PAUSED_NOTE = "Hearth Classic paused: Steam changed its layout";
+
+/** What to do: nothing (the Steam look chosen, or not Hearth OS), apply, or pause with the reason. */
+export function decide(s: Settings, hearthOs: boolean, check: SteamCheck | null, failure?: string): { state: State; why: string } {
+  if (!hearthOs || s.look !== "classic") return { state: "off", why: "" };
+  if (failure) return { state: "paused", why: failure };
+  if (!check) return { state: "paused", why: "Steam's UI couldn't be checked" };
+  if (check.missing.length) return { state: "paused", why: "missing in Steam: " + check.missing.join(", ") };
+  return { state: "on", why: "" };
+}
+
+// ---------------------------------------------------------------- the skin
+
+const TEMPLATE = /\{\{([A-Za-z0-9_]+):([A-Za-z0-9_]+)\}\}/g;
+
+/** The skin with Steam's class names and Hearth's pictures filled in; a line with a name or picture that's missing is
+ *  left out (a Steam update makes the look plainer, never broken). Also returns how many lines were left out. */
+export function renderTheme(css: string, pics: { logo: string; wallpaper: string }, resolve: Resolve): { css: string; dropped: number } {
+  const cache = new Map<string, string | undefined>();
+  const out: string[] = [];
+  let dropped = 0;
+  for (const line of (css || "").split("\n")) {
+    if ((line.includes("%WALLPAPER%") && !pics.wallpaper) || (line.includes("%LOGO%") && !pics.logo)) { dropped++; continue; }
+    let missing = false;
+    const done = line.replace(TEMPLATE, (_all, a: string, k: string) => {
+      const id = a + ":" + k;
+      if (!cache.has(id)) { let v: string | undefined; try { v = resolve(a, k); } catch { v = undefined; } cache.set(id, v); }
+      const v = cache.get(id);
+      if (!v) { missing = true; return ""; }
+      // Steam's class map values can hold several names ("a b"): the first is the component's own.
+      return v.split(/\s+/)[0];
+    });
+    if (missing) { dropped++; continue; }
+    out.push(done.replace(/%WALLPAPER%/g, pics.wallpaper).replace(/%LOGO%/g, pics.logo));
+  }
+  return { css: out.join("\n"), dropped };
+}
+
+// ---------------------------------------------------------------- patches
+
+/** Every change made to Steam, with its undo. removeAll undoes them all (newest first), even if one undo throws. */
+export interface PatchSet { add(name: string, undo: () => void): void; removeAll(): string[]; names(): string[] }
+export function makePatchSet(log?: (msg: string) => void): PatchSet {
+  let list: { name: string; undo: () => void }[] = [];
+  return {
+    add(name, undo) { list.push({ name, undo }); },
+    removeAll() {
+      const done: string[] = [];
+      const all = list.reverse();
+      list = [];
+      for (const p of all) {
+        try { p.undo(); done.push(p.name); } catch (e) { try { log && log(`couldn't undo ${p.name}: ${String(e)}`); } catch { /* never throw */ } }
+      }
+      return done;
+    },
+    names() { return list.map((p) => p.name); },
+  };
+}
+
+// ---------------------------------------------------------------- sounds (ui/index.html blip, the Soft pack)
+
+export function blipFor(kind: "move" | "ok" | "back"): [number, number, number] {
+  return kind === "ok" ? [880, 0.05, 0.035] : kind === "back" ? [420, 0.05, 0.03] : [700, 0.035, 0.035];
+}
+
+// ---------------------------------------------------------------- the home screen's data
+
+/** A game on Hearth Classic's home: always one Steam can open (a Steam game or a shortcut Hearth Sync made). */
+export interface Card { appid: number; title: string; store: string; minutes?: number; cover?: string; wide?: string; hero?: string; logo?: string }
+export interface Shelf { key: string; title: string; items: Card[]; wide?: boolean }
+export interface HomeView { from: "hearth" | "steam"; hero: Card | null; shelves: Shelf[]; count: number }
+
+/** Hearth Sync's collection names (hosts/decky-hearth-sync/main.py STORES), in Hearth's order: its rows on the home. */
+export const SYNC_COLLECTIONS: [string, string][] = [
+  ["epic", "Epic"], ["gog", "GOG"], ["battlenet", "Battle.net"], ["xbox", "Xbox"], ["beacon", "Beacon"], ["recomps", "Recomps"],
+  ["emu", "Emulators"], ["manual", "Added by hand"], ["ea", "EA"], ["ubisoft", "Ubisoft"], ["amazon", "Amazon"], ["itch", "itch.io"],
+  ["heroic", "Heroic"], ["lutris", "Lutris"], ["mods", "Modded games"], ["other", "Other games"],
+];
+
+/** The places row (Hearth's places as they are in Steam Game Mode): where each opens in Steam. */
+export const PLACES: { id: string; title: string; route: string }[] = [
+  { id: "library", title: "Library", route: "/library" },
+  { id: "store", title: "Store", route: "/store" },
+  { id: "downloads", title: "Downloads", route: "/downloads" },
+  { id: "media", title: "Media", route: "/media" },
+  { id: "friends", title: "Friends", route: "/friends" },
+  { id: "settings", title: "Settings", route: "/settings" },
+];
+
+const str = (v: unknown) => (typeof v === "string" && v.trim() && v.length < 4096 ? v.trim() : undefined);
+const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v > 0 ? v : 0);
+const okApp = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0 && n < 2 ** 32;
+
+/** Steam's app id for a game in Hearth's library: steam:<n> is Steam's own, others through Hearth Sync's shortcuts. */
+export function appIdFor(id: unknown, shortcuts: Record<string, unknown>): number | null {
+  if (typeof id !== "string") return null;
+  const m = /^steam:(\d{1,10})$/.exec(id);
+  if (m) { const n = Number(m[1]); return okApp(n) ? n : null; }
+  const v = shortcuts && Object.prototype.hasOwnProperty.call(shortcuts, id) ? shortcuts[id] : null;
+  const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+  return okApp(n) ? n : null;
+}
+
+function cardOf(g: any, shortcuts: Record<string, unknown>): Card | null {
+  if (!g || typeof g !== "object") return null;
+  const appid = appIdFor(g.id, shortcuts);
+  if (appid === null) return null;   // not in Steam (Hearth Sync hasn't added it, or its store is switched off)
+  return { appid, title: str(g.title) || String(g.id), store: str(g.store) || "", minutes: num(g.minutes),
+           cover: str(g.cover), wide: str(g.wide), hero: str(g.hero), logo: str(g.logo) };
+}
+
+function cards(list: unknown, shortcuts: Record<string, unknown>, max: number): Card[] {
+  const out: Card[] = [];
+  const seen = new Set<number>();
+  for (const g of Array.isArray(list) ? list : []) {
+    const c = cardOf(g, shortcuts);
+    if (c && !seen.has(c.appid)) { seen.add(c.appid); out.push(c); if (out.length >= max) break; }
+  }
+  return out;
+}
+
+/** The home from Hearth's own layout (`nimbus --steam-mode-data home`, hosts/hearth-core steam_takeover.rs home_layout):
+ *  Jump back in, Continue playing, Favorites, a row per store (Steam's, then Hearth Sync's collections' names),
+ *  Recently added. Only games Steam can open: Steam's, and the shortcuts Hearth Sync made (its shortcuts.json). */
+export function homeFromHearth(raw: any, shortcuts: Record<string, unknown>): HomeView {
+  const sc = shortcuts && typeof shortcuts === "object" ? shortcuts : {};
+  const h = raw && typeof raw === "object" ? raw : {};
+  const shelves: Shelf[] = [];
+  const cont = cards(h.continue, sc, 10);
+  const favs = cards(h.favorites, sc, 30);
+  if (cont.length) shelves.push({ key: "continue", title: "Continue playing", items: cont, wide: true });
+  if (favs.length) shelves.push({ key: "fav", title: "Favorites", items: favs });
+  const names = new Map(SYNC_COLLECTIONS);
+  let count = 0;
+  for (const r of Array.isArray(h.rows) ? h.rows : []) {
+    const items = cards(r && r.items, sc, 30);
+    if (!items.length) continue;
+    count += items.length;
+    const id = str(r.id) || "other";
+    const title = id === "steam" ? "Steam" : names.get(id) || str(r.title) || "Other games";
+    shelves.push({ key: "row-" + id, title, items });
+  }
+  const added = cards(h.added, sc, 12);
+  if (added.length > 2) shelves.push({ key: "added", title: "Recently added", items: added });
+  const hero = cardOf(h.hero, sc) || cont[0] || added[0] || null;
+  return { from: "hearth", hero, shelves, count: Math.max(count, cont.length, favs.length) };
+}
+
+export interface SteamApp { appid: number; display_name?: string; rt_last_time_played?: number; app_type?: number; minutes_playtime_forever?: number }
+
+/** The home from Steam alone (when Hearth's program doesn't answer): Steam's recent games, its Favorites, Steam's
+ *  games, and a row per Hearth Sync collection (Steam collections named after a store). */
+export function homeFromSteam(apps: SteamApp[], collections: { name: string; appids: number[] }[], favorites: number[]): HomeView {
+  const byId = new Map<number, SteamApp>();
+  for (const a of Array.isArray(apps) ? apps : []) if (a && okApp(a.appid) && str(a.display_name)) byId.set(a.appid, a);
+  const card = (a: SteamApp, store: string): Card => ({ appid: a.appid, title: str(a.display_name)!, store, minutes: num(a.minutes_playtime_forever) });
+  const az = (l: SteamApp[]) => [...l].sort((x, y) => x.display_name!.toLowerCase().localeCompare(y.display_name!.toLowerCase()) || x.appid - y.appid);
+  const recent = [...byId.values()].filter((a) => num(a.rt_last_time_played) > 0)
+    .sort((x, y) => num(y.rt_last_time_played) - num(x.rt_last_time_played) || x.appid - y.appid).slice(0, 10);
+  const shelves: Shelf[] = [];
+  const syncNames = new Set(SYNC_COLLECTIONS.map(([, n]) => n));
+  const inSync = new Map<number, string>();
+  for (const c of Array.isArray(collections) ? collections : []) {
+    if (!c || !syncNames.has(c.name)) continue;
+    for (const id of c.appids || []) if (byId.has(id) && !inSync.has(id)) inSync.set(id, c.name);
+  }
+  const storeOf = (id: number) => inSync.get(id) || (byId.get(id)!.app_type === 1 ? "Steam" : "");
+  if (recent.length) shelves.push({ key: "continue", title: "Continue playing", items: recent.map((a) => card(a, storeOf(a.appid))), wide: true });
+  const favs = az((favorites || []).map((id) => byId.get(id)).filter((a): a is SteamApp => !!a)).slice(0, 30);
+  if (favs.length) shelves.push({ key: "fav", title: "Favorites", items: favs.map((a) => card(a, storeOf(a.appid))) });
+  const steam = az([...byId.values()].filter((a) => a.app_type === 1 && !inSync.has(a.appid)));
+  if (steam.length) shelves.push({ key: "row-steam", title: "Steam", items: steam.slice(0, 30).map((a) => card(a, "Steam")) });
+  let count = steam.length;
+  for (const [id, name] of SYNC_COLLECTIONS) {
+    const items = az([...inSync.entries()].filter(([, n]) => n === name).map(([a]) => byId.get(a)!));
+    if (!items.length) continue;
+    count += items.length;
+    shelves.push({ key: "row-" + id, title: name, items: items.slice(0, 30).map((a) => card(a, name)) });
+  }
+  return { from: "steam", hero: shelves[0] && shelves[0].key === "continue" ? shelves[0].items[0] : null, shelves, count };
+}
+
+/** Hearth's layout when it has games, else Steam's; null: nothing to show (Steam's own Home stays). */
+export function pickHome(hearth: HomeView | null, steam: HomeView | null): HomeView | null {
+  if (hearth && hearth.shelves.length) return hearth;
+  if (steam && steam.shelves.length) return steam;
+  return null;
+}
+
+export function played(minutes: number | undefined): string {
+  const m = num(minutes);
+  if (!m) return "";
+  if (m < 60) return `${Math.round(m)} min played`;
+  const h = m / 60;
+  return `${h < 10 ? Math.round(h * 10) / 10 : Math.round(h)} h played`;
+}
+
+export type Shape = "portrait" | "wide" | "hero" | "logo";
+/** Steam's appStore picture methods to try for a shape, best first (Hearth Sync sets a shortcut's custom pictures). */
+export function steamArtMethods(shape: Shape): string[] {
+  return shape === "portrait" ? ["GetCustomVerticalCapsuleURLs", "GetVerticalCapsuleURLs"]
+    : shape === "wide" ? ["GetCustomLandcapeImageURLs", "GetLandscapeImageURLs", "GetCachedLandscapeImageURLs"]
+    : shape === "hero" ? ["GetCustomHeroImageURLs", "GetHeroImageURLs", "GetCustomLandcapeImageURLs", "GetLandscapeImageURLs"]
+    : ["GetCustomLogoImageURLs", "GetLogoImageURLs"];
+}
+
+/** The pictures to try for a card, best first: Steam's own (what Steam shows for it), then Hearth's. No duplicates. */
+export function artCandidates(c: Card | null, shape: Shape, steamUrls: string[]): string[] {
+  if (!c) return [];
+  const mine = shape === "portrait" ? [c.cover, c.wide] : shape === "wide" ? [c.wide, c.hero, c.cover] : shape === "hero" ? [c.hero, c.wide] : [c.logo];
+  const out: string[] = [];
+  for (const r of [...(steamUrls || []), ...mine]) if (typeof r === "string" && r.trim() && !out.includes(r.trim())) out.push(r.trim());
+  return out;
+}
