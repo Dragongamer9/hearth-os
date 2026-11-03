@@ -119,13 +119,14 @@ await scene("skin-hearth-classic-library", { scene: "library", qam: false, setti
 await scene("panel-hearth-classic-on", { settings: { look: "classic" }, want: ["Hearth home screen", "Hearth wallpaper", "Hearth sounds", "Jump back in"], skin: true });
 // 5. A Steam update renamed its modules: paused, Steam's normal look and Home, the note, the log line.
 await scene("panel-paused", { settings: { look: "classic" }, steam: "changed", skin: false,
-  want: ["Hearth Classic paused: Steam changed its layout", "Try again", "Steam's own Home"], not: ["Jump back in"] }, async () => {
+  want: ["Hearth Classic paused: Steam changed its layout", "Try again", "Steam's own Home"] }, async () => {
+  if (await page.locator(".hearth-classic").count()) errors.push("panel-paused: the Hearth home is drawn while paused");
   const reps = await page.evaluate(() => window.HC_REPORTS);
   if (!reps.some((r) => r.includes("paused"))) errors.push("panel-paused: the pause wasn't logged");
   if (await page.evaluate(() => window.HC_PATCHES.size)) errors.push("panel-paused: a route patch stayed");
 });
 // 6. Not Hearth OS: the shared invitation, nothing applied even with Hearth Classic saved.
-await scene("panel-not-hearth-os", { settings: { look: "classic" }, hearth: false, skin: false, want: ["Get Hearth OS", "Steam's own Home"], not: ["Game Mode look"] });
+await scene("panel-not-hearth-os", { settings: { look: "classic" }, hearth: false, skin: false, want: ["Get Hearth OS", "Steam's own Home"], not: ["Hearth home screen", "Try again", "Pick Hearth Classic"] });
 
 // 7. The old Hearth Game Mode home beside Hearth Classic's.
 await freshPage(2600, 900);
