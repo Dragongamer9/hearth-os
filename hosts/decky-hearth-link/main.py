@@ -36,6 +36,15 @@ try:
 except ImportError:  # tests
     decky = None
 
+# Hearth OS only, and the load mark for plugin updates (hosts/decky-shared/hearth_only.py, docs/PLUGIN-UPDATES.md):
+# next to main.py when packed, in hosts/decky-shared in the repo.
+import sys as _sys  # noqa: E402
+_here = os.path.dirname(os.path.abspath(__file__))
+for _p in (os.path.join(_here, '..', 'decky-shared'), _here):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+import hearth_only  # noqa: E402
+
 PROGRAM = '/usr/bin/hearth-link'
 UNIT = 'hearth-link.service'
 NOT_RUNNING = "Hearth Link isn't running on this device"
@@ -507,6 +516,10 @@ async def _bg(fn, *a):
 
 
 class Plugin:
+    async def hearth_os(self):
+        """Whether this is Hearth OS (the frontend shows the Hearth OS panel instead of the plugin when not)."""
+        return hearth_only.status(log, 'Hearth Link')
+
     async def status(self):
         return await _bg(status)
 
@@ -532,8 +545,11 @@ class Plugin:
         return await _bg(fetch_plugin, folder)
 
     async def _main(self):
+        if not hearth_only.status(log, 'Hearth Link')['ok']:
+            return   # not Hearth OS: nothing starts (the panel says why)
         log('Hearth Link plugin loaded')
         self._sync = asyncio.get_running_loop().create_task(self._sync_loop())
+        self._loaded = asyncio.get_running_loop().create_task(hearth_only.mark_loaded_later(decky))
 
     async def _sync_loop(self):
         while True:

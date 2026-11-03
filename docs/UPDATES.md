@@ -1,7 +1,9 @@
 # Updates: version numbers
 
 How Hearth OS is updated is on the website (hearthos.fun/docs/updates.html, from `tools/build-docs.py`); Hearth app
-updates between system updates are in `docs/APP-UPDATES.md`. This page is about the numbers.
+updates between system updates are in `docs/APP-UPDATES.md`. Hearth's Decky plugins update on their own channel:
+`plugins-v<version>` releases the owner publishes by hand with his own number, never marked "Latest"
+(`docs/PLUGIN-UPDATES.md`). This page is about the numbers.
 
 ## Version numbers
 

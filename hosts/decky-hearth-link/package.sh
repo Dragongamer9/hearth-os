@@ -13,6 +13,8 @@ rm -rf "$P" && mkdir -p "$P/dist"
 cp "$HERE/dist/index.js" "$P/dist/"
 cp "$HERE/main.py" "$HERE/link_sync.py" "$HERE/package.json" "$HERE/plugin.json" "$P/"
 cp "$ROOT/LICENSE" "$P/LICENSE"
+# Hearth OS only and the load mark for plugin updates (docs/PLUGIN-UPDATES.md), shared by the three plugins.
+cp "$ROOT/hosts/decky-shared/hearth_only.py" "$P/hearth_only.py"
 cp "$ROOT/hosts/linux/desktop/shell/hearth_settings_io.py" "$P/hearth_settings_io.py"
 (cd "$OUT" && rm -f decky-hearth-link.zip && zip -qr decky-hearth-link.zip decky-hearth-link)
 echo "packed $P ($(du -sh "$P" | cut -f1))"
