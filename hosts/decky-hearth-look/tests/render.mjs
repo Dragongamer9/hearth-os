@@ -48,15 +48,22 @@ const frame = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:
 .steam-footer{position:absolute;left:0;right:0;bottom:0;height:40px;display:flex;align-items:center;justify-content:flex-end;padding:0 24px;background:#0e141b;color:#8b929a;font-size:13px;word-spacing:6px}`;
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
-page.on("pageerror", (e) => errors.push(String(e)));
+// A fresh page for every scene: the plugin keeps module state and timers (the skin's refresh), which setContent on the
+// same page would carry over into the next scene.
+let page = null;
+async function freshPage(w = 1280, h = 800) {
+  if (page) await page.close();
+  page = await browser.newPage({ viewport: { width: w, height: h } });
+  page.on("pageerror", (e) => errors.push(String(e)));
+}
 
 async function scene(name, opts, check) {
   const vars = { HC_SCENE: opts.scene || "home", HC_SETTINGS: opts.settings || {}, HC_STEAM: opts.steam || "", HC_HEARTH: opts.hearth !== false,
                  HC_QAM: opts.qam !== false, HC_CSS: css, HC_LOGO: logo, HC_WALL: wall };
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>${frame}</style></head><body><div id="root"></div>
 <script>${Object.entries(vars).map(([k, v]) => `window.${k}=${JSON.stringify(v)};`).join("")}</script><script>${js}</script></body></html>`;
+  await freshPage();
   await page.setContent(html);
   await page.waitForTimeout(opts.wait || 2500);
   if (opts.focus) await page.evaluate((sel) => { const e = document.querySelector(sel); if (e) e.classList.add("gpfocus"); }, opts.focus);
@@ -121,7 +128,7 @@ await scene("panel-paused", { settings: { look: "classic" }, steam: "changed", s
 await scene("panel-not-hearth-os", { settings: { look: "classic" }, hearth: false, skin: false, want: ["Get Hearth OS", "Steam's own Home"], not: ["Game Mode look"] });
 
 // 7. The old Hearth Game Mode home beside Hearth Classic's.
-await page.setViewportSize({ width: 2600, height: 900 });
+await freshPage(2600, 900);
 const oldShot = b64(join(root, "site/img/gm-home.webp"), "image/webp");
 const newShot = b64(join(out, "home-hearth-classic.png"), "image/png");
 await page.setContent(`<!doctype html><html><body style="margin:0;background:#0c1016;color:#e9eef4;font-family:'Noto Sans',Arial,sans-serif;display:flex;gap:40px;padding:30px;box-sizing:border-box">
