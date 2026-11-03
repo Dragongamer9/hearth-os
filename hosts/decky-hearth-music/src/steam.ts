@@ -79,3 +79,32 @@ export function watchPlay(cb: () => void): () => void {
     return () => { try { r?.unregister?.(); } catch { /* gone */ } };
   } catch { return () => {}; }
 }
+
+/** Every game in Steam's library, for the library scan: Steam games and non-Steam shortcuts (Hearth Sync's store
+ *  games among them) with their names, from collectionStore's "all games" and appStore, every read guarded. */
+export function libraryGames(): { appid: number; title: string; shortcut: boolean }[] {
+  const out = new Map<number, { appid: number; title: string; shortcut: boolean }>();
+  const add = (a: any) => {
+    try {
+      const id = Number(a?.appid || 0), title = String(a?.display_name || "");
+      // app_type 1 is a game, 1073741824 a non-Steam shortcut.
+      const type = Number(a?.app_type ?? 1);
+      if (!(id > 0) || !title || out.has(id) || (type !== 1 && type !== 1073741824)) return;
+      out.set(id, { appid: id, title: title.slice(0, 200), shortcut: type === 1073741824 || id >= 2 ** 31 });
+    } catch { /* not an app */ }
+  };
+  const each = (list: any) => {
+    try {
+      if (!list) return;
+      for (const a of (typeof list.values === "function" && !Array.isArray(list) ? list.values() : list)) add(a);
+    } catch { /* not a list */ }
+  };
+  try {
+    const cs = W().collectionStore;
+    each(cs?.allGamesCollection?.allApps);
+    each(cs?.GetCollection?.("type-games")?.allApps);
+    each(cs?.GetCollection?.("type-nonsteam")?.allApps);
+  } catch { /* no collectionStore */ }
+  try { each(W().appStore?.allApps); } catch { /* no appStore */ }
+  return [...out.values()].slice(0, 20000);
+}

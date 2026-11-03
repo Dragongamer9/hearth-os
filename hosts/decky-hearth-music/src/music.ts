@@ -2,9 +2,9 @@
 // (model.ts wanted), waits the delay you set, asks the backend for the song and plays it (player.ts). Play pressed:
 // a quick fade out, then silence while the game runs.
 import { callable, toaster } from "@decky/api";
-import { DEFAULTS, FADE_OUT_PLAY, Seen, Settings, Song, cleanSettings, credit, nowLine, wanted } from "./model";
+import { Choice, DEFAULTS, FADE_OUT_PLAY, Scan, Seen, Settings, Song, cleanSettings, credit, nowLine, wanted } from "./model";
 import { Player } from "./player";
-import { collectionsOf, gameTitle, readPath, readRunning, steamMissing, watchFocus, watchPlay } from "./steam";
+import { collectionsOf, gameTitle, libraryGames, readPath, readRunning, steamMissing, watchFocus, watchPlay } from "./steam";
 
 const findSong = callable<[appid: number, title: string, collections: string[]], Song>("find_song");
 const getAudio = callable<[key: string, transcode: boolean], { data: string; mime: string } | null>("audio");
@@ -12,6 +12,19 @@ export const getSettings = callable<[], Settings>("get_settings");
 const saveSettings = callable<[s: Partial<Settings>], Settings>("set_settings");   // only the keys changed
 export const setPick = callable<[kind: string, name: string, path: string], boolean>("set_pick");
 const report = callable<[line: string], void>("report");
+const scanLibrary = callable<[games: { appid: number; title: string; shortcut: boolean }[], force: boolean], boolean>("scan_library");
+const scanPause = callable<[paused: boolean], boolean>("scan_pause");
+export const scanStatus = callable<[], Scan>("scan_status");
+export const searchMusic = callable<[query: string], { results: Choice[]; later: string[] }>("search_music");
+export const chooseMusic = callable<[appid: number, choice: string], boolean>("choose_music");
+
+/** Hands Steam's library to the backend's scan: the first time it goes through every game, then new installs and
+ *  week-old answers only (the backend skips what it knows). force: "Scan my library". */
+export async function scan(force = false): Promise<boolean> {
+  const games = libraryGames();
+  if (!games.length && !force) return false;
+  return scanLibrary(games, force).catch(() => false);
+}
 
 export interface State { settings: Settings; seen: Seen; appid: number; title: string; song: Song | null; off: string; collections: string[] }
 
@@ -93,6 +106,8 @@ function tick() {
   const run = running || 0;
   if (run) launchUntil = 0;
   const seen: Seen = { ...state.seen, path: path || "", running: run, launching: Date.now() < launchUntil };
+  const busy = run > 0 || seen.launching;
+  if (busy !== (state.seen.running > 0 || state.seen.launching)) scanPause(busy).catch(() => {});   // the scan waits while a game runs
   const w = wanted(seen, state.settings);
   const moved = seen.path !== state.seen.path || seen.running !== state.seen.running || seen.launching !== state.seen.launching;
   state.seen = seen;
@@ -125,5 +140,11 @@ export function begin(): () => void {
   const retry = setInterval(() => { if (!offFocus) offFocus = watchFocus(onFocus); if (offFocus) clearInterval(retry); }, 5000);
   const offPlay = watchPlay(() => { launchUntil = Date.now() + 30000; player.stop(FADE_OUT_PLAY); tick(); });
   const iv = setInterval(tick, 500);
-  return () => { clearInterval(iv); clearInterval(retry); clearTimeout(timer); offFocus?.(); offPlay(); player.stop(300); };
+  // The library scan: as soon as Steam's library can be read, then every 15 minutes for new installs.
+  let scanned = false;
+  const tryScan = () => { scan(false).then((ok) => { if (ok) scanned = true; }).catch(() => {}); };
+  const scanIv = setInterval(() => { if (!scanned) tryScan(); }, 10000);
+  const scanLater = setInterval(tryScan, 15 * 60 * 1000);
+  const first = setTimeout(tryScan, 3000);
+  return () => { clearTimeout(first); clearInterval(iv); clearInterval(retry); clearInterval(scanIv); clearInterval(scanLater); clearTimeout(timer); offFocus?.(); offPlay(); player.stop(300); };
 }
