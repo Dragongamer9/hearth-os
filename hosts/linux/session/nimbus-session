@@ -523,9 +523,29 @@ steam_mode_failed() {
   steam_back >"$NEXT"
 }
 # Why Steam Game Mode can't start at all right now ("" when it can).
+# Steam never set up for this account: the system's Steam launcher (Debian's /usr/games/steam) first asks its own
+# "Steam installer" question in a window of its own, and Steam Game Mode's gamescope only shows Steam's windows, so the
+# question is never seen and the screen stays black, waiting (Hearth 1.0 on a laptop that hadn't used Steam yet).
+# Desktop Mode shows that window like any other: open Steam there once, then Game Mode. Only for the system's
+# launcher (Flathub's Steam sets itself up without asking); any Steam that has run before has its files here.
+STEAM_FIRSTRUN_LAUNCHERS="${HEARTH_STEAM_FIRSTRUN_LAUNCHERS:-/usr/games/steam /usr/bin/steam}"
+steam_not_set_up() {
+  sb="$(command -v steam 2>/dev/null)" || return 1
+  sr="$(readlink -f "$sb" 2>/dev/null || echo "$sb")"
+  hit=""
+  for l in $STEAM_FIRSTRUN_LAUNCHERS; do [ "$sb" = "$l" ] || [ "$sr" = "$l" ] && hit=1; done
+  [ -n "$hit" ] || return 1
+  { [ -e /usr/share/nimbus/steam-flatpak ] && steam_flatpak; } && return 1
+  steam_flatpak_in_use && return 1
+  for d in "$HOME/.local/share/Steam" "$HOME/.steam/debian-installation" "$HOME/.steam/steam" "$HOME/.steam/root"; do
+    [ -e "$d/steam.sh" ] || [ -e "$d/ubuntu12_32/steamui.so" ] || [ -s "$d/config/loginusers.vdf" ] && return 1
+  done
+  return 0
+}
 steam_cant_reason() {
   if ! can_steam_mode; then echo "Steam or gamescope isn't installed"
   elif [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then echo "safe graphics are on this time"
+  elif steam_not_set_up; then echo "Steam isn't set up on this device yet. Open Steam here in Desktop Mode once, answer its questions and sign in, then switch to Game Mode"
   fi
 }
 # Decky Loader, built into Hearth OS (hearth-decky@.service, docs/STEAM-GAME-MODE.md): its root service runs only while
