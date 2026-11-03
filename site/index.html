@@ -135,6 +135,11 @@ header .dl:hover{color:var(--onacc);filter:brightness(1.08)}
 .hero .lede{margin:26px 0 30px}
 .status{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:28px;font-size:15px;color:var(--muted)}
 .status span{display:inline-flex;align-items:center;gap:8px}
+.livecount{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font:600 14px/1 var(--body);color:var(--text);background:color-mix(in srgb,var(--ok) 12%,transparent);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent)}
+.livecount[hidden]{display:none}
+.livecount i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 60%,transparent);animation:livepulse 2s infinite}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.livecount i{animation:none}}
 .stack{width:100%;max-width:600px;justify-self:end}
 .stack svg{display:block;width:100%;height:auto;overflow:visible}
 .stack .plate{transition:transform .9s cubic-bezier(.2,.8,.2,1)}
@@ -301,7 +306,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <div class="status">
         <span><span class="tag now">Out now</span>Hearth OS 1.1</span>
         <span><span class="tag next">Next update</span>in development</span>
-        <span class="tag off" id="live" hidden></span>
+        <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
     </div>
     <figure class="stack" id="stack" style="margin:0;position:relative">
@@ -634,10 +639,25 @@ requestAnimationFrame(function(){ requestAnimationFrame(function(){ document.get
 })();
 
 // How many people are playing right now (installs check in with the Hearth OS counter about every 10 minutes).
-fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats').then(function(r){ return r.json(); }).then(function(j){
-  if (!j || !j.now) return;
-  var el = document.getElementById('live'); el.textContent = j.now.toLocaleString() + ' playing right now'; el.hidden = false;
-}).catch(function(){});
+// Shows "N playing right now · M this month", or "M played this month" when nobody is on; refreshed every minute.
+(function(){
+  var el = document.getElementById('live'), t = document.getElementById('liveText');
+  if (!el || !t) return;
+  var n = function(v){ return typeof v === 'number' && isFinite(v) && v >= 0 ? Math.floor(v) : null; };
+  function load(){
+    fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats', {cache: 'no-store'}).then(function(r){ return r.json(); }).then(function(j){
+      if (!j) return;
+      var now = n(j.now), month = n(j.month);
+      if (now === null && month === null) return;
+      var parts = [];
+      if (now) parts.push(now.toLocaleString() + ' playing right now');
+      if (month) parts.push(month.toLocaleString() + (now ? ' this month' : ' played this month'));
+      if (!parts.length) return;
+      t.textContent = parts.join(' \u00b7 '); el.hidden = false;
+    }).catch(function(){});
+  }
+  load(); setInterval(load, 60000);
+})();
 
 // Which version each download is, from latest.json next to the ISOs (written by tools/r2-upload.sh).
 fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache: 'no-cache'}).then(function(r){ return r.json(); }).then(function(d){
