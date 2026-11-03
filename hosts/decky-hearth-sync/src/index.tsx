@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { FaSyncAlt } from "react-icons/fa";
 import { CHECK_EVERY, Item, Status, ago, storeList, storeOn } from "./model";
 import { ImportSection } from "./import";
+import { HearthOnly, hearthOs } from "./hearth-only";
 import { Settings, getSettings, getStatus, isBusy, listGames, onChange, removeAll, runSync, setSettings } from "./sync";
 
 function Panel() {
@@ -85,16 +86,23 @@ function Panel() {
 
 export default definePlugin(() => {
   let timer: any = null;
+  let first: any = null;
+  let gone = false;
   // Steam's library is ready a moment after the plugin loads: the first sync then, a cheap check every few minutes.
-  const first = setTimeout(() => { runSync(true).catch(() => {}); }, 15000);
-  timer = setInterval(() => { runSync(false).catch(() => {}); }, CHECK_EVERY);
+  // Only on Hearth OS (hearth-only.tsx); anywhere else nothing starts.
+  hearthOs().then((ok) => {
+    if (!ok || gone) return;
+    first = setTimeout(() => { runSync(true).catch(() => {}); }, 15000);
+    timer = setInterval(() => { runSync(false).catch(() => {}); }, CHECK_EVERY);
+  });
   return {
     name: "Hearth Sync",
     titleView: <div className={staticClasses.Title}>Hearth Sync</div>,
-    content: <Panel />,
+    content: <HearthOnly name="Hearth Sync" what="Every store's games in Steam's library, with their pictures."><Panel /></HearthOnly>,
     icon: <FaSyncAlt />,
     onDismount() {
-      clearTimeout(first);
+      gone = true;
+      if (first) clearTimeout(first);
       if (timer) clearInterval(timer);
     },
   };

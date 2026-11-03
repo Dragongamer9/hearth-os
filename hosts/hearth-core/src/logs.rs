@@ -263,6 +263,18 @@ pub fn redact(text: &str, user: &str, home: &str) -> String {
     t
 }
 
+/// Send logs' "Decky plugin updates" section: ~/.local/state/nimbus/plugin-updates.json and the switch.
+pub fn decky_plugin_updates() -> String {
+    let state = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state"));
+    let mut out = match std::fs::read_to_string(state.join("nimbus/plugin-updates.json")) {
+        Ok(t) => t,
+        Err(_) => "No plugin update check yet (the plugins are the ones built into this Hearth OS).".to_string(),
+    };
+    let auto = std::fs::read_to_string(crate::paths::home().join(".config/nimbus/plugin-updates.json")).unwrap_or_default();
+    out.push_str(&format!("\nUpdate plugins automatically: {}", if auto.contains("\"auto\": true") || auto.contains("\"auto\":true") { "on" } else { "off" }));
+    out
+}
+
 /// The report: about the device, Hearth's logs, and what the system says about the parts that usually go wrong
 /// (controller service, power, gamescope, memory).
 pub fn report(version: &str) -> String {
@@ -276,6 +288,9 @@ pub fn report(version: &str) -> String {
     // Hearth app updates (appchannel.rs): which Hearth runs (an update or the built-in one), its marks, the last check
     // and why Hearth last went back to the built-in version.
     section("Hearth app updates", crate::appchannel::report());
+    // Decky plugin updates (hearth-decky plugins-*, docs/PLUGIN-UPDATES.md): installed versions, built-in or downloaded,
+    // the last check, the last error and any plugin that was put back because it didn't load.
+    section("Decky plugin updates", decky_plugin_updates());
     section("System version (bootc)", sh("{ bootc status --format humanreadable || bootc status || rpm-ostree status; } 2>&1; ls /ostree/deploy/*/deploy 2>&1 | head -8"));
     // Hearth's log: the controller input lines first (the jumping-selection reports), then the newest lines.
     // Thousands of identical "library.downloads ok" lines from the old Electron app are left out.

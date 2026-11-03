@@ -33,6 +33,7 @@ const handlers = {
   get_games: (force) => (force && state() === "syncing" ? new Promise(() => {}) : { ok: true, error: null, games, signature: "s" }),
   get_status: () => statusFor(), set_status: (s) => s, get_settings: () => settingsFor(), set_settings: (s) => s,
   import_scan: () => importScan(), import_state: () => importState(), import_arm: () => true,
+  hearth_os: () => (state() === "not-hearth" ? { ok: false, message: "This plugin is part of Hearth OS. Get Hearth OS at hearthos.fun" } : { ok: true }),
   get_shortcuts: () => ({}), set_shortcuts: (m) => m, get_applied: () => ({}), set_applied: (a) => a, get_art: () => null, art_error: () => null, report: () => null,
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }

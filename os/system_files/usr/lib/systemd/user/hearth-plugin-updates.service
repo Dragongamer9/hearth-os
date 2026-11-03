@@ -1,0 +1,14 @@
+# Hearth's Decky plugin updates (docs/PLUGIN-UPDATES.md): checks the newest "plugins" release once a day and downloads
+# what's newer, only when Settings › Updates › "Update plugins automatically" is on (off by default; the helper does
+# nothing otherwise). Only files in your home; a plugin is put in place by Decky's own service at its next start.
+# Never touches booting, the system or the session. See hearth-plugin-updates.timer.
+[Unit]
+Description=Hearth Decky plugin updates (when turned on)
+ConditionPathExists=/usr/libexec/nimbus/hearth-decky
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-decky plugins-auto
+TimeoutStartSec=10min
+Nice=10
+IOSchedulingClass=idle

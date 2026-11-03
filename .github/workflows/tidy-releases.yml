@@ -38,7 +38,7 @@ jobs:
           [ -n "$keep_id" ] || { echo "No release $KEEP"; exit 1; }
           gh api -X PATCH "repos/$REPO/releases/$keep_id" -F draft=false -f make_latest=true >/dev/null
           n=0
-          printf '%s\n' "$all" | awk -F'\t' -v t="$KEEP" '$3=="false" && $2!=t {print $1"\t"$2}' > /tmp/hide
+          printf '%s\n' "$all" | awk -F'\t' -v t="$KEEP" '$3=="false" && $2!=t && $2 !~ /^plugins-v/ {print $1"\t"$2}' > /tmp/hide   # Decky plugin releases stay (docs/PLUGIN-UPDATES.md)
           while IFS=$'\t' read -r id tag; do
             gh api -X PATCH "repos/$REPO/releases/$id" -F draft=true >/dev/null && { echo "hidden: $tag"; n=$((n+1)); }
           done < /tmp/hide
