@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+## 1.2 (released 2026-11-03)
+
 - [ ] Decky plugin updates without a system update: Hearth Sync, Hearth Link and Hearth Music update from a "plugins" release you publish with your own version number (Actions › Decky plugins release), checked (SHA-256, minimum versions) and put in place by Decky alone, the image's older ones never replacing them, the copy before kept and put back by itself if a new one doesn't load; Settings › Updates › Decky plugins (versions, Check now, Update, Use the built-in plugins, "Update plugins automatically", off until you turn it on) and a Send logs section. The plugins now run only on Hearth OS and show an invitation to Hearth OS anywhere else (docs/PLUGIN-UPDATES.md; needs testing on a device)
 
 - [ ] Hearth Music finds a song for your whole library in the background the first time (and with *Scan my library*), so games start their theme right away: installed games first, then the rest and Hearth Sync's shortcuts, politely rate-limited, paused while a game runs, resumed after a restart, with "Matched 143 of 210" in its panel; new installs are matched as they appear and answers refreshed weekly. Deezer's 30-second previews fill in when Apple Music has no good match (streamed, never stored, "Preview from Deezer", *Use Deezer previews* on by default), and *Choose music…* lets you search your soundtracks, Apple Music and Deezer for a game and keep your choice, which always wins and no scan changes. Still never YouTube (docs/HEARTH-MUSIC.md; needs testing on a device)
