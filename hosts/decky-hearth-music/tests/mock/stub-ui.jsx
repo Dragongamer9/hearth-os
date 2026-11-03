@@ -18,3 +18,6 @@ export const SliderField = (p) => h("div", { className: "qam-field" },
 export const ButtonItem = (p) => h("div", { className: "qam-field" },
   h("button", { className: "DialogButton qam-btn", onClick: p.onClick, disabled: !!p.disabled }, p.children),
   p.description ? h("div", { className: "qam-desc" }, p.description) : null);
+export const TextField = (p) => h("div", { className: "qam-field" },
+  p.label ? h("span", { className: "qam-label" }, p.label) : null,
+  h("input", { className: "qam-input", value: p.value, onChange: p.onChange }));

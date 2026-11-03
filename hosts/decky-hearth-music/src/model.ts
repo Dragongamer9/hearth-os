@@ -1,12 +1,18 @@
 // Hearth Music's pure parts (no Steam, no Decky): what should play, when, and how loud. Unit-tested in
 // tests/model.test.mjs.
 
-export interface Settings { enabled: boolean; volume: number; delay: number; where: "pages" | "library"; online: boolean; toast: boolean }
-export const DEFAULTS: Settings = { enabled: true, volume: 0.35, delay: 1.5, where: "pages", online: true, toast: true };
+export interface Settings { enabled: boolean; volume: number; delay: number; where: "pages" | "library"; online: boolean; toast: boolean; deezer: boolean }
+export const DEFAULTS: Settings = { enabled: true, volume: 0.35, delay: 1.5, where: "pages", online: true, toast: true, deezer: true };
 
-/** A song the backend found: where it's from and (for Apple's previews) the credit. */
-export interface Song { source: "pick" | "soundtrack" | "game" | "apple" | null; key?: string; url?: string; title?: string; artist?: string;
-  album?: string; link?: string; why?: string; later?: boolean; via?: string; name?: string }
+/** A song the backend found: where it's from and (for Apple's and Deezer's previews, `from`) the credit. */
+export interface Song { source: "pick" | "soundtrack" | "game" | "apple" | "deezer" | null; key?: string; url?: string; title?: string; artist?: string;
+  album?: string; link?: string; why?: string; later?: boolean; via?: string; name?: string; from?: "apple" | "deezer" }
+
+/** The library scan, as the backend tells it. */
+export interface Scan { running: boolean; paused: boolean; total: number; done: number; matched: number; waiting: string; last: number }
+
+/** A song "Choose music…" found: one of your soundtracks' tracks, or an Apple or Deezer preview. */
+export interface Choice { choice: string; from: "soundtrack" | "apple" | "deezer"; title: string; artist: string; album: string }
 
 /** What Steam shows right now, as Hearth Music reads it. */
 export interface Seen { path: string; focused: number; running: number; launching: boolean }
@@ -59,15 +65,49 @@ export function clamp(v: number): number { return Math.min(1, Math.max(0, Number
 export function nowLine(song: Song | null): string {
   if (!song || !song.source) return "";
   const t = song.title || "Theme";
-  if (song.source === "apple") return `${t} — ${song.artist || "Unknown artist"}`;
-  if (song.source === "pick") return `${t} (your pick${song.via === "collection" ? ` for ${song.name}` : ""})`;
+  if (song.source === "apple" || song.source === "deezer") return `${t} — ${song.artist || "Unknown artist"}`;
+  if (song.source === "pick") return `${t}${song.from && song.artist ? ` — ${song.artist}` : ""} (your pick${song.via === "collection" ? ` for ${song.name}` : ""})`;
   if (song.source === "soundtrack") return `${t} (the game's soundtrack)`;
   return `${t} (from the game's files)`;
 }
 
-/** Apple's credit for a preview, shown with it. */
+/** Where an online preview is from ("apple", "deezer"), also for a pick chosen from them; "" otherwise. */
+export function previewFrom(song: Song | null): "apple" | "deezer" | "" {
+  if (!song) return "";
+  if (song.from === "apple" || song.from === "deezer") return song.from;
+  return song.source === "apple" || song.source === "deezer" ? song.source : "";
+}
+
+/** The credit for a preview, shown with it: Apple's, or Deezer's. */
 export function credit(song: Song | null): string {
-  return song?.source === "apple" ? `Preview courtesy of Apple Music${song.album ? ` · ${song.album}` : ""}` : "";
+  const f = previewFrom(song);
+  const album = song?.album ? ` · ${song.album}` : "";
+  if (f === "apple") return `Preview courtesy of Apple Music${album}`;
+  if (f === "deezer") return `Preview from Deezer${album}`;
+  return "";
+}
+
+/** The label of the button that opens the preview's track where it's from. */
+export function openLabel(song: Song | null): string {
+  const f = previewFrom(song);
+  return song?.link ? (f === "deezer" ? "Open in Deezer" : f === "apple" ? "Open in Apple Music" : "") : "";
+}
+
+/** The library scan in the panel: [the count, what it's doing]. */
+export function scanLines(s: Scan | null): [string, string] {
+  if (!s || (!s.total && !s.running)) return ["Not scanned yet", ""];
+  const count = `Matched ${s.matched} of ${s.total}`;
+  if (!s.running) return [count, s.last ? "Done: new games are matched as they appear, older answers refreshed weekly" : ""];
+  if (s.waiting === "game" || s.paused) return [count, "Paused while a game runs"];
+  if (s.waiting === "slow") return [count, "Waiting a moment: the music service asked to slow down"];
+  if (s.waiting === "network") return [count, "Waiting for the network"];
+  return [count, `Looking through your library: ${Math.min(s.done + 1, s.total)} of ${s.total}`];
+}
+
+/** A line for one "Choose music…" result. */
+export function choiceLine(c: Choice): string {
+  const where = c.from === "apple" ? "Apple Music preview" : c.from === "deezer" ? "Deezer preview" : "your soundtrack";
+  return `${c.title}${c.artist ? ` — ${c.artist}` : ""} · ${where}`;
 }
 
 export function cleanSettings(s: Partial<Settings> | null | undefined): Settings {
@@ -75,5 +115,6 @@ export function cleanSettings(s: Partial<Settings> | null | undefined): Settings
   o.volume = clamp(Number(o.volume));
   o.delay = Math.min(10, Math.max(0, Number(o.delay) || 0));
   if (o.where !== "library") o.where = "pages";
+  o.deezer = o.deezer !== false;
   return o;
 }

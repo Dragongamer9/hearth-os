@@ -1,5 +1,5 @@
 // CI only (render-panel.mjs): a stand-in for @decky/api and for Steam's state. window.HM_STATE picks the scene:
-// apple, soundtrack, pick, game, nomatch, running, off, changed, library. No Steam, no network: Apple's preview
+// apple, soundtrack, pick, game, nomatch, running, off, changed, library, deezer, scan, choose. No Steam, no network: Apple's preview
 // address doesn't resolve, so the panel goes through the backend's stream fallback, whose "song" is a tone made here.
 import { S } from "./steam-state.js";
 const songs = {
@@ -9,7 +9,18 @@ const songs = {
   pick: { source: "pick", key: "k3", title: "My Witcher Mix", via: "collection", name: "RPGs" },
   game: { source: "game", key: "k4", title: "main_theme" },
   nomatch: { source: null, why: "no theme song found" },
+  scan: { source: null, why: "no theme song found" },
+  choose: { source: null, why: "no theme song found" },
+  deezer: { source: "deezer", from: "deezer", key: "k5", url: "https://preview.invalid/b.mp3", title: "Hollow Knight", artist: "Christopher Larkin", album: "Hollow Knight (Original Soundtrack)", link: "https://www.deezer.com/track/1" },
 };
+const scanning = { running: true, paused: false, total: 210, done: 150, matched: 143, waiting: "", last: 0 };
+const scanned = { running: false, paused: false, total: 210, done: 210, matched: 198, waiting: "", last: 1 };
+const found = { later: [], results: [
+  { choice: "s1", from: "soundtrack", title: "01 - V", artist: "", album: "Cyberpunk 2077 Original Score" },
+  { choice: "apple:1", from: "apple", title: "Cyberpunk 2077 Main Theme", artist: "Marcin Przybyłowicz", album: "Cyberpunk 2077 (Original Score)" },
+  { choice: "apple:2", from: "apple", title: "The Rebel Path", artist: "P.T. Adamczyk", album: "Cyberpunk 2077 (Original Score)" },
+  { choice: "deezer:3", from: "deezer", title: "Never Fade Away", artist: "P.T. Adamczyk, Olga Jankowska", album: "Cyberpunk 2077 (Original Score)" },
+] };
 function tone() {   // 1 s of a quiet 440 Hz tone, as a WAV, base64
   const rate = 8000, n = rate, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
   const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -22,6 +33,8 @@ const settings = () => ({ enabled: S() !== "off", volume: 0.35, delay: 0, where:
 const handlers = {
   get_settings: () => settings(), set_settings: (s) => s, find_song: () => songs[S()] || { source: null, why: "no theme song found" },
   audio: () => ({ data: tone(), mime: "audio/wav" }), set_pick: () => true, get_picks: () => ({}), get_home: () => "/home/you", report: () => null,
+  scan_library: () => true, scan_pause: () => true, scan_status: () => (S() === "scan" ? scanning : scanned),
+  search_music: () => found, choose_music: () => true,
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export function definePlugin(f) { return f; }

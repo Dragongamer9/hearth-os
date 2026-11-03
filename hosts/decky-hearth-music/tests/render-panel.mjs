@@ -26,6 +26,7 @@ const css = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:re
 .qam-body{flex:1;display:flex;flex-direction:column;min-width:0}.qam-title{font-size:18px;font-weight:700;padding:16px 16px 8px}
 .ScrollPanel{padding:0 12px 20px;overflow:hidden}.qam-section{margin-bottom:6px}.qam-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#8d99a8;padding:8px 4px 4px}
 .qam-row{padding:3px 4px}.qam-field{display:flex;flex-direction:column;gap:4px;padding:2px 0}.qam-label{font-size:14px}.qam-desc{font-size:11.5px;color:#8d99a8}.Text{font-size:14px}
+.qam-input{background:#0b1016;border:1px solid #3d4450;border-radius:4px;color:#e9eef4;padding:7px 9px;font:inherit;font-size:14px}
 .DialogButton{border:none;color:#e9eef4;background:#3d4450;border-radius:4px;font:inherit}.qam-btn{width:100%;padding:9px 12px;font-size:14px}.qam-btn.gpfocus{background:#fff;color:#0e141b}.qam-switch.gpfocus{outline:2px solid #fff;outline-offset:2px}
 .qam-line{display:flex;justify-content:space-between;align-items:center}.qam-switch{width:40px;height:22px;border-radius:11px;background:#273140;position:relative}
 .qam-switch i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#e9eef4}.qam-switch.on{background:#1a9fff}.qam-switch.on i{left:21px}
@@ -37,8 +38,8 @@ const css = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:re
 .cap b{text-shadow:0 1px 4px #000}.cap.f{outline:3px solid #fff;transform:scale(1.05)}.note{position:absolute;bottom:10px;left:20px;font-size:11px;color:#67707b}
 .toast{position:absolute;right:24px;bottom:24px;width:360px;display:flex;gap:12px;align-items:center;background:#23262e;border-radius:6px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.6);z-index:9}
 .toast-icon{width:40px;height:40px;border-radius:6px;background:#1a9fff;display:flex;align-items:center;justify-content:center;font-size:22px}.toast-title{font-weight:700;font-size:14px}.toast-body{font-size:12.5px;color:#b8c2cc;white-space:pre-line}`;
-const PAL = { 1245620: ["#3b2f1a", "#c9a85b"], 413150: ["#2d6a4f", "#95d5b2"], 292030: ["#1b263b", "#8d99ae"], 620: ["#283044", "#78a1bb"], 1091500: ["#f7e600", "#00c2d1"] };
-const NAMES = { 1245620: "ELDEN RING", 413150: "Stardew Valley", 292030: "The Witcher 3: Wild Hunt", 620: "Portal 2", 1091500: "Cyberpunk 2077" };
+const PAL = { 367520: ["#1c2230", "#9fb3c8"], 1245620: ["#3b2f1a", "#c9a85b"], 413150: ["#2d6a4f", "#95d5b2"], 292030: ["#1b263b", "#8d99ae"], 620: ["#283044", "#78a1bb"], 1091500: ["#f7e600", "#00c2d1"] };
+const NAMES = { 367520: "Hollow Knight", 1245620: "ELDEN RING", 413150: "Stardew Valley", 292030: "The Witcher 3: Wild Hunt", 620: "Portal 2", 1091500: "Cyberpunk 2077" };
 const gamePage = (id, playFocus) => `<div class="stand"><div class="hero" style="background:linear-gradient(160deg,${PAL[id][0]},${PAL[id][1]})"><h1>${NAMES[id]}</h1></div>
 <div class="bar"><span class="play${playFocus ? " f" : ""}">${playFocus === "running" ? "Resume" : "Play"}</span><span class="meta">Last played today · 41 hours</span></div>
 <div class="note">Static stand-in for Steam's game page (not Steam itself)</div></div>`;
@@ -55,6 +56,10 @@ const focus = (label) => page.evaluate((l) => { document.querySelectorAll(".gpfo
   const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l))
     || [...document.querySelectorAll(".qam-field")].find((x) => x.textContent.includes(l))?.querySelector(".qam-switch");
   if (b) b.classList.add("gpfocus"); }, label);
+// Scrolls the panel so the section holding `text` shows (the real Quick Access panel scrolls the same way).
+const reveal = (text) => page.evaluate((t) => { const sp = document.querySelector(".ScrollPanel"); sp.style.flex = "1"; sp.style.minHeight = "0";
+  const el = [...document.querySelectorAll(".qam-section")].find((x) => x.textContent.includes(t)); if (el) sp.scrollTop = el.offsetTop - sp.offsetTop - 8; }, text);
+const click = (label) => page.evaluate((l) => { const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l)); if (b) b.click(); }, label);
 // Highlights a library tile the way Steam does: a focus event from an element whose React props carry the game.
 const focusTile = (id) => page.evaluate((a) => { const el = document.querySelector(`.cap[data-app="${a}"]`); el.classList.add("f");
   el.__reactFiber$stand = { memoizedProps: { app: { appid: Number(a) } }, return: null }; el.tabIndex = 0; el.focus(); }, id);
@@ -69,6 +74,12 @@ const shots = [
   ["hearth-music-panel-off", "off", true, gamePage(1245620), async () => focus("Hearth Music"), ["Hearth Music is off"]],
   ["hearth-music-panel-steam-changed", "changed", true, gamePage(1245620), async () => {}, ["Hearth Music turned itself off"]],
   ["hearth-music-panel-library", "library", true, library(), async () => { await focusTile(1245620); await page.waitForTimeout(1200); }, ["Elden Ring — Tsukasa Saitoh", "Plays for the highlighted game in the library"]],
+  ["hearth-music-panel-deezer", "deezer", true, gamePage(367520), async () => focus("Open in Deezer"), ["Hollow Knight — Christopher Larkin", "Preview from Deezer · Hollow Knight (Original Soundtrack)", "Open in Deezer", "Use Deezer previews"]],
+  ["hearth-music-panel-scan", "scan", true, gamePage(1091500), async () => { await reveal("Your library"); }, ["Matched 143 of 210", "Looking through your library: 151 of 210", "Scan my library"]],
+  ["hearth-music-panel-scan-done", "nomatch", true, gamePage(1091500), async () => { await reveal("Your library"); await focus("Scan my library"); }, ["Matched 198 of 210", "Done: new games are matched as they appear", "Choose music…"]],
+  ["hearth-music-panel-choose", "choose", true, gamePage(1091500), async () => { await click("Choose music…"); await page.waitForTimeout(500); await reveal("Song for"); await focus("Cyberpunk 2077 Main Theme"); },
+    ["Search", "01 - V · your soundtrack", "Cyberpunk 2077 Main Theme — Marcin Przybyłowicz · Apple Music preview", "Never Fade Away — P.T. Adamczyk, Olga Jankowska · Deezer preview", "Close"]],
+  ["hearth-music-toast-deezer", "deezer", false, gamePage(367520, true), async () => {}, ["Now playing", "Hollow Knight — Christopher Larkin", "Preview from Deezer"]],
   ["hearth-music-toast-gamepage", "apple", false, gamePage(1245620, true), async () => {}, ["Now playing", "Elden Ring — Tsukasa Saitoh", "Preview courtesy of Apple Music · ELDEN RING (Original Soundtrack)"]],
   ["hearth-music-toast-library", "library", false, library(), async () => { await focusTile(1245620); await page.waitForTimeout(1200); }, ["Now playing", "Elden Ring — Tsukasa Saitoh"]],
   ["hearth-music-toast-soundtrack", "soundtrack", false, gamePage(413150, true), async () => {}, ["Now playing", "01 Stardew Valley Overture (the game's soundtrack)"]],

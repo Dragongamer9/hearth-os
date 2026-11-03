@@ -542,6 +542,43 @@ class HearthOnly(unittest.TestCase):
             self.assertEqual(len([l for l in logs if 'features stay off' in l]), 1, (name, logs))
         sys.modules.pop('decky', None)
 
+    def music(self):
+        fake = types.ModuleType('decky')
+        fake.DECKY_USER_HOME = os.path.join(self.tmp, 'home')
+        fake.DECKY_PLUGIN_SETTINGS_DIR = os.path.join(self.tmp, 'settings', 'decky-hearth-music')
+        fake.DECKY_PLUGIN_RUNTIME_DIR = os.path.join(self.tmp, 'data', 'decky-hearth-music')
+        fake.DECKY_PLUGIN_DIR = str(ROOT / 'hosts' / 'decky-hearth-music')
+        fake.logger = types.SimpleNamespace(info=lambda *a: None, error=lambda *a: None, warning=lambda *a: None)
+        sys.modules['decky'] = fake
+        self.addCleanup(sys.modules.pop, 'decky', None)
+        sys.modules.pop('hearth_only', None)
+        spec = importlib.util.spec_from_file_location('main_music_gate', ROOT / 'hosts' / 'decky-hearth-music' / 'main.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return fake, mod
+
+    def test_hearth_music_library_scan_only_on_hearth_os(self):
+        self.system(STEAMOS_RELEASE)
+        fake, mod = self.music()
+        self.assertFalse(asyncio.run(mod.Plugin().scan_library([{'appid': 504230, 'title': 'Celeste'}], True)))
+        self.assertFalse(mod._scan['running'])
+        self.assertIsNone(mod._scan['thread'])   # the scan thread never started
+
+    def test_hearth_music_writes_the_load_mark(self):
+        self.system(HEARTH_OS_RELEASE)
+        fake, mod = self.music()
+        p = mod.Plugin()
+
+        async def go():
+            await p._main()
+            self.assertTrue(isinstance(p._loaded, asyncio.Task))   # hearth-loaded.json after LOADED_AFTER seconds
+            p._loaded.cancel()
+            await mod.hearth_only.mark_loaded_later(fake, delay=0)
+        asyncio.run(go())
+        want = json.load(open(ROOT / 'hosts' / 'decky-hearth-music' / 'package.json'))['version']
+        got = json.load(open(os.path.join(fake.DECKY_PLUGIN_RUNTIME_DIR, 'hearth-loaded.json')))
+        self.assertEqual(got['version'], want)
+
     def test_load_mark(self):
         self.system(HEARTH_OS_RELEASE)
         d = os.path.join(self.tmp, 'data')

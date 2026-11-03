@@ -54,3 +54,35 @@ test("settings are cleaned", () => {
   assert.deepEqual(M.cleanSettings({ volume: 4, delay: -1, where: "x" }), { ...M.DEFAULTS, volume: 1, delay: 0, where: "pages" });
   assert.deepEqual(M.cleanSettings(null), M.DEFAULTS);
 });
+
+test("Deezer's credit and link, also for a pick chosen from it", () => {
+  const dz = { source: "deezer", from: "deezer", title: "Hollow Knight", artist: "Christopher Larkin", album: "Hollow Knight (Original Soundtrack)", link: "https://www.deezer.com/track/1" };
+  assert.equal(M.nowLine(dz), "Hollow Knight — Christopher Larkin");
+  assert.equal(M.credit(dz), "Preview from Deezer · Hollow Knight (Original Soundtrack)");
+  assert.equal(M.openLabel(dz), "Open in Deezer");
+  const pick = { source: "pick", from: "deezer", title: "In the Blood", artist: "Darren Korb", via: "game", link: "https://www.deezer.com/track/2" };
+  assert.equal(M.nowLine(pick), "In the Blood — Darren Korb (your pick)");
+  assert.equal(M.credit(pick), "Preview from Deezer");
+  assert.equal(M.credit({ source: "pick", from: "apple", title: "x" }), "Preview courtesy of Apple Music");
+  assert.equal(M.openLabel({ source: "apple", link: "https://music.apple.com/x" }), "Open in Apple Music");
+  assert.equal(M.openLabel({ source: "pick", title: "mine" }), "");
+  assert.equal(M.credit({ source: "pick", title: "mine" }), "");
+});
+
+test("the library scan's lines", () => {
+  const s = { running: true, paused: false, total: 210, done: 142, matched: 143, waiting: "", last: 0 };
+  assert.deepEqual(M.scanLines(s), ["Matched 143 of 210", "Looking through your library: 143 of 210"]);
+  assert.equal(M.scanLines({ ...s, waiting: "game" })[1], "Paused while a game runs");
+  assert.equal(M.scanLines({ ...s, paused: true })[1], "Paused while a game runs");
+  assert.equal(M.scanLines({ ...s, waiting: "slow" })[1], "Waiting a moment: the music service asked to slow down");
+  assert.equal(M.scanLines({ ...s, running: false, last: 1 })[0], "Matched 143 of 210");
+  assert.deepEqual(M.scanLines(null), ["Not scanned yet", ""]);
+});
+
+test("Choose music lines, and the Deezer switch defaults on and stays as set", () => {
+  assert.equal(M.choiceLine({ choice: "a", from: "deezer", title: "In the Blood", artist: "Darren Korb", album: "" }), "In the Blood — Darren Korb · Deezer preview");
+  assert.equal(M.choiceLine({ choice: "b", from: "soundtrack", title: "02 - Main Theme", artist: "", album: "Hades OST" }), "02 - Main Theme · your soundtrack");
+  assert.equal(M.cleanSettings({}).deezer, true);
+  assert.equal(M.cleanSettings({ deezer: false }).deezer, false);
+  assert.equal(M.cleanSettings({ deezer: false, volume: 0.9 }).deezer, false);
+});
