@@ -4,6 +4,9 @@
 // Mode's Settings › Updates (docs/SETTINGS-MOVE.md).
 // On Peppermint also the writable system (hearth-unlock): the Unlocked switch (locking applies from the next restart),
 // Turn my changes back on after a safe start, Put my packages back again, and the notice Hearth shows.
+// Decky plugins (docs/PLUGIN-UPDATES.md): Hearth's Decky plugins update without a system update (hearth-decky plugins-*,
+// as you, no password): each plugin's version and where it's from, Check now, Update, Use the built-in plugins, the
+// last error, and "Update plugins automatically" (off unless you turn it on; saved with SettingsWriter).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -185,6 +188,85 @@ SetPage {
         visible: page.error !== ""
         Layout.fillWidth: true
         text: page.error; color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+    // ---- Decky plugins (docs/PLUGIN-UPDATES.md)
+    readonly property string decky: "/usr/libexec/nimbus/hearth-decky"
+    property var plugins: null       // hearth-decky plugins-status: {auto, plugins: {name: {installed, builtin, source}}, lastError, lastCheck, available}
+    property string pluginsLine: ""
+    property string pluginsCmd: ""
+    readonly property var pluginNames: ({ "decky-hearth-sync": "Hearth Sync", "decky-hearth-link": "Hearth Link", "decky-hearth-music": "Hearth Music" })
+    function pluginsRun(cmd) {
+        if (pluginsProc.running) return;
+        pluginsCmd = cmd;
+        pluginsLine = cmd === "plugins-check" ? "Looking for plugin updates…" : cmd === "plugins-update" ? "Updating the plugins…"
+            : cmd === "plugins-builtin" ? "Going back to the built-in plugins…" : "";
+        pluginsProc.command = ["python3", decky, cmd];
+        pluginsProc.running = true;
+    }
+    function pluginsAfter(r) {
+        if (!r) return;
+        if (pluginsCmd === "plugins-status") { page.plugins = r; return; }
+        pluginsLine = r.error ? "" : r.restarted ? "Done. Decky restarted with the new plugins."
+            : r.applies ? "Ready. Put in place " + r.applies + "."
+            : pluginsCmd === "plugins-check" ? (Object.keys(r.available || {}).length ? "Plugin updates are ready to install." : "The plugins are up to date.") : "";
+    }
+    function pluginsAvailable() { return page.plugins ? Object.keys(page.plugins.available || {}).length : 0; }
+    Process {
+        id: pluginsProc
+        stdout: SplitParser { onRead: l => { if (l.startsWith("{")) { try { page.pluginsAfter(JSON.parse(l)); } catch (e) {} } else if (l.startsWith("error: ")) page.pluginsLine = l.slice(7); } }
+        onExited: code => { if (page.pluginsCmd !== "plugins-status") { page.pluginsCmd = ""; Qt.callLater(() => page.pluginsRun("plugins-status")); } }
+    }
+    Process {
+        running: true
+        command: ["test", "-f", page.decky]
+        onExited: code => { if (code === 0) page.pluginsRun("plugins-status"); }
+    }
+    SettingsWriter { id: pluginsWriter; path: Quickshell.env("HOME") + "/.config/nimbus/plugin-updates.json"; onSaved: page.pluginsRun("plugins-status") }
+
+    SetHeader { visible: !!page.plugins; text: "Decky plugins" }
+    Repeater {
+        model: page.plugins ? Object.keys(page.plugins.plugins || {}) : []
+        SetRow {
+            required property string modelData
+            readonly property var p: page.plugins.plugins[modelData] || {}
+            Layout.fillWidth: true
+            interactive: false; chevron: false; icon: "update"
+            title: (page.pluginNames[modelData] || modelData) + " " + (p.installed || p.builtin || "")
+            sub: (p.source === "downloaded" ? "Updated (built-in: " + (p.builtin || "none") + ")" : p.source === "built-in" ? "Built in" : "Not installed yet")
+                + (page.plugins.available && page.plugins.available[modelData] ? " · " + page.plugins.available[modelData] + " available" : "")
+                + (p.downloaded && p.downloaded !== p.installed ? " · " + p.downloaded + " ready for the next Steam Game Mode start" : "")
+        }
+    }
+    SetRow {
+        visible: !!page.plugins
+        icon: "restart"; title: "Check now"
+        sub: page.pluginsLine !== "" ? page.pluginsLine : page.plugins && page.plugins.lastCheck ? "Last checked " + new Date(page.plugins.lastCheck * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat) : "Not checked yet"
+        onActivated: page.pluginsRun("plugins-check")
+    }
+    SetRow {
+        visible: !!page.plugins
+        icon: "update"; title: page.pluginsAvailable() ? "Update the plugins" : "Update"
+        sub: "Downloads and checks newer plugins; Decky restarts with them if Steam Game Mode is on (Steam keeps running)"
+        onActivated: page.pluginsRun("plugins-update")
+    }
+    SetSwitch {
+        visible: !!page.plugins
+        icon: "update"; title: "Update plugins automatically"
+        checked: !!(page.plugins && page.plugins.auto)
+        sub: "Checks once a day while online; a new plugin is put in place at the next Steam Game Mode start, or right away when no game is running"
+        onToggled: on => { page.plugins = Object.assign({}, page.plugins, { auto: on }); pluginsWriter.merge({ auto: on }); }
+    }
+    SetRow {
+        visible: !!page.plugins
+        icon: "restart"; title: "Use the built-in plugins"
+        sub: "The plugins that came with this Hearth OS version come back (those downloads aren't fetched again by themselves)"
+        onActivated: page.pluginsRun("plugins-builtin")
+    }
+    Text {
+        visible: !!(page.plugins && page.plugins.lastError)
+        Layout.fillWidth: true
+        text: page.plugins && page.plugins.lastError ? page.plugins.lastError : ""
+        color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     SetHeader { visible: !!(page.unlock && page.unlock.available); text: "Writable system" }
     SetRow {

@@ -3,6 +3,7 @@
 import { createElement as h } from "react";
 
 export const staticClasses = { Text: "Text", Title: "Title" };
+export const Navigation = { NavigateToExternalWeb: (u) => { window.HO_OPENED = u; } };
 export const PanelSection = (p) => h("div", { className: "qam-section" }, p.title ? h("div", { className: "qam-section-title" }, p.title) : null, p.children);
 export const PanelSectionRow = (p) => h("div", { className: "qam-row" }, p.children);
 export const ToggleField = (p) => h("div", { className: "qam-field" },

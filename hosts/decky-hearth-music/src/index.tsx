@@ -7,6 +7,7 @@ import { FileSelectionType, callable, definePlugin, openFilePicker } from "@deck
 import { useEffect, useState } from "react";
 import { FaMusic } from "react-icons/fa";
 import { credit, nowLine, silentWhy } from "./model";
+import { HearthOnly, hearthOs } from "./hearth-only";
 import { State, begin, onChange, refresh, setPick, state, updateSettings } from "./music";
 
 const getHome = callable<[], string>("get_home");
@@ -93,12 +94,15 @@ function Panel() {
 }
 
 export default definePlugin(() => {
-  const end = begin();
+  // Only on Hearth OS (hearth-only.tsx); anywhere else nothing starts.
+  let end: () => void = () => {};
+  let gone = false;
+  hearthOs().then((ok) => { if (ok && !gone) end = begin(); });
   return {
     name: "Hearth Music",
     titleView: <div className={staticClasses.Title}>Hearth Music</div>,
-    content: <Panel />,
+    content: <HearthOnly name="Hearth Music" what="Your games' soundtracks while you browse your library."><Panel /></HearthOnly>,
     icon: <FaMusic />,
-    onDismount() { end(); },
+    onDismount() { gone = true; end(); },
   };
 });

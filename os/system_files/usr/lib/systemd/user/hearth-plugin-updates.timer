@@ -1,0 +1,12 @@
+# Once a day (and soon after signing in, if a day was missed while the device was off or asleep).
+[Unit]
+Description=Check for Hearth Decky plugin updates once a day
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+OnStartupSec=15min
+
+[Install]
+WantedBy=timers.target

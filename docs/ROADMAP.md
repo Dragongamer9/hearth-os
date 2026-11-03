@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [ ] Decky plugin updates without a system update: Hearth Sync, Hearth Link and Hearth Music update from a "plugins" release you publish with your own version number (Actions › Decky plugins release), checked (SHA-256, minimum versions) and put in place by Decky alone, the image's older ones never replacing them, the copy before kept and put back by itself if a new one doesn't load; Settings › Updates › Decky plugins (versions, Check now, Update, Use the built-in plugins, "Update plugins automatically", off until you turn it on) and a Send logs section. The plugins now run only on Hearth OS and show an invitation to Hearth OS anywhere else (docs/PLUGIN-UPDATES.md; needs testing on a device)
+
 ## 1.1 (released 2026-11-02)
 
 - [x] Install Package no longer sits on "Reading the package…" forever, and settings pages that run a helper no longer hang: Hearth 1.0's Quickshell refused how the helper's environment was set ("Cannot assign QJSValue to QVariantHash"), so the job never started. It's set the way Quickshell expects now (Install Package, Settings pages, sign-in options, Wi-Fi with a password), and a job that still can't start says so instead of waiting.

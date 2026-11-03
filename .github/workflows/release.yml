@@ -570,9 +570,10 @@ jobs:
           gh release create "$tag" builds/* --target "${{ github.sha }}" --latest \
             --title "Hearth OS ${{ needs.version.outputs.shown }} (Hearth for Linux, Ember for Windows)" --notes "$notes"
           # Only the newest release stays public: older ones become drafts (hidden, nothing deleted; see
-          # tidy-releases.yml). Current copies only look for newer releases, so they aren't affected.
+          # tidy-releases.yml). Current copies only look for newer releases, so they aren't affected. Decky plugin releases
+          # (plugins-v*, docs/PLUGIN-UPDATES.md) are their own channel and stay.
           gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
-            -q ".[] | select(.draft == false and .tag_name != \"$tag\") | .id" |
+            -q ".[] | select(.draft == false and .tag_name != \"$tag\" and (.tag_name | startswith(\"plugins-v\") | not)) | .id" |
             while read -r id; do gh api -X PATCH "repos/${{ github.repository }}/releases/$id" -F draft=true >/dev/null; done
 
   # Hearth app updates: the signed bundles go on the release this run just made (same commit), so Hearth OS devices

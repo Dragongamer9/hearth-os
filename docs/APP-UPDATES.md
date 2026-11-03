@@ -13,7 +13,7 @@ up. Everything below exists to keep that true.
 |--------------------------------------------------------------|---------------------------------------------------------------|
 | The Hearth program (`nimbus`: hearth-rs with hearth-core, with Game Mode's screens from `ui/` built in) | Anything that runs as root or at boot: systemd units, `hearth-admin`, polkit rules, udev rules, `hearth-boot-guard`, Recovery |
 | Hearth's Chromium window app (`electron/`: hosts/electron with its `resources/ui`, `resources/js` and Theater's files) | The session and login scripts: `nimbus-session`, `nimbus-mode`, `nimbus-watchdog`, the `.desktop` session files, SDDM |
-|                                                              | The Hearth Decky plugin (Decky runs its backend as root)       |
+|                                                              | Hearth's Decky plugins (their own channel: docs/PLUGIN-UPDATES.md) |
 |                                                              | Desktop Mode (Mantel's QML and its `hearth-*` scripts in /usr/share/nimbus): they run before and beside Game Mode, outside the start counter below |
 |                                                              | The Qt renderer (`/usr/lib/hearth-qml`, built against the image's Qt) |
 |                                                              | Hearth's other apps (Terminal, Disks, Photos...), Hearth Browser, the kernel, drivers, the bootloader |

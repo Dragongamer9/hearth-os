@@ -10,6 +10,7 @@ import {
   Answer, Down, Game, Job, POLL, STORAGE_POLL, Status, afterCopy, active, ago, bytes, canWake, deviceLine, healthSummary, hasStorage,
   SyncInfo, availableLine, jobActions, jobLine, lanCodeOk, left, netCodeOk, percent, sendable, serverOf, showCode, syncLines,
 } from "./model";
+import { HearthOnly } from "./hearth-only";
 import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo } from "./link";
 
 const warn = { color: "#ffb37a" };
@@ -342,7 +343,7 @@ function Panel() {
 export default definePlugin(() => ({
   name: "Hearth Link",
   titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-  content: <Panel />,
+  content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Panel /></HearthOnly>,
   icon: <FaNetworkWired />,
   onDismount() {},
 }));

@@ -34,6 +34,15 @@ try:
 except ImportError:  # tests
     decky = None
 
+# Hearth OS only, and the load mark for plugin updates (hosts/decky-shared/hearth_only.py, docs/PLUGIN-UPDATES.md):
+# next to main.py when packed, in hosts/decky-shared in the repo.
+import sys as _sys  # noqa: E402
+_here = os.path.dirname(os.path.abspath(__file__))
+for _p in (os.path.join(_here, '..', 'decky-shared'), _here):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+import hearth_only  # noqa: E402
+
 LIST_TIMEOUT = 60
 ART_LIMIT = 10 * 1024 * 1024
 # A full re-read of Hearth's library at least this often, even when none of its files changed (seconds).
@@ -969,6 +978,10 @@ def arm_import(popen=subprocess.Popen):
 
 
 class Plugin:
+    async def hearth_os(self):
+        """Whether this is Hearth OS (the frontend shows the Hearth OS panel instead of the plugin when not)."""
+        return hearth_only.status(log, 'Hearth Sync')
+
     async def import_scan(self):
         return import_scan()
 
@@ -1028,7 +1041,11 @@ class Plugin:
         log(str(line)[:300])
 
     async def _main(self):
+        if not hearth_only.status(log, 'Hearth Sync')['ok']:
+            return   # not Hearth OS: nothing starts (the panel says why)
         log('Hearth Sync ready')
+        import asyncio
+        self._loaded = asyncio.get_running_loop().create_task(hearth_only.mark_loaded_later(decky))
 
     async def _unload(self):
         pass
