@@ -80,11 +80,14 @@ SetPage {
     Process {
         id: action
         property string okText
+        property string psk: ""
+        // a binding, not an assignment in run(): assigning a JS object to environment threw on Hearth 1.0's Quickshell
+        environment: ({ HEARTH_WIFI_PSK: action.psk })
         stdout: StdioCollector {}
         stderr: StdioCollector { id: actErr }
-        onExited: code => { page.busy = ""; page.message = code === 0 ? action.okText : (actErr.text.trim().split("\n").pop() || "That didn't work"); page.refresh(); }
+        onExited: code => { action.psk = ""; page.busy = ""; page.message = code === 0 ? action.okText : (actErr.text.trim().split("\n").pop() || "That didn't work"); page.refresh(); }
     }
-    function run(cmd, okText, env) { action.okText = okText; action.environment = env || {}; action.command = cmd; action.running = true; }
+    function run(cmd, okText, env) { action.okText = okText; action.psk = (env && env.HEARTH_WIFI_PSK) || ""; action.command = cmd; action.running = true; }
     function connect(n, pw) {
         busy = n.ssid; asking = ""; message = "";
         // The password goes to nmcli on its input (it asks for it with --ask), through the environment, which only

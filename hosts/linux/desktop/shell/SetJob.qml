@@ -34,15 +34,28 @@ Item {
         proc.job = j;
         proc.result = null; proc.err = ""; proc.tail = "";
         what = j.label; progress = -1; line = "";
-        proc.environment = { HEARTH_INPUT: j.input, LC_ALL: "C" };
-        if (admin) proc.command = ["sh", "-c", 'printf "%s" "$HEARTH_INPUT" | exec pkexec "$@" 2>&1', "sh", path].concat(j.args);
-        else proc.command = ["sh", "-c", 'printf "%s" "$HEARTH_INPUT" | exec python3 "$@" 2>&1', "sh", path].concat(j.args);
-        proc.running = true;
+        // The environment is a binding on proc.input (below): assigning a JS object to Process.environment here threw
+        // "Cannot assign QJSValue to QVariantHash" on Hearth 1.0's Quickshell, the job never started and its window
+        // waited forever (Install Package stuck on "Reading the package…"). Anything that still goes wrong here
+        // fails the job with a message instead of hanging.
+        try {
+            proc.input = j.input;
+            if (admin) proc.command = ["sh", "-c", 'printf "%s" "$HEARTH_INPUT" | exec pkexec "$@" 2>&1', "sh", path].concat(j.args);
+            else proc.command = ["sh", "-c", 'printf "%s" "$HEARTH_INPUT" | exec python3 "$@" 2>&1', "sh", path].concat(j.args);
+            proc.running = true;
+        } catch (e) {
+            console.warn("SetJob: " + helper + " couldn't start: " + e);
+            proc.job = null;
+            if (j.failed) j.failed("Couldn't start " + helper.replace(/^.*\//, "") + " (" + e + ")");
+            Qt.callLater(job.next);
+        }
     }
 
     Process {
         id: proc
         property var job: null
+        property string input: ""
+        environment: ({ HEARTH_INPUT: proc.input, LC_ALL: "C" })
         property var result: null
         property string err: ""
         property string tail: ""
