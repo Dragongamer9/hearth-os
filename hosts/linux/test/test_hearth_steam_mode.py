@@ -97,6 +97,39 @@ class SteamModeSession(unittest.TestCase):
         self.assertEqual(self.read('nimbus-next'), 'desktop')
         self.assertTrue(self.read('hearth-steam-mode-failed'))
 
+    def test_steam_never_set_up_starts_desktop_mode_instead_of_a_black_screen(self):
+        # Hearth 1.0 on a laptop that had never opened Steam: Debian's launcher asked its "Steam installer" question in
+        # a window Steam Game Mode never shows, so the screen stayed black. Desktop Mode now, and the note says why.
+        ran = os.path.join(self.tmp, 'ran')
+        self.fake('gamescope', 'echo yes >%s' % ran)
+        self.fake('steam', 'exit 0')
+        for tool in ('readlink',):
+            p = shutil.which(tool)
+            if p and not os.path.exists(os.path.join(self.bin, tool)):
+                os.symlink(p, os.path.join(self.bin, tool))
+        launcher = os.path.join(self.bin, 'steam')
+        os.makedirs(os.path.join(self.tmp, 'home', '.steam', 'debian-installation'))
+        self.run_mode({'HEARTH_STEAM_FIRSTRUN_LAUNCHERS': launcher})
+        self.assertEqual(self.read('nimbus-next'), 'desktop')
+        self.assertIn("isn't set up", self.read('hearth-steam-mode-failed'))
+        self.assertFalse(os.path.exists(ran), 'gamescope must not start')
+
+    def test_steam_set_up_before_still_starts_steam_game_mode(self):
+        ran = os.path.join(self.tmp, 'ran')
+        self.fake('gamescope', 'echo yes >%s' % ran)
+        self.fake('steam', 'exit 0')
+        for tool in ('readlink',):
+            p = shutil.which(tool)
+            if p and not os.path.exists(os.path.join(self.bin, tool)):
+                os.symlink(p, os.path.join(self.bin, tool))
+        launcher = os.path.join(self.bin, 'steam')
+        d = os.path.join(self.tmp, 'home', '.local', 'share', 'Steam')
+        os.makedirs(d)
+        open(os.path.join(d, 'steam.sh'), 'w').close()
+        self.run_mode({'HEARTH_STEAM_FIRSTRUN_LAUNCHERS': launcher})
+        self.assertTrue(os.path.exists(ran), 'Steam Game Mode starts when Steam has run before')
+        self.assertNotIn("isn't set up", self.read('hearth-steam-mode-failed') or '')
+
     def test_safe_graphics_falls_back_to_desktop_mode(self):
         ran = os.path.join(self.tmp, 'ran')
         self.fake('gamescope', 'echo yes >%s' % ran)
