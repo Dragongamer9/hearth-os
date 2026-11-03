@@ -1,0 +1,59 @@
+1793664140930 [theater core] ===== Hearth Theater 0.1.0 starting (--read-catalogs) =====
+1793664140930 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1793664140930 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1793664141504 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41, reading catalogs; profile /home/runner/work/_temp/theater/chromium
+1793664141513 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1793664141514 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio --read-catalogs
+1793664141520 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1793664141524 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1793664141525 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1793664141553 [theater window] reader: reading http://127.0.0.1:8761/ (catalog)
+[17290:1103/000221.647219:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[17342:1103/000221.682815:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+[17342:1103/000221.682870:ERROR:cc/raster/one_copy_raster_buffer_provider.cc:298] Creation of StagingBuffer's SharedImage failed.
+1793664144494 [theater window] reader: read http://127.0.0.1:8761/ (3 rows, 0 results)
+1793664144502 [theater core] f1: 3 rows, 8 titles, search "", sources ["json-ld"], error ""
+1793664144506 [theater window] reader: reading http://127.0.0.1:8762/ (catalog)
+1793664147364 [theater window] reader: read http://127.0.0.1:8762/ (1 rows, 0 results)
+1793664147367 [theater core] f2: 1 rows, 4 titles, search "", sources ["cards", "open-graph"], error ""
+1793664147371 [theater window] reader: reading http://127.0.0.1:8763/ (catalog)
+1793664150227 [theater window] reader: read http://127.0.0.1:8763/ (2 rows, 0 results)
+1793664150231 [theater core] f3: 2 rows, 7 titles, search "", sources ["rss", "sitemap", "open-graph"], error ""
+1793664150235 [theater window] reader: reading http://127.0.0.1:8764/ (catalog)
+1793664153095 [theater window] reader: read http://127.0.0.1:8764/ (3 rows, 0 results)
+1793664153100 [theater core] f4: 3 rows, 12 titles, search "http://127.0.0.1:8764/search?q={searchTerms}", sources ["cards"], error ""
+1793664153101 [theater core] core: the window app closed; leaving
+1793664153101 [theater window] core: ended (0)
+1793664153163 [theater core] ===== Hearth Theater 0.1.0 starting (windowed) =====
+1793664153163 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1793664153163 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1793664153328 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41; profile /home/runner/work/_temp/theater/chromium
+1793664153335 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1793664153360 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio
+1793664153370 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1793664153371 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1793664153371 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+[17478:1103/000233.383126:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+[17544:1103/000233.472758:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1793664153528 [theater window] main window: home screen loaded
+1793664153561 [theater window] main window: shown
+1793664167557 [theater window] core: ended (null)
+1793664171573 [theater core] ===== Hearth Theater 0.1.0 starting (--fullscreen --open http://127.0.0.1:8770/) =====
+1793664171573 [theater core] session: DISPLAY=:98 WAYLAND_DISPLAY=- XDG_SESSION_TYPE=- gamescope=false renderer of Hearth=-
+1793664171573 [theater core] renderer: Chromium (/home/runner/work/_temp/el/node_modules/electron/dist/electron --hearth-theater); the window app logs the graphics it got
+1793664171716 [theater window] started: Electron 38.0.0, Chromium 140.0.7339.41, full screen; profile /home/runner/work/_temp/theater/chromium
+1793664171725 [theater window] renderer: Chromium (Hearth's Electron), compositing disabled_software, WebGL disabled_off, video decode disabled_software, rasterization disabled_software
+1793664171748 [theater window] core: starting /home/runner/work/hearth-os/hearth-os/target-apps/release/hearth-theater --core-stdio --fullscreen --open http://127.0.0.1:8770/
+1793664171754 [theater core] core: started (4 sites, data in /home/runner/work/_temp/theater)
+1793664171754 [theater core] pointer: XTest on X display :98 (real input: clicks reach frames, players and popups)
+1793664171754 [theater core] viewer: opening http://127.0.0.1:8770/
+1793664171755 [theater window] renderer: GPU vendor 0x0 device 0x0; GL ? ((gl=none,angle=none))
+1793664171771 [theater window] viewer: going to http://127.0.0.1:8770/
+[17678:1103/000251.786942:ERROR:components/viz/service/main/viz_main_impl.cc:189] Exiting GPU process due to errors during initialization
+1793664171922 [theater window] viewer: page title "Pointer test"
+1793664171937 [theater window] main window: shown
+1793664171956 [theater window] main window: home screen loaded
+1793664171984 [theater window] viewer: loaded http://127.0.0.1:8770/
+1793664174486 [theater window] test: pointer to the page's (400, 340), the screen's (440, 370), then A
+1793664175299 [theater window] viewer: page title "trusted-click-ok"
+1793664175639 [theater window] core: ended (null)
