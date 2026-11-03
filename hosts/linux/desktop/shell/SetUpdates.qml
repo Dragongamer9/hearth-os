@@ -6,7 +6,9 @@
 // Turn my changes back on after a safe start, Put my packages back again, and the notice Hearth shows.
 // Decky plugins (docs/PLUGIN-UPDATES.md): Hearth's Decky plugins update without a system update (hearth-decky plugins-*,
 // as you, no password): each plugin's version and where it's from, Check now, Update, Use the built-in plugins, the
-// last error, and "Update plugins automatically" (off unless you turn it on; saved with SettingsWriter).
+// last error, and "Update plugins automatically" (off unless you turn it on; saved with SettingsWriter). New plugins
+// from a plugins release are listed under "New from Hearth" and installed only with "Also install new Hearth plugins"
+// (off unless you tick it; saved with SettingsWriter, never changed by itself).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -191,7 +193,7 @@ SetPage {
     }
     // ---- Decky plugins (docs/PLUGIN-UPDATES.md)
     readonly property string decky: "/usr/libexec/nimbus/hearth-decky"
-    property var plugins: null       // hearth-decky plugins-status: {auto, plugins: {name: {installed, builtin, source}}, lastError, lastCheck, available}
+    property var plugins: null       // hearth-decky plugins-status: {auto, installNew, plugins: {name: {name, installed, builtin, source}}, new: {id: {name, description, version}}, lastError, lastCheck, available}
     property string pluginsLine: ""
     property string pluginsCmd: ""
     readonly property var pluginNames: ({ "decky-hearth-sync": "Hearth Sync", "decky-hearth-link": "Hearth Link", "decky-hearth-music": "Hearth Music" })
@@ -208,9 +210,11 @@ SetPage {
         if (pluginsCmd === "plugins-status") { page.plugins = r; return; }
         pluginsLine = r.error ? "" : r.restarted ? "Done. Decky restarted with the new plugins."
             : r.applies ? "Ready. Put in place " + r.applies + "."
-            : pluginsCmd === "plugins-check" ? (Object.keys(r.available || {}).length ? "Plugin updates are ready to install." : "The plugins are up to date.") : "";
+            : pluginsCmd === "plugins-check" ? (Object.keys(r.available || {}).length ? "Plugin updates are ready to install."
+                : Object.keys(r["new"] || {}).length ? "The plugins are up to date. New plugins are listed below." : "The plugins are up to date.") : "";
     }
     function pluginsAvailable() { return page.plugins ? Object.keys(page.plugins.available || {}).length : 0; }
+    function pluginsNew() { return page.plugins && page.plugins["new"] ? Object.keys(page.plugins["new"]) : []; }
     Process {
         id: pluginsProc
         stdout: SplitParser { onRead: l => { if (l.startsWith("{")) { try { page.pluginsAfter(JSON.parse(l)); } catch (e) {} } else if (l.startsWith("error: ")) page.pluginsLine = l.slice(7); } }
@@ -231,11 +235,30 @@ SetPage {
             readonly property var p: page.plugins.plugins[modelData] || {}
             Layout.fillWidth: true
             interactive: false; chevron: false; icon: "update"
-            title: (page.pluginNames[modelData] || modelData) + " " + (p.installed || p.builtin || "")
-            sub: (p.source === "downloaded" ? "Updated (built-in: " + (p.builtin || "none") + ")" : p.source === "built-in" ? "Built in" : "Not installed yet")
+            title: (page.pluginNames[modelData] || p.name || modelData) + " " + (p.installed || p.builtin || "")
+            sub: (p.source === "downloaded" ? (p.builtin ? "Updated (built-in: " + p.builtin + ")" : "Added from Hearth") : p.source === "built-in" ? "Built in" : "Not installed yet")
                 + (page.plugins.available && page.plugins.available[modelData] ? " · " + page.plugins.available[modelData] + " available" : "")
                 + (p.downloaded && p.downloaded !== p.installed ? " · " + p.downloaded + " ready for the next Steam Game Mode start" : "")
         }
+    }
+    SetHeader { visible: page.pluginsNew().length > 0; text: "New from Hearth" }
+    Repeater {
+        model: page.pluginsNew()
+        SetRow {
+            required property string modelData
+            readonly property var n: (page.plugins && page.plugins["new"] && page.plugins["new"][modelData]) || {}
+            Layout.fillWidth: true
+            interactive: false; chevron: false; icon: "update"
+            title: (n.name || modelData) + " " + (n.version || "")
+            sub: (n.description ? n.description + " · " : "") + (page.plugins && page.plugins.installNew ? "Installed with the next update" : "Tick \"Also install new Hearth plugins\" to get it")
+        }
+    }
+    SetSwitch {
+        visible: !!page.plugins
+        icon: "update"; title: "Also install new Hearth plugins"
+        checked: !!(page.plugins && page.plugins.installNew)
+        sub: "Update (and automatic updates, when on) also installs new plugins from Hearth, checked the same way. Off: they're only listed"
+        onToggled: on => { page.plugins = Object.assign({}, page.plugins, { installNew: on }); pluginsWriter.merge({ installNew: on }); }
     }
     SetRow {
         visible: !!page.plugins

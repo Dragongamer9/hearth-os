@@ -1,0 +1,11 @@
+{
+  "name": "Hearth NAME",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["hearth"],
+    "description": "One sentence about what it does: shown on devices under Settings › Updates › Decky plugins › New from Hearth.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}

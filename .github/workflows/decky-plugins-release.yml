@@ -1,9 +1,10 @@
-# Decky plugin updates (docs/PLUGIN-UPDATES.md): Hearth Sync, Hearth Link and Hearth Music as a "plugins" release, so
-# Hearth OS devices update them without a system update (hearth-decky plugins-update).
+# Decky plugin updates (docs/PLUGIN-UPDATES.md): every Hearth Decky plugin (each hosts/decky-hearth-<name>/ with
+# package.json and package.sh, found by tools/decky_plugins.py: Hearth Sync, Hearth Link, Hearth Music and any new one)
+# as a "plugins" release, so Hearth OS devices update them, and get new ones, without a system update.
 #
 # Publishing is only ever by hand: Actions › Decky plugins release › Run workflow, with the version the owner picks
 # (nothing here picks, defaults or bumps one) and publish ticked, from main. It builds the three plugins with that
-# version, writes plugins.json and SHA256SUMS, checks them with the device's own code, and makes the release
+# version, writes plugins.json (id, name, description, version, archive, sha256, size, minimums) and SHA256SUMS, checks them with the device's own code, and makes the release
 # plugins-v<version>: never the repository's "latest" release (make_latest false), never a draft or prerelease once
 # done. Without publish (a dry run) it builds and keeps everything as an artifact only.
 # On a push it only runs the tests (the helper's plugin update tests and the plugins' Hearth OS check).
@@ -13,8 +14,9 @@ on:
   push:
     branches: [bughunt, feature/plugin-updates]
     paths: ['hosts/decky-shared/**', 'os/system_files/usr/libexec/nimbus/hearth-decky', 'hosts/linux/test/test_plugin_updates.py',
-            'hosts/decky-hearth-*/main.py', 'hosts/decky-hearth-*/package.sh', 'os/system_files/usr/lib/systemd/user/hearth-plugin-updates.*',
-            '.github/workflows/decky-plugins-release.yml']
+            'hosts/decky-hearth-*/main.py', 'hosts/decky-hearth-*/package.sh', 'hosts/decky-hearth-*/src/hearth-only.tsx',
+            'hosts/decky-hearth-*/src/index.tsx', 'os/system_files/usr/lib/systemd/user/hearth-plugin-updates.*',
+            'tools/decky_plugins.py', 'hosts/linux/desktop/shell/SetUpdates.qml', '.github/workflows/decky-plugins-release.yml']
   workflow_dispatch:
     inputs:
       version:
@@ -49,6 +51,8 @@ jobs:
           python3 -m unittest -v hosts/linux/test/test_plugin_updates.py 2>&1 | tee /tmp/pu.log | tail -45 || true
           grep -q '^OK' /tmp/pu.log || { echo "::error title=Plugin update tests::$(grep -E -A10 '^(FAIL|ERROR):' /tmp/pu.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=Plugin update tests::$(grep -E '^Ran ' /tmp/pu.log)"
+      - name: Every plugin has the shared Hearth OS check and the load mark
+        run: python3 tools/decky_plugins.py check .
       - name: The Decky helper's other tests
         run: |
           python3 - <<'PY'
@@ -60,12 +64,13 @@ jobs:
           PY
       - name: The plugins' backend tests
         run: |
-          for p in sync link music; do
-            python3 -m unittest discover -s hosts/decky-hearth-$p/tests -p 'test_*.py' 2>&1 | tail -3 | tee /tmp/b.log
-            grep -q '^OK' /tmp/b.log || { echo "::error title=decky-hearth-$p backend tests::failed"; exit 1; }
+          for id in $(python3 tools/decky_plugins.py list .); do
+            [ -d "hosts/$id/tests" ] || { echo "::warning title=$id::no backend tests"; continue; }
+            python3 -m unittest discover -s hosts/$id/tests -p 'test_*.py' 2>&1 | tail -3 | tee /tmp/b.log
+            grep -q '^OK' /tmp/b.log || { echo "::error title=$id backend tests::failed"; exit 1; }
           done
       - name: Syntax
-        run: python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-decky hosts/decky-shared/hearth_only.py
+        run: python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-decky hosts/decky-shared/hearth_only.py tools/decky_plugins.py
 
   build:
     if: github.event_name == 'workflow_dispatch'
@@ -92,24 +97,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build and pack the three plugins with this version
+      - name: Build and pack every plugin with this version
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           npm install -g pnpm@9 >/dev/null
           out="$RUNNER_TEMP/out"; mkdir -p "$out" "$RUNNER_TEMP/release"
-          for p in sync link music; do
-            ( cd hosts/decky-hearth-$p
+          python3 tools/decky_plugins.py check .
+          ids=$(python3 tools/decky_plugins.py list .)
+          [ -n "$ids" ] || { echo "::error::no plugins found"; exit 1; }
+          for id in $ids; do
+            ( cd hosts/$id
               sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
               pnpm install --no-frozen-lockfile >/dev/null 2>&1
-              if ! pnpm build > /tmp/build-$p.log 2>&1; then
-                echo "::error title=decky-hearth-$p build::$(grep -v '^\s*$' /tmp/build-$p.log | tail -30 | tr '\n' '|' | cut -c1-3800)"; exit 1
+              if ! pnpm build > /tmp/build-$id.log 2>&1; then
+                echo "::error title=$id build::$(grep -v '^\s*$' /tmp/build-$id.log | tail -30 | tr '\n' '|' | cut -c1-3800)"; exit 1
               fi
               ./package.sh "$out" )
-            for f in plugin.json main.py package.json dist/index.js hearth_only.py; do test -s "$out/decky-hearth-$p/$f" || { echo "::error::decky-hearth-$p: $f missing"; exit 1; }; done
-            grep -q "\"version\": \"$VERSION\"" "$out/decky-hearth-$p/package.json"
-            cp "$out/decky-hearth-$p.zip" "$RUNNER_TEMP/release/"
+            for f in plugin.json main.py package.json dist/index.js hearth_only.py; do test -s "$out/$id/$f" || { echo "::error::$id: $f missing"; exit 1; }; done
+            cmp -s hosts/decky-shared/hearth_only.py "$out/$id/hearth_only.py" || { echo "::error::$id: hearth_only.py isn't the shared one"; exit 1; }
+            grep -q "\"version\": \"$VERSION\"" "$out/$id/package.json"
+            cp "$out/$id.zip" "$RUNNER_TEMP/release/"
           done
       - name: plugins.json and SHA256SUMS (checked with the device's own code)
         env:
@@ -120,19 +129,8 @@ jobs:
           set -euo pipefail
           [ -n "$MIN_HEARTH" ] || MIN_HEARTH=$(grep -m1 '^version' hosts/hearth-core/Cargo.toml | cut -d'"' -f2)
           [ -n "$MIN_DECKY" ] || MIN_DECKY=$(grep -m1 '^DECKY_VERSION=' os-bases/peppermint/build.sh | cut -d= -f2 | sed 's/^v//')
+          python3 tools/decky_plugins.py manifest "$RUNNER_TEMP/release" "$VERSION" "$MIN_HEARTH" "$MIN_DECKY" . >/dev/null
           cd "$RUNNER_TEMP/release"
-          VERSION="$VERSION" MIN_HEARTH="$MIN_HEARTH" MIN_DECKY="$MIN_DECKY" python3 - <<'PY'
-          import hashlib, json, os, zipfile
-          v = os.environ['VERSION']
-          plugins = []
-          for n in ('decky-hearth-sync', 'decky-hearth-link', 'decky-hearth-music'):
-              data = open(n + '.zip', 'rb').read()
-              with zipfile.ZipFile(n + '.zip') as z:
-                  pv = json.loads(z.read(n + '/package.json'))['version']
-              plugins.append({'id': n, 'version': pv, 'archive': n + '.zip', 'sha256': hashlib.sha256(data).hexdigest(),
-                              'size': len(data), 'min_hearth_os': os.environ['MIN_HEARTH'], 'min_decky': os.environ['MIN_DECKY']})
-          json.dump({'format': 1, 'version': v, 'plugins': plugins}, open('plugins.json', 'w'), indent=2)
-          PY
           sha256sum decky-hearth-*.zip plugins.json > SHA256SUMS
           cat plugins.json SHA256SUMS
           cd "$GITHUB_WORKSPACE"
@@ -142,6 +140,9 @@ jobs:
           loader = importlib.machinery.SourceFileLoader('hd', 'os/system_files/usr/libexec/nimbus/hearth-decky')
           spec = importlib.util.spec_from_loader('hd', loader); m = importlib.util.module_from_spec(spec); loader.exec_module(m)
           man = m.parse_manifest(open(os.path.join(d, 'plugins.json'), 'rb').read(), v)
+          zips = sorted(f[:-4] for f in os.listdir(d) if f.endswith('.zip'))
+          assert sorted(e['id'] for e in man['plugins']) == zips, (zips, man['plugins'])
+          assert all(e['name'] and e['description'] for e in man['plugins']), 'every plugin needs a name and description'
           sums = m.parse_sums(open(os.path.join(d, 'SHA256SUMS')).read())
           for e in man['plugins']:
               data = open(os.path.join(d, e['archive']), 'rb').read()
@@ -179,7 +180,7 @@ jobs:
           # A draft first, the files on it, then published: a device never sees half a release.
           id=$(gh api "repos/$REPO/releases" -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" \
                  -f name="Hearth Decky plugins $VERSION" \
-                 -f body="Hearth's Decky plugins (Hearth Sync, Hearth Link, Hearth Music) $VERSION for Hearth OS, installed by Hearth OS itself (Settings › Updates › Decky plugins). Not a Hearth OS release. See docs/PLUGIN-UPDATES.md." \
+                 -f body="Hearth's Decky plugins $VERSION for Hearth OS, installed by Hearth OS itself (Settings › Updates › Decky plugins). Not a Hearth OS release. See docs/PLUGIN-UPDATES.md." \
                  -F draft=true -F prerelease=false -f make_latest=false -q .id)
           for f in release/*; do
             gh api -X POST "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$(basename "$f")" \

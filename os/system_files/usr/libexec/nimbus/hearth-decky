@@ -25,7 +25,8 @@ commands stay for images without the built-in one and for clean-up:
   hearth-decky start|stop     the service of an install from before (the built-in one is started by nimbus-session)
 
 Plugin updates without a system update (docs/PLUGIN-UPDATES.md), as you: plugins-status, plugins-check, plugins-update,
-plugins-auto (the daily timer), plugins-builtin, plugins-auto-set on|off (see "plugin updates" below).
+plugins-auto (the daily timer), plugins-builtin, plugins-auto-set on|off, plugins-new-set on|off (see "plugin updates"
+below).
 
 A Decky installed with Decky's own installer (plugin_loader.service) is always left alone: it runs by itself, and the
 built-in one doesn't start next to it. Prints one JSON line ({"ok": true, ...}); errors print "error: ..." and exit 1.
@@ -36,6 +37,7 @@ import hashlib
 import json
 import os
 import pwd
+import re
 import shutil
 import subprocess
 import sys
@@ -104,6 +106,23 @@ OLD_PLUGIN = {'name': 'Hearth', 'author': 'Dragongamer9'}
 # (docs/HEARTH-LINK-PLUGIN.md) and Hearth Music (docs/HEARTH-MUSIC.md). Each is copied on install, brought up to date
 # on start and taken away on remove the same way (refresh_plugins); one the image doesn't have is skipped.
 PLUGINS = (PLUGIN_DIR, 'decky-hearth-link', 'decky-hearth-music')
+# Any Hearth plugin's folder name (docs/PLUGIN-UPDATES.md, "Adding a new plugin"): new ones arrive through a plugins
+# release without a system update. Nothing else is ever accepted, written or removed in Decky's plugins folder.
+PLUGIN_ID = re.compile(r'decky-hearth-[a-z0-9][a-z0-9-]{0,40}')
+
+
+def valid_id(name):
+    return isinstance(name, str) and PLUGIN_ID.fullmatch(name) is not None
+
+
+def builtin_names():
+    """The plugins this image ships: PLUGINS first, then any other Hearth plugin in /usr/share/hearth."""
+    names = list(PLUGINS)
+    try:
+        names += sorted(n for n in os.listdir(path('usr/share/hearth')) if valid_id(n) and n not in names and shipped(n))
+    except OSError:
+        pass
+    return names
 
 
 def shipped(name=PLUGIN_DIR):
@@ -125,13 +144,33 @@ def refresh_plugins(home, out, say_missing=False):
         check_trials(home, out)
     except (OSError, ValueError) as e:
         out['trial'] = 'couldn\'t check (%s)' % e
-    for n in PLUGINS:
+    st = state(home)
+    for n in plugin_names(home, st):
         key = 'plugin' if n == PLUGIN_DIR else n
+        try:
+            if n in retired_ids(st) and retire_installed(home, n, out, key):
+                continue
+        except (OSError, ValueError) as e:
+            out[key] = 'couldn\'t retire (%s)' % e
+            continue
         try:
             if apply_downloaded(home, n, out, key):
                 continue
         except (OSError, ValueError) as e:
             out[key + 'Update'] = 'downloaded copy not used (%s)' % e
+        if not shipped(n):
+            # A new plugin (no built-in copy): it stays only while your download of it does. "Use the built-in
+            # plugins" and a failed load check take the download away, so Decky's copy goes too.
+            try:
+                if os.path.isfile(os.path.join(installed_dir(home, n), MARKER)) and \
+                        not os.path.isdir(os.path.join(store_dir(home), n)):
+                    remove_installed(home, n)
+                    out[key] = 'removed (its download is gone)'
+            except (OSError, ValueError) as e:
+                out[key] = 'couldn\'t remove (%s)' % e
+            if say_missing and n == PLUGIN_DIR and key not in out:
+                out[key] = 'not shipped'
+            continue
         try:
             if plugin_outdated(home, n):
                 out[key] = 'updated' if copy_plugin(home, name=n) else 'not shipped'
@@ -370,7 +409,9 @@ def remove(user):
         os.remove(unit_path())
         systemctl('daemon-reload')
     shutil.rmtree(lib_dir(), ignore_errors=True)
-    for n in PLUGINS:
+    for n in plugin_names(home):
+        if n not in PLUGINS and not os.path.isfile(os.path.join(installed_dir(home, n), MARKER)):
+            continue
         shutil.rmtree(os.path.join(home, 'homebrew', 'plugins', n), ignore_errors=True)
     remove_old_plugin(home)
     mark = os.path.join(home, 'homebrew', MARK)
@@ -538,6 +579,12 @@ def run(user):
 #                                      the next Steam Game Mode start
 #   hearth-decky plugins-builtin       "Use the built-in plugins": the downloaded copies go; the image's come back
 #   hearth-decky plugins-auto-set on|off   the switch (also Mantel's Settings › Updates), saved with hearth_settings_io
+#   hearth-decky plugins-new-set on|off    "Also install new Hearth plugins" (off unless ticked; same helpers)
+#
+# New plugins (any decky-hearth-<name> in the newest manifest, PLUGIN_ID) are offered under "New from Hearth" and
+# installed by Update (and the daily timer) only when "Also install new Hearth plugins" is ticked; they're verified,
+# swapped in and load-checked like the others, and a failed load check removes them. The manifest's "retired" list
+# takes a plugin's download (and Decky's copy) away; a built-in one only once the image no longer ships it.
 #
 # Decky's plugins folder is root's, so the copy goes in there in prepare (hearth-decky@<you>, as root, before Decky
 # starts): refresh_plugins puts a downloaded plugin in place when it's newer than the image's (the copy before it kept as
@@ -708,6 +755,40 @@ def set_auto(home, on):
     return auto_on(home)
 
 
+def install_new_on(home):
+    """"Also install new Hearth plugins": off unless you ticked it (the default is never written)."""
+    try:
+        return _settings_io().load_json(settings_path(home), {}).get('installNew') is True
+    except Exception:
+        return read_json(settings_path(home), {}).get('installNew') is True
+
+
+def set_install_new(home, on):
+    _settings_io().merge_json(settings_path(home), {'installNew': bool(on)})
+    return install_new_on(home)
+
+
+def retired_ids(st):
+    return [n for n in (st.get('retired') or []) if valid_id(n)]
+
+
+def plugin_names(home, st=None):
+    """Every Hearth plugin to look after: the image's, then the downloaded ones (the state file's "extra", and any copy in
+    Decky's folder that a plugins download put there). Never a name outside PLUGIN_ID."""
+    st = st if st is not None else state(home)
+    names = builtin_names()
+    extra = st.get('extra') if isinstance(st.get('extra'), dict) else {}
+    cand = sorted(extra)
+    try:
+        cand += sorted(os.listdir(os.path.join(home, 'homebrew', 'plugins')))
+    except OSError:
+        pass
+    for n in cand:
+        if valid_id(n) and n not in names and (n in extra or os.path.isfile(os.path.join(installed_dir(home, n), MARKER))):
+            names.append(n)
+    return names
+
+
 def _state_write(home, change):
     p = state_path(home)
     os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -800,9 +881,17 @@ def pick_plugins_release(releases):
     return best
 
 
+def _text(v, limit):
+    if v is None:
+        return ''
+    if not isinstance(v, str):
+        raise ValueError('plugins.json has a bad name or description')
+    return ''.join(c for c in v if c.isprintable()).strip()[:limit]
+
+
 def parse_manifest(data, release_version=None):
-    """plugins.json: {format: 1, version, plugins: [{id, version, archive, sha256, size, min_hearth_os, min_decky}]}.
-    Only Hearth's own plugins; anything malformed raises ValueError."""
+    """plugins.json: {format: 1, version, plugins: [{id, name, description, version, archive, sha256, size, min_hearth_os,
+    min_decky}], retired: [id]}. Only Hearth's own plugins (PLUGIN_ID); anything malformed raises ValueError."""
     try:
         m = json.loads(data.decode('utf-8') if isinstance(data, bytes) else data)
     except (ValueError, UnicodeDecodeError):
@@ -816,8 +905,8 @@ def parse_manifest(data, release_version=None):
         if not isinstance(p, dict):
             raise ValueError('plugins.json has a bad entry')
         pid, ver, arc, sha = p.get('id'), p.get('version'), p.get('archive'), p.get('sha256')
-        if pid not in PLUGINS or pid in seen:
-            raise ValueError('plugins.json names an unknown plugin: %r' % (pid,))
+        if not valid_id(pid) or pid in seen:
+            raise ValueError('plugins.json names a plugin that isn\'t Hearth\'s: %r' % (pid,))
         if not safe_version(ver):
             raise ValueError('%s: bad version' % pid)
         if arc != pid + '.zip':
@@ -828,9 +917,15 @@ def parse_manifest(data, release_version=None):
             if p.get(k) not in (None, '') and not safe_version(p.get(k)):
                 raise ValueError('%s: bad %s' % (pid, k))
         seen.add(pid)
-        out.append({'id': pid, 'version': ver, 'archive': arc, 'sha256': sha, 'size': p.get('size'),
+        out.append({'id': pid, 'name': _text(p.get('name'), 60) or pid, 'description': _text(p.get('description'), 300),
+                    'version': ver, 'archive': arc, 'sha256': sha, 'size': p.get('size'),
                     'min_hearth_os': p.get('min_hearth_os') or '', 'min_decky': p.get('min_decky') or ''})
-    return {'version': m.get('version'), 'plugins': out}
+    retired = m.get('retired', [])
+    if not isinstance(retired, list) or not all(valid_id(r) for r in retired):
+        raise ValueError('plugins.json has a bad retired list')
+    if set(retired) & seen:
+        raise ValueError('plugins.json both offers and retires a plugin')
+    return {'version': m.get('version'), 'plugins': out, 'retired': sorted(set(retired))}
 
 
 def parse_sums(text):
@@ -859,22 +954,38 @@ def versions(home, name):
     """{installed, builtin, downloaded, source} of one plugin."""
     inst = installed_dir(home, name)
     meta = read_json(os.path.join(store_dir(home), name, MARKER), {})
-    return {'installed': folder_version(inst), 'builtin': folder_version(shipped_plugin(name)),
+    label = ''
+    for d in (inst, shipped_plugin(name), os.path.join(store_dir(home), name)):
+        label = read_json(os.path.join(d, 'plugin.json'), {}).get('name')
+        if isinstance(label, str) and label:
+            break
+    return {'name': label if isinstance(label, str) and label else name,
+            'installed': folder_version(inst), 'builtin': folder_version(shipped_plugin(name)),
             'downloaded': meta.get('version'),
             'source': 'downloaded' if os.path.isfile(os.path.join(inst, MARKER)) else
                       ('built-in' if os.path.isdir(inst) else 'not installed')}
 
 
-def wanted(manifest, home, st=None, respect_declined=False, hearth=None, decky=None):
+NEW_OFF = 'a new plugin: tick "Also install new Hearth plugins" to install it'
+
+
+def wanted(manifest, home, st=None, respect_declined=False, hearth=None, decky=None, include_new=False):
     """[(entry, None)] to download and [(entry, why)] skipped: only newer than both the installed and the built-in one,
-    never a version that failed before, and one this device can take."""
+    never a version that failed before, and one this device can take. A plugin this device has never had (not built in,
+    never downloaded) is new (entry['new']): taken only with INCLUDE_NEW ("Also install new Hearth plugins")."""
     st = st if st is not None else state(home)
+    extra = st.get('extra') if isinstance(st.get('extra'), dict) else {}
     take, skip = [], []
     for e in manifest['plugins']:
         v = versions(home, e['id'])
-        if (v['builtin'] is None and not shipped(e['id'])):
-            skip.append((e, 'this Hearth OS doesn\'t have it'))
-        elif not (newer(e['version'], v['installed'] or '0') and newer(e['version'], v['builtin'] or '0')):
+        inst = installed_dir(home, e['id'])
+        ours = shipped(e['id']) or e['id'] in extra or os.path.isfile(os.path.join(inst, MARKER)) or \
+            (e['id'] in PLUGINS and os.path.isdir(inst))
+        if not ours and os.path.lexists(inst):
+            skip.append((e, 'a plugin of that name that isn\'t from Hearth is installed; left alone'))
+            continue
+        e['new'] = not ours
+        if not (newer(e['version'], v['installed'] or '0') and newer(e['version'], v['builtin'] or '0')):
             skip.append((e, 'not newer than %s' % (v['installed'] or v['builtin'])))
         elif e['version'] in (st.get('bad') or {}).get(e['id'], []):
             skip.append((e, 'version %s didn\'t load before' % e['version']))
@@ -884,6 +995,8 @@ def wanted(manifest, home, st=None, respect_declined=False, hearth=None, decky=N
             skip.append((e, 'already downloaded; put in place at the next Decky start'))
         else:
             why = fits(e, hearth, decky)
+            if not why and e['new'] and not include_new:
+                why = NEW_OFF
             (skip if why else take).append((e, why))
     return take, skip
 
@@ -1021,13 +1134,17 @@ def me():
 def plugins_status(home=None):
     home = home or user_home()
     st = state(home)
-    return {'ok': True, 'auto': auto_on(home), 'plugins': {n: versions(home, n) for n in PLUGINS if shipped(n) or os.path.isdir(installed_dir(home, n))},
+    extra = st.get('extra') if isinstance(st.get('extra'), dict) else {}
+    return {'ok': True, 'auto': auto_on(home), 'installNew': install_new_on(home),
+            'plugins': {n: versions(home, n) for n in plugin_names(home, st) if shipped(n) or n in extra or os.path.isdir(installed_dir(home, n))},
+            'new': st.get('new') if isinstance(st.get('new'), dict) else {}, 'retired': retired_ids(st),
             'lastCheck': st.get('lastCheck'), 'lastError': st.get('lastError') or '', 'release': st.get('release'),
             'available': st.get('available') or {}, 'rollback': st.get('rollback') or {}, 'bad': st.get('bad') or {}}
 
 
-def plugins_check(home=None, get=None, respect_declined=False):
-    """Looks only. A failure (no network, GitHub down, a bad manifest) changes nothing but lastError."""
+def plugins_check(home=None, get=None, respect_declined=False, include_new=False):
+    """Looks only. A failure (no network, GitHub down, a bad manifest) changes nothing but lastError. New plugins this
+    device could take are listed under "new" (Settings › Updates › Decky plugins › New from Hearth)."""
     home = home or user_home()
     now = int(time.time())
     try:
@@ -1036,20 +1153,26 @@ def plugins_check(home=None, get=None, respect_declined=False):
         msg = 'Couldn\'t check for plugin updates: %s' % (str(e)[:200] or e.__class__.__name__)
         state_update(home, lambda d: d.update({'lastCheck': now, 'lastError': msg}))
         return {'ok': False, 'error': msg}, None
-    take, skip = wanted(manifest, home, respect_declined=respect_declined)
-    avail = {e['id']: e['version'] for e, _ in take}
+    take, skip = wanted(manifest, home, respect_declined=respect_declined, include_new=include_new)
+    avail = {e['id']: e['version'] for e, _ in take if not e.get('new')}
+    new = {e['id']: {'name': e['name'], 'description': e['description'], 'version': e['version']}
+           for e, why in take + skip if e.get('new') and why in (None, NEW_OFF)}
     state_update(home, lambda d: d.update({'lastCheck': now, 'lastOk': now, 'lastError': '', 'release': rel['tag'], 'available': avail,
-                                           'skipped': {e['id']: why for e, why in skip}}))
-    return {'ok': True, 'release': rel['tag'], 'available': avail, 'skipped': {e['id']: why for e, why in skip}}, (rel, manifest, sums, take)
+                                           'new': new, 'skipped': {e['id']: why for e, why in skip}}))
+    return {'ok': True, 'release': rel['tag'], 'available': avail, 'new': new,
+            'skipped': {e['id']: why for e, why in skip}}, (rel, manifest, sums, take)
 
 
 def plugins_update(user=None, home=None, get=None, apply='now'):
     """apply: 'now' (the Update button: restart Decky if it runs), 'idle' (automatic: only when no game runs), 'never'."""
     home = home or user_home()
-    out, got = plugins_check(home, get, respect_declined=(apply == 'idle'))
+    out, got = plugins_check(home, get, respect_declined=(apply == 'idle'), include_new=install_new_on(home))
     if not got:
         return out
     rel, manifest, sums, take = got
+    retired = retire_downloads(home, manifest['retired'])
+    if retired:
+        out['retired'] = retired
     done, errors = {}, []
     for e, _ in take:
         try:
@@ -1057,11 +1180,21 @@ def plugins_update(user=None, home=None, get=None, apply='now'):
         except Exception as ex:
             errors.append(str(ex)[:200])
     st_err = '; '.join(errors)
-    state_update(home, lambda d: d.update({'lastError': st_err, 'downloadedAt': int(time.time()) if done else d.get('downloadedAt')}))
+
+    def change(d):
+        d.update({'lastError': st_err, 'downloadedAt': int(time.time()) if done else d.get('downloadedAt')})
+        extra = d['extra'] if isinstance(d.get('extra'), dict) else {}
+        for n, v in done.items():
+            if not shipped(n):
+                extra[n] = v   # a new plugin: looked after from now on (refresh_plugins, plugins_status)
+                (d.get('new') or {}).pop(n, None)
+        d['extra'] = extra
+    state_update(home, change)
     out.update({'ok': not errors, 'downloaded': done})
     if errors:
         out['error'] = st_err
-    pending = any(versions(home, n)['downloaded'] and versions(home, n)['downloaded'] != versions(home, n)['installed'] for n in PLUGINS)
+    pending = any(versions(home, n)['downloaded'] and versions(home, n)['downloaded'] != versions(home, n)['installed']
+                  for n in plugin_names(home)) or bool(retired)
     if pending and user and apply != 'never' and decky_active(user):
         if apply == 'now' or not game_running():
             out['restarted'] = restart_decky(user)
@@ -1090,7 +1223,7 @@ def plugins_builtin(user=None, home=None):
     home = home or user_home()
     store = store_dir(home)
     gone = {}
-    for n in PLUGINS:
+    for n in plugin_names(home):
         d = os.path.join(store, n)
         v = read_json(os.path.join(d, MARKER), {}).get('version')
         if os.path.isdir(d):
@@ -1109,6 +1242,7 @@ def plugins_builtin(user=None, home=None):
                 dec[n].append(v)
         dd['lastError'] = ''
         dd['builtinAt'] = int(time.time())
+        dd['extra'] = {}   # new plugins have no built-in copy: they go (Decky's copy at its next start)
     state_update(home, change)
     out = {'ok': True, 'removed': gone}
     if user and decky_active(user):
@@ -1118,11 +1252,74 @@ def plugins_builtin(user=None, home=None):
     return out
 
 
+def retire_downloads(home, retired):
+    """The manifest's "retired" plugins (as you): your downloads of them go and the list is written down, so Decky's
+    copy goes at its next start (retire_installed). A plugin is never removed just because a manifest leaves it out.
+    The newest release's list is the one that counts (a plugin can come back). Returns the downloads removed."""
+    retired = [n for n in retired if valid_id(n)]
+    store = store_dir(home)
+    gone = []
+    for n in retired:
+        d = os.path.join(store, n)
+        if os.path.isdir(d) and not os.path.islink(d):
+            shutil.rmtree(d, ignore_errors=True)
+            gone.append(n)
+        shutil.rmtree(d + '.prev', ignore_errors=True)
+
+    def change(d):
+        d['retired'] = retired
+        extra = d['extra'] if isinstance(d.get('extra'), dict) else {}
+        for n in retired:
+            extra.pop(n, None)
+            (d.get('new') or {}).pop(n, None)
+        d['extra'] = extra
+    state_update(home, change)
+    return gone
+
+
 # ---------------------------------------------------------------- root's side (prepare, before Decky starts)
+
+def remove_installed(home, name):
+    """Decky's copy of a Hearth plugin, and the copy before it, go. Only ~/homebrew/plugins/<name> for a PLUGIN_ID name."""
+    if not valid_id(name):
+        raise ValueError('%r isn\'t a Hearth plugin' % (name,))
+    plugins = os.path.join(home, 'homebrew', 'plugins')
+    if os.path.islink(os.path.join(home, 'homebrew')) or os.path.islink(plugins):
+        raise ValueError('Decky\'s plugins folder is a link; nothing removed')
+    dst = os.path.join(plugins, name)
+    if os.path.islink(dst):
+        os.remove(dst)
+    else:
+        shutil.rmtree(dst, ignore_errors=True)
+    shutil.rmtree(os.path.join(prev_dir(home), name + '.prev'), ignore_errors=True)
+    t = trials(home)
+    if t.pop(name, None) is not None:
+        save_trials(home, t)
+
+
+def retire_installed(home, name, out, key):
+    """A retired plugin in Decky's folder: a downloaded copy goes; a built-in one only when this image no longer ships it
+    (then the image's own copy comes back as usual). True when it was removed (or wasn't there)."""
+    inst = installed_dir(home, name)
+    if shipped(name):
+        if os.path.isfile(os.path.join(inst, MARKER)):
+            remove_installed(home, name)
+            out[key] = 'retired download removed; the built-in one comes back'
+        return False   # the image's copy is put (back) in place
+    if not os.path.lexists(inst):
+        return True
+    if os.path.isfile(os.path.join(inst, MARKER)) or \
+            (name in PLUGINS and read_json(os.path.join(inst, 'plugin.json'), {}).get('author') == 'Dragongamer9'):
+        remove_installed(home, name)
+        out[key] = 'removed (retired)'
+    return True
+
 
 def downloaded_ok(home, name):
     """The downloaded copy of NAME if it should be the one in Decky's folder: complete (its files match what was
     verified), newer than the image's, never failed before, and this device can take it. (folder, meta) or None."""
+    if not valid_id(name) or name in retired_ids(state(home)):
+        return None
     d = os.path.join(store_dir(home), name)
     meta = read_json(os.path.join(d, MARKER), None)
     if not meta or os.path.islink(d) or not os.path.isdir(d):
@@ -1149,9 +1346,15 @@ def chown_root(d):
 def swap_in(home, name, src, meta):
     """Copies the downloaded plugin into Decky's folder: the copy (made as root) is checked again against what was
     verified, then the current one moves to ~/homebrew/hearth-prev/<name>.prev and the new one takes its place."""
+    if not valid_id(name):
+        raise ValueError('%r isn\'t a Hearth plugin; not put in Decky\'s folder' % (name,))
     plugins = os.path.join(home, 'homebrew', 'plugins')
+    if os.path.islink(os.path.join(home, 'homebrew')) or os.path.islink(plugins):
+        raise ValueError('Decky\'s plugins folder is a link; %s not put in place' % name)
     os.makedirs(plugins, exist_ok=True)
     dst = os.path.join(plugins, name)
+    if os.path.islink(dst) or os.path.islink(dst + '.new'):
+        raise ValueError('%s: Decky\'s copy is a link; not replaced' % name)
     tmp = dst + '.new'
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.copytree(src, tmp, symlinks=True)
@@ -1195,9 +1398,12 @@ def loaded(home, name, version, since):
 def roll_back(home, name, version, why):
     """A downloaded plugin that didn't load: the copy before it comes back (or the image's), that version is marked bad
     and its download removed, and why is written down (Settings › Updates and Send logs show it)."""
+    if not valid_id(name):
+        raise ValueError('%r isn\'t a Hearth plugin' % (name,))
     prev = os.path.join(prev_dir(home), name + '.prev')
     dst = installed_dir(home, name)
     restored = 'built-in'
+    removed = False
     if os.path.isfile(os.path.join(prev, 'plugin.json')) and folder_version(prev) != version:
         shutil.rmtree(dst, ignore_errors=True)
         os.rename(prev, dst)
@@ -1205,7 +1411,9 @@ def roll_back(home, name, version, why):
     else:
         shutil.rmtree(dst, ignore_errors=True)
         if not copy_plugin(home, name=name):
-            restored = 'nothing (the image doesn\'t have it)'
+            # A new plugin has no built-in copy to go back to: it's removed (and that version marked bad).
+            restored = 'nothing: a new plugin, removed'
+            removed = True
     now = int(time.time())
     msg = '%s %s %s; went back to %s' % (name, version, why, restored)
 
@@ -1215,6 +1423,8 @@ def roll_back(home, name, version, why):
             bad.append(version)
         d.setdefault('rollback', {})[name] = {'version': version, 'why': why, 'restored': restored, 'at': now}
         d['lastError'] = msg
+        if removed and isinstance(d.get('extra'), dict):
+            d['extra'].pop(name, None)
     state_update(home, change)
     # Your own download of that version goes and the download before it comes back (done as you), so the next start
     # keeps what was restored here.
@@ -1277,7 +1487,7 @@ def apply_downloaded(home, name, out, key):
 
 
 def note_installed(home):
-    vs = {n: versions(home, n) for n in PLUGINS if os.path.isdir(installed_dir(home, n))}
+    vs = {n: versions(home, n) for n in plugin_names(home) if os.path.isdir(installed_dir(home, n))}
     state_update(home, lambda d: d.update({'plugins': vs}))
 
 
@@ -1319,9 +1529,11 @@ def main(argv):
                    else plugins_auto(user, home) if cmd == 'plugins-auto' else plugins_builtin(user, home))
         elif cmd == 'plugins-auto-set' and len(argv) == 3 and argv[2] in ('on', 'off'):
             out = {'ok': True, 'auto': set_auto(user_home(), argv[2] == 'on')}
+        elif cmd == 'plugins-new-set' and len(argv) == 3 and argv[2] in ('on', 'off'):
+            out = {'ok': True, 'installNew': set_install_new(user_home(), argv[2] == 'on')}
         else:
             fail('usage: hearth-decky run USER | prepare USER | install USER | remove USER | start | stop | plugins-status | '
-                 'plugins-check | plugins-update | plugins-auto | plugins-builtin | plugins-auto-set on|off')
+                 'plugins-check | plugins-update | plugins-auto | plugins-builtin | plugins-auto-set on|off | plugins-new-set on|off')
     except (ValueError, OSError) as e:
         fail(str(e))
     print(json.dumps(out), flush=True)

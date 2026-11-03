@@ -119,18 +119,21 @@ class Base(unittest.TestCase):
             self.w(rel, text, d)
 
     def release(self, version, plugins, tag=None, draft=False, prerelease=False, min_hearth='1.1.0', min_decky='3.3.1',
-                corrupt=None, sums_wrong=None, broken=None):
+                corrupt=None, sums_wrong=None, broken=None, retired=None, about=None):
         """A made-up plugins release: its API entry and the downloads behind it, served by self.get."""
         tag = tag or 'plugins-v' + version
         files, entries, sums = {}, [], []
         for n, v in plugins.items():
             data = make_zip(n, plugin_files(n, v, broken=(n == broken)))
             sha = hashlib.sha256(data).hexdigest()
-            entries.append({'id': n, 'version': v, 'archive': n + '.zip', 'sha256': sha, 'size': len(data),
-                            'min_hearth_os': min_hearth, 'min_decky': min_decky})
+            entries.append(dict({'id': n, 'version': v, 'archive': n + '.zip', 'sha256': sha, 'size': len(data),
+                                 'min_hearth_os': min_hearth, 'min_decky': min_decky}, **((about or {}).get(n) or {})))
             sums.append('%s  %s.zip' % ('0' * 64 if n == sums_wrong else sha, n))
             files[n + '.zip'] = data + (b'tampered' if n == corrupt else b'')
-        files['plugins.json'] = json.dumps({'format': 1, 'version': version, 'plugins': entries}).encode()
+        man = {'format': 1, 'version': version, 'plugins': entries}
+        if retired is not None:
+            man['retired'] = retired
+        files['plugins.json'] = json.dumps(man).encode()
         files['SHA256SUMS'] = ('\n'.join(sums) + '\n').encode()
         base = DL + version + '/'
         self.served = getattr(self, 'served', {})
@@ -435,6 +438,253 @@ class Applying(Base):
         out = self.m.plugins_auto('you', self.home, self.get, now=10 ** 10)
         self.assertIn('a game is running', out['applies'])
         self.assertEqual(restarts, ['you'])
+
+
+NEW = 'decky-hearth-lights'
+ABOUT = {NEW: {'name': 'Hearth Lights', 'description': 'RGB lighting that follows your game.'}}
+
+
+class NewPlugins(Base):
+    """Future plugins arrive through the plugins channel (docs/PLUGIN-UPDATES.md, "Adding a new plugin")."""
+
+    def offer(self, version, plugins, **kw):
+        self.served = {}
+        self.serve(self.release(version, plugins, about=ABOUT, **kw))
+
+    def mark_new(self, version):
+        self.w('homebrew/data/%s/hearth-loaded.json' % NEW, json.dumps({'version': version, 'at': 4102444800}), self.home)
+
+    def test_valid_ids_only(self):
+        for good in ('decky-hearth-lights', 'decky-hearth-a', 'decky-hearth-x1-y2'):
+            self.assertTrue(self.m.valid_id(good), good)
+        for bad in ('decky-hearth', 'decky-hearth-', 'decky-hearth-Lights', 'decky-hearth-../x', 'evil', 'decky-hearth-a/b',
+                    'decky-hearth-lights\n', 'decky-hearth-' + 'a' * 42, '-decky-hearth-a', 'decky-hearth--x', None, 3):
+            self.assertFalse(self.m.valid_id(bad), bad)
+        good = {'id': NEW, 'version': '1.0', 'archive': NEW + '.zip', 'sha256': 'a' * 64, 'name': 'Hearth Lights', 'description': 'x'}
+        m = self.m.parse_manifest(json.dumps({'format': 1, 'version': '1.2.0.0', 'plugins': [good]}), '1.2.0.0')
+        self.assertEqual((m['plugins'][0]['name'], m['plugins'][0]['description'], m['retired']), ('Hearth Lights', 'x', []))
+        for bad in (dict(good, id='decky-hearth-../evil', archive='decky-hearth-../evil.zip'), dict(good, id='decky-other', archive='decky-other.zip'),
+                    dict(good, name=5)):
+            with self.assertRaises(ValueError):
+                self.m.parse_manifest(json.dumps({'format': 1, 'version': '1.2.0.0', 'plugins': [bad]}), '1.2.0.0')
+        for retired in (['../x'], 'decky-hearth-sync', [NEW]):
+            with self.assertRaises(ValueError):
+                self.m.parse_manifest(json.dumps({'format': 1, 'version': '1.2.0.0', 'plugins': [good], 'retired': retired}), '1.2.0.0')
+
+    def test_unknown_valid_id_is_offered_as_new_and_box_off_installs_nothing(self):
+        self.prepare()
+        self.offer('1.2.0.0', {NEW: '1.0.0', 'decky-hearth-sync': '1.2.0.0'})
+        self.assertFalse(self.m.install_new_on(self.home))
+        self.assertFalse(os.path.exists(self.m.settings_path(self.home)))   # the default is never written
+        out = self.m.plugins_update(None, self.home, self.get)
+        self.assertEqual(out['downloaded'], {'decky-hearth-sync': '1.2.0.0'})   # updates still come
+        self.assertEqual(out['new'], {NEW: {'name': 'Hearth Lights', 'description': 'RGB lighting that follows your game.', 'version': '1.0.0'}})
+        self.assertNotIn(NEW, out['available'])
+        self.prepare()
+        self.assertIsNone(self.installed(NEW))
+        st = self.m.plugins_status(self.home)
+        self.assertIn(NEW, st['new'])
+        self.assertFalse(st['installNew'])
+        self.assertNotIn(NEW, st['plugins'])
+
+    def test_box_ticked_installs_a_new_plugin(self):
+        self.prepare()
+        self.assertTrue(self.m.set_install_new(self.home, True))
+        self.offer('1.2.0.0', {NEW: '1.0.0'})
+        out = self.m.plugins_update(None, self.home, self.get)
+        self.assertEqual(out['downloaded'], {NEW: '1.0.0'})
+        r = self.prepare()
+        self.assertEqual(self.installed(NEW), '1.0.0')
+        self.assertIn('downloaded 1.0.0', r[NEW])
+        self.assertIn(NEW, self.m.trials(self.home))   # load-checked like the others
+        st = self.m.plugins_status(self.home)
+        self.assertEqual(st['plugins'][NEW]['source'], 'downloaded')
+        self.assertEqual(st['plugins'][NEW]['name'], NEW)   # plugin.json's name
+        self.assertEqual(st['new'], {})
+        self.mark_new('1.0.0')
+        self.assertEqual(self.prepare()['trial'][NEW], 'loaded')
+        # It updates like any other plugin from now on, the box no longer matters for it.
+        self.m.set_install_new(self.home, False)
+        self.offer('1.2.0.1', {NEW: '1.0.1'})
+        self.assertEqual(self.m.plugins_update(None, self.home, self.get)['downloaded'], {NEW: '1.0.1'})
+        self.prepare()
+        self.assertEqual(self.installed(NEW), '1.0.1')
+        self.assertFalse(self.m.install_new_on(self.home))   # never changed by itself
+
+    def test_automatic_only_with_the_box(self):
+        self.prepare()
+        self.m.set_auto(self.home, True)
+        self.offer('1.2.0.0', {NEW: '1.0.0'})
+        out = self.m.plugins_auto(None, self.home, self.get, now=10 ** 10)
+        self.assertEqual(out['downloaded'], {})
+        self.assertIn(NEW, out['new'])
+        self.m.set_install_new(self.home, True)
+        out = self.m.plugins_auto(None, self.home, self.get, now=10 ** 10 + 10 ** 6)
+        self.assertEqual(out['downloaded'], {NEW: '1.0.0'})
+        self.m.set_auto(self.home, False)   # the box alone never downloads anything
+        self.offer('1.2.0.1', {NEW: '1.0.1'})
+        self.assertIn('off', self.m.plugins_auto(None, self.home, self.get, now=10 ** 11)['skipped'])
+
+    def test_a_failed_load_removes_a_new_plugin(self):
+        self.prepare()
+        self.m.set_install_new(self.home, True)
+        self.offer('1.2.0.0', {NEW: '1.0.0'})
+        self.m.plugins_update(None, self.home, self.get)
+        self.prepare()
+        self.assertEqual(self.installed(NEW), '1.0.0')
+        r = {}
+        self.m.check_trials(self.home, r, final=True)
+        self.assertIn('removed', r['trial'][NEW])
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'homebrew/plugins', NEW)))
+        st = self.m.state(self.home)
+        self.assertEqual(st['bad'][NEW], ['1.0.0'])
+        self.assertNotIn(NEW, st.get('extra') or {})
+        self.prepare()
+        self.assertIsNone(self.installed(NEW))   # stays gone
+        out = self.m.plugins_update(None, self.home, self.get)
+        self.assertIn('didn\'t load before', out['skipped'][NEW])
+
+    def test_use_builtin_removes_new_plugins(self):
+        self.prepare()
+        self.m.set_install_new(self.home, True)
+        self.offer('1.2.0.0', {NEW: '1.0.0'})
+        self.m.plugins_update(None, self.home, self.get)
+        self.prepare()
+        self.assertEqual(self.m.plugins_builtin(None, self.home)['removed'], {NEW: '1.0.0'})
+        self.prepare()
+        self.assertIsNone(self.installed(NEW))
+        self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0')
+
+    def test_missing_from_a_manifest_is_never_removed(self):
+        self.prepare()
+        self.m.set_install_new(self.home, True)
+        self.offer('1.2.0.0', {NEW: '1.0.0', 'decky-hearth-sync': '1.2.0.0'})
+        self.m.plugins_update(None, self.home, self.get)
+        self.prepare()
+        self.offer('1.2.0.1', {'decky-hearth-music': '1.2.0.1'})
+        self.m.plugins_update(None, self.home, self.get)
+        self.prepare()
+        self.assertEqual((self.installed(NEW), self.installed('decky-hearth-sync'), self.installed('decky-hearth-music')),
+                         ('1.0.0', '1.2.0.0', '1.2.0.1'))
+
+    def test_retired_removes_only_downloaded_copies(self):
+        self.prepare()
+        self.m.set_install_new(self.home, True)
+        self.offer('1.2.0.0', {NEW: '1.0.0', 'decky-hearth-sync': '1.2.0.0'})
+        self.m.plugins_update(None, self.home, self.get)
+        self.prepare()
+        # Retired: the new plugin (downloaded only) and Hearth Sync's download (the image still ships Hearth Sync) and
+        # Hearth Link (only the built-in copy, still shipped).
+        self.offer('1.2.0.1', {'decky-hearth-music': '1.2.0.1'}, retired=[NEW, 'decky-hearth-sync', 'decky-hearth-link'])
+        out = self.m.plugins_update(None, self.home, self.get)
+        self.assertEqual(sorted(out['retired']), [NEW, 'decky-hearth-sync'])
+        self.prepare()
+        self.assertIsNone(self.installed(NEW))
+        self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0')   # the built-in one came back
+        self.assertEqual(self.m.versions(self.home, 'decky-hearth-sync')['source'], 'built-in')
+        self.assertEqual(self.installed('decky-hearth-link'), '1.1.0')   # built in and still shipped: stays
+        self.assertEqual(self.installed('decky-hearth-music'), '1.2.0.1')
+        # An image that no longer ships a retired built-in plugin: then it goes.
+        shutil.rmtree(os.path.join(self.root, 'usr/share/hearth/decky-hearth-link'))
+        self.prepare()
+        self.assertIsNone(self.installed('decky-hearth-link'))
+        # A plugin of a Hearth name that isn't Hearth's own is never touched.
+        self.w('homebrew/plugins/decky-hearth-other/plugin.json', json.dumps({'name': 'x', 'author': 'someone'}), self.home)
+        self.offer('1.2.0.2', {'decky-hearth-other': '9.0'}, retired=[])
+        out = self.m.plugins_update(None, self.home, self.get)
+        self.assertIn('isn\'t from Hearth', out['skipped']['decky-hearth-other'])
+        self.prepare()
+        self.assertTrue(os.path.isfile(os.path.join(self.home, 'homebrew/plugins/decky-hearth-other/plugin.json')))
+
+    def test_refresh_handles_downloaded_only_plugins(self):
+        self.prepare()
+        self.m.set_install_new(self.home, True)
+        self.offer('1.2.0.0', {NEW: '1.0.0'})
+        self.m.plugins_update(None, self.home, self.get)
+        self.assertIn(NEW, self.m.plugin_names(self.home))
+        # A fresh Decky folder (e.g. emptied): the next start puts the downloaded-only plugin back.
+        shutil.rmtree(os.path.join(self.home, 'homebrew/plugins', NEW), ignore_errors=True)
+        self.prepare()
+        self.assertEqual(self.installed(NEW), '1.0.0')
+        self.mark_new('1.0.0')
+        self.prepare()
+        self.m.note_installed(self.home)
+        self.assertIn(NEW, self.m.state(self.home)['plugins'])
+        self.assertIn(NEW, self.m.plugins_status(self.home)['plugins'])
+
+    def test_root_swap_rejects_names_outside_the_pattern(self):
+        src = os.path.join(self.tmp, 'src')
+        for rel, text in plugin_files('x', '1.0').items():
+            self.w(rel, text, src)
+        for bad in ('../evil', 'decky-hearth-../../etc', 'decky-other', 'decky-hearth-X', '/abs'):
+            with self.assertRaises(ValueError):
+                self.m.swap_in(self.home, bad, src, {'tree': self.m.tree_hash(src)})
+            with self.assertRaises(ValueError):
+                self.m.remove_installed(self.home, bad)
+            with self.assertRaises(ValueError):
+                self.m.roll_back(self.home, bad, '1.0', 'test')
+            self.assertIsNone(self.m.downloaded_ok(self.home, bad))
+        # A state file naming something else is ignored.
+        self.w('.local/state/nimbus/plugin-updates.json', json.dumps({'extra': {'../evil': '1', 'decky-other': '1'}, 'retired': ['../x']}), self.home)
+        self.assertEqual(self.m.plugin_names(self.home), list(PLUGINS))
+        self.prepare()
+        self.assertFalse(os.path.exists(os.path.join(self.home, 'homebrew/evil')))
+        # A planted link for Decky's plugins folder is refused.
+        shutil.rmtree(os.path.join(self.home, 'homebrew/plugins'))
+        os.symlink(self.tmp, os.path.join(self.home, 'homebrew/plugins'))
+        with self.assertRaises(ValueError):
+            self.m.swap_in(self.home, NEW, src, {'tree': self.m.tree_hash(src)})
+
+    def test_box_saved_with_the_settings_helpers(self):
+        p = self.w('.config/nimbus/plugin-updates.json', json.dumps({'auto': True}), self.home)
+        self.assertTrue(self.m.set_install_new(self.home, True))
+        self.assertEqual(json.load(open(p)), {'auto': True, 'installNew': True})
+        self.assertTrue(os.path.exists(p + '.bak'))
+        qml = (ROOT / 'hosts/linux/desktop/shell/SetUpdates.qml').read_text()
+        self.assertIn('Also install new Hearth plugins', qml)
+        self.assertIn('New from Hearth', qml)
+        self.assertIn('installNew', qml)
+
+
+class PublishWorkflow(unittest.TestCase):
+    """decky-plugins-release.yml builds every hosts/decky-hearth-*/ plugin (tools/decky_plugins.py finds them)."""
+
+    def test_discovery_finds_every_plugin_folder(self):
+        spec = importlib.util.spec_from_file_location('decky_plugins_t', ROOT / 'tools/decky_plugins.py')
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        found = [p['id'] for p in m.discover(ROOT)]
+        want = sorted(d.name for d in (ROOT / 'hosts').iterdir()
+                      if d.name.startswith('decky-hearth-') and (d / 'package.json').is_file() and (d / 'package.sh').is_file())
+        self.assertEqual(found, want)
+        self.assertTrue(set(PLUGINS) <= set(found))
+        for p in m.discover(ROOT):
+            self.assertTrue(p['name'] and p['description'], p['id'])
+        self.assertEqual(m.problems(ROOT), [])   # each has the shared Hearth OS check and the load mark
+        # A made-up repo: discovery takes only valid folders with package.json and package.sh, never archive/.
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix='discover-'))
+        try:
+            for n, files in (('decky-hearth-a', ('package.json', 'package.sh', 'plugin.json')), ('decky-hearth-b', ('package.json',)),
+                             ('decky-shared', ('package.json', 'package.sh')), ('decky-hearth-Bad', ('package.json', 'package.sh'))):
+                (tmp / 'hosts' / n).mkdir(parents=True)
+                for f in files:
+                    (tmp / 'hosts' / n / f).write_text('{"name": "A", "publish": {"description": "d"}}' if f.endswith('.json') else '')
+            (tmp / 'archive/hosts/decky-hearth-old').mkdir(parents=True)
+            self.assertEqual([p['id'] for p in m.discover(tmp)], ['decky-hearth-a'])
+            self.assertTrue(m.problems(tmp))   # no shared helper, no load mark: the CI check fails
+            # A plugin made from the template (with the shared frontend helper copied in) passes the check.
+            (tmp / 'hosts/decky-shared').mkdir(parents=True, exist_ok=True)
+            shutil.copy(SHARED / 'hearth-only.tsx', tmp / 'hosts/decky-shared/hearth-only.tsx')
+            shutil.rmtree(tmp / 'hosts/decky-hearth-a')
+            shutil.copytree(SHARED / 'template', tmp / 'hosts/decky-hearth-a')
+            shutil.copy(SHARED / 'hearth-only.tsx', tmp / 'hosts/decky-hearth-a/src/hearth-only.tsx')
+            self.assertEqual(m.problems(tmp), [])
+            self.assertIn('hosts/decky-shared/hearth_only.py', (SHARED / 'template/package.sh').read_text())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        wf = (ROOT / '.github/workflows/decky-plugins-release.yml').read_text()
+        self.assertIn('tools/decky_plugins.py', wf)
+        self.assertNotIn('for p in sync link music', wf)
 
 
 class AutoSwitch(Base):
