@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   DEFAULTS, REQUIRED, PAUSED_NOTE, normalize, checkSteam, decide, renderTheme, makePatchSet, appIdFor,
   homeFromHearth, homeFromSteam, pickHome, artCandidates, steamArtMethods, played, blipFor,
-  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, judgeStructure, judgeBar, menuNote, classKeys, diagnosticsText, isWebRoute, judgeVisible,
+  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, judgeStructure, judgeBar, menuNote, classKeys, diagnosticsText, isWebRoute, judgeVisible, sendReasons,
 } from "../src/model.ts";
 
 const CSS = readFileSync(new URL("../defaults/hearth-classic.css", import.meta.url), "utf8");
@@ -271,4 +271,15 @@ test("web pages and the self-check after resizing", () => {
   assert.match(judgeVisible([e(), e({ label: "Store", inside: false })]).why, /outside the window \(Store\)/);
   assert.match(judgeVisible([e({ shown: false })]).why, /hidden/);
   assert.match(judgeVisible([e({ hit: false, cover: ".GameBackground" })]).why, /covered by \.GameBackground/);
+});
+
+test("auto-send reasons", () => {
+  assert.equal(DEFAULTS.autoSend, false);
+  const k = (d, first = false) => sendReasons({ found: true, layout: "bar", method: "resized", why: "", selfCheck: "passed", ...d }, first).map(([key]) => key.split(":")[0]);
+  assert.deepEqual(k({}), []);
+  assert.deepEqual(k({}, true), ["first-open"]);
+  assert.deepEqual(k({ method: "mirror", why: "Steam's menu window couldn't be resized (241×760 → 241×760)" }), ["mirror", "resize-refused"]);
+  assert.deepEqual(k({ layout: "vertical", method: "vertical", why: "the top dock's self-check failed", selfCheck: "failed: 8 entries covered" }), ["fallback", "selfcheck"]);
+  assert.deepEqual(k({ layout: "none", method: "none", why: "only 2 menu entries found" }), ["paused"]);
+  assert.deepEqual(k({ found: false, layout: "none", method: "none", why: "not found" }, true), []);
 });

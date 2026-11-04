@@ -20,6 +20,9 @@ import shutil
 import subprocess
 import sys
 import time
+import re
+import urllib.parse
+import urllib.request
 
 try:
     import decky
@@ -35,7 +38,7 @@ for _p in (os.path.join(_here, '..', 'decky-shared'), _here):
 import hearth_only  # noqa: E402
 
 NAME = 'Hearth Classic'
-DEFAULTS = {'look': 'steam', 'home': True, 'sounds': False, 'wallpaper': True, 'menu': True, 'menuTop': True}
+DEFAULTS = {'look': 'steam', 'home': True, 'sounds': False, 'wallpaper': True, 'menu': True, 'menuTop': True, 'autoSend': False}
 HOME_TIMEOUT = 20
 HOME_EVERY = 60
 ART_LIMIT = 8 * 1024 * 1024
@@ -123,7 +126,7 @@ def clean_settings(raw):
     out = dict(DEFAULTS)
     if r.get('look') in ('steam', 'classic'):
         out['look'] = r['look']
-    for k in ('home', 'sounds', 'wallpaper', 'menu', 'menuTop'):
+    for k in ('home', 'sounds', 'wallpaper', 'menu', 'menuTop', 'autoSend'):
         if isinstance(r.get(k), bool):
             out[k] = r[k]
     return out
@@ -328,6 +331,7 @@ def home_layout(run=subprocess.run, now=None, finder=None):
 
 
 DIAG_LIMIT = 256 * 1024
+DIAG_TEXT = 60000   # the deep diagnostics (DOM outlines) are long
 
 
 def diag_log_path(home_dir=None):
@@ -342,7 +346,7 @@ def write_diag(text, home_dir=None, now=None):
         return ''
     p = diag_log_path(home_dir)
     stamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now if now is not None else time.time()))
-    entry = ''.join('%s %s\n' % (stamp, line) for line in text[:8000].splitlines() if line.strip())
+    entry = ''.join('%s %s\n' % (stamp, line) for line in text[:DIAG_TEXT].splitlines() if line.strip())
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
         try:
@@ -362,6 +366,143 @@ def write_diag(text, home_dir=None, now=None):
         return p
     except OSError:
         return ''
+
+
+# ---- Sending Hearth Classic's diagnostics through Hearth's own "Send logs" service (hearth-core logs.rs send_report:
+# POST text to SERVICE/v1/logs; the counter worker, counter/src/index.js, keeps it for 14 days under a code and files it
+# as an issue with the full text in the private repo Dragongamer9/hearth-logs). Only Hearth Classic's own diagnostics
+# and its log go: personal details are taken out first (home folder, user and Steam account names, web addresses'
+# queries, anything that looks like a token).
+SEND_SERVICE = 'https://hearth-counter.game305-cl.workers.dev'
+SEND_MAX = 400 * 1024
+AUTO_PER_DAY = 10
+MANUAL_PER_DAY = 20
+SENT_THIS_START = set()
+
+
+def steam_names(home_dir=None):
+    """Steam's account and persona names on this device (only to take them out of what's sent)."""
+    h = home_dir or home()
+    names = set()
+    for p in (os.path.join(h, '.local', 'share', 'Steam', 'config', 'loginusers.vdf'), os.path.join(h, '.steam', 'steam', 'config', 'loginusers.vdf')):
+        try:
+            with open(p, encoding='utf-8', errors='replace') as f:
+                for m in re.finditer(r'"(?:AccountName|PersonaName)"\s+"([^"]{2,64})"', f.read(200000)):
+                    names.add(m.group(1))
+        except OSError:
+            continue
+    return names
+
+
+def redact(text, home_dir=None, names=None):
+    h = home_dir or home()
+    user = os.path.basename(h.rstrip('/'))
+    t = text.replace(h, '~')
+    t = re.sub(r'(https?://[^\s?#"\']+)\?[^\s"\']*', r'\1?[query left out]', t)
+    t = re.sub(r'(?i)\b(token|access_token|refresh_token|key|secret|password|passwd|auth|session|cookie)\b(\s*[=:]\s*)\S+', r'\1\2[left out]', t)
+    t = re.sub(r'(?i)\bBearer\s+\S+', 'Bearer [left out]', t)
+    t = re.sub(r'\b7656119\d{10}\b', '[steam id]', t)
+    t = re.sub(r'[\w.+-]+@[\w-]+\.[\w.]+', '[email]', t)
+    for n in sorted((names if names is not None else steam_names(h)) | ({user} if len(user) > 2 else set()), key=len, reverse=True):
+        t = re.sub(r'(?<![\w])' + re.escape(n) + r'(?![\w])', '[user]', t)
+    return t
+
+
+def device_name():
+    try:
+        parts = []
+        for p in ('/sys/class/dmi/id/sys_vendor', '/sys/class/dmi/id/product_name'):
+            with open(p) as f:
+                parts.append(f.read().strip())
+        return ' '.join(x for x in parts if x)[:80] or 'unknown device'
+    except OSError:
+        return 'unknown device'
+
+
+def send_state_path():
+    d = getattr(decky, 'DECKY_PLUGIN_RUNTIME_DIR', None) if decky else None
+    return os.path.join(d or settings_dir(), 'sent.json')
+
+
+def read_send_state():
+    try:
+        with open(send_state_path()) as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_send_state(v):
+    """Atomic; only the plugin's own bookkeeping (when it last sent, how many today), not a setting."""
+    p = send_state_path()
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        tmp = p + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(v, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, p)
+    except OSError:
+        pass
+
+
+def send_body(reason, diag_text, version, home_dir=None, names=None, now=None):
+    """What's sent: Hearth's log format (the service only takes text starting "Hearth logs"), Hearth Classic only."""
+    try:
+        with open(diag_log_path(home_dir), encoding='utf-8', errors='replace') as f:
+            tail = f.read()[-200000:]
+    except OSError:
+        tail = '(no hearth-classic.log yet)'
+    when = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now if now is not None else time.time()))
+    body = '\n'.join(['Hearth logs (Hearth Classic diagnostics only)', 'Device: ' + device_name(), 'Hearth Classic: ' + version,
+                      'Reason: ' + reason, 'When: ' + when, '', '== What Hearth Classic found ==', diag_text or '(none)', '',
+                      '== hearth-classic.log (newest last) ==', tail])
+    return redact(body, home_dir, names)[-SEND_MAX:] if len(body) > SEND_MAX else redact(body, home_dir, names)
+
+
+def post_log(body, note, version, opener=urllib.request.urlopen):
+    req = urllib.request.Request(SEND_SERVICE + '/v1/logs', data=body.encode('utf-8'), method='POST', headers={
+        'Content-Type': 'text/plain; charset=utf-8', 'X-Hearth-Version': version, 'X-Hearth-Kind': 'peppermint',
+        'X-Hearth-Note': urllib.parse.quote(note[:300], safe=' ')})
+    with opener(req, timeout=60) as r:
+        v = json.loads(r.read(4096).decode('utf-8', 'replace') or '{}')
+    code = v.get('code') if isinstance(v, dict) else None
+    if not isinstance(code, str) or not code:
+        raise ValueError((v or {}).get('error', 'no code') if isinstance(v, dict) else 'no code')
+    return code
+
+
+def send_now(key, reason, diag_text, auto, settings=None, opener=urllib.request.urlopen, now=None):
+    """Sends (or says why not): {ok, code, at, skipped}. Automatic sends need the switch, at most one per reason per
+    plugin start and AUTO_PER_DAY a day; manual ones MANUAL_PER_DAY a day."""
+    now = time.time() if now is None else now
+    if auto:
+        s = settings if settings is not None else read_settings()[0]
+        if not s.get('autoSend'):
+            return {'ok': False, 'skipped': 'automatic sending is off'}
+        if key in SENT_THIS_START:
+            return {'ok': False, 'skipped': 'already sent for this since the plugin started'}
+    st = read_send_state()
+    day = time.strftime('%Y-%m-%d', time.localtime(now))
+    counts = st.get('days', {}) if isinstance(st.get('days'), dict) else {}
+    n = counts.get(day + (':auto' if auto else ':manual'), 0)
+    if n >= (AUTO_PER_DAY if auto else MANUAL_PER_DAY):
+        return {'ok': False, 'skipped': 'the limit for today is reached'}
+    if auto:
+        SENT_THIS_START.add(key)
+    version = hearth_only.plugin_version(plugin_dir()) or '?'
+    try:
+        code = post_log(send_body(reason, diag_text, version, now=now), 'Hearth Classic: ' + reason, version, opener)
+    except Exception as e:  # noqa: BLE001 (network, service)
+        log('send: not sent (%s)' % type(e).__name__)
+        return {'ok': False, 'error': "Couldn't send it (%s)" % type(e).__name__}
+    counts = {k: v for k, v in counts.items() if k.startswith(day)}
+    counts[day + (':auto' if auto else ':manual')] = n + 1
+    write_send_state({'days': counts, 'last': {'at': int(now), 'code': code, 'reason': reason[:200], 'auto': auto}})
+    write_diag('sent to Hearth (%s): code %s, %s' % ('automatically' if auto else 'by hand', code, reason))
+    return {'ok': True, 'code': code, 'at': int(now)}
 
 
 class Plugin:
@@ -404,11 +545,27 @@ class Plugin:
         ~/.local/share/nimbus/hearth-classic.log (Hearth's Logs app)."""
         if not hearth_only.check()[0] or not isinstance(text, str):
             return {'ok': False}
-        for line in text[:8000].splitlines():
+        for line in text[:DIAG_TEXT].splitlines()[:60]:
             if line.strip():
                 log('diagnostics: ' + line[:400])
         p = write_diag(text)
         return {'ok': bool(p), 'path': p.replace(home(), '~', 1) if p else ''}
+
+    async def send_log(self, key, reason, text, auto):
+        """Hearth Classic's diagnostics through Hearth's Send logs service: automatically (the switch, rate-limited)
+        or by hand ("Send Hearth Classic log now")."""
+        if not hearth_only.check()[0]:
+            return NOT_HEARTH
+        key = key if isinstance(key, str) else 'other'
+        reason = reason if isinstance(reason, str) and reason.strip() else 'by hand'
+        text = text if isinstance(text, str) else ''
+        return await asyncio.get_running_loop().run_in_executor(None, lambda: send_now(key[:80], reason[:300], text[:DIAG_TEXT], bool(auto)))
+
+    async def last_sent(self):
+        if not hearth_only.check()[0]:
+            return None
+        v = read_send_state().get('last')
+        return v if isinstance(v, dict) else None
 
     async def report(self, line):
         if isinstance(line, str):

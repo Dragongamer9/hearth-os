@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [ ] Hearth Classic round 6: "Send diagnostics to Hearth automatically" (off until you turn it on) sends Hearth Classic's own diagnostics through Hearth's Send logs when the bar falls back, the self-check fails, the mirror is used or a resize is refused, and once at the first menu opening (once per reason per start, ten a day, personal details taken out), plus "Send Hearth Classic log now" and "Last sent"; much deeper diagnostics of Steam's windows while the menu is open, to find the blank side menu and the blank top dock. docs/HEARTH-LOOK.md (needs testing on a device)
+
 - [ ] Hearth Classic round 5: no blank menu behind the bottom bar (Steam's empty side-menu place is hidden while the bar is up), the Store keeps Steam's menu in its own place in Hearth's colours (web pages are drawn above the bar), and a self-check after resizing makes sure the bar's entries are really visible, else Steam's window goes back (in a game: Steam's menu in Hearth's colours instead of a blank strip). docs/HEARTH-LOOK.md (needs testing on a device)
 
 - [ ] Hearth Classic round 4: the bottom bar and the in-game top bar fit on a device: Steam's narrow menu window is resized to a bar at the bottom (the top while a game runs) and put back afterwards, or, where Steam won't resize it, Hearth's bar is drawn in the main window and follows Steam's see-through menu (up and down move it, A presses Steam's entry). Diagnostics show the method and the window's size before and after. docs/HEARTH-LOOK.md (needs testing on a device)
