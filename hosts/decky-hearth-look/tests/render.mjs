@@ -145,7 +145,9 @@ await scene("skin-hearth-classic-library", { scene: "library", qam: false, setti
 // 3b. A Steam whose navigator lacks the places' calls: every place still opens a page (the Library), never an empty one.
 await scene("places-fallback", { settings: { look: "classic" }, qam: false, navigator: "missing", skin: true }, async () => {
   const got = await places();
-  for (const [k, v] of Object.entries(got)) if (!(v === "route:/library" || (k === "Settings" && v === "route:/settings"))) errors.push(`places-fallback: ${k} used ${v}`);
+  // The Store still has the window's own NavigateToSteamWeb in this Steam; the rest fall back to a page.
+  const ok = { Library: "route:/library", Store: "window:NavigateToSteamWeb", Downloads: "route:/library", Media: "route:/library", Friends: "route:/library", Settings: "route:/settings" };
+  for (const [k, v] of Object.entries(got)) if (ok[k] !== v) errors.push(`places-fallback: ${k} used ${v}`);
 });
 // 3c. A game page: Steam's look, then Hearth Classic.
 await scene("game-steam", { scene: "game", qam: false, skin: false });
