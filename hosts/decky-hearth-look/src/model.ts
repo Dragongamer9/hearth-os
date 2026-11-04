@@ -4,15 +4,15 @@
 // ---------------------------------------------------------------- settings
 
 export type Look = "steam" | "classic";
-export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean; menu: boolean; menuTop: boolean }
+export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean; menu: boolean; menuTop: boolean; autoSend: boolean }
 /** Off until the person turns it on (Quick Access › Hearth Classic). Never changed by the plugin itself. The parts
  *  (home, wallpaper, the bottom bar menu, the top bar in a game) are on once Hearth Classic is picked; sounds are off. */
-export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true, menu: true, menuTop: true };
+export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true, menu: true, menuTop: true, autoSend: false };
 
 export function normalize(raw: unknown): Settings {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const b = (k: keyof Settings) => (typeof r[k] === "boolean" ? (r[k] as boolean) : (DEFAULTS[k] as boolean));
-  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper"), menu: b("menu"), menuTop: b("menuTop") };
+  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper"), menu: b("menu"), menuTop: b("menuTop"), autoSend: b("autoSend") };
 }
 
 // ---------------------------------------------------------------- Steam's modules
@@ -119,6 +119,21 @@ export function menuNote(d: { layout: string; why: string; found: boolean }, s: 
   return d.found ? `${MENU_PAUSED}: ${d.why}; Steam's own menu is shown` : "";
 }
 
+/** Why the diagnostics should go to Hearth (when "Send diagnostics to Hearth automatically" is on): [key, reason]
+ *  pairs. The backend sends at most one per key per plugin start, and ten a day. `first`: the menu hasn't been seen
+ *  open yet since the plugin started. */
+export function sendReasons(d: { found: boolean; layout: string; method?: string; why: string; selfCheck?: string }, first: boolean): [string, string][] {
+  const out: [string, string][] = [];
+  const open = d.found && (d.layout === "bar" || d.layout === "top" || d.layout === "vertical");
+  if (first && open) out.push(["first-open", "the menu's first opening since the plugin started"]);
+  if (d.method === "mirror") out.push(["mirror", "the mirror bar is used" + (d.why ? ": " + d.why : "")]);
+  if (d.layout === "vertical") out.push(["fallback:" + d.why.slice(0, 40), "the bar fell back to Steam's menu: " + d.why]);
+  if (d.selfCheck && d.selfCheck.startsWith("failed")) out.push(["selfcheck", "the self-check " + d.selfCheck]);
+  if (/couldn't be resized|keeps the menu window narrow/.test(d.why)) out.push(["resize-refused", "resizing Steam's menu window was refused: " + d.why]);
+  if (d.found && d.layout === "none" && d.why) out.push(["paused:" + d.why.slice(0, 40), "the bar is paused: " + d.why]);
+  return out;
+}
+
 /** Every Steam class name the skin asks for, resolved or missing (for the diagnostics). */
 export function classKeys(css: string, resolve: Resolve): { resolved: string[]; missing: string[] } {
   const seen = new Set<string>();
@@ -146,7 +161,7 @@ export function diagnosticsText(d: { state: string; why: string; settings: Setti
   const s = d.settings;
   return [
     `Hearth Classic: ${d.state}${d.why ? " (" + d.why + ")" : ""}`,
-    `Settings: look ${s.look}, home ${s.home}, wallpaper ${s.wallpaper}, bottom bar ${s.menu}, top bar in a game ${s.menuTop}, sounds ${s.sounds}`,
+    `Settings: look ${s.look}, home ${s.home}, wallpaper ${s.wallpaper}, bottom bar ${s.menu}, top bar in a game ${s.menuTop}, sounds ${s.sounds}, send automatically ${s.autoSend}`,
     `Steam windows: ${d.windows.join(", ") || "none found"}`,
     `Class names: ${d.keys.resolved.length} found, ${d.keys.missing.length} missing${d.keys.missing.length ? ": " + d.keys.missing.join(", ") : ""}`,
     `Menu: ${d.menu.found ? "found" : "not found"} (#MainNavMenuContainer), ${d.menu.entries} entries${d.menu.labels.length ? " [" + d.menu.labels.join(", ") + "]" : ""}`,

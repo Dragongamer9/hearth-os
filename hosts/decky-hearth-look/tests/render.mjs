@@ -212,8 +212,16 @@ await scene("menu-top-covered-in-game", { scene: "game", qam: false, menu: "stea
   if (!m.diag || !/top dock/.test(m.diag.why) || !/cover/.test(m.diag.why)) errors.push(`menu-top-covered-in-game: ${m.diag && m.diag.why}`);
 });
 // B: a menu window that can't be resized: Hearth's bar in the main window, following Steam's see-through menu.
-await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam", menuWidth: 241, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam", menuWidth: 241, settings: { look: "classic", autoSend: true }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
+  // "Send diagnostics to Hearth automatically" on: the mirror (and the first opening) go to Hearth, with the deep dump.
+  const sends = await page.evaluate(() => window.HC_SENT || []);
+  const keys = sends.filter((x) => x.auto).map((x) => x.key.split(":")[0]);
+  for (const k of ["first-open", "mirror", "resize-refused"]) if (!keys.includes(k)) errors.push(`auto-send: no "${k}" send (${keys})`);
+  const deep = (await page.evaluate(() => (window.HC_DIAGS || []).filter((t) => t.includes("== Deep diagnostics ==")).pop() || ""));
+  for (const w of ['MainNavMenuAnchor: class "mm_Anchor", 1 match', "container: div#MainNavMenuContainer", "Main window (1280×800)", "Menu window \"MainMenu_uid2\"", "Router.MainRunningApp: none", "Windows: "])
+    if (!deep.includes(w)) errors.push(`deep diagnostics: missing ${w}`);
+  console.log(`::notice title=deep diagnostics (mirror)::${deep.slice(0, 3000).replace(/\n/g, " | ")}`);
   if (!m.mirror || m.mirror.n !== 8 || m.mirror.on !== 1 || m.mirror.top < 600) errors.push(`menu-mirror-bottom: no mirror bar at the bottom (${JSON.stringify(m.mirror)})`);
   if (!/hearth-ghost/.test(m.cls) || m.panelOpacity !== "0") errors.push(`menu-mirror-bottom: Steam's menu isn't see-through (${m.cls}, ${m.panelOpacity})`);
   if (m.win.width !== 241) errors.push("menu-mirror-bottom: Steam's menu window was moved");
@@ -239,7 +247,19 @@ await scene("panel-diagnostics", { scene: "library", menu: "steam", menuWidth: 2
   await page.waitForTimeout(600);
   await page.evaluate(() => { const m = document.getElementById("menuwin"); if (m) m.style.display = "none"; });
   const t = await page.evaluate(() => document.body.innerText);
-  for (const w of ["MainMenu_uid2", "Menu: found", "8 entries", "Menu bar: bar", "Steam's menu window resized", "before 241×760", "after 1280×150", "SteamClient.Window", "Class names:"]) if (!t.includes(w)) errors.push(`panel-diagnostics: missing ${w}`);
+  for (const w of ["MainMenu_uid2", "Menu: found", "8 entries", "Menu bar: bar", "Steam's menu window resized", "before 241×760", "after 1280×150", "SteamClient.Window", "Class names:", "Send diagnostics to Hearth automatically"]) if (!t.includes(w)) errors.push(`panel-diagnostics: missing ${w}`);
+  // Send by hand: the code shows as "Last sent".
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Send Hearth Classic log now")); b && b.click(); });
+  await page.waitForTimeout(800);
+  const t2 = await page.evaluate(() => document.body.innerText);
+  if (!t2.includes("Last sent:") || !t2.includes("code TEST-CODE-01")) errors.push("panel-diagnostics: no Last sent line after sending");
+  const man = await page.evaluate(() => (window.HC_SENT || []).filter((x) => !x.auto));
+  if (!man.length || man[0].len < 500) errors.push(`panel-diagnostics: the manual send carried no deep diagnostics (${JSON.stringify(man)})`);
+  // The picture: the found-text folded again, Quick Access scrolled down to the Diagnostics section.
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Hide what Hearth Classic found")); b && b.click(); });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { const p = document.querySelector(".ScrollPanel"); if (p) { p.style.overflowY = "auto"; p.style.flex = "1"; p.style.minHeight = "0"; p.scrollTop = p.scrollHeight; } });
+  await page.waitForTimeout(300);
   await page.screenshot({ path: join(out, "panel-diagnostics.png") });
 });
 // 3e. A settings dialog (Steam's rows, a toggle, a dropdown, buttons): Steam's look, then Hearth Classic.

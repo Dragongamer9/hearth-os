@@ -11,6 +11,7 @@ import sys
 import tempfile
 import types
 import unittest
+from urllib.parse import unquote as urllib_unquote
 
 HERE = pathlib.Path(__file__).resolve().parent
 PLUGIN = HERE.parent
@@ -270,6 +271,68 @@ class HomeData(Base):
         system(self.sys_root, False)
         shutil.rmtree(os.path.join(self.sys_root, 'usr'), ignore_errors=True)
         self.assertFalse(self.run_(p.diagnostics('x'))['ok'])
+
+    def fake_opener(self, sent, reply=b'{"code":"ABCD-EFGH-JK"}'):
+        import io
+
+        class R(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def open_(req, timeout=60):
+            sent.append(req)
+            return R(reply)
+        return open_
+
+    def test_auto_send_is_off_by_default_and_never_written(self):
+        p = self.m.Plugin()
+        self.assertFalse(self.run_(p.get_settings())['autoSend'])
+        sent = []
+        r = self.m.send_now('mirror', 'the mirror is used', 'diag', True, opener=self.fake_opener(sent))
+        self.assertEqual(r['skipped'], 'automatic sending is off')
+        self.assertEqual(sent, [])
+        self.assertFalse(os.path.exists(self.sfile))
+
+    def test_auto_send_once_per_reason_and_a_day_limit(self):
+        self.m.SENT_THIS_START.clear()
+        self.run_(self.m.Plugin().set_settings({'look': 'classic', 'autoSend': True}))
+        sent = []
+        op = self.fake_opener(sent)
+        r = self.m.send_now('mirror', 'the mirror is used', 'Menu: found', True, opener=op, now=1000)
+        self.assertTrue(r['ok'])
+        self.assertEqual(r['code'], 'ABCD-EFGH-JK')
+        self.assertTrue(self.m.send_now('mirror', 'again', 'x', True, opener=op, now=1001)['skipped'].startswith('already'))
+        for i in range(20):
+            self.m.send_now('reason-%d' % i, 'r', 'x', True, opener=op, now=1002)
+        self.assertEqual(len(sent), self.m.AUTO_PER_DAY)
+        self.assertTrue(self.m.send_now('one-more', 'r', 'x', True, opener=op, now=1003)['skipped'].startswith('the limit'))
+        # By hand still works (its own limit), and the last send is remembered for the panel.
+        self.assertTrue(self.m.send_now('manual', 'by hand', 'x', False, opener=op, now=1004)['ok'])
+        last = self.run_(self.m.Plugin().last_sent())
+        self.assertEqual((last['code'], last['auto']), ('ABCD-EFGH-JK', False))
+        # Hearth's Send logs service: its address, its headers, a body it takes.
+        req = sent[0]
+        self.assertEqual(req.full_url, 'https://hearth-counter.game305-cl.workers.dev/v1/logs')
+        self.assertEqual(req.get_header('X-hearth-kind'), 'peppermint')
+        self.assertTrue(req.data.decode().startswith('Hearth logs'))
+        self.assertIn('the%20mirror is used'.replace('%20', ' '), urllib_unquote(req.get_header('X-hearth-note')))
+
+    def test_what_is_sent_has_no_personal_details(self):
+        h = os.path.join(self.tmp, 'home')
+        os.makedirs(os.path.join(h, '.local', 'share', 'Steam', 'config'), exist_ok=True)
+        with open(os.path.join(h, '.local', 'share', 'Steam', 'config', 'loginusers.vdf'), 'w') as f:
+            f.write('"users" { "7656119800000001" { "AccountName" "dragonacct" "PersonaName" "Dragon Slayer" } }')
+        t = self.m.redact('at %s/x by Dragon Slayer (dragonacct) id 76561198012345678 https://store.example.com/app?id=1&t=2 '
+                          'token=abc123 mail a.b@c.de' % h, h)
+        for bad in (h, 'Dragon Slayer', 'dragonacct', '76561198012345678', 'id=1', 'abc123', 'a.b@c.de'):
+            self.assertNotIn(bad, t)
+        self.assertIn('https://store.example.com/app?[query left out]', t)
+        b = self.m.send_body('test', 'Menu: found', '1.2.4', home_dir=h, names={'Dragon Slayer'}, now=0)
+        self.assertTrue(b.startswith('Hearth logs (Hearth Classic diagnostics only)'))
+        self.assertIn('Reason: test', b)
 
     def test_no_other_trade_dress(self):
         import re

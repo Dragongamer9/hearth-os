@@ -9,8 +9,8 @@ import { callable, definePlugin, routerHook } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { HearthOnly, hearthOs } from "./hearth-only";
-import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, classKeys, decide, diagnosticsText, makePatchSet, menuNote, menuPlan, normalize, renderTheme } from "./model";
-import { MenuDiag, applySkin, gameRunning, menuDiag, removeSkin, startMenuBar, steamClass, windowNames } from "./theme";
+import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, classKeys, decide, diagnosticsText, makePatchSet, menuNote, menuPlan, normalize, renderTheme, sendReasons } from "./model";
+import { MenuDiag, applySkin, gameRunning, menuDeepDump, menuDiag, removeSkin, startMenuBar, steamClass, windowNames } from "./theme";
 import { Boundary, HearthHome, setSounds } from "./home";
 
 const getSettings = callable<[], unknown>("get_settings");
@@ -18,6 +18,9 @@ const setSettingsCall = callable<[Partial<Settings>], { ok: boolean; settings?: 
 const getBrand = callable<[], { css: string; logo: string; wallpaper: string } | null>("brand");
 const report = callable<[string], null>("report");
 const writeDiag = callable<[string], { ok: boolean; path?: string }>("diagnostics");
+type SendResult = { ok: boolean; code?: string; at?: number; skipped?: string; error?: string };
+const sendLog = callable<[string, string, string, boolean], SendResult>("send_log");
+const lastSent = callable<[], { at: number; code: string; reason: string; auto: boolean } | null>("last_sent");
 
 // ---------------------------------------------------------------- the live state
 
@@ -41,9 +44,25 @@ function onMenu(d: MenuDiag) {
   live.menuNote = menuNote(d, live.settings);
   const line = `menu: ${d.layout}, method ${d.method}${d.why ? " (" + d.why + ")" : ""}; found ${d.found ? "yes" : "no"}, ${d.entries} entries [${d.labels.join(", ")}], game ${d.game ? "running" : "none"}` +
     (d.before ? `; window ${d.before} -> ${d.after} with ${d.resizeWith}` : "") + `; page ${d.route}; self-check ${d.selfCheck || "-"}; menu place ${d.anchor || "-"}`;
-  if (line !== lastDiag) { lastDiag = line; writeDiag(line).catch(() => {}); }
+  if (line !== lastDiag) {
+    lastDiag = line;
+    writeDiag(line).catch(() => {});
+    // Something to look into (a fallback, the mirror, a failed self-check, a refused resize) or the menu's first
+    // opening since the plugin started: the deep diagnostics go into the log, and to Hearth when the owner turned
+    // "Send diagnostics to Hearth automatically" on (the backend sends each reason once per start, ten a day at most).
+    const reasons = sendReasons(d, !firstOpenSeen);
+    if (reasons.length) {
+      if (reasons.some(([k]) => k === "first-open")) firstOpenSeen = true;
+      const deep = diagnostics() + "\n" + menuDeepDump();
+      writeDiag(deep).catch(() => {});
+      if (live.settings.autoSend) for (const [key, why] of reasons) sendLog(key, why, deep, true).then(noteSent).catch(() => {});
+    }
+  }
   notify();
 }
+let firstOpenSeen = false;
+let sent: { at: number; code: string; auto: boolean } | null = null;
+function noteSent(r: SendResult) { if (r && r.ok && r.code) { sent = { at: r.at || Math.floor(Date.now() / 1000), code: r.code, auto: true }; notify(); } }
 
 function useLive() {
   const [, bump] = useState(0);
@@ -137,19 +156,37 @@ async function save(change: Partial<Settings>): Promise<string> {
 }
 
 /** What Hearth Classic found in this Steam, and a button that writes it to the log (for a device test). */
-function Diagnostics() {
+function Diagnostics(props: { autoSend: boolean; set: (c: Partial<Settings>) => void }) {
   useLive();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState("");
+  useEffect(() => { lastSent().then((v) => { if (v && v.code && !sent) { sent = { at: v.at, code: v.code, auto: v.auto }; notify(); } }).catch(() => {}); }, []);
   const text = diagnostics();
+  const when = sent ? new Date(sent.at * 1000).toLocaleString() : "";
   return (
     <PanelSection title="Diagnostics">
+      <PanelSectionRow>
+        <ToggleField label="Send diagnostics to Hearth automatically" checked={props.autoSend} onChange={(v: boolean) => props.set({ autoSend: v })}
+          description="When the bar falls back, the self-check fails, the mirror is used or a resize is refused (and once at the menu's first opening), Hearth Classic's own diagnostics go through Hearth's Send logs. Nothing personal: names, folders and addresses are taken out." />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => {
+          setSaved("Sending…");
+          const deep = text + "\n" + menuDeepDump();
+          writeDiag(deep).catch(() => {});
+          sendLog("manual", "sent by hand from the panel", deep, false).then((r) => {
+            if (r && r.ok && r.code) { sent = { at: r.at || Math.floor(Date.now() / 1000), code: r.code, auto: false }; setSaved("Sent: code " + r.code); notify(); }
+            else setSaved((r && (r.error || r.skipped)) || "Couldn't send it");
+          }).catch(() => setSaved("Couldn't send it"));
+        }}>Send Hearth Classic log now</ButtonItem>
+      </PanelSectionRow>
+      {sent && <PanelSectionRow><div className="hearth-last-sent" style={{ fontSize: 11.5, color: "#8d99a8" }}>Last sent: {when} (code {sent.code}){sent.auto ? ", automatically" : ""}</div></PanelSectionRow>}
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={() => setOpen(!open)}>{open ? "Hide what Hearth Classic found" : "Show what Hearth Classic found"}</ButtonItem>
       </PanelSectionRow>
       {open && <PanelSectionRow><pre className="hearth-diag" style={{ whiteSpace: "pre-wrap", fontSize: 10.5, lineHeight: 1.35, color: "#b8bcbf", margin: 0 }}>{text}</pre></PanelSectionRow>}
       <PanelSectionRow>
-        <ButtonItem layout="below" onClick={() => { setSaved(""); writeDiag(text).then((r) => setSaved(r && r.ok ? "Written to the log" + (r.path ? " (" + r.path + ")" : "") : "Couldn't write it")).catch(() => setSaved("Couldn't write it")); }}>
+        <ButtonItem layout="below" onClick={() => { setSaved(""); writeDiag(text + "\n" + menuDeepDump()).then((r) => setSaved(r && r.ok ? "Written to the log" + (r.path ? " (" + r.path + ")" : "") : "Couldn't write it")).catch(() => setSaved("Couldn't write it")); }}>
           Write a Hearth Classic log
         </ButtonItem>
       </PanelSectionRow>
@@ -197,7 +234,7 @@ function Panel() {
           <PanelSectionRow><ToggleField label="Hearth sounds" description="Hearth's soft sounds when moving on the home screen." checked={s.sounds} onChange={(v: boolean) => set({ sounds: v })} /></PanelSectionRow>
         </PanelSection>
       )}
-      {classic && <Diagnostics />}
+      {classic && <Diagnostics autoSend={s.autoSend} set={set} />}
       {err && <PanelSection><PanelSectionRow><div style={{ color: "#ff6b6b", fontSize: 12 }}>{err}</div></PanelSectionRow></PanelSection>}
     </>
   );

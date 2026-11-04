@@ -44,6 +44,10 @@ const handlers = {
   home: () => ({ ok: true, home: HOME, shortcuts: SHORTCUTS }),
   art: () => "",
   report: (l) => { window.HC_REPORTS.push(l); return null; },
+  diagnostics: (t) => { (window.HC_DIAGS = window.HC_DIAGS || []).push(t); return { ok: true, path: "~/.local/share/nimbus/hearth-classic.log" }; },
+  send_log: (key, reason, text, auto) => { (window.HC_SENT = window.HC_SENT || []).push({ key, reason, auto, len: text.length });
+    return auto && !saved.autoSend ? { ok: false, skipped: "automatic sending is off" } : { ok: true, code: "TEST-CODE-01", at: 1762200000 }; },
+  last_sent: () => null,
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export function definePlugin(f) { return f; }

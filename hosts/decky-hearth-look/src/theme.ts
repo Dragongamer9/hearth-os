@@ -133,6 +133,10 @@ export function mainRoute(): string {
 }
 
 /** Every entry really visible in its window: inside it, not hidden by itself or a parent, not covered. */
+let lastSelfCheck: { label: string; inside: boolean; shown: boolean; hit: boolean; cover: string }[] = [];
+let lastMenuDoc: Document | null = null;
+let lastAnchorClass = "";
+
 function visibleCheck(doc: Document, items: HTMLElement[]): { ok: boolean; why: string } {
   const win = doc.defaultView!;
   const list = items.map((e) => {
@@ -150,13 +154,87 @@ function visibleCheck(doc: Document, items: HTMLElement[]): { ok: boolean; why: 
     } catch { hit = false; }
     return { label: (e.textContent || "").trim().slice(0, 20), inside: r.width > 0 && r.height > 0 && r.right > 0 && r.left < win.innerWidth && r.bottom > 0 && r.top < win.innerHeight, shown, hit, cover };
   });
+  lastSelfCheck = list;
   return judgeVisible(list);
+}
+
+// ---- the deep diagnostics (round 6): what's really in Steam's windows while the menu is open, so a device log can
+// pinpoint the blank side menu and the blank top dock. Compact one-line outlines, capped.
+
+function outline(el: Element, win: Window): string {
+  const r = el.getBoundingClientRect();
+  let cs: CSSStyleDeclaration | null = null;
+  try { cs = win.getComputedStyle(el); } catch { cs = null; }
+  const cls = typeof (el as any).className === "string" ? (el as any).className.trim().split(/\s+/).filter(Boolean).slice(0, 4).join(".") : "";
+  const name = el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (cls ? "." + cls : "");
+  const st = cs ? ` pos=${cs.position} op=${cs.opacity} vis=${cs.visibility} disp=${cs.display} z=${cs.zIndex} bg=${cs.backgroundColor}${cs.backgroundImage && cs.backgroundImage !== "none" ? "+img" : ""}` +
+    `${cs.transform && cs.transform !== "none" ? " tf=" + cs.transform.slice(0, 40) : ""} t=${cs.top} b=${cs.bottom} l=${cs.left} w=${cs.width} h=${cs.height}` : "";
+  return `${name.slice(0, 120)} [${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}]${st}`;
+}
+
+function mainOutline(main: Window): string[] {
+  const out: string[] = [];
+  const d = main.document;
+  const all = Array.from(d.body ? d.body.querySelectorAll("*") : []);
+  const NAMES = /menu|nav|sidebar|side|overlay|backdrop|modal|anchor|scrim|dim/i;
+  for (const el of all) {
+    if (out.length >= 45) { out.push("… (more left out)"); break; }
+    if (el.id === "hearth-bar-mirror" || el.closest("#hearth-bar-mirror")) continue;
+    const r = el.getBoundingClientRect();
+    const cls = typeof (el as any).className === "string" ? (el as any).className : "";
+    const big = r.width >= 150 && r.height >= 300 && r.left < 320 && r.right > 0;
+    if ((big && r.width < main.innerWidth * 0.95) || (NAMES.test(cls) && r.width > 0 && r.height > 0)) out.push("  " + outline(el, main));
+  }
+  return out;
+}
+
+/** The deep dump for the log: the main window's elements around the side menu's place, the menu window's container
+ *  and its parents, what MainNavMenuAnchor matched, the windows (which one has the focus), the running game, and the
+ *  self-check per entry with the entries' boxes. */
+export function menuDeepDump(): string {
+  const lines: string[] = ["== Deep diagnostics =="];
+  try {
+    const wins = steamWindows();
+    lines.push("Windows: " + wins.map((w) => { let f = false; try { f = w.document.hasFocus(); } catch { /* */ } return `${(w.document.title || "(untitled)").slice(0, 30)} ${size(w)}${f ? " [focused]" : ""}`; }).join(" | "));
+    try {
+      const a = ((DUI as any).Router ?? (window as any).SteamUIStore)?.MainRunningApp;
+      lines.push("Router.MainRunningApp: " + (a ? `appid ${a.appid} "${String(a.display_name || "").slice(0, 40)}"` : "none"));
+    } catch { lines.push("Router.MainRunningApp: unreadable"); }
+    lines.push(`Window bounds: before ${menuDiag.before || "-"}, after ${menuDiag.after || "-"} (with ${menuDiag.resizeWith || "-"})`);
+    const main = mainWindow();
+    const cls = (lastAnchorClass || "").split(/\s+/)[0];
+    const matches = cls ? Array.from(main.document.querySelectorAll("." + cls)) : [];
+    lines.push(`MainNavMenuAnchor: class "${lastAnchorClass || "(none)"}", ${matches.length} match(es) in the main window`);
+    for (const m of matches.slice(0, 3)) lines.push("  " + outline(m, main));
+    lines.push(`Main window (${size(main)}), elements over the left side or named like a menu/overlay:`);
+    lines.push(...mainOutline(main));
+    const md = lastMenuDoc;
+    if (md && md.defaultView) {
+      const mw = md.defaultView;
+      let bodyBg = "?";
+      try { bodyBg = mw.getComputedStyle(md.body).backgroundColor + " / html " + mw.getComputedStyle(md.documentElement).backgroundColor; } catch { /* */ }
+      lines.push(`Menu window "${(md.title || "").slice(0, 30)}": ${size(mw)}, document ${md.documentElement.scrollWidth}×${md.documentElement.scrollHeight}, classes "${md.documentElement.className}", background ${bodyBg}`);
+      const c = md.getElementById("MainNavMenuContainer");
+      let n: Element | null = c;
+      for (let i = 0; n && i < 8; i++, n = n.parentElement) lines.push((i ? "  parent " + i + ": " : "  container: ") + outline(n, mw));
+      if (c) {
+        const panel = c.querySelector(":scope > .Panel");
+        if (panel) lines.push("  panel: " + outline(panel, mw));
+        Array.from(c.querySelectorAll(":scope > .Panel > * > .Panel.Focusable")).slice(0, 10).forEach((e, i) => lines.push(`  entry ${i}: ` + outline(e, mw)));
+      }
+      const others = Array.from(md.body ? md.body.children : []).filter((e) => !e.contains(c));
+      if (others.length) { lines.push("  other things in the menu window:"); others.slice(0, 8).forEach((e) => lines.push("    " + outline(e, mw))); }
+    } else lines.push("Menu window: not seen open yet");
+    lines.push("Self-check per entry: " + (lastSelfCheck.length ? lastSelfCheck.map((e) => `${e.label}:${e.inside ? "in" : "OUT"}/${e.shown ? "shown" : "HIDDEN"}/${e.hit ? "hit" : "COVERED" + (e.cover ? " by " + e.cover : "")}`).join(", ") : "not run"));
+  } catch (e) { lines.push("(the deep diagnostics stopped: " + String(e).slice(0, 120) + ")"); }
+  return lines.join("\n").slice(0, 40000);
 }
 
 interface DocState { mode: MenuMethod; topFailed: string; orig: { x: number; y: number; width: number; height: number } | null; tries: number; why: string; at: string; busy: boolean }
 
 export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChange?: (d: MenuDiag) => void }): () => void {
   const anchorClass = opts.anchorClass || "";
+  lastAnchorClass = anchorClass;
   const watched: { doc: Document; obs: MutationObserver }[] = [];
   const states = new Map<Document, DocState>();
   let last = "";
@@ -286,6 +364,7 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     try { active = active || doc.hasFocus(); } catch { /* keep */ }
     const route = mainRoute();
     menuDiag.route = route || "?";
+    if (onScreen && active) lastMenuDoc = doc;
     const colours = (why: string) => {
       restore(doc); hideMirror(); setMainOn(false);
       html.classList.remove("hearth-bar", "hearth-ghost"); html.classList.add("hearth-menu");
