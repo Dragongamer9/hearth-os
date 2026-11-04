@@ -10,6 +10,8 @@ import Quickshell.WindowManager
 Item {
     id: root
     property bool portrait: false
+    property bool island: false        // Mantel 2026's islands: round pills, the one you're on long and lit, no box
+    property real pillSize: 24
     // The desktops, in order: [{ name, active, set }] (set: the Windowset, for activate()).
     readonly property var sets: {
         const all = Array.from(WindowManager.windowsets || []).filter(w => w && w.shouldDisplay !== false);
@@ -34,6 +36,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
+        visible: !root.island
         radius: 10
         color: Theme.bg2
         border.color: Theme.line
@@ -52,10 +55,11 @@ Item {
                 id: pill
                 required property var modelData
                 required property int index
-                implicitWidth: 24
-                implicitHeight: 24
-                radius: 7
-                color: modelData.active ? Theme.accent : pa.containsMouse ? Theme.panel3 : "transparent"
+                implicitWidth: root.island && modelData.active ? root.pillSize * 1.7 : root.pillSize
+                implicitHeight: root.pillSize
+                radius: root.island ? Theme.r(root.pillSize / 2) : 7
+                color: modelData.active ? Theme.accent : pa.containsMouse ? Theme.panel3 : root.island ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07) : "transparent"
+                Behavior on implicitWidth { NumberAnimation { duration: Theme.quick } }
                 Text {
                     anchors.centerIn: parent
                     text: pill.index + 1

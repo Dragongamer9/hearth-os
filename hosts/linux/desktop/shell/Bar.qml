@@ -1,4 +1,5 @@
-// The Hearth taskbar: launcher button, virtual desktops, pinned and open apps, then tray, volume, network,
+// The classic Hearth taskbar (Mantel 2026: the fallback and the upright-screen bar; Islands.qml + Dock.qml are the
+// usual one): launcher button, virtual desktops, pinned and open apps, then tray, volume, network,
 // battery, Quick Access, keyboard, notifications, clock and a Game Mode button. A floating rounded bar along
 // the bottom of each screen (down the left side when the screen is upright); windows don't cover it.
 // Apps: pinned ones stay (DeskState, ~/.config/nimbus/desk.json); windows of the same app share a button.
@@ -26,8 +27,11 @@ PanelWindow {
     signal settingsRequested(string page)
     property var menu: null                // PopMenu, for the right-click menus
     property bool primary: false           // the main screen's bar (Super+1-9, the screenshot tool ask it)
-    onPrimaryChanged: if (primary) DeskState.mainBar = bar
-    Component.onCompleted: if (primary) DeskState.mainBar = bar
+    // Mantel 2026: this classic bottom taskbar is the safe fallback (shell.qml loads it when the islands or the dock
+    // can't load) and the bar on upright screens; it has the launcher, every app and the Game Mode button.
+    function claim() { if (!primary) return; DeskState.mainBar = bar; DeskState.classicBar = true; DeskState.topInset = 0; DeskState.bottomInset = portrait ? 0 : thickness; }
+    onPrimaryChanged: claim()
+    Component.onCompleted: claim()
 
     // Upright screen (a handheld held vertically, a rotated monitor): the bar goes down the left side.
     readonly property bool portrait: screen && screen.height > screen.width

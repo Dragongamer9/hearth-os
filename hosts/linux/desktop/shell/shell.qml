@@ -14,13 +14,19 @@ import Quickshell
 import Quickshell.Io
 
 ShellRoot {
-    // Wallpaper, taskbar and edge gestures on every screen.
+    // Wallpaper, the top islands, the dock and edge gestures on every screen (Mantel 2026).
+    // The islands (Islands.qml) and the dock (Dock.qml) are loaded by file name, so a problem in either can't stop the
+    // shell: if one can't load, or the screen is upright, the classic taskbar (Bar.qml: launcher, every app, the Game
+    // Mode button) comes up instead, so Desktop Mode always has a working bar, launcher and Game Mode button.
     Variants {
         model: Quickshell.screens
         delegate: Component {
             Scope {
+                id: perScreen
                 required property ShellScreen modelData
-                Wallpaper { screen: modelData }
+                readonly property bool primary: modelData === Quickshell.screens[0]
+                readonly property bool portrait: modelData.height > modelData.width
+                Wallpaper { screen: perScreen.modelData; primary: perScreen.primary }
                 // Desktop icons (main screen) and the desktop's right-click menu.
                 Desktop {
                     screen: modelData
@@ -30,15 +36,51 @@ ShellRoot {
                     settingsApp: settings
                     filesApp: files
                 }
-                Bar {
-                    screen: modelData
-                    primary: modelData === Quickshell.screens[0]
-                    menu: popMenu
-                    onSettingsRequested: page => settings.open(page)
-                    onLauncherRequested: launcher.toggle()
-                    onQuickRequested: quick.toggle()
-                    onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
-                    onCalendarRequested: calendar.toggle(modelData, portrait)
+                Loader {
+                    id: islands
+                    active: !perScreen.portrait && dock.status !== Loader.Error
+                    Component.onCompleted: setSource("Islands.qml", { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu })
+                    onLoaded: {
+                        item.quickOpen = Qt.binding(() => quick.shown);
+                        item.calendarOpen = Qt.binding(() => calendar.shown);
+                        item.launcherRequested.connect(() => launcher.toggle());
+                        item.quickRequested.connect(() => quick.toggle());
+                        item.keyboardRequested.connect(() => { if (keyboard.open) pad.closeKeyboard(); else pad.openKeyboard(); });
+                        item.calendarRequested.connect(() => calendar.toggle(perScreen.modelData, false));
+                        item.settingsRequested.connect(page => settings.open(page));
+                    }
+                    onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the top islands couldn't load; using the classic taskbar")
+                }
+                Loader {
+                    id: dock
+                    active: !perScreen.portrait
+                    Component.onCompleted: setSource("Dock.qml", { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu })
+                    onLoaded: {
+                        item.keyboardOpen = Qt.binding(() => keyboard.open === true);
+                        item.launcherRequested.connect(() => launcher.toggle());
+                    }
+                    onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the dock couldn't load; using the classic taskbar")
+                }
+                // The classic taskbar: upright screens, and the safe fallback.
+                Loader {
+                    active: perScreen.portrait || islands.status === Loader.Error || dock.status === Loader.Error
+                    sourceComponent: Component {
+                        Bar {
+                            screen: perScreen.modelData
+                            primary: perScreen.primary
+                            menu: popMenu
+                            onSettingsRequested: page => settings.open(page)
+                            onLauncherRequested: launcher.toggle()
+                            onQuickRequested: quick.toggle()
+                            onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
+                            onCalendarRequested: calendar.toggle(perScreen.modelData, portrait)
+                        }
+                    }
+                }
+                // The controller's button hints (Console: always; other looks: after using the controller).
+                Loader {
+                    active: perScreen.primary
+                    Component.onCompleted: setSource("HintStrip.qml", { screen: perScreen.modelData })
                 }
                 EdgeSwipes {
                     screen: modelData
@@ -55,6 +97,7 @@ ShellRoot {
     Launcher {
         id: launcher
         onSettingsRequested: settings.open("")
+        onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {
             const pinned = DeskState.isPinned(entry.id);
             const list = [{ label: "Open", icon: "open", run: () => launcher.launch(entry) }];
@@ -97,6 +140,8 @@ ShellRoot {
         onKeyboardRequested: pad.openKeyboard()
         onSettingsRequested: settings.open("")
         onPageRequested: p => settings.open(p)
+        onLockRequested: lockScreen.lock()
+        onPowerRequested: powerMenu.open()
     }
     RadialMenu { id: radial; mouseOn: pad.mouseOn }
     Keyboard { id: keyboard }
@@ -261,6 +306,13 @@ ShellRoot {
         target: "icons"
         function resolve(icon: string, appId: string): string { return AppIcons.find(icon, appId); }
         function entry(appId: string): string { const e = AppIcons.entryFor(appId); return e ? e.id + " " + (e.icon || "") : ""; }
+    }
+    // Mantel 2026: an auto-hide dock shown or hidden on purpose.
+    IpcHandler {
+        target: "dock"
+        function show(): void { DeskState.dockPeek = true; }
+        function hide(): void { DeskState.dockPeek = false; }
+        function toggle(): void { DeskState.dockPeek = !DeskState.dockPeek; }
     }
     IpcHandler {
         target: "quick"

@@ -1,5 +1,5 @@
-// The clock's panel (ClockPanel): notifications you missed (with Clear all and Do Not Disturb) above a month calendar with
-// today marked. Opens from the taskbar clock or bell, or `quickshell ipc ... call calendar toggle`.
+// The clock's panel (ClockPanel): the notification centre (with Clear all and Do Not Disturb) and, Mantel 2026, a
+// dashboard: a month calendar with today marked, what's playing, the weather and the system. Opens from the taskbar clock or bell, or `quickshell ipc ... call calendar toggle`.
 // With Hearth Calendar installed (hearth-time), days with events get a dot and the next events show under the month,
 // with a row that opens Calendar.
 // Keyboard / controller: Up/Down move, Enter (A) chooses, Left/Right (or Page Up/Down) change the
@@ -27,6 +27,7 @@ PanelWindow {
         nav = -1;
         shown = true;
         readEvents();   // Hearth Calendar
+        weatherRead.running = true;
         DeskState.unseen = 0;
         keys.forceActiveFocus();
     }
@@ -85,6 +86,13 @@ PanelWindow {
         return e.allDay ? day + " · All day" : day + " · " + Qt.formatTime(new Date(e.start), Settings.clock24 ? "HH:mm" : "h:mm AP");
     }
     function openCalendar() { close(); Quickshell.execDetached(["hearth-calendar"]); }
+    // Hearth Weather's summary for the dashboard ({} without a place or the app).
+    property var weather: ({})
+    Process {
+        id: weatherRead
+        command: ["hearth-time", "--weather-summary"]
+        stdout: StdioCollector { onStreamFinished: { try { root.weather = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { root.weather = {}; } } }
+    }
     // ---- end of Hearth Calendar
     function activate(i) {
         if (i === 0) DeskState.setDnd(!DeskState.dnd);
@@ -132,272 +140,348 @@ PanelWindow {
 
     MouseArea { anchors.fill: parent; onClicked: root.close() }
 
-    Rectangle {
+    // Mantel 2026: the notification centre and dashboard, a wide panel under the clock pill: notifications on the left;
+    // the month, the next events, what's playing, the weather and the system on the right. One column on a narrow
+    // screen; above the classic taskbar's clock, as before, when that's the bar in use.
+    Item {
         id: panel
-        width: Math.min(380, root.width - 24)
-        height: Math.min(root.height - 24 - (root.portraitBar ? 0 : root.barSize), content.implicitHeight + 36)
-        x: root.portraitBar ? root.barSize + 6 : root.width - width - 12
-        y: root.height - height - (root.portraitBar ? 12 : root.barSize + 6) + (root.shown ? 0 : 24)
+        readonly property bool wide: root.width >= 1000 && !root.portraitBar
+        readonly property bool fromTop: DeskState.topInset > 0
+        width: wide ? Math.min(1180, root.width - 24) : Math.min(400, root.width - 24)
+        readonly property int room: root.height - 24 - (fromTop ? DeskState.topInset + DeskState.bottomInset : (root.portraitBar ? 0 : root.barSize))
+        height: Math.min(room, content.implicitHeight + 40)
+        x: fromTop ? (root.width - width) / 2 : root.portraitBar ? root.barSize + 6 : root.width - width - 12
+        y: (fromTop ? DeskState.topInset + 2 : root.height - height - (root.portraitBar ? 12 : root.barSize + 6)) + (root.shown ? 0 : (fromTop ? -16 : 24))
         opacity: root.shown ? 1 : 0
         Behavior on y { NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: Theme.quick } }
-        radius: Theme.radius + 6
-        color: Theme.glass
-        border.color: Theme.line
         MouseArea { anchors.fill: parent }   // clicks inside don't close
+        Rectangle { anchors.fill: parent; radius: Theme.radius + 8; color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, Math.max(0.94, Theme.glassAlpha)); border.color: Theme.line; visible: frame.status !== Loader.Ready }
+        Loader { id: frame; anchors.fill: parent; source: "Frame.qml"; onLoaded: { item.solid = true; item.rad = Qt.binding(() => Theme.radius + 8); } }
 
-        ColumnLayout {
+        GridLayout {
             id: content
-            anchors { fill: parent; margins: 18 }
-            spacing: 14
+            anchors { fill: parent; margins: 20 }
+            columns: panel.wide ? 2 : 1
+            columnSpacing: 20
+            rowSpacing: 14
 
             // ---------------------------------------------------------------- notifications
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text { Layout.fillWidth: true; text: "Notifications"; color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
-                Chip {
-                    navIndex: 1
-                    visible: root.history.length > 0
-                    label: "Clear all"
-                }
-            }
-            Chip {
-                navIndex: 0
-                Layout.fillWidth: true
-                icon: DeskState.dnd ? "bell-off" : "bell"
-                label: "Do not disturb"
-                detail: DeskState.dnd ? "On: notifications wait here quietly" : "Off"
-                lit: DeskState.dnd
-            }
-
-            ListView {
-                id: list
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(contentHeight, Math.max(120, root.height * 0.42))
-                Layout.minimumHeight: root.history.length ? 80 : 0
-                visible: root.history.length > 0
-                clip: true
-                spacing: 8
-                model: root.history
-                currentIndex: root.nav >= 2 && root.nav < root.calRow ? root.nav - 2 : -1
-                onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
-                delegate: Rectangle {
-                    id: card
-                    required property var modelData
-                    required property int index
-                    readonly property bool lit: root.nav === index + 2
-                    width: list.width
-                    implicitHeight: crow.implicitHeight + 20
-                    radius: Theme.r(12)
-                    color: hover.containsMouse ? Theme.panel3 : Theme.panel2
-                    border.width: 2
-                    border.color: lit ? Theme.accent : "transparent"
-                    MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true }
-                    RowLayout {
-                        id: crow
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-                        spacing: 10
-                        AppIcon {
-                            Layout.alignment: Qt.AlignTop
-                            size: 32
-                            genericFallback: false
-                            visible: hasIcon
-                            source: card.modelData.image ? AppIcons.fromIcon(card.modelData.image) : ""
-                            icon: card.modelData.icon || ""
-                            appId: card.modelData.entry || ""
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text { Layout.fillWidth: true; text: card.modelData.app; visible: text !== ""; color: Theme.muted; font.pixelSize: 11; font.family: Theme.font; elide: Text.ElideRight }
-                                Text { text: root.when(card.modelData.time); color: Theme.muted; font.pixelSize: 11; font.family: Theme.font }
-                            }
-                            Text { Layout.fillWidth: true; text: card.modelData.summary; visible: text !== ""; color: Theme.text; font.bold: true; font.pixelSize: 13; font.family: Theme.font; elide: Text.ElideRight }
-                            Text {
-                                Layout.fillWidth: true
-                                visible: text !== ""
-                                text: card.modelData.body
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                maximumLineCount: 3
-                                elide: Text.ElideRight
-                                color: Theme.text
-                                opacity: 0.85
-                                font.pixelSize: 12
-                                font.family: Theme.font
-                            }
-                        }
-                        Text {
-                            Layout.alignment: Qt.AlignTop
-                            text: "×"
-                            color: x1.containsMouse || card.lit ? Theme.text : Theme.muted
-                            font.pixelSize: 18
-                            MouseArea { id: x1; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; onClicked: DeskState.forget(card.modelData.key) }
-                        }
-                    }
-                }
-            }
-            Text {
-                visible: root.history.length === 0
-                Layout.fillWidth: true
-                text: "No notifications"
-                color: Theme.muted
-                font.family: Theme.font
-                font.pixelSize: 13
-            }
-
-            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line }
-
-            // ---------------------------------------------------------------- calendar
-            Rectangle {
-                id: calCard
-                Layout.fillWidth: true
-                implicitHeight: cal.implicitHeight + 20
-                radius: Theme.r(12)
-                color: "transparent"
-                border.width: 2
-                border.color: root.nav === root.calRow ? Theme.accent : "transparent"
-                MouseArea { anchors.fill: parent; onWheel: w => { if (w.angleDelta.y !== 0) root.shiftMonth(w.angleDelta.y > 0 ? -1 : 1); } }
-
-                ColumnLayout {
-                    id: cal
-                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-                    spacing: 10
-
-                    SystemClock { id: clock; precision: SystemClock.Minutes }
-                    Text {
-                        text: Qt.formatDate(clock.date, "dddd, MMMM d")
-                        color: Theme.accent
-                        font.family: Theme.font
-                        font.pixelSize: 14
-                        font.weight: Font.DemiBold
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: Qt.formatDate(root.month, "MMMM yyyy")
-                            color: Theme.text
-                            font.family: Theme.font
-                            font.pixelSize: 16
-                            font.weight: Font.DemiBold
-                        }
-                        RoundButton { icon: "back"; tip: "Previous month"; onPicked: root.shiftMonth(-1) }
-                        RoundButton { icon: "forward"; tip: "Next month"; onPicked: root.shiftMonth(1) }
-                    }
-
-                    GridLayout {
-                        id: grid
-                        Layout.fillWidth: true
-                        columns: 7
-                        rowSpacing: 2
-                        columnSpacing: 2
-                        // Weeks start on the day your language uses (Sunday or Monday).
-                        readonly property int first: Qt.locale().firstDayOfWeek % 7
-                        readonly property var days: {
-                            const m = root.month;
-                            const start = new Date(m.getFullYear(), m.getMonth(), 1);
-                            const lead = (start.getDay() - first + 7) % 7;
-                            const out = [];
-                            for (let i = 0; i < 42; i++) out.push(new Date(m.getFullYear(), m.getMonth(), 1 - lead + i));
-                            return out;
-                        }
-                        Repeater {
-                            model: 7
-                            delegate: Text {
-                                required property int index
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                text: Qt.locale().dayName((grid.first + index) % 7, Locale.NarrowFormat)
-                                color: Theme.muted
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                            }
-                        }
-                        Repeater {
-                            model: grid.days
-                            delegate: Item {
-                                id: day
-                                required property var modelData
-                                readonly property bool inMonth: modelData.getMonth() === root.month.getMonth()
-                                readonly property bool today: modelData.toDateString() === clock.date.toDateString()
-                                Layout.fillWidth: true
-                                implicitHeight: 36
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 34; height: 34
-                                    radius: 17
-                                    color: day.today ? Theme.accent : "transparent"
-                                    border.color: day.today ? Qt.lighter(Theme.accent, 1.2) : "transparent"
-                                }
-                                // Hearth Calendar: a dot on days with events.
-                                Rectangle {
-                                    visible: !!root.eventDays[root.ymd(day.modelData)]
-                                    width: 4; height: 4; radius: 2
-                                    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 2 }
-                                    color: day.today ? Theme.accentInk : Theme.accent
-                                    z: 1
-                                }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: day.modelData.getDate()
-                                    color: day.today ? Theme.accentInk : day.inMonth ? Theme.text : Theme.muted
-                                    opacity: day.inMonth || day.today ? 1 : 0.55
-                                    font.family: Theme.font
-                                    font.pixelSize: 13
-                                    font.bold: day.today
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ---- Hearth Calendar: the next events (a week ahead) and a row that opens Calendar.
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: root.hasCalendar
-                spacing: 6
-                Repeater {
-                    model: root.upcoming
-                    delegate: Item {
-                        id: up
+                Layout.fillHeight: true
+                Layout.preferredWidth: panel.wide ? 480 : -1
+                Layout.maximumWidth: panel.wide ? 520 : 100000
+                Layout.alignment: Qt.AlignTop
+                spacing: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { text: "Notifications"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
+                    Rectangle {
+                        visible: root.history.length > 0
+                        implicitWidth: cnt.implicitWidth + 14; implicitHeight: 22; radius: 11
+                        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                        Text { id: cnt; anchors.centerIn: parent; text: root.history.length; color: Theme.accent; font.family: Theme.font; font.pixelSize: 12; font.bold: true }
+                    }
+                    Item { Layout.fillWidth: true }
+                    Chip {
+                        navIndex: 0
+                        icon: DeskState.dnd ? "bell-off" : "bell"
+                        label: DeskState.dnd ? "Do not disturb: on" : "Do not disturb"
+                        lit: DeskState.dnd
+                    }
+                    Chip {
+                        navIndex: 1
+                        visible: root.history.length > 0
+                        label: "Clear all"
+                    }
+                }
+                ListView {
+                    id: list
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(contentHeight, Math.max(120, panel.room - 140))
+                    Layout.minimumHeight: root.history.length ? 80 : 0
+                    visible: root.history.length > 0
+                    clip: true
+                    spacing: 8
+                    model: root.history
+                    currentIndex: root.nav >= 2 && root.nav < root.calRow ? root.nav - 2 : -1
+                    onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+                    delegate: Rectangle {
+                        id: card
                         required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: urow.implicitHeight + 4
+                        required property int index
+                        readonly property bool lit: root.nav === index + 2
+                        width: list.width
+                        implicitHeight: crow.implicitHeight + 20
+                        radius: Theme.r(12)
+                        color: hover.containsMouse ? Theme.panel3 : Theme.panel2
+                        border.width: 2
+                        border.color: lit ? Theme.accent : "transparent"
+                        MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true }
                         RowLayout {
-                            id: urow
-                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+                            id: crow
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
                             spacing: 10
-                            Rectangle { implicitWidth: 4; Layout.fillHeight: true; radius: 2; color: up.modelData.color || Theme.accent }
+                            AppIcon {
+                                Layout.alignment: Qt.AlignTop
+                                size: 32
+                                genericFallback: false
+                                visible: hasIcon
+                                source: card.modelData.image ? AppIcons.fromIcon(card.modelData.image) : ""
+                                icon: card.modelData.icon || ""
+                                appId: card.modelData.entry || ""
+                            }
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 0
-                                Text { Layout.fillWidth: true; text: up.modelData.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                                Text { Layout.fillWidth: true; text: root.whenText(up.modelData) + (up.modelData.location ? " · " + up.modelData.location : ""); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight }
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { Layout.fillWidth: true; text: card.modelData.app; visible: text !== ""; color: Theme.muted; font.pixelSize: 11; font.family: Theme.font; elide: Text.ElideRight }
+                                    Text { text: root.when(card.modelData.time); color: Theme.muted; font.pixelSize: 11; font.family: Theme.font }
+                                }
+                                Text { Layout.fillWidth: true; text: card.modelData.summary; visible: text !== ""; color: Theme.text; font.bold: true; font.pixelSize: 13; font.family: Theme.font; elide: Text.ElideRight }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: text !== ""
+                                    text: card.modelData.body
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                    color: Theme.text
+                                    opacity: 0.85
+                                    font.pixelSize: 12
+                                    font.family: Theme.font
+                                }
+                            }
+                            Text {
+                                Layout.alignment: Qt.AlignTop
+                                text: "×"
+                                color: x1.containsMouse || card.lit ? Theme.text : Theme.muted
+                                font.pixelSize: 18
+                                MouseArea { id: x1; anchors.fill: parent; anchors.margins: -8; hoverEnabled: true; onClicked: DeskState.forget(card.modelData.key) }
                             }
                         }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openCalendar() }
                     }
                 }
                 Text {
-                    visible: root.upcoming.length === 0
-                    text: "Nothing planned this week"
+                    visible: root.history.length === 0
+                    Layout.fillWidth: true
+                    text: DeskState.dnd ? "No notifications. Do not disturb is on: new ones wait here quietly." : "No notifications"
+                    wrapMode: Text.WordWrap
                     color: Theme.muted
                     font.family: Theme.font
-                    font.pixelSize: 12
+                    font.pixelSize: 13
                 }
-                Chip {
-                    navIndex: root.calOpenRow
-                    Layout.fillWidth: true
-                    icon: "calendar"
-                    label: "Open Calendar"
+                Item { Layout.fillHeight: true }
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: "Muted apps and history: Settings › Notifications"
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { root.close(); if (SettingsNav.settingsApp) SettingsNav.settingsApp.open("notifications"); } }
                 }
             }
-            // ---- end of Hearth Calendar
+
+            // ---------------------------------------------------------------- dashboard
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                spacing: 14
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: panel.wide ? 2 : 1
+                    columnSpacing: 14
+                    rowSpacing: 10
+                    Rectangle {
+                        id: calCard
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        implicitHeight: cal.implicitHeight + 20
+                        radius: Theme.r(12)
+                        color: Qt.rgba(Theme.panel2.r, Theme.panel2.g, Theme.panel2.b, 0.7)
+                        border.width: 2
+                        border.color: root.nav === root.calRow ? Theme.accent : "transparent"
+                        MouseArea { anchors.fill: parent; onWheel: w => { if (w.angleDelta.y !== 0) root.shiftMonth(w.angleDelta.y > 0 ? -1 : 1); } }
+
+                        ColumnLayout {
+                            id: cal
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                            spacing: 10
+
+                            SystemClock { id: clock; precision: SystemClock.Minutes }
+                            Text {
+                                text: Qt.formatDate(clock.date, "dddd, MMMM d")
+                                color: Theme.accent
+                                font.family: Theme.font
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: Qt.formatDate(root.month, "MMMM yyyy")
+                                    color: Theme.text
+                                    font.family: Theme.font
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                }
+                                RoundButton { icon: "back"; tip: "Previous month"; onPicked: root.shiftMonth(-1) }
+                                RoundButton { icon: "forward"; tip: "Next month"; onPicked: root.shiftMonth(1) }
+                            }
+
+                            GridLayout {
+                                id: grid
+                                Layout.fillWidth: true
+                                columns: 7
+                                rowSpacing: 2
+                                columnSpacing: 2
+                                // Weeks start on the day your language uses (Sunday or Monday).
+                                readonly property int first: Qt.locale().firstDayOfWeek % 7
+                                readonly property var days: {
+                                    const m = root.month;
+                                    const start = new Date(m.getFullYear(), m.getMonth(), 1);
+                                    const lead = (start.getDay() - first + 7) % 7;
+                                    const out = [];
+                                    for (let i = 0; i < 42; i++) out.push(new Date(m.getFullYear(), m.getMonth(), 1 - lead + i));
+                                    return out;
+                                }
+                                Repeater {
+                                    model: 7
+                                    delegate: Text {
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: Qt.locale().dayName((grid.first + index) % 7, Locale.NarrowFormat)
+                                        color: Theme.muted
+                                        font.family: Theme.font
+                                        font.pixelSize: 12
+                                    }
+                                }
+                                Repeater {
+                                    model: grid.days
+                                    delegate: Item {
+                                        id: day
+                                        required property var modelData
+                                        readonly property bool inMonth: modelData.getMonth() === root.month.getMonth()
+                                        readonly property bool today: modelData.toDateString() === clock.date.toDateString()
+                                        Layout.fillWidth: true
+                                        implicitHeight: 36
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 34; height: 34
+                                            radius: 17
+                                            color: day.today ? Theme.accent : "transparent"
+                                            border.color: day.today ? Qt.lighter(Theme.accent, 1.2) : "transparent"
+                                        }
+                                        // Hearth Calendar: a dot on days with events.
+                                        Rectangle {
+                                            visible: !!root.eventDays[root.ymd(day.modelData)]
+                                            width: 4; height: 4; radius: 2
+                                            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 2 }
+                                            color: day.today ? Theme.accentInk : Theme.accent
+                                            z: 1
+                                        }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: day.modelData.getDate()
+                                            color: day.today ? Theme.accentInk : day.inMonth ? Theme.text : Theme.muted
+                                            opacity: day.inMonth || day.today ? 1 : 0.55
+                                            font.family: Theme.font
+                                            font.pixelSize: 13
+                                            font.bold: day.today
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ---- Hearth Calendar: the next events (a week ahead) and a row that opens Calendar.
+                    ColumnLayout {
+                        Layout.fillWidth: !panel.wide
+                        Layout.preferredWidth: panel.wide ? 230 : -1
+                        Layout.alignment: Qt.AlignTop
+                        visible: root.hasCalendar
+                        spacing: 6
+                        Repeater {
+                            model: root.upcoming
+                            delegate: Item {
+                                id: up
+                                required property var modelData
+                                Layout.fillWidth: true
+                                implicitHeight: urow.implicitHeight + 4
+                                RowLayout {
+                                    id: urow
+                                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+                                    spacing: 10
+                                    Rectangle { implicitWidth: 4; Layout.fillHeight: true; radius: 2; color: up.modelData.color || Theme.accent }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+                                        Text { Layout.fillWidth: true; text: up.modelData.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                        Text { Layout.fillWidth: true; text: root.whenText(up.modelData) + (up.modelData.location ? " · " + up.modelData.location : ""); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; elide: Text.ElideRight }
+                                    }
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openCalendar() }
+                            }
+                        }
+                        Text {
+                            visible: root.upcoming.length === 0
+                            text: "Nothing planned this week"
+                            color: Theme.muted
+                            font.family: Theme.font
+                            font.pixelSize: 12
+                        }
+                        Chip {
+                            navIndex: root.calOpenRow
+                            Layout.fillWidth: true
+                            icon: "calendar"
+                            label: "Open Calendar"
+                        }
+                    }
+                    // ---- end of Hearth Calendar
+                }
+                // What's playing (MPRIS; MediaCard.qml, loaded on its own).
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: item && item.has ? item.implicitHeight : 0
+                    active: root.shown
+                    source: "MediaCard.qml"
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    // The weather (Hearth Weather's summary for your place; opens Weather).
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 150
+                        visible: !!root.weather.line
+                        Rectangle { anchors.fill: parent; radius: Theme.r(16); color: Theme.panel2 }
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 18 }
+                            spacing: 6
+                            Text { text: ("Weather" + (root.weather.place ? " · " + root.weather.place : "")).toUpperCase(); color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1.2 }
+                            RowLayout {
+                                spacing: 12
+                                Icon { name: root.weather.day === false ? "moon" : "sun"; size: 40; color: Theme.flame }
+                                Text { Layout.fillWidth: true; text: root.weather.line || ""; wrapMode: Text.WordWrap; color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.DemiBold }
+                            }
+                            Item { Layout.fillHeight: true }
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { root.close(); Quickshell.execDetached(["hearth-weather"]); } }
+                    }
+                    // CPU, GPU, memory, temperature (StatsCard.qml: read only while this is open).
+                    Loader {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 150
+                        active: root.shown
+                        source: "StatsCard.qml"
+                    }
+                }
+            }
         }
     }
 

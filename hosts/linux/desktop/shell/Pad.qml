@@ -110,6 +110,8 @@ Scope {
     function handle(line) {
         let m;
         try { m = JSON.parse(line); } catch (e) { return; }
+        // The controller was just used for Hearth's menus: Mantel 2026's button-hint strip shows for a while (HintStrip.qml).
+        if (["radial", "osk", "oskpad", "launcher", "help"].indexOf(m.t) >= 0) DeskState.padSeen = Date.now();
         switch (m.t) {
         case "ready": problem = ""; sync(); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
         case "error": problem = m.text; break;

@@ -22,7 +22,14 @@ Singleton {
     property int seq: 0
     property bool overlayShown: false      // a menu, dialog or the clock's panel is open (Pad.qml: the controller types keys)
     property var mainDesktop: null         // the main screen's Desktop (for `quickshell ipc ... call desktop menu`)
-    property var mainBar: null             // the main screen's taskbar (Super+1-9)
+    property var mainBar: null             // the main screen's taskbar (Super+1-9): the dock (Dock.qml), or the classic Bar.qml
+    // ---- Mantel 2026: where the top islands and the dock are, so panels open next to them (Islands.qml, Dock.qml).
+    // The classic bar (Bar.qml, the safe fallback and upright screens) sets bottomInset only.
+    property int topInset: 0               // the islands' height plus gap (0 = no top bar)
+    property int bottomInset: 0            // the dock's (or the classic bar's) height plus gap
+    property bool classicBar: false        // the classic bottom taskbar is in use (fallback, or an upright screen)
+    property bool dockPeek: false          // an auto-hide dock shown on purpose (hover, `ipc call dock show`)
+    property double padSeen: 0             // when the controller was last used for Hearth's menus (the hint strip)
     property bool locked: false            // the lock screen is up (Lock.qml): moving wallpapers pause
     property bool screenOff: false         // the screen was turned off for idling (IdlePower.qml): they pause too
     property var shownDesktop: null        // Show desktop: {windows, front} that were minimized for it

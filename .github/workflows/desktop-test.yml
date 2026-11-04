@@ -39,7 +39,10 @@ jobs:
 
       # The looks (Settings › Appearance) for labwc, Qt/KDE, GTK and Hearth's own apps (theme.css / theme.json).
       - name: Looks and apps theme tests
-        run: python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+          # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -635,6 +638,67 @@ jobs:
           variant hearth-light hearth light ""
           variant hearth-steamblue hearth dark "#1a9fff"
           variant hearth-default hearth dark ""
+          # ---- Mantel 2026: every look (Settings › Appearance › Look), each with the desktop, Quick settings, the
+          # launcher, the notification centre + dashboard and Settings › Appearance, in shots/looks/mantel/.
+          # The Cabin and Console looks use the image's own wallpapers (/usr/share/backgrounds/hearth).
+          mkdir -p /usr/share/backgrounds/hearth $o/mantel
+          cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/ 2>/dev/null || true
+          m=$o/mantel
+          look_shots() {  # look mode
+            set_look "$1" "$2" "" ""; sleep 3
+            grim "$m/$1-$2-1-desktop.png" || true
+            ipc quick toggle; grim "$m/$1-$2-2-quick-settings.png" || true; ipc quick toggle
+            ipc launcher toggle; grim "$m/$1-$2-3-launcher.png" || true
+            ipc launcher close
+            ipc calendar open; grim "$m/$1-$2-4-notifications-dashboard.png" || true; ipc calendar close
+            ipc settings page appearance; sleep 2; grim "$m/$1-$2-5-settings-appearance.png" || true; ipc settings close
+          }
+          (timeout 15 notify-send -a "Friends" "Mira" "Ready for co-op tonight?" || true) &
+          sleep 2
+          for look in hearth steam gaming zen glass synthwave cabin console; do look_shots "$look" dark; done
+          look_shots hearth light
+          look_shots glass light
+          # The launcher's search finding a Settings page and a game; a notification in the pill.
+          set_look hearth dark "" ""; sleep 2
+          ipc launcher toggle; wtype "wi" 2>/dev/null || true; sleep 2; grim "$m/search-settings-page.png" || true; ipc launcher close
+          ipc launcher toggle; wtype "cel" 2>/dev/null || true; sleep 2; grim "$m/search-game.png" || true; ipc launcher close
+          (timeout 15 notify-send -a "Hearth" "Download finished" "Celeste is ready to play" || true) &
+          sleep 2; grim "$m/hearth-notification-pill.png" || true
+          # Handheld (1280×800): the essentials in the bar, bigger dock icons.
+          wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; sleep 4
+          grim "$m/handheld-hearth-1-desktop.png" || true
+          ipc quick toggle; grim "$m/handheld-hearth-2-quick-settings.png" || true; ipc quick toggle
+          set_look console dark "" ""; sleep 3; grim "$m/handheld-console-1-desktop.png" || true
+          set_look gaming dark "" ""; sleep 3; grim "$m/handheld-gaming-1-desktop.png" || true
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 3
+          # Bar and dock options on top of a look: Hearth with a full-width bar and an auto-hiding dock.
+          python3 - "$D" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p)); d.update(look='hearth', barStyle='bar', dockMode='autohide', deskClock='on'); open(p, 'w').write(json.dumps(d))
+          PY
+          sleep 3; grim "$m/hearth-bar-autohide.png" || true
+          python3 - "$D" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          for k in ('barStyle', 'dockMode', 'deskClock'): d.pop(k, None)
+          open(p, 'w').write(json.dumps(d))
+          PY
+          sleep 2
+          # Nothing the looks did may have written a new option by itself (Mantel 2026's keys stay out of the file
+          # until someone changes them; the ones this test set were taken out again above).
+          cp "$D" $m/desktop.json 2>/dev/null || true
+          python3 - "$D" <<'PY' || { echo "::error title=Mantel 2026::a setting was written that nobody changed: $(tr -d '\n' < "$D" | cut -c1-400)"; touch shots/FAILED; }
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          new = {'barStyle', 'dockMode', 'deskClock', 'panelGlass', 'sunset', 'sunsetLight', 'sunsetDark', 'accentFrom', 'wallSwatches'}
+          sys.exit(1 if new & set(d) else 0)
+          PY
+          if grep -q "using the classic taskbar" "$LOG" 2>/dev/null; then
+            echo "::error title=Mantel 2026::the islands or the dock didn't load: $(grep -B3 'using the classic taskbar' "$LOG" | head -8 | cut -c1-200 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Mantel 2026::every look rendered with the islands and the dock ($(ls $m | wc -l) pictures in looks/mantel)"
+          fi
           cp "$HOME/.config/nimbus/theme/themerc-override" $o/themerc-override.txt 2>/dev/null || true
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
           set +x
