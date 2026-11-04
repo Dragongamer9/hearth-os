@@ -48,8 +48,9 @@ jobs:
           if ! pnpm build > /tmp/build.log 2>&1; then
             echo "::error title=Hearth Eras build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
           fi
-          if grep -E 'TS[0-9]{4}' /tmp/build.log; then
-            echo "::error title=Hearth Eras types::$(grep -E -A2 'TS[0-9]{4}' /tmp/build.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          # Type warnings fail the build, except in src/classic/ (Hearth Classic's code, copied unchanged, built like this).
+          if grep -E 'TS[0-9]{4}' /tmp/build.log | grep -v 'src/classic/'; then
+            echo "::error title=Hearth Eras types::$(grep -E 'TS[0-9]{4}' /tmp/build.log | grep -v 'src/classic/' | head -30 | tr '\n' '|' | cut -c1-3800)"; exit 1
           fi
           tail -5 /tmp/build.log
           ./package.sh "$RUNNER_TEMP/out"
