@@ -234,7 +234,7 @@ await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam",
   // The device's blank side menu: the menu window's body painted dark by the skin. Now see-through.
   const bodyBg = await page.evaluate(() => { const d = document.getElementById("menuwin").contentDocument; return getComputedStyle(d.body).backgroundColor; });
   if (bodyBg !== "rgba(0, 0, 0, 0)") errors.push(`menu-mirror-bottom: the menu window's body is painted (${bodyBg})`);
-  if (!m.diag || !/window\.resizeTo: still/.test(m.diag.why)) errors.push(`menu-mirror-bottom: the refused resize isn't explained (${m.diag && m.diag.why})`);
+  if (!m.diag || !/window\.resizeTo: asked/.test(m.diag.why)) errors.push(`menu-mirror-bottom: the refused resize isn't explained (${m.diag && m.diag.why})`);
   if (m.win.width !== 241) errors.push("menu-mirror-bottom: Steam's menu window was moved");
   // Down in Steam's menu: the highlight follows.
   await page.evaluate(() => { const d = document.getElementById("menuwin").contentDocument; const it = [...d.querySelectorAll(".mm_entry")]; it.forEach((e) => e.classList.remove("gpfocus")); it[4].classList.add("gpfocus"); });
