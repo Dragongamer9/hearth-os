@@ -4,15 +4,17 @@
 // ---------------------------------------------------------------- settings
 
 export type Look = "steam" | "classic";
-export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean; menu: boolean; menuTop: boolean; autoSend: boolean }
+export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean; menu: boolean; rail: boolean; autoSend: boolean }
 /** Off until the person turns it on (Quick Access › Hearth Classic). Never changed by the plugin itself. The parts
  *  (home, wallpaper, the bottom bar menu, the top bar in a game) are on once Hearth Classic is picked; sounds are off. */
-export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true, menu: true, menuTop: true, autoSend: false };
+export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true, menu: true, rail: true, autoSend: false };
 
 export function normalize(raw: unknown): Settings {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const b = (k: keyof Settings) => (typeof r[k] === "boolean" ? (r[k] as boolean) : (DEFAULTS[k] as boolean));
-  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper"), menu: b("menu"), menuTop: b("menuTop"), autoSend: b("autoSend") };
+  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper"), menu: b("menu"),
+    // 1.2.x's "In a game: Hearth top bar" (menuTop) carries over to the side rail switch when rail was never saved.
+    rail: typeof r.rail === "boolean" ? r.rail : typeof r.menuTop === "boolean" ? r.menuTop : DEFAULTS.rail, autoSend: b("autoSend") };
 }
 
 // ---------------------------------------------------------------- Steam's modules
@@ -64,7 +66,7 @@ export const MENU_PAUSED = "Hearth bottom bar menu paused";
 /** Which all-or-nothing parts of the skin go in. Whether the menu really takes the bar is decided on Steam's real menu
  *  (theme.ts startMenuBar, judgeStructure and judgeBar below). */
 export function menuPlan(s: Settings): { sections: Record<string, boolean> } {
-  return { sections: { menu: s.menu, top: s.menu && s.menuTop } };
+  return { sections: { menu: s.menu, top: s.menu && s.rail, rail: s.menu && s.rail } };
 }
 
 /** Steam's menu as CSS Loader themes see it: #MainNavMenuContainer > .Panel > * > .Panel.Focusable entries. */
@@ -113,7 +115,7 @@ export function judgeVisible(list: { label: string; inside: boolean; shown: bool
 /** The panel's note for the menu (empty when all is well or it's off). */
 export function menuNote(d: { layout: string; why: string; found: boolean }, s: Settings): string {
   if (!s.menu) return "";
-  if (d.layout === "bar" || d.layout === "top") return "";
+  if (d.layout === "bar" || d.layout === "top" || d.layout === "rail") return "";
   if (d.layout === "pending") return "";
   if (d.layout === "vertical") return `${MENU_PAUSED}: ${d.why}`;
   return d.found ? `${MENU_PAUSED}: ${d.why}; Steam's own menu is shown` : "";
@@ -124,7 +126,7 @@ export function menuNote(d: { layout: string; why: string; found: boolean }, s: 
  *  open yet since the plugin started. */
 export function sendReasons(d: { found: boolean; layout: string; method?: string; why: string; selfCheck?: string }, first: boolean): [string, string][] {
   const out: [string, string][] = [];
-  const open = d.found && (d.layout === "bar" || d.layout === "top" || d.layout === "vertical");
+  const open = d.found && (d.layout === "bar" || d.layout === "top" || d.layout === "rail" || d.layout === "vertical");
   if (first && open) out.push(["first-open", "the menu's first opening since the plugin started"]);
   if (d.method === "mirror") out.push(["mirror", "the mirror bar is used" + (d.why ? ": " + d.why : "")]);
   if (d.layout === "vertical") out.push(["fallback:" + d.why.slice(0, 40), "the bar fell back to Steam's menu: " + d.why]);
@@ -152,6 +154,7 @@ export function classKeys(css: string, resolve: Resolve): { resolved: string[]; 
 export const METHOD_NAMES: Record<string, string> = {
   none: "none", pending: "checking", fits: "the bar fits Steam's menu window", resized: "Steam's menu window resized to a bar",
   mirror: "Hearth's bar drawn in the main window, following Steam's see-through menu", vertical: "Hearth's colours on Steam's own menu",
+  rail: "Hearth's side rail in Steam's menu window (games and web pages)",
 };
 
 /** The diagnostics as plain text (the panel shows it; "Write a Hearth Classic log" saves it). */
@@ -161,7 +164,7 @@ export function diagnosticsText(d: { state: string; why: string; settings: Setti
   const s = d.settings;
   return [
     `Hearth Classic: ${d.state}${d.why ? " (" + d.why + ")" : ""}`,
-    `Settings: look ${s.look}, home ${s.home}, wallpaper ${s.wallpaper}, bottom bar ${s.menu}, top bar in a game ${s.menuTop}, sounds ${s.sounds}, send automatically ${s.autoSend}`,
+    `Settings: look ${s.look}, home ${s.home}, wallpaper ${s.wallpaper}, bottom bar ${s.menu}, side rail in games and the Store ${s.rail}, sounds ${s.sounds}, send automatically ${s.autoSend}`,
     `Steam windows: ${d.windows.join(", ") || "none found"}`,
     `Class names: ${d.keys.resolved.length} found, ${d.keys.missing.length} missing${d.keys.missing.length ? ": " + d.keys.missing.join(", ") : ""}`,
     `Menu: ${d.menu.found ? "found" : "not found"} (#MainNavMenuContainer), ${d.menu.entries} entries${d.menu.labels.length ? " [" + d.menu.labels.join(", ") + "]" : ""}`,

@@ -84,6 +84,19 @@ class Settings(Base):
         self.m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.m)
 
+    def test_the_old_top_bar_switch_carries_over_to_the_rail(self):
+        os.makedirs(os.path.dirname(self.sfile), exist_ok=True)
+        with open(self.sfile, 'w') as f:
+            json.dump({'look': 'classic', 'menuTop': False}, f)
+        p = self.m.Plugin()
+        self.assertFalse(self.run_(p.get_settings())['rail'])        # the person's old choice
+        with open(self.sfile) as f:
+            self.assertNotIn('rail', json.load(f))                    # nothing written by reading
+        self.run_(p.set_settings({'sounds': True}))
+        self.assertFalse(self.run_(p.get_settings())['rail'])        # still their choice after another change
+        self.run_(p.set_settings({'rail': True}))
+        self.assertTrue(self.run_(p.get_settings())['rail'])         # their new choice wins over the old key
+
     def test_bad_values_and_unknown_keys_are_refused_or_ignored(self):
         p = self.m.Plugin()
         self.assertFalse(self.run_(p.set_settings({'look': 'something'}))['ok'])
@@ -128,12 +141,12 @@ class Settings(Base):
     def test_menu_bars_default_on_and_remembered_off(self):
         p = self.m.Plugin()
         s = self.run_(p.get_settings())
-        self.assertTrue(s['menu'] and s['menuTop'])
+        self.assertTrue(s['menu'] and s['rail'])
         self.assertFalse(os.path.exists(self.sfile))   # the defaults are never written
-        self.run_(p.set_settings({'look': 'classic', 'menuTop': False}))
+        self.run_(p.set_settings({'look': 'classic', 'rail': False}))
         self.assertFalse(self.run_(p.set_settings({'menu': 'off'}))['ok'])
         s = self.run_(p.get_settings())
-        self.assertEqual((s['menu'], s['menuTop']), (True, False))
+        self.assertEqual((s['menu'], s['rail']), (True, False))
         self.assertNotIn('menu', json.load(open(self.sfile)))   # only what the person changed is written
 
     def test_writes_are_atomic(self):

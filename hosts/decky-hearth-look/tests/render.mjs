@@ -205,11 +205,12 @@ await scene("menu-in-store", { scene: "library", qam: false, menu: "steam", menu
   const m = await menuState();
   if (m.win.width !== 1280 || m.win.top !== 650 || !/hearth-bar/.test(m.cls) || m.mirror) errors.push(`menu-in-store: expected the resized bar on the Store (${JSON.stringify(m.win)}, ${m.cls})`);
 });
-await scene("menu-in-store-no-resize", { scene: "library", qam: false, menu: "steam", menuWidth: 241, route: "/steamweb", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
-  // No resize: the mirror would be under the Store, so Steam's menu in Hearth's colours.
+await scene("menu-rail-on-store", { scene: "library", qam: false, menu: "steam", menuWidth: 241, route: "/steamweb", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+  // No resize on the Store: the mirror would be under the page, so the side rail in Steam's menu window.
   const m = await menuState();
-  if (m.win.width !== 241 || !/hearth-menu/.test(m.cls) || /hearth-(bar|ghost)/.test(m.cls) || m.mirror) errors.push(`menu-in-store-no-resize: expected Steam's menu in Hearth's colours (${JSON.stringify(m.win)}, ${m.cls})`);
-  if (!m.diag || !/web page/.test(m.diag.why)) errors.push(`menu-in-store-no-resize: diagnostics don't say a web page is showing (${m.diag && m.diag.why})`);
+  if (m.win.width !== 241 || !/hearth-rail/.test(m.cls) || /hearth-(bar|ghost|menu)/.test(m.cls) || m.mirror) errors.push(`menu-rail-on-store: expected the side rail (${JSON.stringify(m.win)}, ${m.cls})`);
+  if (!m.diag || !/web page/.test(m.diag.why) || m.diag.layout !== "rail") errors.push(`menu-rail-on-store: ${m.diag && m.diag.why}`);
+  if (m.icons.slice(0, 3).join(",") !== "home,lib,shop") errors.push(`menu-rail-on-store: icons ${m.icons}`);
 });
 // In a game, something covers the resized top dock (a blank strip on the device): the self-check puts Steam's window
 // back and shows Steam's menu in Hearth's colours instead.
@@ -243,11 +244,26 @@ await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam",
   if (!m2.mirror || m2.mirror.on !== 4) errors.push(`menu-mirror-bottom: the highlight didn't follow Steam's focus (${JSON.stringify(m2.mirror)})`);
   await page.screenshot({ path: join(out, "menu-mirror-bottom-moved.png") });
 });
-await scene("menu-mirror-top-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
-  // Over a game the main window isn't on screen, so no mirror: Steam's menu in Hearth's colours, in its own place.
+await scene("menu-rail-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, running: true, settings: { look: "classic" }, skin: true, wait: 4000 }, async () => {
+  // Steam keeps its menu window at 241 px and the main window isn't on screen over a game: Hearth's side rail inside
+  // Steam's menu window, the game's card first, every entry visible, the window untouched, resize tried once at most.
   const m = await menuState();
-  if (m.mirror || !/hearth-menu/.test(m.cls) || /hearth-(bar|ghost)/.test(m.cls) || m.win.width !== 241) errors.push(`menu-mirror-top-in-game: expected Steam's menu in Hearth's colours (${m.cls}, ${JSON.stringify(m.mirror)})`);
-  if (!m.diag || !/Steam doesn't allow the top bar during games on this device/.test(m.diag.why)) errors.push(`menu-mirror-top-in-game: ${m.diag && m.diag.why}`);
+  const r = await page.evaluate(() => {
+    const d = document.getElementById("menuwin").contentDocument;
+    const panel = d.querySelector("#MainNavMenuContainer > .Panel"), pr = panel.getBoundingClientRect();
+    const items = [...d.querySelectorAll(".mm_entry")];
+    return { panel: [Math.round(pr.left), Math.round(pr.top), Math.round(pr.right), Math.round(pr.bottom)], game: items[0].getAttribute("data-hearth-game"),
+             inside: items.every((e) => { const x = e.getBoundingClientRect(); return x.left >= 0 && x.right <= 241 && x.top >= 0 && x.bottom <= 760 && x.width > 0; }),
+             radius: getComputedStyle(panel).borderRadius, calls: window.HC_RESIZE_CALLS };
+  });
+  if (m.mirror || !/hearth-rail/.test(m.cls) || /hearth-(bar|ghost|menu)/.test(m.cls) || m.win.width !== 241) errors.push(`menu-rail-in-game: expected the side rail (${m.cls}, ${JSON.stringify(m.win)})`);
+  if (r.game !== "1" || !r.inside || r.panel[2] > 241 || r.panel[3] > 760 || r.radius !== "22px") errors.push(`menu-rail-in-game: ${JSON.stringify(r)}`);
+  if (r.calls > 1) errors.push(`menu-rail-in-game: window.resizeTo called ${r.calls} times`);
+  if (!m.diag || m.diag.layout !== "rail" || !/the side rail is used in games and on web pages/.test(m.diag.why) || !/^passed/.test(m.diag.selfCheck)) errors.push(`menu-rail-in-game: diag ${JSON.stringify(m.diag && { layout: m.diag.layout, why: m.diag.why, selfCheck: m.diag.selfCheck })}`);
+});
+await scene("menu-rail-off-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, running: true, settings: { look: "classic", rail: false }, skin: true, wait: 3500 }, async () => {
+  const m = await menuState();
+  if (!/hearth-menu/.test(m.cls) || /hearth-rail/.test(m.cls) || m.mirror) errors.push(`menu-rail-off-in-game: expected Steam's menu in Hearth's colours (${m.cls})`);
 });
 await scene("menu-steam-changed", { scene: "library", menu: "changed", menuWidth: 241, settings: { look: "classic" }, skin: true,
   want: ["Hearth bottom bar menu paused", "no .Panel"] }, async () => {
@@ -284,7 +300,7 @@ await scene("panel-diagnostics", { scene: "library", menu: "steam", menuWidth: 2
 await scene("dialog-steam", { scene: "dialog", qam: false, skin: false });
 await scene("dialog-hearth-classic", { scene: "dialog", qam: false, settings: { look: "classic" }, skin: true });
 // 4. The Quick Access panel with Hearth Classic on.
-await scene("panel-hearth-classic-on", { settings: { look: "classic" }, want: ["Hearth home screen", "Hearth wallpaper", "Hearth bottom bar menu", "In a game: Hearth top bar", "Hearth sounds", "Recent games"], skin: true });
+await scene("panel-hearth-classic-on", { settings: { look: "classic" }, want: ["Hearth home screen", "Hearth wallpaper", "Hearth bottom bar menu", "In games and the Store: Hearth side rail", "Hearth sounds", "Recent games"], skin: true });
 // 5. A Steam update renamed its modules: paused, Steam's normal look and Home, the note, the log line.
 await scene("panel-paused", { settings: { look: "classic" }, steam: "changed", skin: false,
   want: ["Hearth Classic paused: Steam changed its layout", "Try again", "Steam's own Home"] }, async () => {
@@ -300,7 +316,7 @@ await scene("panel-not-hearth-os", { settings: { look: "classic" }, hearth: fals
 // beside Hearth Classic in the stand-in, one per screen.
 await freshPage(2600, 900);
 const PAIRS = [["home", "gm-home", "home-hearth-classic"], ["library", "gm-library", "skin-hearth-classic-library"], ["game-page", "gm-game", "game-hearth-classic"],
-  ["quick-access", "gm-qa", "panel-hearth-classic-on"], ["menu-bottom-bar", "gm-dock", "menu-bottom-bar"], ["in-game-top-bar", "gm-overlay", "menu-top-bar-in-game"], ["menu-bottom-bar-mirror", "gm-dock", "menu-mirror-bottom"],
+  ["quick-access", "gm-qa", "panel-hearth-classic-on"], ["menu-bottom-bar", "gm-dock", "menu-bottom-bar"], ["in-game-top-bar", "gm-overlay", "menu-top-bar-in-game"], ["menu-bottom-bar-mirror", "gm-dock", "menu-mirror-bottom"], ["side-rail-in-game", "gm-overlay", "menu-rail-in-game"], ["side-rail-on-store", "gm-dock", "menu-rail-on-store"],
   ["dialogs", "gm-settings", "dialog-hearth-classic"]];
 for (const [name, old, mine] of PAIRS) {
   const a = b64(join(root, "site/img", old + ".webp"), "image/webp"), c = b64(join(out, mine + ".png"), "image/png");
