@@ -5,7 +5,7 @@
                           (HEARTH_THEME_DIR=, HEARTH_SCHEME=dark|light, HEARTH_GNOME_ACCENT=) for theme/apply.sh
   hearth-theme --show     print the chosen look and its colours as JSON
 
-The look, mode and accent are in ~/.local/share/nimbus/desktop.json ("look": "hearth"|"steam", "mode": "dark"|
+The look, mode and accent are in ~/.local/share/nimbus/desktop.json ("look": one of palettes.json's looks, "mode": "dark"|
 "light", "accent": "#rrggbb" or ""); with the Hearth look and no accent there, your profile's accent
 (~/.local/share/nimbus/library.json) is used, as before. Colours come from palettes.json next to this script.
 
@@ -71,11 +71,30 @@ def valid(c):
     return isinstance(c, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', c) is not None
 
 
+def minutes(t, default):
+    m = re.fullmatch(r'([01]?\d|2[0-3]):([0-5]\d)', t) if isinstance(t, str) else None
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else default
+
+
+def sunset_mode(d, now=None):
+    """Mode "Sunset" (Settings › Appearance, off unless you turn it on: "sunset": true in desktop.json): light from
+    sunsetLight to sunsetDark (07:00 and 19:30 when not set), dark the rest of the day. Your Dark / Light choice
+    ("mode") is kept as it is underneath. None when Sunset is off. Theme.qml works it out the same way."""
+    if d.get('sunset') is not True:
+        return None
+    import time
+    t = time.localtime(now)
+    m = t.tm_hour * 60 + t.tm_min
+    light, dark = minutes(d.get('sunsetLight'), 7 * 60), minutes(d.get('sunsetDark'), 19 * 60 + 30)
+    day = light <= m < dark if light <= dark else (m >= light or m < dark)
+    return 'light' if day else 'dark'
+
+
 def choice():
     pal = load(os.path.join(HERE, 'palettes.json'), {})
     d = load(os.path.join(DATA, 'nimbus', 'desktop.json'), {})
     look = d.get('look') if d.get('look') in pal and not str(d.get('look')).startswith('_') else 'steam'
-    mode = 'light' if d.get('mode') == 'light' else 'dark'
+    mode = sunset_mode(d) or ('light' if d.get('mode') == 'light' else 'dark')
     accent = d.get('accent') if valid(d.get('accent')) else ''
     if not accent and look == 'hearth':
         a = ((load(os.path.join(DATA, 'nimbus', 'library.json'), {}) or {}).get('profile') or {}).get('accent')

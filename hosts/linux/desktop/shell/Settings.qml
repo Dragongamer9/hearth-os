@@ -21,10 +21,22 @@ Singleton {
     property string mode: "dark"         // "dark" or "light"
     property string accent: ""           // "#rrggbb", or "" for the look's own (Hearth: your profile's accent)
     property bool countMe: true          // Hearth OS's anonymous player count (hearth-counter reads it); Settings › About › Privacy
+    // ---- Mantel 2026 (Settings › Appearance). New keys: a missing key is the default and is never written by itself;
+    // "" always means "the look's own" (theme/palettes.json), so choosing a look never changes these.
+    property string barStyle: ""         // "" (the look's own) | "floating" (islands) | "bar" (one full-width bar)
+    property string dockMode: ""         // "" (the look's own) | "shown" | "autohide"
+    property string deskClock: ""        // the desktop clock and weather: "" (the look's own) | "on" | "off"
+    property string panelGlass: ""       // panel transparency: "" (the look's own) | "solid" | "frosted" | "clear"
+    property bool sunset: false          // Mode "Sunset": light by day, dark by night on your times. OFF unless you turn it on
+    property string sunsetLight: "07:00" // Sunset: light from
+    property string sunsetDark: "19:30"  // Sunset: dark from
+    property string accentFrom: ""       // "wallpaper": the accent was worked out from your wallpaper (once, when you picked it)
+    property var wallSwatches: []        // the colours "From wallpaper" found (shown as swatches)
     property bool loaded: false
 
     readonly property var keys: ["nightLight", "wallpaper", "reduceMotion", "pointerSpeed", "lockOnWake", "clock24", "clipboardHistory",
         "screenOffMinutes", "sleepMinutes", "look", "mode", "accent", "countMe"]
+        .concat(["barStyle", "dockMode", "deskClock", "panelGlass", "sunset", "sunsetLight", "sunsetDark", "accentFrom", "wallSwatches"])
     onNightLightChanged: save("nightLight")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
@@ -38,6 +50,15 @@ Singleton {
     onModeChanged: save("mode")
     onAccentChanged: save("accent")
     onCountMeChanged: save("countMe")
+    onBarStyleChanged: save("barStyle")
+    onDockModeChanged: save("dockMode")
+    onDeskClockChanged: save("deskClock")
+    onPanelGlassChanged: save("panelGlass")
+    onSunsetChanged: save("sunset")
+    onSunsetLightChanged: save("sunsetLight")
+    onSunsetDarkChanged: save("sunsetDark")
+    onAccentFromChanged: save("accentFrom")
+    onWallSwatchesChanged: save("wallSwatches")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until
@@ -69,7 +90,7 @@ Singleton {
                 return;
             }
             root.applying = true;
-            for (const k of root.keys) if (o[k] !== undefined && typeof o[k] === typeof root[k] && !writer.owns(k)) root[k] = o[k];
+            for (const k of root.keys) if (o[k] !== undefined && typeof o[k] === typeof root[k] && Array.isArray(o[k]) === Array.isArray(root[k]) && !writer.owns(k)) root[k] = o[k];
             root.applying = false;
             root.loaded = true;
         }

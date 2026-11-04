@@ -1,4 +1,5 @@
-// Notification server for Desktop Mode: apps' notifications pop up in the top-right corner
+// Notification server for Desktop Mode: apps' notifications pop up under the clock pill (Mantel 2026; the top-right
+// corner with the classic taskbar)
 // and go away after a few seconds. Click one to run its default action; × dismisses it.
 // Past ones are kept for the session in DeskState.history (listed in the clock's panel); Do Not Disturb
 // (DeskState.dnd) keeps them from popping up, and so does muting an app (the bell button on its pop-up, or
@@ -33,9 +34,11 @@ Scope {
         // Never takes the keyboard (or a WebKit app's controller) from the window in front: docs/CONTROLLER-FOCUS.md
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
-        anchors { top: true; right: true }
-        margins { top: 12; right: 12 }
-        implicitWidth: 380
+        // Mantel 2026: under the clock pill in the middle of the top (several stack); with the classic taskbar, the
+        // top-right corner as before.
+        anchors { top: true; right: DeskState.classicBar }
+        margins { top: DeskState.topInset > 0 ? DeskState.topInset + 2 : 12; right: 12 }
+        implicitWidth: DeskState.classicBar ? 380 : 420
         implicitHeight: list.implicitHeight
         color: "transparent"
 
