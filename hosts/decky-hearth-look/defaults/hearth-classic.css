@@ -127,7 +127,7 @@ html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable[data-heart
 [data-hearth-icon="shot"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSI2IiB3aWR0aD0iMTgiIGhlaWdodD0iMTQiIHJ4PSIyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMyIgcj0iMy41Ii8+PHBhdGggZD0iTTkgNmwxLjUtMmgzTDE1IDYiLz48L3N2Zz4=")}
 /* The mirror (when Steam's menu window can't be resized): Steam's menu stays where it is, see-through but focused and
    working, and Hearth's bar is drawn in the main window, its highlight following Steam's focused entry */
-html.hearth-ghost #MainNavMenuContainer > .Panel{opacity:0 !important}
+html.hearth-ghost #MainNavMenuContainer,html.hearth-ghost #MainNavMenuContainer > .Panel{opacity:0 !important;box-shadow:none !important}
 #hearth-bar-mirror{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;display:flex;justify-content:center;padding:0 16px 22px;pointer-events:none;font-family:var(--hearth-font)}
 #hearth-bar-mirror.top{top:0;bottom:auto;padding:22px 16px 0}
 #hearth-bar-mirror .hbm-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:26px;background:rgba(22,29,39,.95);border:1px solid #2a3443;box-shadow:0 18px 50px rgba(0,0,0,.45);max-width:calc(100vw - 32px)}
