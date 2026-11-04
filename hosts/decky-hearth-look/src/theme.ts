@@ -234,8 +234,8 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     html.classList.toggle("hearth-ingame", game);
     const st = stateOf(doc);
     const win = doc.defaultView;
-    const box = c.getBoundingClientRect();
-    const rects = items.map((e) => e.getBoundingClientRect());
+    let box = c.getBoundingClientRect();
+    let rects = items.map((e) => e.getBoundingClientRect());
     const onScreen = !!win && box.width > 0 && box.height > 0 && rects.some((r) => r.width > 0 && r.height > 0) && doc.visibilityState !== "hidden";
     const focusedIdx = items.findIndex((e) => e.classList.contains("gpfocus") || e.classList.contains("gpfocuswithin"));
 
@@ -265,6 +265,9 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
       if (st.tries < 6) { setDiag("pending", "pending", "making Steam's menu window as wide as the screen"); tryResize(doc, game); return true; }
       st.mode = "mirror"; st.why = "Steam keeps the menu window narrow"; restore(doc); return checkDoc(doc);
     }
+    // Measured again now that the bar's class is on (the boxes above were taken before it).
+    box = c.getBoundingClientRect();
+    rects = items.map((e) => e.getBoundingClientRect());
     let hit = false;
     try {
       const r = rects[0], el = doc.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
