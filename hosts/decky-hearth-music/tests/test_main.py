@@ -647,6 +647,32 @@ class Matching(unittest.TestCase):
         self.assertEqual(self.best('INSIDE', inside + [it('Inside Main Theme', 'INSIDE (Original Soundtrack)', 'Martin Stig Andersen')]),
                          ('Inside Main Theme', 'INSIDE (Original Soundtrack)'))
 
+    def test_inside_never_plays_fallout_4(self):
+        """The owner's report: INSIDE (Playdead, 304430) played Fallout 4's music. Matcher 1 took any soundtrack album
+        with "inside" anywhere in a track name ("Inside the Vault" on Fallout 4's soundtrack scored 5, enough)."""
+        fallout = [it('Inside the Vault', 'Fallout 4 (Original Game Soundtrack)', 'Inon Zur', tid=41, n=7),
+                   it('Main Title', 'Fallout 4 (Original Game Soundtrack)', 'Inon Zur', tid=42, n=1),
+                   it('Inside Vault 111', 'Fallout 4: Vault-Tec Edition (Music from the Game)', 'Inon Zur', tid=43)]
+        self.assertIsNone(self.best('INSIDE', fallout), "Fallout 4's music isn't INSIDE's")
+        dzrows = [self.m.deezer_result(dz('Inside the Vault', 'Fallout 4 (Original Game Soundtrack)', 'Inon Zur', tid=51))]
+        self.assertIsNone(self.best('INSIDE', dzrows, 'deezer'), 'nor through Deezer')
+        real = it('Inside', 'INSIDE (Original Soundtrack)', 'Martin Stig Andersen', tid=44, n=1)
+        self.assertEqual(self.best('INSIDE', fallout + [real]), ('Inside', 'INSIDE (Original Soundtrack)'))
+        # The wrong answer kept on the device from 1.2: never played (not even offline), looked up again once.
+        stale = {'inside': {'at': time.time(), 'tried': ['apple'], 'match': {
+            'source': 'apple', 'id': '41', 'track': 'Inside the Vault', 'artist': 'Inon Zur', 'album': 'Fallout 4 (Original Game Soundtrack)',
+            'link': '', 'score': 5, 'preview': 'https://audio-ssl.itunes.apple.com/p/fallout.m4a'}}}
+        self.m.save_cache('lookups.json', stale)
+        offline = lambda t: (_ for _ in ()).throw(OSError('offline'))
+        self.assertIsNone(self.m.find_song('304430', 'INSIDE', [], get=offline, deezer_get=offline)['source'])
+        self.m.save_cache('lookups.json', stale)
+        asked = []
+        s = self.m.find_song('304430', 'INSIDE', [], get=lambda t: asked.append(t) or fallout + [real])
+        self.assertEqual((s['source'], s['artist'], s['album']), ('apple', 'Martin Stig Andersen', 'INSIDE (Original Soundtrack)'))
+        self.assertEqual(asked, ['INSIDE main theme'])
+        self.m.find_song('304430', 'INSIDE', [], get=lambda t: self.fail('checked once, then kept'))
+        self.assertEqual(self.m.load_json('lookups.json', {}, self.m.cache_dir())['inside']['v'], self.m.MATCHER)
+
     def test_same_name_songs_sequels_and_covers_are_left_out(self):
         self.assertIsNone(self.best('Celeste', [it('Celeste', 'Celeste', 'Ezra Vine'), it('Celeste', 'Not Your Muse', 'Celeste')]))
         self.assertIsNone(self.best('Hades', [it('No Escape', 'Hades II (Original Soundtrack)', 'Darren Korb')]), "Hades II's music isn't Hades'")
