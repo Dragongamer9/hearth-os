@@ -54,10 +54,18 @@ the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin o
 - The menu is found by the structure CSS Loader themes style on current Steam: `#MainNavMenuContainer` (the menu's
   Focusable, its `navID`) `> .Panel > * > .Panel.Focusable` (the entries). The bar's rules only apply under
   `html.hearth-bar`, set on that window only when this structure is there with at least three labelled entries.
+- On a device Steam's menu window is a narrow popup at the left (241 px on the owner's, round 4), so the bar is made to
+  fit in one of three ways, in this order (Diagnostics says which, with the window's size before and after):
+  1. **Resized**: the menu's own window is made as wide as the screen and bar-high, at the bottom, or at the top while a
+     game runs (also when the menu opens over a game), with that window's `SteamClient.Window` `ResizeTo`/`MoveTo`
+     (or `window.resizeTo`/`moveTo`). Its size is read back; its old bounds are put back when the bar goes off,
+     pauses or the plugin unloads. If Steam narrows it again, it's resized again when the menu opens.
+  2. **Mirror**: if the window can't be resized, Hearth's bar is drawn in Steam's main window while the menu is open,
+     and Steam's menu panel is made see-through but stays where it is, focused and working: up and down in Steam's
+     menu move the bar's highlight, A presses Steam's real entry, the Steam button still opens and closes it.
+  3. **Hearth's colours on Steam's own menu**, when neither works. A bar is never squeezed into a narrow window.
 - When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
-  the entries in one row and the first one reachable (nothing covering it). If not (for example a menu window only as
-  wide as Steam's side panel), the bar comes off at once and the menu keeps Steam's own layout in Hearth's colours
-  (`html.hearth-menu`), with "Hearth bottom bar menu paused: …" in the panel.
+  the entries in one row and the first one reachable. If not, it comes off at once (the next way above).
 - If the structure isn't there, nothing touches the menu and the panel says why.
 - A running game is read from Steam's `Router.MainRunningApp`.
 - The controller: Steam's menu keeps its own navigation (up and down), which now moves along the bar.

@@ -7,7 +7,7 @@ name: Hearth Classic plugin
 
 on:
   push:
-    branches: [bughunt, feature/hearth-look, feature/hearth-look-2, feature/hearth-look-3]
+    branches: [bughunt, feature/hearth-look-3, feature/hearth-look-4]
     paths: ['hosts/decky-hearth-look/**', 'hosts/decky-shared/**', 'hosts/decky-hearth-music/src/steam.ts', '.github/workflows/decky-hearth-look.yml']
   workflow_dispatch:
 
