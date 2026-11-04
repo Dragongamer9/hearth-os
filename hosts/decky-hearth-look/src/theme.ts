@@ -274,7 +274,8 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
       rects.map((r) => ({ left: r.left, top: r.top, width: r.width, height: r.height })), hit, game);
     if (!j.ok) {
       restore(doc);
-      st.mode = "mirror"; st.why = "the bar didn't fit Steam's menu window (" + j.why + ")";
+      st.mode = "mirror";
+      st.why = `the bar didn't fit Steam's menu window (${j.why}; bar ${Math.round(box.width)}×${Math.round(box.height)} at ${Math.round(box.left)},${Math.round(box.top)} in ${size(win!)}, classes ${html.className})`;
       html.classList.remove("hearth-bar");
       return checkDoc(doc);
     }
