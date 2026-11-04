@@ -61,6 +61,17 @@ body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;co
 .game{position:absolute;left:0;top:0;width:300px;padding:16px;box-sizing:border-box;font-weight:800;font-size:18px;z-index:2}
 </style></head><body><div class="scrim"></div>${running ? '<div class="game">Ember Knights · Resume · Exit game</div>' : ""}<div id="MainNavMenuContainer" class="Focusable">${inner}</div></body></html>`);
   d.close();
+  // HC_MENURESIZE "steamclient": the window's own SteamClient.Window can move and resize it (what Steam's popups have);
+  // otherwise nothing can (window.resizeTo does nothing to an iframe), as when Steam keeps it narrow.
+  if (window.HC_MENURESIZE === "steamclient") {
+    const px = (v) => parseFloat(v) || 0;
+    f.contentWindow.SteamClient = { Window: {
+      GetWindowDimensions: async () => ({ x: px(f.style.left), y: px(f.style.top), width: px(f.style.width), height: px(f.style.height) }),
+      ResizeTo: (w, h) => { f.style.width = w + "px"; f.style.height = h + "px"; },
+      MoveTo: (x, y) => { f.style.left = x + "px"; f.style.top = y + "px"; },
+    } };
+  }
+  try { f.contentWindow.focus(); } catch (e) { /* fine */ }
   window.g_PopupManager = { GetPopups: () => [{ m_strName: "MainMenu_uid2", m_popup: f.contentWindow }] };
 }
 if (window.HC_MENU) openMenuWindow();

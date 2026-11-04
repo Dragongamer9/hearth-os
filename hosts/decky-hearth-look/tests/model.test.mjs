@@ -235,7 +235,7 @@ test("menu bars: switches, the real menu's structure, and the bar only when it r
   const rules = off.replace(/\/\*[\s\S]*?\*\//g, "");
   assert.ok(!rules.includes("MainNavMenuContainer") && !rules.includes("hearth-ingame") && !rules.includes("data-hearth-icon"));
   // Every bar rule is scoped to html.hearth-bar / html.hearth-menu (set only after the real menu is found).
-  for (const line of on.split("\n")) if (line.includes("MainNavMenuContainer") && !line.startsWith("/*") && !line.startsWith("   ")) assert.match(line, /^html\.hearth-(bar|menu)/, line);
+  for (const line of on.split("\n")) if (line.includes("MainNavMenuContainer") && !line.startsWith("/*") && !line.startsWith("   ")) assert.match(line, /^html\.hearth-(bar|menu|ghost)/, line);
   for (const r of [on, off]) assert.equal(r.split("/*").length, r.split("*/").length);
 });
 
@@ -245,9 +245,10 @@ test("diagnostics: class names found and missing, the menu, the windows", () => 
   assert.ok(k.missing.includes("gamepadDialogClasses.Field"));
   assert.equal(new Set([...k.resolved, ...k.missing]).size, k.resolved.length + k.missing.length);
   const t = diagnosticsText({ state: "on", why: "", settings: { ...DEFAULTS, look: "classic" }, keys: k,
-    menu: { windows: [], found: true, entries: 8, labels: ["Home", "Library"], layout: "vertical", why: "the bar didn't fit", game: false },
+    menu: { windows: [], found: true, entries: 8, labels: ["Home", "Library"], layout: "vertical", why: "the bar didn't fit", game: false,
+            method: "mirror", before: "241×800 (main window 1280×800)", after: "241×800", resizeWith: "SteamClient.Window" },
     windows: ["SP", "MainMenu_uid2"], game: null });
-  for (const w of ["Hearth Classic: on", "MainMenu_uid2", "missing: ", "Menu: found", "8 entries", "Menu bar: vertical", "can't tell"]) assert.ok(t.includes(w), w);
+  for (const w of ["Hearth Classic: on", "MainMenu_uid2", "missing: ", "Menu: found", "8 entries", "Menu bar: vertical", "method: Hearth's bar drawn", "before 241×800", "SteamClient.Window", "can't tell"]) assert.ok(t.includes(w), w);
 });
 
 test("menu icons from Steam's labels", () => {

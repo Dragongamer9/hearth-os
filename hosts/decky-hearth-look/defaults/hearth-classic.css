@@ -93,10 +93,8 @@ body{background:#0c1016 !important;color:#e9eef4}
 /* Footer hints, like Hearth's footer */
 .{{footerClasses:BasicFooter}}{background:#121821 !important;border-top:1px solid #2a3443 !important;color:#8d99a8 !important;font-size:13px !important}
 .{{footerClasses:FooterLegend}}{color:#8d99a8 !important;gap:6px !important}
-/* On-screen keyboard: Hearth's keys */
+/* On-screen keyboard: Hearth's panel (Steam's key class has no stable name: the keys keep Steam's look) */
 .{{VirtualKeyboardContainer:VirtualKeyboardContainer}}{background:#121821 !important;border-top:1px solid #2a3443 !important}
-.{{VirtualKeyboardContainer:Key}}{background:#1d2531 !important;border-radius:8px !important;color:#e9eef4 !important;box-shadow:inset 0 -2px 0 rgba(0,0,0,.35) !important}
-.{{VirtualKeyboardContainer:Key}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
 
 /* ---- the main menu as Hearth's bottom bar (the old Game Mode's Bottom Dock, ui/index.html .dk-bar). Steam draws its
    menu in its own window (CSS Loader's "MainMenu"): #MainNavMenuContainer > .Panel > * > .Panel.Focusable entries, the
@@ -127,6 +125,20 @@ html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable[data-heart
 [data-hearth-icon="pad"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNyA4aDEwYTQuNSA0LjUgMCAwIDEgNC4zIDUuOGwtMSAzLjNhMi40IDIuNCAwIDAgMS00LjEuOEwxNC41IDE2aC01bC0xLjcgMS45YTIuNCAyLjQgMCAwIDEtNC4xLS44bC0xLTMuM0E0LjUgNC41IDAgMCAxIDcgOHoiLz48cGF0aCBkPSJNOCAxMXYzTTYuNSAxMi41aDMiLz48L3N2Zz4=")}
 [data-hearth-icon="close"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNiA2bDEyIDEyTTE4IDYgNiAxOCIvPjwvc3ZnPg==")}
 [data-hearth-icon="shot"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSI2IiB3aWR0aD0iMTgiIGhlaWdodD0iMTQiIHJ4PSIyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMyIgcj0iMy41Ii8+PHBhdGggZD0iTTkgNmwxLjUtMmgzTDE1IDYiLz48L3N2Zz4=")}
+/* The mirror (when Steam's menu window can't be resized): Steam's menu stays where it is, see-through but focused and
+   working, and Hearth's bar is drawn in the main window, its highlight following Steam's focused entry */
+html.hearth-ghost #MainNavMenuContainer > .Panel{opacity:0 !important}
+#hearth-bar-mirror{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;display:flex;justify-content:center;padding:0 16px 22px;pointer-events:none;font-family:var(--hearth-font)}
+#hearth-bar-mirror.top{top:0;bottom:auto;padding:22px 16px 0}
+#hearth-bar-mirror .hbm-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:26px;background:rgba(22,29,39,.95);border:1px solid #2a3443;box-shadow:0 18px 50px rgba(0,0,0,.45);max-width:calc(100vw - 32px)}
+#hearth-bar-mirror .hbm-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:58px;height:58px;padding:6px 8px;box-sizing:border-box;border-radius:18px;color:#8d99a8;transition:min-width .16s var(--hearth-ease),height .16s var(--hearth-ease),background .16s,color .16s}
+#hearth-bar-mirror .hbm-item span{font-size:11px;font-weight:600;white-space:nowrap;display:none}
+#hearth-bar-mirror .hbm-item[data-hearth-icon=""] span{display:block}
+#hearth-bar-mirror .hbm-item.on{min-width:74px;height:74px;border-radius:22px;background:#3fd0b8;color:#06231e;box-shadow:0 10px 30px rgba(63,208,184,.35)}
+#hearth-bar-mirror .hbm-item.on span{display:block}
+#hearth-bar-mirror.top .hbm-item{min-width:52px;height:52px}
+#hearth-bar-mirror.top .hbm-item.on{min-width:64px;height:64px}
+#hearth-bar-mirror .hbm-item:not([data-hearth-icon=""])::before{content:"";display:block;width:26px;height:26px;background:currentColor;-webkit-mask:var(--hc-icon) center/contain no-repeat;mask:var(--hc-icon) center/contain no-repeat}
 /* The fallback: Steam's own menu layout in Hearth's colours (when the bar doesn't fit Steam's menu window) */
 html.hearth-menu #MainNavMenuContainer > .Panel{background:linear-gradient(180deg,#121821,#0c1016) !important;border-right:1px solid #2a3443 !important}
 html.hearth-menu #MainNavMenuContainer > .Panel > * > .Panel.Focusable{border-radius:10px !important;color:#e9eef4 !important}

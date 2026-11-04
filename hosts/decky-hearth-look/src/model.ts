@@ -116,9 +116,15 @@ export function classKeys(css: string, resolve: Resolve): { resolved: string[]; 
   return { resolved, missing };
 }
 
+export const METHOD_NAMES: Record<string, string> = {
+  none: "none", pending: "checking", fits: "the bar fits Steam's menu window", resized: "Steam's menu window resized to a bar",
+  mirror: "Hearth's bar drawn in the main window, following Steam's see-through menu", vertical: "Hearth's colours on Steam's own menu",
+};
+
 /** The diagnostics as plain text (the panel shows it; "Write a Hearth Classic log" saves it). */
 export function diagnosticsText(d: { state: string; why: string; settings: Settings; keys: { resolved: string[]; missing: string[] };
-  menu: { windows: string[]; found: boolean; entries: number; labels: string[]; layout: string; why: string; game: boolean }; windows: string[]; game: boolean | null }): string {
+  menu: { windows: string[]; found: boolean; entries: number; labels: string[]; layout: string; why: string; game: boolean;
+          method?: string; before?: string; after?: string; resizeWith?: string }; windows: string[]; game: boolean | null }): string {
   const s = d.settings;
   return [
     `Hearth Classic: ${d.state}${d.why ? " (" + d.why + ")" : ""}`,
@@ -126,7 +132,8 @@ export function diagnosticsText(d: { state: string; why: string; settings: Setti
     `Steam windows: ${d.windows.join(", ") || "none found"}`,
     `Class names: ${d.keys.resolved.length} found, ${d.keys.missing.length} missing${d.keys.missing.length ? ": " + d.keys.missing.join(", ") : ""}`,
     `Menu: ${d.menu.found ? "found" : "not found"} (#MainNavMenuContainer), ${d.menu.entries} entries${d.menu.labels.length ? " [" + d.menu.labels.join(", ") + "]" : ""}`,
-    `Menu bar: ${d.menu.layout}${d.menu.why ? " — " + d.menu.why : ""}`,
+    `Menu bar: ${d.menu.layout}${d.menu.method ? " (method: " + METHOD_NAMES[d.menu.method] + ")" : ""}${d.menu.why ? " — " + d.menu.why : ""}`,
+    `Menu window: ${d.menu.before ? "before " + d.menu.before + ", after " + (d.menu.after || "?") + " (resized with " + (d.menu.resizeWith || "?") + ")" : "not resized"}`,
     `Game running: ${d.game === null ? "can't tell (Router.MainRunningApp unreadable)" : d.game ? "yes" : "no"}`,
   ].join("\n");
 }

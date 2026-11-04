@@ -38,7 +38,8 @@ function diagnostics(): string {
 /** The menu's state changed: the panel's note, and one line in the log (Hearth's Logs app reads it too). */
 function onMenu(d: MenuDiag) {
   live.menuNote = menuNote(d, live.settings);
-  const line = `menu: ${d.layout}${d.why ? " (" + d.why + ")" : ""}; found ${d.found ? "yes" : "no"}, ${d.entries} entries [${d.labels.join(", ")}], game ${d.game ? "running" : "none"}`;
+  const line = `menu: ${d.layout}, method ${d.method}${d.why ? " (" + d.why + ")" : ""}; found ${d.found ? "yes" : "no"}, ${d.entries} entries [${d.labels.join(", ")}], game ${d.game ? "running" : "none"}` +
+    (d.before ? `; window ${d.before} -> ${d.after} with ${d.resizeWith}` : "");
   if (line !== lastDiag) { lastDiag = line; writeDiag(line).catch(() => {}); }
   notify();
 }
