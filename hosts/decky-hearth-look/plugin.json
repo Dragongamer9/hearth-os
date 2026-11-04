@@ -1,0 +1,11 @@
+{
+  "name": "Hearth Classic",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["hearth", "theme"],
+    "description": "Brings back the old Hearth Game Mode look on top of Steam Game Mode: Hearth's colours, cards and focus glow, and Hearth's home screen. Off until you turn it on.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}
