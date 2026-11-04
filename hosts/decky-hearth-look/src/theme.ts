@@ -270,12 +270,13 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
       const r = rects[0], el = doc.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       hit = !!el && (el === items[0] || items[0].contains(el) || el.contains(items[0]));
     } catch { hit = false; }
+    const measured = size(win!);
     const j = judgeBar({ w: win!.innerWidth, h: win!.innerHeight }, { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
       rects.map((r) => ({ left: r.left, top: r.top, width: r.width, height: r.height })), hit, game);
     if (!j.ok) {
       restore(doc);
       st.mode = "mirror";
-      st.why = `the bar didn't fit Steam's menu window (${j.why}; bar ${Math.round(box.width)}×${Math.round(box.height)} at ${Math.round(box.left)},${Math.round(box.top)} in ${size(win!)}, classes ${html.className})`;
+      st.why = `the bar didn't fit Steam's menu window (${j.why}; bar ${Math.round(box.width)}×${Math.round(box.height)} at ${Math.round(box.left)},${Math.round(box.top)} in ${size(win!)} (${measured}), classes ${html.className}, skin ${(doc.getElementById(STYLE_ID)?.textContent || "").includes("html.hearth-bar #MainNavMenuContainer{") ? "has the bar" : "without the bar"})`;
       html.classList.remove("hearth-bar");
       return checkDoc(doc);
     }
