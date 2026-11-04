@@ -46,6 +46,7 @@ const handlers = {
   report: (l) => { window.HC_REPORTS.push(l); return null; },
   diagnostics: (t) => { (window.HC_DIAGS = window.HC_DIAGS || []).push(t); return { ok: true, path: "~/.local/share/nimbus/hearth-classic.log" }; },
   send_log: (key, reason, text, auto) => { (window.HC_SENT = window.HC_SENT || []).push({ key, reason, auto, len: text.length });
+    if (window.HC_SENDFAIL) return { ok: false, error: "Couldn't send it (direct: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate; through curl: HTTP 429: busy, try again later)" };
     return auto && !saved.autoSend ? { ok: false, skipped: "automatic sending is off" } : { ok: true, code: "TEST-CODE-01", at: 1762200000 }; },
   last_sent: () => null,
 };

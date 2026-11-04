@@ -178,7 +178,7 @@ const menuState = () => page.evaluate(() => {
 });
 // The owner's device: Steam's menu window is a 241 px popup at the left. A: its window resized to a bar.
 await scene("menu-steam", { scene: "library", qam: false, menu: "steam", menuWidth: 241, skin: false });
-await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "browserview", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
   console.log(`::notice title=menu-bottom-bar diag::${JSON.stringify(await page.evaluate(() => window.HearthClassicMenu)).slice(0, 1500)}`);
   if (!m.style) errors.push("menu-bottom-bar: the skin didn't reach the menu's own window");
@@ -187,6 +187,7 @@ await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", me
   if (m.icons.join(",") !== "home,lib,shop,friends,media,dl,gear,power") errors.push(`menu-bottom-bar: icons ${m.icons}`);
   if (m.anchorOpacity !== "0") errors.push(`menu-bottom-bar: the main window's empty menu place is still showing (${m.anchorOpacity})`);
   if (!m.diag || !/^passed/.test(m.diag.selfCheck)) errors.push(`menu-bottom-bar: self-check ${m.diag && m.diag.selfCheck}`);
+  if (!m.diag || m.diag.resizeWith !== "BrowserView.SetBounds") errors.push(`menu-bottom-bar: resized with ${m.diag && m.diag.resizeWith}`);
   // Unloading puts the menu window back where Steam had it.
   await page.evaluate(() => window.HC_PLUGIN.onDismount());
   await page.waitForTimeout(600);
@@ -194,7 +195,7 @@ await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", me
   if (back.anchorOpacity !== "1") errors.push("menu-bottom-bar: unloading didn't bring back the main window's menu place");
   if (back.win.width !== 241 || back.win.top !== 0 || /hearth-/.test(back.cls)) errors.push(`menu-bottom-bar: unloading didn't restore Steam's menu window (${JSON.stringify(back.win)}, ${back.cls})`);
 });
-await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, resize: "browserview", running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
   if (m.win.width !== 1280 || m.win.top !== 0 || !/hearth-ingame/.test(m.cls) || !/hearth-bar/.test(m.cls)) errors.push(`menu-top-bar-in-game: not a bar at the top (${JSON.stringify(m.win)}, ${m.cls})`);
 });
@@ -224,6 +225,10 @@ await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam",
   console.log(`::notice title=deep diagnostics (mirror)::${deep.slice(0, 3000).replace(/\n/g, " | ")}`);
   if (!m.mirror || m.mirror.n !== 8 || m.mirror.on !== 1 || m.mirror.top < 600) errors.push(`menu-mirror-bottom: no mirror bar at the bottom (${JSON.stringify(m.mirror)})`);
   if (!/hearth-ghost/.test(m.cls) || m.panelOpacity !== "0") errors.push(`menu-mirror-bottom: Steam's menu isn't see-through (${m.cls}, ${m.panelOpacity})`);
+  // The device's blank side menu: the menu window's body painted dark by the skin. Now see-through.
+  const bodyBg = await page.evaluate(() => { const d = document.getElementById("menuwin").contentDocument; return getComputedStyle(d.body).backgroundColor; });
+  if (bodyBg !== "rgba(0, 0, 0, 0)") errors.push(`menu-mirror-bottom: the menu window's body is painted (${bodyBg})`);
+  if (!m.diag || !/window\.resizeTo: still/.test(m.diag.why)) errors.push(`menu-mirror-bottom: the refused resize isn't explained (${m.diag && m.diag.why})`);
   if (m.win.width !== 241) errors.push("menu-mirror-bottom: Steam's menu window was moved");
   // Down in Steam's menu: the highlight follows.
   await page.evaluate(() => { const d = document.getElementById("menuwin").contentDocument; const it = [...d.querySelectorAll(".mm_entry")]; it.forEach((e) => e.classList.remove("gpfocus")); it[4].classList.add("gpfocus"); });
@@ -233,8 +238,10 @@ await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam",
   await page.screenshot({ path: join(out, "menu-mirror-bottom-moved.png") });
 });
 await scene("menu-mirror-top-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+  // Over a game the main window isn't on screen, so no mirror: Steam's menu in Hearth's colours, in its own place.
   const m = await menuState();
-  if (!m.mirror || m.mirror.cls !== "top" || m.mirror.top > 60) errors.push(`menu-mirror-top-in-game: no mirror bar at the top (${JSON.stringify(m.mirror)})`);
+  if (m.mirror || !/hearth-menu/.test(m.cls) || /hearth-(bar|ghost)/.test(m.cls) || m.win.width !== 241) errors.push(`menu-mirror-top-in-game: expected Steam's menu in Hearth's colours (${m.cls}, ${JSON.stringify(m.mirror)})`);
+  if (!m.diag || !/Steam doesn't allow the top bar during games on this device/.test(m.diag.why)) errors.push(`menu-mirror-top-in-game: ${m.diag && m.diag.why}`);
 });
 await scene("menu-steam-changed", { scene: "library", menu: "changed", menuWidth: 241, settings: { look: "classic" }, skin: true,
   want: ["Hearth bottom bar menu paused", "no .Panel"] }, async () => {
@@ -255,6 +262,11 @@ await scene("panel-diagnostics", { scene: "library", menu: "steam", menuWidth: 2
   if (!t2.includes("Last sent:") || !t2.includes("code TEST-CODE-01")) errors.push("panel-diagnostics: no Last sent line after sending");
   const man = await page.evaluate(() => (window.HC_SENT || []).filter((x) => !x.auto));
   if (!man.length || man[0].len < 500) errors.push(`panel-diagnostics: the manual send carried no deep diagnostics (${JSON.stringify(man)})`);
+  // A send that fails both ways: the panel says why, in the service's and TLS's own words.
+  await page.evaluate(() => { window.HC_SENDFAIL = true; const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Send Hearth Classic log now")); b && b.click(); });
+  await page.waitForTimeout(800);
+  const t3 = await page.evaluate(() => document.body.innerText);
+  if (!t3.includes("certificate verify failed") || !t3.includes("through curl: HTTP 429: busy, try again later")) errors.push("panel-diagnostics: the send's error isn't shown");
   // The picture: the found-text folded again, Quick Access scrolled down to the Diagnostics section.
   await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Hide what Hearth Classic found")); b && b.click(); });
   await page.waitForTimeout(300);

@@ -462,21 +462,138 @@ def send_body(reason, diag_text, version, home_dir=None, names=None, now=None):
     return redact(body, home_dir, names)[-SEND_MAX:] if len(body) > SEND_MAX else redact(body, home_dir, names)
 
 
-def post_log(body, note, version, opener=urllib.request.urlopen):
-    req = urllib.request.Request(SEND_SERVICE + '/v1/logs', data=body.encode('utf-8'), method='POST', headers={
-        'Content-Type': 'text/plain; charset=utf-8', 'X-Hearth-Version': version, 'X-Hearth-Kind': 'peppermint',
-        'X-Hearth-Note': urllib.parse.quote(note[:300], safe=' ')})
-    with opener(req, timeout=60) as r:
-        v = json.loads(r.read(4096).decode('utf-8', 'replace') or '{}')
+# Decky's Python is a bundled (PyInstaller) one whose OpenSSL looks for certificates where it was built, not where Hearth
+# OS keeps them: a plain urlopen failed on the owner's device with an HTTPS error. So the direct send uses the system's
+# CA bundle (verification stays on), and if it fails anyway, the report goes through the system's curl with the same
+# request Hearth's own sender makes (hearth-core logs.rs send_report runs curl too), with the system's libraries.
+CA_FILES = ('/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt')
+
+
+def ssl_context(files=CA_FILES):
+    """(context, where its certificates come from): the first system CA bundle that loads, else Python's defaults.
+    Verification always stays on."""
+    import ssl
+    for f in files:
+        if os.path.isfile(f):
+            try:
+                return ssl.create_default_context(cafile=f), f
+            except (OSError, ssl.SSLError):
+                continue
+    p = ssl.get_default_verify_paths()
+    return ssl.create_default_context(), 'Python default (%s)' % (p.cafile or p.capath or 'none')
+
+
+def _headers(note, version, agent=True):
+    """The request Hearth's own sender makes. The direct send says who it is (Python's default User-Agent is one the
+    service's front door may refuse); curl keeps its own, as Hearth's sender does."""
+    h = {'Content-Type': 'text/plain; charset=utf-8', 'X-Hearth-Version': version, 'X-Hearth-Kind': 'peppermint',
+         'X-Hearth-Note': urllib.parse.quote(note[:300], safe=' ')}
+    if agent:
+        h['User-Agent'] = 'hearth-classic/%s (Hearth OS)' % version
+    return h
+
+
+def _code_from(text):
+    """The service's answer: its code, or an error with the service's own words."""
+    try:
+        v = json.loads(text or '{}')
+    except ValueError:
+        raise ValueError('the service answered %r' % (text or '')[:120])
     code = v.get('code') if isinstance(v, dict) else None
     if not isinstance(code, str) or not code:
-        raise ValueError((v or {}).get('error', 'no code') if isinstance(v, dict) else 'no code')
+        raise ValueError('the service said: %s' % ((v or {}).get('error', 'no code') if isinstance(v, dict) else 'no code'))
     return code
 
 
-def send_now(key, reason, diag_text, auto, settings=None, opener=urllib.request.urlopen, now=None):
-    """Sends (or says why not): {ok, code, at, skipped}. Automatic sends need the switch, at most one per reason per
-    plugin start and AUTO_PER_DAY a day; manual ones MANUAL_PER_DAY a day."""
+def why_failed(e):
+    """A send's failure in plain words: HTTP status and the service's error, the network's or TLS's reason."""
+    import urllib.error
+    if isinstance(e, urllib.error.HTTPError):
+        body = ''
+        try:
+            body = e.read(2000).decode('utf-8', 'replace')
+            err = json.loads(body).get('error', '')
+        except Exception:  # noqa: BLE001
+            err = body[:120]
+        return 'HTTP %s%s' % (e.code, (': ' + str(err)) if err else '')
+    if isinstance(e, urllib.error.URLError):
+        r = e.reason
+        return str(getattr(r, 'reason', None) or r)[:200]
+    if isinstance(e, (RuntimeError, ValueError)):
+        return str(e)[:200]
+    return ('%s: %s' % (type(e).__name__, e))[:200]
+
+
+def post_log(body, note, version, opener=urllib.request.urlopen, ctx=None):
+    """The direct send (Python, the system's CA bundle). Returns the code."""
+    req = urllib.request.Request(SEND_SERVICE + '/v1/logs', data=body.encode('utf-8'), method='POST', headers=_headers(note, version))
+    if ctx is None:
+        ctx = ssl_context()[0]
+    with opener(req, timeout=60, context=ctx) as r:
+        return _code_from(r.read(4096).decode('utf-8', 'replace'))
+
+
+def post_with_curl(body, note, version, run=subprocess.run, finder=None):
+    """The same request through the system's curl (the way hearth-core's send_report sends Hearth's own logs)."""
+    curl = (finder or find_program)('curl')
+    if not curl:
+        raise RuntimeError("curl isn't installed")
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix='hearth-classic-send-', suffix='.txt')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(body)
+        args = [curl, '-sS', '-m', '60', '-X', 'POST', '-w', '\n%{http_code}']
+        for k, v in _headers(note, version, agent=False).items():
+            args += ['-H', '%s: %s' % (k, v)]
+        args += ['--data-binary', '@' + tmp, SEND_SERVICE + '/v1/logs']
+        r = run(args, capture_output=True, text=True, timeout=75, env=clean_env())
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    out = (r.stdout or '').rstrip('\n')
+    text, _, status = out.rpartition('\n')
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or '').strip()[:200] or 'curl stopped (exit %s)' % r.returncode)
+    if status and status != '200':
+        try:
+            err = json.loads(text).get('error', '')
+        except (ValueError, AttributeError):
+            err = text[:120]
+        raise RuntimeError('HTTP %s%s' % (status, (': ' + str(err)) if err else ''))
+    return _code_from(text)
+
+
+def deliver(body, note, version, opener=urllib.request.urlopen, run=subprocess.run, finder=None, ctx=None):
+    """Direct first, then curl. {ok, code, via} or {ok: False, error} with each way's reason; every try is logged."""
+    tries = []
+    try:
+        if ctx is None:
+            ctx, ca = ssl_context()
+        else:
+            ca = 'given'
+        code = post_log(body, note, version, opener, ctx)
+        write_diag('send: direct (Python, certificates from %s): sent, code %s' % (ca, code))
+        return {'ok': True, 'code': code, 'via': 'direct'}
+    except Exception as e:  # noqa: BLE001
+        tries.append('direct: ' + why_failed(e))
+    try:
+        code = post_with_curl(body, note, version, run, finder)
+        write_diag('send: %s; through curl: sent, code %s' % (tries[0], code))
+        return {'ok': True, 'code': code, 'via': 'curl'}
+    except Exception as e:  # noqa: BLE001
+        tries.append('through curl: ' + why_failed(e))
+    why = '; '.join(tries)
+    write_diag('send: not sent (%s)' % why)
+    log('send: not sent (%s)' % why)
+    return {'ok': False, 'error': "Couldn't send it (%s)" % why}
+
+
+def send_now(key, reason, diag_text, auto, settings=None, opener=urllib.request.urlopen, now=None, run=subprocess.run, finder=None, ctx=None):
+    """Sends (or says why not): {ok, code, at, via, skipped, error}. Automatic sends need the switch, at most one per
+    reason per plugin start and AUTO_PER_DAY a day; manual ones MANUAL_PER_DAY a day."""
     now = time.time() if now is None else now
     if auto:
         s = settings if settings is not None else read_settings()[0]
@@ -493,16 +610,15 @@ def send_now(key, reason, diag_text, auto, settings=None, opener=urllib.request.
     if auto:
         SENT_THIS_START.add(key)
     version = hearth_only.plugin_version(plugin_dir()) or '?'
-    try:
-        code = post_log(send_body(reason, diag_text, version, now=now), 'Hearth Classic: ' + reason, version, opener)
-    except Exception as e:  # noqa: BLE001 (network, service)
-        log('send: not sent (%s)' % type(e).__name__)
-        return {'ok': False, 'error': "Couldn't send it (%s)" % type(e).__name__}
+    r = deliver(send_body(reason, diag_text, version, now=now), 'Hearth Classic: ' + reason, version, opener, run, finder, ctx)
+    if not r['ok']:
+        return r
+    code = r['code']
     counts = {k: v for k, v in counts.items() if k.startswith(day)}
     counts[day + (':auto' if auto else ':manual')] = n + 1
-    write_send_state({'days': counts, 'last': {'at': int(now), 'code': code, 'reason': reason[:200], 'auto': auto}})
-    write_diag('sent to Hearth (%s): code %s, %s' % ('automatically' if auto else 'by hand', code, reason))
-    return {'ok': True, 'code': code, 'at': int(now)}
+    write_send_state({'days': counts, 'last': {'at': int(now), 'code': code, 'reason': reason[:200], 'auto': auto, 'via': r['via']}})
+    write_diag('sent to Hearth (%s, %s): code %s, %s' % ('automatically' if auto else 'by hand', r['via'], code, reason))
+    return {'ok': True, 'code': code, 'at': int(now), 'via': r['via']}
 
 
 class Plugin:

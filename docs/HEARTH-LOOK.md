@@ -74,6 +74,18 @@ the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin o
   - On web pages (the Store), which Steam draws above its other windows, the menu stays in Steam's own place in
     Hearth's colours, and the bar comes back when you leave the page.
   - Diagnostics also show the page, the self-check and the main window's menu place.
+- Round 7 (from the owner's ROG Ally log on 1.2.5):
+  - Resizing never worked there: the menu window has no `SteamClient.Window`, and `window.resizeTo` does nothing. The
+    menu is one of Steam's **browser views** (its page holds `#browserview_target`), whose `BrowserViewPopup` has
+    `SetBounds`/`GetBounds`, what Steam itself uses to place it: tried first now (found through the focus controller's
+    active browser view, named `MainMenu…`), then `SteamClient.Window`, and `window.resizeTo` only once per start.
+    Diagnostics say which of these exist ("Resize calls here").
+  - The blank side menu behind the mirror was Hearth Classic's own page background painting the menu window's body:
+    Steam's popups no longer get it, and the see-through menu window (and the resized one) keep html, body and
+    `#browserview_target` transparent.
+  - Over a game the mirror can't be seen (it's drawn in the main window, which isn't on screen then): in a game the
+    menu is Steam's own in Hearth's colours, and the panel says "Steam doesn't allow the top bar during games on this
+    device" when its window can't be resized.
 - When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
   the entries in one row and the first one reachable. If not, it comes off at once (the next way above).
 - If the structure isn't there, nothing touches the menu and the panel says why.
@@ -106,6 +118,14 @@ Quick Access › Hearth Classic › Diagnostics:
   (tag, id, classes, box, position, opacity, visibility, display, z-index, background, transform), the menu window's
   size, background, `#MainNavMenuContainer` with its parents, its panel and entries, the menu window's other content,
   and the self-check per entry.
+
+How it's sent (round 7, after "https error" on a device): Decky's bundled Python looks for certificates where it
+was built, not where Hearth OS keeps them. The direct send now uses the system's CA bundle
+(`/etc/ssl/certs/ca-certificates.crt`, then `/etc/pki/tls/certs/ca-bundle.crt`, then Python's defaults; verification
+stays on) and says who it is (`hearth-classic/<version>`). If it fails anyway, the same request goes through the
+system's `curl` with the system's libraries, which is how Hearth's own sender (`logs.rs` `send_report`) sends. The
+panel and `hearth-classic.log` say which way was tried and why one failed (the HTTP status and the service's error,
+or the network's or TLS's reason, such as "certificate verify failed").
 
 Reading them (the owner, with `gh`):
 
