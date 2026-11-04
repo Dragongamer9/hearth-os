@@ -178,6 +178,7 @@ const menuState = () => page.evaluate(() => {
 await scene("menu-steam", { scene: "library", qam: false, menu: "steam", menuWidth: 241, skin: false });
 await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
+  console.log(`::notice title=menu-bottom-bar diag::${JSON.stringify(await page.evaluate(() => window.HearthClassicMenu)).slice(0, 1500)}`);
   if (!m.style) errors.push("menu-bottom-bar: the skin didn't reach the menu's own window");
   if (m.win.width !== 1280 || m.win.height !== 150 || m.win.top !== 650) errors.push(`menu-bottom-bar: the menu window wasn't made a bar at the bottom (${JSON.stringify(m.win)})`);
   if (!/hearth-bar/.test(m.cls) || m.dir !== "row" || Math.max(...m.tops) - Math.min(...m.tops) > 24) errors.push(`menu-bottom-bar: not a bar (${m.cls}, ${m.dir}, ${m.tops})`);
