@@ -1,5 +1,13 @@
 # Hearth Classic (the old Hearth Game Mode look on Steam Game Mode)
 
+> **Retired (November 2026).** The owner took Hearth Classic off the plugin channel: it's listed as retired in every
+> plugins release (`tools/decky_plugins.py` RETIRED), so devices remove their downloaded copy and it's no longer
+> offered. Its code stays here: its home and skin are the "Hearth Classic" era of **Hearth Eras** (docs/HEARTH-ERAS.md).
+> What it proved on a device (CSS skins through class maps, the Home replacement, places through Steam's navigator,
+> styles in every Steam window, pausing when classes are missing, sending logs) is what Eras is built on; what it proved
+> doesn't work (reshaping Steam's menu window into bars: Steam keeps it 241×644 and ignores ResizeTo/MoveTo) Eras
+> doesn't try.
+
 **Hearth Classic** is a Decky plugin (`hosts/decky-hearth-look`) that brings back the look of Hearth's own Game Mode
 (the archived `ui/index.html`) on top of Steam's Game Mode. It's **off until you turn it on**: Quick Access ›
 Hearth Classic › **Game Mode look**: **Hearth Classic** or **Steam**. The plugin never changes that choice by itself.

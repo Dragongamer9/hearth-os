@@ -1,0 +1,67 @@
+/* Hearth Eras: the shared part of every era's skin over Steam's Game Mode (hosts/decky-hearth-eras, docs/HEARTH-ERAS.md).
+   Hearth's own design. The colours are the picked preset's variables (--era-bg, --era-accent, ...), which the plugin
+   puts first; each era's own file (channels.css, blades.css, ...) follows and adds its shapes and motion.
+   Built like Hearth Classic's skin (proven on a device): Steam's own --gp variables, its unhashed focus classes, and its
+   components by readable names: a double-braced Map:Key is filled in at run time with Steam's class name from
+   @decky/ui's class maps or findClassModule. A line whose name Steam doesn't have is left out, so a Steam update only
+   makes the look plainer; if the names the look needs most are gone, nothing is applied and the panel says so.
+   A part between "@section NAME" and "@end" goes in only when that extra is switched on (loading, keyboard, pages).
+   One rule per line where a Steam class is named. Steam's main menu window is never reshaped. */
+
+/* ---- 1. Steam's variables, the era's values */
+:root{--gpSystemDarkestGrey:var(--era-page,var(--era-bg)) !important;--gpSystemDarkerGrey:var(--era-page,var(--era-bg2)) !important;--gpSystemDarkGrey:var(--era-panel2) !important}
+:root{--gpStoreDarkestGrey:var(--era-page,var(--era-bg)) !important;--gpStoreDarkerGrey:var(--era-page,var(--era-bg2)) !important}
+:root{--gpColor-Blue:var(--era-accent) !important;--gpColor-BlueHi:var(--era-accent) !important;--gpColor-Green:var(--era-accent) !important;--gpColor-GreenHi:var(--era-accent) !important}
+:root{--era-r:12px;--era-focus:0 0 0 3px var(--era-accent);--era-font:"Noto Sans","Cantarell",system-ui,sans-serif;--era-ease:cubic-bezier(.2,.8,.2,1)}
+
+/* ---- 2. focus and font */
+body,input,textarea,button{font-family:var(--era-font) !important}
+.gpfocus{outline:none !important;box-shadow:var(--era-focus) !important;transition:box-shadow .18s var(--era-ease),transform .18s var(--era-ease) !important}
+::selection{background:var(--era-accent);color:var(--era-ink)}
+
+/* ---- 3. Steam's components */
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:var(--era-bg2) !important}
+.{{gamepadTabbedPageClasses:Tab}}{border-radius:var(--era-r) !important;color:var(--era-dim) !important;font-weight:600 !important}
+.{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:var(--era-accent) !important;color:var(--era-ink) !important}
+.{{gamepadTabbedPageClasses:TabCount}}{background:var(--era-panel2) !important;color:var(--era-text) !important;border-radius:8px !important}
+.{{gamepadLibraryClasses:CollectionHeader}}{color:var(--era-dim) !important;font-weight:700 !important}
+.{{libraryAssetImageClasses:Container}}{border-radius:var(--era-r) !important;overflow:hidden !important}
+.{{libraryAssetImageClasses:GreyBackground}}{background:linear-gradient(160deg,var(--era-panel2),var(--era-panel)) !important}
+.gpfocus .{{libraryAssetImageClasses:Container}}{box-shadow:var(--era-focus) !important}
+.{{appDetailsHeaderClasses:TopGradient}}{background:linear-gradient(0deg,var(--era-page,var(--era-bg)),transparent 60%) !important}
+.{{playSectionClasses:PlayBar}}{background:var(--era-page,var(--era-bg2)) !important}
+.{{playSectionClasses:GameStat}}{color:var(--era-dim) !important}
+.{{playSectionClasses:MenuButton}}{border-radius:var(--era-r) !important}
+.{{appActionButtonClasses:PlayButton}}{background:var(--era-accent) !important;color:var(--era-ink) !important;border-radius:var(--era-r) !important;font-weight:700 !important}
+.{{appActionButtonClasses:Green}}{background:var(--era-accent) !important;color:var(--era-ink) !important}
+.{{quickAccessMenuClasses:Container}}{background:var(--era-page,var(--era-bg2)) !important}
+.{{quickAccessMenuClasses:Tab}}{border-radius:var(--era-r) !important}
+.{{quickAccessMenuClasses:Tab}}.{{quickAccessMenuClasses:Selected}}{background:var(--era-accent) !important;color:var(--era-ink) !important}
+.{{quickAccessMenuClasses:PanelSectionTitle}}{color:var(--era-accent) !important;letter-spacing:.06em !important}
+.{{gamepadDialogClasses:Field}}{border-radius:var(--era-r) !important}
+.{{gamepadDialogClasses:Button}}{border-radius:var(--era-r) !important}
+.{{gamepadDialogClasses:Button}}.gpfocus{background:var(--era-accent) !important;color:var(--era-ink) !important}
+.{{gamepadDialogClasses:Toggle}}.{{gamepadDialogClasses:On}} .{{gamepadDialogClasses:ToggleRail}}{background:var(--era-accent) !important}
+.{{gamepadContextMenuClasses:contextMenuContents}}{border-radius:var(--era-r) !important}
+.{{gamepadContextMenuClasses:contextMenuItem}}.gpfocus{background:var(--era-accent) !important;color:var(--era-ink) !important}
+
+/* ---- extras (each off until switched on in the panel) */
+/* @section loading */
+/* Steam's loading spinner and the "starting game" screen in the era's colours (names Steam may not have: left out then) */
+.{{throbberClasses:Throbber}}{filter:hue-rotate(0deg) saturate(1.4) !important}
+.{{throbberClasses:throbber_center_wrapper}}{background:radial-gradient(circle,var(--era-panel2),transparent 70%) !important;border-radius:50% !important}
+.{{appDetailsClasses:Throbber}}{filter:saturate(1.4) !important}
+.{{gamepadUIClasses:BasicUiRoot}} .{{throbberClasses:Throbber}}{opacity:.9 !important}
+/* @end */
+/* @section keyboard */
+.{{VirtualKeyboardContainer:VirtualKeyboardContainer}}{background:var(--era-bg2) !important;border-top:2px solid var(--era-accent) !important}
+.{{VirtualKeyboardContainer:VirtualKeyboardContainer}} .gpfocus{background:var(--era-accent) !important;color:var(--era-ink) !important;border-radius:var(--era-r) !important}
+/* @end */
+/* @section pages */
+.{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:linear-gradient(180deg,var(--era-bg2),var(--era-page,var(--era-bg))) !important}
+.{{gamepadLibraryClasses:AppGridFilterHeader}}{color:var(--era-accent) !important}
+.{{basicAppDetailsSectionStylerClasses:GameInfoContainer}}{background:var(--era-panel) !important;border-radius:var(--era-r) !important}
+.{{basicAppDetailsSectionStylerClasses:GameInfoQuickLinks}}{background:var(--era-panel) !important;border-radius:var(--era-r) !important}
+.{{appDetailsClasses:Container}}{background:var(--era-page,var(--era-bg)) !important}
+.{{searchBarClasses:SearchBox}}{border-radius:var(--era-r) !important;background:var(--era-panel2) !important}
+/* @end */

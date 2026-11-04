@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import tempfile
 import types
 import unittest
@@ -655,7 +656,8 @@ class PublishWorkflow(unittest.TestCase):
         spec.loader.exec_module(m)
         found = [p['id'] for p in m.discover(ROOT)]
         want = sorted(d.name for d in (ROOT / 'hosts').iterdir()
-                      if d.name.startswith('decky-hearth-') and (d / 'package.json').is_file() and (d / 'package.sh').is_file())
+                      if d.name.startswith('decky-hearth-') and (d / 'package.json').is_file() and (d / 'package.sh').is_file()
+                      and d.name not in m.RETIRED)
         self.assertEqual(found, want)
         self.assertTrue(set(PLUGINS) <= set(found))
         for p in m.discover(ROOT):
@@ -685,6 +687,52 @@ class PublishWorkflow(unittest.TestCase):
         wf = (ROOT / '.github/workflows/decky-plugins-release.yml').read_text()
         self.assertIn('tools/decky_plugins.py', wf)
         self.assertNotIn('for p in sync link music', wf)
+
+
+class RetiredPlugins(unittest.TestCase):
+    """Retiring a plugin (docs/PLUGIN-UPDATES.md): Hearth Classic (decky-hearth-look) keeps its code in the repository
+    (Hearth Eras' Classic era reuses it) but is never built into a plugins release, and every release lists it under
+    "retired", which devices accept and act on (their downloaded copy goes, it's no longer offered)."""
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('decky_plugins_r', ROOT / 'tools/decky_plugins.py')
+        self.dp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.dp)
+        loader = importlib.machinery.SourceFileLoader("hd_r", str(DECKY))
+        spec = importlib.util.spec_from_loader('hd_r', loader)
+        self.hd = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.hd)
+
+    def test_hearth_classic_is_retired_but_kept(self):
+        self.assertIn('decky-hearth-look', self.dp.RETIRED)
+        self.assertTrue((ROOT / 'hosts/decky-hearth-look/src/home.tsx').is_file())   # the code stays
+        ids = [p['id'] for p in self.dp.discover(ROOT)]
+        self.assertNotIn('decky-hearth-look', ids)   # never built, checked or released
+        self.assertIn('decky-hearth-eras', ids)      # its successor is
+        for r in self.dp.RETIRED:
+            self.assertTrue(self.dp.PLUGIN_ID.fullmatch(r), r)
+
+    def test_manifest_lists_retired_and_devices_accept_it(self):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix='retired-'))
+        try:
+            for p in self.dp.discover(ROOT):
+                with zipfile.ZipFile(tmp / (p['id'] + '.zip'), 'w') as z:
+                    z.writestr(p['id'] + '/package.json', json.dumps({'version': '9.9.9'}))
+            self.assertFalse((tmp / 'decky-hearth-look.zip').exists())
+            m = self.dp.manifest(tmp, '9.9.9', '1.2', '3.0', ROOT)
+            self.assertEqual(m['retired'], ['decky-hearth-look'])
+            self.assertNotIn('decky-hearth-look', [e['id'] for e in m['plugins']])
+            parsed = self.hd.parse_manifest((tmp / 'plugins.json').read_bytes(), '9.9.9')
+            self.assertEqual(parsed['retired'], ['decky-hearth-look'])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        self.assertEqual(subprocess.run([sys.executable, str(ROOT / 'tools/decky_plugins.py'), 'retired'], capture_output=True,
+                                        text=True).stdout.split(), list(self.dp.RETIRED))
+
+    def test_release_workflow_checks_retired(self):
+        wf = (ROOT / '.github/workflows/decky-plugins-release.yml').read_text()
+        self.assertIn("man['retired']", wf)
+        self.assertIn("'tools/decky_plugins.py', 'retired'", wf)
 
 
 class AutoSwitch(Base):

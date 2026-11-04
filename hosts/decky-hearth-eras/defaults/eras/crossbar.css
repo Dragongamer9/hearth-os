@@ -1,0 +1,10 @@
+/* Crossbar (a 2000s category bar): a deep colour wash with slow waves behind the Library, light text, a soft white
+   glow on focus. */
+:root{--era-r:10px;--era-focus:0 0 0 2px rgba(255,255,255,.9),0 0 24px rgba(255,255,255,.35);--era-font:"Noto Sans","Cantarell",system-ui,sans-serif}
+@keyframes era-wave{from{background-position:0 70%,0 0}to{background-position:1200px 70%,0 0}}
+.{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxMjAwJyBoZWlnaHQ9JzMwMCcgdmlld0JveD0nMCAwIDEyMDAgMzAwJz48cGF0aCBkPSdNMCAxNTAgQzIwMCA2MCA0MDAgMjQwIDYwMCAxNTAgUzEwMDAgNjAgMTIwMCAxNTAnIGZpbGw9J25vbmUnIHN0cm9rZT0nd2hpdGUnIHN0cm9rZS1vcGFjaXR5PScuMjInIHN0cm9rZS13aWR0aD0nMycvPjxwYXRoIGQ9J00wIDE3MCBDMjAwIDEwMCA0MDAgMjMwIDYwMCAxNzAgUzEwMDAgOTAgMTIwMCAxNzAnIGZpbGw9J25vbmUnIHN0cm9rZT0nd2hpdGUnIHN0cm9rZS1vcGFjaXR5PScuMTQnIHN0cm9rZS13aWR0aD0nMicvPjwvc3ZnPg==") repeat-x,linear-gradient(135deg,var(--era-bg),var(--era-bg2)) !important;animation:era-wave 60s linear infinite}
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:transparent !important}
+.{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:rgba(255,255,255,.2) !important;color:#fff !important}
+.{{gamepadLibraryClasses:GamepadLibrary}}{background:transparent !important}
+.{{quickAccessMenuClasses:Container}}{background:linear-gradient(160deg,var(--era-bg),var(--era-bg2)) !important}
+.{{appActionButtonClasses:PlayButton}}{background:rgba(255,255,255,.92) !important;color:var(--era-ink) !important}
