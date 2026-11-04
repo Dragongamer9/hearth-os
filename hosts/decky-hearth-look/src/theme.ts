@@ -64,6 +64,9 @@ function put(win: Window, css: string) {
     (doc.head || doc.documentElement).appendChild(el);
   }
   if (el.textContent !== css) el.textContent = css;
+  // Steam's popups (its menu and Quick Access windows) don't get the main window's page background: on a device the
+  // menu window's body painted the whole window dark behind the mirror (1.2.5 log).
+  try { doc.documentElement.classList.toggle("hearth-popup", win !== mainWindow()); } catch { /* fine */ }
 }
 
 /** Puts the skin in. Returns false when it couldn't be put in Steam's main window (the caller then pauses). */
@@ -83,7 +86,7 @@ export function removeSkin() {
   if (timer) { clearInterval(timer); timer = undefined; }
   current = "";
   for (const w of steamWindows()) {
-    try { w.document.getElementById(STYLE_ID)?.remove(); } catch { /* gone */ }
+    try { w.document.getElementById(STYLE_ID)?.remove(); w.document.documentElement.classList.remove("hearth-popup"); } catch { /* gone */ }
   }
 }
 
@@ -106,10 +109,10 @@ export type MenuMethod = "none" | "pending" | "fits" | "resized" | "mirror" | "v
 export interface MenuDiag {
   windows: string[]; found: boolean; entries: number; labels: string[]; layout: "bar" | "top" | "vertical" | "none" | "pending";
   why: string; game: boolean; method: MenuMethod; before: string; after: string; resizeWith: string;
-  route: string; anchor: string; selfCheck: string;
+  route: string; anchor: string; selfCheck: string; resizeApis: string;
 }
 export const menuDiag: MenuDiag = { windows: [], found: false, entries: 0, labels: [], layout: "none", why: "not checked yet", game: false,
-  method: "none", before: "", after: "", resizeWith: "", route: "", anchor: "", selfCheck: "" };
+  method: "none", before: "", after: "", resizeWith: "", route: "", anchor: "", selfCheck: "", resizeApis: "" };
 const CLASSES = ["hearth-bar", "hearth-menu", "hearth-ingame", "hearth-ghost"];
 const BAR_H = 150;   // the resized menu window's height (CSS px): the bar, its focused entry and the gaps around it
 const MIRROR_ID = "hearth-bar-mirror";
@@ -133,6 +136,37 @@ export function mainRoute(): string {
 }
 
 /** Every entry really visible in its window: inside it, not hidden by itself or a parent, not covered. */
+let resizeToTried = false;   // window.resizeTo: tried once per plugin start (it does nothing to Steam's menu on a device)
+let bvName = "";
+
+/** The BrowserViewPopup of Steam's main menu (the menu window is one of Steam's browser views): the focus controller's
+ *  active browser view while the menu has the focus, else one found by name ("MainMenu...") on the main window's
+ *  instance or its menu store. null when none is found. */
+function browserViewFor(doc: Document): any {
+  const cands: any[] = [];
+  try {
+    const fnc = (DUI as any).getFocusNavController?.() ?? (window as any).GamepadNavTree?.m_context?.m_controller ?? (window as any).FocusNavController;
+    if (fnc?.m_activeBrowserView) cands.push(fnc.m_activeBrowserView);
+  } catch { /* none */ }
+  try {
+    const inst = (DUI as any).Router?.WindowStore?.GamepadUIMainWindowInstance ?? (window as any).SteamUIStore?.WindowStore?.GamepadUIMainWindowInstance;
+    for (const o of [inst, inst?.MenuStore, inst?.MenuStore?.m_MainMenuStore, inst?.m_MenuStore]) {
+      if (!o || typeof o !== "object") continue;
+      for (const k of Object.keys(o)) { try { const v = o[k]; if (v && typeof v === "object" && (v.m_browserView || v.m_strName)) cands.push(v); } catch { /* */ } }
+    }
+  } catch { /* none */ }
+  const title = (doc.title || "").toLowerCase();
+  for (const c of cands) {
+    try {
+      const name = String(c.m_strName || "");
+      const isMenu = /mainmenu/i.test(name) || (!!title && name.toLowerCase() === title);
+      const b = c.m_browserView ?? c.GetBrowser?.();
+      if (isMenu && b) { bvName = name; return b; }
+    } catch { /* next */ }
+  }
+  return null;
+}
+
 let lastSelfCheck: { label: string; inside: boolean; shown: boolean; hit: boolean; cover: string }[] = [];
 let lastMenuDoc: Document | null = null;
 let lastAnchorClass = "";
@@ -230,7 +264,7 @@ export function menuDeepDump(): string {
   return lines.join("\n").slice(0, 40000);
 }
 
-interface DocState { mode: MenuMethod; topFailed: string; orig: { x: number; y: number; width: number; height: number } | null; tries: number; why: string; at: string; busy: boolean }
+interface DocState { mode: MenuMethod; topFailed: string; with?: { how: string; set(b: { x: number; y: number; width: number; height: number }): void }; orig: { x: number; y: number; width: number; height: number } | null; tries: number; why: string; at: string; busy: boolean }
 
 export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChange?: (d: MenuDiag) => void }): () => void {
   const anchorClass = opts.anchorClass || "";
@@ -246,18 +280,27 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
   const stateOf = (doc: Document) => { let st = states.get(doc); if (!st) { st = { mode: "pending", topFailed: "", orig: null, tries: 0, why: "", at: "", busy: false }; states.set(doc, st); } return st; };
 
   // ---- 1. resizing the menu's own window
-  const steamWin = (win: any) => { try { return win.SteamClient?.Window ?? null; } catch { return null; } };
-  async function boundsOf(win: any) {
-    const sw = steamWin(win);
-    try { const d = sw && typeof sw.GetWindowDimensions === "function" ? await sw.GetWindowDimensions() : null; if (d && d.width > 0) return { x: d.x, y: d.y, width: d.width, height: d.height }; } catch { /* below */ }
-    return { x: win.screenX || 0, y: win.screenY || 0, width: win.outerWidth || win.innerWidth, height: win.outerHeight || win.innerHeight };
-  }
-  function place(win: any, x: number, y: number, w: number, h: number): string {
-    const sw = steamWin(win);
-    if (sw && typeof sw.ResizeTo === "function") {
-      try { sw.ResizeTo(w, h, false); if (typeof sw.MoveTo === "function") sw.MoveTo(x, y); return "SteamClient.Window"; } catch { /* below */ }
-    }
-    try { win.resizeTo(w, h); win.moveTo(x, y); return "window.resizeTo"; } catch { return ""; }
+  // On the owner's device (1.2.5 logs) the menu window has no SteamClient.Window and window.resizeTo does nothing. The
+  // menu is one of Steam's browser views (its body holds #browserview_target): its BrowserViewPopup has SetBounds and
+  // GetBounds, which Steam itself uses to place it. Tried in order: that, SteamClient.Window, and window.resizeTo once
+  // per plugin start (it never worked on a device; tried once so the log can say so).
+  interface Bounds { x: number; y: number; width: number; height: number }
+  interface Resizer { how: string; get(): Promise<Bounds | null>; set(b: Bounds): void }
+  function resizers(win: any, doc: Document): Resizer[] {
+    const out: Resizer[] = [];
+    const bv = browserViewFor(doc);
+    if (bv && typeof bv.SetBounds === "function") out.push({ how: "BrowserView.SetBounds",
+      get: async () => { try { const b = bv.GetBounds?.(); return b && b.width > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : null; } catch { return null; } },
+      set: (b) => bv.SetBounds(b.x, b.y, b.width, b.height) });
+    const sw = (() => { try { return win.SteamClient?.Window ?? null; } catch { return null; } })();
+    if (sw && typeof sw.ResizeTo === "function") out.push({ how: "SteamClient.Window",
+      get: async () => { try { const d = typeof sw.GetWindowDimensions === "function" ? await sw.GetWindowDimensions() : null; return d && d.width > 0 ? { x: d.x, y: d.y, width: d.width, height: d.height } : null; } catch { return null; } },
+      set: (b) => { sw.ResizeTo(b.width, b.height, false); if (typeof sw.MoveTo === "function") sw.MoveTo(b.x, b.y); } });
+    if (!resizeToTried) out.push({ how: "window.resizeTo",
+      get: async () => ({ x: win.screenX || 0, y: win.screenY || 0, width: win.outerWidth || win.innerWidth, height: win.outerHeight || win.innerHeight }),
+      set: (b) => { resizeToTried = true; win.resizeTo(b.width, b.height); win.moveTo(b.x, b.y); } });
+    menuDiag.resizeApis = `BrowserView ${bv ? "found" + (bvName ? " (" + bvName + ")" : "") : "not found"}, SteamClient.Window ${sw ? "yes" : "no"}, window.resizeTo ${resizeToTried ? "tried before" : "untried"}`;
+    return out;
   }
   async function tryResize(doc: Document, game: boolean) {
     const st = stateOf(doc);
@@ -265,20 +308,33 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     if (!win || st.busy) return;
     st.busy = true;
     try {
-      if (!st.orig) st.orig = await boundsOf(win);
       const main = mainWindow();
-      const dpr = main.devicePixelRatio || 1;
-      // Physical pixels, like Steam's own bounds: the whole width of the main window, bar-high, at its bottom (top in a game).
-      const mx = (main.screenX || 0), my = (main.screenY || 0);
-      const W = Math.round(main.innerWidth * dpr), H = Math.round(BAR_H * dpr), MH = Math.round(main.innerHeight * dpr);
       menuDiag.before = `${size(win)} (main window ${size(main)})`;
-      const how = place(win, mx, game ? my : my + MH - H, W, H);
-      menuDiag.resizeWith = how || "nothing (no resize call works here)";
-      await new Promise((r) => setTimeout(r, 450));
-      menuDiag.after = size(win);
+      const tried: string[] = [];
+      let done = false;
+      for (const r of resizers(win, doc)) {
+        const before = await r.get();
+        // The bounds' unit (CSS or device pixels): from what the window is now.
+        const scale = before && before.width > 0 && win.innerWidth > 0 ? before.width / win.innerWidth : (main.devicePixelRatio || 1);
+        const ox = r.how === "BrowserView.SetBounds" ? 0 : (main.screenX || 0), oy = r.how === "BrowserView.SetBounds" ? 0 : (main.screenY || 0);
+        const W = Math.round(main.innerWidth * scale), H = Math.round(BAR_H * scale), MH = Math.round(main.innerHeight * scale);
+        try { r.set({ x: ox, y: game ? oy : oy + MH - H, width: W, height: H }); } catch (e) { tried.push(`${r.how}: ${String(e).slice(0, 60)}`); continue; }
+        await new Promise((res) => setTimeout(res, 450));
+        if (win.innerWidth >= Math.min(640, main.innerWidth * 0.9)) {
+          if (!st.orig && before) st.orig = before;
+          st.with = r;
+          menuDiag.resizeWith = r.how; menuDiag.after = size(win); done = true;
+          break;
+        }
+        tried.push(`${r.how}: still ${size(win)}`);
+        try { if (before) r.set(before); } catch { /* fine */ }
+      }
       st.tries++;
-      if (how && win.innerWidth >= Math.min(640, main.innerWidth * 0.9)) { st.mode = "resized"; st.at = game ? "top" : "bottom"; st.why = ""; st.tries = 0; }
-      else { restore(doc); st.mode = "mirror"; st.why = `Steam's menu window couldn't be resized (${menuDiag.before} → ${menuDiag.after} with ${menuDiag.resizeWith})`; }
+      if (done) { st.mode = "resized"; st.at = game ? "top" : "bottom"; st.why = ""; st.tries = 0; }
+      else {
+        menuDiag.resizeWith = tried.join("; ") || "nothing (no resize call here)"; menuDiag.after = size(win);
+        st.mode = "mirror"; st.why = `Steam's menu window couldn't be resized (${menuDiag.before}; ${menuDiag.resizeWith})`;
+      }
     } catch (e) {
       restore(doc); st.mode = "mirror"; st.why = "resizing failed: " + String(e).slice(0, 120);
     } finally { st.busy = false; }
@@ -286,9 +342,8 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
   }
   function restore(doc: Document) {
     const st = states.get(doc);
-    const win: any = doc.defaultView;
-    if (!st || !st.orig || !win) return;
-    try { place(win, st.orig.x, st.orig.y, st.orig.width, st.orig.height); } catch { /* gone */ }
+    if (!st || !st.orig || !st.with) return;
+    try { st.with.set(st.orig); } catch { /* gone */ }
     st.orig = null;
   }
 
@@ -378,6 +433,12 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     if (game && st.topFailed) return colours(st.topFailed);
 
     if (st.mode === "vertical") return colours(st.why);
+    // The mirror is drawn in Steam's main window, which isn't on screen over a game: in a game, Steam's menu in
+    // Hearth's colours instead (never a blank strip).
+    if (st.mode === "mirror" && game) {
+      return colours(/couldn't be resized/.test(st.why) ? "Steam doesn't allow the top bar during games on this device (its menu window can't be resized): Steam's menu in Hearth's colours"
+        : "in a game Steam's menu is shown in Hearth's colours (the mirror can't be drawn over a game)");
+    }
     if (st.mode === "mirror") {
       // Steam's menu stays where it is, see-through; Hearth's bar is drawn in the main window while it's open.
       // Open: the menu's window is on screen and has the focus (closing the menu gives the focus back to the main window).

@@ -7,7 +7,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
-- [ ] Hearth Classic round 7: sending its diagnostics works from Decky (an "https error" on 1.2.5): the system's certificates, and the system's curl (like Hearth's own Send logs) when the direct way fails; the panel and the log say why a send failed. (needs testing on a device)
+- [ ] Hearth Classic round 7: sending its diagnostics works from Decky (an "https error" on 1.2.5): the system's certificates, and the system's curl (like Hearth's own Send logs) when the direct way fails; the panel and the log say why a send failed. From the owner's ROG Ally log: Steam's menu window is resized through its browser view's own bounds (the only way that can work there), the blank side menu behind the mirror is gone (Hearth Classic's page background no longer paints Steam's menu window), and over a game the menu stays Steam's own in Hearth's colours instead of a blank strip. (needs testing on a device)
 
 - [ ] Hearth Classic round 6: "Send diagnostics to Hearth automatically" (off until you turn it on) sends Hearth Classic's own diagnostics through Hearth's Send logs when the bar falls back, the self-check fails, the mirror is used or a resize is refused, and once at the first menu opening (once per reason per start, ten a day, personal details taken out), plus "Send Hearth Classic log now" and "Last sent"; much deeper diagnostics of Steam's windows while the menu is open, to find the blank side menu and the blank top dock. docs/HEARTH-LOOK.md (needs testing on a device)
 

@@ -483,9 +483,14 @@ def ssl_context(files=CA_FILES):
     return ssl.create_default_context(), 'Python default (%s)' % (p.cafile or p.capath or 'none')
 
 
-def _headers(note, version):
-    return {'Content-Type': 'text/plain; charset=utf-8', 'X-Hearth-Version': version, 'X-Hearth-Kind': 'peppermint',
-            'X-Hearth-Note': urllib.parse.quote(note[:300], safe=' '), 'User-Agent': 'hearth-classic/%s (Hearth OS)' % version}
+def _headers(note, version, agent=True):
+    """The request Hearth's own sender makes. The direct send says who it is (Python's default User-Agent is one the
+    service's front door may refuse); curl keeps its own, as Hearth's sender does."""
+    h = {'Content-Type': 'text/plain; charset=utf-8', 'X-Hearth-Version': version, 'X-Hearth-Kind': 'peppermint',
+         'X-Hearth-Note': urllib.parse.quote(note[:300], safe=' ')}
+    if agent:
+        h['User-Agent'] = 'hearth-classic/%s (Hearth OS)' % version
+    return h
 
 
 def _code_from(text):
@@ -539,7 +544,7 @@ def post_with_curl(body, note, version, run=subprocess.run, finder=None):
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(body)
         args = [curl, '-sS', '-m', '60', '-X', 'POST', '-w', '\n%{http_code}']
-        for k, v in _headers(note, version).items():
+        for k, v in _headers(note, version, agent=False).items():
             args += ['-H', '%s: %s' % (k, v)]
         args += ['--data-binary', '@' + tmp, SEND_SERVICE + '/v1/logs']
         r = run(args, capture_output=True, text=True, timeout=75, env=clean_env())

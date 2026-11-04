@@ -157,7 +157,7 @@ export const METHOD_NAMES: Record<string, string> = {
 /** The diagnostics as plain text (the panel shows it; "Write a Hearth Classic log" saves it). */
 export function diagnosticsText(d: { state: string; why: string; settings: Settings; keys: { resolved: string[]; missing: string[] };
   menu: { windows: string[]; found: boolean; entries: number; labels: string[]; layout: string; why: string; game: boolean;
-          method?: string; before?: string; after?: string; resizeWith?: string; route?: string; anchor?: string; selfCheck?: string }; windows: string[]; game: boolean | null }): string {
+          method?: string; before?: string; after?: string; resizeWith?: string; route?: string; anchor?: string; selfCheck?: string; resizeApis?: string }; windows: string[]; game: boolean | null }): string {
   const s = d.settings;
   return [
     `Hearth Classic: ${d.state}${d.why ? " (" + d.why + ")" : ""}`,
@@ -167,6 +167,7 @@ export function diagnosticsText(d: { state: string; why: string; settings: Setti
     `Menu: ${d.menu.found ? "found" : "not found"} (#MainNavMenuContainer), ${d.menu.entries} entries${d.menu.labels.length ? " [" + d.menu.labels.join(", ") + "]" : ""}`,
     `Menu bar: ${d.menu.layout}${d.menu.method ? " (method: " + METHOD_NAMES[d.menu.method] + ")" : ""}${d.menu.why ? " — " + d.menu.why : ""}`,
     `Menu window: ${d.menu.before ? "before " + d.menu.before + ", after " + (d.menu.after || "?") + " (resized with " + (d.menu.resizeWith || "?") + ")" : "not resized"}`,
+    `Resize calls here: ${d.menu.resizeApis || "not looked at yet"}`,
     `Page: ${d.menu.route || "?"}${d.menu.route && isWebRoute(d.menu.route) ? " (a web page: the Store or similar)" : ""}`,
     `Self-check: ${d.menu.selfCheck || "not run yet"}`,
     `Main window's menu place: ${d.menu.anchor || "not checked"}`,

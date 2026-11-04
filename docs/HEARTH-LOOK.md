@@ -74,6 +74,18 @@ the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin o
   - On web pages (the Store), which Steam draws above its other windows, the menu stays in Steam's own place in
     Hearth's colours, and the bar comes back when you leave the page.
   - Diagnostics also show the page, the self-check and the main window's menu place.
+- Round 7 (from the owner's ROG Ally log on 1.2.5):
+  - Resizing never worked there: the menu window has no `SteamClient.Window`, and `window.resizeTo` does nothing. The
+    menu is one of Steam's **browser views** (its page holds `#browserview_target`), whose `BrowserViewPopup` has
+    `SetBounds`/`GetBounds`, what Steam itself uses to place it: tried first now (found through the focus controller's
+    active browser view, named `MainMenu…`), then `SteamClient.Window`, and `window.resizeTo` only once per start.
+    Diagnostics say which of these exist ("Resize calls here").
+  - The blank side menu behind the mirror was Hearth Classic's own page background painting the menu window's body:
+    Steam's popups no longer get it, and the see-through menu window (and the resized one) keep html, body and
+    `#browserview_target` transparent.
+  - Over a game the mirror can't be seen (it's drawn in the main window, which isn't on screen then): in a game the
+    menu is Steam's own in Hearth's colours, and the panel says "Steam doesn't allow the top bar during games on this
+    device" when its window can't be resized.
 - When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
   the entries in one row and the first one reachable. If not, it comes off at once (the next way above).
 - If the structure isn't there, nothing touches the menu and the panel says why.

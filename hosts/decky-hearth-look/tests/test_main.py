@@ -364,7 +364,7 @@ class HomeData(Base):
             self.assertEqual(args[0], '/usr/bin/curl')
             self.assertIn('https://hearth-counter.game305-cl.workers.dev/v1/logs', args)
             self.assertIn('X-Hearth-Kind: peppermint', args)
-            self.assertTrue(any(a.startswith('User-Agent: hearth-classic/1.2.5') for a in args))
+            self.assertFalse(any(a.startswith('User-Agent:') for a in args))   # curl's own, as Hearth's sender
             self.assertNotIn('LD_LIBRARY_PATH', kw['env'])   # Decky's bundled libraries never reach curl
             self.assertEqual(calls[1], ('body', 'Hearth logs x'))
             with open(self.m.diag_log_path()) as f:

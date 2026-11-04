@@ -77,6 +77,15 @@ body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;co
       MoveTo: (x, y) => { f.style.left = x + "px"; f.style.top = y + "px"; },
     } };
   }
+  // HC_MENURESIZE "browserview": as on a device, the menu is one of Steam's browser views; the focus controller's
+  // active browser view (named MainMenu_uid2) has the BrowserViewPopup with GetBounds/SetBounds that move it.
+  if (window.HC_MENURESIZE === "browserview") {
+    const px = (v) => parseFloat(v) || 0;
+    window.FocusNavController = { m_activeBrowserView: { m_strName: "MainMenu_uid2", m_browserView: {
+      GetBounds: () => ({ x: px(f.style.left), y: px(f.style.top), width: px(f.style.width), height: px(f.style.height) }),
+      SetBounds: (x, y, w, h) => { f.style.left = x + "px"; f.style.top = y + "px"; f.style.width = w + "px"; f.style.height = h + "px"; },
+    } } };
+  }
   try { f.contentWindow.focus(); } catch (e) { /* fine */ }
   window.g_PopupManager = { GetPopups: () => [{ m_strName: "MainMenu_uid2", m_popup: f.contentWindow }] };
 }
