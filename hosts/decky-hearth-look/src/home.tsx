@@ -1,6 +1,6 @@
 // Stage 2, the home screen: Hearth Classic's home on Steam's Home route (the old Hearth Game Mode's home, ui/index.html
-// viewHome, as the archived takeover drew it): Hearth's wallpaper and logo, Jump back in, Hearth's places, Continue
-// playing, Favorites and a row per store. Made of @decky/ui's Focusable and DialogButton, so Steam's own controller
+// viewHome): Hearth's wallpaper and logo, a banner from the focused game, Recent games (the newest big), Hearth's
+// places, Favorites and a row per store. Made of @decky/ui's Focusable and DialogButton, so Steam's own controller
 // focus moves through it. Every game is one Steam can open, and opens Steam's own page. The data is Hearth's own
 // layout (the backend asks `nimbus --steam-mode-data home` once a minute; no second Hearth runs), or Steam's library
 // and Hearth Sync's collections when Hearth's program doesn't answer.
@@ -28,6 +28,9 @@ const CSS = `
 .hearth-classic .hc-btn{min-width:0 !important;width:auto !important;padding:10px 22px !important;border-radius:10px !important;background:${C.panel2} !important;color:${C.text} !important}
 .hearth-classic .hc-btn.primary{background:${C.accent} !important;color:${C.ink} !important;font-weight:700}
 .hearth-classic .hc-dim{color:${C.dim};font-size:13px}
+.hearth-classic .hc-caption{font-size:13px;color:${C.text};margin:2px 0 4px 6px;min-height:18px}
+.hearth-classic .hc-places{margin-top:10px}
+.hearth-classic .hc-tile.big.gpfocus{transform:scale(1.03)}
 `;
 
 // ---- Hearth's sounds (ui/index.html blip, the Soft pack): only on this home, only when switched on.
@@ -173,35 +176,41 @@ function TileArt(props: { card: Card; shape: Shape; badge?: boolean }) {
   );
 }
 
-function Tile(props: { card: Card; wide?: boolean; badge?: boolean }) {
-  const w = props.wide ? 300 : 132, h = props.wide ? 150 : 188;
+// The old Game Mode's home rows (ui/index.html viewHome): "Recent games" with the newest one big and wide, then
+// portrait cards; store badges top right; the focused game named under its row.
+type FocusCard = (c: Card) => void;
+function Tile(props: { card: Card; big?: boolean; badge?: boolean; onFocusCard?: FocusCard }) {
+  const w = props.big ? 330 : 137, h = 206;
   return (
     // data-hearth-appid: the game this tile stands for, which Hearth Music reads when the tile is focused (its own
     // focus watch, docs/HEARTH-LOOK.md "Hearth Music"), so the theme plays here like it does in Steam's library.
     <div className="hc-tile-wrap" data-hearth-appid={props.card.appid} style={{ display: "contents" }}>
-      <DialogButton className="hc-tile" style={{ width: w, height: h }} onClick={() => { blip("ok"); openApp(props.card.appid); }}
-        {...({ onGamepadFocus: onFocus } as any)}>
-        <TileArt card={props.card} shape={props.wide ? "wide" : "portrait"} badge={props.badge} />
+      <DialogButton className={"hc-tile" + (props.big ? " big" : "")} style={{ width: w, height: h }} onClick={() => { blip("ok"); openApp(props.card.appid); }}
+        {...({ onGamepadFocus: (e: any) => { onFocus(e); props.onFocusCard?.(props.card); } } as any)}>
+        <TileArt card={props.card} shape={props.big ? "wide" : "portrait"} badge={props.badge} />
       </DialogButton>
     </div>
   );
 }
 
-function ShelfRow(props: { shelf: Shelf }) {
+function ShelfRow(props: { shelf: Shelf; focused: Card | null; onFocusCard: FocusCard }) {
   const s = props.shelf;
+  const recent = s.key === "continue";
+  const here = props.focused && s.items.some((c) => c.appid === props.focused!.appid) ? props.focused : null;
   return (
     <>
-      <h2>{s.title}</h2>
+      <h2>{recent ? "Recent games" : s.title}</h2>
       <Focusable className="hc-shelf" {...({ "flow-children": "horizontal" } as any)}>
-        {s.items.map((c) => <Tile key={c.appid} card={c} wide={s.wide} badge={s.key === "continue" || s.key === "fav" || s.key === "added"} />)}
+        {s.items.map((c, i) => <Tile key={c.appid} card={c} big={recent && i === 0} badge onFocusCard={props.onFocusCard} />)}
       </Focusable>
+      {recent && <div className="hc-caption">{here ? [here.title, played(here.minutes)].filter(Boolean).join(" · ") : "\u00a0"}</div>}
     </>
   );
 }
 
 function Places() {
   return (
-    <Focusable className="hc-shelf" style={{ gap: 8 }} {...({ "flow-children": "horizontal" } as any)}>
+    <Focusable className="hc-shelf hc-places" style={{ gap: 8 }} {...({ "flow-children": "horizontal" } as any)}>
       {PLACES.map((p) => (
         <DialogButton key={p.id} className="hc-chip" onClick={() => { blip("ok"); openPlace(p); }} {...({ onGamepadFocus: onFocus } as any)}>{p.title}</DialogButton>
       ))}
@@ -209,29 +218,19 @@ function Places() {
   );
 }
 
-function Hero(props: { card: Card | null; logo: string }) {
+/** The old home's banner (ui/index.html .hero): the focused game's art, soft and dark, fading into the page, with
+ *  Hearth's logo and the page's name where the old top bar had them. */
+function Banner(props: { card: Card | null; logo: string }) {
   const c = props.card;
   const art = useArt(artCandidates(c, "hero", c ? steamUrls(c.appid, "hero") : []));
-  const logo = useArt(artCandidates(c, "logo", c ? steamUrls(c.appid, "logo") : []));
   return (
-    <div style={{ position: "relative", height: "36vh", minHeight: 210, margin: "-54px -2.8vw 10px", padding: "54px 2.8vw 18px", display: "flex", flexDirection: "column", justifyContent: "flex-end",
-                  background: art ? `linear-gradient(90deg,rgba(12,16,22,.92),rgba(12,16,22,.2) 70%),linear-gradient(0deg,${C.bg},transparent 45%),url("${art}") center/cover` : undefined }}>
+    <div className="hc-banner" style={{ position: "relative", height: "27vh", minHeight: 170, margin: "-54px -2.8vw 0", overflow: "hidden" }}>
+      {art && <div style={{ position: "absolute", inset: "-30px", background: `url("${art}") center/cover`, filter: "blur(28px) saturate(1.2)", opacity: 0.55 }} />}
+      <div style={{ position: "absolute", inset: 0, background: `linear-gradient(180deg,rgba(12,16,22,.2),${C.bg})` }} />
       <div style={{ position: "absolute", top: 54, left: "2.8vw", display: "flex", alignItems: "center", gap: 10 }}>
-        {props.logo && <img src={props.logo} style={{ width: 28, height: 28 }} />}
-        <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".02em", textTransform: "uppercase", color: C.dim }}>Hearth</div>
+        {props.logo && <img src={props.logo} style={{ width: 26, height: 26 }} />}
+        <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>Home</div>
       </div>
-      {c && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: C.accent }}>Jump back in</div>
-          {logo ? <img src={logo} style={{ maxHeight: 90, maxWidth: 380, objectFit: "contain", objectPosition: "left", margin: "6px 0" }} />
-                : <div style={{ fontSize: 34, fontWeight: 800, margin: "4px 0" }}>{c.title}</div>}
-          <div className="hc-dim" style={{ marginBottom: 12 }}>{[c.store, played(c.minutes)].filter(Boolean).join(" · ")}</div>
-          <Focusable style={{ display: "flex", gap: 10 }} {...({ "flow-children": "horizontal" } as any)}>
-            <DialogButton className="hc-btn primary" onClick={() => { blip("ok"); playApp(c.appid); }} {...({ onGamepadFocus: onFocus, autoFocus: true } as any)}>Play</DialogButton>
-            <DialogButton className="hc-btn" onClick={() => { blip("ok"); openApp(c.appid); }} {...({ onGamepadFocus: onFocus } as any)}>Details</DialogButton>
-          </Focusable>
-        </>
-      )}
     </div>
   );
 }
@@ -265,16 +264,19 @@ function useHome(): { view: HomeView | null; loading: boolean } {
 /** Hearth Classic's home in place of Steam's. Nothing to show: Steam's own Home. */
 export function HearthHome(props: { steam: ReactNode; wallpaper: string; logo: string }) {
   const { view, loading } = useHome();
+  const [picked, setFocused] = useState<Card | null>(null);
   if (!loading && !view) return <>{props.steam}</>;
+  const focused = picked || (view ? view.hero : null);
   const bg = props.wallpaper ? { background: `linear-gradient(180deg,rgba(12,16,22,.35),rgba(12,16,22,.9) 50%,${C.bg}),url("${props.wallpaper}") center/cover fixed` } : undefined;
   return (
     <div className="hearth-classic" style={bg}>
       <style>{CSS}</style>
       <div style={{ padding: "54px 2.8vw 80px" }}>
-        <Hero card={view ? view.hero : null} logo={props.logo} />
-        <Places />
+        <Banner card={focused} logo={props.logo} />
         {loading && <div className="hc-dim" style={{ marginTop: 18 }}>Getting your games…</div>}
-        {view && view.shelves.map((s) => <ShelfRow key={s.key} shelf={s} />)}
+        {view && view.shelves.slice(0, 1).map((s) => <ShelfRow key={s.key} shelf={s} focused={focused} onFocusCard={setFocused} />)}
+        <Places />
+        {view && view.shelves.slice(1).map((s) => <ShelfRow key={s.key} shelf={s} focused={focused} onFocusCard={setFocused} />)}
       </div>
     </div>
   );

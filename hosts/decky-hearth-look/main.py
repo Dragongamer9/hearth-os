@@ -327,6 +327,43 @@ def home_layout(run=subprocess.run, now=None, finder=None):
     return dict(res, shortcuts=sync_shortcuts())
 
 
+DIAG_LIMIT = 256 * 1024
+
+
+def diag_log_path(home_dir=None):
+    """Hearth Classic's log in Hearth's own log folder, which Hearth's Logs app lists (hearth-tools logs.rs)."""
+    return os.path.join(home_dir or home(), '.local', 'share', 'nimbus', 'hearth-classic.log')
+
+
+def write_diag(text, home_dir=None, now=None):
+    """Adds the diagnostics (or one line of them) to hearth-classic.log, with the time; the file is kept small (the
+    newer half stays when it grows past DIAG_LIMIT). Returns the path, or '' when it couldn't be written."""
+    if not isinstance(text, str) or not text.strip():
+        return ''
+    p = diag_log_path(home_dir)
+    stamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now if now is not None else time.time()))
+    entry = ''.join('%s %s\n' % (stamp, line) for line in text[:8000].splitlines() if line.strip())
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        try:
+            if os.path.getsize(p) > DIAG_LIMIT:
+                with open(p, 'rb') as f:
+                    f.seek(-DIAG_LIMIT // 2, os.SEEK_END)
+                    keep = f.read()
+                keep = keep[keep.find(b'\n') + 1:]
+                tmp = p + '.tmp'
+                with open(tmp, 'wb') as f:
+                    f.write(keep)
+                os.replace(tmp, p)
+        except OSError:
+            pass
+        with open(p, 'a', encoding='utf-8') as f:
+            f.write(entry)
+        return p
+    except OSError:
+        return ''
+
+
 class Plugin:
     async def hearth_os(self):
         """Whether this is Hearth OS (the frontend shows the Hearth OS panel instead of the plugin when not)."""
@@ -361,6 +398,17 @@ class Plugin:
         if not hearth_only.check()[0]:
             return ''
         return read_art(ref)
+
+    async def diagnostics(self, text):
+        """The panel's "Write a Hearth Classic log", and each change of the menu bar's state: Decky's log and
+        ~/.local/share/nimbus/hearth-classic.log (Hearth's Logs app)."""
+        if not hearth_only.check()[0] or not isinstance(text, str):
+            return {'ok': False}
+        for line in text[:8000].splitlines():
+            if line.strip():
+                log('diagnostics: ' + line[:400])
+        p = write_diag(text)
+        return {'ok': bool(p), 'path': p.replace(home(), '~', 1) if p else ''}
 
     async def report(self, line):
         if isinstance(line, str):
