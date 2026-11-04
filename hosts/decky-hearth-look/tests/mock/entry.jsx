@@ -52,7 +52,8 @@ function openMenuWindow() {
   document.body.appendChild(f);
   const d = f.contentDocument;
   const running = !!window.HC_RUNNING;
-  const items = ["Home", "Library", "Store", "Friends & Chat", "Media", "Downloads", "Settings", "Power"];
+  // Over a game Steam puts the game's own entry first (the owner's log: "Fallout 4").
+  const items = (running ? ["Ember Knights of Ash"] : []).concat(["Home", "Library", "Store", "Friends & Chat", "Media", "Downloads", "Settings", "Power"]);
   const svg = '<svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
   const entries = items.map((t, i) => `<div class="mm_wrap"><div class="Panel Focusable mm_entry${i === 1 ? " gpfocus" : ""}">${svg}<div class="mm_label">${t}</div></div></div>`).join("");
   const inner = window.HC_MENU === "changed" ? `<div class="mm_list">${entries}</div>` : `<div class="Panel mm_panel">${entries}</div>`;
@@ -61,11 +62,11 @@ function openMenuWindow() {
 body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;color:#dcdedf}
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.45)}
 #MainNavMenuContainer{position:absolute;left:0;top:0;bottom:0;width:300px;background:#0e141b;box-shadow:8px 0 30px rgba(0,0,0,.55)}
-.mm_panel,.mm_list{display:flex;flex-direction:column;padding:${running ? 120 : 18}px 8px 18px}
+.mm_panel,.mm_list{display:flex;flex-direction:column;padding:18px 8px 18px}
 .mm_entry{display:flex;align-items:center;gap:14px;padding:10px 16px;font-size:17px;border-radius:2px}.mm_entry.gpfocus{background:#3d4450}
 .game{position:absolute;left:0;top:0;width:300px;padding:16px;box-sizing:border-box;font-weight:800;font-size:18px;z-index:2}
 .cover{position:fixed;inset:0;background:#000;z-index:5000}
-</style></head><body><div class="scrim"></div>${running ? '<div class="game">Ember Knights · Resume · Exit game</div>' : ""}${window.HC_COVER ? '<div class="cover"></div>' : ""}<div id="MainNavMenuContainer" class="Focusable">${inner}</div></body></html>`);
+</style></head><body><div class="scrim"></div>${window.HC_COVER ? '<div class="cover"></div>' : ""}<div id="MainNavMenuContainer" class="Focusable">${inner}</div></body></html>`);
   d.close();
   // HC_MENURESIZE "steamclient": the window's own SteamClient.Window can move and resize it (what Steam's popups have);
   // otherwise nothing can (window.resizeTo does nothing to an iframe), as when Steam keeps it narrow.
@@ -89,6 +90,9 @@ body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;co
       SetBounds: (x, y, w, h) => { f.style.left = x + "px"; f.style.top = y + "px"; f.style.width = w + "px"; f.style.height = h + "px"; },
     } } };
   }
+  // window.resizeTo does nothing to Steam's menu on a device: counted, to see it's tried once per start at most.
+  window.HC_RESIZE_CALLS = 0;
+  try { f.contentWindow.resizeTo = () => { window.HC_RESIZE_CALLS++; }; f.contentWindow.moveTo = () => {}; } catch (e) { /* fine */ }
   try { f.contentWindow.focus(); } catch (e) { /* fine */ }
   window.g_PopupManager = { GetPopups: () => [{ m_strName: "MainMenu_uid2", m_popup: f.contentWindow }] };
 }

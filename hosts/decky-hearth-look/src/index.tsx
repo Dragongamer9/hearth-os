@@ -109,7 +109,7 @@ function refresh(failure?: string) {
     const { css } = renderTheme(b.css, { logo: b.logo, wallpaper: s.wallpaper ? b.wallpaper : "" }, steamClass, plan.sections);
     patches.add("skin", removeSkin);
     if (!applySkin(css)) throw new Error("the skin couldn't be put in Steam's window");
-    if (plan.sections.menu) patches.add("menu bar", startMenuBar({ top: plan.sections.top, anchorClass: steamClass("gamepadUIClasses", "MainNavMenuAnchor") || "", onChange: onMenu }));
+    if (plan.sections.menu) patches.add("menu bar", startMenuBar({ top: plan.sections.top, rail: plan.sections.rail, anchorClass: steamClass("gamepadUIClasses", "MainNavMenuAnchor") || "", onChange: onMenu }));
     if (s.home) patchHome();
     setSounds(s.sounds);
     patches.add("sounds", () => setSounds(false));
@@ -234,7 +234,7 @@ function Panel() {
           <PanelSectionRow><ToggleField label="Hearth home screen" description="The old Hearth home on Steam's Home: your games, Hearth's places, a row per store." checked={s.home} onChange={(v: boolean) => set({ home: v })} /></PanelSectionRow>
           <PanelSectionRow><ToggleField label="Hearth wallpaper" description="Behind the home and the Library." checked={s.wallpaper} onChange={(v: boolean) => set({ wallpaper: v })} /></PanelSectionRow>
           <PanelSectionRow><ToggleField label="Hearth bottom bar menu" description="The Steam button's menu as Hearth's bar along the bottom." checked={s.menu} onChange={(v: boolean) => set({ menu: v })} /></PanelSectionRow>
-          {s.menu && <PanelSectionRow><ToggleField label="In a game: Hearth top bar" description="While a game runs, the menu is Hearth's bar at the top instead." checked={s.menuTop} onChange={(v: boolean) => set({ menuTop: v })} /></PanelSectionRow>}
+          {s.menu && <PanelSectionRow><ToggleField label="In games and the Store: Hearth side rail" description="Over a game and on web pages Steam's menu becomes Hearth's slim side rail (or Hearth's bar at the top, where Steam lets its menu window grow)." checked={s.rail} onChange={(v: boolean) => set({ rail: v })} /></PanelSectionRow>}
           {l.state === "on" && s.menu && l.menuNote && <PanelSectionRow><div className="hearth-menu-note" style={{ fontSize: 12, color: "#ffb547", lineHeight: 1.35 }}>{l.menuNote}</div></PanelSectionRow>}
           <PanelSectionRow><ToggleField label="Hearth sounds" description="Hearth's soft sounds when moving on the home screen." checked={s.sounds} onChange={(v: boolean) => set({ sounds: v })} /></PanelSectionRow>
         </PanelSection>

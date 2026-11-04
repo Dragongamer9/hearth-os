@@ -34,8 +34,13 @@ With **Hearth Classic** picked:
 - **Hearth bottom bar menu** (on): the Steam button's menu becomes the old Game Mode's **Bottom Dock**: a floating bar
   along the bottom, Hearth's icons alone, the focused entry big, teal and named. The entries are Steam's own and do what
   they always do.
-- **In a game: Hearth top bar** (on, under the bottom bar switch): while a game runs, the same bar at the top of the
-  screen instead (the old in-game top dock), a little smaller. Back to the bottom bar when the game closes.
+- **In games and the Store: Hearth side rail** (on, under the bottom bar switch; it took over 1.2.x's "In a game:
+  Hearth top bar" switch, whose saved choice carries over): over a game and on web pages, where the bottom bar's mirror
+  can't be seen, Steam's own menu window becomes Hearth's **side rail**: the old dock's look standing up inside the
+  window Steam gives its menu (241×644 on the owner's ROG Ally), a floating dark panel with rounded corners, Hearth's
+  logo on top, Hearth's icons with their labels, the focused entry big and teal with the double ring, and in a game the
+  game's card first (its picture, "Playing"). Where Steam lets its menu window grow, Hearth's bar at the top (in a
+  game) or bottom (on the Store) instead.
 - **Hearth sounds** (off by default): Hearth's soft move and select sounds on the home screen.
 - **Hearth Music on the home**: focusing a game's tile on the Hearth home plays its Hearth Music theme, the same way
   highlighting it in Steam's library does (Hearth Music's own player, settings and songs: with "Where" set to the
@@ -94,6 +99,11 @@ the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin o
   `RestoreWindowSizeAndPosition`. Every attempt (with the full error) is in the diagnostics ("Resize attempts").
   With a working resize the real bar is used everywhere: the library, web pages such as the Store (Steam's menu window
   shows above them) and the top bar in games. Only the mirror stays off on web pages and in games.
+- Round 9 (log 6GQ5-VQRL-VS, plugins 1.2.7): every resize call is accepted and ignored there; Steam keeps its menu
+  window at 241×644. The resize is now tried once per plugin start and then left alone (no flicker, no repeated
+  calls); the library keeps the mirror bottom bar, and games and web pages get the side rail, checked like the bar
+  (every entry visible inside the window, else Steam's menu in Hearth's colours). Diagnostics: "Steam keeps its menu
+  window at 241×644 on this device; the side rail is used in games and on web pages".
 - When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
   the entries in one row and the first one reachable. If not, it comes off at once (the next way above).
 - If the structure isn't there, nothing touches the menu and the panel says why.

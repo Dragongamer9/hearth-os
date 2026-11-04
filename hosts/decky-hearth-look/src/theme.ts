@@ -105,15 +105,15 @@ export function removeSkin() {
 // The bar's rules only apply under html.hearth-bar (or the mirror's html.hearth-ghost), set only after the structure is
 // really there; a bar that doesn't fit once on screen comes off again. Never a half-styled or unusable menu.
 
-export type MenuMethod = "none" | "pending" | "fits" | "resized" | "mirror" | "vertical";
+export type MenuMethod = "none" | "pending" | "fits" | "resized" | "mirror" | "rail" | "vertical";
 export interface MenuDiag {
-  windows: string[]; found: boolean; entries: number; labels: string[]; layout: "bar" | "top" | "vertical" | "none" | "pending";
+  windows: string[]; found: boolean; entries: number; labels: string[]; layout: "bar" | "top" | "rail" | "vertical" | "none" | "pending";
   why: string; game: boolean; method: MenuMethod; before: string; after: string; resizeWith: string;
   route: string; anchor: string; selfCheck: string; resizeApis: string; attempts: string;
 }
 export const menuDiag: MenuDiag = { windows: [], found: false, entries: 0, labels: [], layout: "none", why: "not checked yet", game: false,
   method: "none", before: "", after: "", resizeWith: "", route: "", anchor: "", selfCheck: "", resizeApis: "", attempts: "" };
-const CLASSES = ["hearth-bar", "hearth-menu", "hearth-ingame", "hearth-ghost"];
+const CLASSES = ["hearth-bar", "hearth-menu", "hearth-ingame", "hearth-ghost", "hearth-rail"];
 const BAR_H = 150;   // the resized menu window's height (CSS px): the bar, its focused entry and the gaps around it
 const MIRROR_ID = "hearth-bar-mirror";
 
@@ -136,7 +136,10 @@ export function mainRoute(): string {
 }
 
 /** Every entry really visible in its window: inside it, not hidden by itself or a parent, not covered. */
-let resizeToTried = false;   // window.resizeTo: tried once per plugin start (it does nothing to Steam's menu on a device)
+let resizeToTried = false;
+// Steam accepted every resize call on the owner's device (1.2.7) and kept its menu window at 241×644: tried once per
+// plugin start, then remembered, so there's no flicker and no repeated calls.
+let cantResize = "";   // window.resizeTo: tried once per plugin start (it does nothing to Steam's menu on a device)
 let bvName = "";
 
 /** The BrowserViewPopup of Steam's main menu (the menu window is one of Steam's browser views): the focus controller's
@@ -165,6 +168,18 @@ function browserViewFor(doc: Document): any {
     } catch { /* next */ }
   }
   return null;
+}
+
+/** The running game's picture for the rail's game card: Steam's own (its capsule or header), or "". */
+function gameArt(): string {
+  try {
+    const a = ((DUI as any).Router ?? (window as any).SteamUIStore)?.MainRunningApp;
+    const as = (window as any).appStore, ov = a && as?.GetAppOverviewByAppID?.(Number(a.appid));
+    for (const m of ["GetCustomLandcapeImageURLs", "GetLandscapeImageURLs", "GetCachedLandscapeImageURLs", "GetCustomVerticalCapsuleURLs", "GetVerticalCapsuleURLs"]) {
+      try { const r = ov && typeof as[m] === "function" ? as[m](ov) : null; const u = Array.isArray(r) ? r[0] : r; if (typeof u === "string" && u) return u.replace(/"/g, "%22"); } catch { /* next */ }
+    }
+  } catch { /* none */ }
+  return "";
 }
 
 let lastSelfCheck: { label: string; inside: boolean; shown: boolean; hit: boolean; cover: string }[] = [];
@@ -264,9 +279,9 @@ export function menuDeepDump(): string {
   return lines.join("\n").slice(0, 40000);
 }
 
-interface DocState { mode: MenuMethod; topFailed: string; with?: { how: string; restore(saved: any): void }; orig: any; tries: number; why: string; at: string; busy: boolean }
+interface DocState { mode: MenuMethod; topFailed: string; railFailed?: string; with?: { how: string; restore(saved: any): void }; orig: any; tries: number; why: string; at: string; busy: boolean }
 
-export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChange?: (d: MenuDiag) => void }): () => void {
+export function startMenuBar(opts: { top: boolean; rail?: boolean; anchorClass?: string; onChange?: (d: MenuDiag) => void }): () => void {
   const anchorClass = opts.anchorClass || "";
   lastAnchorClass = anchorClass;
   const watched: { doc: Document; obs: MutationObserver }[] = [];
@@ -359,6 +374,7 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
       st.tries++;
       if (done) { st.mode = "resized"; st.at = game ? "top" : "bottom"; st.why = ""; st.tries = 0; }
       else {
+        cantResize = `Steam keeps its menu window at ${size(win)} on this device; the side rail is used in games and on web pages`;
         menuDiag.resizeWith = tried.join("; ") || "nothing (no resize call here)"; menuDiag.after = size(win);
         st.mode = "mirror"; st.why = `Steam's menu window couldn't be resized (${menuDiag.before}; ${menuDiag.resizeWith})`;
       }
@@ -438,7 +454,7 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     if (!stj.ok) { clear(html); restore(doc); menuDiag.layout = "none"; menuDiag.method = "none"; menuDiag.why = stj.why; return true; }
     const icons = labels.map((l) => menuIcon(l));
     items.forEach((el, i) => { if (el.getAttribute("data-hearth-icon") !== icons[i]) el.setAttribute("data-hearth-icon", icons[i]); });
-    const game = opts.top && gameRunning() === true;
+    const game = gameRunning() === true;
     menuDiag.game = game;
     html.classList.toggle("hearth-ingame", game);
     const st = stateOf(doc);
@@ -454,7 +470,7 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     if (onScreen && active) lastMenuDoc = doc;
     const colours = (why: string) => {
       restore(doc); hideMirror(); setMainOn(false);
-      html.classList.remove("hearth-bar", "hearth-ghost"); html.classList.add("hearth-menu");
+      html.classList.remove("hearth-bar", "hearth-ghost", "hearth-rail"); html.classList.add("hearth-menu");
       setDiag("vertical", "vertical", why);
       return true;
     };
@@ -465,14 +481,42 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     if (game && st.topFailed) return colours(st.topFailed);
 
     if (st.mode === "vertical") return colours(st.why);
+    if (game && !opts.top) return colours("in a game Steam's menu is shown in Hearth's colours (the side rail and top bar are off)");
+    // The side rail: Hearth's dock look inside Steam's own (narrow) menu window, with the game's card first in a game.
+    const rail = (where: string) => {
+      hideMirror(); setMainOn(false);
+      html.classList.remove("hearth-bar", "hearth-ghost", "hearth-menu"); html.classList.add("hearth-rail");
+      // The running game's entry (Steam puts it first, named after the game): its art on the card.
+      let gameName = "";
+      try { const a = ((DUI as any).Router ?? (window as any).SteamUIStore)?.MainRunningApp; gameName = game && a ? String(a.display_name || "") : ""; } catch { gameName = ""; }
+      items.forEach((el, i) => {
+        const isGame = !!gameName && labels[i] === gameName;
+        if (isGame !== el.hasAttribute("data-hearth-game")) { if (isGame) el.setAttribute("data-hearth-game", "1"); else el.removeAttribute("data-hearth-game"); }
+        if (isGame && !el.style.getPropertyValue("--hc-game-art")) {
+          const art = gameArt();
+          if (art) el.style.setProperty("--hc-game-art", `url("${art}")`);
+        }
+      });
+      if (onScreen && active) {
+        const vis = visibleCheck(doc, items);
+        menuDiag.selfCheck = vis.ok ? `passed (${items.length} entries visible in the side rail, ${size(win!)})` : "failed: " + vis.why;
+        if (!vis.ok) {
+          st.railFailed = `the side rail's self-check failed (${vis.why}): Steam's menu in Hearth's colours`;
+          return colours(st.railFailed);
+        }
+      }
+      setDiag("rail", "rail", `${where}: ${cantResize || st.why || "Steam's menu window can't be resized"}`);
+      return true;
+    };
     // The mirror is drawn in Steam's main window, which isn't on screen over a game: in a game, Steam's menu in
     // Hearth's colours instead (never a blank strip).
-    if (st.mode === "mirror" && web) {
-      return colours(`a web page is showing (${route}) and Steam's menu window can't be resized: Steam's menu in Hearth's colours (the mirror would be under the page)`);
-    }
-    if (st.mode === "mirror" && game) {
-      return colours(/couldn't be resized/.test(st.why) ? "Steam doesn't allow the top bar during games on this device (its menu window can't be resized): Steam's menu in Hearth's colours"
-        : "in a game Steam's menu is shown in Hearth's colours (the mirror can't be drawn over a game)");
+    // Over a game or a web page the mirror can't be seen (it's drawn in the main window): there, Steam's menu window
+    // itself becomes Hearth's side rail (its 241 px are kept), checked like the bar; or Hearth's colours.
+    if (st.mode === "mirror" && (web || game)) {
+      const where = game ? "in a game" : `on a web page (${route})`;
+      if (!opts.rail) return colours(`${where} Steam's menu is shown in Hearth's colours (the side rail is off)`);
+      if (st.railFailed) return colours(st.railFailed);
+      return rail(where);
     }
     if (st.mode === "mirror") {
       // Steam's menu stays where it is, see-through; Hearth's bar is drawn in the main window while it's open.
@@ -484,7 +528,7 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
         st.mode = "vertical"; st.why = "the mirror bar couldn't be drawn: " + String(e).slice(0, 100);
         hideMirror(); html.classList.remove("hearth-bar", "hearth-ghost"); html.classList.add("hearth-menu"); setDiag("vertical", "vertical", st.why); return true;
       }
-      html.classList.remove("hearth-bar", "hearth-menu"); html.classList.add("hearth-ghost");
+      html.classList.remove("hearth-bar", "hearth-menu", "hearth-rail"); html.classList.add("hearth-ghost");
       setMainOn(open);
       setDiag(game ? "top" : "bar", "mirror", st.why);
       return true;
@@ -492,12 +536,13 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     // "fits" / "resized" / "pending": the bar goes in the menu's own window, once it's wide enough for it (a narrow
     // window keeps Steam's layout in Hearth's colours meanwhile, so a bar is never squeezed into it).
     const wide = !!win && win.innerWidth >= 640;
-    html.classList.toggle("hearth-bar", wide); html.classList.toggle("hearth-menu", !wide); html.classList.remove("hearth-ghost");
+    html.classList.toggle("hearth-bar", wide); html.classList.toggle("hearth-menu", !wide); html.classList.remove("hearth-ghost", "hearth-rail");
     if (!onScreen || !rects.every((r) => r.width > 0 && r.height > 0)) { setMainOn(false); setDiag("pending", st.mode === "resized" ? "resized" : "pending", "Steam's menu found; the bar is checked when the menu opens"); return true; }
     // Too narrow, or resized for the other place (a game started or ended, or the menu opened over a game): resize it.
     const want = game ? "top" : "bottom";
     if (!wide || (st.mode === "resized" && st.at !== want)) {
       setMainOn(false);
+      if (cantResize) { st.mode = "mirror"; st.why = cantResize; return checkDoc(doc); }
       // Only the menu that's open (focused) is resized: never a window Steam keeps but isn't showing.
       if (!active) { setDiag("pending", "pending", "waiting for the menu to open"); return true; }
       if (st.tries < 6) { setDiag("pending", "pending", "making Steam's menu window as wide as the screen"); tryResize(doc, game); return true; }
@@ -575,6 +620,7 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
         restore(doc);
         clear(doc.documentElement);
         doc.querySelectorAll("[data-hearth-icon]").forEach((el) => el.removeAttribute("data-hearth-icon"));
+        doc.querySelectorAll("[data-hearth-game]").forEach((el) => { el.removeAttribute("data-hearth-game"); (el as HTMLElement).style.removeProperty("--hc-game-art"); });
       } catch { /* gone */ }
     }
     for (const doc of states.keys()) { try { restore(doc); clear(doc.documentElement); } catch { /* gone */ } }

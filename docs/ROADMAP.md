@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [ ] Hearth Classic round 9: "In games and the Store: Hearth side rail" (on with Hearth Classic; takes over the top bar switch's saved choice): where Steam keeps its menu window narrow, over games and on the Store its menu becomes Hearth's side rail (the old dock's look standing up, the game's card first), the library keeps the bottom bar, and the resize is tried only once per start. (needs testing on a device)
+
 - [ ] Hearth Classic round 8: Steam's menu window is resized with the arguments Steam expects on the device (a number as ResizeTo's and MoveTo's third argument, the screen's scale), so the real bar shows in the library, on the Store and as the top bar in games, with every attempt in the diagnostics. (needs testing on a device)
 
 - [ ] Hearth Classic round 7: sending its diagnostics works from Decky (an "https error" on 1.2.5): the system's certificates, and the system's curl (like Hearth's own Send logs) when the direct way fails; the panel and the log say why a send failed. From the owner's ROG Ally log: Steam's menu window is resized through its browser view's own bounds (the only way that can work there), the blank side menu behind the mirror is gone (Hearth Classic's page background no longer paints Steam's menu window), and over a game the menu stays Steam's own in Hearth's colours instead of a blank strip. (needs testing on a device)

@@ -38,7 +38,7 @@ for _p in (os.path.join(_here, '..', 'decky-shared'), _here):
 import hearth_only  # noqa: E402
 
 NAME = 'Hearth Classic'
-DEFAULTS = {'look': 'steam', 'home': True, 'sounds': False, 'wallpaper': True, 'menu': True, 'menuTop': True, 'autoSend': False}
+DEFAULTS = {'look': 'steam', 'home': True, 'sounds': False, 'wallpaper': True, 'menu': True, 'rail': True, 'autoSend': False}
 HOME_TIMEOUT = 20
 HOME_EVERY = 60
 ART_LIMIT = 8 * 1024 * 1024
@@ -126,9 +126,13 @@ def clean_settings(raw):
     out = dict(DEFAULTS)
     if r.get('look') in ('steam', 'classic'):
         out['look'] = r['look']
-    for k in ('home', 'sounds', 'wallpaper', 'menu', 'menuTop', 'autoSend'):
+    for k in ('home', 'sounds', 'wallpaper', 'menu', 'rail', 'autoSend'):
         if isinstance(r.get(k), bool):
             out[k] = r[k]
+    # 1.2.x's "In a game: Hearth top bar" (menuTop) became "In games and the Store: Hearth side rail" (rail): a saved
+    # choice carries over (read only; nothing is written until the person changes something).
+    if not isinstance(r.get('rail'), bool) and isinstance(r.get('menuTop'), bool):
+        out['rail'] = r['menuTop']
     return out
 
 

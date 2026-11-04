@@ -157,9 +157,11 @@ test("pictures and small helpers", () => {
 
 test("settings: the menu bars are on once Hearth Classic is picked, and remembered off", () => {
   assert.equal(DEFAULTS.menu, true);
-  assert.equal(DEFAULTS.menuTop, true);
+  assert.equal(DEFAULTS.rail, true);
   assert.equal(normalize({ menu: false }).menu, false);
-  assert.equal(normalize({ menuTop: "no" }).menuTop, true);
+  assert.equal(normalize({ rail: "no" }).rail, true);
+  assert.equal(normalize({ menuTop: false }).rail, false);           // 1.2.x's top bar switch carries over
+  assert.equal(normalize({ menuTop: false, rail: true }).rail, true);
 });
 
 test("places: every tile maps to a known navigator call or route, and ends on a page that exists", () => {
@@ -204,9 +206,9 @@ test("places: Steam's navigator first, the next way when one is missing or throw
 
 test("menu bars: switches, the real menu's structure, and the bar only when it really sits as a bar", () => {
   const classic = { ...DEFAULTS, look: "classic" };
-  assert.deepEqual(menuPlan(classic).sections, { menu: true, top: true });
-  assert.deepEqual(menuPlan({ ...classic, menuTop: false }).sections, { menu: true, top: false });
-  assert.deepEqual(menuPlan({ ...classic, menu: false }).sections, { menu: false, top: false });
+  assert.deepEqual(menuPlan(classic).sections, { menu: true, top: true, rail: true });
+  assert.deepEqual(menuPlan({ ...classic, rail: false }).sections, { menu: true, top: false, rail: false });
+  assert.deepEqual(menuPlan({ ...classic, menu: false }).sections, { menu: false, top: false, rail: false });
   const L = ["Home", "Library", "Store", "Friends & Chat", "Media", "Downloads", "Settings", "Power"];
   assert.equal(judgeStructure(true, L).ok, true);
   assert.match(judgeStructure(false, L).why, /no \.Panel/);
@@ -229,13 +231,13 @@ test("menu bars: switches, the real menu's structure, and the bar only when it r
   assert.ok(menuNote({ layout: "none", why: "only 2", found: true }, classic).includes("Steam's own menu"));
   assert.equal(menuNote({ layout: "none", why: "x", found: true }, { ...classic, menu: false }), "");
   // The skin leaves a section out whole when it's off, and puts it in when it's on.
-  const on = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: true, top: true }).css;
-  const off = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: false, top: false }).css;
+  const on = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: true, top: true, rail: true }).css;
+  const off = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: false, top: false, rail: false }).css;
   assert.ok(on.includes("html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable{") && on.includes("html.hearth-bar.hearth-ingame"));
   const rules = off.replace(/\/\*[\s\S]*?\*\//g, "");
-  assert.ok(!rules.includes("MainNavMenuContainer") && !rules.includes("hearth-ingame") && !rules.includes("data-hearth-icon"));
+  assert.ok(!rules.includes("MainNavMenuContainer") && !rules.includes("hearth-ingame") && !rules.includes("data-hearth-icon") && !rules.includes("hearth-rail"));
   // Every bar rule is scoped to html.hearth-bar / html.hearth-menu (set only after the real menu is found).
-  for (const line of on.split("\n")) if (line.includes("MainNavMenuContainer") && !line.startsWith("/*") && !line.startsWith("   ")) assert.match(line, /^html\.hearth-(bar|menu|ghost)/, line);
+  for (const line of on.split("\n")) if (line.includes("MainNavMenuContainer") && !line.startsWith("/*") && !line.startsWith("   ")) assert.match(line, /^html\.hearth-(bar|menu|ghost|rail)/, line);
   for (const r of [on, off]) assert.equal(r.split("/*").length, r.split("*/").length);
 });
 
