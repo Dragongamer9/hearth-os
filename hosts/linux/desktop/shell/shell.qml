@@ -14,13 +14,19 @@ import Quickshell
 import Quickshell.Io
 
 ShellRoot {
-    // Wallpaper, taskbar and edge gestures on every screen.
+    // Wallpaper, the top islands, the dock and edge gestures on every screen (Mantel 2026).
+    // The islands (Islands.qml) and the dock (Dock.qml) are loaded by file name, so a problem in either can't stop the
+    // shell: if one can't load, or the screen is upright, the classic taskbar (Bar.qml: launcher, every app, the Game
+    // Mode button) comes up instead, so Desktop Mode always has a working bar, launcher and Game Mode button.
     Variants {
         model: Quickshell.screens
         delegate: Component {
             Scope {
+                id: perScreen
                 required property ShellScreen modelData
-                Wallpaper { screen: modelData }
+                readonly property bool primary: modelData === Quickshell.screens[0]
+                readonly property bool portrait: modelData.height > modelData.width
+                Wallpaper { screen: perScreen.modelData; primary: perScreen.primary }
                 // Desktop icons (main screen) and the desktop's right-click menu.
                 Desktop {
                     screen: modelData
@@ -30,15 +36,70 @@ ShellRoot {
                     settingsApp: settings
                     filesApp: files
                 }
-                Bar {
-                    screen: modelData
-                    primary: modelData === Quickshell.screens[0]
-                    menu: popMenu
-                    onSettingsRequested: page => settings.open(page)
-                    onLauncherRequested: launcher.toggle()
-                    onQuickRequested: quick.toggle()
-                    onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
-                    onCalendarRequested: calendar.toggle(modelData, portrait)
+                // Made from their files here (not named as types), so a problem in either is caught: both are taken
+                // away again and the classic taskbar below comes up instead.
+                property var islandsWin: null
+                property var dockWin: null
+                property bool newFailed: false
+                function makeNew() {
+                    dropNew();
+                    const ci = Qt.createComponent("Islands.qml"), cd = Qt.createComponent("Dock.qml");
+                    if (ci.status !== Component.Ready || cd.status !== Component.Ready) {
+                        console.warn("Mantel: the top islands or the dock couldn't load; using the classic taskbar: " + (ci.errorString() + " " + cd.errorString()).trim());
+                        newFailed = true;
+                        return;
+                    }
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu });
+                    dockWin = cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu });
+                    if (!islandsWin || !dockWin) {
+                        console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");
+                        dropNew();
+                        newFailed = true;
+                        return;
+                    }
+                    newFailed = false;
+                    islandsWin.quickOpen = Qt.binding(() => quick.shown);
+                    islandsWin.calendarOpen = Qt.binding(() => calendar.shown);
+                    islandsWin.launcherRequested.connect(() => launcher.toggle());
+                    islandsWin.quickRequested.connect(() => quick.toggle());
+                    islandsWin.keyboardRequested.connect(() => { if (keyboard.open) pad.closeKeyboard(); else pad.openKeyboard(); });
+                    islandsWin.calendarRequested.connect(() => calendar.toggle(perScreen.modelData, false));
+                    islandsWin.settingsRequested.connect(page => settings.open(page));
+                    dockWin.keyboardOpen = Qt.binding(() => keyboard.open === true);
+                    dockWin.launcherRequested.connect(() => launcher.toggle());
+                }
+                function dropNew() {
+                    if (islandsWin) islandsWin.destroy();
+                    if (dockWin) dockWin.destroy();
+                    islandsWin = null;
+                    dockWin = null;
+                }
+                onPortraitChanged: { if (portrait) dropNew(); else makeNew(); }
+                Component.onCompleted: { makeHints(); if (!portrait) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
+                Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); }
+                // The classic taskbar: upright screens, and the safe fallback.
+                Loader {
+                    active: perScreen.portrait || perScreen.newFailed
+                    sourceComponent: Component {
+                        Bar {
+                            screen: perScreen.modelData
+                            primary: perScreen.primary
+                            menu: popMenu
+                            onSettingsRequested: page => settings.open(page)
+                            onLauncherRequested: launcher.toggle()
+                            onQuickRequested: quick.toggle()
+                            onKeyboardRequested: keyboard.open ? pad.closeKeyboard() : pad.openKeyboard()
+                            onCalendarRequested: calendar.toggle(perScreen.modelData, portrait)
+                        }
+                    }
+                }
+                // The controller's button hints (Console: always; other looks: after using the controller).
+                property var hintWin: null
+                function makeHints() {
+                    if (!perScreen.primary) return;
+                    const ch = Qt.createComponent("HintStrip.qml");
+                    if (ch.status === Component.Ready) hintWin = ch.createObject(perScreen, { screen: perScreen.modelData });
+                    else console.warn("Mantel: the controller hints couldn't load: " + ch.errorString());
                 }
                 EdgeSwipes {
                     screen: modelData
@@ -55,6 +116,7 @@ ShellRoot {
     Launcher {
         id: launcher
         onSettingsRequested: settings.open("")
+        onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {
             const pinned = DeskState.isPinned(entry.id);
             const list = [{ label: "Open", icon: "open", run: () => launcher.launch(entry) }];
@@ -97,6 +159,8 @@ ShellRoot {
         onKeyboardRequested: pad.openKeyboard()
         onSettingsRequested: settings.open("")
         onPageRequested: p => settings.open(p)
+        onLockRequested: lockScreen.lock()
+        onPowerRequested: powerMenu.open()
     }
     RadialMenu { id: radial; mouseOn: pad.mouseOn }
     Keyboard { id: keyboard }
@@ -261,6 +325,13 @@ ShellRoot {
         target: "icons"
         function resolve(icon: string, appId: string): string { return AppIcons.find(icon, appId); }
         function entry(appId: string): string { const e = AppIcons.entryFor(appId); return e ? e.id + " " + (e.icon || "") : ""; }
+    }
+    // Mantel 2026: an auto-hide dock shown or hidden on purpose.
+    IpcHandler {
+        target: "dock"
+        function show(): void { DeskState.dockPeek = true; }
+        function hide(): void { DeskState.dockPeek = false; }
+        function toggle(): void { DeskState.dockPeek = !DeskState.dockPeek; }
     }
     IpcHandler {
         target: "quick"

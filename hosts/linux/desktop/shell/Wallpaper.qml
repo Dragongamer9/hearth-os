@@ -18,6 +18,7 @@ PanelWindow {
     anchors { top: true; bottom: true; left: true; right: true }
     color: Theme.bg
 
+    property bool primary: false          // the main screen: the desktop clock (Mantel 2026) goes here
     readonly property string dir: Quickshell.env("HOME") + "/.config/nimbus/"
     // Hearth Settings › Appearance picks a picture (Settings.wallpaper); older setups used wallpaper.jpg/.png.
     // "" = the look's own (Theme.qml / theme/palettes.json: Hearth's fireside, Steam-style's Slate Tide).
@@ -357,5 +358,47 @@ PanelWindow {
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: status === Image.Ready
+    }
+
+    // ---------------------------------------------------------------- Mantel 2026
+    // The new looks' own wallpapers (Scene.qml: anim:neon, anim:zen, anim:glass, anim:synth), loaded on their own so
+    // a problem there only loses the picture (the look's background colour stays).
+    Loader {
+        anchors.fill: parent
+        active: ["neon", "zen", "glass", "synth"].indexOf(root.anim) >= 0
+        source: "Scene.qml"
+        onLoaded: item.name = Qt.binding(() => root.anim)
+        onStatusChanged: if (status === Loader.Error) console.warn("Wallpaper: couldn't load the look's picture (Scene.qml)")
+    }
+    // Gaming: a neon glow along the screen's edges (here on the background layer, under every window, so it never
+    // takes a click).
+    Item {
+        anchors.fill: parent
+        visible: Theme.edgeGlow
+        Repeater {
+            model: ["top", "bottom", "left", "right"]
+            delegate: Rectangle {
+                id: edge
+                required property string modelData
+                readonly property bool far: modelData === "bottom" || modelData === "right"
+                readonly property bool horiz: modelData === "top" || modelData === "bottom"
+                width: horiz ? root.width : 90
+                height: horiz ? 90 : root.height
+                x: modelData === "right" ? root.width - width : 0
+                y: modelData === "bottom" ? root.height - height : 0
+                gradient: Gradient {
+                    orientation: edge.horiz ? Gradient.Vertical : Gradient.Horizontal
+                    GradientStop { position: 0; color: edge.far ? "transparent" : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) }
+                    GradientStop { position: 1; color: edge.far ? Qt.rgba(Theme.flame.r, Theme.flame.g, Theme.flame.b, 0.16) : "transparent" }
+                }
+            }
+        }
+        Rectangle { anchors.fill: parent; color: "transparent"; border.width: 2; border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55) }
+    }
+    // The desktop clock and weather (Settings › Appearance; on by default in some looks), main screen only.
+    Loader {
+        anchors.fill: parent
+        active: root.primary && Theme.deskClock
+        source: "DeskClock.qml"
     }
 }

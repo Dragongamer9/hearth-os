@@ -1,4 +1,5 @@
-// App launcher: a full-screen overlay with search and a grid of installed apps, plus power actions.
+// App launcher (Mantel 2026: a large centred panel over the darkened desktop): search, a grid of installed apps,
+// plus power actions. Searching in Apps also finds Settings pages and your games; Recent can hold all three.
 // Opens with Super, the Nimbus button on the taskbar, or `quickshell ipc ... call launcher toggle`.
 // Type to search, arrows to move, Enter to open, Esc to close.
 // Two sections: Apps (every app with a .desktop file) and Games (your installed games from Hearth's library, through
@@ -28,6 +29,7 @@ PanelWindow {
     property var hiddenIds: ({})               // not for this desktop (OnlyShowIn/NotShowIn: docs/APP-KINDS.md)
     readonly property string gamesHelper: decodeURIComponent(Qt.resolvedUrl("hearth-games").toString().replace(/^file:\/\//, ""))
     signal settingsRequested()
+    signal pageRequested(string page)          // a Settings page found by the search (or in Recent)
     // Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml).
     signal menuRequested(var entry, real x, real y)
     function toggle() { shown = !shown; }
@@ -43,7 +45,7 @@ PanelWindow {
     function menuFor(i) {
         if (tab !== "apps") return;            // games: just Play (Enter)
         const e = matches[i];
-        if (e && e.folder) return;             // the System apps folder: just Open
+        if (e && (e.folder || e.page !== undefined || e.title !== undefined)) return;   // the folder, Settings pages, games: just Open
         const cell = grid.itemAtIndex(i);
         if (!e) return;
         const p = cell ? cell.mapToItem(null, cell.width / 2, cell.height / 2) : Qt.point(width / 2, height / 2);
@@ -59,7 +61,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
-    color: "#b0080b10"
+    color: Qt.rgba(0.02, 0.02, 0.03, 0.72)
 
     // Every app with a .desktop file, A–Z, filtered by what you type.
     // Not the Hearth app itself (nimbus.desktop, "Hearth"): that's the archived Game Mode in a window, hidden everywhere
@@ -83,16 +85,33 @@ PanelWindow {
         }
         if (!q) return folderOpen ? sysApps : (sysApps.length ? mainApps.concat([folderTile]) : mainApps);
         const hit = a => [a.name, a.genericName, a.comment, Array.from(a.keywords || []).join(" ")].join(" ").toLowerCase().includes(q);
-        // Names that start with the query first.
-        return apps.filter(hit).sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
+        // Names that start with the query first; then Settings pages and games that match.
+        const found = apps.filter(hit).sort((a, b) => (b.name.toLowerCase().startsWith(q) ? 1 : 0) - (a.name.toLowerCase().startsWith(q) ? 1 : 0));
+        const pages = settingsPages.filter(p => (p.name + " " + p.words).toLowerCase().includes(q));
+        const gs = games.filter(g => (g.title || "").toLowerCase().includes(q)).slice(0, 8);
+        return found.concat(pages).concat(gs);
     }
 
+    // Settings pages for the search: [{page, name, icon, words}] from Hearth Settings' list (SettingsApp.qml).
+    readonly property var settingsPages: {
+        const app = SettingsNav.settingsApp;
+        if (!app || !app.pages) return [];
+        const kw = app.keywords || {};
+        return app.pages.map(p => ({ page: p.id, name: p.label, icon: p.icon, words: kw[p.id] || "" }));
+    }
     function launch(entry) {
         if (!entry) return;
         if (entry.folder) { folderOpen = true; grid.currentIndex = 0; search.forceActiveFocus(); return; }
-        if (tab === "games") Quickshell.execDetached(["python3", gamesHelper, "play", entry.id]);
+        if (entry.page !== undefined) { DeskState.noteLaunch("page:" + entry.page); root.pageRequested(entry.page); }
+        else if (entry.title !== undefined) { DeskState.noteLaunch("game:" + entry.id); Quickshell.execDetached(["python3", gamesHelper, "play", entry.id]); }
         else { entry.execute(); DeskState.noteLaunch(entry.id); }
         shown = false;
+    }
+    // Recent: apps, games ("game:<id>") and Settings pages ("page:<id>"), newest first.
+    function recentEntry(id) {
+        if (id.startsWith("page:")) return settingsPages.find(p => p.page === id.slice(5)) || null;
+        if (id.startsWith("game:")) return games.find(g => "game:" + g.id === id) || null;
+        return apps.find(a => a.id === id) || null;
     }
 
     // ---- the Games section: what Hearth said last at once, then Hearth's answer now (at most once a minute)
@@ -146,24 +165,34 @@ PanelWindow {
 
     MouseArea { anchors.fill: parent; onClicked: root.shown = false } // click outside closes
 
-    Rectangle {
-        id: box
+    Image {   // a warm glow behind the panel
         anchors.centerIn: parent
-        width: Math.min(parent.width - 80, 880)
-        height: Math.min(parent.height - 120, 640)
-        radius: Theme.r(20)
-        color: Theme.panel
-        border.color: Theme.line
+        width: parent.width * 1.1; height: parent.height
+        source: Qt.resolvedUrl("images/ember-glow.png")
+        opacity: Theme.dark ? 0.18 : 0.1
+        smooth: true
+    }
+    Item {
+        id: box
+        readonly property int topRoom: Math.max(DeskState.topInset, 20)
+        readonly property int bottomRoom: Math.max(DeskState.bottomInset, 20)
+        width: Math.min(parent.width - 60, 1240)
+        height: Math.min(parent.height - topRoom - bottomRoom - 30, 860)
+        x: (parent.width - width) / 2
+        y: topRoom + Math.max(10, (parent.height - topRoom - bottomRoom - height) / 2)
         MouseArea { anchors.fill: parent } // clicks inside don't close
+        Rectangle { anchors.fill: parent; radius: Theme.r(26); color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.96); border.color: Theme.line; visible: frame.status !== Loader.Ready }
+        Loader { id: frame; anchors.fill: parent; source: "Frame.qml"; onLoaded: { item.solid = true; item.rad = Qt.binding(() => Theme.r(26)); } }
 
         ColumnLayout {
-            anchors { fill: parent; margins: 22 }
+            anchors { fill: parent; margins: 30 }
             spacing: 16
 
             // Sections
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
+                Text { text: root.tab === "games" ? "Games" : "Apps"; color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.DemiBold; Layout.rightMargin: 10 }
                 TabButton { label: "Apps"; key: "apps" }
                 TabButton { label: "Games"; key: "games" }
                 // In the System apps folder: where you are, and the way back.
@@ -188,17 +217,20 @@ PanelWindow {
             // Search
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: 48
-                radius: Theme.r(12)
-                color: Theme.bg2
+                implicitHeight: 60
+                radius: Theme.r(30)
+                color: Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.8)
+                border.width: 2
                 border.color: search.activeFocus && !root.tabFocus ? Theme.accent : Theme.line
+                Icon { x: 20; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 22; color: Theme.accent }
+                Text { anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter } visible: !search.text; text: "Just start typing"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
                 TextInput {
                     id: search
-                    anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
+                    anchors { fill: parent; leftMargin: 56; rightMargin: 160 }
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.text
                     selectionColor: Theme.accent
-                    font.pixelSize: 17
+                    font.pixelSize: 19
                     font.family: Theme.font
                     onTextChanged: grid.currentIndex = 0
                     Keys.onEscapePressed: { if (root.tabFocus) root.tabFocus = false; else if (root.folderOpen && !search.text) root.closeFolder(); else root.shown = false; }
@@ -227,44 +259,52 @@ PanelWindow {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: !search.text
-                        text: root.tab === "games" ? "Search games" : "Search apps"
+                        text: root.tab === "games" ? "Search games" : "Search apps, games and Settings pages"
                         color: Theme.muted
                         font: search.font
                     }
                 }
             }
 
-            // Recently opened apps (the newest first), above the list when nothing is typed.
-            Flow {
+            // Recently opened apps, games and Settings pages (the newest first), above the list when nothing is typed.
+            Text {
+                visible: recentRow.visible
+                text: "RECENT"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold; font.letterSpacing: 1.3
+            }
+            RowLayout {
                 id: recentRow
-                readonly property var entries: DeskState.recent.map(id => root.apps.find(a => a.id === id)).filter(Boolean).slice(0, 6)
+                readonly property var entries: DeskState.recent.map(id => root.recentEntry(id)).filter(Boolean).slice(0, 3)
                 Layout.fillWidth: true
                 visible: root.tab === "apps" && !search.text && !root.folderOpen && entries.length > 0
-                spacing: 8
-                Text {
-                    height: 36
-                    verticalAlignment: Text.AlignVCenter
-                    text: "Recent"
-                    color: Theme.muted
-                    font.pixelSize: 12
-                    font.family: Theme.font
-                    rightPadding: 4
-                }
+                spacing: 12
                 Repeater {
                     model: recentRow.visible ? recentRow.entries : []
                     delegate: Rectangle {
                         id: chip
                         required property var modelData
-                        implicitWidth: chipRow.implicitWidth + 20
-                        implicitHeight: 36
-                        radius: Theme.r(10)
-                        color: chipArea.containsMouse ? Theme.panel3 : Theme.panel2
-                        Row {
-                            id: chipRow
-                            anchors.centerIn: parent
-                            spacing: 8
-                            AppIcon { anchors.verticalCenter: parent.verticalCenter; size: 22; icon: chip.modelData.icon || ""; appId: chip.modelData.id || "" }
-                            Text { anchors.verticalCenter: parent.verticalCenter; text: chip.modelData.name; color: Theme.text; font.pixelSize: 13; font.family: Theme.font; elide: Text.ElideRight; width: Math.min(implicitWidth, 140) }
+                        readonly property bool isPage: modelData.page !== undefined
+                        readonly property bool isGame: modelData.title !== undefined
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: 380
+                        implicitHeight: 72
+                        radius: Theme.r(16)
+                        color: chipArea.containsMouse ? Theme.panel3 : Qt.rgba(Theme.panel2.r, Theme.panel2.g, Theme.panel2.b, 0.85)
+                        border.color: Theme.line
+                        RowLayout {
+                            anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
+                            spacing: 14
+                            Rectangle {
+                                implicitWidth: 44; implicitHeight: 44; radius: Theme.r(12)
+                                color: chip.isPage || chip.isGame ? Theme.panel3 : "transparent"
+                                AppIcon { anchors.centerIn: parent; visible: !chip.isPage && !chip.isGame; size: 40; icon: chip.modelData.icon || ""; appId: chip.modelData.id || "" }
+                                Icon { anchors.centerIn: parent; visible: chip.isPage || chip.isGame; name: chip.isGame ? "pad" : (chip.modelData.icon || "gear"); size: 22 }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Text { Layout.fillWidth: true; text: chip.isGame ? chip.modelData.title : chip.modelData.name; color: Theme.text; font.pixelSize: 15; font.weight: Font.DemiBold; font.family: Theme.font; elide: Text.ElideRight }
+                                Text { Layout.fillWidth: true; text: chip.isGame ? "Game" : chip.isPage ? "Settings page" : "App"; color: Theme.muted; font.pixelSize: 12; font.family: Theme.font }
+                            }
                         }
                         MouseArea {
                             id: chipArea
@@ -273,12 +313,17 @@ PanelWindow {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             cursorShape: Qt.PointingHandCursor
                             onClicked: mouse => {
-                                if (mouse.button === Qt.RightButton) { const p = chip.mapToItem(null, mouse.x, mouse.y); root.menuRequested(chip.modelData, p.x, p.y); }
+                                if (mouse.button === Qt.RightButton && !chip.isPage && !chip.isGame) { const p = chip.mapToItem(null, mouse.x, mouse.y); root.menuRequested(chip.modelData, p.x, p.y); }
                                 else root.launch(chip.modelData);
                             }
                         }
                     }
                 }
+                Item { Layout.fillWidth: true }
+            }
+            Text {
+                visible: root.tab === "apps" && !search.text
+                text: root.folderOpen ? "SYSTEM APPS" : "ALL APPS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold; font.letterSpacing: 1.3
             }
 
             // Apps / games
@@ -288,8 +333,8 @@ PanelWindow {
                 Layout.fillHeight: true
                 clip: true
                 model: root.matches
-                cellWidth: root.tab === "games" ? Math.floor(width / Math.max(1, Math.floor(width / 150))) : Math.floor(width / Math.max(1, Math.floor(width / 120)))
-                cellHeight: root.tab === "games" ? 236 : 112
+                cellWidth: root.tab === "games" ? Math.floor(width / Math.max(1, Math.floor(width / 150))) : Math.floor(width / Math.max(1, Math.floor(width / 140)))
+                cellHeight: root.tab === "games" ? 236 : 128
                 keyNavigationEnabled: true
                 highlightFollowsCurrentItem: true
                 highlight: Rectangle { radius: Theme.r(14); color: Theme.panel3; border.color: root.tabFocus ? Theme.line : Theme.accent }
@@ -297,9 +342,11 @@ PanelWindow {
                     id: cell
                     required property var modelData
                     required property int index
-                    // Games are plain objects with a title; apps are desktop entries.
-                    readonly property bool isGame: cell.modelData.title !== undefined
-                    readonly property string label: (cell.isGame ? cell.modelData.title : cell.modelData.name) || ""
+                    // Games are plain objects with a title; Settings pages ({page, name, icon}) come from the search; apps are desktop entries.
+                    readonly property bool isPage: cell.modelData.page !== undefined
+                    readonly property bool isGame: cell.modelData.title !== undefined && root.tab === "games"
+                    readonly property bool gameHit: cell.modelData.title !== undefined && root.tab !== "games"
+                    readonly property string label: (cell.modelData.title !== undefined ? cell.modelData.title : cell.modelData.name) || ""
                     width: grid.cellWidth
                     height: grid.cellHeight
                     Rectangle {
@@ -311,11 +358,19 @@ PanelWindow {
                         anchors.centerIn: parent
                         spacing: 8
                         AppIcon {
-                            visible: !cell.isGame
+                            visible: !cell.isGame && !cell.isPage && !cell.gameHit
                             anchors.horizontalCenter: parent.horizontalCenter
-                            size: 48
-                            icon: cell.isGame ? "" : (cell.modelData.icon || "")
-                            appId: cell.isGame ? "" : (cell.modelData.id || "")
+                            size: 64
+                            icon: cell.isGame || cell.isPage || cell.gameHit ? "" : (cell.modelData.icon || "")
+                            appId: cell.isGame || cell.isPage || cell.gameHit ? "" : (cell.modelData.id || "")
+                        }
+                        // A Settings page or a game found by the search: Hearth's own icon in a tile.
+                        Rectangle {
+                            visible: cell.isPage || cell.gameHit
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 64; height: 64; radius: Theme.r(18)
+                            color: Theme.panel3
+                            Icon { anchors.centerIn: parent; name: cell.gameHit ? "pad" : (cell.modelData.icon || "gear"); size: 28 }
                         }
                         // The game's cover (its first letter until the picture is in, or without one).
                         Rectangle {
@@ -350,15 +405,15 @@ PanelWindow {
                             elide: Text.ElideRight
                             maximumLineCount: 2
                             wrapMode: Text.Wrap
-                            text: cell.label
+                            text: cell.label + (cell.isPage ? "\nSettings" : cell.gameHit ? "\nGame" : "")
                             color: Theme.text
-                            font.pixelSize: 12
+                            font.pixelSize: 13
                             font.family: Theme.font
                         }
                     }
                     // Pinned to the taskbar
                     Icon {
-                        visible: !cell.isGame && !cell.modelData.folder && DeskState.isPinned(cell.modelData.id)
+                        visible: !cell.isGame && !cell.isPage && !cell.gameHit && !cell.modelData.folder && DeskState.isPinned(cell.modelData.id)
                         anchors { top: parent.top; right: parent.right; margins: 12 }
                         name: "pin"; size: 14; color: Theme.muted
                     }
@@ -390,17 +445,27 @@ PanelWindow {
                 }
             }
 
-            // Power
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.line }
+            // Power: Game Mode first and in the accent
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
-                ActionButton { label: "Game Mode"; primary: true; command: ["nimbus-mode", "game"] }
-                ActionButton { label: "Settings"; command: [] }
+                spacing: 10
+                ActionButton { label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }
+                ActionButton { label: "Settings"; icon: "gear"; command: [] }
+                ActionButton { label: "Sleep"; icon: "sleep"; command: ["python3", Buttons.helper, "sleep", "Desktop Mode: menu"] }
+                ActionButton { label: "Restart"; icon: "restart"; command: ["systemctl", "reboot"] }
+                ActionButton { label: "Shut down"; icon: "power"; command: ["systemctl", "poweroff"] }
+                ActionButton { label: "Log out"; icon: "logout"; command: ["nimbus-mode", "logout"] }
                 Item { Layout.fillWidth: true }
-                ActionButton { label: "Sleep"; command: ["python3", Buttons.helper, "sleep", "Desktop Mode: menu"] }
-                ActionButton { label: "Restart"; command: ["systemctl", "reboot"] }
-                ActionButton { label: "Shut down"; command: ["systemctl", "poweroff"] }
-                ActionButton { label: "Log out"; command: ["nimbus-mode", "logout"] }
+                Repeater {
+                    model: root.width > 1500 ? [{ b: "A", c: "#3fae5a", t: "Open" }, { b: "X", c: "#3b7de0", t: "Options" }, { b: "LB", c: "#6c7480", t: "Tab" }] : []
+                    delegate: Row {
+                        required property var modelData
+                        spacing: 6
+                        Rectangle { width: 24; height: 24; radius: 12; color: modelData.c; Text { anchors.centerIn: parent; text: modelData.b; color: "white"; font.pixelSize: modelData.b.length > 1 ? 9 : 11; font.bold: true } }
+                        Text { anchors.verticalCenter: parent.verticalCenter; text: modelData.t; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                    }
+                }
             }
         }
     }
@@ -411,9 +476,9 @@ PanelWindow {
         property string label
         property string key
         readonly property bool current: root.tab === tb.key
-        implicitWidth: tbText.implicitWidth + 36
-        implicitHeight: 38
-        radius: Theme.r(10)
+        implicitWidth: tbText.implicitWidth + 44
+        implicitHeight: 44
+        radius: Theme.r(14)
         color: tb.current ? Theme.accent : (tbArea.containsMouse ? Theme.panel3 : Theme.panel2)
         border.width: root.tabFocus && tb.current ? 2 : 0
         border.color: Theme.text
@@ -430,13 +495,21 @@ PanelWindow {
     component ActionButton: Rectangle {
         id: ab
         property string label
+        property string icon: ""
         property var command: []
         property bool primary: false
-        implicitWidth: abText.implicitWidth + 32
-        implicitHeight: 40
-        radius: Theme.r(10)
+        implicitWidth: abRow.implicitWidth + 36
+        implicitHeight: 52
+        radius: Theme.r(14)
         color: primary ? (abArea.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent) : (abArea.containsMouse ? Theme.panel3 : Theme.panel2)
-        Text { id: abText; anchors.centerIn: parent; text: ab.label; color: ab.primary ? Theme.accentInk : Theme.text; font.pixelSize: 13; font.bold: ab.primary; font.family: Theme.font }
+        border.color: primary ? "transparent" : Theme.line
+        Row {
+            id: abRow
+            anchors.centerIn: parent
+            spacing: 10
+            Icon { visible: ab.icon !== ""; anchors.verticalCenter: parent.verticalCenter; name: ab.icon; size: 20; color: ab.primary ? Theme.accentInk : Theme.text }
+            Text { id: abText; anchors.verticalCenter: parent.verticalCenter; text: ab.label; color: ab.primary ? Theme.accentInk : Theme.text; font.pixelSize: 15; font.bold: ab.primary; font.family: Theme.font }
+        }
         MouseArea {
             id: abArea
             anchors.fill: parent

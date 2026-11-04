@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""System stats for Mantel's dashboard and the Gaming look's performance island (Mantel 2026).
+
+  hearth-stats            one JSON line now
+  hearth-stats --watch N  a JSON line every N seconds (Mantel runs this only while the island or the dashboard shows)
+
+{"cpu": 23, "cpuTemp": 58, "gpu": 41, "gpuTemp": 61, "ram": 5.1, "ramTotal": 16.0, "fps": 144}
+A value that can't be read is left out (the shell then hides it). Only reads /proc and /sys, never writes anything.
+
+FPS: a desktop shell can't measure another program's frame rate on labwc, so it's only shown when MangoHud is
+logging (its CSV log in MangoHud's output_folder, written in the last few seconds); otherwise "fps" is left out.
+"""
+import glob
+import json
+import os
+import re
+import sys
+import time
+
+FPS_FRESH = 5.0     # seconds: an older MangoHud log means the game isn't running any more
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def cpu_times(stat_text):
+    """(busy, total) jiffies from the first line of /proc/stat."""
+    for line in stat_text.splitlines():
+        if line.startswith('cpu '):
+            v = [int(x) for x in line.split()[1:] if x.isdigit()]
+            if len(v) < 4:
+                return None
+            idle = v[3] + (v[4] if len(v) > 4 else 0)
+            return sum(v) - idle, sum(v)
+    return None
+
+
+def cpu_percent(a, b):
+    if not a or not b or b[1] <= a[1]:
+        return None
+    return max(0, min(100, round(100.0 * (b[0] - a[0]) / (b[1] - a[1]))))
+
+
+def memory(meminfo_text):
+    """(used GB, total GB) from /proc/meminfo."""
+    kb = {}
+    for line in meminfo_text.splitlines():
+        m = re.match(r'(\w+):\s+(\d+)', line)
+        if m:
+            kb[m.group(1)] = int(m.group(2))
+    if 'MemTotal' not in kb or 'MemAvailable' not in kb:
+        return None
+    gb = 1024.0 * 1024.0
+    return round((kb['MemTotal'] - kb['MemAvailable']) / gb, 1), round(kb['MemTotal'] / gb, 1)
+
+
+def gpu_busy(root='/sys/class/drm'):
+    """amdgpu's (and i915/xe's where present) busy percent."""
+    for p in sorted(glob.glob(os.path.join(root, 'card*/device/gpu_busy_percent'))):
+        t = read(p).strip()
+        if t.isdigit():
+            return max(0, min(100, int(t)))
+    return None
+
+
+def hwmon_temps(root='/sys/class/hwmon'):
+    """{'cpu': °C, 'gpu': °C} from hwmon sensors by name (k10temp/zenpower/coretemp for the CPU, amdgpu/nouveau for the GPU)."""
+    cpu_names = ('k10temp', 'zenpower', 'coretemp', 'cpu_thermal')
+    gpu_names = ('amdgpu', 'nouveau', 'radeon', 'xe', 'i915')
+    out, weak = {}, {}
+    for d in sorted(glob.glob(os.path.join(root, 'hwmon*'))):
+        name = read(os.path.join(d, 'name')).strip()
+        t = read(os.path.join(d, 'temp1_input')).strip()
+        if not t.lstrip('-').isdigit():
+            continue
+        c = round(int(t) / 1000)
+        if name in cpu_names and 'cpu' not in out:
+            out['cpu'] = c
+        elif name in gpu_names and 'gpu' not in out:
+            out['gpu'] = c
+        elif name == 'acpitz':
+            weak.setdefault('cpu', c)          # the board's sensor: only when there's no CPU sensor
+    for k, v in weak.items():
+        out.setdefault(k, v)
+    return out
+
+
+def mangohud_folders(home):
+    folders = []
+    conf = read(os.path.join(home, '.config', 'MangoHud', 'MangoHud.conf'))
+    for line in conf.splitlines():
+        m = re.match(r'\s*output_folder\s*=\s*(.+?)\s*$', line)
+        if m:
+            folders.append(os.path.expanduser(m.group(1)))
+    env = os.environ.get('MANGOHUD_CONFIG', '')
+    m = re.search(r'output_folder=([^,]+)', env)
+    if m:
+        folders.append(os.path.expanduser(m.group(1)))
+    folders.append(os.path.join(home, '.local', 'share', 'MangoHud'))
+    return folders
+
+
+def last_fps(csv_text):
+    """The frame rate on the last line of a MangoHud CSV log (its first column is fps)."""
+    lines = [l for l in csv_text.strip().splitlines() if l.strip()]
+    for line in reversed(lines[-3:]):
+        first = line.split(',')[0].strip()
+        try:
+            v = float(first)
+        except ValueError:
+            continue
+        if 0 < v < 2000:
+            return round(v)
+    return None
+
+
+def fps(home, now=None):
+    now = time.time() if now is None else now
+    newest, newest_t = None, 0
+    for folder in mangohud_folders(home):
+        for p in glob.glob(os.path.join(folder, '*.csv')):
+            try:
+                t = os.path.getmtime(p)
+            except OSError:
+                continue
+            if t > newest_t:
+                newest, newest_t = p, t
+    if not newest or now - newest_t > FPS_FRESH:
+        return None
+    try:
+        with open(newest, 'rb') as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4096))
+            return last_fps(f.read().decode('utf-8', 'replace'))
+    except OSError:
+        return None
+
+
+def snapshot(prev_cpu, home):
+    now_cpu = cpu_times(read('/proc/stat'))
+    out = {}
+    c = cpu_percent(prev_cpu, now_cpu)
+    if c is not None:
+        out['cpu'] = c
+    m = memory(read('/proc/meminfo'))
+    if m:
+        out['ram'], out['ramTotal'] = m
+    g = gpu_busy()
+    if g is not None:
+        out['gpu'] = g
+    t = hwmon_temps()
+    if 'cpu' in t:
+        out['cpuTemp'] = t['cpu']
+    if 'gpu' in t:
+        out['gpuTemp'] = t['gpu']
+    f = fps(home)
+    if f is not None:
+        out['fps'] = f
+    return out, now_cpu
+
+
+def main(argv):
+    home = os.path.expanduser('~')
+    every = 0.0
+    if len(argv) > 2 and argv[1] == '--watch':
+        try:
+            every = max(1.0, float(argv[2]))
+        except ValueError:
+            every = 2.0
+    prev = cpu_times(read('/proc/stat'))
+    time.sleep(0.5)
+    while True:
+        out, prev = snapshot(prev, home)
+        sys.stdout.write(json.dumps(out) + '\n')
+        sys.stdout.flush()
+        if not every:
+            return 0
+        time.sleep(every)
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv))
+    except (KeyboardInterrupt, BrokenPipeError):
+        sys.exit(0)
