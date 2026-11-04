@@ -4,14 +4,15 @@
 // ---------------------------------------------------------------- settings
 
 export type Look = "steam" | "classic";
-export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean }
-/** Off until the person turns it on (Quick Access › Hearth Classic). Never changed by the plugin itself. */
-export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true };
+export interface Settings { look: Look; home: boolean; sounds: boolean; wallpaper: boolean; menu: boolean; menuTop: boolean }
+/** Off until the person turns it on (Quick Access › Hearth Classic). Never changed by the plugin itself. The parts
+ *  (home, wallpaper, the bottom bar menu, the top bar in a game) are on once Hearth Classic is picked; sounds are off. */
+export const DEFAULTS: Settings = { look: "steam", home: true, sounds: false, wallpaper: true, menu: true, menuTop: true };
 
 export function normalize(raw: unknown): Settings {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const b = (k: keyof Settings) => (typeof r[k] === "boolean" ? (r[k] as boolean) : (DEFAULTS[k] as boolean));
-  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper") };
+  return { look: r.look === "classic" ? "classic" : "steam", home: b("home"), sounds: b("sounds"), wallpaper: b("wallpaper"), menu: b("menu"), menuTop: b("menuTop") };
 }
 
 // ---------------------------------------------------------------- Steam's modules
@@ -54,14 +55,71 @@ export function decide(s: Settings, hearthOs: boolean, check: SteamCheck | null,
 // ---------------------------------------------------------------- the skin
 
 const TEMPLATE = /\{\{([A-Za-z0-9_]+):([A-Za-z0-9_]+)\}\}/g;
+/** A part of the skin that's all or nothing (the bottom bar menu, the top bar in a game): between these lines. */
+const SECTION = /^\/\* @section ([a-z]+) \*\/\s*$/;
+const SECTION_END = /^\/\* @end \*\/\s*$/;
+
+/** Steam's main menu (the Steam button) as Hearth's bottom bar needs it: its anchor, its column and its entries. In a
+ *  game the top bar also needs the running game's column. Missing: Steam's own menu stays (the rest of the look goes on). */
+export const MENU_REQUIRED: [string, string][] = [
+  ["gamepadUIClasses", "MainNavMenuAnchor"],
+  ["mainMenuAppRunningClasses", "NavigationColumn"],
+  ["mainMenuAppRunningClasses", "NavigationMenuItem"],
+];
+export const TOP_REQUIRED: [string, string][] = [...MENU_REQUIRED, ["mainMenuAppRunningClasses", "AppColumn"]];
+
+export function missingOf(list: [string, string][], resolve: Resolve): string[] {
+  const out: string[] = [];
+  for (const [m, k] of list) {
+    let v: string | undefined;
+    try { v = resolve(m, k); } catch { v = undefined; }
+    if (!v) out.push(m + "." + k);
+  }
+  return out;
+}
+
+export const MENU_PAUSED = "Hearth bottom bar menu paused: Steam changed its menu";
+/** Which all-or-nothing parts of the skin go in, and the note for one that can't. */
+export function menuPlan(s: Settings, resolve: Resolve): { sections: Record<string, boolean>; note: string } {
+  const sections: Record<string, boolean> = { menu: false, top: false };
+  if (!s.menu) return { sections, note: "" };
+  const miss = missingOf(MENU_REQUIRED, resolve);
+  if (miss.length) return { sections, note: `${MENU_PAUSED} (missing: ${miss.join(", ")}); Steam's own menu is shown` };
+  sections.menu = true;
+  if (s.menuTop) {
+    const top = missingOf(TOP_REQUIRED, resolve);
+    if (!top.length) sections.top = true;
+    else return { sections, note: `In a game: Hearth top bar paused (missing: ${top.join(", ")}); the bottom bar is used` };
+  }
+  return { sections, note: "" };
+}
+
+/** Hearth's icon for one of Steam's main menu entries, from its (English) label; "" for one Hearth has no icon for
+ *  (it keeps its label). Only decoration: the entries do what Steam's do. */
+export function menuIcon(label: string): string {
+  const l = (label || "").trim().toLowerCase();
+  const table: [RegExp, string][] = [
+    [/^home\b/, "home"], [/^library\b/, "lib"], [/^store\b/, "shop"], [/^media\b/, "media"], [/^downloads?\b/, "dl"],
+    [/^friends\b/, "friends"], [/^settings\b/, "gear"], [/^power\b/, "power"], [/^search\b/, "search"],
+    [/^(resume|return to game|back to game)/, "pad"], [/^(exit game|close game|quit)/, "close"], [/^(screenshot|take screenshot)/, "shot"],
+  ];
+  for (const [re, ic] of table) if (re.test(l)) return ic;
+  return "";
+}
 
 /** The skin with Steam's class names and Hearth's pictures filled in; a line with a name or picture that's missing is
  *  left out (a Steam update makes the look plainer, never broken). Also returns how many lines were left out. */
-export function renderTheme(css: string, pics: { logo: string; wallpaper: string }, resolve: Resolve): { css: string; dropped: number } {
+export function renderTheme(css: string, pics: { logo: string; wallpaper: string }, resolve: Resolve,
+                            sections: Record<string, boolean> = {}): { css: string; dropped: number } {
   const cache = new Map<string, string | undefined>();
   const out: string[] = [];
   let dropped = 0;
+  let skip = false;   // inside a section that's switched off (or whose names Steam hasn't got): left out whole
   for (const line of (css || "").split("\n")) {
+    const sec = SECTION.exec(line);
+    if (sec) { skip = sections[sec[1]] !== true; continue; }
+    if (SECTION_END.test(line)) { skip = false; continue; }
+    if (skip) continue;
     if ((line.includes("%WALLPAPER%") && !pics.wallpaper) || (line.includes("%LOGO%") && !pics.logo)) { dropped++; continue; }
     let missing = false;
     const done = line.replace(TEMPLATE, (_all, a: string, k: string) => {
@@ -119,15 +177,50 @@ export const SYNC_COLLECTIONS: [string, string][] = [
   ["heroic", "Heroic"], ["lutris", "Lutris"], ["mods", "Modded games"], ["other", "Other games"],
 ];
 
-/** The places row (Hearth's places as they are in Steam Game Mode): where each opens in Steam. */
-export const PLACES: { id: string; title: string; route: string }[] = [
-  { id: "library", title: "Library", route: "/library" },
-  { id: "store", title: "Store", route: "/store" },
-  { id: "downloads", title: "Downloads", route: "/downloads" },
-  { id: "media", title: "Media", route: "/media" },
-  { id: "friends", title: "Friends", route: "/friends" },
-  { id: "settings", title: "Settings", route: "/settings" },
+/** How a place opens in Steam, tried in order until one works:
+ *  - "navigator": Steam's own window navigator (SteamUIStore's focused window `.Navigator`, the calls Steam's main
+ *    menu makes; names from @decky/ui's SteamWindowNavigator types): it throws or is missing when Steam changed;
+ *  - "window": a call on that window itself (NavigateToSteamWeb);
+ *  - "route": Navigation.Navigate to one of Steam's routes known to show a page (always last: never an empty page). */
+export type NavStep = { kind: "navigator"; call: string; args?: unknown[] } | { kind: "window"; call: string; args?: unknown[] } | { kind: "route"; path: string };
+export interface Place { id: string; title: string; steps: NavStep[] }
+export const STORE_URL = "https://store.steampowered.com/";
+const MEDIA_STATE = { state: { filter: { listSource: { type: "recents" }, mediaType: "all" } } };
+/** The navigator calls Steam has (decky-frontend-lib globals/stores/steamuistore/window.ts SteamWindowNavigator) and
+ *  the routes known to show a page; tests/model.test.mjs checks every place against these. */
+export const KNOWN_NAVIGATOR = ["Downloads", "Chat", "Media.Grid", "Media.List", "Settings", "SteamWeb", "LibraryTab", "Home"];
+export const KNOWN_WINDOW = ["NavigateToSteamWeb"];
+export const KNOWN_ROUTES = ["/library", "/library/home", "/settings"];
+export const PLACES: Place[] = [
+  { id: "library", title: "Library", steps: [{ kind: "route", path: "/library" }] },
+  { id: "store", title: "Store", steps: [{ kind: "navigator", call: "SteamWeb", args: [STORE_URL] }, { kind: "window", call: "NavigateToSteamWeb", args: [STORE_URL] }, { kind: "route", path: "/library" }] },
+  { id: "downloads", title: "Downloads", steps: [{ kind: "navigator", call: "Downloads" }, { kind: "navigator", call: "Settings", args: ["Downloads"] }, { kind: "route", path: "/library" }] },
+  { id: "media", title: "Media", steps: [{ kind: "navigator", call: "Media.Grid", args: [MEDIA_STATE] }, { kind: "navigator", call: "Media.List", args: [MEDIA_STATE] }, { kind: "route", path: "/library" }] },
+  { id: "friends", title: "Friends", steps: [{ kind: "navigator", call: "Chat" }, { kind: "navigator", call: "Settings", args: ["Friends"] }, { kind: "route", path: "/library" }] },
+  { id: "settings", title: "Settings", steps: [{ kind: "navigator", call: "Settings" }, { kind: "route", path: "/settings" }] },
 ];
+
+/** Opens a place: the first step that's there and doesn't throw. Returns what was used ("navigator:Downloads",
+ *  "route:/library"). `win` is Steam's focused window instance (or null), `navigate` Navigation.Navigate. */
+export function runPlace(place: Place, win: any, navigate: (route: string) => void): string {
+  const nav = win ? (win.Navigator ?? win.m_Navigator ?? null) : null;
+  for (const st of place.steps) {
+    try {
+      if (st.kind === "route") { navigate(st.path); return "route:" + st.path; }
+      const base = st.kind === "navigator" ? nav : win;
+      if (!base) continue;
+      const parts = st.call.split(".");
+      let owner: any = base;
+      for (const p of parts.slice(0, -1)) owner = owner ? owner[p] : undefined;
+      const fn = owner ? owner[parts[parts.length - 1]] : undefined;
+      if (typeof fn !== "function") continue;
+      fn.apply(owner, st.args || []);
+      return st.kind + ":" + st.call;
+    } catch { /* this way failed: the next */ }
+  }
+  navigate("/library");
+  return "route:/library";
+}
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() && v.length < 4096 ? v.trim() : undefined);
 const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v > 0 ? v : 0);

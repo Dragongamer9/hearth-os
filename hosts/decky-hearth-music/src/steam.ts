@@ -47,10 +47,14 @@ export function collectionsOf(appid: number): string[] {
   } catch { return []; }
 }
 
-/** The app id a library tile (or something inside it) stands for, from its React props; 0 when none. */
+/** The app id a library tile (or something inside it) stands for, from its React props (or Hearth Classic's
+ *  data-hearth-appid); 0 when none. */
 export function appIdOf(el: any): number {
   try {
     for (let e = el, d = 0; e && d < 10; e = e.parentElement, d++) {
+      // Hearth Classic's home tiles (hosts/decky-hearth-look) say which game they stand for.
+      const own = Number(e.getAttribute?.("data-hearth-appid") || 0);
+      if (Number.isFinite(own) && own > 0) return own;
       const fk = Object.keys(e).find((k) => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
       for (let f = fk ? e[fk] : null, n = 0; f && n < 12; f = f.return, n++) {
         const p = f.memoizedProps;

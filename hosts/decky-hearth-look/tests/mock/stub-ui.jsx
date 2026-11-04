@@ -21,14 +21,28 @@ export function DialogButton(props) {
 }
 export const Navigation = { Navigate(r) { (window.HC_NAV = window.HC_NAV || []).push(r); }, NavigateBack() {}, CloseSideMenus() {}, NavigateToExternalWeb() {} };
 export const staticClasses = { Text: "Text", Title: "Title" };
-export const gamepadTabbedPageClasses = changed ? undefined : { GamepadTabbedPage: "gtp_Page", TabHeaderRowWrapper: "gtp_Header", Tab: "gtp_Tab", Selected: "gtp_Selected" };
-export const gamepadDialogClasses = changed ? undefined : { GamepadDialogContent: "gd_Content", Field: "gd_Field", FieldDescription: "qam-desc", Button: "gd_Button" };
-export const quickAccessMenuClasses = changed ? undefined : { Title: "qam-title", Tabs: "qam-tabs", Tab: "qam-tab", Selected: "on" };
-export const footerClasses = changed ? undefined : { BasicFooter: "steam-footer" };
-const modules = changed ? [] : [{ MainNavMenuContainer: "mainmenu", SteamLogo: "mainmenu-logo" }];
+const menuChanged = changed || window.HC_STEAM === "menuchanged";
+const map = (o) => (changed ? undefined : o);
+export const gamepadTabbedPageClasses = map({ GamepadTabbedPage: "gtp_Page", TabHeaderRowWrapper: "gtp_Header", Tab: "gtp_Tab", Selected: "gtp_Selected", TabCount: "gtp_Count" });
+export const gamepadDialogClasses = map({ GamepadDialogContent: "gd_Content", Field: "gd_Field", FieldLabel: "qam-label", FieldDescription: "qam-desc", Button: "gd_Button", Toggle: "qam-toggle", On: "on", ToggleRail: "qam-switch" });
+export const quickAccessMenuClasses = map({ Container: "qam", Title: "qam-title", Tabs: "qam-tabs", Tab: "qam-tab", Selected: "on", PanelSectionTitle: "qam-section-title", PanelSectionRow: "qam-row" });
+export const quickAccessControlsClasses = map({ PanelSectionTitle: "qam-section-title" });
+export const footerClasses = map({ BasicFooter: "steam-footer" });
+export const gamepadLibraryClasses = map({ GamepadLibrary: "lib_Root", CollectionHeader: "lib_Header", AppGridFilterHeader: "lib_Filter" });
+export const libraryAssetImageClasses = map({ Container: "cap", Image: "cap-img", GreyBackground: "cap-grey" });
+export const appDetailsClasses = map({ Container: "ad_Container" });
+export const appDetailsHeaderClasses = map({ TopGradient: "ad_Gradient", TopCapsule: "ad_Capsule" });
+export const playSectionClasses = map({ PlayBar: "ps_PlayBar", Container: "ps_Container", GameStat: "ps_Stat", MenuButton: "ps_Menu" });
+export const appActionButtonClasses = map({ PlayButton: "ps_Play", Green: "ps_Green" });
+export const basicAppDetailsSectionStylerClasses = map({ AppDetailsContent: "ad_Content", GameInfoContainer: "ad_Info", GameInfoQuickLinks: "ad_Links" });
+export const gamepadContextMenuClasses = map({ contextMenuContents: "cm_Contents", contextMenuItem: "cm_Item" });
+export const gamepadUIClasses = menuChanged ? undefined : { MainNavMenuAnchor: "mm_Anchor" };
+export const mainMenuAppRunningClasses = menuChanged ? undefined : { NavigationColumn: "mm_NavColumn", NavigationBox: "mm_NavBox", NavigationMenuItem: "mm_Item",
+  Active: "mm_Active", NavigationMenuItemSeparator: "mm_Sep", AppColumn: "mm_AppColumn", CurrentGameBackground: "mm_GameBg", CurrentGameLogo: "mm_Logo", AppRunningControls: "mm_Controls" };
 export function findClassModule(f) { return modules.find((m) => { try { return f(m); } catch { return false; } }); }
 export function findSP() { return window; }
-export const Router = { WindowStore: { GamepadUIMainWindowInstance: { BrowserWindow: window }, SteamUIWindows: [] } };
+export const Router = { WindowStore: { GamepadUIMainWindowInstance: { BrowserWindow: window }, SteamUIWindows: [] },
+  get MainRunningApp() { return window.HC_RUNNING ? { appid: 1001, display_name: "Ember Knights of Ash" } : undefined; } };
 // Quick Access's building blocks, drawn roughly the way Steam draws them (render.mjs styles the classes).
 export const PanelSection = (p) => createElement("div", { className: "qam-section" }, p.title ? createElement("div", { className: "qam-section-title" }, p.title) : null, p.children);
 export const PanelSectionRow = (p) => createElement("div", { className: "qam-row" }, p.children);

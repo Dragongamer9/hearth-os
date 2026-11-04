@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [ ] Hearth Classic round 2: the home's places open Steam's real pages (Store, Downloads, Media, Friends no longer show empty pages; the Library at worst), the look goes further into the old Hearth Game Mode on Steam's Library, game pages, Quick Access, dialogs and menus, the Steam button's menu becomes Hearth's bottom bar (and Hearth's top bar while a game runs; switches "Hearth bottom bar menu" and "In a game: Hearth top bar"), and focusing a game on the Hearth home plays its Hearth Music theme like Steam's library does. If Steam's menu changes, Steam's own menu stays and the panel says so; docs/HEARTH-LOOK.md (needs testing on a device)
+
 - [ ] Hearth Classic, a new Decky plugin: the old Hearth Game Mode look on top of Steam Game Mode, off until you pick it in Quick Access › Hearth Classic. Hearth's colours, corners, focus glow, top bar, side menu and wallpaper over Steam's screens, and the old Hearth home on Steam's Home (Jump back in, Hearth's places, Continue playing, Favorites, a row per store from Steam and Hearth Sync; every game opens Steam's own page). If a Steam update changes the screens it styles, it pauses by itself, puts Steam's normal look back and says so in the panel ("Hearth Classic paused: Steam changed its layout"); your choice stays saved. Arrives through the plugins channel; docs/HEARTH-LOOK.md (needs testing on a device)
 
 ## 1.2 (released 2026-11-03)

@@ -124,6 +124,17 @@ class Settings(Base):
         self.assertEqual(open(self.sfile + '.damaged').read(), '{"look": "classic",')
         self.assertFalse(os.path.exists(self.sfile + '.bak'))   # a damaged file never becomes the .bak
 
+    def test_menu_bars_default_on_and_remembered_off(self):
+        p = self.m.Plugin()
+        s = self.run_(p.get_settings())
+        self.assertTrue(s['menu'] and s['menuTop'])
+        self.assertFalse(os.path.exists(self.sfile))   # the defaults are never written
+        self.run_(p.set_settings({'look': 'classic', 'menuTop': False}))
+        self.assertFalse(self.run_(p.set_settings({'menu': 'off'}))['ok'])
+        s = self.run_(p.get_settings())
+        self.assertEqual((s['menu'], s['menuTop']), (True, False))
+        self.assertNotIn('menu', json.load(open(self.sfile)))   # only what the person changed is written
+
     def test_writes_are_atomic(self):
         p = self.m.Plugin()
         self.run_(p.set_settings({'look': 'classic'}))
@@ -239,7 +250,8 @@ class HomeData(Base):
         self.assertTrue(b['wallpaper'].startswith('data:image/jpeg;base64,'))
 
     def test_no_other_trade_dress(self):
-        css = (PLUGIN / 'defaults/hearth-classic.css').read_text().lower()
+        import re
+        css = re.sub(r'base64,[a-z0-9+/=]+', '', (PLUGIN / 'defaults/hearth-classic.css').read_text().lower())
         for word in ('xbox', 'playstation', 'nintendo', 'switch', 'dashboard'):
             self.assertNotIn(word, css)
 

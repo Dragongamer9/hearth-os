@@ -3,6 +3,7 @@
 // every window at once by removeSkin(). Class names come from @decky/ui's class maps (or findClassModule), never
 // hard-coded hashes.
 import * as DUI from "@decky/ui";
+import { menuIcon } from "./model";
 import type { Resolve } from "./model";
 
 const STYLE_ID = "hearth-classic";
@@ -68,4 +69,68 @@ export function removeSkin() {
   for (const w of steamWindows()) {
     try { w.document.getElementById(STYLE_ID)?.remove(); } catch { /* gone */ }
   }
+}
+
+// ---- the menu bars' small helpers (only while their part of the skin is in; each returns its undo)
+
+/** Gives each of Steam's main menu entries Hearth's icon for it (data-hearth-icon, from its label; the skin draws it).
+ *  Watches for the menu opening (Steam draws it when the Steam button is pressed). Only an attribute is added: the
+ *  entries stay Steam's own. The undo stops watching and takes every attribute away again. */
+export function startMenuDecor(itemClass: string): () => void {
+  const watched: { doc: Document; obs: MutationObserver }[] = [];
+  const tagAll = (doc: Document) => {
+    try {
+      doc.querySelectorAll("." + itemClass).forEach((el) => {
+        const ic = menuIcon(el.textContent || "");
+        if (el.getAttribute("data-hearth-icon") !== ic) el.setAttribute("data-hearth-icon", ic);
+      });
+    } catch { /* a window that went away */ }
+  };
+  const watch = () => {
+    for (const w of steamWindows()) {
+      const doc = w.document;
+      if (!doc?.body || watched.some((x) => x.doc === doc)) continue;
+      let queued = false;
+      const obs = new MutationObserver(() => {
+        if (queued) return;
+        queued = true;
+        const run = () => { queued = false; tagAll(doc); };
+        try { w.requestAnimationFrame(run); } catch { setTimeout(run, 16); }
+      });
+      try { obs.observe(doc.body, { childList: true, subtree: true }); watched.push({ doc, obs }); tagAll(doc); } catch { /* not watchable */ }
+    }
+  };
+  watch();
+  const t = setInterval(watch, 4000);
+  return () => {
+    clearInterval(t);
+    for (const { doc, obs } of watched) {
+      try { obs.disconnect(); doc.querySelectorAll("[data-hearth-icon]").forEach((el) => el.removeAttribute("data-hearth-icon")); } catch { /* gone */ }
+    }
+    watched.length = 0;
+  };
+}
+
+/** Whether Steam is running a game now (Router.MainRunningApp, as Hearth Music reads it); null when unreadable. */
+export function gameRunning(): boolean | null {
+  try {
+    const r = (DUI as any).Router ?? (window as any).SteamUIStore;
+    if (!r) return null;
+    const a = r.MainRunningApp ?? (window as any).SteamUIStore?.MainRunningApp;
+    return !!(a && Number(a.appid) > 0);
+  } catch { return null; }
+}
+
+/** Keeps html.hearth-ingame on Steam's windows while a game runs (the menu is then Hearth's top bar). */
+export function startIngameWatch(): () => void {
+  const set = () => {
+    const on = gameRunning() === true;
+    for (const w of steamWindows()) { try { w.document.documentElement.classList.toggle("hearth-ingame", on); } catch { /* gone */ } }
+  };
+  set();
+  const t = setInterval(set, 1000);
+  return () => {
+    clearInterval(t);
+    for (const w of steamWindows()) { try { w.document.documentElement.classList.remove("hearth-ingame"); } catch { /* gone */ } }
+  };
 }
