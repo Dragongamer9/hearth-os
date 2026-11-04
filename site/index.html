@@ -240,6 +240,14 @@ figcaption.cap{margin-top:12px;font-size:15px;color:var(--muted)}
 .box .v{font-size:14px;color:var(--muted);margin:0 0 14px;min-height:1px}
 .box .btn{margin-bottom:12px}
 .side{display:grid;gap:16px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 22px}
+.stats[hidden]{display:none}
+.stat{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);min-width:130px}
+.stat b{font:800 26px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.stat>span{font-size:13.5px;color:var(--muted)}
+.stat.live b{display:inline-flex;align-items:center;gap:8px}
+.stat.live b i{width:9px;height:9px;border-radius:50%;background:var(--ok);animation:livepulse 2s infinite}
+@media (prefers-reduced-motion:reduce){.stat.live b i{animation:none}}
 .ember{margin-top:clamp(40px,5vw,64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(24px,4vw,56px);align-items:start;padding-top:clamp(32px,4vw,48px);border-top:1px solid var(--rule)}
 @media (max-width:860px){.ember{grid-template-columns:minmax(0,1fr)}}
 .cmd{position:relative;margin:8px 0 14px;background:var(--panel);border-radius:4px;box-shadow:0 0 0 1px var(--rule)}
@@ -537,6 +545,11 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <h2 class="h2" id="get-title">Get Hearth OS</h2>
       <p class="lede">Write the ISO to a USB stick of 16 GB or more (with Hearth Disks, Ventoy, Rufus or balenaEtcher), start your PC or handheld from it, and follow the screens. Installing needs a drive of 64 GB or more.</p>
     </div>
+    <div class="stats" id="stats" role="status" aria-live="polite" hidden>
+      <div class="stat live"><b><i aria-hidden="true"></i><span id="sNow">0</span></b><span>playing right now</span></div>
+      <div class="stat"><b id="sToday">0</b><span>played today</span></div>
+      <div class="stat"><b id="sMonth">0</b><span>played this month</span></div>
+    </div>
     <div class="get">
       <div class="box main">
         <h3>Offline USB</h3>
@@ -662,12 +675,17 @@ requestAnimationFrame(function(){ requestAnimationFrame(function(){ document.get
   function load(){
     fetch('https://hearth-counter.game305-cl.workers.dev/v1/stats', {cache: 'no-store'}).then(function(r){ return r.json(); }).then(function(j){
       if (!j) return;
-      var now = n(j.now), month = n(j.month);
+      var now = n(j.now), today = n(j.today), month = n(j.month);
       if (now === null && month === null) return;
+      // Beside the downloads: always shown once the counter answers, zeros included.
+      var st = document.getElementById('stats');
+      if (st) {
+        var put = function(id, v){ var e = document.getElementById(id); if (e) e.textContent = (v || 0).toLocaleString(); };
+        put('sNow', now); put('sToday', today); put('sMonth', month); st.hidden = false;
+      }
       var parts = [];
-      if (now) parts.push(now.toLocaleString() + ' playing right now');
-      if (month) parts.push(month.toLocaleString() + (now ? ' this month' : ' played this month'));
-      if (!parts.length) return;
+      parts.push((now || 0).toLocaleString() + ' playing right now');
+      if (month) parts.push(month.toLocaleString() + ' this month');
       t.textContent = parts.join(' \u00b7 '); el.hidden = false;
     }).catch(function(){});
   }
