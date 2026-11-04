@@ -139,6 +139,11 @@ html.hearth-ghost #MainNavMenuContainer,html.hearth-ghost #MainNavMenuContainer 
 #hearth-bar-mirror.top .hbm-item{min-width:52px;height:52px}
 #hearth-bar-mirror.top .hbm-item.on{min-width:64px;height:64px}
 #hearth-bar-mirror .hbm-item:not([data-hearth-icon=""])::before{content:"";display:block;width:26px;height:26px;background:currentColor;-webkit-mask:var(--hc-icon) center/contain no-repeat;mask:var(--hc-icon) center/contain no-repeat}
+/* The resized menu window itself stays see-through around the bar */
+html.hearth-bar,html.hearth-bar body{background:transparent !important}
+/* Steam's main window keeps an empty place for its side menu while the menu is open (the blank menu a device showed
+   behind the bar): hidden while Hearth's bar is up, back as soon as it isn't */
+html.hearth-bar-on .{{gamepadUIClasses:MainNavMenuAnchor}}{opacity:0 !important;background:transparent !important;box-shadow:none !important}
 /* The fallback: Steam's own menu layout in Hearth's colours (when the bar doesn't fit Steam's menu window) */
 html.hearth-menu #MainNavMenuContainer > .Panel{background:linear-gradient(180deg,#121821,#0c1016) !important;border-right:1px solid #2a3443 !important}
 html.hearth-menu #MainNavMenuContainer > .Panel > * > .Panel.Focusable{border-radius:10px !important;color:#e9eef4 !important}

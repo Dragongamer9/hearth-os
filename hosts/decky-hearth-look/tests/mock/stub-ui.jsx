@@ -41,7 +41,7 @@ export const mainMenuAppRunningClasses = menuChanged ? undefined : { NavigationC
   Active: "mm_Active", NavigationMenuItemSeparator: "mm_Sep", AppColumn: "mm_AppColumn", CurrentGameBackground: "mm_GameBg", CurrentGameLogo: "mm_Logo", AppRunningControls: "mm_Controls" };
 export function findClassModule(f) { return modules.find((m) => { try { return f(m); } catch { return false; } }); }
 export function findSP() { return window; }
-export const Router = { WindowStore: { GamepadUIMainWindowInstance: { BrowserWindow: window }, SteamUIWindows: [] },
+export const Router = { WindowStore: { GamepadUIMainWindowInstance: { BrowserWindow: window, m_history: { location: { get pathname() { return window.HC_ROUTE || "/library/home"; } } } }, SteamUIWindows: [] },
   get MainRunningApp() { return window.HC_RUNNING ? { appid: 1001, display_name: "Ember Knights of Ash" } : undefined; } };
 // Quick Access's building blocks, drawn roughly the way Steam draws them (render.mjs styles the classes).
 export const PanelSection = (p) => createElement("div", { className: "qam-section" }, p.title ? createElement("div", { className: "qam-section-title" }, p.title) : null, p.children);

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   DEFAULTS, REQUIRED, PAUSED_NOTE, normalize, checkSteam, decide, renderTheme, makePatchSet, appIdFor,
   homeFromHearth, homeFromSteam, pickHome, artCandidates, steamArtMethods, played, blipFor,
-  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, judgeStructure, judgeBar, menuNote, classKeys, diagnosticsText,
+  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, judgeStructure, judgeBar, menuNote, classKeys, diagnosticsText, isWebRoute, judgeVisible,
 } from "../src/model.ts";
 
 const CSS = readFileSync(new URL("../defaults/hearth-classic.css", import.meta.url), "utf8");
@@ -260,4 +260,15 @@ test("menu icons from Steam's labels", () => {
   assert.equal(menuIcon("Bibliothek"), "");
   const css = CSS;
   for (const ic of ["home", "lib", "shop", "media", "dl", "friends", "gear", "power", "search", "pad", "close", "shot"]) assert.ok(css.includes(`[data-hearth-icon="${ic}"]`), ic);
+});
+
+test("web pages and the self-check after resizing", () => {
+  assert.ok(isWebRoute("/steamweb") && isWebRoute("/steamweb/app/620") && isWebRoute("/externalweb"));
+  assert.ok(!isWebRoute("/library/home") && !isWebRoute("/settings") && !isWebRoute("") && !isWebRoute("/steamwebfoo"));
+  const e = (o) => ({ label: "Home", inside: true, shown: true, hit: true, cover: "", ...o });
+  assert.deepEqual(judgeVisible([e(), e({ label: "Library" })]), { ok: true, why: "" });
+  assert.match(judgeVisible([]).why, /no entries/);
+  assert.match(judgeVisible([e(), e({ label: "Store", inside: false })]).why, /outside the window \(Store\)/);
+  assert.match(judgeVisible([e({ shown: false })]).why, /hidden/);
+  assert.match(judgeVisible([e({ hit: false, cover: ".GameBackground" })]).why, /covered by \.GameBackground/);
 });

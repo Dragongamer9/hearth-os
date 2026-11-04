@@ -81,7 +81,7 @@ async function places() {
 
 async function scene(name, opts, check) {
   const vars = { HC_SCENE: opts.scene || "home", HC_SETTINGS: opts.settings || {}, HC_STEAM: opts.steam || "", HC_HEARTH: opts.hearth !== false,
-                 HC_QAM: opts.qam !== false, HC_MENU: opts.menu || "", HC_MENUWIDTH: opts.menuWidth || 0, HC_MENURESIZE: opts.resize || "", HC_RUNNING: !!opts.running, HC_NAVIGATOR: opts.navigator || "",
+                 HC_QAM: opts.qam !== false, HC_MENU: opts.menu || "", HC_MENUWIDTH: opts.menuWidth || 0, HC_MENURESIZE: opts.resize || "", HC_ROUTE: opts.route || "", HC_COVER: !!opts.cover, HC_RUNNING: !!opts.running, HC_NAVIGATOR: opts.navigator || "",
                  HC_CSS: css, HC_LOGO: logo, HC_WALL: wall };
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>${frame}</style></head><body><div id="root"></div>
 <script>${Object.entries(vars).map(([k, v]) => `window.${k}=${JSON.stringify(v)};`).join("")}</script><script>${js}</script></body></html>`;
@@ -167,10 +167,12 @@ const menuState = () => page.evaluate(() => {
   const items = [...d.querySelectorAll("#MainNavMenuContainer .Focusable.mm_entry")];
   const r = items.map((e) => e.getBoundingClientRect()), fr = f.getBoundingClientRect();
   const mir = document.getElementById("hearth-bar-mirror");
+  const anchor = document.querySelector(".mm_Anchor");
   return { cls: html.className, icons: items.map((e) => e.getAttribute("data-hearth-icon")), tops: r.map((x) => Math.round(x.top)),
            win: { left: Math.round(fr.left), top: Math.round(fr.top), width: Math.round(fr.width), height: Math.round(fr.height) },
            style: !!d.getElementById("hearth-classic"), dir: getComputedStyle(items[0].parentElement.parentElement).flexDirection,
-           panelOpacity: getComputedStyle(items[0].parentElement.parentElement).opacity,
+           panelOpacity: getComputedStyle(items[0].parentElement.parentElement).opacity, anchorOpacity: anchor ? getComputedStyle(anchor).opacity : "",
+           diag: window.HearthClassicMenu || null,
            mirror: mir && mir.style.display !== "none" ? { cls: mir.className, n: mir.querySelectorAll(".hbm-item").length,
              on: [...mir.querySelectorAll(".hbm-item")].findIndex((x) => x.classList.contains("on")), top: Math.round(mir.querySelector(".hbm-bar").getBoundingClientRect().top) } : null };
 });
@@ -183,15 +185,31 @@ await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", me
   if (m.win.width !== 1280 || m.win.height !== 150 || m.win.top !== 650) errors.push(`menu-bottom-bar: the menu window wasn't made a bar at the bottom (${JSON.stringify(m.win)})`);
   if (!/hearth-bar/.test(m.cls) || m.dir !== "row" || Math.max(...m.tops) - Math.min(...m.tops) > 24) errors.push(`menu-bottom-bar: not a bar (${m.cls}, ${m.dir}, ${m.tops})`);
   if (m.icons.join(",") !== "home,lib,shop,friends,media,dl,gear,power") errors.push(`menu-bottom-bar: icons ${m.icons}`);
+  if (m.anchorOpacity !== "0") errors.push(`menu-bottom-bar: the main window's empty menu place is still showing (${m.anchorOpacity})`);
+  if (!m.diag || !/^passed/.test(m.diag.selfCheck)) errors.push(`menu-bottom-bar: self-check ${m.diag && m.diag.selfCheck}`);
   // Unloading puts the menu window back where Steam had it.
   await page.evaluate(() => window.HC_PLUGIN.onDismount());
   await page.waitForTimeout(600);
   const back = await menuState();
+  if (back.anchorOpacity !== "1") errors.push("menu-bottom-bar: unloading didn't bring back the main window's menu place");
   if (back.win.width !== 241 || back.win.top !== 0 || /hearth-/.test(back.cls)) errors.push(`menu-bottom-bar: unloading didn't restore Steam's menu window (${JSON.stringify(back.win)}, ${back.cls})`);
 });
 await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
   if (m.win.width !== 1280 || m.win.top !== 0 || !/hearth-ingame/.test(m.cls) || !/hearth-bar/.test(m.cls)) errors.push(`menu-top-bar-in-game: not a bar at the top (${JSON.stringify(m.win)}, ${m.cls})`);
+});
+// The Store (a web page above Steam's other windows): Steam's menu in its own place, in Hearth's colours.
+await scene("menu-in-store", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", route: "/steamweb", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+  const m = await menuState();
+  if (m.win.width !== 241 || !/hearth-menu/.test(m.cls) || /hearth-bar/.test(m.cls) || m.mirror) errors.push(`menu-in-store: expected Steam's menu in Hearth's colours (${JSON.stringify(m.win)}, ${m.cls})`);
+  if (!m.diag || !/web page/.test(m.diag.why)) errors.push(`menu-in-store: diagnostics don't say a web page is showing (${m.diag && m.diag.why})`);
+});
+// In a game, something covers the resized top dock (a blank strip on the device): the self-check puts Steam's window
+// back and shows Steam's menu in Hearth's colours instead.
+await scene("menu-top-covered-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", running: true, cover: true, settings: { look: "classic" }, skin: true, wait: 4000 }, async () => {
+  const m = await menuState();
+  if (m.win.width !== 241 || m.win.top !== 0 || !/hearth-menu/.test(m.cls) || /hearth-bar/.test(m.cls)) errors.push(`menu-top-covered-in-game: not back to Steam's menu (${JSON.stringify(m.win)}, ${m.cls})`);
+  if (!m.diag || !/top dock/.test(m.diag.why) || !/cover/.test(m.diag.why)) errors.push(`menu-top-covered-in-game: ${m.diag && m.diag.why}`);
 });
 // B: a menu window that can't be resized: Hearth's bar in the main window, following Steam's see-through menu.
 await scene("menu-mirror-bottom", { scene: "library", qam: false, menu: "steam", menuWidth: 241, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {

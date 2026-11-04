@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [ ] Hearth Classic round 5: no blank menu behind the bottom bar (Steam's empty side-menu place is hidden while the bar is up), the Store keeps Steam's menu in its own place in Hearth's colours (web pages are drawn above the bar), and a self-check after resizing makes sure the bar's entries are really visible, else Steam's window goes back (in a game: Steam's menu in Hearth's colours instead of a blank strip). docs/HEARTH-LOOK.md (needs testing on a device)
+
 - [ ] Hearth Classic round 4: the bottom bar and the in-game top bar fit on a device: Steam's narrow menu window is resized to a bar at the bottom (the top while a game runs) and put back afterwards, or, where Steam won't resize it, Hearth's bar is drawn in the main window and follows Steam's see-through menu (up and down move it, A presses Steam's entry). Diagnostics show the method and the window's size before and after. docs/HEARTH-LOOK.md (needs testing on a device)
 
 - [ ] Hearth Classic round 3: the bottom bar and the in-game top bar now reach Steam's real menu (Steam draws it in its own window, which the look didn't reach before), are checked on Steam's real menu before they stay, and give way to Steam's menu in Hearth's colours when they don't fit; a Diagnostics section in the panel shows what was found and writes it to hearth-classic.log (Hearth's Logs app). The home, the Library's tabs and the bar look more like the old Hearth Game Mode (Recent games with the newest big, a banner from the focused game, a light picked tab, icon-only dock). docs/HEARTH-LOOK.md (needs testing on a device)
