@@ -10,6 +10,7 @@
       one of those, from findClassModule (the class module that has both Map and Key). A line whose name Steam no
       longer has is left out, so a Steam update can only make the look plainer. If the names the look needs most are
       gone (src/model.ts REQUIRED), none of it is applied and the panel says "Hearth Classic paused".
+   A part between the comment lines "@section NAME" and "@end" goes in whole or not at all (the menu bars).
    One rule per line in layer 3. WALLPAPER and LOGO between percent signs are Hearth's pictures (a line with an
    empty one is left out). */
 
@@ -29,37 +30,109 @@ body{background:#0c1016 !important;color:#e9eef4}
 ::selection{background:rgba(63,208,184,.35)}
 ::-webkit-scrollbar{width:0 !important;height:0 !important}
 
-/* ---- 3. Steam's components (resolved at run time) */
-/* Library and home: Hearth's wallpaper behind the pages, darkened like Hearth's home */
+/* ---- 3. Steam's components (resolved at run time; the maps are @decky/ui's static class maps) */
+/* Hearth's backdrop: the wallpaper behind the Library and home, darkened like the old Game Mode's home (#bg) */
 .{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:linear-gradient(180deg,rgba(12,16,22,.3),rgba(12,16,22,.82) 55%,rgba(12,16,22,.96)),url(%WALLPAPER%) center/cover fixed !important}
-/* Hearth's top bar (ui/index.html .topbar): the dark gradient and the faint line under it */
+.{{gamepadLibraryClasses:GamepadLibrary}}{background:transparent !important}
+/* Hearth's top bar (.topbar): the dark gradient, the faint line, its tabs as pills, the picked one accent-filled */
 .{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:linear-gradient(#121821,rgba(18,24,33,.6)) !important;border-bottom:1px solid rgba(255,255,255,.03) !important}
 .{{gamepadTabbedPageClasses:Tab}}{border-radius:16px !important;color:#8d99a8 !important;font-weight:600 !important;letter-spacing:.02em}
 .{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:#3fd0b8 !important;color:#06231e !important}
-/* Game pages: Hearth's play bar and Play button */
-.{{PlayBar:PlayBar}}{background:rgba(18,24,33,.92) !important;border-top:1px solid #2a3443 !important;backdrop-filter:blur(8px)}
-.{{PlayButtonContainer:PlayButton}}{background:#3fd0b8 !important;color:#06231e !important;border-radius:10px !important;font-weight:700 !important}
-.{{PlayButtonContainer:PlayButton}}.gpfocus{background:#6ee2cf !important}
-/* Quick Access menu */
+.{{gamepadTabbedPageClasses:Tab}}.gpfocus{box-shadow:0 0 0 2px #0c1016,0 0 0 4px #3fd0b8 !important}
+.{{gamepadTabbedPageClasses:TabCount}}{background:#273140 !important;color:#c3ccd6 !important;border-radius:8px !important}
+.{{gamepadTabbedPageClasses:Selected}} .{{gamepadTabbedPageClasses:TabCount}}{background:rgba(6,35,30,.18) !important;color:#06231e !important}
+/* The Library: section headings like Hearth's (h2: small, upper case, dim), Hearth's cards (.tile: 10px corners,
+   the lift and the double ring when focused) */
+.{{gamepadLibraryClasses:CollectionHeader}}{font-size:15px !important;font-weight:600 !important;letter-spacing:.02em !important;text-transform:uppercase !important;color:#8d99a8 !important}
+.{{gamepadLibraryClasses:AppGridFilterHeader}}{color:#8d99a8 !important;text-transform:uppercase;letter-spacing:.02em}
+.{{libraryAssetImageClasses:Container}}{border-radius:10px !important;overflow:hidden !important;background:#1d2531 !important}
+.{{libraryAssetImageClasses:Image}}{border-radius:10px !important}
+.{{libraryAssetImageClasses:GreyBackground}}{background:linear-gradient(160deg,#273140,#1d2531 55%,#161d27) !important}
+.gpfocus .{{libraryAssetImageClasses:Container}}{box-shadow:0 0 0 2px #0c1016,0 0 0 4px #3fd0b8,0 8px 30px rgba(63,208,184,.18) !important}
+/* Game pages (the old Game Mode's game view): the hero fading into Hearth's background, Hearth's play bar and its
+   accent Play button, the details on Hearth's cards */
+.{{appDetailsClasses:Container}}{background:#0c1016 !important}
+.{{appDetailsHeaderClasses:TopGradient}}{background:linear-gradient(0deg,#0c1016,rgba(12,16,22,0) 60%) !important}
+.{{appDetailsHeaderClasses:TopCapsule}}{border-radius:0 0 14px 14px !important}
+.{{playSectionClasses:PlayBar}}{background:rgba(18,24,33,.92) !important;border-top:1px solid #2a3443 !important;backdrop-filter:blur(8px)}
+.{{playSectionClasses:Container}}{background:transparent !important}
+.{{playSectionClasses:GameStat}}{color:#8d99a8 !important}
+.{{playSectionClasses:MenuButton}}{background:#1d2531 !important;border-radius:10px !important}
+.{{playSectionClasses:MenuButton}}.gpfocus{background:#273140 !important}
+.{{appActionButtonClasses:PlayButton}}{background:#3fd0b8 !important;color:#06231e !important;border-radius:10px !important;font-weight:700 !important}
+.{{appActionButtonClasses:PlayButton}}.gpfocus{background:#6ee2cf !important}
+.{{appActionButtonClasses:Green}}{background:#3fd0b8 !important;color:#06231e !important}
+.{{basicAppDetailsSectionStylerClasses:AppDetailsContent}}{background:#0c1016 !important}
+.{{basicAppDetailsSectionStylerClasses:GameInfoContainer}}{background:#161d27 !important;border:1px solid #2a3443 !important;border-radius:12px !important}
+.{{basicAppDetailsSectionStylerClasses:GameInfoQuickLinks}}{background:#161d27 !important;border-radius:12px !important}
+/* Quick Access (the old Game Mode's #qam): Hearth's panel, its rail of tabs, headings and rows */
+.{{quickAccessMenuClasses:Container}}{background:#121821 !important}
 .{{quickAccessMenuClasses:Title}}{color:#e9eef4 !important;font-weight:600 !important;letter-spacing:.02em}
-.{{quickAccessMenuClasses:Tabs}}{background:#0c1016 !important}
-.{{quickAccessMenuClasses:Tab}}{border-radius:10px !important}
-.{{quickAccessMenuClasses:Tab}}.{{quickAccessMenuClasses:Selected}}{background:#1d2531 !important;color:#e9eef4 !important;box-shadow:inset 3px 0 0 #3fd0b8 !important}
-/* Hearth's side menu (the Steam button's menu): Hearth's panel, Hearth's logo, rounded focus */
-.{{MainNavMenuContainer:MainNavMenuContainer}}{background:linear-gradient(180deg,#121821,#0c1016) !important;border-right:1px solid #2a3443 !important}
-.{{MainNavMenuContainer:MainNavMenuContainer}} .gpfocus{background:#1d2531 !important;border-radius:10px !important}
-.{{MainNavMenuContainer:SteamLogo}}{background:url(%LOGO%) left center/contain no-repeat !important}
-.{{MainNavMenuContainer:SteamLogo}} svg,.{{MainNavMenuContainer:SteamLogo}} img{opacity:0 !important}
-/* Dialogs, settings rows and buttons: Hearth's rows and pills */
+.{{quickAccessMenuClasses:Tabs}}{background:#0c1016 !important;border-right:1px solid #2a3443 !important}
+.{{quickAccessMenuClasses:Tab}}{border-radius:12px !important;color:#8d99a8 !important}
+.{{quickAccessMenuClasses:Tab}}.{{quickAccessMenuClasses:Selected}}{background:#1d2531 !important;color:#3fd0b8 !important;box-shadow:inset 3px 0 0 #3fd0b8 !important}
+.{{quickAccessMenuClasses:PanelSectionTitle}}{font-size:12px !important;font-weight:700 !important;letter-spacing:.08em !important;text-transform:uppercase !important;color:#8d99a8 !important}
+.{{quickAccessControlsClasses:PanelSectionTitle}}{font-size:12px !important;font-weight:700 !important;letter-spacing:.08em !important;text-transform:uppercase !important;color:#8d99a8 !important}
+.{{quickAccessMenuClasses:PanelSectionRow}}{border-radius:10px !important}
+/* Dialogs and settings rows (Hearth's .row): rounded rows, the focused one on Hearth's lighter panel, accent toggles */
 .{{gamepadDialogClasses:GamepadDialogContent}}{background:#121821 !important;border-radius:14px !important}
 .{{gamepadDialogClasses:Field}}{border-radius:10px !important}
 .{{gamepadDialogClasses:Field}}.gpfocus{background:#1d2531 !important}
+.{{gamepadDialogClasses:FieldLabel}}{color:#e9eef4 !important}
 .{{gamepadDialogClasses:FieldDescription}}{color:#8d99a8 !important}
 .{{gamepadDialogClasses:Button}}{background:#1d2531 !important;border-radius:10px !important;color:#e9eef4 !important}
 .{{gamepadDialogClasses:Button}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
+.{{gamepadDialogClasses:ToggleRail}}{background:#273140 !important}
+.{{gamepadDialogClasses:Toggle}}.{{gamepadDialogClasses:On}} .{{gamepadDialogClasses:ToggleRail}}{background:#3fd0b8 !important}
+.{{gamepadDialogClasses:DropDownControlButtonContents}}{color:#e9eef4 !important}
+/* Context menus (the old Game Mode's menus): Hearth's panel, rounded, the focused entry accent-filled */
+.{{gamepadContextMenuClasses:contextMenuContents}}{background:#161d27 !important;border:1px solid #2a3443 !important;border-radius:14px !important;box-shadow:0 18px 50px rgba(0,0,0,.45) !important}
+.{{gamepadContextMenuClasses:contextMenuItem}}{border-radius:10px !important;color:#e9eef4 !important}
+.{{gamepadContextMenuClasses:contextMenuItem}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
 /* Footer hints, like Hearth's footer */
 .{{footerClasses:BasicFooter}}{background:#121821 !important;border-top:1px solid #2a3443 !important;color:#8d99a8 !important}
 /* On-screen keyboard: Hearth's keys */
 .{{VirtualKeyboardContainer:VirtualKeyboardContainer}}{background:#121821 !important;border-top:1px solid #2a3443 !important}
 .{{VirtualKeyboardContainer:Key}}{background:#1d2531 !important;border-radius:8px !important;color:#e9eef4 !important;box-shadow:inset 0 -2px 0 rgba(0,0,0,.35) !important}
 .{{VirtualKeyboardContainer:Key}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
+
+/* ---- the main menu as Hearth's bottom bar (the old Game Mode's Bottom Dock, ui/index.html .dk-bar): a floating pill
+   along the bottom, Hearth's icons over Steam's labels, the focused entry big and accent-filled. Only Steam's menu is
+   restyled: its entries are Steam's own and do what they always do. */
+/* @section menu */
+.{{gamepadUIClasses:MainNavMenuAnchor}}{top:auto !important;bottom:0 !important;left:0 !important;right:0 !important;width:auto !important;height:auto !important;max-width:none !important;display:flex !important;justify-content:center !important;align-items:flex-end !important;padding:0 16px 22px !important;background:none !important;box-shadow:none !important}
+.{{gamepadUIClasses:MainNavMenuAnchor}} > *{height:auto !important;width:auto !important;max-width:calc(100vw - 32px) !important;background:none !important;box-shadow:none !important}
+.{{mainMenuAppRunningClasses:NavigationColumn}}{display:flex !important;flex-direction:row !important;align-items:center !important;gap:6px !important;padding:10px 14px !important;border-radius:26px !important;background:rgba(22,29,39,.95) !important;border:1px solid #2a3443 !important;box-shadow:0 18px 50px rgba(0,0,0,.45) !important;width:auto !important;height:auto !important;max-width:calc(100vw - 32px) !important;overflow-x:auto !important}
+.{{mainMenuAppRunningClasses:NavigationBox}}{display:flex !important;flex-direction:row !important;align-items:center !important;gap:6px !important;width:auto !important;height:auto !important;background:none !important}
+.{{mainMenuAppRunningClasses:NavigationMenuItem}}{display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;gap:4px !important;min-width:68px !important;height:68px !important;padding:6px 10px !important;margin:0 !important;border-radius:18px !important;color:#8d99a8 !important;font-size:11px !important;font-weight:600 !important;letter-spacing:.02em !important;text-transform:none !important;white-space:nowrap !important;background:none !important;transition:min-width .16s var(--hearth-ease),height .16s var(--hearth-ease),background .16s,color .16s,border-radius .16s !important}
+.{{mainMenuAppRunningClasses:NavigationMenuItem}}.gpfocus{min-width:82px !important;height:82px !important;border-radius:22px !important;background:#3fd0b8 !important;color:#06231e !important;box-shadow:0 10px 30px rgba(63,208,184,.35) !important}
+.{{mainMenuAppRunningClasses:NavigationMenuItem}}.{{mainMenuAppRunningClasses:Active}}{color:#3fd0b8 !important;background:#273140 !important}
+.{{mainMenuAppRunningClasses:NavigationMenuItemSeparator}}{width:1px !important;height:36px !important;margin:0 6px !important;background:#2a3443 !important}
+[data-hearth-icon]:not([data-hearth-icon=""])::before{content:"";display:block;width:26px;height:26px;flex:none;background:currentColor;-webkit-mask:var(--hc-icon) center/contain no-repeat;mask:var(--hc-icon) center/contain no-repeat}
+[data-hearth-icon="home"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMy41IDExIDEyIDRsOC41IDciLz48cGF0aCBkPSJNNS41IDkuNVYyMGgxM1Y5LjUiLz48cGF0aCBkPSJNMTAgMjB2LTVoNHY1Ii8+PC9zdmc+")}
+[data-hearth-icon="lib"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzLjUiIHk9IjMuNSIgd2lkdGg9IjciIGhlaWdodD0iNyIgcng9IjEuNSIvPjxyZWN0IHg9IjEzLjUiIHk9IjMuNSIgd2lkdGg9IjciIGhlaWdodD0iNyIgcng9IjEuNSIvPjxyZWN0IHg9IjMuNSIgeT0iMTMuNSIgd2lkdGg9IjciIGhlaWdodD0iNyIgcng9IjEuNSIvPjxyZWN0IHg9IjEzLjUiIHk9IjEzLjUiIHdpZHRoPSI3IiBoZWlnaHQ9IjciIHJ4PSIxLjUiLz48L3N2Zz4=")}
+[data-hearth-icon="shop"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNSA4aDE0bC0xLjIgMTEuMmExLjUgMS41IDAgMCAxLTEuNSAxLjNINy43YTEuNSAxLjUgMCAwIDEtMS41LTEuM3oiLz48cGF0aCBkPSJNOSAxMFY3YTMgMyAwIDAgMSA2IDB2MyIvPjwvc3ZnPg==")}
+[data-hearth-icon="media"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzLjUiIHk9IjQuNSIgd2lkdGg9IjE3IiBoZWlnaHQ9IjE1IiByeD0iMiIvPjxjaXJjbGUgY3g9IjkiIGN5PSIxMCIgcj0iMS44Ii8+PHBhdGggZD0ibTQgMTggNS01IDQgNCAzLTMgNCA0Ii8+PC9zdmc+")}
+[data-hearth-icon="dl"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgNHYxMU03IDEwLjVsNSA1IDUtNSIvPjxwYXRoIGQ9Ik00LjUgMTkuNWgxNSIvPjwvc3ZnPg==")}
+[data-hearth-icon="friends"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSI5IiBjeT0iOCIgcj0iMy41Ii8+PHBhdGggZD0iTTIuNSAyMGE2LjUgNi41IDAgMCAxIDEzIDAiLz48Y2lyY2xlIGN4PSIxNy41IiBjeT0iOSIgcj0iMi41Ii8+PC9zdmc+")}
+[data-hearth-icon="gear"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIzIi8+PHBhdGggZD0iTTEyIDIuOHYyLjRNMTIgMTguOHYyLjRNMi44IDEyaDIuNE0xOC44IDEyaDIuNE01LjUgNS41bDEuNyAxLjdNMTYuOCAxNi44bDEuNyAxLjdNNS41IDE4LjVsMS43LTEuN00xNi44IDcuMmwxLjctMS43Ii8+PC9zdmc+")}
+[data-hearth-icon="power"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgM3Y4Ii8+PHBhdGggZD0iTTYuNiA2LjZhNy41IDcuNSAwIDEgMCAxMC44IDAiLz48L3N2Zz4=")}
+[data-hearth-icon="search"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMSIgY3k9IjExIiByPSI2LjUiLz48cGF0aCBkPSJtMjAgMjAtNC4yLTQuMiIvPjwvc3ZnPg==")}
+[data-hearth-icon="pad"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNyA4aDEwYTQuNSA0LjUgMCAwIDEgNC4zIDUuOGwtMSAzLjNhMi40IDIuNCAwIDAgMS00LjEuOEwxNC41IDE2aC01bC0xLjcgMS45YTIuNCAyLjQgMCAwIDEtNC4xLS44bC0xLTMuM0E0LjUgNC41IDAgMCAxIDcgOHoiLz48cGF0aCBkPSJNOCAxMXYzTTYuNSAxMi41aDMiLz48L3N2Zz4=")}
+[data-hearth-icon="close"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNiA2bDEyIDEyTTE4IDYgNiAxOCIvPjwvc3ZnPg==")}
+[data-hearth-icon="shot"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSI2IiB3aWR0aD0iMTgiIGhlaWdodD0iMTQiIHJ4PSIyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMyIgcj0iMy41Ii8+PHBhdGggZD0iTTkgNmwxLjUtMmgzTDE1IDYiLz48L3N2Zz4=")}
+/* @end */
+
+/* ---- in a game, the menu is Hearth's top bar instead (the old Game Mode's top dock, ui/index.html .qd-bar): the same
+   pill at the top of the screen, the running game on its left. The plugin marks Steam's windows while a game runs. */
+/* @section top */
+html.hearth-ingame .{{gamepadUIClasses:MainNavMenuAnchor}}{top:0 !important;bottom:auto !important;align-items:flex-start !important;padding:22px 16px 0 !important}
+html.hearth-ingame .{{gamepadUIClasses:MainNavMenuAnchor}} > *{display:flex !important;flex-direction:row !important;align-items:center !important;gap:6px !important;padding:10px 14px !important;border-radius:26px !important;background:rgba(22,29,39,.95) !important;border:1px solid #2a3443 !important;box-shadow:0 18px 50px rgba(0,0,0,.45) !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:NavigationColumn}}{padding:0 !important;border:none !important;box-shadow:none !important;background:none !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:AppColumn}}{display:flex !important;flex-direction:row !important;align-items:center !important;gap:10px !important;width:auto !important;max-width:260px !important;height:auto !important;padding:0 12px 0 4px !important;margin:0 4px 0 0 !important;border-right:1px solid #2a3443 !important;background:none !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:CurrentGameBackground}}{display:none !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:CurrentGameLogo}}{max-height:44px !important;max-width:150px !important;object-fit:contain !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:AppRunningControls}}{display:flex !important;flex-direction:row !important;gap:6px !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:NavigationMenuItem}}{min-width:56px !important;height:56px !important}
+html.hearth-ingame .{{mainMenuAppRunningClasses:NavigationMenuItem}}.gpfocus{min-width:68px !important;height:68px !important}
+/* @end */

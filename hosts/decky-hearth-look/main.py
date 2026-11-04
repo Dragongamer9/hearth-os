@@ -35,7 +35,7 @@ for _p in (os.path.join(_here, '..', 'decky-shared'), _here):
 import hearth_only  # noqa: E402
 
 NAME = 'Hearth Classic'
-DEFAULTS = {'look': 'steam', 'home': True, 'sounds': False, 'wallpaper': True}
+DEFAULTS = {'look': 'steam', 'home': True, 'sounds': False, 'wallpaper': True, 'menu': True, 'menuTop': True}
 HOME_TIMEOUT = 20
 HOME_EVERY = 60
 ART_LIMIT = 8 * 1024 * 1024
@@ -123,7 +123,7 @@ def clean_settings(raw):
     out = dict(DEFAULTS)
     if r.get('look') in ('steam', 'classic'):
         out['look'] = r['look']
-    for k in ('home', 'sounds', 'wallpaper'):
+    for k in ('home', 'sounds', 'wallpaper', 'menu', 'menuTop'):
         if isinstance(r.get(k), bool):
             out[k] = r[k]
     return out
@@ -172,8 +172,8 @@ def write_settings(change):
             raw = json.load(f)
     except (OSError, ValueError):
         raw = None
+    # Only what's saved plus the person's change: the defaults are never written into the file.
     merged = dict(raw) if isinstance(raw, dict) else {}
-    merged.update(cur)
     for k, v in change.items():
         if k not in DEFAULTS:
             continue

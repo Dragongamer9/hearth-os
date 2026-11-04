@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   DEFAULTS, REQUIRED, PAUSED_NOTE, normalize, checkSteam, decide, renderTheme, makePatchSet, appIdFor,
   homeFromHearth, homeFromSteam, pickHome, artCandidates, steamArtMethods, played, blipFor,
+  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, MENU_REQUIRED,
 } from "../src/model.ts";
 
 const CSS = readFileSync(new URL("../defaults/hearth-classic.css", import.meta.url), "utf8");
@@ -152,4 +153,82 @@ test("pictures and small helpers", () => {
   assert.equal(played(30), "30 min played");
   assert.equal(played(300), "5 h played");
   assert.deepEqual(blipFor("ok"), [880, 0.05, 0.035]);
+});
+
+test("settings: the menu bars are on once Hearth Classic is picked, and remembered off", () => {
+  assert.equal(DEFAULTS.menu, true);
+  assert.equal(DEFAULTS.menuTop, true);
+  assert.equal(normalize({ menu: false }).menu, false);
+  assert.equal(normalize({ menuTop: "no" }).menuTop, true);
+});
+
+test("places: every tile maps to a known navigator call or route, and ends on a page that exists", () => {
+  assert.deepEqual(PLACES.map((p) => p.id), ["library", "store", "downloads", "media", "friends", "settings"]);
+  for (const p of PLACES) {
+    for (const st of p.steps) {
+      if (st.kind === "navigator") assert.ok(KNOWN_NAVIGATOR.includes(st.call), `${p.id}: ${st.call}`);
+      else if (st.kind === "window") assert.ok(KNOWN_WINDOW.includes(st.call), `${p.id}: ${st.call}`);
+      else assert.ok(KNOWN_ROUTES.includes(st.path), `${p.id}: ${st.path}`);
+    }
+    const last = p.steps[p.steps.length - 1];
+    assert.equal(last.kind, "route", `${p.id} must end on a route`);
+    // None of the routes that showed empty pages on the device.
+    for (const st of p.steps) if (st.kind === "route") assert.ok(!["/downloads", "/media", "/friends", "/store"].includes(st.path));
+  }
+});
+
+test("places: Steam's navigator first, the next way when one is missing or throws, the Library at worst", () => {
+  const calls = [];
+  const rec = (n) => (...a) => calls.push([n, a]);
+  const win = { Navigator: { Downloads: rec("Downloads"), Chat: rec("Chat"), Settings: rec("Settings"), SteamWeb: rec("SteamWeb"), Media: { Grid: rec("Media.Grid") } },
+                NavigateToSteamWeb: rec("window.NavigateToSteamWeb") };
+  const routes = [];
+  const go = (id) => runPlace(PLACES.find((p) => p.id === id), win, (r) => routes.push(r));
+  assert.equal(go("store"), "navigator:SteamWeb");
+  assert.deepEqual(calls.at(-1), ["SteamWeb", ["https://store.steampowered.com/"]]);
+  assert.equal(go("downloads"), "navigator:Downloads");
+  assert.equal(go("media"), "navigator:Media.Grid");
+  assert.equal(calls.at(-1)[1][0].state.filter.listSource.type, "recents");
+  assert.equal(go("friends"), "navigator:Chat");
+  assert.equal(go("settings"), "navigator:Settings");
+  assert.equal(go("library"), "route:/library");
+  // Missing: the next way. Throwing: the next way too.
+  const win2 = { Navigator: { Settings: rec("Settings"), Downloads: () => { throw new Error("gone"); } }, NavigateToSteamWeb: rec("window.NavigateToSteamWeb") };
+  assert.equal(runPlace(PLACES[2], win2, (r) => routes.push(r)), "navigator:Settings");
+  assert.equal(runPlace(PLACES[1], win2, (r) => routes.push(r)), "window:NavigateToSteamWeb");
+  assert.equal(runPlace(PLACES[3], win2, (r) => routes.push(r)), "route:/library");
+  // No window at all: still a page.
+  for (const p of PLACES) assert.match(runPlace(p, null, () => {}), /^route:\/(library|settings)$/);
+});
+
+test("menu bars: all or nothing, Steam's own menu when its names are missing", () => {
+  const classic = { ...DEFAULTS, look: "classic" };
+  assert.deepEqual(menuPlan(classic, all), { sections: { menu: true, top: true }, note: "" });
+  assert.deepEqual(menuPlan({ ...classic, menuTop: false }, all).sections, { menu: true, top: false });
+  assert.deepEqual(menuPlan({ ...classic, menu: false }, all).sections, { menu: false, top: false });
+  const noMenu = (m, k) => (m === "mainMenuAppRunningClasses" ? undefined : all(m, k));
+  const p = menuPlan(classic, noMenu);
+  assert.deepEqual(p.sections, { menu: false, top: false });
+  assert.ok(p.note.startsWith(MENU_PAUSED));
+  const noApp = (m, k) => (k === "AppColumn" ? undefined : all(m, k));
+  assert.deepEqual(menuPlan(classic, noApp).sections, { menu: true, top: false });
+  assert.equal(MENU_REQUIRED.length, 3);
+  // The skin leaves a section out whole when it's off, and puts it in when it's on.
+  const on = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: true, top: true }).css;
+  const off = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: false, top: false }).css;
+  assert.ok(on.includes("mainMenuAppRunningClasses_NavigationColumn_x1{") && on.includes("html.hearth-ingame"));
+  assert.ok(!off.includes("NavigationColumn") && !off.includes("hearth-ingame") && !off.includes("data-hearth-icon"));
+  assert.ok(off.includes(".gpfocus{"));
+  for (const r of [on, off]) assert.equal(r.split("/*").length, r.split("*/").length);
+});
+
+test("menu icons from Steam's labels", () => {
+  assert.equal(menuIcon(" Library "), "lib");
+  assert.equal(menuIcon("Store"), "shop");
+  assert.equal(menuIcon("Friends & Chat"), "friends");
+  assert.equal(menuIcon("Exit game"), "close");
+  assert.equal(menuIcon("Resume"), "pad");
+  assert.equal(menuIcon("Bibliothek"), "");
+  const css = CSS;
+  for (const ic of ["home", "lib", "shop", "media", "dl", "friends", "gear", "power", "search", "pad", "close", "shot"]) assert.ok(css.includes(`[data-hearth-icon="${ic}"]`), ic);
 });

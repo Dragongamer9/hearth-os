@@ -15,20 +15,50 @@ isn't available in CI; see "What only a device can show" below).
 
 With **Hearth Classic** picked:
 
-- **The skin** (stage 1): Hearth's colours (the dark blue-greys and the teal accent), its corners, its double-ring focus
-  glow, Hearth's top bar on the Library's tabs (and the teal selected tab), Hearth's side menu (the Steam button's menu,
-  with Hearth's logo), Hearth's dialogs, rows, buttons, Play button, footer and on-screen keyboard keys, and Hearth's
-  wallpaper behind the Library and the home. The font is Hearth's own font stack, the same one the old Game Mode used
-  (it bundled no font: on Hearth OS that's the system's Noto Sans). Switch: **Hearth wallpaper** (on).
+- **The skin** (stage 1): the old Game Mode's look over Steam's screens, all through @decky/ui's class maps:
+  - Hearth's colours (the dark blue-greys and the teal accent), corners and double-ring focus glow; Hearth's wallpaper
+    behind the Library and the home (switch: **Hearth wallpaper**, on).
+  - **Library**: Hearth's top bar on the tabs (pills, the picked one teal, its count badge), section headings like
+    Hearth's (small, upper case, dim), Hearth's cards (10 px corners, the glow when focused).
+  - **Game pages**: the hero fading into Hearth's background, Hearth's play bar with the teal Play button, the details on
+    Hearth's cards.
+  - **Quick Access**: Hearth's panel and tab rail (the picked tab teal), Hearth's section headings and rows.
+  - **Dialogs, settings and menus**: Hearth's rounded rows, teal toggles and buttons, Hearth's context menus, footer and
+    on-screen keyboard keys.
+  - The font is Hearth's own font stack, the same one the old Game Mode used (Noto Sans on Hearth OS).
 - **The home screen** (stage 2): Steam's **Home** becomes the old Hearth home: Hearth's wallpaper and logo, **Jump back
-  in** with your last game (**Play**, **Details**), **Hearth's places** (Library, Store, Downloads, Media, Friends,
-  Settings), **Continue playing**, **Favorites**, and a row per store: **Steam**, then Hearth Sync's collections (Epic,
-  GOG, Battle.net, Xbox, Beacon, Recomps, Emulators, Added by hand, ...). Moved through with the controller like the
-  rest of Steam. Every game opens **Steam's own game page** (Steam's games, and the shortcuts Hearth Sync made for your
-  other games). Switch: **Hearth home screen** (on).
+  in** (**Play**, **Details**), **Hearth's places**, **Continue playing**, **Favorites**, and a row per store (Steam,
+  then Hearth Sync's collections). Every game opens **Steam's own game page**. Switch: **Hearth home screen** (on).
+- **Hearth bottom bar menu** (on): the Steam button's menu becomes the old Game Mode's **Bottom Dock**: a floating bar
+  along the bottom with Hearth's icons over Steam's labels, the focused entry big and teal. The entries are Steam's own
+  and do what they always do.
+- **In a game: Hearth top bar** (on, under the bottom bar switch): while a game runs, the menu is the old Game Mode's
+  in-game **top dock** instead: the same bar at the top of the screen, the running game on its left (its logo and
+  Steam's Resume and Exit game), the rest of the menu after it. Back to the bottom bar when the game closes.
 - **Hearth sounds** (off by default): Hearth's soft move and select sounds on the home screen.
+- **Hearth Music on the home**: focusing a game's tile on the Hearth home plays its Hearth Music theme, the same way
+  highlighting it in Steam's library does (Hearth Music's own player, settings and songs: with "Where" set to the
+  library, its volume, and nothing when Hearth Music isn't installed or is off). Each tile says which game it is
+  (`data-hearth-appid`), which Hearth Music's focus watch reads; nothing is matched or played by Hearth Classic itself.
 
 **Steam** puts everything back to Steam's own look at once.
+
+## The places row
+
+Each place opens Steam's own page through Steam's window navigator (the calls Steam's own menu makes, from @decky/ui's
+SteamUIStore types), trying the next way when one isn't there, and the Library at worst, never an empty page:
+
+| Place | Opens | If that's missing |
+| --- | --- | --- |
+| Library | Steam's Library (`/library`) | |
+| Store | Steam's store (`Navigator.SteamWeb`, store.steampowered.com) | the window's `NavigateToSteamWeb`, then the Library |
+| Downloads | Steam's downloads (`Navigator.Downloads`) | Settings › Downloads, then the Library |
+| Media | Steam's media, recent screenshots and clips (`Navigator.Media.Grid`) | the list view, then the Library |
+| Friends | Steam's Friends & Chat (`Navigator.Chat`) | Settings › Friends, then the Library |
+| Settings | Steam's Settings (`Navigator.Settings`) | `/settings` |
+
+1.2's places used the routes `/store`, `/downloads`, `/media` and `/friends`, which Steam doesn't have: those showed
+empty pages (fixed in round 2).
 
 ## Where the home's games come from
 
@@ -53,6 +83,10 @@ it starts and every time you change something:
   **nothing is applied**: Steam keeps its normal look, Quick Access shows **"Hearth Classic paused: Steam changed its
   layout"** with the reason and a **Try again** button, and the reason goes to Decky's log. Your choice stays saved.
 - A less important name that's missing only leaves its one line of the skin out (the look gets plainer, never broken).
+- The menu bars go in whole or not at all: if Steam's main menu names (`gamepadUIClasses.MainNavMenuAnchor`,
+  `mainMenuAppRunningClasses.NavigationColumn` and `NavigationMenuItem`; in a game also `AppColumn`) are missing,
+  Steam's own menu stays, the rest of Hearth Classic goes on, and the panel says "Hearth bottom bar menu paused: Steam
+  changed its menu".
 - If the home screen throws while drawing, Steam's own Home is shown at once and Hearth Classic pauses the same way.
 - Every change to Steam (the skin in each of Steam's windows, the Home route patch, the sounds) is kept in one list
   with its undo. Picking **Steam**, a pause, or Decky unloading or updating the plugin undoes all of it.
@@ -60,7 +94,8 @@ it starts and every time you change something:
 ## Settings
 
 `settings.json` in the plugin's Decky settings folder (`~/homebrew/settings/decky-hearth-look/`):
-`look` (`steam` or `classic`; `steam` by default), `home`, `wallpaper`, `sounds`. Saved the Hearth way
+`look` (`steam` or `classic`; `steam` by default), `home`, `wallpaper`, `menu`, `menuTop`, `sounds`. Only what
+you change is written (the defaults never are). Saved the Hearth way
 (docs/SETTINGS-PERSISTENCE.md): atomic writes, the last good copy as `settings.json.bak`, merge-on-write (keys a newer
 version wrote are kept), a damaged file put back from the `.bak`, and never replaced with defaults: if neither can be
 read, the plugin shows the defaults (off) but leaves the file alone until you change something, and keeps the damaged
@@ -98,5 +133,11 @@ CI never runs Steam, so these need a Hearth OS device:
 - that Steam's Home route takes the home screen (Decky's `routerHook.addPatch("/library/home")`) and that controller
   focus moves through it as expected (Steam's focus system isn't in the stand-in);
 - that Steam's own pictures (`appStore` capsules and heroes) show on the tiles;
+- the places: that Steam's navigator opens the Store, Downloads, Media and Friends pages (the calls are Steam's own,
+  but this Steam's names need a device);
+- the bottom bar and top bar: how Steam's real menu sits in them (the stand-in only approximates its layout), that its
+  entries get their icons (English labels; other languages keep only their labels), and the controller: Steam's menu
+  still moves with up and down (its own navigation), now along the bar;
+- Hearth Music on the home: that Steam's focus reaches the tiles as it does in the library;
 - the Play button (`SteamClient.Apps.RunGame`), the Store and Downloads places, and the sounds;
 - that the pause and Try again behave on a real Steam update.

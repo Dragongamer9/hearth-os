@@ -53,3 +53,12 @@ export const routerHook = {
   removePatch(path, fn) { if (window.HC_PATCHES.get(path) === fn) window.HC_PATCHES.delete(path); },
 };
 export const toaster = { toast() {} };
+// Steam's focused window and its Navigator (what the places on the home call), recording each call.
+// window.HC_NAVIGATOR === "missing": a Steam whose navigator lacks them (each place falls back to the Library).
+window.HC_NAVCALLS = [];
+const rec = (name) => (...a) => { window.HC_NAVCALLS.push(name + (a.length ? "(" + JSON.stringify(a) + ")" : "")); };
+const navigator = window.HC_NAVIGATOR === "missing" ? {} : {
+  Downloads: rec("Downloads"), Chat: rec("Chat"), Settings: rec("Settings"), SteamWeb: rec("SteamWeb"),
+  Media: { Grid: rec("Media.Grid"), List: rec("Media.List") },
+};
+window.SteamUIStore = { GetFocusedWindowInstance: () => ({ Navigator: navigator, NavigateToSteamWeb: rec("window.NavigateToSteamWeb") }) };

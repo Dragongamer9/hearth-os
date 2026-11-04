@@ -4,10 +4,11 @@
 // focus moves through it. Every game is one Steam can open, and opens Steam's own page. The data is Hearth's own
 // layout (the backend asks `nimbus --steam-mode-data home` once a minute; no second Hearth runs), or Steam's library
 // and Hearth Sync's collections when Hearth's program doesn't answer.
+import * as DUI from "@decky/ui";
 import { DialogButton, Focusable, Navigation } from "@decky/ui";
 import { callable } from "@decky/api";
 import { Component, ReactNode, useEffect, useState } from "react";
-import { Card, HomeView, PLACES, Shape, Shelf, SteamApp, artCandidates, blipFor, homeFromHearth, homeFromSteam, pickHome, played, steamArtMethods } from "./model";
+import { Card, HomeView, PLACES, Place, Shape, Shelf, SteamApp, artCandidates, blipFor, homeFromHearth, homeFromSteam, pickHome, played, runPlace, steamArtMethods } from "./model";
 
 const askHome = callable<[], { ok: boolean; home?: unknown; shortcuts?: Record<string, unknown>; error?: string }>("home");
 const askArt = callable<[string], string>("art");
@@ -106,12 +107,16 @@ function playApp(appid: number) {
   } catch { /* fall through to the page */ }
   openApp(appid);
 }
-function openPlace(route: string, id: string) {
-  try {
-    const nav = Navigation as any;
-    if (id === "store" && typeof nav.NavigateToStorePage === "function") { nav.NavigateToStorePage(); return; }
-    nav.Navigate(route);
-  } catch (e) { console.warn("Hearth Classic: couldn't open", route, e); }
+/** Steam's focused window instance (its Navigator opens Steam's own pages), or null. */
+function steamWindow(): any {
+  try { const w = (window as any).SteamUIStore?.GetFocusedWindowInstance?.(); if (w) return w; } catch { /* fall back */ }
+  try { return (DUI as any).Router?.WindowStore?.GamepadUIMainWindowInstance ?? null; } catch { return null; }
+}
+/** Opens a place through Steam's own navigator (model.ts PLACES); never an empty page (the last step is the Library). */
+export function openPlace(p: Place): string {
+  const used = runPlace(p, steamWindow(), (r) => { try { Navigation.Navigate(r); } catch (e) { console.warn("Hearth Classic: couldn't open", r, e); } });
+  (window as any).HC_LAST_PLACE = used;
+  return used;
 }
 
 // ---- pictures
@@ -171,10 +176,14 @@ function TileArt(props: { card: Card; shape: Shape; badge?: boolean }) {
 function Tile(props: { card: Card; wide?: boolean; badge?: boolean }) {
   const w = props.wide ? 300 : 132, h = props.wide ? 150 : 188;
   return (
-    <DialogButton className="hc-tile" style={{ width: w, height: h }} onClick={() => { blip("ok"); openApp(props.card.appid); }}
-      {...({ onGamepadFocus: onFocus } as any)}>
-      <TileArt card={props.card} shape={props.wide ? "wide" : "portrait"} badge={props.badge} />
-    </DialogButton>
+    // data-hearth-appid: the game this tile stands for, which Hearth Music reads when the tile is focused (its own
+    // focus watch, docs/HEARTH-LOOK.md "Hearth Music"), so the theme plays here like it does in Steam's library.
+    <div className="hc-tile-wrap" data-hearth-appid={props.card.appid} style={{ display: "contents" }}>
+      <DialogButton className="hc-tile" style={{ width: w, height: h }} onClick={() => { blip("ok"); openApp(props.card.appid); }}
+        {...({ onGamepadFocus: onFocus } as any)}>
+        <TileArt card={props.card} shape={props.wide ? "wide" : "portrait"} badge={props.badge} />
+      </DialogButton>
+    </div>
   );
 }
 
@@ -194,7 +203,7 @@ function Places() {
   return (
     <Focusable className="hc-shelf" style={{ gap: 8 }} {...({ "flow-children": "horizontal" } as any)}>
       {PLACES.map((p) => (
-        <DialogButton key={p.id} className="hc-chip" onClick={() => { blip("ok"); openPlace(p.route, p.id); }} {...({ onGamepadFocus: onFocus } as any)}>{p.title}</DialogButton>
+        <DialogButton key={p.id} className="hc-chip" onClick={() => { blip("ok"); openPlace(p); }} {...({ onGamepadFocus: onFocus } as any)}>{p.title}</DialogButton>
       ))}
     </Focusable>
   );

@@ -9,8 +9,8 @@ import { callable, definePlugin, routerHook } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { HearthOnly, hearthOs } from "./hearth-only";
-import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, decide, makePatchSet, normalize, renderTheme } from "./model";
-import { applySkin, removeSkin, steamClass } from "./theme";
+import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, decide, makePatchSet, menuPlan, normalize, renderTheme } from "./model";
+import { applySkin, removeSkin, startIngameWatch, startMenuDecor, steamClass } from "./theme";
 import { Boundary, HearthHome, setSounds } from "./home";
 
 const getSettings = callable<[], unknown>("get_settings");
@@ -22,12 +22,13 @@ const report = callable<[string], null>("report");
 
 const live = {
   hearth: false, loaded: false, settings: { ...DEFAULTS } as Settings,
-  state: "off" as State, why: "", brand: null as { css: string; logo: string; wallpaper: string } | null,
+  state: "off" as State, why: "", menuNote: "", brand: null as { css: string; logo: string; wallpaper: string } | null,
 };
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((f) => { try { f(); } catch { /* a panel that went away */ } });
 const patches = makePatchSet((m) => { console.warn("Hearth Classic:", m); report(m).catch(() => {}); });
 let saidWhy = "";
+let saidMenu = "";
 
 function useLive() {
   const [, bump] = useState(0);
@@ -61,12 +62,19 @@ function refresh(failure?: string) {
   const check = live.hearth && s.look === "classic" ? checkSteam(steamClass, !!(routerHook && typeof (routerHook as any).addPatch === "function")) : null;
   const d = decide(s, live.hearth, check, failure || (s.look === "classic" && !(live.brand && live.brand.css) ? "Hearth's look files couldn't be read" : undefined));
   if (d.state === "paused") { pause(d.why); return; }
+  live.menuNote = "";
   if (d.state === "off") { live.state = "off"; live.why = ""; notify(); return; }
   try {
     const b = live.brand!;
-    const { css } = renderTheme(b.css, { logo: b.logo, wallpaper: s.wallpaper ? b.wallpaper : "" }, steamClass);
+    // The menu bars go in whole or not at all: missing menu names leave Steam's own menu (the rest goes on).
+    const plan = menuPlan(s, steamClass);
+    live.menuNote = plan.note;
+    if (plan.note && plan.note !== saidMenu) { saidMenu = plan.note; console.warn("Hearth Classic:", plan.note); report(plan.note).catch(() => {}); }
+    const { css } = renderTheme(b.css, { logo: b.logo, wallpaper: s.wallpaper ? b.wallpaper : "" }, steamClass, plan.sections);
     patches.add("skin", removeSkin);
     if (!applySkin(css)) throw new Error("the skin couldn't be put in Steam's window");
+    if (plan.sections.menu) patches.add("menu icons", startMenuDecor((steamClass("mainMenuAppRunningClasses", "NavigationMenuItem") || "").split(/\s+/)[0]));
+    if (plan.sections.top) patches.add("top bar in a game", startIngameWatch());
     if (s.home) patchHome();
     setSounds(s.sounds);
     patches.add("sounds", () => setSounds(false));
@@ -149,6 +157,9 @@ function Panel() {
         <PanelSection title="Hearth Classic">
           <PanelSectionRow><ToggleField label="Hearth home screen" description="Jump back in, Hearth's places and your games on Steam's Home." checked={s.home} onChange={(v: boolean) => set({ home: v })} /></PanelSectionRow>
           <PanelSectionRow><ToggleField label="Hearth wallpaper" description="Behind the home and the Library." checked={s.wallpaper} onChange={(v: boolean) => set({ wallpaper: v })} /></PanelSectionRow>
+          <PanelSectionRow><ToggleField label="Hearth bottom bar menu" description="The Steam button's menu as Hearth's bar along the bottom." checked={s.menu} onChange={(v: boolean) => set({ menu: v })} /></PanelSectionRow>
+          {s.menu && <PanelSectionRow><ToggleField label="In a game: Hearth top bar" description="While a game runs, the menu is Hearth's bar at the top instead." checked={s.menuTop} onChange={(v: boolean) => set({ menuTop: v })} /></PanelSectionRow>}
+          {l.state === "on" && l.menuNote && <PanelSectionRow><div className="hearth-menu-note" style={{ fontSize: 12, color: "#ffb547", lineHeight: 1.35 }}>{l.menuNote}</div></PanelSectionRow>}
           <PanelSectionRow><ToggleField label="Hearth sounds" description="Hearth's soft sounds when moving on the home screen." checked={s.sounds} onChange={(v: boolean) => set({ sounds: v })} /></PanelSectionRow>
         </PanelSection>
       )}
