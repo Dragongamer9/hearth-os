@@ -31,7 +31,8 @@ PanelWindow {
     readonly property int tile: shelf ? Math.round(Math.min(212, (screen ? screen.height : 1080) * 0.17)) : compact ? 68 : 56
     readonly property int iconSize: shelf ? 64 : compact ? 46 : 38
     readonly property int bodyH: shelf ? tile * 1.18 + 76 : attached ? tile + 8 : tile + 16
-    readonly property int gap: shelf ? 24 : attached ? 0 : 10
+    readonly property int hintH: Theme.hints ? 48 : 0       // Console: the controller hints along the very bottom
+    readonly property int gap: (shelf ? 24 : attached ? 0 : 10) + hintH
     readonly property bool autoHide: Theme.dockAutoHide && !shelf
     readonly property bool hiddenNow: keyboardOpen || (autoHide && !hov.hovered && !DeskState.dockPeek && !holdOpen.running && !menuOpen)
     readonly property bool menuOpen: DeskState.overlayShown && menuFromDock
@@ -46,7 +47,8 @@ PanelWindow {
     WlrLayershell.namespace: "hearth-dock"
     WlrLayershell.layer: WlrLayer.Top
     // Only the dock itself (or, hidden, the handle at the bottom edge) takes clicks; the rest lets them through.
-    mask: Region { item: dock.hiddenNow ? handle : body }
+    mask: Region { item: dock.hiddenNow ? handle : dock.hintH > 0 ? whole : body }
+    Item { id: whole; anchors.fill: parent }
     Timer { id: holdOpen; interval: 700 }
     Connections { target: DeskState; function onOverlayShownChanged() { if (!DeskState.overlayShown) dock.menuFromDock = false; } }
 
@@ -318,6 +320,30 @@ PanelWindow {
                 }
                 Chip { icon: "desktops"; text: "Show desktop"; onPicked: dock.toggleShowDesktop() }
                 Chip { icon: "window"; text: "Task Manager"; onPicked: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "tasks", "open"]) }
+            }
+        }
+    }
+
+    // Console: the controller's button hints, always shown, along the very bottom (HintStrip.qml's set).
+    Rectangle {
+        visible: dock.hintH > 0
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: dock.hintH
+        color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.94)
+        Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.line }
+        RowLayout {
+            anchors.centerIn: parent
+            spacing: 22
+            Repeater {
+                model: [{ b: "A", c: "#3fae5a", t: "Open" }, { b: "X", c: "#3b7de0", t: "Options" }, { b: "Y", c: "#d9a521", t: "Keyboard" },
+                        { b: "☰", c: "#6c7480", t: "Apps" }, { b: "⌂", c: Theme.accent, t: "Hearth menu" }, { b: "⧉", c: "#6c7480", t: "Controls" }]
+                delegate: RowLayout {
+                    required property var modelData
+                    spacing: 8
+                    Rectangle { implicitWidth: 24; implicitHeight: 24; radius: 12; color: modelData.c
+                        Text { anchors.centerIn: parent; text: modelData.b; color: "white"; font.pixelSize: 12; font.bold: true } }
+                    Text { text: modelData.t; color: Theme.text; font.family: Theme.font; font.pixelSize: 15 }
+                }
             }
         }
     }

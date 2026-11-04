@@ -660,8 +660,8 @@ jobs:
           look_shots glass light
           # The launcher's search finding a Settings page and a game; a notification in the pill.
           set_look hearth dark "" ""; sleep 2
-          ipc launcher toggle; wtype "wi" 2>/dev/null || true; sleep 2; grim "$m/search-settings-page.png" || true; ipc launcher close
-          ipc launcher toggle; wtype "cel" 2>/dev/null || true; sleep 2; grim "$m/search-game.png" || true; ipc launcher close
+          ipc launcher section apps; wtype "wi" 2>/dev/null || true; sleep 2; grim "$m/search-settings-page.png" || true; ipc launcher close
+          ipc launcher section apps; wtype "cel" 2>/dev/null || true; sleep 2; grim "$m/search-game.png" || true; ipc launcher close
           (timeout 15 notify-send -a "Hearth" "Download finished" "Celeste is ready to play" || true) &
           sleep 2; grim "$m/hearth-notification-pill.png" || true
           # Handheld (1280×800): the essentials in the bar, bigger dock icons.

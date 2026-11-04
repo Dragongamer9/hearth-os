@@ -79,6 +79,13 @@ Item {
         }
     }
 
+    Rectangle {   // a big panel over wood: a darker wash so text and tiles stay easy to read
+        anchors.fill: parent
+        visible: f.kind === "wood" && f.solid
+        radius: f.rad
+        color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.62)
+    }
+
     // chamfer (Gaming): cut corners and a neon edge
     Canvas {
         id: cham

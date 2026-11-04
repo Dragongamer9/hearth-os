@@ -1,6 +1,6 @@
-// Mantel 2026: the controller's button hints along the bottom of the main screen. Console shows them all the time
-// (theme/palettes.json "hints"); the other looks for a while after the controller was used for Hearth's menus
-// (Pad.qml sets DeskState.padSeen). What each button does is hearth-pad's desktop mapping.
+// Mantel 2026: the controller's button hints along the bottom of the main screen, for a while after the controller
+// was used for Hearth's menus (Pad.qml sets DeskState.padSeen). Console shows them all the time inside its dock
+// (Dock.qml), so this stays out of its way there. What each button does is hearth-pad's desktop mapping.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -8,11 +8,11 @@ import Quickshell.Wayland
 
 PanelWindow {
     id: strip
-    readonly property bool always: Theme.hints
+    readonly property bool always: false
     property double now: Date.now()
     Timer { interval: 1000; running: true; repeat: true; onTriggered: strip.now = Date.now() }
     readonly property bool recent: DeskState.padSeen > 0 && now - DeskState.padSeen < 12000
-    visible: always || recent
+    visible: recent && !Theme.hints
     anchors { bottom: true; left: true; right: true }
     implicitHeight: 48
     implicitWidth: 0
