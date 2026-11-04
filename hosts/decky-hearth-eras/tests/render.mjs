@@ -107,7 +107,7 @@ const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 
 
 // 1. Steam's look (the default): the gallery lists every era, nothing is applied; then the person picks Crossbar.
 await scene("panel-steam", { height: 1500, want: ["Eras", "Steam", "Channels", "Blades", "Tiles", "Crossbar", "Pocket", "Hearth Classic", "Extras", "Era sounds", "Quick switching",
-  "Loading screen style", "On-screen keyboard skin", "Styled Library pages", "Steam's own Home"], not: ["Colours", "paused"], skin: false }, async () => {
+  "Loading screen style", "On-screen keyboard skin", "Styled Library pages", "Steam's own Home"], not: ["Graphite", "paused"], skin: false }, async () => {
   if (await page.evaluate(() => window.HE_PATCHES.size)) errors.push("panel-steam: a route patch was added with Steam's look");
   if (await page.evaluate(() => window.HE_SAVES.length)) errors.push("panel-steam: something was saved without the person");
   await page.click('.hearth-eras-pick[data-era="crossbar"]');
@@ -118,7 +118,7 @@ await scene("panel-steam", { height: 1500, want: ["Eras", "Steam", "Channels", "
 });
 
 // 2. Every era: its home on Steam's Home route (first game focused) and its skin on a Library page.
-const ERA_WANT = { channels: ["Starfall Drift", "Library", "Store"], blades: ["Recent", "Favorites", "Places"], tiles: ["Jump back in", "Places", "Favorites"],
+const ERA_WANT = { channels: ["Starfall Drift", "Library", "Store"], blades: ["Recent", "Favorites", "Places"], tiles: ["Starfall Drift", "Places", "Favorites"],
   crossbar: ["Recent", "Places", "Favorites"], pocket: ["Starfall Drift", "Store"], classic: ["Recent games", "Favorites", "Library"] };
 for (const era of ["channels", "blades", "tiles", "crossbar", "pocket", "classic"]) {
   const sel = era === "classic" ? ".hc-shelf .hc-tile" : ".era-game";
@@ -134,6 +134,9 @@ for (const era of ["channels", "blades", "tiles", "crossbar", "pocket", "classic
     const nav = await page.evaluate(() => window.HE_NAV || []);
     if (!nav.some((r) => /^\/library\/app\/\d+$/.test(r))) errors.push(`home-${era}: a game didn't open Steam's page (${nav})`);
     if (era !== "classic") {
+      // Blades' and Crossbar's places open when focus reaches their panel or category.
+      await page.evaluate(() => { const t = [...document.querySelectorAll(".bl-tab")].pop() || document.querySelector(".xb-cat"); if (t && document.querySelector(".bl-tab, .xb-cat")) { t.focus(); t.click(); } });
+      await page.waitForTimeout(300);
       const used = await page.evaluate(() => { const b = [...document.querySelectorAll(".era-place")].find((x) => x.textContent.includes("Store")); if (!b) return "missing"; b.click(); return window.HC_LAST_PLACE; });
       if (used !== "navigator:SteamWeb") errors.push(`home-${era}: Store used ${used}, not Steam's navigator`);
     }
