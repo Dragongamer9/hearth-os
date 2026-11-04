@@ -1,0 +1,80 @@
+# Hearth Classic (docs/HEARTH-LOOK.md): the Decky plugin that brings back the old Hearth Game Mode look on top of Steam
+# Game Mode (hosts/decky-hearth-look). Its backend's tests, its pure parts' unit tests, the build and pack like Decky's
+# plugin template, and pictures of the real plugin over a stand-in of Steam's Game Mode (the home, the skin, the Quick
+# Access panel, paused after a Steam change, not Hearth OS, unloading) beside the old Hearth Game Mode home. No Steam,
+# no sign-in, nothing of Valve's is run.
+name: Hearth Classic plugin
+
+on:
+  push:
+    branches: [bughunt, feature/hearth-look]
+    paths: ['hosts/decky-hearth-look/**', 'hosts/decky-shared/**', '.github/workflows/decky-hearth-look.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the pictures also go to the ci/hearth-look-shots branch, to look at in the browser
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/decky-hearth-look/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
+          grep -q '^OK' /tmp/py.log || { echo "::error title=Hearth Classic backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Classic backend tests::$(grep -E '^Ran ' /tmp/py.log)"
+      - name: The shared Hearth OS check and the load mark
+        run: python3 tools/decky_plugins.py check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests of the pure parts (src/model.ts)
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test --test-reporter=tap hosts/decky-hearth-look/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
+          grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=Hearth Classic unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Classic unit tests::$(grep -E '^# (tests|pass|fail)' /tmp/unit.log | tr '\n' ' ')"
+      - name: Build and pack (pnpm build, then Decky's layout and a zip)
+        working-directory: hosts/decky-hearth-look
+        run: |
+          set -o pipefail
+          npm install -g pnpm@9 >/dev/null
+          pnpm install --no-frozen-lockfile 2>&1 | tail -5
+          if ! pnpm build > /tmp/build.log 2>&1; then
+            echo "::error title=Hearth Classic build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          tail -5 /tmp/build.log
+          ./package.sh "$RUNNER_TEMP/out"
+          for f in dist/index.js main.py hearth_only.py hearth-classic.css assets/logo.svg assets/wallpaper.jpg; do test -s "$RUNNER_TEMP/out/decky-hearth-look/$f" || { echo "::error title=Hearth Classic pack::$f missing"; exit 1; }; done
+          cmp -s ../decky-shared/hearth_only.py "$RUNNER_TEMP/out/decky-hearth-look/hearth_only.py"
+          grep -q '"name": "Hearth Classic"' "$RUNNER_TEMP/out/decky-hearth-look/plugin.json"
+          (cd "$RUNNER_TEMP/out" && unzip -l decky-hearth-look.zip | tail -12)
+          echo "::notice title=Hearth Classic::$(du -h "$RUNNER_TEMP/out/decky-hearth-look.zip" | cut -f1) zip, index.js $(du -h "$RUNNER_TEMP/out/decky-hearth-look/dist/index.js" | cut -f1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decky-hearth-look
+          path: ${{ runner.temp }}/out/decky-hearth-look.zip
+      - name: The plugin over a stand-in of Steam's Game Mode (pictures and checks)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cp hosts/decky-hearth-look/tests/render.mjs tools/render-hearth-look.mjs
+          HEARTH_ROOT="$PWD" node tools/render-hearth-look.mjs "$RUNNER_TEMP/shots"
+      - name: Keep the pictures (ci/hearth-look-shots)
+        if: always() && github.ref != 'refs/heads/main'
+        run: |
+          [ -d "$RUNNER_TEMP/shots" ] || exit 0
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r "$RUNNER_TEMP/shots" /tmp/shots-keep
+          git checkout -q --orphan ci/hearth-look-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/shots-keep/*.png shots/ 2>/dev/null || true
+          git add -f shots
+          git commit -qm "Hearth Classic over a stand-in of Steam's Game Mode ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/hearth-look-shots || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-look-shots
+          path: ${{ runner.temp }}/shots

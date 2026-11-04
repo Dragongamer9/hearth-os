@@ -1,0 +1,178 @@
+// Hearth Classic (docs/HEARTH-LOOK.md): the old Hearth Game Mode look on top of Steam's Game Mode. Stage 1 is the skin
+// (theme.ts), stage 2 the home screen on Steam's Home (home.tsx). Off until the person picks "Hearth Classic" in this
+// panel; the plugin never changes that choice itself. At every start (and every change) Steam's UI is checked first
+// (model.ts checkSteam): if what the look needs is missing, nothing is applied, the panel says "Hearth Classic paused:
+// Steam changed its layout" and the reason goes to Decky's log. Every change to Steam is in one PatchSet, so turning it
+// off, a failure or unloading the plugin takes all of it out again. Off Hearth OS only the Hearth OS panel shows.
+import { ButtonItem, DropdownItem, PanelSection, PanelSectionRow, ToggleField, staticClasses } from "@decky/ui";
+import { callable, definePlugin, routerHook } from "@decky/api";
+import { useEffect, useState } from "react";
+import { FaFire } from "react-icons/fa";
+import { HearthOnly, hearthOs } from "./hearth-only";
+import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, decide, makePatchSet, normalize, renderTheme } from "./model";
+import { applySkin, removeSkin, steamClass } from "./theme";
+import { Boundary, HearthHome, setSounds } from "./home";
+
+const getSettings = callable<[], unknown>("get_settings");
+const setSettingsCall = callable<[Partial<Settings>], { ok: boolean; settings?: unknown; error?: string }>("set_settings");
+const getBrand = callable<[], { css: string; logo: string; wallpaper: string } | null>("brand");
+const report = callable<[string], null>("report");
+
+// ---------------------------------------------------------------- the live state
+
+const live = {
+  hearth: false, loaded: false, settings: { ...DEFAULTS } as Settings,
+  state: "off" as State, why: "", brand: null as { css: string; logo: string; wallpaper: string } | null,
+};
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((f) => { try { f(); } catch { /* a panel that went away */ } });
+const patches = makePatchSet((m) => { console.warn("Hearth Classic:", m); report(m).catch(() => {}); });
+let saidWhy = "";
+
+function useLive() {
+  const [, bump] = useState(0);
+  useEffect(() => { const f = () => bump((n) => n + 1); listeners.add(f); return () => { listeners.delete(f); }; }, []);
+  return live;
+}
+
+/** Takes every change out of Steam (the skin, the home patch, the sounds). Safe to call any number of times. */
+function stopAll() {
+  patches.removeAll();
+  removeSkin();
+  setSounds(false);
+}
+
+function pause(why: string) {
+  stopAll();
+  live.state = "paused";
+  live.why = why;
+  if (why !== saidWhy) {
+    saidWhy = why;
+    console.warn(`Hearth Classic: ${PAUSED_NOTE} (${why}); Steam's normal look is back`);
+    report(`${PAUSED_NOTE} (${why}); Steam's normal look is back`).catch(() => {});
+  }
+  notify();
+}
+
+/** Decides and applies: Steam's look, Hearth Classic, or paused. The saved choice itself is never touched here. */
+function refresh(failure?: string) {
+  stopAll();
+  const s = live.settings;
+  const check = live.hearth && s.look === "classic" ? checkSteam(steamClass, !!(routerHook && typeof (routerHook as any).addPatch === "function")) : null;
+  const d = decide(s, live.hearth, check, failure || (s.look === "classic" && !(live.brand && live.brand.css) ? "Hearth's look files couldn't be read" : undefined));
+  if (d.state === "paused") { pause(d.why); return; }
+  if (d.state === "off") { live.state = "off"; live.why = ""; notify(); return; }
+  try {
+    const b = live.brand!;
+    const { css } = renderTheme(b.css, { logo: b.logo, wallpaper: s.wallpaper ? b.wallpaper : "" }, steamClass);
+    patches.add("skin", removeSkin);
+    if (!applySkin(css)) throw new Error("the skin couldn't be put in Steam's window");
+    if (s.home) patchHome();
+    setSounds(s.sounds);
+    patches.add("sounds", () => setSounds(false));
+    live.state = "on"; live.why = "";
+    notify();
+  } catch (e) {
+    pause(e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ---------------------------------------------------------------- stage 2: the home on Steam's Home route
+
+function HomeSwitch(props: { steam: any }) {
+  const l = useLive();
+  if (l.state !== "on" || !l.settings.home) return props.steam;
+  const b = l.brand!;
+  return (
+    <Boundary fallback={props.steam} onError={(e) => setTimeout(() => pause("the home screen failed: " + (e instanceof Error ? e.message : String(e)).slice(0, 200)), 0)}>
+      <HearthHome steam={props.steam} wallpaper={l.settings.wallpaper ? b.wallpaper : ""} logo={b.logo} />
+    </Boundary>
+  );
+}
+
+function patchHome() {
+  const fn = (route: any) => {
+    try {
+      const kids = route?.children;
+      if (kids && kids.type !== HomeSwitch) route.children = <HomeSwitch steam={kids} />;
+    } catch (e) { setTimeout(() => pause("Steam's Home route changed: " + String(e).slice(0, 200)), 0); }
+    return route;
+  };
+  const handle = (routerHook as any).addPatch("/library/home", fn);
+  patches.add("home", () => { (routerHook as any).removePatch("/library/home", handle); });
+}
+
+// ---------------------------------------------------------------- the panel
+
+async function save(change: Partial<Settings>): Promise<string> {
+  try {
+    const r = await setSettingsCall(change);
+    if (!r || !r.ok) return (r && r.error) || "Couldn't save";
+    live.settings = normalize(r.settings);
+    refresh();
+    return "";
+  } catch (e) {
+    return "Couldn't save: " + String(e).slice(0, 120);
+  }
+}
+
+const LOOKS = [{ data: "classic", label: "Hearth Classic" }, { data: "steam", label: "Steam" }];
+
+function Panel() {
+  const l = useLive();
+  const [err, setErr] = useState("");
+  const s = l.settings;
+  const set = (c: Partial<Settings>) => { setErr(""); save(c).then(setErr); };
+  if (!l.loaded) return <PanelSection><PanelSectionRow><div className={staticClasses.Text}>Loading…</div></PanelSectionRow></PanelSection>;
+  const classic = s.look === "classic";
+  return (
+    <>
+      <PanelSection title="Look">
+        <PanelSectionRow>
+          <DropdownItem label="Game Mode look" rgOptions={LOOKS} selectedOption={s.look}
+            description={classic ? "Hearth's colours, cards, focus glow and home screen over Steam." : "Steam's own look. Pick Hearth Classic for the old Hearth Game Mode look."}
+            onChange={(o: any) => set({ look: o.data === "classic" ? "classic" : "steam" })} />
+        </PanelSectionRow>
+        {l.state === "paused" && (
+          <>
+            <PanelSectionRow>
+              <div className="hearth-paused" style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(255,181,71,.12)", border: "1px solid rgba(255,181,71,.4)", fontSize: 13, lineHeight: 1.35 }}>
+                <div style={{ fontWeight: 700, color: "#ffb547" }}>{PAUSED_NOTE}</div>
+                <div style={{ color: "#b8bcbf", fontSize: 12, marginTop: 2 }}>Steam's normal look is on meanwhile; your choice is kept. {l.why}</div>
+              </div>
+            </PanelSectionRow>
+            <PanelSectionRow><ButtonItem layout="below" onClick={() => refresh()}>Try again</ButtonItem></PanelSectionRow>
+          </>
+        )}
+      </PanelSection>
+      {classic && (
+        <PanelSection title="Hearth Classic">
+          <PanelSectionRow><ToggleField label="Hearth home screen" description="Jump back in, Hearth's places and your games on Steam's Home." checked={s.home} onChange={(v: boolean) => set({ home: v })} /></PanelSectionRow>
+          <PanelSectionRow><ToggleField label="Hearth wallpaper" description="Behind the home and the Library." checked={s.wallpaper} onChange={(v: boolean) => set({ wallpaper: v })} /></PanelSectionRow>
+          <PanelSectionRow><ToggleField label="Hearth sounds" description="Hearth's soft sounds when moving on the home screen." checked={s.sounds} onChange={(v: boolean) => set({ sounds: v })} /></PanelSectionRow>
+        </PanelSection>
+      )}
+      {err && <PanelSection><PanelSectionRow><div style={{ color: "#ff6b6b", fontSize: 12 }}>{err}</div></PanelSectionRow></PanelSection>}
+    </>
+  );
+}
+
+export default definePlugin(() => {
+  let gone = false;
+  hearthOs().then(async (ok) => {
+    if (!ok || gone) return;   // not Hearth OS: nothing is applied, the panel is the Hearth OS invitation
+    live.hearth = true;
+    try { live.settings = normalize(await getSettings()); } catch { live.settings = { ...DEFAULTS }; }
+    try { live.brand = await getBrand(); } catch { live.brand = null; }
+    live.loaded = true;
+    if (!gone) refresh();
+  });
+  return {
+    name: "Hearth Classic",
+    titleView: <div className={staticClasses.Title}>Hearth Classic</div>,
+    content: <HearthOnly name="Hearth Classic" what="The old Hearth Game Mode look on Steam Game Mode."><Panel /></HearthOnly>,
+    icon: <FaFire />,
+    onDismount() { gone = true; stopAll(); live.state = "off"; live.why = ""; notify(); },
+  };
+});
+
