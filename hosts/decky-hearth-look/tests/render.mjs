@@ -178,7 +178,7 @@ const menuState = () => page.evaluate(() => {
 });
 // The owner's device: Steam's menu window is a 241 px popup at the left. A: its window resized to a bar.
 await scene("menu-steam", { scene: "library", qam: false, menu: "steam", menuWidth: 241, skin: false });
-await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "browserview", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
   console.log(`::notice title=menu-bottom-bar diag::${JSON.stringify(await page.evaluate(() => window.HearthClassicMenu)).slice(0, 1500)}`);
   if (!m.style) errors.push("menu-bottom-bar: the skin didn't reach the menu's own window");
@@ -187,7 +187,7 @@ await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", me
   if (m.icons.join(",") !== "home,lib,shop,friends,media,dl,gear,power") errors.push(`menu-bottom-bar: icons ${m.icons}`);
   if (m.anchorOpacity !== "0") errors.push(`menu-bottom-bar: the main window's empty menu place is still showing (${m.anchorOpacity})`);
   if (!m.diag || !/^passed/.test(m.diag.selfCheck)) errors.push(`menu-bottom-bar: self-check ${m.diag && m.diag.selfCheck}`);
-  if (!m.diag || m.diag.resizeWith !== "BrowserView.SetBounds") errors.push(`menu-bottom-bar: resized with ${m.diag && m.diag.resizeWith}`);
+  if (!m.diag || !/^SteamClient\.Window \(CSS px, scale 1\)$/.test(m.diag.resizeWith)) errors.push(`menu-bottom-bar: resized with ${m.diag && m.diag.resizeWith}`);
   // Unloading puts the menu window back where Steam had it.
   await page.evaluate(() => window.HC_PLUGIN.onDismount());
   await page.waitForTimeout(600);
@@ -195,15 +195,21 @@ await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", me
   if (back.anchorOpacity !== "1") errors.push("menu-bottom-bar: unloading didn't bring back the main window's menu place");
   if (back.win.width !== 241 || back.win.top !== 0 || /hearth-/.test(back.cls)) errors.push(`menu-bottom-bar: unloading didn't restore Steam's menu window (${JSON.stringify(back.win)}, ${back.cls})`);
 });
-await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, resize: "browserview", running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", running: true, settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   const m = await menuState();
   if (m.win.width !== 1280 || m.win.top !== 0 || !/hearth-ingame/.test(m.cls) || !/hearth-bar/.test(m.cls)) errors.push(`menu-top-bar-in-game: not a bar at the top (${JSON.stringify(m.win)}, ${m.cls})`);
 });
 // The Store (a web page above Steam's other windows): Steam's menu in its own place, in Hearth's colours.
 await scene("menu-in-store", { scene: "library", qam: false, menu: "steam", menuWidth: 241, resize: "steamclient", route: "/steamweb", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+  // Steam's menu window shows above the Store: with a working resize, the real bar there too.
   const m = await menuState();
-  if (m.win.width !== 241 || !/hearth-menu/.test(m.cls) || /hearth-bar/.test(m.cls) || m.mirror) errors.push(`menu-in-store: expected Steam's menu in Hearth's colours (${JSON.stringify(m.win)}, ${m.cls})`);
-  if (!m.diag || !/web page/.test(m.diag.why)) errors.push(`menu-in-store: diagnostics don't say a web page is showing (${m.diag && m.diag.why})`);
+  if (m.win.width !== 1280 || m.win.top !== 650 || !/hearth-bar/.test(m.cls) || m.mirror) errors.push(`menu-in-store: expected the resized bar on the Store (${JSON.stringify(m.win)}, ${m.cls})`);
+});
+await scene("menu-in-store-no-resize", { scene: "library", qam: false, menu: "steam", menuWidth: 241, route: "/steamweb", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+  // No resize: the mirror would be under the Store, so Steam's menu in Hearth's colours.
+  const m = await menuState();
+  if (m.win.width !== 241 || !/hearth-menu/.test(m.cls) || /hearth-(bar|ghost)/.test(m.cls) || m.mirror) errors.push(`menu-in-store-no-resize: expected Steam's menu in Hearth's colours (${JSON.stringify(m.win)}, ${m.cls})`);
+  if (!m.diag || !/web page/.test(m.diag.why)) errors.push(`menu-in-store-no-resize: diagnostics don't say a web page is showing (${m.diag && m.diag.why})`);
 });
 // In a game, something covers the resized top dock (a blank strip on the device): the self-check puts Steam's window
 // back and shows Steam's menu in Hearth's colours instead.
@@ -249,12 +255,12 @@ await scene("menu-steam-changed", { scene: "library", menu: "changed", menuWidth
   if (/hearth-(bar|menu|ghost)/.test(m.cls) || m.icons.some(Boolean) || m.mirror) errors.push(`menu-steam-changed: Steam's changed menu was touched (${m.cls})`);
 });
 // The diagnostics in the panel, after the menu was found.
-await scene("panel-diagnostics", { scene: "library", menu: "steam", menuWidth: 241, resize: "steamclient", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
+await scene("panel-diagnostics", { scene: "library", menu: "steam", menuWidth: 241, resize: "browserview", settings: { look: "classic" }, skin: true, wait: 3500 }, async () => {
   await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Show what Hearth Classic found")); b && b.click(); });
   await page.waitForTimeout(600);
   await page.evaluate(() => { const m = document.getElementById("menuwin"); if (m) m.style.display = "none"; });
   const t = await page.evaluate(() => document.body.innerText);
-  for (const w of ["MainMenu_uid2", "Menu: found", "8 entries", "Menu bar: bar", "Steam's menu window resized", "before 241×760", "after 1280×150", "SteamClient.Window", "Class names:", "Send diagnostics to Hearth automatically"]) if (!t.includes(w)) errors.push(`panel-diagnostics: missing ${w}`);
+  for (const w of ["MainMenu_uid2", "Menu: found", "8 entries", "Menu bar: bar", "Steam's menu window resized", "before 241×760", "after 1280×150", "BrowserView.SetBounds", "Class names:", "Send diagnostics to Hearth automatically"]) if (!t.includes(w)) errors.push(`panel-diagnostics: missing ${w}`);
   // Send by hand: the code shows as "Last sent".
   await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Send Hearth Classic log now")); b && b.click(); });
   await page.waitForTimeout(800);

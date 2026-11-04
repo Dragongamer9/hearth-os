@@ -73,8 +73,11 @@ body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;co
     const px = (v) => parseFloat(v) || 0;
     f.contentWindow.SteamClient = { Window: {
       GetWindowDimensions: async () => ({ x: px(f.style.left), y: px(f.style.top), width: px(f.style.width), height: px(f.style.height) }),
-      ResizeTo: (w, h) => { f.style.width = w + "px"; f.style.height = h + "px"; },
-      MoveTo: (x, y) => { f.style.left = x + "px"; f.style.top = y + "px"; },
+      // As on the owner's device: the third argument must be a number.
+      ResizeTo: (w, h, k) => { if (typeof k !== "number") throw new Error("ResizeTo requires 3 arguments: <x: double> <y: double> <dpi: double>"); f.style.width = w + "px"; f.style.height = h + "px"; },
+      MoveTo: (x, y, k) => { if (typeof k !== "number") throw new Error("MoveTo requires 3 arguments: <x: double> <y: double> <dpi: double>"); f.style.left = x + "px"; f.style.top = y + "px"; },
+      GetWindowRestoreDetails: async () => JSON.stringify({ l: f.style.left, t: f.style.top, w: f.style.width, h: f.style.height }),
+      RestoreWindowSizeAndPosition: (d) => { const o = JSON.parse(d); f.style.left = o.l; f.style.top = o.t; f.style.width = o.w; f.style.height = o.h; },
     } };
   }
   // HC_MENURESIZE "browserview": as on a device, the menu is one of Steam's browser views; the focus controller's
