@@ -36,20 +36,53 @@ function GamePage() {
     h("div", { className: "ad_Content" }, h("div", { className: "ad_Info info" }, h("b", null, "Activity"), h("div", null, "Your friends played this 3 times this week.")),
       h("div", { className: "ad_Links info" }, h("b", null, "Achievements"), h("div", null, "18 of 40 unlocked"))));
 }
-function Menu() {
+// Steam's main menu in its own window, as on a device: CSS Loader's "MainMenu" tab, a popup of the main window
+// (found through g_PopupManager), with the real structure (#MainNavMenuContainer > .Panel > * > .Panel.Focusable, from
+// CSS Loader themes). Here an iframe stands in for that popup window. HC_MENU: "steam" (Steam's structure), "changed"
+// (a Steam that changed it: no .Panel). HC_MENUWIDTH: the window's width (a narrow one plays a side-panel-only window).
+function openMenuWindow() {
+  const f = document.createElement("iframe");
+  f.id = "menuwin";
+  f.style.cssText = `position:absolute;left:0;top:0;width:${window.HC_MENUWIDTH || 1280}px;height:760px;border:0;z-index:20;background:transparent`;
+  document.body.appendChild(f);
+  const d = f.contentDocument;
   const running = !!window.HC_RUNNING;
-  const items = ["Home", "Library", "Store", "Media", "Downloads", "Friends", "Settings", "Power"];
-  return h("div", { className: "mm_Anchor" }, h("div", { className: "menu-panel" },
-    running ? h("div", { className: "mm_AppColumn" }, h("div", { className: "mm_GameBg" }), h("div", { className: "mm_Logo game-logo" }, "Ember Knights"),
-      h("div", { className: "mm_Controls" }, h("div", { className: "mm_Item" }, "Resume"), h("div", { className: "mm_Item" }, "Exit game"))) : null,
-    h("div", { className: "mm_NavColumn" }, h("div", { className: "mm_NavBox" },
-      ...items.map((t, i) => h("div", { key: t, className: "mm_Item" + (i === 1 ? " gpfocus" : "") + (i === 0 ? " mm_Active" : "") }, t))))));
+  const items = ["Home", "Library", "Store", "Friends & Chat", "Media", "Downloads", "Settings", "Power"];
+  const svg = '<svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+  const entries = items.map((t, i) => `<div class="mm_wrap"><div class="Panel Focusable mm_entry${i === 1 ? " gpfocus" : ""}">${svg}<div class="mm_label">${t}</div></div></div>`).join("");
+  const inner = window.HC_MENU === "changed" ? `<div class="mm_list">${entries}</div>` : `<div class="Panel mm_panel">${entries}</div>`;
+  d.open();
+  d.write(`<!doctype html><html><head><title>MainMenu_uid2</title><style>
+body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;color:#dcdedf}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45)}
+#MainNavMenuContainer{position:absolute;left:0;top:0;bottom:0;width:300px;background:#0e141b;box-shadow:8px 0 30px rgba(0,0,0,.55)}
+.mm_panel,.mm_list{display:flex;flex-direction:column;padding:${running ? 120 : 18}px 8px 18px}
+.mm_entry{display:flex;align-items:center;gap:14px;padding:10px 16px;font-size:17px;border-radius:2px}.mm_entry.gpfocus{background:#3d4450}
+.game{position:absolute;left:0;top:0;width:300px;padding:16px;box-sizing:border-box;font-weight:800;font-size:18px;z-index:2}
+</style></head><body><div class="scrim"></div>${running ? '<div class="game">Ember Knights · Resume · Exit game</div>' : ""}<div id="MainNavMenuContainer" class="Focusable">${inner}</div></body></html>`);
+  d.close();
+  window.g_PopupManager = { GetPopups: () => [{ m_strName: "MainMenu_uid2", m_popup: f.contentWindow }] };
+}
+if (window.HC_MENU) openMenuWindow();
+
+function Dialog() {
+  const row = (label, desc, ctl, focus) => h("div", { className: "gd_Field dlg-row" + (focus ? " gpfocus" : "") },
+    h("div", null, h("div", { className: "qam-label" }, label), h("div", { className: "qam-desc" }, desc)), ctl);
+  return h("div", { className: "steam-page dlg-page" }, h("div", { className: "dlg-side" }, ...["System", "Display", "Audio", "Controller", "Downloads", "Storage"].map((t, i) =>
+      h("div", { key: t, className: "dlg-tab" + (i === 1 ? " on" : "") }, t))),
+    h("div", { className: "gd_Content dlg" }, h("div", { className: "dlg-title" }, "Display"),
+      row("Brightness", "Screen brightness", h("div", { className: "slider" }, h("b", { style: { width: "62%" } }))),
+      row("Adaptive brightness", "Changes with the light around you", h("div", { className: "qam-toggle on" }, h("span", { className: "qam-switch" }, h("i"))), true),
+      row("Resolution", "What games see", h("button", { className: "DialogButton gd_Button" }, "1280 × 800 ▾")),
+      row("Night mode", "Warmer colours in the evening", h("div", { className: "qam-toggle" }, h("span", { className: "qam-switch" }, h("i")))),
+      h("div", { className: "dlg-btns" }, h("button", { className: "DialogButton gd_Button" }, "Reset"), h("button", { className: "DialogButton gd_Button" }, "Done"))));
 }
 function Main() {
   const [, bump] = useState(0);
   useEffect(() => { const t = setInterval(() => bump((n) => n + 1), 250); return () => clearInterval(t); }, []);
   if (scene === "library") return h(Library);
   if (scene === "game") return h(GamePage);
+  if (scene === "dialog") return h(Dialog);
   const patch = window.HC_PATCHES.get("/library/home");
   const route = { children: h(SteamHome) };
   return patch ? patch(route).children : route.children;
@@ -58,7 +91,6 @@ const qam = window.HC_QAM !== false;
 createRoot(document.getElementById("root")).render(
   h("div", { className: "frame" },
     h("div", { className: "main" }, h(Main)),
-    window.HC_MENU ? h(Menu) : null,
     qam ? h("div", { className: "qam" },
       h("div", { className: "qam-tabs" }, h("div", { className: "qam-tab" }, "⚙"), h("div", { className: "qam-tab on" }, p.icon), h("div", { className: "qam-tab" }, "⟳")),
       h("div", { className: "qam-body" }, h("div", { className: "qam-title" }, p.titleView), h("div", { className: "ScrollPanel" }, p.content))) : null,

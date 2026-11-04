@@ -59,39 +59,76 @@ const TEMPLATE = /\{\{([A-Za-z0-9_]+):([A-Za-z0-9_]+)\}\}/g;
 const SECTION = /^\/\* @section ([a-z]+) \*\/\s*$/;
 const SECTION_END = /^\/\* @end \*\/\s*$/;
 
-/** Steam's main menu (the Steam button) as Hearth's bottom bar needs it: its anchor, its column and its entries. In a
- *  game the top bar also needs the running game's column. Missing: Steam's own menu stays (the rest of the look goes on). */
-export const MENU_REQUIRED: [string, string][] = [
-  ["gamepadUIClasses", "MainNavMenuAnchor"],
-  ["mainMenuAppRunningClasses", "NavigationColumn"],
-  ["mainMenuAppRunningClasses", "NavigationMenuItem"],
-];
-export const TOP_REQUIRED: [string, string][] = [...MENU_REQUIRED, ["mainMenuAppRunningClasses", "AppColumn"]];
+export const MENU_PAUSED = "Hearth bottom bar menu paused";
 
-export function missingOf(list: [string, string][], resolve: Resolve): string[] {
-  const out: string[] = [];
-  for (const [m, k] of list) {
-    let v: string | undefined;
-    try { v = resolve(m, k); } catch { v = undefined; }
-    if (!v) out.push(m + "." + k);
-  }
-  return out;
+/** Which all-or-nothing parts of the skin go in. Whether the menu really takes the bar is decided on Steam's real menu
+ *  (theme.ts startMenuBar, judgeStructure and judgeBar below). */
+export function menuPlan(s: Settings): { sections: Record<string, boolean> } {
+  return { sections: { menu: s.menu, top: s.menu && s.menuTop } };
 }
 
-export const MENU_PAUSED = "Hearth bottom bar menu paused: Steam changed its menu";
-/** Which all-or-nothing parts of the skin go in, and the note for one that can't. */
-export function menuPlan(s: Settings, resolve: Resolve): { sections: Record<string, boolean>; note: string } {
-  const sections: Record<string, boolean> = { menu: false, top: false };
-  if (!s.menu) return { sections, note: "" };
-  const miss = missingOf(MENU_REQUIRED, resolve);
-  if (miss.length) return { sections, note: `${MENU_PAUSED} (missing: ${miss.join(", ")}); Steam's own menu is shown` };
-  sections.menu = true;
-  if (s.menuTop) {
-    const top = missingOf(TOP_REQUIRED, resolve);
-    if (!top.length) sections.top = true;
-    else return { sections, note: `In a game: Hearth top bar paused (missing: ${top.join(", ")}); the bottom bar is used` };
+/** Steam's menu as CSS Loader themes see it: #MainNavMenuContainer > .Panel > * > .Panel.Focusable entries. */
+export function judgeStructure(panel: boolean, labels: string[]): { ok: boolean; why: string } {
+  if (!panel) return { ok: false, why: "Steam's menu has no .Panel inside #MainNavMenuContainer any more (Steam changed its menu)" };
+  if (labels.length < 3) return { ok: false, why: `only ${labels.length} menu entries found (Steam changed its menu)` };
+  const empty = labels.filter((l) => !l).length;
+  if (empty * 2 > labels.length) return { ok: false, why: `${empty} of ${labels.length} menu entries have no label (Steam changed its menu)` };
+  return { ok: true, why: "" };
+}
+
+/** Whether the bar really sits as a bar once the menu is on screen: across most of the window, along the bottom (or
+ *  the top in a game), the entries in one row, and the first entry reachable (nothing covering it). */
+export function judgeBar(win: { w: number; h: number }, box: { left: number; right: number; top: number; bottom: number },
+                         entries: { left: number; top: number; width: number; height: number }[], hit: boolean, top: boolean): { ok: boolean; why: string } {
+  if (!(win.w > 0 && win.h > 0)) return { ok: false, why: "no window size" };
+  if (win.w < 640) return { ok: false, why: `Steam's menu window is only ${Math.round(win.w)} px wide` };
+  if (box.right - box.left < Math.min(win.w * 0.4, 600)) return { ok: false, why: "the bar is too narrow" };
+  if (top ? box.top > 160 : box.bottom < win.h - 160) return { ok: false, why: top ? "the bar isn't at the top" : "the bar isn't at the bottom" };
+  if (!entries.length || entries.some((e) => !(e.width > 0 && e.height > 0))) return { ok: false, why: "entries without a size" };
+  const tops = entries.map((e) => e.top);
+  if (Math.max(...tops) - Math.min(...tops) > 24) return { ok: false, why: "the entries aren't in one row" };
+  if (entries.some((e) => e.left < -1 || e.left + e.width > win.w + 1)) return { ok: false, why: "entries off the screen" };
+  if (!hit) return { ok: false, why: "something covers the entries" };
+  return { ok: true, why: "" };
+}
+
+/** The panel's note for the menu (empty when all is well or it's off). */
+export function menuNote(d: { layout: string; why: string; found: boolean }, s: Settings): string {
+  if (!s.menu) return "";
+  if (d.layout === "bar" || d.layout === "top") return "";
+  if (d.layout === "pending") return "";
+  if (d.layout === "vertical") return `${MENU_PAUSED}: ${d.why}`;
+  return d.found ? `${MENU_PAUSED}: ${d.why}; Steam's own menu is shown` : "";
+}
+
+/** Every Steam class name the skin asks for, resolved or missing (for the diagnostics). */
+export function classKeys(css: string, resolve: Resolve): { resolved: string[]; missing: string[] } {
+  const seen = new Set<string>();
+  const resolved: string[] = [], missing: string[] = [];
+  for (const m of (css || "").matchAll(/\{\{([A-Za-z0-9_]+):([A-Za-z0-9_]+)\}\}/g)) {
+    const id = m[1] + "." + m[2];
+    if (seen.has(id)) continue;
+    seen.add(id);
+    let v: string | undefined;
+    try { v = resolve(m[1], m[2]); } catch { v = undefined; }
+    (v ? resolved : missing).push(id);
   }
-  return { sections, note: "" };
+  return { resolved, missing };
+}
+
+/** The diagnostics as plain text (the panel shows it; "Write a Hearth Classic log" saves it). */
+export function diagnosticsText(d: { state: string; why: string; settings: Settings; keys: { resolved: string[]; missing: string[] };
+  menu: { windows: string[]; found: boolean; entries: number; labels: string[]; layout: string; why: string; game: boolean }; windows: string[]; game: boolean | null }): string {
+  const s = d.settings;
+  return [
+    `Hearth Classic: ${d.state}${d.why ? " (" + d.why + ")" : ""}`,
+    `Settings: look ${s.look}, home ${s.home}, wallpaper ${s.wallpaper}, bottom bar ${s.menu}, top bar in a game ${s.menuTop}, sounds ${s.sounds}`,
+    `Steam windows: ${d.windows.join(", ") || "none found"}`,
+    `Class names: ${d.keys.resolved.length} found, ${d.keys.missing.length} missing${d.keys.missing.length ? ": " + d.keys.missing.join(", ") : ""}`,
+    `Menu: ${d.menu.found ? "found" : "not found"} (#MainNavMenuContainer), ${d.menu.entries} entries${d.menu.labels.length ? " [" + d.menu.labels.join(", ") + "]" : ""}`,
+    `Menu bar: ${d.menu.layout}${d.menu.why ? " — " + d.menu.why : ""}`,
+    `Game running: ${d.game === null ? "can't tell (Router.MainRunningApp unreadable)" : d.game ? "yes" : "no"}`,
+  ].join("\n");
 }
 
 /** Hearth's icon for one of Steam's main menu entries, from its (English) label; "" for one Hearth has no icon for
@@ -190,10 +227,10 @@ const MEDIA_STATE = { state: { filter: { listSource: { type: "recents" }, mediaT
  *  the routes known to show a page; tests/model.test.mjs checks every place against these. */
 export const KNOWN_NAVIGATOR = ["Downloads", "Chat", "Media.Grid", "Media.List", "Settings", "SteamWeb", "LibraryTab", "Home"];
 export const KNOWN_WINDOW = ["NavigateToSteamWeb"];
-export const KNOWN_ROUTES = ["/library", "/library/home", "/settings"];
+export const KNOWN_ROUTES = ["/library", "/library/home", "/settings", "/steamweb"];
 export const PLACES: Place[] = [
   { id: "library", title: "Library", steps: [{ kind: "route", path: "/library" }] },
-  { id: "store", title: "Store", steps: [{ kind: "navigator", call: "SteamWeb", args: [STORE_URL] }, { kind: "window", call: "NavigateToSteamWeb", args: [STORE_URL] }, { kind: "route", path: "/library" }] },
+  { id: "store", title: "Store", steps: [{ kind: "navigator", call: "SteamWeb", args: [STORE_URL] }, { kind: "window", call: "NavigateToSteamWeb", args: [STORE_URL] }, { kind: "route", path: "/steamweb" }] },
   { id: "downloads", title: "Downloads", steps: [{ kind: "navigator", call: "Downloads" }, { kind: "navigator", call: "Settings", args: ["Downloads"] }, { kind: "route", path: "/library" }] },
   { id: "media", title: "Media", steps: [{ kind: "navigator", call: "Media.Grid", args: [MEDIA_STATE] }, { kind: "navigator", call: "Media.List", args: [MEDIA_STATE] }, { kind: "route", path: "/library" }] },
   { id: "friends", title: "Friends", steps: [{ kind: "navigator", call: "Chat" }, { kind: "navigator", call: "Settings", args: ["Friends"] }, { kind: "route", path: "/library" }] },

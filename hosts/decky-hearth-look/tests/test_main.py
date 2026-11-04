@@ -249,6 +249,28 @@ class HomeData(Base):
         self.assertTrue(b['logo'].startswith('data:image/svg+xml;base64,'))
         self.assertTrue(b['wallpaper'].startswith('data:image/jpeg;base64,'))
 
+    def test_diagnostics_go_to_hearths_log_folder(self):
+        p = self.m.Plugin()
+        r = self.run_(p.diagnostics('Menu: found\nMenu bar: bar'))
+        self.assertTrue(r['ok'])
+        self.assertEqual(r['path'], '~/.local/share/nimbus/hearth-classic.log')
+        f = os.path.join(self.tmp, 'home', '.local', 'share', 'nimbus', 'hearth-classic.log')
+        with open(f) as fh:
+            text = fh.read()
+        self.assertIn('Menu bar: bar', text)
+        self.assertTrue(any('diagnostics: Menu: found' in l for l in self.logs))
+        # Kept small: past the limit, the newer half stays.
+        with open(f, 'a') as fh:
+            fh.write('x' * (self.m.DIAG_LIMIT + 10) + '\n')
+        self.m.write_diag('after')
+        self.assertLess(os.path.getsize(f), self.m.DIAG_LIMIT)
+        with open(f) as fh:
+            self.assertTrue(fh.read().rstrip().endswith('after'))
+        # Off Hearth OS nothing is written.
+        system(self.sys_root, False)
+        shutil.rmtree(os.path.join(self.sys_root, 'usr'), ignore_errors=True)
+        self.assertFalse(self.run_(p.diagnostics('x'))['ok'])
+
     def test_no_other_trade_dress(self):
         import re
         css = re.sub(r'base64,[a-z0-9+/=]+', '', (PLUGIN / 'defaults/hearth-classic.css').read_text().lower())

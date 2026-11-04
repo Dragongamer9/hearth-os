@@ -26,15 +26,16 @@ With **Hearth Classic** picked:
   - **Dialogs, settings and menus**: Hearth's rounded rows, teal toggles and buttons, Hearth's context menus, footer and
     on-screen keyboard keys.
   - The font is Hearth's own font stack, the same one the old Game Mode used (Noto Sans on Hearth OS).
-- **The home screen** (stage 2): Steam's **Home** becomes the old Hearth home: Hearth's wallpaper and logo, **Jump back
-  in** (**Play**, **Details**), **Hearth's places**, **Continue playing**, **Favorites**, and a row per store (Steam,
-  then Hearth Sync's collections). Every game opens **Steam's own game page**. Switch: **Hearth home screen** (on).
+- **The home screen** (stage 2): Steam's **Home** becomes the old Hearth home (ui/index.html): a soft banner from the
+  focused game's art with Hearth's logo and "Home", **Recent games** (the newest one big and wide, the rest portrait,
+  store badges top right, the focused game named under the row), **Hearth's places**, **Favorites**, and a row per store
+  (Steam, then Hearth Sync's collections). Every game opens **Steam's own game page** (Play is there). Switch:
+  **Hearth home screen** (on).
 - **Hearth bottom bar menu** (on): the Steam button's menu becomes the old Game Mode's **Bottom Dock**: a floating bar
-  along the bottom with Hearth's icons over Steam's labels, the focused entry big and teal. The entries are Steam's own
-  and do what they always do.
-- **In a game: Hearth top bar** (on, under the bottom bar switch): while a game runs, the menu is the old Game Mode's
-  in-game **top dock** instead: the same bar at the top of the screen, the running game on its left (its logo and
-  Steam's Resume and Exit game), the rest of the menu after it. Back to the bottom bar when the game closes.
+  along the bottom, Hearth's icons alone, the focused entry big, teal and named. The entries are Steam's own and do what
+  they always do.
+- **In a game: Hearth top bar** (on, under the bottom bar switch): while a game runs, the same bar at the top of the
+  screen instead (the old in-game top dock), a little smaller. Back to the bottom bar when the game closes.
 - **Hearth sounds** (off by default): Hearth's soft move and select sounds on the home screen.
 - **Hearth Music on the home**: focusing a game's tile on the Hearth home plays its Hearth Music theme, the same way
   highlighting it in Steam's library does (Hearth Music's own player, settings and songs: with "Where" set to the
@@ -42,6 +43,30 @@ With **Hearth Classic** picked:
   (`data-hearth-appid`), which Hearth Music's focus watch reads; nothing is matched or played by Hearth Classic itself.
 
 **Steam** puts everything back to Steam's own look at once.
+
+## How the menu bars find Steam's menu (round 3)
+
+Round 2's bars didn't show on a device: Steam draws its main menu (and Quick Access) in **its own window**, a popup of
+the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin only went into the main window. Round 3:
+
+- The skin goes into every one of Steam's windows: the main window, `Router.WindowStore`'s windows, every popup in
+  `g_PopupManager`, and the window of every gamepad navigation tree.
+- The menu is found by the structure CSS Loader themes style on current Steam: `#MainNavMenuContainer` (the menu's
+  Focusable, its `navID`) `> .Panel > * > .Panel.Focusable` (the entries). The bar's rules only apply under
+  `html.hearth-bar`, set on that window only when this structure is there with at least three labelled entries.
+- When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
+  the entries in one row and the first one reachable (nothing covering it). If not (for example a menu window only as
+  wide as Steam's side panel), the bar comes off at once and the menu keeps Steam's own layout in Hearth's colours
+  (`html.hearth-menu`), with "Hearth bottom bar menu paused: …" in the panel.
+- If the structure isn't there, nothing touches the menu and the panel says why.
+- A running game is read from Steam's `Router.MainRunningApp`.
+- The controller: Steam's menu keeps its own navigation (up and down), which now moves along the bar.
+
+**Diagnostics** (Quick Access › Hearth Classic › Diagnostics): "Show what Hearth Classic found" lists Steam's windows
+(their titles), the class names found and missing, whether the menu was found (its entries), the bar's state and why,
+and whether a game runs. "Write a Hearth Classic log" saves it to Decky's log and to
+`~/.local/share/nimbus/hearth-classic.log`, which Hearth's Logs app lists; every change of the bar's state is written
+there too.
 
 ## The places row
 
@@ -51,7 +76,7 @@ SteamUIStore types), trying the next way when one isn't there, and the Library a
 | Place | Opens | If that's missing |
 | --- | --- | --- |
 | Library | Steam's Library (`/library`) | |
-| Store | Steam's store (`Navigator.SteamWeb`, store.steampowered.com) | the window's `NavigateToSteamWeb`, then the Library |
+| Store | Steam's store (`Navigator.SteamWeb`, store.steampowered.com) | the window's `NavigateToSteamWeb`, then `/steamweb` (the route Steam's own menu uses) |
 | Downloads | Steam's downloads (`Navigator.Downloads`) | Settings › Downloads, then the Library |
 | Media | Steam's media, recent screenshots and clips (`Navigator.Media.Grid`) | the list view, then the Library |
 | Friends | Steam's Friends & Chat (`Navigator.Chat`) | Settings › Friends, then the Library |

@@ -53,6 +53,10 @@ const frame = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:
 .mm_Anchor{position:absolute;left:0;top:0;bottom:40px;width:300px;z-index:6;display:flex}.menu-panel{width:300px;height:100%;background:#0e141b;box-shadow:8px 0 30px rgba(0,0,0,.55);display:flex;flex-direction:column}
 .mm_NavColumn{display:flex;flex-direction:column;padding:18px 8px}.mm_NavBox{display:flex;flex-direction:column}.mm_Item{padding:10px 16px;font-size:17px;color:#dcdedf;border-radius:2px}.mm_Item.gpfocus{background:#3d4450}
 .mm_AppColumn{padding:16px;border-bottom:1px solid #23262e}.mm_GameBg{height:60px;background:linear-gradient(135deg,#6a040f,#ffba08);margin-bottom:8px}.game-logo{font-weight:800;font-size:18px;margin-bottom:6px}
+.dlg-page{display:flex}.dlg-side{width:260px;padding:60px 12px;background:#0e141b}.dlg-tab{padding:10px 14px;color:#8b929a;font-size:15px}.dlg-tab.on{color:#fff;background:#23262e}
+.dlg{flex:1;padding:56px 32px;background:var(--gpSystemDarkerGrey,#1a1f27)}.dlg-title{font-size:24px;font-weight:700;margin-bottom:16px}.dlg-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #23262e}
+.slider{width:220px;height:6px;background:#3d4450;border-radius:3px}.slider b{display:block;height:6px;background:var(--gpColor-Blue,#1a9fff);border-radius:3px}.dlg-btns{display:flex;gap:12px;justify-content:flex-end;margin-top:20px}.dlg-btns .gd_Button{padding:10px 26px}
+.qam-toggle.on .qam-switch{background:var(--gpColor-Blue,#1a9fff)}.qam-toggle.on .qam-switch i{left:21px}
 .steam-footer{position:absolute;left:0;right:0;bottom:0;height:40px;display:flex;align-items:center;justify-content:flex-end;padding:0 24px;background:#0e141b;color:#8b929a;font-size:13px;word-spacing:6px}`;
 
 const browser = await chromium.launch();
@@ -77,7 +81,7 @@ async function places() {
 
 async function scene(name, opts, check) {
   const vars = { HC_SCENE: opts.scene || "home", HC_SETTINGS: opts.settings || {}, HC_STEAM: opts.steam || "", HC_HEARTH: opts.hearth !== false,
-                 HC_QAM: opts.qam !== false, HC_MENU: !!opts.menu, HC_RUNNING: !!opts.running, HC_NAVIGATOR: opts.navigator || "",
+                 HC_QAM: opts.qam !== false, HC_MENU: opts.menu || "", HC_MENUWIDTH: opts.menuWidth || 0, HC_RUNNING: !!opts.running, HC_NAVIGATOR: opts.navigator || "",
                  HC_CSS: css, HC_LOGO: logo, HC_WALL: wall };
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>${frame}</style></head><body><div id="root"></div>
 <script>${Object.entries(vars).map(([k, v]) => `window.${k}=${JSON.stringify(v)};`).join("")}</script><script>${js}</script></body></html>`;
@@ -106,12 +110,12 @@ await scene("panel-steam-look", { want: ["Game Mode look", "Steam's own Home", "
   await page.waitForTimeout(2500);
   const s = await page.evaluate(() => !!document.getElementById("hearth-classic"));
   const t = await page.evaluate(() => document.body.innerText);
-  if (!s || !t.includes("Jump back in")) errors.push("panel-steam-look: picking Hearth Classic didn't apply it");
+  if (!s || !t.toLowerCase().includes("recent games")) errors.push("panel-steam-look: picking Hearth Classic didn't apply it");
   await page.screenshot({ path: join(out, "panel-hearth-classic.png") });
 });
 // 2. Hearth Classic's home on Steam's Home route (no Quick Access), the first tile focused; then unloading.
 await scene("home-hearth-classic", { settings: { look: "classic" }, qam: false, wait: 3500, focus: ".hc-shelf .hc-tile", skin: true,
-  want: ["Jump back in", "Starfall Drift", "Continue playing", "Favorites", "Steam", "Epic", "GOG", "Library", "Store", "Downloads", "Play", "Details"],
+  want: ["Home", "Recent games", "Starfall Drift", "Favorites", "Steam", "Epic", "GOG", "Library", "Store", "Downloads"],
   not: ["Not In Steam Yet", "Steam's own Home"] }, async () => {
   const tiles = await page.locator(".hc-tile").count();
   if (tiles < 15) errors.push(`home-hearth-classic: only ${tiles} tiles`);
@@ -140,7 +144,7 @@ await scene("home-hearth-classic", { settings: { look: "classic" }, qam: false, 
 await scene("skin-steam-library", { scene: "library", qam: false, skin: false });
 await scene("skin-hearth-classic-library", { scene: "library", qam: false, settings: { look: "classic" }, skin: true }, async () => {
   const bg = await page.evaluate(() => getComputedStyle(document.querySelector(".gtp_Selected")).backgroundColor);
-  if (bg !== "rgb(63, 208, 184)") errors.push(`skin: the selected tab isn't Hearth's accent (${bg})`);
+  if (bg !== "rgb(233, 238, 244)") errors.push(`skin: the selected tab isn't Hearth's light pill (${bg})`);
 });
 // 3b. A Steam whose navigator lacks the places' calls: every place still opens a page (the Library), never an empty one.
 await scene("places-fallback", { settings: { look: "classic" }, qam: false, navigator: "missing", skin: true }, async () => {
@@ -155,31 +159,53 @@ await scene("game-hearth-classic", { scene: "game", qam: false, settings: { look
   const bg = await page.evaluate(() => getComputedStyle(document.querySelector(".ps_Play")).backgroundColor);
   if (bg !== "rgb(110, 226, 207)" && bg !== "rgb(63, 208, 184)") errors.push(`game page: Play isn't Hearth's accent (${bg})`);
 });
-// 3d. The Steam button's menu: Steam's, Hearth's bottom bar, Hearth's top bar in a game, and a Steam without the menu's names.
-await scene("menu-steam", { scene: "library", qam: false, menu: true, skin: false });
-await scene("menu-bottom-bar", { scene: "library", qam: false, menu: true, settings: { look: "classic" }, skin: true }, async () => {
-  const r = await page.evaluate(() => ({ icons: [...document.querySelectorAll(".mm_Item")].map((e) => e.getAttribute("data-hearth-icon")),
-    dir: getComputedStyle(document.querySelector(".mm_NavColumn")).flexDirection, top: document.querySelector(".mm_NavColumn").getBoundingClientRect().top,
-    ingame: document.documentElement.classList.contains("hearth-ingame") }));
-  if (r.dir !== "row" || r.top < 500) errors.push(`menu-bottom-bar: not a bar along the bottom (${r.dir}, top ${r.top})`);
-  if (r.icons.join(",") !== "home,lib,shop,media,dl,friends,gear,power") errors.push(`menu-bottom-bar: icons ${r.icons}`);
-  if (r.ingame) errors.push("menu-bottom-bar: marked as in a game");
+// 3d. The Steam button's menu, in its own window (an iframe standing in for Steam's MainMenu popup): Steam's, Hearth's
+// bottom bar, Hearth's top bar in a game, a narrow menu window (the bar doesn't fit: Hearth's colours on Steam's layout),
+// and a Steam that changed its menu (Steam's own menu, untouched).
+const menuState = () => page.evaluate(() => {
+  const d = document.getElementById("menuwin").contentDocument, html = d.documentElement;
+  const items = [...d.querySelectorAll("#MainNavMenuContainer .Focusable.mm_entry")];
+  const r = items.map((e) => e.getBoundingClientRect());
+  return { cls: html.className, icons: items.map((e) => e.getAttribute("data-hearth-icon")), tops: r.map((x) => Math.round(x.top)),
+           style: !!d.getElementById("hearth-classic"), dir: getComputedStyle(items[0].parentElement.parentElement).flexDirection };
 });
-await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: true, running: true, settings: { look: "classic" }, skin: true }, async () => {
-  const r = await page.evaluate(() => ({ ingame: document.documentElement.classList.contains("hearth-ingame"), top: document.querySelector(".mm_NavColumn").getBoundingClientRect().top,
-    icons: [...document.querySelectorAll(".mm_Item")].map((e) => e.getAttribute("data-hearth-icon")) }));
-  if (!r.ingame || r.top > 150) errors.push(`menu-top-bar-in-game: not a bar at the top (${JSON.stringify(r)})`);
-  if (!r.icons.includes("pad") || !r.icons.includes("close")) errors.push(`menu-top-bar-in-game: Resume and Exit game have no icons (${r.icons})`);
+await scene("menu-steam", { scene: "library", qam: false, menu: "steam", skin: false });
+await scene("menu-bottom-bar", { scene: "library", qam: false, menu: "steam", settings: { look: "classic" }, skin: true }, async () => {
+  const m = await menuState();
+  if (!m.style) errors.push("menu-bottom-bar: the skin didn't reach the menu's own window");
+  if (!/hearth-bar/.test(m.cls) || /hearth-ingame/.test(m.cls)) errors.push(`menu-bottom-bar: classes ${m.cls}`);
+  if (m.dir !== "row" || Math.min(...m.tops) < 500 || Math.max(...m.tops) - Math.min(...m.tops) > 24) errors.push(`menu-bottom-bar: not a bar along the bottom (${m.dir}, ${m.tops})`);
+  if (m.icons.join(",") !== "home,lib,shop,friends,media,dl,gear,power") errors.push(`menu-bottom-bar: icons ${m.icons}`);
 });
-await scene("menu-paused-steam-changed", { scene: "library", menu: true, steam: "menuchanged", settings: { look: "classic" }, skin: true,
-  want: ["Hearth bottom bar menu paused"] }, async () => {
-  const n = await page.evaluate(() => document.querySelectorAll("[data-hearth-icon]").length);
-  if (n) errors.push("menu-paused-steam-changed: menu icons added though the menu's names are missing");
-  const dir = await page.evaluate(() => getComputedStyle(document.querySelector(".mm_NavColumn")).flexDirection);
-  if (dir !== "column") errors.push("menu-paused-steam-changed: Steam's menu was restyled anyway");
+await scene("menu-top-bar-in-game", { scene: "game", qam: false, menu: "steam", running: true, settings: { look: "classic" }, skin: true }, async () => {
+  const m = await menuState();
+  if (!/hearth-bar/.test(m.cls) || !/hearth-ingame/.test(m.cls) || Math.max(...m.tops) > 150) errors.push(`menu-top-bar-in-game: not a bar at the top (${m.cls}, ${m.tops})`);
 });
+await scene("menu-narrow-window", { scene: "library", menu: "steam", menuWidth: 320, settings: { look: "classic" }, skin: true,
+  want: ["Hearth bottom bar menu paused", "320 px wide"] }, async () => {
+  const m = await menuState();
+  if (/hearth-bar/.test(m.cls) || !/hearth-menu/.test(m.cls)) errors.push(`menu-narrow-window: expected Hearth's colours on Steam's layout (${m.cls})`);
+  if (m.dir === "row") errors.push("menu-narrow-window: still laid out as a bar");
+});
+await scene("menu-steam-changed", { scene: "library", menu: "changed", settings: { look: "classic" }, skin: true,
+  want: ["Hearth bottom bar menu paused", "no .Panel"] }, async () => {
+  const m = await menuState();
+  if (/hearth-(bar|menu)/.test(m.cls) || m.icons.some(Boolean)) errors.push(`menu-steam-changed: Steam's changed menu was touched (${m.cls})`);
+});
+// The diagnostics in the panel, after the menu was found.
+await scene("panel-diagnostics", { scene: "library", menu: "steam", settings: { look: "classic" }, skin: true }, async () => {
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Show what Hearth Classic found")); b && b.click(); });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => { const m = document.getElementById("menuwin"); if (m) m.style.display = "none"; });
+  const t = await page.evaluate(() => document.body.innerText);
+  for (const w of ["MainMenu_uid2", "Menu: found", "8 entries", "Menu bar: bar", "Class names:"]) if (!t.includes(w)) errors.push(`panel-diagnostics: missing ${w}`);
+  await page.screenshot({ path: join(out, "panel-diagnostics.png") });
+});
+// 3e. A settings dialog (Steam's rows, a toggle, a dropdown, buttons): Steam's look, then Hearth Classic.
+await scene("dialog-steam", { scene: "dialog", qam: false, skin: false });
+await scene("dialog-hearth-classic", { scene: "dialog", qam: false, settings: { look: "classic" }, skin: true });
 // 4. The Quick Access panel with Hearth Classic on.
-await scene("panel-hearth-classic-on", { settings: { look: "classic" }, want: ["Hearth home screen", "Hearth wallpaper", "Hearth bottom bar menu", "In a game: Hearth top bar", "Hearth sounds", "Jump back in"], skin: true });
+await scene("panel-hearth-classic-on", { settings: { look: "classic" }, want: ["Hearth home screen", "Hearth wallpaper", "Hearth bottom bar menu", "In a game: Hearth top bar", "Hearth sounds", "Recent games"], skin: true });
 // 5. A Steam update renamed its modules: paused, Steam's normal look and Home, the note, the log line.
 await scene("panel-paused", { settings: { look: "classic" }, steam: "changed", skin: false,
   want: ["Hearth Classic paused: Steam changed its layout", "Try again", "Steam's own Home"] }, async () => {
@@ -191,15 +217,20 @@ await scene("panel-paused", { settings: { look: "classic" }, steam: "changed", s
 // 6. Not Hearth OS: the shared invitation, nothing applied even with Hearth Classic saved.
 await scene("panel-not-hearth-os", { settings: { look: "classic" }, hearth: false, skin: false, want: ["Get Hearth OS", "Steam's own Home"], not: ["Hearth home screen", "Try again", "Pick Hearth Classic"] });
 
-// 7. The old Hearth Game Mode home beside Hearth Classic's.
+// 7. The audit pairs: the old Hearth Game Mode (site/img/gm-*.webp, drawn from ui/index.html by tools/site-shots.py)
+// beside Hearth Classic in the stand-in, one per screen.
 await freshPage(2600, 900);
-const oldShot = b64(join(root, "site/img/gm-home.webp"), "image/webp");
-const newShot = b64(join(out, "home-hearth-classic.png"), "image/png");
-await page.setContent(`<!doctype html><html><body style="margin:0;background:#0c1016;color:#e9eef4;font-family:'Noto Sans',Arial,sans-serif;display:flex;gap:40px;padding:30px;box-sizing:border-box">
-<figure style="margin:0"><figcaption style="font-size:22px;margin-bottom:12px">The old Hearth Game Mode (site/img/gm-home.webp)</figcaption><img src="${oldShot}" style="width:1240px;height:775px;object-fit:cover;border-radius:10px"></figure>
-<figure style="margin:0"><figcaption style="font-size:22px;margin-bottom:12px">Hearth Classic on Steam's Home (stand-in frame, CI)</figcaption><img src="${newShot}" style="width:1240px;height:775px;border-radius:10px"></figure></body></html>`);
-await page.waitForTimeout(500);
-await page.screenshot({ path: join(out, "compare-old-and-new-home.png") });
+const PAIRS = [["home", "gm-home", "home-hearth-classic"], ["library", "gm-library", "skin-hearth-classic-library"], ["game-page", "gm-game", "game-hearth-classic"],
+  ["quick-access", "gm-qa", "panel-hearth-classic-on"], ["menu-bottom-bar", "gm-dock", "menu-bottom-bar"], ["in-game-top-bar", "gm-overlay", "menu-top-bar-in-game"],
+  ["dialogs", "gm-settings", "dialog-hearth-classic"]];
+for (const [name, old, mine] of PAIRS) {
+  const a = b64(join(root, "site/img", old + ".webp"), "image/webp"), c = b64(join(out, mine + ".png"), "image/png");
+  await page.setContent(`<!doctype html><html><body style="margin:0;background:#0c1016;color:#e9eef4;font-family:'Noto Sans',Arial,sans-serif;display:flex;gap:40px;padding:30px;box-sizing:border-box">
+<figure style="margin:0"><figcaption style="font-size:22px;margin-bottom:12px">Hearth Game Mode (${old}.webp)</figcaption><img src="${a}" style="width:1240px;height:775px;object-fit:cover;object-position:top;border-radius:10px"></figure>
+<figure style="margin:0"><figcaption style="font-size:22px;margin-bottom:12px">Hearth Classic (${mine}, stand-in for Steam)</figcaption><img src="${c}" style="width:1240px;height:775px;border-radius:10px"></figure></body></html>`);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(out, "pair-" + name + ".png") });
+}
 writeFileSync(join(out, "README.txt"), "Hearth Classic's real plugin code over a stand-in of Steam's Game Mode (tests/mock). Not Steam itself.\n");
 await browser.close();
 if (errors.length) { console.log(`::error title=Hearth Classic pictures::${errors.join(" | ").slice(0, 3000)}`); process.exit(1); }

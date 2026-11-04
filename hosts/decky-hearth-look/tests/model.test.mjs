@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   DEFAULTS, REQUIRED, PAUSED_NOTE, normalize, checkSteam, decide, renderTheme, makePatchSet, appIdFor,
   homeFromHearth, homeFromSteam, pickHome, artCandidates, steamArtMethods, played, blipFor,
-  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, MENU_REQUIRED,
+  PLACES, runPlace, KNOWN_NAVIGATOR, KNOWN_WINDOW, KNOWN_ROUTES, menuPlan, menuIcon, MENU_PAUSED, judgeStructure, judgeBar, menuNote, classKeys, diagnosticsText,
 } from "../src/model.ts";
 
 const CSS = readFileSync(new URL("../defaults/hearth-classic.css", import.meta.url), "utf8");
@@ -196,30 +196,58 @@ test("places: Steam's navigator first, the next way when one is missing or throw
   const win2 = { Navigator: { Settings: rec("Settings"), Downloads: () => { throw new Error("gone"); } }, NavigateToSteamWeb: rec("window.NavigateToSteamWeb") };
   assert.equal(runPlace(PLACES[2], win2, (r) => routes.push(r)), "navigator:Settings");
   assert.equal(runPlace(PLACES[1], win2, (r) => routes.push(r)), "window:NavigateToSteamWeb");
+  assert.equal(runPlace(PLACES[1], { Navigator: {} }, (r) => routes.push(r)), "route:/steamweb");   // Steam's own Store route
   assert.equal(runPlace(PLACES[3], win2, (r) => routes.push(r)), "route:/library");
   // No window at all: still a page.
-  for (const p of PLACES) assert.match(runPlace(p, null, () => {}), /^route:\/(library|settings)$/);
+  for (const p of PLACES) assert.match(runPlace(p, null, () => {}), /^route:\/(library|settings|steamweb)$/);
 });
 
-test("menu bars: all or nothing, Steam's own menu when its names are missing", () => {
+test("menu bars: switches, the real menu's structure, and the bar only when it really sits as a bar", () => {
   const classic = { ...DEFAULTS, look: "classic" };
-  assert.deepEqual(menuPlan(classic, all), { sections: { menu: true, top: true }, note: "" });
-  assert.deepEqual(menuPlan({ ...classic, menuTop: false }, all).sections, { menu: true, top: false });
-  assert.deepEqual(menuPlan({ ...classic, menu: false }, all).sections, { menu: false, top: false });
-  const noMenu = (m, k) => (m === "mainMenuAppRunningClasses" ? undefined : all(m, k));
-  const p = menuPlan(classic, noMenu);
-  assert.deepEqual(p.sections, { menu: false, top: false });
-  assert.ok(p.note.startsWith(MENU_PAUSED));
-  const noApp = (m, k) => (k === "AppColumn" ? undefined : all(m, k));
-  assert.deepEqual(menuPlan(classic, noApp).sections, { menu: true, top: false });
-  assert.equal(MENU_REQUIRED.length, 3);
+  assert.deepEqual(menuPlan(classic).sections, { menu: true, top: true });
+  assert.deepEqual(menuPlan({ ...classic, menuTop: false }).sections, { menu: true, top: false });
+  assert.deepEqual(menuPlan({ ...classic, menu: false }).sections, { menu: false, top: false });
+  const L = ["Home", "Library", "Store", "Friends & Chat", "Media", "Downloads", "Settings", "Power"];
+  assert.equal(judgeStructure(true, L).ok, true);
+  assert.match(judgeStructure(false, L).why, /no \.Panel/);
+  assert.match(judgeStructure(true, ["Home", "Library"]).why, /only 2/);
+  assert.match(judgeStructure(true, ["", "", "", "Home"]).why, /no label/);
+  const win = { w: 1280, h: 800 };
+  const row = (top) => L.map((_, i) => ({ left: 250 + i * 90, top, width: 80, height: 68 }));
+  assert.deepEqual(judgeBar(win, { left: 230, right: 1050, top: 690, bottom: 778 }, row(700), true, false), { ok: true, why: "" });
+  assert.equal(judgeBar(win, { left: 230, right: 1050, top: 22, bottom: 110 }, row(32), true, true).ok, true);
+  // The cases a device could show: a narrow menu window, the bar not at the bottom, entries in a column, covered.
+  assert.match(judgeBar({ w: 320, h: 800 }, { left: 0, right: 320, top: 0, bottom: 800 }, row(700), true, false).why, /320 px wide/);
+  assert.match(judgeBar(win, { left: 230, right: 1050, top: 100, bottom: 190 }, row(110), true, false).why, /bottom/);
+  assert.match(judgeBar(win, { left: 230, right: 1050, top: 690, bottom: 778 }, L.map((_, i) => ({ left: 250, top: 100 + i * 50, width: 80, height: 40 })), true, false).why, /one row/);
+  assert.match(judgeBar(win, { left: 230, right: 1050, top: 690, bottom: 778 }, row(700), false, false).why, /covers/);
+  assert.match(judgeBar(win, { left: 230, right: 1050, top: 690, bottom: 778 }, [{ left: 0, top: 0, width: 0, height: 0 }], true, false).why, /size/);
+  // The panel's note.
+  assert.equal(menuNote({ layout: "bar", why: "", found: true }, classic), "");
+  assert.equal(menuNote({ layout: "pending", why: "x", found: true }, classic), "");
+  assert.ok(menuNote({ layout: "vertical", why: "the bar didn't fit", found: true }, classic).startsWith(MENU_PAUSED));
+  assert.ok(menuNote({ layout: "none", why: "only 2", found: true }, classic).includes("Steam's own menu"));
+  assert.equal(menuNote({ layout: "none", why: "x", found: true }, { ...classic, menu: false }), "");
   // The skin leaves a section out whole when it's off, and puts it in when it's on.
   const on = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: true, top: true }).css;
   const off = renderTheme(CSS, { logo: "L", wallpaper: "W" }, all, { menu: false, top: false }).css;
-  assert.ok(on.includes("mainMenuAppRunningClasses_NavigationColumn_x1{") && on.includes("html.hearth-ingame"));
-  assert.ok(!off.includes("NavigationColumn") && !off.includes("hearth-ingame") && !off.includes("data-hearth-icon"));
-  assert.ok(off.includes(".gpfocus{"));
+  assert.ok(on.includes("html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable{") && on.includes("html.hearth-bar.hearth-ingame"));
+  const rules = off.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!rules.includes("MainNavMenuContainer") && !rules.includes("hearth-ingame") && !rules.includes("data-hearth-icon"));
+  // Every bar rule is scoped to html.hearth-bar / html.hearth-menu (set only after the real menu is found).
+  for (const line of on.split("\n")) if (line.includes("MainNavMenuContainer") && !line.startsWith("/*") && !line.startsWith("   ")) assert.match(line, /^html\.hearth-(bar|menu)/, line);
   for (const r of [on, off]) assert.equal(r.split("/*").length, r.split("*/").length);
+});
+
+test("diagnostics: class names found and missing, the menu, the windows", () => {
+  const k = classKeys(CSS, (m, key) => (m === "gamepadDialogClasses" ? undefined : all(m, key)));
+  assert.ok(k.resolved.includes("gamepadTabbedPageClasses.TabHeaderRowWrapper"));
+  assert.ok(k.missing.includes("gamepadDialogClasses.Field"));
+  assert.equal(new Set([...k.resolved, ...k.missing]).size, k.resolved.length + k.missing.length);
+  const t = diagnosticsText({ state: "on", why: "", settings: { ...DEFAULTS, look: "classic" }, keys: k,
+    menu: { windows: [], found: true, entries: 8, labels: ["Home", "Library"], layout: "vertical", why: "the bar didn't fit", game: false },
+    windows: ["SP", "MainMenu_uid2"], game: null });
+  for (const w of ["Hearth Classic: on", "MainMenu_uid2", "missing: ", "Menu: found", "8 entries", "Menu bar: vertical", "can't tell"]) assert.ok(t.includes(w), w);
 });
 
 test("menu icons from Steam's labels", () => {

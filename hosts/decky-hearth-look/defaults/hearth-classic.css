@@ -34,13 +34,14 @@ body{background:#0c1016 !important;color:#e9eef4}
 /* Hearth's backdrop: the wallpaper behind the Library and home, darkened like the old Game Mode's home (#bg) */
 .{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:linear-gradient(180deg,rgba(12,16,22,.3),rgba(12,16,22,.82) 55%,rgba(12,16,22,.96)),url(%WALLPAPER%) center/cover fixed !important}
 .{{gamepadLibraryClasses:GamepadLibrary}}{background:transparent !important}
-/* Hearth's top bar (.topbar): the dark gradient, the faint line, its tabs as pills, the picked one accent-filled */
+/* Hearth's top bar (.topbar): the dark gradient, the faint line, its tabs as pills: the picked one light (ui .tabs .on),
+   the focused one ringed in the accent */
 .{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:linear-gradient(#121821,rgba(18,24,33,.6)) !important;border-bottom:1px solid rgba(255,255,255,.03) !important}
 .{{gamepadTabbedPageClasses:Tab}}{border-radius:16px !important;color:#8d99a8 !important;font-weight:600 !important;letter-spacing:.02em}
-.{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:#3fd0b8 !important;color:#06231e !important}
+.{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:#e9eef4 !important;color:#0c1016 !important}
 .{{gamepadTabbedPageClasses:Tab}}.gpfocus{box-shadow:0 0 0 2px #0c1016,0 0 0 4px #3fd0b8 !important}
 .{{gamepadTabbedPageClasses:TabCount}}{background:#273140 !important;color:#c3ccd6 !important;border-radius:8px !important}
-.{{gamepadTabbedPageClasses:Selected}} .{{gamepadTabbedPageClasses:TabCount}}{background:rgba(6,35,30,.18) !important;color:#06231e !important}
+.{{gamepadTabbedPageClasses:Selected}} .{{gamepadTabbedPageClasses:TabCount}}{background:rgba(12,16,22,.12) !important;color:#0c1016 !important}
 /* The Library: section headings like Hearth's (h2: small, upper case, dim), Hearth's cards (.tile: 10px corners,
    the lift and the double ring when focused) */
 .{{gamepadLibraryClasses:CollectionHeader}}{font-size:15px !important;font-weight:600 !important;letter-spacing:.02em !important;text-transform:uppercase !important;color:#8d99a8 !important}
@@ -90,25 +91,30 @@ body{background:#0c1016 !important;color:#e9eef4}
 .{{gamepadContextMenuClasses:contextMenuItem}}{border-radius:10px !important;color:#e9eef4 !important}
 .{{gamepadContextMenuClasses:contextMenuItem}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
 /* Footer hints, like Hearth's footer */
-.{{footerClasses:BasicFooter}}{background:#121821 !important;border-top:1px solid #2a3443 !important;color:#8d99a8 !important}
+.{{footerClasses:BasicFooter}}{background:#121821 !important;border-top:1px solid #2a3443 !important;color:#8d99a8 !important;font-size:13px !important}
+.{{footerClasses:FooterLegend}}{color:#8d99a8 !important;gap:6px !important}
 /* On-screen keyboard: Hearth's keys */
 .{{VirtualKeyboardContainer:VirtualKeyboardContainer}}{background:#121821 !important;border-top:1px solid #2a3443 !important}
 .{{VirtualKeyboardContainer:Key}}{background:#1d2531 !important;border-radius:8px !important;color:#e9eef4 !important;box-shadow:inset 0 -2px 0 rgba(0,0,0,.35) !important}
 .{{VirtualKeyboardContainer:Key}}.gpfocus{background:#3fd0b8 !important;color:#06231e !important}
 
-/* ---- the main menu as Hearth's bottom bar (the old Game Mode's Bottom Dock, ui/index.html .dk-bar): a floating pill
-   along the bottom, Hearth's icons over Steam's labels, the focused entry big and accent-filled. Only Steam's menu is
-   restyled: its entries are Steam's own and do what they always do. */
+/* ---- the main menu as Hearth's bottom bar (the old Game Mode's Bottom Dock, ui/index.html .dk-bar). Steam draws its
+   menu in its own window (CSS Loader's "MainMenu"): #MainNavMenuContainer > .Panel > * > .Panel.Focusable entries, the
+   structure CSS Loader themes style. These rules only apply under html.hearth-bar, which the plugin sets on that window
+   only after finding exactly this structure, and takes away again if the bar doesn't fit once the menu is on screen
+   (then html.hearth-menu: Steam's own layout in Hearth's colours). Only the look changes: the entries are Steam's own. */
 /* @section menu */
-.{{gamepadUIClasses:MainNavMenuAnchor}}{top:auto !important;bottom:0 !important;left:0 !important;right:0 !important;width:auto !important;height:auto !important;max-width:none !important;display:flex !important;justify-content:center !important;align-items:flex-end !important;padding:0 16px 22px !important;background:none !important;box-shadow:none !important}
-.{{gamepadUIClasses:MainNavMenuAnchor}} > *{height:auto !important;width:auto !important;max-width:calc(100vw - 32px) !important;background:none !important;box-shadow:none !important}
-.{{mainMenuAppRunningClasses:NavigationColumn}}{display:flex !important;flex-direction:row !important;align-items:center !important;gap:6px !important;padding:10px 14px !important;border-radius:26px !important;background:rgba(22,29,39,.95) !important;border:1px solid #2a3443 !important;box-shadow:0 18px 50px rgba(0,0,0,.45) !important;width:auto !important;height:auto !important;max-width:calc(100vw - 32px) !important;overflow-x:auto !important}
-.{{mainMenuAppRunningClasses:NavigationBox}}{display:flex !important;flex-direction:row !important;align-items:center !important;gap:6px !important;width:auto !important;height:auto !important;background:none !important}
-.{{mainMenuAppRunningClasses:NavigationMenuItem}}{display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;gap:4px !important;min-width:68px !important;height:68px !important;padding:6px 10px !important;margin:0 !important;border-radius:18px !important;color:#8d99a8 !important;font-size:11px !important;font-weight:600 !important;letter-spacing:.02em !important;text-transform:none !important;white-space:nowrap !important;background:none !important;transition:min-width .16s var(--hearth-ease),height .16s var(--hearth-ease),background .16s,color .16s,border-radius .16s !important}
-.{{mainMenuAppRunningClasses:NavigationMenuItem}}.gpfocus{min-width:82px !important;height:82px !important;border-radius:22px !important;background:#3fd0b8 !important;color:#06231e !important;box-shadow:0 10px 30px rgba(63,208,184,.35) !important}
-.{{mainMenuAppRunningClasses:NavigationMenuItem}}.{{mainMenuAppRunningClasses:Active}}{color:#3fd0b8 !important;background:#273140 !important}
-.{{mainMenuAppRunningClasses:NavigationMenuItemSeparator}}{width:1px !important;height:36px !important;margin:0 6px !important;background:#2a3443 !important}
-[data-hearth-icon]:not([data-hearth-icon=""])::before{content:"";display:block;width:26px;height:26px;flex:none;background:currentColor;-webkit-mask:var(--hc-icon) center/contain no-repeat;mask:var(--hc-icon) center/contain no-repeat}
+html.hearth-bar #MainNavMenuContainer{position:fixed !important;left:0 !important;right:0 !important;top:auto !important;bottom:0 !important;width:auto !important;height:auto !important;max-width:none !important;display:flex !important;flex-direction:row !important;justify-content:center !important;align-items:flex-end !important;padding:0 16px 22px !important;margin:0 !important;background:none !important;box-shadow:none !important;transform:none !important;z-index:1000 !important}
+html.hearth-bar #MainNavMenuContainer > .Panel{display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;justify-content:flex-start !important;gap:6px !important;width:auto !important;height:auto !important;max-width:calc(100vw - 32px) !important;max-height:none !important;padding:10px 14px !important;margin:0 !important;border-radius:26px !important;background:rgba(22,29,39,.95) !important;border:1px solid #2a3443 !important;box-shadow:0 18px 50px rgba(0,0,0,.45) !important;overflow-x:auto !important;overflow-y:visible !important;transform:none !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > *{display:block !important;flex:none !important;width:auto !important;height:auto !important;margin:0 !important;padding:0 !important;overflow:visible !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable{display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;gap:4px !important;min-width:58px !important;width:auto !important;height:58px !important;padding:6px 8px !important;margin:0 !important;border-radius:18px !important;color:#8d99a8 !important;font-size:11px !important;font-weight:600 !important;letter-spacing:.02em !important;line-height:1.1 !important;white-space:nowrap !important;text-align:center !important;background:none !important;box-shadow:none !important;transform:none !important;transition:min-width .16s var(--hearth-ease),height .16s var(--hearth-ease),background .16s,color .16s,border-radius .16s !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable *{font-size:11px !important;color:inherit !important;margin:0 !important;padding:0 !important;line-height:1.1 !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable.gpfocus,html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable.gpfocuswithin{min-width:74px !important;height:74px !important;border-radius:22px !important;background:#3fd0b8 !important;color:#06231e !important;box-shadow:0 10px 30px rgba(63,208,184,.35) !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable svg{width:26px !important;height:26px !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable[data-hearth-icon]:not([data-hearth-icon=""]) svg{display:none !important}
+/* Like the old dock: Hearth's icons alone; the focused entry also shows its name */
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable[data-hearth-icon]:not([data-hearth-icon=""]):not(.gpfocus):not(.gpfocuswithin) *{font-size:0 !important;line-height:0 !important}
+html.hearth-bar #MainNavMenuContainer > .Panel > * > .Panel.Focusable[data-hearth-icon]:not([data-hearth-icon=""])::before{content:"";display:block;width:26px;height:26px;flex:none;background:currentColor;-webkit-mask:var(--hc-icon) center/contain no-repeat;mask:var(--hc-icon) center/contain no-repeat}
 [data-hearth-icon="home"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMy41IDExIDEyIDRsOC41IDciLz48cGF0aCBkPSJNNS41IDkuNVYyMGgxM1Y5LjUiLz48cGF0aCBkPSJNMTAgMjB2LTVoNHY1Ii8+PC9zdmc+")}
 [data-hearth-icon="lib"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzLjUiIHk9IjMuNSIgd2lkdGg9IjciIGhlaWdodD0iNyIgcng9IjEuNSIvPjxyZWN0IHg9IjEzLjUiIHk9IjMuNSIgd2lkdGg9IjciIGhlaWdodD0iNyIgcng9IjEuNSIvPjxyZWN0IHg9IjMuNSIgeT0iMTMuNSIgd2lkdGg9IjciIGhlaWdodD0iNyIgcng9IjEuNSIvPjxyZWN0IHg9IjEzLjUiIHk9IjEzLjUiIHdpZHRoPSI3IiBoZWlnaHQ9IjciIHJ4PSIxLjUiLz48L3N2Zz4=")}
 [data-hearth-icon="shop"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNSA4aDE0bC0xLjIgMTEuMmExLjUgMS41IDAgMCAxLTEuNSAxLjNINy43YTEuNSAxLjUgMCAwIDEtMS41LTEuM3oiLz48cGF0aCBkPSJNOSAxMFY3YTMgMyAwIDAgMSA2IDB2MyIvPjwvc3ZnPg==")}
@@ -121,18 +127,17 @@ body{background:#0c1016 !important;color:#e9eef4}
 [data-hearth-icon="pad"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNyA4aDEwYTQuNSA0LjUgMCAwIDEgNC4zIDUuOGwtMSAzLjNhMi40IDIuNCAwIDAgMS00LjEuOEwxNC41IDE2aC01bC0xLjcgMS45YTIuNCAyLjQgMCAwIDEtNC4xLS44bC0xLTMuM0E0LjUgNC41IDAgMCAxIDcgOHoiLz48cGF0aCBkPSJNOCAxMXYzTTYuNSAxMi41aDMiLz48L3N2Zz4=")}
 [data-hearth-icon="close"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNiA2bDEyIDEyTTE4IDYgNiAxOCIvPjwvc3ZnPg==")}
 [data-hearth-icon="shot"]{--hc-icon:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSI2IiB3aWR0aD0iMTgiIGhlaWdodD0iMTQiIHJ4PSIyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMyIgcj0iMy41Ii8+PHBhdGggZD0iTTkgNmwxLjUtMmgzTDE1IDYiLz48L3N2Zz4=")}
+/* The fallback: Steam's own menu layout in Hearth's colours (when the bar doesn't fit Steam's menu window) */
+html.hearth-menu #MainNavMenuContainer > .Panel{background:linear-gradient(180deg,#121821,#0c1016) !important;border-right:1px solid #2a3443 !important}
+html.hearth-menu #MainNavMenuContainer > .Panel > * > .Panel.Focusable{border-radius:10px !important;color:#e9eef4 !important}
+html.hearth-menu #MainNavMenuContainer > .Panel > * > .Panel.Focusable.gpfocus,html.hearth-menu #MainNavMenuContainer > .Panel > * > .Panel.Focusable.gpfocuswithin{background:#3fd0b8 !important;color:#06231e !important}
 /* @end */
 
 /* ---- in a game, the menu is Hearth's top bar instead (the old Game Mode's top dock, ui/index.html .qd-bar): the same
-   pill at the top of the screen, the running game on its left. The plugin marks Steam's windows while a game runs. */
+   bar at the top of the screen, a little smaller, so the game stays in view under it. */
 /* @section top */
-html.hearth-ingame .{{gamepadUIClasses:MainNavMenuAnchor}}{top:0 !important;bottom:auto !important;align-items:flex-start !important;padding:22px 16px 0 !important}
-html.hearth-ingame .{{gamepadUIClasses:MainNavMenuAnchor}} > *{display:flex !important;flex-direction:row !important;align-items:center !important;gap:6px !important;padding:10px 14px !important;border-radius:26px !important;background:rgba(22,29,39,.95) !important;border:1px solid #2a3443 !important;box-shadow:0 18px 50px rgba(0,0,0,.45) !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:NavigationColumn}}{padding:0 !important;border:none !important;box-shadow:none !important;background:none !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:AppColumn}}{display:flex !important;flex-direction:row !important;align-items:center !important;gap:10px !important;width:auto !important;max-width:260px !important;height:auto !important;padding:0 12px 0 4px !important;margin:0 4px 0 0 !important;border-right:1px solid #2a3443 !important;background:none !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:CurrentGameBackground}}{display:none !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:CurrentGameLogo}}{max-height:44px !important;max-width:150px !important;object-fit:contain !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:AppRunningControls}}{display:flex !important;flex-direction:row !important;gap:6px !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:NavigationMenuItem}}{min-width:56px !important;height:56px !important}
-html.hearth-ingame .{{mainMenuAppRunningClasses:NavigationMenuItem}}.gpfocus{min-width:68px !important;height:68px !important}
+html.hearth-bar.hearth-ingame #MainNavMenuContainer{top:0 !important;bottom:auto !important;align-items:flex-start !important;padding:22px 16px 0 !important}
+html.hearth-bar.hearth-ingame #MainNavMenuContainer > .Panel{background:rgba(22,29,39,.95) !important}
+html.hearth-bar.hearth-ingame #MainNavMenuContainer > .Panel > * > .Panel.Focusable{min-width:52px !important;height:52px !important}
+html.hearth-bar.hearth-ingame #MainNavMenuContainer > .Panel > * > .Panel.Focusable.gpfocus,html.hearth-bar.hearth-ingame #MainNavMenuContainer > .Panel > * > .Panel.Focusable.gpfocuswithin{min-width:64px !important;height:64px !important}
 /* @end */

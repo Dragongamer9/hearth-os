@@ -9,14 +9,15 @@ import { callable, definePlugin, routerHook } from "@decky/api";
 import { useEffect, useState } from "react";
 import { FaFire } from "react-icons/fa";
 import { HearthOnly, hearthOs } from "./hearth-only";
-import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, decide, makePatchSet, menuPlan, normalize, renderTheme } from "./model";
-import { applySkin, removeSkin, startIngameWatch, startMenuDecor, steamClass } from "./theme";
+import { DEFAULTS, PAUSED_NOTE, Settings, State, checkSteam, classKeys, decide, diagnosticsText, makePatchSet, menuNote, menuPlan, normalize, renderTheme } from "./model";
+import { MenuDiag, applySkin, gameRunning, menuDiag, removeSkin, startMenuBar, steamClass, windowNames } from "./theme";
 import { Boundary, HearthHome, setSounds } from "./home";
 
 const getSettings = callable<[], unknown>("get_settings");
 const setSettingsCall = callable<[Partial<Settings>], { ok: boolean; settings?: unknown; error?: string }>("set_settings");
 const getBrand = callable<[], { css: string; logo: string; wallpaper: string } | null>("brand");
 const report = callable<[string], null>("report");
+const writeDiag = callable<[string], { ok: boolean; path?: string }>("diagnostics");
 
 // ---------------------------------------------------------------- the live state
 
@@ -28,7 +29,19 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((f) => { try { f(); } catch { /* a panel that went away */ } });
 const patches = makePatchSet((m) => { console.warn("Hearth Classic:", m); report(m).catch(() => {}); });
 let saidWhy = "";
-let saidMenu = "";
+let lastDiag = "";
+/** Everything a device test needs to tell what Hearth Classic found (the panel's Diagnostics and the log). */
+function diagnostics(): string {
+  const keys = live.brand ? classKeys(live.brand.css, steamClass) : { resolved: [], missing: [] };
+  return diagnosticsText({ state: live.state, why: live.why, settings: live.settings, keys, menu: menuDiag, windows: windowNames(), game: gameRunning() });
+}
+/** The menu's state changed: the panel's note, and one line in the log (Hearth's Logs app reads it too). */
+function onMenu(d: MenuDiag) {
+  live.menuNote = menuNote(d, live.settings);
+  const line = `menu: ${d.layout}${d.why ? " (" + d.why + ")" : ""}; found ${d.found ? "yes" : "no"}, ${d.entries} entries [${d.labels.join(", ")}], game ${d.game ? "running" : "none"}`;
+  if (line !== lastDiag) { lastDiag = line; writeDiag(line).catch(() => {}); }
+  notify();
+}
 
 function useLive() {
   const [, bump] = useState(0);
@@ -66,15 +79,12 @@ function refresh(failure?: string) {
   if (d.state === "off") { live.state = "off"; live.why = ""; notify(); return; }
   try {
     const b = live.brand!;
-    // The menu bars go in whole or not at all: missing menu names leave Steam's own menu (the rest goes on).
-    const plan = menuPlan(s, steamClass);
-    live.menuNote = plan.note;
-    if (plan.note && plan.note !== saidMenu) { saidMenu = plan.note; console.warn("Hearth Classic:", plan.note); report(plan.note).catch(() => {}); }
+    // The menu bars: Steam's real menu is checked in its own window before (and after) the bar goes on (theme.ts).
+    const plan = menuPlan(s);
     const { css } = renderTheme(b.css, { logo: b.logo, wallpaper: s.wallpaper ? b.wallpaper : "" }, steamClass, plan.sections);
     patches.add("skin", removeSkin);
     if (!applySkin(css)) throw new Error("the skin couldn't be put in Steam's window");
-    if (plan.sections.menu) patches.add("menu icons", startMenuDecor((steamClass("mainMenuAppRunningClasses", "NavigationMenuItem") || "").split(/\s+/)[0]));
-    if (plan.sections.top) patches.add("top bar in a game", startIngameWatch());
+    if (plan.sections.menu) patches.add("menu bar", startMenuBar({ top: plan.sections.top, onChange: onMenu }));
     if (s.home) patchHome();
     setSounds(s.sounds);
     patches.add("sounds", () => setSounds(false));
@@ -124,6 +134,28 @@ async function save(change: Partial<Settings>): Promise<string> {
   }
 }
 
+/** What Hearth Classic found in this Steam, and a button that writes it to the log (for a device test). */
+function Diagnostics() {
+  useLive();
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState("");
+  const text = diagnostics();
+  return (
+    <PanelSection title="Diagnostics">
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => setOpen(!open)}>{open ? "Hide what Hearth Classic found" : "Show what Hearth Classic found"}</ButtonItem>
+      </PanelSectionRow>
+      {open && <PanelSectionRow><pre className="hearth-diag" style={{ whiteSpace: "pre-wrap", fontSize: 10.5, lineHeight: 1.35, color: "#b8bcbf", margin: 0 }}>{text}</pre></PanelSectionRow>}
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => { setSaved(""); writeDiag(text).then((r) => setSaved(r && r.ok ? "Written to the log" + (r.path ? " (" + r.path + ")" : "") : "Couldn't write it")).catch(() => setSaved("Couldn't write it")); }}>
+          Write a Hearth Classic log
+        </ButtonItem>
+      </PanelSectionRow>
+      {saved && <PanelSectionRow><div style={{ fontSize: 11, color: "#8d99a8" }}>{saved}</div></PanelSectionRow>}
+    </PanelSection>
+  );
+}
+
 const LOOKS = [{ data: "classic", label: "Hearth Classic" }, { data: "steam", label: "Steam" }];
 
 function Panel() {
@@ -155,14 +187,15 @@ function Panel() {
       </PanelSection>
       {classic && (
         <PanelSection title="Hearth Classic">
-          <PanelSectionRow><ToggleField label="Hearth home screen" description="Jump back in, Hearth's places and your games on Steam's Home." checked={s.home} onChange={(v: boolean) => set({ home: v })} /></PanelSectionRow>
+          <PanelSectionRow><ToggleField label="Hearth home screen" description="The old Hearth home on Steam's Home: your games, Hearth's places, a row per store." checked={s.home} onChange={(v: boolean) => set({ home: v })} /></PanelSectionRow>
           <PanelSectionRow><ToggleField label="Hearth wallpaper" description="Behind the home and the Library." checked={s.wallpaper} onChange={(v: boolean) => set({ wallpaper: v })} /></PanelSectionRow>
           <PanelSectionRow><ToggleField label="Hearth bottom bar menu" description="The Steam button's menu as Hearth's bar along the bottom." checked={s.menu} onChange={(v: boolean) => set({ menu: v })} /></PanelSectionRow>
           {s.menu && <PanelSectionRow><ToggleField label="In a game: Hearth top bar" description="While a game runs, the menu is Hearth's bar at the top instead." checked={s.menuTop} onChange={(v: boolean) => set({ menuTop: v })} /></PanelSectionRow>}
-          {l.state === "on" && l.menuNote && <PanelSectionRow><div className="hearth-menu-note" style={{ fontSize: 12, color: "#ffb547", lineHeight: 1.35 }}>{l.menuNote}</div></PanelSectionRow>}
+          {l.state === "on" && s.menu && l.menuNote && <PanelSectionRow><div className="hearth-menu-note" style={{ fontSize: 12, color: "#ffb547", lineHeight: 1.35 }}>{l.menuNote}</div></PanelSectionRow>}
           <PanelSectionRow><ToggleField label="Hearth sounds" description="Hearth's soft sounds when moving on the home screen." checked={s.sounds} onChange={(v: boolean) => set({ sounds: v })} /></PanelSectionRow>
         </PanelSection>
       )}
+      {classic && <Diagnostics />}
       {err && <PanelSection><PanelSectionRow><div style={{ color: "#ff6b6b", fontSize: 12 }}>{err}</div></PanelSectionRow></PanelSection>}
     </>
   );
