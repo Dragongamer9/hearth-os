@@ -62,8 +62,7 @@ and 20 times a minute (Apple asks for about 20), Deezer once a second; when eith
 its quota is used up) it waits a minute, doubling up to an hour. It waits while a game runs (and after Play is
 pressed), and if it's stopped (Steam restarted, the device turned off) it carries on where it was: games answered
 recently are skipped. New installs are matched when they show up (the library is checked every 15 minutes), and
-answers older than a week are refreshed. *Scan my library* in the panel starts it again by hand (answers older than a
-day are asked again). The panel shows how far it is: "Matched 143 of 210", and whether it's looking, paused while a
+answers older than a week are refreshed. *Scan all games* in the panel checks every installed game and non-Steam game again with today's matching, ignoring the answers kept (your picks are never looked up or changed); it shows "Checking every game: 24 of 64 · INSIDE" and can be cancelled, keeping what it found so far. The panel shows how far it is: "Matched 143 of 210", and whether it's looking, paused while a
 game runs, or waiting for the network or a service that asked to slow down. If the network is gone, the answers kept
 stay exactly as they were.
 
@@ -83,7 +82,16 @@ re-checked or changed. Only these answers are kept; no preview's sound ever is.
   doesn't start every song), **In the library too** (off: game pages only; on: also the highlighted tile in the
   library), **Apple Music previews**, **Use Deezer previews**, **Now playing note** (a short toast the first time a game's song plays).
 - **Song for <game>**: *Choose music…* and the picks above.
-- **Your library**: the scan's count and *Scan my library*.
+- **Your library**: the scan's count, *Scan all games* (or *Cancel scan* while it runs) and *Review music for every
+  game*: every installed game and non-Steam game in three groups, **No music found**, **Found automatically** and
+  **Your picks**, each with its song, album and where it's from (Apple Music, Deezer, your soundtrack or your file),
+  a ▶ to hear it, and *Fix*: *Choose music…* (the search box starts with the game's name without ™/®, years or
+  editions; each result can be heard with ▶ before you *Choose* it), *No music for this game* (kept as your pick, so
+  that game stays silent) and *Back to automatic*. Your choices are kept in `picks.json` like every pick (saved all at
+  once with a `.bak`) and only you change them.
+- Answers the panel heard during this session are asked again after five minutes and when a scan finishes, so what a
+  scan or a fix found plays right away; while a music service asks to wait, an older answer that passes today's rules
+  keeps playing.
 
 These settings are kept in `~/homebrew/settings/decky-hearth-music/settings.json`, saved the safe way
 (docs/SETTINGS-PERSISTENCE.md: only the key you changed is merged into the latest file, atomically, with a `.bak`; a
