@@ -1,0 +1,7 @@
+/* Pocket (a handheld-era icon row): Hearth's wallpaper behind the Library, frosted panels, round icons. */
+:root{--era-r:22px;--era-focus:0 0 0 3px var(--era-accent),0 8px 24px rgba(0,0,0,.45);--era-font:"Noto Sans","Cantarell",system-ui,sans-serif}
+.{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:linear-gradient(180deg,rgba(0,0,0,.25),var(--era-bg) 70%),url(%WALLPAPER%) center/cover fixed !important}
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:var(--era-panel) !important;backdrop-filter:blur(12px)}
+.{{gamepadLibraryClasses:GamepadLibrary}}{background:transparent !important}
+.{{libraryAssetImageClasses:Container}}{border-radius:22px !important}
+.{{quickAccessMenuClasses:Container}}{background:var(--era-bg) !important}

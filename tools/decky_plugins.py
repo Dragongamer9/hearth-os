@@ -2,7 +2,8 @@
 """Hearth's Decky plugins for the plugins release (docs/PLUGIN-UPDATES.md, .github/workflows/decky-plugins-release.yml).
 
   decky_plugins.py list [ROOT]                     every plugin folder: hosts/decky-hearth-<name>/ with package.json and
-                                                   package.sh (never archive/), one id per line
+                                                   package.sh (never archive/, never a retired one), one id per line
+  decky_plugins.py retired                         the retired plugins (RETIRED), one id per line
   decky_plugins.py check [ROOT]                    fails (::error) when a plugin lacks the shared Hearth OS check
                                                    (hosts/decky-shared) or the load-check mark plugin updates rely on
   decky_plugins.py manifest DIR VERSION MIN_HEARTH MIN_DECKY [ROOT]
@@ -20,6 +21,13 @@ import zipfile
 
 PLUGIN_ID = re.compile(r'decky-hearth-[a-z0-9][a-z0-9-]{0,40}')   # the same rule as hearth-decky's PLUGIN_ID
 
+# Plugins the owner retired (docs/PLUGIN-UPDATES.md, "Retiring a plugin"): their code stays in the repository, but they
+# are never built into a plugins release, and every release's plugins.json lists them under "retired", so devices
+# remove their downloaded copies and no longer offer them. Taking an id out of here offers the plugin again.
+#   decky-hearth-look: Hearth Classic, retired by the owner (November 2026); its home and skin live on as the
+#                      "Hearth Classic" era of Hearth Eras (hosts/decky-hearth-eras), which reuses its code.
+RETIRED = ('decky-hearth-look',)
+
 
 def _json(p):
     try:
@@ -30,11 +38,11 @@ def _json(p):
 
 
 def discover(root):
-    """[{id, dir, name, description}] sorted by id."""
+    """[{id, dir, name, description}] sorted by id; retired plugins (RETIRED) are left out."""
     hosts = pathlib.Path(root) / 'hosts'
     out = []
     for d in sorted(hosts.iterdir()) if hosts.is_dir() else []:
-        if not d.is_dir() or d.is_symlink() or not PLUGIN_ID.fullmatch(d.name):
+        if not d.is_dir() or d.is_symlink() or not PLUGIN_ID.fullmatch(d.name) or d.name in RETIRED:
             continue
         if not ((d / 'package.json').is_file() and (d / 'package.sh').is_file()):
             continue
@@ -84,8 +92,10 @@ def manifest(d, version, min_hearth, min_decky, root):
         plugins.append({'id': p['id'], 'name': p['name'], 'description': p['description'], 'version': pv,
                         'archive': z.name, 'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data),
                         'min_hearth_os': min_hearth, 'min_decky': min_decky})
-    # "retired" (plugins taken away from devices) is added by hand to a release only when the owner retires one.
-    m = {'format': 1, 'version': version, 'plugins': plugins}
+    # "retired": plugins taken away from devices (RETIRED); never one that this release also ships.
+    shipped = {p['id'] for p in plugins}
+    m = {'format': 1, 'version': version, 'plugins': plugins,
+         'retired': sorted(r for r in RETIRED if PLUGIN_ID.fullmatch(r) and r not in shipped)}
     (d / 'plugins.json').write_text(json.dumps(m, indent=2) + '\n')
     return m
 
@@ -95,6 +105,9 @@ def main(argv):
     if cmd == 'list':
         for p in discover(argv[2] if len(argv) > 2 else '.'):
             print(p['id'])
+    elif cmd == 'retired':
+        for r in RETIRED:
+            print(r)
     elif cmd == 'check':
         bad = problems(argv[2] if len(argv) > 2 else '.')
         for b in bad:

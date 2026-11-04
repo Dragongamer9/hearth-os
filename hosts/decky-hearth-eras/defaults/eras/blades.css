@@ -1,0 +1,8 @@
+/* Blades (mid-2000s sideways panels): deep glossy colour, slanted panel edges, a bright accent edge on focus. */
+:root{--era-r:4px;--era-focus:0 0 0 2px var(--era-accent),0 0 18px rgba(255,255,255,.18);--era-font:"Noto Sans","Cantarell",system-ui,sans-serif}
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:linear-gradient(180deg,rgba(255,255,255,.12),transparent 55%),var(--era-panel) !important;border-bottom:2px solid var(--era-accent) !important}
+.{{gamepadTabbedPageClasses:Tab}}{clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%);text-transform:uppercase;letter-spacing:.06em}
+.{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:radial-gradient(120% 80% at 80% 0%,var(--era-panel2),var(--era-bg) 60%,var(--era-bg2)) !important}
+.{{libraryAssetImageClasses:Container}}{box-shadow:inset 0 1px 0 rgba(255,255,255,.25) !important}
+.{{quickAccessMenuClasses:Container}}{background:linear-gradient(180deg,var(--era-panel),var(--era-bg)) !important}
+.{{appActionButtonClasses:PlayButton}}{background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0) 50%),var(--era-accent) !important}

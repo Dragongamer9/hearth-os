@@ -1,0 +1,11 @@
+/* Channels (a 2006-style rounded channel grid): soft silver and white, big rounded corners, a light glow on focus.
+   Steam's own pages keep a dark slate page colour (--era-page) so Steam's light text stays readable; the silver goes
+   on the parts Hearth controls (the tab bar, the cards' frames, Quick Access' tab rail). */
+:root{--era-r:18px;--era-focus:0 0 0 3px #fff,0 0 0 6px var(--era-accent),0 6px 22px rgba(47,166,214,.35);--era-font:"Nunito","Noto Sans",system-ui,sans-serif}
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:repeating-linear-gradient(180deg,var(--era-bg) 0 3px,var(--era-bg2) 3px 4px) !important;border-bottom:1px solid var(--era-line) !important}
+.{{gamepadTabbedPageClasses:Tab}}{color:var(--era-text) !important;background:var(--era-panel2) !important;border:1px solid var(--era-line) !important;border-radius:999px !important}
+.{{gamepadTabbedPageClasses:Tab}}.{{gamepadTabbedPageClasses:Selected}}{background:var(--era-accent) !important;color:#fff !important;border-color:transparent !important}
+.{{libraryAssetImageClasses:Container}}{border:3px solid var(--era-panel2) !important;box-sizing:border-box !important}
+.{{quickAccessMenuClasses:Tabs}}{background:linear-gradient(180deg,var(--era-bg),var(--era-bg2)) !important}
+.{{quickAccessMenuClasses:Tab}}{color:var(--era-text) !important}
+.{{appActionButtonClasses:PlayButton}}{border-radius:999px !important}

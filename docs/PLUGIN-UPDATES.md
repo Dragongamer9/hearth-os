@@ -1,6 +1,6 @@
 # Decky plugin updates (without a system update)
 
-Hearth's Decky plugins, **Hearth Sync**, **Hearth Link** and **Hearth Music** (and any new Hearth plugin), can update
+Hearth's Decky plugins, **Hearth Sync**, **Hearth Link**, **Hearth Music** and **Hearth Eras** (and any new Hearth plugin), can update
 by themselves between Hearth OS updates, and new Hearth plugins arrive the same way, without a system update. The
 plugins built into the system image are never changed: they're always there and always the fallback.
 
@@ -109,11 +109,16 @@ Those versions aren't downloaded again automatically; a newer release still can 
 
 ### Retiring a plugin
 
-A plugin is **never removed just because a manifest leaves it out**. To take one away, list it in the manifest's
-`retired` (add it to `plugins.json` by hand in that release, or extend `tools/decky_plugins.py`). On the next Update
+A plugin is **never removed just because a manifest leaves it out**. To take one away, add its id to `RETIRED` in
+`tools/decky_plugins.py`: from then on it's never built into a plugins release (its code can stay in the repository),
+and every release's `plugins.json` lists it under `retired` (the release workflow checks both). On the next Update
 (or automatic update) the device removes its download of it, and at the next Decky start its copy in Decky's folder:
 a downloaded copy always goes; a built-in one only once the image no longer ships it (while it does, the built-in copy
 comes back). The newest release's list counts, so a plugin dropped from `retired` can be offered again.
+
+Retired so far: **Hearth Classic** (`decky-hearth-look`, November 2026, the owner's call). It was never built into the
+image, so the next plugins release takes it off every device that downloaded it. Its home and skin live on as the
+"Hearth Classic" era of **Hearth Eras** (`decky-hearth-eras`, docs/HEARTH-ERAS.md), which reuses its code.
 
 ### Update plugins automatically
 

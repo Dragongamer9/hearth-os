@@ -1,0 +1,8 @@
+/* Tiles (a 2020-style big-tile dashboard): flat dark panels, small corners, a clear white frame and a lift on focus. */
+:root{--era-r:6px;--era-focus:0 0 0 3px var(--era-text),0 10px 28px rgba(0,0,0,.5);--era-font:"Noto Sans","Cantarell",system-ui,sans-serif}
+.{{gamepadTabbedPageClasses:TabHeaderRowWrapper}}{background:var(--era-bg) !important}
+.{{gamepadTabbedPageClasses:Tab}}{border-radius:4px !important}
+.{{gamepadTabbedPageClasses:GamepadTabbedPage}}{background:var(--era-bg) !important}
+.gpfocus .{{libraryAssetImageClasses:Container}}{transform:scale(1.04)}
+.{{playSectionClasses:PlayBar}}{background:var(--era-panel) !important}
+.{{quickAccessMenuClasses:Container}}{background:var(--era-bg) !important}

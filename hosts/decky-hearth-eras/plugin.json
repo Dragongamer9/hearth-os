@@ -1,0 +1,11 @@
+{
+  "name": "Hearth Eras",
+  "author": "Dragongamer9",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["hearth", "theme"],
+    "description": "Gives Steam Game Mode a home screen and look inspired by past console eras: Channels, Blades, Tiles, Crossbar, Pocket or Hearth Classic. Hearth's own designs; Steam's look until you pick one.",
+    "image": "https://hearthos.fun/img/logo.svg"
+  }
+}

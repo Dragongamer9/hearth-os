@@ -5,10 +5,9 @@
 # no sign-in, nothing of Valve's is run.
 name: Hearth Classic plugin
 
+# Hearth Classic is retired from the plugin channel (tools/decky_plugins.py RETIRED); its code stays for Hearth Eras'
+# Classic era (hosts/decky-hearth-eras, whose workflow checks it). This runs only by hand now.
 on:
-  push:
-    branches: [bughunt, feature/hearth-look-8, feature/hearth-look-9]
-    paths: ['hosts/decky-hearth-look/**', 'hosts/decky-shared/**', 'hosts/decky-hearth-music/src/steam.ts', '.github/workflows/decky-hearth-look.yml']
   workflow_dispatch:
 
 permissions:

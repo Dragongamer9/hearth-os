@@ -1,0 +1,88 @@
+# Hearth Eras (docs/HEARTH-ERAS.md): the Decky plugin that gives Steam Game Mode home screens and looks inspired by past
+# console eras (hosts/decky-hearth-eras). Its backend's tests, its pure parts' unit tests, the shared Hearth OS check,
+# the build and pack like Decky's plugin template, and pictures of the real plugin over a stand-in of Steam's Game Mode
+# (the gallery, every era's home and Library skin, the extras, quick switching, paused, not Hearth OS, unloading). No
+# Steam, no sign-in, nothing of Valve's is run.
+name: Hearth Eras plugin
+
+on:
+  push:
+    branches: [bughunt, feature/hearth-eras]
+    paths: ['hosts/decky-hearth-eras/**', 'hosts/decky-shared/**', 'hosts/decky-hearth-look/src/model.ts', 'hosts/decky-hearth-look/src/home.tsx',
+            'hosts/decky-hearth-look/defaults/**', 'hosts/decky-hearth-music/src/steam.ts', '.github/workflows/decky-hearth-eras.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the pictures also go to the ci/hearth-eras-shots branch, to look at in the browser
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/decky-hearth-eras/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -30 || true
+          grep -q '^OK' /tmp/py.log || { echo "::error title=Hearth Eras backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Eras backend tests::$(grep -E '^Ran ' /tmp/py.log)"
+      - name: The shared Hearth OS check and the load mark
+        run: python3 tools/decky_plugins.py check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests of the pure parts (src/model.ts)
+        working-directory: hosts/decky-hearth-eras
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --import ./tests/ts-resolve.mjs --test --test-reporter=tap tests/eras.test.mjs 2>&1 | tee /tmp/unit.log | tail -25 || true
+          grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=Hearth Eras unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Eras unit tests::$(grep -E '^# (tests|pass|fail)' /tmp/unit.log | tr '\n' ' ')"
+      - name: Build and pack (pnpm build, then Decky's layout and a zip)
+        working-directory: hosts/decky-hearth-eras
+        run: |
+          set -o pipefail
+          npm install -g pnpm@9 >/dev/null
+          pnpm install --no-frozen-lockfile 2>&1 | tail -5
+          if ! pnpm build > /tmp/build.log 2>&1; then
+            echo "::error title=Hearth Eras build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          # Type warnings fail the build, except in src/classic/ (Hearth Classic's code, copied unchanged, built like this).
+          if grep -E 'TS[0-9]{4}' /tmp/build.log | grep -v 'src/classic/'; then
+            echo "::error title=Hearth Eras types::$(grep -E 'TS[0-9]{4}' /tmp/build.log | grep -v 'src/classic/' | head -30 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          tail -5 /tmp/build.log
+          ./package.sh "$RUNNER_TEMP/out"
+          for f in dist/index.js main.py hearth_only.py hearth-classic.css eras/base.css eras/channels.css eras/blades.css eras/tiles.css eras/crossbar.css eras/pocket.css assets/logo.svg assets/wallpaper.jpg; do
+            test -s "$RUNNER_TEMP/out/decky-hearth-eras/$f" || { echo "::error title=Hearth Eras pack::$f missing"; exit 1; }
+          done
+          cmp -s ../decky-shared/hearth_only.py "$RUNNER_TEMP/out/decky-hearth-eras/hearth_only.py"
+          grep -q '"name": "Hearth Eras"' "$RUNNER_TEMP/out/decky-hearth-eras/plugin.json"
+          (cd "$RUNNER_TEMP/out" && unzip -l decky-hearth-eras.zip | tail -20)
+          echo "::notice title=Hearth Eras::$(du -h "$RUNNER_TEMP/out/decky-hearth-eras.zip" | cut -f1) zip, index.js $(du -h "$RUNNER_TEMP/out/decky-hearth-eras/dist/index.js" | cut -f1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decky-hearth-eras
+          path: ${{ runner.temp }}/out/decky-hearth-eras.zip
+      - name: The plugin over a stand-in of Steam's Game Mode (pictures and checks)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cp hosts/decky-hearth-eras/tests/render.mjs tools/render-hearth-eras.mjs
+          HEARTH_ROOT="$PWD" node tools/render-hearth-eras.mjs "$RUNNER_TEMP/shots"
+      - name: Keep the pictures (ci/hearth-eras-shots)
+        if: always() && github.ref != 'refs/heads/main'
+        run: |
+          [ -d "$RUNNER_TEMP/shots" ] || exit 0
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          cp -r "$RUNNER_TEMP/shots" /tmp/shots-keep
+          git checkout -q --orphan ci/hearth-eras-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/shots-keep/*.png shots/ 2>/dev/null || true
+          git add -f shots
+          git commit -qm "Hearth Eras over a stand-in of Steam's Game Mode ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/hearth-eras-shots || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-eras-shots
+          path: ${{ runner.temp }}/shots
