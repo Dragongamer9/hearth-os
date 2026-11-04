@@ -289,6 +289,13 @@ def pick_key(kind, name):
     return '%s:%s' % (kind, name)
 
 
+NO_MUSIC = {'source': 'none'}   # "No music for this game": a pick too
+
+
+def is_no_music(p):
+    return isinstance(p, dict) and p.get('source') == 'none'
+
+
 def online_pick(p):
     """A pick that is an Apple or Deezer preview ("Choose music…"): only its id and names, never audio."""
     if not isinstance(p, dict) or p.get('source') not in ('apple', 'deezer') or not str(p.get('id') or '').isdigit():
@@ -308,6 +315,8 @@ def picked(appid, collections):
     for k in [pick_key('app', appid)] + [pick_key('collection', c) for c in collections or []]:
         p = picks.get(k)
         via = 'collection' if k.startswith('collection:') else 'game'
+        if is_no_music(p):
+            return {'source': 'pick', 'none': True, 'via': via, 'name': k.split(':', 1)[1]}
         if isinstance(p, str) and os.path.isfile(p) and p.lower().endswith(AUDIO_EXTS):
             return {'source': 'pick', 'path': p, 'title': os.path.splitext(os.path.basename(p))[0],
                     'via': via, 'name': k.split(':', 1)[1]}
@@ -325,7 +334,9 @@ def set_pick(kind, name, path):
         raise ValueError('bad pick')
     picks = load_json('picks.json', {})
     k = pick_key(kind, str(name)[:200])
-    if isinstance(path, dict):
+    if is_no_music(path):
+        picks[k] = dict(NO_MUSIC)
+    elif isinstance(path, dict):
         o = online_pick(path)
         if not o:
             raise ValueError('not a preview')
@@ -516,6 +527,11 @@ def clean_title(title):
     raw = str(title or '')
     t = re.sub(r'[™®©]', '', raw).replace('’', "'")
     t = re.sub(r'\s*[\(\[](?:19|20)\d\d[\)\]]', '', t)            # (2013)
+    # a store's name some shortcuts carry: "Epic: Alan Wake 2", "Alan Wake 2 (GOG)"
+    t = re.sub(r'^\s*(?:epic|epic games|gog|gog galaxy|amazon|amazon games|ea|ea app|origin|ubisoft|ubisoft connect|uplay|'
+               r'battle\.net|itch|itch\.io|heroic|lutris|xbox|game pass)\s*[:\-–|]\s*', '', t, flags=re.I)
+    t = re.sub(r'\s*[\(\[](?:epic|epic games|gog|amazon|ea|ea app|origin|ubisoft|uplay|battle\.net|itch\.io|heroic|'
+               r'lutris|xbox|game pass|non-steam)[\)\]]\s*$', '', t, flags=re.I)
     t = EDITIONS.sub(' ', t)
     t = re.sub(r'[\(\[]\s*[\)\]]', ' ', t)                          # "()" left behind
     t = ' '.join(t.split())
@@ -837,6 +853,8 @@ def lookup(title, get=None, now=None, deezer=None, apple=True, use_deezer=True, 
             for term in ('%s main theme' % query, '%s soundtrack' % query):
                 res = ask(term)
                 if res is None:
+                    if isinstance(hit, dict) and hit.get('match'):
+                        return {'match': hit['match'], 'later': True}   # the kept answer (it fits today's rules) meanwhile
                     return {'later': True}
                 m = best_match(res, forms, src)
                 if m and (match is None or m['score'] > match['score']):
@@ -909,6 +927,8 @@ def find_song(appid, title, collections=None, online=True, get=None, h=None, dee
     title = str(title or '')[:200]
     p = picked(appid, collections)
     if p:
+        if p.get('none'):
+            return {'source': None, 'pick': 'none', 'why': 'you chose no music for this game'}
         if p.get('online'):
             o = online_song(p.pop('online'), online, deezer, deezer_track)
             if not o.get('url'):
@@ -922,7 +942,7 @@ def find_song(appid, title, collections=None, online=True, get=None, h=None, dee
     if not online and not deezer:
         return {'source': None, 'why': 'no song of its own (online previews are off)'}
     lk = lookup(title, get=get, deezer=deezer_get, apple=online, use_deezer=deezer)
-    if lk.get('later'):
+    if lk.get('later') and not lk.get('match'):
         return {'source': None, 'later': True, 'why': 'looked up in a moment'}
     m = lk.get('match')
     if not m:
@@ -936,6 +956,7 @@ def find_song(appid, title, collections=None, online=True, get=None, h=None, dee
 # ---- the library scan
 
 _scan = {'running': False, 'paused': False, 'stop': False, 'total': 0, 'done': 0, 'matched': 0, 'waiting': '',
+         'current': '', 'recheck': False, 'all': False, 'cancelled': False,
          'games': [], 'force': False, 'thread': None}
 _scan_lock = threading.Lock()
 
@@ -970,8 +991,13 @@ def scan_order(games, h=None):
                      'rank': 2 if shortcut else (0 if appid in inst else 1)})
     rows.sort(key=lambda r: (r['rank'], norm(r['title'])))
     for r in rows:
-        r.pop('rank')
+        r['installed'] = r.pop('rank') != 1   # installed Steam games and non-Steam shortcuts
     return rows
+
+
+def all_games(games, h=None):
+    """What "Scan all games" and the review list go through: installed Steam games and non-Steam shortcuts."""
+    return [r for r in scan_order(games, h) if r['installed']]
 
 
 def scan_state_file():
@@ -979,15 +1005,16 @@ def scan_state_file():
 
 
 def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sleep=time.sleep, paused=lambda: False,
-                 stopped=lambda: False, progress=None, force=False, h=None):
+                 stopped=lambda: False, progress=None, force=False, h=None, recheck=False):
     """Goes through GAMES (scan_order) and keeps each one's best match in lookups.json: your pick wins (left alone),
     then a soundtrack you have, then Apple's preview, then Deezer's. Games answered recently are skipped, so a scan
     that stopped carries on where it was. Waits while a game runs (paused()) and while an API asks to slow down.
-    Returns {'total', 'done', 'matched'}."""
+    recheck ("Scan all games"): every installed game and shortcut is looked at again with today's matcher, the kept
+    automatic answers ignored (your picks still never). Returns {'total', 'done', 'matched'}."""
     s = clean_settings(settings if settings is not None else load_json('settings.json', {}))
-    rows = scan_order(games, h)
-    st = {'total': len(rows), 'done': 0, 'matched': 0, 'waiting': ''}
-    max_age = SCAN_FORCE_REFRESH if force else SCAN_REFRESH
+    rows = all_games(games, h) if recheck else scan_order(games, h)
+    st = {'total': len(rows), 'done': 0, 'matched': 0, 'waiting': '', 'current': ''}
+    max_age = 0 if recheck else (SCAN_FORCE_REFRESH if force else SCAN_REFRESH)
     wait = 5
 
     def tell():
@@ -996,6 +1023,7 @@ def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sle
     tell()
     picks = load_json('picks.json', {})
     for r in rows:
+        st['current'] = r['title']
         while True:
             if stopped():
                 return st
@@ -1009,7 +1037,7 @@ def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sle
             if has_app_pick(r['appid'], picks):
                 st['matched'] += 1   # your pick: never looked up, never changed
                 break
-            if isinstance(hit, dict) and hit.get('local') and now() - float(hit.get('at') or 0) < max_age:
+            if not recheck and isinstance(hit, dict) and hit.get('local') and now() - float(hit.get('at') or 0) < max_age:
                 st['matched'] += 1
                 break
             if _fresh(hit, now(), max_age) and _usable(hit, s['online'], s['deezer']) and not hit.get('error'):
@@ -1023,10 +1051,12 @@ def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sle
                 st['matched'] += 1
                 break
             if not (s['online'] or s['deezer']):
+                if recheck and isinstance(hit, dict) and hit.get('local'):
+                    update_cache('lookups.json', lambda c: c.pop(key, None))   # its soundtrack is gone
                 break
             lk = lookup(r['title'], get=get, deezer=deezer, now=now(), apple=s['online'], use_deezer=s['deezer'],
                         max_age=max_age)
-            if lk.get('later') or lk.get('error'):
+            if lk.get('later') or lk.get('error'):   # (also when a kept answer was handed back meanwhile)
                 # Rate limit, an API asking to slow down, or the network gone: wait and try this game again.
                 st['waiting'] = 'network' if lk.get('error') else 'slow'
                 tell()
@@ -1044,7 +1074,10 @@ def scan_library(games, settings=None, get=None, deezer=None, now=time.time, sle
 
 def scan_status():
     saved = load_json('scan.json', {}, cache_dir())
-    out = {k: _scan[k] for k in ('running', 'paused', 'total', 'done', 'matched', 'waiting')}
+    out = {k: _scan[k] for k in ('running', 'paused', 'total', 'done', 'matched', 'waiting', 'current', 'cancelled')}
+    out['all'] = bool(_scan['running'] and _scan['all'])   # "Scan all games" (n of N, cancellable)
+    if _scan['cancelled'] and not _scan['running']:
+        return dict(out, last=saved.get('last') or 0)
     if not _scan['running'] and saved.get('total'):
         out.update(total=saved.get('total', 0), done=saved.get('total', 0), matched=saved.get('matched', 0))
     out['last'] = saved.get('last') or 0
@@ -1055,26 +1088,30 @@ def _scan_worker():
     try:
         while True:
             with _scan_lock:
-                games, force = list(_scan['games']), _scan['force']
-                _scan['force'] = False
+                games, force, recheck = list(_scan['games']), _scan['force'], _scan['recheck']
+                _scan['force'] = _scan['recheck'] = False
                 _scan['again'] = False
+                _scan['all'] = recheck
             st = scan_library(games, paused=lambda: _scan['paused'], stopped=lambda: _scan['stop'],
-                              progress=lambda p: _scan.update(p), force=force)
+                              progress=lambda p: _scan.update(p), force=force, recheck=recheck)
             if _scan['stop']:
                 return
             with _scan_lock:
                 if _scan.get('again'):
                     continue   # new games (or "Scan my library") came in meanwhile
-                save_cache('scan.json', {'last': time.time(), 'total': st['total'], 'matched': st['matched']})
+                save_cache('scan.json', {'last': time.time(), 'total': st['total'], 'matched': st['matched'],
+                                         'all': time.time() if recheck else load_json('scan.json', {}, cache_dir()).get('all', 0)})
                 log('library scan: %d of %d matched' % (st['matched'], st['total']))
                 return
     except Exception as e:  # never takes the plugin down
         log('library scan stopped: %s' % type(e).__name__)
     finally:
         _scan['running'] = False
+        _scan['all'] = False
+        _scan['current'] = ''
 
 
-def start_scan(games, force=False):
+def start_scan(games, force=False, recheck=False):
     """Starts (or feeds) the background scan with Steam's library. Games answered recently are skipped, so this is
     cheap to call often: the first time it goes through everything, then only new games and week-old answers."""
     with _scan_lock:
@@ -1082,9 +1119,11 @@ def start_scan(games, force=False):
         if games:
             _scan['games'] = list(games)
         _scan['force'] = _scan['force'] or bool(force)
+        _scan['recheck'] = _scan['recheck'] or bool(recheck)
         _scan['stop'] = False
+        _scan['cancelled'] = False
         if _scan['running']:
-            if changed or force:
+            if changed or force or recheck:
                 _scan['again'] = True   # new games or "Scan my library": one more pass when this one ends
             return True
         _scan['running'] = True
@@ -1092,6 +1131,58 @@ def start_scan(games, force=False):
         _scan['thread'] = t
     t.start()
     return True
+
+
+def cancel_scan():
+    """Stops the scan where it is ("Cancel" in the panel); every answer found so far is kept, nothing else changes."""
+    with _scan_lock:
+        if _scan['running']:
+            _scan['stop'] = True
+            _scan['cancelled'] = True
+            _scan['recheck'] = _scan['again'] = False
+    return True
+
+
+# ---- the review list: every installed game and shortcut, grouped
+
+def _song_of_pick(p):
+    if isinstance(p, str):
+        return {'title': os.path.splitext(os.path.basename(p))[0], 'artist': '', 'album': '', 'from': 'file'}
+    if is_no_music(p):
+        return {'title': '', 'artist': '', 'album': '', 'from': 'none'}
+    o = online_pick(p)
+    if o:
+        return {'title': o['track'], 'artist': o['artist'], 'album': o['album'], 'from': o['source']}
+    return None
+
+
+def review(games, h=None):
+    """Each installed game and non-Steam shortcut with what it plays, for the review list: 'pick' (yours, also "No
+    music"), 'auto' (found automatically: a soundtrack you have, Apple's or Deezer's preview) or 'none' (nothing found
+    yet, 'checked' False when it was never looked up). Read only: nothing is looked up or written here."""
+    picks = load_json('picks.json', {})
+    cache = load_json('lookups.json', {}, cache_dir())
+    out = []
+    for r in all_games(games, h):
+        row = {'appid': r['appid'], 'title': r['title'], 'kind': r['kind'], 'query': clean_title(r['title'])}
+        song = _song_of_pick(picks.get(pick_key('app', r['appid'])))
+        if song:
+            row.update(group='pick', song=song)
+            out.append(row)
+            continue
+        hit = cache.get(title_forms(r['title'])[0])
+        hit = hit if isinstance(hit, dict) else None
+        m = hit.get('match') if hit else None
+        if hit and hit.get('local'):
+            row.update(group='auto', song={'title': hit.get('track') or '', 'artist': '', 'album': '',
+                                           'from': 'game' if hit['local'] == 'game' else 'soundtrack'})
+        elif m and (_current(hit) or still_fits(m, r['title'])):
+            row.update(group='auto', song={'title': m.get('track') or '', 'artist': m.get('artist') or '',
+                                           'album': m.get('album') or '', 'from': m.get('source') or 'apple'})
+        else:
+            row.update(group='none', song=None, checked=bool(hit and _current(hit) and not hit.get('error')))
+        out.append(row)
+    return out
 
 
 # ---- "Choose music…"
@@ -1143,6 +1234,28 @@ def search_music(query, apple=True, deezer=True, get=None, deezer_get=None, h=No
             out.append({'choice': k, 'from': src, 'title': m['track'], 'artist': m['artist'], 'album': m['album']})
             n += 1
     return {'results': out, 'later': later}
+
+
+def choice_preview(choice, deezer_get=None):
+    """A "Choose music…" result made playable to hear it before choosing: {'key', 'url'} (Apple's address as found,
+    Deezer's asked for now, your soundtrack's file through its key) or None. Streamed, never stored."""
+    v = _choices.get(str(choice))
+    if isinstance(v, str):
+        return {'key': keyed(v)} if os.path.isfile(v) else None
+    if not isinstance(v, dict):
+        return None
+    url = v.get('preview') if v.get('source') == 'apple' else deezer_preview(v.get('id'), get=deezer_get)
+    if not url or preview_source(url) != v.get('source'):
+        return None
+    return {'key': keyed(url), 'url': url}
+
+
+def no_music(appid):
+    """"No music for this game": kept as your pick (picks.json), so it stays silent and no scan changes it."""
+    if not str(appid).isdigit():
+        return False
+    set_pick('app', str(appid), dict(NO_MUSIC))
+    return True
 
 
 def choose_music(appid, choice):
@@ -1251,6 +1364,31 @@ class Plugin:
         rows = [g for g in (games or []) if isinstance(g, dict)][:20000]
         return start_scan(rows, bool(force))
 
+    async def scan_all(self, games=None):
+        """"Scan all games": every installed game and shortcut looked at again with today's matcher (picks kept)."""
+        if not hearth_only.status(log, 'Hearth Music')['ok']:
+            return False
+        rows = [g for g in (games or []) if isinstance(g, dict)][:20000]
+        return start_scan(rows, recheck=True)
+
+    async def scan_cancel(self):
+        return cancel_scan()
+
+    async def review(self, games=None):
+        rows = [g for g in (games or []) if isinstance(g, dict)][:20000]
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: review(rows))
+
+    async def choice_preview(self, choice):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: choice_preview(choice))
+
+    async def no_music(self, appid):
+        try:
+            return no_music(appid)
+        except (ValueError, OSError):
+            return False
+
     async def scan_pause(self, paused):
         """A game runs (or Play was pressed): the scan waits."""
         _scan['paused'] = bool(paused)
@@ -1266,6 +1404,10 @@ class Plugin:
 
     async def choose_music(self, appid, choice):
         return choose_music(appid, choice)
+
+    async def clean_title(self, title):
+        """The game's name as "Choose music…" searches it (™/®, years and edition words left out)."""
+        return clean_title(str(title or '')[:200])
 
     async def get_home(self):
         return home()

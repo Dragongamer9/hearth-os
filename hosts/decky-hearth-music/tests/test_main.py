@@ -696,6 +696,9 @@ class Matching(unittest.TestCase):
         self.assertEqual(self.m.clean_title('Tomb Raider (2013)'), 'Tomb Raider')
         self.assertEqual(self.m.clean_title('The Elder Scrolls V: Skyrim Special Edition'), 'The Elder Scrolls V: Skyrim')
         self.assertEqual(self.m.clean_title('Dark Souls Remastered'), 'Dark Souls')
+        self.assertEqual(self.m.clean_title('Epic: Alan Wake 2'), 'Alan Wake 2', "a store's name on a shortcut")
+        self.assertEqual(self.m.clean_title('Hades (GOG)'), 'Hades')
+        self.assertEqual(self.m.clean_title('Prey (2017)'), 'Prey')
         self.assertEqual(self.best('The Witcher® 3: Wild Hunt - Game of the Year Edition',
                                    [it('The Witcher 3: Wild Hunt', 'The Witcher 3: Wild Hunt (Original Game Soundtrack)', 'Marcin Przybyłowicz')])[1],
                          'The Witcher 3: Wild Hunt (Original Game Soundtrack)')
@@ -763,6 +766,126 @@ class Matching(unittest.TestCase):
         s = self.m.find_song('304430', 'INSIDE', [], get=lambda t: self.fail('your pick'))
         self.assertEqual((s['source'], s['artist']), ('pick', 'Chris Stapleton'), 'your pick plays, whatever the matcher thinks')
         self.assertTrue(os.path.isfile(os.path.join(d, 'lookups.json.bak')), 'written with a .bak')
+
+
+class Review(unittest.TestCase):
+    """ "Scan all games", the review list and fixing a game from it."""
+    setUp = Backend.setUp
+    tearDown = Backend.tearDown
+    manifest = Backend.manifest
+
+    def library(self):
+        for appid, name in (('504230', 'Celeste'), ('870780', 'Control Ultimate Edition'), ('304430', 'INSIDE'), ('1145360', 'Hades')):
+            self.manifest(appid, name)
+        return [{'appid': 504230, 'title': 'Celeste'}, {'appid': 870780, 'title': 'Control Ultimate Edition'},
+                {'appid': 304430, 'title': 'INSIDE'}, {'appid': 1145360, 'title': 'Hades'},
+                {'appid': 3000000005, 'title': 'Epic: Alan Wake 2', 'shortcut': True},
+                {'appid': 620, 'title': 'Portal 2'}]   # in the library, not installed
+
+    def apple(self, asked):
+        def get(t):
+            asked.append(t)
+            if t.startswith('Celeste'):
+                return [it('Celeste Main Theme', 'Celeste (Original Soundtrack)', 'Lena Raine', tid=2)]
+            if t.startswith('Control'):
+                return [it('Control', 'Badlands', 'Halsey'), it('Control Theme', 'CONTROL (Original Soundtrack)', 'Petri Alanko', tid=3)]
+            if t.startswith('Alan Wake'):
+                return [it('Herald of Darkness', 'Alan Wake 2 (Original Soundtrack)', 'Old Gods of Asgard', tid=4)]
+            return []
+        return get
+
+    def test_scan_all_rechecks_every_installed_game_and_never_touches_picks(self):
+        games = self.library()
+        # an automatic answer from minutes ago (current matcher), and the owner's own picks
+        self.m.save_cache('lookups.json', {'celeste': {'at': 1000, 'v': self.m.MATCHER, 'tried': ['apple', 'deezer'], 'match': None}})
+        self.m.set_pick('app', '1145360', {'source': 'deezer', 'id': '77', 'track': 'In the Blood', 'artist': 'Darren Korb', 'album': 'Hades (Original Soundtrack)'})
+        self.assertTrue(self.m.no_music('304430'))
+        picks_path = os.path.join(self.m.settings_dir(), 'picks.json')
+        picks = open(picks_path, 'rb').read()
+        asked = []
+        self.m.scan_library(games, settings={}, get=self.apple(asked), deezer=lambda t: [], now=lambda: 1100, sleep=lambda s: None)
+        self.assertNotIn('Celeste main theme', asked, 'the ordinary scan trusts a recent answer')
+        asked.clear()
+        prog = []
+        st = self.m.scan_library(games, settings={}, get=self.apple(asked), deezer=lambda t: [], now=lambda: 1200, sleep=lambda s: None,
+                                 recheck=True, progress=prog.append)
+        self.assertEqual(st['total'], 5, 'installed games and the shortcut; Portal 2 is not installed')
+        self.assertIn('Celeste main theme', asked, 'Scan all games ignores the kept answers')
+        self.assertFalse([t for t in asked if t.startswith(('Hades', 'INSIDE'))], 'your picks are never looked up')
+        self.assertIn('Celeste', [p['current'] for p in prog])
+        self.assertEqual(open(picks_path, 'rb').read(), picks, 'nor changed')
+        # stopped part way ("Cancel"): what it found is kept
+        asked.clear()
+        stop = lambda: len(asked) >= 1
+        st = self.m.scan_library(games, settings={}, get=self.apple(asked), deezer=lambda t: [], now=lambda: 1300, sleep=lambda s: None,
+                                 recheck=True, stopped=stop)
+        self.assertLess(st['done'], st['total'])
+
+    def test_review_list_groups_and_fixing_a_game(self):
+        games = self.library()
+        asked = []
+        self.m.set_pick('app', '1145360', {'source': 'deezer', 'id': '77', 'track': 'In the Blood', 'artist': 'Darren Korb', 'album': 'Hades (Original Soundtrack)'})
+        self.m.scan_library(games, settings={}, get=self.apple(asked), deezer=lambda t: [], now=lambda: 1000, sleep=lambda s: None, recheck=True)
+        rows = {r['title']: r for r in self.m.review(games)}
+        self.assertEqual(sorted(rows), ['Celeste', 'Control Ultimate Edition', 'Epic: Alan Wake 2', 'Hades', 'INSIDE'])
+        self.assertEqual((rows['Celeste']['group'], rows['Celeste']['song']['from'], rows['Celeste']['song']['artist']), ('auto', 'apple', 'Lena Raine'))
+        self.assertEqual(rows['Control Ultimate Edition']['song']['album'], 'CONTROL (Original Soundtrack)')
+        self.assertEqual((rows['Control Ultimate Edition']['query']), 'Control', 'the search box starts with the cleaned title')
+        self.assertEqual((rows['INSIDE']['group'], rows['INSIDE']['checked']), ('none', True))
+        self.assertEqual((rows['Hades']['group'], rows['Hades']['song']['from']), ('pick', 'deezer'))
+        self.assertEqual(rows['Epic: Alan Wake 2']['group'], 'auto')
+        # "No music for this game": a pick, silent, kept by scans
+        self.assertTrue(self.m.no_music('504230'))
+        s = self.m.find_song('504230', 'Celeste', [], get=lambda t: self.fail('your pick: silent'))
+        self.assertEqual((s['source'], s['pick']), (None, 'none'))
+        self.assertEqual({r['title']: r for r in self.m.review(games)}['Celeste']['song']['from'], 'none')
+        picks_path = os.path.join(self.m.settings_dir(), 'picks.json')
+        self.assertTrue(os.path.isfile(picks_path + '.bak'), 'picks saved with a .bak')
+        self.m.scan_library(games, settings={}, get=self.apple([]), deezer=lambda t: [], now=lambda: 2000, sleep=lambda s: None, recheck=True)
+        self.assertEqual(json.load(open(picks_path))['app:504230'], {'source': 'none'})
+        # "Back to automatic"
+        self.m.set_pick('app', '504230', '')
+        self.assertEqual({r['title']: r for r in self.m.review(games)}['Celeste']['group'], 'auto')
+        self.assertEqual(self.m.find_song('504230', 'Celeste', [], get=self.apple([]))['source'], 'apple')
+
+    def test_choices_can_be_heard_before_choosing(self):
+        write(os.path.join(self.steam, 'steamapps/music/Hades Original Soundtrack/02 - Main Theme.mp3'))
+        apple = lambda t: [it('Hades Main Theme', 'Hades (Original Soundtrack)', tid=5)]
+        dzget = lambda t: [self.m.deezer_result(dz('In the Blood', 'Hades (Original Soundtrack)', 'Darren Korb', tid=77))]
+        r = self.m.search_music('Hades', get=apple, deezer_get=dzget)
+        by = {x['from']: x['choice'] for x in r['results']}
+        a = self.m.choice_preview(by['apple'])
+        self.assertEqual(a['url'], 'https://audio-ssl.itunes.apple.com/p/a.m4a')
+        d = self.m.choice_preview(by['deezer'], deezer_get=lambda tid: {'preview': DZ_URL % (time.time() + 3600)})
+        self.assertTrue(d['url'].startswith('https://cdnt-preview.dzcdn.net/'))
+        loc = self.m.choice_preview(by['soundtrack'])
+        self.assertNotIn('url', loc)
+        self.assertTrue(self.m._keys[loc['key']].endswith('02 - Main Theme.mp3'))
+        self.assertIsNone(self.m.choice_preview('nope'))
+        self.assertFalse(os.path.exists(os.path.join(self.m.settings_dir(), 'picks.json')), 'hearing one picks nothing')
+
+    def test_a_kept_answer_plays_while_the_service_asks_to_wait(self):
+        self.m.save_cache('lookups.json', {'celeste': {'at': 0, 'tried': ['apple'], 'match': {
+            'source': 'apple', 'id': '2', 'track': 'Celeste Main Theme', 'artist': 'Lena Raine', 'album': 'Celeste (Original Soundtrack)',
+            'link': '', 'preview': 'https://audio-ssl.itunes.apple.com/p/celeste.m4a'}}})
+        s = self.m.find_song('504230', 'Celeste', [], get=lambda t: None)
+        self.assertEqual(s['source'], 'apple', 'an old answer that fits today\'s rules plays while matcher 2 waits to check it')
+        self.m.save_cache('lookups.json', {'inside': {'at': 0, 'tried': ['apple'], 'match': {
+            'source': 'apple', 'id': '41', 'track': 'Inside the Vault', 'artist': 'Inon Zur', 'album': 'Fallout 4 (Original Game Soundtrack)',
+            'link': '', 'preview': 'https://audio-ssl.itunes.apple.com/p/f.m4a'}}})
+        self.assertIsNone(self.m.find_song('304430', 'INSIDE', [], get=lambda t: None)['source'], 'a wrong old answer never')
+
+    def test_scan_all_through_the_plugin_reports_progress_and_cancels(self):
+        self.assertTrue(self.m.cancel_scan())
+        self.m._scan.update(running=True, all=True, total=40, done=12, current='Celeste')
+        st = self.m.scan_status()
+        self.assertEqual((st['all'], st['done'], st['total'], st['current']), (True, 12, 40, 'Celeste'))
+        self.m.cancel_scan()
+        self.assertTrue(self.m._scan['stop'])
+        self.m._scan.update(running=False, all=False)
+        st = self.m.scan_status()
+        self.assertTrue(st['cancelled'])
+        self.assertEqual(st['done'], 12, 'how far it got')
 
 
 class Shipping(unittest.TestCase):

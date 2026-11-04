@@ -6,10 +6,17 @@ export const DEFAULTS: Settings = { enabled: true, volume: 0.35, delay: 1.5, whe
 
 /** A song the backend found: where it's from and (for Apple's and Deezer's previews, `from`) the credit. */
 export interface Song { source: "pick" | "soundtrack" | "game" | "apple" | "deezer" | null; key?: string; url?: string; title?: string; artist?: string;
-  album?: string; link?: string; why?: string; later?: boolean; via?: string; name?: string; from?: "apple" | "deezer" }
+  album?: string; link?: string; why?: string; later?: boolean; via?: string; name?: string; from?: "apple" | "deezer"; pick?: "none" }
 
 /** The library scan, as the backend tells it. */
-export interface Scan { running: boolean; paused: boolean; total: number; done: number; matched: number; waiting: string; last: number }
+export interface Scan { running: boolean; paused: boolean; total: number; done: number; matched: number; waiting: string; last: number;
+  all?: boolean; current?: string; cancelled?: boolean }
+
+/** One game in the review list (the backend's review()): what it plays and why. */
+export interface ReviewSong { title: string; artist: string; album: string; from: "apple" | "deezer" | "soundtrack" | "game" | "file" | "none" }
+export interface ReviewRow { appid: string; title: string; kind: string; query: string; group: "none" | "auto" | "pick"; song: ReviewSong | null; checked?: boolean }
+
+export const GROUPS: [ReviewRow["group"], string][] = [["none", "No music found"], ["auto", "Found automatically"], ["pick", "Your picks"]];
 
 /** A song "Choose music…" found: one of your soundtracks' tracks, or an Apple or Deezer preview. */
 export interface Choice { choice: string; from: "soundtrack" | "apple" | "deezer"; title: string; artist: string; album: string }
@@ -97,6 +104,12 @@ export function openLabel(song: Song | null): string {
 export function scanLines(s: Scan | null): [string, string] {
   if (!s || (!s.total && !s.running)) return ["Not scanned yet", ""];
   const count = `Matched ${s.matched} of ${s.total}`;
+  if (!s.running && s.cancelled) return [count, `Scan cancelled after ${s.done} of ${s.total}; what it found is kept`];
+  if (s.running && s.all && !(s.waiting === "game" || s.paused)) {
+    const n = Math.min(s.done + 1, s.total);
+    const wait = s.waiting === "slow" ? " (waiting: the music service asked to slow down)" : s.waiting === "network" ? " (waiting for the network)" : "";
+    return [count, `Checking every game: ${n} of ${s.total}${s.current ? ` · ${s.current}` : ""}${wait}`];
+  }
   if (!s.running) return [count, s.last ? "Done: new games are matched as they appear, older answers refreshed weekly" : ""];
   if (s.waiting === "game" || s.paused) return [count, "Paused while a game runs"];
   if (s.waiting === "slow") return [count, "Waiting a moment: the music service asked to slow down"];
@@ -117,4 +130,23 @@ export function cleanSettings(s: Partial<Settings> | null | undefined): Settings
   if (o.where !== "library") o.where = "pages";
   o.deezer = o.deezer !== false;
   return o;
+}
+
+/** Where a review row's song is from, in a few words. */
+export function sourceLabel(f: ReviewSong["from"] | undefined): string {
+  return f === "apple" ? "Apple Music" : f === "deezer" ? "Deezer" : f === "soundtrack" ? "your soundtrack" : f === "game" ? "the game's files"
+    : f === "file" ? "your file" : f === "none" ? "" : "";
+}
+
+/** The song line of a review row: "Track — Artist · Album · Apple Music", or why there is none. */
+export function reviewLine(r: ReviewRow): string {
+  const s = r.song;
+  if (!s) return r.checked ? "Nothing found that is surely this game's music" : "Not checked yet";
+  if (s.from === "none") return "No music (your choice)";
+  return [s.title + (s.artist ? ` — ${s.artist}` : ""), s.album, sourceLabel(s.from)].filter(Boolean).join(" · ");
+}
+
+/** The review list in its groups, each alphabetical: [group, heading, rows][]. */
+export function grouped(rows: ReviewRow[]): [ReviewRow["group"], string, ReviewRow[]][] {
+  return GROUPS.map(([g, label]) => [g, label, rows.filter((r) => r.group === g).sort((a, b) => a.title.localeCompare(b.title))] as [ReviewRow["group"], string, ReviewRow[]]);
 }

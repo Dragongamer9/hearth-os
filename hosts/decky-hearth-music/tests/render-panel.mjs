@@ -26,6 +26,7 @@ const css = `body{margin:0;width:1280px;height:800px;overflow:hidden;position:re
 .qam-body{flex:1;display:flex;flex-direction:column;min-width:0}.qam-title{font-size:18px;font-weight:700;padding:16px 16px 8px}
 .ScrollPanel{padding:0 12px 20px;overflow:hidden}.qam-section{margin-bottom:6px}.qam-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#8d99a8;padding:8px 4px 4px}
 .qam-row{padding:3px 4px}.qam-field{display:flex;flex-direction:column;gap:4px;padding:2px 0}.qam-label{font-size:14px}.qam-desc{font-size:11.5px;color:#8d99a8}.Text{font-size:14px}
+.qam-focusable{display:flex}.qam-dbtn{padding:6px 10px;font-size:13px;cursor:pointer}.qam-dbtn.gpfocus{background:#fff;color:#0e141b}
 .qam-input{background:#0b1016;border:1px solid #3d4450;border-radius:4px;color:#e9eef4;padding:7px 9px;font:inherit;font-size:14px}
 .DialogButton{border:none;color:#e9eef4;background:#3d4450;border-radius:4px;font:inherit}.qam-btn{width:100%;padding:9px 12px;font-size:14px}.qam-btn.gpfocus{background:#fff;color:#0e141b}.qam-switch.gpfocus{outline:2px solid #fff;outline-offset:2px}
 .qam-line{display:flex;justify-content:space-between;align-items:center}.qam-switch{width:40px;height:22px;border-radius:11px;background:#273140;position:relative}
@@ -60,6 +61,12 @@ const focus = (label) => page.evaluate((l) => { document.querySelectorAll(".gpfo
 const reveal = (text) => page.evaluate((t) => { const sp = document.querySelector(".ScrollPanel"); sp.style.flex = "1"; sp.style.minHeight = "0";
   const el = [...document.querySelectorAll(".qam-section")].find((x) => x.textContent.includes(t)); if (el) sp.scrollTop = el.offsetTop - sp.offsetTop - 8; }, text);
 const click = (label) => page.evaluate((l) => { const b = [...document.querySelectorAll(".qam-btn")].find((x) => x.textContent.includes(l)); if (b) b.click(); }, label);
+// A small button inside a row (the review list's ▶ / Fix, a choice's Choose), found by the row's text.
+const rowBtn = (rowText, label, press) => page.evaluate(([r, l, p]) => { document.querySelectorAll(".gpfocus").forEach((x) => x.classList.remove("gpfocus"));
+  const row = [...document.querySelectorAll(".qam-focusable")].find((x) => x.textContent.includes(r));
+  const b = row && [...row.querySelectorAll(".qam-dbtn")].find((x) => x.textContent.includes(l)); if (b) { b.classList.add("gpfocus"); if (p) b.click(); } }, [rowText, label, press]);
+const revealText = (text) => page.evaluate((t) => { const sp = document.querySelector(".ScrollPanel"); sp.style.flex = "1"; sp.style.minHeight = "0";
+  const el = [...document.querySelectorAll(".qam-row,.qam-section-title")].find((x) => x.textContent.includes(t)); if (el) sp.scrollTop = el.offsetTop - sp.offsetTop - 8; }, text);
 // Highlights a library tile the way Steam does: a focus event from an element whose React props carry the game.
 const focusTile = (id) => page.evaluate((a) => { const el = document.querySelector(`.cap[data-app="${a}"]`); el.classList.add("f");
   el.__reactFiber$stand = { memoizedProps: { app: { appid: Number(a) } }, return: null }; el.tabIndex = 0; el.focus(); }, id);
@@ -76,7 +83,18 @@ const shots = [
   ["hearth-music-panel-library", "library", true, library(), async () => { await focusTile(1245620); await page.waitForTimeout(1200); }, ["Elden Ring — Tsukasa Saitoh", "Plays for the highlighted game in the library"]],
   ["hearth-music-panel-deezer", "deezer", true, gamePage(367520), async () => focus("Open in Deezer"), ["Hollow Knight — Christopher Larkin", "Preview from Deezer · Hollow Knight (Original Soundtrack)", "Open in Deezer", "Use Deezer previews"]],
   ["hearth-music-panel-scan", "scan", true, gamePage(1091500), async () => { await reveal("Your library"); }, ["Matched 143 of 210", "Looking through your library: 151 of 210", "Scan my library"]],
-  ["hearth-music-panel-scan-done", "nomatch", true, gamePage(1091500), async () => { await reveal("Your library"); await focus("Scan my library"); }, ["Matched 198 of 210", "Done: new games are matched as they appear", "Choose music…"]],
+  ["hearth-music-panel-scan-done", "nomatch", true, gamePage(1091500), async () => { await reveal("Your library"); await focus("Scan all games"); }, ["Matched 198 of 210", "Done: new games are matched as they appear", "Choose music…", "Scan all games", "Review music for every game"]],
+  ["hearth-music-scan-all-running", "scanall", true, gamePage(1091500), async () => { await reveal("Your library"); await focus("Cancel scan"); }, ["Checking every game: 24 of 64 · INSIDE", "Cancel scan"]],
+  ["hearth-music-review-list", "review", true, library(), async () => { await click("Review music for every game"); await page.waitForTimeout(600); await rowBtn("INSIDE", "Fix"); },
+    ["Music for every game", "No music found (2)", "Found automatically (4)", "Your picks (2)", "Nothing found that is surely this game's music",
+     "Control Theme — Petri Alanko · CONTROL (Original Soundtrack) · Apple Music", "Hollow Knight — Christopher Larkin · Hollow Knight (Original Soundtrack) · Deezer",
+     "01 Stardew Valley Overture · your soundtrack", "No music (your choice)", "Scan all games"]],
+  ["hearth-music-review-list-picks", "review", true, library(), async () => { await click("Review music for every game"); await page.waitForTimeout(600); await revealText("Found automatically"); await rowBtn("Control Ultimate Edition", "▶", true); await page.waitForTimeout(600); },
+    ["■ Stop", "Your picks (2)", "The Fields of Ard Skellig — Marcin Przybyłowicz"]],
+  ["hearth-music-review-fix", "fix", true, library(), async () => { await click("Review music for every game"); await page.waitForTimeout(600); await rowBtn("INSIDE", "Fix", true); await page.waitForTimeout(400); await focus("Choose music…"); },
+    ["INSIDE", "Choose music…", "No music for this game", "Back to the list"]],
+  ["hearth-music-review-picker", "fixchoose", true, library(), async () => { await click("Review music for every game"); await page.waitForTimeout(600); await rowBtn("Control Ultimate Edition", "Fix", true); await page.waitForTimeout(400); await click("Choose music…"); await page.waitForTimeout(600); await rowBtn("Cyberpunk 2077 Main Theme", "▶", true); await page.waitForTimeout(500); },
+    ["Control Ultimate Edition", "Search", "■ Stop", "Choose", "Apple Music preview", "Deezer preview", "Close"]],
   ["hearth-music-panel-choose", "choose", true, gamePage(1091500), async () => { await click("Choose music…"); await page.waitForTimeout(500); await reveal("Song for"); await focus("Cyberpunk 2077 Main Theme"); },
     ["Search", "01 - V · your soundtrack", "Cyberpunk 2077 Main Theme — Marcin Przybyłowicz · Apple Music preview", "Never Fade Away — P.T. Adamczyk, Olga Jankowska · Deezer preview", "Close"]],
   ["hearth-music-toast-deezer", "deezer", false, gamePage(367520, true), async () => {}, ["Now playing", "Hollow Knight — Christopher Larkin", "Preview from Deezer"]],

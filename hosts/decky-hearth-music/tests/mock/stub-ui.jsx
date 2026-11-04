@@ -21,3 +21,5 @@ export const ButtonItem = (p) => h("div", { className: "qam-field" },
 export const TextField = (p) => h("div", { className: "qam-field" },
   p.label ? h("span", { className: "qam-label" }, p.label) : null,
   h("input", { className: "qam-input", value: p.value, onChange: p.onChange }));
+export const Focusable = (p) => h("div", { className: "qam-focusable " + (p.className || ""), style: p.style }, p.children);
+export const DialogButton = (p) => h("button", { className: "DialogButton qam-dbtn", style: p.style, onClick: p.onClick, disabled: !!p.disabled }, p.children);

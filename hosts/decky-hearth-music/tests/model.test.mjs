@@ -86,3 +86,20 @@ test("Choose music lines, and the Deezer switch defaults on and stays as set", (
   assert.equal(M.cleanSettings({ deezer: false }).deezer, false);
   assert.equal(M.cleanSettings({ deezer: false, volume: 0.9 }).deezer, false);
 });
+
+test("Scan all games: n of N, cancelled, and the review list's lines and groups", () => {
+  const s = { running: true, paused: false, total: 40, done: 11, matched: 9, waiting: "", last: 0, all: true, current: "Celeste" };
+  assert.equal(M.scanLines(s)[1], "Checking every game: 12 of 40 · Celeste");
+  assert.equal(M.scanLines({ ...s, waiting: "slow" })[1], "Checking every game: 12 of 40 · Celeste (waiting: the music service asked to slow down)");
+  assert.equal(M.scanLines({ ...s, paused: true })[1], "Paused while a game runs");
+  assert.equal(M.scanLines({ ...s, running: false, all: false, cancelled: true })[1], "Scan cancelled after 11 of 40; what it found is kept");
+  const row = (title, group, song, extra = {}) => ({ appid: "1", title, kind: "steam", query: title, group, song, ...extra });
+  assert.equal(M.reviewLine(row("Control", "auto", { title: "Control Theme", artist: "Petri Alanko", album: "CONTROL (Original Soundtrack)", from: "apple" })),
+    "Control Theme — Petri Alanko · CONTROL (Original Soundtrack) · Apple Music");
+  assert.equal(M.reviewLine(row("INSIDE", "none", null, { checked: true })), "Nothing found that is surely this game's music");
+  assert.equal(M.reviewLine(row("New", "none", null)), "Not checked yet");
+  assert.equal(M.reviewLine(row("Celeste", "pick", { title: "", artist: "", album: "", from: "none" })), "No music (your choice)");
+  assert.equal(M.reviewLine(row("Stardew", "auto", { title: "01 Overture", artist: "", album: "", from: "soundtrack" })), "01 Overture · your soundtrack");
+  const g = M.grouped([row("b", "auto", null), row("a", "auto", null), row("c", "pick", null)]);
+  assert.deepEqual(g.map(([k, l, r]) => [k, l, r.map((x) => x.title)]), [["none", "No music found", []], ["auto", "Found automatically", ["a", "b"]], ["pick", "Your picks", ["c"]]]);
+});

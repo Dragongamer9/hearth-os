@@ -1,5 +1,5 @@
 // CI only (render-panel.mjs): a stand-in for @decky/api and for Steam's state. window.HM_STATE picks the scene:
-// apple, soundtrack, pick, game, nomatch, running, off, changed, library, deezer, scan, choose. No Steam, no network: Apple's preview
+// apple, soundtrack, pick, game, nomatch, running, off, changed, library, deezer, scan, choose, scanall, review, fix, fixchoose. No Steam, no network: Apple's preview
 // address doesn't resolve, so the panel goes through the backend's stream fallback, whose "song" is a tone made here.
 import { S } from "./steam-state.js";
 const songs = {
@@ -9,11 +9,26 @@ const songs = {
   pick: { source: "pick", key: "k3", title: "My Witcher Mix", via: "collection", name: "RPGs" },
   game: { source: "game", key: "k4", title: "main_theme" },
   nomatch: { source: null, why: "no theme song found" },
+  review: { source: "apple", key: "k6", url: "https://preview.invalid/c.m4a", title: "Control Theme", artist: "Petri Alanko", album: "CONTROL (Original Soundtrack)" },
+  fix: { source: null, why: "no theme song found" },
+  fixchoose: { source: "apple", key: "k6", url: "https://preview.invalid/c.m4a", title: "Control Theme", artist: "Petri Alanko", album: "CONTROL (Original Soundtrack)" },
   scan: { source: null, why: "no theme song found" },
   choose: { source: null, why: "no theme song found" },
   deezer: { source: "deezer", from: "deezer", key: "k5", url: "https://preview.invalid/b.mp3", title: "Hollow Knight", artist: "Christopher Larkin", album: "Hollow Knight (Original Soundtrack)", link: "https://www.deezer.com/track/1" },
 };
 const scanning = { running: true, paused: false, total: 210, done: 150, matched: 143, waiting: "", last: 0 };
+const scanningAll = { running: true, paused: false, total: 64, done: 23, matched: 19, waiting: "", last: 0, all: true, current: "INSIDE" };
+const row = (appid, title, group, song, extra = {}) => ({ appid: String(appid), title, kind: "steam", query: title.replace(" Ultimate Edition", ""), group, song, ...extra });
+const reviewRows = [
+  row(304430, "INSIDE", "none", null, { checked: true }),
+  row(1091500, "Cyberpunk 2077", "none", null, { checked: true }),
+  row(870780, "Control Ultimate Edition", "auto", { title: "Control Theme", artist: "Petri Alanko", album: "CONTROL (Original Soundtrack)", from: "apple" }),
+  row(1245620, "ELDEN RING", "auto", { title: "Elden Ring", artist: "Tsukasa Saitoh", album: "ELDEN RING (Original Soundtrack)", from: "apple" }),
+  row(367520, "Hollow Knight", "auto", { title: "Hollow Knight", artist: "Christopher Larkin", album: "Hollow Knight (Original Soundtrack)", from: "deezer" }),
+  row(413150, "Stardew Valley", "auto", { title: "01 Stardew Valley Overture", artist: "", album: "", from: "soundtrack" }),
+  row(504230, "Celeste", "pick", { title: "", artist: "", album: "", from: "none" }),
+  row(292030, "The Witcher 3: Wild Hunt", "pick", { title: "The Fields of Ard Skellig", artist: "Marcin Przybyłowicz", album: "The Witcher 3: Wild Hunt (Original Game Soundtrack)", from: "apple" }),
+];
 const scanned = { running: false, paused: false, total: 210, done: 210, matched: 198, waiting: "", last: 1 };
 const found = { later: [], results: [
   { choice: "s1", from: "soundtrack", title: "01 - V", artist: "", album: "Cyberpunk 2077 Original Score" },
@@ -29,12 +44,13 @@ function tone() {   // 1 s of a quiet 440 Hz tone, as a WAV, base64
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.sin((i / rate) * 2 * Math.PI * 440) * 2000, true);
   let s = ""; new Uint8Array(buf).forEach((b) => { s += String.fromCharCode(b); }); return btoa(s);
 }
-const settings = () => ({ enabled: S() !== "off", volume: 0.35, delay: 0, where: S() === "library" ? "library" : "pages", online: true, toast: true });
+const settings = () => ({ enabled: S() !== "off", volume: 0.35, delay: 0, where: S() === "library" ? "library" : "pages", online: true, toast: !["review", "fix", "fixchoose", "scanall"].includes(S()) });
 const handlers = {
   get_settings: () => settings(), set_settings: (s) => s, find_song: () => songs[S()] || { source: null, why: "no theme song found" },
   audio: () => ({ data: tone(), mime: "audio/wav" }), set_pick: () => true, get_picks: () => ({}), get_home: () => "/home/you", report: () => null,
-  scan_library: () => true, scan_pause: () => true, scan_status: () => (S() === "scan" ? scanning : scanned),
-  search_music: () => found, choose_music: () => true,
+  scan_library: () => true, scan_pause: () => true, scan_status: () => (S() === "scan" ? scanning : S() === "scanall" ? scanningAll : scanned),
+  search_music: () => found, choose_music: () => true, scan_all: () => true, scan_cancel: () => true, review: () => reviewRows,
+  choice_preview: () => ({ key: "kp" }), no_music: () => true, clean_title: (t) => String(t).replace(" Ultimate Edition", ""),
 };
 export function callable(name) { return async (...a) => (handlers[name] ? handlers[name](...a) : null); }
 export function definePlugin(f) { return f; }
