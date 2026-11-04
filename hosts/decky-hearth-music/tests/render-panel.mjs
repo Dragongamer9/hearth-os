@@ -82,7 +82,7 @@ const shots = [
   ["hearth-music-panel-steam-changed", "changed", true, gamePage(1245620), async () => {}, ["Hearth Music turned itself off"]],
   ["hearth-music-panel-library", "library", true, library(), async () => { await focusTile(1245620); await page.waitForTimeout(1200); }, ["Elden Ring — Tsukasa Saitoh", "Plays for the highlighted game in the library"]],
   ["hearth-music-panel-deezer", "deezer", true, gamePage(367520), async () => focus("Open in Deezer"), ["Hollow Knight — Christopher Larkin", "Preview from Deezer · Hollow Knight (Original Soundtrack)", "Open in Deezer", "Use Deezer previews"]],
-  ["hearth-music-panel-scan", "scan", true, gamePage(1091500), async () => { await reveal("Your library"); }, ["Matched 143 of 210", "Looking through your library: 151 of 210", "Scan my library"]],
+  ["hearth-music-panel-scan", "scan", true, gamePage(1091500), async () => { await reveal("Your library"); }, ["Matched 143 of 210", "Looking through your library: 151 of 210", "Scan all games"]],
   ["hearth-music-panel-scan-done", "nomatch", true, gamePage(1091500), async () => { await reveal("Your library"); await focus("Scan all games"); }, ["Matched 198 of 210", "Done: new games are matched as they appear", "Choose music…", "Scan all games", "Review music for every game"]],
   ["hearth-music-scan-all-running", "scanall", true, gamePage(1091500), async () => { await reveal("Your library"); await focus("Cancel scan"); }, ["Checking every game: 24 of 64 · INSIDE", "Cancel scan"]],
   ["hearth-music-review-list", "review", true, library(), async () => { await click("Review music for every game"); await page.waitForTimeout(600); await rowBtn("INSIDE", "Fix"); },
@@ -110,7 +110,8 @@ for (const [name, scene, panel, bg, act, wants] of shots) {
   await act();
   await page.waitForTimeout(400);
   const text = await page.evaluate(() => document.body.innerText);
-  for (const w of wants) if (!text.includes(w)) errors.push(`${name}: doesn't show "${w}"`);
+  // (section titles are drawn in capitals, as Steam does, so innerText has them that way)
+  for (const w of wants) if (!text.toLowerCase().includes(w.toLowerCase())) errors.push(`${name}: doesn't show "${w}"`);
   await page.screenshot({ path: join(out, name + ".png") });
   console.log("drew " + name);
 }
