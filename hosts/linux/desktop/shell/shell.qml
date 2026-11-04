@@ -36,34 +36,50 @@ ShellRoot {
                     settingsApp: settings
                     filesApp: files
                 }
-                Loader {
-                    id: islands
-                    active: !perScreen.portrait && dock.status !== Loader.Error
-                    Component.onCompleted: setSource("Islands.qml", { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu })
-                    onLoaded: {
-                        item.quickOpen = Qt.binding(() => quick.shown);
-                        item.calendarOpen = Qt.binding(() => calendar.shown);
-                        item.launcherRequested.connect(() => launcher.toggle());
-                        item.quickRequested.connect(() => quick.toggle());
-                        item.keyboardRequested.connect(() => { if (keyboard.open) pad.closeKeyboard(); else pad.openKeyboard(); });
-                        item.calendarRequested.connect(() => calendar.toggle(perScreen.modelData, false));
-                        item.settingsRequested.connect(page => settings.open(page));
+                // Made from their files here (not named as types), so a problem in either is caught: both are taken
+                // away again and the classic taskbar below comes up instead.
+                property var islandsWin: null
+                property var dockWin: null
+                property bool newFailed: false
+                function makeNew() {
+                    dropNew();
+                    const ci = Qt.createComponent("Islands.qml"), cd = Qt.createComponent("Dock.qml");
+                    if (ci.status !== Component.Ready || cd.status !== Component.Ready) {
+                        console.warn("Mantel: the top islands or the dock couldn't load; using the classic taskbar: " + (ci.errorString() + " " + cd.errorString()).trim());
+                        newFailed = true;
+                        return;
                     }
-                    onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the top islands couldn't load; using the classic taskbar")
-                }
-                Loader {
-                    id: dock
-                    active: !perScreen.portrait
-                    Component.onCompleted: setSource("Dock.qml", { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu })
-                    onLoaded: {
-                        item.keyboardOpen = Qt.binding(() => keyboard.open === true);
-                        item.launcherRequested.connect(() => launcher.toggle());
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu });
+                    dockWin = cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu });
+                    if (!islandsWin || !dockWin) {
+                        console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");
+                        dropNew();
+                        newFailed = true;
+                        return;
                     }
-                    onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the dock couldn't load; using the classic taskbar")
+                    newFailed = false;
+                    islandsWin.quickOpen = Qt.binding(() => quick.shown);
+                    islandsWin.calendarOpen = Qt.binding(() => calendar.shown);
+                    islandsWin.launcherRequested.connect(() => launcher.toggle());
+                    islandsWin.quickRequested.connect(() => quick.toggle());
+                    islandsWin.keyboardRequested.connect(() => { if (keyboard.open) pad.closeKeyboard(); else pad.openKeyboard(); });
+                    islandsWin.calendarRequested.connect(() => calendar.toggle(perScreen.modelData, false));
+                    islandsWin.settingsRequested.connect(page => settings.open(page));
+                    dockWin.keyboardOpen = Qt.binding(() => keyboard.open === true);
+                    dockWin.launcherRequested.connect(() => launcher.toggle());
                 }
+                function dropNew() {
+                    if (islandsWin) islandsWin.destroy();
+                    if (dockWin) dockWin.destroy();
+                    islandsWin = null;
+                    dockWin = null;
+                }
+                onPortraitChanged: { if (portrait) dropNew(); else makeNew(); }
+                Component.onCompleted: { makeHints(); if (!portrait) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
+                Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); }
                 // The classic taskbar: upright screens, and the safe fallback.
                 Loader {
-                    active: perScreen.portrait || islands.status === Loader.Error || dock.status === Loader.Error
+                    active: perScreen.portrait || perScreen.newFailed
                     sourceComponent: Component {
                         Bar {
                             screen: perScreen.modelData
@@ -78,9 +94,12 @@ ShellRoot {
                     }
                 }
                 // The controller's button hints (Console: always; other looks: after using the controller).
-                Loader {
-                    active: perScreen.primary
-                    Component.onCompleted: setSource("HintStrip.qml", { screen: perScreen.modelData })
+                property var hintWin: null
+                function makeHints() {
+                    if (!perScreen.primary) return;
+                    const ch = Qt.createComponent("HintStrip.qml");
+                    if (ch.status === Component.Ready) hintWin = ch.createObject(perScreen, { screen: perScreen.modelData });
+                    else console.warn("Mantel: the controller hints couldn't load: " + ch.errorString());
                 }
                 EdgeSwipes {
                     screen: modelData

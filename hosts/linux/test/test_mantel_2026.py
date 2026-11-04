@@ -238,10 +238,11 @@ class GameModeEverywhere(unittest.TestCase):
 class AlwaysStarts(unittest.TestCase):
     def test_new_parts_load_by_file_name_with_the_classic_taskbar_as_fallback(self):
         sh = code((SHELL / 'shell.qml').read_text())
-        self.assertIn('setSource("Islands.qml"', sh)
-        self.assertIn('setSource("Dock.qml"', sh)
+        self.assertIn('Qt.createComponent("Islands.qml")', sh)
+        self.assertIn('Qt.createComponent("Dock.qml")', sh)
+        self.assertIn('ci.status !== Component.Ready || cd.status !== Component.Ready', sh)
         self.assertNotRegex(sh, r'\b(Islands|Dock|Frame|Scene|HintStrip|Frost)\s*\{')
-        self.assertIn('active: perScreen.portrait || islands.status === Loader.Error || dock.status === Loader.Error', sh)
+        self.assertIn('active: perScreen.portrait || perScreen.newFailed', sh)
         self.assertIn('Bar {', sh)
         # Files shell.qml uses directly only load the new parts through Loaders (a problem there can't stop the shell).
         for f in ('QuickAccess.qml', 'Launcher.qml', 'ClockPanel.qml', 'Wallpaper.qml', 'Notifications.qml', 'Bar.qml'):

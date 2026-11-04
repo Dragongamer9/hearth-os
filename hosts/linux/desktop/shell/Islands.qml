@@ -21,7 +21,7 @@ import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 
 PanelWindow {
-    id: top
+    id: isl
     signal launcherRequested()
     signal quickRequested()
     signal keyboardRequested()
@@ -44,6 +44,7 @@ PanelWindow {
 
     anchors { top: true; left: true; right: true }
     implicitHeight: band
+    implicitWidth: 0
     exclusiveZone: band
     color: "transparent"
     WlrLayershell.namespace: "hearth-islands"
@@ -56,7 +57,7 @@ PanelWindow {
     // Menus open just under the bar.
     function menuPoint(item) {
         const p = item.mapToItem(null, item.width / 2, item.height);
-        return Qt.point(Math.max(8, Math.min((screen ? screen.width : 1920) - 300, p.x - 134)), top.band + 2);
+        return Qt.point(Math.max(8, Math.min((screen ? screen.width : 1920) - 300, p.x - 134)), isl.band + 2);
     }
     function statusMenu(btn, title, list) {
         if (!menu) return;
@@ -73,7 +74,7 @@ PanelWindow {
         if (list.length) list.push({ separator: true });
         const a = sink ? sink.audio : null;
         if (a) list.push({ label: a.muted ? "Unmute" : "Mute", icon: a.muted ? "vol" : "vol-mute", run: () => { a.muted = !a.muted; } });
-        list.push({ label: "Sound settings", icon: "gear", run: () => top.settingsRequested("sound") });
+        list.push({ label: "Sound settings", icon: "gear", run: () => isl.settingsRequested("sound") });
         statusMenu(btn, "Sound output", list);
     }
 
@@ -97,7 +98,7 @@ PanelWindow {
                     const f = line.split(":");
                     if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet") && !k) { k = f[0]; n = f.slice(2).join(":").replace(/\\(.)/g, "$1"); }
                 }
-                top.netKind = k; top.netName = n;
+                isl.netKind = k; isl.netName = n;
             }
         }
     }
@@ -111,9 +112,9 @@ PanelWindow {
         stdout: StdioCollector {
             onStreamFinished: {
                 const parts = text.split("---");
-                top.btPresent = /Controller/.test(parts[0] || "");
-                top.btPowered = /Powered:\s*yes/.test(parts[0] || "");
-                top.btConnected = (parts[1] || "").split("\n").map(l => l.match(/^Device\s+\S+\s+(.+)$/)).filter(Boolean).map(m => m[1].trim());
+                isl.btPresent = /Controller/.test(parts[0] || "");
+                isl.btPowered = /Powered:\s*yes/.test(parts[0] || "");
+                isl.btConnected = (parts[1] || "").split("\n").map(l => l.match(/^Device\s+\S+\s+(.+)$/)).filter(Boolean).map(m => m[1].trim());
             }
         }
     }
@@ -129,73 +130,73 @@ PanelWindow {
         target: DeskState
         function onHistoryChanged() {
             const n = DeskState.history[0];
-            if (!n || n.key === top.seenSeq) return;
-            top.seenSeq = n.key;
+            if (!n || n.key === isl.seenSeq) return;
+            isl.seenSeq = n.key;
             if (DeskState.dnd || DeskState.isMuted(n.app)) return;
-            top.flash = n;
+            isl.flash = n;
             flashTimer.restart();
         }
     }
-    Timer { id: flashTimer; interval: 5000; onTriggered: top.flash = null }
+    Timer { id: flashTimer; interval: 5000; onTriggered: isl.flash = null }
 
     // ------------------------------------------------------------------ the band
     Item {
         id: bandItem
-        anchors { fill: parent; topMargin: top.gapTop; leftMargin: top.floating ? 12 : top.shelf ? 40 : 0; rightMargin: top.floating ? 12 : top.shelf ? 40 : 0; bottomMargin: top.band - top.gapTop - top.islandH }
+        anchors { fill: parent; topMargin: isl.gapTop; leftMargin: isl.floating ? 12 : isl.shelf ? 40 : 0; rightMargin: isl.floating ? 12 : isl.shelf ? 40 : 0; bottomMargin: isl.band - isl.gapTop - isl.islandH }
 
         // One full-width bar (Steam-style, Zen): a flat strip attached to the top edge.
         Rectangle {
             anchors.fill: parent
-            visible: top.style === "bar"
+            visible: isl.style === "bar"
             color: Theme.glass
             Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.line }
-            Loader { anchors.fill: parent; active: Theme.frame === "frost" && top.style === "bar"; source: "Frame.qml" }
+            Loader { anchors.fill: parent; active: Theme.frame === "frost" && isl.style === "bar"; source: "Frame.qml" }
         }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: top.style === "bar" ? 8 : 0
-            anchors.rightMargin: top.style === "bar" ? 6 : 0
-            spacing: top.floating ? 10 : 6
+            anchors.leftMargin: isl.style === "bar" ? 8 : 0
+            anchors.rightMargin: isl.style === "bar" ? 6 : 0
+            spacing: isl.floating ? 10 : 6
 
             // ---- left island: the mark, the desktops, the window in front
             Island {
                 id: leftIsland
-                Layout.preferredWidth: leftRow.implicitWidth + (top.floating ? 16 : 4)
+                Layout.preferredWidth: leftRow.implicitWidth + (isl.floating ? 16 : 4)
                 RowLayout {
                     id: leftRow
                     anchors.centerIn: parent
-                    spacing: 8 * top.k
+                    spacing: 8 * isl.k
                     IslandButton {
                         tip: "Apps (Super)"
-                        onClicked: top.launcherRequested()
-                        Image { anchors.centerIn: parent; width: 26 * top.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
+                        onClicked: isl.launcherRequested()
+                        Image { anchors.centerIn: parent; width: 26 * isl.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                     }
                     Text {   // Console: the big clock sits next to the mark
-                        visible: top.shelf
+                        visible: isl.shelf
                         text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm")
                         color: Theme.text; font.family: Theme.font; font.pixelSize: 38; font.weight: Font.DemiBold
                         Text { anchors { left: parent.right; leftMargin: 6; baseline: parent.baseline } visible: !Settings.clock24; text: Qt.formatTime(clock.date, "AP"); color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 }
                     }
                     Loader {
                         id: desks
-                        visible: !top.shelf && status === Loader.Ready && !!item && item.wanted
-                        active: !top.shelf
+                        visible: !isl.shelf && status === Loader.Ready && !!item && item.wanted
+                        active: !isl.shelf
                         source: "DeskSwitcher.qml"
-                        onLoaded: { item.island = true; item.pillSize = Qt.binding(() => top.islandH > 40 ? 24 : 20); }
+                        onLoaded: { item.island = true; item.pillSize = Qt.binding(() => isl.islandH > 40 ? 24 : 20); }
                     }
                     RowLayout {   // the window in front
-                        visible: !top.compact && !top.shelf && top.front !== null && (top.front.title || "") !== ""
+                        visible: !isl.compact && !isl.shelf && isl.front !== null && (isl.front.title || "") !== ""
                         spacing: 8
                         Rectangle { visible: desks.visible; implicitWidth: 1; implicitHeight: 22; color: Theme.line }
-                        AppIcon { size: 20; appId: top.front ? (top.front.appId || "") : ""; icon: "" }
+                        AppIcon { size: 20; appId: isl.front ? (isl.front.appId || "") : ""; icon: "" }
                         Text {
                             Layout.maximumWidth: 260
-                            text: top.front ? (top.front.title || "") : ""
+                            text: isl.front ? (isl.front.title || "") : ""
                             elide: Text.ElideRight
                             color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
-                            font.capitalization: top.gaming ? Font.AllUppercase : Font.MixedCase
-                            font.letterSpacing: top.gaming ? 1.5 : 0
+                            font.capitalization: isl.gaming ? Font.AllUppercase : Font.MixedCase
+                            font.letterSpacing: isl.gaming ? 1.5 : 0
                         }
                     }
                 }
@@ -203,9 +204,9 @@ PanelWindow {
 
             // ---- Gaming: the performance island
             Island {
-                visible: Theme.perfIsland && !top.compact && perf.status === Loader.Ready
+                visible: Theme.perfIsland && !isl.compact && perf.status === Loader.Ready
                 Layout.preferredWidth: perf.item ? perf.item.implicitWidth + 24 : 0
-                Loader { id: perf; anchors.centerIn: parent; active: Theme.perfIsland && !top.compact; source: "PerfIsland.qml" }
+                Loader { id: perf; anchors.centerIn: parent; active: Theme.perfIsland && !isl.compact; source: "PerfIsland.qml" }
             }
 
             Item { Layout.fillWidth: true }
@@ -213,146 +214,146 @@ PanelWindow {
             // ---- the status island
             Island {
                 id: statusIsland
-                lit: top.quickOpen
-                Layout.preferredWidth: statusRow.implicitWidth + (top.floating ? 16 : 4)
-                MouseArea { anchors.fill: parent; onClicked: top.quickRequested() }   // the island's gaps open Quick settings too
+                lit: isl.quickOpen
+                Layout.preferredWidth: statusRow.implicitWidth + (isl.floating ? 16 : 4)
+                MouseArea { anchors.fill: parent; onClicked: isl.quickRequested() }   // the island's gaps open Quick settings too
                 RowLayout {
                     id: statusRow
                     anchors.centerIn: parent
-                    spacing: top.shelf ? 12 : 2
+                    spacing: isl.shelf ? 12 : 2
                     Repeater {
-                        model: top.compact && !Theme.hints ? [] : SystemTray.items
+                        model: isl.compact && !Theme.hints ? [] : SystemTray.items
                         delegate: IslandButton {
                             id: tray
                             required property SystemTrayItem modelData
-                            narrow: !top.shelf
+                            narrow: !isl.shelf
                             tip: (modelData.tooltipTitle || modelData.title || modelData.id || "")
                                 + (modelData.tooltipDescription ? "\n" + modelData.tooltipDescription.replace(/<[^>]*>/g, "") : "")
                             onClicked: { if (modelData.onlyMenu && modelData.hasMenu) showMenu(); else modelData.activate(); }
                             onMiddleClicked: modelData.secondaryActivate()
                             onRightClicked: { if (modelData.hasMenu) showMenu(); else modelData.secondaryActivate(); }
                             onScrolled: delta => modelData.scroll(delta, false)
-                            function showMenu() { const p = tray.mapToItem(null, 0, tray.height); modelData.display(top, p.x, p.y + 8); }
-                            IconImage { anchors.centerIn: parent; implicitSize: 20 * top.k; source: tray.modelData.icon }
+                            function showMenu() { const p = tray.mapToItem(null, 0, tray.height); modelData.display(isl, p.x, p.y + 8); }
+                            IconImage { anchors.centerIn: parent; implicitSize: 20 * isl.k; source: tray.modelData.icon }
                         }
                     }
                     IslandButton {   // Friends
-                        visible: !top.compact
+                        visible: !isl.compact
                         tip: SettingsNav.friendsUnread > 0 ? "Friends · " + SettingsNav.friendsUnread + " unread" : "Friends"
                         badge: SettingsNav.friendsUnread
                         onClicked: if (SettingsNav.friends) SettingsNav.friends.toggle()
-                        Icon { anchors.centerIn: parent; name: "user"; size: 20 * top.k }
+                        Icon { anchors.centerIn: parent; name: "user"; size: 20 * isl.k }
                     }
                     IslandButton {   // on-screen keyboard
-                        visible: !top.compact
+                        visible: !isl.compact
                         tip: "Keyboard"
-                        onClicked: top.keyboardRequested()
-                        Icon { anchors.centerIn: parent; name: "kbd"; size: 20 * top.k }
+                        onClicked: isl.keyboardRequested()
+                        Icon { anchors.centerIn: parent; name: "kbd"; size: 20 * isl.k }
                     }
                     IslandButton {   // network
                         id: net
-                        tip: top.netName ? "Connected to " + top.netName : "Not connected"
-                        onClicked: top.quickRequested()
-                        onRightClicked: top.statusMenu(net, net.tip, [
-                            { label: "Wi-Fi settings", icon: "wifi", run: () => top.settingsRequested("wifi") },
-                            { label: "Quick settings", icon: "menu", run: () => top.quickRequested() }
+                        tip: isl.netName ? "Connected to " + isl.netName : "Not connected"
+                        onClicked: isl.quickRequested()
+                        onRightClicked: isl.statusMenu(net, net.tip, [
+                            { label: "Wi-Fi settings", icon: "wifi", run: () => isl.settingsRequested("wifi") },
+                            { label: "Quick settings", icon: "menu", run: () => isl.quickRequested() }
                         ])
-                        Icon { anchors.centerIn: parent; size: 19 * top.k; name: top.netKind === "wifi" ? "wifi" : top.netKind === "ethernet" ? "wired" : "offline" }
+                        Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.netKind === "wifi" ? "wifi" : isl.netKind === "ethernet" ? "wired" : "offline" }
                     }
                     IslandButton {   // Bluetooth
                         id: bt
-                        visible: top.btPresent && !top.compact
-                        tip: !top.btPowered ? "Bluetooth is off" : top.btConnected.length ? "Connected: " + top.btConnected.join(", ") : "Bluetooth is on"
-                        onClicked: top.quickRequested()
-                        onRightClicked: top.statusMenu(bt, bt.tip, [
-                            { label: top.btPowered ? "Turn Bluetooth off" : "Turn Bluetooth on", icon: "bt", run: () => { btSet.command = ["bluetoothctl", "power", top.btPowered ? "off" : "on"]; btSet.running = true; } },
-                            { label: "Bluetooth settings", icon: "gear", run: () => top.settingsRequested("bluetooth") }
+                        visible: isl.btPresent && !isl.compact
+                        tip: !isl.btPowered ? "Bluetooth is off" : isl.btConnected.length ? "Connected: " + isl.btConnected.join(", ") : "Bluetooth is on"
+                        onClicked: isl.quickRequested()
+                        onRightClicked: isl.statusMenu(bt, bt.tip, [
+                            { label: isl.btPowered ? "Turn Bluetooth off" : "Turn Bluetooth on", icon: "bt", run: () => { btSet.command = ["bluetoothctl", "power", isl.btPowered ? "off" : "on"]; btSet.running = true; } },
+                            { label: "Bluetooth settings", icon: "gear", run: () => isl.settingsRequested("bluetooth") }
                         ])
-                        Icon { anchors.centerIn: parent; name: "bt"; size: 18 * top.k; color: !top.btPowered ? Theme.muted : top.btConnected.length ? Theme.accent : Theme.text }
+                        Icon { anchors.centerIn: parent; name: "bt"; size: 18 * isl.k; color: !isl.btPowered ? Theme.muted : isl.btConnected.length ? Theme.accent : Theme.text }
                     }
                     IslandButton {   // volume
                         id: vol
-                        visible: top.audio !== null
-                        tip: (top.audio && top.audio.muted ? "Muted" : "Volume " + top.volPct + "%") + "\nScroll to change, middle-click to mute"
-                        onClicked: top.quickRequested()
-                        onMiddleClicked: if (top.audio) top.audio.muted = !top.audio.muted
-                        onRightClicked: top.soundMenu(vol)
-                        onScrolled: delta => { if (top.audio) top.audio.volume = Math.max(0, Math.min(Buttons.maxVolume, top.audio.volume + (delta > 0 ? 0.05 : -0.05))); }
-                        Icon { anchors.centerIn: parent; size: 19 * top.k; name: !top.audio || top.audio.muted ? "vol-mute" : top.volPct > 33 ? "vol" : "vol-low" }
+                        visible: isl.audio !== null
+                        tip: (isl.audio && isl.audio.muted ? "Muted" : "Volume " + isl.volPct + "%") + "\nScroll to change, middle-click to mute"
+                        onClicked: isl.quickRequested()
+                        onMiddleClicked: if (isl.audio) isl.audio.muted = !isl.audio.muted
+                        onRightClicked: isl.soundMenu(vol)
+                        onScrolled: delta => { if (isl.audio) isl.audio.volume = Math.max(0, Math.min(Buttons.maxVolume, isl.audio.volume + (delta > 0 ? 0.05 : -0.05))); }
+                        Icon { anchors.centerIn: parent; size: 19 * isl.k; name: !isl.audio || isl.audio.muted ? "vol-mute" : isl.volPct > 33 ? "vol" : "vol-low" }
                     }
                     IslandButton {   // battery
                         id: battBtn
-                        visible: top.hasBatt
-                        wideLabel: top.battPct + "%"
-                        tip: top.battPct + "%" + (top.charging ? ", charging" : "")
-                        onClicked: top.quickRequested()
-                        onRightClicked: top.statusMenu(battBtn, battBtn.tip, [{ label: "Power settings", icon: "power", run: () => top.settingsRequested("power") }])
-                        Icon { anchors.centerIn: parent; size: 19 * top.k; name: top.charging ? "batt-charging" : top.battPct > 20 ? "batt" : "batt-low" }
+                        visible: isl.hasBatt
+                        wideLabel: isl.battPct + "%"
+                        tip: isl.battPct + "%" + (isl.charging ? ", charging" : "")
+                        onClicked: isl.quickRequested()
+                        onRightClicked: isl.statusMenu(battBtn, battBtn.tip, [{ label: "Power settings", icon: "power", run: () => isl.settingsRequested("power") }])
+                        Icon { anchors.centerIn: parent; size: 19 * isl.k; name: isl.charging ? "batt-charging" : isl.battPct > 20 ? "batt" : "batt-low" }
                     }
                     IslandButton {   // notifications
-                        visible: !top.compact || DeskState.unseen > 0
+                        visible: !isl.compact || DeskState.unseen > 0
                         tip: DeskState.dnd ? "Do not disturb is on" : DeskState.unseen > 0 ? DeskState.unseen + (DeskState.unseen === 1 ? " new notification" : " new notifications") : "Notifications"
                         badge: DeskState.dnd ? 0 : DeskState.unseen
-                        onClicked: top.calendarRequested()
+                        onClicked: isl.calendarRequested()
                         onRightClicked: DeskState.setDnd(!DeskState.dnd)
-                        Icon { anchors.centerIn: parent; name: DeskState.dnd ? "bell-off" : "bell"; size: 19 * top.k; color: DeskState.dnd ? Theme.muted : Theme.text }
+                        Icon { anchors.centerIn: parent; name: DeskState.dnd ? "bell-off" : "bell"; size: 19 * isl.k; color: DeskState.dnd ? Theme.muted : Theme.text }
                     }
                 }
             }
 
             // ---- Game Mode: always here, in every look, the biggest target in the bar
-            GameModeButton { Layout.preferredHeight: top.style === "bar" ? top.islandH - 8 : top.islandH }
+            GameModeButton { Layout.preferredHeight: isl.style === "bar" ? isl.islandH - 8 : isl.islandH }
         }
 
         // ---- the centre pill: the clock, what's playing, the newest notification
         Island {
             id: pill
-            visible: !top.shelf
-            lit: top.calendarOpen
+            visible: !isl.shelf
+            lit: isl.calendarOpen
             anchors.horizontalCenter: parent.horizontalCenter
             height: parent.height
             width: pillRow.implicitWidth + 28
             rad: Theme.r(height / 2)
             Behavior on width { enabled: !Settings.reduceMotion; NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: top.calendarRequested() }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: isl.calendarRequested() }
             RowLayout {
                 id: pillRow
                 anchors.centerIn: parent
                 spacing: 12
                 // the newest notification, for a few seconds
                 RowLayout {
-                    visible: top.flash !== null
+                    visible: isl.flash !== null
                     spacing: 8
-                    AppIcon { size: 22; genericFallback: false; visible: hasIcon; icon: top.flash ? (top.flash.icon || "") : ""; appId: top.flash ? (top.flash.entry || "") : "" }
+                    AppIcon { size: 22; genericFallback: false; visible: hasIcon; icon: isl.flash ? (isl.flash.icon || "") : ""; appId: isl.flash ? (isl.flash.entry || "") : "" }
                     Text {
-                        Layout.maximumWidth: top.compact ? 200 : 320
-                        text: top.flash ? [top.flash.app, top.flash.summary].filter(Boolean).join(" · ") : ""
+                        Layout.maximumWidth: isl.compact ? 200 : 320
+                        text: isl.flash ? [isl.flash.app, isl.flash.summary].filter(Boolean).join(" · ") : ""
                         elide: Text.ElideRight
                         color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold
                     }
                 }
                 Loader {
                     id: media
-                    visible: top.flash === null && status === Loader.Ready && item.playing
+                    visible: isl.flash === null && status === Loader.Ready && item.playing
                     source: "MediaPill.qml"
-                    onLoaded: item.compact = Qt.binding(() => top.compact)
+                    onLoaded: item.compact = Qt.binding(() => isl.compact)
                 }
                 Rectangle { visible: media.visible; implicitWidth: 1; implicitHeight: 22; color: Theme.line }
                 Text {
                     text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
                     color: Theme.text
-                    font.family: top.gaming || Theme.look === "synthwave" ? "DejaVu Sans Mono" : Theme.font
+                    font.family: isl.gaming || Theme.look === "synthwave" ? "DejaVu Sans Mono" : Theme.font
                     font.pixelSize: Theme.thin ? 13 : 15; font.weight: Font.DemiBold
-                    font.letterSpacing: top.gaming ? 1.5 : 0
+                    font.letterSpacing: isl.gaming ? 1.5 : 0
                 }
                 Text {
-                    visible: !media.visible && top.flash === null && !top.compact
+                    visible: !media.visible && isl.flash === null && !isl.compact
                     text: Qt.formatDate(clock.date, "ddd d MMM")
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                 }
                 Rectangle {   // play / pause
                     visible: media.visible
-                    implicitWidth: top.islandH - 14; implicitHeight: implicitWidth
+                    implicitWidth: isl.islandH - 14; implicitHeight: implicitWidth
                     radius: Theme.r(implicitWidth / 2)
                     color: ppArea.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
                     Text { anchors.centerIn: parent; text: "❚❚"; color: Theme.accentInk; font.pixelSize: 12 }
@@ -366,17 +367,17 @@ PanelWindow {
     // An island: the look's frame (Frame.qml) when floating; nothing of its own inside a full-width bar.
     component Island: Item {
         property bool lit: false
-        property real rad: top.gaming ? 0 : Theme.r(top.islandH / 2.4)
+        property real rad: isl.gaming ? 0 : Theme.r(isl.islandH / 2.4)
         Layout.fillHeight: true
-        Layout.preferredHeight: top.islandH
-        Frame { anchors.fill: parent; flat: !top.floating; lit: parent.lit; rad: parent.rad }
+        Layout.preferredHeight: isl.islandH || 52
+        Frame { anchors.fill: parent; flat: !isl.floating; lit: parent.lit; rad: parent.rad }
     }
 
     // Back to Game Mode: dressed per look, never hidden.
     component GameModeButton: Item {
         id: gmb
         objectName: "gameModeButton"
-        implicitWidth: gmRow.implicitWidth + (top.shelf ? 56 : 36)
+        implicitWidth: gmRow.implicitWidth + (isl.shelf ? 56 : 36)
         Layout.alignment: Qt.AlignVCenter
         readonly property bool white: Theme.look === "glass"
         Repeater {   // Cabin: an ember glow around it
@@ -391,8 +392,8 @@ PanelWindow {
         }
         Rectangle {
             anchors.fill: parent
-            visible: !top.gaming
-            radius: top.style === "bar" ? Theme.r(6) : Theme.r(height / 2)
+            visible: !isl.gaming
+            radius: isl.style === "bar" ? Theme.r(6) : Theme.r(height / 2)
             color: gmb.white ? (gmArea.containsMouse ? "#ffffff" : "#f2f6ff") : gmArea.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
         }
         Rectangle {   // Synthwave: pink chrome
@@ -405,7 +406,7 @@ PanelWindow {
         Canvas {   // Gaming: a cut-corner button, cyan to magenta
             id: gmCanvas
             anchors.fill: parent
-            visible: top.gaming
+            visible: isl.gaming
             readonly property string key: Theme.accent + "/" + Theme.flame + "/" + width + "x" + height + "/" + gmArea.containsMouse
             onKeyChanged: requestPaint()
             onVisibleChanged: if (visible) requestPaint()
@@ -424,12 +425,12 @@ PanelWindow {
             id: gmRow
             anchors.centerIn: parent
             spacing: 8
-            Icon { name: "pad"; size: 20 * top.k; color: gmb.white ? "#17203a" : Theme.accentInk }
+            Icon { name: "pad"; size: 20 * isl.k; color: gmb.white ? "#17203a" : Theme.accentInk }
             Text {
-                text: top.gaming ? "GAME MODE" : "Game Mode"
+                text: isl.gaming ? "GAME MODE" : "Game Mode"
                 color: gmb.white ? "#17203a" : Theme.accentInk
-                font.family: Theme.font; font.bold: true; font.pixelSize: (Theme.thin ? 12 : 14) * top.k
-                font.letterSpacing: top.gaming ? 2 : 0
+                font.family: Theme.font; font.bold: true; font.pixelSize: Math.round((Theme.thin ? 12 : 14) * isl.k)
+                font.letterSpacing: isl.gaming ? 2 : 0
             }
         }
         MouseArea { id: gmArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Quickshell.execDetached(["nimbus-mode", "game"]) }
@@ -446,21 +447,21 @@ PanelWindow {
         signal middleClicked()
         signal rightClicked()
         signal scrolled(int delta)
-        readonly property real side: top.shelf ? 60 : Math.max(26, top.islandH - 12)
+        readonly property real side: isl.shelf ? 60 : Math.max(26, isl.islandH - 12)
         implicitWidth: wideLabel !== "" ? side + wl.implicitWidth + 4 : narrow ? side * 0.8 : side
         implicitHeight: side
         Layout.alignment: Qt.AlignVCenter
         Rectangle {
             anchors.fill: parent
-            radius: top.shelf ? height / 2 : Theme.r(10)
-            color: area.containsMouse ? Theme.panel3 : top.shelf ? Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.6) : "transparent"
+            radius: isl.shelf ? height / 2 : Theme.r(10)
+            color: area.containsMouse ? Theme.panel3 : isl.shelf ? Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.6) : "transparent"
         }
         Item { id: holder; width: btn.side; height: btn.side }
         Text {
             id: wl
             visible: btn.wideLabel !== ""
             anchors { left: holder.right; verticalCenter: parent.verticalCenter; leftMargin: -6 }
-            text: btn.wideLabel; color: Theme.text; font.family: Theme.font; font.pixelSize: 13 * top.k
+            text: btn.wideLabel; color: Theme.text; font.family: Theme.font; font.pixelSize: Math.round(13 * isl.k)
         }
         Rectangle {
             visible: btn.badge > 0
@@ -485,8 +486,8 @@ PanelWindow {
         PopupWindow {
             visible: area.containsMouse && btn.tip !== ""
             anchor.item: btn
-            anchor.rect.x: btn.width / 2 - implicitWidth / 2
-            anchor.rect.y: btn.height + 12
+            anchor.rect.x: Math.round(btn.width / 2 - implicitWidth / 2)
+            anchor.rect.y: Math.round(btn.height + 12)
             implicitWidth: tipText.implicitWidth + 20
             implicitHeight: tipText.implicitHeight + 12
             color: "transparent"

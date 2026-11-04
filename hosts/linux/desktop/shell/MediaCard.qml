@@ -59,7 +59,7 @@ Item {
         radius: implicitWidth / 2
         color: big ? Theme.accent : ra.containsMouse ? Theme.panel3 : "transparent"
         Text { visible: rb.icon === "pause" || rb.icon === "play"; anchors.centerIn: parent; text: rb.icon === "pause" ? "❚❚" : "▶"; color: rb.big ? Theme.accentInk : Theme.text; font.pixelSize: rb.big ? 16 : 13 }
-        Icon { visible: rb.icon !== "pause" && rb.icon !== "play"; anchors.centerIn: parent; name: rb.icon; size: 18 }
+        Icon { visible: rb.icon !== "pause" && rb.icon !== "play"; anchors.centerIn: parent; name: visible ? rb.icon : "dot"; size: 18 }
         MouseArea { id: ra; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: rb.picked() }
     }
 }

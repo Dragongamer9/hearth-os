@@ -15,6 +15,7 @@ PanelWindow {
     visible: always || recent
     anchors { bottom: true; left: true; right: true }
     implicitHeight: 48
+    implicitWidth: 0
     exclusiveZone: always ? 48 : 0
     color: "transparent"
     WlrLayershell.namespace: "hearth-hints"

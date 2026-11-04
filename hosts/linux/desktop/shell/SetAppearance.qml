@@ -54,7 +54,7 @@ SetPage {
     function hexOf(c) { const t = (x) => ("0" + Math.round(x * 255).toString(16)).slice(-2); return "#" + t(c.r) + t(c.g) + t(c.b); }
 
     // ---- From wallpaper (WallAccent.qml, loaded on its own): only ever run by a press, below.
-    Loader { id: wallAccent; source: "WallAccent.qml" }
+    Loader { id: wallAccent; source: "WallAccent.qml"; Layout.preferredHeight: 1; Layout.preferredWidth: 1; Layout.topMargin: -8 }
     Connections {
         target: wallAccent.item
         function onFound(sw) { Settings.wallSwatches = sw; Settings.accentFrom = "wallpaper"; Settings.accent = sw[0]; }

@@ -40,6 +40,7 @@ PanelWindow {
 
     anchors { bottom: true; left: true; right: true }
     implicitHeight: bodyH + gap + 2
+    implicitWidth: 0
     exclusiveZone: reserved
     color: "transparent"
     WlrLayershell.namespace: "hearth-dock"
@@ -294,7 +295,7 @@ PanelWindow {
                     PopupWindow {
                         visible: sdArea.containsMouse
                         anchor.item: showDesk
-                        anchor.rect.x: showDesk.width / 2 - implicitWidth + 8
+                        anchor.rect.x: Math.round(showDesk.width / 2 - implicitWidth + 8)
                         anchor.rect.y: -implicitHeight - 14
                         implicitWidth: sdTip.implicitWidth + 20
                         implicitHeight: sdTip.implicitHeight + 12
@@ -420,7 +421,7 @@ PanelWindow {
         PopupWindow {   // the hover label above the dock
             visible: area.containsMouse && btn.tip !== "" && !btn.dragging && !dock.shelf
             anchor.item: btn
-            anchor.rect.x: btn.width / 2 - implicitWidth / 2
+            anchor.rect.x: Math.round(btn.width / 2 - implicitWidth / 2)
             anchor.rect.y: -implicitHeight - 14
             implicitWidth: tipText.implicitWidth + 20
             implicitHeight: tipText.implicitHeight + 12

@@ -69,7 +69,7 @@ Item {
     }
     Canvas {
         id: canvas
-        anchors.fill: parent
+        width: 32; height: 32
         onImageLoaded: requestPaint()
         onPaint: {
             if (wa.url === "" || !isImageLoaded(wa.url)) return;

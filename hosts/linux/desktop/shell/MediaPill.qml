@@ -27,8 +27,8 @@ RowLayout {
         visible: !m.compact
         spacing: 0
         Layout.maximumWidth: 200 * m.k
-        Text { Layout.fillWidth: true; text: m.shownPlayer ? (m.shownPlayer.trackTitle || m.shownPlayer.identity || "") : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 13 * m.k; font.weight: Font.DemiBold; elide: Text.ElideRight }
-        Text { Layout.fillWidth: true; text: m.shownPlayer ? (m.shownPlayer.trackArtist || "") : ""; visible: text !== ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 * m.k; elide: Text.ElideRight }
+        Text { Layout.fillWidth: true; text: m.shownPlayer ? (m.shownPlayer.trackTitle || m.shownPlayer.identity || "") : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: Math.round(13 * m.k); font.weight: Font.DemiBold; elide: Text.ElideRight }
+        Text { Layout.fillWidth: true; text: m.shownPlayer ? (m.shownPlayer.trackArtist || "") : ""; visible: text !== ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: Math.round(11 * m.k); elide: Text.ElideRight }
     }
     Row {   // a small level meter (decorative: it moves while playing, holds still with Reduce motion)
         spacing: 3

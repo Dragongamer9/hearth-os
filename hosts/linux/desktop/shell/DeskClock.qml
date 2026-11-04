@@ -52,7 +52,7 @@ Item {
             style: root.look === "gaming" || root.look === "synthwave" ? Text.Outline : Text.Normal
             styleColor: root.look === "gaming" ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6) : Qt.rgba(Theme.flame.r, Theme.flame.g, Theme.flame.b, 0.7)
             font.family: root.look === "gaming" ? "DejaVu Sans Condensed" : Theme.font
-            font.pixelSize: (root.look === "cabin" ? 72 : 150) * root.k
+            font.pixelSize: Math.round((root.look === "cabin" ? 72 : 150) * root.k)
             font.weight: root.look === "glass" ? Font.Light : Font.Bold
             font.italic: root.look === "synthwave"
         }
@@ -60,7 +60,7 @@ Item {
             text: root.look === "gaming" ? root.dateText.toUpperCase() : root.dateText
             color: root.look === "gaming" ? Theme.flame : root.look === "cabin" ? "#f1d3ad" : "#f4f4f4"
             font.family: Theme.font
-            font.pixelSize: (root.look === "cabin" ? 18 : 28) * root.k
+            font.pixelSize: Math.round((root.look === "cabin" ? 18 : 28) * root.k)
             font.letterSpacing: root.look === "gaming" ? 6 * root.k : 0
             font.bold: root.look === "gaming"
             style: Text.Raised; styleColor: "#66000000"
