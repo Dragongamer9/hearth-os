@@ -258,7 +258,8 @@ await scene("menu-rail-in-game", { scene: "game", qam: false, menu: "steam", men
   });
   if (m.mirror || !/hearth-rail/.test(m.cls) || /hearth-(bar|ghost|menu)/.test(m.cls) || m.win.width !== 241) errors.push(`menu-rail-in-game: expected the side rail (${m.cls}, ${JSON.stringify(m.win)})`);
   if (r.game !== "1" || !r.inside || r.panel[2] > 241 || r.panel[3] > 760 || r.radius !== "22px") errors.push(`menu-rail-in-game: ${JSON.stringify(r)}`);
-  if (r.calls > 1) errors.push(`menu-rail-in-game: window.resizeTo called ${r.calls} times`);
+  // window.resizeTo: one try and its undo, once per start; never again (no flicker, no repeated calls).
+  if (r.calls > 2) errors.push(`menu-rail-in-game: window.resizeTo called ${r.calls} times`);
   if (!m.diag || m.diag.layout !== "rail" || !/the side rail is used in games and on web pages/.test(m.diag.why) || !/^passed/.test(m.diag.selfCheck)) errors.push(`menu-rail-in-game: diag ${JSON.stringify(m.diag && { layout: m.diag.layout, why: m.diag.why, selfCheck: m.diag.selfCheck })}`);
 });
 await scene("menu-rail-off-in-game", { scene: "game", qam: false, menu: "steam", menuWidth: 241, running: true, settings: { look: "classic", rail: false }, skin: true, wait: 3500 }, async () => {
