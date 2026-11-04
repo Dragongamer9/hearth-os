@@ -8,7 +8,8 @@ song; this file finds it, in this order:
      steamapps/common/<Game> Soundtrack) and, conservatively, an audio file in the game's folder whose name says it's
      the main/title theme
   3. Apple's official 30-second preview from the iTunes Search API (itunes.apple.com/search), the best match for
-     "<title> main theme" / "<title> soundtrack", streamed from Apple's address and never stored (the frontend
+     "<title> main theme" / "<title> soundtrack" from the game's own soundtrack (score(): nothing rather than a wrong
+     song), streamed from Apple's address and never stored (the frontend
      plays it directly; if Steam's browser can't, this backend passes it on from memory); the panel shows the
      track, artist and a link to it.
   4. When Apple has no good match: Deezer's 30-second preview (api.deezer.com/search, no account or key), by the same
@@ -432,19 +433,22 @@ def soundtrack(appid, title, h=None):
     """The song from a Steam soundtrack you have, or from the game's own files (only names that clearly say it's the
     main/title theme). (path, where) or None."""
     forms = title_forms(title)
+    whole = match_forms(title)
     libs = libraries(h)
     if not forms and not appid:
         return None
     for lib in libs:
         for d in sorted(glob.glob(os.path.join(lib, 'steamapps', 'music', '*'))):
             n = norm(os.path.basename(d))
-            if os.path.isdir(d) and any(has_words(n, f) for f in forms):
+            # the folder is this game's soundtrack: its whole title and soundtrack words only ("Hollow Knight
+            # Soundtrack" isn't Silksong's, "DOOM Soundtrack" isn't DOOM Eternal's)
+            if os.path.isdir(d) and _title_then_filler(n, whole):
                 f = from_soundtrack_folder(d, forms)
                 if f:
                     return f, 'soundtrack'
         for d in sorted(glob.glob(os.path.join(lib, 'steamapps', 'common', '*'))):
             n = norm(os.path.basename(d))
-            if os.path.isdir(d) and any(has_words(n, f) for f in forms) and re.search(r'\b(soundtrack|ost|original score)\b', n):
+            if os.path.isdir(d) and _title_then_filler(n, whole) and re.search(r'\b(soundtrack|ost|original score)\b', n):
                 f = from_soundtrack_folder(d, forms)
                 if f:
                     return f, 'soundtrack'
@@ -467,28 +471,139 @@ def soundtrack(appid, title, h=None):
 
 # ---- 3. Apple's preview, 4. Deezer's
 
-BAD = ('cover', 'tribute', 'karaoke', 'lofi', 'lo fi', '8 bit', 'remix', 'parody', 'rap', 'piano version', 'ringtone',
-       'medley', 'reaction', 'in the style of')
-OST = ('soundtrack', 'ost', 'original score', 'original game', 'music from', 'game music', 'score')
+# The matcher (matcher version MATCHER, kept with each answer in lookups.json: answers from an older matcher are
+# looked up again once, and an old answer that fails today's rules is never played). It plays nothing rather than a
+# wrong song: a result counts only when
+#   - its album is the game's own soundtrack: the album's name is the game's title (™/®, years and edition words
+#     left out) followed only by soundtrack words ("Original Soundtrack", "OST", "Original Score", "Music from",
+#     "Vol. 2"...), never another word ("Inside Out", "Hades II", "Celeste: Farewell" aren't "Inside", "Hades",
+#     "Celeste"), and not a film's or series' ("Motion Picture", "Netflix Series"...); or
+#   - (titles of two words or more only) its track is the game's title plus a theme word ("Hades Main Theme") on an
+#     album that names the game or is a soundtrack;
+# and no cover, tribute, remix, piano/lo-fi/8-bit version or compilation, by title, album or artist.
+MATCHER = 2
+
+BAD = ('cover', 'covers', 'tribute', 'tributes', 'karaoke', 'lofi', 'lo fi', '8 bit', '16 bit', 'chiptune', 'remix', 'remixes',
+       'remixed', 'parody', 'rap', 'piano version', 'piano covers', 'ringtone', 'medley', 'reaction', 'in the style of',
+       'nightcore', 'lullaby', 'lullabies', 'music box', 'epic version', 'metal version', 'orchestral version',
+       'acoustic version', 'guitar version', 'arrangement', 'arranged', 'made famous', 'originally performed',
+       'sped up', 'slowed', 'instrumental version')
+# Compilations and cover artists (album and artist only)
+COMPILATION = ('greatest', 'best of', 'hits', 'video game themes', 'game themes', 'gaming', 'gamer', 'gamers', 'workout',
+               'study', 'sleep', 'relaxing', 'compilation', 'playlist', 'players', 'piano guy', 'piano', 'covers',
+               'various artists', 'orchestral covers', 'game music collective')
+OST = ('soundtrack', 'ost', 'original score', 'score', 'music from', 'original game soundtrack', 'game soundtrack')
+FILM = ('motion picture', 'film', 'movie', 'television', 'tv series', 'series', 'netflix', 'amazon original',
+        'apple tv', 'musical', 'broadway', 'cast recording', 'season', 'episode', 'anime', 'documentary')
+# Words an album or track may hold besides the title: soundtrack words and volume/edition words, never a word that
+# could name something else.
+FILLER = set('''a an the of and from to for by music musics soundtrack soundtracks ost osts original official game games
+video videogame score scores selections selected select songs song tracks track themes theme main title opening menu
+vol volume disc cd part pt deluxe edition complete expanded extended collection collectors special digital bonus
+version remastered definitive anniversary goty year limited directors cut hd sound sounds sountrack o s t'''.split())
+STRONG_THEME = ('main theme', 'title theme', 'main title', 'theme song', 'main menu', 'menu theme', 'title screen', 'theme')
+EDITIONS = re.compile(r"\b(?:(?:game of the year|goty|definitive|complete|enhanced|anniversary|deluxe|digital deluxe|"
+                      r"ultimate|gold|special|collector'?s|standard|premium|legendary|platinum|launch|day one|"
+                      r"director'?s cut)\s+)?edition\b|\bgoty\b|\bremaster(?:ed)?\b|\bdirector'?s\s+cut\b|\bHD\b|"
+                      r"\bgame of the year\b|\bthe final cut$", re.I)
+BRANDS = ('tom clancys ', 'sid meiers ', 'marvels ', 'disneys ', 'disney pixar ')
+ROMAN = {'2': 'ii', '3': 'iii', '4': 'iv', '5': 'v', '6': 'vi', '7': 'vii', '8': 'viii', '9': 'ix'}
+
+
+def clean_title(title):
+    """A Steam name made searchable: "DARK SOULS™ III: Deluxe Edition" -> "DARK SOULS III", "Tomb Raider (2013)" ->
+    "Tomb Raider", "The Witcher® 3: Wild Hunt - Game of the Year Edition" -> "The Witcher 3: Wild Hunt"."""
+    raw = str(title or '')
+    t = re.sub(r'[™®©]', '', raw).replace('’', "'")
+    t = re.sub(r'\s*[\(\[](?:19|20)\d\d[\)\]]', '', t)            # (2013)
+    t = EDITIONS.sub(' ', t)
+    t = re.sub(r'[\(\[]\s*[\)\]]', ' ', t)                          # "()" left behind
+    t = ' '.join(t.split())
+    t = re.sub(r'(\s*[:–—-]\s*)+$', '', t).strip()
+    return t if norm(t) else raw.strip()
+
+
+def match_forms(title):
+    """The forms of a game's title a result must hold, in full: "the witcher 3 wild hunt"; numbers both ways
+    ("dark souls iii" / "dark souls 3"); a publisher's name in front left out when the rest is distinctive
+    ("tom clancys the division 2" / "the division 2"). Never the part before a subtitle alone: "Hollow Knight:
+    Silksong" isn't "Hollow Knight"."""
+    base = norm(clean_title(title))
+    if not base:
+        return []
+    forms = [base]
+    for b in BRANDS:
+        if base.startswith(b) and len(base[len(b):].replace(' ', '')) >= 6:
+            forms.append(base[len(b):])
+    for f in list(forms):
+        w = f.split()
+        if w[-1] in ROMAN:
+            forms.append(' '.join(w[:-1] + [ROMAN[w[-1]]]))
+        inv = {v: k for k, v in ROMAN.items()}
+        if w[-1] in inv and len(w) > 1:
+            forms.append(' '.join(w[:-1] + [inv[w[-1]]]))
+        if w[0] == 'the' and len(w) > 2:
+            forms.append(' '.join(w[1:]))
+    out = []
+    for f in forms:
+        if f and f not in out:
+            out.append(f)
+    return out
+
+
+def _rest_is_filler(rest):
+    """Whether what's left of an album or track name besides the title is only soundtrack/volume words (anything after
+    "by" or "feat" is the composer)."""
+    rest = re.split(r'\b(by|feat|featuring|ft|composed)\b', rest)[0]
+    rest = re.sub(r'\b(vol|volume|disc|cd|part|pt|chapter|act)\s*(\d+|[ivx]+|one|two|three)\b', ' ', rest)
+    return all(w in FILLER for w in rest.split())
+
+
+def _title_then_filler(name, forms):
+    """NAME (normalised) is one of the game's title forms followed only by filler; leading "music from (the)",
+    "original soundtrack (from|of)" and "the" are allowed."""
+    n = re.sub(r'^(the )?(original )?(game )?(music|songs|soundtrack|score|ost)( from| of| to)?( the)? ', '', name)
+    for cand in {name, n, re.sub(r'^the ', '', n)}:
+        for f in forms:
+            if cand == f or cand.startswith(f + ' '):
+                if _rest_is_filler(cand[len(f):]):
+                    return f
+    return None
 
 
 def score(result, forms):
-    """How well one result (iTunes' shape; Deezer's is turned into it) fits the game's theme song (0: not it)."""
-    if not isinstance(result, dict) or not result.get('previewUrl'):
+    """How surely one result (iTunes' shape; Deezer's is turned into it) is the game's theme song: 0 when it isn't
+    clearly the game's own music, else higher for the game's own soundtrack album and a theme-named track."""
+    if not isinstance(result, dict) or not result.get('previewUrl') or not forms:
         return 0
     album, track, artist = norm(result.get('collectionName')), norm(result.get('trackName')), norm(result.get('artistName'))
-    if not any(has_words(album, f) or has_words(track, f) for f in forms):
+    # (a word of the game's own title never counts against it: "The Walking Dead: Season Two", "Sleep Tight")
+    if any(has_words(x, b) for b in BAD for x in (album, track, artist) if not has_words(forms[0], b)):
         return 0
-    if any(has_words(x, b) for b in BAD for x in (album, track, artist)):
+    if any(has_words(x, b) for b in COMPILATION for x in (album, artist) if not has_words(forms[0], b)):
         return 0
-    s = 2
-    if any(has_words(album, o) for o in OST):
-        s += 3
+    filmish = any(has_words(album, f) for f in FILM if not has_words(forms[0], f)) and not has_words(album, 'game')
+    if filmish:
+        return 0
+    has_ost = any(has_words(album, o) for o in OST)
     tw = max([sc for w, sc in THEME_WORDS if has_words(track, w)] or [0])
-    s += min(tw, 6)
-    if any(has_words(album, f) for f in forms[:1]):
-        s += 1
-    return s
+    s = 0
+    by_album = _title_then_filler(album, forms) if has_ost else None
+    if by_album:
+        s = 10 if by_album == forms[0] else 9
+        s += min(tw, 6) / 2.0
+        if _title_then_filler(track, forms):
+            s += 2   # the title track
+        if str(result.get('primaryGenreName') or '').lower() in ('video game', 'video games', 'videogame'):
+            s += 0.5
+        return s
+    # No soundtrack album of the game: only a track that is clearly the game's theme ("Hades Main Theme"), never for a
+    # one-word title ("Control", "Prey", "Inside" name too many other things).
+    by_track = _title_then_filler(track, forms)
+    strong = any(has_words(track, w) for w in STRONG_THEME)
+    if by_track and strong and len(by_track.split()) >= 2 and (has_ost or any(has_words(album, f) for f in forms)):
+        return 6 + min(tw, 6) / 2.0
+    return 0
 
 
 def preview_source(url):
@@ -515,7 +630,7 @@ def best_match(results, forms, source='apple'):
     ranked = sorted(((score(r, forms), r.get('trackNumber') or 99, i, r) for i, r in enumerate(results or [])
                      if isinstance(r, dict) and preview_source(r.get('previewUrl') or '') == source),
                     key=lambda x: (-x[0], x[1], x[2]))
-    if not ranked or ranked[0][0] < 5:   # the title and a soundtrack album or a theme track at least
+    if not ranked or ranked[0][0] < 6:   # the game's own soundtrack album, or its clearly named theme
         return None
     return as_match(ranked[0][3], source, ranked[0][0])
 
@@ -534,7 +649,11 @@ def deezer_result(d):
     """One Deezer search result in iTunes' shape (so the same rules score it)."""
     if not isinstance(d, dict):
         return None
-    return {'trackId': d.get('id'), 'trackName': d.get('title') or d.get('title_short'),
+    title = str(d.get('title') or d.get('title_short') or '')
+    ver = str(d.get('title_version') or '').strip()
+    if ver and norm(ver) not in norm(title):
+        title = '%s %s' % (title, ver)   # "(Remix)", "(Piano Version)": the same rules see it
+    return {'trackId': d.get('id'), 'trackName': title,
             'artistName': (d.get('artist') or {}).get('name') if isinstance(d.get('artist'), dict) else '',
             'collectionName': (d.get('album') or {}).get('title') if isinstance(d.get('album'), dict) else '',
             'previewUrl': d.get('preview') or '', 'trackViewUrl': d.get('link') or ''}
@@ -657,8 +776,22 @@ def deezer_preview(tid, get=None, now=None):
     return url
 
 
+def _current(hit):
+    """An online answer from today's matcher (an older matcher's answers are looked up again once)."""
+    return isinstance(hit, dict) and hit.get('v') == MATCHER
+
+
+def still_fits(m, title):
+    """Whether a kept match (from any matcher) passes today's rules for TITLE; one that doesn't is never played."""
+    if not isinstance(m, dict):
+        return False
+    r = {'trackName': m.get('track'), 'collectionName': m.get('album'), 'artistName': m.get('artist'),
+         'previewUrl': m.get('preview') or 'https://x.dzcdn.net/'}
+    return score(r, match_forms(title)) >= 6
+
+
 def _fresh(hit, now, max_age=None):
-    if not isinstance(hit, dict) or hit.get('local'):
+    if not isinstance(hit, dict) or hit.get('local') or not _current(hit):
         return False
     keep = KEEP_ERROR if hit.get('error') else (KEEP_MATCH if hit.get('match') else KEEP_NO_MATCH)
     if max_age is not None:
@@ -684,11 +817,15 @@ def lookup(title, get=None, now=None, deezer=None, apple=True, use_deezer=True, 
     get = get or _itunes_get
     deezer = deezer or _deezer_get
     now = time.time() if now is None else now
-    forms = title_forms(title)
-    if not forms or not (apple or use_deezer):
+    keys = title_forms(title)
+    forms = match_forms(title)
+    if not keys or not forms or not (apple or use_deezer):
         return {'match': None}
-    key = forms[0]
+    key = keys[0]
+    query = clean_title(title)
     hit = load_json('lookups.json', {}, cache_dir()).get(key)
+    if isinstance(hit, dict) and hit.get('match') and not still_fits(hit['match'], title):
+        hit = dict(hit, match=None, at=0)   # an older matcher's wrong song: never played, looked up again
     if _fresh(hit, now, max_age) and _usable(hit, apple, use_deezer):
         return {'match': hit.get('match')}
     match, tried = None, []
@@ -697,23 +834,23 @@ def lookup(title, get=None, now=None, deezer=None, apple=True, use_deezer=True, 
             if not ask:
                 continue
             tried.append(src)
-            for term in ('%s main theme' % title, '%s soundtrack' % title):
+            for term in ('%s main theme' % query, '%s soundtrack' % query):
                 res = ask(term)
                 if res is None:
                     return {'later': True}
                 m = best_match(res, forms, src)
                 if m and (match is None or m['score'] > match['score']):
                     match = m
-                if match and match['score'] >= 9:
+                if match and match['score'] >= 12:   # the soundtrack album's theme or title track
                     break
             if match:
                 break   # Deezer only when Apple has no good match
-        entry = {'at': now, 'match': match, 'tried': tried}
+        entry = {'at': now, 'match': match, 'tried': tried, 'v': MATCHER}
     except (OSError, ValueError) as e:
         log('lookup: %s' % type(e).__name__)
         if isinstance(hit, dict) and (hit.get('match') or hit.get('local')):
             return {'match': hit.get('match'), 'error': True}   # the kept answer stays as it is
-        entry = {'at': now, 'match': None, 'error': True, 'tried': tried}
+        entry = {'at': now, 'match': None, 'error': True, 'tried': tried, 'v': MATCHER}
 
     def put(cache):
         cache[key] = entry

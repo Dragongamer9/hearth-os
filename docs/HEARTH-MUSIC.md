@@ -22,10 +22,18 @@ In this order:
    says it's the main or title theme ("Main Theme", "Title Theme", "Main Menu"...) and is song-sized (300 KB-60 MB).
    Most games pack their music in archives, so this rarely finds one; it never guesses from vague names.
 3. **Apple Music's official 30-second preview**, from Apple's iTunes Search API (`itunes.apple.com/search`,
-   `media=music`): it searches "<title> main theme", then "<title> soundtrack" if the first wasn't clearly right, and
-   takes the result whose album or track name holds the game's title (or its short form without edition words or
-   subtitle) together with a soundtrack album or a theme-named track; covers, tributes, remixes, karaoke, lo-fi and
-   8-bit versions are left out, and the preview must come from Apple's own servers. The preview is streamed from
+   `media=music`): it searches "<title> main theme", then "<title> soundtrack" if the first wasn't clearly right, with
+   Steam's ™/®, years ("Tomb Raider (2013)") and edition words ("Game of the Year Edition", "Remastered", "Deluxe
+   Edition") left out. It plays nothing rather than a wrong song: a result counts only when its album is the game's
+   own soundtrack, its name being the game's whole title followed only by soundtrack words ("CONTROL (Original
+   Soundtrack)", "Hades: Original Score", "Vol. 2"), never another word ("Inside Out", "Hades II", "Celeste: Farewell"
+   and "Hollow Knight" aren't "Inside", "Hades", "Celeste" or "Hollow Knight: Silksong") and never a film's or series'
+   ("Original Motion Picture Soundtrack", "Music from the Netflix Series"); or, for titles of two words or more, when the
+   track is the game's title plus a theme word ("Hollow Knight Main Theme") on an album that names the game or is a
+   soundtrack. A one-word title ("Control", "Prey", "Inside") needs the game's soundtrack album. Within that album the
+   main/title theme or the title track wins, then the first track. Covers, tributes, remixes, piano/lo-fi/8-bit or
+   "epic" versions and compilations ("Video Game Themes", cover artists) are left out by title, album or artist, and
+   the preview must come from Apple's own servers. The preview is streamed from
    Apple's address and never stored (see "How it works"). The panel and the "Now playing" note show the track, the artist,
    "Preview courtesy of Apple Music" and an *Open in Apple Music* link. Can be turned off (*Apple Music previews*).
 4. **Deezer's 30-second preview**, only when Apple has no good match (not when Apple merely can't be asked right
@@ -62,8 +70,11 @@ stay exactly as they were.
 The answers are kept in `~/.cache/hearth-music/lookups.json` (the scan's last count in `scan.json`), written the safe
 way: all at once with the previous version kept as `lookups.json.bak`, a damaged file put back from it, and the scan
 and the panel's own lookups merged under one lock so neither loses the other's. A match is used for 30 days, "no
-match" for 7, a failed call is tried again after an hour; the scan refreshes them weekly. Only these answers are kept;
-no preview's sound ever is.
+match" for 7, a failed call is tried again after an hour; the scan refreshes them weekly. Each answer notes the
+matcher that found it: when the matching rules get stricter (matcher 2, after 1.2 picked wrong songs for some games),
+the scan looks every automatic answer up once more, and an old answer that fails today's rules is never played, not
+even offline. Your own choices from *Choose music…* live in `picks.json`, not in this cache, and are never looked up,
+re-checked or changed. Only these answers are kept; no preview's sound ever is.
 
 ## Quick Access panel
 

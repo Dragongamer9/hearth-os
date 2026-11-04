@@ -617,6 +617,154 @@ class Backend(unittest.TestCase):
             self.assertEqual(json.load(f)['version'], json.load(g)['version'], "the same version as Hearth's other packages")
 
 
+class Matching(unittest.TestCase):
+    """Matcher 2: the game's own soundtrack or nothing (made-up answers in Apple's and Deezer's real shapes)."""
+    setUp = Backend.setUp
+    tearDown = Backend.tearDown
+
+    def best(self, title, rows, source='apple'):
+        m = self.m.best_match(rows, self.m.match_forms(title), source)
+        return m and (m['track'], m['album'])
+
+    def test_generic_titles_need_the_games_own_soundtrack(self):
+        control = [it('Control', 'Badlands (Deluxe Edition)', 'Halsey', tid=1),
+                   it('Control (Main Theme)', 'Mind Control', 'DJ Someone', tid=2),
+                   it('Control', 'Golden Wings', 'Zoe Wees', tid=3)]
+        self.assertIsNone(self.best('Control Ultimate Edition', control), 'pop songs called "Control" are not the game')
+        self.assertEqual(self.best('Control Ultimate Edition', control + [it('Control Theme', 'CONTROL (Original Soundtrack)', 'Petri Alanko', n=1)]),
+                         ('Control Theme', 'CONTROL (Original Soundtrack)'))
+        prey = [it('Prey', 'Prey (Original Motion Picture Soundtrack)', 'Sarah Schachner'),
+                it('Prey Main Theme', 'Prey (Music from the Hulu Film)', 'Sarah Schachner'),
+                it('Prey', 'Prey', 'The Neighbourhood')]
+        self.assertIsNone(self.best('Prey', prey), "the film's score is not the game's")
+        self.assertEqual(self.best('Prey', prey + [it('Mind Game', 'Prey (Original Game Soundtrack)', 'Mick Gordon', n=2)])[1],
+                         'Prey (Original Game Soundtrack)')
+        inside = [it('Inside Out Theme', 'Inside Out (Original Motion Picture Soundtrack)', 'Michael Giacchino'),
+                  it('Bundle of Joy', 'Inside Out (Original Score)', 'Michael Giacchino'),
+                  it('Inside (Main Theme)', 'INSIDE (The Songs)', 'Bo Burnham'),
+                  it('Inside', 'Inside - Single', 'Chris Stapleton')]
+        self.assertIsNone(self.best('INSIDE', inside), '"Inside Out" and other "Inside"s are not INSIDE')
+        self.assertEqual(self.best('INSIDE', inside + [it('Inside Main Theme', 'INSIDE (Original Soundtrack)', 'Martin Stig Andersen')]),
+                         ('Inside Main Theme', 'INSIDE (Original Soundtrack)'))
+
+    def test_inside_never_plays_fallout_4(self):
+        """The owner's report: INSIDE (Playdead, 304430) played Fallout 4's music. Matcher 1 took any soundtrack album
+        with "inside" anywhere in a track name ("Inside the Vault" on Fallout 4's soundtrack scored 5, enough)."""
+        fallout = [it('Inside the Vault', 'Fallout 4 (Original Game Soundtrack)', 'Inon Zur', tid=41, n=7),
+                   it('Main Title', 'Fallout 4 (Original Game Soundtrack)', 'Inon Zur', tid=42, n=1),
+                   it('Inside Vault 111', 'Fallout 4: Vault-Tec Edition (Music from the Game)', 'Inon Zur', tid=43)]
+        self.assertIsNone(self.best('INSIDE', fallout), "Fallout 4's music isn't INSIDE's")
+        dzrows = [self.m.deezer_result(dz('Inside the Vault', 'Fallout 4 (Original Game Soundtrack)', 'Inon Zur', tid=51))]
+        self.assertIsNone(self.best('INSIDE', dzrows, 'deezer'), 'nor through Deezer')
+        real = it('Inside', 'INSIDE (Original Soundtrack)', 'Martin Stig Andersen', tid=44, n=1)
+        self.assertEqual(self.best('INSIDE', fallout + [real]), ('Inside', 'INSIDE (Original Soundtrack)'))
+        # The wrong answer kept on the device from 1.2: never played (not even offline), looked up again once.
+        stale = {'inside': {'at': time.time(), 'tried': ['apple'], 'match': {
+            'source': 'apple', 'id': '41', 'track': 'Inside the Vault', 'artist': 'Inon Zur', 'album': 'Fallout 4 (Original Game Soundtrack)',
+            'link': '', 'score': 5, 'preview': 'https://audio-ssl.itunes.apple.com/p/fallout.m4a'}}}
+        self.m.save_cache('lookups.json', stale)
+        offline = lambda t: (_ for _ in ()).throw(OSError('offline'))
+        self.assertIsNone(self.m.find_song('304430', 'INSIDE', [], get=offline, deezer_get=offline)['source'])
+        self.m.save_cache('lookups.json', stale)
+        asked = []
+        s = self.m.find_song('304430', 'INSIDE', [], get=lambda t: asked.append(t) or fallout + [real])
+        self.assertEqual((s['source'], s['artist'], s['album']), ('apple', 'Martin Stig Andersen', 'INSIDE (Original Soundtrack)'))
+        self.assertEqual(asked, ['INSIDE main theme'])
+        self.m.find_song('304430', 'INSIDE', [], get=lambda t: self.fail('checked once, then kept'))
+        self.assertEqual(self.m.load_json('lookups.json', {}, self.m.cache_dir())['inside']['v'], self.m.MATCHER)
+
+    def test_same_name_songs_sequels_and_covers_are_left_out(self):
+        self.assertIsNone(self.best('Celeste', [it('Celeste', 'Celeste', 'Ezra Vine'), it('Celeste', 'Not Your Muse', 'Celeste')]))
+        self.assertIsNone(self.best('Hades', [it('No Escape', 'Hades II (Original Soundtrack)', 'Darren Korb')]), "Hades II's music isn't Hades'")
+        self.assertIsNone(self.best('Hollow Knight: Silksong', [it('Enter Hallownest', 'Hollow Knight (Original Soundtrack)', 'Christopher Larkin')]))
+        self.assertIsNone(self.best('DOOM Eternal', [it('At Doom\'s Gate', 'DOOM (Original Game Soundtrack)', 'Mick Gordon')]))
+        self.assertIsNone(self.best('Celeste', [it('Celeste Main Theme', 'Video Game Themes Vol. 3', 'The Video Game Players')]), 'a compilation')
+        self.assertIsNone(self.best('Hollow Knight', [it('Hollow Knight Main Theme', 'Hollow Knight (Piano Collections)', 'Piano Guy')]))
+        self.assertIsNone(self.best('ELDEN RING', [it('Elden Ring Theme (Epic Version)', 'Elden Ring (Original Soundtrack)')]))
+        # a two-word title's clearly named theme is enough when the album names the game
+        self.assertEqual(self.best('Hollow Knight', [it('Hollow Knight Main Theme', 'Hollow Knight Music', 'Christopher Larkin')])[0],
+                         'Hollow Knight Main Theme')
+        # but never for a one-word title
+        self.assertIsNone(self.best('Celeste', [it('Celeste Main Theme', 'Celeste Music', 'Someone')]))
+        # the theme of the game's own album wins over its other tracks
+        self.assertEqual(self.best('Hades', [it('In the Blood', 'Hades (Original Soundtrack)', n=12), it('No Escape', 'Hades (Original Soundtrack)', n=1),
+                                             it('Hades Main Theme', 'Hades (Original Soundtrack)', n=30)])[0], 'Hades Main Theme')
+
+    def test_steam_names_with_marks_editions_and_years(self):
+        self.assertEqual(self.m.clean_title('The Witcher® 3: Wild Hunt - Game of the Year Edition'), 'The Witcher 3: Wild Hunt')
+        self.assertEqual(self.m.clean_title('DARK SOULS™ III: Deluxe Edition'), 'DARK SOULS III')
+        self.assertEqual(self.m.clean_title('Tomb Raider (2013)'), 'Tomb Raider')
+        self.assertEqual(self.m.clean_title('The Elder Scrolls V: Skyrim Special Edition'), 'The Elder Scrolls V: Skyrim')
+        self.assertEqual(self.m.clean_title('Dark Souls Remastered'), 'Dark Souls')
+        self.assertEqual(self.best('The Witcher® 3: Wild Hunt - Game of the Year Edition',
+                                   [it('The Witcher 3: Wild Hunt', 'The Witcher 3: Wild Hunt (Original Game Soundtrack)', 'Marcin Przybyłowicz')])[1],
+                         'The Witcher 3: Wild Hunt (Original Game Soundtrack)')
+        self.assertTrue(self.best('DARK SOULS™ III: Deluxe Edition', [it('Dark Souls III', 'Dark Souls 3 (Original Soundtrack)', 'Motoi Sakuraba')]))
+        self.assertTrue(self.best("Sid Meier's Civilization® VI", [it('Sogno di Volare', 'Civilization VI (Original Game Soundtrack)', 'Christopher Tin')]))
+        asked = []
+        self.m.lookup('Tomb Raider (2013)', get=lambda t: asked.append(t) or [], deezer=lambda t: [], now=0)
+        self.assertEqual(asked, ['Tomb Raider main theme', 'Tomb Raider soundtrack'], 'searched without the year')
+        asked.clear()
+        self.m.lookup('DARK SOULS™ III: Deluxe Edition', get=lambda t: asked.append(t) or [], deezer=lambda t: [], now=0)
+        self.assertEqual(asked[0], 'DARK SOULS III main theme')
+
+    def test_deezer_fallback_follows_the_same_strict_rules(self):
+        rows = lambda *r: [self.m.deezer_result(x) for x in r]
+        self.assertIsNone(self.best('Control', rows(dz('Control', 'Badlands', 'Halsey')), 'deezer'))
+        self.assertIsNone(self.best('Prey', rows(dz('Prey', 'Prey (Original Motion Picture Soundtrack)')), 'deezer'))
+        piano = dz('Hollow Knight', 'Hollow Knight (Original Soundtrack)', 'Christopher Larkin')
+        piano['title_version'] = '(Piano Version)'
+        self.assertIsNone(self.best('Hollow Knight', rows(piano), 'deezer'), "Deezer's title_version is checked too")
+        # Apple only has wrong songs: Deezer's right one is used; Deezer's only wrong ones: silence
+        m = self.m.lookup('Control', get=lambda t: [it('Control', 'Badlands', 'Halsey')],
+                          deezer=lambda t: dzr(dz('Control', 'Badlands', 'Halsey', tid=5), dz('Control Theme', 'Control (Original Soundtrack)', 'Petri Alanko', tid=6))(self.m), now=0)
+        self.assertEqual((m['match']['source'], m['match']['id']), ('deezer', '6'))
+        m = self.m.lookup('Prey', get=lambda t: [it('Prey', 'Prey', 'The Neighbourhood')],
+                          deezer=lambda t: dzr(dz('Prey', 'Prey (Original Motion Picture Soundtrack)', tid=7), dz('Prey', 'Wolves', 'Someone', tid=8))(self.m), now=0)
+        self.assertIsNone(m['match'], 'nothing rather than a wrong song')
+
+    def test_old_matches_are_checked_again_once_and_picks_are_kept(self):
+        d = self.m.cache_dir()
+        old = {'control': {'at': 1000, 'tried': ['apple'], 'match': {'source': 'apple', 'id': '1', 'track': 'Control', 'artist': 'Halsey',
+                                                                      'album': 'Badlands', 'link': '', 'score': 5,
+                                                                      'preview': 'https://audio-ssl.itunes.apple.com/p/halsey.m4a'}},
+               'celeste': {'at': 1000, 'tried': ['apple'], 'match': {'source': 'apple', 'id': '2', 'track': 'Celeste Main Theme', 'artist': 'Lena Raine',
+                                                                      'album': 'Celeste (Original Soundtrack)', 'link': '', 'score': 13,
+                                                                      'preview': 'https://audio-ssl.itunes.apple.com/p/celeste.m4a'}}}
+        self.m.save_cache('lookups.json', old)
+        # The owner chose a song himself for INSIDE ("Choose music…"), even one the matcher would never pick.
+        self.m.set_pick('app', '304430', {'source': 'apple', 'id': '9', 'track': 'Inside', 'artist': 'Chris Stapleton', 'album': 'Inside - Single',
+                                          'preview': 'https://audio-ssl.itunes.apple.com/p/mine.m4a'})
+        picks_path = os.path.join(self.m.settings_dir(), 'picks.json')
+        picks = open(picks_path, 'rb').read()
+        offline = lambda t: (_ for _ in ()).throw(OSError('offline'))
+        # offline: the old wrong song is never played; the old right one still is
+        self.assertEqual(self.m.find_song('870780', 'Control', [], get=offline, deezer_get=offline)['source'], None)
+        self.assertEqual(self.m.find_song('504230', 'Celeste', [], get=offline, deezer_get=offline)['source'], 'apple')
+        asked = []
+
+        def apple(t):
+            asked.append(t)
+            if t.startswith('Control'):
+                return [it('Control', 'Badlands', 'Halsey'), it('Control Theme', 'CONTROL (Original Soundtrack)', 'Petri Alanko', tid=3)]
+            return [it('Celeste Main Theme', 'Celeste (Original Soundtrack)', 'Lena Raine', tid=2)]
+        games = [{'appid': 870780, 'title': 'Control Ultimate Edition'}, {'appid': 504230, 'title': 'Celeste'}, {'appid': 304430, 'title': 'INSIDE'}]
+        old['control ultimate edition'] = old.pop('control')
+        self.m.save_cache('lookups.json', old)
+        self.m.scan_library(games, settings={}, get=apple, deezer=lambda t: [], now=lambda: 2000, sleep=lambda s: None)
+        self.assertEqual(sorted(asked), ['Celeste main theme', 'Control main theme'], 'old answers looked up again (fresh or not); your pick never')
+        c = self.m.load_json('lookups.json', {}, d)
+        self.assertEqual((c['control ultimate edition']['match']['artist'], c['control ultimate edition']['v']), ('Petri Alanko', self.m.MATCHER))
+        self.assertEqual(c['celeste']['match']['id'], '2')
+        asked.clear()
+        self.m.scan_library(games, settings={}, get=apple, deezer=lambda t: [], now=lambda: 3000, sleep=lambda s: None)
+        self.assertEqual(asked, [], 'only once')
+        self.assertEqual(open(picks_path, 'rb').read(), picks, 'your picks are never changed')
+        s = self.m.find_song('304430', 'INSIDE', [], get=lambda t: self.fail('your pick'))
+        self.assertEqual((s['source'], s['artist']), ('pick', 'Chris Stapleton'), 'your pick plays, whatever the matcher thinks')
+        self.assertTrue(os.path.isfile(os.path.join(d, 'lookups.json.bak')), 'written with a .bak')
+
+
 class Shipping(unittest.TestCase):
     """hearth-decky copies Hearth Music next to Hearth Sync and keeps it up to date."""
     def setUp(self):
