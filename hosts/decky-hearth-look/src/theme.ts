@@ -109,10 +109,10 @@ export type MenuMethod = "none" | "pending" | "fits" | "resized" | "mirror" | "v
 export interface MenuDiag {
   windows: string[]; found: boolean; entries: number; labels: string[]; layout: "bar" | "top" | "vertical" | "none" | "pending";
   why: string; game: boolean; method: MenuMethod; before: string; after: string; resizeWith: string;
-  route: string; anchor: string; selfCheck: string; resizeApis: string;
+  route: string; anchor: string; selfCheck: string; resizeApis: string; attempts: string;
 }
 export const menuDiag: MenuDiag = { windows: [], found: false, entries: 0, labels: [], layout: "none", why: "not checked yet", game: false,
-  method: "none", before: "", after: "", resizeWith: "", route: "", anchor: "", selfCheck: "", resizeApis: "" };
+  method: "none", before: "", after: "", resizeWith: "", route: "", anchor: "", selfCheck: "", resizeApis: "", attempts: "" };
 const CLASSES = ["hearth-bar", "hearth-menu", "hearth-ingame", "hearth-ghost"];
 const BAR_H = 150;   // the resized menu window's height (CSS px): the bar, its focused entry and the gaps around it
 const MIRROR_ID = "hearth-bar-mirror";
@@ -264,7 +264,7 @@ export function menuDeepDump(): string {
   return lines.join("\n").slice(0, 40000);
 }
 
-interface DocState { mode: MenuMethod; topFailed: string; with?: { how: string; set(b: { x: number; y: number; width: number; height: number }): void }; orig: { x: number; y: number; width: number; height: number } | null; tries: number; why: string; at: string; busy: boolean }
+interface DocState { mode: MenuMethod; topFailed: string; with?: { how: string; restore(saved: any): void }; orig: any; tries: number; why: string; at: string; busy: boolean }
 
 export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChange?: (d: MenuDiag) => void }): () => void {
   const anchorClass = opts.anchorClass || "";
@@ -285,21 +285,44 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
   // GetBounds, which Steam itself uses to place it. Tried in order: that, SteamClient.Window, and window.resizeTo once
   // per plugin start (it never worked on a device; tried once so the log can say so).
   interface Bounds { x: number; y: number; width: number; height: number }
-  interface Resizer { how: string; get(): Promise<Bounds | null>; set(b: Bounds): void }
+  /** One way of resizing: what it is, how to remember the window's place, put it at a place (in its own units),
+   *  and put the remembered place back. */
+  interface Resizer { how: string; units: "css" | "device" | "bounds"; save(): Promise<any>; set(b: Bounds): void; restore(saved: any): void }
   function resizers(win: any, doc: Document): Resizer[] {
     const out: Resizer[] = [];
     const bv = browserViewFor(doc);
-    if (bv && typeof bv.SetBounds === "function") out.push({ how: "BrowserView.SetBounds",
-      get: async () => { try { const b = bv.GetBounds?.(); return b && b.width > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : null; } catch { return null; } },
-      set: (b) => bv.SetBounds(b.x, b.y, b.width, b.height) });
+    if (bv && typeof bv.SetBounds === "function") out.push({ how: "BrowserView.SetBounds", units: "bounds",
+      save: async () => { try { const b = bv.GetBounds?.(); return b && b.width > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : null; } catch { return null; } },
+      set: (b) => bv.SetBounds(b.x, b.y, b.width, b.height),
+      restore: (o) => { if (o) bv.SetBounds(o.x, o.y, o.width, o.height); } });
+    // The menu window's own SteamClient (that window's context, not the main window's). On the owner's device its
+    // ResizeTo refused (w, h, false) with "requires 3 arguments: <x: double> <y: double> ...": the third must be a
+    // number there. Tried: CSS pixels with the screen's scale, device pixels with 1, then the booleans; each checked
+    // by the window's real size afterwards. Its place is remembered with GetWindowRestoreDetails and put back with
+    // RestoreWindowSizeAndPosition (whatever units it uses).
     const sw = (() => { try { return win.SteamClient?.Window ?? null; } catch { return null; } })();
-    if (sw && typeof sw.ResizeTo === "function") out.push({ how: "SteamClient.Window",
-      get: async () => { try { const d = typeof sw.GetWindowDimensions === "function" ? await sw.GetWindowDimensions() : null; return d && d.width > 0 ? { x: d.x, y: d.y, width: d.width, height: d.height } : null; } catch { return null; } },
-      set: (b) => { sw.ResizeTo(b.width, b.height, false); if (typeof sw.MoveTo === "function") sw.MoveTo(b.x, b.y); } });
-    if (!resizeToTried) out.push({ how: "window.resizeTo",
-      get: async () => ({ x: win.screenX || 0, y: win.screenY || 0, width: win.outerWidth || win.innerWidth, height: win.outerHeight || win.innerHeight }),
-      set: (b) => { resizeToTried = true; win.resizeTo(b.width, b.height); win.moveTo(b.x, b.y); } });
-    menuDiag.resizeApis = `BrowserView ${bv ? "found" + (bvName ? " (" + bvName + ")" : "") : "not found"}, SteamClient.Window ${sw ? "yes" : "no"}, window.resizeTo ${resizeToTried ? "tried before" : "untried"}`;
+    if (sw && typeof sw.ResizeTo === "function") {
+      const dpr = mainWindow().devicePixelRatio || 1;
+      const variants: [string, "css" | "device", number | boolean][] = [
+        [`CSS px, scale ${Math.round(dpr * 100) / 100}`, "css", dpr], ["device px, scale 1", "device", 1], ["CSS px, true", "css", true], ["device px, false", "device", false]];
+      for (const [label, units, third] of variants) out.push({ how: `SteamClient.Window (${label})`, units,
+        save: async () => {
+          try { if (typeof sw.GetWindowRestoreDetails === "function") { const d = await sw.GetWindowRestoreDetails(); if (typeof d === "string" && d) return { details: d }; } } catch { /* below */ }
+          try { const d = typeof sw.GetWindowDimensions === "function" ? await sw.GetWindowDimensions() : null; if (d && d.width > 0) return { dims: d }; } catch { /* below */ }
+          return null;
+        },
+        set: (b) => { sw.ResizeTo(b.width, b.height, third); if (typeof sw.MoveTo === "function") sw.MoveTo(b.x, b.y, third); },
+        restore: (o) => {
+          if (!o) return;
+          if (o.details && typeof sw.RestoreWindowSizeAndPosition === "function") { sw.RestoreWindowSizeAndPosition(o.details); return; }
+          if (o.dims) { sw.ResizeTo(o.dims.width, o.dims.height, third); if (typeof sw.MoveTo === "function") sw.MoveTo(o.dims.x, o.dims.y, third); }
+        } });
+    }
+    if (!resizeToTried) out.push({ how: "window.resizeTo", units: "css",
+      save: async () => ({ x: win.screenX || 0, y: win.screenY || 0, width: win.outerWidth || win.innerWidth, height: win.outerHeight || win.innerHeight }),
+      set: (b) => { resizeToTried = true; win.resizeTo(b.width, b.height); win.moveTo(b.x, b.y); },
+      restore: (o) => { if (o) { win.resizeTo(o.width, o.height); win.moveTo(o.x, o.y); } } });
+    menuDiag.resizeApis = `BrowserView ${bv ? "found" + (bvName ? " (" + bvName + ")" : "") : "not found"}, SteamClient.Window ${sw ? "yes (ResizeTo, MoveTo " + (typeof sw.MoveTo === "function" ? "yes" : "no") + ", restore details " + (typeof sw.GetWindowRestoreDetails === "function" ? "yes" : "no") + ")" : "no"}, window.resizeTo ${resizeToTried ? "tried before" : "untried"}`;
     return out;
   }
   async function tryResize(doc: Document, game: boolean) {
@@ -309,25 +332,29 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
     st.busy = true;
     try {
       const main = mainWindow();
-      menuDiag.before = `${size(win)} (main window ${size(main)})`;
+      const dpr = main.devicePixelRatio || 1;
+      menuDiag.before = `${size(win)} (main window ${size(main)}, scale ${Math.round(dpr * 100) / 100})`;
       const tried: string[] = [];
       let done = false;
       for (const r of resizers(win, doc)) {
-        const before = await r.get();
-        // The bounds' unit (CSS or device pixels): from what the window is now.
-        const scale = before && before.width > 0 && win.innerWidth > 0 ? before.width / win.innerWidth : (main.devicePixelRatio || 1);
-        const ox = r.how === "BrowserView.SetBounds" ? 0 : (main.screenX || 0), oy = r.how === "BrowserView.SetBounds" ? 0 : (main.screenY || 0);
-        const W = Math.round(main.innerWidth * scale), H = Math.round(BAR_H * scale), MH = Math.round(main.innerHeight * scale);
-        try { r.set({ x: ox, y: game ? oy : oy + MH - H, width: W, height: H }); } catch (e) { tried.push(`${r.how}: ${String(e).slice(0, 60)}`); continue; }
-        await new Promise((res) => setTimeout(res, 450));
-        if (win.innerWidth >= Math.min(640, main.innerWidth * 0.9)) {
-          if (!st.orig && before) st.orig = before;
-          st.with = r;
+        const saved = await r.save();
+        // The place in this way's units: CSS pixels of the main window, device pixels, or the browser view's own
+        // bounds (their unit worked out from what the window is now).
+        const k = r.units === "device" ? dpr : r.units === "bounds" ? (saved && saved.width > 0 && win.innerWidth > 1 ? saved.width / win.innerWidth : dpr) : 1;
+        const ox = r.units === "bounds" ? 0 : Math.round((main.screenX || 0) * (r.units === "device" ? 1 : 1));
+        const oy = r.units === "bounds" ? 0 : Math.round(main.screenY || 0);
+        const W = Math.round(main.innerWidth * k), H = Math.round(BAR_H * k), MH = Math.round(main.innerHeight * k);
+        const target = { x: ox, y: game ? oy : oy + MH - H, width: W, height: H };
+        try { r.set(target); } catch (e) { tried.push(`${r.how}: ${String(e).slice(0, 300)}`); continue; }
+        await new Promise((res) => setTimeout(res, 500));
+        const ok = win.innerWidth >= Math.min(640, main.innerWidth * 0.9) && Math.abs(win.innerWidth - main.innerWidth) <= main.innerWidth * 0.1;
+        if (ok) {
+          st.orig = saved; st.with = r;
           menuDiag.resizeWith = r.how; menuDiag.after = size(win); done = true;
           break;
         }
-        tried.push(`${r.how}: still ${size(win)}`);
-        try { if (before) r.set(before); } catch { /* fine */ }
+        tried.push(`${r.how}: asked ${target.width}×${target.height} at ${target.x},${target.y}, got ${size(win)}`);
+        try { r.restore(saved); } catch (e) { tried.push(`${r.how} restore: ${String(e).slice(0, 200)}`); }
       }
       st.tries++;
       if (done) { st.mode = "resized"; st.at = game ? "top" : "bottom"; st.why = ""; st.tries = 0; }
@@ -335,16 +362,21 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
         menuDiag.resizeWith = tried.join("; ") || "nothing (no resize call here)"; menuDiag.after = size(win);
         st.mode = "mirror"; st.why = `Steam's menu window couldn't be resized (${menuDiag.before}; ${menuDiag.resizeWith})`;
       }
+      try { writeAttempts(tried, done ? menuDiag.resizeWith : ""); } catch { /* fine */ }
     } catch (e) {
-      restore(doc); st.mode = "mirror"; st.why = "resizing failed: " + String(e).slice(0, 120);
+      restore(doc); st.mode = "mirror"; st.why = "resizing failed: " + String(e).slice(0, 300);
     } finally { st.busy = false; }
     checkAll();
   }
+  /** Every resize attempt, in full, into the log (through the menu callback's diagnostics line). */
+  function writeAttempts(tried: string[], worked: string) {
+    menuDiag.attempts = tried.concat(worked ? ["worked: " + worked] : []).join(" | ").slice(0, 3000);
+  }
   function restore(doc: Document) {
     const st = states.get(doc);
-    if (!st || !st.orig || !st.with) return;
-    try { st.with.set(st.orig); } catch { /* gone */ }
-    st.orig = null;
+    if (!st || !st.with || st.orig === undefined) return;
+    try { st.with.restore(st.orig); } catch { /* gone */ }
+    st.orig = undefined; st.with = undefined;
   }
 
   // ---- 2. the mirror: Hearth's bar in the main window, following Steam's (see-through) menu
@@ -426,15 +458,18 @@ export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChang
       setDiag("vertical", "vertical", why);
       return true;
     };
-    // A web page (the Store) is drawn above Steam's other windows: the bar or the mirror would be under it. Steam's own
-    // menu in its own place (Hearth's colours) meanwhile; the bar comes back when the page is left.
-    if (isWebRoute(route)) return colours(`a web page is showing (${route}): Steam's menu stays where Steam puts it, in Hearth's colours`);
+    // A web page (the Store) is drawn above Steam's main window, so the mirror (drawn there) would be under it; Steam's
+    // menu window itself shows above the Store (the owner's Store log), so a resized bar can be used there too.
+    const web = isWebRoute(route);
     // In a game, the top dock gave a blank strip on a device: if its self-check failed once, Steam's menu in Hearth's colours.
     if (game && st.topFailed) return colours(st.topFailed);
 
     if (st.mode === "vertical") return colours(st.why);
     // The mirror is drawn in Steam's main window, which isn't on screen over a game: in a game, Steam's menu in
     // Hearth's colours instead (never a blank strip).
+    if (st.mode === "mirror" && web) {
+      return colours(`a web page is showing (${route}) and Steam's menu window can't be resized: Steam's menu in Hearth's colours (the mirror would be under the page)`);
+    }
     if (st.mode === "mirror" && game) {
       return colours(/couldn't be resized/.test(st.why) ? "Steam doesn't allow the top bar during games on this device (its menu window can't be resized): Steam's menu in Hearth's colours"
         : "in a game Steam's menu is shown in Hearth's colours (the mirror can't be drawn over a game)");

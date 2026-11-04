@@ -43,7 +43,7 @@ function onMenu(d: MenuDiag) {
   try { (window as any).HearthClassicMenu = d; } catch { /* fine */ }   // for a look in Steam's console (and the CI pictures)
   live.menuNote = menuNote(d, live.settings);
   const line = `menu: ${d.layout}, method ${d.method}${d.why ? " (" + d.why + ")" : ""}; found ${d.found ? "yes" : "no"}, ${d.entries} entries [${d.labels.join(", ")}], game ${d.game ? "running" : "none"}` +
-    (d.before ? `; window ${d.before} -> ${d.after} with ${d.resizeWith}` : "") + `; page ${d.route}; self-check ${d.selfCheck || "-"}; menu place ${d.anchor || "-"}`;
+    (d.before ? `; window ${d.before} -> ${d.after} with ${d.resizeWith}` : "") + `; page ${d.route}; self-check ${d.selfCheck || "-"}; menu place ${d.anchor || "-"}` + (d.attempts ? `; resize attempts: ${d.attempts}` : "");
   if (line !== lastDiag) {
     lastDiag = line;
     writeDiag(line).catch(() => {});

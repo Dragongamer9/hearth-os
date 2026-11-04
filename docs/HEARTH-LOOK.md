@@ -86,6 +86,14 @@ the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin o
   - Over a game the mirror can't be seen (it's drawn in the main window, which isn't on screen then): in a game the
     menu is Steam's own in Hearth's colours, and the panel says "Steam doesn't allow the top bar during games on this
     device" when its window can't be resized.
+- Round 8 (logs WPXS-V7YZ-4A and X5EG-2Q5D-E6, plugins 1.2.6): the menu window's own `SteamClient.Window.ResizeTo`
+  exists but refused `(width, height, false)`: "requires 3 arguments: <x: double> <y: double> …", the third must be a
+  number there. Tried in order now, each checked by the window's real size: CSS pixels with the screen's scale
+  (1143×643 CSS px on a 1920×1080 screen), device pixels with 1, then the booleans; `MoveTo` with the same third
+  argument. The window's place is remembered with `GetWindowRestoreDetails` and put back with
+  `RestoreWindowSizeAndPosition`. Every attempt (with the full error) is in the diagnostics ("Resize attempts").
+  With a working resize the real bar is used everywhere: the library, web pages such as the Store (Steam's menu window
+  shows above them) and the top bar in games. Only the mirror stays off on web pages and in games.
 - When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
   the entries in one row and the first one reachable. If not, it comes off at once (the next way above).
 - If the structure isn't there, nothing touches the menu and the panel says why.
