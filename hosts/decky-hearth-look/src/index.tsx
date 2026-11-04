@@ -40,7 +40,7 @@ function onMenu(d: MenuDiag) {
   try { (window as any).HearthClassicMenu = d; } catch { /* fine */ }   // for a look in Steam's console (and the CI pictures)
   live.menuNote = menuNote(d, live.settings);
   const line = `menu: ${d.layout}, method ${d.method}${d.why ? " (" + d.why + ")" : ""}; found ${d.found ? "yes" : "no"}, ${d.entries} entries [${d.labels.join(", ")}], game ${d.game ? "running" : "none"}` +
-    (d.before ? `; window ${d.before} -> ${d.after} with ${d.resizeWith}` : "");
+    (d.before ? `; window ${d.before} -> ${d.after} with ${d.resizeWith}` : "") + `; page ${d.route}; self-check ${d.selfCheck || "-"}; menu place ${d.anchor || "-"}`;
   if (line !== lastDiag) { lastDiag = line; writeDiag(line).catch(() => {}); }
   notify();
 }
@@ -86,7 +86,7 @@ function refresh(failure?: string) {
     const { css } = renderTheme(b.css, { logo: b.logo, wallpaper: s.wallpaper ? b.wallpaper : "" }, steamClass, plan.sections);
     patches.add("skin", removeSkin);
     if (!applySkin(css)) throw new Error("the skin couldn't be put in Steam's window");
-    if (plan.sections.menu) patches.add("menu bar", startMenuBar({ top: plan.sections.top, onChange: onMenu }));
+    if (plan.sections.menu) patches.add("menu bar", startMenuBar({ top: plan.sections.top, anchorClass: steamClass("gamepadUIClasses", "MainNavMenuAnchor") || "", onChange: onMenu }));
     if (s.home) patchHome();
     setSounds(s.sounds);
     patches.add("sounds", () => setSounds(false));

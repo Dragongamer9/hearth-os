@@ -41,6 +41,11 @@ function GamePage() {
 // CSS Loader themes). Here an iframe stands in for that popup window. HC_MENU: "steam" (Steam's structure), "changed"
 // (a Steam that changed it: no .Panel). HC_MENUWIDTH: the window's width (a narrow one plays a side-panel-only window).
 function openMenuWindow() {
+  // Steam's main window keeps an empty place for the side menu while it's open (the blank menu on the owner's device).
+  const anchor = document.createElement("div");
+  anchor.className = "mm_Anchor";
+  anchor.style.cssText = "position:absolute;left:0;top:0;bottom:40px;width:241px;background:#1b2028;z-index:6";
+  document.body.appendChild(anchor);
   const f = document.createElement("iframe");
   f.id = "menuwin";
   f.style.cssText = `position:absolute;left:0;top:0;width:${window.HC_MENUWIDTH || 1280}px;height:760px;border:0;z-index:20;background:transparent`;
@@ -59,7 +64,8 @@ body{margin:0;background:transparent;font-family:"Noto Sans",Arial,sans-serif;co
 .mm_panel,.mm_list{display:flex;flex-direction:column;padding:${running ? 120 : 18}px 8px 18px}
 .mm_entry{display:flex;align-items:center;gap:14px;padding:10px 16px;font-size:17px;border-radius:2px}.mm_entry.gpfocus{background:#3d4450}
 .game{position:absolute;left:0;top:0;width:300px;padding:16px;box-sizing:border-box;font-weight:800;font-size:18px;z-index:2}
-</style></head><body><div class="scrim"></div>${running ? '<div class="game">Ember Knights · Resume · Exit game</div>' : ""}<div id="MainNavMenuContainer" class="Focusable">${inner}</div></body></html>`);
+.cover{position:fixed;inset:0;background:#000;z-index:5000}
+</style></head><body><div class="scrim"></div>${running ? '<div class="game">Ember Knights · Resume · Exit game</div>' : ""}${window.HC_COVER ? '<div class="cover"></div>' : ""}<div id="MainNavMenuContainer" class="Focusable">${inner}</div></body></html>`);
   d.close();
   // HC_MENURESIZE "steamclient": the window's own SteamClient.Window can move and resize it (what Steam's popups have);
   // otherwise nothing can (window.resizeTo does nothing to an iframe), as when Steam keeps it narrow.

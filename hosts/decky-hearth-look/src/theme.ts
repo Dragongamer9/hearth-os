@@ -4,7 +4,7 @@
 // every window at once by removeSkin(). Class names come from @decky/ui's class maps (or findClassModule), never
 // hard-coded hashes.
 import * as DUI from "@decky/ui";
-import { judgeBar, judgeStructure, menuIcon } from "./model";
+import { isWebRoute, judgeBar, judgeStructure, judgeVisible, menuIcon } from "./model";
 import type { Resolve } from "./model";
 
 const STYLE_ID = "hearth-classic";
@@ -106,9 +106,10 @@ export type MenuMethod = "none" | "pending" | "fits" | "resized" | "mirror" | "v
 export interface MenuDiag {
   windows: string[]; found: boolean; entries: number; labels: string[]; layout: "bar" | "top" | "vertical" | "none" | "pending";
   why: string; game: boolean; method: MenuMethod; before: string; after: string; resizeWith: string;
+  route: string; anchor: string; selfCheck: string;
 }
 export const menuDiag: MenuDiag = { windows: [], found: false, entries: 0, labels: [], layout: "none", why: "not checked yet", game: false,
-  method: "none", before: "", after: "", resizeWith: "" };
+  method: "none", before: "", after: "", resizeWith: "", route: "", anchor: "", selfCheck: "" };
 const CLASSES = ["hearth-bar", "hearth-menu", "hearth-ingame", "hearth-ghost"];
 const BAR_H = 150;   // the resized menu window's height (CSS px): the bar, its focused entry and the gaps around it
 const MIRROR_ID = "hearth-bar-mirror";
@@ -121,9 +122,41 @@ function mainWindow(): Window {
 }
 const size = (w: Window) => { try { return `${Math.round(w.innerWidth)}×${Math.round(w.innerHeight)}`; } catch { return "?"; } };
 
-interface DocState { mode: MenuMethod; orig: { x: number; y: number; width: number; height: number } | null; tries: number; why: string; at: string; busy: boolean }
+/** The main window's page ("/library/home", "/steamweb" for the Store...), "" when it can't be read. */
+export function mainRoute(): string {
+  try {
+    const m = (DUI as any).Router?.WindowStore?.GamepadUIMainWindowInstance ?? (window as any).SteamUIStore?.WindowStore?.GamepadUIMainWindowInstance;
+    const loc = m?.m_history?.location ?? m?.m_History?.location;
+    if (typeof loc?.pathname === "string") return loc.pathname;
+    return typeof m?.m_locationPathname === "string" ? m.m_locationPathname : "";
+  } catch { return ""; }
+}
 
-export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => void }): () => void {
+/** Every entry really visible in its window: inside it, not hidden by itself or a parent, not covered. */
+function visibleCheck(doc: Document, items: HTMLElement[]): { ok: boolean; why: string } {
+  const win = doc.defaultView!;
+  const list = items.map((e) => {
+    const r = e.getBoundingClientRect();
+    let shown = true;
+    for (let n: Element | null = e; n && n !== doc.documentElement; n = n.parentElement) {
+      const cs = win.getComputedStyle(n);
+      if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) < 0.05) { shown = false; break; }
+    }
+    let hit = false, cover = "";
+    try {
+      const el = doc.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      hit = !!el && (el === e || e.contains(el) || el.contains(e));
+      if (!hit && el) cover = (el.id ? "#" + el.id : "") + (typeof el.className === "string" && el.className ? "." + el.className.split(/\s+/).slice(0, 2).join(".") : el.tagName.toLowerCase());
+    } catch { hit = false; }
+    return { label: (e.textContent || "").trim().slice(0, 20), inside: r.width > 0 && r.height > 0 && r.right > 0 && r.left < win.innerWidth && r.bottom > 0 && r.top < win.innerHeight, shown, hit, cover };
+  });
+  return judgeVisible(list);
+}
+
+interface DocState { mode: MenuMethod; topFailed: string; orig: { x: number; y: number; width: number; height: number } | null; tries: number; why: string; at: string; busy: boolean }
+
+export function startMenuBar(opts: { top: boolean; anchorClass?: string; onChange?: (d: MenuDiag) => void }): () => void {
+  const anchorClass = opts.anchorClass || "";
   const watched: { doc: Document; obs: MutationObserver }[] = [];
   const states = new Map<Document, DocState>();
   let last = "";
@@ -132,7 +165,7 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     if (k !== last) { last = k; try { opts.onChange && opts.onChange(menuDiag); } catch { /* never throw */ } }
   };
   const clear = (html: HTMLElement) => { for (const c of CLASSES) html.classList.remove(c); };
-  const stateOf = (doc: Document) => { let st = states.get(doc); if (!st) { st = { mode: "pending", orig: null, tries: 0, why: "", at: "", busy: false }; states.set(doc, st); } return st; };
+  const stateOf = (doc: Document) => { let st = states.get(doc); if (!st) { st = { mode: "pending", topFailed: "", orig: null, tries: 0, why: "", at: "", busy: false }; states.set(doc, st); } return st; };
 
   // ---- 1. resizing the menu's own window
   const steamWin = (win: any) => { try { return win.SteamClient?.Window ?? null; } catch { return null; } };
@@ -214,6 +247,17 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     }
     el.querySelectorAll(".hbm-item").forEach((it, i) => it.classList.toggle("on", i === focused));
   }
+  // Steam's main window keeps an empty place for its side menu while the menu is open: hidden while Hearth's bar is up.
+  function setMainOn(on: boolean) {
+    try {
+      const d = mainWindow().document;
+      d.documentElement.classList.toggle("hearth-bar-on", on);
+      const cls = (anchorClass || "").split(/\s+/)[0];
+      const a = cls ? d.querySelector("." + cls) as HTMLElement | null : null;
+      if (a) { const r = a.getBoundingClientRect(); menuDiag.anchor = `found, ${Math.round(r.width)}×${Math.round(r.height)} at ${Math.round(r.left)},${Math.round(r.top)}${on ? ", hidden" : ""}`; }
+      else menuDiag.anchor = cls ? "not in the main window" : "no class name for it";
+    } catch { /* gone */ }
+  }
   function hideMirror() { try { const el = mainWindow().document.getElementById(MIRROR_ID); if (el) el.remove(); } catch { /* gone */ } }
 
   // ---- checking a window
@@ -238,8 +282,23 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     let rects = items.map((e) => e.getBoundingClientRect());
     const onScreen = !!win && box.width > 0 && box.height > 0 && rects.some((r) => r.width > 0 && r.height > 0) && doc.visibilityState !== "hidden";
     const focusedIdx = items.findIndex((e) => e.classList.contains("gpfocus") || e.classList.contains("gpfocuswithin"));
+    let active = focusedIdx >= 0;
+    try { active = active || doc.hasFocus(); } catch { /* keep */ }
+    const route = mainRoute();
+    menuDiag.route = route || "?";
+    const colours = (why: string) => {
+      restore(doc); hideMirror(); setMainOn(false);
+      html.classList.remove("hearth-bar", "hearth-ghost"); html.classList.add("hearth-menu");
+      setDiag("vertical", "vertical", why);
+      return true;
+    };
+    // A web page (the Store) is drawn above Steam's other windows: the bar or the mirror would be under it. Steam's own
+    // menu in its own place (Hearth's colours) meanwhile; the bar comes back when the page is left.
+    if (isWebRoute(route)) return colours(`a web page is showing (${route}): Steam's menu stays where Steam puts it, in Hearth's colours`);
+    // In a game, the top dock gave a blank strip on a device: if its self-check failed once, Steam's menu in Hearth's colours.
+    if (game && st.topFailed) return colours(st.topFailed);
 
-    if (st.mode === "vertical") { html.classList.remove("hearth-bar", "hearth-ghost"); html.classList.add("hearth-menu"); hideMirror(); setDiag("vertical", "vertical", st.why); return true; }
+    if (st.mode === "vertical") return colours(st.why);
     if (st.mode === "mirror") {
       // Steam's menu stays where it is, see-through; Hearth's bar is drawn in the main window while it's open.
       // Open: the menu's window is on screen and has the focus (closing the menu gives the focus back to the main window).
@@ -251,6 +310,7 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
         hideMirror(); html.classList.remove("hearth-bar", "hearth-ghost"); html.classList.add("hearth-menu"); setDiag("vertical", "vertical", st.why); return true;
       }
       html.classList.remove("hearth-bar", "hearth-menu"); html.classList.add("hearth-ghost");
+      setMainOn(open);
       setDiag(game ? "top" : "bar", "mirror", st.why);
       return true;
     }
@@ -258,10 +318,13 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     // window keeps Steam's layout in Hearth's colours meanwhile, so a bar is never squeezed into it).
     const wide = !!win && win.innerWidth >= 640;
     html.classList.toggle("hearth-bar", wide); html.classList.toggle("hearth-menu", !wide); html.classList.remove("hearth-ghost");
-    if (!onScreen || !rects.every((r) => r.width > 0 && r.height > 0)) { setDiag("pending", st.mode === "resized" ? "resized" : "pending", "Steam's menu found; the bar is checked when the menu opens"); return true; }
+    if (!onScreen || !rects.every((r) => r.width > 0 && r.height > 0)) { setMainOn(false); setDiag("pending", st.mode === "resized" ? "resized" : "pending", "Steam's menu found; the bar is checked when the menu opens"); return true; }
     // Too narrow, or resized for the other place (a game started or ended, or the menu opened over a game): resize it.
     const want = game ? "top" : "bottom";
     if (!wide || (st.mode === "resized" && st.at !== want)) {
+      setMainOn(false);
+      // Only the menu that's open (focused) is resized: never a window Steam keeps but isn't showing.
+      if (!active) { setDiag("pending", "pending", "waiting for the menu to open"); return true; }
       if (st.tries < 6) { setDiag("pending", "pending", "making Steam's menu window as wide as the screen"); tryResize(doc, game); return true; }
       st.mode = "mirror"; st.why = "Steam keeps the menu window narrow"; restore(doc); return checkDoc(doc);
     }
@@ -276,6 +339,12 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     const measured = size(win!);
     const j = judgeBar({ w: win!.innerWidth, h: win!.innerHeight }, { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
       rects.map((r) => ({ left: r.left, top: r.top, width: r.width, height: r.height })), hit, game);
+    if (!j.ok && game) {
+      html.classList.remove("hearth-bar");
+      st.topFailed = "the top dock's check failed (" + j.why + "): Steam's menu in Hearth's colours in a game";
+      menuDiag.selfCheck = "failed: " + j.why;
+      return colours(st.topFailed);
+    }
     if (!j.ok) {
       restore(doc);
       st.mode = "mirror";
@@ -283,7 +352,18 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
       html.classList.remove("hearth-bar");
       return checkDoc(doc);
     }
+    // The self-check: every entry really visible in the resized window. If not, never a blank bar: Steam's window goes
+    // back where it was, and the mirror (or, in a game, Steam's menu in Hearth's colours) takes over.
+    const vis = visibleCheck(doc, items);
+    menuDiag.selfCheck = vis.ok ? `passed (${items.length} entries visible in ${size(win!)})` : "failed: " + vis.why;
+    if (!vis.ok) {
+      html.classList.remove("hearth-bar");
+      if (game) { st.topFailed = "the top dock's self-check failed (" + vis.why + "): Steam's menu in Hearth's colours in a game"; return colours(st.topFailed); }
+      restore(doc); st.mode = "mirror"; st.why = "the bar's self-check failed (" + vis.why + ")";
+      return checkDoc(doc);
+    }
     if (st.mode === "pending") st.mode = "fits";
+    setMainOn(true);
     setDiag(game ? "top" : "bar", st.mode, "");
     return true;
   };
@@ -325,6 +405,7 @@ export function startMenuBar(opts: { top: boolean; onChange?: (d: MenuDiag) => v
     for (const doc of states.keys()) { try { restore(doc); clear(doc.documentElement); } catch { /* gone */ } }
     states.clear();
     hideMirror();
+    try { mainWindow().document.documentElement.classList.remove("hearth-bar-on"); } catch { /* gone */ }
     watched.length = 0;
     setDiag("none", "none", "off");
   };

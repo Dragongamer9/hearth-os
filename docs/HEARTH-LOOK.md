@@ -64,6 +64,16 @@ the main window that CSS Loader calls "MainMenu" ("QuickAccess"), and the skin o
      and Steam's menu panel is made see-through but stays where it is, focused and working: up and down in Steam's
      menu move the bar's highlight, A presses Steam's real entry, the Steam button still opens and closes it.
   3. **Hearth's colours on Steam's own menu**, when neither works. A bar is never squeezed into a narrow window.
+- Round 5 (from the owner's device on 1.2.3, where the bottom bar works):
+  - Only the menu that's open (focused) is resized, never a menu window Steam keeps but isn't showing.
+  - After resizing, a **self-check** makes sure every entry is really visible in the window (inside it, not hidden, not
+    covered). If not, the window goes back where it was and the mirror takes over; in a game, Steam's menu in Hearth's
+    colours (the top dock showed a blank strip on the device). Never a blank bar.
+  - Steam's main window keeps an empty place for its side menu while the menu is open (the blank menu behind the bar):
+    it's hidden while Hearth's bar is up and back as soon as it isn't.
+  - On web pages (the Store), which Steam draws above its other windows, the menu stays in Steam's own place in
+    Hearth's colours, and the bar comes back when you leave the page.
+  - Diagnostics also show the page, the self-check and the main window's menu place.
 - When the menu is on screen, the bar is checked for real: across the window, along the bottom (the top in a game),
   the entries in one row and the first one reachable. If not, it comes off at once (the next way above).
 - If the structure isn't there, nothing touches the menu and the panel says why.

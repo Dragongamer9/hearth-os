@@ -92,6 +92,24 @@ export function judgeBar(win: { w: number; h: number }, box: { left: number; rig
   return { ok: true, why: "" };
 }
 
+/** Pages drawn by Steam's web view (the Store and other web pages), which sit above Steam's other windows. */
+export function isWebRoute(path: string): boolean {
+  return /^\/(steamweb|externalweb|store|browser|marketplace)(\/|$)/i.test(path || "");
+}
+
+/** The self-check after the bar goes on: every entry inside the window, shown (no hidden or see-through parent) and
+ *  not covered by something else. */
+export function judgeVisible(list: { label: string; inside: boolean; shown: boolean; hit: boolean; cover: string }[]): { ok: boolean; why: string } {
+  if (!list.length) return { ok: false, why: "no entries" };
+  const out = list.filter((e) => !e.inside);
+  if (out.length) return { ok: false, why: `${out.length} entries outside the window (${out.map((e) => e.label).slice(0, 3).join(", ")})` };
+  const hidden = list.filter((e) => !e.shown);
+  if (hidden.length) return { ok: false, why: `${hidden.length} entries hidden (${hidden.map((e) => e.label).slice(0, 3).join(", ")})` };
+  const covered = list.filter((e) => !e.hit);
+  if (covered.length) return { ok: false, why: `${covered.length} entries covered${covered[0].cover ? " by " + covered[0].cover : ""}` };
+  return { ok: true, why: "" };
+}
+
 /** The panel's note for the menu (empty when all is well or it's off). */
 export function menuNote(d: { layout: string; why: string; found: boolean }, s: Settings): string {
   if (!s.menu) return "";
@@ -124,7 +142,7 @@ export const METHOD_NAMES: Record<string, string> = {
 /** The diagnostics as plain text (the panel shows it; "Write a Hearth Classic log" saves it). */
 export function diagnosticsText(d: { state: string; why: string; settings: Settings; keys: { resolved: string[]; missing: string[] };
   menu: { windows: string[]; found: boolean; entries: number; labels: string[]; layout: string; why: string; game: boolean;
-          method?: string; before?: string; after?: string; resizeWith?: string }; windows: string[]; game: boolean | null }): string {
+          method?: string; before?: string; after?: string; resizeWith?: string; route?: string; anchor?: string; selfCheck?: string }; windows: string[]; game: boolean | null }): string {
   const s = d.settings;
   return [
     `Hearth Classic: ${d.state}${d.why ? " (" + d.why + ")" : ""}`,
@@ -134,6 +152,9 @@ export function diagnosticsText(d: { state: string; why: string; settings: Setti
     `Menu: ${d.menu.found ? "found" : "not found"} (#MainNavMenuContainer), ${d.menu.entries} entries${d.menu.labels.length ? " [" + d.menu.labels.join(", ") + "]" : ""}`,
     `Menu bar: ${d.menu.layout}${d.menu.method ? " (method: " + METHOD_NAMES[d.menu.method] + ")" : ""}${d.menu.why ? " — " + d.menu.why : ""}`,
     `Menu window: ${d.menu.before ? "before " + d.menu.before + ", after " + (d.menu.after || "?") + " (resized with " + (d.menu.resizeWith || "?") + ")" : "not resized"}`,
+    `Page: ${d.menu.route || "?"}${d.menu.route && isWebRoute(d.menu.route) ? " (a web page: the Store or similar)" : ""}`,
+    `Self-check: ${d.menu.selfCheck || "not run yet"}`,
+    `Main window's menu place: ${d.menu.anchor || "not checked"}`,
     `Game running: ${d.game === null ? "can't tell (Router.MainRunningApp unreadable)" : d.game ? "yes" : "no"}`,
   ].join("\n");
 }
