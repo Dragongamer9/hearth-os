@@ -18,7 +18,7 @@ const setSettingsCall = callable<[Partial<Settings>], { ok: boolean; settings?: 
 const getBrand = callable<[], { css: string; logo: string; wallpaper: string } | null>("brand");
 const report = callable<[string], null>("report");
 const writeDiag = callable<[string], { ok: boolean; path?: string }>("diagnostics");
-type SendResult = { ok: boolean; code?: string; at?: number; skipped?: string; error?: string };
+type SendResult = { ok: boolean; code?: string; at?: number; via?: string; skipped?: string; error?: string };
 const sendLog = callable<[string, string, string, boolean], SendResult>("send_log");
 const lastSent = callable<[], { at: number; code: string; reason: string; auto: boolean } | null>("last_sent");
 
@@ -62,7 +62,11 @@ function onMenu(d: MenuDiag) {
 }
 let firstOpenSeen = false;
 let sent: { at: number; code: string; auto: boolean } | null = null;
-function noteSent(r: SendResult) { if (r && r.ok && r.code) { sent = { at: r.at || Math.floor(Date.now() / 1000), code: r.code, auto: true }; notify(); } }
+function noteSent(r: SendResult) {
+  if (r && r.ok && r.code) { sent = { at: r.at || Math.floor(Date.now() / 1000), code: r.code, auto: true }; sendError = ""; notify(); }
+  else if (r && r.error) { sendError = r.error; notify(); }   // shown in the panel (the reason is in hearth-classic.log too)
+}
+let sendError = "";
 
 function useLive() {
   const [, bump] = useState(0);
@@ -175,11 +179,12 @@ function Diagnostics(props: { autoSend: boolean; set: (c: Partial<Settings>) => 
           const deep = text + "\n" + menuDeepDump();
           writeDiag(deep).catch(() => {});
           sendLog("manual", "sent by hand from the panel", deep, false).then((r) => {
-            if (r && r.ok && r.code) { sent = { at: r.at || Math.floor(Date.now() / 1000), code: r.code, auto: false }; setSaved("Sent: code " + r.code); notify(); }
+            if (r && r.ok && r.code) { sent = { at: r.at || Math.floor(Date.now() / 1000), code: r.code, auto: false }; setSaved("Sent: code " + r.code + (r.via === "curl" ? " (through the system's curl)" : "")); notify(); }
             else setSaved((r && (r.error || r.skipped)) || "Couldn't send it");
           }).catch(() => setSaved("Couldn't send it"));
         }}>Send Hearth Classic log now</ButtonItem>
       </PanelSectionRow>
+      {sendError && <PanelSectionRow><div className="hearth-send-error" style={{ fontSize: 11.5, color: "#ffb547" }}>Automatic send: {sendError}</div></PanelSectionRow>}
       {sent && <PanelSectionRow><div className="hearth-last-sent" style={{ fontSize: 11.5, color: "#8d99a8" }}>Last sent: {when} (code {sent.code}){sent.auto ? ", automatically" : ""}</div></PanelSectionRow>}
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={() => setOpen(!open)}>{open ? "Hide what Hearth Classic found" : "Show what Hearth Classic found"}</ButtonItem>

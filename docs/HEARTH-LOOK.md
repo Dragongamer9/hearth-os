@@ -107,6 +107,14 @@ Quick Access › Hearth Classic › Diagnostics:
   size, background, `#MainNavMenuContainer` with its parents, its panel and entries, the menu window's other content,
   and the self-check per entry.
 
+How it's sent (round 7, after "https error" on a device): Decky's bundled Python looks for certificates where it
+was built, not where Hearth OS keeps them. The direct send now uses the system's CA bundle
+(`/etc/ssl/certs/ca-certificates.crt`, then `/etc/pki/tls/certs/ca-bundle.crt`, then Python's defaults; verification
+stays on) and says who it is (`hearth-classic/<version>`). If it fails anyway, the same request goes through the
+system's `curl` with the system's libraries, which is how Hearth's own sender (`logs.rs` `send_report`) sends. The
+panel and `hearth-classic.log` say which way was tried and why one failed (the HTTP status and the service's error,
+or the network's or TLS's reason, such as "certificate verify failed").
+
 Reading them (the owner, with `gh`):
 
 ```

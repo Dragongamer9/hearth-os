@@ -255,6 +255,11 @@ await scene("panel-diagnostics", { scene: "library", menu: "steam", menuWidth: 2
   if (!t2.includes("Last sent:") || !t2.includes("code TEST-CODE-01")) errors.push("panel-diagnostics: no Last sent line after sending");
   const man = await page.evaluate(() => (window.HC_SENT || []).filter((x) => !x.auto));
   if (!man.length || man[0].len < 500) errors.push(`panel-diagnostics: the manual send carried no deep diagnostics (${JSON.stringify(man)})`);
+  // A send that fails both ways: the panel says why, in the service's and TLS's own words.
+  await page.evaluate(() => { window.HC_SENDFAIL = true; const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Send Hearth Classic log now")); b && b.click(); });
+  await page.waitForTimeout(800);
+  const t3 = await page.evaluate(() => document.body.innerText);
+  if (!t3.includes("certificate verify failed") || !t3.includes("through curl: HTTP 429: busy, try again later")) errors.push("panel-diagnostics: the send's error isn't shown");
   // The picture: the found-text folded again, Quick Access scrolled down to the Diagnostics section.
   await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.startsWith("Hide what Hearth Classic found")); b && b.click(); });
   await page.waitForTimeout(300);

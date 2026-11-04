@@ -282,7 +282,7 @@ class HomeData(Base):
             def __exit__(self, *a):
                 return False
 
-        def open_(req, timeout=60):
+        def open_(req, timeout=60, **kw):
             sent.append(req)
             return R(reply)
         return open_
@@ -319,6 +319,79 @@ class HomeData(Base):
         self.assertEqual(req.get_header('X-hearth-kind'), 'peppermint')
         self.assertTrue(req.data.decode().startswith('Hearth logs'))
         self.assertIn('the%20mirror is used'.replace('%20', ' '), urllib_unquote(req.get_header('X-hearth-note')))
+
+    def test_ca_bundle_selection(self):
+        import ssl
+        real = next((f for f in self.m.CA_FILES if os.path.isfile(f)), None)
+        if real:
+            ctx, where = self.m.ssl_context()
+            self.assertEqual(where, real)   # Debian's bundle first, then Fedora's
+            self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(ctx.check_hostname)
+            # A missing or broken first one: the next one.
+            broken = os.path.join(self.tmp, 'broken.crt')
+            with open(broken, 'w') as f:
+                f.write('not a certificate')
+            self.assertEqual(self.m.ssl_context((os.path.join(self.tmp, 'missing.crt'), broken, real))[1], real)
+        ctx, where = self.m.ssl_context(())
+        self.assertTrue(where.startswith('Python default'))
+        self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+
+    def curl_run(self, calls, stdout='{"code":"CURL-CODE-01"}\n200', rc=0, stderr=''):
+        def run(args, **kw):
+            calls.append((args, kw))
+            body_file = [a for a in args if a.startswith('@')][0][1:]
+            with open(body_file) as f:
+                calls.append(('body', f.read()))
+            return subprocess.CompletedProcess(args, rc, stdout=stdout, stderr=stderr)
+        return run
+
+    def test_falls_back_to_curl_when_the_direct_send_fails(self):
+        import ssl
+        import urllib.error
+        import io
+
+        def ssl_fail(req, timeout=60, **kw):
+            raise urllib.error.URLError(ssl.SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate'))
+
+        def http_fail(req, timeout=60, **kw):
+            raise urllib.error.HTTPError(req.full_url, 400, 'Bad Request', {}, io.BytesIO(b'{"error":"not a Hearth log"}'))
+        for opener, want in ((ssl_fail, 'certificate verify failed'), (http_fail, 'HTTP 400: not a Hearth log')):
+            calls = []
+            r = self.m.deliver('Hearth logs x', 'Hearth Classic: test', '1.2.5', opener, self.curl_run(calls), lambda n: '/usr/bin/curl', ctx=ssl.create_default_context())
+            self.assertEqual((r['ok'], r['code'], r['via']), (True, 'CURL-CODE-01', 'curl'))
+            args, kw = calls[0]
+            self.assertEqual(args[0], '/usr/bin/curl')
+            self.assertIn('https://hearth-counter.game305-cl.workers.dev/v1/logs', args)
+            self.assertIn('X-Hearth-Kind: peppermint', args)
+            self.assertTrue(any(a.startswith('User-Agent: hearth-classic/1.2.5') for a in args))
+            self.assertNotIn('LD_LIBRARY_PATH', kw['env'])   # Decky's bundled libraries never reach curl
+            self.assertEqual(calls[1], ('body', 'Hearth logs x'))
+            with open(self.m.diag_log_path()) as f:
+                self.assertIn(want, f.read())
+        # Both ways fail: the panel gets both reasons.
+        calls = []
+        r = self.m.deliver('Hearth logs x', 'n', '1.2.5', ssl_fail, self.curl_run(calls, stdout='{"error":"busy, try again later"}\n429'), lambda n: '/usr/bin/curl', ctx=ssl.create_default_context())
+        self.assertFalse(r['ok'])
+        self.assertIn('direct: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed', r['error'])
+        self.assertIn('through curl: HTTP 429: busy, try again later', r['error'])
+        r = self.m.deliver('Hearth logs x', 'n', '1.2.5', ssl_fail, self.curl_run([], rc=6, stderr='curl: (6) Could not resolve host'), lambda n: '/usr/bin/curl', ctx=ssl.create_default_context())
+        self.assertIn('through curl: curl: (6) Could not resolve host', r['error'])
+        r = self.m.deliver('Hearth logs x', 'n', '1.2.5', ssl_fail, self.curl_run([]), lambda n: None, ctx=ssl.create_default_context())
+        self.assertIn("curl isn't installed", r['error'])
+
+    def test_the_direct_send_uses_the_ca_context(self):
+        sent, seen = [], {}
+
+        def op(req, timeout=60, **kw):
+            seen.update(kw)
+            return self.fake_opener(sent)(req, timeout)
+        import ssl
+        ctx = ssl.create_default_context()
+        r = self.m.deliver('Hearth logs x', 'n', '1.2.5', op, None, None, ctx=ctx)
+        self.assertEqual((r['ok'], r['via']), (True, 'direct'))
+        self.assertIs(seen['context'], ctx)
+        self.assertTrue(sent[0].get_header('User-agent').startswith('hearth-classic/1.2.5'))
 
     def test_what_is_sent_has_no_personal_details(self):
         h = os.path.join(self.tmp, 'home')
