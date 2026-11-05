@@ -280,7 +280,9 @@ class Installs(Stage3):
         self.assertEqual(run[-3:], ['app', 'install-run', 'ollama'])
         with self.assertRaises(hh.Fail):
             hh.app_install('../../bin/sh')
+        old_uid = os.environ.get('PKEXEC_UID')
         os.environ['PKEXEC_UID'] = str(os.getuid())
+        self.addCleanup(lambda: os.environ.pop('PKEXEC_UID', None) if old_uid is None else os.environ.__setitem__('PKEXEC_UID', old_uid))
         out = io.StringIO()
         saved = sys.stdout
         sys.stdout = out
@@ -638,7 +640,11 @@ class WebServer(unittest.TestCase):
         json.dump({'hash': hs.pw_hash('webpass99')}, open(web.WEB_STATE, 'w'))
         self.srv = web.ThreadingHTTPServer(('127.0.0.1', 0), web.Handler)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        # web.time is Python's own time module: patched only for this test and put back after it (left patched, every
+        # later test's time.sleep returned at once, and the Quick Access overlay tests failed in the full run).
+        real_sleep = web.time.sleep
         web.time.sleep = lambda s: None
+        self.addCleanup(setattr, web.time, 'sleep', real_sleep)
 
     def tearDown(self):
         self.srv.shutdown()
