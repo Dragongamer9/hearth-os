@@ -159,7 +159,7 @@ SetPage {
         delegate: SetRow {
             required property var modelData
             icon: "folder"; title: modelData.t
-            sub: modelData.d.count + " files · " + page.size(modelData.d.bytes) + (modelData.id === "duplicates" ? " you could free" : "")
+            sub: modelData.d.count + (modelData.d.count === 1 ? " file · " : " files · ") + page.size(modelData.d.bytes) + (modelData.id === "duplicates" ? " you could free" : "")
             value: page.openSmart === modelData.id ? "Close" : modelData.d.count ? "Review" : ""
             onActivated: page.openSmart = page.openSmart === modelData.id ? "" : modelData.id
         }

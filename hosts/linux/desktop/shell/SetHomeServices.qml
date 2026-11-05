@@ -187,7 +187,7 @@ SetPage {
         color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     Text {
-        visible: !!page.st && !!page.st.applied && page.st.applied.ok && !!page.st.applied.result && !!page.st.applied.result.apps && !!page.st.applied.result.apps.mediaNote
+        visible: !!page.st && !!page.st.applied && !!page.st.applied.ok && !!page.st.applied.result && !!page.st.applied.result.apps && !!page.st.applied.result.apps.mediaNote
         Layout.fillWidth: true
         text: page.st && page.st.applied && page.st.applied.result && page.st.applied.result.apps ? (page.st.applied.result.apps.mediaNote || "") : ""
         color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap

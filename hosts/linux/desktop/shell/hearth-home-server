@@ -2334,16 +2334,19 @@ def listening():
 
 def smb_hardened():
     """Samba's own config: SMB3 or newer and no guests (the image's and Hearth's)."""
+    def live(path):
+        with open(path) as f:
+            return '\n'.join(re.sub(r'\s+', ' ', l.strip().lower()) for l in f if l.strip() and not l.lstrip().startswith(('#', ';')))
     try:
-        text = open('/etc/samba/smb.conf').read().lower()
+        text = live('/etc/samba/smb.conf')
     except OSError:
         return {'known': False}
     ours = ''
     try:
-        ours = open('/etc/samba/hearth-home-server.conf').read().lower()
+        ours = live('/etc/samba/hearth-home-server.conf')
     except OSError:
         pass
-    both = text + ours
+    both = text + '\n' + ours
     return {'known': True, 'smb3': 'server min protocol = smb3' in both, 'noGuests': 'map to guest = never' in both and 'guest ok = yes' not in both}
 
 

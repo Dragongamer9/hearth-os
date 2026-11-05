@@ -95,11 +95,11 @@ SetPage {
     SetRow {
         visible: page.shown && !!page.svc && page.svc.installed && !!page.askModel && page.have.some(m => m.id === page.askModel)
         icon: "trash"; title: "Remove " + page.askModel
-        sub: "Frees its space. You can download it again any time"
+        sub: "Frees its space; you can download it again any time. Select another downloaded model above to pick it"
         onActivated: act.run(["ai-remove", page.askModel], () => { page.say("Removed " + page.askModel); page.askModel = ""; page.refresh(); }, e => page.say(e, true))
     }
     Text {
-        visible: page.shown && !!page.ai && page.ai.others && page.ai.others.length > 0
+        visible: page.shown && !!page.ai && !!page.ai.others && page.ai.others.length > 0
         Layout.fillWidth: true
         text: page.ai && page.ai.others ? "Also here: " + page.ai.others.join(", ") : ""
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
@@ -160,7 +160,7 @@ SetPage {
         onToggled: v => page.set("aiPause", v ? "on" : "off")
     }
     SetRow {
-        visible: page.shown && !!page.svc && page.svc.active && page.ai.loaded.length > 0
+        visible: page.shown && !!page.svc && page.svc.active && (page.ai.loaded || []).length > 0
         icon: "restart"; title: "Unload models now"
         sub: "Frees the graphics card right away"
         onActivated: act.run(["ai-unload"], r => { page.say("Unloaded " + (r.unloaded || []).join(", ")); page.refresh(); }, e => page.say(e, true))
