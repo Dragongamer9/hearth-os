@@ -1,0 +1,16 @@
+# Settings › Home server › Drives & undo (docs/HOME-SERVER.md): takes the snapshots that are due, drops the ones past
+# their keep counts and empties recycle-bin files older than 30 days. Started only by its timer, which is off until
+# you turn snapshots (or a share's recycle bin) on; with Light mode on it waits while you play. Lowest CPU and disk
+# priority, and nothing waits for it: it's never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: snapshots and recycle bins
+ConditionPathExists=/etc/hearth/home-server.json
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-home-server-helper snapshot run
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+TimeoutStartSec=30min

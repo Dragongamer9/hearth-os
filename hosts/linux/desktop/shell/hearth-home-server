@@ -1,0 +1,742 @@
+#!/usr/bin/python3
+"""hearth-home-server: Mantel's Settings › Home server (docs/HOME-SERVER.md). This PC as a home server for your other
+devices: shared folders (Samba), drives and snapshots, Tailscale. Builds on Hearth Storage (Hearth Link's home server
+for Hearth devices); the root half is /usr/libexec/nimbus/hearth-home-server-helper (through pkexec).
+
+Your choices live in ~/.config/nimbus/home-server.json, written only when you change something, through
+hearth_settings_io (atomic, .bak, merge under a lock; defaults are filled in when it's read, never saved). The
+system's config (Samba's, the firewall's, the snapshot timer's) is made from it by the root helper, which checks
+everything again.
+
+  hearth-home-server status                     JSON: your settings (with defaults), the shares and whether each can
+                                                take snapshots, what's installed, Tailscale in short, hidden items
+  hearth-home-server set KEY VALUE              lightMode, tsOnly, tsBoot, exitNode, taildropReceive, wakeFromAway,
+                                                snapshots, showHidden, setupDone (on|off); ccDays (1-365);
+                                                keepHourly, keepDaily, keepWeekly (numbers)
+  hearth-home-server candidates                 folders you might share (Home's folders, drives' folders)
+  hearth-home-server pick-folder                Hearth Files' folder picker; prints the folder
+  hearth-home-server share-add PATH [NAME]      share a folder (read only, home network, recycle bin on)
+  hearth-home-server share-set ID KEY VALUE     on|write|recycle|snapshots on|off; reach home|tailscale; name NAME
+  hearth-home-server share-remove ID            stop sharing it (its files are never touched)
+  hearth-home-server smb-password               your sharing password on stdin (HEARTH_INPUT); never kept
+  hearth-home-server apply                      make the system match your settings again
+  hearth-home-server drives                     every drive's space, health and temperature
+  hearth-home-server format-plan DEV            what formatting a drive would do, and what to confirm
+  hearth-home-server format                     JSON on stdin (see hearth-home-server-helper)
+  hearth-home-server snapshots ID               a share's snapshots (newest first)
+  hearth-home-server restore ID SNAPSHOT        copy the share as it was into a new folder in Home (never over it)
+  hearth-home-server ts-status | ts-start | ts-login | ts-logout | ts-ping
+  hearth-home-server ts-send PEER [FILE]        Taildrop: send a file (picked in Hearth Files when not given)
+  hearth-home-server seen KIND                  note that KIND (commandCenter, camera, ups) was seen just now
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import concurrent.futures
+import getpass
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+ROOT_HELPER = os.environ.get('HEARTH_HOME_SERVER_ROOT', '/usr/libexec/nimbus/hearth-home-server-helper')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')
+APPLIED = os.path.join(STATE_HOME, 'nimbus', 'home-server-applied.json')
+SEEN = os.path.join(STATE_HOME, 'nimbus', 'home-server-seen.json')
+
+DEFAULTS = {
+    'lightMode': True,          # big jobs wait while you play; sharing keeps working
+    'shares': [],               # nothing is shared until you share it
+    'tsOnly': False,            # shares and services only through Tailscale
+    'tsBoot': False,            # Tailscale starts with the PC
+    'exitNode': False,
+    'taildropReceive': False,
+    'wakeFromAway': False,
+    'snapshots': False,
+    'keep': {'hourly': 24, 'daily': 14, 'weekly': 8},
+    'showHidden': False,        # display only: hiding never turns anything off
+    'ccDays': 30,               # Command Center items show when it was seen on one of your devices this recently
+    'setupDone': False,
+    'smbPasswordSet': 0,        # when you last set your sharing password (the password itself is never kept)
+}
+BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone')
+KEEP_KEYS = {'keepHourly': 'hourly', 'keepDaily': 'daily', 'keepWeekly': 'weekly'}
+KEEP_MAX = {'hourly': 168, 'daily': 90, 'weekly': 104}
+APPLY_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'snapshots') + tuple(KEEP_KEYS)
+SEEN_KINDS = ('commandCenter', 'camera', 'ups')
+DAY_MS = 86400000
+
+
+class Fail(Exception):
+    pass
+
+
+def _root_module():
+    """The root helper's checks (path and name rules, snapshots), shared so both sides judge alike."""
+    for p in (ROOT_HELPER, '/usr/libexec/nimbus/hearth-home-server-helper',
+              os.path.join(HERE, '..', '..', '..', '..', 'os', 'system_files', 'usr', 'libexec', 'nimbus', 'hearth-home-server-helper')):
+        if os.path.exists(p):
+            loader = importlib.machinery.SourceFileLoader('hearth_home_server_helper', p)
+            spec = importlib.util.spec_from_loader('hearth_home_server_helper', loader)
+            m = importlib.util.module_from_spec(spec)
+            loader.exec_module(m)
+            return m
+    raise Fail('Home server comes with the next Hearth OS update')
+
+
+hh = None
+
+
+def root_mod():
+    global hh
+    if hh is None:
+        hh = _root_module()
+    return hh
+
+
+# ------------------------------------------------------------------ settings
+
+def load():
+    """Your settings with defaults filled in (in memory only)."""
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def value(key, data=None):
+    data = load() if data is None else data
+    if key in KEEP_KEYS:
+        return data['keep'][KEEP_KEYS[key]]
+    return data.get(key)
+
+
+def set_key(key, raw):
+    """Saves one setting, only when it's different from what you have now (a default counts as what you have)."""
+    if key in BOOL_KEYS:
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        v = raw == 'on'
+    elif key in KEEP_KEYS:
+        if not re.fullmatch(r'\d{1,3}', raw or '') or int(raw) > KEEP_MAX[KEEP_KEYS[key]]:
+            raise Fail('a number from 0 to %d' % KEEP_MAX[KEEP_KEYS[key]])
+        v = int(raw)
+    elif key == 'ccDays':
+        if not re.fullmatch(r'\d{1,3}', raw or '') or not 1 <= int(raw) <= 365:
+            raise Fail('1 to 365 days')
+        v = int(raw)
+    else:
+        raise Fail('Unknown setting')
+    if value(key) == v:
+        return False
+
+    def change(d):
+        if key in KEEP_KEYS:
+            keep = dict(DEFAULTS['keep'])
+            keep.update(d.get('keep') if isinstance(d.get('keep'), dict) else {})
+            keep[KEEP_KEYS[key]] = v
+            d['keep'] = keep
+        else:
+            d[key] = v
+    sio.update_json(SETTINGS, change)
+    return True
+
+
+def shares_change(fn):
+    """Changes the share list under the lock (the latest file, only the shares key)."""
+    out = {}
+
+    def change(d):
+        cur = d.get('shares') if isinstance(d.get('shares'), list) else []
+        new = fn([dict(s) for s in cur if isinstance(s, dict)])
+        if new is not None:
+            d['shares'] = new
+            out['shares'] = new
+    sio.update_json(SETTINGS, change)
+    return out.get('shares')
+
+
+# ------------------------------------------------------------------ root helper
+
+def root(args, stdin=''):
+    """Runs the root helper through pkexec; its JSON answer, or Fail with its error."""
+    if not os.path.exists(ROOT_HELPER):
+        raise Fail('Home server comes with the next Hearth OS update')
+    cmd = ([] if os.geteuid() == 0 else ['pkexec']) + [ROOT_HELPER] + list(args)
+    try:
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=900)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise Fail('Couldn\'t ask for permission (%s)' % e)
+    lines = [l for l in (p.stdout or '').strip().splitlines() if l.startswith('{')]
+    try:
+        v = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        v = None
+    if not isinstance(v, dict):
+        raise Fail('Not allowed (Hearth\'s polkit rule is missing, or it was cancelled)' if p.returncode in (126, 127) else 'That didn\'t work')
+    if not v.get('ok'):
+        raise Fail(v.get('error') or 'That didn\'t work')
+    return v
+
+
+def apply_payload(data):
+    return {'shares': [s for s in data['shares'] if s.get('on', True) is not False], 'tsOnly': data['tsOnly'], 'tsBoot': data['tsBoot'],
+            'snapshots': data['snapshots'], 'keep': data['keep'], 'lightMode': data['lightMode']}
+
+
+def apply_now(data=None):
+    """Makes the system match your settings. What happened is kept in a state file (never in your settings)."""
+    data = load() if data is None else data
+    try:
+        res = root(['apply'], json.dumps(apply_payload(data)))
+        state = {'ok': True, 'at': int(time.time() * 1000), 'result': res}
+    except Fail as e:
+        state = {'ok': False, 'at': int(time.time() * 1000), 'error': str(e)}
+    try:
+        sio.write_json(APPLIED, state)
+    except OSError:
+        pass
+    if not state['ok']:
+        raise Fail(state['error'])
+    return state['result']
+
+
+# ------------------------------------------------------------------ shares
+
+def me():
+    return getpass.getuser(), os.path.expanduser('~')
+
+
+def clean_name(text, used):
+    n = re.sub(r'\s+', ' ', re.sub(r'[^A-Za-z0-9 _\-]+', ' ', text or '')).strip(' -_')[:40].strip() or 'Shared'
+    if not n[0].isalnum():
+        n = 'S' + n[:39]
+    base, i = n, 2
+    while n.lower() in used or n.lower() in ('global', 'homes', 'printers'):
+        n = '%s %d' % (base[:36], i)
+        i += 1
+    return n
+
+
+def share_add(path, name=None):
+    user, home = me()
+    real, why = root_mod().path_problem(path, user, home)
+    if not real:
+        raise Fail(why[0].upper() + why[1:])
+    if name is not None and root_mod().name_problem(name):
+        raise Fail(root_mod().name_problem(name))
+    added = {}
+
+    def fn(shares):
+        if any(os.path.realpath(s.get('path', '')) == real for s in shares):
+            raise Fail('That folder is already shared')
+        used = {str(s.get('name', '')).lower() for s in shares} | root_mod().storage_share_names()
+        n = name if name is not None else clean_name(os.path.basename(real), used)
+        if n.lower() in used:
+            raise Fail('There\'s already a share called "%s"' % n)
+        s = {'id': secrets.token_hex(6), 'name': n, 'path': real, 'on': True, 'write': False, 'reach': 'home',
+             'recycle': True, 'snapshots': False, 'users': [user]}
+        added.update(s)
+        return shares + [s]
+    shares_change(fn)
+    return added
+
+
+def share_set(sid, key, raw):
+    if not re.fullmatch(r'[0-9a-f]{6,32}', sid or ''):
+        raise Fail('That isn\'t a share')
+    if key in ('on', 'write', 'recycle', 'snapshots'):
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        v = raw == 'on'
+    elif key == 'reach':
+        if raw not in ('home', 'tailscale'):
+            raise Fail('home or tailscale')
+        v = raw
+    elif key == 'name':
+        why = root_mod().name_problem(raw)
+        if why:
+            raise Fail(why)
+        v = raw
+    else:
+        raise Fail('Unknown share setting')
+    changed = {'found': False, 'changed': False}
+
+    def fn(shares):
+        for s in shares:
+            if s.get('id') == sid:
+                changed['found'] = True
+                cur = s.get(key, {'on': True, 'write': False, 'recycle': True, 'snapshots': False, 'reach': 'home'}.get(key))
+                if cur == v:
+                    return None
+                if key == 'name' and any(o.get('id') != sid and str(o.get('name', '')).lower() == v.lower() for o in shares):
+                    raise Fail('There\'s already a share called "%s"' % v)
+                s[key] = v
+                changed['changed'] = True
+                return shares
+        return None
+    shares_change(fn)
+    if not changed['found']:
+        raise Fail('That share isn\'t there anymore')
+    return changed['changed']
+
+
+def share_remove(sid):
+    gone = {}
+
+    def fn(shares):
+        keep = [s for s in shares if s.get('id') != sid]
+        if len(keep) == len(shares):
+            return None
+        gone.update(next(s for s in shares if s.get('id') == sid))
+        return keep
+    shares_change(fn)
+    if not gone:
+        raise Fail('That share isn\'t there anymore')
+    return gone
+
+
+def how_to_open(host, s, ts_name):
+    """Where each kind of device finds a share."""
+    n = s['name']
+    out = {'windows': '\\\\%s\\%s' % (host, n), 'mac': 'smb://%s/%s' % (host, n), 'phone': 'smb://%s/%s' % (host, n)}
+    if ts_name:
+        out['away'] = '\\\\%s\\%s' % (ts_name, n)
+    return out
+
+
+def fs_usage(paths):
+    """Used and total bytes over the different drives these folders are on."""
+    seen, used, total = set(), 0, 0
+    for p in paths:
+        try:
+            st = os.statvfs(p)
+        except OSError:
+            continue
+        key = (st.f_fsid, st.f_blocks)
+        if key in seen:
+            continue
+        seen.add(key)
+        total += st.f_blocks * st.f_frsize
+        used += (st.f_blocks - st.f_bfree) * st.f_frsize
+    return {'used': used, 'total': total}
+
+
+def candidates():
+    user, home = me()
+    out = []
+    for base in [home] + ['/run/media/' + user, '/media/' + user, '/var/mnt', '/mnt']:
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(base, n)
+            if n.startswith('.') or not os.path.isdir(p):
+                continue
+            if base != home:
+                # A drive: its own folders.
+                try:
+                    subs = [os.path.join(p, x) for x in sorted(os.listdir(p)) if not x.startswith('.') and os.path.isdir(os.path.join(p, x))]
+                except OSError:
+                    subs = []
+                for sp in [p] + subs[:20]:
+                    if root_mod().path_problem(sp, user, home)[0]:
+                        out.append({'path': sp, 'name': os.path.basename(sp), 'drive': True})
+            elif root_mod().path_problem(p, user, home)[0]:
+                out.append({'path': p, 'name': n, 'drive': False})
+    return {'candidates': out[:80]}
+
+
+def pick_folder():
+    portal = os.path.join(HERE, 'hearth-portal')
+    req = {'kind': 'open', 'title': 'Pick a folder to share', 'directory': True, 'multiple': False}
+    with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f:
+        json.dump(req, f)
+    try:
+        p = subprocess.run([sys.executable, portal, 'pick', f.name], capture_output=True, text=True, timeout=1800)
+    finally:
+        os.unlink(f.name)
+    try:
+        v = json.loads((p.stdout or '').strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        v = {}
+    paths = v.get('paths') if isinstance(v, dict) else None
+    if not paths:
+        return {'cancelled': True}
+    return {'path': re.sub(r'^file://', '', paths[0])}
+
+
+# ------------------------------------------------------------------ snapshots
+
+def share_by_id(sid, data=None):
+    data = load() if data is None else data
+    for s in data['shares']:
+        if s.get('id') == sid:
+            return s
+    raise Fail('That share isn\'t there anymore')
+
+
+def snapshots(sid):
+    s = share_by_id(sid)
+    info = root_mod().snap_info(s['path'])
+    if not info['ok']:
+        return {'ok': False, 'why': info['why'], 'snapshots': []}
+    try:
+        names = [n for n in os.listdir(info['store']) if root_mod().SNAP_NAME_RE.match(n)]
+    except OSError:
+        names = []
+    names.sort(key=lambda n: root_mod().snap_time(n) or 0, reverse=True)
+    return {'ok': True, 'snapshots': [{'name': n, 'kind': n.split('-')[0], 'at': int((root_mod().snap_time(n) or 0) * 1000),
+                                        'path': os.path.join(info['store'], n, info['rel'])} for n in names]}
+
+
+def restore(sid, snap):
+    """The share as it was, copied into a new folder in Home ("Restored from snapshots"). Never over your files."""
+    if not root_mod().SNAP_NAME_RE.match(snap or ''):
+        raise Fail('That isn\'t a snapshot')
+    s = share_by_id(sid)
+    info = root_mod().snap_info(s['path'])
+    if not info['ok']:
+        raise Fail(info['why'])
+    src = os.path.join(info['store'], snap, info['rel'])
+    if not os.path.isdir(src):
+        raise Fail('That snapshot doesn\'t have this folder')
+    base = os.path.join(os.path.expanduser('~'), 'Restored from snapshots')
+    dest = os.path.join(base, '%s %s' % (s['name'], snap))
+    i = 2
+    while os.path.exists(dest):
+        dest = os.path.join(base, '%s %s (%d)' % (s['name'], snap, i))
+        i += 1
+    os.makedirs(dest)
+    subprocess.Popen([sys.executable, os.path.realpath(__file__), 'restore-copy', src, dest], start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {'dest': dest}
+
+
+def restore_copy(src, dest):
+    code = subprocess.run(['nice', '-n', '10', 'cp', '-a', '--reflink=auto', '--no-clobber', src + '/.', dest]).returncode
+    if shutil.which('notify-send'):
+        subprocess.run(['notify-send', '-a', 'Hearth', 'Home server',
+                        ('Restored into %s' if code == 0 else 'Restoring into %s didn\'t finish') % dest])
+    return {'code': code}
+
+
+# ------------------------------------------------------------------ Tailscale
+
+def ts(args, timeout=10):
+    if not shutil.which('tailscale'):
+        raise Fail('Tailscale isn\'t installed on this PC')
+    try:
+        p = subprocess.run(['tailscale'] + args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise Fail('Tailscale didn\'t answer')
+    return p.returncode, p.stdout or '', p.stderr or ''
+
+
+def ts_status():
+    if not shutil.which('tailscale'):
+        return {'installed': False}
+    code, out, err = ts(['status', '--json'], 6)
+    try:
+        j = json.loads(out)
+    except ValueError:
+        return {'installed': True, 'running': False, 'state': 'Stopped'}
+    me_ = j.get('Self') or {}
+    users = j.get('User') or {}
+    login = (users.get(str(me_.get('UserID'))) or {}).get('LoginName', '')
+    peers = []
+    for p in (j.get('Peer') or {}).values():
+        peers.append({'name': p.get('HostName') or '', 'dns': (p.get('DNSName') or '').rstrip('.'), 'os': p.get('OS') or '',
+                      'ips': p.get('TailscaleIPs') or [], 'online': bool(p.get('Online')), 'lastSeen': p.get('LastSeen') or '',
+                      'exitNode': bool(p.get('ExitNode'))})
+    peers.sort(key=lambda p: (not p['online'], p['name'].lower()))
+    return {'installed': True, 'running': True, 'state': j.get('BackendState') or '', 'authUrl': j.get('AuthURL') or '',
+            'login': login, 'tailnet': (j.get('CurrentTailnet') or {}).get('Name', ''),
+            'name': me_.get('HostName') or '', 'dns': (me_.get('DNSName') or '').rstrip('.'), 'ips': me_.get('TailscaleIPs') or [],
+            'peers': peers}
+
+
+def ts_login():
+    st = ts_status()
+    if not st.get('installed'):
+        raise Fail('Tailscale isn\'t installed on this PC')
+    if not st.get('running'):
+        root(['tailscale', 'start'])
+    # The sign-in link: Tailscale prints it, and status has it as AuthURL. Never written to a log.
+    subprocess.Popen(['tailscale', 'login'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    url = ''
+    for _ in range(40):
+        time.sleep(0.25)
+        st = ts_status()
+        url = st.get('authUrl') or ''
+        if url or st.get('state') == 'Running':
+            break
+    qr = ''
+    if url and shutil.which('qrencode'):
+        d = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-home-server')
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        qr = os.path.join(d, 'tailscale-sign-in-%d.png' % int(time.time()))
+        for old in os.listdir(d):
+            if old.startswith('tailscale-sign-in-'):
+                try:
+                    os.remove(os.path.join(d, old))
+                except OSError:
+                    pass
+        if subprocess.run(['qrencode', '-o', qr, '-s', '8', '-m', '2', url], capture_output=True).returncode != 0:
+            qr = ''
+    return {'authUrl': url, 'qr': qr, 'state': st.get('state', '')}
+
+
+def ping_one(ip):
+    try:
+        code, out, err = ts(['ping', '-c', '1', '--timeout=3s', ip], 6)
+    except Fail:
+        return None
+    m = re.search(r'in ([\d.]+)\s*ms', out + err)
+    if not m:
+        return None
+    via = 'relay' if 'DERP' in out else 'direct'
+    return {'ms': round(float(m.group(1))), 'via': via}
+
+
+def ts_ping():
+    st = ts_status()
+    targets = [(p['name'], p['ips'][0]) for p in st.get('peers', []) if p['online'] and p['ips']][:16]
+    out = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        for (name, _), r in zip(targets, ex.map(lambda t: ping_one(t[1]), targets)):
+            out[name] = r
+    return {'pings': out}
+
+
+def ts_send(peer, path=None):
+    st = ts_status()
+    names = {p['name'] for p in st.get('peers', [])} | {p['dns'] for p in st.get('peers', [])}
+    if peer not in names or not re.fullmatch(r'[A-Za-z0-9.\-]{1,253}', peer):
+        raise Fail('That isn\'t one of your devices')
+    if not path:
+        portal = os.path.join(HERE, 'hearth-portal')
+        with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as f:
+            json.dump({'kind': 'open', 'title': 'Send to %s' % peer, 'multiple': False}, f)
+        try:
+            p = subprocess.run([sys.executable, portal, 'pick', f.name], capture_output=True, text=True, timeout=1800)
+        finally:
+            os.unlink(f.name)
+        try:
+            paths = json.loads((p.stdout or '').strip().splitlines()[-1]).get('paths') or []
+        except (ValueError, IndexError, AttributeError):
+            paths = []
+        if not paths:
+            return {'cancelled': True}
+        path = re.sub(r'^file://', '', paths[0])
+    if not os.path.isfile(path):
+        raise Fail('Pick a file to send')
+    code, out, err = ts(['file', 'cp', path, peer + ':'], 3600)
+    if code != 0:
+        raise Fail('Couldn\'t send it: %s' % (err.strip().splitlines() or ['Tailscale said no'])[-1][:200])
+    return {'sent': os.path.basename(path), 'to': peer}
+
+
+def wired_cards():
+    out = []
+    try:
+        names = sorted(os.listdir('/sys/class/net'))
+    except OSError:
+        return out
+    for n in names:
+        if os.path.exists('/sys/class/net/%s/device' % n) and not os.path.isdir('/sys/class/net/%s/wireless' % n):
+            try:
+                mac = open('/sys/class/net/%s/address' % n).read().strip()
+            except OSError:
+                mac = ''
+            out.append({'iface': n, 'mac': mac})
+    return out
+
+
+def side_effect(key, on):
+    """What a switch does besides saving it."""
+    if key == 'exitNode':
+        root(['exit-node', 'on' if on else 'off'])
+        code, out, err = ts(['set', '--advertise-exit-node=%s' % ('true' if on else 'false')])
+        if code != 0:
+            raise Fail('Tailscale didn\'t take it: %s' % (err.strip().splitlines() or ['sign in first'])[-1][:200])
+    elif key == 'taildropReceive':
+        subprocess.run(['systemctl', '--user', 'enable' if on else 'disable', '--now', 'hearth-taildrop.service'],
+                       capture_output=True, timeout=30)
+    elif key == 'wakeFromAway' and on:
+        notes = [root(['wol', c['iface']]).get('note', '') for c in wired_cards()]
+        return {'notes': [n for n in notes if n]}
+    elif key in APPLY_KEYS:
+        return apply_now()
+    return {}
+
+
+# ------------------------------------------------------------------ hidden until seen (Command Center, hardware)
+
+def hidden_until_seen(last_seen_ms, now_ms, days):
+    """Whether something tied to a device or a piece of hardware stays hidden: never seen, or not in DAYS days."""
+    return not last_seen_ms or now_ms - last_seen_ms > days * DAY_MS
+
+
+def seen_state(data, now_ms=None, seen=None):
+    """For each kind: when it was last seen and whether its items show. Display only: hiding never turns anything off."""
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    seen = sio.load_json(SEEN, {}) if seen is None else seen
+    out = {}
+    for kind in SEEN_KINDS:
+        v = seen.get(kind)
+        last = v.get('at', 0) if isinstance(v, dict) else (v if isinstance(v, int) else 0)
+        hidden = hidden_until_seen(last, now_ms, data['ccDays'])
+        out[kind] = {'lastSeen': last, 'hidden': hidden, 'shown': (not hidden) or data['showHidden'],
+                     'device': v.get('device', '') if isinstance(v, dict) else ''}
+    return out
+
+
+def visible_items(items, data, now_ms=None, seen=None):
+    """Items ({id, needs}) to show, and how many are hidden. "needs" is a kind from SEEN_KINDS, or nothing."""
+    st = seen_state(data, now_ms, seen)
+    shown, hidden = [], 0
+    for it in items:
+        need = it.get('needs')
+        if not need or st.get(need, {}).get('shown', True):
+            shown.append(it)
+        if need and st.get(need, {}).get('hidden'):
+            hidden += 1
+    return shown, hidden
+
+
+def mark_seen(kind, device=''):
+    if kind not in SEEN_KINDS:
+        raise Fail('Unknown kind')
+    now = int(time.time() * 1000)
+    sio.merge_json(SEEN, {kind: {'at': now, 'device': (device or '')[:80]}})
+    return {kind: now}
+
+
+# ------------------------------------------------------------------ status
+
+def status():
+    data = load()
+    user, home = me()
+    host = socket.gethostname().split('.')[0]
+    try:
+        tss = ts_status()
+    except Fail:
+        tss = {'installed': False}
+    ts_name = tss.get('dns') if tss.get('state') == 'Running' else ''
+    shares = []
+    try:
+        mod = root_mod()
+    except Fail:
+        mod = None
+    for s in data['shares']:
+        s = dict(s)
+        s.setdefault('on', True)
+        s.setdefault('reach', 'home')
+        s.setdefault('recycle', True)
+        s['there'] = os.path.isdir(s.get('path', ''))
+        snap = mod.snap_info(s['path']) if mod and s['there'] else {'ok': False, 'why': 'The folder isn\'t there (is its drive plugged in?)'}
+        s['snapOk'] = snap['ok']
+        s['snapWhy'] = snap.get('why', '')
+        s['how'] = how_to_open(host, s, ts_name)
+        shares.append(s)
+    tools = {k: bool(shutil.which(b) or os.path.exists(p)) for k, b, p in (
+        ('samba', 'smbd', '/usr/sbin/smbd'), ('tailscale', 'tailscale', '/usr/bin/tailscale'), ('smartctl', 'smartctl', '/usr/sbin/smartctl'),
+        ('btrfs', 'btrfs', '/usr/bin/btrfs'), ('qrencode', 'qrencode', '/usr/bin/qrencode'), ('nft', 'nft', '/usr/sbin/nft'))}
+    items = [{'id': 'ai', 'needs': 'commandCenter'}, {'id': 'cameras', 'needs': 'camera'}, {'id': 'ups', 'needs': 'ups'}]
+    _, hidden_count = visible_items(items, data)
+    return {'settings': data, 'file': SETTINGS, 'user': user, 'host': host, 'shares': shares, 'tools': tools,
+            'usage': fs_usage([s['path'] for s in shares if s['there'] and s['on']]),
+            'applied': sio.load_json(APPLIED, {}, repair=False), 'tailscale': tss, 'seen': seen_state(data), 'hiddenCount': hidden_count,
+            'playing': bool(mod and mod.game_running()), 'wired': wired_cards(), 'helper': os.path.exists(ROOT_HELPER)}
+
+
+# ------------------------------------------------------------------
+
+def main(argv):
+    a = argv[1:]
+    stdin = os.environ.get('HEARTH_INPUT', '')
+    try:
+        if a == ['status']:
+            res = status()
+        elif len(a) == 3 and a[0] == 'set':
+            changed = set_key(a[1], a[2])
+            res = {'changed': changed}
+            if changed:
+                res['applied'] = side_effect(a[1], a[2] == 'on')
+        elif a == ['candidates']:
+            res = candidates()
+        elif a == ['pick-folder']:
+            res = pick_folder()
+        elif len(a) in (2, 3) and a[0] == 'share-add':
+            res = {'share': share_add(a[1], a[2] if len(a) == 3 else None)}
+            res['applied'] = apply_now()
+        elif len(a) == 4 and a[0] == 'share-set':
+            res = {'changed': share_set(a[1], a[2], a[3])}
+            if res['changed']:
+                res['applied'] = apply_now()
+        elif len(a) == 2 and a[0] == 'share-remove':
+            res = {'removed': share_remove(a[1]), 'filesKept': True}
+            res['applied'] = apply_now()
+        elif a == ['smb-password']:
+            pw = stdin.split('\n')[0]
+            if len(pw) < 8:
+                raise Fail('Use at least 8 characters')
+            root(['smb-password'], pw + '\n')
+            sio.merge_json(SETTINGS, {'smbPasswordSet': int(time.time() * 1000)})
+            res = {'set': True}
+        elif a == ['apply']:
+            res = apply_now()
+        elif a == ['drives']:
+            res = root(['drives'])
+        elif len(a) == 2 and a[0] == 'format-plan':
+            res = root(['format-plan', a[1]])
+        elif a == ['format']:
+            res = root(['format'], stdin)
+        elif len(a) == 2 and a[0] == 'snapshots':
+            res = snapshots(a[1])
+        elif len(a) == 3 and a[0] == 'restore':
+            res = restore(a[1], a[2])
+        elif len(a) == 3 and a[0] == 'restore-copy':
+            res = restore_copy(a[1], a[2])
+        elif a == ['ts-status']:
+            res = ts_status()
+        elif a == ['ts-start']:
+            res = root(['tailscale', 'start'])
+        elif a == ['ts-login']:
+            res = ts_login()
+        elif a == ['ts-logout']:
+            code, out, err = ts(['logout'], 20)
+            res = {'signedOut': code == 0}
+        elif a == ['ts-ping']:
+            res = ts_ping()
+        elif len(a) in (2, 3) and a[0] == 'ts-send':
+            res = ts_send(a[1], a[2] if len(a) == 3 else None)
+        elif len(a) in (2, 3) and a[0] == 'seen':
+            res = mark_seen(a[1], a[2] if len(a) == 3 else '')
+        else:
+            raise Fail('Unknown command')
+        print(json.dumps(res))
+        return 0
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        print('error: %s' % e)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -1,0 +1,42 @@
+# Settings › Home server (docs/HOME-SERVER.md): its Python tests, quick and on their own (no Rust, no image). Also runs
+# the settings-persistence check, Hearth Storage's helper tests and the Settings wiring tests it touches. Each failing
+# test's lines go on the run as annotations (CI logs can't be downloaded from where the owner's sessions run).
+name: Home server
+
+on:
+  push:
+    branches: [main, bughunt, 'feature/**']
+    paths: ['hosts/linux/desktop/shell/hearth-home-server', 'hosts/linux/desktop/shell/SetHome*.qml', 'hosts/linux/desktop/shell/SettingsApp.qml',
+            'os/system_files/usr/libexec/nimbus/hearth-home-server-helper', 'os/system_files/usr/libexec/nimbus/hearth-storage-helper',
+            'os/system_files/usr/lib/systemd/**', 'os-bases/peppermint/build.sh', 'hosts/linux/test/test_hearth_home_server.py',
+            '.github/workflows/home-server.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: |
+          for f in hosts/linux/desktop/shell/hearth-home-server os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper; do
+            python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "::error file=$f::not valid Python"; exit 1; }
+          done
+          bash -n os-bases/peppermint/build.sh
+      - name: Tests
+        run: |
+          fail=0
+          for t in test_hearth_home_server.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py; do
+            if python3 -m unittest discover -s hosts/linux/test -p "$t" -v > "/tmp/$t.log" 2>&1; then
+              echo "::notice title=$t::$(tail -3 "/tmp/$t.log" | tr '\n' ' ')"
+            else
+              fail=1
+              grep -A16 -E '^(FAIL|ERROR):' "/tmp/$t.log" | grep -v '^$' | head -60 | while IFS= read -r l; do echo "::error title=$t::$l"; done
+              tail -5 "/tmp/$t.log"
+            fi
+          done
+          exit $fail

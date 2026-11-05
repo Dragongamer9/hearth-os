@@ -1,0 +1,12 @@
+# Settings › Home server › Drives & undo: every hour while snapshots or a recycle bin are on. Disabled in the image;
+# hearth-home-server-helper enables it when you turn snapshots on and disables it when you turn them off.
+[Unit]
+Description=Hearth home server: snapshots every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

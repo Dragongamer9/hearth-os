@@ -1,0 +1,956 @@
+#!/usr/bin/python3
+"""hearth-home-server-helper: the root half of Settings › Home server (docs/HOME-SERVER.md). Run by the Mantel helper
+hearth-home-server through pkexec; /usr/share/polkit-1/rules.d/49-hearth-storage.rules lets the person signed in at the
+device (local, active session, in the wheel group) run it without a password prompt. The snapshot timer runs
+`snapshot run` as root.
+
+It builds on Hearth Storage's root helper (hearth-storage-helper, next to this file): the same rules for which
+folders may be shared, the same Samba service and password handling, and one Samba config for both (Hearth
+Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/samba/hearth-home-server.conf).
+
+  apply                 JSON on stdin (built from ~/.config/nimbus/home-server.json by hearth-home-server):
+                        {"shares": [{"id","name","path","write","reach","recycle","snapshots"}], "tsOnly", "tsBoot",
+                         "snapshots", "keep": {"hourly","daily","weekly"}, "lightMode"}
+                        Samba's shares (SMB3 or newer, no guests, only you), "Tailscale only" firewall rules,
+                        tailscaled at boot, the snapshot timer, /etc/hearth/home-server.json for the timer.
+                        Samba runs only while at least one share is on. Every service here starts disabled.
+  smb-password          your Samba password, one line on stdin (straight to smbpasswd, never kept or logged)
+  drives                every drive: size, model, space, SMART health and temperature (smartctl), which is the system's
+  format-plan DEV       what formatting DEV would do, the drive's name and size to confirm, and its token
+  format                JSON on stdin {"device","use": "storage"|"backup"|"mirror","label","token","confirm1": true,
+                        "confirm2": "<the drive's name · size, as format-plan gave it>","target" (mirror),"dryRun"}
+  snapshot run          the timer: take the snapshots that are due and drop the ones past their keep counts
+                        (waits while you play when Light mode is on)
+  tailscale start|stop  tailscaled now (not at boot), and you as its operator so Settings can sign in and change it
+  exit-node on|off      IP forwarding for "Let other devices use this PC's internet" (off unless you turn it on)
+  wol IFACE             the network card wakes the PC from the network (Hearth Storage's helper does it)
+
+The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Nothing here goes through a shell: every
+command is an argument list. Paths and names are checked here again (the Mantel helper checks them first): a share
+is a folder inside your Home (not Home itself) or on a drive mounted under /run/media/YOU, /media/YOU, /mnt or
+/var/mnt that isn't the system drive; never /, /etc, /usr, /boot, /sysroot, /ostree, nothing hidden on the way.
+One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
+"""
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def _load_storage_helper():
+    """Hearth Storage's helper (next to this file, or in the repository for the tests), as a module."""
+    for p in (os.path.join(HERE, 'hearth-storage-helper'),
+              os.path.join(HERE, '..', '..', '..', '..', 'os', 'system_files', 'usr', 'libexec', 'nimbus', 'hearth-storage-helper')):
+        if os.path.exists(p):
+            loader = importlib.machinery.SourceFileLoader('hearth_storage_helper', p)
+            spec = importlib.util.spec_from_loader('hearth_storage_helper', loader)
+            m = importlib.util.module_from_spec(spec)
+            loader.exec_module(m)
+            return m
+    return None
+
+
+hsh = _load_storage_helper()
+
+SMB_CONF = '/etc/samba/smb.conf'
+OUR_CONF = '/etc/samba/hearth-home-server.conf'
+STORAGE_CONF = '/etc/samba/hearth-storage.conf'
+INCLUDE = 'include = %s' % OUR_CONF
+MARK = '# Hearth home server (hearth-home-server-helper): its shared folders'
+STARTED = '/etc/samba/.hearth-home-server-started'
+PLAN = '/etc/hearth/home-server.json'
+NFT_FILE = '/etc/hearth/home-server.nft'
+NFT_TABLE = 'hearth_home_server'
+SMBD_DROPIN = '/etc/systemd/system/smbd.service.d/hearth-home-server.conf'
+EXIT_SYSCTL = '/etc/sysctl.d/99-hearth-exit-node.conf'
+FSTAB = '/etc/fstab'
+FSTAB_MARK = '# hearth-home-server'
+SNAP_TIMER = 'hearth-home-server-snapshots.timer'
+SNAP_DIR = '.hearth-snapshots'
+RECYCLE_DIR = '.hearth-recycle'
+RECYCLE_DAYS = 30
+# Tailscale's addresses (CGNAT range and its IPv6 prefix): what "Tailscale only" lets in.
+TAILSCALE_NETS = ['100.64.0.0/10', 'fd7a:115c:a1e0::/48']
+TAILSCALE_IFACE = 'tailscale0'
+SMB_PORTS_TCP = [139, 445]
+SMB_PORTS_UDP = [137, 138]
+
+NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _\-]{0,39}$')
+ID_RE = re.compile(r'^[0-9a-f]{6,32}$')
+LABEL_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_\-]{0,23}$')
+DEV_RE = re.compile(r'^/dev/(sd[a-z]{1,2}|nvme\d+n\d+|vd[a-z]{1,2}|mmcblk\d+)$')
+IFACE_RE = re.compile(r'^[A-Za-z0-9_.\-]{1,15}$')
+# Characters a shared path may have: letters (any language), digits, space and a few marks. No %, which Samba would
+# expand (%u…), no quotes, $, `, ;, |, &, <, >, backslashes or control characters.
+PATH_RE = re.compile(r'^/[\w .\-+@,()/\']*$')
+RESERVED = ('global', 'homes', 'printers', 'print$', 'ipc$')
+FORBIDDEN = ('/etc', '/usr', '/boot', '/sysroot', '/ostree', '/proc', '/sys', '/dev', '/root', '/bin', '/sbin',
+             '/lib', '/lib64', '/opt', '/srv', '/var/lib', '/var/log', '/var/cache', '/var/roothome')
+SYSTEM_MOUNTS = ('/sysroot', '/', '/boot', '/boot/efi', '/efi', '/usr', '/var', '/var/home', '/etc')
+KEEP_MAX = {'hourly': 168, 'daily': 90, 'weekly': 104}
+KEEP_DEFAULT = {'hourly': 24, 'daily': 14, 'weekly': 8}
+INTERVAL = {'hourly': 3600, 'daily': 86400, 'weekly': 7 * 86400}
+SNAP_NAME_RE = re.compile(r'^(hourly|daily|weekly)-(\d{8})-(\d{4})$')
+
+
+class Fail(Exception):
+    pass
+
+
+FAILS = (Fail, hsh.Fail) if hsh else (Fail,)
+
+
+# ------------------------------------------------------------------ the system's commands (tests replace these)
+
+def run(cmd, stdin=None, timeout=60):
+    """(exit code, output). Tests replace this."""
+    try:
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def which(name):
+    """Tests replace this."""
+    return shutil.which(name)
+
+
+def caller():
+    """(name, home) of the person who ran pkexec."""
+    uid = os.environ.get('PKEXEC_UID', '')
+    if not uid.isdigit():
+        raise Fail('run this through pkexec')
+    try:
+        pw = pwd.getpwuid(int(uid))
+    except KeyError:
+        raise Fail('unknown user')
+    return pw.pw_name, pw.pw_dir
+
+
+def write(path, text, mode=0o644):
+    """Atomic: a temporary file beside it, flushed, renamed over it; the old one kept as PATH.bak."""
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    try:
+        if read(path) == text:
+            return
+    except OSError:
+        pass
+    if os.path.exists(path):
+        try:
+            shutil.copy2(path, path + '.bak')
+        except OSError:
+            pass
+    tmp = '%s.hearth-%d.tmp' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+    try:
+        fd = os.open(d, os.O_RDONLY)
+        os.fsync(fd)
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def remove(path):
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return False
+
+
+# ------------------------------------------------------------------ which drive is the system's
+
+def mount_source(target):
+    """The device a path lives on ("/dev/nvme0n1p3"), or ''. Tests replace this."""
+    code, out = run(['findmnt', '-n', '-o', 'SOURCE', '--target', target], timeout=10)
+    src = out.strip().splitlines()[0] if code == 0 and out.strip() else ''
+    return re.sub(r'\[.*\]$', '', src)
+
+
+def mount_info(target):
+    """{target, fstype, source} of the mount holding a path. Tests replace this."""
+    code, out = run(['findmnt', '-n', '-J', '-o', 'TARGET,FSTYPE,SOURCE', '--target', target], timeout=10)
+    try:
+        fs = json.loads(out)['filesystems'][0] if code == 0 else {}
+    except (ValueError, KeyError, IndexError):
+        fs = {}
+    return {'target': fs.get('target') or '', 'fstype': fs.get('fstype') or '', 'source': re.sub(r'\[.*\]$', '', fs.get('source') or '')}
+
+
+def disks_of(dev):
+    """The whole disks under a device (a partition, LUKS, LVM…): {"nvme0n1"}. Tests replace this."""
+    if not dev.startswith('/dev/'):
+        return set()
+    code, out = run(['lsblk', '-J', '-s', '-o', 'NAME,TYPE', dev], timeout=10)
+    found = set()
+    try:
+        stack = list(json.loads(out).get('blockdevices') or []) if code == 0 else []
+    except ValueError:
+        stack = []
+    while stack:
+        n = stack.pop()
+        if n.get('type') == 'disk':
+            found.add(n.get('name'))
+        stack.extend(n.get('children') or [])
+    return found
+
+
+def system_disks():
+    """The disks Hearth OS runs from: never shared, formatted or picked."""
+    out = set()
+    for m in SYSTEM_MOUNTS:
+        src = mount_source(m)
+        if src:
+            out |= disks_of(src)
+    return out
+
+
+# ------------------------------------------------------------------ shares
+
+def drive_bases(user):
+    """Where drives are mounted (Hearth Files' /run/media/YOU, and drives Hearth set up under /var/mnt). Tests replace this."""
+    return ['/run/media/' + user, '/media/' + user, '/mnt', '/var/mnt']
+
+
+def path_problem(path, user, home, sys_disks=None):
+    """(real path, None) for a folder that may be shared, or (None, why not)."""
+    if not isinstance(path, str) or not path.startswith('/') or len(path) > 400:
+        return None, 'not a full path'
+    if not PATH_RE.fullmatch(path) or '/../' in path + '/' or '/./' in path + '/':
+        return None, 'the path has characters a share can\'t have (like % $ ` ; | & < > " or \\)'
+    if any(p != p.strip() for p in path.split('/')):
+        return None, 'a folder name in it starts or ends with a space (Samba would drop it)'
+    real = os.path.realpath(path)
+    if real == '/' or any(real == f or real.startswith(f + '/') for f in FORBIDDEN):
+        return None, 'system folders are never shared'
+    if not PATH_RE.fullmatch(real):
+        return None, 'the folder it points to has characters a share can\'t have'
+    if not os.path.isdir(real):
+        return None, 'that folder isn\'t there'
+    home_real = os.path.realpath(home)
+    bases = [(home_real, True)] + [(os.path.realpath(b), False) for b in drive_bases(user)]
+    for base, is_home in bases:
+        if real == base:
+            return None, 'pick a folder inside it, not all of %s' % ('your Home' if is_home else base)
+        if real.startswith(base.rstrip('/') + '/'):
+            rel = os.path.relpath(real, base)
+            if any(p.startswith('.') for p in rel.split('/')):
+                return None, 'hidden folders are never shared'
+            if not is_home:
+                disks = system_disks() if sys_disks is None else sys_disks
+                if disks_of(mount_source(real)) & disks:
+                    return None, 'that folder is on the system drive (only folders in your Home can be shared from it)'
+            return real, None
+    return None, 'only folders in your Home or on a drive can be shared'
+
+
+def name_problem(name):
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        return 'a share\'s name is 1 to 40 letters, digits, spaces, - or _ (starting with a letter or digit)'
+    if name.lower() in RESERVED:
+        return '"%s" is a name Samba keeps for itself' % name
+    return None
+
+
+def storage_share_names():
+    """Hearth Storage's own Samba share names (so the two never clash)."""
+    try:
+        return {m.lower() for m in re.findall(r'^\[([^\]]+)\]', read(STORAGE_CONF), re.M)}
+    except OSError:
+        return set()
+
+
+def check_shares(shares, user, home, sys_disks=None, taken=None):
+    """(good shares, missing ones) or Fail on a bad one. A share whose drive isn't plugged in is left out, not refused."""
+    if not isinstance(shares, list) or len(shares) > 64:
+        raise Fail('the shares must be a list (64 at most)')
+    used = set(taken or ())
+    good, missing = [], []
+    for s in shares:
+        if not isinstance(s, dict):
+            raise Fail('a share must be an object')
+        n = s.get('name')
+        why = name_problem(n)
+        if why:
+            raise Fail(why)
+        if n.lower() in used:
+            raise Fail('Hearth Storage already shares a folder called "%s": pick another name' % n if n.lower() in (taken or ())
+                       else 'two shares are called "%s"' % n)
+        used.add(n.lower())
+        if s.get('id') is not None and not (isinstance(s.get('id'), str) and ID_RE.fullmatch(s['id'])):
+            raise Fail('a share has a bad id')
+        p = s.get('path')
+        if isinstance(p, str) and PATH_RE.fullmatch(p) and not os.path.exists(p):
+            missing.append(n)
+            continue
+        real, why = path_problem(p, user, home, sys_disks)
+        if not real:
+            raise Fail('%s: %s' % (n, why))
+        reach = s.get('reach', 'home')
+        if reach not in ('home', 'tailscale'):
+            raise Fail('%s: reach is home or tailscale' % n)
+        good.append({'id': s.get('id'), 'name': n, 'path': real, 'write': s.get('write') is True, 'reach': reach,
+                     'recycle': s.get('recycle', True) is not False, 'snapshots': s.get('snapshots') is True})
+    return good, missing
+
+
+def conf_text(shares, user, ts_only):
+    """Samba's config for the home server: hardened globals (SMB3 or newer, no guests) and one section per share."""
+    out = [MARK, '# Written by Hearth; change it in Settings > Home server > Shared folders.', '',
+           '[global]',
+           '   server min protocol = SMB3',
+           '   client min protocol = SMB3',
+           '   smb encrypt = desired',
+           '   map to guest = Never',
+           '   restrict anonymous = 2',
+           '   usershare allow guests = no',
+           '   ntlm auth = ntlmv2-only',
+           '   disable netbios = yes',
+           '   smb ports = 445',
+           '   load printers = no',
+           '   printing = bsd',
+           '   printcap name = /dev/null',
+           '']
+    for s in shares:
+        out += ['[%s]' % s['name'],
+                '   path = %s' % s['path'],
+                '   valid users = %s' % user,
+                '   force user = %s' % user,
+                '   read only = %s' % ('no' if s['write'] else 'yes'),
+                '   guest ok = no',
+                '   browseable = yes',
+                '   hide dot files = yes',
+                '   veto files = /.*/',
+                '   delete veto files = no']
+        if ts_only or s['reach'] == 'tailscale':
+            out += ['   hosts allow = %s' % ' '.join(TAILSCALE_NETS), '   hosts deny = 0.0.0.0/0 ::/0']
+        if s['recycle'] and s['write']:
+            out += ['   vfs objects = recycle',
+                    '   recycle:repository = %s' % RECYCLE_DIR,
+                    '   recycle:keeptree = yes',
+                    '   recycle:versions = yes',
+                    '   recycle:touch_mtime = yes',
+                    '   recycle:directory_mode = 0700',
+                    '   recycle:exclude = *.tmp ~$*']
+        out.append('')
+    return '\n'.join(out)
+
+
+def with_include(text):
+    lines = [l for l in text.splitlines() if l.strip() not in (INCLUDE, MARK)]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines + ['', MARK, INCLUDE]) + '\n'
+
+
+def without_include(text):
+    lines = [l for l in text.splitlines() if l.strip() not in (INCLUDE, MARK)]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines) + '\n'
+
+
+def lan_blocked(shares, ts_only, storage_smb_on):
+    """Whether Samba's ports are closed to everything but Tailscale: "Only reachable through Tailscale" is on, or every
+    share is Tailscale only and Hearth Storage's Windows sharing (which is for this network) isn't on."""
+    if ts_only:
+        return True
+    return bool(shares) and all(s['reach'] == 'tailscale' for s in shares) and not storage_smb_on
+
+
+def nft_text(tcp_ports, udp_ports):
+    """nftables rules: these ports only through Tailscale (and this PC itself). A table of Hearth's own: a drop here is
+    final whatever other firewall runs, and deleting the table takes every rule away again."""
+    tcp = ', '.join(str(p) for p in sorted(set(tcp_ports)))
+    udp = ', '.join(str(p) for p in sorted(set(udp_ports)))
+    lines = ['#!/usr/sbin/nft -f',
+             '# Hearth home server: "Only reachable through Tailscale" (Settings > Home server). Written by',
+             '# hearth-home-server-helper; turning it off deletes this table.',
+             'table inet %s' % NFT_TABLE,
+             'delete table inet %s' % NFT_TABLE,
+             'table inet %s {' % NFT_TABLE,
+             '\tchain input {',
+             '\t\ttype filter hook input priority -10; policy accept;',
+             '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE]
+    if tcp:
+        lines.append('\t\ttcp dport { %s } counter drop' % tcp)
+    if udp:
+        lines.append('\t\tudp dport { %s } counter drop' % udp)
+    lines += ['\t}', '}', '']
+    return '\n'.join(lines)
+
+
+def dropin_text():
+    # "-": a firewall that can't load never stops Samba (each Tailscale-only share also has Samba's own hosts allow).
+    return ('# Hearth home server: the "Tailscale only" rules are loaded before Samba starts (hearth-home-server-helper).\n'
+            '[Service]\nExecStartPre=-/usr/sbin/nft -f %s\n' % NFT_FILE)
+
+
+def smb_unit():
+    if hsh:
+        return hsh.smb_service()
+    for unit in ('smbd', 'smb'):
+        if run(['systemctl', 'cat', unit + '.service'])[0] == 0:
+            return unit
+    return None
+
+
+def firewall_apply(block):
+    """Puts the Tailscale-only rules in place (block) or takes them away. Returns what it did."""
+    if block:
+        write(NFT_FILE, nft_text(SMB_PORTS_TCP, SMB_PORTS_UDP))
+        write(SMBD_DROPIN, dropin_text())
+        if not which('nft'):
+            return {'firewall': 'missing', 'note': 'nftables (nft) isn\'t installed: only Samba\'s own address check keeps this network out'}
+        code, out = run(['nft', '-f', NFT_FILE])
+        run(['systemctl', 'daemon-reload'])
+        return {'firewall': 'tailscale-only' if code == 0 else 'failed'}
+    had = remove(NFT_FILE) | remove(SMBD_DROPIN)
+    if which('nft'):
+        run(['nft', 'delete', 'table', 'inet', NFT_TABLE])
+    if had:
+        run(['systemctl', 'daemon-reload'])
+    return {'firewall': 'open'}
+
+
+def clean_keep(keep):
+    out = {}
+    keep = keep if isinstance(keep, dict) else {}
+    for k, d in KEEP_DEFAULT.items():
+        v = keep.get(k, d)
+        out[k] = max(0, min(KEEP_MAX[k], int(v))) if isinstance(v, int) and not isinstance(v, bool) else d
+    return out
+
+
+def apply(data):
+    user, home = caller()
+    if not isinstance(data, dict):
+        raise Fail('the settings must be a JSON object')
+    shares, missing = check_shares([s for s in (data.get('shares') or []) if isinstance(s, dict) and s.get('on', True) is not False],
+                                   user, home, taken=storage_share_names())
+    ts_only = data.get('tsOnly') is True
+    res = {'ok': True, 'shares': [s['name'] for s in shares], 'missing': missing}
+    unit = smb_unit()
+    if shares:
+        if not which('smbd') and not unit:
+            raise Fail("Samba (sharing) isn't installed on this PC")
+        old_conf = read(OUR_CONF) if os.path.exists(OUR_CONF) else None
+        old_smb = read(SMB_CONF) if os.path.exists(SMB_CONF) else None
+        write(OUR_CONF, conf_text(shares, user, ts_only))
+        write(SMB_CONF, with_include(old_smb if old_smb is not None else '[global]\n   workgroup = WORKGROUP\n'))
+        if which('testparm'):
+            code, _ = run(['testparm', '-s', SMB_CONF])
+            if code != 0:
+                # Put the last working config back: a share that doesn't check out never breaks the others.
+                if old_conf is None:
+                    remove(OUR_CONF)
+                else:
+                    write(OUR_CONF, old_conf)
+                if old_smb is not None:
+                    write(SMB_CONF, old_smb)
+                raise Fail("Samba didn't accept the settings (nothing changed)")
+        if hsh:
+            hsh.selinux_allow(shares)
+        res.update(firewall_apply(lan_blocked(shares, ts_only, os.path.exists(STORAGE_CONF))))
+        if unit:
+            if run(['systemctl', 'is-enabled', unit])[0] != 0:
+                open(STARTED, 'w').close()
+                run(['systemctl', 'enable', '--now', unit])
+            else:
+                run(['systemctl', 'reload-or-restart', unit])
+        res['samba'] = 'on'
+    else:
+        res.update(smb_off(unit))
+    res['tailscaleAtBoot'] = tailscaled_boot(data.get('tsBoot') is True)
+    res.update(plan_write(data, shares, user))
+    return res
+
+
+def smb_off(unit):
+    """Home server sharing off: its shares out of Samba, its firewall rules gone, Samba stopped if Hearth started it and
+    Hearth Storage doesn't still use it."""
+    try:
+        write(SMB_CONF, without_include(read(SMB_CONF)))
+    except OSError:
+        pass
+    remove(OUR_CONF)
+    out = firewall_apply(False)
+    storage_started = hsh.STARTED if hsh else '/etc/samba/.hearth-storage-started'
+    if unit:
+        if (os.path.exists(STARTED) or os.path.exists(storage_started)) and not os.path.exists(STORAGE_CONF):
+            run(['systemctl', 'disable', '--now', unit])
+            remove(STARTED)
+            remove(storage_started)
+        elif os.path.exists(STORAGE_CONF) or os.path.exists(STARTED):
+            run(['systemctl', 'reload-or-restart', unit])
+    out['samba'] = 'off'
+    return out
+
+
+def tailscaled_boot(on):
+    """Start Tailscale when this PC starts: enabled or disabled, never stopped here (turning this off doesn't sign out
+    or disconnect now)."""
+    if not which('tailscaled') and run(['systemctl', 'cat', 'tailscaled.service'])[0] != 0:
+        return 'missing'
+    enabled = run(['systemctl', 'is-enabled', 'tailscaled'])[0] == 0
+    if on and not enabled:
+        run(['systemctl', 'enable', 'tailscaled'])
+    elif not on and enabled:
+        run(['systemctl', 'disable', 'tailscaled'])
+    return 'on' if on else 'off'
+
+
+def plan_write(data, shares, user):
+    """/etc/hearth/home-server.json: what the snapshot timer works from (the checked shares, keep counts, Light mode),
+    and the timer on only while snapshots are on for a share."""
+    keep = clean_keep(data.get('keep'))
+    snaps_on = data.get('snapshots') is True and any(s['snapshots'] for s in shares)
+    plan = {'user': user, 'lightMode': data.get('lightMode', True) is not False, 'snapshots': snaps_on, 'keep': keep,
+            'shares': [{'name': s['name'], 'path': s['path'], 'snapshots': s['snapshots'], 'recycle': s['recycle'] and s['write']} for s in shares]}
+    write(PLAN, json.dumps(plan, indent=2) + '\n')
+    recycles = any(p['recycle'] for p in plan['shares'])
+    timer_on = snaps_on or recycles
+    enabled = run(['systemctl', 'is-enabled', SNAP_TIMER])[0] == 0
+    if timer_on and not enabled:
+        run(['systemctl', 'enable', '--now', SNAP_TIMER])
+    elif not timer_on and enabled:
+        run(['systemctl', 'disable', '--now', SNAP_TIMER])
+    return {'snapshots': 'on' if snaps_on else 'off', 'timer': 'on' if timer_on else 'off'}
+
+
+# ------------------------------------------------------------------ snapshots (btrfs)
+
+def is_subvol_root(path):
+    """A btrfs subvolume's top folder has inode 256. Tests replace this."""
+    try:
+        return os.stat(path).st_ino == 256
+    except OSError:
+        return False
+
+
+def snap_info(path):
+    """{"ok": True, "subvol": its subvolume's top folder, "rel": the path inside it} when a folder's drive can take
+    snapshots, or {"ok": False, "why": ...}."""
+    m = mount_info(path)
+    if m['fstype'] != 'btrfs':
+        return {'ok': False, 'why': "This drive isn't btrfs, so snapshots aren't available for it (%s)" % (m['fstype'] or 'unknown')}
+    real = os.path.realpath(path)
+    top = m['target'] or '/'
+    cur = real
+    while True:
+        if is_subvol_root(cur) or cur == top:
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    if cur in ('/', '/sysroot', '/usr', '/etc') or cur == '':
+        return {'ok': False, 'why': "That's the system's own volume, so snapshots aren't taken of it"}
+    return {'ok': True, 'subvol': cur, 'rel': os.path.relpath(real, cur), 'store': os.path.join(cur, SNAP_DIR)}
+
+
+def snap_name(kind, t):
+    return '%s-%s' % (kind, time.strftime('%Y%m%d-%H%M', time.localtime(t)))
+
+
+def snap_time(name):
+    m = SNAP_NAME_RE.fullmatch(name)
+    if not m:
+        return None
+    try:
+        return time.mktime(time.strptime(m.group(2) + m.group(3), '%Y%m%d%H%M'))
+    except ValueError:
+        return None
+
+
+def due(kind, names, now, keep):
+    """Whether a snapshot of KIND is due: kept at all, and the newest is at least about one interval old."""
+    if keep.get(kind, 0) <= 0:
+        return False
+    times = [snap_time(n) for n in names if n.startswith(kind + '-') and snap_time(n) is not None]
+    return not times or now - max(times) >= INTERVAL[kind] * 0.95
+
+
+def to_prune(names, keep):
+    """The snapshots past their keep counts: the oldest of each kind beyond its count. Only names Hearth made."""
+    out = []
+    for kind in INTERVAL:
+        mine = sorted((n for n in names if SNAP_NAME_RE.fullmatch(n) and n.startswith(kind + '-')), key=lambda n: snap_time(n) or 0)
+        extra = len(mine) - max(0, keep.get(kind, 0))
+        if extra > 0:
+            out += mine[:extra]
+    return out
+
+
+def game_running():
+    """Game Mode or a game is running: gamescope, or Hearth's hearth-playing file. Tests replace this."""
+    try:
+        for pid in os.listdir('/proc'):
+            if pid.isdigit():
+                try:
+                    with open('/proc/%s/comm' % pid) as f:
+                        if f.read().strip() in ('gamescope', 'gamescope-wl'):
+                            return True
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    try:
+        return any(os.path.exists('/run/user/%s/hearth-playing' % u) for u in os.listdir('/run/user'))
+    except OSError:
+        return False
+
+
+def snapshot_run(now=None):
+    """The timer's run: due snapshots taken, old ones dropped, old recycle-bin files emptied. Waits while you play when
+    Light mode is on (sharing keeps working; the next run catches up)."""
+    now = time.time() if now is None else now
+    try:
+        plan = json.loads(read(PLAN))
+    except (OSError, ValueError):
+        return {'ok': True, 'note': 'no plan yet'}
+    if plan.get('lightMode', True) and game_running():
+        return {'ok': True, 'deferred': 'Light mode: waiting until you stop playing'}
+    keep = clean_keep(plan.get('keep'))
+    done, dropped, errors = [], [], []
+    if plan.get('snapshots'):
+        vols = {}
+        for s in plan.get('shares') or []:
+            if s.get('snapshots'):
+                info = snap_info(s.get('path', ''))
+                if info['ok']:
+                    vols[info['subvol']] = info
+        for vol, info in sorted(vols.items()):
+            store = info['store']
+            os.makedirs(store, mode=0o755, exist_ok=True)
+            names = sorted(os.listdir(store))
+            for kind in ('weekly', 'daily', 'hourly'):
+                if due(kind, names, now, keep):
+                    dest = os.path.join(store, snap_name(kind, now))
+                    if os.path.exists(dest):
+                        continue
+                    code, out = run(['btrfs', 'subvolume', 'snapshot', '-r', vol, dest], timeout=300)
+                    if code == 0:
+                        done.append(dest)
+                        names.append(os.path.basename(dest))
+                    else:
+                        errors.append('%s: %s' % (vol, out.strip()[:200]))
+            for n in to_prune(names, keep):
+                code, out = run(['btrfs', 'subvolume', 'delete', os.path.join(store, n)], timeout=300)
+                (dropped if code == 0 else errors).append(n if code == 0 else '%s: %s' % (n, out.strip()[:200]))
+    emptied = recycle_empty(plan, now)
+    return {'ok': not errors, 'taken': done, 'dropped': dropped, 'recycleEmptied': emptied, 'errors': errors}
+
+
+def recycle_empty(plan, now):
+    """Files in a share's recycle bin longer than 30 days are deleted (the bin's own folder only)."""
+    n = 0
+    for s in plan.get('shares') or []:
+        if not s.get('recycle'):
+            continue
+        root = os.path.join(s.get('path', ''), RECYCLE_DIR)
+        if not os.path.isdir(root) or os.path.islink(root):
+            continue
+        for dp, dns, fns in os.walk(root, topdown=False):
+            for fn in fns:
+                p = os.path.join(dp, fn)
+                try:
+                    st = os.lstat(p)
+                    if now - st.st_mtime > RECYCLE_DAYS * 86400:
+                        os.remove(p)
+                        n += 1
+                except OSError:
+                    pass
+            if dp != root:
+                try:
+                    os.rmdir(dp)
+                except OSError:
+                    pass
+    return n
+
+
+# ------------------------------------------------------------------ drives
+
+def lsblk():
+    code, out = run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,SIZE,TYPE,MODEL,SERIAL,TRAN,ROTA,RM,FSTYPE,LABEL,UUID,MOUNTPOINTS,WWN'], timeout=20)
+    try:
+        return json.loads(out).get('blockdevices') or [] if code == 0 else []
+    except ValueError:
+        return []
+
+
+def smart(dev):
+    """SMART health and temperature from smartctl (JSON), or None."""
+    if not which('smartctl'):
+        return None
+    code, out = run(['smartctl', '-j', '-H', '-A', '-i', dev], timeout=25)
+    try:
+        j = json.loads(out)
+    except ValueError:
+        return None
+    st = j.get('smart_status') or {}
+    temp = (j.get('temperature') or {}).get('current')
+    hours = (j.get('power_on_time') or {}).get('hours')
+    return {'passed': st.get('passed'), 'temp': temp, 'hours': hours}
+
+
+def size_text(n):
+    for unit, f in (('TB', 1e12), ('GB', 1e9), ('MB', 1e6)):
+        if n >= f:
+            v = n / f
+            return ('%.1f' % v).rstrip('0').rstrip('.') + ' ' + unit
+    return '%d B' % n
+
+
+def disk_name(d):
+    return (d.get('model') or '').strip() or ('Drive ' + d.get('name', ''))
+
+
+def confirm_text(d):
+    """What formatting asks you to confirm: the drive's name and size, as shown."""
+    return '%s · %s' % (disk_name(d), size_text(int(d.get('size') or 0)))
+
+
+def token(d):
+    """The drive's identity (path, serial, WWN, size): a different drive at the same /dev path never matches."""
+    raw = '|'.join(str(d.get(k) or '') for k in ('path', 'serial', 'wwn', 'size'))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def mounts_of(d):
+    out = [m for m in (d.get('mountpoints') or []) if m]
+    for c in d.get('children') or []:
+        out += mounts_of(c)
+    return out
+
+
+def drives():
+    sysd = system_disks()
+    out = []
+    for d in lsblk():
+        if d.get('type') != 'disk' or d.get('name', '').startswith(('loop', 'zram', 'sr', 'ram')):
+            continue
+        mounts = mounts_of(d)
+        used = total = 0
+        seen = set()
+        for m in mounts:
+            try:
+                st = os.statvfs(m)
+            except OSError:
+                continue
+            key = (st.f_fsid, st.f_blocks)
+            if key in seen:
+                continue
+            seen.add(key)
+            total += st.f_blocks * st.f_frsize
+            used += (st.f_blocks - st.f_bfree) * st.f_frsize
+        fs = sorted({c.get('fstype') for c in (d.get('children') or []) if c.get('fstype')} | ({d['fstype']} if d.get('fstype') else set()))
+        out.append({'name': d.get('name'), 'path': d.get('path'), 'model': disk_name(d), 'size': int(d.get('size') or 0),
+                    'sizeText': size_text(int(d.get('size') or 0)), 'kind': 'NVMe' if d.get('tran') == 'nvme' or d.get('name', '').startswith('nvme') else ('HDD' if d.get('rota') in (True, 1, '1') else 'SSD'),
+                    'usb': d.get('tran') == 'usb', 'removable': d.get('rm') in (True, 1, '1'), 'system': d.get('name') in sysd,
+                    'mounts': mounts, 'used': used, 'total': total, 'fs': fs, 'empty': not (d.get('children') or d.get('fstype')),
+                    'smart': smart(d.get('path')), 'confirm': confirm_text(d), 'token': token(d)})
+    return {'ok': True, 'drives': out}
+
+
+def find_disk(dev):
+    if not isinstance(dev, str) or not DEV_RE.fullmatch(dev):
+        raise Fail('not a drive')
+    for d in lsblk():
+        if d.get('path') == dev and d.get('type') == 'disk':
+            return d
+    raise Fail('that drive isn\'t there anymore')
+
+
+def part_path(dev):
+    return dev + ('p1' if re.search(r'\d$', dev) else '1')
+
+
+def format_plan(dev, use='storage', label='', target='', user='', d=None, sys_disks=None):
+    """What formatting would do: the checks and the commands, without running anything."""
+    d = d or find_disk(dev)
+    disks = system_disks() if sys_disks is None else sys_disks
+    plan = {'ok': True, 'device': dev, 'name': disk_name(d), 'size': int(d.get('size') or 0), 'sizeText': size_text(int(d.get('size') or 0)),
+            'confirm': confirm_text(d), 'token': token(d), 'use': use, 'canFormat': True, 'why': '', 'steps': []}
+    if d.get('name') in disks:
+        plan.update(canFormat=False, why='This is the system drive: Hearth OS lives here, so it can never be formatted or picked')
+        return plan
+    if mounts_of(d):
+        plan.update(canFormat=False, why='It\'s in use (%s). Eject it in Hearth Files first' % ', '.join(mounts_of(d)[:3]))
+        return plan
+    if use not in ('storage', 'backup', 'mirror'):
+        raise Fail('use it as storage, backup or mirror')
+    if use == 'mirror':
+        if not isinstance(target, str) or not target.startswith(('/mnt/', '/var/mnt/')) or not PATH_RE.fullmatch(target):
+            plan.update(canFormat=False, why='Pick the drive to mirror: one Hearth set up (under /mnt)')
+            return plan
+        m = mount_info(target)
+        if m['fstype'] != 'btrfs' or m['target'] != os.path.realpath(target):
+            plan.update(canFormat=False, why='Mirroring needs a btrfs drive Hearth set up as more storage')
+            return plan
+        if disks_of(m['source']) & disks:
+            plan.update(canFormat=False, why='The system drive is never mirrored')
+            return plan
+        plan['steps'] = [['wipefs', '-a', dev], ['btrfs', 'device', 'add', '-f', dev, m['target']],
+                         ['systemd-run', '--unit=hearth-home-server-mirror', '--property=IOSchedulingClass=idle', '--property=Nice=19',
+                          'btrfs', 'balance', 'start', '-dconvert=raid1', '-mconvert=raid1', m['target']]]
+        plan['target'] = m['target']
+        return plan
+    if not LABEL_RE.fullmatch(label or ''):
+        raise Fail('the drive\'s new name is 1 to 24 letters, digits, - or _')
+    part = part_path(dev)
+    mnt = '/var/mnt/' + label
+    plan['steps'] = [['wipefs', '-a', dev],
+                     ['parted', '-s', dev, 'mklabel', 'gpt', 'mkpart', 'hearth-' + label, 'btrfs', '1MiB', '100%'],
+                     ['udevadm', 'settle'],
+                     ['mkfs.btrfs', '-f', '-L', label, part],
+                     ['mkdir', '-p', mnt],
+                     ['fstab-add', 'UUID=<new>', mnt],
+                     ['mount', mnt],
+                     ['chown', user + ':', mnt]]
+    plan['mount'] = mnt
+    return plan
+
+
+def fstab_line(uuid, mnt):
+    """A data drive's line: nofail and a short device timeout, so a missing or dead drive never stops the PC starting."""
+    if not re.match(r'^[0-9a-fA-F\-]{8,64}$', uuid or '') or not mnt.startswith('/var/mnt/') or not PATH_RE.fullmatch(mnt):
+        raise Fail('bad drive line')
+    return 'UUID=%s %s btrfs defaults,nofail,noatime,compress=zstd:1,x-systemd.device-timeout=10s 0 0 %s' % (uuid, mnt, FSTAB_MARK)
+
+
+def format_drive(req):
+    user, _ = caller()
+    if not isinstance(req, dict):
+        raise Fail('the request must be a JSON object')
+    d = find_disk(req.get('device'))
+    plan = format_plan(req['device'], req.get('use', 'storage'), req.get('label', ''), req.get('target', ''), user, d)
+    if not plan['canFormat']:
+        raise Fail(plan['why'])
+    if req.get('token') != plan['token']:
+        raise Fail('That isn\'t the drive you picked (it changed or was swapped). Pick it again')
+    if req.get('confirm1') is not True or req.get('confirm2') != plan['confirm']:
+        raise Fail('Formatting needs both confirmations, naming %s' % plan['confirm'])
+    if req.get('dryRun') is True:
+        plan['dryRun'] = True
+        return plan
+    for step in plan['steps']:
+        if step[0] == 'fstab-add':
+            code, out = run(['blkid', '-s', 'UUID', '-o', 'value', part_path(req['device'])])
+            line = fstab_line(out.strip(), step[2])
+            cur = read(FSTAB) if os.path.exists(FSTAB) else ''
+            if step[2] not in cur:
+                write(FSTAB, cur.rstrip('\n') + '\n' + line + '\n')
+            run(['systemctl', 'daemon-reload'])
+            continue
+        code, out = run(step, timeout=600)
+        if code != 0:
+            raise Fail('%s didn\'t work: %s' % (step[0], out.strip()[:300]))
+    plan['done'] = True
+    return plan
+
+
+# ------------------------------------------------------------------ Tailscale
+
+def tailscale(action):
+    user, _ = caller()
+    if not which('tailscale'):
+        raise Fail("Tailscale isn't installed on this PC")
+    if action == 'start':
+        code, out = run(['systemctl', 'start', 'tailscaled'])
+        if code != 0:
+            raise Fail("Tailscale didn't start")
+        for _ in range(40):
+            if os.path.exists('/var/run/tailscale/tailscaled.sock') or os.path.exists('/run/tailscale/tailscaled.sock'):
+                break
+            time.sleep(0.25)
+        run(['tailscale', 'set', '--operator=' + user])
+        return {'ok': True, 'tailscaled': 'running'}
+    if action == 'stop':
+        run(['systemctl', 'stop', 'tailscaled'])
+        return {'ok': True, 'tailscaled': 'stopped'}
+    raise Fail('tailscale start|stop')
+
+
+def exit_node(on):
+    caller()
+    if on:
+        write(EXIT_SYSCTL, '# Hearth home server: Let other devices use this PC\'s internet (Tailscale exit node)\n'
+                           'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n')
+        run(['sysctl', '-p', EXIT_SYSCTL])
+    elif remove(EXIT_SYSCTL):
+        run(['sysctl', '-w', 'net.ipv4.ip_forward=0'])
+        run(['sysctl', '-w', 'net.ipv6.conf.all.forwarding=0'])
+    return {'ok': True, 'exitNode': 'on' if on else 'off'}
+
+
+# ------------------------------------------------------------------
+
+def stdin_json():
+    try:
+        return json.loads(sys.stdin.read(1 << 20) or '{}')
+    except ValueError:
+        raise Fail('the input must be JSON')
+
+
+def main(argv):
+    try:
+        a = argv[1:]
+        if a == ['apply']:
+            res = apply(stdin_json())
+        elif a == ['smb-password']:
+            if not hsh:
+                raise Fail("Hearth Storage's helper is missing")
+            res = hsh.smb_password(sys.stdin.readline())
+        elif a == ['drives']:
+            caller()
+            res = drives()
+        elif len(a) == 2 and a[0] == 'format-plan':
+            caller()
+            res = format_plan(a[1])
+        elif a == ['format']:
+            res = format_drive(stdin_json())
+        elif a == ['snapshot', 'run']:
+            res = snapshot_run()
+        elif len(a) == 2 and a[0] == 'tailscale':
+            res = tailscale(a[1])
+        elif len(a) == 2 and a[0] == 'exit-node' and a[1] in ('on', 'off'):
+            res = exit_node(a[1] == 'on')
+        elif len(a) == 2 and a[0] == 'wol':
+            if not hsh:
+                raise Fail("Hearth Storage's helper is missing")
+            res = hsh.wol(a[1])
+        else:
+            raise Fail('usage: hearth-home-server-helper apply | smb-password | drives | format-plan DEV | format | '
+                       'snapshot run | tailscale start|stop | exit-node on|off | wol IFACE')
+        print(json.dumps(res))
+        return 0
+    except FAILS as e:
+        print(json.dumps({'ok': False, 'error': str(e)}))
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

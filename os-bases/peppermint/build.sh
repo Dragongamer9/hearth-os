@@ -500,6 +500,64 @@ done
 chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
 # Hearth Storage's root helper (Windows sharing, waking from the network; 49-hearth-storage.rules).
 chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
+# ---- Hearth home server (Settings › Home server, docs/HOME-SERVER.md) ------------------------------------------
+# Samba for the shared folders, smartmontools for drive health, nftables for "Only reachable through Tailscale",
+# and Tailscale from Tailscale's own repository (its signing key checked against the fingerprint below before it's
+# trusted). Every service they bring is disabled here, and the build fails if one is left on: nothing listens or
+# runs until the owner turns it on in Settings, and none of them is part of starting the PC, the session or Game Mode.
+chmod 755 /usr/libexec/nimbus/hearth-home-server-helper 2>/dev/null || true
+"${APT[@]}" samba smartmontools nftables
+TS_FPR=2596A99EAAB33821893C0A79458CA832957F5868   # Tailscale Inc. (Package repository signing key)
+if curl -fsSL --retry 3 -o /tmp/tailscale.gpg https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg; then
+  command -v gpg >/dev/null || "${APT[@]}" gpg
+  TS_GOT=$(GNUPGHOME=$(mktemp -d) gpg --show-keys --with-colons /tmp/tailscale.gpg 2>/dev/null | awk -F: '/^fpr:/ { print $10; exit }' || true)
+  if [ "$TS_GOT" != "$TS_FPR" ]; then
+    echo "::error::Tailscale's repository key isn't the expected one (got '$TS_GOT', expected $TS_FPR): not trusting it"
+    exit 1
+  fi
+  install -Dm644 /tmp/tailscale.gpg /usr/share/keyrings/tailscale-archive-keyring.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian trixie main' \
+    > /etc/apt/sources.list.d/tailscale.list
+  apt-get update -y
+  "${APT[@]}" tailscale
+  rm -f /tmp/tailscale.gpg
+else
+  echo "::warning::couldn't reach Tailscale's repository: Tailscale is left out of this image (Settings › Home server says so)"
+  OPTIONAL_MISSING+=("tailscale")
+fi
+# Samba with nothing shared and no guests; the home server and Hearth Storage include their own shares at the end.
+cat > /etc/samba/smb.conf <<'SMBCONF'
+# Hearth OS: Samba starts with nothing shared. Settings › Home server › Shared folders and Hearth Storage's Windows
+# sharing add their shares from their own files, included below by their helpers. Change shares there.
+[global]
+   workgroup = WORKGROUP
+   server string = Hearth OS
+   server role = standalone server
+   server min protocol = SMB3
+   map to guest = Never
+   restrict anonymous = 2
+   usershare allow guests = no
+   disable netbios = yes
+   smb ports = 445
+   load printers = no
+   printing = bsd
+   printcap name = /dev/null
+   passdb backend = tdbsam
+   logging = systemd
+SMBCONF
+testparm -s /etc/samba/smb.conf >/dev/null
+printf '%s\n' '# Samba (Settings › Home server): its cache and log folders (the image keeps /var empty).' \
+  'd /var/cache/samba 0755 root root -' 'd /var/log/samba 0750 root adm -' > /usr/lib/tmpfiles.d/hearth-samba.conf
+for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables; do systemctl disable "$u.service" 2>/dev/null || true; done
+systemctl disable hearth-home-server-snapshots.timer 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service 2>/dev/null || true
+for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service hearth-home-server-snapshots.timer; do
+  if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
+done
+if [ "$(systemctl --global is-enabled hearth-taildrop.service 2>/dev/null)" = enabled ]; then echo "::error::hearth-taildrop is on in the image"; exit 1; fi
+command -v smbd smbpasswd testparm smartctl nft
+command -v tailscale || echo "warning: no Tailscale in this image"
+# ---- end of Hearth home server
 if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then

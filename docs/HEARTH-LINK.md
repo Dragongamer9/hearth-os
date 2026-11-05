@@ -106,6 +106,9 @@ short codes).
 # Hearth Storage
 
 A spare PC running Hearth as a small home server for your other Hearth devices (`hosts/hearth-link/src/storage.rs`).
+Settings › Home server (docs/HOME-SERVER.md) builds on it for everything else: Samba shares for Windows, phones and
+TVs with their own settings, drives and snapshots, and Tailscale (its root helper uses `hearth-storage-helper`'s Samba,
+password and Wake-on-LAN code, and the two keep their Samba shares apart).
 It is Hearth Link: the same pairing, the same encrypted connections, the same copy engine. Only paired devices can
 use it, and nothing is opened to the internet unless you turn something on.
 
