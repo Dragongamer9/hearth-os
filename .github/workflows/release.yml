@@ -299,8 +299,20 @@ jobs:
 
       - name: Test
         run: |
-          npm test
-          python3 -m unittest discover -s test -p 'test_*.py'
+          npm test 2>&1 | tee /tmp/npm-test.log || { grep -E '^not ok|^# fail' /tmp/npm-test.log | head -20 | sed 's/^/::error title=npm test::/'; exit 1; }
+          # Failing tests as annotations (CI logs can't always be read): each FAIL/ERROR with the end of its traceback.
+          python3 -m unittest discover -s test -p 'test_*.py' > /tmp/py-test.log 2>&1 || {
+            tail -5 /tmp/py-test.log
+            python3 - <<'PY'
+          import re
+          t = open('/tmp/py-test.log', encoding='utf-8', errors='replace').read()
+          for block in re.split(r'\n=+\n', t)[1:21]:
+              head, _, rest = block.partition('\n')
+              tail = ' | '.join(l.strip() for l in rest.strip().splitlines()[-6:])
+              print('::error title=%s::%s' % (head.strip()[:120], tail[:900]))
+          PY
+            exit 1
+          }
 
       - name: Check the session scripts and Desktop Mode files
         run: |
