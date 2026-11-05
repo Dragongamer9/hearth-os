@@ -988,7 +988,15 @@ def tailscale(action):
             if os.path.exists('/var/run/tailscale/tailscaled.sock') or os.path.exists('/run/tailscale/tailscaled.sock'):
                 break
             time.sleep(0.25)
-        run(['tailscale', 'set', '--operator=' + user])
+        # The signed-in user may control Tailscale (sign in, send files) without a password: Tailscale's operator.
+        # Right after starting, tailscaled can still be getting ready, so this is tried a few times.
+        for _ in range(8):
+            code, out = run(['tailscale', 'set', '--operator=' + user])
+            if code == 0:
+                break
+            time.sleep(0.5)
+        else:
+            raise Fail("Tailscale started, but your account couldn't be allowed to control it; try again")
         return {'ok': True, 'tailscaled': 'running'}
     if action == 'stop':
         run(['systemctl', 'stop', 'tailscaled'])

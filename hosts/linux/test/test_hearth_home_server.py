@@ -684,7 +684,10 @@ class Wiring(unittest.TestCase):
     def test_the_user_helper_never_logs_the_sign_in_link(self):
         src = (SHELL / 'hearth-home-server').read_text()
         login = src.split('def ts_login')[1].split('\ndef ')[0]
-        self.assertIn('stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL', login)
+        self.assertIn('stdout=subprocess.DEVNULL, stderr=errf', login)
+        self.assertIn('0o600', login)                       # what Tailscale says stays private
+        self.assertIn('os.remove(err_path)', login)         # and is removed at once
+        self.assertIn("re.sub(r'https?://", login)          # a refusal shown to you never carries the link
         self.assertNotIn('log_event', login)
         self.assertNotIn('authkey', src.lower())
 

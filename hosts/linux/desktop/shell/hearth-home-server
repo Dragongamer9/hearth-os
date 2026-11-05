@@ -585,16 +585,38 @@ def ts_login():
         raise Fail('Tailscale isn\'t installed on this PC')
     if not st.get('running'):
         root(['tailscale', 'start'])
-    # The sign-in link: Tailscale prints it, and status has it as AuthURL. Never written to a log.
-    subprocess.Popen(['tailscale', 'login'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+    # The sign-in link: Tailscale prints it, and status has it as AuthURL. Never written to a log. What Tailscale says
+    # goes to a private file in the runtime folder (0600), read only to explain a refusal, and is removed at once.
+    d = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-home-server')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    err_path = os.path.join(d, 'tailscale-login.err')
+    fd = os.open(err_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as errf:
+        proc = subprocess.Popen(['tailscale', 'login'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errf,
+                                start_new_session=True)
     url = ''
-    for _ in range(40):
+    for _ in range(60):
         time.sleep(0.25)
         st = ts_status()
         url = st.get('authUrl') or ''
-        if url or st.get('state') == 'Running':
+        if url or st.get('state') == 'Running' or proc.poll() not in (None, 0):
             break
+    said = ''
+    try:
+        with open(err_path, encoding='utf-8', errors='replace') as f:
+            said = f.read(2000)
+    except OSError:
+        pass
+    try:
+        os.remove(err_path)
+    except OSError:
+        pass
+    if not url and st.get('state') != 'Running':
+        said = re.sub(r'https?://\S+', '', said).strip().replace('\n', ' ')[:240]
+        if 'access denied' in said.lower() or 'permission' in said.lower():
+            raise Fail("Tailscale didn't let your account sign in yet: turn Tailscale off and on again on this page "
+                       "(that gives your account the right to control it), then press Sign in again")
+        raise Fail("Tailscale didn't give a sign-in link" + (': ' + said if said else '; try Sign in again'))
     qr = ''
     if url and shutil.which('qrencode'):
         d = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-home-server')
