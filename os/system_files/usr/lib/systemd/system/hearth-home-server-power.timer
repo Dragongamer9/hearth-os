@@ -1,0 +1,12 @@
+# Settings › Home server › Alerts & power: every 5 minutes while a power choice is on (the first 10 minutes after the
+# PC starts). Disabled in the image; hearth-home-server-helper turns it on and off with your choices.
+[Unit]
+Description=Hearth home server: power every 5 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

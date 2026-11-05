@@ -1,0 +1,12 @@
+# Settings › Home server › Backups & sync: every hour while a backup is on (each backup runs at its own time). Disabled
+# in the image; hearth-home-server-helper enables it when you turn a backup on and disables it when none is on.
+[Unit]
+Description=Hearth home server: backups every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=10min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

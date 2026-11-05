@@ -7,6 +7,7 @@ SetRow {
     property bool checked: false
     signal toggled(bool on)
     chevron: false
+    trailing: 58                      // the toggle's room: a long explanation wraps before it instead of under it
     onActivated: toggled(!checked)
     Accessible.role: Accessible.CheckBox   // for the screen reader
     Accessible.checkable: true

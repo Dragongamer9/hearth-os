@@ -30,6 +30,10 @@ OUR_CONF = '/etc/samba/hearth-storage.conf'
 INCLUDE = 'include = %s' % OUR_CONF
 MARK = '# Hearth Storage (hearth-storage-helper): its shared folders'
 STARTED = '/etc/samba/.hearth-storage-started'
+# Settings › Home server's shares (hearth-home-server-helper, which builds on this helper): the same Samba, so the
+# two keep apart share names and never stop Samba while the other still uses it.
+HOME_SERVER_CONF = '/etc/samba/hearth-home-server.conf'
+HOME_SERVER_STARTED = '/etc/samba/.hearth-home-server-started'
 NAME_RE = re.compile(r'^[A-Za-z0-9 _\-]{1,40}$')
 IFACE_RE = re.compile(r'^[A-Za-z0-9_.\-]{1,15}$')
 
@@ -91,9 +95,17 @@ def clean_name(name, used):
     return n
 
 
+def home_server_names():
+    try:
+        with open(HOME_SERVER_CONF) as f:
+            return {m.lower() for m in re.findall(r'^\[([^\]]+)\]', f.read(), re.M) if m.lower() != 'global'}
+    except OSError:
+        return set()
+
+
 def conf_text(shares, user, home):
     out = [MARK, '# Written by Hearth; change it in Settings › Hearth Storage.', '']
-    used = set()
+    used = home_server_names()
     for s in shares:
         p = share_ok(s.get('path'), user, home)
         if not p:
@@ -191,9 +203,11 @@ def smb_off():
         pass
     unit = smb_service()
     if unit:
-        if os.path.exists(STARTED):
+        if (os.path.exists(STARTED) or os.path.exists(HOME_SERVER_STARTED)) and not os.path.exists(HOME_SERVER_CONF):
             run(['systemctl', 'disable', '--now', unit])
-            os.remove(STARTED)
+            for m in (STARTED, HOME_SERVER_STARTED):
+                if os.path.exists(m):
+                    os.remove(m)
         else:
             run(['systemctl', 'reload-or-restart', unit])
     return {'ok': True}

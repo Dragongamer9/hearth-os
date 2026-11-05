@@ -181,3 +181,50 @@ export function installArgs(r: Packed): [string, string, string, string, number]
   if (!r.ok || !r.artifact || !r.artifact.startsWith("file:///") || !r.artifact.endsWith(".zip") || !r.name || !/^[0-9a-f]{64}$/.test(r.hash || "")) return null;
   return [r.artifact, r.name, r.version || "", r.hash!, 0];
 }
+
+// ---- Home server (docs/HOME-SERVER.md): the Quick Access tile, from Mantel's home server helper (main.py home_server)
+export interface HomeQuick {
+  available: boolean; host: string; lightMode: boolean; playing: boolean; resumed: boolean; paused: string[];
+  shares: number; people: number; usage: { used: number; total: number };
+  backups: { count: number; lastOk: number; waiting: string[]; failed: string[]; running: boolean };
+  alerts: string[]; setupDone: boolean; ok?: boolean; error?: string;
+  ai?: { on: boolean; state: "off" | "ready" | "unloaded" | "paused" };
+}
+export const HOME_POLL = 15000;
+
+/** Shown only on a PC that's a home server (set up, or sharing, or backing up); hidden when the helper isn't there. */
+export const homeShown = (q: HomeQuick | null | undefined): boolean =>
+  !!q && q.available === true && (q.setupDone || q.shares > 0 || q.backups.count > 0);
+
+/** "3 shared folders · 1 TB of 4 TB used · 1 person". */
+export function homeLine(q: HomeQuick): string {
+  const parts = [q.shares ? `${q.shares} shared folder${q.shares === 1 ? "" : "s"}` : "Nothing shared"];
+  if (q.usage.total) parts.push(`${bytes(q.usage.used)} of ${bytes(q.usage.total)} used`);
+  if (q.people) parts.push(`${q.people} ${q.people === 1 ? "person" : "people"}`);
+  return parts.join(" · ");
+}
+
+/** The backups in a line: running, failed, waiting for your game, or when the last one was good. */
+export function backupLine(q: HomeQuick, now: number): string {
+  const b = q.backups;
+  if (!b.count) return "No backups yet";
+  if (b.running) return "Backing up now";
+  if (b.failed.length) return `Didn't finish: ${b.failed.join(", ")}`;
+  if (b.waiting.length) return `Waiting for your game: ${b.waiting.join(", ")}`;
+  return `Last backup ${ago(b.lastOk, now)}`;
+}
+
+/** The AI service (stage 3) in a line, or "" when it's off. */
+export function aiLine(q: HomeQuick): string {
+  const a = q.ai;
+  if (!a || !a.on || a.state === "off") return "";
+  if (a.state === "paused") return "AI service: stopped while you play";
+  if (a.state === "unloaded") return "AI service: models unloaded while you play";
+  return "AI service: ready";
+}
+
+/** What Light mode holds back while you play, or "". */
+export function pausedLine(q: HomeQuick): string {
+  if (!q.paused.length) return "";
+  return `Paused for your game: ${q.paused.join(" · ")}`;
+}

@@ -1,0 +1,13 @@
+# Settings › Home server (docs/HOME-SERVER.md), stage 3: Light mode for the AI service and the media server (models
+# unloaded or the service paused while Game Mode or a game runs, started again after), the Command Center noted when it
+# uses the AI service, the ransomware guard and the Tailscale-only rule kept loaded. Only its timer starts it.
+[Unit]
+Description=Hearth home server: services and the ransomware guard
+ConditionPathExists=/etc/hearth/home-server.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-home-server-helper services run
+TimeoutStartSec=2min
+Nice=10
+IOSchedulingClass=idle

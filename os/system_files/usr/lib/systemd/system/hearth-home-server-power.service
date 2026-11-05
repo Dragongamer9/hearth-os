@@ -1,0 +1,12 @@
+# Settings › Home server › Alerts & power (docs/HOME-SERVER.md): spins down idle data drives (hdparm, never the system
+# drive), keeps the PC awake while your devices use it, and lets it sleep when nobody needs it: never while Game Mode
+# runs, a share is open or a backup runs, and never past anything else holding sleep off. Started only by its timer,
+# off until you turn a power choice on. Never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: power
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-home-server-helper power run
+Nice=10
+TimeoutStartSec=5min

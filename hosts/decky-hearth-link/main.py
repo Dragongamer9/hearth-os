@@ -511,6 +511,84 @@ def fetch_plugin(folder, link=None):
     return {'ok': False, 'error': err}
 
 
+# ---- Home server (docs/HOME-SERVER.md): Game Mode's Quick Access tile. Asks Mantel's home server helper, as you, for
+# its short status (quick), and changes only Light mode (quick-set lightMode on|off, saved only: the timers read it from
+# your settings file) or lets jobs paused for your game run now (resume on|off, a flag in your runtime folder). No
+# password is ever asked (Game Mode can't answer one), nothing else is sent, every call has a timeout, and when the
+# helper isn't there or fails the panel simply doesn't show the tile: it never stops Game Mode or this plugin.
+HOME_SERVER = '/usr/share/nimbus/desktop/shell/hearth-home-server'
+HOME_SERVER_CALLS = ('quick', 'quick-set', 'resume')
+HOME_SERVER_TIMEOUT = 10
+
+
+def home_server_args(args):
+    """The checked command for the helper, or None."""
+    if not isinstance(args, list) or not args or args[0] not in HOME_SERVER_CALLS:
+        return None
+    if args == ['quick']:
+        return args
+    if len(args) == 3 and args[:2] == ['quick-set', 'lightMode'] and args[2] in ('on', 'off'):
+        return args
+    if len(args) == 2 and args[0] == 'resume' and args[1] in ('on', 'off'):
+        return args
+    return None
+
+
+def _strs(v, n=3, k=120):
+    return [text(x, k) for x in (v if isinstance(v, list) else [])][:n]
+
+
+def home_short(v):
+    """The tile's fields only, checked."""
+    if not isinstance(v, dict):
+        return {'available': False}
+    u = v.get('usage') if isinstance(v.get('usage'), dict) else {}
+    b = v.get('backups') if isinstance(v.get('backups'), dict) else {}
+    return {'available': v.get('available') is True, 'host': text(v.get('host'), 64), 'lightMode': v.get('lightMode') is not False,
+            'playing': v.get('playing') is True, 'resumed': v.get('resumed') is True, 'paused': _strs(v.get('paused'), 4, 20),
+            'shares': _num(v.get('shares')) or 0, 'people': _num(v.get('people')) or 0,
+            'usage': {'used': _num(u.get('used')) or 0, 'total': _num(u.get('total')) or 0},
+            'backups': {'count': _num(b.get('count')) or 0, 'lastOk': _num(b.get('lastOk')) or 0, 'waiting': _strs(b.get('waiting')),
+                        'failed': _strs(b.get('failed')), 'running': b.get('running') is True},
+            'alerts': _strs(v.get('alerts'), 3, 200), 'setupDone': v.get('setupDone') is True,
+            'ai': ai_short(v.get('ai'))}
+
+
+def ai_short(a):
+    """The AI service in a word (stage 3): off, ready, unloaded or paused for your game."""
+    a = a if isinstance(a, dict) else {}
+    st = a.get('state') if a.get('state') in ('off', 'ready', 'unloaded', 'paused') else 'off'
+    return {'on': a.get('on') is True and st != 'off', 'state': st}
+
+
+def home_server(args, run=subprocess.run):
+    """One call to the home server helper: {'available': False} when it isn't there, didn't answer or refused."""
+    a = home_server_args(args)
+    if a is None:
+        return {'available': False, 'error': NOT_ALLOWED}
+    prog = os.environ.get('HEARTH_HOME_SERVER') or HOME_SERVER
+    if not os.path.exists(prog):
+        return {'available': False}
+    env = clean_env()
+    py = shutil.which('python3', path=env['PATH']) or '/usr/bin/python3'
+    try:
+        r = run([py, prog] + a, capture_output=True, text=True, timeout=HOME_SERVER_TIMEOUT, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return {'available': False, 'error': "Home server didn't answer"}
+    lines = (r.stdout or '').strip().splitlines()
+    last = lines[-1] if lines else ''
+    if last.startswith('error: '):
+        return {'available': a[0] != 'quick', 'ok': False, 'error': text(last[7:], 200)}
+    try:
+        v = json.loads(last)
+    except ValueError:
+        return {'available': False}
+    if a[0] == 'quick':
+        return home_short(v)
+    return {'available': True, 'ok': True}
+# ---- end Home server
+
+
 async def _bg(fn, *a):
     return await asyncio.get_running_loop().run_in_executor(None, fn, *a)
 
@@ -543,6 +621,15 @@ class Plugin:
 
     async def fetch_plugin(self, folder):
         return await _bg(fetch_plugin, folder)
+
+    async def home_server(self):
+        return await _bg(home_server, ['quick'])
+
+    async def home_server_light(self, on):
+        return await _bg(home_server, ['quick-set', 'lightMode', 'on' if on is True else 'off'])
+
+    async def home_server_resume(self, on):
+        return await _bg(home_server, ['resume', 'on' if on is True else 'off'])
 
     async def _main(self):
         if not hearth_only.status(log, 'Hearth Link')['ok']:

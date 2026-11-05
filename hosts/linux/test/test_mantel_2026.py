@@ -306,3 +306,18 @@ class Stats(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DockAfterGameMode(unittest.TestCase):
+    """Coming back from Game Mode, an auto-hide dock never keeps the bottom of the screen reserved."""
+
+    def test_dock_waits_for_settings_and_refits_when_its_space_changes(self):
+        d = (SHELL / 'Dock.qml').read_text()
+        self.assertIn('property bool settingsReady: Settings.loaded', d)
+        self.assertRegex(d, r'Timer \{ interval: 4000; running: !dock\.settingsReady; onTriggered: dock\.settingsReady = true \}',
+                         'the dock always comes up, even if settings never load')
+        self.assertIn('visible: settingsReady && !remapping', d)
+        self.assertIn('onReservedChanged: { claim(); refit(); }', d)
+        self.assertEqual(d.count('onReservedChanged'), 1, 'one handler only (QML refuses two)')
+        self.assertRegex(d, r'readonly property int reserved: autoHide \|\| keyboardOpen \? 0 :', 'auto-hide reserves nothing')
+        self.assertIn('id: remapTimer; interval: 150', d)

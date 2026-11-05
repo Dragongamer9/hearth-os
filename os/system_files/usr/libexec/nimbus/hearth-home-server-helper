@@ -1,0 +1,2951 @@
+#!/usr/bin/python3
+"""hearth-home-server-helper: the root half of Settings › Home server (docs/HOME-SERVER.md). Run by the Mantel helper
+hearth-home-server through pkexec; /usr/share/polkit-1/rules.d/49-hearth-storage.rules lets the person signed in at the
+device (local, active session, in the wheel group) run it without a password prompt. The snapshot timer runs
+`snapshot run` as root.
+
+It builds on Hearth Storage's root helper (hearth-storage-helper, next to this file): the same rules for which
+folders may be shared, the same Samba service and password handling, and one Samba config for both (Hearth
+Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/samba/hearth-home-server.conf).
+
+  apply                 JSON on stdin (built from ~/.config/nimbus/home-server.json by hearth-home-server):
+                        {"shares": [{"id","name","path","write","reach","recycle","snapshots","people"}], "tsOnly", "tsBoot",
+                         "snapshots", "keep": {"hourly","daily","weekly"}, "lightMode", "people": [{"name","folder"}],
+                         "backups": [{"id","name","paths","target","every","at","day","keep","on"}], "receive",
+                         "alerts", "power"}
+                        Samba's shares (SMB3 or newer, no guests, only you), "Tailscale only" firewall rules,
+                        tailscaled at boot, the snapshot timer, /etc/hearth/home-server.json for the timer.
+                        Samba runs only while at least one share is on. Every service here starts disabled.
+  smb-password          your Samba password, one line on stdin (straight to smbpasswd, never kept or logged)
+  drives                every drive: size, model, space, SMART health and temperature (smartctl), which is the system's
+  format-plan DEV       what formatting DEV would do, the drive's name and size to confirm, and its token
+  format                JSON on stdin {"device","use": "storage"|"backup"|"mirror","label","token","confirm1": true,
+                        "confirm2": "<the drive's name · size, as format-plan gave it>","target" (mirror),"dryRun"}
+  snapshot run          the timer: take the snapshots that are due and drop the ones past their keep counts
+                        (waits while you play when Light mode is on)
+  tailscale start|stop  tailscaled now (not at boot), and you as its operator so Settings can sign in and change it
+  exit-node on|off      IP forwarding for "Let other devices use this PC's internet" (off unless you turn it on)
+  wol IFACE             the network card wakes the PC from the network (Hearth Storage's helper does it)
+  person-add            JSON on stdin {"name","password"}: a Samba-only account (a system account with no home, no login
+                        shell and a locked system password, hidden from the login screen); the password only to smbpasswd
+  person-password       JSON on stdin {"name","password"}
+  person-remove NAME    the account and its sharing password go (only accounts Hearth made); nothing of theirs is deleted
+  person-folder         JSON on stdin {"name","base","quotaGb"}: BASE/People/NAME (a btrfs subvolume, so it can have a quota)
+  backup-secret ID      JSON on stdin {"password", "rest": {"user","password"}, "cloud": {"kind": "b2"|"s3", ...}}: written
+                        0600 for root only (/etc/hearth/backup, rclone's config); never in your settings
+  backup-forget ID      a removed job's password and credentials go (the backup itself is kept where it is)
+  backup run            the timer: each backup that's due (restic), then old ones forgotten beyond the keep counts
+  backup-now ID         that backup now, in its own transient unit (still waits while you play with Light mode on)
+  backup-snapshots ID   its backups (restic snapshots)
+  backup-restore        JSON on stdin {"id","snapshot","path"}: into a NEW folder in Home › Restored from backups, never over
+  receive-add NAME      a backup code for one of your other Hearth devices (shown once; only its hash is kept)
+  receive-remove USER
+  alerts run|test       the alert timer: drive health, a drive filling up, a failed backup, a mirror missing a drive
+  power run             the power timer: spin down idle data drives, stay awake while used, sleep when nobody needs it
+  ups-status            the UPS's charge (upsc)
+  ---- stage 3 (Services, AI, Safety)
+  app-install NAME      ollama | jellyfin: the newest release from its maker, SHA-256 checked, into /var/lib/hearth/apps
+                        (in its own transient unit; only when you ask, never at build or boot)
+  app-remove NAME       the app goes; its data (models, libraries) stays
+  services run          the services timer: Light mode for the AI service and the media server, the Command Center
+                        noted when it uses the AI service, the ransomware guard, the Tailscale-only rule kept loaded
+  guard-reset           your shares writable again after the ransomware guard turned them read only
+
+The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Nothing here goes through a shell: every
+command is an argument list. Paths and names are checked here again (the Mantel helper checks them first): a share
+is a folder inside your Home (not Home itself) or on a drive mounted under /run/media/YOU, /media/YOU, /mnt or
+/var/mnt that isn't the system drive; never /, /etc, /usr, /boot, /sysroot, /ostree, nothing hidden on the way.
+One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
+"""
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def _load_storage_helper():
+    """Hearth Storage's helper (next to this file, or in the repository for the tests), as a module."""
+    for p in (os.path.join(HERE, 'hearth-storage-helper'),
+              os.path.join(HERE, '..', '..', '..', '..', 'os', 'system_files', 'usr', 'libexec', 'nimbus', 'hearth-storage-helper')):
+        if os.path.exists(p):
+            loader = importlib.machinery.SourceFileLoader('hearth_storage_helper', p)
+            spec = importlib.util.spec_from_loader('hearth_storage_helper', loader)
+            m = importlib.util.module_from_spec(spec)
+            loader.exec_module(m)
+            return m
+    return None
+
+
+hsh = _load_storage_helper()
+
+SMB_CONF = '/etc/samba/smb.conf'
+OUR_CONF = '/etc/samba/hearth-home-server.conf'
+STORAGE_CONF = '/etc/samba/hearth-storage.conf'
+INCLUDE = 'include = %s' % OUR_CONF
+MARK = '# Hearth home server (hearth-home-server-helper): its shared folders'
+STARTED = '/etc/samba/.hearth-home-server-started'
+PLAN = '/etc/hearth/home-server.json'
+NFT_FILE = '/etc/hearth/home-server.nft'
+NFT_TABLE = 'hearth_home_server'
+SMBD_DROPIN = '/etc/systemd/system/smbd.service.d/hearth-home-server.conf'
+EXIT_SYSCTL = '/etc/sysctl.d/99-hearth-exit-node.conf'
+FSTAB = '/etc/fstab'
+FSTAB_MARK = '# hearth-home-server'
+SNAP_TIMER = 'hearth-home-server-snapshots.timer'
+SNAP_DIR = '.hearth-snapshots'
+RECYCLE_DIR = '.hearth-recycle'
+RECYCLE_DAYS = 30
+# Tailscale's addresses (CGNAT range and its IPv6 prefix): what "Tailscale only" lets in.
+TAILSCALE_NETS = ['100.64.0.0/10', 'fd7a:115c:a1e0::/48']
+TAILSCALE_IFACE = 'tailscale0'
+SMB_PORTS_TCP = [139, 445]
+SMB_PORTS_UDP = [137, 138]
+
+NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _\-]{0,39}$')
+ID_RE = re.compile(r'^[0-9a-f]{6,32}$')
+LABEL_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_\-]{0,23}$')
+DEV_RE = re.compile(r'^/dev/(sd[a-z]{1,2}|nvme\d+n\d+|vd[a-z]{1,2}|mmcblk\d+)$')
+IFACE_RE = re.compile(r'^[A-Za-z0-9_.\-]{1,15}$')
+# Characters a shared path may have: letters (any language), digits, space and a few marks. No %, which Samba would
+# expand (%u…), no quotes, $, `, ;, |, &, <, >, backslashes or control characters.
+PATH_RE = re.compile(r'^/[\w .\-+@,()/\']*$')
+RESERVED = ('global', 'homes', 'printers', 'print$', 'ipc$')
+FORBIDDEN = ('/etc', '/usr', '/boot', '/sysroot', '/ostree', '/proc', '/sys', '/dev', '/root', '/bin', '/sbin',
+             '/lib', '/lib64', '/opt', '/srv', '/var/lib', '/var/log', '/var/cache', '/var/roothome')
+SYSTEM_MOUNTS = ('/sysroot', '/', '/boot', '/boot/efi', '/efi', '/usr', '/var', '/var/home', '/etc')
+KEEP_MAX = {'hourly': 168, 'daily': 90, 'weekly': 104}
+KEEP_DEFAULT = {'hourly': 24, 'daily': 14, 'weekly': 8}
+INTERVAL = {'hourly': 3600, 'daily': 86400, 'weekly': 7 * 86400}
+SNAP_NAME_RE = re.compile(r'^(hourly|daily|weekly)-(\d{8})-(\d{4})$')
+
+
+class Fail(Exception):
+    pass
+
+
+FAILS = (Fail, hsh.Fail) if hsh else (Fail,)
+
+
+# ------------------------------------------------------------------ the system's commands (tests replace these)
+
+def run(cmd, stdin=None, timeout=60):
+    """(exit code, output). Tests replace this."""
+    try:
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def which(name):
+    """Tests replace this."""
+    return shutil.which(name)
+
+
+def caller():
+    """(name, home) of the person who ran pkexec."""
+    uid = os.environ.get('PKEXEC_UID', '')
+    if not uid.isdigit():
+        raise Fail('run this through pkexec')
+    try:
+        pw = pwd.getpwuid(int(uid))
+    except KeyError:
+        raise Fail('unknown user')
+    return pw.pw_name, pw.pw_dir
+
+
+def write(path, text, mode=0o644):
+    """Atomic: a temporary file beside it, flushed, renamed over it; the old one kept as PATH.bak."""
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    try:
+        if read(path) == text:
+            return
+    except OSError:
+        pass
+    if os.path.exists(path):
+        try:
+            shutil.copy2(path, path + '.bak')
+        except OSError:
+            pass
+    tmp = '%s.hearth-%d.tmp' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+    try:
+        fd = os.open(d, os.O_RDONLY)
+        os.fsync(fd)
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def read(path):
+    with open(path) as f:
+        return f.read()
+
+
+def remove(path):
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return False
+
+
+# ------------------------------------------------------------------ which drive is the system's
+
+def mount_source(target):
+    """The device a path lives on ("/dev/nvme0n1p3"), or ''. Tests replace this."""
+    code, out = run(['findmnt', '-n', '-o', 'SOURCE', '--target', target], timeout=10)
+    src = out.strip().splitlines()[0] if code == 0 and out.strip() else ''
+    return re.sub(r'\[.*\]$', '', src)
+
+
+def mount_info(target):
+    """{target, fstype, source} of the mount holding a path. Tests replace this."""
+    code, out = run(['findmnt', '-n', '-J', '-o', 'TARGET,FSTYPE,SOURCE', '--target', target], timeout=10)
+    try:
+        fs = json.loads(out)['filesystems'][0] if code == 0 else {}
+    except (ValueError, KeyError, IndexError):
+        fs = {}
+    return {'target': fs.get('target') or '', 'fstype': fs.get('fstype') or '', 'source': re.sub(r'\[.*\]$', '', fs.get('source') or '')}
+
+
+def disks_of(dev):
+    """The whole disks under a device (a partition, LUKS, LVM…): {"nvme0n1"}. Tests replace this."""
+    if not dev.startswith('/dev/'):
+        return set()
+    code, out = run(['lsblk', '-J', '-s', '-o', 'NAME,TYPE', dev], timeout=10)
+    found = set()
+    try:
+        stack = list(json.loads(out).get('blockdevices') or []) if code == 0 else []
+    except ValueError:
+        stack = []
+    while stack:
+        n = stack.pop()
+        if n.get('type') == 'disk':
+            found.add(n.get('name'))
+        stack.extend(n.get('children') or [])
+    return found
+
+
+def system_disks():
+    """The disks Hearth OS runs from: never shared, formatted or picked."""
+    out = set()
+    for m in SYSTEM_MOUNTS:
+        src = mount_source(m)
+        if src:
+            out |= disks_of(src)
+    return out
+
+
+# ------------------------------------------------------------------ shares
+
+def drive_bases(user):
+    """Where drives are mounted (Hearth Files' /run/media/YOU, and drives Hearth set up under /var/mnt). Tests replace this."""
+    return ['/run/media/' + user, '/media/' + user, '/mnt', '/var/mnt']
+
+
+def path_problem(path, user, home, sys_disks=None):
+    """(real path, None) for a folder that may be shared, or (None, why not)."""
+    if not isinstance(path, str) or not path.startswith('/') or len(path) > 400:
+        return None, 'not a full path'
+    if not PATH_RE.fullmatch(path) or '/../' in path + '/' or '/./' in path + '/':
+        return None, 'the path has characters a share can\'t have (like % $ ` ; | & < > " or \\)'
+    if any(p != p.strip() for p in path.split('/')):
+        return None, 'a folder name in it starts or ends with a space (Samba would drop it)'
+    real = os.path.realpath(path)
+    if real == '/' or any(real == f or real.startswith(f + '/') for f in FORBIDDEN):
+        return None, 'system folders are never shared'
+    if not PATH_RE.fullmatch(real):
+        return None, 'the folder it points to has characters a share can\'t have'
+    if not os.path.isdir(real):
+        return None, 'that folder isn\'t there'
+    home_real = os.path.realpath(home)
+    bases = [(home_real, True)] + [(os.path.realpath(b), False) for b in drive_bases(user)]
+    for base, is_home in bases:
+        if real == base:
+            return None, 'pick a folder inside it, not all of %s' % ('your Home' if is_home else base)
+        if real.startswith(base.rstrip('/') + '/'):
+            rel = os.path.relpath(real, base)
+            if any(p.startswith('.') for p in rel.split('/')):
+                return None, 'hidden folders are never shared'
+            if not is_home:
+                disks = system_disks() if sys_disks is None else sys_disks
+                if disks_of(mount_source(real)) & disks:
+                    return None, 'that folder is on the system drive (only folders in your Home can be shared from it)'
+            return real, None
+    return None, 'only folders in your Home or on a drive can be shared'
+
+
+def name_problem(name):
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        return 'a share\'s name is 1 to 40 letters, digits, spaces, - or _ (starting with a letter or digit)'
+    if name.lower() in RESERVED:
+        return '"%s" is a name Samba keeps for itself' % name
+    return None
+
+
+def storage_share_names():
+    """Hearth Storage's own Samba share names (so the two never clash)."""
+    try:
+        return {m.lower() for m in re.findall(r'^\[([^\]]+)\]', read(STORAGE_CONF), re.M)}
+    except OSError:
+        return set()
+
+
+def check_shares(shares, user, home, sys_disks=None, taken=None, people=None):
+    """(good shares, missing ones) or Fail on a bad one. A share whose drive isn't plugged in is left out, not refused.
+    Each share's people ({name: "read"|"write"}) are kept only for accounts Hearth made (PEOPLE, a set of names); a
+    person can write only to a share that's read & write."""
+    if not isinstance(shares, list) or len(shares) > 64:
+        raise Fail('the shares must be a list (64 at most)')
+    used = set(taken or ())
+    good, missing = [], []
+    for s in shares:
+        if not isinstance(s, dict):
+            raise Fail('a share must be an object')
+        n = s.get('name')
+        why = name_problem(n)
+        if why:
+            raise Fail(why)
+        if n.lower() in used:
+            raise Fail('Hearth Storage already shares a folder called "%s": pick another name' % n if n.lower() in (taken or ())
+                       else 'two shares are called "%s"' % n)
+        used.add(n.lower())
+        if s.get('id') is not None and not (isinstance(s.get('id'), str) and ID_RE.fullmatch(s['id'])):
+            raise Fail('a share has a bad id')
+        p = s.get('path')
+        if isinstance(p, str) and PATH_RE.fullmatch(p) and not os.path.exists(p):
+            missing.append(n)
+            continue
+        real, why = path_problem(p, user, home, sys_disks)
+        if not real:
+            raise Fail('%s: %s' % (n, why))
+        reach = s.get('reach', 'home')
+        if reach not in ('home', 'tailscale'):
+            raise Fail('%s: reach is home or tailscale' % n)
+        ppl = {}
+        raw = s.get('people') if isinstance(s.get('people'), dict) else {}
+        for pn, acc in sorted(raw.items()):
+            if not isinstance(pn, str) or not PERSON_RE.fullmatch(pn) or acc not in ('read', 'write', 'none'):
+                raise Fail('%s: a person\'s access is none, read or write' % n)
+            if acc != 'none' and pn != user and (people is None or pn in people):
+                ppl[pn] = acc if s.get('write') is True else 'read'
+        good.append({'id': s.get('id'), 'name': n, 'path': real, 'write': s.get('write') is True, 'reach': reach,
+                     'recycle': s.get('recycle', True) is not False, 'snapshots': s.get('snapshots') is True, 'people': ppl})
+    return good, missing
+
+
+def conf_text(shares, user, ts_only, folders=(), audit=False, locked=False):
+    """Samba's config for the home server: hardened globals (SMB3 or newer, no guests), one section per share (you, and
+    the people you let in: read list / valid users), and each person's own folder. Stage 3: with the ransomware guard on
+    (AUDIT) each share's renames and deletes go to the journal (full_audit, counted by the guard); while the guard has
+    tripped (LOCKED) every share is read only until you say so (Settings › Home server › Safety)."""
+    out = [MARK, '# Written by Hearth; change it in Settings > Home server > Shared folders.', '',
+           '[global]',
+           '   server min protocol = SMB3',
+           '   client min protocol = SMB3',
+           '   smb encrypt = desired',
+           '   map to guest = Never',
+           '   restrict anonymous = 2',
+           '   usershare allow guests = no',
+           '   ntlm auth = ntlmv2-only',
+           '   disable netbios = yes',
+           '   smb ports = 445',
+           '   load printers = no',
+           '   printing = bsd',
+           '   printcap name = /dev/null',
+           '']
+    for s in shares:
+        ppl = s.get('people') or {}
+        out += ['[%s]' % s['name'],
+                '   path = %s' % s['path'],
+                '   valid users = %s' % ' '.join([user] + sorted(ppl))]
+        readers = sorted(p for p, a in ppl.items() if a == 'read')
+        if s['write'] and readers:
+            out.append('   read list = %s' % ' '.join(readers))
+        out += ['   force user = %s' % user,
+                '   read only = %s' % ('no' if s['write'] and not locked else 'yes'),
+                '   guest ok = no',
+                '   browseable = yes',
+                '   hide dot files = yes',
+                '   veto files = /.*/',
+                '   delete veto files = no']
+        if ts_only or s['reach'] == 'tailscale':
+            out += ['   hosts allow = %s' % ' '.join(TAILSCALE_NETS), '   hosts deny = 0.0.0.0/0 ::/0']
+        vfs = (['full_audit'] if audit and s['write'] else []) + (['recycle'] if s['recycle'] and s['write'] else [])
+        if 'full_audit' in vfs:
+            out += ['   full_audit:prefix = %S',
+                    '   full_audit:success = renameat unlinkat',
+                    '   full_audit:failure = none',
+                    '   full_audit:facility = LOCAL5',
+                    '   full_audit:priority = NOTICE']
+        if vfs and not (s['recycle'] and s['write']):
+            out.append('   vfs objects = %s' % ' '.join(vfs))
+        if s['recycle'] and s['write']:
+            out += ['   vfs objects = %s' % ' '.join(vfs),
+                    '   recycle:repository = %s' % RECYCLE_DIR,
+                    '   recycle:keeptree = yes',
+                    '   recycle:versions = yes',
+                    '   recycle:touch_mtime = yes',
+                    '   recycle:directory_mode = 0700',
+                    '   recycle:exclude = *.tmp ~$*']
+        out.append('')
+    for f in folders:
+        sec = people_conf([f], user)
+        if locked:
+            sec = [l.replace('read only = no', 'read only = yes') for l in sec]
+        if ts_only:
+            sec[-1:-1] = ['   hosts allow = %s' % ' '.join(TAILSCALE_NETS), '   hosts deny = 0.0.0.0/0 ::/0']
+        out += sec
+    return '\n'.join(out)
+
+
+def with_include(text):
+    lines = [l for l in text.splitlines() if l.strip() not in (INCLUDE, MARK)]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines + ['', MARK, INCLUDE]) + '\n'
+
+
+def without_include(text):
+    lines = [l for l in text.splitlines() if l.strip() not in (INCLUDE, MARK)]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines) + '\n'
+
+
+def lan_blocked(shares, ts_only, storage_smb_on):
+    """Whether Samba's ports are closed to everything but Tailscale: "Only reachable through Tailscale" is on, or every
+    share is Tailscale only and Hearth Storage's Windows sharing (which is for this network) isn't on."""
+    if ts_only:
+        return True
+    return bool(shares) and all(s['reach'] == 'tailscale' for s in shares) and not storage_smb_on
+
+
+def nft_text(tcp_ports, udp_ports):
+    """nftables rules: these ports only through Tailscale (and this PC itself). A table of Hearth's own: a drop here is
+    final whatever other firewall runs, and deleting the table takes every rule away again."""
+    tcp = ', '.join(str(p) for p in sorted(set(tcp_ports)))
+    udp = ', '.join(str(p) for p in sorted(set(udp_ports)))
+    lines = ['#!/usr/sbin/nft -f',
+             '# Hearth home server: "Only reachable through Tailscale" (Settings > Home server). Written by',
+             '# hearth-home-server-helper; turning it off deletes this table.',
+             'table inet %s' % NFT_TABLE,
+             'delete table inet %s' % NFT_TABLE,
+             'table inet %s {' % NFT_TABLE,
+             '\tchain input {',
+             '\t\ttype filter hook input priority -10; policy accept;',
+             '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE]
+    if tcp:
+        lines.append('\t\ttcp dport { %s } counter drop' % tcp)
+    if udp:
+        lines.append('\t\tudp dport { %s } counter drop' % udp)
+    lines += ['\t}', '}', '']
+    return '\n'.join(lines)
+
+
+def dropin_text():
+    # "-": a firewall that can't load never stops Samba (each Tailscale-only share also has Samba's own hosts allow).
+    return ('# Hearth home server: the "Tailscale only" rules are loaded before Samba starts (hearth-home-server-helper).\n'
+            '[Service]\nExecStartPre=-/usr/sbin/nft -f %s\n' % NFT_FILE)
+
+
+def smb_unit():
+    if hsh:
+        return hsh.smb_service()
+    for unit in ('smbd', 'smb'):
+        if run(['systemctl', 'cat', unit + '.service'])[0] == 0:
+            return unit
+    return None
+
+
+def firewall_apply(block, extra=None):
+    """Puts the Tailscale-only rules in place (block: Samba's ports) or takes them away. EXTRA ({tcp, udp}, stage 3) are
+    the ports of services that are only for Tailscale (the AI service always, the media server when you chose so): they
+    get the same rule, whether Samba's are closed or not. Returns what it did ("services": loaded or not, so a service
+    that must not reach this network never starts without its rule)."""
+    extra = extra if isinstance(extra, dict) else {}
+    tcp = (list(SMB_PORTS_TCP) if block else []) + list(extra.get('tcp') or [])
+    udp = (list(SMB_PORTS_UDP) if block else []) + list(extra.get('udp') or [])
+    if tcp or udp:
+        write(NFT_FILE, nft_text(tcp, udp))
+        if block:
+            write(SMBD_DROPIN, dropin_text())
+        elif remove(SMBD_DROPIN):
+            run(['systemctl', 'daemon-reload'])
+        if not which('nft'):
+            return {'firewall': 'missing' if block else 'open', 'services': 'missing' if extra.get('tcp') or extra.get('udp') else 'none',
+                    'note': 'nftables (nft) isn\'t installed: only Samba\'s own address check keeps this network out'}
+        code, out = run(['nft', '-f', NFT_FILE])
+        run(['systemctl', 'daemon-reload'])
+        res = {'firewall': ('tailscale-only' if code == 0 else 'failed') if block else 'open'}
+        if extra.get('tcp') or extra.get('udp'):
+            res['services'] = 'tailscale-only' if code == 0 else 'failed'
+        return res
+    had = remove(NFT_FILE) | remove(SMBD_DROPIN)
+    if which('nft'):
+        run(['nft', 'delete', 'table', 'inet', NFT_TABLE])
+    if had:
+        run(['systemctl', 'daemon-reload'])
+    return {'firewall': 'open'}
+
+
+def clean_keep(keep):
+    out = {}
+    keep = keep if isinstance(keep, dict) else {}
+    for k, d in KEEP_DEFAULT.items():
+        v = keep.get(k, d)
+        out[k] = max(0, min(KEEP_MAX[k], int(v))) if isinstance(v, int) and not isinstance(v, bool) else d
+    return out
+
+
+def apply(data):
+    user, home = caller()
+    if not isinstance(data, dict):
+        raise Fail('the settings must be a JSON object')
+    known = hearth_people()
+    shares, missing = check_shares([s for s in (data.get('shares') or []) if isinstance(s, dict) and s.get('on', True) is not False],
+                                   user, home, taken=storage_share_names(), people=known)
+    folders = check_people(data.get('people'), user, home, known)
+    used = {s['name'].lower() for s in shares} | storage_share_names()
+    for f in folders:
+        if f['name'].lower() in used:
+            raise Fail('A share is called "%s" like a person: rename the share' % f['name'])
+    backups = check_backups(data.get('backups') or [], user, home)
+    ts_only = data.get('tsOnly') is True
+    res = {'ok': True, 'shares': [s['name'] for s in shares], 'missing': missing, 'people': [f['name'] for f in folders]}
+    svc = services_plan(data, user)
+    guard = clean_guard(data.get('guard'))
+    unit = smb_unit()
+    if shares or folders:
+        if not which('smbd') and not unit:
+            raise Fail("Samba (sharing) isn't installed on this PC")
+        old_conf = read(OUR_CONF) if os.path.exists(OUR_CONF) else None
+        old_smb = read(SMB_CONF) if os.path.exists(SMB_CONF) else None
+        write(OUR_CONF, conf_text(shares, user, ts_only, folders, audit=guard['on'], locked=guard_tripped()))
+        write(SMB_CONF, with_include(old_smb if old_smb is not None else '[global]\n   workgroup = WORKGROUP\n'))
+        if which('testparm'):
+            code, _ = run(['testparm', '-s', SMB_CONF])
+            if code != 0:
+                # Put the last working config back: a share that doesn't check out never breaks the others.
+                if old_conf is None:
+                    remove(OUR_CONF)
+                else:
+                    write(OUR_CONF, old_conf)
+                if old_smb is not None:
+                    write(SMB_CONF, old_smb)
+                raise Fail("Samba didn't accept the settings (nothing changed)")
+        if hsh:
+            hsh.selinux_allow(shares + folders)
+        res.update(firewall_apply(lan_blocked(shares + [dict(f, reach='home') for f in folders], ts_only, os.path.exists(STORAGE_CONF)), svc['ports']))
+        if unit:
+            if run(['systemctl', 'is-enabled', unit])[0] != 0:
+                open(STARTED, 'w').close()
+                run(['systemctl', 'enable', '--now', unit])
+            else:
+                run(['systemctl', 'reload-or-restart', unit])
+        res['samba'] = 'on'
+    else:
+        res.update(smb_off(unit, svc['ports']))
+    res['tailscaleAtBoot'] = tailscaled_boot(data.get('tsBoot') is True)
+    res.update(plan_write(data, shares, user, backups, svc))
+    try:
+        res.update(services_switch(svc, res))
+    except FAILS as e:
+        res.update({'services': 'failed', 'note': str(e)})
+    try:
+        res.update(receive_apply(data.get('receive'), user, home))
+    except FAILS as e:
+        res.update({'receive': 'failed', 'note': str(e)})
+    power = clean_power(data.get('power'))
+    res['wake'] = wake_apply(power)
+    res.update(ups_apply(power['ups']))
+    return res
+
+
+def smb_off(unit, extra=None):
+    """Home server sharing off: its shares out of Samba, its firewall rules gone (a service's own stay), Samba stopped
+    if Hearth started it and Hearth Storage doesn't still use it."""
+    try:
+        write(SMB_CONF, without_include(read(SMB_CONF)))
+    except OSError:
+        pass
+    remove(OUR_CONF)
+    out = firewall_apply(False, extra)
+    storage_started = hsh.STARTED if hsh else '/etc/samba/.hearth-storage-started'
+    if unit:
+        if (os.path.exists(STARTED) or os.path.exists(storage_started)) and not os.path.exists(STORAGE_CONF):
+            run(['systemctl', 'disable', '--now', unit])
+            remove(STARTED)
+            remove(storage_started)
+        elif os.path.exists(STORAGE_CONF) or os.path.exists(STARTED):
+            run(['systemctl', 'reload-or-restart', unit])
+    out['samba'] = 'off'
+    return out
+
+
+def tailscaled_boot(on):
+    """Start Tailscale when this PC starts: enabled or disabled, never stopped here (turning this off doesn't sign out
+    or disconnect now)."""
+    if not which('tailscaled') and run(['systemctl', 'cat', 'tailscaled.service'])[0] != 0:
+        return 'missing'
+    enabled = run(['systemctl', 'is-enabled', 'tailscaled'])[0] == 0
+    if on and not enabled:
+        run(['systemctl', 'enable', 'tailscaled'])
+    elif not on and enabled:
+        run(['systemctl', 'disable', 'tailscaled'])
+    return 'on' if on else 'off'
+
+
+def plan_write(data, shares, user, backups=(), svc=None):
+    """/etc/hearth/home-server.json: what the timers work from (the checked shares, keep counts, Light mode, the
+    backups, alerts and power choices; never a password), and each timer on only while something needs it: snapshots
+    (or a recycle bin), a backup that's on, alerts on, a power choice on."""
+    keep = clean_keep(data.get('keep'))
+    snaps_on = data.get('snapshots') is True and any(s['snapshots'] for s in shares)
+    alerts = clean_alerts(data.get('alerts'))
+    power = clean_power(data.get('power'))
+    plan = {'user': user, 'lightMode': data.get('lightMode', True) is not False, 'snapshots': snaps_on, 'keep': keep,
+            'shares': [{'name': s['name'], 'path': s['path'], 'snapshots': s['snapshots'], 'recycle': s['recycle'] and s['write']} for s in shares],
+            'backups': list(backups), 'alerts': alerts, 'power': power}
+    if svc:
+        plan.update({'media': svc['media'], 'ai': svc['ai'], 'guard': clean_guard(data.get('guard'))})
+    write(PLAN, json.dumps(plan, indent=2) + '\n')
+    recycles = any(p['recycle'] for p in plan['shares'])
+    timer_on = snaps_on or recycles
+    unit_switch(SNAP_TIMER, timer_on)
+    backups_on = any(j['on'] for j in backups)
+    unit_switch(BACKUP_TIMER, backups_on)
+    unit_switch(ALERT_TIMER, alerts['on'])
+    power_on = bool(power['sleepIdle'] or power['spinDown'] or power['keepAwake'] or power['schedule'])
+    unit_switch(POWER_TIMER, power_on)
+    services_on = bool(svc) and services_timer_needed(plan)
+    unit_switch(SERVICES_TIMER, services_on)
+    return {'servicesTimer': 'on' if services_on else 'off',
+            'snapshots': 'on' if snaps_on else 'off', 'timer': 'on' if timer_on else 'off', 'backups': 'on' if backups_on else 'off',
+            'alerts': 'on' if alerts['on'] else 'off', 'power': 'on' if power_on else 'off'}
+
+
+# ------------------------------------------------------------------ snapshots (btrfs)
+
+def is_subvol_root(path):
+    """A btrfs subvolume's top folder has inode 256. Tests replace this."""
+    try:
+        return os.stat(path).st_ino == 256
+    except OSError:
+        return False
+
+
+def snap_info(path):
+    """{"ok": True, "subvol": its subvolume's top folder, "rel": the path inside it} when a folder's drive can take
+    snapshots, or {"ok": False, "why": ...}."""
+    m = mount_info(path)
+    if m['fstype'] != 'btrfs':
+        return {'ok': False, 'why': "This drive isn't btrfs, so snapshots aren't available for it (%s)" % (m['fstype'] or 'unknown')}
+    real = os.path.realpath(path)
+    top = m['target'] or '/'
+    cur = real
+    while True:
+        if is_subvol_root(cur) or cur == top:
+            break
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    if cur in ('/', '/sysroot', '/usr', '/etc') or cur == '':
+        return {'ok': False, 'why': "That's the system's own volume, so snapshots aren't taken of it"}
+    return {'ok': True, 'subvol': cur, 'rel': os.path.relpath(real, cur), 'store': os.path.join(cur, SNAP_DIR)}
+
+
+def snap_name(kind, t):
+    return '%s-%s' % (kind, time.strftime('%Y%m%d-%H%M', time.localtime(t)))
+
+
+def snap_time(name):
+    m = SNAP_NAME_RE.fullmatch(name)
+    if not m:
+        return None
+    try:
+        return time.mktime(time.strptime(m.group(2) + m.group(3), '%Y%m%d%H%M'))
+    except ValueError:
+        return None
+
+
+def due(kind, names, now, keep):
+    """Whether a snapshot of KIND is due: kept at all, and the newest is at least about one interval old."""
+    if keep.get(kind, 0) <= 0:
+        return False
+    times = [snap_time(n) for n in names if n.startswith(kind + '-') and snap_time(n) is not None]
+    return not times or now - max(times) >= INTERVAL[kind] * 0.95
+
+
+def to_prune(names, keep):
+    """The snapshots past their keep counts: the oldest of each kind beyond its count. Only names Hearth made."""
+    out = []
+    for kind in INTERVAL:
+        mine = sorted((n for n in names if SNAP_NAME_RE.fullmatch(n) and n.startswith(kind + '-')), key=lambda n: snap_time(n) or 0)
+        extra = len(mine) - max(0, keep.get(kind, 0))
+        if extra > 0:
+            out += mine[:extra]
+    return out
+
+
+def game_running():
+    """Game Mode or a game is running: gamescope, or Hearth's hearth-playing file. Tests replace this."""
+    try:
+        for pid in os.listdir('/proc'):
+            if pid.isdigit():
+                try:
+                    with open('/proc/%s/comm' % pid) as f:
+                        if f.read().strip() in ('gamescope', 'gamescope-wl'):
+                            return True
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    try:
+        return any(os.path.exists('/run/user/%s/hearth-playing' % u) for u in os.listdir('/run/user'))
+    except OSError:
+        return False
+
+
+def snapshot_run(now=None):
+    """The timer's run: due snapshots taken, old ones dropped, old recycle-bin files emptied. Waits while you play when
+    Light mode is on (sharing keeps working; the next run catches up)."""
+    now = time.time() if now is None else now
+    try:
+        plan = json.loads(read(PLAN))
+    except (OSError, ValueError):
+        return {'ok': True, 'note': 'no plan yet'}
+    if wait_for_game(plan):
+        return {'ok': True, 'deferred': 'Light mode: waiting until you stop playing'}
+    keep = clean_keep(plan.get('keep'))
+    done, dropped, errors = [], [], []
+    if plan.get('snapshots'):
+        vols = {}
+        for s in plan.get('shares') or []:
+            if s.get('snapshots'):
+                info = snap_info(s.get('path', ''))
+                if info['ok']:
+                    vols[info['subvol']] = info
+        for vol, info in sorted(vols.items()):
+            store = info['store']
+            os.makedirs(store, mode=0o755, exist_ok=True)
+            names = sorted(os.listdir(store))
+            for kind in ('weekly', 'daily', 'hourly'):
+                if due(kind, names, now, keep):
+                    dest = os.path.join(store, snap_name(kind, now))
+                    if os.path.exists(dest):
+                        continue
+                    code, out = run(['btrfs', 'subvolume', 'snapshot', '-r', vol, dest], timeout=300)
+                    if code == 0:
+                        done.append(dest)
+                        names.append(os.path.basename(dest))
+                    else:
+                        errors.append('%s: %s' % (vol, out.strip()[:200]))
+            for n in to_prune(names, keep):
+                code, out = run(['btrfs', 'subvolume', 'delete', os.path.join(store, n)], timeout=300)
+                (dropped if code == 0 else errors).append(n if code == 0 else '%s: %s' % (n, out.strip()[:200]))
+    emptied = recycle_empty(plan, now)
+    return {'ok': not errors, 'taken': done, 'dropped': dropped, 'recycleEmptied': emptied, 'errors': errors}
+
+
+def recycle_empty(plan, now):
+    """Files in a share's recycle bin longer than 30 days are deleted (the bin's own folder only)."""
+    n = 0
+    for s in plan.get('shares') or []:
+        if not s.get('recycle'):
+            continue
+        root = os.path.join(s.get('path', ''), RECYCLE_DIR)
+        if not os.path.isdir(root) or os.path.islink(root):
+            continue
+        for dp, dns, fns in os.walk(root, topdown=False):
+            for fn in fns:
+                p = os.path.join(dp, fn)
+                try:
+                    st = os.lstat(p)
+                    if now - st.st_mtime > RECYCLE_DAYS * 86400:
+                        os.remove(p)
+                        n += 1
+                except OSError:
+                    pass
+            if dp != root:
+                try:
+                    os.rmdir(dp)
+                except OSError:
+                    pass
+    return n
+
+
+# ------------------------------------------------------------------ drives
+
+def lsblk():
+    code, out = run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,SIZE,TYPE,MODEL,SERIAL,TRAN,ROTA,RM,FSTYPE,LABEL,UUID,MOUNTPOINTS,WWN'], timeout=20)
+    try:
+        return json.loads(out).get('blockdevices') or [] if code == 0 else []
+    except ValueError:
+        return []
+
+
+def smart(dev):
+    """SMART health and temperature from smartctl (JSON), or None."""
+    if not which('smartctl'):
+        return None
+    code, out = run(['smartctl', '-j', '-H', '-A', '-i', dev], timeout=25)
+    try:
+        j = json.loads(out)
+    except ValueError:
+        return None
+    st = j.get('smart_status') or {}
+    temp = (j.get('temperature') or {}).get('current')
+    hours = (j.get('power_on_time') or {}).get('hours')
+    return {'passed': st.get('passed'), 'temp': temp, 'hours': hours}
+
+
+def size_text(n):
+    for unit, f in (('TB', 1e12), ('GB', 1e9), ('MB', 1e6)):
+        if n >= f:
+            v = n / f
+            return ('%.1f' % v).rstrip('0').rstrip('.') + ' ' + unit
+    return '%d B' % n
+
+
+def disk_name(d):
+    return (d.get('model') or '').strip() or ('Drive ' + d.get('name', ''))
+
+
+def confirm_text(d):
+    """What formatting asks you to confirm: the drive's name and size, as shown."""
+    return '%s · %s' % (disk_name(d), size_text(int(d.get('size') or 0)))
+
+
+def token(d):
+    """The drive's identity (path, serial, WWN, size): a different drive at the same /dev path never matches."""
+    raw = '|'.join(str(d.get(k) or '') for k in ('path', 'serial', 'wwn', 'size'))
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def mounts_of(d):
+    out = [m for m in (d.get('mountpoints') or []) if m]
+    for c in d.get('children') or []:
+        out += mounts_of(c)
+    return out
+
+
+def drives():
+    sysd = system_disks()
+    out = []
+    for d in lsblk():
+        if d.get('type') != 'disk' or d.get('name', '').startswith(('loop', 'zram', 'sr', 'ram')):
+            continue
+        mounts = mounts_of(d)
+        used = total = 0
+        seen = set()
+        for m in mounts:
+            try:
+                st = os.statvfs(m)
+            except OSError:
+                continue
+            key = (st.f_fsid, st.f_blocks)
+            if key in seen:
+                continue
+            seen.add(key)
+            total += st.f_blocks * st.f_frsize
+            used += (st.f_blocks - st.f_bfree) * st.f_frsize
+        fs = sorted({c.get('fstype') for c in (d.get('children') or []) if c.get('fstype')} | ({d['fstype']} if d.get('fstype') else set()))
+        out.append({'name': d.get('name'), 'path': d.get('path'), 'model': disk_name(d), 'size': int(d.get('size') or 0),
+                    'sizeText': size_text(int(d.get('size') or 0)), 'kind': 'NVMe' if d.get('tran') == 'nvme' or d.get('name', '').startswith('nvme') else ('HDD' if d.get('rota') in (True, 1, '1') else 'SSD'),
+                    'usb': d.get('tran') == 'usb', 'removable': d.get('rm') in (True, 1, '1'), 'system': d.get('name') in sysd,
+                    'mounts': mounts, 'used': used, 'total': total, 'fs': fs, 'empty': not (d.get('children') or d.get('fstype')),
+                    'smart': smart(d.get('path')), 'confirm': confirm_text(d), 'token': token(d)})
+    return {'ok': True, 'drives': out}
+
+
+def find_disk(dev):
+    if not isinstance(dev, str) or not DEV_RE.fullmatch(dev):
+        raise Fail('not a drive')
+    for d in lsblk():
+        if d.get('path') == dev and d.get('type') == 'disk':
+            return d
+    raise Fail('that drive isn\'t there anymore')
+
+
+def part_path(dev):
+    return dev + ('p1' if re.search(r'\d$', dev) else '1')
+
+
+def format_plan(dev, use='storage', label='', target='', user='', d=None, sys_disks=None):
+    """What formatting would do: the checks and the commands, without running anything."""
+    d = d or find_disk(dev)
+    disks = system_disks() if sys_disks is None else sys_disks
+    plan = {'ok': True, 'device': dev, 'name': disk_name(d), 'size': int(d.get('size') or 0), 'sizeText': size_text(int(d.get('size') or 0)),
+            'confirm': confirm_text(d), 'token': token(d), 'use': use, 'canFormat': True, 'why': '', 'steps': []}
+    if d.get('name') in disks:
+        plan.update(canFormat=False, why='This is the system drive: Hearth OS lives here, so it can never be formatted or picked')
+        return plan
+    if mounts_of(d):
+        plan.update(canFormat=False, why='It\'s in use (%s). Eject it in Hearth Files first' % ', '.join(mounts_of(d)[:3]))
+        return plan
+    if use not in ('storage', 'backup', 'mirror'):
+        raise Fail('use it as storage, backup or mirror')
+    if use == 'mirror':
+        if not isinstance(target, str) or not target.startswith(('/mnt/', '/var/mnt/')) or not PATH_RE.fullmatch(target):
+            plan.update(canFormat=False, why='Pick the drive to mirror: one Hearth set up (under /mnt)')
+            return plan
+        m = mount_info(target)
+        if m['fstype'] != 'btrfs' or m['target'] != os.path.realpath(target):
+            plan.update(canFormat=False, why='Mirroring needs a btrfs drive Hearth set up as more storage')
+            return plan
+        if disks_of(m['source']) & disks:
+            plan.update(canFormat=False, why='The system drive is never mirrored')
+            return plan
+        plan['steps'] = [['wipefs', '-a', dev], ['btrfs', 'device', 'add', '-f', dev, m['target']],
+                         ['systemd-run', '--unit=hearth-home-server-mirror', '--property=IOSchedulingClass=idle', '--property=Nice=19',
+                          'btrfs', 'balance', 'start', '-dconvert=raid1', '-mconvert=raid1', m['target']]]
+        plan['target'] = m['target']
+        return plan
+    if not LABEL_RE.fullmatch(label or ''):
+        raise Fail('the drive\'s new name is 1 to 24 letters, digits, - or _')
+    part = part_path(dev)
+    mnt = '/var/mnt/' + label
+    plan['steps'] = [['wipefs', '-a', dev],
+                     ['parted', '-s', dev, 'mklabel', 'gpt', 'mkpart', 'hearth-' + label, 'btrfs', '1MiB', '100%'],
+                     ['udevadm', 'settle'],
+                     ['mkfs.btrfs', '-f', '-L', label, part],
+                     ['mkdir', '-p', mnt],
+                     ['fstab-add', 'UUID=<new>', mnt],
+                     ['mount', mnt],
+                     ['chown', user + ':', mnt]]
+    plan['mount'] = mnt
+    return plan
+
+
+def fstab_line(uuid, mnt):
+    """A data drive's line: nofail and a short device timeout, so a missing or dead drive never stops the PC starting."""
+    if not re.match(r'^[0-9a-fA-F\-]{8,64}$', uuid or '') or not mnt.startswith('/var/mnt/') or not PATH_RE.fullmatch(mnt):
+        raise Fail('bad drive line')
+    return 'UUID=%s %s btrfs defaults,nofail,noatime,compress=zstd:1,x-systemd.device-timeout=10s 0 0 %s' % (uuid, mnt, FSTAB_MARK)
+
+
+def format_drive(req):
+    user, _ = caller()
+    if not isinstance(req, dict):
+        raise Fail('the request must be a JSON object')
+    d = find_disk(req.get('device'))
+    plan = format_plan(req['device'], req.get('use', 'storage'), req.get('label', ''), req.get('target', ''), user, d)
+    if not plan['canFormat']:
+        raise Fail(plan['why'])
+    if req.get('token') != plan['token']:
+        raise Fail('That isn\'t the drive you picked (it changed or was swapped). Pick it again')
+    if req.get('confirm1') is not True or req.get('confirm2') != plan['confirm']:
+        raise Fail('Formatting needs both confirmations, naming %s' % plan['confirm'])
+    if req.get('dryRun') is True:
+        plan['dryRun'] = True
+        return plan
+    for step in plan['steps']:
+        if step[0] == 'fstab-add':
+            code, out = run(['blkid', '-s', 'UUID', '-o', 'value', part_path(req['device'])])
+            line = fstab_line(out.strip(), step[2])
+            cur = read(FSTAB) if os.path.exists(FSTAB) else ''
+            if step[2] not in cur:
+                write(FSTAB, cur.rstrip('\n') + '\n' + line + '\n')
+            run(['systemctl', 'daemon-reload'])
+            continue
+        code, out = run(step, timeout=600)
+        if code != 0:
+            raise Fail('%s didn\'t work: %s' % (step[0], out.strip()[:300]))
+    plan['done'] = True
+    return plan
+
+
+# ------------------------------------------------------------------ Tailscale
+
+def tailscale(action):
+    user, _ = caller()
+    if not which('tailscale'):
+        raise Fail("Tailscale isn't installed on this PC")
+    if action == 'start':
+        code, out = run(['systemctl', 'start', 'tailscaled'])
+        if code != 0:
+            raise Fail("Tailscale didn't start")
+        for _ in range(40):
+            if os.path.exists('/var/run/tailscale/tailscaled.sock') or os.path.exists('/run/tailscale/tailscaled.sock'):
+                break
+            time.sleep(0.25)
+        run(['tailscale', 'set', '--operator=' + user])
+        return {'ok': True, 'tailscaled': 'running'}
+    if action == 'stop':
+        run(['systemctl', 'stop', 'tailscaled'])
+        return {'ok': True, 'tailscaled': 'stopped'}
+    raise Fail('tailscale start|stop')
+
+
+def exit_node(on):
+    caller()
+    if on:
+        write(EXIT_SYSCTL, '# Hearth home server: Let other devices use this PC\'s internet (Tailscale exit node)\n'
+                           'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n')
+        run(['sysctl', '-p', EXIT_SYSCTL])
+    elif remove(EXIT_SYSCTL):
+        run(['sysctl', '-w', 'net.ipv4.ip_forward=0'])
+        run(['sysctl', '-w', 'net.ipv6.conf.all.forwarding=0'])
+    return {'ok': True, 'exitNode': 'on' if on else 'off'}
+
+
+# ================================================================== stage 2: people, backups, alerts, power
+
+def hostname():
+    """Tests replace this."""
+    import socket
+    return socket.gethostname().split('.')[0] or 'hearth'
+
+
+def ensure_dir(path, mode=0o700, owner=None):
+    os.makedirs(path, mode=mode, exist_ok=True)
+    os.chmod(path, mode)
+    if owner is not None:
+        try:
+            pw = pwd.getpwnam(owner)
+            os.chown(path, pw.pw_uid, pw.pw_gid)
+        except (KeyError, OSError):
+            pass
+
+
+def unit_switch(unit, on):
+    """A unit (a timer) enabled and started, or disabled and stopped, only when it isn't so already."""
+    enabled = run(['systemctl', 'is-enabled', unit])[0] == 0
+    if on and not enabled:
+        run(['systemctl', 'enable', '--now', unit])
+    elif not on and enabled:
+        run(['systemctl', 'disable', '--now', unit])
+    return 'on' if on else 'off'
+
+
+def user_settings(home):
+    """Your own ~/.config/nimbus/home-server.json, read (never written) by root for one live value: Light mode, which
+    Game Mode's Quick Access can change without a password. A link, a huge file or one that doesn't parse gives {}."""
+    p = os.path.join(home, '.config', 'nimbus', 'home-server.json')
+    try:
+        fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return {}
+    try:
+        import stat as _stat
+        st = os.fstat(fd)
+        if not _stat.S_ISREG(st.st_mode) or st.st_size > (1 << 20):
+            return {}
+        data = os.read(fd, 1 << 20)
+    except OSError:
+        return {}
+    finally:
+        os.close(fd)
+    try:
+        v = json.loads(data.decode('utf-8', 'replace'))
+    except ValueError:
+        return {}
+    return v if isinstance(v, dict) else {}
+
+
+def light_mode(plan):
+    """Light mode while you play: your settings file's value when it can be read, else the plan's."""
+    pw = getpw(plan.get('user') or '') if isinstance(plan.get('user'), str) else None
+    home = pw.pw_dir if pw else ''
+    v = user_settings(home).get('lightMode') if home else None
+    if isinstance(v, bool):
+        return v
+    return plan.get('lightMode', True) is not False
+
+
+RESUME_HOURS = 4
+
+
+def light_resumed(now=None):
+    """"Let paused jobs run now" (Game Mode's Quick Access): a flag in your runtime folder, at most 4 hours old. Only
+    ever lets your own big jobs run during your own game; it changes no setting."""
+    now = time.time() if now is None else now
+    try:
+        for u in os.listdir('/run/user'):
+            p = '/run/user/%s/hearth-home-server-resume' % u
+            try:
+                if now - os.lstat(p).st_mtime < RESUME_HOURS * 3600:
+                    return True
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return False
+
+
+def wait_for_game(plan):
+    """True when big jobs wait: Light mode on, Game Mode or a game running, and not let through for now."""
+    return light_mode(plan) and game_running() and not light_resumed()
+
+
+def plan_read():
+    try:
+        p = json.loads(read(PLAN))
+        return p if isinstance(p, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def state_read(path):
+    try:
+        v = json.loads(read(path))
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def state_write(path, data):
+    write(path, json.dumps(data, indent=2) + '\n', 0o644)
+
+
+# ------------------------------------------------------------------ people (Samba-only accounts)
+
+PERSON_RE = re.compile(r'^[a-z][a-z0-9_-]{1,23}$')
+PERSON_GROUP = 'hearth-share'
+PERSON_GECOS = 'Hearth home server person (sharing only)'
+PERSON_RESERVED = {'root', 'admin', 'administrator', 'nobody', 'guest', 'daemon', 'bin', 'sys', 'sync', 'games', 'man', 'lp',
+                   'mail', 'news', 'uucp', 'proxy', 'www-data', 'backup', 'list', 'irc', 'gnats', 'samba', 'smb', 'everyone',
+                   'users', 'wheel', 'sudo', 'adm', 'systemd', 'messagebus', 'polkitd', 'sddm', 'gdm', 'steam', 'hearth', 'nimbus',
+                   'global', 'homes', 'printers', 'ipc', 'tailscale', 'nut', 'syncthing', 'restic', PERSON_GROUP}
+NOLOGIN = ('/usr/sbin/nologin', '/sbin/nologin', '/bin/false', '/usr/bin/false')
+
+
+def getpw(name):
+    """Tests replace this."""
+    try:
+        return pwd.getpwnam(name)
+    except KeyError:
+        return None
+
+
+def is_person(name):
+    """A Hearth person: an account Hearth made (its comment, no login shell, not root)."""
+    pw = getpw(name)
+    return bool(pw and pw.pw_uid != 0 and pw.pw_gecos == PERSON_GECOS and pw.pw_shell in NOLOGIN)
+
+
+def person_problem(name, owner):
+    if not isinstance(name, str) or not PERSON_RE.fullmatch(name):
+        return 'A name is 2 to 24 small letters, digits, - or _, starting with a letter (like sam or mia-k)'
+    if name in PERSON_RESERVED or name == owner:
+        return '"%s" is a name the system keeps for itself' % name
+    if getpw(name) and not is_person(name):
+        return 'There\'s already an account called "%s" on this PC (pick another name)' % name
+    return None
+
+
+def password_ok(pw):
+    if not isinstance(pw, str) or len(pw) < 8 or len(pw) > 128:
+        raise Fail('Use at least 8 characters')
+    if any(ord(c) < 32 or ord(c) == 127 for c in pw):
+        raise Fail('The password can\'t have control characters')
+    return pw
+
+
+def person_add(req):
+    owner, _ = caller()
+    if not isinstance(req, dict):
+        raise Fail('the request must be a JSON object')
+    name = req.get('name')
+    why = person_problem(name, owner)
+    if why:
+        raise Fail(why)
+    pw = password_ok(req.get('password'))
+    if not which('smbpasswd'):
+        raise Fail("Samba (sharing) isn't installed on this PC")
+    made = False
+    if not getpw(name):
+        if run(['getent', 'group', PERSON_GROUP])[0] != 0:
+            run(['groupadd', '--system', PERSON_GROUP])
+        # A system account: no home, no login shell, a locked system password, hidden from the login screen.
+        code, out = run(['useradd', '--system', '--no-create-home', '--home-dir', '/nonexistent', '--shell', '/usr/sbin/nologin',
+                         '--comment', PERSON_GECOS, '--user-group', '--groups', PERSON_GROUP, name])
+        if code != 0:
+            raise Fail('Couldn\'t add %s: %s' % (name, out.strip()[:200]))
+        made = True
+    code, _ = run(['smbpasswd', '-a', '-s', name], stdin='%s\n%s\n' % (pw, pw))
+    if code != 0:
+        if made:
+            run(['userdel', name])
+        raise Fail("Samba didn't take the password")
+    run(['smbpasswd', '-e', name])
+    return {'ok': True, 'person': name, 'made': made}
+
+
+def person_password(req):
+    caller()
+    name = req.get('name') if isinstance(req, dict) else None
+    if not isinstance(name, str) or not PERSON_RE.fullmatch(name) or not is_person(name):
+        raise Fail('That isn\'t one of the people you added')
+    pw = password_ok(req.get('password'))
+    code, _ = run(['smbpasswd', '-a', '-s', name], stdin='%s\n%s\n' % (pw, pw))
+    if code != 0:
+        raise Fail("Samba didn't take the password")
+    run(['smbpasswd', '-e', name])
+    return {'ok': True}
+
+
+def person_remove(name):
+    """The account and its sharing password go; nothing of theirs is deleted (their folder stays where it is)."""
+    owner, _ = caller()
+    if not isinstance(name, str) or not PERSON_RE.fullmatch(name) or name == owner:
+        raise Fail('That isn\'t one of the people you added')
+    if not getpw(name):
+        return {'ok': True, 'gone': name, 'note': 'already gone'}
+    if not is_person(name):
+        raise Fail('"%s" isn\'t an account Hearth made: it\'s never removed here' % name)
+    run(['smbpasswd', '-x', name])
+    code, out = run(['userdel', name])   # never -r: nothing of theirs is deleted
+    if code != 0:
+        raise Fail('Couldn\'t remove %s: %s' % (name, out.strip()[:200]))
+    return {'ok': True, 'gone': name, 'filesKept': True}
+
+
+def hearth_people():
+    """The people accounts on this PC (names)."""
+    out = set()
+    try:
+        for pw in pwd.getpwall():
+            if pw.pw_gecos == PERSON_GECOS and pw.pw_shell in NOLOGIN and pw.pw_uid != 0 and PERSON_RE.fullmatch(pw.pw_name):
+                out.add(pw.pw_name)
+    except OSError:
+        pass
+    return out
+
+
+def fs_type(path):
+    return mount_info(path)['fstype']
+
+
+def person_folder(req):
+    """A person's own folder: BASE/People/NAME (a btrfs subvolume where it can be, so it can have a quota), owned by
+    you (Samba writes as you), with an optional quota in GB (btrfs only). Never deletes anything."""
+    owner, home = caller()
+    if not isinstance(req, dict):
+        raise Fail('the request must be a JSON object')
+    name = req.get('name')
+    if not isinstance(name, str) or not PERSON_RE.fullmatch(name):
+        raise Fail('That isn\'t one of the people you added')
+    base = req.get('base') or home
+    if os.path.realpath(base) != os.path.realpath(home):
+        real, why = path_problem(base, owner, home)
+        if not real:
+            raise Fail(why)
+        base = real
+    else:
+        base = os.path.realpath(home)
+    people = os.path.join(base, 'People')
+    dest = os.path.join(people, name)
+    pw = pwd.getpwnam(owner)
+    if not os.path.isdir(people):
+        os.makedirs(people, mode=0o755)
+        os.chown(people, pw.pw_uid, pw.pw_gid)
+    if os.path.islink(people) or os.path.islink(dest):
+        raise Fail('That folder is a link: pick another place')
+    btrfs = fs_type(people) == 'btrfs'
+    if not os.path.exists(dest):
+        if btrfs and which('btrfs'):
+            code, out = run(['btrfs', 'subvolume', 'create', dest])
+            if code != 0:
+                os.makedirs(dest, mode=0o750)
+        else:
+            os.makedirs(dest, mode=0o750)
+        os.chown(dest, pw.pw_uid, pw.pw_gid)
+        os.chmod(dest, 0o750)
+    real, why = path_problem(dest, owner, home)
+    if not real:
+        raise Fail(why)
+    res = {'ok': True, 'folder': real, 'quota': 'none'}
+    gb = req.get('quotaGb', 0)
+    if not isinstance(gb, int) or isinstance(gb, bool) or not 0 <= gb <= 100000:
+        raise Fail('A quota is a number of GB (0 for none)')
+    res.update(quota_set(real, gb, btrfs))
+    return res
+
+
+def quota_set(path, gb, btrfs=None):
+    """A btrfs quota on a person's folder (its own subvolume). Other drives: not available (said so, nothing set)."""
+    btrfs = fs_type(path) == 'btrfs' if btrfs is None else btrfs
+    if not btrfs or not is_subvol_root(path):
+        return {'quota': 'unavailable', 'note': 'Quotas need the folder on a btrfs drive' if gb else ''}
+    if gb == 0:
+        run(['btrfs', 'qgroup', 'limit', 'none', path])
+        return {'quota': 'none'}
+    mnt = mount_info(path)['target'] or path
+    if run(['btrfs', 'qgroup', 'show', mnt])[0] != 0:
+        # Simple quotas (newer kernels) cost little; plain quotas otherwise. Only on the drive holding this folder.
+        if run(['btrfs', 'quota', 'enable', '--simple', mnt])[0] != 0:
+            run(['btrfs', 'quota', 'enable', mnt])
+    code, out = run(['btrfs', 'qgroup', 'limit', '%dG' % gb, path])
+    return {'quota': '%d GB' % gb if code == 0 else 'failed', 'note': '' if code == 0 else out.strip()[:200]}
+
+
+def check_people(people, owner, home, known):
+    """The people's own folders as extra Samba sections: [{name, path}]. A person whose account is missing is left out."""
+    out = []
+    for p in people if isinstance(people, list) else []:
+        if not isinstance(p, dict) or not isinstance(p.get('name'), str) or not PERSON_RE.fullmatch(p['name']):
+            raise Fail('a person has a bad name')
+        if p['name'] not in known or not p.get('folder'):
+            continue
+        real, why = path_problem(p['folder'], owner, home)
+        if real:
+            out.append({'name': p['name'], 'path': real})
+    return out
+
+
+def people_conf(folders, owner):
+    out = []
+    for f in folders:
+        out += ['[%s]' % f['name'], '   path = %s' % f['path'], '   valid users = %s %s' % (owner, f['name']), '   force user = %s' % owner,
+                '   read only = no', '   guest ok = no', '   browseable = yes', '   hide dot files = yes', '   veto files = /.*/',
+                '   delete veto files = no', '']
+    return out
+
+
+# ------------------------------------------------------------------ backups (restic)
+
+BACKUP_DIR = '/etc/hearth/backup'                      # 0700 root: each job's password and where-to credentials
+BACKUP_STATE = '/var/lib/hearth/home-server-backups.json'   # last runs (no secrets)
+BACKUP_CACHE = '/var/cache/hearth-restic'
+BACKUP_UNIT = 'hearth-home-server-backup.service'
+BACKUP_TIMER = 'hearth-home-server-backup.timer'
+RCLONE_CONF = os.path.join(BACKUP_DIR, 'rclone.conf')
+RECEIVE_DIR = '/etc/hearth/backup-receiver'
+RECEIVE_TIMER = 'hearth-home-server-receive.timer'
+RECEIVE_UNIT = 'hearth-home-server-receive.service'
+RECEIVE_DROPIN = '/etc/systemd/system/hearth-home-server-receive.service.d/hearth.conf'
+RECEIVE_PORT = 8095
+PEER_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9.\-]{0,252}$')
+REST_USER_RE = re.compile(r'^[a-z0-9][a-z0-9\-]{2,39}$')
+REMOTE_RE = re.compile(r'^[A-Za-z0-9_\-]{1,40}$')
+BUCKET_PATH_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/\-]{0,199}$')
+ENDPOINT_RE = re.compile(r'^(https://)?[A-Za-z0-9.\-]{3,200}(:\d{1,5})?$')
+REGION_RE = re.compile(r'^[A-Za-z0-9\-]{0,40}$')
+KEY_RE = re.compile(r'^[\x21-\x7e]{4,200}$')            # printable, no spaces (cloud keys)
+SNAPID_RE = re.compile(r'^([0-9a-f]{8,64}|latest)$')
+TIME_RE = re.compile(r'^([01]\d|2[0-3]):([0-5]\d)$')
+EVERY = ('hourly', 'daily', 'weekly')
+BACKUP_KEEP_DEFAULT = {'daily': 7, 'weekly': 4, 'monthly': 6}
+BACKUP_KEEP_MAX = {'daily': 60, 'weekly': 52, 'monthly': 120}
+CHECK_EVERY = 7 * 86400
+
+
+def target_problem(path, user, home, sys_disks=None):
+    """(path, None) for a backup folder on a drive that isn't the system drive (it may not exist yet: its drive must),
+    or (None, why not)."""
+    if not isinstance(path, str) or not path.startswith('/') or len(path) > 400:
+        return None, 'not a full path'
+    if not PATH_RE.fullmatch(path) or '/../' in path + '/' or '/./' in path + '/':
+        return None, 'the path has characters a backup folder can\'t have'
+    probe = path
+    while not os.path.exists(probe):
+        probe = os.path.dirname(probe)
+    real = os.path.join(os.path.realpath(probe), os.path.relpath(path, probe)) if probe != path else os.path.realpath(path)
+    real = os.path.normpath(real)
+    if any(real == f or real.startswith(f + '/') for f in FORBIDDEN) or real == '/':
+        return None, 'system folders are never a backup target'
+    for base in [os.path.realpath(b) for b in drive_bases(user)]:
+        if real.startswith(base.rstrip('/') + '/'):
+            rel = os.path.relpath(real, base)
+            if any(p.startswith('.') for p in rel.split('/')):
+                return None, 'hidden folders are never a backup target'
+            disks = system_disks() if sys_disks is None else sys_disks
+            if disks_of(mount_source(probe)) & disks:
+                return None, 'that\'s the system drive: a backup there goes down with it'
+            return real, None
+    return None, 'pick a folder on a backup drive (not in your Home, which is on the system drive)'
+
+
+def clean_keep2(keep):
+    keep = keep if isinstance(keep, dict) else {}
+    out = {}
+    for k, d in BACKUP_KEEP_DEFAULT.items():
+        v = keep.get(k, d)
+        out[k] = max(0, min(BACKUP_KEEP_MAX[k], v)) if isinstance(v, int) and not isinstance(v, bool) else d
+    if not any(out.values()):
+        out['daily'] = 1
+    return out
+
+
+def check_backups(jobs, user, home, sys_disks=None):
+    """The backup jobs, checked: [{id, name, paths, target, every, at, day, keep, on}]. Fail on a bad one."""
+    if not isinstance(jobs, list) or len(jobs) > 16:
+        raise Fail('the backups must be a list (16 at most)')
+    out = []
+    for j in jobs:
+        if not isinstance(j, dict) or not isinstance(j.get('id'), str) or not ID_RE.fullmatch(j['id']):
+            raise Fail('a backup has a bad id')
+        name = j.get('name') or 'Backup'
+        if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+            raise Fail('a backup\'s name is 1 to 40 letters, digits, spaces, - or _')
+        paths = []
+        for p in j.get('paths') or []:
+            if isinstance(p, str) and PATH_RE.fullmatch(p) and not os.path.exists(p):
+                continue   # a drive that isn't plugged in: left out of this run
+            real, why = path_problem(p, user, home, sys_disks)
+            if not real:
+                raise Fail('%s: %s' % (name, why))
+            paths.append(real)
+        t = j.get('target') if isinstance(j.get('target'), dict) else {}
+        kind = t.get('kind')
+        if kind == 'drive':
+            real, why = target_problem(t.get('path'), user, home, sys_disks)
+            p = t.get('path')
+            if not real and isinstance(p, str) and not os.path.exists(p) and PATH_RE.fullmatch(p) and '/../' not in p + '/' \
+                    and any(p.startswith(os.path.realpath(b).rstrip('/') + '/') for b in drive_bases(user)):
+                real = os.path.normpath(p)   # its drive isn't plugged in now: checked again before every run
+            if not real:
+                raise Fail('%s: %s' % (name, why))
+            for p in paths:
+                if real == p or real.startswith(p + '/') or p.startswith(real + '/'):
+                    raise Fail('%s: the backup can\'t go inside a folder it backs up (or the other way round)' % name)
+            target = {'kind': 'drive', 'path': real}
+        elif kind == 'hearth':
+            if not isinstance(t.get('peer'), str) or not PEER_RE.fullmatch(t['peer']) or not isinstance(t.get('user'), str) or not REST_USER_RE.fullmatch(t['user']):
+                raise Fail('%s: pick one of your Hearth devices and type its backup code' % name)
+            target = {'kind': 'hearth', 'peer': t['peer'], 'user': t['user']}
+        elif kind == 'cloud':
+            if not isinstance(t.get('path'), str) or not BUCKET_PATH_RE.fullmatch(t['path']) or '..' in t['path']:
+                raise Fail('%s: the bucket and folder are letters, digits, . _ - and /' % name)
+            remote = t.get('remote') or ('hearth-' + j['id'])
+            if not REMOTE_RE.fullmatch(remote):
+                raise Fail('%s: a bad cloud name' % name)
+            target = {'kind': 'cloud', 'remote': remote, 'path': t['path']}
+        else:
+            raise Fail('%s: back up to a drive, another Hearth device or the cloud' % name)
+        every = j.get('every', 'daily')
+        if every not in EVERY:
+            raise Fail('%s: hourly, daily or weekly' % name)
+        at = j.get('at', '03:00')
+        if not isinstance(at, str) or not TIME_RE.fullmatch(at):
+            raise Fail('%s: a time like 03:00' % name)
+        day = j.get('day', 6)
+        if not isinstance(day, int) or isinstance(day, bool) or not 0 <= day <= 6:
+            day = 6
+        out.append({'id': j['id'], 'name': name, 'paths': paths, 'target': target, 'every': every, 'at': at, 'day': day,
+                    'keep': clean_keep2(j.get('keep')), 'on': j.get('on', True) is not False})
+    return out
+
+
+def secret_path(jid, kind):
+    return os.path.join(BACKUP_DIR, '%s.%s' % (jid, kind))
+
+
+def backup_secret(jid, req):
+    """A job's password (restic's repository key) and its where-to credentials, written 0600 for root only. Never in
+    your settings, never on a command line, never logged."""
+    caller()
+    if not isinstance(jid, str) or not ID_RE.fullmatch(jid):
+        raise Fail('a backup has a bad id')
+    if not isinstance(req, dict):
+        raise Fail('the request must be a JSON object')
+    ensure_dir(BACKUP_DIR, 0o700)
+    done = []
+    if req.get('password') is not None:
+        write(secret_path(jid, 'pass'), password_ok(req['password']) + '\n', 0o600)
+        done.append('password')
+    rest = req.get('rest')
+    if isinstance(rest, dict):
+        u, p = rest.get('user'), rest.get('password')
+        if not isinstance(u, str) or not REST_USER_RE.fullmatch(u) or not isinstance(p, str) or not KEY_RE.fullmatch(p):
+            raise Fail('That backup code doesn\'t look right (it looks like name:XXXX-XXXX-XXXX-XXXX)')
+        write(secret_path(jid, 'rest'), json.dumps({'user': u, 'password': p}) + '\n', 0o600)
+        done.append('code')
+    cloud = req.get('cloud')
+    if isinstance(cloud, dict):
+        write(RCLONE_CONF, rclone_conf_with(read(RCLONE_CONF) if os.path.exists(RCLONE_CONF) else '', 'hearth-' + jid, cloud), 0o600)
+        done.append('cloud')
+    return {'ok': True, 'saved': done}
+
+
+def rclone_strip(text, name):
+    lines, skip = [], False
+    for l in text.splitlines():
+        m = re.match(r'^\[(.+)\]\s*$', l)
+        if m:
+            skip = m.group(1) == name
+        if not skip:
+            lines.append(l)
+    return '\n'.join(lines).rstrip('\n') + '\n'
+
+
+def rclone_conf_with(text, name, cloud):
+    """rclone's config with one Hearth section (re)written; your own sections are left as they are."""
+    kind = cloud.get('kind')
+    if kind == 's3':
+        ep, region = cloud.get('endpoint') or '', cloud.get('region') or ''
+        if (ep and not ENDPOINT_RE.fullmatch(ep)) or not REGION_RE.fullmatch(region):
+            raise Fail('The endpoint looks like s3.example.com and the region like eu-central-1')
+        for k in ('access', 'secret'):
+            if not isinstance(cloud.get(k), str) or not KEY_RE.fullmatch(cloud[k]):
+                raise Fail('Type the access key and the secret key (no spaces)')
+        body = ['type = s3', 'provider = %s' % ('Other' if ep else 'AWS'), 'env_auth = false',
+                'access_key_id = %s' % cloud['access'], 'secret_access_key = %s' % cloud['secret']]
+        if ep:
+            body.append('endpoint = %s' % ep)
+        if region:
+            body.append('region = %s' % region)
+    elif kind == 'b2':
+        for k in ('access', 'secret'):
+            if not isinstance(cloud.get(k), str) or not KEY_RE.fullmatch(cloud[k]):
+                raise Fail('Type the key ID and the application key (no spaces)')
+        body = ['type = b2', 'account = %s' % cloud['access'], 'key = %s' % cloud['secret'], 'hard_delete = false']
+    else:
+        raise Fail('Backblaze B2 or S3-compatible storage (or your own rclone remote)')
+    lines, skip = [], False
+    for l in text.splitlines():
+        m = re.match(r'^\[(.+)\]\s*$', l)
+        if m:
+            skip = m.group(1) == name
+        if not skip:
+            lines.append(l)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return '\n'.join(lines + ([''] if lines else []) + ['[%s]' % name] + body) + '\n'
+
+
+def restic_env(job):
+    env = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root', 'LC_ALL': 'C',
+           'RESTIC_PASSWORD_FILE': secret_path(job['id'], 'pass'), 'RESTIC_CACHE_DIR': BACKUP_CACHE, 'RCLONE_CONFIG': RCLONE_CONF}
+    if job['target']['kind'] == 'hearth':
+        try:
+            c = json.loads(read(secret_path(job['id'], 'rest')))
+            env['RESTIC_REST_USERNAME'] = c['user']
+            env['RESTIC_REST_PASSWORD'] = c['password']
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return env
+
+
+def repo_of(job):
+    t = job['target']
+    if t['kind'] == 'drive':
+        return t['path']
+    if t['kind'] == 'hearth':
+        return 'rest:http://%s:%d/%s/' % (t['peer'], RECEIVE_PORT, t['user'])
+    return 'rclone:%s:%s' % (t['remote'], t['path'])
+
+
+def restic(job, args, timeout=6 * 3600):
+    """restic for one job (its password from its 0600 file through the environment, never an argument)."""
+    return run_env(['restic', '-r', repo_of(job)] + args, restic_env(job), timeout)
+
+
+def run_env(cmd, env, timeout=60):
+    """run() with its own environment. Tests replace this."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def scrub(text, job=None):
+    """An error line for the page: no passwords or keys, ever."""
+    t = (text or '').strip().splitlines()
+    t = [l for l in t if l.strip()][-1:] if t else []
+    out = (t[0] if t else '')[:240]
+    out = re.sub(r'(://)[^/@\s]+@', r'\1', out)
+    return out
+
+
+def at_today(hhmm, now):
+    lt = time.localtime(now)
+    h, m = (int(x) for x in hhmm.split(':'))
+    return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, h, m, 0, 0, 0, -1))
+
+
+def backup_due(job, st, now):
+    """Whether a job is due: its time came since its last good run (or the last try failed over an hour ago), and a
+    run asked for with Back up now that waited is due too."""
+    if st.get('pending'):
+        return True
+    last_ok = st.get('lastOk') or 0
+    last_try = (st.get('last') or {}).get('at') or 0
+    failed = (st.get('last') or {}).get('ok') is False
+    if failed and now - last_try < 3600 * 0.95:
+        return False
+    if job['every'] == 'hourly':
+        return now - last_ok >= 3600 * 0.95
+    slot = at_today(job['at'], now)
+    if job['every'] == 'weekly':
+        back = (time.localtime(now).tm_wday - job['day']) % 7
+        slot -= back * 86400
+        if slot > now:
+            slot -= 7 * 86400
+    elif slot > now:
+        slot -= 86400
+    return last_ok < slot
+
+
+def backup_one(job, now=None):
+    """One job: the repository made the first time, the backup, then old ones forgotten beyond the keep counts, and a
+    check once a week. Returns its new state."""
+    now = time.time() if now is None else now
+    if not os.path.exists(secret_path(job['id'], 'pass')):
+        return {'ok': False, 'error': 'Its password isn\'t on this PC: set it again in Backups & sync'}
+    if not job['paths']:
+        return {'ok': False, 'error': 'None of its folders is here (is a drive unplugged?)'}
+    if job['target']['kind'] == 'drive':
+        # Checked again right now: an unplugged backup drive leaves an empty folder on the system drive, and a backup
+        # is never written there.
+        pw = getpw(plan_read().get('user') or '')
+        real, why = target_problem(job['target']['path'], pw.pw_name if pw else '', pw.pw_dir if pw else '/nonexistent')
+        if not real:
+            return {'ok': False, 'error': 'The backup drive isn\'t there (is it plugged in?): ' + why}
+        ensure_dir(real, 0o700)
+    ensure_dir(BACKUP_CACHE, 0o700)
+    code, out = restic(job, ['cat', 'config'], 120)
+    if code != 0:
+        code, out = restic(job, ['init'], 300)
+        if code != 0:
+            return {'ok': False, 'error': 'Couldn\'t reach or make the backup: ' + scrub(out)}
+    excl = []
+    for d in (SNAP_DIR, RECYCLE_DIR):
+        excl += ['--exclude', d]
+    code, out = restic(job, ['backup', '--tag', 'hearth', '--host', hostname(), '--json'] + excl + job['paths'])
+    summary = {}
+    for l in out.splitlines():
+        if l.startswith('{') and '"summary"' in l:
+            try:
+                summary = json.loads(l)
+            except ValueError:
+                pass
+    if code not in (0, 3):   # 3: some files couldn't be read (the rest is backed up)
+        return {'ok': False, 'error': 'The backup didn\'t finish: ' + scrub(out)}
+    res = {'ok': True, 'files': summary.get('total_files_processed'), 'bytes': summary.get('total_bytes_processed'),
+           'added': summary.get('data_added'), 'snapshot': summary.get('snapshot_id', '')[:12],
+           'note': 'some files couldn\'t be read' if code == 3 else ''}
+    k = job['keep']
+    restic(job, ['forget', '--tag', 'hearth', '--host', hostname(), '--prune', '--keep-daily', str(k['daily']),
+                 '--keep-weekly', str(k['weekly']), '--keep-monthly', str(k['monthly'])], 6 * 3600)
+    return res
+
+
+def backup_run(only=None, now_flag=False, now=None):
+    """The timer (hourly, while a backup is on) or Back up now: the jobs that are due. Waits while you play when Light
+    mode is on (a Back up now that waits is done at the next run)."""
+    now = time.time() if now is None else now
+    plan = plan_read()
+    jobs = [j for j in plan.get('backups') or [] if isinstance(j, dict) and j.get('id')]
+    state = state_read(BACKUP_STATE)
+    js = state.setdefault('jobs', {})
+    if wait_for_game(plan):
+        for j in jobs:
+            if only is None or j['id'] == only:
+                s = js.setdefault(j['id'], {})
+                s['waiting'] = 'Light mode: waiting until you stop playing'
+                if now_flag:
+                    s['pending'] = True
+        state_write(BACKUP_STATE, state)
+        return {'ok': True, 'deferred': 'Light mode: waiting until you stop playing'}
+    ran = []
+    for j in jobs:
+        if only is not None and j['id'] != only:
+            continue
+        s = js.setdefault(j['id'], {})
+        s.pop('waiting', None)
+        if not j.get('on', True) and not now_flag:
+            continue
+        if not (now_flag or backup_due(j, s, now)):
+            continue
+        s['running'] = True
+        state_write(BACKUP_STATE, state)
+        t0 = time.time()
+        r = backup_one(j, now)
+        s['running'] = False
+        s.pop('pending', None)
+        s['last'] = dict(r, at=int(now), took=int(time.time() - t0))
+        if r['ok']:
+            s['lastOk'] = int(now)
+            if now - (s.get('checked') or {}).get('at', 0) >= CHECK_EVERY:
+                code, out = restic(j, ['check'], 6 * 3600)
+                s['checked'] = {'at': int(now), 'ok': code == 0, 'error': '' if code == 0 else scrub(out)}
+            code, out = restic(j, ['snapshots', '--json', '--tag', 'hearth'], 300)
+            try:
+                s['count'] = len(json.loads(out)) if code == 0 else s.get('count')
+            except ValueError:
+                pass
+        ran.append({'id': j['id'], 'ok': r['ok']})
+        state_write(BACKUP_STATE, state)
+    return {'ok': all(r['ok'] for r in ran), 'ran': ran}
+
+
+def backup_now(jid):
+    """Back up now: in its own transient unit at idle priority, holding off sleep, so this returns right away."""
+    caller()
+    plan = plan_read()
+    if not isinstance(jid, str) or not any(j.get('id') == jid for j in plan.get('backups') or []):
+        raise Fail('That backup isn\'t there (apply your settings first)')
+    unit = 'hearth-home-server-backup-now-' + jid
+    if run(['systemctl', 'is-active', unit + '.service'])[0] == 0 or run(['systemctl', 'is-active', BACKUP_UNIT])[0] == 0:
+        return {'ok': True, 'running': True}
+    code, out = run(['systemd-run', '--unit=' + unit, '--collect', '--property=Nice=19', '--property=IOSchedulingClass=idle',
+                     'systemd-inhibit', '--what=sleep', '--who=Hearth home server', '--why=Backing up', '--mode=block',
+                     os.path.realpath(__file__), 'backup', 'run', '--now', jid])
+    if code != 0:
+        raise Fail('Couldn\'t start it: ' + scrub(out))
+    return {'ok': True, 'started': True}
+
+
+def job_by_id(jid):
+    for j in plan_read().get('backups') or []:
+        if isinstance(j, dict) and j.get('id') == jid:
+            return j
+    raise Fail('That backup isn\'t there')
+
+
+def backup_snapshots(jid):
+    caller()
+    job = job_by_id(jid)
+    code, out = restic(job, ['snapshots', '--json', '--tag', 'hearth'], 300)
+    if code != 0:
+        raise Fail('Couldn\'t read the backup: ' + scrub(out))
+    try:
+        snaps = json.loads(out) or []
+    except ValueError:
+        snaps = []
+    snaps.sort(key=lambda s: s.get('time', ''), reverse=True)
+    return {'ok': True, 'snapshots': [{'id': s.get('id', ''), 'short': s.get('short_id', ''), 'time': s.get('time', ''),
+                                       'paths': s.get('paths') or [], 'host': s.get('hostname', '')} for s in snaps[:30]]}
+
+
+def restore_dest(home, name, stamp):
+    base = os.path.join(home, 'Restored from backups')
+    dest = os.path.join(base, '%s %s' % (name, stamp))
+    i = 2
+    while os.path.exists(dest):
+        dest = os.path.join(base, '%s %s (%d)' % (name, stamp, i))
+        i += 1
+    return base, dest
+
+
+def backup_restore(req):
+    """A folder as it was in a backup, into a NEW folder in Home › Restored from backups. Never over your files: the
+    folder is new and restic is told never to overwrite."""
+    user, home = caller()
+    if not isinstance(req, dict):
+        raise Fail('the request must be a JSON object')
+    job = job_by_id(req.get('id'))
+    snap = req.get('snapshot')
+    if not isinstance(snap, str) or not SNAPID_RE.fullmatch(snap):
+        raise Fail('That isn\'t a backup')
+    snaps = backup_snapshots(job['id'])['snapshots']
+    s = next((x for x in snaps if snap in ('latest',) or x['id'] == snap or x['short'] == snap), None)
+    if not s:
+        raise Fail('That backup isn\'t there anymore')
+    path = req.get('path')
+    if not isinstance(path, str) or path not in s['paths']:
+        raise Fail('That folder isn\'t in this backup')
+    base, dest = restore_dest(home, os.path.basename(path.rstrip('/')) or 'Backup', (s['time'] or '')[:16].replace('T', ' ').replace(':', '.'))
+    pw = pwd.getpwnam(user)
+    if not os.path.isdir(base):
+        os.makedirs(base, mode=0o755)
+        os.chown(base, pw.pw_uid, pw.pw_gid)
+    os.makedirs(dest, mode=0o755)
+    os.chown(dest, pw.pw_uid, pw.pw_gid)
+    unit = 'hearth-home-server-restore-' + job['id']
+    code, out = run(['systemd-run', '--unit=' + unit, '--collect', '--property=Nice=10', '--property=IOSchedulingClass=idle',
+                     os.path.realpath(__file__), 'backup', 'restore-run', job['id'], s['id'], dest, path])
+    if code != 0:
+        raise Fail('Couldn\'t start it: ' + scrub(out))
+    return {'ok': True, 'dest': dest}
+
+
+def restore_run(jid, snap, dest, path):
+    job = job_by_id(jid)
+    plan = plan_read()
+    user = plan.get('user') or ''
+    pw = getpw(user)
+    if not pw or not dest.startswith(os.path.join(pw.pw_dir, 'Restored from backups') + '/') or not os.path.isdir(dest) or os.listdir(dest):
+        raise Fail('the restore folder must be new and empty')
+    code, out = restic(job, ['restore', snap, '--target', dest, '--include', path, '--overwrite', 'never'])
+    # Everything restored is yours (a backup made on another PC may have other owners); links aren't followed.
+    for dp, dns, fns in os.walk(dest):
+        for n in dns + fns:
+            try:
+                os.lchown(os.path.join(dp, n), pw.pw_uid, pw.pw_gid)
+            except OSError:
+                pass
+    notify(user, ('Restored into %s' if code == 0 else 'Restoring into %s didn\'t finish') % dest)
+    return {'ok': code == 0, 'dest': dest, 'error': '' if code == 0 else scrub(out)}
+
+
+# ------------------------------------------------------------------ backups from your other Hearth devices
+
+def receive_add(name):
+    """A backup code for one of your other Hearth devices: NAME-xxxx and a random password, shown once (only its hash
+    is kept, in rclone's htpasswd file)."""
+    user, _ = caller()
+    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9\-]{0,30}', name):
+        raise Fail('A device\'s name is small letters, digits and -')
+    import base64
+    import secrets as _secrets
+    u = '%s-%s' % (name, _secrets.token_hex(2))
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    pw = '-'.join(''.join(_secrets.choice(alphabet) for _ in range(4)) for _ in range(4))
+    ensure_dir(RECEIVE_DIR, 0o750)
+    ht = os.path.join(RECEIVE_DIR, 'htpasswd')
+    cur = read(ht) if os.path.exists(ht) else ''
+    line = '%s:{SHA}%s' % (u, base64.b64encode(hashlib.sha1(pw.encode()).digest()).decode())
+    write(ht, cur.rstrip('\n') + ('\n' if cur.strip() else '') + line + '\n', 0o640)
+    try:
+        g = pwd.getpwnam(user).pw_gid
+        os.chown(RECEIVE_DIR, 0, g)
+        os.chown(ht, 0, g)
+    except (KeyError, OSError):
+        pass
+    return {'ok': True, 'user': u, 'code': '%s:%s' % (u, pw)}
+
+
+def receive_remove(u):
+    caller()
+    if not isinstance(u, str) or not REST_USER_RE.fullmatch(u):
+        raise Fail('That isn\'t a device\'s backup code')
+    ht = os.path.join(RECEIVE_DIR, 'htpasswd')
+    if os.path.exists(ht):
+        write(ht, ''.join(l + '\n' for l in read(ht).splitlines() if l.strip() and not l.startswith(u + ':')), 0o640)
+    return {'ok': True, 'removed': u, 'filesKept': True}
+
+
+def receive_apply(rc, user, home):
+    """Backups from your other Hearth devices: rclone's restic server on this PC's Tailscale address only, into a folder
+    you picked (each device in its own folder), as you. Off unless you turn it on; started by its timer a minute
+    after the PC starts, never part of starting it."""
+    on = isinstance(rc, dict) and rc.get('on') is True
+    if not on:
+        if os.path.exists(RECEIVE_DROPIN):
+            run(['systemctl', 'stop', RECEIVE_UNIT])
+        unit_switch(RECEIVE_TIMER, False)
+        return {'receive': 'off'}
+    real, why = path_problem(rc.get('path'), user, home)
+    if not real:
+        raise Fail('Backups from your devices: %s' % why)
+    if not which('rclone'):
+        return {'receive': 'missing', 'note': 'rclone isn\'t installed on this PC'}
+    code, out = run(['tailscale', 'ip', '-4'], timeout=10) if which('tailscale') else (1, '')
+    ip = out.strip().splitlines()[0] if code == 0 and out.strip() else ''
+    if not re.fullmatch(r'100\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip):
+        return {'receive': 'waiting', 'note': 'Turn on Tailscale and sign in first: backups come only over Tailscale'}
+    ensure_dir(RECEIVE_DIR, 0o750)
+    ht = os.path.join(RECEIVE_DIR, 'htpasswd')
+    if not os.path.exists(ht):
+        write(ht, '', 0o640)
+    try:
+        g = pwd.getpwnam(user).pw_gid
+        os.chown(RECEIVE_DIR, 0, g)
+        os.chown(ht, 0, g)
+    except (KeyError, OSError):
+        pass
+    write(RECEIVE_DROPIN, '# Hearth home server: backups from your other Hearth devices (hearth-home-server-helper).\n'
+                          '[Service]\nUser=%s\nExecStart=\nExecStart=/usr/bin/rclone serve restic --addr %s:%d --htpasswd %s --private-repos "%s"\n'
+          % (user, ip, RECEIVE_PORT, ht, real))
+    run(['systemctl', 'daemon-reload'])
+    unit_switch(RECEIVE_TIMER, True)
+    run(['systemctl', 'restart', RECEIVE_UNIT])
+    return {'receive': 'on', 'address': '%s:%d' % (ip, RECEIVE_PORT)}
+
+
+# ------------------------------------------------------------------ alerts
+
+ALERT_STATE = '/var/lib/hearth/home-server-alerts.json'
+ALERT_TIMER = 'hearth-home-server-alerts.timer'
+ALERT_AGAIN = 24 * 3600
+ALERTS_DEFAULT = {'on': False, 'smart': True, 'full': True, 'fullPct': 90, 'backup': True, 'mirror': True, 'tailscale': False, 'peers': []}
+
+
+def clean_alerts(a):
+    a = a if isinstance(a, dict) else {}
+    out = dict(ALERTS_DEFAULT)
+    for k in ('on', 'smart', 'full', 'backup', 'mirror', 'tailscale'):
+        if isinstance(a.get(k), bool):
+            out[k] = a[k]
+    if a.get('fullPct') in (80, 85, 90, 95):
+        out['fullPct'] = a['fullPct']
+    out['peers'] = [p for p in (a.get('peers') or []) if isinstance(p, str) and PEER_RE.fullmatch(p)][:8]
+    return out
+
+
+def notify(user, text, urgent=False):
+    """A notification on your desktop (Mantel's), through your own session bus. Quietly nothing when there's none
+    (Game Mode, nobody signed in): the alert stays on the Overview page and in Quick Access."""
+    pw = getpw(user)
+    if not pw or not which('notify-send') or not which('runuser'):
+        return False
+    bus = '/run/user/%d/bus' % pw.pw_uid
+    if not os.path.exists(bus):
+        return False
+    code, _ = run(['runuser', '-u', user, '--', 'env', 'DBUS_SESSION_BUS_ADDRESS=unix:path=' + bus,
+                   'notify-send', '-a', 'Hearth', '-u', 'critical' if urgent else 'normal', 'Home server', text], timeout=15)
+    return code == 0
+
+
+def taildrop_alert(peers, text, now):
+    """The alert as a small text file to your Tailscale devices (Taildrop). Only to the devices you picked."""
+    if not peers or not which('tailscale'):
+        return []
+    d = '/run/hearth/alerts'
+    ensure_dir(d, 0o700)
+    f = os.path.join(d, 'Hearth alert %s.txt' % time.strftime('%Y-%m-%d %H.%M', time.localtime(now)))
+    write(f, 'Hearth home server (%s): %s\n' % (hostname(), text), 0o600)
+    sent = []
+    for p in peers:
+        if PEER_RE.fullmatch(p) and run(['tailscale', 'file', 'cp', f, p + ':'], timeout=60)[0] == 0:
+            sent.append(p)
+    remove(f)
+    return sent
+
+
+def mirror_problem(mnt):
+    """A btrfs drive with more than one device: one missing, or read/write errors counted."""
+    code, out = run(['btrfs', 'filesystem', 'show', mnt], timeout=20)
+    if code != 0:
+        return None
+    if 'missing' in out.lower():
+        return 'a drive in the mirror is missing'
+    devs = len(re.findall(r'^\s*devid\s', out, re.M))
+    if devs < 2:
+        return None
+    code, out = run(['btrfs', 'device', 'stats', '-c', mnt], timeout=20)
+    if code != 0 and re.search(r'_errs\s+[1-9]', out):
+        return 'one of its drives has read or write errors'
+    return None
+
+
+def alerts_find(plan, now):
+    """What's wrong right now: [{key, kind, text}]."""
+    a = clean_alerts(plan.get('alerts'))
+    found = []
+    if a['smart']:
+        for d in drives().get('drives', []):
+            sm = d.get('smart') or {}
+            if sm.get('passed') is False:
+                found.append({'key': 'smart:' + d['token'], 'kind': 'smart',
+                              'text': '%s is failing its health check (SMART): copy what\'s on it and replace it' % d['model']})
+            elif isinstance(sm.get('temp'), int) and sm['temp'] >= 65:
+                found.append({'key': 'hot:' + d['token'], 'kind': 'smart', 'text': '%s is very hot (%d °C)' % (d['model'], sm['temp'])})
+    if a['full']:
+        paths = [s['path'] for s in plan.get('shares') or [] if isinstance(s, dict) and s.get('path')]
+        paths += [j['target']['path'] for j in plan.get('backups') or [] if isinstance(j, dict) and (j.get('target') or {}).get('kind') == 'drive']
+        seen = set()
+        for p in paths:
+            probe = p
+            while probe and not os.path.exists(probe):
+                probe = os.path.dirname(probe)
+            try:
+                st = os.statvfs(probe)
+            except OSError:
+                continue
+            if (st.f_fsid, st.f_blocks) in seen or not st.f_blocks:
+                continue
+            seen.add((st.f_fsid, st.f_blocks))
+            pct = round(100 * (st.f_blocks - st.f_bavail) / st.f_blocks)
+            if pct >= a['fullPct']:
+                mnt = mount_info(probe)['target'] or probe
+                found.append({'key': 'full:' + mnt, 'kind': 'full', 'text': 'The drive with %s is %d%% full' % (mnt, pct)})
+    if a['backup']:
+        st = state_read(BACKUP_STATE).get('jobs') or {}
+        for j in plan.get('backups') or []:
+            if not isinstance(j, dict) or not j.get('on', True):
+                continue
+            s = st.get(j['id']) or {}
+            last = s.get('last') or {}
+            late = {'hourly': 86400, 'daily': 3 * 86400, 'weekly': 10 * 86400}.get(j.get('every'), 3 * 86400)
+            if last.get('ok') is False:
+                found.append({'key': 'backup:' + j['id'], 'kind': 'backup', 'text': 'Backup "%s" failed: %s' % (j.get('name'), last.get('error') or '')})
+            elif s.get('lastOk') and now - s['lastOk'] > late:
+                found.append({'key': 'late:' + j['id'], 'kind': 'backup', 'text': 'Backup "%s" hasn\'t run for %d days' % (j.get('name'), (now - s['lastOk']) // 86400)})
+            if (s.get('checked') or {}).get('ok') is False:
+                found.append({'key': 'check:' + j['id'], 'kind': 'backup', 'text': 'Backup "%s" didn\'t pass its check: %s' % (j.get('name'), s['checked'].get('error', ''))})
+    if a['mirror'] and which('btrfs'):
+        mnts = set()
+        try:
+            for l in read(FSTAB).splitlines():
+                if FSTAB_MARK in l and len(l.split()) > 1:
+                    mnts.add(l.split()[1])
+        except OSError:
+            pass
+        for m in sorted(mnts):
+            if os.path.ismount(m):
+                why = mirror_problem(m)
+                if why:
+                    found.append({'key': 'mirror:' + m, 'kind': 'mirror', 'text': 'The mirror at %s needs you: %s' % (m, why)})
+    return found
+
+
+def alerts_run(now=None, test=False):
+    """The alert timer (hourly, while alerts are on): finds what's wrong, tells you about what's new (and again after a
+    day), and keeps the list for the Overview page and Quick Access."""
+    now = time.time() if now is None else now
+    plan = plan_read()
+    a = clean_alerts(plan.get('alerts'))
+    user = plan.get('user') or ''
+    if test:
+        found = [{'key': 'test', 'kind': 'test', 'text': 'This is a test alert: alerts reach you here'}]
+    elif not a['on']:
+        found = []
+    else:
+        found = alerts_find(plan, now)
+    st = state_read(ALERT_STATE)
+    told = st.get('told') if isinstance(st.get('told'), dict) else {}
+    keys = {f['key'] for f in found}
+    told = {k: v for k, v in told.items() if k in keys}
+    sent = []
+    for f in found:
+        if now - told.get(f['key'], 0) >= ALERT_AGAIN:
+            notify(user, f['text'], urgent=f['kind'] in ('smart', 'mirror'))
+            if a['tailscale']:
+                sent += taildrop_alert(a['peers'], f['text'], now)
+            told[f['key']] = int(now)
+    if not test:
+        state_write(ALERT_STATE, {'at': int(now), 'active': found, 'told': told})
+    return {'ok': True, 'active': found, 'taildrop': sorted(set(sent))}
+
+
+# ------------------------------------------------------------------ power
+
+POWER_TIMER = 'hearth-home-server-power.timer'
+POWER_STATE = '/run/hearth/home-server-power.json'
+WAKE_TIMER = 'hearth-home-server-wake.timer'
+WAKE_DROPIN = '/etc/systemd/system/hearth-home-server-wake.timer.d/hearth.conf'
+AWAKE_UNIT = 'hearth-home-server-awake'
+POWER_DEFAULT = {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False}
+SPIN_MINUTES = (0, 10, 20, 30, 60)
+IDLE_MINUTES = (0, 30, 60, 120, 240)
+
+
+def clean_power(p):
+    p = p if isinstance(p, dict) else {}
+    out = dict(POWER_DEFAULT)
+    if p.get('sleepIdle') in IDLE_MINUTES:
+        out['sleepIdle'] = p['sleepIdle']
+    if p.get('spinDown') in SPIN_MINUTES:
+        out['spinDown'] = p['spinDown']
+    for k in ('keepAwake', 'schedule', 'ups'):
+        if isinstance(p.get(k), bool):
+            out[k] = p[k]
+    for k in ('sleepAt', 'wakeAt'):
+        if isinstance(p.get(k), str) and TIME_RE.fullmatch(p[k]):
+            out[k] = p[k]
+    return out
+
+
+def hdparm_value(minutes):
+    """hdparm -S: 1-240 are 5-second steps (up to 20 minutes), 241-251 are 30-minute steps."""
+    if minutes <= 0:
+        return 0
+    if minutes <= 20:
+        return minutes * 12
+    return 240 + max(1, min(11, minutes // 30))
+
+
+def spin_disks():
+    """Spinning data drives (never the system's, never an SSD/NVMe, never USB-removable ones the person carries)."""
+    sysd = system_disks()
+    return [d['path'] for d in lsblk() if d.get('type') == 'disk' and d.get('rota') in (True, 1, '1') and d.get('name') not in sysd
+            and DEV_RE.fullmatch(d.get('path') or '') and d.get('rm') not in (True, 1, '1')]
+
+
+def spin_apply(minutes, st):
+    """hdparm -S on each spinning data drive, once per start of the PC or when the time changes."""
+    if not which('hdparm'):
+        return 'missing'
+    disks = spin_disks()
+    want = {'value': hdparm_value(minutes), 'disks': disks}
+    if st.get('spin') == want:
+        return 'same'
+    for d in disks:
+        run(['hdparm', '-S', str(want['value']), d], timeout=20)
+    st['spin'] = want
+    return 'set %d' % len(disks)
+
+
+def smb_sessions():
+    """How many of your devices have a share open right now (smbstatus). Tests replace this."""
+    if not which('smbstatus'):
+        return 0
+    code, out = run(['smbstatus', '-b', '--json'], timeout=15)
+    try:
+        return len(json.loads(out).get('sessions') or {}) if code == 0 else 0
+    except ValueError:
+        return 0
+
+
+def jobs_running():
+    """A backup, snapshot or restore running now. Tests replace this."""
+    code, out = run(['systemctl', 'list-units', '--state=active', '--no-legend', '--plain', 'hearth-home-server-*'], timeout=15)
+    return any(u in out for u in ('hearth-home-server-backup', 'hearth-home-server-snapshots', 'hearth-home-server-restore', 'hearth-home-server-mirror'))
+
+
+def someone_using():
+    """Someone is signed in and using this PC (an active session that isn't idle; the login screen doesn't count). When
+    the desktop can't say, it counts as used: then Settings › Power's own idle sleep is the one that decides."""
+    code, out = run(['loginctl', 'list-sessions', '--no-legend'], timeout=10)
+    if code != 0:
+        return True
+    for l in out.splitlines():
+        sid = l.split()[0] if l.split() else ''
+        if not re.fullmatch(r'[A-Za-z0-9]+', sid):
+            continue
+        c, o = run(['loginctl', 'show-session', sid, '-p', 'Active', '-p', 'Class', '-p', 'IdleHint'], timeout=10)
+        props = dict(x.split('=', 1) for x in o.splitlines() if '=' in x)
+        if props.get('Active') == 'yes' and props.get('Class') == 'user' and props.get('IdleHint') != 'yes':
+            return True
+    return False
+
+
+def busy_reasons():
+    out = []
+    if game_running():
+        out.append('Game Mode')
+    if smb_sessions():
+        out.append('sharing')
+    if jobs_running():
+        out.append('backing up')
+    return out
+
+
+def in_window(now, start, end):
+    t = time.localtime(now)
+    cur = t.tm_hour * 60 + t.tm_min
+    s = int(start[:2]) * 60 + int(start[3:])
+    e = int(end[:2]) * 60 + int(end[3:])
+    return s <= cur < e if s < e else (cur >= s or cur < e)
+
+
+def power_run(now=None):
+    """The power timer (every 5 minutes, while a power choice is on): spins down idle data drives, keeps the PC awake
+    while your devices use it, and lets it sleep when nobody needs it: never while Game Mode runs, a share is open or a
+    backup runs, and never past anything else holding sleep off (logind's inhibitors are respected)."""
+    now = time.time() if now is None else now
+    plan = plan_read()
+    p = clean_power(plan.get('power'))
+    st = state_read(POWER_STATE)
+    res = {'ok': True}
+    if p['spinDown']:
+        res['spin'] = spin_apply(p['spinDown'], st)
+    busy = busy_reasons()
+    res['busy'] = busy
+    if p['keepAwake'] and ('sharing' in busy or 'backing up' in busy):
+        if run(['systemctl', 'is-active', AWAKE_UNIT + '.service'])[0] != 0:
+            run(['systemd-run', '--unit=' + AWAKE_UNIT, '--collect', '--property=RuntimeMaxSec=620', 'systemd-inhibit', '--what=sleep',
+                 '--who=Hearth home server', '--why=Your devices are using it', '--mode=block', 'sleep', '600'])
+        res['awake'] = True
+    using = bool(busy) or someone_using()
+    if using or not st.get('quietSince'):
+        st['quietSince'] = int(now)
+    quiet = now - st['quietSince']
+    sleep_why = ''
+    if not using and p['sleepIdle'] and quiet >= p['sleepIdle'] * 60:
+        sleep_why = 'idle'
+    today = time.strftime('%Y-%m-%d', time.localtime(now))
+    if not busy and p['schedule'] and in_window(now, p['sleepAt'], p['wakeAt']) and st.get('scheduled') != today:
+        sleep_why = sleep_why or 'schedule'
+        st['scheduled'] = today
+    if sleep_why:
+        st['quietSince'] = int(now)
+        state_write(POWER_STATE, st)
+        code, _ = run(['systemctl', 'suspend', '--check-inhibitors=yes'], timeout=30)
+        res['slept'] = sleep_why if code == 0 else 'held off'
+    state_write(POWER_STATE, st)
+    return res
+
+
+def wake_apply(p):
+    if p['schedule']:
+        write(WAKE_DROPIN, '# Hearth home server: wake every day (hearth-home-server-helper).\n[Timer]\nOnCalendar=\nOnCalendar=*-*-* %s:00\nWakeSystem=true\n' % p['wakeAt'])
+        run(['systemctl', 'daemon-reload'])
+        return unit_switch(WAKE_TIMER, True)
+    unit_switch(WAKE_TIMER, False)
+    if remove(WAKE_DROPIN):
+        run(['systemctl', 'daemon-reload'])
+    return 'off'
+
+
+# ------------------------------------------------------------------ UPS (Network UPS Tools)
+
+NUT_DIR = '/etc/nut'
+NUT_MARK = '# Hearth home server (hearth-home-server-helper): your UPS'
+NUT_STARTED = '/etc/nut/.hearth-started'
+NUT_UNITS = ('nut-driver-enumerator.service', 'nut-server.service', 'nut-monitor.service')
+
+
+def ups_apply(on):
+    """Your UPS through NUT, standalone: when its battery runs low the PC shuts down cleanly. Only files Hearth wrote
+    are ever changed (a NUT set up by hand is left alone); off takes Hearth's setup away again."""
+    if not os.path.isdir(NUT_DIR) or not which('upsmon'):
+        return {'ups': 'missing'} if on else {'ups': 'off'}
+    ups_conf = os.path.join(NUT_DIR, 'ups.conf')
+    mine = not os.path.exists(ups_conf) or NUT_MARK in read(ups_conf) or not re.search(r'^\s*\[', read(ups_conf), re.M)
+    if not mine:
+        return {'ups': 'by-hand', 'note': 'NUT is already set up by hand on this PC: Hearth leaves it alone'}
+    if on:
+        import secrets as _secrets
+        upsd_users = os.path.join(NUT_DIR, 'upsd.users')
+        try:
+            pw = re.search(r'password = (\S+)', read(upsd_users)).group(1) if NUT_MARK in read(upsd_users) else ''
+        except (OSError, AttributeError):
+            pw = ''
+        pw = pw or _secrets.token_hex(16)
+        write(os.path.join(NUT_DIR, 'nut.conf'), NUT_MARK + '\nMODE=standalone\n', 0o640)
+        write(ups_conf, NUT_MARK + '\n[hearth]\n\tdriver = usbhid-ups\n\tport = auto\n\tdesc = "UPS (Hearth home server)"\n', 0o640)
+        write(os.path.join(NUT_DIR, 'upsd.conf'), NUT_MARK + '\nLISTEN 127.0.0.1 3493\nLISTEN ::1 3493\n', 0o640)
+        write(upsd_users, NUT_MARK + '\n[hearth-monitor]\n\tpassword = %s\n\tupsmon primary\n' % pw, 0o640)
+        write(os.path.join(NUT_DIR, 'upsmon.conf'), NUT_MARK + '\nMONITOR hearth@localhost 1 hearth-monitor %s primary\n'
+              'MINSUPPLIES 1\nSHUTDOWNCMD "/sbin/shutdown -h +0"\nPOWERDOWNFLAG /etc/killpower\n' % pw, 0o640)
+        for f in ('nut.conf', 'ups.conf', 'upsd.conf', 'upsd.users', 'upsmon.conf'):
+            try:
+                os.chown(os.path.join(NUT_DIR, f), 0, __import__('grp').getgrnam('nut').gr_gid)
+            except (KeyError, OSError):
+                pass
+        if not os.path.exists(NUT_STARTED):
+            open(NUT_STARTED, 'w').close()
+        for u in NUT_UNITS:
+            run(['systemctl', 'enable', '--now', u], timeout=60)
+        return {'ups': 'on'}
+    if os.path.exists(NUT_STARTED):
+        for u in NUT_UNITS:
+            run(['systemctl', 'disable', '--now', u], timeout=60)
+        if os.path.exists(os.path.join(NUT_DIR, 'nut.conf')) and NUT_MARK in read(os.path.join(NUT_DIR, 'nut.conf')):
+            write(os.path.join(NUT_DIR, 'nut.conf'), NUT_MARK + '\nMODE=none\n', 0o640)
+        remove(NUT_STARTED)
+    return {'ups': 'off'}
+
+
+def ups_status():
+    """The UPS's charge and whether it's on battery (upsc), or None."""
+    if not which('upsc'):
+        return None
+    code, out = run(['upsc', 'hearth@localhost'], timeout=10)
+    if code != 0:
+        return None
+    v = dict(l.split(': ', 1) for l in out.splitlines() if ': ' in l)
+    return {'charge': v.get('battery.charge', ''), 'status': v.get('ups.status', ''), 'runtime': v.get('battery.runtime', '')}
+
+
+# ================================================================== stage 3: services, the AI service, the guard
+
+# Apps that aren't in Debian (Ollama, Jellyfin) are installed only when you ask, on this PC, from their makers' own
+# releases, checked against the SHA-256 their makers publish: never in the image, never at boot. They live in
+# /var/lib/hearth/apps/NAME (root's, read only for the services), their data next to it; removing one keeps its data.
+APPS_DIR = '/var/lib/hearth/apps'
+APP_STATE = '/var/lib/hearth/home-server-apps.json'       # installed versions and install progress (no secrets)
+SERVICES_STATE = '/run/hearth/home-server-services.json'  # what Light mode stopped or unloaded for your game
+SEEN_SYS = '/var/lib/hearth/home-server-seen.json'        # the Command Center seen using the AI service (hide-until-seen)
+GUARD_STATE = '/var/lib/hearth/home-server-guard.json'    # the ransomware guard tripped (state, never a setting)
+JELLYFIN_DATA = '/var/lib/hearth/jellyfin'
+SERVICES_TIMER = 'hearth-home-server-services.timer'
+OLLAMA_PORT = 11434
+JELLYFIN_PORT = 8096
+JELLYFIN_DISCOVERY = 7359
+APP_UNITS = {'ollama': 'hearth-ollama', 'jellyfin': 'hearth-jellyfin'}   # NAME.service (no [Install]) and NAME.timer
+APP_DROPIN = '/etc/systemd/system/%s.service.d/hearth.conf'
+APPS = {
+    'ollama': {'label': 'Ollama', 'repo': 'ollama/ollama', 'assets': ('ollama-linux-amd64.tar.zst', 'ollama-linux-amd64.tgz'),
+               'sums': 'sha256sum.txt', 'bin': 'bin/ollama', 'max': 6 << 30},
+    'jellyfin': {'label': 'Jellyfin', 'index': 'https://repo.jellyfin.org/files/server/linux/latest-stable/amd64/',
+                 'pattern': r'jellyfin_(\d+\.\d+\.\d+)-amd64\.tar\.xz', 'bin': 'jellyfin/jellyfin', 'max': 1 << 30},
+}
+DOWNLOAD_HOSTS = ('api.github.com', 'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com',
+                  'repo.jellyfin.org')
+SHA_RE = re.compile(r'^[0-9a-f]{64}$')
+MEDIA_DEFAULT = {'on': False, 'reach': 'home', 'pause': False}
+AI_DEFAULT = {'on': False, 'unload': True, 'pause': False}
+GUARD_DEFAULT = {'on': False, 'limit': 1000}
+GUARD_LIMITS = (500, 1000, 5000)
+GUARD_WINDOW = '5 min ago'
+
+
+def clean_media(m):
+    m = m if isinstance(m, dict) else {}
+    return {'on': m.get('on') is True, 'reach': m.get('reach') if m.get('reach') in ('home', 'tailscale') else 'home',
+            'pause': m.get('pause') is True}
+
+
+def clean_ai(a):
+    a = a if isinstance(a, dict) else {}
+    return {'on': a.get('on') is True, 'unload': a.get('unload', True) is not False, 'pause': a.get('pause') is True}
+
+
+def clean_guard(g):
+    g = g if isinstance(g, dict) else {}
+    lim = g.get('limit')
+    return {'on': g.get('on') is True, 'limit': lim if lim in GUARD_LIMITS else GUARD_DEFAULT['limit']}
+
+
+# ------------------------------------------------------------------ verified downloads
+
+def _opener():
+    """urllib that follows redirects only over https and only to the makers' hosts."""
+    import urllib.request
+    import urllib.parse
+
+    class Only(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            u = urllib.parse.urlparse(newurl)
+            if u.scheme != 'https' or u.hostname not in DOWNLOAD_HOSTS:
+                raise Fail('a download tried to go somewhere else (%s): stopped' % (u.hostname or '?'))
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+    return urllib.request.build_opener(Only)
+
+
+def url_ok(url):
+    import urllib.parse
+    u = urllib.parse.urlparse(url or '')
+    return u.scheme == 'https' and u.hostname in DOWNLOAD_HOSTS
+
+
+def http_get(url, limit=4 << 20, timeout=30):
+    """A small https answer (a release's details, a checksum file). Tests replace this."""
+    if not url_ok(url):
+        raise Fail('not an allowed address')
+    import urllib.request
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-home-server', 'Accept': 'application/json, text/plain, */*'})
+    try:
+        with _opener().open(req, timeout=timeout) as r:
+            data = r.read(limit + 1)
+    except OSError as e:
+        raise Fail('couldn\'t download from %s (%s)' % (url.split('/')[2], e))
+    if len(data) > limit:
+        raise Fail('the answer from %s was too big' % url.split('/')[2])
+    return data
+
+
+def download(url, dest, limit, progress=None):
+    """A big file to DEST; its SHA-256 (hex). Tests replace this."""
+    if not url_ok(url):
+        raise Fail('not an allowed address')
+    import urllib.request
+    h = hashlib.sha256()
+    got = 0
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-home-server'})
+    try:
+        with _opener().open(req, timeout=60) as r, open(dest, 'wb') as f:
+            total = int(r.headers.get('Content-Length') or 0)
+            if total > limit:
+                raise Fail('the download is bigger than expected')
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                got += len(chunk)
+                if got > limit:
+                    raise Fail('the download is bigger than expected')
+                h.update(chunk)
+                f.write(chunk)
+                if progress and total:
+                    progress(got, total)
+    except OSError as e:
+        raise Fail('the download stopped (%s)' % e)
+    return h.hexdigest()
+
+
+def sums_lookup(text, name):
+    """The SHA-256 for NAME in a "HASH  NAME" checksum file (sha256sum's format, "./NAME" or "*NAME" too)."""
+    for line in (text or '').splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and SHA_RE.fullmatch(parts[0].lower()) and parts[-1].lstrip('*').lstrip('./') == name:
+            return parts[0].lower()
+        if len(parts) == 1 and SHA_RE.fullmatch(parts[0].lower()):
+            return parts[0].lower()     # a NAME.sha256sum with only the hash
+    return ''
+
+
+def version_key(v):
+    return tuple(int(x) for x in re.findall(r'\d+', v or '')[:4])
+
+
+def app_resolve(name):
+    """Where the newest release is and the SHA-256 its maker publishes for it: {version, url, file, sha256}. Ollama: the
+    GitHub release's own digest of the file and the release's sha256sum.txt (both must agree when both are there).
+    Jellyfin: the newest version in its stable folder and the .sha256sum next to it. No checksum: no install."""
+    app = APPS[name]
+    if 'repo' in app:
+        try:
+            rel = json.loads(http_get('https://api.github.com/repos/%s/releases/latest' % app['repo']).decode('utf-8', 'replace'))
+        except ValueError:
+            raise Fail('%s\'s release details didn\'t make sense' % app['label'])
+        assets = {a.get('name'): a for a in rel.get('assets') or [] if isinstance(a, dict)}
+        pick = next((assets[n] for n in app['assets'] if n in assets), None)
+        if not pick or not url_ok(pick.get('browser_download_url')):
+            raise Fail('%s\'s newest release has no file for this PC' % app['label'])
+        shas = set()
+        dg = str(pick.get('digest') or '')
+        if dg.startswith('sha256:') and SHA_RE.fullmatch(dg[7:].lower()):
+            shas.add(dg[7:].lower())
+        sums = assets.get(app.get('sums'))
+        if sums and url_ok(sums.get('browser_download_url')):
+            v = sums_lookup(http_get(sums['browser_download_url']).decode('utf-8', 'replace'), pick['name'])
+            if v:
+                shas.add(v)
+        if not shas:
+            raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
+        if len(shas) > 1:
+            raise Fail('%s\'s two checksums for the file don\'t agree: not installing it' % app['label'])
+        return {'version': str(rel.get('tag_name') or '')[:40], 'url': pick['browser_download_url'], 'file': pick['name'],
+                'sha256': shas.pop(), 'size': int(pick.get('size') or 0)}
+    page = http_get(app['index']).decode('utf-8', 'replace')
+    found = sorted(set(re.findall(app['pattern'], page)), key=version_key)
+    if not found:
+        raise Fail('couldn\'t find %s\'s newest version' % app['label'])
+    ver = found[-1]
+    fname = re.sub(r'\(.*\)', ver, app['pattern']).replace('\\', '')
+    url = app['index'] + fname
+    sha = sums_lookup(http_get(url + '.sha256sum').decode('utf-8', 'replace'), fname)
+    if not sha:
+        raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
+    return {'version': ver, 'url': url, 'file': fname, 'sha256': sha, 'size': 0}
+
+
+def tar_flags(fname):
+    return ['--zstd'] if fname.endswith('.zst') else ['-J'] if fname.endswith('.xz') else ['-z']
+
+
+def tar_problem(listing):
+    """Why an archive's verbose listing (tar -tvf) isn't safe to unpack, or None: no absolute paths, nothing climbing out
+    with "..", no devices, and links only to places inside it."""
+    for line in (listing or '').splitlines():
+        if not line.strip():
+            continue
+        kind = line[0]
+        if kind not in '-dlh':
+            return 'it has a device or special file'
+        rest = line.split(None, 5)
+        if len(rest) < 6:
+            return 'its listing didn\'t make sense'
+        name = rest[5]
+        target = ''
+        if kind in 'lh' and ' -> ' in name:
+            name, target = name.split(' -> ', 1)
+        elif kind == 'h' and ' link to ' in name:
+            name, target = name.split(' link to ', 1)
+        name = name.strip()
+        if name.startswith('/') or '..' in name.split('/'):
+            return 'it has a path outside its own folder (%s)' % name[:80]
+        if target:
+            if target.startswith('/'):
+                return 'it has a link outside its own folder (%s)' % name[:80]
+            base = os.path.dirname(name) if kind == 'l' else ''
+            norm = os.path.normpath(os.path.join(base, target))
+            if norm.startswith('..') or norm.startswith('/'):
+                return 'it has a link outside its own folder (%s)' % name[:80]
+    return None
+
+
+def app_state_set(name, **kw):
+    st = state_read(APP_STATE)
+    cur = dict(st.get(name) or {}) if isinstance(st.get(name), dict) else {}
+    cur.update(kw)
+    st[name] = cur
+    ensure_dir(os.path.dirname(APP_STATE), 0o755)
+    state_write(APP_STATE, st)
+
+
+def arch_ok():
+    return os.uname().machine in ('x86_64', 'amd64')
+
+
+def free_bytes(path):
+    """Free space where the apps go. Tests replace this."""
+    st = os.statvfs(path)
+    return st.f_bavail * st.f_frsize
+
+
+def app_install_run(name):
+    """The install itself (in its own transient unit): find the newest release, download it, check its SHA-256, check the
+    archive, unpack it beside the old one, then swap them. Anything wrong: nothing changes and you're told why."""
+    if name not in APPS:
+        raise Fail('unknown app')
+    app = APPS[name]
+    app_state_set(name, installing=True, progress=0, error='', started=int(time.time()))
+    work = os.path.join(APPS_DIR, '.%s.download' % name)
+    new = os.path.join(APPS_DIR, '.%s.new' % name)
+    try:
+        if not arch_ok():
+            raise Fail('%s is only installed on x86-64 PCs here' % app['label'])
+        if not which('tar'):
+            raise Fail('tar isn\'t on this PC')
+        ensure_dir(APPS_DIR, 0o755)
+        rel = app_resolve(name)
+        need = max(rel.get('size') or 0, app['max'] // 4) * 3
+        if free_bytes(APPS_DIR) < need:
+            raise Fail('not enough free space for %s (it needs about %d GB)' % (app['label'], need >> 30))
+        for p in (work, new):
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+        os.makedirs(work, 0o700)
+        f = os.path.join(work, rel['file'])
+
+        def prog(got, total):
+            app_state_set(name, progress=int(got * 90 / total))
+        got = download(rel['url'], f, app['max'], prog)
+        if got != rel['sha256']:
+            raise Fail('%s\'s download doesn\'t match the checksum its maker published: not installed' % app['label'])
+        code, listing = run(['tar'] + tar_flags(f) + ['-tvf', f], timeout=600)
+        why = tar_problem(listing) if code == 0 else 'it couldn\'t be read'
+        if why:
+            raise Fail('%s\'s archive isn\'t safe to unpack: %s' % (app['label'], why))
+        os.makedirs(new, 0o755)
+        code, out = run(['tar'] + tar_flags(f) + ['-xf', f, '-C', new, '--no-same-owner', '--no-same-permissions'], timeout=1800)
+        if code != 0:
+            raise Fail('%s couldn\'t be unpacked: %s' % (app['label'], out.strip()[-200:]))
+        b = os.path.join(new, app['bin'])
+        if not os.path.isfile(b):
+            raise Fail('%s\'s archive doesn\'t have the program where it should be' % app['label'])
+        os.chmod(b, 0o755)
+        dest = os.path.join(APPS_DIR, name)
+        old = os.path.join(APPS_DIR, '.%s.old' % name)
+        if os.path.isdir(old):
+            shutil.rmtree(old)
+        if os.path.isdir(dest):
+            os.rename(dest, old)
+        os.rename(new, dest)
+        if os.path.isdir(old):
+            shutil.rmtree(old, ignore_errors=True)
+        app_state_set(name, installing=False, progress=100, version=rel['version'], sha256=rel['sha256'], at=int(time.time()), error='')
+        if os.path.exists(APP_DROPIN % APP_UNITS[name]):
+            run(['systemctl', 'restart', APP_UNITS[name] + '.service'])
+        return {'ok': True, 'installed': name, 'version': rel['version']}
+    except FAILS as e:
+        app_state_set(name, installing=False, error=str(e))
+        raise
+    finally:
+        for p in (work, new):
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+
+
+def app_install(name):
+    """Starts the install in its own transient unit (it can take a while: Ollama is about 2 GB). Only when you ask."""
+    caller()
+    if name not in APPS:
+        raise Fail('unknown app')
+    st = state_read(APP_STATE).get(name) or {}
+    if st.get('installing') and time.time() - (st.get('started') or 0) < 3 * 3600:
+        return {'ok': True, 'started': False, 'note': 'already installing'}
+    if not arch_ok():
+        raise Fail('%s is only installed on x86-64 PCs here' % APPS[name]['label'])
+    app_state_set(name, installing=True, progress=0, error='', started=int(time.time()))
+    code, out = run(['systemd-run', '--unit=hearth-home-server-install-%s-%d' % (name, int(time.time())), '--collect',
+                     '--property=Nice=10', '--property=IOSchedulingClass=idle', '--property=TimeoutStartSec=3h',
+                     os.path.realpath(__file__), 'app', 'install-run', name], timeout=30)
+    if code != 0:
+        app_state_set(name, installing=False, error='couldn\'t start the install')
+        raise Fail('couldn\'t start the install: %s' % out.strip()[-200:])
+    return {'ok': True, 'started': True}
+
+
+def app_remove(name):
+    """The app goes (its service stops); its data (Jellyfin's libraries and settings, Ollama's models) stays."""
+    caller()
+    if name not in APPS:
+        raise Fail('unknown app')
+    unit = APP_UNITS[name]
+    unit_switch(unit + '.timer', False)
+    run(['systemctl', 'stop', unit + '.service'])
+    dest = os.path.join(APPS_DIR, name)
+    if os.path.isdir(dest) and os.path.realpath(dest) == os.path.join(os.path.realpath(APPS_DIR), name):
+        shutil.rmtree(dest)
+    st = state_read(APP_STATE)
+    st.pop(name, None)
+    state_write(APP_STATE, st)
+    return {'ok': True, 'removed': name, 'dataKept': True}
+
+
+def app_installed(name):
+    return os.path.isfile(os.path.join(APPS_DIR, name, APPS[name]['bin']))
+
+
+# ------------------------------------------------------------------ services: units, reach, Light mode
+
+def services_plan(data, user):
+    """What the services need (no change made yet): each app's drop-in and the ports that only Tailscale may reach.
+    The AI service is never for the home network: it listens on all addresses only behind Hearth's firewall rule
+    (lo and tailscale0 let in), otherwise on this PC only."""
+    media, ai = clean_media(data.get('media')), clean_ai(data.get('ai'))
+    ts_only = data.get('tsOnly') is True
+    out = {'media': media, 'ai': ai, 'ports': {'tcp': [], 'udp': []}, 'user': user, 'units': {}}
+    if ai['on']:
+        out['ports']['tcp'].append(OLLAMA_PORT)
+    if media['on'] and (media['reach'] == 'tailscale' or ts_only):
+        out['ports']['tcp'].append(JELLYFIN_PORT)
+        out['ports']['udp'].append(JELLYFIN_DISCOVERY)
+    out['mediaTs'] = media['on'] and (media['reach'] == 'tailscale' or ts_only)
+    return out
+
+
+def ollama_dropin(listen_all):
+    """The AI service: models in its own state folder, on the graphics card. On all addresses only with the firewall
+    rule loaded first (without "-": no rule, no start); otherwise only on this PC."""
+    lines = ['# Hearth home server: the AI service (hearth-home-server-helper). Settings › Home server › AI.', '[Service]',
+             'Environment=OLLAMA_HOST=%s:%d' % ('0.0.0.0' if listen_all else '127.0.0.1', OLLAMA_PORT)]
+    if listen_all:
+        lines.append('ExecStartPre=+/usr/sbin/nft -f %s' % NFT_FILE)
+    return '\n'.join(lines) + '\n'
+
+
+def jellyfin_dropin(user, ts_only):
+    """The media server runs as you (it reads your shares), its data in /var/lib/hearth/jellyfin. Tailscale only: the
+    firewall rule is loaded first, without "-" (no rule, no start)."""
+    d = JELLYFIN_DATA
+    lines = ['# Hearth home server: the media server (hearth-home-server-helper). Settings › Home server › Services.', '[Service]',
+             'User=%s' % user,
+             'ExecStart=',
+             'ExecStart=%s/jellyfin/jellyfin/jellyfin --datadir %s/data --configdir %s/config --cachedir %s/cache --logdir %s/log '
+             '--webdir %s/jellyfin/jellyfin/jellyfin-web --ffmpeg /usr/bin/ffmpeg' % (APPS_DIR, d, d, d, d, APPS_DIR)]
+    if ts_only:
+        lines.append('ExecStartPre=+/usr/sbin/nft -f %s' % NFT_FILE)
+    return '\n'.join(lines) + '\n'
+
+
+def services_switch(svc, res):
+    """Each app on or off as you chose (after the firewall step in apply). Off: its service stops and its timer (which
+    starts it a minute after the PC starts) is disabled; nothing is deleted. A Tailscale-only service whose firewall
+    rule didn't load isn't started (the AI service then listens on this PC only)."""
+    out = {}
+    fw_ok = res.get('services') == 'tailscale-only'
+    changed = False
+    for name, want in (('ollama', svc['ai']['on']), ('jellyfin', svc['media']['on'])):
+        unit = APP_UNITS[name]
+        drop = APP_DROPIN % unit
+        if not want:
+            if os.path.exists(drop):
+                run(['systemctl', 'stop', unit + '.service'])
+            unit_switch(unit + '.timer', False)
+            out[name] = 'off'
+            continue
+        if not app_installed(name):
+            out[name] = 'not installed'
+            continue
+        if name == 'ollama':
+            text = ollama_dropin(fw_ok)
+            if not fw_ok:
+                out['aiNote'] = 'The AI service listens on this PC only: Hearth\'s firewall rule for Tailscale didn\'t load'
+        else:
+            if svc['mediaTs'] and not fw_ok:
+                run(['systemctl', 'stop', unit + '.service'])
+                unit_switch(unit + '.timer', False)
+                out[name] = 'not started'
+                out['mediaNote'] = 'Not started: it should only be reachable through Tailscale, and Hearth\'s firewall rule didn\'t load'
+                continue
+            ensure_dir(JELLYFIN_DATA, 0o750, svc['user'])
+            for sub in ('data', 'config', 'cache', 'log'):
+                ensure_dir(os.path.join(JELLYFIN_DATA, sub), 0o750, svc['user'])
+            text = jellyfin_dropin(svc['user'], svc['mediaTs'])
+        try:
+            same = read(drop) == text
+        except OSError:
+            same = False
+        if not same:
+            write(drop, text)
+            changed = True
+        out[name] = 'on'
+    if changed:
+        run(['systemctl', 'daemon-reload'])
+    for name, want in (('ollama', svc['ai']['on']), ('jellyfin', svc['media']['on'])):
+        if want and out.get(name) == 'on':
+            unit = APP_UNITS[name]
+            unit_switch(unit + '.timer', True)
+            run(['systemctl', 'restart' if changed else 'start', unit + '.service'])
+    return {'apps': out}
+
+
+def services_timer_needed(plan):
+    ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
+    return ai['on'] or (media['on'] and media['pause']) or guard['on']
+
+
+def ollama_api(method, path, body=None, timeout=10):
+    """One call to the AI service on this PC. Tests replace this."""
+    import urllib.request
+    req = urllib.request.Request('http://127.0.0.1:%d%s' % (OLLAMA_PORT, path), method=method,
+                                 data=json.dumps(body).encode() if body is not None else None, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read(1 << 20)
+        return json.loads(raw) if raw else {}
+    except (OSError, ValueError):
+        return None
+
+
+def unload_models():
+    """Every model the AI service has loaded is unloaded now (keep_alive 0): the graphics card is yours again. The
+    next question loads it again by itself."""
+    ps = ollama_api('GET', '/api/ps') or {}
+    names = [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]
+    for n in names:
+        if isinstance(n, str) and n:
+            ollama_api('POST', '/api/generate', {'model': n, 'keep_alive': 0}, timeout=30)
+    return names
+
+
+def unit_active(unit):
+    return run(['systemctl', 'is-active', '--quiet', unit])[0] == 0
+
+
+def ai_clients():
+    """Your other devices using the AI service right now (their Tailscale names), from its open connections."""
+    code, out = run(['ss', '-Htn', 'state', 'established', '( sport = :%d )' % OLLAMA_PORT], timeout=10)
+    if code != 0:
+        return []
+    ips = set()
+    for line in out.splitlines():
+        cols = line.split()
+        if len(cols) >= 4:
+            ip = cols[-1].rsplit(':', 1)[0].strip('[]')
+            if re.fullmatch(r'100\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip) or ip.lower().startswith('fd7a:115c:a1e0'):
+                ips.add(ip)
+    if not ips:
+        return []
+    names = []
+    code, out = run(['tailscale', 'status', '--json'], timeout=10) if which('tailscale') else (1, '')
+    try:
+        peers = (json.loads(out).get('Peer') or {}).values() if code == 0 else []
+    except ValueError:
+        peers = []
+    for p in peers:
+        if set(p.get('TailscaleIPs') or []) & ips:
+            names.append(str(p.get('HostName') or p.get('DNSName') or '')[:80])
+    return [n for n in names if n] or sorted(ips)
+
+
+def mark_seen_sys(kind, device, now):
+    st = state_read(SEEN_SYS)
+    st[kind] = {'at': int(now * 1000), 'device': (device or '')[:80]}
+    ensure_dir(os.path.dirname(SEEN_SYS), 0o755)
+    state_write(SEEN_SYS, st)
+
+
+def services_run(now=None):
+    """The services timer (every minute, only while something needs it): Light mode for the AI service (models unloaded
+    when Game Mode or a game starts, the service stopped too if you chose that, started again after) and for the media
+    server if you chose "Pause in Game Mode"; the Command Center noted when it uses the AI service; the ransomware guard;
+    and the Tailscale-only rule put back if something removed it. It never changes your settings."""
+    now = time.time() if now is None else now
+    plan = plan_read()
+    ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
+    st = state_read(SERVICES_STATE)
+    paused = [p for p in st.get('paused') or [] if p in APP_UNITS]
+    playing = wait_for_game(plan)
+    did = []
+    if ai['on'] and app_installed('ollama'):
+        if playing:
+            if ai['unload'] and unit_active('hearth-ollama.service'):
+                gone = unload_models()
+                if gone:
+                    did.append('unloaded ' + ', '.join(gone))
+                st['unloadedAt'] = int(now)
+            if ai['pause'] and 'ollama' not in paused and unit_active('hearth-ollama.service'):
+                run(['systemctl', 'stop', 'hearth-ollama.service'])
+                paused.append('ollama')
+        elif unit_active('hearth-ollama.service'):
+            users = ai_clients()
+            if users:
+                mark_seen_sys('commandCenter', users[0], now)
+    if media['on'] and media['pause'] and playing and 'jellyfin' not in paused and unit_active('hearth-jellyfin.service'):
+        run(['systemctl', 'stop', 'hearth-jellyfin.service'])
+        paused.append('jellyfin')
+    if not playing and paused:
+        for name in paused:
+            want = ai['on'] if name == 'ollama' else media['on']
+            if want and os.path.exists(APP_DROPIN % APP_UNITS[name]):
+                run(['systemctl', 'start', APP_UNITS[name] + '.service'])
+                did.append('started ' + name + ' again')
+        paused = []
+    st['paused'] = paused
+    st['playing'] = playing
+    st['at'] = int(now)
+    if guard['on']:
+        st['guard'] = guard_check(plan, guard, now)
+    if os.path.exists(NFT_FILE) and which('nft') and run(['nft', 'list', 'table', 'inet', NFT_TABLE])[0] != 0:
+        run(['nft', '-f', NFT_FILE])
+        did.append('Tailscale-only rule put back')
+    ensure_dir(os.path.dirname(SERVICES_STATE), 0o755)
+    state_write(SERVICES_STATE, st)
+    return {'ok': True, 'playing': playing, 'paused': paused, 'did': did}
+
+
+# ------------------------------------------------------------------ the ransomware guard
+
+def guard_tripped():
+    return bool(state_read(GUARD_STATE).get('tripped'))
+
+
+def guard_count():
+    """Files renamed or deleted on your shares (through Samba) in the last 5 minutes, from full_audit's journal lines."""
+    code, out = run(['journalctl', '-q', '-o', 'cat', '-t', 'smbd_audit', '--since', GUARD_WINDOW, '--no-pager'], timeout=30)
+    if code != 0:
+        return 0
+    return sum(1 for l in out.splitlines() if 'renameat' in l or 'unlinkat' in l)
+
+
+def guard_lock_text(text):
+    return '\n'.join(l.replace('read only = no', 'read only = yes') for l in text.splitlines()) + ('\n' if text.endswith('\n') else '')
+
+
+def guard_check(plan, guard, now):
+    """If far more files change at once than you'd ever do (your limit, in 5 minutes), every share turns read only right
+    away and you're told. Nothing is deleted and no setting changes: "Make them writable again" (Safety) undoes it,
+    and snapshots bring back what changed."""
+    st = state_read(GUARD_STATE)
+    if st.get('tripped'):
+        return {'tripped': st['tripped'], 'count': st.get('count', 0)}
+    n = guard_count()
+    if n < guard['limit']:
+        return {'watching': True, 'count': n}
+    st = {'tripped': int(now), 'count': n}
+    ensure_dir(os.path.dirname(GUARD_STATE), 0o755)
+    state_write(GUARD_STATE, st)
+    if os.path.exists(OUR_CONF):
+        old = read(OUR_CONF)
+        write(OUR_CONF, guard_lock_text(old))
+        if which('testparm') and run(['testparm', '-s', SMB_CONF])[0] != 0:
+            write(OUR_CONF, old)
+        unit = smb_unit()
+        if unit:
+            run(['systemctl', 'reload-or-restart', unit])
+    user = plan.get('user') if isinstance(plan.get('user'), str) else ''
+    if user:
+        notify(user, '%d files were renamed or deleted on your shares in 5 minutes: they are read only now. '
+                     'Settings › Home server › Safety puts them back, and snapshots bring back what changed.' % n, urgent=True)
+    return st
+
+
+def guard_reset():
+    """Your shares writable again after the guard tripped (you looked and it was you). apply() writes Samba's config."""
+    caller()
+    had = remove(GUARD_STATE)
+    return {'ok': True, 'reset': had}
+
+
+# ------------------------------------------------------------------
+
+def stdin_json():
+    try:
+        return json.loads(sys.stdin.read(1 << 20) or '{}')
+    except ValueError:
+        raise Fail('the input must be JSON')
+
+
+def main(argv):
+    try:
+        a = argv[1:]
+        if a == ['apply']:
+            res = apply(stdin_json())
+        elif a == ['smb-password']:
+            if not hsh:
+                raise Fail("Hearth Storage's helper is missing")
+            res = hsh.smb_password(sys.stdin.readline())
+        elif a == ['drives']:
+            caller()
+            res = drives()
+        elif len(a) == 2 and a[0] == 'format-plan':
+            caller()
+            res = format_plan(a[1])
+        elif a == ['format']:
+            res = format_drive(stdin_json())
+        elif a == ['snapshot', 'run']:
+            res = snapshot_run()
+        elif len(a) == 2 and a[0] == 'tailscale':
+            res = tailscale(a[1])
+        elif len(a) == 2 and a[0] == 'exit-node' and a[1] in ('on', 'off'):
+            res = exit_node(a[1] == 'on')
+        elif len(a) == 2 and a[0] == 'wol':
+            if not hsh:
+                raise Fail("Hearth Storage's helper is missing")
+            res = hsh.wol(a[1])
+        elif a == ['person-add']:
+            res = person_add(stdin_json())
+        elif a == ['person-password']:
+            res = person_password(stdin_json())
+        elif len(a) == 2 and a[0] == 'person-remove':
+            res = person_remove(a[1])
+        elif a == ['person-folder']:
+            res = person_folder(stdin_json())
+        elif len(a) == 2 and a[0] == 'backup-secret':
+            res = backup_secret(a[1], stdin_json())
+        elif len(a) == 2 and a[0] == 'backup-forget':
+            caller()
+            if not ID_RE.fullmatch(a[1]):
+                raise Fail('a backup has a bad id')
+            for k in ('pass', 'rest'):
+                remove(secret_path(a[1], k))
+            if os.path.exists(RCLONE_CONF):
+                write(RCLONE_CONF, rclone_strip(read(RCLONE_CONF), 'hearth-' + a[1]), 0o600)
+            res = {'ok': True, 'forgotten': a[1], 'backupKept': True}
+        elif a == ['backup', 'run']:
+            res = backup_run()
+        elif len(a) == 4 and a[:3] == ['backup', 'run', '--now']:
+            res = backup_run(only=a[3], now_flag=True)
+        elif len(a) == 2 and a[0] == 'backup-now':
+            res = backup_now(a[1])
+        elif len(a) == 2 and a[0] == 'backup-snapshots':
+            res = backup_snapshots(a[1])
+        elif a == ['backup-restore']:
+            res = backup_restore(stdin_json())
+        elif len(a) == 6 and a[:2] == ['backup', 'restore-run']:
+            if os.environ.get('PKEXEC_UID'):
+                raise Fail('restore-run is started by backup-restore only')
+            res = restore_run(*a[2:])
+        elif len(a) == 2 and a[0] == 'receive-add':
+            res = receive_add(a[1])
+        elif len(a) == 2 and a[0] == 'receive-remove':
+            res = receive_remove(a[1])
+        elif a == ['alerts', 'run']:
+            res = alerts_run()
+        elif a == ['alerts', 'test']:
+            caller()
+            res = alerts_run(test=True)
+        elif a == ['power', 'run']:
+            res = power_run()
+        elif a == ['ups-status']:
+            caller()
+            res = {'ok': True, 'ups': ups_status()}
+        # ---- stage 3
+        elif len(a) == 2 and a[0] == 'app-install':
+            res = app_install(a[1])
+        elif len(a) == 3 and a[:2] == ['app', 'install-run']:
+            if os.environ.get('PKEXEC_UID'):
+                raise Fail('install-run is started by app-install only')
+            res = app_install_run(a[2])
+        elif len(a) == 2 and a[0] == 'app-remove':
+            res = app_remove(a[1])
+        elif a == ['services', 'run']:
+            res = services_run()
+        elif a == ['guard-reset']:
+            res = guard_reset()
+        else:
+            raise Fail('usage: hearth-home-server-helper apply | smb-password | drives | format-plan DEV | format | '
+                       'snapshot run | tailscale start|stop | exit-node on|off | wol IFACE | person-add | person-password | '
+                       'person-remove NAME | person-folder | backup-secret ID | backup-forget ID | backup run [--now ID] | '
+                       'backup-now ID | backup-snapshots ID | backup-restore | receive-add NAME | receive-remove USER | '
+                       'alerts run|test | power run | ups-status | app-install NAME | app-remove NAME | services run | guard-reset')
+        print(json.dumps(res))
+        return 0
+    except FAILS as e:
+        print(json.dumps({'ok': False, 'error': str(e)}))
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -23,7 +23,7 @@ PanelWindow {
     onPrimaryChanged: claim()
     Component.onCompleted: claim()
     function claim() { if (!primary) return; DeskState.mainBar = dock; DeskState.bottomInset = reserved; }
-    onReservedChanged: claim()
+    onReservedChanged: { claim(); refit(); }
 
     readonly property bool shelf: Theme.islandStyle === "shelf"
     readonly property bool attached: Theme.islandStyle === "bar"
@@ -43,6 +43,24 @@ PanelWindow {
     implicitHeight: bodyH + gap + 2
     implicitWidth: 0
     exclusiveZone: reserved
+    // Coming back from Game Mode the shell starts before your settings are read, so the dock used to appear with
+    // the look's default (not auto-hide) and reserve the bottom of the screen; labwc kept that space reserved after
+    // auto-hide took over, so windows couldn't fill the screen. Now the dock waits for your settings (at most a few
+    // seconds, so it always comes up), and when the space it reserves changes it is put back on screen once, which
+    // makes labwc work out the free area again and re-fit maximized windows.
+    property bool settingsReady: Settings.loaded
+    Timer { interval: 4000; running: !dock.settingsReady; onTriggered: dock.settingsReady = true }
+    property bool remapping: false
+    // Off screen for a moment (not within one frame, or the compositor wouldn't see it go), then back.
+    Timer { id: remapTimer; interval: 150; onTriggered: dock.remapping = false }
+    visible: settingsReady && !remapping
+    property int lastReserved: -1
+    onSettingsReadyChanged: refit()
+    function refit() {
+        if (!settingsReady) return;
+        if (lastReserved >= 0 && lastReserved !== reserved) { remapping = true; remapTimer.restart(); }
+        lastReserved = reserved;
+    }
     color: "transparent"
     WlrLayershell.namespace: "hearth-dock"
     WlrLayershell.layer: WlrLayer.Top

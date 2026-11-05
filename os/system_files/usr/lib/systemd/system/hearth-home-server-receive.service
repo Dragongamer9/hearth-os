@@ -1,0 +1,20 @@
+# Settings › Home server › Backups & sync › Backups from your other Hearth devices (docs/HOME-SERVER.md): rclone's
+# restic server on this PC's Tailscale address only, each device in its own folder, with the backup codes you made
+# (only their hashes are kept). The address, folder and user come from a drop-in hearth-home-server-helper writes.
+# Started only by its timer, off until you turn it on: never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: backups from your other Hearth devices
+ConditionPathExists=/etc/hearth/backup-receiver/htpasswd
+ConditionPathExists=/etc/systemd/system/hearth-home-server-receive.service.d/hearth.conf
+After=tailscaled.service
+
+[Service]
+ExecStart=/bin/false
+Restart=on-failure
+RestartSec=60
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=-/var/home -/home -/var/mnt -/mnt -/run/media -/media
+PrivateTmp=yes

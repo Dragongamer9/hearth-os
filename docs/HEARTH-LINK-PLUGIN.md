@@ -10,6 +10,15 @@ date when Steam Game Mode starts (its `PLUGINS` list). An image built without it
 
 ## The panel
 
+**Home server** (only on a PC that's a home server: set up, sharing or backing up; docs/HOME-SERVER.md). This PC's
+name, its shares, space and people, the backups in a line (last good one, waiting for your game, didn't finish), what's
+wrong (alerts), the AI service in a line (ready, or models unloaded / stopped while you play; stage 3), **Light mode
+while you play**, what Light mode holds back right now, and **Let paused jobs run now** /
+**Pause them again while I play**. It asks Mantel's home server helper only `quick`, `quick-set lightMode on|off` and
+`resume on|off` (main.py `home_server`, an allow-list, a 10-second timeout, as you, never a password); when the helper
+isn't there or doesn't answer the section isn't shown, and its own error boundary keeps a problem in it from touching
+the rest of the panel.
+
 **Devices.** This device, then each paired device: online on this network, online over the internet, or offline with
 when it was last seen. A sleeping Hearth Storage device that Hearth Link knows how to wake gets **Wake**. An online
 device gets **Get a game from …**, which lists the games on it; pick one to copy it here.

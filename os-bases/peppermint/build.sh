@@ -500,6 +500,90 @@ done
 chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
 # Hearth Storage's root helper (Windows sharing, waking from the network; 49-hearth-storage.rules).
 chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
+# ---- Hearth home server (Settings › Home server, docs/HOME-SERVER.md) ------------------------------------------
+# Samba for the shared folders, smartmontools for drive health, nftables for "Only reachable through Tailscale",
+# and Tailscale from Tailscale's own repository (its signing key checked against the fingerprint below before it's
+# trusted). Every service they bring is disabled here, and the build fails if one is left on: nothing listens or
+# runs until the owner turns it on in Settings, and none of them is part of starting the PC, the session or Game Mode.
+chmod 755 /usr/libexec/nimbus/hearth-home-server-helper 2>/dev/null || true
+"${APT[@]}" samba smartmontools nftables
+# Stage 2 (Backups & sync, People, Alerts & power), all Debian trixie's own packages: restic (backups, encrypted),
+# rclone (cloud targets, and receiving your other Hearth devices' backups), Syncthing (folder sync between Hearth
+# devices), hdparm (spinning down idle data drives) and NUT (a UPS). Nice to have: a missing one is said in Settings.
+optional restic rclone syncthing hdparm nut-client nut-server
+TS_FPR=2596A99EAAB33821893C0A79458CA832957F5868   # Tailscale Inc. (Package repository signing key)
+if curl -fsSL --retry 3 -o /tmp/tailscale.gpg https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg; then
+  command -v gpg >/dev/null || "${APT[@]}" gpg
+  TS_GOT=$(GNUPGHOME=$(mktemp -d) gpg --show-keys --with-colons /tmp/tailscale.gpg 2>/dev/null | awk -F: '/^fpr:/ { print $10; exit }' || true)
+  if [ "$TS_GOT" != "$TS_FPR" ]; then
+    echo "::error::Tailscale's repository key isn't the expected one (got '$TS_GOT', expected $TS_FPR): not trusting it"
+    exit 1
+  fi
+  install -Dm644 /tmp/tailscale.gpg /usr/share/keyrings/tailscale-archive-keyring.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian trixie main' \
+    > /etc/apt/sources.list.d/tailscale.list
+  apt-get update -y
+  "${APT[@]}" tailscale
+  rm -f /tmp/tailscale.gpg
+else
+  echo "::warning::couldn't reach Tailscale's repository: Tailscale is left out of this image (Settings › Home server says so)"
+  OPTIONAL_MISSING+=("tailscale")
+fi
+# Samba with nothing shared and no guests; the home server and Hearth Storage include their own shares at the end.
+cat > /etc/samba/smb.conf <<'SMBCONF'
+# Hearth OS: Samba starts with nothing shared. Settings › Home server › Shared folders and Hearth Storage's Windows
+# sharing add their shares from their own files, included below by their helpers. Change shares there.
+[global]
+   workgroup = WORKGROUP
+   server string = Hearth OS
+   server role = standalone server
+   server min protocol = SMB3
+   map to guest = Never
+   restrict anonymous = 2
+   usershare allow guests = no
+   disable netbios = yes
+   smb ports = 445
+   load printers = no
+   printing = bsd
+   printcap name = /dev/null
+   passdb backend = tdbsam
+   logging = systemd
+SMBCONF
+testparm -s /etc/samba/smb.conf >/dev/null
+printf '%s\n' '# Samba (Settings › Home server): its cache and log folders (the image keeps /var empty).' \
+  'd /var/cache/samba 0755 root root -' 'd /var/log/samba 0750 root adm -' > /usr/lib/tmpfiles.d/hearth-samba.conf
+for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables nut-server nut-monitor nut-client nut-driver-enumerator syncthing-resume; do
+  systemctl disable "$u.service" 2>/dev/null || true
+done
+systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev/null || true
+# Stage 3 (Services, AI, Safety): the services timer (Light mode for the AI service and the media server, the
+# ransomware guard) and the timers that start Ollama and Jellyfin a minute after the PC starts. Ollama and Jellyfin
+# themselves are NOT in the image: Settings downloads them only when the owner asks (their makers' releases, SHA-256
+# checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
+HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
+for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service 2>/dev/null || true
+for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
+         nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
+  if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
+done
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service; do
+  if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
+done
+for u in hearth-ollama.service hearth-jellyfin.service hearth-home-server-services.service; do
+  if grep -q '^\[Install\]' "/usr/lib/systemd/system/$u" 2>/dev/null; then echo "::error::$u has an [Install] section: only its timer may start it"; exit 1; fi
+done
+if [ -e /var/lib/hearth/apps ] || command -v ollama >/dev/null 2>&1 || command -v jellyfin >/dev/null 2>&1; then
+  echo "::error::Ollama or Jellyfin is in the image: they're installed only when the owner asks"; exit 1
+fi
+if ls /etc/systemd/system/*.wants/syncthing@*.service >/dev/null 2>&1; then echo "::error::a syncthing@ service is on in the image"; exit 1; fi
+# Backups' state and restic's cache (the image keeps /var empty; made at boot, nothing else).
+printf '%s\n' '# Settings › Home server: the state of backups and alerts, and the restic cache.' \
+  'd /var/lib/hearth 0755 root root -' 'd /var/cache/hearth-restic 0700 root root -' > /usr/lib/tmpfiles.d/hearth-home-server.conf
+command -v smbd smbpasswd testparm smartctl nft
+command -v tailscale || echo "warning: no Tailscale in this image"
+for b in restic rclone syncthing hdparm upsmon; do command -v "$b" || echo "warning: no $b in this image (Settings › Home server says so)"; done
+# ---- end of Hearth home server
 if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then

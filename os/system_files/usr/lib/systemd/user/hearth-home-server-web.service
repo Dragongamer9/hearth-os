@@ -1,0 +1,16 @@
+# Settings › Home server › Files & links and Services › Files on the web (docs/HOME-SERVER.md): your shares in a web
+# browser (with your web password), share links and the drop-off folder, served as you by hearth-home-server-web on
+# port 8097: on this PC's Tailscale address only, or on your home network if you chose that. Off until you turn one of
+# them on there (hearth-home-server enables it for your account). Not part of the session starting: a failure here
+# never holds anything up.
+[Unit]
+Description=Hearth home server: files on the web, share links and drop-off
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-home-server-web
+Restart=on-failure
+RestartSec=30
+Nice=10
+
+[Install]
+WantedBy=default.target

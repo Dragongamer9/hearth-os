@@ -1,0 +1,16 @@
+# Settings › Home server › Backups & sync (docs/HOME-SERVER.md): runs the backups that are due (restic), then forgets
+# old ones beyond their keep counts. Started only by its timer, which is off until you turn a backup on; with Light mode
+# on it waits while you play. Holds off sleep while it runs; lowest CPU and disk priority, and nothing waits for it:
+# it's never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: backups
+ConditionPathExists=/etc/hearth/home-server.json
+After=local-fs.target network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemd-inhibit --what=sleep "--who=Hearth home server" "--why=Backing up" --mode=block /usr/libexec/nimbus/hearth-home-server-helper backup run
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+TimeoutStartSec=12h

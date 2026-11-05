@@ -4,14 +4,16 @@
 // was copied here, and only while Steam has it.
 import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow, ProgressBarWithInfo, TextField, ToggleField, staticClasses } from "@decky/ui";
 import { definePlugin } from "@decky/api";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { Component, ReactNode, useEffect, useRef, useState } from "react";
 import { FaNetworkWired } from "react-icons/fa";
 import {
   Answer, Down, Game, Job, POLL, STORAGE_POLL, Status, afterCopy, active, ago, bytes, canWake, deviceLine, healthSummary, hasStorage,
   SyncInfo, availableLine, jobActions, jobLine, lanCodeOk, left, netCodeOk, percent, sendable, serverOf, showCode, syncLines,
+  HOME_POLL, HomeQuick, aiLine, backupLine, homeLine, homeShown, pausedLine,
 } from "./model";
 import { HearthOnly } from "./hearth-only";
-import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo } from "./link";
+import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo,
+  homeServer, homeServerLight, homeServerResume } from "./link";
 
 const warn = { color: "#ffb37a" };
 const dim = { fontSize: 12, color: "#8d99a8" };
@@ -340,10 +342,64 @@ function Panel() {
   );
 }
 
+/** Its own error boundary: whatever goes wrong inside the Home server tile, the rest of the panel stays. */
+class Guard extends Component<{ children: ReactNode }, { broken: boolean }> {
+  state = { broken: false };
+  static getDerivedStateFromError() { return { broken: true }; }
+  componentDidCatch() { /* the tile just goes away */ }
+  render() { return this.state.broken ? null : this.props.children; }
+}
+
+/** Home server (docs/HOME-SERVER.md) in Game Mode: this PC's sharing and backups in short, Light mode while you play,
+ *  and letting paused jobs run now. Only on a PC that's a home server; never asks for a password. */
+function HomeServer() {
+  const [q, setQ] = useState<HomeQuick | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [msg, setMsg] = useState<{ t: string; bad?: boolean } | null>(null);
+  const alive = useRef(true);
+  const load = () => homeServer().then((v) => { if (alive.current) { setQ(v || null); setNow(Date.now()); } }).catch(() => alive.current && setQ(null));
+  useEffect(() => {
+    load();
+    const t = setInterval(load, HOME_POLL);
+    return () => { alive.current = false; clearInterval(t); };
+  }, []);
+  if (!q || !homeShown(q)) return null;
+  const said = (r: HomeQuick | null, ok: string) => {
+    if (r && r.ok === false) setMsg({ t: r.error || "That didn't work", bad: true }); else setMsg({ t: ok });
+    load();
+  };
+  const light = async (on: boolean) => said(await homeServerLight(on).catch(() => null),
+    on ? "Light mode on: big jobs wait while you play" : "Light mode off: backups and snapshots run on time, even while you play");
+  const resume = async (on: boolean) => said(await homeServerResume(on).catch(() => null),
+    on ? "Paused jobs can run now (for up to 4 hours)" : "Big jobs wait for your game again");
+  const paused = pausedLine(q);
+  return (
+    <PanelSection title="Home server">
+      <Field label={q.host || "This PC"} description={homeLine(q)} />
+      <Line style={q.backups.failed.length ? warn : dim}>{backupLine(q, now)}</Line>
+      {q.alerts.map((a, i) => <Line key={i} style={warn}>{a}</Line>)}
+      {aiLine(q) && <Line style={dim}>{aiLine(q)}</Line>}
+      <PanelSectionRow>
+        <ToggleField label="Light mode while you play" checked={q.lightMode} onChange={(v: boolean) => light(v)}
+          description={q.lightMode ? "Big jobs (backups, snapshots) wait while you play. Sharing keeps working" : "Off: backups and snapshots run on time, even while you play"} />
+      </PanelSectionRow>
+      {paused && !q.resumed && <Line style={dim}>{paused}</Line>}
+      {q.lightMode && q.playing && !q.resumed && q.paused.length > 0 && (
+        <PanelSectionRow><ButtonItem layout="below" onClick={() => resume(true)} description="Only for now: Light mode stays on">Let paused jobs run now</ButtonItem></PanelSectionRow>
+      )}
+      {q.resumed && (
+        <PanelSectionRow><ButtonItem layout="below" onClick={() => resume(false)} description="Paused jobs are running now">Pause them again while I play</ButtonItem></PanelSectionRow>
+      )}
+      {msg && <Line style={msg.bad ? warn : dim}>{msg.t}</Line>}
+      <Line style={dim}>More in Desktop Mode: Settings › Home server</Line>
+    </PanelSection>
+  );
+}
+
 export default definePlugin(() => ({
   name: "Hearth Link",
   titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-  content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Panel /></HearthOnly>,
+  content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Panel /></HearthOnly>,
   icon: <FaNetworkWired />,
   onDismount() {},
 }));

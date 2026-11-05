@@ -1,0 +1,14 @@
+# Settings › Home server › Alerts & power (docs/HOME-SERVER.md): looks at drive health (SMART), how full the drives
+# are, failed or late backups and mirrors missing a drive, and tells you about what's new (a desktop notification, and
+# optionally a note to your Tailscale devices). Started only by its timer, off until you turn alerts on. Never part of
+# starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: alerts
+ConditionPathExists=/etc/hearth/home-server.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-home-server-helper alerts run
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=10min

@@ -203,6 +203,143 @@ jobs:
           sm updates 13-updates-go-back
           wtype -k Right; sleep 1; for i in 1 2 3 4; do wtype -k Down; done; wtype -k Return; sleep 2; grim shots/settings-move/14-updates-go-back-ask.png || true
           rm -f /usr/libexec/nimbus/hearth-admin /tmp/fakebin/pkexec
+          # ---- Settings › Home server, stage 1 (docs/HOME-SERVER.md): its pages with two shares, a stand-in Tailscale, and
+          # the root helper through a stand-in pkexec (the drives as this runner has them), for these shots only.
+          mkdir -p shots/home-server "$HOME/Games" "$HOME/Work" "$HOME/.config/nimbus" /usr/libexec/nimbus
+          python3 - "$HOME" <<'PY'
+          import json, os, sys
+          h = sys.argv[1]
+          s = [{'id': 'a1b2c3d4e5f6', 'name': 'Games', 'path': h + '/Games', 'on': True, 'write': True, 'reach': 'home', 'recycle': True, 'snapshots': False, 'users': ['root'],
+                'people': {'sam': 'write', 'mia': 'read'}},
+               {'id': 'b1b2c3d4e5f6', 'name': 'Work files', 'path': h + '/Work', 'on': True, 'write': False, 'reach': 'tailscale', 'recycle': True, 'snapshots': False, 'users': ['root']}]
+          # Stage 2 (for its shots): two people, two backups (one to a drive, one to the cloud), backups from a device, alerts on.
+          people = [{'name': 'sam', 'pwSet': 1762300000000, 'folder': h + '/People/sam', 'quotaGb': 200}, {'name': 'mia', 'pwSet': 1762300000000, 'folder': '', 'quotaGb': 0}]
+          backups = [{'id': 'c1c2c3c4c5c6', 'name': 'To backup drive', 'shares': ['a1b2c3d4e5f6', 'b1b2c3d4e5f6'], 'target': {'kind': 'drive', 'path': '/var/mnt/backup/Hearth backups'},
+                      'every': 'daily', 'at': '03:00', 'day': 6, 'keep': {'daily': 7, 'weekly': 4, 'monthly': 6}, 'on': True},
+                     {'id': 'd1d2d3d4d5d6', 'name': 'To the cloud', 'shares': ['b1b2c3d4e5f6'], 'target': {'kind': 'cloud', 'provider': 'b2', 'path': 'nvidia-pc-backup/hearth'},
+                      'every': 'weekly', 'at': '05:00', 'day': 6, 'keep': {'daily': 7, 'weekly': 4, 'monthly': 6}, 'on': True}]
+          os.makedirs(h + '/People/sam', exist_ok=True)
+          open(h + '/.config/nimbus/home-server.json', 'w').write(json.dumps({'shares': s, 'smbPasswordSet': 1762300000000, 'people': people, 'backups': backups,
+              'receive': {'on': True, 'path': h + '/Games', 'devices': [{'user': 'rog-ally-3f9a', 'name': 'rog-ally', 'at': 1762300000000}]},
+              'alerts': {'on': True, 'tailscale': True, 'peers': ['phone.tail4f2a.ts.net']}, 'power': {'keepAwake': True, 'spinDown': 20}}, indent=2) + '\n')
+          import time
+          now = int(time.time())
+          os.makedirs('/var/lib/hearth', exist_ok=True)
+          open('/var/lib/hearth/home-server-backups.json', 'w').write(json.dumps({'jobs': {
+              'c1c2c3c4c5c6': {'lastOk': now - 7 * 3600, 'last': {'ok': True, 'at': now - 7 * 3600, 'files': 18234, 'bytes': 412000000000}, 'count': 17, 'checked': {'at': now - 2 * 86400, 'ok': True}},
+              'd1d2d3d4d5d6': {'last': {'ok': False, 'at': now - 3 * 3600, 'error': 'b2: 401 bad_auth_token (check the key)'}, 'lastOk': now - 8 * 86400}}}))
+          open('/var/lib/hearth/home-server-alerts.json', 'w').write(json.dumps({'at': now - 600, 'active': [
+              {'key': 'backup:d1d2d3d4d5d6', 'kind': 'backup', 'text': 'Backup "To the cloud" failed: b2: 401 bad_auth_token (check the key)'}], 'told': {}}))
+          PY
+          # Stage 3 (for its shots): the media server, files on the web, the AI service and the guard on, a share link,
+          # the drop-off, the Command Center seen on a laptop, a camera found, Ollama and Jellyfin "installed" (empty
+          # stand-ins), a stand-in Ollama API with two models, and systemctl answering "active" for these units only.
+          python3 - "$HOME" <<'PY'
+          import json, os, sys, time
+          h = sys.argv[1]
+          now = int(time.time() * 1000)
+          p = h + '/.config/nimbus/home-server.json'
+          d = json.load(open(p))
+          os.makedirs(h + '/Drop-off', exist_ok=True)
+          os.makedirs(h + '/Games/Installers', exist_ok=True)
+          for n, size in (('Installers/BFME2-setup.exe', 3 << 20), ('Installers/BFME2-setup (copy).exe', 3 << 20), ('Screenshot 2026-11-04 boss fight.png', 1 << 20), ('bfme replay 0412.BfME2Replay', 40000)):
+              with open(h + '/Games/' + n, 'wb') as f:
+                  f.write(b'h' * size)
+          d.update({'media': {'on': True, 'reach': 'home', 'pause': False}, 'ai': {'on': True, 'unload': True, 'pause': False},
+                    'web': {'on': True, 'reach': 'tailscale'}, 'dropoff': {'on': True, 'path': h + '/Drop-off'}, 'guard': {'on': True, 'limit': 1000},
+                    'links': [{'id': 'e1e2e3e4e5e6', 'path': h + '/Games/Installers', 'label': 'Installers', 'for': 'Sam', 'at': now, 'expires': now + 2 * 86400000, 'pw': True, 'max': 10, 'on': True}]})
+          open(p, 'w').write(json.dumps(d, indent=2) + '\n')
+          st = h + '/.local/state/nimbus'
+          os.makedirs(st, exist_ok=True)
+          open(st + '/home-server-links.json', 'w').write(json.dumps({'e1e2e3e4e5e6': {'token': 'k3Jd9sPq2LmXv8Rt4Wz1', 'hash': '', 'count': 3}, 'dropoff': {'token': 'Qx7Lm2Pv9Rs4Tn8Wk3Yz'}}))
+          open(st + '/home-server-web.json', 'w').write(json.dumps({'hash': 'pbkdf2-sha256$1$00$00', 'at': now}))
+          open(st + '/home-server-seen.json', 'w').write(json.dumps({'camera': {'at': now - 86400000, 'device': 'Front Door'}}))
+          open(st + '/home-server-cameras.json', 'w').write(json.dumps({'at': now - 86400000, 'cameras': [{'ip': '192.168.1.40', 'name': 'Front Door', 'url': 'http://192.168.1.40/'}]}))
+          open('/var/lib/hearth/home-server-seen.json', 'w').write(json.dumps({'commandCenter': {'at': now - 2 * 3600000, 'device': 'Laptop'}}))
+          open('/var/lib/hearth/home-server-apps.json', 'w').write(json.dumps({'ollama': {'version': 'v0.13.0', 'installing': False}, 'jellyfin': {'version': '10.11.2', 'installing': False}}))
+          for f in ('/var/lib/hearth/apps/ollama/bin/ollama', '/var/lib/hearth/apps/jellyfin/jellyfin/jellyfin'):
+              os.makedirs(os.path.dirname(f), exist_ok=True)
+              open(f, 'w').close()
+          PY
+          cat > /tmp/fakebin/systemctl <<'FAKE'
+          #!/bin/sh
+          case "$*" in
+            *"is-active --quiet hearth-ollama.service"|*"is-active --quiet hearth-jellyfin.service"|*"is-active --quiet hearth-home-server-web.service") exit 0 ;;
+          esac
+          exec /usr/bin/systemctl "$@"
+          FAKE
+          chmod +x /tmp/fakebin/systemctl
+          python3 -c '
+          import json, http.server
+          class H(http.server.BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def do_GET(self):
+                  v = {"/api/tags": {"models": [{"name": "qwen3:30b-a3b"}, {"name": "qwen3:14b"}]}, "/api/ps": {"models": [{"name": "qwen3:30b-a3b"}]}}.get(self.path, {})
+                  b = json.dumps(v).encode(); self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+          http.server.HTTPServer(("127.0.0.1", 11434), H).serve_forever()' &
+          FAKE_OLLAMA=$!
+          python3 hosts/linux/desktop/shell/hearth-home-server files-scan-run > /dev/null 2>&1 || true
+          cp os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper /usr/libexec/nimbus/
+          chmod 755 /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper
+          printf '#!/bin/sh\nPKEXEC_UID=$(id -u) exec "$@"\n' > /tmp/fakebin/pkexec
+          cat > /tmp/fakebin/tailscale <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            status) echo '{"BackendState":"Running","Self":{"HostName":"nvidia-pc","DNSName":"nvidia-pc.tail4f2a.ts.net.","TailscaleIPs":["100.84.12.7"],"UserID":1},"User":{"1":{"LoginName":"you@example.com"}},"CurrentTailnet":{"Name":"tail4f2a.ts.net"},"Peer":{"a":{"HostName":"ROG-Ally","DNSName":"rog-ally.tail4f2a.ts.net.","OS":"linux","TailscaleIPs":["100.70.1.2"],"Online":true},"b":{"HostName":"Phone","DNSName":"phone.tail4f2a.ts.net.","OS":"android","TailscaleIPs":["100.70.1.3"],"Online":true},"c":{"HostName":"Work-PC","DNSName":"work-pc.tail4f2a.ts.net.","OS":"windows","TailscaleIPs":["100.70.1.4"],"Online":false}}}' ;;
+            ping) echo "pong from peer via 192.168.1.20:41641 in 3ms" ;;
+          esac
+          FAKE
+          chmod +x /tmp/fakebin/pkexec /tmp/fakebin/tailscale
+          before=$(sha256sum "$HOME/.config/nimbus/home-server.json")
+          hs() { ipc settings close; ipc settings page "$1"; sleep 4; grim "shots/home-server/$2.png" || true; }
+          hs hs-overview 01-overview
+          hs hs-shares 02-shared-folders
+          wtype -k Right; sleep 1; wtype -k Return; sleep 2; for i in 1 2 3 4 5; do wtype -k Down; done; sleep 1; grim shots/home-server/03-share-settings.png || true
+          for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/home-server/04-password-and-how-to-open.png || true
+          hs hs-drives 05-drives-and-undo
+          wtype -k Right; sleep 1; for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim shots/home-server/06-snapshots-and-add-a-drive.png || true
+          hs hs-tailscale 07-tailscale
+          wtype -k Right; sleep 1; for i in $(seq 1 6); do wtype -k Down; done; sleep 2; grim shots/home-server/08-tailscale-devices.png || true
+          hs hs-setup 09-setup
+          # Stage 2: Backups & sync, People, Alerts & power, and the Overview's new tiles and links.
+          hs hs-backups 10-backups
+          wtype -k Right; sleep 1; wtype -k Return; sleep 2; for i in 1 2 3 4 5 6; do wtype -k Down; done; sleep 1; grim shots/home-server/11-backup-settings.png || true
+          for i in $(seq 1 16); do wtype -k Down; done; sleep 1; grim shots/home-server/12-backups-devices-phone-sync.png || true
+          hs hs-people 13-people
+          wtype -k Right; sleep 1; wtype -k Return; sleep 2; for i in 1 2 3; do wtype -k Down; done; sleep 1; grim shots/home-server/14-person.png || true
+          hs hs-alerts 15-alerts
+          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/home-server/16-alerts-power.png || true
+          hs hs-overview 17-overview-stage-2
+          wtype -k Right; sleep 1; for i in $(seq 1 7); do wtype -k Down; done; sleep 1; grim shots/home-server/18-overview-links.png || true
+          # Stage 3: Services, Files & links, Gaming, Family & home, AI, Safety, and the Overview with the new tiles.
+          hs hs-services 19-services
+          wtype -k Right; sleep 1; for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/home-server/20-services-web-and-more.png || true
+          hs hs-files 21-files-and-links
+          wtype -k Right; sleep 1; for i in $(seq 1 10); do wtype -k Down; done; sleep 1; grim shots/home-server/22-files-smart-folders.png || true
+          hs hs-gaming 23-gaming
+          wtype -k Right; sleep 1; for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/home-server/24-gaming-light-mode.png || true
+          hs hs-family 25-family-and-home
+          hs hs-ai 26-ai
+          wtype -k Right; sleep 1; for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/home-server/27-ai-command-center.png || true
+          hs hs-safety 28-safety
+          wtype -k Right; sleep 1; for i in $(seq 1 10); do wtype -k Down; done; sleep 1; grim shots/home-server/29-safety-reach-and-ports.png || true
+          hs hs-overview 30-overview-stage-3
+          wtype -k Right; sleep 1; for i in $(seq 1 10); do wtype -k Down; done; sleep 1; grim shots/home-server/31-overview-stage-3-links.png || true
+          for c in services ai files safety gaming family; do python3 hosts/linux/desktop/shell/hearth-home-server $c > shots/home-server/$c.json 2>&1 || { echo "::error title=Home server::hearth-home-server $c failed: $(head -c 300 shots/home-server/$c.json)"; touch shots/FAILED; }; done
+          kill $FAKE_OLLAMA 2>/dev/null || true
+          rm -f /tmp/fakebin/systemctl
+          rm -rf /var/lib/hearth/apps /var/lib/hearth/home-server-apps.json /var/lib/hearth/home-server-seen.json
+          python3 hosts/linux/desktop/shell/hearth-home-server quick > shots/home-server/quick.json 2>&1 || { echo "::error title=Home server::hearth-home-server quick failed: $(head -c 400 shots/home-server/quick.json)"; touch shots/FAILED; }
+          ipc settings close
+          python3 hosts/linux/desktop/shell/hearth-home-server status > shots/home-server/status.json 2>&1 || { echo "::error title=Home server::hearth-home-server status failed: $(head -c 400 shots/home-server/status.json)"; touch shots/FAILED; }
+          python3 hosts/linux/desktop/shell/hearth-home-server drives > shots/home-server/drives.json 2>&1 || echo "::warning title=Home server::drives: $(head -c 300 shots/home-server/drives.json)"
+          # Opening the pages saved nothing (settings never change by themselves).
+          [ "$(sha256sum "$HOME/.config/nimbus/home-server.json")" = "$before" ] || { echo "::error title=Home server::opening its pages changed home-server.json"; touch shots/FAILED; }
+          grep -E "SetHome|hearth-home-server" "$XDG_RUNTIME_DIR/nimbus-shell.log" > shots/home-server/shell-log.txt 2>/dev/null || true
+          if grep -qE "SetHome[A-Za-z]*\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null; then
+            echo "::error title=Home server::$(grep -E 'SetHome[A-Za-z]*\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          rm -f /tmp/fakebin/pkexec /tmp/fakebin/tailscale /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper /var/lib/hearth/home-server-backups.json /var/lib/hearth/home-server-alerts.json
           ipc settings close
           # The launcher: no "Hearth" (the old Game Mode in a window), even with its menu entry installed.
           ipc launcher toggle; grim shots/settings-move/15-launcher-no-hearth.png || true; ipc launcher close

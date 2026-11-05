@@ -20,6 +20,21 @@ Scope {
         { id: "bluetooth", icon: "bt", label: "Bluetooth" },
         { id: "link", icon: "desktops", label: "Hearth Link" },   // SetLink.qml: your Hearth devices
         { id: "remote", icon: "wired", label: "Remote play" },   // SetRemote.qml: Sunshine and Moonlight
+        // ---- Home server (docs/HOME-SERVER.md): this PC as a home server; the rest of the group comes in later stages
+        { id: "hs-overview", icon: "grid", label: "Overview" },          // SetHomeServer.qml
+        { id: "hs-shares", icon: "folder", label: "Shared folders" },    // SetHomeShares.qml
+        { id: "hs-files", icon: "search", label: "Files & links" },      // SetHomeFiles.qml (stage 3)
+        { id: "hs-drives", icon: "restart", label: "Drives & undo" },    // SetHomeDrives.qml
+        { id: "hs-tailscale", icon: "globe", label: "Tailscale" },       // SetHomeTailscale.qml
+        { id: "hs-services", icon: "window", label: "Services" },        // SetHomeServices.qml (stage 3)
+        { id: "hs-gaming", icon: "pad", label: "Gaming" },               // SetHomeGaming.qml (stage 3)
+        { id: "hs-family", icon: "user", label: "Family & home" },       // SetHomeFamily.qml (stage 3)
+        { id: "hs-ai", icon: "mic", label: "AI" },                       // SetHomeAI.qml (stage 3)
+        { id: "hs-backups", icon: "update", label: "Backups & sync" },   // SetHomeBackups.qml
+        { id: "hs-safety", icon: "lock", label: "Safety" },              // SetHomeSafety.qml (stage 3)
+        { id: "hs-people", icon: "user", label: "People" },              // SetHomePeople.qml
+        { id: "hs-alerts", icon: "bell", label: "Alerts & power" },      // SetHomeAlerts.qml
+        // ---- end Home server
         { id: "sound", icon: "vol", label: "Sound" },
         { id: "notifications", icon: "bell", label: "Notifications" },
         { id: "display", icon: "display", label: "Display" },
@@ -59,16 +74,30 @@ Scope {
         clipboard: "SetClipboard.qml", users: "SetUsers.qml", mouse: "SetMouse.qml", notifications: "SetNotifications.qml",
         accessibility: "SetAccessibility.qml" /* Accessibility */, link: "SetLink.qml" /* Hearth Link */,
         remote: "SetRemote.qml", games: "SetGames.qml", storage: "SetStorage.qml", steam: "SetSteam.qml" /* moved from the archived Game Mode */,
-        handheld: "SetHandheld.qml" /* Handheld Daemon */, boot: "SetBoot.qml" /* Boot & startup */ })
+        handheld: "SetHandheld.qml" /* Handheld Daemon */, boot: "SetBoot.qml" /* Boot & startup */,
+        "hs-overview": "SetHomeServer.qml", "hs-shares": "SetHomeShares.qml", "hs-drives": "SetHomeDrives.qml",
+        "hs-tailscale": "SetHomeTailscale.qml", "hs-setup": "SetHomeSetup.qml" /* Home server (hs-setup: its setup steps, opened from Overview) */,
+        "hs-backups": "SetHomeBackups.qml", "hs-people": "SetHomePeople.qml", "hs-alerts": "SetHomeAlerts.qml" /* Home server, stage 2 */,
+        "hs-files": "SetHomeFiles.qml", "hs-services": "SetHomeServices.qml", "hs-gaming": "SetHomeGaming.qml", "hs-family": "SetHomeFamily.qml",
+        "hs-ai": "SetHomeAI.qml", "hs-safety": "SetHomeSafety.qml" /* Home server, stage 3 */ })
 
     // ---- Mantel 2026: the page list in groups, with a search (also used by the launcher's search).
     readonly property var groups: ({ install: "Start", wifi: "Connections", bluetooth: "Connections", link: "Connections", remote: "Connections",
         sound: "Look and sound", notifications: "Look and sound", display: "Look and sound", appearance: "Look and sound", boot: "Look and sound",
+        "hs-overview": "Home server", "hs-shares": "Home server", "hs-drives": "Home server", "hs-tailscale": "Home server", "hs-setup": "Home server",
+        "hs-backups": "Home server", "hs-people": "Home server", "hs-alerts": "Home server",
+        "hs-files": "Home server", "hs-services": "Home server", "hs-gaming": "Home server", "hs-family": "Home server", "hs-ai": "Home server", "hs-safety": "Home server",
         power: "Devices", controller: "Devices", handheld: "Devices", keyboard: "Devices", mouse: "Devices", printers: "Devices" })
     function groupOf(id) { return groups[id] || "System"; }
     // Other words people search for, per page.
     readonly property var keywords: ({ wifi: "wireless network internet hotspot", bluetooth: "headphones headset speaker pair devices",
-        link: "phone devices sync", remote: "moonlight sunshine stream", sound: "volume audio speakers output microphone",
+        link: "phone devices sync", remote: "moonlight sunshine stream",
+        "hs-overview": "nas home server light mode", "hs-shares": "nas smb samba share network windows folder", "hs-drives": "nas disk smart health snapshot undo raid mirror format",
+        "hs-tailscale": "vpn remote away taildrop exit node wake", "hs-backups": "nas backup restore restic cloud b2 s3 sync syncthing photos phone",
+        "hs-people": "nas family users accounts guest quota", "hs-alerts": "nas alerts smart notifications sleep wake on lan spin down ups power schedule",
+        "hs-files": "nas search find links share link drop-off upload duplicates big files screenshots clean up", "hs-services": "nas jellyfin media server photos web files apps",
+        "hs-gaming": "nas games steam lan install remote play light mode", "hs-family": "nas family cameras onvif folder",
+        "hs-ai": "nas ollama ai llm models command center gpu qwen", "hs-safety": "nas security ransomware guard ports firewall", sound: "volume audio speakers output microphone",
         notifications: "do not disturb mute alerts", display: "screen resolution refresh scale monitor", appearance: "look theme accent colour color wallpaper dark light mode sunset bar dock transparency clock",
         boot: "splash startup animation", power: "battery sleep screen off suspend", controller: "gamepad buttons pad", handheld: "hhd tdp rgb lights",
         keyboard: "layout on-screen osk typing", mouse: "touchpad pointer cursor speed", printers: "print scanner", datetime: "clock time zone 24-hour",

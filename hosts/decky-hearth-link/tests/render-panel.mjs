@@ -91,6 +91,13 @@ const shots = [
   ["hearth-link-not-running", "not-running", async () => focus("Start Hearth Link"),
     ["isn't running on this device", "Nothing can be sent", "Start Hearth Link", "42 minutes ago", "Living room PC", "Last seen"]],
   ["hearth-link-not-installed", "not-installed", async () => {}, ["It isn't part of this Hearth OS"]],
+  ["hearth-link-home-server", "home-server", async () => show("Home server"),
+    ["Home server", "Nvidia-PC", "3 shared folders · 3.1 TB of 6.0 TB used · 2 people", "Last backup 2 hours ago", "91% full",
+     "Light mode while you play", "More in Desktop Mode: Settings › Home server"]],
+  ["hearth-link-home-server-playing", "home-server-playing", async () => { await show("Home server"); await focus("Let paused jobs run now"); },
+    ["Paused for your game: snapshots · backups", "Waiting for your game: Games to backup drive", "Let paused jobs run now", "Only for now: Light mode stays on"]],
+  ["hearth-link-home-server-resumed", "home-server-playing", async () => { await show("Home server"); await btn("Let paused jobs run now"); await wait(500); await show("Home server"); },
+    ["Paused jobs can run now", "Pause them again while I play"]],
 ];
 for (const [name, st, act, wants] of shots) {
   const html = page0(st);
