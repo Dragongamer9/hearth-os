@@ -1,0 +1,25 @@
+name: Overlay test diagnosis (temporary)
+on:
+  push:
+    branches: ['feature/overlay-ci']
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          echo "::notice title=os::$(. /etc/os-release; echo $PRETTY_NAME) python=$(python3 --version) sh=$(readlink -f /bin/sh) sleep=$(sleep --version 2>&1 | head -1) cat=$(cat --version 2>&1 | head -1) TMPDIR=${TMPDIR:-unset} tmpmount=$(findmnt -no OPTIONS /tmp 2>/dev/null)"
+      - name: The overlay script by hand, traced
+        run: |
+          d=$(mktemp -d); mkdir -p $d/bin $d/run $d/x11 $d/share/desktop/shell; : > $d/x11/X0; echo desktop > $d/run/nimbus-mode-now
+          printf '#!/bin/sh\necho "quickshell $*" >> %s/log\n' $d > $d/bin/quickshell; printf '#!/bin/sh\necho 1000\n' > $d/bin/id; printf '#!/bin/sh\nexit 1\n' > $d/bin/pgrep; chmod +x $d/bin/*
+          start=$(date +%s.%N)
+          ( printf 'cmd:open_qam\n'; sleep 2 ) | env -i PATH=$d/bin:/usr/bin:/bin HOME=$d NIMBUS_SHARE=$d/share HHD_MANAGED=1 DISPLAY=:0 XDG_RUNTIME_DIR=$d/run HEARTH_X11_DIR=$d/x11 HEARTH_OVERLAY_POLL=0.1 timeout 10 sh -x hosts/linux/desktop/shell/hearth-overlay > $d/out 2>&1; rc=$?
+          end=$(date +%s.%N)
+          echo "::notice title=rc $rc in $(echo "$end - $start" | bc)s, log=$(cat $d/log 2>/dev/null | tr '\n' ' ')::$(tr '\n' '|' < $d/out | cut -c1-3000)"
+      - name: The overlay tests
+        run: |
+          cd hosts/linux/test
+          python3 -m unittest -v test_hearth_overlay > /tmp/o.log 2>&1 || true
+          echo "::notice title=overlay tests::$(grep -E '^(FAIL|ERROR|OK|Ran)|Error' /tmp/o.log | tr '\n' '|' | cut -c1-3000)"
