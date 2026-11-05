@@ -202,6 +202,17 @@ figcaption.cap{margin-top:12px;font-size:15px;color:var(--muted)}
 .feats p{margin:0;font-size:16px}
 .walls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
 .walls img{border-radius:3px;aspect-ratio:16/9;object-fit:cover}
+.srv-hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:center}
+@media (max-width:860px){.srv-hero{grid-template-columns:minmax(0,1fr)}}
+.srv-hero ul{margin:0;padding:0;list-style:none}
+.srv-hero li{padding:14px 0;border-top:1px solid var(--rule);font-size:16px}
+.srv-hero li b{display:block;color:var(--hi);font-size:17px;margin-bottom:2px}
+.srv-shots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(14px,2vw,24px);margin-top:clamp(36px,5vw,56px)}
+@media (max-width:860px){.srv-shots{grid-template-columns:minmax(0,1fr)}}
+.srv-shots figure{margin:0}
+.srv-shots img{border-radius:4px;box-shadow:0 0 0 1px var(--rule);width:100%;height:auto}
+.srv-shots figcaption{margin-top:10px;font-size:15px;color:var(--muted)}
+.srv-shots figcaption b{color:var(--hi)}
 .try{margin-top:18px}
 .try p{margin:0 0 10px;font-size:15px;color:var(--muted)}
 .swatches{display:flex;flex-wrap:wrap;gap:10px}
@@ -291,6 +302,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <a href="#steam">Steam Game Mode</a>
       <a href="#sync">Hearth Sync</a>
       <a href="#mantel">Mantel</a>
+      <a href="#server">Home server</a>
       <a href="#updates">Updates</a>
       <a href="docs/">Docs</a>
       <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
@@ -306,13 +318,13 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   <div class="wrap">
     <div>
       <h1 class="h1">Steam Game Mode on the couch. Mantel on the desk.</h1>
-      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away.</p>
+      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away. New in 1.4: your gaming PC is also your home server.</p>
       <div class="ctas">
         <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
-        <a class="btn line" href="#new">See what's new in 1.3</a>
+        <a class="btn line" href="#new">See what's new in 1.4</a>
       </div>
       <div class="status">
-        <span><span class="tag now">Out now</span>Hearth OS 1.3</span>
+        <span><span class="tag now">Out now</span>Hearth OS 1.4</span>
         <span><span class="tag next">Next update</span>in development</span>
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
@@ -465,7 +477,45 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   </div>
 </section>
 
-<section id="updates" class="deep">
+<section id="server" class="deep">
+  <div class="wrap">
+    <div class="head">
+      <span class="tag now">New in 1.4</span>
+      <h2 class="h2" style="margin-top:14px">Your gaming PC is now your home server</h2>
+      <p class="lede">Share folders with every device in the house, reach them from anywhere through Tailscale, back everything up and run your own media server and AI, all from Settings &rsaquo; Home server, with a controller. The PC keeps playing games: big jobs wait while you play.</p>
+    </div>
+    <div class="srv-hero">
+      <figure style="margin:0">
+        <div class="mantel-shot"><img src="img/hs-overview.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Overview: Light mode while you play, storage used, shared folders, Tailscale, drive health, backups, alerts, services, safety and the AI service at a glance."></div>
+        <figcaption class="cap">The Home server at a glance, in Mantel's Settings.</figcaption>
+      </figure>
+      <ul>
+        <li><b>Shared folders</b>Windows PCs, phones, TVs and other Hearth devices open them like any network drive. Read only or read &amp; write, with a 30-day recycle bin.</li>
+        <li><b>Anywhere, through Tailscale</b>A private network for your own devices: open your files from work or school, send files with Taildrop and wake the PC from away.</li>
+        <li><b>Light mode while you play</b>Backups, snapshots and clean-ups wait while Game Mode or a game runs, and the AI unloads from the graphics card. Sharing keeps working.</li>
+        <li><b>Off until you turn it on</b>Nothing is shared and no server runs until you choose it. The system drive is never shared or formatted.</li>
+      </ul>
+    </div>
+    <div class="srv-shots">
+      <figure><img src="img/hs-ai.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, AI: the AI service running Ollama, reachable only through Tailscale, with ready-made models."><figcaption><b>Your own AI.</b> Ollama on your graphics card, with models picked for it, for the Hearth AI Command Center. Only your devices can reach it.</figcaption></figure>
+      <figure><img src="img/hs-backups.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Backups and sync: backups to a drive and to the cloud, and backups from other Hearth devices."><figcaption><b>Backups &amp; sync.</b> Encrypted backups to a drive, another Hearth device or the cloud. Restores never overwrite your files.</figcaption></figure>
+      <figure><img src="img/hs-tailscale.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Tailscale: signed in, this PC's name, and options such as only reachable through Tailscale."><figcaption><b>Tailscale built in.</b> Sign in with a QR code, see your devices, and make the PC reachable only through Tailscale.</figcaption></figure>
+      <figure><img src="img/hs-files.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Files and links: search every share, share links, a drop-off folder and smart folders."><figcaption><b>Files &amp; links.</b> Search every share, send share links that expire, take drop-offs and tidy up with smart folders.</figcaption></figure>
+      <figure><img src="img/hs-gaming.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Gaming: a Games folder, Steam downloads at home, the game archive and Remote play."><figcaption><b>Gaming.</b> A Games folder for all your devices, the game archive and saves, and Remote play over Tailscale.</figcaption></figure>
+      <figure><img src="img/hs-safety.webp" width="1100" height="746" loading="lazy" alt="Settings, Home server, Safety: who can reach what, with one-step fixes."><figcaption><b>Safety.</b> See who can reach what, fix it in one step with Undo, and turn on the ransomware guard, which makes shares read only when far too many files change at once.</figcaption></figure>
+    </div>
+    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
+      <div><h3>Drives &amp; undo</h3><p>Drive health and temperatures, btrfs snapshots to bring back deleted or changed files, and new drives as more space, a mirror or a backup target, with a dry run first.</p></div>
+      <div><h3>People</h3><p>Accounts for the household that can only open shares, each with their own access and an optional folder with a size limit. Removing someone never deletes their files.</p></div>
+      <div><h3>Alerts &amp; power</h3><p>A note when a drive is unhealthy or full, a backup fails or a mirror loses a drive. Sleeps when nobody needs it, never while you play, and wakes on a schedule or over the network.</p></div>
+      <div><h3>Services</h3><p>Jellyfin for movies, shows, music and photos, and files in a browser. Each is downloaded only when you ask, from its maker, with its checksum checked.</p></div>
+      <div><h3>Family &amp; home</h3><p>A Family folder for everyone, and cameras on your network shown once one is found.</p></div>
+      <div><h3>In Steam Game Mode too</h3><p>Quick Access &rsaquo; Hearth Link shows the server in short, with Light mode and "Let paused jobs run now" a press away.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="updates">
   <div class="wrap">
     <div class="head">
       <h2 class="h2">Updates that can always go back</h2>
@@ -482,8 +532,25 @@ footer .legal a{font-size:inherit;color:var(--muted)}
 <section id="new">
   <div class="wrap">
     <div class="head">
-      <h2 class="h2">New in Hearth OS 1.3</h2>
-      <p class="lede">A free update for everyone on 1.0, 1.1 or 1.2: Settings &rsaquo; Updates.</p>
+      <h2 class="h2">New in Hearth OS 1.4</h2>
+      <p class="lede">A free update for everyone on 1.0 to 1.3: Settings &rsaquo; Updates.</p>
+    </div>
+    <div class="more">
+      <div><h3>Home server</h3><p>Settings &rsaquo; Home server turns your gaming PC into a home server: shared folders, Tailscale, drives and snapshots, backups, people, alerts and power, services, gaming, family, AI, safety, and files &amp; links. <a href="#server">See it</a>.</p></div>
+      <div><h3>Your own AI, on your graphics card</h3><p>Ollama for the Hearth AI Command Center, with models picked for your PC, reachable only by your own devices, and unloaded while you play.</p></div>
+      <div><h3>A Home server tile in Game Mode</h3><p>Quick Access &rsaquo; Hearth Link shows the server in short, with Light mode while you play a press away.</p></div>
+      <div><h3>Settings that fit</h3><p>Long explanations in Settings wrap before the switch instead of running under it.</p></div>
+      <div><h3>The dock gets out of the way</h3><p>Coming back from Game Mode, an auto-hiding dock no longer keeps the bottom of the screen reserved, so windows fill the whole screen again.</p></div>
+      <div><h3>Still off until you choose</h3><p>Every new server and service in 1.4 stays off until you turn it on, and Game Mode starts whatever they do.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="recent">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="h2">Recently, in Hearth OS 1.3</h2>
+      <p class="lede">Still new if you're coming from 1.2.</p>
     </div>
     <div class="more">
       <div><h3>Mantel 2026</h3><p>The desktop gets a facelift: floating top islands with a clock that shows what's playing, a floating dock, and a big Game Mode button that's always there.</p></div>
@@ -496,21 +563,6 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   </div>
 </section>
 
-<section id="recent">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">Recently, in Hearth OS 1.2</h2>
-      <p class="lede">Still new if you're coming from 1.1.</p>
-    </div>
-    <div class="more">
-      <div><h3>Every game plays instantly</h3><p>Hearth Music finds a song for your whole library once, in the background, so each game's theme starts the moment you look at it.</p></div>
-      <div><h3>Deezer previews</h3><p>When Apple Music has no good match, Deezer's official 30-second previews fill in, streamed and never stored.</p></div>
-      <div><h3>Choose music&hellip;</h3><p>Search your soundtracks, Apple Music and Deezer for any game and keep your pick. Your choice always wins.</p></div>
-      <div><h3>Plugin updates, no system update</h3><p>Hearth Sync, Hearth Link and Hearth Music update on their own in Settings &rsaquo; Updates, new Hearth plugins arrive the same way when you choose, and the copy before comes back if a new one doesn't load.</p></div>
-    </div>
-  </div>
-</section>
-
 <section id="more">
   <div class="wrap">
     <div class="head">
@@ -519,7 +571,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
     </div>
     <div class="more">
       <div><h3>Hearth Link</h3><p>Pair your Hearth devices: copy games between them, update every device with one download, and share a device's local AI with the others.</p></div>
-      <div><h3>Hearth Storage</h3><p>A spare Hearth PC becomes a home server: shared folders, a game archive, save and screenshot backups, media streaming and wake over the network.</p></div>
+      <div><h3>Hearth Storage</h3><p>Shared folders, a game archive, save and screenshot backups, media streaming and wake over the network, now part of the Home server.</p></div>
       <div><h3>Hearth Input</h3><p>Controller layouts with action sets, layers, chords, flick stick and gyro, and the on-screen keyboard on Guide + X.</p></div>
       <div><h3>Mods</h3><p>Hearth Mod Organizer keeps Mod Organizer 2's layout and files, and Wabbajack lists install with their downloads handled. Experimental.</p></div>
       <div><h3>Hearth Recomps</h3><p>Native PC ports of console games, installed and updated from their releases, with your own copy of the game checked and set up.</p></div>
