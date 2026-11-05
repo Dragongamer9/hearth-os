@@ -1,7 +1,7 @@
 // Hearth Settings › Home server › Shared folders (docs/HOME-SERVER.md): folders your Windows PCs, phones, TVs and
 // Hearth devices can open (Samba: SMB3 or newer, no guests, your user and your sharing password). Nothing is shared
 // until you share it. Each share: read only or read & write, home network or Tailscale only, a recycle bin, who may
-// use it (you for now; people come with the next update). Stopping a share never touches its files.
+// use it (you, and the people you let in on the People page). Stopping a share never touches its files.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -122,9 +122,11 @@ SetPage {
     }
     SetRow {
         visible: !!page.share
-        icon: "user"; title: "Who"; chevron: false; interactive: false
-        value: page.st ? page.st.user : ""
-        sub: "You, with your sharing password. People you add come with the next update."
+        icon: "user"; title: "Who"
+        value: page.share && page.share.people && Object.keys(page.share.people).length ? String(Object.keys(page.share.people).length + 1) + " people" : "Only you"
+        sub: "You (" + (page.st ? page.st.user : "") + ")" + (page.share && page.share.people ? Object.keys(page.share.people).map(n => ", " + n + (page.share.people[n] === "read" || !page.share.write ? " (read only)" : "")).join("") : "")
+             + ". Add people and pick what they may open on the People page"
+        onActivated: SettingsNav.openPage("hs-people")
     }
     SetSwitch {
         visible: !!page.share

@@ -1,0 +1,13 @@
+# Settings › Home server › Alerts & power: every hour while alerts are on (the first look 15 minutes after the PC
+# starts). Disabled in the image; hearth-home-server-helper turns it on and off with your Alerts switch.
+[Unit]
+Description=Hearth home server: alerts every hour
+
+[Timer]
+OnBootSec=15min
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -209,9 +209,27 @@ jobs:
           python3 - "$HOME" <<'PY'
           import json, os, sys
           h = sys.argv[1]
-          s = [{'id': 'a1b2c3d4e5f6', 'name': 'Games', 'path': h + '/Games', 'on': True, 'write': True, 'reach': 'home', 'recycle': True, 'snapshots': False, 'users': ['root']},
+          s = [{'id': 'a1b2c3d4e5f6', 'name': 'Games', 'path': h + '/Games', 'on': True, 'write': True, 'reach': 'home', 'recycle': True, 'snapshots': False, 'users': ['root'],
+                'people': {'sam': 'write', 'mia': 'read'}},
                {'id': 'b1b2c3d4e5f6', 'name': 'Work files', 'path': h + '/Work', 'on': True, 'write': False, 'reach': 'tailscale', 'recycle': True, 'snapshots': False, 'users': ['root']}]
-          open(h + '/.config/nimbus/home-server.json', 'w').write(json.dumps({'shares': s, 'smbPasswordSet': 1762300000000}, indent=2) + '\n')
+          # Stage 2 (for its shots): two people, two backups (one to a drive, one to the cloud), backups from a device, alerts on.
+          people = [{'name': 'sam', 'pwSet': 1762300000000, 'folder': h + '/People/sam', 'quotaGb': 200}, {'name': 'mia', 'pwSet': 1762300000000, 'folder': '', 'quotaGb': 0}]
+          backups = [{'id': 'c1c2c3c4c5c6', 'name': 'To backup drive', 'shares': ['a1b2c3d4e5f6', 'b1b2c3d4e5f6'], 'target': {'kind': 'drive', 'path': '/var/mnt/backup/Hearth backups'},
+                      'every': 'daily', 'at': '03:00', 'day': 6, 'keep': {'daily': 7, 'weekly': 4, 'monthly': 6}, 'on': True},
+                     {'id': 'd1d2d3d4d5d6', 'name': 'To the cloud', 'shares': ['b1b2c3d4e5f6'], 'target': {'kind': 'cloud', 'provider': 'b2', 'path': 'nvidia-pc-backup/hearth'},
+                      'every': 'weekly', 'at': '05:00', 'day': 6, 'keep': {'daily': 7, 'weekly': 4, 'monthly': 6}, 'on': True}]
+          os.makedirs(h + '/People/sam', exist_ok=True)
+          open(h + '/.config/nimbus/home-server.json', 'w').write(json.dumps({'shares': s, 'smbPasswordSet': 1762300000000, 'people': people, 'backups': backups,
+              'receive': {'on': True, 'path': h + '/Games', 'devices': [{'user': 'rog-ally-3f9a', 'name': 'rog-ally', 'at': 1762300000000}]},
+              'alerts': {'on': True, 'tailscale': True, 'peers': ['phone.tail4f2a.ts.net']}, 'power': {'keepAwake': True, 'spinDown': 20}}, indent=2) + '\n')
+          import time
+          now = int(time.time())
+          os.makedirs('/var/lib/hearth', exist_ok=True)
+          open('/var/lib/hearth/home-server-backups.json', 'w').write(json.dumps({'jobs': {
+              'c1c2c3c4c5c6': {'lastOk': now - 7 * 3600, 'last': {'ok': True, 'at': now - 7 * 3600, 'files': 18234, 'bytes': 412000000000}, 'count': 17, 'checked': {'at': now - 2 * 86400, 'ok': True}},
+              'd1d2d3d4d5d6': {'last': {'ok': False, 'at': now - 3 * 3600, 'error': 'b2: 401 bad_auth_token (check the key)'}, 'lastOk': now - 8 * 86400}}}))
+          open('/var/lib/hearth/home-server-alerts.json', 'w').write(json.dumps({'at': now - 600, 'active': [
+              {'key': 'backup:d1d2d3d4d5d6', 'kind': 'backup', 'text': 'Backup "To the cloud" failed: b2: 401 bad_auth_token (check the key)'}], 'told': {}}))
           PY
           cp os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper /usr/libexec/nimbus/
           chmod 755 /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper
@@ -235,6 +253,17 @@ jobs:
           hs hs-tailscale 07-tailscale
           wtype -k Right; sleep 1; for i in $(seq 1 6); do wtype -k Down; done; sleep 2; grim shots/home-server/08-tailscale-devices.png || true
           hs hs-setup 09-setup
+          # Stage 2: Backups & sync, People, Alerts & power, and the Overview's new tiles and links.
+          hs hs-backups 10-backups
+          wtype -k Right; sleep 1; wtype -k Return; sleep 2; for i in 1 2 3 4 5 6; do wtype -k Down; done; sleep 1; grim shots/home-server/11-backup-settings.png || true
+          for i in $(seq 1 16); do wtype -k Down; done; sleep 1; grim shots/home-server/12-backups-devices-phone-sync.png || true
+          hs hs-people 13-people
+          wtype -k Right; sleep 1; wtype -k Return; sleep 2; for i in 1 2 3; do wtype -k Down; done; sleep 1; grim shots/home-server/14-person.png || true
+          hs hs-alerts 15-alerts
+          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/home-server/16-alerts-power.png || true
+          hs hs-overview 17-overview-stage-2
+          wtype -k Right; sleep 1; for i in $(seq 1 7); do wtype -k Down; done; sleep 1; grim shots/home-server/18-overview-links.png || true
+          python3 hosts/linux/desktop/shell/hearth-home-server quick > shots/home-server/quick.json 2>&1 || { echo "::error title=Home server::hearth-home-server quick failed: $(head -c 400 shots/home-server/quick.json)"; touch shots/FAILED; }
           ipc settings close
           python3 hosts/linux/desktop/shell/hearth-home-server status > shots/home-server/status.json 2>&1 || { echo "::error title=Home server::hearth-home-server status failed: $(head -c 400 shots/home-server/status.json)"; touch shots/FAILED; }
           python3 hosts/linux/desktop/shell/hearth-home-server drives > shots/home-server/drives.json 2>&1 || echo "::warning title=Home server::drives: $(head -c 300 shots/home-server/drives.json)"
@@ -244,7 +273,7 @@ jobs:
           if grep -qE "SetHome[A-Za-z]*\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null; then
             echo "::error title=Home server::$(grep -E 'SetHome[A-Za-z]*\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
           fi
-          rm -f /tmp/fakebin/pkexec /tmp/fakebin/tailscale /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper
+          rm -f /tmp/fakebin/pkexec /tmp/fakebin/tailscale /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper /var/lib/hearth/home-server-backups.json /var/lib/hearth/home-server-alerts.json
           ipc settings close
           # The launcher: no "Hearth" (the old Game Mode in a window), even with its menu entry installed.
           ipc launcher toggle; grim shots/settings-move/15-launcher-no-hearth.png || true; ipc launcher close

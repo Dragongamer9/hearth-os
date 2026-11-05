@@ -1,0 +1,12 @@
+# Settings › Home server › Alerts & power › Schedule: wakes the PC every day at your wake time (the time is set by a
+# drop-in hearth-home-server-helper writes). Disabled in the image and while the schedule is off.
+[Unit]
+Description=Hearth home server: wake every day
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+WakeSystem=true
+Persistent=false
+
+[Install]
+WantedBy=timers.target

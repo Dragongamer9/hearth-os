@@ -1,7 +1,7 @@
 // Hearth Settings › Home server › Set up (docs/HOME-SERVER.md): the setup steps, all with the controller (Up/Down
 // pick, A goes on, B back to the page list): this PC's name, Tailscale, the first shared folder, the first backup
-// (Backups & sync comes with the next update; for now it points at Hearth Storage's backups). Every step can be
-// skipped; nothing is shared or turned on unless you pick it.
+// (Backups & sync, with Hearth Storage's backups of your Hearth devices next to it). Every step can be skipped; nothing
+// is shared or turned on unless you pick it.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -54,7 +54,7 @@ SetPage {
         text: ["Your other devices find this PC by its name: in Windows' File Explorer, on your phone and on Tailscale.",
                "Tailscale makes a private network just for your devices. Nothing is opened to the internet.",
                "Pick a folder your Windows PC, phone, TV and Hearth devices can open. It starts read only, on your home network.",
-               "Backups & sync come with the next update. Until then, Hearth Storage keeps your Hearth devices' saves and screenshots.",
+               "A second copy of your shares somewhere else: a backup drive, another Hearth device or the cloud, encrypted with your password.",
                "You can change everything in Settings › Home server."][page.step]
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
     }
@@ -136,9 +136,23 @@ SetPage {
     }
 
     // 3: first backup
+    Repeater {
+        model: page.step === 3 && page.st ? (page.st.backups || []) : []
+        delegate: SetRow {
+            required property var modelData
+            icon: "check"; chevron: false; interactive: false; title: "Backing up: " + modelData.name
+            sub: modelData.every === "hourly" ? "Every hour" : (modelData.every === "weekly" ? "Weekly at " : "Daily at ") + modelData.at
+        }
+    }
     SetRow {
         visible: page.step === 3
-        icon: "update"; title: "Hearth Storage's backups"
+        icon: "update"; title: page.st && page.st.backups && page.st.backups.length ? "Add another backup" : "Set up a backup"
+        sub: page.st && page.st.shares.length ? "Backups & sync: pick where it goes, how often and a password" : "Share a folder first (the step before): backups are of your shared folders"
+        onActivated: SettingsNav.openPage("hs-backups")
+    }
+    SetRow {
+        visible: page.step === 3
+        icon: "desktops"; title: "Hearth Storage's backups"
         sub: "Your Hearth devices back up their saves and screenshots to this PC (Hearth Link › Hearth Storage)"
         onActivated: SettingsNav.openPage("link")
     }

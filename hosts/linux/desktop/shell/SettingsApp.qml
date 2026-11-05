@@ -25,6 +25,9 @@ Scope {
         { id: "hs-shares", icon: "folder", label: "Shared folders" },    // SetHomeShares.qml
         { id: "hs-drives", icon: "restart", label: "Drives & undo" },    // SetHomeDrives.qml
         { id: "hs-tailscale", icon: "globe", label: "Tailscale" },       // SetHomeTailscale.qml
+        { id: "hs-backups", icon: "update", label: "Backups & sync" },   // SetHomeBackups.qml
+        { id: "hs-people", icon: "user", label: "People" },              // SetHomePeople.qml
+        { id: "hs-alerts", icon: "bell", label: "Alerts & power" },      // SetHomeAlerts.qml
         // ---- end Home server
         { id: "sound", icon: "vol", label: "Sound" },
         { id: "notifications", icon: "bell", label: "Notifications" },
@@ -67,19 +70,22 @@ Scope {
         remote: "SetRemote.qml", games: "SetGames.qml", storage: "SetStorage.qml", steam: "SetSteam.qml" /* moved from the archived Game Mode */,
         handheld: "SetHandheld.qml" /* Handheld Daemon */, boot: "SetBoot.qml" /* Boot & startup */,
         "hs-overview": "SetHomeServer.qml", "hs-shares": "SetHomeShares.qml", "hs-drives": "SetHomeDrives.qml",
-        "hs-tailscale": "SetHomeTailscale.qml", "hs-setup": "SetHomeSetup.qml" /* Home server (hs-setup: its setup steps, opened from Overview) */ })
+        "hs-tailscale": "SetHomeTailscale.qml", "hs-setup": "SetHomeSetup.qml" /* Home server (hs-setup: its setup steps, opened from Overview) */,
+        "hs-backups": "SetHomeBackups.qml", "hs-people": "SetHomePeople.qml", "hs-alerts": "SetHomeAlerts.qml" /* Home server, stage 2 */ })
 
     // ---- Mantel 2026: the page list in groups, with a search (also used by the launcher's search).
     readonly property var groups: ({ install: "Start", wifi: "Connections", bluetooth: "Connections", link: "Connections", remote: "Connections",
         sound: "Look and sound", notifications: "Look and sound", display: "Look and sound", appearance: "Look and sound", boot: "Look and sound",
         "hs-overview": "Home server", "hs-shares": "Home server", "hs-drives": "Home server", "hs-tailscale": "Home server", "hs-setup": "Home server",
+        "hs-backups": "Home server", "hs-people": "Home server", "hs-alerts": "Home server",
         power: "Devices", controller: "Devices", handheld: "Devices", keyboard: "Devices", mouse: "Devices", printers: "Devices" })
     function groupOf(id) { return groups[id] || "System"; }
     // Other words people search for, per page.
     readonly property var keywords: ({ wifi: "wireless network internet hotspot", bluetooth: "headphones headset speaker pair devices",
         link: "phone devices sync", remote: "moonlight sunshine stream",
         "hs-overview": "nas home server light mode", "hs-shares": "nas smb samba share network windows folder", "hs-drives": "nas disk smart health snapshot undo raid mirror format",
-        "hs-tailscale": "vpn remote away taildrop exit node wake", sound: "volume audio speakers output microphone",
+        "hs-tailscale": "vpn remote away taildrop exit node wake", "hs-backups": "nas backup restore restic cloud b2 s3 sync syncthing photos phone",
+        "hs-people": "nas family users accounts guest quota", "hs-alerts": "nas alerts smart notifications sleep wake on lan spin down ups power schedule", sound: "volume audio speakers output microphone",
         notifications: "do not disturb mute alerts", display: "screen resolution refresh scale monitor", appearance: "look theme accent colour color wallpaper dark light mode sunset bar dock transparency clock",
         boot: "splash startup animation", power: "battery sleep screen off suspend", controller: "gamepad buttons pad", handheld: "hhd tdp rgb lights",
         keyboard: "layout on-screen osk typing", mouse: "touchpad pointer cursor speed", printers: "print scanner", datetime: "clock time zone 24-hour",

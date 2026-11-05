@@ -85,7 +85,19 @@ class Base(unittest.TestCase):
             setattr(hh, k, os.path.join(self.etc, v))
         self.rec = Rec()
         self.saved_fns = {k: getattr(hh, k) for k in ('run', 'which', 'mount_source', 'disks_of', 'system_disks', 'mount_info', 'is_subvol_root',
-                                                      'game_running', 'lsblk', 'smb_unit', 'caller', 'drive_bases')}
+                                                      'game_running', 'lsblk', 'smb_unit', 'caller', 'drive_bases', 'user_settings',
+                                                      'light_resumed', 'getpw', 'hearth_people', 'run_env', 'hostname',
+                                                      'smb_sessions', 'jobs_running', 'someone_using')}
+        hh.user_settings = lambda home: {}
+        hh.light_resumed = lambda now=None: False
+        for k, v in (('BACKUP_DIR', 'hearth/backup'), ('BACKUP_STATE', 'state/home-server-backups.json'), ('BACKUP_CACHE', 'cache/restic'),
+                     ('RCLONE_CONF', 'hearth/backup/rclone.conf'), ('RECEIVE_DIR', 'hearth/backup-receiver'),
+                     ('RECEIVE_DROPIN', 'systemd/system/hearth-home-server-receive.service.d/hearth.conf'),
+                     ('ALERT_STATE', 'state/home-server-alerts.json'), ('POWER_STATE', 'run/home-server-power.json'),
+                     ('WAKE_DROPIN', 'systemd/system/hearth-home-server-wake.timer.d/hearth.conf'), ('NUT_DIR', 'nut'),
+                     ('NUT_STARTED', 'nut/.hearth-started')):
+            self.saved[k] = getattr(hh, k)
+            setattr(hh, k, os.path.join(self.etc, v))
         hh.run = self.rec.run
         hh.which = self.rec.which
         if hh.hsh:
@@ -292,8 +304,10 @@ class OffByDefault(Base):
     def test_the_image_turns_every_new_service_off_and_checks_it(self):
         b = (ROOT / 'os-bases' / 'peppermint' / 'build.sh').read_text()
         block = b.split('# ---- Hearth home server')[1].split('# ---- end of Hearth home server')[0]
-        self.assertIn('for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables; do systemctl disable', block)
-        self.assertIn('systemctl disable hearth-home-server-snapshots.timer', block)
+        self.assertIn('for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables ', block)
+        self.assertIn('systemctl disable "$u.service"', block)
+        self.assertIn('hearth-home-server-snapshots.timer', block.split('HS_TIMERS=')[1].split('\n')[0])
+        self.assertIn('for t in $HS_TIMERS; do systemctl disable "$t"', block)
         self.assertIn('systemctl --global disable hearth-taildrop.service', block)
         self.assertIn('is on in the image', block, 'the build fails if one is left on')
         self.assertIn('TS_FPR=2596A99EAAB33821893C0A79458CA832957F5868', block, "Tailscale's key is checked")
@@ -600,7 +614,8 @@ class Settings(unittest.TestCase):
         d['shares'] = [{'id': 'aaaaaa', 'name': 'A', 'path': '/x', 'on': True}, {'id': 'bbbbbb', 'name': 'B', 'path': '/y', 'on': False}]
         p = hs.apply_payload(d)
         self.assertEqual([s['name'] for s in p['shares']], ['A'])
-        self.assertEqual(set(p), {'shares', 'tsOnly', 'tsBoot', 'snapshots', 'keep', 'lightMode'})
+        self.assertEqual(set(p), {'shares', 'tsOnly', 'tsBoot', 'snapshots', 'keep', 'lightMode', 'people', 'backups', 'receive', 'alerts', 'power'})
+        self.assertNotIn('password', json.dumps(p))
 
     def test_the_settings_file_is_on_the_persistence_check_list(self):
         t = (ROOT / 'hosts' / 'linux' / 'test' / 'test_settings_persistence.py').read_text()

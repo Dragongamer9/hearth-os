@@ -104,3 +104,22 @@ test("a plugin from another device goes to Decky's own install, only as a checke
   assert.equal(M.installArgs({ ...ok, hash: "nope" }), null);
   assert.equal(M.installArgs({ ok: false, error: "x" }), null);
 });
+
+test("home server tile: shown only on a home server, and its lines", () => {
+  const q = (x = {}) => ({ available: true, host: "nvidia-pc", lightMode: true, playing: true, resumed: false, paused: ["backups"], shares: 3, people: 1,
+    usage: { used: 1.2e12, total: 4e12 }, backups: { count: 1, lastOk: 0, waiting: [], failed: [], running: false }, alerts: [], setupDone: true, ...x });
+  assert.equal(M.homeShown(q()), true);
+  assert.equal(M.homeShown(q({ setupDone: false, shares: 0, backups: { count: 0, lastOk: 0, waiting: [], failed: [], running: false } })), false, "not a home server");
+  assert.equal(M.homeShown(q({ available: false })), false, "no helper");
+  assert.equal(M.homeShown(null), false);
+  assert.equal(M.homeLine(q()), "3 shared folders · 1.2 TB of 4.0 TB used · 1 person");
+  assert.equal(M.homeLine(q({ shares: 1, people: 0, usage: { used: 0, total: 0 } })), "1 shared folder");
+  const now = 10 * 3600e3;
+  assert.equal(M.backupLine(q({ backups: { count: 1, lastOk: now - 2 * 3600e3, waiting: [], failed: [], running: false } }), now), "Last backup 2 hours ago");
+  assert.equal(M.backupLine(q({ backups: { count: 1, lastOk: 0, waiting: ["Games"], failed: [], running: false } }), now), "Waiting for your game: Games");
+  assert.equal(M.backupLine(q({ backups: { count: 2, lastOk: 0, waiting: [], failed: ["Cloud"], running: false } }), now), "Didn't finish: Cloud");
+  assert.equal(M.backupLine(q({ backups: { count: 1, lastOk: 0, waiting: [], failed: [], running: true } }), now), "Backing up now");
+  assert.equal(M.backupLine(q({ backups: { count: 0, lastOk: 0, waiting: [], failed: [], running: false } }), now), "No backups yet");
+  assert.equal(M.pausedLine(q({ paused: ["snapshots", "backups"] })), "Paused for your game: snapshots · backups");
+  assert.equal(M.pausedLine(q({ paused: [] })), "");
+});

@@ -1,6 +1,6 @@
 // Hearth Link's backend calls (main.py) and the one Steam call the panel makes, guarded.
 import { callable } from "@decky/api";
-import { Answer, Game, Health, Packed, SyncInfo, Switches, installArgs } from "./model";
+import { Answer, Game, Health, HomeQuick, Packed, SyncInfo, Switches, installArgs } from "./model";
 
 export interface Result<T = any> { ok: boolean; data?: T; error?: string; running?: boolean }
 
@@ -45,3 +45,8 @@ export function restartSteam(): boolean {
   if (!steamCanRestart()) return false;
   try { (window as any).SteamClient.User.StartRestart(false); return true; } catch { return false; }
 }
+
+// Home server (docs/HOME-SERVER.md): the Quick Access tile.
+export const homeServer = callable<[], HomeQuick>("home_server");
+export const homeServerLight = callable<[on: boolean], HomeQuick>("home_server_light");
+export const homeServerResume = callable<[on: boolean], HomeQuick>("home_server_resume");

@@ -28,6 +28,29 @@ everything again.
   hearth-home-server ts-status | ts-start | ts-login | ts-logout | ts-ping
   hearth-home-server ts-send PEER [FILE]        Taildrop: send a file (picked in Hearth Files when not given)
   hearth-home-server seen KIND                  note that KIND (commandCenter, camera, ups) was seen just now
+  ---- stage 2
+  hearth-home-server set KEY VALUE              also: alertsOn, alertSmart, alertFull, alertBackup, alertMirror,
+                                                alertTailscale, keepAwake, schedule, ups, receiveOn (on|off);
+                                                alertFullPct (80|85|90|95); sleepIdle (0|30|60|120|240 minutes);
+                                                spinDown (0|10|20|30|60 minutes); sleepAt, wakeAt (HH:MM)
+  hearth-home-server person-add NAME            a person (Samba only, no login); their password on stdin (HEARTH_INPUT)
+  hearth-home-server person-password NAME       their new password on stdin
+  hearth-home-server person-remove NAME         they can't open anything anymore; their files stay
+  hearth-home-server person-access NAME ID none|read|write
+  hearth-home-server person-folder NAME on [BASE]|off    their own folder (Home › People › NAME, or BASE/People/NAME)
+  hearth-home-server person-quota NAME GB       a limit for their own folder (btrfs only; 0 for none)
+  hearth-home-server backup-add                 JSON on stdin {name, shares, target, every, at, password, code, cloud}
+  hearth-home-server backup-set ID KEY VALUE    on (on|off), every, at, day, name, keepDaily, keepWeekly, keepMonthly
+  hearth-home-server backup-share ID SHARE on|off
+  hearth-home-server backup-password ID         its new password on stdin
+  hearth-home-server backup-remove ID           the job goes (its password and keys too); the backup itself stays
+  hearth-home-server backup-now ID | backup-snapshots ID | backup-restore ID SNAPSHOT PATH | backup-targets
+  hearth-home-server receive-path PATH | receive-add NAME | receive-remove USER     backups from your other Hearth devices
+  hearth-home-server sync-status | sync-id | sync-add PATH PEER DEVICEID | sync-accept FOLDER DEVICE [PATH] | sync-remove ID
+  hearth-home-server alerts-test | alert-peer NAME on|off | ups-status
+  hearth-home-server quick                      Home server in short, for Game Mode's Quick Access
+  hearth-home-server quick-set lightMode on|off saved only (from Game Mode, where no password can be asked)
+  hearth-home-server resume on|off              let jobs paused for your game run now (up to 4 hours), or pause them again
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import concurrent.futures
@@ -71,11 +94,28 @@ DEFAULTS = {
     'ccDays': 30,               # Command Center items show when it was seen on one of your devices this recently
     'setupDone': False,
     'smbPasswordSet': 0,        # when you last set your sharing password (the password itself is never kept)
+    # ---- stage 2 (every one off or empty until you choose it)
+    'people': [],               # [{name, pwSet, folder, quotaGb}]: Samba-only accounts; each share's own "people" says who may open it
+    'backups': [],              # [{id, name, shares: [share ids], target: {kind: drive|hearth|cloud, ...}, every, at, day, keep, on}]
+    'receive': {'on': False, 'path': '', 'devices': []},   # backups from your other Hearth devices (devices: [{user, name, at}])
+    'syncs': [],                # [{id, label, path, peer, device}]: folders kept the same with another Hearth device (Syncthing)
+    'alerts': {'on': False, 'smart': True, 'full': True, 'fullPct': 90, 'backup': True, 'mirror': True, 'tailscale': False, 'peers': []},
+    'power': {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False},
 }
 BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone')
 KEEP_KEYS = {'keepHourly': 'hourly', 'keepDaily': 'daily', 'keepWeekly': 'weekly'}
 KEEP_MAX = {'hourly': 168, 'daily': 90, 'weekly': 104}
-APPLY_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'snapshots') + tuple(KEEP_KEYS)
+# Settings inside a group (alerts, power, receive): KEY -> (group, its key, what it takes). Only that key is written.
+NESTED = {
+    'alertsOn': ('alerts', 'on', 'bool'), 'alertSmart': ('alerts', 'smart', 'bool'), 'alertFull': ('alerts', 'full', 'bool'),
+    'alertFullPct': ('alerts', 'fullPct', (80, 85, 90, 95)), 'alertBackup': ('alerts', 'backup', 'bool'),
+    'alertMirror': ('alerts', 'mirror', 'bool'), 'alertTailscale': ('alerts', 'tailscale', 'bool'),
+    'sleepIdle': ('power', 'sleepIdle', (0, 30, 60, 120, 240)), 'keepAwake': ('power', 'keepAwake', 'bool'),
+    'spinDown': ('power', 'spinDown', (0, 10, 20, 30, 60)), 'schedule': ('power', 'schedule', 'bool'),
+    'sleepAt': ('power', 'sleepAt', 'time'), 'wakeAt': ('power', 'wakeAt', 'time'), 'ups': ('power', 'ups', 'bool'),
+    'receiveOn': ('receive', 'on', 'bool'),
+}
+APPLY_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'snapshots') + tuple(KEEP_KEYS) + tuple(NESTED)
 SEEN_KINDS = ('commandCenter', 'camera', 'ups')
 DAY_MS = 86400000
 
@@ -118,6 +158,9 @@ def value(key, data=None):
     data = load() if data is None else data
     if key in KEEP_KEYS:
         return data['keep'][KEEP_KEYS[key]]
+    if key in NESTED:
+        g, k, _ = NESTED[key]
+        return data[g].get(k)
     return data.get(key)
 
 
@@ -135,13 +178,32 @@ def set_key(key, raw):
         if not re.fullmatch(r'\d{1,3}', raw or '') or not 1 <= int(raw) <= 365:
             raise Fail('1 to 365 days')
         v = int(raw)
+    elif key in NESTED:
+        kind = NESTED[key][2]
+        if kind == 'bool':
+            if raw not in ('on', 'off'):
+                raise Fail('on or off')
+            v = raw == 'on'
+        elif kind == 'time':
+            if not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', raw or ''):
+                raise Fail('a time like 07:00')
+            v = raw
+        else:
+            if not re.fullmatch(r'\d{1,4}', raw or '') or int(raw) not in kind:
+                raise Fail('one of ' + ', '.join(str(x) for x in kind))
+            v = int(raw)
     else:
         raise Fail('Unknown setting')
     if value(key) == v:
         return False
 
     def change(d):
-        if key in KEEP_KEYS:
+        if key in NESTED:
+            g, k, _ = NESTED[key]
+            grp = dict(d.get(g)) if isinstance(d.get(g), dict) else {}
+            grp[k] = v
+            d[g] = grp
+        elif key in KEEP_KEYS:
             keep = dict(DEFAULTS['keep'])
             keep.update(d.get('keep') if isinstance(d.get('keep'), dict) else {})
             keep[KEEP_KEYS[key]] = v
@@ -196,8 +258,22 @@ def root(args, stdin=''):
 
 
 def apply_payload(data):
+    """What the root helper is asked to make true (it checks all of it again). Backups carry their shares' folders;
+    never a password: those go to the root helper on their own (backup-secret)."""
+    by_id = {s.get('id'): s for s in data['shares'] if isinstance(s, dict)}
+    backups = []
+    for j in data.get('backups') or []:
+        if not isinstance(j, dict):
+            continue
+        b = {k: j.get(k) for k in ('id', 'name', 'target', 'every', 'at', 'day', 'keep', 'on') if j.get(k) is not None}
+        b['paths'] = [by_id[i]['path'] for i in j.get('shares') or [] if i in by_id and by_id[i].get('path')]
+        backups.append(b)
+    rc = data.get('receive') or {}
     return {'shares': [s for s in data['shares'] if s.get('on', True) is not False], 'tsOnly': data['tsOnly'], 'tsBoot': data['tsBoot'],
-            'snapshots': data['snapshots'], 'keep': data['keep'], 'lightMode': data['lightMode']}
+            'snapshots': data['snapshots'], 'keep': data['keep'], 'lightMode': data['lightMode'],
+            'people': [{'name': p.get('name'), 'folder': p.get('folder') or ''} for p in data.get('people') or [] if isinstance(p, dict)],
+            'backups': backups, 'receive': {'on': rc.get('on') is True, 'path': rc.get('path') or ''},
+            'alerts': data.get('alerts'), 'power': data.get('power')}
 
 
 def apply_now(data=None):
@@ -631,6 +707,749 @@ def mark_seen(kind, device=''):
     return {kind: now}
 
 
+# ================================================================== stage 2: people
+
+PERSON_RE = re.compile(r'^[a-z][a-z0-9_-]{1,23}$')
+ACCESS = ('none', 'read', 'write')
+
+
+def people_change(fn):
+    out = {}
+
+    def change(d):
+        cur = d.get('people') if isinstance(d.get('people'), list) else []
+        new = fn([dict(p) for p in cur if isinstance(p, dict)])
+        if new is not None:
+            d['people'] = new
+            out['people'] = new
+    sio.update_json(SETTINGS, change)
+    return out.get('people')
+
+
+def person_of(name, data=None):
+    data = load() if data is None else data
+    for p in data['people']:
+        if p.get('name') == name:
+            return p
+    raise Fail('That person isn\'t there anymore')
+
+
+def person_add(name, pw):
+    """A person who can open the shares you pick: a Samba-only account (no login, no home), their password straight to
+    smbpasswd. Their access starts at "no access" for every share."""
+    if not PERSON_RE.fullmatch(name or ''):
+        raise Fail('A name is 2 to 24 small letters, digits, - or _, starting with a letter (like sam or mia-k)')
+    if name == me()[0]:
+        raise Fail('That\'s you')
+    if any(p.get('name') == name for p in load()['people']) and any(p.get('account') for p in accounts_state(load()['people']) if p.get('name') == name):
+        raise Fail('%s is already here' % name)
+    if len(pw) < 8:
+        raise Fail('Use at least 8 characters')
+    root(['person-add'], json.dumps({'name': name, 'password': pw}))
+
+    def fn(people):
+        for p in people:
+            if p.get('name') == name:
+                p['pwSet'] = int(time.time() * 1000)   # set up again (after a reinstall): their access stays
+                return people
+        return people + [{'name': name, 'pwSet': int(time.time() * 1000), 'folder': '', 'quotaGb': 0}]
+    people_change(fn)
+    return {'person': name}
+
+
+def person_password(name, pw):
+    person_of(name)
+    if len(pw) < 8:
+        raise Fail('Use at least 8 characters')
+    root(['person-password'], json.dumps({'name': name, 'password': pw}))
+
+    def fn(people):
+        for p in people:
+            if p.get('name') == name:
+                p['pwSet'] = int(time.time() * 1000)
+                return people
+        return None
+    people_change(fn)
+    return {'set': True}
+
+
+def person_remove(name):
+    """They can't open anything anymore; their folder and everything they saved stay where they are."""
+    p = person_of(name)
+    root(['person-remove', name])
+
+    def change(d):
+        d['people'] = [x for x in (d.get('people') or []) if isinstance(x, dict) and x.get('name') != name]
+        for s in d.get('shares') or []:
+            if isinstance(s, dict) and isinstance(s.get('people'), dict):
+                s['people'].pop(name, None)
+    sio.update_json(SETTINGS, change)
+    return {'removed': name, 'filesKept': True, 'folder': p.get('folder') or ''}
+
+
+def person_access(name, sid, acc):
+    """What one person may do with one share: no access, read, or read & write (only on a read & write share)."""
+    person_of(name)
+    if acc not in ACCESS:
+        raise Fail('none, read or write')
+    s = share_by_id(sid)
+    if acc == 'write' and not s.get('write'):
+        raise Fail('"%s" is read only: make it read & write first (Shared folders)' % s['name'])
+    done = {'changed': False}
+
+    def fn(shares):
+        for x in shares:
+            if x.get('id') == sid:
+                ppl = dict(x.get('people')) if isinstance(x.get('people'), dict) else {}
+                if ppl.get(name, 'none') == acc:
+                    return None
+                if acc == 'none':
+                    ppl.pop(name, None)
+                else:
+                    ppl[name] = acc
+                x['people'] = ppl
+                done['changed'] = True
+                return shares
+        return None
+    shares_change(fn)
+    return done['changed']
+
+
+def person_folder(name, on, base=None, gb=None):
+    """Their own folder: Home › People › NAME, or on a drive (People › NAME there), shared with only them and you.
+    Off: not shared anymore; the folder and its files stay."""
+    p = person_of(name)
+    if on:
+        req = {'name': name, 'quotaGb': p.get('quotaGb', 0) if gb is None else gb}
+        if base:
+            req['base'] = base
+        r = root(['person-folder'], json.dumps(req))
+        folder = r.get('folder') or ''
+    else:
+        r, folder = {}, ''
+
+    def fn(people):
+        for x in people:
+            if x.get('name') == name:
+                if x.get('folder', '') == folder and (gb is None or x.get('quotaGb', 0) == gb):
+                    return None
+                x['folder'] = folder
+                if gb is not None:
+                    x['quotaGb'] = gb
+                return people
+        return None
+    people_change(fn)
+    return {'folder': folder, 'quota': r.get('quota', ''), 'note': r.get('note', '')}
+
+
+def person_quota(name, raw):
+    if not re.fullmatch(r'\d{1,6}', raw or '') or int(raw) > 100000:
+        raise Fail('A number of GB (0 for no limit)')
+    p = person_of(name)
+    gb = int(raw)
+    if not p.get('folder'):
+        def fn(people):
+            for x in people:
+                if x.get('name') == name and x.get('quotaGb', 0) != gb:
+                    x['quotaGb'] = gb
+                    return people
+            return None
+        people_change(fn)
+        return {'quotaGb': gb, 'note': 'Saved: it applies when their own folder is on'}
+    return person_folder(name, True, os.path.dirname(os.path.dirname(p['folder'])), gb)
+
+
+def accounts_state(people):
+    """Whether each person's account is on this PC (after a reinstall it isn't: set their password again)."""
+    import pwd as _pwd
+    out = []
+    for p in people:
+        q = dict(p)
+        try:
+            pw = _pwd.getpwnam(p.get('name', ''))
+            q['account'] = pw.pw_gecos == 'Hearth home server person (sharing only)'
+        except KeyError:
+            q['account'] = False
+        out.append(q)
+    return out
+
+
+# ================================================================== stage 2: backups
+
+BACKUP_STATE = os.environ.get('HEARTH_HOME_SERVER_BACKUP_STATE', '/var/lib/hearth/home-server-backups.json')
+ALERT_STATE = os.environ.get('HEARTH_HOME_SERVER_ALERT_STATE', '/var/lib/hearth/home-server-alerts.json')
+POWER_STATE = '/run/hearth/home-server-power.json'
+EVERY = ('hourly', 'daily', 'weekly')
+BACKUP_KEEP = {'keepDaily': ('daily', 60), 'keepWeekly': ('weekly', 52), 'keepMonthly': ('monthly', 120)}
+
+
+def backups_change(fn):
+    out = {}
+
+    def change(d):
+        cur = d.get('backups') if isinstance(d.get('backups'), list) else []
+        new = fn([dict(j) for j in cur if isinstance(j, dict)])
+        if new is not None:
+            d['backups'] = new
+            out['backups'] = new
+    sio.update_json(SETTINGS, change)
+    return out.get('backups')
+
+
+def job_of(jid, data=None):
+    data = load() if data is None else data
+    for j in data['backups']:
+        if j.get('id') == jid:
+            return j
+    raise Fail('That backup isn\'t there anymore')
+
+
+def clean_target(t):
+    """Where a backup goes, without anything secret: a folder on a drive, one of your Hearth devices, or the cloud."""
+    if not isinstance(t, dict):
+        raise Fail('Pick where it goes')
+    kind = t.get('kind')
+    if kind == 'drive':
+        user, home = me()
+        real, why = root_mod().target_problem(t.get('path'), user, home)
+        if not real:
+            raise Fail(why[0].upper() + why[1:])
+        return {'kind': 'drive', 'path': real}
+    if kind == 'hearth':
+        peer = t.get('peer') or ''
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.\-]{0,252}', peer):
+            raise Fail('Pick one of your Hearth devices on Tailscale')
+        return {'kind': 'hearth', 'peer': peer, 'user': t.get('user') or ''}
+    if kind == 'cloud':
+        path = t.get('path') or ''
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/\-]{0,199}', path) or '..' in path:
+            raise Fail('The bucket and folder are letters, digits, . _ - and / (like my-bucket/hearth)')
+        out = {'kind': 'cloud', 'path': path, 'provider': t.get('provider') if t.get('provider') in ('b2', 's3', 'custom') else 's3'}
+        if t.get('remote'):
+            if not re.fullmatch(r'[A-Za-z0-9_\-]{1,40}', t['remote']):
+                raise Fail('An rclone remote\'s name is letters, digits, - and _')
+            out['remote'] = t['remote']
+        return out
+    raise Fail('Back up to a drive, another Hearth device or the cloud')
+
+
+def backup_add(req):
+    """A new backup: its shares, where it goes, how often. The password (restic's key: you need it to restore anywhere
+    else) and any code or cloud key go straight to the root helper's 0600 files, never into home-server.json."""
+    if not isinstance(req, dict):
+        raise Fail('The request must be a JSON object')
+    data = load()
+    name = (req.get('name') or 'Backup').strip()[:40]
+    if root_mod().name_problem(name):
+        raise Fail('A backup\'s name is letters, digits, spaces, - or _')
+    ids = {s.get('id') for s in data['shares']}
+    shares = [i for i in req.get('shares') or [] if i in ids]
+    if not shares:
+        raise Fail('Pick at least one shared folder to back up')
+    target = clean_target(req.get('target'))
+    every = req.get('every', 'daily')
+    if every not in EVERY:
+        raise Fail('Hourly, daily or weekly')
+    at = req.get('at', '03:00')
+    if not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', at or ''):
+        raise Fail('A time like 03:00')
+    pw = req.get('password') or ''
+    if len(pw) < 8:
+        raise Fail('The backup password needs at least 8 characters (keep it somewhere safe: restoring on another PC needs it)')
+    jid = secrets.token_hex(6)
+    secret = {'password': pw}
+    if target['kind'] == 'hearth':
+        code = (req.get('code') or '').strip()
+        m = re.fullmatch(r'([a-z0-9][a-z0-9\-]{2,39}):([A-Za-z0-9\-]{8,64})', code)
+        if not m:
+            raise Fail('Type the backup code the other device shows (it looks like ally-3f9a:ABCD-EFGH-JKLM-NPQR)')
+        target['user'] = m.group(1)
+        secret['rest'] = {'user': m.group(1), 'password': m.group(2)}
+    if target['kind'] == 'cloud' and not target.get('remote'):
+        cloud = req.get('cloud') if isinstance(req.get('cloud'), dict) else {}
+        secret['cloud'] = {'kind': target['provider'], 'access': cloud.get('access') or '', 'secret': cloud.get('secret') or '',
+                           'endpoint': cloud.get('endpoint') or '', 'region': cloud.get('region') or ''}
+    root(['backup-secret', jid], json.dumps(secret))
+    job = {'id': jid, 'name': name, 'shares': shares, 'target': target, 'every': every, 'at': at, 'day': 6,
+           'keep': {'daily': 7, 'weekly': 4, 'monthly': 6}, 'on': True, 'pwSet': int(time.time() * 1000)}
+    backups_change(lambda jobs: jobs + [job])
+    return job
+
+
+def backup_set(jid, key, raw):
+    job_of(jid)
+    if key == 'on':
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        v = raw == 'on'
+    elif key == 'every':
+        if raw not in EVERY:
+            raise Fail('hourly, daily or weekly')
+        v = raw
+    elif key == 'at':
+        if not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', raw or ''):
+            raise Fail('a time like 03:00')
+        v = raw
+    elif key == 'day':
+        if not re.fullmatch(r'[0-6]', raw or ''):
+            raise Fail('0 (Monday) to 6 (Sunday)')
+        v = int(raw)
+    elif key == 'name':
+        if root_mod().name_problem(raw):
+            raise Fail('letters, digits, spaces, - or _')
+        v = raw
+    elif key in BACKUP_KEEP:
+        k, mx = BACKUP_KEEP[key]
+        if not re.fullmatch(r'\d{1,3}', raw or '') or int(raw) > mx:
+            raise Fail('a number from 0 to %d' % mx)
+        v = int(raw)
+    else:
+        raise Fail('Unknown backup setting')
+    done = {'changed': False}
+
+    def fn(jobs):
+        for j in jobs:
+            if j.get('id') == jid:
+                if key in BACKUP_KEEP:
+                    keep = dict(j.get('keep') or {})
+                    if keep.get(BACKUP_KEEP[key][0]) == v:
+                        return None
+                    keep[BACKUP_KEEP[key][0]] = v
+                    j['keep'] = keep
+                else:
+                    if j.get(key, {'on': True, 'day': 6}.get(key)) == v:
+                        return None
+                    j[key] = v
+                done['changed'] = True
+                return jobs
+        return None
+    backups_change(fn)
+    return done['changed']
+
+
+def backup_share(jid, sid, on):
+    job_of(jid)
+    share_by_id(sid)
+    done = {'changed': False}
+
+    def fn(jobs):
+        for j in jobs:
+            if j.get('id') == jid:
+                cur = list(j.get('shares') or [])
+                if (sid in cur) == on:
+                    return None
+                if not on and len(cur) <= 1:
+                    raise Fail('A backup needs at least one folder (or remove the backup)')
+                j['shares'] = cur + [sid] if on else [x for x in cur if x != sid]
+                done['changed'] = True
+                return jobs
+        return None
+    backups_change(fn)
+    return done['changed']
+
+
+def backup_remove(jid):
+    """The job goes, and its password and keys with it. What it backed up stays where it is (delete it there yourself)."""
+    j = job_of(jid)
+    backups_change(lambda jobs: [x for x in jobs if x.get('id') != jid])
+    try:
+        root(['backup-forget', jid])
+    except Fail:
+        pass
+    return {'removed': j.get('name'), 'backupKept': True}
+
+
+def backup_targets():
+    """Where a backup can go: folders on drives that aren't the system drive, and your Hearth devices on Tailscale."""
+    out = []
+    try:
+        for d in root(['drives']).get('drives', []):
+            if d.get('system'):
+                continue
+            for m in d.get('mounts') or []:
+                if m and m not in ('[SWAP]',):
+                    p = os.path.join(m, 'Hearth backups')
+                    user, home = me()
+                    if root_mod().target_problem(p, user, home)[0]:
+                        out.append({'kind': 'drive', 'path': p, 'label': '%s (%s)' % (d.get('model'), d.get('sizeText')), 'free': d.get('total', 0) - d.get('used', 0)})
+    except Fail:
+        pass
+    peers = []
+    try:
+        st = ts_status()
+        peers = [{'kind': 'hearth', 'peer': p['dns'] or p['name'], 'label': p['name'], 'online': p['online']}
+                 for p in st.get('peers', []) if p.get('os') in ('linux', '') and (p['dns'] or p['name'])]
+    except Fail:
+        pass
+    return {'drives': out, 'devices': peers}
+
+
+def backups_state(data):
+    st = sio.load_json(BACKUP_STATE, {}, repair=False) if os.path.exists(BACKUP_STATE) else {}
+    js = st.get('jobs') if isinstance(st.get('jobs'), dict) else {}
+    running = set()
+    try:
+        p = subprocess.run(['systemctl', 'list-units', '--state=active', '--no-legend', '--plain', 'hearth-home-server-backup*'],
+                           capture_output=True, text=True, timeout=5)
+        out = p.stdout or ''
+        for j in data['backups']:
+            if 'hearth-home-server-backup-now-' + str(j.get('id')) in out or 'hearth-home-server-backup.service' in out:
+                running.add(j.get('id'))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    jobs = []
+    for j in data['backups']:
+        q = dict(j)
+        s = js.get(j.get('id')) or {}
+        q['state'] = {k: s.get(k) for k in ('last', 'lastOk', 'checked', 'count', 'waiting', 'pending')}
+        q['state']['running'] = j.get('id') in running
+        jobs.append(q)
+    return jobs
+
+
+# ================================================================== stage 2: backups from your other Hearth devices
+
+def receive_change(fn):
+    def change(d):
+        rc = dict(d.get('receive')) if isinstance(d.get('receive'), dict) else {}
+        r = fn(rc)
+        if r is not None:
+            d['receive'] = r
+    sio.update_json(SETTINGS, change)
+
+
+def receive_path(path):
+    user, home = me()
+    real, why = root_mod().path_problem(path, user, home)
+    if not real:
+        raise Fail(why[0].upper() + why[1:])
+    if load()['receive'].get('path') == real:
+        return False
+
+    def fn(rc):
+        rc['path'] = real
+        return rc
+    receive_change(fn)
+    return True
+
+
+def receive_add(name):
+    name = re.sub(r'[^a-z0-9\-]+', '-', (name or '').lower()).strip('-')[:30] or 'device'
+    r = root(['receive-add', name])
+
+    def fn(rc):
+        rc['devices'] = list(rc.get('devices') or []) + [{'user': r['user'], 'name': name, 'at': int(time.time() * 1000)}]
+        return rc
+    receive_change(fn)
+    return {'user': r['user'], 'code': r['code']}
+
+
+def receive_remove(u):
+    root(['receive-remove', u])
+
+    def fn(rc):
+        devs = [d for d in rc.get('devices') or [] if isinstance(d, dict) and d.get('user') != u]
+        if len(devs) == len(rc.get('devices') or []):
+            return None
+        rc['devices'] = devs
+        return rc
+    receive_change(fn)
+    return {'removed': u, 'filesKept': True}
+
+
+# ================================================================== stage 2: folder sync (Syncthing)
+
+ST_ID_RE = re.compile(r'^[A-Z0-9]{7}(-[A-Z0-9]{7}){7}$')
+
+
+def st_config_path():
+    for p in (os.path.join(STATE_HOME, 'syncthing', 'config.xml'), os.path.join(CONFIG_HOME, 'syncthing', 'config.xml')):
+        if os.path.exists(p):
+            return p
+    return ''
+
+
+def st_api_info():
+    """Syncthing's address and API key from its own config (never copied anywhere)."""
+    import xml.etree.ElementTree as ET
+    p = st_config_path()
+    if not p:
+        return None
+    try:
+        root_ = ET.parse(p).getroot()
+    except (ET.ParseError, OSError):
+        return None
+    gui = root_.find('gui')
+    if gui is None:
+        return None
+    key = (gui.findtext('apikey') or '').strip()
+    addr = (gui.findtext('address') or '127.0.0.1:8384').strip()
+    if not key or not re.fullmatch(r'(127\.0\.0\.1|localhost|\[::1\]):\d{2,5}', addr):
+        return None
+    return {'url': ('https://' if gui.get('tls') == 'true' else 'http://') + addr, 'key': key}
+
+
+def st(method, path, body=None, timeout=8):
+    """One call to your Syncthing (on this PC only)."""
+    import urllib.request
+    import ssl
+    info = st_api_info()
+    if not info:
+        raise Fail('Folder sync isn\'t running yet')
+    req = urllib.request.Request(info['url'] + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={'X-API-Key': info['key'], 'Content-Type': 'application/json'})
+    ctx = ssl._create_unverified_context() if info['url'].startswith('https') else None
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            raw = r.read()
+    except OSError as e:
+        raise Fail('Folder sync didn\'t answer (%s)' % e)
+    try:
+        return json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+
+
+def st_start():
+    """Your own Syncthing (a user service, off until you sync a folder), set up to talk only over Tailscale: no global
+    discovery, no relays, no usage reports."""
+    if not shutil.which('syncthing'):
+        raise Fail('Syncthing (folder sync) isn\'t installed on this PC')
+    subprocess.run(['systemctl', '--user', 'enable', '--now', 'syncthing.service'], capture_output=True, timeout=30)
+    for _ in range(40):
+        if st_api_info():
+            try:
+                st('GET', '/rest/system/ping', timeout=2)
+                break
+            except Fail:
+                pass
+        time.sleep(0.5)
+    ip = ''
+    try:
+        ip = next((x for x in ts_status().get('ips', []) if x.startswith('100.')), '')
+    except Fail:
+        pass
+    opts = {'globalAnnounceEnabled': False, 'relaysEnabled': False, 'natEnabled': False, 'localAnnounceEnabled': False,
+            'urAccepted': -1, 'crashReportingEnabled': False, 'startBrowser': False}
+    if ip:
+        opts['listenAddresses'] = ['tcp://%s:22000' % ip]
+    st('PATCH', '/rest/config/options', opts)
+    return st('GET', '/rest/system/status').get('myID', '')
+
+
+def peer_ip(peer):
+    for p in ts_status().get('peers', []):
+        if peer in (p['name'], p['dns']) and p['ips']:
+            return next((x for x in p['ips'] if x.startswith('100.')), p['ips'][0])
+    raise Fail('That isn\'t one of your devices on Tailscale')
+
+
+def sync_add(path, peer, device):
+    """Keep a folder the same on this PC and another Hearth device (Syncthing, over Tailscale). Deleted or changed files
+    go to the folder's .stversions for 30 days first."""
+    user, home = me()
+    real, why = root_mod().path_problem(path, user, home)
+    if not real:
+        raise Fail(why[0].upper() + why[1:])
+    device = (device or '').strip().upper()
+    if not ST_ID_RE.fullmatch(device):
+        raise Fail('Type the other device\'s sync ID (Settings › Home server › Backups & sync there): 8 groups of 7 letters and digits')
+    ip = peer_ip(peer)
+    my = st_start()
+    if device == my:
+        raise Fail('That\'s this PC\'s own sync ID')
+    sid = secrets.token_hex(6)
+    label = os.path.basename(real)
+    st('PUT', '/rest/config/devices/' + device, {'deviceID': device, 'name': peer, 'addresses': ['tcp://%s:22000' % ip],
+                                                 'autoAcceptFolders': False, 'introducer': False})
+    st('PUT', '/rest/config/folders/hearth-' + sid, {'id': 'hearth-' + sid, 'label': label, 'path': real, 'type': 'sendreceive',
+                                                     'devices': [{'deviceID': my}, {'deviceID': device}],
+                                                     'versioning': {'type': 'trashcan', 'params': {'cleanoutDays': '30'}}})
+    item = {'id': sid, 'label': label, 'path': real, 'peer': peer, 'device': device}
+
+    def change(d):
+        d['syncs'] = list(d.get('syncs') or []) + [item]
+    sio.update_json(SETTINGS, change)
+    return item
+
+
+def sync_accept(fid, device, path=None):
+    """A folder another of your Hearth devices offered: kept in Home › Synced › NAME (or the folder you pick)."""
+    if not re.fullmatch(r'hearth-[0-9a-f]{6,32}', fid or '') or not ST_ID_RE.fullmatch(device or ''):
+        raise Fail('That isn\'t an offered folder')
+    pend = st('GET', '/rest/cluster/pending/folders')
+    offer = ((pend.get(fid) or {}).get('offeredBy') or {}).get(device)
+    if not offer:
+        raise Fail('That folder isn\'t offered anymore')
+    label = re.sub(r'[^\w .\-+@,()\']+', ' ', offer.get('label') or fid).strip() or fid
+    user, home = me()
+    dest = path or os.path.join(home, 'Synced', label)
+    os.makedirs(dest, exist_ok=True)
+    real, why = root_mod().path_problem(dest, user, home)
+    if not real:
+        raise Fail(why[0].upper() + why[1:])
+    my = st('GET', '/rest/system/status').get('myID', '')
+    cfg = st('GET', '/rest/config/devices')
+    if not any(d.get('deviceID') == device for d in cfg if isinstance(d, dict)):
+        st('PUT', '/rest/config/devices/' + device, {'deviceID': device, 'name': device[:7], 'autoAcceptFolders': False})
+    st('PUT', '/rest/config/folders/' + fid, {'id': fid, 'label': label, 'path': real, 'type': 'sendreceive',
+                                             'devices': [{'deviceID': my}, {'deviceID': device}],
+                                             'versioning': {'type': 'trashcan', 'params': {'cleanoutDays': '30'}}})
+    item = {'id': fid[7:], 'label': label, 'path': real, 'peer': '', 'device': device}
+
+    def change(d):
+        d['syncs'] = list(d.get('syncs') or []) + [item]
+    sio.update_json(SETTINGS, change)
+    return item
+
+
+def sync_remove(sid):
+    """Stop syncing a folder: its files stay on both devices."""
+    data = load()
+    item = next((x for x in data['syncs'] if x.get('id') == sid), None)
+    if not item:
+        raise Fail('That folder isn\'t synced anymore')
+    try:
+        st('DELETE', '/rest/config/folders/hearth-' + sid)
+    except Fail:
+        pass
+
+    def change(d):
+        d['syncs'] = [x for x in d.get('syncs') or [] if isinstance(x, dict) and x.get('id') != sid]
+    sio.update_json(SETTINGS, change)
+    if not load()['syncs']:
+        subprocess.run(['systemctl', '--user', 'disable', '--now', 'syncthing.service'], capture_output=True, timeout=30)
+    return {'removed': item.get('label'), 'filesKept': True}
+
+
+def sync_status():
+    data = load()
+    out = {'installed': bool(shutil.which('syncthing')), 'running': False, 'id': '', 'folders': [], 'offers': []}
+    if not out['installed'] or not st_api_info():
+        out['folders'] = [dict(x, state='off') for x in data['syncs']]
+        return out
+    try:
+        out['id'] = st('GET', '/rest/system/status', timeout=3).get('myID', '')
+        out['running'] = True
+        conns = st('GET', '/rest/system/connections', timeout=3).get('connections') or {}
+        for x in data['syncs']:
+            q = dict(x)
+            try:
+                c = st('GET', '/rest/db/completion?folder=hearth-%s' % x.get('id'), timeout=3)
+                q['completion'] = round(c.get('completion', 0))
+                q['need'] = c.get('needItems', 0)
+            except Fail:
+                q['completion'] = None
+            q['connected'] = bool((conns.get(x.get('device')) or {}).get('connected'))
+            out['folders'].append(q)
+        pend = st('GET', '/rest/cluster/pending/folders', timeout=3)
+        for fid, v in (pend or {}).items():
+            if fid.startswith('hearth-'):
+                for dev, o in ((v or {}).get('offeredBy') or {}).items():
+                    out['offers'].append({'id': fid, 'device': dev, 'label': o.get('label') or fid})
+    except Fail:
+        out['folders'] = [dict(x, state='off') for x in data['syncs']]
+    return out
+
+
+# ================================================================== stage 2: alerts, power, UPS
+
+UPS_VENDORS = {'051d': 'APC', '0764': 'CyberPower', '0463': 'Eaton', '09ae': 'Tripp Lite', '06da': 'Phoenixtec', '0d9f': 'Powercom',
+               '0665': 'UPS', '10af': 'Liebert'}
+
+
+def ups_found():
+    """A UPS plugged in by USB (by its maker's id), or ''. Seeing one only shows its items; it turns nothing on."""
+    try:
+        for d in os.listdir('/sys/bus/usb/devices'):
+            try:
+                v = open('/sys/bus/usb/devices/%s/idVendor' % d).read().strip().lower()
+            except OSError:
+                continue
+            if v in UPS_VENDORS:
+                try:
+                    prod = open('/sys/bus/usb/devices/%s/product' % d).read().strip()
+                except OSError:
+                    prod = ''
+                return (UPS_VENDORS[v] + ' ' + prod).strip()[:60]
+    except OSError:
+        pass
+    return ''
+
+
+def alert_peer(name, on):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.\-]{0,252}', name or ''):
+        raise Fail('That isn\'t one of your devices')
+    done = {'changed': False}
+
+    def change(d):
+        a = dict(d.get('alerts')) if isinstance(d.get('alerts'), dict) else {}
+        peers = [p for p in a.get('peers') or [] if isinstance(p, str)]
+        if (name in peers) == on:
+            return
+        a['peers'] = peers + [name] if on else [p for p in peers if p != name]
+        d['alerts'] = a
+        done['changed'] = True
+    if (name in load()['alerts'].get('peers', [])) != on:
+        sio.update_json(SETTINGS, change)
+    return done['changed']
+
+
+def resume_flag():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid(), 'hearth-home-server-resume')
+
+
+def resume(on):
+    """Let big jobs paused for your game run now (for up to 4 hours), or pause them again. A flag in your runtime
+    folder: it changes no setting and is gone after a restart."""
+    f = resume_flag()
+    if on:
+        with open(f, 'w') as fh:
+            fh.write(str(int(time.time())) + '\n')
+    else:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    return {'resumed': on}
+
+
+def resumed():
+    try:
+        return time.time() - os.lstat(resume_flag()).st_mtime < 4 * 3600
+    except OSError:
+        return False
+
+
+def quick():
+    """Home server in short, for Game Mode's Quick Access (Hearth Link's Decky panel): quick, no root, no network."""
+    data = load()
+    mod = None
+    try:
+        mod = root_mod()
+    except Fail:
+        pass
+    shares = [s for s in data['shares'] if s.get('on', True) is not False]
+    jobs = backups_state(data) if data['backups'] else []
+    waiting = [j['name'] for j in jobs if (j.get('state') or {}).get('waiting')]
+    failed = [j['name'] for j in jobs if ((j.get('state') or {}).get('last') or {}).get('ok') is False]
+    last_ok = max([(j.get('state') or {}).get('lastOk') or 0 for j in jobs] or [0])
+    alerts = sio.load_json(ALERT_STATE, {}, repair=False).get('active', []) if os.path.exists(ALERT_STATE) else []
+    playing = bool(mod and mod.game_running())
+    paused = []
+    if data['lightMode'] and playing and not resumed():
+        if data['snapshots'] or any(s.get('recycle', True) and s.get('write') for s in shares):
+            paused.append('snapshots')
+        if any(j.get('on', True) for j in data['backups']):
+            paused.append('backups')
+    return {'available': True, 'host': socket.gethostname().split('.')[0], 'lightMode': data['lightMode'] is not False,
+            'playing': playing, 'resumed': resumed(), 'paused': paused, 'shares': len(shares), 'people': len(data['people']),
+            'usage': fs_usage([s['path'] for s in shares if os.path.isdir(s.get('path', ''))]),
+            'backups': {'count': len(jobs), 'lastOk': int(last_ok * 1000) if last_ok else 0, 'waiting': waiting, 'failed': failed,
+                        'running': any((j.get('state') or {}).get('running') for j in jobs)},
+            'alerts': [a.get('text', '') for a in alerts if isinstance(a, dict)][:3], 'setupDone': bool(data['setupDone'])}
+
+
 # ------------------------------------------------------------------ status
 
 def status():
@@ -660,13 +1479,27 @@ def status():
         shares.append(s)
     tools = {k: bool(shutil.which(b) or os.path.exists(p)) for k, b, p in (
         ('samba', 'smbd', '/usr/sbin/smbd'), ('tailscale', 'tailscale', '/usr/bin/tailscale'), ('smartctl', 'smartctl', '/usr/sbin/smartctl'),
-        ('btrfs', 'btrfs', '/usr/bin/btrfs'), ('qrencode', 'qrencode', '/usr/bin/qrencode'), ('nft', 'nft', '/usr/sbin/nft'))}
+        ('btrfs', 'btrfs', '/usr/bin/btrfs'), ('qrencode', 'qrencode', '/usr/bin/qrencode'), ('nft', 'nft', '/usr/sbin/nft'),
+        ('restic', 'restic', '/usr/bin/restic'), ('rclone', 'rclone', '/usr/bin/rclone'), ('syncthing', 'syncthing', '/usr/bin/syncthing'),
+        ('hdparm', 'hdparm', '/usr/sbin/hdparm'), ('nut', 'upsmon', '/usr/sbin/upsmon'))}
+    # A UPS plugged in shows its items (hide-until-seen); seeing one is state, never a setting.
+    ups = ups_found()
+    last_ups = (sio.load_json(SEEN, {}, repair=False).get('ups') or {}) if os.path.exists(SEEN) else {}
+    if ups and (not isinstance(last_ups, dict) or time.time() * 1000 - last_ups.get('at', 0) > 3600000):
+        try:
+            mark_seen('ups', ups)
+        except (Fail, OSError):
+            pass
     items = [{'id': 'ai', 'needs': 'commandCenter'}, {'id': 'cameras', 'needs': 'camera'}, {'id': 'ups', 'needs': 'ups'}]
     _, hidden_count = visible_items(items, data)
+    alerts = sio.load_json(ALERT_STATE, {}, repair=False) if os.path.exists(ALERT_STATE) else {}
+    power = sio.load_json(POWER_STATE, {}, repair=False) if os.path.exists(POWER_STATE) else {}
     return {'settings': data, 'file': SETTINGS, 'user': user, 'host': host, 'shares': shares, 'tools': tools,
             'usage': fs_usage([s['path'] for s in shares if s['there'] and s['on']]),
             'applied': sio.load_json(APPLIED, {}, repair=False), 'tailscale': tss, 'seen': seen_state(data), 'hiddenCount': hidden_count,
-            'playing': bool(mod and mod.game_running()), 'wired': wired_cards(), 'helper': os.path.exists(ROOT_HELPER)}
+            'playing': bool(mod and mod.game_running()), 'wired': wired_cards(), 'helper': os.path.exists(ROOT_HELPER),
+            'people': accounts_state(data['people']), 'backups': backups_state(data), 'alerts': alerts, 'power': power,
+            'ups': ups, 'resumed': resumed()}
 
 
 # ------------------------------------------------------------------
@@ -732,6 +1565,88 @@ def main(argv):
             res = ts_send(a[1], a[2] if len(a) == 3 else None)
         elif len(a) in (2, 3) and a[0] == 'seen':
             res = mark_seen(a[1], a[2] if len(a) == 3 else '')
+        # ---- stage 2: people
+        elif len(a) == 2 and a[0] == 'person-add':
+            res = person_add(a[1], stdin.split('\n')[0])
+            res['applied'] = apply_now()
+        elif len(a) == 2 and a[0] == 'person-password':
+            res = person_password(a[1], stdin.split('\n')[0])
+        elif len(a) == 2 and a[0] == 'person-remove':
+            res = person_remove(a[1])
+            res['applied'] = apply_now()
+        elif len(a) == 4 and a[0] == 'person-access':
+            res = {'changed': person_access(a[1], a[2], a[3])}
+            if res['changed']:
+                res['applied'] = apply_now()
+        elif len(a) in (3, 4) and a[0] == 'person-folder' and a[2] in ('on', 'off'):
+            res = person_folder(a[1], a[2] == 'on', a[3] if len(a) == 4 else None)
+            res['applied'] = apply_now()
+        elif len(a) == 3 and a[0] == 'person-quota':
+            res = person_quota(a[1], a[2])
+        # ---- stage 2: backups & sync
+        elif a == ['backup-add']:
+            res = {'backup': backup_add(json.loads(stdin or '{}'))}
+            res['applied'] = apply_now()
+        elif len(a) == 4 and a[0] == 'backup-set':
+            res = {'changed': backup_set(a[1], a[2], a[3])}
+            if res['changed']:
+                res['applied'] = apply_now()
+        elif len(a) == 4 and a[0] == 'backup-share' and a[3] in ('on', 'off'):
+            res = {'changed': backup_share(a[1], a[2], a[3] == 'on')}
+            if res['changed']:
+                res['applied'] = apply_now()
+        elif len(a) == 2 and a[0] == 'backup-password':
+            job_of(a[1])
+            pw = stdin.split('\n')[0]
+            if len(pw) < 8:
+                raise Fail('Use at least 8 characters')
+            root(['backup-secret', a[1]], json.dumps({'password': pw}))
+            res = {'set': True}
+        elif len(a) == 2 and a[0] == 'backup-remove':
+            res = backup_remove(a[1])
+            res['applied'] = apply_now()
+        elif len(a) == 2 and a[0] == 'backup-now':
+            res = root(['backup-now', a[1]])
+        elif len(a) == 2 and a[0] == 'backup-snapshots':
+            res = root(['backup-snapshots', a[1]])
+        elif len(a) == 4 and a[0] == 'backup-restore':
+            res = root(['backup-restore'], json.dumps({'id': a[1], 'snapshot': a[2], 'path': a[3]}))
+        elif a == ['backup-targets']:
+            res = backup_targets()
+        elif len(a) == 2 and a[0] == 'receive-path':
+            res = {'changed': receive_path(a[1])}
+            if res['changed'] and load()['receive'].get('on'):
+                res['applied'] = apply_now()
+        elif len(a) == 2 and a[0] == 'receive-add':
+            res = receive_add(a[1])
+        elif len(a) == 2 and a[0] == 'receive-remove':
+            res = receive_remove(a[1])
+        elif a == ['sync-status']:
+            res = sync_status()
+        elif a == ['sync-id']:
+            res = {'id': st_start()}
+        elif len(a) == 4 and a[0] == 'sync-add':
+            res = {'sync': sync_add(a[1], a[2], a[3])}
+        elif len(a) in (3, 4) and a[0] == 'sync-accept':
+            res = {'sync': sync_accept(a[1], a[2], a[3] if len(a) == 4 else None)}
+        elif len(a) == 2 and a[0] == 'sync-remove':
+            res = sync_remove(a[1])
+        # ---- stage 2: alerts & power, Quick Access
+        elif a == ['alerts-test']:
+            res = root(['alerts', 'test'])
+        elif len(a) == 3 and a[0] == 'alert-peer' and a[2] in ('on', 'off'):
+            res = {'changed': alert_peer(a[1], a[2] == 'on')}
+            if res['changed']:
+                res['applied'] = apply_now()
+        elif a == ['ups-status']:
+            res = root(['ups-status'])
+        elif a == ['quick']:
+            res = quick()
+        elif a == ['quick-set', 'lightMode', 'on'] or a == ['quick-set', 'lightMode', 'off']:
+            # From Game Mode: saved only (the timers read Light mode from your settings file as they run).
+            res = {'changed': set_key('lightMode', a[2])}
+        elif len(a) == 2 and a[0] == 'resume' and a[1] in ('on', 'off'):
+            res = resume(a[1] == 'on')
         else:
             raise Fail('Unknown command')
         print(json.dumps(res))

@@ -41,6 +41,17 @@ const STATES = {
   "not-running": () => ({ running: false, installed: true, error: "Hearth Link isn't running on this device",
     last: { at: min(42), status: { me: base().me, peers, storage: base().storage } } }),
   "not-installed": () => ({ running: false, installed: false, error: "Hearth Link isn't running on this device", last: null }),
+  "home-server": () => base(),
+  "home-server-playing": () => ({ ...base(), playing: true }),
+};
+// Home server's Quick Access tile (main.py home_server): only in the home-server states (elsewhere the helper isn't there).
+const home = { lightMode: true, resumed: false };
+const homeQuick = () => {
+  const playing = st() === "home-server-playing";
+  return { available: true, host: "Nvidia-PC", lightMode: home.lightMode, playing, resumed: home.resumed,
+    paused: playing && home.lightMode && !home.resumed ? ["snapshots", "backups"] : [], shares: 3, people: 2,
+    usage: { used: 3.1e12, total: 6e12 }, backups: { count: 2, lastOk: min(140), waiting: playing && !home.resumed ? ["Games to backup drive"] : [], failed: [], running: false },
+    alerts: playing ? [] : ["The drive with /var/mnt/big is 91% full"], setupDone: true };
 };
 const mine = [
   { id: "steam:1145360", title: "Hades", store: "steam", size: 15e9 }, { id: "steam:620", title: "Portal 2", store: "steam", size: 12e9 },
@@ -77,6 +88,9 @@ const handlers = {
       { folder: "PowerTools", name: "PowerTools", version: "2.0.3", from: TOWER, fromName: "Tower", online: false }] : [] }),
   set_sync: (name, on) => { sw[name] = on; return { ok: true, switches: { ...sw } }; },
   fetch_plugin: (folder) => ({ ok: true, artifact: `file:///home/you/homebrew/settings/decky-hearth-link/incoming/${folder}.zip`, name: "CSS Loader", version: "2.1.2", hash: "a".repeat(64) }),
+  home_server: () => (st().startsWith("home-server") ? homeQuick() : { available: false }),
+  home_server_light: (on) => { home.lightMode = on; return { available: true, ok: true }; },
+  home_server_resume: (on) => { home.resumed = on; return { available: true, ok: true }; },
   status: () => STATES[st()](),
   storage: () => storageInfo(),
   start_link: () => ({ ok: true }),

@@ -28,6 +28,18 @@ SetPage {
         return { big: failing.length ? "Check" : "Good", bad: failing.length > 0,
                  sub: drv.drives.length + " drives" + (temps.length ? " · " + Math.min.apply(null, temps) + "–" + Math.max.apply(null, temps) + " °C" : "") };
     }
+    function alertList() { return st && st.alerts ? (st.alerts.active || []) : []; }
+    function backupBig() {
+        const jobs = st ? (st.backups || []) : [];
+        if (!jobs.length) return { big: "None yet", sub: "a second copy somewhere else", good: false, warn: false };
+        const failed = jobs.filter(j => j.state && j.state.last && j.state.last.ok === false);
+        if (failed.length) return { big: "Didn't finish", sub: failed.map(j => j.name).join(", "), good: false, warn: true };
+        if (jobs.some(j => j.state && j.state.running)) return { big: "Running", sub: "backing up now", good: true, warn: false };
+        const last = Math.max.apply(null, jobs.map(j => (j.state && j.state.lastOk) || 0));
+        if (!last) return { big: "Not yet", sub: jobs.some(j => j.state && j.state.waiting) ? "waiting for your game" : jobs.length + " set up", good: false, warn: false };
+        const h = Math.round((Date.now() / 1000 - last) / 3600);
+        return { big: h < 1 ? "Just now" : h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago", sub: jobs.length + (jobs.length === 1 ? " backup" : " backups"), good: h < 48, warn: false };
+    }
     Component.onCompleted: { refresh(); drives.run(["drives"], r => page.drv = r, () => page.drv = null); }
     Timer { interval: 5000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-home-server" }
@@ -49,7 +61,7 @@ SetPage {
     SetSwitch {
         visible: !!page.cfg
         icon: "sleep"; title: "Light mode while you play"
-        sub: "When Game Mode or a game runs, big jobs (snapshots, emptying recycle bins) wait. Sharing keeps working."
+        sub: "When Game Mode or a game runs, big jobs (backups, snapshots, emptying recycle bins) wait. Sharing keeps working. Also in Game Mode's Quick Access (Hearth Link)."
              + (page.st && page.st.playing && page.cfg && page.cfg.lightMode ? " · On now: you're playing" : "")
         checked: !!page.cfg && page.cfg.lightMode !== false
         onToggled: v => page.set("lightMode", v ? "on" : "off")
@@ -60,7 +72,7 @@ SetPage {
         visible: !!page.cfg
         Layout.fillWidth: true
         Layout.topMargin: 6
-        columns: page.width > 760 ? 4 : 2
+        columns: page.width > 760 ? 3 : 2
         columnSpacing: 10; rowSpacing: 10
         Repeater {
             model: page.cfg ? [
@@ -70,7 +82,11 @@ SetPage {
                   sub: page.st.shares.filter(s => s.on !== false).map(s => s.name).slice(0, 4).join(" · ") || "nothing is shared until you share it", frac: -1 },
                 { label: "Tailscale", big: page.ts.state === "Running" ? "Connected" : page.ts.installed === false ? "Not installed" : page.ts.running === false ? "Off" : page.ts.state === "NeedsLogin" ? "Sign in" : (page.ts.state || "—"),
                   sub: page.ts.state === "Running" ? (page.ts.peers || []).filter(p => p.online).length + " of your devices online" : "reach this PC from anywhere", frac: -1, good: page.ts.state === "Running" },
-                { label: "Drive health", big: page.health().big, sub: page.health().sub, frac: -1, good: page.health().big === "Good", warn: !!page.health().bad }
+                { label: "Drive health", big: page.health().big, sub: page.health().sub, frac: -1, good: page.health().big === "Good", warn: !!page.health().bad },
+                { label: "Backups", big: page.backupBig().big, sub: page.backupBig().sub, frac: -1, good: page.backupBig().good, warn: page.backupBig().warn },
+                { label: "Alerts", big: page.alertList().length ? String(page.alertList().length) : page.cfg.alerts && page.cfg.alerts.on ? "All good" : "Off",
+                  sub: page.alertList().length ? page.alertList()[0].text : page.cfg.alerts && page.cfg.alerts.on ? "checked every hour" : "turn on in Alerts & power",
+                  frac: -1, good: !page.alertList().length && !!page.cfg.alerts && page.cfg.alerts.on, warn: page.alertList().length > 0 }
             ] : []
             delegate: Rectangle {
                 required property var modelData
@@ -136,6 +152,27 @@ SetPage {
         sub: "Space, health and temperature of every drive; snapshots to bring back deleted or changed files" + (page.cfg && page.cfg.snapshots ? " · snapshots on" : "")
         onActivated: SettingsNav.openPage("hs-drives")
     }
+    SetRow {
+        visible: !!page.cfg
+        icon: "update"; title: "Backups & sync"
+        sub: "Back up your shares to a drive, another Hearth device or the cloud; phone photos; folders kept the same on your devices"
+        value: page.st && page.st.backups && page.st.backups.length ? page.backupBig().big : ""
+        onActivated: SettingsNav.openPage("hs-backups")
+    }
+    SetRow {
+        visible: !!page.cfg
+        icon: "user"; title: "People"
+        sub: "Family and friends with their own password and only the shares you pick"
+        value: page.st && page.st.people && page.st.people.length ? page.st.people.length + (page.st.people.length === 1 ? " person" : " people") : ""
+        onActivated: SettingsNav.openPage("hs-people")
+    }
+    SetRow {
+        visible: !!page.cfg
+        icon: "bell"; title: "Alerts & power"
+        sub: "Hear about failing or full drives and failed backups; sleep, wake, spin down and a UPS"
+        value: page.alertList().length ? page.alertList().length + (page.alertList().length === 1 ? " alert" : " alerts") : ""
+        onActivated: SettingsNav.openPage("hs-alerts")
+    }
 
     SetHeader { text: "Hidden items"; visible: !!page.cfg }
     SetSwitch {
@@ -156,7 +193,7 @@ SetPage {
     Text {
         visible: !!page.cfg
         Layout.fillWidth: true; Layout.topMargin: 6
-        text: "Coming next to Home server: Files & links, Services, Gaming, Family & home, AI, Backups & sync, Safety, People, and Alerts & power."
+        text: "Coming next to Home server: Files & links, Services, Gaming, Family & home, AI and Safety."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
     Text {

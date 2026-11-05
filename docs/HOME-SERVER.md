@@ -12,9 +12,9 @@ Tailscale. The two share one root helper family and one Samba: Hearth Storage's 
 `/etc/samba/hearth-storage.conf`, Home server's in `/etc/samba/hearth-home-server.conf`, share names never clash, and
 neither stops Samba while the other still uses it.
 
-It comes in three stages. **Stage 1 (this one)**: the Home server group with Overview, Shared folders, Drives & undo,
-Tailscale and the setup steps. Stage 2: Files & links, Services, Gaming, Family & home, Backups & sync, People, the
-Game Mode Quick Access tile. Stage 3: AI, Safety (the ransomware guard), Alerts & power.
+It comes in three stages. **Stage 1**: the Home server group with Overview, Shared folders, Drives & undo, Tailscale
+and the setup steps. **Stage 2 (this one)**: Backups & sync, People, Alerts & power, and the Game Mode Quick Access
+tile. Stage 3: Files & links, Services, Gaming, Family & home, AI and Safety (the ransomware guard).
 
 ## What's in Settings
 
@@ -35,8 +35,34 @@ Game Mode Quick Access tile. Stage 3: AI, Safety (the ransomware guard), Alerts 
   sign out; **Only reachable through Tailscale**, **Start Tailscale when this PC starts**, **exit node** (off); your
   devices with online/offline and ping (select one to send it a file with Taildrop); **Receive files** (Taildrop, into
   Downloads › Taildrop) and **Wake this PC from away**.
-- **Set up** (`SetHomeSetup.qml`, opened from Overview): Name, Tailscale, First share, First backup (Hearth Storage's
-  backups until stage 2's Backups & sync), Done. All rows: Up/Down, A, B.
+- **Set up** (`SetHomeSetup.qml`, opened from Overview): Name, Tailscale, First share, First backup (Set up a backup
+  opens Backups & sync; the backups already made are listed; Hearth Storage's backups of your Hearth devices next to
+  it), Done. All rows: Up/Down, A, B.
+- **Backups & sync** (`SetHomeBackups.qml`, stage 2): your backups, each with what it backs up (any of your shares) →
+  where (a backup drive, another Hearth device over Tailscale, or the cloud: Backblaze B2 or S3-compatible), how often
+  (every hour, daily or weekly at a time), how many to keep (7, 14 or 30 days, then weekly and monthly), On/off, **Back
+  up now**, the last run (files, size, how many kept, the weekly check) or why it didn't finish, **Restore…** (pick a
+  backup, then a folder: it's copied into Home › Restored from backups, a new folder every time, never over your
+  files), change its password, Remove (the job and its keys go; what it backed up stays). **Add a backup**: where,
+  which shares, how often, and a password (restic's key: restoring on another PC needs it). **Devices backing up
+  here**: Hearth Storage's backups of your Hearth devices (opens Hearth Link), and **Backups from your other Hearth
+  devices** (on/off, the folder they go to, a code per device shown once, take a code away). **Phone photos**: how to
+  point an Android or iPhone app (FolderSync, PhotoSync, Syncthing-Fork) at a share. **Folders kept the same on your
+  Hearth devices** (Syncthing): this PC's sync ID, your synced folders (up to date or syncing, connected), folders
+  offered by your devices (Accept), Sync a folder (a folder, a device on Tailscale and its sync ID).
+- **People** (`SetHomePeople.qml`, stage 2): you (the owner), then each person with what they may open; Add a person
+  (a name, then their password); per person: each share's access (No access, Read only, Read & write: only on a read &
+  write share), **Their own folder** (Home › People › NAME, shared as `\\PC\NAME` with only them and you), a size limit
+  (None, 50 GB, 200 GB, 500 GB, 1 TB; btrfs), change their password, Remove (never deletes their files). Shared folders'
+  **Who** row shows who's in and opens People.
+- **Alerts & power** (`SetHomeAlerts.qml`, stage 2): what's wrong now; **Alerts** (off until you turn it on) with A drive
+  starts to fail (SMART, or 65 °C and up), A drive is almost full (80, 85, 90 or 95%), A backup fails or is late, A
+  mirror is missing a drive, Also send them to my devices (Taildrop, to the devices you pick), Send a test alert.
+  **Power**: Sleep when nobody needs it for (never, 30 minutes, 1, 2 or 4 hours), Stay awake while my devices use it,
+  Wake-on-LAN (the same switch as Tailscale's Wake this PC from away), Sleep at night, wake in the morning (sleep at
+  23:00–2:00, wake at 2:30–8:00), Spin down idle storage drives after (never, 10, 20, 30 minutes, 1 hour). **UPS**
+  (only once one was plugged in, or with Show hidden items): Shut down cleanly on battery, and its charge.
+- **Overview** also has Backups and Alerts tiles and rows for the three new pages.
 
 ## How it works
 
@@ -97,11 +123,89 @@ Game Mode Quick Access tile. Stage 3: AI, Safety (the ransomware guard), Alerts 
   (`/etc/sysctl.d/99-hearth-exit-node.conf`, removed when off) and `--advertise-exit-node`. Wake from away: Hearth
   Storage's `wol` for each wired card (magic packet, kept after restarts); another device at home sends the wake-up.
 
+## Stage 2: how it works
+
+- **Settings** stay in `home-server.json` through `hearth_settings_io` like stage 1: `people`, `backups`, `receive`,
+  `syncs`, `alerts` and `power` (defaults filled in when read: everything off or empty). A setting inside a group
+  (`alertsOn`, `sleepIdle`…) writes only that key of its group. **No password, code or key is ever in it**: people's
+  passwords go to `smbpasswd` through stdin; a backup's password, a device's backup code and cloud keys go through
+  stdin to the root helper, which writes them 0600 for root only (`/etc/hearth/backup/<id>.pass`, `<id>.rest`, and
+  rclone's own config `/etc/hearth/backup/rclone.conf`, folder 0700); Syncthing's API key stays in Syncthing's config.
+  What the system did is state: `/var/lib/hearth/home-server-backups.json` (each backup's last run, no secrets),
+  `/var/lib/hearth/home-server-alerts.json`, `/run/hearth/home-server-power.json`.
+- **People** are Samba-only accounts: `useradd --system --no-create-home --home-dir /nonexistent --shell
+  /usr/sbin/nologin` with Hearth's comment (`Hearth home server person (sharing only)`) and the `hearth-share` group;
+  a system account has a locked system password and isn't on the login screen. Names: 2–24 small letters, digits, `-`
+  or `_`, starting with a letter; never `root`, `admin`, `nobody`, `guest`, you or any account Hearth didn't make.
+  Removing one is `smbpasswd -x` and `userdel` (never `-r`), and only for an account with Hearth's comment and no login
+  shell. In Samba each share's `valid users` is you plus the people you let in, read-only people go in `read list`
+  (a read-only share stays read only for everyone), and `force user` stays you (files stay yours). A person's own
+  folder is its own section `[name]` (you and them); it's a btrfs subvolume when the drive is btrfs, so a quota
+  (`btrfs qgroup limit`, simple quotas when the kernel has them) can apply to it; other drives say a limit isn't possible.
+- **Backups** are restic (Debian's 0.18). Where: a folder on a drive that isn't the system drive (under `/run/media/YOU`,
+  `/media/YOU`, `/mnt` or `/var/mnt`; never inside a folder it backs up), another Hearth device (`rest:http://<its
+  Tailscale name>:8095/<code name>/`, its code's password in the environment, never an argument), or the cloud
+  (`rclone:hearth-<id>:<bucket/folder>`, rclone's B2 or S3 backend; or your own rclone remote in that file). restic
+  encrypts everything here before it leaves. `hearth-home-server-backup.timer` (hourly, off until a backup is on) runs
+  `backup run`: each backup that's due (its time came since its last good run; a failed one tries again after an
+  hour), then `restic forget --prune --keep-daily/weekly/monthly`, and `restic check` once a week. With Light mode on
+  it waits while Game Mode or a game runs (a Back up now that waits runs at the next hour); **Let paused jobs run
+  now** in Quick Access lets it through for up to 4 hours (a flag in your runtime folder, not a setting). Back up now
+  and Restore run in their own transient units (`systemd-run`) at idle priority; a backup holds off sleep
+  (`systemd-inhibit --what=sleep`). Restore is `restic restore <backup> --include <folder> --target <a new, empty
+  folder> --overwrite never`, then everything in it is made yours (links not followed) and a notification says so.
+  The root helper reads Light mode live from your settings file (read only, no links followed, 1 MB at most), so the
+  Quick Access switch works without a password.
+- **Backups from your other Hearth devices**: `rclone serve restic --private-repos` on this PC's Tailscale address only
+  (port 8095), as you, into the folder you picked (each device its own folder), with `--htpasswd` holding only the
+  codes' hashes. `hearth-home-server-receive.timer` starts it a minute after the PC starts; the service has no
+  `[Install]`, restarts every minute if Tailscale isn't up yet, and its address, folder and user are a drop-in the root
+  helper writes. A code (`name-xxxx:XXXX-XXXX-XXXX-XXXX`) is shown once.
+- **Folder sync** is Syncthing (your own user service, off until you sync a folder; Debian's 1.29), set to talk only
+  over Tailscale: no global discovery, relays, NAT traversal, local discovery, usage or crash reports; it listens on
+  this PC's Tailscale address. Each synced folder keeps changed or deleted files 30 days (trashcan versioning). Both
+  devices add each other by sync ID; a folder one offers shows on the other with Accept (kept in Home › Synced).
+  Syncthing stops again when no folder is synced. Folder sync is light and keeps running while you play.
+- **Phone photos**: any SMB app on the phone (FolderSync or PhotoSync on Android, PhotoSync on iPhone), pointed at a
+  read & write share with your or a person's name and password; at home or through Tailscale. Or Syncthing-Fork.
+- **Alerts**: `hearth-home-server-alerts.timer` (hourly, off until you turn alerts on) runs `alerts run`: SMART
+  (smartctl) and temperature of every drive, how full the drives with a share or a backup are, each backup's last run
+  (failed, late: a day for hourly, 3 days for daily, 10 for weekly) and its check, and Hearth's mirrors (`btrfs
+  filesystem show` missing a device, `btrfs device stats -c` errors). What's new is told once (again after a day) as a
+  notification on your desktop (`notify-send` as you, through your own session bus; nothing when there's none), and
+  with "Also send them to my devices" as a small text file through Taildrop to the devices you picked. No other
+  service is used.
+- **Power**: `hearth-home-server-power.timer` (every 5 minutes, off until a power choice is on) runs `power run`. Spin
+  down: `hdparm -S` on spinning data drives only (never the system drive, an SSD or a removable drive), once per start
+  or when the time changes. Stay awake: while a share is open (`smbstatus`) or a backup, snapshot or restore runs, a
+  transient `systemd-inhibit --what=sleep` (10 minutes, renewed), which Settings › Power's idle sleep respects too.
+  Sleep when nobody needs it: never while Game Mode or a game runs, a share is open or a job runs, nor while someone is
+  signed in and not idle (the login screen doesn't count; when the desktop can't say, it counts as used and Settings ›
+  Power's own timer decides); then `systemctl suspend --check-inhibitors=yes`. The schedule sleeps once a night at
+  your time (unless busy) and wakes with `hearth-home-server-wake.timer` (`WakeSystem=true`, the time from a drop-in).
+  Wake-on-LAN is stage 1's switch (Hearth Storage's `wol`).
+- **UPS**: shown once one was seen (USB makers APC, CyberPower, Eaton, Tripp Lite and others; seeing one is state, never
+  a setting). On: NUT standalone (`/etc/nut`: `usbhid-ups`, upsd on 127.0.0.1 and ::1 only, a random monitor password,
+  shutdown when the battery runs low), nut-driver-enumerator, nut-server and nut-monitor enabled. A NUT set up by hand
+  is left alone; off disables what Hearth enabled.
+- **Game Mode's Quick Access tile** is in the Hearth Link Decky plugin (docs/HEARTH-LINK-PLUGIN.md), which Steam Game
+  Mode already loads: a **Home server** section at the top, only on a PC that's a home server (set up, sharing or
+  backing up). It shows this PC's name, shares, space and people, the backups in a line, what's wrong, **Light mode
+  while you play** (saved with `hearth-home-server quick-set lightMode`, no password), what Light mode holds back now,
+  and **Let paused jobs run now** / **Pause them again while I play**. The plugin asks only `quick`, `quick-set
+  lightMode on|off` and `resume on|off` of `/usr/share/nimbus/desktop/shell/hearth-home-server`, as you, each with a
+  10-second timeout; when the helper isn't there, fails or hangs the tile isn't shown, and its own React error boundary
+  keeps any problem in it from touching the rest of the panel. Nothing here is part of starting Game Mode.
+
 ## Never stopping the PC from starting
 
-Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd and
-nftables are disabled in the image (the build fails if one is left on, and the image check looks again);
-`hearth-home-server-snapshots.timer` and `hearth-taildrop.service` aren't enabled anywhere. The snapshot service has no
+Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd,
+nftables, nut-server, nut-monitor, nut-driver-enumerator, nut.target, syncthing-resume, and the user services
+hearth-taildrop and syncthing are disabled in the image (the build fails if one is left on, and the image check looks
+again); the timers `hearth-home-server-snapshots`, `-backup`, `-alerts`, `-power`, `-wake` and `-receive` aren't
+enabled anywhere, and each is turned on only while something you chose needs it. Their services have no `[Install]`
+(only their timers start them) and none waits for the network at start. restic, rclone, Syncthing, hdparm and NUT are
+nice-to-have packages: a missing one is said in Settings. The snapshot service has no
 `[Install]`, a timeout and idle priority; nothing has `Requires=` or is wanted by the session, Game Mode or Steam Game
 Mode. Nothing here touches the bootloader, the boot menu, the sessions or nimbus-session; data drives are `nofail`;
 the previous image stays startable as always.
@@ -112,7 +216,7 @@ Items tied to the Hearth AI Command Center show only when it was seen on one of 
 default); camera and UPS items only once one was found. `~/.local/state/nimbus/home-server-seen.json` holds when each
 was last seen (`hearth-home-server seen commandCenter|camera|ups [device]`; Hearth Link and the hardware checks fill it
 in stage 2). **Show hidden items** shows them anyway. It's display only: hiding never turns anything off, and seeing a
-device never changes a setting. Stage 1 has the rule and its tests; its items come with stages 2 and 3.
+device never changes a setting. Stage 2 uses it for the UPS (Alerts & power: a UPS plugged in by USB is noted by `status`, at most once an hour); the Command Center and camera items come with stage 3.
 
 ## Tests
 
@@ -123,4 +227,16 @@ when they apply, services off by default (the image's build, the units), snapsho
 the recycle bin, the double-confirmed format as a dry run (and the system drive, a drive in use and a swapped drive
 refused), settings written only when changed (and never defaults over a damaged file), and the hide-until-seen rule.
 `test_settings_persistence.py` guards `home-server.json` like the other settings files. desktop-test.yml takes
-screenshots of the five pages.
+screenshots of the pages.
+
+`hosts/linux/test/test_hearth_home_server_2.py` (stage 2): people's names and every refusal, passwords only through
+stdin, removal never deleting files or someone else's account, per-share access and own folders in Samba's config;
+backup targets never on the system drive, in Home or inside what they back up, secrets only in root's 0600 files (and
+your own rclone remotes left alone), when a backup is due, a run (password never on a command line, forget with the
+keep counts, a clean error), Light mode and Let paused jobs run now, restore only into a new empty folder with
+`--overwrite never`; backup codes shown once with only their hash kept and the receiver on Tailscale only; alerts
+found and told once a day; power never sleeping while playing, sharing or backing up, sleeping when nobody needs it
+with inhibitors respected, the schedule and wake timer; the UPS leaving a hand-made NUT alone; timers on only when
+needed, everything off by default in the image and the units; nested settings writing only their key; the Quick Access
+tile's allow-list. The Hearth Link plugin's own tests (backend, `model.test.mjs`) and pictures of the tile run in
+home-server.yml's quick-access job.

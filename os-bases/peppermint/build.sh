@@ -507,6 +507,10 @@ chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
 # runs until the owner turns it on in Settings, and none of them is part of starting the PC, the session or Game Mode.
 chmod 755 /usr/libexec/nimbus/hearth-home-server-helper 2>/dev/null || true
 "${APT[@]}" samba smartmontools nftables
+# Stage 2 (Backups & sync, People, Alerts & power), all Debian trixie's own packages: restic (backups, encrypted),
+# rclone (cloud targets, and receiving your other Hearth devices' backups), Syncthing (folder sync between Hearth
+# devices), hdparm (spinning down idle data drives) and NUT (a UPS). Nice to have: a missing one is said in Settings.
+optional restic rclone syncthing hdparm nut-client nut-server
 TS_FPR=2596A99EAAB33821893C0A79458CA832957F5868   # Tailscale Inc. (Package repository signing key)
 if curl -fsSL --retry 3 -o /tmp/tailscale.gpg https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg; then
   command -v gpg >/dev/null || "${APT[@]}" gpg
@@ -548,15 +552,27 @@ SMBCONF
 testparm -s /etc/samba/smb.conf >/dev/null
 printf '%s\n' '# Samba (Settings › Home server): its cache and log folders (the image keeps /var empty).' \
   'd /var/cache/samba 0755 root root -' 'd /var/log/samba 0750 root adm -' > /usr/lib/tmpfiles.d/hearth-samba.conf
-for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables; do systemctl disable "$u.service" 2>/dev/null || true; done
-systemctl disable hearth-home-server-snapshots.timer 2>/dev/null || true
-systemctl --global disable hearth-taildrop.service 2>/dev/null || true
-for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service hearth-home-server-snapshots.timer; do
+for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables nut-server nut-monitor nut-client nut-driver-enumerator syncthing-resume; do
+  systemctl disable "$u.service" 2>/dev/null || true
+done
+systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev/null || true
+HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer"
+for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
+systemctl --global disable hearth-taildrop.service syncthing.service 2>/dev/null || true
+for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
+         nut-driver-enumerator.service nut.target syncthing-resume.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-if [ "$(systemctl --global is-enabled hearth-taildrop.service 2>/dev/null)" = enabled ]; then echo "::error::hearth-taildrop is on in the image"; exit 1; fi
+for u in hearth-taildrop.service syncthing.service; do
+  if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
+done
+if ls /etc/systemd/system/*.wants/syncthing@*.service >/dev/null 2>&1; then echo "::error::a syncthing@ service is on in the image"; exit 1; fi
+# Backups' state and restic's cache (the image keeps /var empty; made at boot, nothing else).
+printf '%s\n' '# Settings › Home server: the state of backups and alerts, and the restic cache.' \
+  'd /var/lib/hearth 0755 root root -' 'd /var/cache/hearth-restic 0700 root root -' > /usr/lib/tmpfiles.d/hearth-home-server.conf
 command -v smbd smbpasswd testparm smartctl nft
 command -v tailscale || echo "warning: no Tailscale in this image"
+for b in restic rclone syncthing hdparm upsmon; do command -v "$b" || echo "warning: no $b in this image (Settings › Home server says so)"; done
 # ---- end of Hearth home server
 if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
 install -d /usr/share/applications /usr/lib/systemd/user

@@ -9,6 +9,7 @@ import os
 import pathlib
 import shutil
 import socket
+import subprocess
 import tempfile
 import threading
 import types
@@ -208,6 +209,38 @@ class Backend(unittest.TestCase):
         r = self.m.start_link(run=lambda a, **k: seen.append(a) or types.SimpleNamespace(returncode=0, stderr=''))
         self.assertTrue(r['ok'])
         self.assertEqual(seen[0][1:], ['--user', 'start', 'hearth-link.service'])
+
+    def test_home_server_tile_asks_only_its_three_commands_with_a_timeout(self):
+        prog = os.path.join(self.tmp, 'hearth-home-server')
+        self.m.HOME_SERVER = prog
+        self.assertEqual(self.m.home_server(['quick']), {'available': False}, 'no helper: no tile, nothing run')
+        open(prog, 'w').close()
+        seen = []
+        quick = {'available': True, 'host': 'nvidia-pc', 'lightMode': True, 'playing': True, 'resumed': False, 'paused': ['backups'],
+                 'shares': 3, 'people': 1, 'usage': {'used': 1e12, 'total': 4e12}, 'backups': {'count': 1, 'lastOk': 5, 'waiting': ['Games'],
+                 'failed': [], 'running': False, 'secret': 'x'}, 'alerts': ['A drive is failing'], 'setupDone': True, 'settings': {'x': 1}}
+
+        def run(a, **k):
+            seen.append((a, k))
+            out = json.dumps(quick) if a[-1] == 'quick' else '{"changed": true}'
+            return types.SimpleNamespace(returncode=0, stdout='log: x\n' + out + '\n', stderr='')
+        r = self.m.home_server(['quick'], run=run)
+        self.assertTrue(r['available'])
+        self.assertEqual(r['backups']['waiting'], ['Games'])
+        self.assertNotIn('settings', r, 'only the tile\'s fields')
+        self.assertNotIn('secret', json.dumps(r))
+        self.assertEqual(seen[0][0][1:], [prog, 'quick'])
+        self.assertEqual(seen[0][1]['timeout'], self.m.HOME_SERVER_TIMEOUT)
+        self.assertTrue(self.m.home_server(['quick-set', 'lightMode', 'off'], run=run)['ok'])
+        self.assertTrue(self.m.home_server(['resume', 'on'], run=run)['ok'])
+        for bad in (['set', 'tsOnly', 'on'], ['quick-set', 'tsOnly', 'on'], ['resume', 'yes'], ['person-add', 'x'], ['apply'], 'quick', []):
+            n = len(seen)
+            self.assertEqual(self.m.home_server(bad, run=run)['error'], self.m.NOT_ALLOWED, bad)
+            self.assertEqual(len(seen), n, 'nothing run')
+        boom = lambda a, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired(a, 10))
+        self.assertEqual(self.m.home_server(['quick'], run=boom)['available'], False, 'a helper that hangs only hides the tile')
+        err = lambda a, **k: types.SimpleNamespace(returncode=1, stdout='error: Home server comes with the next update\n', stderr='')
+        self.assertFalse(self.m.home_server(['quick'], run=err)['available'])
 
     def test_plugin_methods(self):
         p = self.m.Plugin()

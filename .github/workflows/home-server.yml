@@ -8,8 +8,8 @@ on:
     branches: [main, bughunt, 'feature/**']
     paths: ['hosts/linux/desktop/shell/hearth-home-server', 'hosts/linux/desktop/shell/SetHome*.qml', 'hosts/linux/desktop/shell/SettingsApp.qml',
             'os/system_files/usr/libexec/nimbus/hearth-home-server-helper', 'os/system_files/usr/libexec/nimbus/hearth-storage-helper',
-            'os/system_files/usr/lib/systemd/**', 'os-bases/peppermint/build.sh', 'hosts/linux/test/test_hearth_home_server.py',
-            '.github/workflows/home-server.yml']
+            'os/system_files/usr/lib/systemd/**', 'os-bases/peppermint/build.sh', 'hosts/linux/test/test_hearth_home_server*.py',
+            'hosts/decky-hearth-link/**', '.github/workflows/home-server.yml']
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Tests
         run: |
           fail=0
-          for t in test_hearth_home_server.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py; do
+          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py; do
             if python3 -m unittest discover -s hosts/linux/test -p "$t" -v > "/tmp/$t.log" 2>&1; then
               echo "::notice title=$t::$(tail -3 "/tmp/$t.log" | tr '\n' ' ')"
             else
@@ -40,3 +40,44 @@ jobs:
             fi
           done
           exit $fail
+
+  # Game Mode's Quick Access tile lives in the Hearth Link Decky plugin (hosts/decky-hearth-link): its backend's tests,
+  # its pure parts' tests, the build (types checked) and pictures of the real panel over stand-ins. No Rust here.
+  quick-access:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend tests
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/decky-hearth-link/tests -p 'test_*.py' -v 2>&1 | tee /tmp/py.log | tail -20 || true
+          grep -q '^OK' /tmp/py.log || { echo "::error title=Hearth Link backend tests::$(grep -E -A6 '^(FAIL|ERROR):' /tmp/py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests (src/model.ts)
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test --test-reporter=tap hosts/decky-hearth-link/tests/model.test.mjs 2>&1 | tee /tmp/unit.log | tail -15 || true
+          grep -qE '^# fail 0' /tmp/unit.log || { echo "::error title=Hearth Link unit tests::$(grep -E -B2 -A12 '^not ok|Error' /tmp/unit.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - name: Build (pnpm build)
+        working-directory: hosts/decky-hearth-link
+        run: |
+          npm install -g pnpm@9 >/dev/null
+          pnpm install --no-frozen-lockfile 2>&1 | tail -3
+          if ! pnpm build > /tmp/build.log 2>&1; then
+            echo "::error title=Hearth Link build::$(grep -v '^\s*$' /tmp/build.log | tail -40 | tr '\n' '|' | cut -c1-3800)"; exit 1
+          fi
+          if grep -qE 'TS[0-9]{4}' /tmp/build.log; then echo "::warning title=Hearth Link types::$(grep -E 'TS[0-9]{4}' /tmp/build.log | head -10 | tr '\n' '|' | cut -c1-3000)"; fi
+          test -s dist/index.js
+      - name: The Quick Access panel (pictures)
+        run: |
+          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 esbuild@0.24.0 react@18.3.1 react-dom@18.3.1 react-icons@5.3.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          cp hosts/decky-hearth-link/tests/render-panel.mjs tools/render-panel.mjs
+          HEARTH_ROOT="$PWD" node tools/render-panel.mjs "$RUNNER_TEMP/shots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-server-quick-access
+          path: ${{ runner.temp }}/shots
