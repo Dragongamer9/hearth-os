@@ -10,6 +10,7 @@ SetBase {
     property string value
     property bool chevron: true
     property bool danger: false
+    property int trailing: 0          // room kept on the right for a control drawn over the row (SetSwitch's toggle)
     Layout.fillWidth: true
     implicitHeight: Math.max(64, col.implicitHeight + 24)
     // For the screen reader (Orca, Settings › Accessibility): what this row is.
@@ -19,7 +20,7 @@ SetBase {
     Accessible.onPressAction: activated()
 
     RowLayout {
-        anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
+        anchors { fill: parent; leftMargin: 16; rightMargin: 16 + row.trailing }
         spacing: 14
         Rectangle {
             visible: row.icon !== ""

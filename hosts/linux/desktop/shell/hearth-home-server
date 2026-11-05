@@ -172,9 +172,15 @@ def root(args, stdin=''):
     """Runs the root helper through pkexec; its JSON answer, or Fail with its error."""
     if not os.path.exists(ROOT_HELPER):
         raise Fail('Home server comes with the next Hearth OS update')
-    cmd = ([] if os.geteuid() == 0 else ['pkexec']) + [ROOT_HELPER] + list(args)
+    env = None
+    if os.geteuid() == 0:
+        # Already root (a check run as root): the helper still wants to know who it's for.
+        cmd = [ROOT_HELPER] + list(args)
+        env = dict(os.environ, PKEXEC_UID=str(os.getuid()))
+    else:
+        cmd = ['pkexec', ROOT_HELPER] + list(args)
     try:
-        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=900)
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=900, env=env)
     except (OSError, subprocess.SubprocessError) as e:
         raise Fail('Couldn\'t ask for permission (%s)' % e)
     lines = [l for l in (p.stdout or '').strip().splitlines() if l.startswith('{')]
