@@ -556,16 +556,26 @@ for u in smbd nmbd samba-ad-dc tailscaled smartmontools smartd nftables nut-serv
   systemctl disable "$u.service" 2>/dev/null || true
 done
 systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev/null || true
-HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer"
+# Stage 3 (Services, AI, Safety): the services timer (Light mode for the AI service and the media server, the
+# ransomware guard) and the timers that start Ollama and Jellyfin a minute after the PC starts. Ollama and Jellyfin
+# themselves are NOT in the image: Settings downloads them only when the owner asks (their makers' releases, SHA-256
+# checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
+HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
-         nut-driver-enumerator.service nut.target syncthing-resume.service $HS_TIMERS; do
+         nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
+for u in hearth-ollama.service hearth-jellyfin.service hearth-home-server-services.service; do
+  if grep -q '^\[Install\]' "/usr/lib/systemd/system/$u" 2>/dev/null; then echo "::error::$u has an [Install] section: only its timer may start it"; exit 1; fi
+done
+if [ -e /var/lib/hearth/apps ] || command -v ollama >/dev/null 2>&1 || command -v jellyfin >/dev/null 2>&1; then
+  echo "::error::Ollama or Jellyfin is in the image: they're installed only when the owner asks"; exit 1
+fi
 if ls /etc/systemd/system/*.wants/syncthing@*.service >/dev/null 2>&1; then echo "::error::a syncthing@ service is on in the image"; exit 1; fi
 # Backups' state and restic's cache (the image keeps /var empty; made at boot, nothing else).
 printf '%s\n' '# Settings › Home server: the state of backups and alerts, and the restic cache.' \

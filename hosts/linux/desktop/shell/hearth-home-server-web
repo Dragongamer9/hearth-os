@@ -1,0 +1,368 @@
+#!/usr/bin/python3
+"""hearth-home-server-web: Settings › Home server's small web server (docs/HOME-SERVER.md), run as you by your own user
+service hearth-home-server-web.service, only while one of these is on:
+
+  - Files on the web (Services): your shared folders in a browser, read only, with your user name and the web password
+    you set (only its hash is kept, in ~/.local/state/nimbus/home-server-web.json, 0600);
+  - share links (Files & links): /l/<secret>/ opens one file or folder inside a share, until it expires, is stopped or
+    has been downloaded the most times you allowed, with its own password if you gave one;
+  - the drop-off folder (Files & links): /d/<secret> lets someone add files to it; they can't see or delete anything.
+
+Where it listens: on this PC's Tailscale address (and this PC itself) by default, or on every address when you chose
+"Home network" (Services › Files on the web). Port 8097. Read only except the drop-off; never outside your shares
+(paths are resolved and must stay inside; hidden files and folders are never shown or served; links are judged by
+where they point). Your settings are only read here (home-server.json); download counts go to the links' state file.
+"""
+import html
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')
+LINKS_STATE = os.path.join(STATE_HOME, 'nimbus', 'home-server-links.json')
+WEB_STATE = os.path.join(STATE_HOME, 'nimbus', 'home-server-web.json')
+PORT = int(os.environ.get('HEARTH_WEB_PORT', '8097'))
+DAY_MS = 86400000
+MAX_UPLOAD = 8 << 30
+NAME_OK = re.compile(r'[^\w .\-+@,()\']+')
+TOKEN_RE = re.compile(r'^[A-Za-z0-9_\-]{16,64}$')
+LOCK = threading.Lock()
+FAILS = {}
+
+
+def settings():
+    d = sio.load_json(SETTINGS, {}, repair=False) if os.path.exists(SETTINGS) else {}
+    return d if isinstance(d, dict) else {}
+
+
+def state(path):
+    d = sio.load_json(path, {}, repair=False) if os.path.exists(path) else {}
+    return d if isinstance(d, dict) else {}
+
+
+def pw_check(pw, h):
+    import hashlib
+    import hmac
+    try:
+        kind, n, salt, want = (h or '').split('$')
+        if kind != 'pbkdf2-sha256':
+            return False
+        return hmac.compare_digest(hashlib.pbkdf2_hmac('sha256', (pw or '').encode(), bytes.fromhex(salt), int(n)).hex(), want)
+    except (ValueError, TypeError):
+        return False
+
+
+def inside(base, rel):
+    """BASE/REL resolved, only when it stays inside BASE and nothing on the way is hidden; else None."""
+    base = os.path.realpath(base)
+    parts = [p for p in (rel or '').split('/') if p not in ('', '.')]
+    if any(p.startswith('.') or p == '..' or '\x00' in p for p in parts):
+        return None
+    real = os.path.realpath(os.path.join(base, *parts))
+    if real != base and not real.startswith(base + os.sep):
+        return None
+    return real
+
+
+def shares(d):
+    return [s for s in d.get('shares') or [] if isinstance(s, dict) and s.get('on', True) is not False and s.get('path') and s.get('id')]
+
+
+def link_of(token, d, sec, now_ms):
+    """(link, secret) for a link's token while it works, else (None, why)."""
+    if not TOKEN_RE.fullmatch(token or ''):
+        return None, 'gone'
+    for l in d.get('links') or []:
+        if not isinstance(l, dict):
+            continue
+        s = sec.get(l.get('id')) or {}
+        if s.get('token') and secrets.compare_digest(s['token'], token):
+            if l.get('on') is False:
+                return None, 'stopped'
+            if l.get('expires') and l['expires'] <= now_ms:
+                return None, 'expired'
+            if l.get('max') and s.get('count', 0) >= l['max']:
+                return None, 'used'
+            return l, s
+    return None, 'gone'
+
+
+def count_download(lid):
+    with LOCK:
+        def change(st):
+            v = st.get(lid)
+            if isinstance(v, dict):
+                v['count'] = int(v.get('count', 0)) + 1
+        sio.update_json(LINKS_STATE, change)
+        try:
+            os.chmod(LINKS_STATE, 0o600)
+        except OSError:
+            pass
+
+
+def size_text(n):
+    for u, f in (('TB', 1e12), ('GB', 1e9), ('MB', 1e6), ('KB', 1e3)):
+        if n >= f:
+            return '%.1f %s' % (n / f, u)
+    return '%d B' % n
+
+
+PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%s</title><style>body{font-family:system-ui,sans-serif;background:#1b1714;color:#eee;margin:0;padding:24px;max-width:900px}
+a{color:#ff9a4d;text-decoration:none}li{list-style:none;padding:8px 0;border-bottom:1px solid #333}ul{padding:0}
+.m{color:#999;font-size:13px}.box{background:#2a2420;border-radius:12px;padding:16px;margin:12px 0}</style></head>
+<body><h2>%s</h2>%s<p class="m">Hearth home server</p></body></html>"""
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = 'Hearth'
+    sys_version = ''
+
+    def log_message(self, fmt, *a):
+        pass        # links' secrets are in the paths: never logged
+
+    def page(self, code, title, body):
+        data = (PAGE % (html.escape(title), html.escape(title), body)).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(data)))
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        if self.command != 'HEAD':
+            self.wfile.write(data)
+
+    def ask_password(self, realm):
+        ip = self.client_address[0]
+        FAILS[ip] = FAILS.get(ip, 0) + 1
+        time.sleep(min(5, FAILS[ip]))       # slower after each wrong try
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm="%s", charset="UTF-8"' % realm)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def creds(self):
+        import base64
+        h = self.headers.get('Authorization') or ''
+        if not h.startswith('Basic '):
+            return None, None
+        try:
+            u, _, p = base64.b64decode(h[6:]).decode('utf-8').partition(':')
+        except (ValueError, UnicodeDecodeError):
+            return None, None
+        return u, p
+
+    def listing(self, title, real, prefix):
+        try:
+            names = sorted(os.listdir(real), key=str.lower)
+        except OSError:
+            return self.page(404, 'Not found', '')
+        rows = []
+        for n in names:
+            if n.startswith('.'):
+                continue
+            p = os.path.join(real, n)
+            isdir = os.path.isdir(p)
+            try:
+                size = '' if isdir else size_text(os.path.getsize(p))
+            except OSError:
+                continue
+            rows.append('<li><a href="%s%s">%s%s</a> <span class="m">%s</span></li>'
+                        % (prefix, urllib.parse.quote(n + ('/' if isdir else '')), html.escape(n), '/' if isdir else '', size))
+        self.page(200, title, '<ul>%s</ul>' % (''.join(rows) or '<li class="m">Empty</li>'))
+
+    def send_file(self, real):
+        try:
+            f = open(real, 'rb')
+        except OSError:
+            return self.page(404, 'Not found', '')
+        with f:
+            size = os.fstat(f.fileno()).st_size
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Length', str(size))
+            self.send_header('Content-Disposition', "attachment; filename*=UTF-8''%s" % urllib.parse.quote(os.path.basename(real)))
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.end_headers()
+            if self.command != 'HEAD':
+                try:
+                    shutil.copyfileobj(f, self.wfile, 1 << 20)
+                except OSError:
+                    pass
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        d = settings()
+        path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        now_ms = int(time.time() * 1000)
+        if path.startswith('/l/'):
+            token, _, rel = path[3:].partition('/')
+            sec = state(LINKS_STATE)
+            link, s = link_of(token, d, sec, now_ms)
+            if not link:
+                return self.page(410, 'This link doesn\'t work anymore', '<p>Ask for a new one.</p>')
+            if s.get('hash'):
+                _, p = self.creds()
+                if not pw_check(p, s['hash']):
+                    return self.ask_password('Hearth share link')
+            target = os.path.realpath(link.get('path') or '')
+            if not any(target == os.path.realpath(x['path']) or target.startswith(os.path.realpath(x['path']) + os.sep) for x in shares(d)):
+                return self.page(410, 'This link doesn\'t work anymore', '<p>Its folder isn\'t shared now.</p>')
+            if os.path.isdir(target):
+                real = inside(target, rel)
+                if not real:
+                    return self.page(404, 'Not found', '')
+                if os.path.isdir(real):
+                    return self.listing(link.get('label') or 'Shared with you', real, '/l/%s/%s' % (token, urllib.parse.quote(rel.rstrip('/') + '/')) if rel.strip('/') else '/l/%s/' % token)
+            elif rel:
+                return self.page(404, 'Not found', '')
+            else:
+                real = target
+            if not os.path.isfile(real):
+                return self.page(404, 'Not found', '')
+            count_download(link['id'])
+            return self.send_file(real)
+        if path.startswith('/d/'):
+            tok = path[3:].strip('/')
+            drop = (state(LINKS_STATE).get('dropoff') or {}).get('token', '')
+            if not (d.get('dropoff') or {}).get('on') or not drop or not TOKEN_RE.fullmatch(tok) or not secrets.compare_digest(drop, tok):
+                return self.page(410, 'This drop-off doesn\'t work anymore', '')
+            return self.page(200, 'Drop off files', DROP_FORM)
+        # Files on the web: your shares, with your user name and web password.
+        if not (d.get('web') or {}).get('on'):
+            return self.page(404, 'Not found', '')
+        h = state(WEB_STATE).get('hash')
+        u, p = self.creds()
+        import getpass
+        if not h or u != getpass.getuser() or not pw_check(p, h):
+            if not h:
+                return self.page(403, 'Set a web password first', '<p>Settings › Home server › Services › Files on the web.</p>')
+            return self.ask_password('Hearth home server')
+        FAILS.pop(self.client_address[0], None)
+        if path in ('/', ''):
+            rows = ''.join('<li><a href="/s/%s/">%s</a></li>' % (x['id'], html.escape(x.get('name') or 'Share')) for x in shares(d))
+            return self.page(200, 'Your shared folders', '<ul>%s</ul>' % (rows or '<li class="m">Nothing is shared</li>'))
+        m = re.match(r'^/s/([0-9a-f]{6,32})/(.*)$', path)
+        if not m:
+            return self.page(404, 'Not found', '')
+        sh = next((x for x in shares(d) if x['id'] == m.group(1)), None)
+        real = inside(sh['path'], m.group(2)) if sh else None
+        if not real or not os.path.exists(real):
+            return self.page(404, 'Not found', '')
+        if os.path.isdir(real):
+            rel = m.group(2).strip('/')
+            return self.listing(sh.get('name') or 'Share', real, '/s/%s/%s' % (sh['id'], urllib.parse.quote(rel + '/') if rel else ''))
+        return self.send_file(real)
+
+    def do_POST(self):
+        """The drop-off: one file per request, its name in ?name=. Saved under a new name if one's taken; never listed."""
+        d = settings()
+        u = urllib.parse.urlsplit(self.path)
+        tok = urllib.parse.unquote(u.path)[3:].strip('/') if u.path.startswith('/d/') else ''
+        drop = state(LINKS_STATE).get('dropoff') or {}
+        folder = (d.get('dropoff') or {}).get('path') or ''
+        if not (d.get('dropoff') or {}).get('on') or not drop.get('token') or not TOKEN_RE.fullmatch(tok or '') \
+                or not secrets.compare_digest(drop['token'], tok) or not os.path.isdir(folder):
+            return self.page(410, 'This drop-off doesn\'t work anymore', '')
+        try:
+            n = int(self.headers.get('Content-Length') or -1)
+        except ValueError:
+            n = -1
+        if n < 0 or n > MAX_UPLOAD:
+            return self.page(413, 'Too big', '<p>8 GB at most per file.</p>')
+        name = NAME_OK.sub('_', os.path.basename((urllib.parse.parse_qs(u.query).get('name') or ['file'])[0])).strip(' .') or 'file'
+        name = name[:120]
+        dest = os.path.join(folder, name)
+        base, ext = os.path.splitext(dest)
+        i = 2
+        while os.path.exists(dest):
+            dest = '%s (%d)%s' % (base, i, ext)
+            i += 1
+        tmp = os.path.join(folder, '.hearth-upload-%s' % secrets.token_hex(6))
+        try:
+            with open(tmp, 'xb') as f:
+                left = n
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        raise OSError('the upload stopped')
+                    f.write(chunk)
+                    left -= len(chunk)
+            os.rename(tmp, dest)
+        except OSError:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            return self.page(500, 'That didn\'t work', '')
+        self.page(200, 'Thanks', '<p>Got it.</p>')
+
+
+DROP_FORM = """<div class="box"><p>Pick files to send. You can't see or delete what's here.</p>
+<input type="file" id="f" multiple><p id="s" class="m"></p></div>
+<script>document.getElementById('f').onchange=async e=>{const s=document.getElementById('s');
+for(const f of e.target.files){s.textContent='Sending '+f.name+'…';
+const r=await fetch(location.pathname+'?name='+encodeURIComponent(f.name),{method:'POST',body:f});
+s.textContent=r.ok?'Sent '+f.name:'Couldn\\'t send '+f.name;}}</script>"""
+
+
+def addresses(d):
+    """Where to listen: every address (home network), or this PC and its Tailscale address (the default)."""
+    reach = (d.get('web') or {}).get('reach', 'tailscale')
+    if reach == 'home' and not d.get('tsOnly'):
+        return ['0.0.0.0']
+    out = ['127.0.0.1']
+    try:
+        p = subprocess.run(['tailscale', 'ip', '-4'], capture_output=True, text=True, timeout=10)
+        ip = (p.stdout or '').strip().splitlines()[0] if p.returncode == 0 and (p.stdout or '').strip() else ''
+    except (OSError, subprocess.SubprocessError):
+        ip = ''
+    if re.fullmatch(r'100\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip):
+        out.append(ip)
+    return out
+
+
+def main():
+    d = settings()
+    addrs = addresses(d)
+    servers = []
+    for a in addrs:
+        try:
+            srv = ThreadingHTTPServer((a, PORT), Handler)
+        except OSError as e:
+            print('hearth-home-server-web: can\'t listen on %s:%d (%s)' % (a, PORT, e), file=sys.stderr)
+            continue
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        servers.append(srv)
+    if not servers:
+        return 1
+    want_ts = (d.get('web') or {}).get('reach', 'tailscale') != 'home' or d.get('tsOnly')
+    while True:
+        time.sleep(60)
+        # Tailscale came up after we started: start again (systemd restarts us) to listen on its address too.
+        if want_ts and len(addrs) == 1 and len(addresses(settings())) > 1:
+            return 75
+
+
+if __name__ == '__main__':
+    sys.exit(main())

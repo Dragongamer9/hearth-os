@@ -122,4 +122,9 @@ test("home server tile: shown only on a home server, and its lines", () => {
   assert.equal(M.backupLine(q({ backups: { count: 0, lastOk: 0, waiting: [], failed: [], running: false } }), now), "No backups yet");
   assert.equal(M.pausedLine(q({ paused: ["snapshots", "backups"] })), "Paused for your game: snapshots · backups");
   assert.equal(M.pausedLine(q({ paused: [] })), "");
+  assert.equal(M.aiLine(q()), "", "no AI service (older helper)");
+  assert.equal(M.aiLine(q({ ai: { on: false, state: "off" } })), "");
+  assert.equal(M.aiLine(q({ ai: { on: true, state: "unloaded" } })), "AI service: models unloaded while you play");
+  assert.equal(M.aiLine(q({ ai: { on: true, state: "paused" } })), "AI service: stopped while you play");
+  assert.equal(M.aiLine(q({ ai: { on: true, state: "ready" } })), "AI service: ready");
 });

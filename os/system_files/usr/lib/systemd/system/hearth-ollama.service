@@ -1,0 +1,28 @@
+# Settings › Home server › AI (docs/HOME-SERVER.md): the AI service (Ollama) for the Hearth AI Command Center's "Your own
+# GPU server" teammate. Ollama isn't in Debian: it's installed only when you ask (hearth-home-server-helper app-install
+# ollama: its newest release, SHA-256 checked) into /var/lib/hearth/apps/ollama. Its address (this PC only, or all
+# addresses behind Hearth's Tailscale-only firewall rule) comes from the drop-in hearth-home-server-helper writes; with
+# no app or no drop-in it doesn't start. Started only by its timer (a minute after the PC starts) or by Settings, off
+# until you turn it on: never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: the AI service (Ollama)
+ConditionPathExists=/var/lib/hearth/apps/ollama/bin/ollama
+ConditionPathExists=/etc/systemd/system/hearth-ollama.service.d/hearth.conf
+After=network.target tailscaled.service
+
+[Service]
+ExecStart=/var/lib/hearth/apps/ollama/bin/ollama serve
+DynamicUser=yes
+SupplementaryGroups=video render
+StateDirectory=hearth-ollama
+Environment=HOME=/var/lib/hearth-ollama
+Environment=OLLAMA_MODELS=/var/lib/hearth-ollama/models
+Environment=OLLAMA_NOPRUNE=1
+Restart=on-failure
+RestartSec=10
+Nice=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+TimeoutStopSec=30

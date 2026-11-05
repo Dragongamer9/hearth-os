@@ -550,7 +550,15 @@ def home_short(v):
             'usage': {'used': _num(u.get('used')) or 0, 'total': _num(u.get('total')) or 0},
             'backups': {'count': _num(b.get('count')) or 0, 'lastOk': _num(b.get('lastOk')) or 0, 'waiting': _strs(b.get('waiting')),
                         'failed': _strs(b.get('failed')), 'running': b.get('running') is True},
-            'alerts': _strs(v.get('alerts'), 3, 200), 'setupDone': v.get('setupDone') is True}
+            'alerts': _strs(v.get('alerts'), 3, 200), 'setupDone': v.get('setupDone') is True,
+            'ai': ai_short(v.get('ai'))}
+
+
+def ai_short(a):
+    """The AI service in a word (stage 3): off, ready, unloaded or paused for your game."""
+    a = a if isinstance(a, dict) else {}
+    st = a.get('state') if a.get('state') in ('off', 'ready', 'unloaded', 'paused') else 'off'
+    return {'on': a.get('on') is True and st != 'off', 'state': st}
 
 
 def home_server(args, run=subprocess.run):

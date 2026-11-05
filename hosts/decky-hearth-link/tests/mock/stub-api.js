@@ -49,9 +49,10 @@ const home = { lightMode: true, resumed: false };
 const homeQuick = () => {
   const playing = st() === "home-server-playing";
   return { available: true, host: "Nvidia-PC", lightMode: home.lightMode, playing, resumed: home.resumed,
-    paused: playing && home.lightMode && !home.resumed ? ["snapshots", "backups"] : [], shares: 3, people: 2,
+    paused: playing && home.lightMode && !home.resumed ? ["snapshots", "backups", "AI models"] : [], shares: 3, people: 2,
     usage: { used: 3.1e12, total: 6e12 }, backups: { count: 2, lastOk: min(140), waiting: playing && !home.resumed ? ["Games to backup drive"] : [], failed: [], running: false },
-    alerts: playing ? [] : ["The drive with /var/mnt/big is 91% full"], setupDone: true };
+    alerts: playing ? [] : ["The drive with /var/mnt/big is 91% full"], setupDone: true,
+    ai: { on: true, state: playing && home.lightMode && !home.resumed ? "unloaded" : "ready" } };
 };
 const mine = [
   { id: "steam:1145360", title: "Hades", store: "steam", size: 15e9 }, { id: "steam:620", title: "Portal 2", store: "steam", size: 12e9 },

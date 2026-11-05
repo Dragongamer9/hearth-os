@@ -12,7 +12,8 @@ date when Steam Game Mode starts (its `PLUGINS` list). An image built without it
 
 **Home server** (only on a PC that's a home server: set up, sharing or backing up; docs/HOME-SERVER.md). This PC's
 name, its shares, space and people, the backups in a line (last good one, waiting for your game, didn't finish), what's
-wrong (alerts), **Light mode while you play**, what Light mode holds back right now, and **Let paused jobs run now** /
+wrong (alerts), the AI service in a line (ready, or models unloaded / stopped while you play; stage 3), **Light mode
+while you play**, what Light mode holds back right now, and **Let paused jobs run now** /
 **Pause them again while I play**. It asks Mantel's home server helper only `quick`, `quick-set lightMode on|off` and
 `resume on|off` (main.py `home_server`, an allow-list, a 10-second timeout, as you, never a password); when the helper
 isn't there or doesn't answer the section isn't shown, and its own error boundary keeps a problem in it from touching

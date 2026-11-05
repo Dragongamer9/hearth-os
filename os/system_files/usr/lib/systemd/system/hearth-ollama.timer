@@ -1,0 +1,10 @@
+# Settings › Home server › AI: starts the AI service a minute after the PC starts. Disabled in the image and while the
+# AI service is off (Settings turns it on together with the service).
+[Unit]
+Description=Hearth home server: the AI service, a minute after start
+
+[Timer]
+OnBootSec=1min
+
+[Install]
+WantedBy=timers.target

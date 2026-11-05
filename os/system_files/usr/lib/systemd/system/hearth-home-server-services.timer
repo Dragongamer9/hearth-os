@@ -1,0 +1,13 @@
+# Settings › Home server: every minute while the AI service is on, the media server pauses in Game Mode or the
+# ransomware guard is on. Disabled in the image and otherwise.
+[Unit]
+Description=Hearth home server: services and the ransomware guard, every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

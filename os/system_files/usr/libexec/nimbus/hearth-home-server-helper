@@ -43,6 +43,13 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
   alerts run|test       the alert timer: drive health, a drive filling up, a failed backup, a mirror missing a drive
   power run             the power timer: spin down idle data drives, stay awake while used, sleep when nobody needs it
   ups-status            the UPS's charge (upsc)
+  ---- stage 3 (Services, AI, Safety)
+  app-install NAME      ollama | jellyfin: the newest release from its maker, SHA-256 checked, into /var/lib/hearth/apps
+                        (in its own transient unit; only when you ask, never at build or boot)
+  app-remove NAME       the app goes; its data (models, libraries) stays
+  services run          the services timer: Light mode for the AI service and the media server, the Command Center
+                        noted when it uses the AI service, the ransomware guard, the Tailscale-only rule kept loaded
+  guard-reset           your shares writable again after the ransomware guard turned them read only
 
 The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Nothing here goes through a shell: every
 command is an argument list. Paths and names are checked here again (the Mantel helper checks them first): a share
@@ -344,9 +351,11 @@ def check_shares(shares, user, home, sys_disks=None, taken=None, people=None):
     return good, missing
 
 
-def conf_text(shares, user, ts_only, folders=()):
+def conf_text(shares, user, ts_only, folders=(), audit=False, locked=False):
     """Samba's config for the home server: hardened globals (SMB3 or newer, no guests), one section per share (you, and
-    the people you let in: read list / valid users), and each person's own folder."""
+    the people you let in: read list / valid users), and each person's own folder. Stage 3: with the ransomware guard on
+    (AUDIT) each share's renames and deletes go to the journal (full_audit, counted by the guard); while the guard has
+    tripped (LOCKED) every share is read only until you say so (Settings › Home server › Safety)."""
     out = [MARK, '# Written by Hearth; change it in Settings > Home server > Shared folders.', '',
            '[global]',
            '   server min protocol = SMB3',
@@ -371,7 +380,7 @@ def conf_text(shares, user, ts_only, folders=()):
         if s['write'] and readers:
             out.append('   read list = %s' % ' '.join(readers))
         out += ['   force user = %s' % user,
-                '   read only = %s' % ('no' if s['write'] else 'yes'),
+                '   read only = %s' % ('no' if s['write'] and not locked else 'yes'),
                 '   guest ok = no',
                 '   browseable = yes',
                 '   hide dot files = yes',
@@ -379,8 +388,17 @@ def conf_text(shares, user, ts_only, folders=()):
                 '   delete veto files = no']
         if ts_only or s['reach'] == 'tailscale':
             out += ['   hosts allow = %s' % ' '.join(TAILSCALE_NETS), '   hosts deny = 0.0.0.0/0 ::/0']
+        vfs = (['full_audit'] if audit and s['write'] else []) + (['recycle'] if s['recycle'] and s['write'] else [])
+        if 'full_audit' in vfs:
+            out += ['   full_audit:prefix = %S',
+                    '   full_audit:success = renameat unlinkat',
+                    '   full_audit:failure = none',
+                    '   full_audit:facility = LOCAL5',
+                    '   full_audit:priority = NOTICE']
+        if vfs and not (s['recycle'] and s['write']):
+            out.append('   vfs objects = %s' % ' '.join(vfs))
         if s['recycle'] and s['write']:
-            out += ['   vfs objects = recycle',
+            out += ['   vfs objects = %s' % ' '.join(vfs),
                     '   recycle:repository = %s' % RECYCLE_DIR,
                     '   recycle:keeptree = yes',
                     '   recycle:versions = yes',
@@ -390,6 +408,8 @@ def conf_text(shares, user, ts_only, folders=()):
         out.append('')
     for f in folders:
         sec = people_conf([f], user)
+        if locked:
+            sec = [l.replace('read only = no', 'read only = yes') for l in sec]
         if ts_only:
             sec[-1:-1] = ['   hosts allow = %s' % ' '.join(TAILSCALE_NETS), '   hosts deny = 0.0.0.0/0 ::/0']
         out += sec
@@ -455,16 +475,29 @@ def smb_unit():
     return None
 
 
-def firewall_apply(block):
-    """Puts the Tailscale-only rules in place (block) or takes them away. Returns what it did."""
-    if block:
-        write(NFT_FILE, nft_text(SMB_PORTS_TCP, SMB_PORTS_UDP))
-        write(SMBD_DROPIN, dropin_text())
+def firewall_apply(block, extra=None):
+    """Puts the Tailscale-only rules in place (block: Samba's ports) or takes them away. EXTRA ({tcp, udp}, stage 3) are
+    the ports of services that are only for Tailscale (the AI service always, the media server when you chose so): they
+    get the same rule, whether Samba's are closed or not. Returns what it did ("services": loaded or not, so a service
+    that must not reach this network never starts without its rule)."""
+    extra = extra if isinstance(extra, dict) else {}
+    tcp = (list(SMB_PORTS_TCP) if block else []) + list(extra.get('tcp') or [])
+    udp = (list(SMB_PORTS_UDP) if block else []) + list(extra.get('udp') or [])
+    if tcp or udp:
+        write(NFT_FILE, nft_text(tcp, udp))
+        if block:
+            write(SMBD_DROPIN, dropin_text())
+        elif remove(SMBD_DROPIN):
+            run(['systemctl', 'daemon-reload'])
         if not which('nft'):
-            return {'firewall': 'missing', 'note': 'nftables (nft) isn\'t installed: only Samba\'s own address check keeps this network out'}
+            return {'firewall': 'missing' if block else 'open', 'services': 'missing' if extra.get('tcp') or extra.get('udp') else 'none',
+                    'note': 'nftables (nft) isn\'t installed: only Samba\'s own address check keeps this network out'}
         code, out = run(['nft', '-f', NFT_FILE])
         run(['systemctl', 'daemon-reload'])
-        return {'firewall': 'tailscale-only' if code == 0 else 'failed'}
+        res = {'firewall': ('tailscale-only' if code == 0 else 'failed') if block else 'open'}
+        if extra.get('tcp') or extra.get('udp'):
+            res['services'] = 'tailscale-only' if code == 0 else 'failed'
+        return res
     had = remove(NFT_FILE) | remove(SMBD_DROPIN)
     if which('nft'):
         run(['nft', 'delete', 'table', 'inet', NFT_TABLE])
@@ -497,13 +530,15 @@ def apply(data):
     backups = check_backups(data.get('backups') or [], user, home)
     ts_only = data.get('tsOnly') is True
     res = {'ok': True, 'shares': [s['name'] for s in shares], 'missing': missing, 'people': [f['name'] for f in folders]}
+    svc = services_plan(data, user)
+    guard = clean_guard(data.get('guard'))
     unit = smb_unit()
     if shares or folders:
         if not which('smbd') and not unit:
             raise Fail("Samba (sharing) isn't installed on this PC")
         old_conf = read(OUR_CONF) if os.path.exists(OUR_CONF) else None
         old_smb = read(SMB_CONF) if os.path.exists(SMB_CONF) else None
-        write(OUR_CONF, conf_text(shares, user, ts_only, folders))
+        write(OUR_CONF, conf_text(shares, user, ts_only, folders, audit=guard['on'], locked=guard_tripped()))
         write(SMB_CONF, with_include(old_smb if old_smb is not None else '[global]\n   workgroup = WORKGROUP\n'))
         if which('testparm'):
             code, _ = run(['testparm', '-s', SMB_CONF])
@@ -518,7 +553,7 @@ def apply(data):
                 raise Fail("Samba didn't accept the settings (nothing changed)")
         if hsh:
             hsh.selinux_allow(shares + folders)
-        res.update(firewall_apply(lan_blocked(shares + [dict(f, reach='home') for f in folders], ts_only, os.path.exists(STORAGE_CONF))))
+        res.update(firewall_apply(lan_blocked(shares + [dict(f, reach='home') for f in folders], ts_only, os.path.exists(STORAGE_CONF)), svc['ports']))
         if unit:
             if run(['systemctl', 'is-enabled', unit])[0] != 0:
                 open(STARTED, 'w').close()
@@ -527,9 +562,13 @@ def apply(data):
                 run(['systemctl', 'reload-or-restart', unit])
         res['samba'] = 'on'
     else:
-        res.update(smb_off(unit))
+        res.update(smb_off(unit, svc['ports']))
     res['tailscaleAtBoot'] = tailscaled_boot(data.get('tsBoot') is True)
-    res.update(plan_write(data, shares, user, backups))
+    res.update(plan_write(data, shares, user, backups, svc))
+    try:
+        res.update(services_switch(svc, res))
+    except FAILS as e:
+        res.update({'services': 'failed', 'note': str(e)})
     try:
         res.update(receive_apply(data.get('receive'), user, home))
     except FAILS as e:
@@ -540,15 +579,15 @@ def apply(data):
     return res
 
 
-def smb_off(unit):
-    """Home server sharing off: its shares out of Samba, its firewall rules gone, Samba stopped if Hearth started it and
-    Hearth Storage doesn't still use it."""
+def smb_off(unit, extra=None):
+    """Home server sharing off: its shares out of Samba, its firewall rules gone (a service's own stay), Samba stopped
+    if Hearth started it and Hearth Storage doesn't still use it."""
     try:
         write(SMB_CONF, without_include(read(SMB_CONF)))
     except OSError:
         pass
     remove(OUR_CONF)
-    out = firewall_apply(False)
+    out = firewall_apply(False, extra)
     storage_started = hsh.STARTED if hsh else '/etc/samba/.hearth-storage-started'
     if unit:
         if (os.path.exists(STARTED) or os.path.exists(storage_started)) and not os.path.exists(STORAGE_CONF):
@@ -574,7 +613,7 @@ def tailscaled_boot(on):
     return 'on' if on else 'off'
 
 
-def plan_write(data, shares, user, backups=()):
+def plan_write(data, shares, user, backups=(), svc=None):
     """/etc/hearth/home-server.json: what the timers work from (the checked shares, keep counts, Light mode, the
     backups, alerts and power choices; never a password), and each timer on only while something needs it: snapshots
     (or a recycle bin), a backup that's on, alerts on, a power choice on."""
@@ -585,6 +624,8 @@ def plan_write(data, shares, user, backups=()):
     plan = {'user': user, 'lightMode': data.get('lightMode', True) is not False, 'snapshots': snaps_on, 'keep': keep,
             'shares': [{'name': s['name'], 'path': s['path'], 'snapshots': s['snapshots'], 'recycle': s['recycle'] and s['write']} for s in shares],
             'backups': list(backups), 'alerts': alerts, 'power': power}
+    if svc:
+        plan.update({'media': svc['media'], 'ai': svc['ai'], 'guard': clean_guard(data.get('guard'))})
     write(PLAN, json.dumps(plan, indent=2) + '\n')
     recycles = any(p['recycle'] for p in plan['shares'])
     timer_on = snaps_on or recycles
@@ -594,7 +635,10 @@ def plan_write(data, shares, user, backups=()):
     unit_switch(ALERT_TIMER, alerts['on'])
     power_on = bool(power['sleepIdle'] or power['spinDown'] or power['keepAwake'] or power['schedule'])
     unit_switch(POWER_TIMER, power_on)
-    return {'snapshots': 'on' if snaps_on else 'off', 'timer': 'on' if timer_on else 'off', 'backups': 'on' if backups_on else 'off',
+    services_on = bool(svc) and services_timer_needed(plan)
+    unit_switch(SERVICES_TIMER, services_on)
+    return {'servicesTimer': 'on' if services_on else 'off',
+            'snapshots': 'on' if snaps_on else 'off', 'timer': 'on' if timer_on else 'off', 'backups': 'on' if backups_on else 'off',
             'alerts': 'on' if alerts['on'] else 'off', 'power': 'on' if power_on else 'off'}
 
 
@@ -2199,6 +2243,601 @@ def ups_status():
     return {'charge': v.get('battery.charge', ''), 'status': v.get('ups.status', ''), 'runtime': v.get('battery.runtime', '')}
 
 
+# ================================================================== stage 3: services, the AI service, the guard
+
+# Apps that aren't in Debian (Ollama, Jellyfin) are installed only when you ask, on this PC, from their makers' own
+# releases, checked against the SHA-256 their makers publish: never in the image, never at boot. They live in
+# /var/lib/hearth/apps/NAME (root's, read only for the services), their data next to it; removing one keeps its data.
+APPS_DIR = '/var/lib/hearth/apps'
+APP_STATE = '/var/lib/hearth/home-server-apps.json'       # installed versions and install progress (no secrets)
+SERVICES_STATE = '/run/hearth/home-server-services.json'  # what Light mode stopped or unloaded for your game
+SEEN_SYS = '/var/lib/hearth/home-server-seen.json'        # the Command Center seen using the AI service (hide-until-seen)
+GUARD_STATE = '/var/lib/hearth/home-server-guard.json'    # the ransomware guard tripped (state, never a setting)
+JELLYFIN_DATA = '/var/lib/hearth/jellyfin'
+SERVICES_TIMER = 'hearth-home-server-services.timer'
+OLLAMA_PORT = 11434
+JELLYFIN_PORT = 8096
+JELLYFIN_DISCOVERY = 7359
+APP_UNITS = {'ollama': 'hearth-ollama', 'jellyfin': 'hearth-jellyfin'}   # NAME.service (no [Install]) and NAME.timer
+APP_DROPIN = '/etc/systemd/system/%s.service.d/hearth.conf'
+APPS = {
+    'ollama': {'label': 'Ollama', 'repo': 'ollama/ollama', 'assets': ('ollama-linux-amd64.tar.zst', 'ollama-linux-amd64.tgz'),
+               'sums': 'sha256sum.txt', 'bin': 'bin/ollama', 'max': 6 << 30},
+    'jellyfin': {'label': 'Jellyfin', 'index': 'https://repo.jellyfin.org/files/server/linux/latest-stable/amd64/',
+                 'pattern': r'jellyfin_(\d+\.\d+\.\d+)-amd64\.tar\.xz', 'bin': 'jellyfin/jellyfin', 'max': 1 << 30},
+}
+DOWNLOAD_HOSTS = ('api.github.com', 'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com',
+                  'repo.jellyfin.org')
+SHA_RE = re.compile(r'^[0-9a-f]{64}$')
+MEDIA_DEFAULT = {'on': False, 'reach': 'home', 'pause': False}
+AI_DEFAULT = {'on': False, 'unload': True, 'pause': False}
+GUARD_DEFAULT = {'on': False, 'limit': 1000}
+GUARD_LIMITS = (500, 1000, 5000)
+GUARD_WINDOW = '5 min ago'
+
+
+def clean_media(m):
+    m = m if isinstance(m, dict) else {}
+    return {'on': m.get('on') is True, 'reach': m.get('reach') if m.get('reach') in ('home', 'tailscale') else 'home',
+            'pause': m.get('pause') is True}
+
+
+def clean_ai(a):
+    a = a if isinstance(a, dict) else {}
+    return {'on': a.get('on') is True, 'unload': a.get('unload', True) is not False, 'pause': a.get('pause') is True}
+
+
+def clean_guard(g):
+    g = g if isinstance(g, dict) else {}
+    lim = g.get('limit')
+    return {'on': g.get('on') is True, 'limit': lim if lim in GUARD_LIMITS else GUARD_DEFAULT['limit']}
+
+
+# ------------------------------------------------------------------ verified downloads
+
+def _opener():
+    """urllib that follows redirects only over https and only to the makers' hosts."""
+    import urllib.request
+    import urllib.parse
+
+    class Only(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            u = urllib.parse.urlparse(newurl)
+            if u.scheme != 'https' or u.hostname not in DOWNLOAD_HOSTS:
+                raise Fail('a download tried to go somewhere else (%s): stopped' % (u.hostname or '?'))
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+    return urllib.request.build_opener(Only)
+
+
+def url_ok(url):
+    import urllib.parse
+    u = urllib.parse.urlparse(url or '')
+    return u.scheme == 'https' and u.hostname in DOWNLOAD_HOSTS
+
+
+def http_get(url, limit=4 << 20, timeout=30):
+    """A small https answer (a release's details, a checksum file). Tests replace this."""
+    if not url_ok(url):
+        raise Fail('not an allowed address')
+    import urllib.request
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-home-server', 'Accept': 'application/json, text/plain, */*'})
+    try:
+        with _opener().open(req, timeout=timeout) as r:
+            data = r.read(limit + 1)
+    except OSError as e:
+        raise Fail('couldn\'t download from %s (%s)' % (url.split('/')[2], e))
+    if len(data) > limit:
+        raise Fail('the answer from %s was too big' % url.split('/')[2])
+    return data
+
+
+def download(url, dest, limit, progress=None):
+    """A big file to DEST; its SHA-256 (hex). Tests replace this."""
+    if not url_ok(url):
+        raise Fail('not an allowed address')
+    import urllib.request
+    h = hashlib.sha256()
+    got = 0
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-home-server'})
+    try:
+        with _opener().open(req, timeout=60) as r, open(dest, 'wb') as f:
+            total = int(r.headers.get('Content-Length') or 0)
+            if total > limit:
+                raise Fail('the download is bigger than expected')
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                got += len(chunk)
+                if got > limit:
+                    raise Fail('the download is bigger than expected')
+                h.update(chunk)
+                f.write(chunk)
+                if progress and total:
+                    progress(got, total)
+    except OSError as e:
+        raise Fail('the download stopped (%s)' % e)
+    return h.hexdigest()
+
+
+def sums_lookup(text, name):
+    """The SHA-256 for NAME in a "HASH  NAME" checksum file (sha256sum's format, "./NAME" or "*NAME" too)."""
+    for line in (text or '').splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and SHA_RE.fullmatch(parts[0].lower()) and parts[-1].lstrip('*').lstrip('./') == name:
+            return parts[0].lower()
+        if len(parts) == 1 and SHA_RE.fullmatch(parts[0].lower()):
+            return parts[0].lower()     # a NAME.sha256sum with only the hash
+    return ''
+
+
+def version_key(v):
+    return tuple(int(x) for x in re.findall(r'\d+', v or '')[:4])
+
+
+def app_resolve(name):
+    """Where the newest release is and the SHA-256 its maker publishes for it: {version, url, file, sha256}. Ollama: the
+    GitHub release's own digest of the file and the release's sha256sum.txt (both must agree when both are there).
+    Jellyfin: the newest version in its stable folder and the .sha256sum next to it. No checksum: no install."""
+    app = APPS[name]
+    if 'repo' in app:
+        try:
+            rel = json.loads(http_get('https://api.github.com/repos/%s/releases/latest' % app['repo']).decode('utf-8', 'replace'))
+        except ValueError:
+            raise Fail('%s\'s release details didn\'t make sense' % app['label'])
+        assets = {a.get('name'): a for a in rel.get('assets') or [] if isinstance(a, dict)}
+        pick = next((assets[n] for n in app['assets'] if n in assets), None)
+        if not pick or not url_ok(pick.get('browser_download_url')):
+            raise Fail('%s\'s newest release has no file for this PC' % app['label'])
+        shas = set()
+        dg = str(pick.get('digest') or '')
+        if dg.startswith('sha256:') and SHA_RE.fullmatch(dg[7:].lower()):
+            shas.add(dg[7:].lower())
+        sums = assets.get(app.get('sums'))
+        if sums and url_ok(sums.get('browser_download_url')):
+            v = sums_lookup(http_get(sums['browser_download_url']).decode('utf-8', 'replace'), pick['name'])
+            if v:
+                shas.add(v)
+        if not shas:
+            raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
+        if len(shas) > 1:
+            raise Fail('%s\'s two checksums for the file don\'t agree: not installing it' % app['label'])
+        return {'version': str(rel.get('tag_name') or '')[:40], 'url': pick['browser_download_url'], 'file': pick['name'],
+                'sha256': shas.pop(), 'size': int(pick.get('size') or 0)}
+    page = http_get(app['index']).decode('utf-8', 'replace')
+    found = sorted(set(re.findall(app['pattern'], page)), key=version_key)
+    if not found:
+        raise Fail('couldn\'t find %s\'s newest version' % app['label'])
+    ver = found[-1]
+    fname = re.sub(r'\(.*\)', ver, app['pattern']).replace('\\', '')
+    url = app['index'] + fname
+    sha = sums_lookup(http_get(url + '.sha256sum').decode('utf-8', 'replace'), fname)
+    if not sha:
+        raise Fail('%s didn\'t publish a checksum for its file: not installing it' % app['label'])
+    return {'version': ver, 'url': url, 'file': fname, 'sha256': sha, 'size': 0}
+
+
+def tar_flags(fname):
+    return ['--zstd'] if fname.endswith('.zst') else ['-J'] if fname.endswith('.xz') else ['-z']
+
+
+def tar_problem(listing):
+    """Why an archive's verbose listing (tar -tvf) isn't safe to unpack, or None: no absolute paths, nothing climbing out
+    with "..", no devices, and links only to places inside it."""
+    for line in (listing or '').splitlines():
+        if not line.strip():
+            continue
+        kind = line[0]
+        if kind not in '-dlh':
+            return 'it has a device or special file'
+        rest = line.split(None, 5)
+        if len(rest) < 6:
+            return 'its listing didn\'t make sense'
+        name = rest[5]
+        target = ''
+        if kind in 'lh' and ' -> ' in name:
+            name, target = name.split(' -> ', 1)
+        elif kind == 'h' and ' link to ' in name:
+            name, target = name.split(' link to ', 1)
+        name = name.strip()
+        if name.startswith('/') or '..' in name.split('/'):
+            return 'it has a path outside its own folder (%s)' % name[:80]
+        if target:
+            if target.startswith('/'):
+                return 'it has a link outside its own folder (%s)' % name[:80]
+            base = os.path.dirname(name) if kind == 'l' else ''
+            norm = os.path.normpath(os.path.join(base, target))
+            if norm.startswith('..') or norm.startswith('/'):
+                return 'it has a link outside its own folder (%s)' % name[:80]
+    return None
+
+
+def app_state_set(name, **kw):
+    st = state_read(APP_STATE)
+    cur = dict(st.get(name) or {}) if isinstance(st.get(name), dict) else {}
+    cur.update(kw)
+    st[name] = cur
+    ensure_dir(os.path.dirname(APP_STATE), 0o755)
+    state_write(APP_STATE, st)
+
+
+def arch_ok():
+    return os.uname().machine in ('x86_64', 'amd64')
+
+
+def free_bytes(path):
+    """Free space where the apps go. Tests replace this."""
+    st = os.statvfs(path)
+    return st.f_bavail * st.f_frsize
+
+
+def app_install_run(name):
+    """The install itself (in its own transient unit): find the newest release, download it, check its SHA-256, check the
+    archive, unpack it beside the old one, then swap them. Anything wrong: nothing changes and you're told why."""
+    if name not in APPS:
+        raise Fail('unknown app')
+    app = APPS[name]
+    app_state_set(name, installing=True, progress=0, error='', started=int(time.time()))
+    work = os.path.join(APPS_DIR, '.%s.download' % name)
+    new = os.path.join(APPS_DIR, '.%s.new' % name)
+    try:
+        if not arch_ok():
+            raise Fail('%s is only installed on x86-64 PCs here' % app['label'])
+        if not which('tar'):
+            raise Fail('tar isn\'t on this PC')
+        ensure_dir(APPS_DIR, 0o755)
+        rel = app_resolve(name)
+        need = max(rel.get('size') or 0, app['max'] // 4) * 3
+        if free_bytes(APPS_DIR) < need:
+            raise Fail('not enough free space for %s (it needs about %d GB)' % (app['label'], need >> 30))
+        for p in (work, new):
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+        os.makedirs(work, 0o700)
+        f = os.path.join(work, rel['file'])
+
+        def prog(got, total):
+            app_state_set(name, progress=int(got * 90 / total))
+        got = download(rel['url'], f, app['max'], prog)
+        if got != rel['sha256']:
+            raise Fail('%s\'s download doesn\'t match the checksum its maker published: not installed' % app['label'])
+        code, listing = run(['tar'] + tar_flags(f) + ['-tvf', f], timeout=600)
+        why = tar_problem(listing) if code == 0 else 'it couldn\'t be read'
+        if why:
+            raise Fail('%s\'s archive isn\'t safe to unpack: %s' % (app['label'], why))
+        os.makedirs(new, 0o755)
+        code, out = run(['tar'] + tar_flags(f) + ['-xf', f, '-C', new, '--no-same-owner', '--no-same-permissions'], timeout=1800)
+        if code != 0:
+            raise Fail('%s couldn\'t be unpacked: %s' % (app['label'], out.strip()[-200:]))
+        b = os.path.join(new, app['bin'])
+        if not os.path.isfile(b):
+            raise Fail('%s\'s archive doesn\'t have the program where it should be' % app['label'])
+        os.chmod(b, 0o755)
+        dest = os.path.join(APPS_DIR, name)
+        old = os.path.join(APPS_DIR, '.%s.old' % name)
+        if os.path.isdir(old):
+            shutil.rmtree(old)
+        if os.path.isdir(dest):
+            os.rename(dest, old)
+        os.rename(new, dest)
+        if os.path.isdir(old):
+            shutil.rmtree(old, ignore_errors=True)
+        app_state_set(name, installing=False, progress=100, version=rel['version'], sha256=rel['sha256'], at=int(time.time()), error='')
+        if os.path.exists(APP_DROPIN % APP_UNITS[name]):
+            run(['systemctl', 'restart', APP_UNITS[name] + '.service'])
+        return {'ok': True, 'installed': name, 'version': rel['version']}
+    except FAILS as e:
+        app_state_set(name, installing=False, error=str(e))
+        raise
+    finally:
+        for p in (work, new):
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+
+
+def app_install(name):
+    """Starts the install in its own transient unit (it can take a while: Ollama is about 2 GB). Only when you ask."""
+    caller()
+    if name not in APPS:
+        raise Fail('unknown app')
+    st = state_read(APP_STATE).get(name) or {}
+    if st.get('installing') and time.time() - (st.get('started') or 0) < 3 * 3600:
+        return {'ok': True, 'started': False, 'note': 'already installing'}
+    if not arch_ok():
+        raise Fail('%s is only installed on x86-64 PCs here' % APPS[name]['label'])
+    app_state_set(name, installing=True, progress=0, error='', started=int(time.time()))
+    code, out = run(['systemd-run', '--unit=hearth-home-server-install-%s-%d' % (name, int(time.time())), '--collect',
+                     '--property=Nice=10', '--property=IOSchedulingClass=idle', '--property=TimeoutStartSec=3h',
+                     os.path.realpath(__file__), 'app', 'install-run', name], timeout=30)
+    if code != 0:
+        app_state_set(name, installing=False, error='couldn\'t start the install')
+        raise Fail('couldn\'t start the install: %s' % out.strip()[-200:])
+    return {'ok': True, 'started': True}
+
+
+def app_remove(name):
+    """The app goes (its service stops); its data (Jellyfin's libraries and settings, Ollama's models) stays."""
+    caller()
+    if name not in APPS:
+        raise Fail('unknown app')
+    unit = APP_UNITS[name]
+    unit_switch(unit + '.timer', False)
+    run(['systemctl', 'stop', unit + '.service'])
+    dest = os.path.join(APPS_DIR, name)
+    if os.path.isdir(dest) and os.path.realpath(dest) == os.path.join(os.path.realpath(APPS_DIR), name):
+        shutil.rmtree(dest)
+    st = state_read(APP_STATE)
+    st.pop(name, None)
+    state_write(APP_STATE, st)
+    return {'ok': True, 'removed': name, 'dataKept': True}
+
+
+def app_installed(name):
+    return os.path.isfile(os.path.join(APPS_DIR, name, APPS[name]['bin']))
+
+
+# ------------------------------------------------------------------ services: units, reach, Light mode
+
+def services_plan(data, user):
+    """What the services need (no change made yet): each app's drop-in and the ports that only Tailscale may reach.
+    The AI service is never for the home network: it listens on all addresses only behind Hearth's firewall rule
+    (lo and tailscale0 let in), otherwise on this PC only."""
+    media, ai = clean_media(data.get('media')), clean_ai(data.get('ai'))
+    ts_only = data.get('tsOnly') is True
+    out = {'media': media, 'ai': ai, 'ports': {'tcp': [], 'udp': []}, 'user': user, 'units': {}}
+    if ai['on']:
+        out['ports']['tcp'].append(OLLAMA_PORT)
+    if media['on'] and (media['reach'] == 'tailscale' or ts_only):
+        out['ports']['tcp'].append(JELLYFIN_PORT)
+        out['ports']['udp'].append(JELLYFIN_DISCOVERY)
+    out['mediaTs'] = media['on'] and (media['reach'] == 'tailscale' or ts_only)
+    return out
+
+
+def ollama_dropin(listen_all):
+    """The AI service: models in its own state folder, on the graphics card. On all addresses only with the firewall
+    rule loaded first (without "-": no rule, no start); otherwise only on this PC."""
+    lines = ['# Hearth home server: the AI service (hearth-home-server-helper). Settings › Home server › AI.', '[Service]',
+             'Environment=OLLAMA_HOST=%s:%d' % ('0.0.0.0' if listen_all else '127.0.0.1', OLLAMA_PORT)]
+    if listen_all:
+        lines.append('ExecStartPre=+/usr/sbin/nft -f %s' % NFT_FILE)
+    return '\n'.join(lines) + '\n'
+
+
+def jellyfin_dropin(user, ts_only):
+    """The media server runs as you (it reads your shares), its data in /var/lib/hearth/jellyfin. Tailscale only: the
+    firewall rule is loaded first, without "-" (no rule, no start)."""
+    d = JELLYFIN_DATA
+    lines = ['# Hearth home server: the media server (hearth-home-server-helper). Settings › Home server › Services.', '[Service]',
+             'User=%s' % user,
+             'ExecStart=',
+             'ExecStart=%s/jellyfin/jellyfin/jellyfin --datadir %s/data --configdir %s/config --cachedir %s/cache --logdir %s/log '
+             '--webdir %s/jellyfin/jellyfin/jellyfin-web --ffmpeg /usr/bin/ffmpeg' % (APPS_DIR, d, d, d, d, APPS_DIR)]
+    if ts_only:
+        lines.append('ExecStartPre=+/usr/sbin/nft -f %s' % NFT_FILE)
+    return '\n'.join(lines) + '\n'
+
+
+def services_switch(svc, res):
+    """Each app on or off as you chose (after the firewall step in apply). Off: its service stops and its timer (which
+    starts it a minute after the PC starts) is disabled; nothing is deleted. A Tailscale-only service whose firewall
+    rule didn't load isn't started (the AI service then listens on this PC only)."""
+    out = {}
+    fw_ok = res.get('services') == 'tailscale-only'
+    changed = False
+    for name, want in (('ollama', svc['ai']['on']), ('jellyfin', svc['media']['on'])):
+        unit = APP_UNITS[name]
+        drop = APP_DROPIN % unit
+        if not want:
+            if os.path.exists(drop):
+                run(['systemctl', 'stop', unit + '.service'])
+            unit_switch(unit + '.timer', False)
+            out[name] = 'off'
+            continue
+        if not app_installed(name):
+            out[name] = 'not installed'
+            continue
+        if name == 'ollama':
+            text = ollama_dropin(fw_ok)
+            if not fw_ok:
+                out['aiNote'] = 'The AI service listens on this PC only: Hearth\'s firewall rule for Tailscale didn\'t load'
+        else:
+            if svc['mediaTs'] and not fw_ok:
+                run(['systemctl', 'stop', unit + '.service'])
+                unit_switch(unit + '.timer', False)
+                out[name] = 'not started'
+                out['mediaNote'] = 'Not started: it should only be reachable through Tailscale, and Hearth\'s firewall rule didn\'t load'
+                continue
+            ensure_dir(JELLYFIN_DATA, 0o750, svc['user'])
+            for sub in ('data', 'config', 'cache', 'log'):
+                ensure_dir(os.path.join(JELLYFIN_DATA, sub), 0o750, svc['user'])
+            text = jellyfin_dropin(svc['user'], svc['mediaTs'])
+        try:
+            same = read(drop) == text
+        except OSError:
+            same = False
+        if not same:
+            write(drop, text)
+            changed = True
+        out[name] = 'on'
+    if changed:
+        run(['systemctl', 'daemon-reload'])
+    for name, want in (('ollama', svc['ai']['on']), ('jellyfin', svc['media']['on'])):
+        if want and out.get(name) == 'on':
+            unit = APP_UNITS[name]
+            unit_switch(unit + '.timer', True)
+            run(['systemctl', 'restart' if changed else 'start', unit + '.service'])
+    return {'apps': out}
+
+
+def services_timer_needed(plan):
+    ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
+    return ai['on'] or (media['on'] and media['pause']) or guard['on']
+
+
+def ollama_api(method, path, body=None, timeout=10):
+    """One call to the AI service on this PC. Tests replace this."""
+    import urllib.request
+    req = urllib.request.Request('http://127.0.0.1:%d%s' % (OLLAMA_PORT, path), method=method,
+                                 data=json.dumps(body).encode() if body is not None else None, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read(1 << 20)
+        return json.loads(raw) if raw else {}
+    except (OSError, ValueError):
+        return None
+
+
+def unload_models():
+    """Every model the AI service has loaded is unloaded now (keep_alive 0): the graphics card is yours again. The
+    next question loads it again by itself."""
+    ps = ollama_api('GET', '/api/ps') or {}
+    names = [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]
+    for n in names:
+        if isinstance(n, str) and n:
+            ollama_api('POST', '/api/generate', {'model': n, 'keep_alive': 0}, timeout=30)
+    return names
+
+
+def unit_active(unit):
+    return run(['systemctl', 'is-active', '--quiet', unit])[0] == 0
+
+
+def ai_clients():
+    """Your other devices using the AI service right now (their Tailscale names), from its open connections."""
+    code, out = run(['ss', '-Htn', 'state', 'established', '( sport = :%d )' % OLLAMA_PORT], timeout=10)
+    if code != 0:
+        return []
+    ips = set()
+    for line in out.splitlines():
+        cols = line.split()
+        if len(cols) >= 4:
+            ip = cols[-1].rsplit(':', 1)[0].strip('[]')
+            if re.fullmatch(r'100\.\d{1,3}\.\d{1,3}\.\d{1,3}', ip) or ip.lower().startswith('fd7a:115c:a1e0'):
+                ips.add(ip)
+    if not ips:
+        return []
+    names = []
+    code, out = run(['tailscale', 'status', '--json'], timeout=10) if which('tailscale') else (1, '')
+    try:
+        peers = (json.loads(out).get('Peer') or {}).values() if code == 0 else []
+    except ValueError:
+        peers = []
+    for p in peers:
+        if set(p.get('TailscaleIPs') or []) & ips:
+            names.append(str(p.get('HostName') or p.get('DNSName') or '')[:80])
+    return [n for n in names if n] or sorted(ips)
+
+
+def mark_seen_sys(kind, device, now):
+    st = state_read(SEEN_SYS)
+    st[kind] = {'at': int(now * 1000), 'device': (device or '')[:80]}
+    ensure_dir(os.path.dirname(SEEN_SYS), 0o755)
+    state_write(SEEN_SYS, st)
+
+
+def services_run(now=None):
+    """The services timer (every minute, only while something needs it): Light mode for the AI service (models unloaded
+    when Game Mode or a game starts, the service stopped too if you chose that, started again after) and for the media
+    server if you chose "Pause in Game Mode"; the Command Center noted when it uses the AI service; the ransomware guard;
+    and the Tailscale-only rule put back if something removed it. It never changes your settings."""
+    now = time.time() if now is None else now
+    plan = plan_read()
+    ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
+    st = state_read(SERVICES_STATE)
+    paused = [p for p in st.get('paused') or [] if p in APP_UNITS]
+    playing = wait_for_game(plan)
+    did = []
+    if ai['on'] and app_installed('ollama'):
+        if playing:
+            if ai['unload'] and unit_active('hearth-ollama.service'):
+                gone = unload_models()
+                if gone:
+                    did.append('unloaded ' + ', '.join(gone))
+                st['unloadedAt'] = int(now)
+            if ai['pause'] and 'ollama' not in paused and unit_active('hearth-ollama.service'):
+                run(['systemctl', 'stop', 'hearth-ollama.service'])
+                paused.append('ollama')
+        elif unit_active('hearth-ollama.service'):
+            users = ai_clients()
+            if users:
+                mark_seen_sys('commandCenter', users[0], now)
+    if media['on'] and media['pause'] and playing and 'jellyfin' not in paused and unit_active('hearth-jellyfin.service'):
+        run(['systemctl', 'stop', 'hearth-jellyfin.service'])
+        paused.append('jellyfin')
+    if not playing and paused:
+        for name in paused:
+            want = ai['on'] if name == 'ollama' else media['on']
+            if want and os.path.exists(APP_DROPIN % APP_UNITS[name]):
+                run(['systemctl', 'start', APP_UNITS[name] + '.service'])
+                did.append('started ' + name + ' again')
+        paused = []
+    st['paused'] = paused
+    st['playing'] = playing
+    st['at'] = int(now)
+    if guard['on']:
+        st['guard'] = guard_check(plan, guard, now)
+    if os.path.exists(NFT_FILE) and which('nft') and run(['nft', 'list', 'table', 'inet', NFT_TABLE])[0] != 0:
+        run(['nft', '-f', NFT_FILE])
+        did.append('Tailscale-only rule put back')
+    ensure_dir(os.path.dirname(SERVICES_STATE), 0o755)
+    state_write(SERVICES_STATE, st)
+    return {'ok': True, 'playing': playing, 'paused': paused, 'did': did}
+
+
+# ------------------------------------------------------------------ the ransomware guard
+
+def guard_tripped():
+    return bool(state_read(GUARD_STATE).get('tripped'))
+
+
+def guard_count():
+    """Files renamed or deleted on your shares (through Samba) in the last 5 minutes, from full_audit's journal lines."""
+    code, out = run(['journalctl', '-q', '-o', 'cat', '-t', 'smbd_audit', '--since', GUARD_WINDOW, '--no-pager'], timeout=30)
+    if code != 0:
+        return 0
+    return sum(1 for l in out.splitlines() if 'renameat' in l or 'unlinkat' in l)
+
+
+def guard_lock_text(text):
+    return '\n'.join(l.replace('read only = no', 'read only = yes') for l in text.splitlines()) + ('\n' if text.endswith('\n') else '')
+
+
+def guard_check(plan, guard, now):
+    """If far more files change at once than you'd ever do (your limit, in 5 minutes), every share turns read only right
+    away and you're told. Nothing is deleted and no setting changes: "Make them writable again" (Safety) undoes it,
+    and snapshots bring back what changed."""
+    st = state_read(GUARD_STATE)
+    if st.get('tripped'):
+        return {'tripped': st['tripped'], 'count': st.get('count', 0)}
+    n = guard_count()
+    if n < guard['limit']:
+        return {'watching': True, 'count': n}
+    st = {'tripped': int(now), 'count': n}
+    ensure_dir(os.path.dirname(GUARD_STATE), 0o755)
+    state_write(GUARD_STATE, st)
+    if os.path.exists(OUR_CONF):
+        old = read(OUR_CONF)
+        write(OUR_CONF, guard_lock_text(old))
+        if which('testparm') and run(['testparm', '-s', SMB_CONF])[0] != 0:
+            write(OUR_CONF, old)
+        unit = smb_unit()
+        if unit:
+            run(['systemctl', 'reload-or-restart', unit])
+    user = plan.get('user') if isinstance(plan.get('user'), str) else ''
+    if user:
+        notify(user, '%d files were renamed or deleted on your shares in 5 minutes: they are read only now. '
+                     'Settings › Home server › Safety puts them back, and snapshots bring back what changed.' % n, urgent=True)
+    return st
+
+
+def guard_reset():
+    """Your shares writable again after the guard tripped (you looked and it was you). apply() writes Samba's config."""
+    caller()
+    had = remove(GUARD_STATE)
+    return {'ok': True, 'reset': had}
+
+
 # ------------------------------------------------------------------
 
 def stdin_json():
@@ -2282,12 +2921,25 @@ def main(argv):
         elif a == ['ups-status']:
             caller()
             res = {'ok': True, 'ups': ups_status()}
+        # ---- stage 3
+        elif len(a) == 2 and a[0] == 'app-install':
+            res = app_install(a[1])
+        elif len(a) == 3 and a[:2] == ['app', 'install-run']:
+            if os.environ.get('PKEXEC_UID'):
+                raise Fail('install-run is started by app-install only')
+            res = app_install_run(a[2])
+        elif len(a) == 2 and a[0] == 'app-remove':
+            res = app_remove(a[1])
+        elif a == ['services', 'run']:
+            res = services_run()
+        elif a == ['guard-reset']:
+            res = guard_reset()
         else:
             raise Fail('usage: hearth-home-server-helper apply | smb-password | drives | format-plan DEV | format | '
                        'snapshot run | tailscale start|stop | exit-node on|off | wol IFACE | person-add | person-password | '
                        'person-remove NAME | person-folder | backup-secret ID | backup-forget ID | backup run [--now ID] | '
                        'backup-now ID | backup-snapshots ID | backup-restore | receive-add NAME | receive-remove USER | '
-                       'alerts run|test | power run | ups-status')
+                       'alerts run|test | power run | ups-status | app-install NAME | app-remove NAME | services run | guard-reset')
         print(json.dumps(res))
         return 0
     except FAILS as e:

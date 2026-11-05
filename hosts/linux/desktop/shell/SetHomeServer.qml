@@ -29,6 +29,12 @@ SetPage {
                  sub: drv.drives.length + " drives" + (temps.length ? " · " + Math.min.apply(null, temps) + "–" + Math.max.apply(null, temps) + " °C" : "") };
     }
     function alertList() { return st && st.alerts ? (st.alerts.active || []) : []; }
+    readonly property var svc: st ? (st.services || {}) : ({})
+    readonly property bool aiShown: !!st && !!st.seen && !!st.seen.commandCenter && (st.seen.commandCenter.shown || (!!svc.ai && svc.ai.on))
+    function servicesBig() {
+        const on = [svc.media && svc.media.on ? "Media" : "", svc.web && svc.web.on ? "Web" : "", svc.ai && svc.ai.on ? "AI" : ""].filter(x => x);
+        return { big: on.length ? String(on.length) + " on" : "None", sub: on.length ? on.join(" · ") : "media server, files on the web, AI", good: on.length > 0 };
+    }
     function backupBig() {
         const jobs = st ? (st.backups || []) : [];
         if (!jobs.length) return { big: "None yet", sub: "a second copy somewhere else", good: false, warn: false };
@@ -86,8 +92,13 @@ SetPage {
                 { label: "Backups", big: page.backupBig().big, sub: page.backupBig().sub, frac: -1, good: page.backupBig().good, warn: page.backupBig().warn },
                 { label: "Alerts", big: page.alertList().length ? String(page.alertList().length) : page.cfg.alerts && page.cfg.alerts.on ? "All good" : "Off",
                   sub: page.alertList().length ? page.alertList()[0].text : page.cfg.alerts && page.cfg.alerts.on ? "checked every hour" : "turn on in Alerts & power",
-                  frac: -1, good: !page.alertList().length && !!page.cfg.alerts && page.cfg.alerts.on, warn: page.alertList().length > 0 }
-            ] : []
+                  frac: -1, good: !page.alertList().length && !!page.cfg.alerts && page.cfg.alerts.on, warn: page.alertList().length > 0 },
+                { label: "Services", big: page.servicesBig().big, sub: page.servicesBig().sub, frac: -1, good: page.servicesBig().good },
+                { label: "Safety", big: page.svc.guardTripped ? "Read only" : page.cfg.guard && page.cfg.guard.on ? "Watching" : page.cfg.tsOnly ? "Tailscale only" : "Check",
+                  sub: page.svc.guardTripped ? "the ransomware guard stopped writes" : page.cfg.guard && page.cfg.guard.on ? "ransomware guard on" : "see Safety for simple fixes",
+                  frac: -1, good: !page.svc.guardTripped && !!page.cfg.guard && page.cfg.guard.on, warn: !!page.svc.guardTripped }
+            ].concat(page.aiShown ? [{ label: "AI service", big: page.svc.ai && page.svc.ai.on ? (page.svc.ai.active ? "Ready" : "Starting") : "Off",
+                  sub: page.st.seen.commandCenter.device ? "Command Center seen on " + page.st.seen.commandCenter.device : "for the Hearth AI Command Center", frac: -1, good: !!page.svc.ai && page.svc.ai.active }] : []) : []
             delegate: Rectangle {
                 required property var modelData
                 Layout.fillWidth: true
@@ -148,6 +159,12 @@ SetPage {
     }
     SetRow {
         visible: !!page.cfg
+        icon: "search"; title: "Files & links"
+        sub: "Search every share, free up space, share links and a drop-off folder" + (page.svc.links ? " · " + page.svc.links + (page.svc.links === 1 ? " link" : " links") : "")
+        onActivated: SettingsNav.openPage("hs-files")
+    }
+    SetRow {
+        visible: !!page.cfg
         icon: "restart"; title: "Drives & undo"
         sub: "Space, health and temperature of every drive; snapshots to bring back deleted or changed files" + (page.cfg && page.cfg.snapshots ? " · snapshots on" : "")
         onActivated: SettingsNav.openPage("hs-drives")
@@ -158,6 +175,39 @@ SetPage {
         sub: "Back up your shares to a drive, another Hearth device or the cloud; phone photos; folders kept the same on your devices"
         value: page.st && page.st.backups && page.st.backups.length ? page.backupBig().big : ""
         onActivated: SettingsNav.openPage("hs-backups")
+    }
+    SetRow {
+        visible: !!page.cfg
+        icon: "window"; title: "Services"
+        sub: "Optional apps for your devices: the media server (Jellyfin), files on the web" + (page.aiShown ? ", the AI service" : "") + "; each off until you turn it on"
+        value: page.servicesBig().good ? page.servicesBig().big : ""
+        onActivated: SettingsNav.openPage("hs-services")
+    }
+    SetRow {
+        visible: !!page.cfg
+        icon: "pad"; title: "Gaming"
+        sub: "A Games folder for your Hearth devices, Remote play, and what Light mode holds back while you play"
+        onActivated: SettingsNav.openPage("hs-gaming")
+    }
+    SetRow {
+        visible: !!page.cfg
+        icon: "user"; title: "Family & home"
+        sub: "A Family folder for everyone" + (page.st && page.st.seen && page.st.seen.camera && page.st.seen.camera.shown ? ", your cameras" : "") + " and who can open what"
+        onActivated: SettingsNav.openPage("hs-family")
+    }
+    SetRow {
+        visible: !!page.cfg && page.aiShown
+        icon: "mic"; title: "AI"
+        sub: "The AI service on this PC's graphics card for the Hearth AI Command Center: models, its address, Light mode"
+        value: page.svc.ai && page.svc.ai.on ? "On" : ""
+        onActivated: SettingsNav.openPage("hs-ai")
+    }
+    SetRow {
+        visible: !!page.cfg
+        icon: "lock"; title: "Safety"
+        sub: "Who can reach what, open ports, the ransomware guard and simple fixes you can undo"
+        value: page.svc.guardTripped ? "Read only" : ""
+        onActivated: SettingsNav.openPage("hs-safety")
     }
     SetRow {
         visible: !!page.cfg
@@ -178,7 +228,7 @@ SetPage {
     SetSwitch {
         visible: !!page.cfg
         icon: "info"; title: "Show hidden items"
-        sub: "Items for the Hearth AI Command Center show when it was seen on one of your devices in the last " + (page.cfg ? page.cfg.ccDays : 30)
+        sub: "Items for the Hearth AI Command Center (the AI page and service) show when it was seen on one of your devices in the last " + (page.cfg ? page.cfg.ccDays : 30)
              + " days, and cameras or UPS items once one is found. Hiding never turns anything off." + (page.st && page.st.hiddenCount ? " " + page.st.hiddenCount + " hidden now." : "")
         checked: !!page.cfg && page.cfg.showHidden
         onToggled: v => page.set("showHidden", v ? "on" : "off")
@@ -189,12 +239,6 @@ SetPage {
         options: [{ value: 7, label: "7 days" }, { value: 30, label: "30 days" }, { value: 90, label: "90 days" }, { value: 365, label: "A year" }]
         current: page.cfg ? page.cfg.ccDays : 30
         onChosen: v => page.set("ccDays", String(v))
-    }
-    Text {
-        visible: !!page.cfg
-        Layout.fillWidth: true; Layout.topMargin: 6
-        text: "Coming next to Home server: Files & links, Services, Gaming, Family & home, AI and Safety."
-        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
     Text {
         visible: !!page.st && !!page.st.applied && page.st.applied.ok === false

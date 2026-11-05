@@ -1,0 +1,25 @@
+# Settings › Home server › Services (docs/HOME-SERVER.md): the media server (Jellyfin): your movies, shows, music and
+# photos on TVs, phones and Hearth devices. Jellyfin isn't in Debian: it's installed only when you ask
+# (hearth-home-server-helper app-install jellyfin: its newest stable release, SHA-256 checked) into
+# /var/lib/hearth/apps/jellyfin. It runs as you (it reads your shares) from the drop-in hearth-home-server-helper
+# writes, with its data in /var/lib/hearth/jellyfin; with no app or no drop-in it doesn't start. Started only by its
+# timer (a minute after the PC starts) or by Settings, off until you turn it on: never part of starting the PC, the
+# session or Game Mode.
+[Unit]
+Description=Hearth home server: the media server (Jellyfin)
+ConditionPathExists=/var/lib/hearth/apps/jellyfin/jellyfin/jellyfin
+ConditionPathExists=/etc/systemd/system/hearth-jellyfin.service.d/hearth.conf
+After=network.target
+
+[Service]
+ExecStart=/bin/false
+Environment=HOME=/var/lib/hearth/jellyfin
+Restart=on-failure
+RestartSec=15
+Nice=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/hearth/jellyfin
+PrivateTmp=yes
+TimeoutStopSec=30

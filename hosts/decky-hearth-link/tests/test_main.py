@@ -218,7 +218,8 @@ class Backend(unittest.TestCase):
         seen = []
         quick = {'available': True, 'host': 'nvidia-pc', 'lightMode': True, 'playing': True, 'resumed': False, 'paused': ['backups'],
                  'shares': 3, 'people': 1, 'usage': {'used': 1e12, 'total': 4e12}, 'backups': {'count': 1, 'lastOk': 5, 'waiting': ['Games'],
-                 'failed': [], 'running': False, 'secret': 'x'}, 'alerts': ['A drive is failing'], 'setupDone': True, 'settings': {'x': 1}}
+                 'failed': [], 'running': False, 'secret': 'x'}, 'alerts': ['A drive is failing'], 'setupDone': True, 'settings': {'x': 1},
+                 'ai': {'on': True, 'state': 'unloaded', 'models': ['secret']}}
 
         def run(a, **k):
             seen.append((a, k))
@@ -229,6 +230,9 @@ class Backend(unittest.TestCase):
         self.assertEqual(r['backups']['waiting'], ['Games'])
         self.assertNotIn('settings', r, 'only the tile\'s fields')
         self.assertNotIn('secret', json.dumps(r))
+        self.assertEqual(r['ai'], {'on': True, 'state': 'unloaded'}, 'the AI service in a word, nothing else')
+        self.assertEqual(self.m.ai_short({'on': True, 'state': 'weird'}), {'on': False, 'state': 'off'})
+        self.assertEqual(self.m.ai_short(None), {'on': False, 'state': 'off'})
         self.assertEqual(seen[0][0][1:], [prog, 'quick'])
         self.assertEqual(seen[0][1]['timeout'], self.m.HOME_SERVER_TIMEOUT)
         self.assertTrue(self.m.home_server(['quick-set', 'lightMode', 'off'], run=run)['ok'])

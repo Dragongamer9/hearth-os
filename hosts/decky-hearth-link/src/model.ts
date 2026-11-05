@@ -188,6 +188,7 @@ export interface HomeQuick {
   shares: number; people: number; usage: { used: number; total: number };
   backups: { count: number; lastOk: number; waiting: string[]; failed: string[]; running: boolean };
   alerts: string[]; setupDone: boolean; ok?: boolean; error?: string;
+  ai?: { on: boolean; state: "off" | "ready" | "unloaded" | "paused" };
 }
 export const HOME_POLL = 15000;
 
@@ -211,6 +212,15 @@ export function backupLine(q: HomeQuick, now: number): string {
   if (b.failed.length) return `Didn't finish: ${b.failed.join(", ")}`;
   if (b.waiting.length) return `Waiting for your game: ${b.waiting.join(", ")}`;
   return `Last backup ${ago(b.lastOk, now)}`;
+}
+
+/** The AI service (stage 3) in a line, or "" when it's off. */
+export function aiLine(q: HomeQuick): string {
+  const a = q.ai;
+  if (!a || !a.on || a.state === "off") return "";
+  if (a.state === "paused") return "AI service: stopped while you play";
+  if (a.state === "unloaded") return "AI service: models unloaded while you play";
+  return "AI service: ready";
 }
 
 /** What Light mode holds back while you play, or "". */

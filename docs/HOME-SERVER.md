@@ -12,9 +12,9 @@ Tailscale. The two share one root helper family and one Samba: Hearth Storage's 
 `/etc/samba/hearth-storage.conf`, Home server's in `/etc/samba/hearth-home-server.conf`, share names never clash, and
 neither stops Samba while the other still uses it.
 
-It comes in three stages. **Stage 1**: the Home server group with Overview, Shared folders, Drives & undo, Tailscale
-and the setup steps. **Stage 2 (this one)**: Backups & sync, People, Alerts & power, and the Game Mode Quick Access
-tile. Stage 3: Files & links, Services, Gaming, Family & home, AI and Safety (the ransomware guard).
+It came in three stages. **Stage 1**: the Home server group with Overview, Shared folders, Drives & undo, Tailscale
+and the setup steps. **Stage 2**: Backups & sync, People, Alerts & power, and the Game Mode Quick Access tile.
+**Stage 3 (the last)**: Files & links, Services, Gaming, Family & home, AI and Safety (with the ransomware guard).
 
 ## What's in Settings
 
@@ -63,6 +63,39 @@ tile. Stage 3: Files & links, Services, Gaming, Family & home, AI and Safety (th
   23:00–2:00, wake at 2:30–8:00), Spin down idle storage drives after (never, 10, 20, 30 minutes, 1 hour). **UPS**
   (only once one was plugged in, or with Show hidden items): Shut down cleanly on battery, and its charge.
 - **Overview** also has Backups and Alerts tiles and rows for the three new pages.
+- **Files & links** (`SetHomeFiles.qml`, stage 3): **Search every share** (names, every word you typed; hidden files never);
+  select a result to **share a link** to it: works for 1, 7 or 30 days or until you stop it, a note for whom, an optional
+  password; the links with their end date, password or not, downloads so far (and the most allowed), **Copy** and
+  **Stop**. **Drop-off folder** (Home › Drop-off by default): friends add files with its link and can't see or delete
+  anything. **Smart folders** ("Look through your shares", at low priority): recent screenshots (30 days), big files
+  (4 GB and up), duplicates, not changed in a year; **Review** lists them (Show opens Hearth Files) and **Move to the
+  recycle bin** moves them to their share's `.hearth-recycle` (30 days, never deleted now) with **Put back**. Changed
+  this week; space per share.
+- **Services** (`SetHomeServices.qml`, stage 3): **Media server** (Jellyfin: Install, on/off, Reachable: home network
+  and Tailscale or Tailscale only, Pause in Game Mode, Open links, Remove), **Photo library** (in Jellyfin, with phone
+  photos from Backups & sync), **Files on the web** (on/off, your web password, reachable: Tailscale only or also your
+  home network, Open), the **AI service** (hidden until the Command Center is seen; opens AI), and Remote play, Folder
+  sync and Game archive with their own pages.
+- **Gaming** (`SetHomeGaming.qml`, stage 3): **Share a Games folder** (Home › Games, read only for your devices:
+  installers, mods, emulator files), Steam's own LAN transfers (changed in Steam; Hearth never signs in to Steam),
+  the game archive and saves (Hearth Link), Remote play over Tailscale, friends through Tailscale's node sharing, and
+  **Light mode while you play** with what waits and what keeps running.
+- **Family & home** (`SetHomeFamily.qml`, stage 3): **Make a Family folder** (Home › Family, read & write for you and
+  everyone in People), People, calendar and notes as files there, **Look for cameras** (ONVIF on your home network;
+  found cameras open their own page; camera items show only once one is found, or with Show hidden items).
+- **AI** (`SetHomeAI.qml`, stage 3): **Install the AI service** (Ollama), on/off, who can reach it (Tailscale and this PC
+  only), the **models** (qwen3:30b-a3b recommended, qwen3-coder:30b-a3b, gpt-oss:20b, qwen3:14b: each with a line on what
+  it's for and its size; Download only when you pick one; Remove), **Ask the server** (a question to a model you
+  have), **For the Command Center** (when it was seen and where, the address to paste with Copy, voices), **While you
+  play** (Unload models when you play, on by default; Stop the AI service while I play, off; Unload models now),
+  Remove Ollama. Everything tied to the Command Center is hidden until it's seen (below).
+- **Safety** (`SetHomeSafety.qml`, stage 3): when the guard has tripped, **Your shares are read only** and **Make them
+  writable again**; **Worth a look** (findings with **Fix** or **Open**, and **Undo** for each fix done); at a glance
+  (Tailscale only or not, the firewall rule, the last backup, SMB3 and no guests, snapshots); the **Ransomware guard**
+  (off until you turn it on; 500, 1,000 or 5,000 renames or deletes in 5 minutes); **Who can reach what**; **Open
+  ports** (every network, Tailscale only or this PC only); updates keep the previous version startable.
+- **Overview** also has Services, Safety and (once the Command Center is seen) AI service tiles, and rows for the six
+  new pages.
 
 ## How it works
 
@@ -197,13 +230,97 @@ tile. Stage 3: Files & links, Services, Gaming, Family & home, AI and Safety (th
   10-second timeout; when the helper isn't there, fails or hangs the tile isn't shown, and its own React error boundary
   keeps any problem in it from touching the rest of the panel. Nothing here is part of starting Game Mode.
 
+## Stage 3: how it works
+
+- **Settings** stay in `home-server.json` through `hearth_settings_io`: `media` {on, reach, pause}, `ai` {on, unload,
+  pause}, `web` {on, reach}, `dropoff` {on, path}, `links` (each link's path, label, for whom, end, password yes/no, most
+  downloads) and `guard` {on, limit}; defaults filled in when read (all off; `web.reach` Tailscale; `ai.unload` on). A
+  setting inside a group writes only that key. **No secret is in it**: a link's secret part, its password's hash, the
+  drop-off's secret and your web password's hash (PBKDF2-SHA256, 200,000 rounds) are in 0600 state files
+  (`~/.local/state/nimbus/home-server-links.json`, `home-server-web.json`). Download counts, Safety's fixes and how to
+  undo them (`home-server-fixes.json`), cameras found, the last clean up (`home-server-recycled.json`) and the smart
+  folders (`~/.cache/nimbus/home-server-files.json`) are state.
+- **Apps that aren't in Debian** (Ollama, Jellyfin) are never in the image and never installed at build or boot:
+  **Install** runs `hearth-home-server-helper app-install NAME` (pkexec), which starts a transient unit (idle I/O, nice
+  10) running `app install-run NAME` (refused straight through pkexec). It finds the newest release, downloads it over
+  https from the maker's hosts only (a redirect anywhere else stops it), and **checks its SHA-256**: Ollama's from its
+  GitHub release (GitHub's own digest of the file and the release's `sha256sum.txt`; both must agree when both are
+  there), Jellyfin's from the `.sha256sum` next to its newest stable build on repo.jellyfin.org. No checksum or a
+  mismatch: not installed. The archive is listed first and refused with absolute paths, `..`, devices or links
+  pointing outside it, then unpacked (`--no-same-owner`) beside the old copy and swapped in, into
+  `/var/lib/hearth/apps/NAME` (root's). x86-64 only; free space checked first; progress and errors in
+  `/var/lib/hearth/home-server-apps.json`. **Remove** deletes the app only: Jellyfin's data (`/var/lib/hearth/jellyfin`)
+  and Ollama's models stay.
+  - Why these: Jellyfin is the best-known open media server, with apps for TVs and phones, and its own builds bundle
+    what they need (Debian's ffmpeg does the transcoding). Ollama is what the Command Center's GPU-server teammate
+    talks to (its OpenAI-compatible `/v1`) and runs models on the RTX 5070 out of the box. Neither is in Debian
+    trixie, so each comes from its maker on request instead of a third-party repository baked into the image. Immich
+    (the photo app in the mockup) needs a database, Redis and a machine-learning service in containers: not now;
+    Jellyfin's Photos libraries and stage 2's phone photos cover it. Files on the web, links and the drop-off are
+    Hearth's own small server (Python's standard library): nothing to download.
+- **Units**: `hearth-ollama.service` (DynamicUser, models in `/var/lib/hearth-ollama`, the graphics card through the
+  video and render groups, ProtectSystem=strict, ProtectHome) and `hearth-jellyfin.service` (as you, from the drop-in;
+  ProtectSystem=strict, your home read only, its data writable). Neither has `[Install]`; each starts only with its app
+  in place **and** Hearth's drop-in (`ConditionPathExists`), from its timer (`hearth-ollama.timer`,
+  `hearth-jellyfin.timer`: a minute after the PC starts, enabled only while it's on) or from Settings.
+- **Reach** (stage 1's rules): the **AI service is only for Tailscale and this PC**. Its port (11434) is in Hearth's
+  nftables table whenever it's on (`lo` and `tailscale0` let in, everything else dropped); its drop-in loads that rule
+  first (`ExecStartPre=+nft -f`, without `-`: no rule, no start) and then listens on all addresses; if the rule can't
+  load (no nft, a failed load) it listens on 127.0.0.1 only and Settings says so. The media server on "Tailscale only"
+  (or with Only reachable through Tailscale on) gets the same rule for 8096/tcp and 7359/udp and isn't started when the
+  rule doesn't load; on "home network" it listens normally (with its own accounts). The table now holds Samba's ports,
+  the services' or both; with none it's deleted. Files on the web, links and the drop-off are your own user service
+  (`hearth-home-server-web.service`, port 8097, on while one of them is on): on this PC and its Tailscale address only by
+  default (it doesn't listen anywhere else), or on every address when you pick Home network.
+- **Light mode for services**: `hearth-home-server-services.timer` (every minute, on only while the AI service is on,
+  the media server pauses in Game Mode, or the guard is on) runs `services run`. While Game Mode or a game runs (Light
+  mode on and not let through in Quick Access) it unloads every loaded model (`/api/ps`, then `keep_alive: 0`), stops
+  the AI service if you chose that and the media server if you chose Pause in Game Mode, and starts what it stopped
+  again once you stop playing (`/run/hearth/home-server-services.json`). It also loads the Tailscale-only rule again if
+  something removed it. It never changes a setting.
+- **Models** are pulled through the AI service's own API (`/api/pull`) as you, only the four listed; Ollama checks
+  every part's SHA-256 as it downloads. Progress is in your runtime folder.
+- **The address for the Command Center**: `http://<this PC's Tailscale name>:11434/v1` (Settings › Accounts › Your own
+  GPU server in the Command Center: OpenAI-compatible chat, no key, a model such as `qwen3:30b-a3b`). On this PC:
+  `http://localhost:11434/v1`. **Voices** (Kokoro, Chatterbox…) are a documented opt-in placeholder: their servers are
+  big Python and CUDA installs, so Hearth doesn't set them up yet; the AI page says how to point the Command Center at one.
+- **Share links and the drop-off** (`hearth-home-server-web`, Python's threading HTTP server): `/l/<secret>/` serves the
+  linked file or folder (folders listed) while the link is on, not past its end, not over its most downloads and its
+  share still on; with a password it asks (Basic). `/d/<secret>` is an upload page; each file is POSTed raw with its
+  name (only the base name, safe characters, a new name when one's taken, 8 GB at most), never listed. **Files on the
+  web** (`/`, `/s/<share id>/…`) asks for your user name and web password and lists only shares that are on. Every path
+  is resolved and must stay inside its share; hidden files and folders are never listed or served; links are judged by
+  where they point. Wrong passwords slow down; secrets in paths are never logged.
+- **Smart folders and search** walk the shares that are on (hidden folders skipped, links not followed). Duplicates:
+  files of 1 MB and up with the same size and the same first and last 64 KB. Clean up only moves files into their
+  share's recycle bin (stage 1's 30 days), recorded for Put back.
+- **Folder shares** (Games, Family) are ordinary stage 1 shares made in one step; the Family folder is read & write and
+  every person gets write access to it.
+- **Cameras**: "Look for cameras" sends one ONVIF WS-Discovery probe on your home network and reads the answers' names
+  and addresses (only http(s) addresses kept). A camera found marks `camera` seen; it turns nothing on.
+- **Safety** reads your settings, Samba's config (`/etc/samba/smb.conf` and Hearth's), what listens (`ss -tlnu`), the
+  last backup and the firewall's last result. Fixes are setting changes you ask for (Everything Tailscale only,
+  Snapshots on for every share that can take them, the ransomware guard on, the media server Tailscale only); each is
+  remembered with what was there before, and **Undo** puts exactly that back.
+- **The ransomware guard** (off until you turn it on): Samba's `full_audit` logs renames and deletes on read & write
+  shares to the journal (`smbd_audit`). Each minute the services timer counts the last 5 minutes; at your limit (1,000
+  by default) every share in Hearth's Samba config turns read only (checked with testparm, Samba reloaded), the trip is
+  kept in `/var/lib/hearth/home-server-guard.json` (state, never a setting) so apply keeps them read only, and you get a
+  notification. **Make them writable again** (`guard-reset`) clears it and applies your settings again. It watches
+  changes made through Samba (your other PCs), which is how ransomware on a Windows PC would reach your shares.
+- **Quick Access** shows the AI service in a line (ready, models unloaded while you play, stopped while you play) and
+  "AI models" and "media server" in what Light mode holds back.
+
 ## Never stopping the PC from starting
 
 Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd,
 nftables, nut-server, nut-monitor, nut-driver-enumerator, nut.target, syncthing-resume, and the user services
 hearth-taildrop and syncthing are disabled in the image (the build fails if one is left on, and the image check looks
-again); the timers `hearth-home-server-snapshots`, `-backup`, `-alerts`, `-power`, `-wake` and `-receive` aren't
-enabled anywhere, and each is turned on only while something you chose needs it. Their services have no `[Install]`
+again); the timers `hearth-home-server-snapshots`, `-backup`, `-alerts`, `-power`, `-wake`, `-receive` and (stage 3)
+`-services`, `hearth-ollama` and `hearth-jellyfin` aren't enabled anywhere, and each is turned on only while something
+you chose needs it. Stage 3's `hearth-ollama.service` and `hearth-jellyfin.service` have no `[Install]`, need their
+app and Hearth's drop-in to start at all, and their apps are never in the image (the build fails if Ollama, Jellyfin or
+`/var/lib/hearth/apps` is there); the user service `hearth-home-server-web` is disabled in the image too. Their services have no `[Install]`
 (only their timers start them) and none waits for the network at start. restic, rclone, Syncthing, hdparm and NUT are
 nice-to-have packages: a missing one is said in Settings. The snapshot service has no
 `[Install]`, a timeout and idle priority; nothing has `Requires=` or is wanted by the session, Game Mode or Steam Game
@@ -216,7 +333,17 @@ Items tied to the Hearth AI Command Center show only when it was seen on one of 
 default); camera and UPS items only once one was found. `~/.local/state/nimbus/home-server-seen.json` holds when each
 was last seen (`hearth-home-server seen commandCenter|camera|ups [device]`; Hearth Link and the hardware checks fill it
 in stage 2). **Show hidden items** shows them anyway. It's display only: hiding never turns anything off, and seeing a
-device never changes a setting. Stage 2 uses it for the UPS (Alerts & power: a UPS plugged in by USB is noted by `status`, at most once an hour); the Command Center and camera items come with stage 3.
+device never changes a setting. Stage 2 uses it for the UPS (Alerts & power: a UPS plugged in by USB is noted by `status`, at most once an hour).
+
+Stage 3 uses it for the **Command Center** (the AI page, the AI service in Services and its Overview tile and row) and
+**cameras** (Family & home). How the Command Center gets marked seen:
+- **on this PC**: `status` sees its settings folder (`~/.config/Hearth AI Command Center`, Electron's own) changed
+  within your window, and notes it (at most once an hour) with this PC's name;
+- **from your other devices**: the services timer notes when one of your Tailscale devices has a connection open to
+  the AI service (the Command Center's GPU-server teammate), with that device's Tailscale name, in root's
+  `/var/lib/hearth/home-server-seen.json`, which `status` reads with yours (newest wins);
+- **by hand or from another tool**: `hearth-home-server seen commandCenter DEVICE`.
+An AI service that's installed or on is shown either way, so it can always be turned off.
 
 ## Tests
 
@@ -240,3 +367,18 @@ with inhibitors respected, the schedule and wake timer; the UPS leaving a hand-m
 needed, everything off by default in the image and the units; nested settings writing only their key; the Quick Access
 tile's allow-list. The Hearth Link plugin's own tests (backend, `model.test.mjs`) and pictures of the tile run in
 home-server.yml's quick-access job.
+
+`hosts/linux/test/test_hearth_home_server_3.py` (stage 3): the AI service's port always behind the Tailscale-only rule,
+listening on all addresses only with the rule (this PC only without it), a Tailscale-only media server never started
+without its rule, apps off stop and delete nothing, an app that isn't installed never started, the services timer on
+only when needed; Ollama's and Jellyfin's checksums (both must agree, none means no install), downloads only over https
+from the makers, archives refused with absolute paths, `..`, devices or links out, an install that checks then swaps
+(a mismatch never unpacked), installs only in their own unit, removing keeps data; models unloaded when a game starts,
+the service paused and started again, nothing with Light mode off or let through, the media server only if you chose
+it, the Command Center noted from a Tailscale connection, the rule put back; the guard's audit lines, tripping over the
+limit (told, read only, kept by apply, undone by reset); settings off by default and written per key, no secrets in
+the payload or settings, links only inside shares that are on (secrets 0600), the web server only when needed, smart
+folders and a clean up that can be put back, search, fixes and their undo, the four models, a camera's answer, Quick
+Access's word for the AI service; the web server over a real socket (a link's folder, counts, used up, expired,
+stopped, never outside a share or hidden, its password; Files on the web with your name and password; the drop-off
+taking files under safe names and showing nothing); the units, the image's checks and the pages' wiring.
