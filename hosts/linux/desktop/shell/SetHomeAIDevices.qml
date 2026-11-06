@@ -27,11 +27,11 @@ SetPage {
         return ({ off: "Not shared", playing: "Not while you play", battery: "Waiting for a charger", nothing: "No AI found here",
                   offline: "Offline", "not-sharing": "Not sharing its AI" })[r] || "";
     }
-    function svcLine(s) {
+    function svcLine(s, here) {
         const bits = [];
         if (s.models && s.models.length) bits.push(s.models.slice(0, 3).join(", ") + (s.models.length > 3 ? " +" + (s.models.length - 3) : ""));
         if (s.voices && s.voices.length) bits.push(s.voices.length + " voices");
-        return (page.kindWords[s.kind] || s.kind) + " (" + s.engine + ")" + (bits.length ? ": " + bits.join(", ") : "")
+        return (here ? (bits.length ? bits.join(", ") : "Found on port " + s.port) : (page.kindWords[s.kind] || s.kind) + " (" + s.engine + ")" + (bits.length ? ": " + bits.join(", ") : ""))
                + (!s.healthy ? " · not answering" : s.reachable === false ? " · only on that device" : s.busy ? " · busy" : "");
     }
     function devLine(d) {
@@ -97,7 +97,7 @@ SetPage {
             required property var modelData
             icon: modelData.kind === "voice" ? "vol" : modelData.kind === "image" ? "palette" : modelData.kind === "stt" ? "mic" : "grid"
             title: modelData.label
-            sub: page.svcLine(modelData) + (modelData.reachable ? "" : " · it listens on this device only, so other devices can't use it yet")
+            sub: page.svcLine(modelData, true) + (modelData.reachable ? "" : " · it listens on this device only, so other devices can't use it yet")
             checked: !!page.cfg && page.cfg.share[modelData.kind] !== false
             onToggled: v => page.set(modelData.kind, v, v ? "Shared: " + modelData.label : "Not shared: " + modelData.label)
         }
