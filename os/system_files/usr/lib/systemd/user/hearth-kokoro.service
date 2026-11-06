@@ -1,0 +1,18 @@
+# Settings › Home server › Services and AI (docs/HOME-SERVER.md): AI voices, Kokoro-FastAPI on the CPU, as you, in your
+# rootless Podman. Its image isn't in the Hearth image: Settings pulls it only when you ask (hearth-home-server
+# voices-install), by the digest Hearth pins (Podman checks it), and runs it only by that digest (--pull=never), with
+# no capabilities. It listens on 127.0.0.1 and this PC's Tailscale address only (hearth-home-server ai-run), and its
+# port is in Hearth's Tailscale-only firewall rule while it's on. No install section: started only by its timer (a minute
+# after you sign in, enabled only while it's on) or by Settings. Never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth home server: AI voices (Kokoro-FastAPI)
+ConditionPathExists=/usr/bin/podman
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-home-server ai-run kokoro
+ExecStop=-/usr/bin/podman stop --ignore -t 10 hearth-kokoro
+Restart=on-failure
+RestartSec=30
+Nice=5
+TimeoutStopSec=40

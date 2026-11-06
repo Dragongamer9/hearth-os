@@ -63,6 +63,18 @@ everything again.
   hearth-home-server dropoff on|off | dropoff-path PATH
   hearth-home-server folder-share games|family  a Games folder for your Hearth devices, or a Family folder for everyone
   hearth-home-server gaming | family | cameras-scan | safety | fix ID | fix-undo ID | guard-reset
+  ---- AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): your own user services, off until you turn them on
+  hearth-home-server set KEY VALUE              also: picturesOn, picturesPause, voicesOn, voicesPause (on|off)
+  hearth-home-server home-ai                    both in short: installed, on, running, healthy, the addresses
+  hearth-home-server pictures-install | pictures-update     ComfyUI into ~/ComfyUI (only when asked), in its own unit
+  hearth-home-server pictures-remove [models sure really-sure]   the app goes; models (unless both confirmations), your
+                                                pictures and workflows stay
+  hearth-home-server pictures-takeover | pictures-giveback  your own comfyui.service (from your script) off, Hearth's on;
+                                                or back the way it was
+  hearth-home-server voices-install | voices-remove         Kokoro-FastAPI's image (pinned digest) in your rootless Podman
+  hearth-home-server voices-takeover | voices-giveback      your own "kokoro" container stopped, Hearth's on; or back
+  hearth-home-server ai-run comfyui|kokoro      what hearth-comfyui.service / hearth-kokoro.service run (127.0.0.1 and
+                                                this PC's Tailscale address only)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import concurrent.futures
@@ -120,6 +132,9 @@ DEFAULTS = {
     'dropoff': {'on': False, 'path': ''},                         # friends add files, can't see or delete anything
     'links': [],                # [{id, path, label, for, at, expires, pw, max, on}]: their secret part is in a 0600 state file
     'guard': {'on': False, 'limit': 1000},                        # the ransomware guard (renames and deletes in 5 minutes)
+    # ---- AI pictures and AI voices (off until you turn them on; their install and run state is never here)
+    'pictures': {'on': False, 'pause': True},     # ComfyUI on the graphics card: stopped while you play (it holds VRAM)
+    'voices': {'on': False, 'pause': False},      # Kokoro-FastAPI on the CPU: keeps running while you play unless you choose
 }
 BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone')
 KEEP_KEYS = {'keepHourly': 'hourly', 'keepDaily': 'daily', 'keepWeekly': 'weekly'}
@@ -138,6 +153,8 @@ NESTED = {
     'aiOn': ('ai', 'on', 'bool'), 'aiUnload': ('ai', 'unload', 'bool'), 'aiPause': ('ai', 'pause', 'bool'),
     'webOn': ('web', 'on', 'bool'), 'webReach': ('web', 'reach', ('home', 'tailscale')),
     'guardOn': ('guard', 'on', 'bool'), 'guardLimit': ('guard', 'limit', (500, 1000, 5000)),
+    'picturesOn': ('pictures', 'on', 'bool'), 'picturesPause': ('pictures', 'pause', 'bool'),
+    'voicesOn': ('voices', 'on', 'bool'), 'voicesPause': ('voices', 'pause', 'bool'),
 }
 WEB_KEYS = ('webOn', 'webReach')
 APPLY_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'snapshots') + tuple(KEEP_KEYS) + tuple(NESTED)
@@ -303,7 +320,8 @@ def apply_payload(data):
             'people': [{'name': p.get('name'), 'folder': p.get('folder') or ''} for p in data.get('people') or [] if isinstance(p, dict)],
             'backups': backups, 'receive': {'on': rc.get('on') is True, 'path': rc.get('path') or ''},
             'alerts': data.get('alerts'), 'power': data.get('power'),
-            'media': data.get('media'), 'ai': data.get('ai'), 'guard': data.get('guard')}
+            'media': data.get('media'), 'ai': data.get('ai'), 'guard': data.get('guard'),
+            'pictures': data.get('pictures'), 'voices': data.get('voices')}
 
 
 def apply_now(data=None):
@@ -714,6 +732,16 @@ def side_effect(key, on):
         return {'notes': [n for n in notes if n]}
     elif key in WEB_KEYS:
         return web_apply()
+    elif key in ('picturesOn', 'voicesOn'):
+        # Root's part first (their ports in the Tailscale-only rule, the Light mode timer); they listen only on this PC
+        # and its Tailscale address either way, so a failed apply never stops them being yours to turn on or off.
+        out = {}
+        try:
+            out = apply_now()
+        except Fail as e:
+            out = {'note': str(e)}
+        out['app'] = user_app_switch('comfyui' if key == 'picturesOn' else 'kokoro', on)
+        return out
     elif key in APPLY_KEYS:
         return apply_now()
     return {}
@@ -1506,13 +1534,18 @@ def quick():
             paused.append('AI models')
         if data['media'].get('on') and data['media'].get('pause'):
             paused.append('media server')
+        if data['pictures'].get('on') and data['pictures'].get('pause'):
+            paused.append('AI pictures')
+        if data['voices'].get('on') and data['voices'].get('pause'):
+            paused.append('AI voices')
     return {'available': True, 'host': socket.gethostname().split('.')[0], 'lightMode': data['lightMode'] is not False,
             'playing': playing, 'resumed': resumed(), 'paused': paused, 'shares': len(shares), 'people': len(data['people']),
             'usage': fs_usage([s['path'] for s in shares if os.path.isdir(s.get('path', ''))]),
             'backups': {'count': len(jobs), 'lastOk': int(last_ok * 1000) if last_ok else 0, 'waiting': waiting, 'failed': failed,
                         'running': any((j.get('state') or {}).get('running') for j in jobs)},
             'alerts': [a.get('text', '') for a in alerts if isinstance(a, dict)][:3], 'setupDone': bool(data['setupDone']),
-            'ai': ai_quick(data, playing)}
+            'ai': ai_quick(data, playing), 'pictures': ai_app_quick(data, 'pictures', 'comfyui', playing),
+            'voices': ai_app_quick(data, 'voices', 'kokoro', playing)}
 
 
 def ai_quick(data, playing):
@@ -1559,7 +1592,7 @@ MODEL_IDS = tuple(m['id'] for m in MODELS)
 CC_DIRS = ('Hearth AI Command Center', 'hearth-ai-command-center')   # its settings folder in ~/.config (Electron's userData)
 KNOWN_PORTS = {22: 'SSH', 139: 'Samba (old)', 445: 'Shared folders (Samba)', 631: 'Printing', 5353: 'Device discovery (mDNS)',
                7359: 'Media server discovery', 8095: 'Backups from your Hearth devices', 8096: 'Media server (Jellyfin)',
-               8097: 'Files on the web, links, drop-off', 8384: 'Folder sync (Syncthing\'s own page)', 11434: 'AI service (Ollama)',
+               8097: 'Files on the web, links, drop-off', 8188: 'AI pictures (ComfyUI)', 8880: 'AI voices (Kokoro)', 8384: 'Folder sync (Syncthing\'s own page)', 11434: 'AI service (Ollama)',
                21027: 'Folder sync discovery', 22000: 'Folder sync (Syncthing)', 41641: 'Tailscale', 47984: 'Remote play (Sunshine)',
                47989: 'Remote play (Sunshine)', 47990: 'Remote play (Sunshine\'s page)', 48010: 'Remote play (Sunshine)'}
 
@@ -1643,7 +1676,9 @@ def services_status(data=None):
     web['active'] = unit_active(WEB_UNIT, user=True)
     web['pwSet'] = bool(web_secret().get('hash'))
     web['urls'] = web_urls(data, ts_dns, ts_ip, lan)
+    extra = home_ai_view(data)
     return {'media': media, 'ai': ai, 'web': web, 'host': host, 'tsName': ts_dns, 'syncs': len(data['syncs']),
+            'pictures': extra['pictures'], 'voices': extra['voices'],
             'remote': unit_active('sunshine.service', user=True) or unit_active('app-dev.lizardbyte.app.Sunshine.service', user=True),
             'storage': os.path.exists('/etc/samba/hearth-storage.conf'), 'playing': bool(sv.get('playing'))}
 
@@ -1772,6 +1807,7 @@ def ai_status():
             'loaded': loaded, 'reachable': bool(tags is not None),
             'address': 'http://%s:11434/v1' % ts_dns if ts_dns else '', 'local': 'http://localhost:11434/v1',
             'commandCenter': seen.get('commandCenter'), 'showHidden': data['showHidden'], 'ccDays': data['ccDays'],
+            'pictures': sv['pictures'], 'voices': sv['voices'],
             'playing': sv['playing'], 'unloadedAt': (sio.load_json(SERVICES_STATE, {}, repair=False) if os.path.exists(SERVICES_STATE) else {}).get('unloadedAt', 0)}
 
 
@@ -1847,6 +1883,532 @@ def ai_ask(model, prompt):
     if r is None:
         raise Fail('The AI service didn\'t answer (is it on, with that model downloaded?)')
     return {'answer': str(r.get('response') or '').strip()[:8000]}
+
+
+# ------------------------------------------------------------------ AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI)
+#
+# Both are your own user services (systemd --user, as you): hearth-comfyui.service and hearth-kokoro.service, with no
+# [Install]; their timers (a minute after you sign in) are enabled only while they're on. Installed only when you ask,
+# never at build or boot, in a transient unit of your own (systemd-run --user):
+#   - ComfyUI: git clone of its release tag into ~/ComfyUI (the tag's commit is checked against the one Hearth pins),
+#     a venv, PyTorch from the official CUDA 12.8 index (RTX 50 series), then its requirements.txt.
+#   - Kokoro-FastAPI: its CPU image pulled into your rootless Podman by digest (Podman checks the manifest and every
+#     layer against it), run with no capabilities. No graphics card setup needed.
+# Both listen on 127.0.0.1 and this PC's Tailscale address only (and while on, their ports are in Hearth's
+# Tailscale-only firewall rule too). Install and run state is in ~/.local/state/nimbus/home-ai.json, never in settings.
+
+COMFY_REPO = 'https://github.com/comfyanonymous/ComfyUI.git'
+COMFY_TAG = 'v0.43.2'                                          # Hearth moves this pin with its updates
+COMFY_COMMIT = '423cbd20511becb1f16122ab518e92e58bfa03d9'      # what COMFY_TAG must be, or nothing is installed
+TORCH_INDEX = 'https://download.pytorch.org/whl/cu128'         # PyTorch's own CUDA 12.8 builds (RTX 50 series needs them)
+COMFY_PORT = 8188
+KOKORO_IMAGE = 'ghcr.io/remsky/kokoro-fastapi-cpu'
+KOKORO_TAG = ''                                                # the release the digest below is (for the page)
+KOKORO_DIGEST = ''                                             # sha256:...: pulled and run only by this digest
+KOKORO_PORT = 8880
+KOKORO_NAME = 'hearth-kokoro'
+HOME_AI_STATE = os.path.join(STATE_HOME, 'nimbus', 'home-ai.json')
+AI_UNITS = {'comfyui': 'hearth-comfyui.service', 'kokoro': 'hearth-kokoro.service'}
+AI_TIMERS = {'comfyui': 'hearth-comfyui.timer', 'kokoro': 'hearth-kokoro.timer'}
+AI_KEYS = {'comfyui': 'picturesOn', 'kokoro': 'voicesOn'}
+OWNER_COMFY_UNIT = 'comfyui.service'       # the owner's own (from his install script), adopted only when he says so
+OWNER_KOKORO = 'kokoro'                    # his own container (podman run --name kokoro ...)
+COMFY_KEEP = ('models', 'output', 'input', 'user')    # never removed with the app: your models, pictures and workflows
+SHA256_DIGEST_RE = re.compile(r'^sha256:[0-9a-f]{64}$')
+TS_IP_RE = re.compile(r'^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+
+
+def cmd(args, timeout=60, cwd=None, env=None):
+    """(exit code, output) of a command as you; never a shell. Tests replace this."""
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env, stdin=subprocess.DEVNULL)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def have(name):
+    """Whether a program is on this PC. Tests replace this."""
+    return bool(shutil.which(name))
+
+
+def comfy_dir():
+    return os.path.join(me()[1], 'ComfyUI')
+
+
+def ai_state():
+    v = sio.load_json(HOME_AI_STATE, {}, repair=False) if os.path.exists(HOME_AI_STATE) else {}
+    return v if isinstance(v, dict) else {}
+
+
+def ai_state_set(name, **kw):
+    """Install progress, versions, what was taken over: state, never a setting (merged under the lock)."""
+    def change(d):
+        cur = dict(d.get(name)) if isinstance(d.get(name), dict) else {}
+        cur.update(kw)
+        d[name] = cur
+    sio.update_json(HOME_AI_STATE, change)
+
+
+def is_comfy(d):
+    """A ComfyUI checkout (a real folder, not a link): its main.py and comfy package, and a git origin that's ComfyUI's."""
+    if os.path.islink(d) or not os.path.isfile(os.path.join(d, 'main.py')) or not os.path.isdir(os.path.join(d, 'comfy')):
+        return False
+    code, out = cmd(['git', '-C', d, 'config', '--get', 'remote.origin.url'], 10)
+    return code != 0 or 'comfyui' in out.strip().lower()     # no git at all (a copy) still counts by its files
+
+
+def comfy_installed(d=None):
+    d = d or comfy_dir()
+    return is_comfy(d) and os.path.isfile(os.path.join(d, 'venv', 'bin', 'python'))
+
+
+def owner_comfy():
+    """Your own comfyui.service from your install script: there, on at start, running now."""
+    p = os.path.join(CONFIG_HOME, 'systemd', 'user', OWNER_COMFY_UNIT)
+    if not os.path.isfile(p):
+        return {'there': False, 'enabled': False, 'active': False}
+    enabled = cmd(['systemctl', '--user', 'is-enabled', '--quiet', OWNER_COMFY_UNIT], 10)[0] == 0
+    return {'there': True, 'enabled': enabled, 'active': unit_active(OWNER_COMFY_UNIT, user=True), 'file': p}
+
+
+def podman_ok():
+    return have('podman')
+
+
+def kokoro_ref():
+    return '%s@%s' % (KOKORO_IMAGE, KOKORO_DIGEST) if SHA256_DIGEST_RE.fullmatch(KOKORO_DIGEST or '') else ''
+
+
+def kokoro_installed():
+    ref = kokoro_ref()
+    return bool(ref and podman_ok() and cmd(['podman', 'image', 'exists', ref], 20)[0] == 0)
+
+
+def owner_kokoro():
+    """Your own "kokoro" container (podman run --name kokoro ...): there, running now."""
+    if not podman_ok():
+        return {'there': False, 'active': False}
+    code, out = cmd(['podman', 'ps', '-a', '--filter', 'name=^%s$' % OWNER_KOKORO, '--format', '{{.Names}} {{.State}}'], 20)
+    line = next((l for l in out.splitlines() if l.split()[:1] == [OWNER_KOKORO]), '') if code == 0 else ''
+    return {'there': bool(line), 'active': bool(line) and 'running' in line.lower()}
+
+
+def ts_ip4():
+    """This PC's Tailscale IPv4 now, or ''."""
+    if not have('tailscale'):
+        return ''
+    code, out = cmd(['tailscale', 'ip', '-4'], 8)
+    ip = out.strip().splitlines()[0].strip() if code == 0 and out.strip() else ''
+    return ip if TS_IP_RE.fullmatch(ip) else ''
+
+
+def ai_listen():
+    """Where AI pictures and voices listen: this PC, and its Tailscale address when Tailscale is up. Never anywhere else."""
+    ip = ts_ip4()
+    return ['127.0.0.1'] + ([ip] if ip else [])
+
+
+def ai_run(kind):
+    """hearth-comfyui.service / hearth-kokoro.service: becomes ComfyUI or Kokoro's container (exec), on 127.0.0.1 and
+    the Tailscale address only. Where it listens is noted in your runtime folder for the page."""
+    if kind not in AI_UNITS:
+        raise Fail('comfyui or kokoro')
+    addrs = ai_listen()
+    rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-home-server')
+    try:
+        os.makedirs(rt, mode=0o700, exist_ok=True)
+        sio.merge_json(os.path.join(rt, 'home-ai-run.json'), {kind: {'listen': addrs, 'at': int(time.time())}})
+    except OSError:
+        pass
+    if kind == 'comfyui':
+        d = comfy_dir()
+        if not comfy_installed(d):
+            raise Fail('ComfyUI isn\'t installed in ~/ComfyUI')
+        argv = [os.path.join(d, 'venv', 'bin', 'python'), os.path.join(d, 'main.py'), '--listen', ','.join(addrs), '--port', str(COMFY_PORT)]
+        os.chdir(d)
+        os.execv(argv[0], argv)
+        return {}
+    ref = kokoro_ref()
+    if not ref:
+        raise Fail('Kokoro\'s image isn\'t pinned in this Hearth version')
+    argv = ['podman', 'run', '--rm', '--replace', '--name', KOKORO_NAME, '--pull=never', '--cap-drop=all',
+            '--security-opt', 'no-new-privileges']
+    for a in addrs:
+        argv += ['-p', '%s:%d:%d' % (a, KOKORO_PORT, KOKORO_PORT)]
+    argv.append(ref)
+    os.execvp('podman', argv)
+    return {}
+
+
+def user_app_switch(name, on):
+    """Your own service on or off now (and its timer, which starts it a minute after you sign in). Off deletes nothing."""
+    unit, timer = AI_UNITS[name], AI_TIMERS[name]
+    if on:
+        installed = comfy_installed() if name == 'comfyui' else kokoro_installed()
+        if not installed:
+            return 'not installed'
+        cmd(['systemctl', '--user', 'enable', timer], 30)
+        cmd(['systemctl', '--user', 'restart', unit], 30)
+        return 'on'
+    cmd(['systemctl', '--user', 'disable', timer], 30)
+    cmd(['systemctl', '--user', 'stop', unit], 60)
+    return 'off'
+
+
+def user_app_precheck(key, raw):
+    """Turning one on: refused while your own copy still runs on the same port (take it over first)."""
+    if raw != 'on':
+        return
+    if key == 'picturesOn':
+        o = owner_comfy()
+        if o['active'] or o['enabled']:
+            raise Fail('Your own ComfyUI service (comfyui.service from your script) still runs on port 8188: take it over first')
+        if not comfy_installed():
+            raise Fail('Install ComfyUI first')
+    elif key == 'voicesOn':
+        if owner_kokoro()['active']:
+            raise Fail('Your own "kokoro" container still runs on port 8880: take it over first')
+        if not kokoro_installed():
+            raise Fail('Install AI voices first')
+
+
+def free_gb(path):
+    try:
+        st = os.statvfs(path)
+        return st.f_bavail * st.f_frsize / (1 << 30)
+    except OSError:
+        return 0
+
+
+def start_job(name, args):
+    """A long job (an install or update) in its own transient unit of yours, at low priority. Only when you ask."""
+    st = ai_state().get(name) or {}
+    if st.get('installing') and time.time() - (st.get('started') or 0) < 4 * 3600:
+        return {'started': False, 'note': 'already working on it'}
+    ai_state_set(name, installing=True, progress=0, step='starting', error='', started=int(time.time()))
+    code, out = cmd(['systemd-run', '--user', '--unit=hearth-%s-install-%d' % (name, int(time.time())), '--collect',
+                     '--property=Nice=10', '--property=IOSchedulingClass=idle', '--property=RuntimeMaxSec=4h',
+                     sys.executable, os.path.realpath(__file__)] + args, 30)
+    if code != 0:
+        ai_state_set(name, installing=False, error='couldn\'t start: ' + out.strip()[-160:])
+        raise Fail('Couldn\'t start it: %s' % out.strip()[-200:])
+    return {'started': True}
+
+
+def pip(d, args, timeout):
+    """pip in ComfyUI's own venv. pip checks every file against the hash its index lists (download.pytorch.org,
+    pypi.org), over https."""
+    return cmd([os.path.join(d, 'venv', 'bin', 'python'), '-m', 'pip', '--disable-pip-version-check', '--no-input',
+                '--no-cache-dir', '--progress-bar', 'off'] + args, timeout, cwd=d)
+
+
+def comfy_job(update=False):
+    """The install (or update) itself, in its own unit. Anything wrong: you're told why, and an existing ComfyUI keeps
+    working (a new clone goes beside it first; an update never touches files you changed)."""
+    name = 'comfyui'
+    d = comfy_dir()
+    step = lambda s, pct: ai_state_set(name, step=s, progress=pct)
+    try:
+        if not have('git'):
+            raise Fail('git isn\'t on this PC (it comes with the next Hearth OS update)')
+        if cmd(['/usr/bin/python3', '-c', 'import ensurepip, venv'], 20)[0] != 0:
+            raise Fail('Python\'s venv isn\'t on this PC (python3-venv; it comes with the next Hearth OS update)')
+        if os.path.islink(d):
+            raise Fail('~/ComfyUI is a link: Hearth leaves it alone')
+        if os.path.exists(d) and not is_comfy(d):
+            raise Fail('~/ComfyUI is there but isn\'t ComfyUI: Hearth leaves it alone')
+        if not update and free_gb(me()[1]) < 15:
+            raise Fail('Not enough free space in your Home: ComfyUI with PyTorch needs about 15 GB')
+        was_on = unit_active(AI_UNITS[name], user=True)
+        if not os.path.exists(d):
+            step('getting ComfyUI ' + COMFY_TAG, 5)
+            new = d + '.hearth-new'
+            if os.path.isdir(new) and not os.path.islink(new):
+                shutil.rmtree(new)
+            code, out = cmd(['git', 'clone', '--depth', '1', '--branch', COMFY_TAG, '--single-branch', COMFY_REPO, new], 1800)
+            if code != 0:
+                raise Fail('Couldn\'t get ComfyUI: ' + out.strip()[-200:])
+            code, head = cmd(['git', '-C', new, 'rev-parse', 'HEAD'], 20)
+            if head.strip() != COMFY_COMMIT:
+                shutil.rmtree(new, ignore_errors=True)
+                raise Fail('ComfyUI %s isn\'t the release Hearth expects (its commit is different): not installed' % COMFY_TAG)
+            os.rename(new, d)
+            ai_state_set(name, hearthMade=True)
+        if update:
+            if not os.path.isdir(os.path.join(d, '.git')):
+                raise Fail('This ComfyUI wasn\'t installed with git, so Hearth can\'t update it')
+            step('getting ComfyUI ' + COMFY_TAG, 10)
+            code, out = cmd(['git', '-C', d, 'status', '--porcelain', '--untracked-files=no'], 60)
+            if code != 0 or out.strip():
+                raise Fail('ComfyUI\'s own files were changed here: Hearth won\'t write over them')
+            code, out = cmd(['git', '-C', d, 'fetch', '--depth', '1', '--no-tags', COMFY_REPO,
+                             'refs/tags/%s:refs/tags/%s' % (COMFY_TAG, COMFY_TAG)], 1800)
+            if code != 0:
+                raise Fail('Couldn\'t get ComfyUI %s: %s' % (COMFY_TAG, out.strip()[-200:]))
+            code, tag = cmd(['git', '-C', d, 'rev-parse', COMFY_TAG + '^{commit}'], 20)
+            if tag.strip() != COMFY_COMMIT:
+                raise Fail('ComfyUI %s isn\'t the release Hearth expects (its commit is different): not updated' % COMFY_TAG)
+            newer = cmd(['git', '-C', d, 'merge-base', '--is-ancestor', COMFY_COMMIT, 'HEAD'], 20)[0] == 0
+            if not newer:
+                if was_on:
+                    cmd(['systemctl', '--user', 'stop', AI_UNITS[name]], 60)
+                code, out = cmd(['git', '-C', d, 'checkout', '--detach', COMFY_COMMIT], 300)
+                if code != 0:
+                    raise Fail('Couldn\'t switch ComfyUI to %s: %s' % (COMFY_TAG, out.strip()[-200:]))
+        if not os.path.isfile(os.path.join(d, 'venv', 'bin', 'python')):
+            step('making its Python environment', 15)
+            code, out = cmd(['/usr/bin/python3', '-m', 'venv', os.path.join(d, 'venv')], 600)
+            if code != 0:
+                raise Fail('Couldn\'t make its Python environment: ' + out.strip()[-200:])
+        if pip(d, ['show', 'torch'], 120)[0] != 0:
+            step('downloading PyTorch for CUDA 12.8 (a few GB)', 20)
+            code, out = pip(d, ['install', '--index-url', TORCH_INDEX, 'torch', 'torchvision', 'torchaudio'], 3 * 3600)
+            if code != 0:
+                raise Fail('PyTorch didn\'t install: ' + out.strip()[-200:])
+        step('installing what ComfyUI needs', 70)
+        code, out = pip(d, ['install', '-r', 'requirements.txt'], 3600)
+        if code != 0:
+            raise Fail('ComfyUI\'s requirements didn\'t install: ' + out.strip()[-200:])
+        step('checking PyTorch sees the graphics card', 95)
+        code, out = cmd([os.path.join(d, 'venv', 'bin', 'python'), '-c',
+                         'import json, torch; c = torch.cuda.is_available(); '
+                         'print(json.dumps({"torch": torch.__version__, "cuda": c, "gpu": torch.cuda.get_device_name(0) if c else ""}))'], 300, cwd=d)
+        info = {}
+        try:
+            info = json.loads(out.strip().splitlines()[-1]) if code == 0 else {}
+        except (ValueError, IndexError):
+            pass
+        code, ver = cmd(['git', '-C', d, 'describe', '--tags', '--always'], 20)
+        ai_state_set(name, installing=False, progress=100, step='', error='', version=ver.strip()[:40] if code == 0 else COMFY_TAG,
+                     torch=str(info.get('torch', ''))[:40], cuda=info.get('cuda') is True, gpu=str(info.get('gpu', ''))[:80], at=int(time.time()))
+        if was_on or value('picturesOn'):
+            cmd(['systemctl', '--user', 'restart', AI_UNITS[name]], 30)
+        return {'installed': True}
+    except Fail as e:
+        ai_state_set(name, installing=False, error=str(e)[:300])
+        raise
+
+
+def comfy_remove(models=False):
+    """ComfyUI's code and its Python environment go. Your models stay unless you confirmed twice; your pictures
+    (output), inputs and workflows (user) always stay. Nothing outside ~/ComfyUI is touched; links are never followed."""
+    o = owner_comfy()
+    if o['active'] or o['enabled']:
+        raise Fail('Your own comfyui.service still uses ~/ComfyUI: take it over first (or remove it yourself)')
+    user_app_switch('comfyui', False)
+    d = comfy_dir()
+    if os.path.islink(d) or not os.path.isdir(d):
+        raise Fail('ComfyUI isn\'t in ~/ComfyUI')
+    if not is_comfy(d):
+        raise Fail('~/ComfyUI isn\'t ComfyUI: Hearth leaves it alone')
+    keep = set(COMFY_KEEP) - ({'models'} if models else set())
+    for n in os.listdir(d):
+        if n in keep:
+            continue
+        p = os.path.join(d, n)
+        if os.path.islink(p) or not os.path.isdir(p):
+            os.unlink(p)
+        else:
+            shutil.rmtree(p)
+    if models:
+        m = os.path.join(d, 'models')
+        if os.path.islink(m):
+            os.unlink(m)              # a link to another drive: the link goes, never what it points to
+        elif os.path.isdir(m):
+            shutil.rmtree(m)
+    left = sorted(os.listdir(d))
+    if not left:
+        os.rmdir(d)
+    st = ai_state()
+    st.pop('comfyui', None)
+    sio.write_json(HOME_AI_STATE, st)
+    out = {'removed': 'comfyui', 'kept': left}
+    if set_key('picturesOn', 'off'):      # you removed it: its switch goes off with it
+        out['turnedOff'] = 'picturesOn'
+        try:
+            apply_now()
+        except Fail:
+            pass
+    return out
+
+
+def comfy_takeover():
+    """Your own comfyui.service off (disabled and stopped; its file stays, so Give back undoes it), then Hearth's on."""
+    o = owner_comfy()
+    if o['there']:
+        cmd(['systemctl', '--user', 'disable', '--now', OWNER_COMFY_UNIT], 60)
+    ai_state_set('comfyui', takenOver={'unit': OWNER_COMFY_UNIT, 'wasEnabled': o.get('enabled', False), 'wasActive': o.get('active', False),
+                                       'at': int(time.time())})
+    if not comfy_installed():
+        return {'takenOver': True, 'note': 'Install ComfyUI\'s Python environment first (Update does it)'}
+    changed = set_key('picturesOn', 'on')
+    return {'takenOver': True, 'applied': side_effect('picturesOn', True) if changed else user_app_switch('comfyui', True)}
+
+
+def comfy_giveback():
+    """Hearth's ComfyUI off and your own comfyui.service back on, as it was."""
+    took = (ai_state().get('comfyui') or {}).get('takenOver') or {}
+    if set_key('picturesOn', 'off'):
+        side_effect('picturesOn', False)
+    else:
+        user_app_switch('comfyui', False)
+    if owner_comfy()['there']:
+        if took.get('wasEnabled', True):
+            cmd(['systemctl', '--user', 'enable', '--now', OWNER_COMFY_UNIT], 60)
+        elif took.get('wasActive'):
+            cmd(['systemctl', '--user', 'start', OWNER_COMFY_UNIT], 60)
+    ai_state_set('comfyui', takenOver=None)
+    return {'givenBack': True}
+
+
+def kokoro_job():
+    """Kokoro-FastAPI's image pulled by its pinned digest (Podman checks the manifest and every layer against it)."""
+    name = 'kokoro'
+    try:
+        ref = kokoro_ref()
+        if not ref:
+            raise Fail('Kokoro\'s image isn\'t pinned in this Hearth version yet')
+        if not podman_ok():
+            raise Fail('Podman isn\'t on this PC')
+        ai_state_set(name, step='downloading Kokoro-FastAPI (about 2 GB)', progress=10)
+        code, out = cmd(['podman', 'pull', ref], 3 * 3600)
+        if code != 0 or cmd(['podman', 'image', 'exists', ref], 30)[0] != 0:
+            raise Fail('Kokoro\'s image didn\'t download: ' + out.strip()[-200:])
+        ai_state_set(name, installing=False, progress=100, step='', error='', version=KOKORO_TAG, digest=KOKORO_DIGEST, at=int(time.time()))
+        if value('voicesOn'):
+            cmd(['systemctl', '--user', 'restart', AI_UNITS[name]], 30)
+        return {'installed': True}
+    except Fail as e:
+        ai_state_set(name, installing=False, error=str(e)[:300])
+        raise
+
+
+def kokoro_remove():
+    """Hearth's Kokoro goes (its service and image). Your own "kokoro" container is never touched."""
+    user_app_switch('kokoro', False)
+    ref = kokoro_ref()
+    note = ''
+    if ref and podman_ok():
+        code, out = cmd(['podman', 'rmi', ref], 120)
+        if code != 0 and 'in use' in out.lower():
+            note = 'The image stays: your own "kokoro" container uses it'
+    st = ai_state()
+    st.pop('kokoro', None)
+    sio.write_json(HOME_AI_STATE, st)
+    out = {'removed': 'kokoro', 'note': note}
+    if set_key('voicesOn', 'off'):
+        out['turnedOff'] = 'voicesOn'
+        try:
+            apply_now()
+        except Fail:
+            pass
+    return out
+
+
+def kokoro_takeover():
+    o = owner_kokoro()
+    if o['active']:
+        cmd(['podman', 'stop', OWNER_KOKORO], 60)
+    ai_state_set('kokoro', takenOver={'container': OWNER_KOKORO, 'wasRunning': o['active'], 'at': int(time.time())})
+    if not kokoro_installed():
+        return {'takenOver': True, 'note': 'Install AI voices next (Hearth runs its own copy, by its pinned digest)'}
+    changed = set_key('voicesOn', 'on')
+    return {'takenOver': True, 'applied': side_effect('voicesOn', True) if changed else user_app_switch('kokoro', True)}
+
+
+def kokoro_giveback():
+    took = (ai_state().get('kokoro') or {}).get('takenOver') or {}
+    if set_key('voicesOn', 'off'):
+        side_effect('voicesOn', False)
+    else:
+        user_app_switch('kokoro', False)
+    if took.get('wasRunning') and owner_kokoro()['there']:
+        cmd(['podman', 'start', OWNER_KOKORO], 60)
+    ai_state_set('kokoro', takenOver=None)
+    return {'givenBack': True}
+
+
+def size_gb(path, limit=200000):
+    """How big a folder is (links not followed), in GB; quick and rough."""
+    total, n = 0, 0
+    for root_, dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root_, f)).st_size
+            except OSError:
+                pass
+            n += 1
+            if n > limit:
+                return round(total / (1 << 30), 1)
+    return round(total / (1 << 30), 1)
+
+
+def home_ai_view(data=None, deep=True):
+    """AI pictures and AI voices for the pages: installed, on, running, healthy, where they listen, the addresses."""
+    data = load() if data is None else data
+    st = ai_state()
+    sv = sio.load_json(SERVICES_STATE, {}, repair=False) if os.path.exists(SERVICES_STATE) else {}
+    paused = sv.get('paused') or []
+    ts_dns, _ = ts_name_ip() if deep else ('', '')
+    rt = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-home-server', 'home-ai-run.json')
+    run_st = sio.load_json(rt, {}, repair=False) if os.path.exists(rt) else {}
+    d = comfy_dir()
+    out = {}
+    for name, key in (('comfyui', 'pictures'), ('kokoro', 'voices')):
+        s = st.get(name) if isinstance(st.get(name), dict) else {}
+        v = dict(data[key])
+        v.update({'installing': bool(s.get('installing')) and time.time() - (s.get('started') or 0) < 4 * 3600,
+                  'progress': s.get('progress', 0), 'step': s.get('step', ''), 'error': s.get('error', ''),
+                  'version': s.get('version', ''), 'active': unit_active(AI_UNITS[name], user=True),
+                  'paused': name in paused, 'takenOver': bool(s.get('takenOver')),
+                  'listen': ((run_st.get(name) or {}).get('listen') or []) if isinstance(run_st, dict) else []})
+        out[key] = v
+    p, k = out['pictures'], out['voices']
+    p.update({'installed': comfy_installed(d) if deep else os.path.isfile(os.path.join(d, 'venv', 'bin', 'python')),
+              'dir': d, 'models': os.path.join(d, 'models', 'checkpoints'), 'tag': COMFY_TAG,
+              'torch': (st.get('comfyui') or {}).get('torch', ''), 'gpu': (st.get('comfyui') or {}).get('gpu', ''),
+              'url': 'http://%s:%d' % (ts_dns, COMFY_PORT) if ts_dns else '', 'local': 'http://localhost:%d' % COMFY_PORT})
+    k.update({'tag': KOKORO_TAG, 'pinned': bool(kokoro_ref()), 'podman': podman_ok(),
+              'url': 'http://%s:%d' % (ts_dns, KOKORO_PORT) if ts_dns else '', 'local': 'http://localhost:%d' % KOKORO_PORT})
+    if deep:
+        p['existing'] = is_comfy(d) and not (st.get('comfyui') or {}).get('hearthMade')
+        p['owner'] = owner_comfy()
+        p['git'] = have('git')
+        if p['active']:
+            stats = http_json('GET', 'http://127.0.0.1:%d/system_stats' % COMFY_PORT, timeout=3)
+            p['healthy'] = isinstance(stats, dict) and 'system' in stats
+            devs = stats.get('devices') if isinstance(stats, dict) else None
+            if isinstance(devs, list) and devs and isinstance(devs[0], dict):
+                p['device'] = str(devs[0].get('name', ''))[:80]
+                p['vram'] = int(devs[0].get('vram_total') or 0)
+        try:
+            mdir = p['models']
+            p['modelFiles'] = sorted(n for n in os.listdir(mdir) if n.endswith(('.safetensors', '.ckpt', '.gguf')))[:50] if os.path.isdir(mdir) else []
+        except OSError:
+            p['modelFiles'] = []
+        k['installed'] = kokoro_installed()
+        k['owner'] = owner_kokoro()
+        if k['active']:
+            h = http_json('GET', 'http://127.0.0.1:%d/health' % KOKORO_PORT, timeout=3)
+            k['healthy'] = isinstance(h, dict) and str(h.get('status', '')).lower() in ('healthy', 'ok')
+            vs = http_json('GET', 'http://127.0.0.1:%d/v1/audio/voices' % KOKORO_PORT, timeout=3) if k['healthy'] else None
+            k['voices'] = len(vs.get('voices') or []) if isinstance(vs, dict) else 0
+    else:
+        k['installed'] = bool((st.get('kokoro') or {}).get('digest'))
+    return out
+
+
+def ai_app_quick(data, key, name, playing):
+    """AI pictures or voices in a word for Quick Access: off, ready, or stopped for your game."""
+    if not data[key].get('on'):
+        return {'on': False, 'state': 'off'}
+    sv = sio.load_json(SERVICES_STATE, {}, repair=False) if os.path.exists(SERVICES_STATE) else {}
+    if name in (sv.get('paused') or []):
+        return {'on': True, 'state': 'paused'}
+    if playing and data['lightMode'] and data[key].get('pause') and not resumed():
+        return {'on': True, 'state': 'paused'}
+    return {'on': True, 'state': 'ready'}
 
 
 # ------------------------------------------------------------------ files & links
@@ -2316,6 +2878,7 @@ def gaming_view():
     ts_dns, _ = ts_name_ip()
     return {'games': games, 'lightMode': data['lightMode'], 'playing': bool(mod and mod.game_running()), 'resumed': resumed(),
             'ai': {k: sv['ai'][k] for k in ('on', 'unload', 'pause', 'installed')}, 'media': {k: sv['media'][k] for k in ('on', 'pause')},
+            'pictures': {k: sv['pictures'][k] for k in ('on', 'pause', 'installed')}, 'voices': {k: sv['voices'][k] for k in ('on', 'pause', 'installed')},
             'snapshots': data['snapshots'], 'backups': len(data['backups']), 'syncs': len(data['syncs']), 'tsName': ts_dns,
             'storage': sv['storage'], 'remote': sv['remote']}
 
@@ -2394,6 +2957,10 @@ def safety_view():
                       'who': 'your web password; links: whoever has the link'})
     if data['ai'].get('on'):
         reach.append({'what': 'AI service', 'where': 'tailscale', 'who': 'your devices on Tailscale'})
+    if data['pictures'].get('on'):
+        reach.append({'what': 'AI pictures (ComfyUI)', 'where': 'tailscale', 'who': 'your devices on Tailscale (no password: keep it Tailscale only)'})
+    if data['voices'].get('on'):
+        reach.append({'what': 'AI voices (Kokoro)', 'where': 'tailscale', 'who': 'your devices on Tailscale'})
     jobs = backups_state(data)
     last_ok = max([(j.get('state') or {}).get('lastOk') or 0 for j in jobs] or [0])
     guard = sio.load_json(GUARD_STATE, {}, repair=False) if os.path.exists(GUARD_STATE) else {}
@@ -2550,7 +3117,9 @@ def status():
     svc = {'media': {'on': data['media']['on'], 'active': unit_active('hearth-jellyfin.service')},
            'ai': {'on': data['ai']['on'], 'active': unit_active('hearth-ollama.service')},
            'web': {'on': web_needed(data), 'active': unit_active(WEB_UNIT, user=True)},
-           'links': len([l for l in data['links'] if isinstance(l, dict)]), 'guardTripped': guard.get('tripped', 0)}
+           'links': len([l for l in data['links'] if isinstance(l, dict)]), 'guardTripped': guard.get('tripped', 0),
+           'pictures': {'on': data['pictures']['on'], 'active': unit_active(AI_UNITS['comfyui'], user=True)},
+           'voices': {'on': data['voices']['on'], 'active': unit_active(AI_UNITS['kokoro'], user=True)}}
     alerts = sio.load_json(ALERT_STATE, {}, repair=False) if os.path.exists(ALERT_STATE) else {}
     power = sio.load_json(POWER_STATE, {}, repair=False) if os.path.exists(POWER_STATE) else {}
     return {'settings': data, 'file': SETTINGS, 'user': user, 'host': host, 'shares': shares, 'tools': tools,
@@ -2570,6 +3139,7 @@ def main(argv):
         if a == ['status']:
             res = status()
         elif len(a) == 3 and a[0] == 'set':
+            user_app_precheck(a[1], a[2])
             changed = set_key(a[1], a[2])
             res = {'changed': changed}
             if changed:
@@ -2764,6 +3334,37 @@ def main(argv):
             res = fix_undo(a[1])
         elif a == ['guard-reset']:
             res = guard_reset()
+        # ---- AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI)
+        elif a == ['home-ai']:
+            res = home_ai_view()
+        elif a == ['pictures-install']:
+            res = start_job('comfyui', ['pictures-job'])
+        elif a == ['pictures-update']:
+            res = start_job('comfyui', ['pictures-job', 'update'])
+        elif a in (['pictures-job'], ['pictures-job', 'update']):
+            res = comfy_job(update=len(a) == 2)
+        elif a == ['pictures-remove']:
+            res = comfy_remove(models=False)
+        elif a == ['pictures-remove', 'models', 'sure', 'really-sure']:
+            res = comfy_remove(models=True)
+        elif a == ['pictures-takeover']:
+            res = comfy_takeover()
+        elif a == ['pictures-giveback']:
+            res = comfy_giveback()
+        elif a == ['voices-install']:
+            if not kokoro_ref():
+                raise Fail('Kokoro\'s image isn\'t pinned in this Hearth version yet')
+            res = start_job('kokoro', ['voices-job'])
+        elif a == ['voices-job']:
+            res = kokoro_job()
+        elif a == ['voices-remove']:
+            res = kokoro_remove()
+        elif a == ['voices-takeover']:
+            res = kokoro_takeover()
+        elif a == ['voices-giveback']:
+            res = kokoro_giveback()
+        elif len(a) == 2 and a[0] == 'ai-run':
+            res = ai_run(a[1])
         else:
             raise Fail('Unknown command')
         print(json.dumps(res))

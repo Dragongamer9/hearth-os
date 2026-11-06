@@ -7,6 +7,9 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Home server: AI pictures (ComfyUI) in Services and on the AI page: installed only when you ask (ComfyUI's release from GitHub with its commit checked, PyTorch's CUDA 12.8 builds for the RTX 50 series, its requirements) into ~/ComfyUI, or your own ~/ComfyUI adopted with "Take over" (your comfyui.service is switched off, never deleted, and Give back undoes it); on/off, only through Tailscale and on this PC, Open, Models folder (no model is ever downloaded), status, Update, Remove (your models stay unless you confirm twice; pictures and workflows always stay); stopped while you play so the graphics card is yours (on by default) (needs testing on a device)
+- [x] Home server: AI voices (Kokoro-FastAPI) in Services and on the AI page: installed only when you ask, in rootless Podman by the exact image Hearth pins (Podman checks it), on the CPU; on/off, only through Tailscale and on this PC, the address to paste into the Command Center (Settings › Voice › Speech servers › Kokoro-FastAPI) with Copy, status, Remove; your own "kokoro" container taken over only when you say; can stop while you play (off by default). Both in the Overview's Services count and Game Mode's Quick Access line. git and python3-venv in the Debian image (needs testing on a device)
+
 ## 1.4 (released 2026-11-05)
 
 - [x] Mantel dock: coming back from Game Mode, an auto-hide dock no longer keeps the bottom of the screen reserved, so windows can fill the whole screen again (it waits for your settings, and refits when its space changes) (needs testing on a device)
@@ -21,7 +24,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Home server, stage 3: Files & links (search every share, smart folders: recent screenshots, big files, duplicates, not changed in a year, with a clean up that only moves files to the recycle bin and Put back; changed this week; space per share; share links with an end date, password and most downloads; a drop-off folder; Tailscale only unless you choose your home network) (needs testing on a device)
 - [x] Home server, stage 3: Gaming (a Games folder for your Hearth devices, Steam's own LAN transfers and the game archive, Remote play over Tailscale, what Light mode holds back) and Family & home (a Family folder for everyone, People, cameras found on your network shown only once one is found) (needs testing on a device)
 - [x] Home server, stage 3: Safety (who can reach what, open ports, Tailscale only, the last backup, SMB3 and no guests; fixes that say what they change and Undo; the ransomware guard: shares turn read only when far too many files are renamed or deleted at once, you're told, and one step makes them writable again), the Overview's new tiles and links, and the AI service's state in Game Mode's Quick Access tile. Every new service and timer off until you turn it on (needs testing on a device)
-- [ ] Home server, later: parental controls (play time), ad blocking for the home, a shared calendar server, recording cameras, a photo library app (Immich), voice servers set up by Hearth, game servers
+- [ ] Home server, later: parental controls (play time), ad blocking for the home, a shared calendar server, recording cameras, a photo library app (Immich), game servers
 
 ## 1.3 (released 2026-11-04)
 

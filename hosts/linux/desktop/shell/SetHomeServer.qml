@@ -32,8 +32,9 @@ SetPage {
     readonly property var svc: st ? (st.services || {}) : ({})
     readonly property bool aiShown: !!st && !!st.seen && !!st.seen.commandCenter && (st.seen.commandCenter.shown || (!!svc.ai && svc.ai.on))
     function servicesBig() {
-        const on = [svc.media && svc.media.on ? "Media" : "", svc.web && svc.web.on ? "Web" : "", svc.ai && svc.ai.on ? "AI" : ""].filter(x => x);
-        return { big: on.length ? String(on.length) + " on" : "None", sub: on.length ? on.join(" · ") : "media server, files on the web, AI", good: on.length > 0 };
+        const on = [svc.media && svc.media.on ? "Media" : "", svc.web && svc.web.on ? "Web" : "", svc.ai && svc.ai.on ? "AI" : "",
+                    svc.pictures && svc.pictures.on ? "Pictures" : "", svc.voices && svc.voices.on ? "Voices" : ""].filter(x => x);
+        return { big: on.length ? String(on.length) + " on" : "None", sub: on.length ? on.join(" · ") : "media server, files on the web, AI pictures and voices", good: on.length > 0 };
     }
     function backupBig() {
         const jobs = st ? (st.backups || []) : [];
@@ -179,7 +180,7 @@ SetPage {
     SetRow {
         visible: !!page.cfg
         icon: "window"; title: "Services"
-        sub: "Optional apps for your devices: the media server (Jellyfin), files on the web" + (page.aiShown ? ", the AI service" : "") + "; each off until you turn it on"
+        sub: "Optional apps for your devices: the media server (Jellyfin), files on the web, AI pictures (ComfyUI), AI voices (Kokoro)" + (page.aiShown ? ", the AI service" : "") + "; each off until you turn it on"
         value: page.servicesBig().good ? page.servicesBig().big : ""
         onActivated: SettingsNav.openPage("hs-services")
     }
