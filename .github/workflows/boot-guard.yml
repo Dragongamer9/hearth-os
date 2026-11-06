@@ -36,13 +36,17 @@ on:
       - 'os/system_files/usr/libexec/nimbus/hearth-boot-look'
       - 'os/system_files/usr/share/plymouth/**'
       - 'hosts/linux/test/test_hearth_bls_grub.py'
+      - 'hosts/linux/test/test_plymouth_themes.py'
+      - 'tools/plymouth_preview.py'
+      - 'os/system_files/usr/share/hearth/boot-previews/**'
+      - 'os/system_files/usr/share/hearth/startup-movies/**'
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: GRUB's tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq grub-common && which grub-script-check grub-editenv
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq grub-common python3-pil && which grub-script-check grub-editenv
       - name: Tests
         run: |
           cd hosts/linux
@@ -78,6 +82,17 @@ jobs:
           fi
           grep -E 'skipped|^Ran|^OK' /tmp/b.txt | tail -n 5
           sh -n ../../os-bases/peppermint/system_files/usr/libexec/nimbus/hearth-bls-grub
+      # Every boot splash theme parses and runs (a strict stand-in for Plymouth's script plugin, at several screen
+      # sizes, with the password prompt), the newer ones use only what the first three use, every list of splash
+      # names agrees, the default stays hearth, and Settings › Boot & startup has a preview for every choice.
+      - name: Boot splash themes (tools/plymouth_preview.py) and the Boot & startup previews
+        run: |
+          cd hosts/linux
+          if ! python3 -m unittest discover -s test -p 'test_plymouth_themes.py' -v > /tmp/p.txt 2>&1; then
+            grep -v -E '^$|\.\.\. ok$' /tmp/p.txt | grep -A12 -E '^(FAIL|ERROR):' | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          grep -E 'skipped|^Ran|^OK' /tmp/p.txt | tail -n 5
+          if grep -q 'skipped' /tmp/p.txt; then echo "::error::the splash themes weren't run (Pillow missing?)"; exit 1; fi
       - name: Writable system tests (hearth-unlock, hearth-admin unlock, the .deb installer going native)
         run: |
           cd hosts/linux

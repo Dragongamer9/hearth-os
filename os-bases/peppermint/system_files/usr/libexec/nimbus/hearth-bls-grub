@@ -21,8 +21,8 @@
 #     of its entries, only if it's there, and the file only switches to the theme when GRUB has everything it needs
 #     (gfxterm, gfxmenu, png, the theme file). Anything missing: GRUB's plain text menu, exactly as before.
 #     Off: touch /etc/hearth/no-grub-theme (the theme files are then removed from /boot).
-#   - the boot splash preset (/etc/hearth/boot-splash: hearth, hearth-steam or hearth-minimal; Settings › Boot &
-#     startup): plymouth.splash=<preset> on each entry's kernel command line (not for the default, hearth). A
+#   - the boot splash preset (/etc/hearth/boot-splash: hearth, hearth-steam, hearth-minimal, hearth-aurora,
+#     hearth-starlight or hearth-orbit; Settings › Boot & startup): plymouth.splash=<preset> on each entry's kernel command line (not for the default, hearth). A
 #     version whose start-up files lack that preset shows its default splash instead (Plymouth falls back), and
 #     if Plymouth fails at all the start goes on in text.
 # Nothing here changes the entries' order, the default, the timeout or the automatic fallback (hearth-boot-guard).
@@ -92,7 +92,7 @@ SPLASH_ARG=""
 if [ -r "$SPLASH_CONF" ]; then
   sp=$(head -n 1 "$SPLASH_CONF" 2>/dev/null | tr -cd 'a-z-') || sp=""
   case "$sp" in
-    hearth-steam|hearth-minimal)
+    hearth-steam|hearth-minimal|hearth-aurora|hearth-starlight|hearth-orbit)
       if [ -f "$OWN_ROOT/usr/share/plymouth/themes/$sp/$sp.plymouth" ]; then SPLASH_ARG=" plymouth.splash=$sp"; fi ;;
   esac
 fi

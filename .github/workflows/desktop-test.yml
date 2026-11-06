@@ -6,7 +6,7 @@ name: Desktop Mode test
 on:
   push:
     branches: [main, linux-host]
-    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml', 'os/system_files/usr/libexec/nimbus/hearth-boot-look']
+    paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**', '.github/workflows/desktop-test.yml', 'os/system_files/usr/libexec/nimbus/hearth-boot-look', 'os/system_files/usr/share/hearth/boot-previews/**']
   pull_request:
     paths: ['hosts/linux/desktop/**', 'hosts/linux/session/**', 'branding/icons/**']
   workflow_dispatch:
@@ -357,9 +357,31 @@ jobs:
           # ---- Settings › Boot & startup (1.1): its helper, the splash presets and the startup animations as the image has them
           mkdir -p /usr/libexec/nimbus /usr/share/hearth /usr/share/plymouth/themes
           cp os/system_files/usr/libexec/nimbus/hearth-boot-look /usr/libexec/nimbus/ && chmod 755 /usr/libexec/nimbus/hearth-boot-look
-          cp -r os/system_files/usr/share/hearth/startup-movies /usr/share/hearth/ && cp -r os/system_files/usr/share/plymouth/themes/hearth* /usr/share/plymouth/themes/
+          cp -r os/system_files/usr/share/hearth/startup-movies os/system_files/usr/share/hearth/boot-previews /usr/share/hearth/ && cp -r os/system_files/usr/share/plymouth/themes/hearth* /usr/share/plymouth/themes/
           printf '#!/bin/sh\necho hearth-bls-grub stand-in\n' > /usr/libexec/nimbus/hearth-bls-grub
-          ipc settings page boot; grim "shots/$n-settings-boot.png" || true; n=$((n+1))
+          ipc settings page boot; sleep 2; grim "shots/$n-settings-boot.png" || true; n=$((n+1))
+          # The previews (next update): into the page, down to the Aurora splash's card, open its preview, a frame
+          # later, close it (B / Esc), down to the Aurora startup animation's, open it. Looking changes nothing:
+          # the choices must be the same afterwards.
+          if command -v wtype >/dev/null; then
+            before=$(python3 /usr/libexec/nimbus/hearth-boot-look status | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["splash"]["current"], d["movie"]["current"])')
+            wtype -k Right; sleep 0.6
+            for i in 1 2 3; do wtype -k Down; sleep 0.3; done
+            sleep 1; grim "shots/$n-settings-boot-cards.png" || true; n=$((n+1))
+            wtype -k Return; sleep 1.5; grim "shots/$n-settings-boot-preview-splash.png" || true; n=$((n+1))
+            sleep 1.7; grim "shots/$n-settings-boot-preview-splash-later.png" || true; n=$((n+1))
+            wtype -k Escape; sleep 0.6
+            for i in 1 2 3 4 5 6 7 8; do wtype -k Down; sleep 0.3; done
+            wtype -k Return; sleep 2.5; grim "shots/$n-settings-boot-preview-movie.png" || true; n=$((n+1))
+            wtype -k Escape; sleep 0.6
+            after=$(python3 /usr/libexec/nimbus/hearth-boot-look status | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["splash"]["current"], d["movie"]["current"])')
+            if [ "$before" != "$after" ]; then echo "::error title=Boot & startup::looking at the previews changed a choice ($before -> $after)"; touch shots/FAILED; fi
+            echo "boot choices before: $before / after: $after" > shots/boot-preview-choices.txt
+          fi
+          if grep -E "SetBoot[A-Za-z]*\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null | grep -qv SetBootVideo; then
+            echo "::error title=Boot & startup::$(grep -E 'SetBoot[A-Za-z]*\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | grep -v SetBootVideo | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          grep -E "SetBoot" "$XDG_RUNTIME_DIR/nimbus-shell.log" > shots/boot-shell-log.txt 2>/dev/null || true
           python3 /usr/libexec/nimbus/hearth-boot-look status > shots/boot-look-status.json 2>&1 || { echo "::error title=Boot & startup::hearth-boot-look status failed"; touch shots/FAILED; }
           python3 hosts/linux/desktop/shell/hearth-access status > shots/accessibility-status.json 2>&1 || true
           ipc settings close

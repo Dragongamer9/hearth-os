@@ -7,6 +7,11 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Settings › Boot & startup shows every boot splash and startup animation as a card with its picture; picking one plays it in the window (the splashes drawn from their own boot scripts, never by starting the real boot splash; the animations as a flip book, or the full video on request). Looking changes nothing: only Use this chooses. Works with a controller (needs testing on a device)
+- [x] Three new startup animations for Steam Game Mode, for 16:9 and 16:10: Aurora (northern lights over a night sky), Starlight (stars join up into the Hearth arch, then the flame lights) and Ember orbit (three embers spiral into the flame and keep circling it) (needs testing on a device)
+- [x] Three new boot splashes that go with them: Aurora, Starlight and Ember orbit. The default splash and the one you picked before stay as they were; each new one is checked in CI by running its script at several screen sizes with the disk password prompt, and started in a virtual PC (needs testing on a device)
+- [x] Matching sets: a new splash and its startup animation chosen together in one press ("Use with its startup animation"), only when you press it (needs testing on a device)
+
 ## 1.4 (released 2026-11-05)
 
 - [x] Mantel dock: coming back from Game Mode, an auto-hide dock no longer keeps the bottom of the screen reserved, so windows can fill the whole screen again (it waits for your settings, and refits when its space changes) (needs testing on a device)

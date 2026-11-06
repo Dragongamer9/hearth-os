@@ -518,7 +518,9 @@ Send logs › "Screen" shows each screen's modes with refresh rates, its EDID, a
   time the way CSS Loader themes do. When Steam renames a component, that part simply stays Steam's style.
 - Hearth's startup movie: the plugin puts one in Steam's custom boot video folder
   (`~/.steam/root/config/uioverrides/movies/deck_startup.webm`) only if one ships with it, and never replaces yours.
-  Hearth doesn't have a startup movie yet, so Steam's own plays. Hearth's sounds are made by Hearth's page itself (no
+  Hearth OS itself now ships seven startup animations (`tools/make-startup-movies.py`: flame, sweep, reveal, embers,
+  aurora, starlight, orbit), picked and previewed in Settings › Boot & startup (`hearth-boot-look` copies the chosen
+  one there; the previews are frame sheets from `tools/make-boot-previews.py`). Hearth's sounds are made by Hearth's page itself (no
   sound files), so the plugin plays the same sounds on its own pages, only when **Hearth sounds** is on.
 - The takeover's parts that change Steam's own screens (the main menu entries and the Library tabs most of all) are
   found by looking at Steam's screens while it runs; CI can't check them against a real Steam, so some may turn
