@@ -618,6 +618,17 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Show 18+ models",
+"p": "hs-ai",
+"d": "Uncensored chat models for adults. Off on a family PC. They're just models in Ollama: the Hearth AI Command Center's own limits still apply to anything you ask through it",
+"i": "lock"
+},
+{
+"t": "Download any model by name",
+"p": "hs-ai",
+"i": "plus"
+},
+{
 "t": "AI pictures (ComfyUI)",
 "p": "hs-ai",
 "i": "palette"
@@ -652,6 +663,12 @@ var ENTRIES = [
 "p": "hs-ai",
 "d": "When Game Mode or a game starts (with Light mode on), loaded models leave the graphics card within a minute; the next question loads them again",
 "i": "pad"
+},
+{
+"t": "Small model while you play",
+"p": "hs-ai",
+"d": "On the processor, so your devices still get answers while you play (Server mode's \"switch to the small model\")",
+"i": "chat"
 },
 {
 "t": "Stop the AI service while I play",

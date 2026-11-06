@@ -33,6 +33,12 @@ SetPage {
         return a.active ? (a.healthy ? "Running" : "Starting…") : "Starting…";
     }
     function say(t, b) { msg = t; bad = !!b; }
+    property bool customOpen: false
+    // The same rule as hearth-home-server's model_name_ok (it checks again).
+    function modelNameOk(n) {
+        return n.length > 0 && n.length <= 200 && n.indexOf("..") < 0 && (!n.startsWith("hf.co/") || n.split("/").length === 3)
+            && /^(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.\-]{0,95}\/[A-Za-z0-9][A-Za-z0-9_.\-]{0,95}(?::[A-Za-z0-9_.\-]{1,40})?|[a-z0-9][a-z0-9_.\-]{0,60}(?:\/[a-z0-9][a-z0-9_.\-]{0,60})?(?::[A-Za-z0-9_.\-]{1,60})?)$/.test(n);
+    }
     function refresh() { job.run(["ai"], r => { page.ai = r; if (!page.askModel && page.have.length) page.askModel = page.have[0].id; }, e => page.ai = { error: e, models: [] }); }
     function set(k, v, ok) { act.run(["set", k, v], () => { if (ok) page.say(ok); page.refresh(); }, e => { page.say(e, true); page.refresh(); }); }
     function ago(ms) {
@@ -96,7 +102,7 @@ SetPage {
     // ---------------------------------------------------------------- models
     SetHeader { text: "Models"; visible: page.shown && !!page.svc && page.svc.installed }
     Repeater {
-        model: page.shown && page.svc && page.svc.installed ? page.ai.models : []
+        model: page.shown && page.svc && page.svc.installed ? page.ai.models.filter(m => m.group !== "adult") : []
         delegate: SetRow {
             required property var modelData
             icon: modelData.have ? "check" : "plus"
@@ -109,6 +115,52 @@ SetPage {
                 if (!modelData.have) act.run(["ai-pull", modelData.id], () => { page.say("Downloading " + modelData.label + "… (Ollama checks every part)"); page.refresh(); }, e => page.say(e, true));
                 else page.askModel = modelData.id;
             }
+        }
+    }
+    // Uncensored (18+): ordinary Ollama models, listed only with the switch on (off by default; saved only when you turn
+    // it on), so a family PC never shows them. Anything going through the Hearth AI Command Center keeps its own limits.
+    SetHeader { text: "Uncensored (18+)"; visible: page.shown && !!page.svc && page.svc.installed }
+    SetSwitch {
+        visible: page.shown && !!page.svc && page.svc.installed
+        icon: "lock"; title: "Show 18+ models"
+        sub: "Uncensored chat models for adults. Off on a family PC. They're just models in Ollama: the Hearth AI Command Center's own limits still apply to anything you ask through it"
+        checked: !!page.ai && page.ai.showAdult
+        onToggled: v => act.run(["set", "showAdult", v ? "on" : "off"], () => page.refresh(), e => page.say(e, true))
+    }
+    Repeater {
+        model: page.shown && page.svc && page.svc.installed && page.ai.showAdult ? page.ai.models.filter(m => m.group === "adult") : []
+        delegate: SetRow {
+            required property var modelData
+            icon: modelData.have ? "check" : "plus"
+            title: modelData.label
+            sub: modelData.note + " · " + modelData.id + " · " + modelData.size
+                 + (modelData.pulling ? " · downloading " + modelData.pulling.pct + "%" : modelData.error ? " · didn't download: " + modelData.error : "")
+            value: modelData.have ? (modelData.loaded ? "Loaded" : "Downloaded") : modelData.pulling ? modelData.pulling.pct + "%" : "Download"
+            onActivated: {
+                if (modelData.pulling) return;
+                if (!modelData.have) act.run(["ai-pull", modelData.id], () => { page.say("Downloading " + modelData.label + "… (Ollama checks every part)"); page.refresh(); }, e => page.say(e, true));
+                else page.askModel = modelData.id;
+            }
+        }
+    }
+    // Any other model, by its name in Ollama's library or a Hugging Face GGUF (hf.co/user/repo:Q4_K_M).
+    SetRow {
+        visible: page.shown && !!page.svc && page.svc.installed
+        icon: "plus"; title: "Download any model by name"
+        sub: page.ai && page.ai.custom ? page.ai.custom.model + (page.ai.custom.error ? " · didn't download: " + page.ai.custom.error : page.ai.custom.done ? " · downloaded" : " · downloading " + page.ai.custom.pct + "%")
+             : "From Ollama's library (qwen3:8b, user/model:tag) or a GGUF on Hugging Face (hf.co/user/repo:Q4_K_M). Downloads only when you press Enter"
+        value: "Type a name"
+        onActivated: page.customOpen = !page.customOpen
+    }
+    SetField {
+        visible: page.customOpen && page.shown && !!page.svc && page.svc.installed
+        Layout.leftMargin: 56; Layout.rightMargin: 18; Layout.topMargin: 6; Layout.bottomMargin: 6
+        placeholder: "A model name, then Enter to download it"
+        onSubmitted: t => {
+            t = t.trim();
+            if (!page.modelNameOk(t)) { page.say("That isn't a model name (letters, digits and . : _ / - only)", true); return; }
+            act.run(["ai-pull", t], () => { page.say("Downloading " + t + "… (Ollama checks every part)"); page.customOpen = false; page.refresh(); }, e => page.say(e, true));
+            text = "";
         }
     }
     SetRow {
@@ -203,6 +255,16 @@ SetPage {
              + (page.ai && page.ai.unloadedAt ? " · last " + page.ago(page.ai.unloadedAt * 1000) : "")
         checked: !!page.svc && page.svc.unload
         onToggled: v => page.set("aiUnload", v ? "on" : "off")
+    }
+    SetChoice {
+        // Only when the abliterated 14B is downloaded (and the 18+ models are shown): it can be the small model instead.
+        visible: page.shown && !!page.svc && page.svc.installed && !!page.ai && page.ai.showAdult
+                 && page.ai.models.some(m => m.id === "huihui_ai/qwen3-abliterated:14b" && m.have)
+        icon: "chat"; title: "Small model while you play"
+        sub: "On the processor, so your devices still get answers while you play (Server mode's \"switch to the small model\")"
+        options: [{ value: "qwen3:14b", label: "Qwen3 14B" }, { value: "huihui_ai/qwen3-abliterated:14b", label: "Qwen3 14B abliterated" }]
+        current: page.ai ? page.ai.smallModel : "qwen3:14b"
+        onChosen: v => page.set("aiSmallModel", v)
     }
     SetSwitch {
         visible: page.shown && !!page.svc && page.svc.installed

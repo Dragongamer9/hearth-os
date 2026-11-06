@@ -14,6 +14,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Settings › System › Startup: start in Game Mode, Desktop Mode or Server mode, and with Server mode an optional schedule (weekdays and the weekend); no schedule unless you make one, and a change never closes a game or leaves Desktop Mode (needs testing on a device)
 - [x] Server mode stays awake, with lower power limits when nothing's busy (power-saver, the graphics card's limit) and the screen dimming to a clock, then black (needs testing on a device)
 - [x] Server mode's web page over Tailscale (port 8460, phone and laptop layouts): status, pause and restart services, switch modes, sleep or restart; PIN protected (only its hash kept), Tailscale and this PC only, every permission switchable; a switch from the web counts down 10 seconds on the home screen (needs testing on a device)
+- [x] Home server › AI chat: an "Uncensored (18+)" group behind "Show 18+ models" (off by default, so a family PC never shows them): Qwen3 30B-A3B and 14B abliterated, Dolphin 3 and Rocinante 12B (Mistral Nemo, for roleplay and writing), each name checked; "Download any model by name" (Ollama names or hf.co GGUFs, validated); the abliterated 14B can be the small model while you play (needs testing on a device)
 - [x] A read-only summary for your other Hearth devices (/api/summary, hearth-server-mode summary) for Hearth Link and Quick Access (needs testing on a device; a Hearth Link page for it is next)
 
 ## 1.5 (released 2026-11-06)

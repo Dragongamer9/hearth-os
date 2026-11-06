@@ -702,6 +702,22 @@ class RootPart(Stage3):
         self.assertEqual(posted[0]['client_id'], 'laptop')
         self.assertFalse(os.path.exists(hh.COMFY_QUEUE))
 
+    def test_the_abliterated_14b_is_the_small_model_when_picked_and_downloaded(self):
+        self.plan(ai={'on': True, 'unload': True, 'small': True, 'smallModel': 'huihui_ai/qwen3-abliterated:14b'})
+        self.install('ollama')
+        self.active.add('hearth-ollama.service')
+        have = ['qwen3:30b-a3b', 'qwen3:14b']
+        sent = []
+        hh.ollama_api = lambda m, p, b=None, timeout=10: (sent.append((p, b)) or ({'models': [{'name': n} for n in have]} if p == '/api/tags' else {'models': []} if p == '/api/ps' else {}))
+        hh.game_running = lambda: True
+        hh.services_run(now=1)
+        self.assertIn('qwen3:14b', [b['model'] for p, b in sent if p == '/api/generate' and b.get('options')], 'not downloaded: qwen3:14b instead')
+        have.append('huihui_ai/qwen3-abliterated:14b')
+        sent.clear()
+        hh.services_run(now=61)
+        self.assertIn('huihui_ai/qwen3-abliterated:14b', [b['model'] for p, b in sent if p == '/api/generate' and b.get('options')])
+        self.assertEqual(hh.clean_ai({'smallModel': 'evil:1b'})['smallModel'], 'qwen3:14b', 'only the two choices')
+
     def test_svc_only_hearth_units_that_are_set_up(self):
         with self.assertRaises(hh.Fail):
             hh.svc('restart', 'sshd')
@@ -738,6 +754,58 @@ class AiPayload(unittest.TestCase):
         self.assertIs(hs.ai_payload({'ai': {'on': True, 'small': None}})['small'], True)
         self.assertIs(hs.ai_payload({'ai': {'on': True, 'small': False}})['small'], False)
         self.assertTrue(hs.server_web_on())
+
+
+class AdultModels(unittest.TestCase):
+    """Uncensored (18+) models in Settings › Home server › AI chat: hidden until "Show 18+ models" is on, and "Download
+    any model by name" only takes model names (never a URL, a path or an option)."""
+
+    def setUp(self):
+        names = ('load', 'services_status', 'http_json', 'seen_state', 'pull_file')
+        saved = {k: getattr(hs, k) for k in names}
+        self.addCleanup(lambda: [setattr(hs, k, v) for k, v in saved.items()])
+        self.data = {'showAdult': False, 'ai': {}, 'showHidden': False, 'ccDays': 30}
+        hs.load = lambda: dict(self.data)
+        hs.services_status = lambda data=None: {'ai': {'active': True}, 'tsName': '', 'pictures': {}, 'voices': {}, 'playing': False}
+        hs.http_json = lambda m, u, b=None, timeout=5: ({'models': [{'name': 'qwen3:30b-a3b'}, {'name': 'dolphin3:8b'}]} if u.endswith('/api/tags') else {'models': []})
+        hs.seen_state = lambda data: {}
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        hs.pull_file = lambda: os.path.join(d, 'pull.json')
+
+    def test_names_are_checked(self):
+        for ok in ('qwen3:8b', 'dolphin3', 'huihui_ai/qwen3-abliterated:30b-a3b', 'hf.co/TheDrummer/Rocinante-12B-v1.1-GGUF:Q4_K_M',
+                   'hf.co/bartowski/Some.Model-GGUF', 'llama3.2:3b-instruct-q4_K_M'):
+            self.assertTrue(hs.model_name_ok(ok), ok)
+        for bad in ('', 'http://evil/x', '--insecure', '-rf', 'a b', 'qwen3:8b;rm -rf /', '../etc/passwd', 'a/b/c', 'hf.co/../x',
+                    'Qwen3:8b', 'name:tag:more', 'x' * 300, '$(id)', 'hf.co/user', None):
+            self.assertFalse(hs.model_name_ok(bad), bad)
+        with self.assertRaises(hs.Fail):
+            hs.ai_pull('http://example.com/model.gguf')
+
+    def test_18_plus_models_only_with_the_switch_on(self):
+        r = hs.ai_status()
+        ids = [m['id'] for m in r['models']]
+        self.assertIn('qwen3:30b-a3b', ids)
+        self.assertFalse([i for i in ids if 'abliterated' in i or i.startswith('dolphin3') or 'Rocinante' in i], 'a family PC never lists them')
+        self.assertFalse(r['showAdult'])
+        self.assertIn('dolphin3:8b', r['others'], 'one you downloaded yourself still shows by name')
+        self.data['showAdult'] = True
+        r = hs.ai_status()
+        adult = [m for m in r['models'] if m['group'] == 'adult']
+        self.assertEqual([m['id'] for m in adult], ['huihui_ai/qwen3-abliterated:30b-a3b', 'huihui_ai/qwen3-abliterated:14b', 'dolphin3:8b',
+                                                    'hf.co/TheDrummer/Rocinante-12B-v1.1-GGUF:Q4_K_M'])
+        self.assertTrue(all(m['note'] and m['size'] for m in adult), 'each with a one-line description and its size')
+        self.assertTrue(next(m for m in adult if m['id'] == 'dolphin3:8b')['have'])
+        self.assertNotIn('dolphin3:8b', r['others'])
+        for m in hs.MODELS + hs.ADULT_MODELS:
+            self.assertTrue(hs.model_name_ok(m['id']), m['id'])
+
+    def test_the_switch_is_off_by_default_and_display_only(self):
+        self.assertIs(hs.DEFAULTS['showAdult'], False)
+        self.assertIn('showAdult', hs.BOOL_KEYS)
+        self.assertNotIn('showAdult', hs.APPLY_KEYS, 'showing them changes nothing on the system')
+        self.assertEqual(hs.NESTED['aiSmallModel'][2], ('qwen3:14b', 'huihui_ai/qwen3-abliterated:14b'))
 
 
 class Wiring(unittest.TestCase):

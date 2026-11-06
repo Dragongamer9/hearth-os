@@ -392,6 +392,29 @@ on the **AI** page next to the chat models. Both are **your own user services** 
 - **Overview and Quick Access**: the Services tile counts Pictures and Voices; Quick Access says "AI pictures: stopped
   while you play · AI voices: ready" and lists them in what Light mode holds back. Gaming lists them under what waits.
 
+## Uncensored (18+) models and any model by name (Hearth 1.6)
+
+Settings › Home server › AI chat has a group **Uncensored (18+)** behind **Show 18+ models** (`showAdult`, off by default,
+display only: saved only when you turn it on, so a family PC never lists them). They're ordinary models in Ollama,
+downloaded only when you press Download (the same `ollama pull` path, every part SHA-256 checked); the Hearth AI Command
+Center's own built-in limits still apply to anything asked through it. Each name was checked on ollama.com / Hugging Face
+(November 2026):
+
+| Model | Name | Size | What it's for |
+|---|---|---|---|
+| Qwen3 30B-A3B abliterated | `huihui_ai/qwen3-abliterated:30b-a3b` | 19 GB | the same model you use now, without the refusals (card + RAM) |
+| Qwen3 14B abliterated | `huihui_ai/qwen3-abliterated:14b` | 9.0 GB | fully on the 12 GB card; can be the small model while you play |
+| Dolphin 3 | `dolphin3:8b` | 4.9 GB | an uncensored all-rounder (8B) |
+| Rocinante 12B | `hf.co/TheDrummer/Rocinante-12B-v1.1-GGUF:Q4_K_M` | 7.5 GB | a Mistral Nemo 12B tune for characters, roleplay, creative writing |
+
+**Download any model by name**: a field on the same page takes an Ollama library name (`qwen3:8b`, `user/model:tag`) or a
+Hugging Face GGUF (`hf.co/<user>/<repo>[:<quant>]`). Only letters, digits and `. : _ / -` (never a URL, a path or an
+option; `hf.co/` needs both a user and a repo), checked in Settings and again in `hearth-home-server` (`model_name_ok`).
+
+**Small model while you play** (Server mode's "switch to the small model"): qwen3:14b, or the abliterated 14B when it's
+downloaded and you pick it (`aiSmallModel`; the choice shows only with the 18+ models shown). If the one you picked isn't
+downloaded, qwen3:14b is used; if neither is, nothing is loaded. Nothing is ever downloaded or deleted for it.
+
 ## Server mode (Hearth 1.6)
 
 Settings › Home server › **Server mode** (docs/SERVER-MODE.md) turns this PC's screen into a dashboard for the home server:

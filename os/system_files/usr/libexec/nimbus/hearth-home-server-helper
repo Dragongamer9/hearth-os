@@ -2303,6 +2303,7 @@ COMFY_PORT = 8188
 KOKORO_PORT = 8880
 SERVER_WEB_PORT = 8460             # Server mode's web page (hearth-server-mode)
 SMALL_MODEL = 'qwen3:14b'          # Light mode's small model while you play (on the processor), when you chose it
+SMALL_MODELS = (SMALL_MODEL, 'huihui_ai/qwen3-abliterated:14b')   # the choices (the abliterated 14B when you picked it)
 COMFY_QUEUE = '/run/hearth/comfyui-queue.json'   # ComfyUI's queue kept while it's stopped for your game (root only, 0600)
 GPU_LIMIT_STATE = '/run/hearth/server-gpu-limit'
 USER_APPS = {'comfyui': ('pictures', 'hearth-comfyui.service', True), 'kokoro': ('voices', 'hearth-kokoro.service', False)}
@@ -2321,7 +2322,7 @@ def clean_media(m):
 def clean_ai(a):
     a = a if isinstance(a, dict) else {}
     return {'on': a.get('on') is True, 'unload': a.get('unload', True) is not False, 'pause': a.get('pause') is True,
-            'small': a.get('small') is True}
+            'small': a.get('small') is True, 'smallModel': a.get('smallModel') if a.get('smallModel') in SMALL_MODELS else SMALL_MODEL}
 
 
 def clean_user_app(a, pause_default):
@@ -2753,23 +2754,29 @@ def unload_models(keep=None):
     return gone
 
 
-def small_model_load():
-    """While you play (Server mode's choice): the small model on the processor only (num_gpu 0), kept loaded, so your
-    other devices still get answers without taking the graphics card from the game. Only when it's downloaded: nothing is
-    ever downloaded or deleted here. Returns True when it's loaded."""
+def small_model_pick(want):
+    """The small model to use: the one you picked when it's downloaded, else qwen3:14b when that is, else '' (nothing
+    to load). Nothing is ever downloaded or deleted here."""
     tags = ollama_api('GET', '/api/tags') or {}
     have = [m.get('name') or m.get('model') for m in tags.get('models') or [] if isinstance(m, dict)]
-    if SMALL_MODEL not in have:
-        return False
+    for name in (want, SMALL_MODEL):
+        if name in have:
+            return name
+    return ''
+
+
+def small_model_load(name):
+    """While you play (Server mode's choice): NAME on the processor only (num_gpu 0), kept loaded, so your other devices
+    still get answers without taking the graphics card from the game. Returns True when it's loaded."""
     ps = ollama_api('GET', '/api/ps') or {}
-    if SMALL_MODEL in [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]:
+    if name in [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]:
         return True
-    r = ollama_api('POST', '/api/generate', {'model': SMALL_MODEL, 'keep_alive': '4h', 'options': {'num_gpu': 0}}, timeout=120)
+    r = ollama_api('POST', '/api/generate', {'model': name, 'keep_alive': '4h', 'options': {'num_gpu': 0}}, timeout=120)
     return r is not None
 
 
-def small_model_unload():
-    ollama_api('POST', '/api/generate', {'model': SMALL_MODEL, 'keep_alive': 0}, timeout=30)
+def small_model_unload(name=SMALL_MODEL):
+    ollama_api('POST', '/api/generate', {'model': name, 'keep_alive': 0}, timeout=30)
 
 
 def unit_active(unit):
@@ -2924,22 +2931,24 @@ def services_run(now=None):
     if ai['on'] and app_installed('ollama'):
         if playing:
             small = ai['small'] and not ai['pause']
+            name = small_model_pick(ai['smallModel']) if small and unit_active('hearth-ollama.service') else ''
             if (ai['unload'] or small) and unit_active('hearth-ollama.service'):
-                gone = unload_models(SMALL_MODEL if small else None)
+                gone = unload_models(name or None)
                 if gone:
                     did.append('unloaded ' + ', '.join(gone))
                 st['unloadedAt'] = int(now)
-            if small and unit_active('hearth-ollama.service') and small_model_load():
-                if not st.get('small'):
-                    did.append('the small model (%s) on the processor for your game' % SMALL_MODEL)
-                st['small'] = SMALL_MODEL
+            if name and small_model_load(name):
+                if st.get('small') != name:
+                    did.append('the small model (%s) on the processor for your game' % name)
+                st['small'] = name
             if ai['pause'] and 'ollama' not in paused and unit_active('hearth-ollama.service'):
                 run(['systemctl', 'stop', 'hearth-ollama.service'])
                 paused.append('ollama')
         elif unit_active('hearth-ollama.service'):
-            if st.pop('small', None):
+            was = st.pop('small', None)
+            if was:
                 # Back from your game: the small model goes; the big one loads again on the next question.
-                small_model_unload()
+                small_model_unload(was if was in SMALL_MODELS else SMALL_MODEL)
                 did.append('the small model unloaded')
             users = ai_clients()
             if users:

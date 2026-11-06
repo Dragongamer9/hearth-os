@@ -587,10 +587,12 @@ class Mantel(unittest.TestCase):
             hs.fix_apply('rm-rf')
 
     def test_the_ready_made_models_are_the_four_for_his_pc_and_only_they_download(self):
-        self.assertEqual(hs.MODEL_IDS, ('qwen3:30b-a3b', 'qwen3-coder:30b-a3b', 'gpt-oss:20b', 'qwen3:14b'))
+        # The four for his PC; the 18+ group (hidden unless he turns it on) and "any model by name" are in
+        # test_hearth_server_mode.py (AdultModels). Only model names ever get to Ollama.
+        self.assertEqual(tuple(m['id'] for m in hs.MODELS), ('qwen3:30b-a3b', 'qwen3-coder:30b-a3b', 'gpt-oss:20b', 'qwen3:14b'))
         self.assertTrue(hs.MODELS[0]['recommended'])
         self.assertTrue(all(m['note'] and m['size'] for m in hs.MODELS))
-        for bad in ('llama3; rm -rf /', 'evil/model', ''):
+        for bad in ('llama3; rm -rf /', 'http://evil/model', '', '--insecure'):
             with self.assertRaises(hs.Fail):
                 hs.ai_pull(bad)
 

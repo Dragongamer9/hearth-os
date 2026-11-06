@@ -96,6 +96,7 @@ FIXTURE = os.environ.get('HEARTH_SERVER_DASH_FIXTURE', '')   # tests and CI scre
 WEB_UNIT = 'hearth-server-mode-web.service'
 PORT = int(os.environ.get('HEARTH_SERVER_WEB_PORT', '8460'))
 SMALL_MODEL = 'qwen3:14b'
+SMALL_MODELS = (SMALL_MODEL, 'huihui_ai/qwen3-abliterated:14b')   # Light mode's choices (hearth-home-server aiSmallModel)
 BIG_MODEL = 'qwen3:30b-a3b'
 COUNTDOWN_WEB = 10            # seconds the home screen counts down before a switch asked for from the web page
 SESSION_DAYS = 30             # a device that typed the PIN stays signed in this long
@@ -615,7 +616,7 @@ def pauses_view(hsd=None, srv=None):
             'voices': 'pause' if voi.get('pause') is True else 'keep', 'voicesOn': voi.get('on') is True,
             'media': 'pause' if med.get('pause') is True else 'keep', 'mediaOn': med.get('on') is True,
             'backups': 'wait' if hsd.get('lightMode', True) is not False else 'run',
-            'small': SMALL_MODEL, 'big': BIG_MODEL}
+            'small': ai.get('smallModel') if ai.get('smallModel') in SMALL_MODELS else SMALL_MODEL, 'big': BIG_MODEL}
 
 
 def status():

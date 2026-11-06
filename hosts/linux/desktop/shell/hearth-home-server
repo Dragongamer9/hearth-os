@@ -54,6 +54,7 @@ everything again.
   ---- stage 3
   hearth-home-server set KEY VALUE              also: mediaOn, mediaPause, aiOn, aiUnload, aiPause, webOn, guardOn (on|off);
                                                 aiSmall (on|off: the small model while you play, docs/SERVER-MODE.md);
+                                                aiSmallModel (qwen3:14b|huihui_ai/qwen3-abliterated:14b); showAdult (on|off)
                                                 mediaReach, webReach (home|tailscale); guardLimit (500|1000|5000)
   hearth-home-server services                   the media server, the AI service and Files on the web: installed, on, where
   hearth-home-server app-install ollama|jellyfin | app-remove ollama|jellyfin    (verified downloads, only when asked)
@@ -118,6 +119,7 @@ DEFAULTS = {
     'showHidden': False,        # display only: hiding never turns anything off
     'ccDays': 30,               # Command Center items show when it was seen on one of your devices this recently
     'setupDone': False,
+    'showAdult': False,         # display only: the "Uncensored (18+)" models are listed (Settings › Home server › AI chat)
     'smbPasswordSet': 0,        # when you last set your sharing password (the password itself is never kept)
     # ---- stage 2 (every one off or empty until you choose it)
     'people': [],               # [{name, pwSet, folder, quotaGb}]: Samba-only accounts; each share's own "people" says who may open it
@@ -139,7 +141,7 @@ DEFAULTS = {
     'pictures': {'on': False, 'pause': True},     # ComfyUI on the graphics card: stopped while you play (it holds VRAM)
     'voices': {'on': False, 'pause': False},      # Kokoro-FastAPI on the CPU: keeps running while you play unless you choose
 }
-BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone')
+BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone', 'showAdult')
 KEEP_KEYS = {'keepHourly': 'hourly', 'keepDaily': 'daily', 'keepWeekly': 'weekly'}
 KEEP_MAX = {'hourly': 168, 'daily': 90, 'weekly': 104}
 # Settings inside a group (alerts, power, receive): KEY -> (group, its key, what it takes). Only that key is written.
@@ -154,6 +156,7 @@ NESTED = {
     # ---- stage 3
     'mediaOn': ('media', 'on', 'bool'), 'mediaReach': ('media', 'reach', ('home', 'tailscale')), 'mediaPause': ('media', 'pause', 'bool'),
     'aiOn': ('ai', 'on', 'bool'), 'aiUnload': ('ai', 'unload', 'bool'), 'aiPause': ('ai', 'pause', 'bool'), 'aiSmall': ('ai', 'small', 'bool'),
+    'aiSmallModel': ('ai', 'smallModel', ('qwen3:14b', 'huihui_ai/qwen3-abliterated:14b')),
     'webOn': ('web', 'on', 'bool'), 'webReach': ('web', 'reach', ('home', 'tailscale')),
     'guardOn': ('guard', 'on', 'bool'), 'guardLimit': ('guard', 'limit', (500, 1000, 5000)),
     'picturesOn': ('pictures', 'on', 'bool'), 'picturesPause': ('pictures', 'pause', 'bool'),
@@ -1629,7 +1632,33 @@ MODELS = [
     {'id': 'qwen3:14b', 'label': 'Qwen3 14B', 'size': '9.3 GB',
      'note': 'Fast: fits entirely in the RTX 5070\'s 12 GB, the quickest answers for everyday questions'},
 ]
-MODEL_IDS = tuple(m['id'] for m in MODELS)
+# Uncensored (18+) models: shown only with "Show 18+ models" on (off by default, saved only when you turn it on), so a
+# family PC never lists them. They're ordinary Ollama models; anything going through the Hearth AI Command Center still
+# has its own limits. Every name here was checked on ollama.com / Hugging Face (docs/HOME-SERVER.md).
+ADULT_MODELS = [
+    {'id': 'huihui_ai/qwen3-abliterated:30b-a3b', 'label': 'Qwen3 30B-A3B abliterated', 'size': '19 GB', 'group': 'adult',
+     'note': 'The same model you use now, without the refusals: splits across the graphics card and RAM'},
+    {'id': 'huihui_ai/qwen3-abliterated:14b', 'label': 'Qwen3 14B abliterated', 'size': '9.0 GB', 'group': 'adult',
+     'note': 'Fits entirely on the 12 GB card, without the refusals; can be the small model while you play'},
+    {'id': 'dolphin3:8b', 'label': 'Dolphin 3', 'size': '4.9 GB', 'group': 'adult',
+     'note': 'An uncensored all-rounder (8B): quick, follows your instructions without lecturing'},
+    {'id': 'hf.co/TheDrummer/Rocinante-12B-v1.1-GGUF:Q4_K_M', 'label': 'Rocinante 12B', 'size': '7.5 GB', 'group': 'adult',
+     'note': 'A Mistral Nemo 12B tune for characters, roleplay and creative writing (from Hugging Face)'},
+]
+for _m in MODELS:
+    _m.setdefault('group', 'main')
+MODEL_IDS = tuple(m['id'] for m in MODELS + ADULT_MODELS)
+SMALL_MODELS = ('qwen3:14b', 'huihui_ai/qwen3-abliterated:14b')     # Light mode's small model while you play
+# "Download any model by name": an Ollama library name (name, name:tag, user/name:tag) or a Hugging Face GGUF
+# (hf.co/<user>/<repo>[:<quant>]). Letters, digits and . : _ / - only; never a URL, a path or an option.
+MODEL_NAME_RE = re.compile(r'^(?:hf\.co/[A-Za-z0-9][A-Za-z0-9_.\-]{0,95}/[A-Za-z0-9][A-Za-z0-9_.\-]{0,95}(?::[A-Za-z0-9_.\-]{1,40})?'
+                           r'|[a-z0-9][a-z0-9_.\-]{0,60}(?:/[a-z0-9][a-z0-9_.\-]{0,60})?(?::[A-Za-z0-9_.\-]{1,60})?)$')
+
+
+def model_name_ok(name):
+    if not isinstance(name, str) or len(name) > 200 or '..' in name or not MODEL_NAME_RE.match(name):
+        return False
+    return not name.startswith('hf.co/') or name.count('/') == 2      # hf.co/<user>/<repo>, nothing shorter
 CC_DIRS = ('Hearth AI Command Center', 'hearth-ai-command-center')   # its settings folder in ~/.config (Electron's userData)
 KNOWN_PORTS = {22: 'SSH', 139: 'Samba (old)', 445: 'Shared folders (Samba)', 631: 'Printing', 5353: 'Device discovery (mDNS)',
                7359: 'Media server discovery', 8095: 'Backups from your Hearth devices', 8096: 'Media server (Jellyfin)',
@@ -1833,7 +1862,8 @@ def ai_status():
     loaded = [m.get('name') for m in (ps or {}).get('models') or [] if isinstance(m, dict)]
     pull = sio.load_json(pull_file(), {}, repair=False) if os.path.exists(pull_file()) else {}
     models = []
-    for m in MODELS:
+    shown = MODELS + (ADULT_MODELS if data.get('showAdult') is True else [])
+    for m in shown:
         q = dict(m)
         q['have'] = m['id'] in have or (m['id'] + ':latest') in have
         q['loaded'] = m['id'] in loaded
@@ -1844,7 +1874,11 @@ def ai_status():
         models.append(q)
     ts_dns = sv['tsName']
     seen = seen_state(data)
-    return {'ai': ai, 'models': models, 'others': sorted(n for n in have if n not in MODEL_IDS),
+    shown_ids = {m['id'] for m in shown}
+    custom = pull.get('model') if pull.get('model') and pull.get('model') not in shown_ids else ''
+    return {'ai': ai, 'models': models, 'others': sorted(n for n in have if n not in shown_ids and n.replace(':latest', '') not in shown_ids),
+            'showAdult': data.get('showAdult') is True, 'smallModel': (data.get('ai') or {}).get('smallModel') or 'qwen3:14b',
+            'custom': {'model': custom, 'pct': pull.get('pct', 0), 'done': bool(pull.get('done')), 'error': pull.get('error', '')} if custom else None,
             'loaded': loaded, 'reachable': bool(tags is not None),
             'address': 'http://%s:11434/v1' % ts_dns if ts_dns else '', 'local': 'http://localhost:11434/v1',
             'commandCenter': seen.get('commandCenter'), 'showHidden': data['showHidden'], 'ccDays': data['ccDays'],
@@ -1857,9 +1891,11 @@ def pull_file():
 
 
 def ai_pull(model):
-    """Download one of the ready-made models (Ollama checks every part's SHA-256 as it downloads). Only when you pick one."""
-    if model not in MODEL_IDS:
-        raise Fail('Pick one of the models listed')
+    """Download one of the ready-made models, or any model you typed by name (Ollama checks every part's SHA-256 as it
+    downloads). Only when you press Download."""
+    model = (model or '').strip()
+    if model not in MODEL_IDS and not model_name_ok(model):
+        raise Fail('That isn\'t a model name (like qwen3:8b, user/model:tag or hf.co/user/repo:Q4_K_M)')
     if not unit_active('hearth-ollama.service'):
         raise Fail('Turn the AI service on first')
     os.makedirs(os.path.dirname(pull_file()), mode=0o700, exist_ok=True)
@@ -1871,8 +1907,8 @@ def ai_pull(model):
 
 def ai_pull_run(model):
     import urllib.request
-    if model not in MODEL_IDS:
-        return {'error': 'not a listed model'}
+    if model not in MODEL_IDS and not model_name_ok(model):
+        return {'error': 'not a model name'}
     req = urllib.request.Request(OLLAMA + '/api/pull', method='POST', data=json.dumps({'model': model, 'stream': True}).encode(),
                                  headers={'Content-Type': 'application/json'})
     last = 0
@@ -1898,7 +1934,7 @@ def ai_pull_run(model):
 
 
 def ai_remove(model):
-    if not re.fullmatch(r'[a-z0-9][a-z0-9._\-]{0,60}(:[a-z0-9._\-]{1,40})?', model or ''):
+    if not model_name_ok(model):
         raise Fail('That isn\'t a model')
     r = http_json('DELETE', OLLAMA + '/api/delete', {'model': model})
     if r is None:
