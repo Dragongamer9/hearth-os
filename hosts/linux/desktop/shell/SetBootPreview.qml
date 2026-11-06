@@ -38,9 +38,11 @@ Rectangle {
         if (n) n.forceActiveFocus();
     }
     function close() {
+        // Focus goes back to the card first, then the preview hides (a hidden button keeping the focus would leave
+        // the controller with nothing to move).
         const b = back;
-        item = null; fullVideo = false;
         if (b) b.forceActiveFocus();
+        item = null; fullVideo = false;
     }
 
     // Clicks and the wheel stop here (the page underneath doesn't scroll or react).
@@ -142,7 +144,7 @@ Rectangle {
                 host: pv
                 visible: pv.kind === "movie" && !!pv.item && !!pv.item.file && !pv.fullVideo
                 label: "Full video"
-                onPressed: { pv.fullVideo = true; closeBtn.forceActiveFocus(); }
+                onPressed: { closeBtn.forceActiveFocus(); pv.fullVideo = true; }
             }
             PvButton {
                 id: closeBtn
@@ -162,7 +164,7 @@ Rectangle {
         implicitHeight: 42
         radius: Theme.r(10)
         opacity: enabled ? 1 : 0.45
-        activeFocusOnTab: visible && enabled
+        activeFocusOnTab: true          // hidden or greyed-out buttons are skipped by Qt anyway
         color: primary && enabled ? Theme.accent : (hov.containsMouse ? Theme.panel3 : Theme.panel2)
         border.width: 2
         border.color: activeFocus ? (primary ? Theme.text : Theme.accent) : "transparent"
