@@ -70,7 +70,7 @@ SetPage {
         if (d.battery) bits.push(d.battery.percent + "%" + (d.pluggedIn ? " · plugged in" : " · on battery"));
         else if (d.online) bits.push("plugged in");
         if (d.gpu) bits.push(d.gpu.vendor === "nvidia" ? "Nvidia card" : d.gpu.vendor === "amd" ? "AMD graphics" : "Intel graphics");
-        const sv = (d.services || []).map(page.svcLine);
+        const sv = (d.services || []).map(s => page.svcLine(s, false));   // (map's index isn't "here")
         return bits.join(" · ") + (sv.length ? "\n" + sv.join("\n") : d.via === "hearth link" ? "\nPaired over Hearth Link; turn on Share this device's AI and Tailscale on it" : "");
     }
     Component.onCompleted: { refresh(); }
