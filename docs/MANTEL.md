@@ -34,6 +34,60 @@ launcher, the clock's panel and Settings, and adds six new looks next to Hearth 
   Wi-Fi, volume, battery, Game Mode); Friends is in Quick settings' header; the dock's icons are bigger. After you
   use the controller in Hearth's menus, a **button-hint strip** shows for a while (`HintStrip.qml`).
 
+## Bar layouts
+
+Settings › Appearance › Bar and dock (`BarLayoutPicker.qml`):
+
+- **Bar layout**: **Top bar + floating dock** (Mantel 2026's own, the default) or **One main bar** on the edge you pick:
+  **Bottom**, **Top**, **Left** or **Right**. The one main bar (`Islands.qml` with `edge`) holds the Hearth button,
+  the desktops, the window in front (across the top or bottom), the clock, the status island, notifications, Quick
+  settings and the Game Mode button. Left and right stack the icons, the clock is compact (time over AM/PM), the Game
+  Mode button is the controller icon in the accent, and menus, tips and panels (Quick settings, the dashboard,
+  notifications, the app menus) open toward the screen.
+- **Floating app menu** on / off: off puts the app menu button and your apps (`TaskStrip.qml`, every dock behaviour:
+  click, middle-click, drag to reorder, right-click menu, Super+1–9, Show desktop) into the main bar, and there's no
+  dock. With the default layout that's the top bar with your apps; with One main bar, everything is in one bar.
+- **Auto-hide** (`dockMode`, the same switch as before): hides the dock, and in One main bar or with the apps in the bar
+  the main bar too, on any edge (touch the edge to bring it back). Each edge reserves its own space (exclusiveZone on
+  that edge, 0 while hidden) so maximized windows fill the rest; the bar waits for your settings and is put back on
+  screen once when its space changes, the same Game Mode return fix the dock has.
+- Changing any of these applies at once: `shell.qml` builds the bar and the dock again on the new edge (so nothing
+  stays reserved on the old one). If the new bar can't load, the classic taskbar comes up as always.
+
+## App menus
+
+Settings › Appearance › Bar and dock › App menu (`AppMenuPicker.qml`, picture cards). The menu button is always
+the Hearth flame.
+
+| Menu | File | What it is |
+|---|---|---|
+| Hearth | `Launcher.qml` | Today's big centred panel with Apps and Games tabs |
+| Centred | `MenuCentred.qml` | Search, Pinned (dock/bar pins first, then your apps) in pages of 18, All apps A–Z, Recommended (recent apps, games, Settings pages and files), you, Settings and Power |
+| Tiles | `MenuTiles.qml` | From the flame's corner: a rail (you, Documents, Pictures, Files, Settings, Power), Most used and A–Z with letter jumps, live tiles in Play / Today / Home server / Apps |
+| Start screen | `MenuStart.qml` | The whole screen: groups of live tiles that scroll sideways, All apps below (A–Z in columns), full-screen search |
+| Classic | `MenuClassic.qml` | Two columns, glassy in Hearth's colours: frequent apps with jump lists, All apps in place, search; your places, Files, Settings, Devices, Help, Shut down with an arrow |
+
+- All of them share `Launcher.qml`'s lists and actions and load by file name over its window; if one can't load,
+  the Hearth menu shows instead.
+- **Search** everywhere (`MenuSearch.qml`): apps, games, Settings pages and files in your home folder
+  (`hearth-appmenu files`), a best match, filters All / Apps / Games / Settings / Files (LB / RB) and a preview.
+- **Controller**: the D-pad moves (a focus ring on the item), A opens, B goes back or closes, X opens the options
+  (jump list, Resize), Y brings the keyboard to search, LB / RB turn pages, change filters or switch side; hints show
+  in every menu. All eight looks: the menus use the look's colours, fonts and corners (Classic's glass is tinted with
+  your accent).
+- **Live tiles** (`MenuTile.qml`): what's playing (MPRIS), the weather and your next events (Hearth Weather /
+  Calendar), the Home server in short (`hearth-home-server quick`) and games with an update ready when Hearth's games
+  list says so (`hearth-appmenu tiles`). A tile with no data is a plain icon tile. Right-click or X: Small, Medium,
+  Wide, Large or Take off the menu; apps can be added as tiles from the list. Saved per user in `menuTiles`.
+- **Jump lists** (Classic's arrow, Tiles' right-click / X): the app's recent files from the freedesktop recently-used
+  list (`hearth-appmenu recent`), otherwise its own actions from its .desktop file.
+- **Picking Tiles or Classic** asks **Match the menu** (One main bar at the bottom, the floating app menu off) or
+  **Keep mine** (nothing else changes). Nothing changes without that click.
+- **New handheld installs start with the Start screen**: when `appMenu` isn't set, the default is Start screen on a
+  handheld (by name, the same list as Hearth Link's device kind) whose `/etc/nimbus/installed.json` says the installer
+  had the five menus (`"appMenus": 1`); everyone else gets Hearth. It's worked out when read and never written, so
+  existing devices keep what they have.
+
 ## The looks
 
 All eight are entries in `theme/palettes.json` with the colour tokens hearth-theme already uses (so window frames
@@ -58,7 +112,10 @@ Tokens: `islandStyle` (floating | bar | shelf), `frame` (plain | chamfer | neon 
 
 - New options are new keys in `desktop.json`, saved one at a time through `SettingsWriter.qml` (merge on write,
   atomic, `.bak`); a key you never changed is never written. `""` means "the look's own".
-  `barStyle`, `dockMode`, `deskClock`, `panelGlass`, `sunset`, `sunsetLight`, `sunsetDark`, `accentFrom`, `wallSwatches`.
+  `barStyle`, `dockMode`, `deskClock`, `panelGlass`, `sunset`, `sunsetLight`, `sunsetDark`, `accentFrom`, `wallSwatches`,
+  and for the bar layouts and app menus `barLayout`, `barEdge`, `dockFloat`, `appMenu`, `menuTiles`.
+- **Each control writes only its own key.** The one exception is **Match the menu** (after picking Tiles or Classic),
+  which you click, and which sets `barLayout`, `barEdge` and `dockFloat` together.
 - **Choosing a look changes only `look`.** The look's wallpaper, bar, dock, clock and transparency are used only
   while yours is `""`.
 - **Sunset is off** unless you choose it. When on, light from `sunsetLight` (07:00) to `sunsetDark` (19:30); your
@@ -71,8 +128,10 @@ Tokens: `islandStyle` (floating | bar | shelf), `frame` (plain | chamfer | neon 
 
 ## Desktop Mode always starts (red flag 2)
 
-`shell.qml` loads `Islands.qml` and `Dock.qml` by file name. If either can't load (or the screen is upright), the
-classic taskbar (`Bar.qml`: the launcher, every app, the Game Mode button) comes up instead. The look-specific parts
+`shell.qml` loads `Islands.qml` and (with the floating app menu on) `Dock.qml` by file name, once your settings are
+read (at most a few seconds) and again when the bar layout changes. If either can't load (or the screen is upright),
+the classic taskbar (`Bar.qml`: the launcher, every app, the Game Mode button) comes up instead. Your apps in the bar
+(`TaskStrip.qml`), the pickers and the app menus load by file name too; a menu that can't load falls back to Hearth's. The look-specific parts
 (frames, frost, drawn wallpapers, the media pill, the performance island, the dashboard's cards, From wallpaper)
 are loaded the same way, so one bad part only loses itself. Nothing here touches booting, sessions or services.
 
@@ -81,12 +140,16 @@ are loaded the same way, so one bad part only loses itself. Nothing here touches
 - **Real background blur**: not on labwc (no `ext-background-effect-v1`). Glass draws its own blurred copy of the
   wallpaper (QtQuick.Effects, only with a GPU; with software rendering the copy is shown unblurred under a milky fill).
 - **FPS of another app**: no frame-timing protocol; shown only from a fresh MangoHud CSV log (`hearth-stats`).
-- **Dock "hide when a window touches it"**: no window positions; it's plain auto-hide (touch the bottom edge).
+- **Dock "hide when a window touches it"**: no window positions; it's plain auto-hide (touch the edge).
+- **Live window previews in the menus**: no per-window screencopy here either; the menus show icons and names.
 - **Live window thumbnails** (Console): need screencopy per window; Console shows icons and status lines.
 - **Upright screens** keep the classic side taskbar.
 
 ## Checks
 
 `hosts/linux/test/test_mantel_2026.py` (the looks, settings, Sunset, Game Mode in every look, the fallback,
-hearth-stats) and the Desktop Mode test (`desktop-test.yml`), which renders every look with Quick settings, the
-launcher, the dashboard and Settings › Appearance into `looks/mantel/` on the `ci/desktop-shots-*` branch.
+hearth-stats), `hosts/linux/test/test_mantel_bars_menus.py` (bar edges, reserved space and auto-hide, the rebuild and
+fallback, the five menus, settings only written when you change them, the handheld default, hearth-appmenu) and the
+Desktop Mode test (`desktop-test.yml`), which renders every look with Quick settings, the launcher, the dashboard and
+Settings › Appearance into `looks/mantel/`, and each bar edge, the dock off, auto-hide, each app menu, search, the
+picker and other looks into `looks/mantel/bars/` on the `ci/desktop-shots-*` branch.

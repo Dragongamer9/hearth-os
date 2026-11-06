@@ -43,6 +43,8 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
+          # Bar layouts (the main bar on any edge, the floating dock on or off) and the five app menus.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -938,6 +940,75 @@ jobs:
           open(p, 'w').write(json.dumps(d))
           PY
           sleep 2
+          # ---- Bar layouts and app menus (Settings › Appearance › Bar and dock), in shots/looks/mantel/bars/:
+          # the one main bar on each edge (with your apps in it: the floating app menu off), the dock off with the top
+          # bar, auto-hide, each app menu open, search in one, the picker, and another look. The keys are taken out
+          # again afterwards, and the check below makes sure nothing wrote one by itself.
+          b=$m/bars; mkdir -p $b
+          keys() {  # JSON of keys to set ("null" takes one out)
+            python3 - "$D" "$1" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          for k, v in json.loads(sys.argv[2]).items():
+              if v is None: d.pop(k, None)
+              else: d[k] = v
+          open(p, 'w').write(json.dumps(d, indent=2) + "\n")
+          PY
+            sleep 4
+          }
+          # (A key taken out of desktop.json keeps its last value in the running shell, which only reads the keys that are
+          # there, so these shots set every value they rely on, and take them all out of the file at the end.)
+          set_look hearth dark "" ""; keys '{"dockMode": "shown", "barStyle": "", "deskClock": "off", "appMenu": "hearth"}'
+          for e in bottom top left right; do
+            keys "{\"barLayout\": \"one\", \"barEdge\": \"$e\", \"dockFloat\": \"off\"}"
+            grim "$b/bar-$e-1-desktop.png" || true
+            ipc quick toggle; grim "$b/bar-$e-2-quick-settings.png" || true; ipc quick toggle
+            ipc calendar open; grim "$b/bar-$e-3-dashboard.png" || true; ipc calendar close
+          done
+          keys '{"barLayout": "one", "barEdge": "bottom", "dockFloat": "on"}'; grim "$b/bar-bottom-dock-on.png" || true
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "off"}'; grim "$b/dock-off-top-bar.png" || true
+          keys '{"barLayout": "one", "barEdge": "left", "dockFloat": "off", "dockMode": "autohide"}'; grim "$b/bar-left-autohide-hidden.png" || true
+          ipc dock show; sleep 2; grim "$b/bar-left-autohide-shown.png" || true; ipc dock hide
+          keys '{"dockMode": "shown"}'
+          menu_shot() {  # menu name
+            keys "{\"appMenu\": \"$1\"}"
+            ipc launcher toggle; sleep 2; grim "$b/menu-$1-$2.png" || true; ipc launcher close
+          }
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "on"}'
+          menu_shot hearth default-bar
+          menu_shot centred default-bar
+          ipc launcher toggle; sleep 2; wtype "st" 2>/dev/null || true; sleep 3; grim "$b/menu-search-centred.png" || true; ipc launcher close
+          keys '{"barLayout": "one", "barEdge": "bottom", "dockFloat": "off"}'
+          menu_shot tiles bottom-bar
+          ipc launcher toggle; sleep 2; wtype -k Right 2>/dev/null || true; sleep 1; grim "$b/menu-tiles-focus-on-tiles.png" || true; ipc launcher close
+          menu_shot classic bottom-bar
+          ipc launcher toggle; sleep 2; wtype -k Right 2>/dev/null || true; sleep 1; grim "$b/menu-classic-jump-or-places.png" || true; ipc launcher close
+          menu_shot start bottom-bar
+          ipc launcher toggle; sleep 2; wtype "se" 2>/dev/null || true; sleep 3; grim "$b/menu-search-start.png" || true; ipc launcher close
+          # The picker (Settings › Appearance › Bar and dock › App menu)
+          ipc settings close; ipc settings page appearance:bar; sleep 3; grim "$b/menu-picker.png" || true; ipc settings close
+          # Another look: Glass with the bar on the left and the Classic menu; Steam-style with Tiles on the bottom bar.
+          set_look glass dark "" ""; keys '{"barLayout": "one", "barEdge": "left", "dockFloat": "off", "appMenu": "classic"}'
+          grim "$b/glass-bar-left.png" || true
+          ipc launcher toggle; sleep 2; grim "$b/glass-menu-classic.png" || true; ipc launcher close
+          set_look steam dark "" ""; keys '{"barLayout": "one", "barEdge": "bottom", "appMenu": "tiles"}'
+          ipc launcher toggle; sleep 2; grim "$b/steam-menu-tiles.png" || true; ipc launcher close
+          # Handheld (1280×800): the Start screen and Centred.
+          wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; set_look hearth dark "" ""; keys '{"appMenu": "start", "barEdge": "bottom", "dockFloat": "off"}'
+          ipc launcher toggle; sleep 2; grim "$b/handheld-menu-start.png" || true; ipc launcher close
+          keys '{"appMenu": "centred", "barLayout": "split", "dockFloat": "on"}'
+          ipc launcher toggle; sleep 2; grim "$b/handheld-menu-centred.png" || true; ipc launcher close
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 2
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "on", "appMenu": "hearth"}'
+          keys '{"barLayout": null, "barEdge": null, "dockFloat": null, "appMenu": null, "menuTiles": null, "dockMode": null, "barStyle": null, "deskClock": null}'
+          grep -E "Islands.qml|TaskStrip.qml|Launcher.qml|Menu[A-Za-z]*\.qml|BarLayoutPicker|AppMenuPicker" "$LOG" > $b/shell-log.txt 2>/dev/null || true
+          if grep -qE "(Islands|TaskStrip|Launcher|Menu[A-Za-z]*|BarLayoutPicker|AppMenuPicker)\.qml.*(TypeError|ReferenceError|is not defined|Cannot|non-existent|is not a type)" "$LOG" 2>/dev/null; then
+            echo "::error title=bars and menus::$(grep -E '(Islands|TaskStrip|Launcher|Menu[A-Za-z]*|BarLayoutPicker|AppMenuPicker)\.qml' "$LOG" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          elif grep -q "app menu couldn't load" "$LOG" 2>/dev/null; then
+            echo "::error title=bars and menus::$(grep "app menu couldn't load" "$LOG" | head -3 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=bars and menus::$(ls $b | wc -l) pictures in looks/mantel/bars"
+          fi
           # Nothing the looks did may have written a new option by itself (Mantel 2026's keys stay out of the file
           # until someone changes them; the ones this test set were taken out again above).
           cp "$D" $m/desktop.json 2>/dev/null || true
@@ -945,6 +1016,7 @@ jobs:
           import json, sys
           d = json.load(open(sys.argv[1]))
           new = {'barStyle', 'dockMode', 'deskClock', 'panelGlass', 'sunset', 'sunsetLight', 'sunsetDark', 'accentFrom', 'wallSwatches'}
+          new |= {'barLayout', 'barEdge', 'dockFloat', 'appMenu', 'menuTiles'}
           sys.exit(1 if new & set(d) else 0)
           PY
           if grep -q "using the classic taskbar" "$LOG" 2>/dev/null; then

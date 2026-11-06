@@ -8,6 +8,7 @@ import Quickshell
 
 Singleton {
     property var navTarget: null
+    property string pageAnchor: ""    // a part of the page to open at ("appearance:bar": Settings › Appearance › Bar and dock)
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
     function openPage(p) { if (settingsApp) settingsApp.open(p); }
     property var appsNav: null        // Apps' list (AppStore.qml)
