@@ -872,7 +872,9 @@ jobs:
           PY
             sleep 4
           }
-          set_look hearth dark "" ""; sleep 2
+          # (A key taken out of desktop.json keeps its last value in the running shell, which only reads the keys that are
+          # there, so these shots set every value they rely on, and take them all out of the file at the end.)
+          set_look hearth dark "" ""; keys '{"dockMode": "shown", "barStyle": "", "deskClock": "off", "appMenu": "hearth"}'
           for e in bottom top left right; do
             keys "{\"barLayout\": \"one\", \"barEdge\": \"$e\", \"dockFloat\": \"off\"}"
             grim "$b/bar-$e-1-desktop.png" || true
@@ -880,15 +882,15 @@ jobs:
             ipc calendar open; grim "$b/bar-$e-3-dashboard.png" || true; ipc calendar close
           done
           keys '{"barLayout": "one", "barEdge": "bottom", "dockFloat": "on"}'; grim "$b/bar-bottom-dock-on.png" || true
-          keys '{"barLayout": null, "barEdge": null, "dockFloat": "off"}'; grim "$b/dock-off-top-bar.png" || true
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "off"}'; grim "$b/dock-off-top-bar.png" || true
           keys '{"barLayout": "one", "barEdge": "left", "dockFloat": "off", "dockMode": "autohide"}'; grim "$b/bar-left-autohide-hidden.png" || true
           ipc dock show; sleep 2; grim "$b/bar-left-autohide-shown.png" || true; ipc dock hide
-          keys '{"dockMode": null}'
+          keys '{"dockMode": "shown"}'
           menu_shot() {  # menu name
             keys "{\"appMenu\": \"$1\"}"
             ipc launcher toggle; sleep 2; grim "$b/menu-$1-$2.png" || true; ipc launcher close
           }
-          keys '{"barLayout": null, "barEdge": null, "dockFloat": null}'
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "on"}'
           menu_shot hearth default-bar
           menu_shot centred default-bar
           ipc launcher toggle; sleep 2; wtype "st" 2>/dev/null || true; sleep 3; grim "$b/menu-search-centred.png" || true; ipc launcher close
@@ -910,10 +912,11 @@ jobs:
           # Handheld (1280×800): the Start screen and Centred.
           wlr-randr --output HEADLESS-1 --custom-mode 1280x800 || true; set_look hearth dark "" ""; keys '{"appMenu": "start", "barEdge": "bottom", "dockFloat": "off"}'
           ipc launcher toggle; sleep 2; grim "$b/handheld-menu-start.png" || true; ipc launcher close
-          keys '{"appMenu": "centred", "barLayout": null, "barEdge": null, "dockFloat": null}'
+          keys '{"appMenu": "centred", "barLayout": "split", "dockFloat": "on"}'
           ipc launcher toggle; sleep 2; grim "$b/handheld-menu-centred.png" || true; ipc launcher close
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 2
-          keys '{"barLayout": null, "barEdge": null, "dockFloat": null, "appMenu": null, "menuTiles": null}'
+          keys '{"barLayout": "split", "barEdge": "bottom", "dockFloat": "on", "appMenu": "hearth"}'
+          keys '{"barLayout": null, "barEdge": null, "dockFloat": null, "appMenu": null, "menuTiles": null, "dockMode": null, "barStyle": null, "deskClock": null}'
           grep -E "Islands.qml|TaskStrip.qml|Launcher.qml|Menu[A-Za-z]*\.qml|BarLayoutPicker|AppMenuPicker" "$LOG" > $b/shell-log.txt 2>/dev/null || true
           if grep -qE "(Islands|TaskStrip|Launcher|Menu[A-Za-z]*|BarLayoutPicker|AppMenuPicker)\.qml.*(TypeError|ReferenceError|is not defined|Cannot|non-existent|is not a type)" "$LOG" 2>/dev/null; then
             echo "::error title=bars and menus::$(grep -E '(Islands|TaskStrip|Launcher|Menu[A-Za-z]*|BarLayoutPicker|AppMenuPicker)\.qml' "$LOG" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED

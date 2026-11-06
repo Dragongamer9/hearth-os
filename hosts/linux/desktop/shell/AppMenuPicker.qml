@@ -136,20 +136,17 @@ ColumnLayout {
                     Column { x: 4; y: 4; spacing: 4; Repeater { model: 6; delegate: Rectangle { width: 26; height: 4; radius: 2; color: Theme.panel3 } } } }
                 Column { x: parent.width * 0.62; y: 8; spacing: 4; Repeater { model: 5; delegate: Rectangle { width: 16; height: 3; radius: 1.5; color: Qt.rgba(1, 1, 1, 0.6) } } } }
         }
+        Rectangle {   // "In use", on the picture's corner
+            visible: card.lit
+            anchors { right: pic.right; top: pic.top; margins: 6 }
+            implicitWidth: inUse.implicitWidth + 14; implicitHeight: 20; radius: 10
+            color: Theme.accent
+            Text { id: inUse; anchors.centerIn: parent; text: "In use"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 10; font.bold: true }
+        }
         ColumnLayout {
             anchors { left: parent.left; right: parent.right; top: pic.bottom; margins: 10; topMargin: 8 }
             spacing: 2
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { Layout.fillWidth: true; text: card.modelData.label; elide: Text.ElideRight; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                Rectangle {
-                    visible: card.lit
-                    implicitWidth: inUse.implicitWidth + 14; implicitHeight: 20; radius: 10
-                    color: Theme.accent
-                    Text { id: inUse; anchors.centerIn: parent; text: "In use"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 10; font.bold: true }
-                }
-            }
+            Text { Layout.fillWidth: true; text: card.modelData.label; elide: Text.ElideRight; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
             Text { Layout.fillWidth: true; text: card.modelData.desc; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
         }
     }

@@ -496,7 +496,7 @@ PanelWindow {
                     }
                     Loader {
                         id: media
-                        visible: isl.flash === null && status === Loader.Ready && item.playing
+                        visible: isl.flash === null && status === Loader.Ready && !!item && item.playing
                         active: isl.pillCentred
                         source: "MediaPill.qml"
                         onLoaded: item.compact = Qt.binding(() => isl.compact)

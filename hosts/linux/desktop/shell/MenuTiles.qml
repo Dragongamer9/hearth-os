@@ -77,7 +77,9 @@ Item {
             // ---- search field, then the list (or the search results across the panel)
             ColumnLayout {
                 Layout.fillHeight: true
+                Layout.fillWidth: st.searching
                 Layout.preferredWidth: st.searching ? panel.width - 56 - 20 : 300
+                Layout.maximumWidth: st.searching ? 100000 : 300
                 Layout.topMargin: 14
                 spacing: 10
                 Rectangle {

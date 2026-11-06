@@ -237,6 +237,7 @@ PanelWindow {
         if (!q) return out;
         const hit = a => [a.name, a.genericName, a.comment, Array.from(a.keywords || []).join(" ")].join(" ").toLowerCase().includes(q);
         const starts = s => (s || "").toLowerCase().startsWith(q) ? 1 : 0;
+        const word = s => (s || "").toLowerCase().split(/[\s()._-]+/).some(w => w.startsWith(q));
         const f = filter || "all";
         if (f === "all" || f === "apps") out.apps = apps.filter(hit).sort((a, b) => starts(b.name) - starts(a.name)).slice(0, f === "all" ? 6 : 40);
         if (f === "all" || f === "games") out.games = games.filter(g => (g.title || "").toLowerCase().includes(q)).sort((a, b) => starts(b.title) - starts(a.title)).slice(0, f === "all" ? 4 : 40);
@@ -246,6 +247,7 @@ PanelWindow {
         const pick = out.apps.find(a => starts(a.name)) ? { kind: "app", item: out.apps.find(a => starts(a.name)) }
             : out.games.find(g => starts(g.title)) ? { kind: "game", item: out.games.find(g => starts(g.title)) }
             : out.pages.find(p => starts(p.name)) ? { kind: "page", item: out.pages.find(p => starts(p.name)) }
+            : out.apps.find(a => word(a.name)) ? { kind: "app", item: out.apps.find(a => word(a.name)) }
             : out.apps.length ? { kind: "app", item: out.apps[0] } : out.games.length ? { kind: "game", item: out.games[0] }
             : out.pages.length ? { kind: "page", item: out.pages[0] } : out.files.length ? { kind: "file", item: out.files[0] } : null;
         out.best = pick;

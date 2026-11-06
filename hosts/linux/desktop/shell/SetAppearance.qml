@@ -108,7 +108,9 @@ SetPage {
     Text { Layout.fillWidth: true; Layout.topMargin: 6; text: "App menu"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
     Loader { Layout.fillWidth: true; source: "AppMenuPicker.qml" }
     // Settings › Appearance opened at Bar and dock (`settings page appearance:bar`, the app menu's own links).
-    Component.onCompleted: if (SettingsNav.pageAnchor === "bar") { SettingsNav.pageAnchor = ""; Qt.callLater(() => { page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, barHeader.mapToItem(page.contentItem, 0, 0).y - 12)); }); }
+    // (After a moment, once the pictures and pickers above have their size.)
+    Timer { id: toBar; interval: 400; onTriggered: page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, barHeader.mapToItem(page.contentItem, 0, 0).y - 12)) }
+    Component.onCompleted: if (SettingsNav.pageAnchor === "bar") { SettingsNav.pageAnchor = ""; toBar.start(); }
 
     SetHeader { text: "Accent colour" }
     SetBase {

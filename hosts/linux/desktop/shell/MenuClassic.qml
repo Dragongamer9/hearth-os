@@ -56,8 +56,8 @@ Item {
             anchors.fill: parent
             radius: Theme.r(10)
             gradient: Gradient {
-                GradientStop { position: 0; color: Qt.rgba(Theme.accent.r * 0.5 + Theme.panel.r * 0.5, Theme.accent.g * 0.5 + Theme.panel.g * 0.5, Theme.accent.b * 0.5 + Theme.panel.b * 0.5, 0.86) }
-                GradientStop { position: 1; color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.9) }
+                GradientStop { position: 0; color: Qt.rgba(Theme.accent.r * 0.45 + Theme.panel.r * 0.55, Theme.accent.g * 0.45 + Theme.panel.g * 0.55, Theme.accent.b * 0.45 + Theme.panel.b * 0.55, 0.94) }
+                GradientStop { position: 1; color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.96) }
             }
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.28)

@@ -14,7 +14,7 @@ import "menu-nav.js" as Nav
 Item {
     id: st
     property var menu: null
-    readonly property color scrim: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.94)
+    readonly property color scrim: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.975)
     readonly property bool wantsLive: true
     property string view: "tiles"           // tiles | all
     property string tileId: ""
