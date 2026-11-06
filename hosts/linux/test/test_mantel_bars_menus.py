@@ -69,11 +69,61 @@ class SettingsOnlyWhenYouChangeThem(unittest.TestCase):
         for f in sorted(SHELL.glob('*.qml')):
             hits = set(re.findall(r'\bSettings\.(barLayout|barEdge|dockFloat|appMenu|menuTiles)\s*=(?!=)', code(f.read_text())))
             self.assertTrue(hits <= allowed.get(f.name, set()), '%s writes %s' % (f.name, hits))
-        # Launcher writes your tiles only from the Resize / Take off / Add as a tile actions.
+        # Launcher writes your tiles only from the Resize / Take off / Add as a tile / Move actions.
         la = code(read('Launcher.qml'))
         for m in re.finditer(r'Settings\.\w+\s*=(?!=)', la):
             fn = la.rfind('function ', 0, m.start())
-            self.assertRegex(la[fn:fn + 40], r'function (setTileSize|setTileHidden)\(', la[fn:fn + 60])
+            self.assertRegex(la[fn:fn + 40], r'function (setTileSize|setTileHidden|saveTileOrder)\(', la[fn:fn + 60])
+
+    def test_moving_tiles_is_saved_only_when_you_drop_one_somewhere_new(self):
+        la = code(read('Launcher.qml'))
+        save = block(la, 'function saveTileOrder(')
+        # Nothing written when the order didn't change, or the list isn't exactly the group's tiles.
+        self.assertIn('ids.every((id, i) => id === now[i])) return false;', save)
+        self.assertIn('if (ids.some(id => now.indexOf(id) < 0)) return false;', save)
+        self.assertIn('JSON.parse(JSON.stringify(tileSettings))', save)   # merges into what's there (sizes, hidden stay)
+        self.assertIn('tileRank(t.id, i)', la)
+        self.assertIn('label: "Move", icon: "edit", run: () => styleLoader.item.startMove(tile.id)', la)
+        for f in ('MenuTiles.qml', 'MenuStart.qml'):
+            t = code(read(f))
+            # saveTileOrder only from dropping a tile (A / Enter / Y, or letting go of the mouse)
+            calls = [m.start() for m in re.finditer(r'saveTileOrder\(', t)]
+            self.assertEqual(len(calls), 2, f)
+            for c in calls:
+                self.assertTrue(t.rfind('function dropMove()', 0, c) > t.rfind('function ', 0, c) - 1, f)
+            for need in ('function startMove(id, byMouse)', 'function padY()', 'function cancelMove()', 'Nav.moveStep(',
+                         'model: st.menu ? st.menu.groupTiles(grp.modelData, st.preview) : []', 'onDragEnded: st.dropMove()',
+                         'case Qt.Key_Escape: cancelMove(); break;', 'cancelMove();'):
+                self.assertIn(need, t, '%s: %s' % (f, need))
+            self.assertIn('{ b: "A", t: "Drop it here" }', t, f)
+        mt = code(read('MenuTile.qml'))
+        self.assertIn('preventStealing: mousePress', mt)
+        self.assertIn('mouse.source === Qt.MouseEventNotSynthesized', mt)
+        # Y goes to the menu first (move a tile), else the keyboard opens as before.
+        self.assertIn('if (!(typeof launcher.padY === "function" && launcher.padY())) openKeyboard();', code(read('Pad.qml')))
+
+    def test_hints_say_what_the_buttons_do(self):
+        # X opens Resize / Move / Take off: "Resize or move" only where the menu has Move; Y moves a tile with the
+        # focus ring (no tile: search).
+        self.assertIn('label: "Move"', code(read('Launcher.qml')))
+        for f in ('MenuTiles.qml', 'MenuStart.qml'):
+            t = code(read(f))
+            self.assertRegex(t, r'b: "X", t: [^}]*"Resize or move"', f)
+            self.assertRegex(t, r'b: "Y", t: [^}]*"Move"', f)
+            self.assertNotIn('"Resize" }', t, f)
+
+    def test_tiles_search_field_in_the_bar(self):
+        i = code(read('Islands.qml'))
+        self.assertIn('readonly property bool menuSearchShown: Theme.appMenu === "tiles"', i)
+        self.assertIn('onClicked: isl.menuSearchRequested()', i)
+        sh = code(read('shell.qml'))
+        self.assertIn('islandsWin.menuSearchRequested.connect(() => launcher.openMenuSearch());', sh)
+        self.assertIn('islandsWin.menuQuery = Qt.binding(() => launcher.menuQuery);', sh)
+        self.assertIn('if (perScreen.primary) launcher.barSearch = false;', block(sh, 'function dropNew()'))
+        t = code(read('MenuTiles.qml'))
+        # The menu's own field is kept (it holds the keyboard) but takes no room when the bar has one.
+        self.assertIn('implicitHeight: st.barField ? 0 : 40', t)
+        self.assertIn('onTextChanged: results.query = text', t)
 
     def test_picking_tiles_or_classic_asks_and_only_match_changes_the_bar(self):
         a = code(read('AppMenuPicker.qml'))

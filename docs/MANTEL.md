@@ -77,9 +77,17 @@ the Hearth flame.
   in every menu. All eight looks: the menus use the look's colours, fonts and corners (Classic's glass is tinted with
   your accent).
 - **Live tiles** (`MenuTile.qml`): what's playing (MPRIS), the weather and your next events (Hearth Weather /
-  Calendar), the Home server in short (`hearth-home-server quick`) and games with an update ready when Hearth's games
-  list says so (`hearth-appmenu tiles`). A tile with no data is a plain icon tile. Right-click or X: Small, Medium,
-  Wide, Large or Take off the menu; apps can be added as tiles from the list. Saved per user in `menuTiles`.
+  Calendar), the Home server in short (`hearth-home-server quick`) and games with an update waiting (`hearth-appmenu
+  tiles`: Hearth's games list marks `"update": true` when Steam's manifest says UpdateRequired or a paused update;
+  other stores don't say, so their games never show there). A tile with no data is a plain icon tile. Right-click or
+  X: Small, Medium, Wide, Large, Take off the menu or Move; apps can be added as tiles from the list.
+- **Moving tiles** (Tiles and Start screen): drag one with the mouse onto the tile whose place it takes; with the
+  controller, Y on a tile (or Move in its menu) picks it up, the D-pad moves it within its group, A drops it, B puts
+  it back. Saved per user in `menuTiles` (`order`), only when you drop one somewhere new. A finger still scrolls the
+  tiles: press and hold for the menu, then Move.
+- **The Tiles menu's search field sits in the bar** next to the flame (Islands.qml, a bar across the top or bottom of
+  a screen wider than 1440 px): click it, or just start typing with the menu open; what you type shows there and the
+  results fill the menu (MenuSearch). Down a side, on Console or a small screen the field is at the top of the menu.
 - **Jump lists** (Classic's arrow, Tiles' right-click / X): the app's recent files from the freedesktop recently-used
   list (`hearth-appmenu recent`), otherwise its own actions from its .desktop file.
 - **Picking Tiles or Classic** asks **Match the menu** (One main bar at the bottom, the floating app menu off) or

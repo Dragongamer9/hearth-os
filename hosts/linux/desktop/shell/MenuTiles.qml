@@ -1,10 +1,14 @@
 // The "Tiles" app menu (Settings › Appearance › Bar and dock › App menu): from the corner with the Hearth flame.
 // A left rail (you, Documents, Pictures, Files, Settings, Power), the app list (Most used, then A–Z with letter
 // headers: pick a letter to jump), and live tiles in two columns (Play: games, Game Mode, updates; Today: what's
-// playing, the weather, your calendar; Home server; Apps). Right-click / X on a tile: Small, Medium, Wide, Large or
-// Take off the menu (saved per user); on an app: its jump list (recent files, its own actions).
-// Keys / controller: arrows (D-pad) move, Left / Right between the list and the tiles, Enter (A) opens, Esc (B)
-// closes, the Menu key (X) for options, typing (Y brings the keyboard) searches, Tab (LB / RB) switches side.
+// playing, the weather, your calendar; Home server; Apps). Right-click / X on a tile: Small, Medium, Wide, Large,
+// Take off the menu or Move (saved per user, only when you change one); on an app: its jump list.
+// Moving a tile: drag it with the mouse onto the tile whose place it takes, or Y (or Move in its menu), the D-pad
+// (arrows) to move it within its group, A (Enter) to drop it there, B (Esc) to put it back.
+// Search: the field in the bar next to the flame (Islands.qml) when the bar has it, else the field at the top;
+// typing anywhere searches. Keys / controller: arrows (D-pad) move, Left / Right between the list and the tiles,
+// Enter (A) opens, Esc (B) closes, the Menu key (X) for options, Y on the app list brings the keyboard to search,
+// Tab (LB / RB) switches side.
 // Drawn over Launcher.qml (`menu`); loaded by file name.
 import QtQuick
 import QtQuick.Layouts
@@ -21,6 +25,14 @@ Item {
     property string tileId: ""              // the tile with the focus ring
     property int letterCur: 0
     readonly property bool searching: field.text.trim() !== ""
+    readonly property string query: field.text            // shown in the bar's search field (Launcher.menuQuery)
+    readonly property bool barField: !!menu && menu.barSearch   // the bar shows the search field: none at the top
+    function focusSearch() { field.forceActiveFocus(); }
+    // ---- moving a tile
+    property string moving: ""              // the tile being moved
+    property bool mouseMove: false          // dragged with the mouse (the tiles stay put until you let go)
+    property var preview: null              // the D-pad: {group, ids} in the order so far
+    property string dragOver: ""            // the mouse: the tile whose place it takes
     readonly property real unit: Math.max(56, Math.min(72, (panel.height - 120) / 9.5))
     readonly property real gap: 6
     // The list: Most used, then every app A–Z under its letter.
@@ -36,7 +48,7 @@ Item {
         }
         return out;
     }
-    function opened() { zone = "list"; cur = 1; tileId = ""; field.text = ""; field.forceActiveFocus(); list.positionViewAtBeginning(); }
+    function opened() { cancelMove(); zone = "list"; cur = 1; tileId = ""; field.text = ""; field.forceActiveFocus(); list.positionViewAtBeginning(); }
 
     MouseArea { anchors.fill: parent; onClicked: st.menu.close() }
 
@@ -82,11 +94,15 @@ Item {
                 Layout.preferredWidth: st.searching ? panel.width - 56 - 20 : 300
                 Layout.maximumWidth: st.searching ? 100000 : 300
                 Layout.topMargin: 14
-                spacing: 10
+                spacing: st.barField ? 0 : 10
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.rightMargin: 12
-                    implicitHeight: 40
+                    // Kept (not hidden) when the bar has the field, so it still holds the keyboard: typing lands here
+                    // and shows in the bar.
+                    implicitHeight: st.barField ? 0 : 40
+                    opacity: st.barField ? 0 : 1
+                    clip: true
                     radius: Theme.r(6)
                     color: Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
                     border.width: 2
@@ -184,7 +200,7 @@ Item {
                                         width: 4 * st.unit + 3 * st.gap
                                         spacing: st.gap
                                         Repeater {
-                                            model: st.menu ? st.menu.tiles.filter(t => t.group === grp.modelData) : []
+                                            model: st.menu ? st.menu.groupTiles(grp.modelData, st.preview) : []
                                             delegate: MenuTile {
                                                 required property var modelData
                                                 menu: st.menu
@@ -192,7 +208,12 @@ Item {
                                                 unit: st.unit
                                                 gap: st.gap
                                                 focused: st.zone === "tiles" && st.tileId === modelData.id
+                                                lifted: st.moving === modelData.id
+                                                dropHere: st.mouseMove && st.dragOver === modelData.id
                                                 onPicked: { st.zone = "tiles"; st.tileId = modelData.id; }
+                                                onDragStarted: st.startMove(modelData.id, true)
+                                                onDragMoved: (sx, sy) => st.dragTo(sx, sy)
+                                                onDragEnded: st.dropMove()
                                             }
                                         }
                                     }
@@ -233,10 +254,11 @@ Item {
         RowLayout {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 16; rightMargin: 16 }
             height: 44
-            MenuHints { model: st.zone === "tiles" ? [{ b: "A", t: "Open" }, { b: "B", t: "Close" }, { b: "X", t: "Resize" }, { b: "Y", t: "Search" }]
+            MenuHints { model: st.moving !== "" ? [{ b: "D-pad", t: "Move" }, { b: "A", t: "Drop it here" }, { b: "B", t: "Put it back" }]
+                : st.zone === "tiles" ? [{ b: "A", t: "Open" }, { b: "B", t: "Close" }, { b: "X", t: "Resize or move" }, { b: "Y", t: "Move" }]
                 : [{ b: "A", t: st.rowIsLetter() ? "Jump to letter" : "Open" }, { b: "B", t: "Close" }, { b: "X", t: "Jump list" }, { b: "Y", t: "Search" }] }
             Item { Layout.fillWidth: true }
-            MenuHints { model: [{ b: "LB", t: "" }, { b: "RB", t: st.zone === "tiles" ? "App list" : "Tiles" }] }
+            MenuHints { visible: st.moving === ""; model: [{ b: "LB", t: "" }, { b: "RB", t: st.zone === "tiles" ? "App list" : "Tiles" }] }
         }
     }
 
@@ -248,6 +270,45 @@ Item {
         return out;
     }
     function curTile() { return tileItems().find(t => t.tile.id === tileId) || null; }
+    function groupItems(group) { return tileItems().filter(t => t.tile.group === group); }
+    // Pick a tile up (Y, Move in its menu, or a mouse drag).
+    function startMove(id, byMouse) {
+        const it = tileItems().find(t => t.tile.id === id);
+        if (!it || !menu) return;
+        zone = "tiles"; tileId = id; moving = id; mouseMove = byMouse === true; dragOver = "";
+        preview = mouseMove ? null : { group: it.tile.group, ids: menu.groupTiles(it.tile.group, null).map(x => x.id) };
+    }
+    // Y: picks up the tile with the focus ring (or drops the one you're moving). False on the app list: Y searches.
+    function padY() {
+        if (searching || zone !== "tiles") return false;
+        if (moving) { dropMove(); return true; }
+        if (!curTile()) return false;
+        startMove(tileId, false);
+        return true;
+    }
+    function moveDir(dx, dy) {
+        if (!preview) return;
+        const items = groupItems(preview.group);
+        const n = Nav.nearest(items, items.findIndex(t => t.tile.id === moving), dx, dy);
+        if (n >= 0) preview = { group: preview.group, ids: Nav.moveStep(preview.ids, moving, items[n].tile.id) };
+    }
+    function dragTo(sx, sy) {
+        const me = tileItems().find(t => t.tile.id === moving);
+        if (!mouseMove || !me) return;
+        const hit = Nav.tileAt(groupItems(me.tile.group).filter(t => t.tile.id !== moving), sx, sy);
+        dragOver = hit ? hit.tile.id : "";
+    }
+    // Drop it: the group's new order is saved (only if it changed; Launcher.qml saveTileOrder).
+    function dropMove() {
+        if (!moving || !menu) { cancelMove(); return; }
+        const me = tileItems().find(t => t.tile.id === moving);
+        if (mouseMove && me && dragOver) {
+            const ids = menu.groupTiles(me.tile.group, null).map(x => x.id);
+            menu.saveTileOrder(me.tile.group, Nav.moveStep(ids, moving, dragOver));
+        } else if (preview) menu.saveTileOrder(preview.group, preview.ids);
+        cancelMove();
+    }
+    function cancelMove() { moving = ""; mouseMove = false; preview = null; dragOver = ""; }
     function rowIsLetter() { const r = rows[cur]; return !!r && r.kind === "letter"; }
     function jumpTo(l) {
         const i = rows.findIndex(r => r.kind === "letter" && r.text === l);
@@ -302,6 +363,19 @@ Item {
             case Qt.Key_Return: case Qt.Key_Enter: jumpTo(menu.letters[letterCur]); break;
             case Qt.Key_Escape: zone = "list"; break;
             default: return;
+            }
+            e.accepted = true;
+            return;
+        }
+        if (moving) {
+            switch (e.key) {
+            case Qt.Key_Left: moveDir(-1, 0); break;
+            case Qt.Key_Right: moveDir(1, 0); break;
+            case Qt.Key_Up: moveDir(0, -1); break;
+            case Qt.Key_Down: moveDir(0, 1); break;
+            case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: dropMove(); break;
+            case Qt.Key_Escape: cancelMove(); break;
+            default: break;   // nothing else while a tile is in your hand
             }
             e.accepted = true;
             return;
