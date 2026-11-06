@@ -941,6 +941,12 @@ class Wiring(unittest.TestCase):
             self.assertTrue((SHELL / f).exists(), f)
         self.assertIn('hearth-server-dash-up', (SHELL / 'ServerDash.qml').read_text(), 'the mark the session waits for')
 
+    def test_server_mode_page_can_be_found_without_search(self):
+        # 1.6 shipped with the page only reachable from Settings' search: Home server lists its own cards
+        self.assertIn('SetLinkCard { target: "hs-server"', (SHELL / 'SetHomeServer.qml').read_text())
+        self.assertIn('SettingsNav.openPage("hs-server")', (SHELL / 'SetStartup.qml').read_text(),
+                      'the greyed-out Server mode card in Startup opens the page that turns it on')
+
 
 if __name__ == '__main__':
     unittest.main()

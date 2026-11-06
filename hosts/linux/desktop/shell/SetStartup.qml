@@ -59,11 +59,11 @@ SetPage {
                 readonly property bool usable: modelData.v !== "server" || page.serverOn
                 Layout.fillWidth: true; Layout.preferredWidth: 1
                 implicitHeight: 196
-                interactive: usable && !page.scheduled
-                opacity: usable ? 1 : 0.5
+                interactive: !page.scheduled
+                opacity: usable ? 1 : 0.7
                 border.width: chosen ? 2 : 1
                 border.color: chosen ? Theme.accent : SetStyle.tint(Theme.text, 0.05)
-                onActivated: act.run(["start-in", modelData.v], () => { page.say("Starts in " + modelData.t + " ✓"); page.refresh(); }, e => page.say(e, true))
+                onActivated: if (!usable) SettingsNav.openPage("hs-server"); else act.run(["start-in", modelData.v], () => { page.say("Starts in " + modelData.t + " ✓"); page.refresh(); }, e => page.say(e, true))
                 Rectangle {   // a small picture of the mode
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
                     height: 104; radius: 8; clip: true
@@ -86,7 +86,7 @@ SetPage {
                     Text { visible: !parent.parent.usable; text: "· turn it on in Home server"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
                 }
                 Text { anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 14; rightMargin: 14; topMargin: 152 }
-                    text: modelData.d; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                    text: usable ? modelData.d : "Off. Press to turn it on in Home server › Server mode"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
             }
         }
     }

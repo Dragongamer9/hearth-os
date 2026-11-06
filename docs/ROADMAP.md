@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Server mode's settings page can be found: a Server mode card on Settings › Home server, and the greyed-out Server mode in System › Startup opens it (1.6 only reached it through Settings' search) (needs testing on a device)
+
 ## 1.6 (released 2026-11-06)
 
 - [x] Desktop Mode: Super+Up / Super+Down work again (Up maximizes, or makes a snapped half a quarter and a quarter its half again; Down does the opposite, then restores a maximized window, then minimizes). labwc refused the old keys ("action 'If' cannot be a child action"); a test now catches that (needs testing on a device)

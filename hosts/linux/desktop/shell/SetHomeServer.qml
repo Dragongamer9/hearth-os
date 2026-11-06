@@ -170,6 +170,7 @@ SetPage {
                 title: "On this server"
                 SetLinkCard { target: "hs-services"; value: page.servicesBig().good ? page.servicesBig().big : ""
                     sub: "Media server, files on the web, AI pictures and voices" + (page.aiShown ? ", AI chat" : "") }
+                SetLinkCard { target: "hs-server" }   // Server mode (docs/SERVER-MODE.md)
                 SetLinkCard { target: "hs-gaming" }
                 SetLinkCard { target: "hs-aidevices" }     // AI devices (docs/AI-SHARE.md)
             }
