@@ -74,7 +74,7 @@ var PAGES = [
     { id: "steam", file: "SetSteam.qml", cat: "gaming", label: "Steam Game Mode and Decky", icon: "steam", desc: "Steam's big-screen mode, Decky Loader and Hearth Sync", words: "game mode decky plugins steam", old: "Steam Game Mode" },
     { id: "startup-animation", file: "SetBoot.qml", cat: "gaming", label: "Startup animation", icon: "film", desc: "What Steam Game Mode plays while it starts", words: "boot startup movie animation", old: "Boot & startup", props: { part: "animation" } },
     { id: "games", file: "SetGames.qml", cat: "gaming", label: "Games & stores", icon: "store", desc: "Epic Games, GOG and Xbox accounts, library sources, mods and saves", words: "steam stores library epic gog xbox", old: "Games & stores" },
-    { id: "remote", file: "SetRemote.qml", cat: "gaming", label: "Remote play", icon: "play", desc: "Stream this PC's games to your phone or TV, or play another PC here", words: "moonlight sunshine stream", old: "Remote play" },
+    { id: "remote", file: "SetRemote.qml", cat: "gaming", label: "Remote play", icon: "play", desc: "Stream this PC's games to your phone or TV, play another PC here, or use this PC from anywhere", words: "moonlight sunshine stream anywhere remote desktop work tailscale", old: "Remote play" },
     { id: "controller", file: "SetController.qml", cat: "gaming", label: "Controller", icon: "pad", desc: "Controller mouse, button layout, what games see, remapping", words: "gamepad buttons pad", old: "Controller" },
     { id: "handheld", file: "SetHandheld.qml", cat: "gaming", label: "Handheld", icon: "bolt", desc: "Power limit, fans, lights and back buttons (Handheld Daemon)", words: "hhd tdp rgb lights fans", old: "Handheld" },
 

@@ -192,8 +192,8 @@ jobs:
             echo "::notice title=Settings redesign::opened all $opened Settings pages; no settings file changed ($(wc -l < shots/settings-redesign/files-before.txt) files checked)"
           fi
           grep -q "the new frame didn't load" "$LOG" && { echo "::error title=Settings redesign::Settings fell back to the plain list: $(grep -B4 "the new frame didn't load" "$LOG" | head -6 | cut -c1-200 | tr '\n' '|')"; touch shots/FAILED; }
-          if grep -E "(Set[A-Z][A-Za-z]*|Settings(Frame|Simple|App)|StartInChoice)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
-            echo "::error title=Settings redesign::$(grep -E "(Set[A-Z][A-Za-z]*|Settings(Frame|Simple|App)|StartInChoice)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          if grep -E "(Set[A-Z][A-Za-z]*|Settings(Frame|Simple|App)|StartInChoice)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Settings redesign::$(grep -E "(Set[A-Z][A-Za-z]*|Settings(Frame|Simple|App)|StartInChoice)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
             touch shots/FAILED
           fi
           # The redesign's pictures: Home, every category's page, subpages, the controller, search, B / LB / RB.
@@ -423,6 +423,68 @@ jobs:
           fi
           rm -f /tmp/fakebin/pkexec /tmp/fakebin/tailscale /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper /var/lib/hearth/home-server-backups.json /var/lib/hearth/home-server-alerts.json
           ipc settings close
+          # ---- Use this PC from anywhere (docs/REMOTE-DESKTOP.md): the card on, a work PC streaming through a relay, over
+          # stand-ins for Sunshine's unit and local API (HTTPS, its own certificate), its log, Tailscale and the rule's mark.
+          mkdir -p shots/remote-desktop "$HOME/.config/sunshine" "$HOME/.local/share/nimbus" "$XDG_RUNTIME_DIR/hearth-remote-desktop" /run/hearth
+          rd_before=$(sha256sum "$HOME/.config/nimbus/remote-desktop.json" 2>/dev/null || echo none)
+          printf '{"on": true}\n' > "$HOME/.config/nimbus/remote-desktop.json"
+          printf '{"user": "hearth", "pass": "ci-only"}' > "$HOME/.local/share/nimbus/remote-play.json"; chmod 600 "$HOME/.local/share/nimbus/remote-play.json"
+          printf 'tailscale-only\n' > /run/hearth/remote-desktop-fw
+          t=$(date '+%Y-%m-%d %H:%M:%S' -d '-12 minutes')
+          printf '[%s.000]: Info: Creating encoder [h264_nvenc]\n[%s.000]: Info: Streaming bitrate is 5000000\n[%s.000]: Info: CLIENT CONNECTED\n' "$t" "$t" "$t" > "$HOME/.config/sunshine/sunshine.log"
+          printf '{"who": "Work laptop", "app": "Desktop", "width": 1280, "height": 720, "fps": 60, "hdr": false, "at": %s}\n' "$(date +%s)" > "$XDG_RUNTIME_DIR/hearth-remote-desktop/session.json"
+          cat > /tmp/fakebin/tailscale <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            status) echo '{"BackendState":"Running","Self":{"HostName":"chris-hearth","DNSName":"chris-hearth.tail4f2a.ts.net.","TailscaleIPs":["100.72.99.97"]},"Peer":{"a":{"HostName":"Work-PC","OS":"windows","TailscaleIPs":["100.70.1.4"],"Online":true,"Active":true,"CurAddr":"","Relay":"fra","TxBytes":900000000},"b":{"HostName":"Phone","OS":"android","TailscaleIPs":["100.70.1.3"],"Online":true,"Active":false,"Relay":"fra"}}}' ;;
+            ping) echo "pong from work-pc (100.70.1.4) via DERP(fra) in 84ms" ;;
+          esac
+          FAKE
+          cat > /tmp/fakebin/systemctl <<'FAKE'
+          #!/bin/sh
+          case "$*" in
+            "--user show -p LoadState -p Id --value app-dev.lizardbyte.app.Sunshine.service") printf 'app-dev.lizardbyte.app.Sunshine.service\nloaded\n'; exit 0 ;;
+            "--user is-active --quiet app-dev.lizardbyte.app.Sunshine.service"|"--user is-active --quiet hearth-remote-desktop-awake.service") exit 0 ;;
+            "--user show"*) echo not-found; exit 0 ;;
+          esac
+          exec /usr/bin/systemctl "$@"
+          FAKE
+          sed -i 's/^          //' /tmp/fakebin/tailscale /tmp/fakebin/systemctl; chmod +x /tmp/fakebin/tailscale /tmp/fakebin/systemctl
+          command -v openssl >/dev/null || dnf -y install openssl >/dev/null 2>&1 || true
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/sun.key -out /tmp/sun.crt -days 1 -subj /CN=sunshine >/dev/null 2>&1 || echo "::warning title=Remote desktop::no openssl for the Sunshine stand-in"
+          python3 -c '
+          import http.server, json, ssl
+          class H(http.server.BaseHTTPRequestHandler):
+              def log_message(self, *a): pass
+              def answer(self, v):
+                  b = json.dumps(v).encode(); self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+              def do_GET(self):
+                  self.answer({"/api/clients/list": {"named_certs": [{"name": "Work laptop", "uuid": "c1"}, {"name": "Pixel 8", "uuid": "c2"}]}, "/api/pin": {"pairings": []}}.get(self.path, {}))
+              def do_POST(self):
+                  self.answer({"status": True})
+          s = http.server.HTTPServer(("127.0.0.1", 47990), H)
+          c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); c.load_cert_chain("/tmp/sun.crt", "/tmp/sun.key")
+          s.socket = c.wrap_socket(s.socket, server_side=True)
+          s.serve_forever()' &
+          FAKE_SUN=$!
+          sleep 1
+          python3 hosts/linux/desktop/shell/hearth-remote-desktop status > shots/remote-desktop/status.json 2>&1 || { echo "::error title=Remote desktop::hearth-remote-desktop status failed: $(head -c 400 shots/remote-desktop/status.json)"; touch shots/FAILED; }
+          grep -q '"path": "relay"' shots/remote-desktop/status.json || echo "::warning title=Remote desktop::status didn't see the relayed stream: $(head -c 600 shots/remote-desktop/status.json)"
+          grep -q '"Work laptop"' shots/remote-desktop/status.json || echo "::warning title=Remote desktop::status listed no paired devices: $(head -c 600 shots/remote-desktop/status.json)"
+          ! grep -q 'ci-only' shots/remote-desktop/status.json || { echo "::error title=Remote desktop::status showed Sunshine's login"; touch shots/FAILED; }
+          rdshot() { ipc settings close; ipc settings page remote; sleep 4; grim "shots/remote-desktop/$1.png" || true; }
+          rdshot 70-use-this-pc-from-anywhere
+          wtype -k Right; sleep 1; for i in $(seq 1 7); do wtype -k Down; done; sleep 2; grim shots/remote-desktop/71-who-is-connected.png || true
+          for i in $(seq 1 7); do wtype -k Down; done; sleep 2; grim shots/remote-desktop/72-reach-and-stay-awake.png || true
+          ipc settings close
+          if grep -qE "SetRemote\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null; then
+            echo "::error title=Remote desktop::$(grep -E 'SetRemote\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          printf '{"on": true}\n' | cmp -s - "$HOME/.config/nimbus/remote-desktop.json" || { echo "::error title=Remote desktop::opening the page changed remote-desktop.json"; touch shots/FAILED; }
+          kill $FAKE_SUN 2>/dev/null || true
+          rm -f /tmp/fakebin/tailscale /tmp/fakebin/systemctl /run/hearth/remote-desktop-fw "$HOME/.config/nimbus/remote-desktop.json" "$HOME/.local/share/nimbus/remote-play.json"
+          rm -rf "$XDG_RUNTIME_DIR/hearth-remote-desktop" "$HOME/.config/sunshine"
+          # ---- end of Use this PC from anywhere
           # The launcher: no "Hearth" (the old Game Mode in a window), even with its menu entry installed.
           ipc launcher toggle; grim shots/settings-move/15-launcher-no-hearth.png || true; ipc launcher close
           quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call launcher listed > shots/settings-move/launcher-apps.txt 2>&1 || true

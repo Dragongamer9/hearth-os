@@ -374,7 +374,7 @@ SetPage {
     SetHeader { text: "Also on this PC" }
     SetRow { boxed: true; chevron: true;
         icon: "play"; title: "Remote play"
-        sub: "Sunshine: play this PC's games on your laptop, phone or TV with Moonlight, at home or through Tailscale"
+        sub: "Sunshine: play this PC's games on your laptop, phone or TV with Moonlight, at home or through Tailscale; Use this PC from anywhere is there too"
         chip: page.sv && page.sv.remote ? "Running" : ""
         onActivated: SettingsNav.openPage("remote")
     }

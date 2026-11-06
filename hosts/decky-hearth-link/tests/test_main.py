@@ -236,6 +236,10 @@ class Backend(unittest.TestCase):
         self.assertEqual(r['pictures'], {'on': False, 'state': 'off'}, 'an older helper without AI pictures: off')
         self.assertEqual(self.m.app_short({'on': True, 'state': 'paused', 'url': 'x'}), {'on': True, 'state': 'paused'})
         self.assertEqual(self.m.app_short({'on': True, 'state': 'unloaded'}), {'on': False, 'state': 'off'})
+        self.assertEqual(r['remote'], {'on': False, 'streaming': False, 'who': '', 'since': 0}, 'no remote desktop from an older helper')
+        self.assertEqual(self.m.remote_short({'on': True, 'streaming': True, 'who': 'Work\x07 laptop', 'since': 7, 'ip': '100.1.2.3'}),
+                         {'on': True, 'streaming': True, 'who': 'Work laptop', 'since': 7})
+        self.assertFalse(self.m.remote_short({'on': False, 'streaming': True})['streaming'])
         self.assertEqual(seen[0][0][1:], [prog, 'quick'])
         self.assertEqual(seen[0][1]['timeout'], self.m.HOME_SERVER_TIMEOUT)
         self.assertTrue(self.m.home_server(['quick-set', 'lightMode', 'off'], run=run)['ok'])

@@ -1,0 +1,18 @@
+# Settings › Remote play › Use this PC from anywhere (docs/REMOTE-DESKTOP.md): Sunshine's ports only through Tailscale
+# and this PC itself, loaded again when the PC starts. Off in the image: hearth-home-server-helper enables it only when
+# the owner turns the feature on, and disables it when he turns it off. It never holds up the boot or a session: it
+# isn't ordered before anything, can't fail the boot ("-"), and has a short time limit. Sunshine's own drop-in waits
+# for its mark (/run/hearth/remote-desktop-fw): no rule, no Sunshine.
+[Unit]
+Description=Hearth: Sunshine only through Tailscale (Use this PC from anywhere)
+ConditionPathExists=/etc/hearth/remote-desktop.nft
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=30
+ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-home-server-helper remote-fw load
+
+[Install]
+WantedBy=multi-user.target

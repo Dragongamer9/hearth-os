@@ -9,7 +9,7 @@ import { FaNetworkWired } from "react-icons/fa";
 import {
   Answer, Down, Game, Job, POLL, STORAGE_POLL, Status, afterCopy, active, ago, bytes, canWake, deviceLine, healthSummary, hasStorage,
   SyncInfo, availableLine, jobActions, jobLine, lanCodeOk, left, netCodeOk, percent, sendable, serverOf, showCode, syncLines,
-  HOME_POLL, HomeQuick, aiAppsLine, aiLine, backupLine, homeLine, homeShown, pausedLine,
+  HOME_POLL, HomeQuick, aiAppsLine, aiLine, backupLine, homeLine, homeShown, pausedLine, remoteLine,
 } from "./model";
 import { HearthOnly } from "./hearth-only";
 import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo,
@@ -380,6 +380,7 @@ function HomeServer() {
       {q.alerts.map((a, i) => <Line key={i} style={warn}>{a}</Line>)}
       {aiLine(q) && <Line style={dim}>{aiLine(q)}</Line>}
       {aiAppsLine(q) && <Line style={dim}>{aiAppsLine(q)}</Line>}
+      {remoteLine(q) && <Line style={warn}>{remoteLine(q)}</Line>}
       <PanelSectionRow>
         <ToggleField label="Light mode while you play" checked={q.lightMode} onChange={(v: boolean) => light(v)}
           description={q.lightMode ? "Big jobs (backups, snapshots) wait while you play. Sharing keeps working" : "Off: backups and snapshots run on time, even while you play"} />

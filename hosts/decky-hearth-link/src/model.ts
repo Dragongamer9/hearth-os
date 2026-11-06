@@ -189,6 +189,7 @@ export interface HomeQuick {
   backups: { count: number; lastOk: number; waiting: string[]; failed: string[]; running: boolean };
   alerts: string[]; setupDone: boolean; ok?: boolean; error?: string;
   ai?: { on: boolean; state: "off" | "ready" | "unloaded" | "paused" };
+  remote?: { on: boolean; streaming: boolean; who: string; since: number };
   pictures?: { on: boolean; state: "off" | "ready" | "paused" };
   voices?: { on: boolean; state: "off" | "ready" | "paused" };
 }
@@ -196,7 +197,7 @@ export const HOME_POLL = 15000;
 
 /** Shown only on a PC that's a home server (set up, or sharing, or backing up); hidden when the helper isn't there. */
 export const homeShown = (q: HomeQuick | null | undefined): boolean =>
-  !!q && q.available === true && (q.setupDone || q.shares > 0 || q.backups.count > 0);
+  !!q && q.available === true && (q.setupDone || q.shares > 0 || q.backups.count > 0 || !!(q.remote && q.remote.streaming));
 
 /** "3 shared folders · 1 TB of 4 TB used · 1 person". */
 export function homeLine(q: HomeQuick): string {
@@ -230,6 +231,13 @@ export function aiAppsLine(q: HomeQuick): string {
   const one = (a: HomeQuick["pictures"], label: string) =>
     !a || !a.on || a.state === "off" ? "" : `${label}: ${a.state === "paused" ? "stopped while you play" : "ready"}`;
   return [one(q.pictures, "AI pictures"), one(q.voices, "AI voices")].filter((x) => x).join(" · ");
+}
+
+/** Use this PC from anywhere (docs/REMOTE-DESKTOP.md): who is streaming this PC through Moonlight, or "". */
+export function remoteLine(q: HomeQuick): string {
+  const r = q.remote;
+  if (!r || !r.on || !r.streaming) return "";
+  return `${r.who || "A device"} is using this PC through Moonlight: it sees and controls this screen`;
 }
 
 /** What Light mode holds back while you play, or "". */

@@ -1545,7 +1545,21 @@ def quick():
                         'running': any((j.get('state') or {}).get('running') for j in jobs)},
             'alerts': [a.get('text', '') for a in alerts if isinstance(a, dict)][:3], 'setupDone': bool(data['setupDone']),
             'ai': ai_quick(data, playing), 'pictures': ai_app_quick(data, 'pictures', 'comfyui', playing),
-            'voices': ai_app_quick(data, 'voices', 'kokoro', playing)}
+            'voices': ai_app_quick(data, 'voices', 'kokoro', playing),
+            'remote': remote_quick()}
+
+
+def remote_quick():
+    """Use this PC from anywhere (hearth-remote-desktop, next to this file): who's streaming now, for Game Mode."""
+    try:
+        p = os.path.join(HERE, 'hearth-remote-desktop')
+        loader = importlib.machinery.SourceFileLoader('hearth_remote_desktop_q', p)
+        spec = importlib.util.spec_from_loader('hearth_remote_desktop_q', loader)
+        m = importlib.util.module_from_spec(spec)
+        loader.exec_module(m)
+        return m.quick()
+    except Exception:  # noqa: BLE001 - Quick Access never fails over this
+        return {'on': False, 'streaming': False}
 
 
 def ai_quick(data, playing):

@@ -982,9 +982,9 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
-"t": "Remote play",
+"t": "Remote play and Use this PC from anywhere",
 "p": "hs-gaming",
-"d": "Sunshine on this PC, Moonlight on your laptop, phone or TV. Away from home, add this PC in Moonlight by its Tailscale name",
+"d": "Sunshine on this PC, Moonlight on your laptop, work PC, phone or TV: your games, or your whole desktop. Away from home, add this PC in Moonlight by its Tailscale name",
 "i": "wired"
 },
 {
@@ -1254,7 +1254,7 @@ var ENTRIES = [
 {
 "t": "Remote play",
 "p": "hs-services",
-"d": "Sunshine: play this PC's games on your laptop, phone or TV with Moonlight, at home or through Tailscale",
+"d": "Sunshine: play this PC's games on your laptop, phone or TV with Moonlight, at home or through Tailscale; Use this PC from anywhere is there too",
 "i": "play"
 },
 {
@@ -1789,6 +1789,56 @@ var ENTRIES = [
 "p": "printers",
 "d": "Drivers, paper and other options (Print Settings)",
 "i": "gear"
+},
+{
+"t": "Use this PC from anywhere",
+"p": "remote",
+"i": "globe"
+},
+{
+"t": "Start again",
+"p": "remote",
+"d": "Sunshine was stopped (Remote play's switch below, or it couldn't start). Start it with Hearth's settings again",
+"i": "restart"
+},
+{
+"t": "Tailscale isn't connected",
+"p": "remote",
+"d": "Away from home, Moonlight finds this PC through Tailscale. Sign in on this PC and on the other device",
+"i": "globe"
+},
+{
+"t": "Type Moonlight's PIN",
+"p": "remote",
+"i": "pad"
+},
+{
+"t": "Sunshine has its own login",
+"p": "remote",
+"d": "Type it once under Sunshine's username and password below, then pair here",
+"i": "lock"
+},
+{
+"t": "Check the connection",
+"p": "remote",
+"i": "search"
+},
+{
+"t": "Reachable",
+"p": "remote",
+"d": "Never from the internet. Tailscale only keeps this PC's streaming closed to your home network too"
+},
+{
+"t": "Stay awake while connected",
+"p": "remote",
+"d": "This PC doesn't sleep or go idle while a device streams, and can again 2 minutes after it disconnects",
+"i": "sleep"
+},
+{
+"t": "Wake this PC from away",
+"p": "remote",
+"d": "If it's asleep, another device at home (a phone or a Hearth device on Tailscale) can wake it: Home server › Alerts & power",
+"i": "power"
 },
 {
 "t": "Remote play",

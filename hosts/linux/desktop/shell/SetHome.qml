@@ -242,7 +242,7 @@ SetPage {
                 icon: "bt"; title: "Bluetooth devices"; linkText: "See all"; linkTarget: "bluetooth"
                 Repeater {
                     model: page.btDevices
-                    delegate: SetRow {
+                    delegate: SetRow { chevron: false;
                         required property var modelData
                         flat: true
                         icon: page.iconFor(modelData.name); title: modelData.name
@@ -291,7 +291,7 @@ SetPage {
             HomeCard {
                 visible: !!page.hsCfg
                 icon: "server"; title: "Home server"; linkText: "Open"; linkTarget: "hs-overview"
-                SetRow {
+                SetRow { chevron: false;
                     flat: true; visible: !!page.hsAlert
                     icon: "warn"; title: page.hsAlert ? page.hsAlert.title : ""; sub: page.hsAlert ? page.hsAlert.sub : ""
                     value: "Fix it"
@@ -308,7 +308,7 @@ SetPage {
             }
             HomeCard {
                 icon: "palette"; title: "Your look"; linkText: "Personalize"; linkTarget: "appearance"
-                SetRow {
+                SetRow { chevron: false;
                     flat: true
                     title: Theme.lookLabel + " · " + (Settings.sunset ? "Sunset" : Theme.dark ? "Dark" : "Light") + " · " + page.accentName
                     sub: "Eight looks to choose from. Your wallpaper and accent stay yours."
