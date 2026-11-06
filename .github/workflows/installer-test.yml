@@ -1,6 +1,7 @@
-# Runs Hearth's installer (os/live/src/hearth-install) for real against an empty 40 GB disk image, inside the
-# Hearth OS on Anatase image (ghcr.io/dragongamer9/hearth-os:latest, what the live ISO is made from), installing
-# that edition, then checks the result: partitions, Hearth OS deployed, boot loader, boot entry, user.
+# Runs Hearth's installer (os/live/src/hearth-install) for real against an empty disk image, inside the image the
+# live USB is made from (ghcr.io/dragongamer9/hearth-os:latest, see os/live/src/build.sh), installing Hearth OS on
+# Debian (edition id 'peppermint', the only edition the installer offers; the others are archived and refused),
+# then checks the result: partitions, Hearth OS deployed, boot loader, boot entry, user, and that it boots.
 name: Installer test
 
 # With iso_run (the run number of an "installer-iso" run), it instead boots THAT run's ISO in a virtual PC and goes
@@ -10,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       edition:
-        description: 'Which edition to install (peppermint; the others are archived)'
+        description: 'Which edition to install (Hearth OS on Debian; the others are archived and the installer refuses them)'
         type: choice
-        options: [peppermint, anatase, ubuntu, cachyos]
+        options: [peppermint]
         default: peppermint
       iso_run:
         description: 'Run ID of an installer-iso run: test its ISO through the installer screens instead'
@@ -131,10 +132,9 @@ jobs:
           [ $ok = 1 ]
       - name: Boot it (UEFI, serial console) and wait for the login prompt
         run: |
-          sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
+          bash tools/ci-qemu-uefi.sh   # qemu + UEFI firmware: code.fd and vars.fd here, or an ::error saying why not
           sudo losetup -d "$LOOP"
-          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd 2>/dev/null || cp /usr/share/OVMF/OVMF_VARS.fd vars.fd
-          code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
+          code=$PWD/code.fd
           timeout 900 sudo qemu-system-x86_64 -m 4096 -smp 2 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
             -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file=vars.fd \
             -drive file="$IMG",format=raw,if=virtio -nographic -serial mon:stdio -display none -net none \
@@ -145,7 +145,7 @@ jobs:
           done
           sudo pkill qemu-system || true
           tail -c 4000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tail -40
-          grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log || { echo "::error title=Boot failed::$(tail -c 3000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|')"; exit 1; }
+          grep -qE 'login:|Reached target.*(Multi-User|Graphical)' boot.log || { [ -s boot.log ] || echo "::error title=Boot failed::qemu wrote nothing (did it start? kvm: $(ls -l /dev/kvm 2>&1))"; echo "::error title=Boot failed::$(tail -c 3000 boot.log | tr -d '\r' | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|')"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -197,7 +197,7 @@ jobs:
             -e HEARTH_INSTALL_TEST=1 --security-opt label=disable ghcr.io/dragongamer9/hearth-os:latest /src/hearth-install check "${LOOP}p8" | tee check.json
       - name: Install Hearth OS next to it
         run: |
-          plan=$(printf '{"mode":"beside","disk":"%s","part":"%sp8","give":%s,"user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"UTC","edition":"anatase","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP" "$LOOP" $((70*1024*1024*1024)))
+          plan=$(printf '{"mode":"beside","disk":"%s","part":"%sp8","give":%s,"user":{"name":"tester","full":"Tester","password":"hearth"},"hostname":"hearth-ci","timezone":"UTC","edition":"peppermint","firmware":false,"kargs":["console=ttyS0,115200"]}' "$LOOP" "$LOOP" $((70*1024*1024*1024)))
           # The live USB's installer tools: os/live/src/build.sh adds the ones the Hearth OS image hasn't got.
           cat > /tmp/run.sh <<'EOF'
           need=""
@@ -212,7 +212,7 @@ jobs:
           echo "$plan" | sudo podman run --rm -i --privileged --pid=host --net=host \
             -v /dev:/dev -v /run/udev:/run/udev -v "$PWD/os/live/src:/src:ro" -v /tmp/run.sh:/run.sh:ro -e HEARTH_INSTALL_TEST=1 \
             --security-opt label=disable ghcr.io/dragongamer9/hearth-os:latest sh /run.sh run 2>&1 | tee install.log || true
-          grep -q '^result: ' install.log || { echo "::error title=Install failed::$(tail -n 25 install.log | tr '\n' '|' | cut -c1-3500)"; exit 1; }
+          grep -q '^result: ' install.log || { echo "::error title=Install failed::$(grep -v '^stage: ' install.log | tail -n 25 | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\n' '|' | cut -c1-3500)"; exit 1; }
       - name: Check SteamOS is fine and both are in the boot menu
         run: |
           set -x
@@ -227,28 +227,29 @@ jobs:
           root=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="hearth"{print $1}'); boot=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="boot"{print $1}')
           check "Hearth partitions" "[ -n '$root' ] && [ -n '$boot' ]"
           sudo mkdir -p /mnt/b && sudo mount "$boot" /mnt/b
-          sudo cat /mnt/b/grub2/custom.cfg || true
-          check "SteamOS in Hearth's boot menu" "sudo grep -q 'chainloader /EFI/steamos/steamcl.efi' /mnt/b/grub2/custom.cfg"
+          sudo cat /mnt/b/grub2/custom.cfg /mnt/b/grub/custom.cfg 2>/dev/null || true
+          check "SteamOS in Hearth's boot menu" "sudo grep -qs 'chainloader /EFI/steamos/steamcl.efi' /mnt/b/grub2/custom.cfg /mnt/b/grub/custom.cfg"
           # Hearth has its own EFI partition (in its own space); SteamOS's stays as it was.
           sudo mount "${LOOP}p1" /mnt/e
           check "SteamOS's boot loader untouched" "sudo test -e /mnt/e/EFI/steamos/steamcl.efi"
-          check "nothing of Hearth's on SteamOS's EFI partition" "! sudo test -d /mnt/e/EFI/fedora && ! sudo test -d /mnt/e/EFI/anatase"
+          check "nothing of Hearth's on SteamOS's EFI partition" "! sudo test -d /mnt/e/EFI/debian && ! sudo test -d /mnt/e/EFI/fedora && ! sudo test -d /mnt/e/EFI/anatase"
           sudo umount /mnt/e
           hesp=$(lsblk -lnpo NAME,PARTLABEL "$LOOP" | awk '$2=="Hearth" && $3=="EFI"{print $1}')
           [ -z "$hesp" ] && hesp=$(sudo sfdisk -J "$LOOP" | python3 -c 'import json,sys; print(next((p["node"] for p in json.load(sys.stdin)["partitiontable"]["partitions"] if p.get("name")=="Hearth EFI"),""))')
           check "Hearth's own EFI partition" "[ -n '$hesp' ]"
           sudo mkdir -p /mnt/he && sudo mount "$hesp" /mnt/he
-          check "Hearth's boot loader on its own EFI partition" "sudo test -d /mnt/he/EFI/fedora -o -d /mnt/he/EFI/anatase"
-          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/he/EFI/fedora/grub.cfg /mnt/he/EFI/anatase/grub.cfg 2>/dev/null | tr '\n' ' ')"
-          check "Hearth's boot loader reads custom.cfg" "sudo grep -q 'custom.cfg' /mnt/b/grub2/grub.cfg"
+          # Hearth OS on Debian's boot loader folder is EFI/debian (EFI/fedora on the archived Anatase).
+          sudo ls -R /mnt/he/EFI | sed 's/^/::notice title=Hearth EFI partition::/' | head -20 || true
+          check "Hearth's boot loader on its own EFI partition" "sudo sh -c 'ls /mnt/he/EFI/*/*.efi | grep -iv /EFI/BOOT/' >/dev/null"
+          echo "::notice title=grub reads custom.cfg::$(sudo grep -rl 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/b/grub/grub.cfg /mnt/he/EFI/*/grub.cfg 2>/dev/null | tr '\n' ' ')"
+          check "Hearth's boot loader reads custom.cfg" "sudo grep -qs 'custom.cfg' /mnt/b/grub2/grub.cfg /mnt/b/grub/grub.cfg"
           sudo umount /mnt/b /mnt/he
           [ $ok = 1 ]
       - name: Boot it and wait for the login prompt
         run: |
-          sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
+          bash tools/ci-qemu-uefi.sh   # qemu + UEFI firmware: code.fd and vars.fd here, or an ::error saying why not
           sudo losetup -d "$LOOP"
-          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd 2>/dev/null || cp /usr/share/OVMF/OVMF_VARS.fd vars.fd
-          code=$(ls /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd 2>/dev/null | head -1)
+          code=$PWD/code.fd
           timeout 900 sudo qemu-system-x86_64 -m 4096 -smp 2 $( [ -e /dev/kvm ] && echo -enable-kvm -cpu host ) \
             -drive if=pflash,format=raw,readonly=on,file="$code" -drive if=pflash,format=raw,file=vars.fd \
             -drive file=disk.img,format=raw,if=virtio -nographic -serial mon:stdio -display none -net none > boot.log 2>&1 &
