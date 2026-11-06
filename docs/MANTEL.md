@@ -135,8 +135,8 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   button is the one next step, Update anyway, **Decky plugins** as one expander (`updates:decky` opens it), "If
   something broke" (Go back, and "The previous version always stays startable"), the writable system, then Backup and
   help. The same hearth-admin, hearth-decky and hearth-unlock calls as before; only the layout changed.
-- **AI devices** (`SetHomeAIDevices.qml`, feature/ai-share): its registry entry is written out, ready, in
-  `settings-pages.js` (Home server › Services › AI devices); it goes live when that branch is merged.
+- **AI devices** (`SetHomeAIDevices.qml`, docs/AI-SHARE.md): Home server › AI devices, a card under "On this server"
+  on the Home server page, and linked from Services › AI chat and Hearth Link.
 - **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,
   `SetBanner`, `SetLinkCard`, `SetButton`, sizes and the good / warn colours in `SetStyle.qml`): icon, title, one
   line, the control or a status chip on the right, a chevron only when it opens a page. Every colour is a Theme token,

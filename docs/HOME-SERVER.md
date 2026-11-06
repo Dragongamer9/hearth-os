@@ -311,6 +311,16 @@ and the setup steps. **Stage 2**: Backups & sync, People, Alerts & power, and th
 - **Quick Access** shows the AI service in a line (ready, models unloaded while you play, stopped while you play) and
   "AI models" and "media server" in what Light mode holds back.
 
+## AI devices (Share this device's AI)
+
+Settings › Home server › **AI devices** (`SetHomeAIDevices.qml`, linked from AI): **Share this device's AI** (off),
+which services to share, Share only when plugged in, Not while I'm playing, an optional share code; and on the home
+server **Let the Command Center find my devices here** (off), the **Command Center address**
+`http://<this PC's Tailscale name>:8189` with Copy, and every Hearth device's AI in the order the Command Center tries
+them (Nvidia PC first by default; Move up / Move down). It's its own program (`hearth-ai-share`), user service
+(`hearth-ai-share.service`) and firewall rule (`inet hearth_ai_share`, port 8189, Tailscale only), all off until you
+turn them on, with its own settings file (`ai-share.json`). The protocol and the rest: docs/AI-SHARE.md.
+
 ## AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI)
 
 Two more services in **Services** (always shown, not hidden until seen: they're useful without the Command Center) and

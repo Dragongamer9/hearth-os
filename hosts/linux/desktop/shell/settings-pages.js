@@ -91,13 +91,7 @@ var PAGES = [
     { id: "hs-family", file: "SetHomeFamily.qml", cat: "hs", label: "Family & home", icon: "family", desc: "A Family folder, calendar and cameras", words: "nas family cameras onvif folder", old: "Home server › Family & home" },
     { id: "hs-services", file: "SetHomeServices.qml", cat: "hs", label: "Services", icon: "window", desc: "Media server, files on the web, AI chat, pictures and voices", words: "nas jellyfin media server photos web files apps comfyui kokoro", old: "Home server › Services" },
     { id: "hs-ai", file: "SetHomeAI.qml", cat: "hs", parent: "hs-services", label: "AI chat", icon: "chat", desc: "Ollama for the Hearth AI Command Center: models, address, Light mode", words: "nas ollama ai llm models command center gpu qwen", old: "Home server › AI" },
-    // Ready for the AI devices page (SetHomeAIDevices.qml, feature/ai-share; not on bughunt yet). When that branch is
-    // merged, add this entry here as a normal line (written out in full below without its braces so nothing reads it
-    // yet), drop that branch's edits to the old page lists in SettingsApp.qml (this registry replaces them), and add
-    // `SetLinkCard { target: "hs-aidevices" }` under "On this server" in SetHomeServer.qml:
-    //   id: "hs-aidevices", file: "SetHomeAIDevices.qml", cat: "hs", parent: "hs-services", label: "AI devices", icon: "desktops",
-    //   desc: "Share this PC's AI with your devices, and every Hearth device's AI in one list",
-    //   words: "ai share devices command center tailscale ollama kokoro comfyui whisper voices priority", old: "Home server › AI devices"
+    { id: "hs-aidevices", file: "SetHomeAIDevices.qml", cat: "hs", label: "AI devices", icon: "desktops", desc: "Share this PC's AI with your devices, and every Hearth device's AI in one list", words: "ai share devices command center tailscale ollama kokoro comfyui whisper voices speech priority", old: "Home server › AI devices" },
     { id: "hs-gaming", file: "SetHomeGaming.qml", cat: "hs", label: "Gaming", icon: "pad", desc: "A Games folder for your devices, Steam downloads at home", words: "nas games steam lan install remote play light mode", old: "Home server › Gaming" },
     { id: "hs-drives", file: "SetHomeDrives.qml", cat: "hs", label: "Drives & undo", icon: "drive", desc: "Health of every drive, snapshots to bring files back", words: "nas disk smart health snapshot undo raid mirror format", old: "Home server › Drives & undo" },
     { id: "hs-backups", file: "SetHomeBackups.qml", cat: "hs", label: "Backups & sync", icon: "cloud", desc: "To a drive, another Hearth device or the cloud", words: "nas backup restore restic cloud b2 s3 sync syncthing photos phone", old: "Home server › Backups & sync" },

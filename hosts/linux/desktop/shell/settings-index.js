@@ -596,6 +596,12 @@ var ENTRIES = [
 "i": "back"
 },
 {
+"t": "Share this device's AI · AI devices",
+"p": "hs-ai",
+"d": "Let your other devices and the Command Center use this PC's AI through Tailscale, and see every device's AI in one list",
+"i": "desktops"
+},
+{
 "t": "Shows once the Command Center is seen",
 "p": "hs-ai",
 "i": "info"
@@ -664,6 +670,71 @@ var ENTRIES = [
 "p": "hs-ai",
 "d": "The app goes; your downloaded models stay (in /var/lib/hearth-ollama)",
 "i": "trash"
+},
+{
+"t": "Share this device's AI",
+"p": "hs-aidevices",
+"i": "mic"
+},
+{
+"t": "Who can see it",
+"p": "hs-aidevices",
+"i": "lock"
+},
+{
+"t": "No AI services found on this device",
+"p": "hs-aidevices",
+"d": "Hearth looks for Ollama chat (port 11434), Kokoro voices (8880), ComfyUI pictures (8188) and whisper speech to text (8000 or 9000). On a home server, Home server › AI installs Ollama",
+"i": "info"
+},
+{
+"t": "Share only when plugged in",
+"p": "hs-aidevices",
+"i": "power"
+},
+{
+"t": "Not while I'm playing",
+"p": "hs-aidevices",
+"i": "pad"
+},
+{
+"t": "Also on my home network",
+"p": "hs-aidevices",
+"d": "Off: only Tailscale and this device. On: anything on your home network can read the list too (the services keep their own rules)",
+"i": "wired"
+},
+{
+"t": "Ask for a share code",
+"p": "hs-aidevices",
+"i": "lock"
+},
+{
+"t": "Let the Command Center find my devices here",
+"p": "hs-aidevices",
+"d": "This home server lists every device's AI at one address, so the Command Center needs only that",
+"i": "globe"
+},
+{
+"t": "Command Center address",
+"p": "hs-aidevices",
+"i": "globe"
+},
+{
+"t": "Looking for your devices…",
+"p": "hs-aidevices",
+"i": "update"
+},
+{
+"t": "Back to the usual order",
+"p": "hs-aidevices",
+"d": "A device with an Nvidia card first, then the others by graphics memory",
+"i": "restart"
+},
+{
+"t": "Every device in one list",
+"p": "hs-aidevices",
+"d": "On your Home server, this page lists every Hearth device's AI and gives the Command Center its address",
+"i": "info"
 },
 {
 "t": "Alerts",
@@ -1548,6 +1619,12 @@ var ENTRIES = [
 "t": "Clear learned words",
 "p": "keyboard",
 "d": "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"
+},
+{
+"t": "Share this device's AI",
+"p": "link",
+"d": "Its AI (chat, voices, pictures, speech to text) for your other devices and the Command Center, through Tailscale",
+"i": "mic"
 },
 {
 "t": "Pair a device",

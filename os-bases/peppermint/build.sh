@@ -596,6 +596,15 @@ command -v smbd smbpasswd testparm smartctl nft
 command -v tailscale || echo "warning: no Tailscale in this image"
 for b in restic rclone syncthing hdparm upsmon; do command -v "$b" || echo "warning: no $b in this image (Settings › Home server says so)"; done
 # ---- end of Hearth home server
+# ---- Share this device's AI (docs/AI-SHARE.md): the user service that answers on port 8189 and the timer that loads its
+# Tailscale-only firewall rule are both off until the owner turns sharing on in Settings.
+systemctl disable hearth-ai-share-firewall.timer 2>/dev/null || true
+systemctl --global disable hearth-ai-share.service 2>/dev/null || true
+if [ "$(systemctl is-enabled hearth-ai-share-firewall.timer 2>/dev/null)" = enabled ]; then echo "::error::hearth-ai-share-firewall.timer is on in the image: AI sharing stays off until the owner turns it on"; exit 1; fi
+if [ "$(systemctl --global is-enabled hearth-ai-share.service 2>/dev/null)" = enabled ]; then echo "::error::hearth-ai-share.service (a user service) is on in the image"; exit 1; fi
+if grep -q '^\[Install\]' /usr/lib/systemd/system/hearth-ai-share-firewall.service 2>/dev/null; then echo "::error::hearth-ai-share-firewall.service has an [Install] section: only its timer may start it"; exit 1; fi
+if [ -e /etc/hearth/ai-share.nft ]; then echo "::error::/etc/hearth/ai-share.nft is in the image: it's written only when the owner turns sharing on"; exit 1; fi
+# ---- end Share this device's AI
 if dpkg -s firewalld >/dev/null 2>&1 || dpkg -s ufw >/dev/null 2>&1; then echo "a firewall is in this image: Nearby Share and Hearth Connect open their ports with it"; else echo "no firewall in this image: nothing to open"; fi
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then

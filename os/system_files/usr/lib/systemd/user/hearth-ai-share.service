@@ -1,0 +1,17 @@
+# "Share this device's AI" (docs/AI-SHARE.md): answers GET /v1/hearth/ai (what AI this device has) and, on your Home
+# server, /v1/hearth/ai/devices (every device's AI) on port 8189, read only, as you, for the Hearth AI Command Center.
+# On this device and its Tailscale address only (behind Hearth's firewall rule, hearth-ai-share-firewall), or on your
+# home network if you chose that. Off until you turn it on (hearth-ai-share enables it for your account). Not part of
+# the session or Game Mode starting: nothing waits for it, and a failure here never holds anything up.
+[Unit]
+Description=Hearth: share this device's AI (read-only list for the Command Center)
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-ai-share serve
+Restart=on-failure
+RestartSec=30
+Nice=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
