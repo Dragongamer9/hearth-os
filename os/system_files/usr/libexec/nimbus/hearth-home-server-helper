@@ -48,7 +48,9 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
                         (in its own transient unit; only when you ask, never at build or boot)
   app-remove NAME       the app goes; its data (models, libraries) stays
   services run          the services timer: Light mode for the AI service and the media server, the Command Center
-                        noted when it uses the AI service, the ransomware guard, the Tailscale-only rule kept loaded
+                        noted when it uses the AI service, the ransomware guard, the Tailscale-only rule kept loaded;
+                        also Light mode for AI pictures (ComfyUI) and AI voices (Kokoro), your own user services
+                        (stopped while you play when you chose that, started again after)
   guard-reset           your shares writable again after the ransomware guard turned them read only
 
 The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Nothing here goes through a shell: every
@@ -625,7 +627,8 @@ def plan_write(data, shares, user, backups=(), svc=None):
             'shares': [{'name': s['name'], 'path': s['path'], 'snapshots': s['snapshots'], 'recycle': s['recycle'] and s['write']} for s in shares],
             'backups': list(backups), 'alerts': alerts, 'power': power}
     if svc:
-        plan.update({'media': svc['media'], 'ai': svc['ai'], 'guard': clean_guard(data.get('guard'))})
+        plan.update({'media': svc['media'], 'ai': svc['ai'], 'guard': clean_guard(data.get('guard')),
+                     'pictures': svc.get('pictures') or clean_user_app(None, True), 'voices': svc.get('voices') or clean_user_app(None, False)})
     write(PLAN, json.dumps(plan, indent=2) + '\n')
     recycles = any(p['recycle'] for p in plan['shares'])
     timer_on = snaps_on or recycles
@@ -2280,6 +2283,15 @@ SHA_RE = re.compile(r'^[0-9a-f]{64}$')
 MEDIA_DEFAULT = {'on': False, 'reach': 'home', 'pause': False}
 AI_DEFAULT = {'on': False, 'unload': True, 'pause': False}
 GUARD_DEFAULT = {'on': False, 'limit': 1000}
+# AI pictures (ComfyUI, on the graphics card) and AI voices (Kokoro-FastAPI, on the CPU): your own user services, installed
+# by the Mantel helper as you (never by root, never in the image). Root's part: their ports in the Tailscale-only rule
+# while they're on (they also listen only on 127.0.0.1 and this PC's Tailscale address), and Light mode (stopped while
+# you play when you chose so, started again after; what was stopped is state in SERVICES_STATE, never a setting).
+COMFY_PORT = 8188
+KOKORO_PORT = 8880
+USER_APPS = {'comfyui': ('pictures', 'hearth-comfyui.service', True), 'kokoro': ('voices', 'hearth-kokoro.service', False)}
+ACCOUNT_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
+USER_RUN = '/run/user/%d'      # your user manager's runtime folder (its bus is there while you're signed in)
 GUARD_LIMITS = (500, 1000, 5000)
 GUARD_WINDOW = '5 min ago'
 
@@ -2293,6 +2305,12 @@ def clean_media(m):
 def clean_ai(a):
     a = a if isinstance(a, dict) else {}
     return {'on': a.get('on') is True, 'unload': a.get('unload', True) is not False, 'pause': a.get('pause') is True}
+
+
+def clean_user_app(a, pause_default):
+    """AI pictures {on, pause: on by default} or AI voices {on, pause: off by default}."""
+    a = a if isinstance(a, dict) else {}
+    return {'on': a.get('on') is True, 'pause': (a.get('pause', True) is not False) if pause_default else a.get('pause') is True}
 
 
 def clean_guard(g):
@@ -2599,6 +2617,11 @@ def services_plan(data, user):
         out['ports']['tcp'].append(JELLYFIN_PORT)
         out['ports']['udp'].append(JELLYFIN_DISCOVERY)
     out['mediaTs'] = media['on'] and (media['reach'] == 'tailscale' or ts_only)
+    # AI pictures and AI voices: only for Tailscale and this PC, always (like the AI service).
+    for name, (key, _, pdef) in USER_APPS.items():
+        out[key] = clean_user_app(data.get(key), pdef)
+        if out[key]['on']:
+            out['ports']['tcp'].append(COMFY_PORT if name == 'comfyui' else KOKORO_PORT)
     return out
 
 
@@ -2680,7 +2703,8 @@ def services_switch(svc, res):
 
 def services_timer_needed(plan):
     ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
-    return ai['on'] or (media['on'] and media['pause']) or guard['on']
+    apps = [clean_user_app(plan.get(key), pdef) for key, _, pdef in USER_APPS.values()]
+    return ai['on'] or (media['on'] and media['pause']) or guard['on'] or any(a['on'] and a['pause'] for a in apps)
 
 
 def ollama_api(method, path, body=None, timeout=10):
@@ -2711,9 +2735,9 @@ def unit_active(unit):
     return run(['systemctl', 'is-active', '--quiet', unit])[0] == 0
 
 
-def ai_clients():
-    """Your other devices using the AI service right now (their Tailscale names), from its open connections."""
-    code, out = run(['ss', '-Htn', 'state', 'established', '( sport = :%d )' % OLLAMA_PORT], timeout=10)
+def ai_clients(port=OLLAMA_PORT):
+    """Your other devices using the AI service (or AI voices) right now (their Tailscale names), from its open connections."""
+    code, out = run(['ss', '-Htn', 'state', 'established', '( sport = :%d )' % port], timeout=10)
     if code != 0:
         return []
     ips = set()
@@ -2737,6 +2761,36 @@ def ai_clients():
     return [n for n in names if n] or sorted(ips)
 
 
+def user_systemctl(user, action, unit):
+    """systemctl --user for your own services (AI pictures, AI voices), as you through your own user manager. Nothing
+    when it isn't running (then neither are they). Only Hearth's two units, only these actions."""
+    if action not in ('stop', 'start', 'is-active') or unit not in [u for _, u, _ in USER_APPS.values()]:
+        raise Fail('not one of Hearth\'s user services')
+    if not isinstance(user, str) or not ACCOUNT_RE.fullmatch(user):
+        return 1, ''
+    pw = getpw(user)
+    if not pw or pw.pw_uid == 0 or not which('runuser'):
+        return 1, ''
+    rt = USER_RUN % pw.pw_uid
+    if not os.path.exists(rt + '/bus'):
+        return 1, ''
+    cmd = ['runuser', '-u', user, '--', 'env', 'XDG_RUNTIME_DIR=' + rt, 'DBUS_SESSION_BUS_ADDRESS=unix:path=%s/bus' % rt,
+           'systemctl', '--user'] + (['is-active', '--quiet', unit] if action == 'is-active' else [action, '--no-block', unit])
+    return run(cmd, timeout=30)
+
+
+def user_apps_light(plan, playing, paused, did):
+    """Light mode for AI pictures and AI voices: stopped when Game Mode or a game starts (ComfyUI holds graphics memory;
+    on by default for it, off for the voices, which use the CPU), started again once you stop playing."""
+    user = plan.get('user')
+    for name, (key, unit, pdef) in USER_APPS.items():
+        cfg = clean_user_app(plan.get(key), pdef)
+        if playing and cfg['on'] and cfg['pause'] and name not in paused and user_systemctl(user, 'is-active', unit)[0] == 0:
+            user_systemctl(user, 'stop', unit)
+            paused.append(name)
+            did.append('stopped ' + name + ' for your game')
+
+
 def mark_seen_sys(kind, device, now):
     st = state_read(SEEN_SYS)
     st[kind] = {'at': int(now * 1000), 'device': (device or '')[:80]}
@@ -2753,7 +2807,7 @@ def services_run(now=None):
     plan = plan_read()
     ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
     st = state_read(SERVICES_STATE)
-    paused = [p for p in st.get('paused') or [] if p in APP_UNITS]
+    paused = [p for p in st.get('paused') or [] if p in APP_UNITS or p in USER_APPS]
     playing = wait_for_game(plan)
     did = []
     if ai['on'] and app_installed('ollama'):
@@ -2773,8 +2827,19 @@ def services_run(now=None):
     if media['on'] and media['pause'] and playing and 'jellyfin' not in paused and unit_active('hearth-jellyfin.service'):
         run(['systemctl', 'stop', 'hearth-jellyfin.service'])
         paused.append('jellyfin')
+    user_apps_light(plan, playing, paused, did)
+    if not playing and clean_user_app(plan.get('voices'), False)['on']:
+        users = ai_clients(KOKORO_PORT)     # the Command Center's voice settings talking to AI voices
+        if users:
+            mark_seen_sys('commandCenter', users[0], now)
     if not playing and paused:
         for name in paused:
+            if name in USER_APPS:
+                key, unit, pdef = USER_APPS[name]
+                if clean_user_app(plan.get(key), pdef)['on']:
+                    user_systemctl(plan.get('user'), 'start', unit)
+                    did.append('started ' + name + ' again')
+                continue
             want = ai['on'] if name == 'ollama' else media['on']
             if want and os.path.exists(APP_DROPIN % APP_UNITS[name]):
                 run(['systemctl', 'start', APP_UNITS[name] + '.service'])

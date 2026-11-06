@@ -189,6 +189,8 @@ export interface HomeQuick {
   backups: { count: number; lastOk: number; waiting: string[]; failed: string[]; running: boolean };
   alerts: string[]; setupDone: boolean; ok?: boolean; error?: string;
   ai?: { on: boolean; state: "off" | "ready" | "unloaded" | "paused" };
+  pictures?: { on: boolean; state: "off" | "ready" | "paused" };
+  voices?: { on: boolean; state: "off" | "ready" | "paused" };
 }
 export const HOME_POLL = 15000;
 
@@ -221,6 +223,13 @@ export function aiLine(q: HomeQuick): string {
   if (a.state === "paused") return "AI service: stopped while you play";
   if (a.state === "unloaded") return "AI service: models unloaded while you play";
   return "AI service: ready";
+}
+
+/** AI pictures (ComfyUI) and AI voices (Kokoro) in a line, or "" when both are off. */
+export function aiAppsLine(q: HomeQuick): string {
+  const one = (a: HomeQuick["pictures"], label: string) =>
+    !a || !a.on || a.state === "off" ? "" : `${label}: ${a.state === "paused" ? "stopped while you play" : "ready"}`;
+  return [one(q.pictures, "AI pictures"), one(q.voices, "AI voices")].filter((x) => x).join(" · ");
 }
 
 /** What Light mode holds back while you play, or "". */

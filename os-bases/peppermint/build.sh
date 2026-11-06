@@ -511,6 +511,9 @@ chmod 755 /usr/libexec/nimbus/hearth-home-server-helper 2>/dev/null || true
 # rclone (cloud targets, and receiving your other Hearth devices' backups), Syncthing (folder sync between Hearth
 # devices), hdparm (spinning down idle data drives) and NUT (a UPS). Nice to have: a missing one is said in Settings.
 optional restic rclone syncthing hdparm nut-client nut-server
+# AI pictures (ComfyUI) needs git and Python's venv to install itself into ~/ComfyUI when the owner asks (Debian's own
+# small packages; ComfyUI, PyTorch and the Kokoro image are never in the image). Nice to have: Settings says if missing.
+optional git python3-venv
 TS_FPR=2596A99EAAB33821893C0A79458CA832957F5868   # Tailscale Inc. (Package repository signing key)
 if curl -fsSL --retry 3 -o /tmp/tailscale.gpg https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg; then
   command -v gpg >/dev/null || "${APT[@]}" gpg
@@ -562,14 +565,23 @@ systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev
 # checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
 HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-comfyui.timer hearth-kokoro.timer 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
          nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-comfyui.timer hearth-kokoro.timer; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
+# AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): user services with no [Install] (only their timers, off here,
+# or Settings start them), and nothing of theirs in the image: no ComfyUI for new accounts, no Kokoro image in Podman's storage.
+for u in hearth-comfyui.service hearth-kokoro.service; do
+  if grep -q '^\[Install\]' "/usr/lib/systemd/user/$u" 2>/dev/null; then echo "::error::$u has an [Install] section: only its timer may start it"; exit 1; fi
+done
+if [ -e /etc/skel/ComfyUI ] || ls /etc/systemd/user/*.wants/hearth-comfyui.* /etc/systemd/user/*.wants/hearth-kokoro.* >/dev/null 2>&1 \
+   || grep -qs kokoro /var/lib/containers/storage/overlay-images/images.json; then
+  echo "::error::ComfyUI or Kokoro is in the image: they're installed only when the owner asks"; exit 1
+fi
 for u in hearth-ollama.service hearth-jellyfin.service hearth-home-server-services.service; do
   if grep -q '^\[Install\]' "/usr/lib/systemd/system/$u" 2>/dev/null; then echo "::error::$u has an [Install] section: only its timer may start it"; exit 1; fi
 done

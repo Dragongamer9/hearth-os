@@ -127,4 +127,9 @@ test("home server tile: shown only on a home server, and its lines", () => {
   assert.equal(M.aiLine(q({ ai: { on: true, state: "unloaded" } })), "AI service: models unloaded while you play");
   assert.equal(M.aiLine(q({ ai: { on: true, state: "paused" } })), "AI service: stopped while you play");
   assert.equal(M.aiLine(q({ ai: { on: true, state: "ready" } })), "AI service: ready");
+  assert.equal(M.aiAppsLine(q()), "", "no AI pictures or voices (older helper)");
+  assert.equal(M.aiAppsLine(q({ pictures: { on: false, state: "off" }, voices: { on: false, state: "off" } })), "");
+  assert.equal(M.aiAppsLine(q({ pictures: { on: true, state: "paused" } })), "AI pictures: stopped while you play");
+  assert.equal(M.aiAppsLine(q({ pictures: { on: true, state: "paused" }, voices: { on: true, state: "ready" } })),
+    "AI pictures: stopped while you play · AI voices: ready");
 });
