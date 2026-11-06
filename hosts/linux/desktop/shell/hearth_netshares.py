@@ -259,7 +259,7 @@ def sidebar(state, show=True):
                     'sub': 'Online' if d.get('online') else 'Offline or asleep', 'offline': not d.get('online'),
                     'device': d.get('id'), 'wake': bool(d.get('wake'))})
         for s in d.get('shares') or []:
-            badge = {'home': 'Home', 'drive': 'Whole drive'}.get(s.get('badge'), '')
+            badge = {'home': 'Home', 'drive': 'Whole drive', 'system': 'System drive'}.get(s.get('badge'), '')
             out.append({'id': 'share:%s:%s' % (d.get('id'), s['name']), 'label': s['name'], 'kind': 'network', 'section': 'devices',
                         'child': True, 'offline': not d.get('online'),
                         'sub': ' · '.join(x for x in (badge, 'Read & write' if s.get('write') else 'Read only',

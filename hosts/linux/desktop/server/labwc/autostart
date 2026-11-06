@@ -1,0 +1,40 @@
+#!/bin/sh
+# Run by labwc when Server mode starts (docs/SERVER-MODE.md). One thing only: the dashboard (Quickshell, server-mode.qml
+# next to Desktop Mode's shell). It's watched like Desktop Mode's shell: three closes within 20 seconds of starting and
+# it gives up, leaves the reason in $XDG_RUNTIME_DIR/hearth-server-dash-failed and ends labwc. nimbus-session then
+# opens Game Mode (it also closes labwc itself when the dashboard never says it's up). No taskbar, no menu, no Steam.
+SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+QML="${HEARTH_SERVER_QML:-$SHARE/desktop/shell/server-mode.qml}"
+DASH_LOG="$RUN/hearth-server-dash.log"
+
+{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS NIMBUS_SHARE
+  systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service; } >/dev/null 2>&1 &
+# The resolution and scale chosen in Settings › Display, as in Desktop Mode.
+[ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" >/dev/null 2>&1
+[ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh" >/dev/null 2>&1 &
+
+give_up() {
+  { echo "$1"; echo; tail -n 12 "$DASH_LOG" 2>/dev/null; } >"$RUN/hearth-server-dash-failed"
+  labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID" 2>/dev/null
+}
+if [ ! -f "$QML" ]; then
+  give_up "Server mode's dashboard is missing ($QML)."
+elif ! command -v quickshell >/dev/null 2>&1; then
+  give_up "Server mode needs Quickshell, which isn't installed."
+else
+  (
+    : >"$DASH_LOG"
+    fails=0
+    while :; do
+      # Server mode ended (labwc gone): stop watching.
+      if [ -n "$LABWC_PID" ] && ! kill -0 "$LABWC_PID" 2>/dev/null; then exit 0; fi
+      started=$(date +%s)
+      quickshell -p "$QML" >>"$DASH_LOG" 2>&1
+      if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
+      if [ "$fails" -ge 3 ]; then give_up "Server mode's dashboard keeps closing right after it starts."; exit 0; fi
+      echo "--- restarting the dashboard" >>"$DASH_LOG"
+      sleep 1
+    done
+  ) &
+fi

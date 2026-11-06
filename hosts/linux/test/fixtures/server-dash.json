@@ -1,0 +1,352 @@
+{
+ "host": "chris-hearth",
+ "gpuName": "RTX 5070",
+ "memTotalGb": 32,
+ "uptime": 522000,
+ "since": 0,
+ "sinceText": "6:00 AM",
+ "mode": "server",
+ "status": {
+  "level": "ok",
+  "title": "All good",
+  "sub": "8 services running",
+  "problems": []
+ },
+ "devices": 2,
+ "facts": [
+  [
+   "Graphics memory",
+   "11.1 / 12 GB"
+  ],
+  [
+   "Storage",
+   "2.6 / 8 TB"
+  ],
+  [
+   "Power",
+   "186 W"
+  ]
+ ],
+ "vram": [
+  {
+   "who": "ai",
+   "gb": 7.2
+  },
+  {
+   "who": "pictures",
+   "gb": 3.4
+  },
+  {
+   "who": "voices",
+   "gb": 0.5
+  }
+ ],
+ "vramTotal": 12.0,
+ "vramUsed": 11.1,
+ "tiles": [
+  {
+   "id": "ai",
+   "title": "AI chat",
+   "engine": "Ollama",
+   "icon": "chat",
+   "state": "running",
+   "chip": "Running",
+   "big": "2",
+   "unit": "devices asking now",
+   "sub": "Model loaded: qwen3:30b-a3b",
+   "rows": [
+    [
+     "Models",
+     "qwen3:30b-a3b, qwen3:14b"
+    ]
+   ],
+   "models": [
+    "qwen3:30b-a3b",
+    "qwen3:14b"
+   ],
+   "loaded": [
+    "qwen3:30b-a3b"
+   ],
+   "vramGb": 7.2,
+   "actions": [
+    "restart",
+    "pause"
+   ]
+  },
+  {
+   "id": "pictures",
+   "title": "Pictures",
+   "engine": "ComfyUI",
+   "icon": "image",
+   "state": "running",
+   "chip": "Making",
+   "big": "3",
+   "unit": "waiting",
+   "sub": "Making a picture now",
+   "rows": [
+    [
+     "While you play",
+     "Stops, keeps the queue"
+    ]
+   ],
+   "actions": [
+    "restart",
+    "pause"
+   ]
+  },
+  {
+   "id": "media",
+   "title": "Media",
+   "engine": "Jellyfin",
+   "icon": "film",
+   "state": "running",
+   "chip": "Running",
+   "big": "1",
+   "unit": "watching now",
+   "sub": "ROG Ally",
+   "rows": [
+    [
+     "While you play",
+     "Keeps streaming"
+    ]
+   ],
+   "actions": [
+    "restart",
+    "pause"
+   ]
+  },
+  {
+   "id": "storage",
+   "title": "Storage",
+   "engine": "Shared folders: Games, Work",
+   "icon": "drive",
+   "state": "running",
+   "chip": "Healthy",
+   "big": "2.6 TB",
+   "unit": "of 8 TB used",
+   "bar": 33,
+   "rows": [
+    [
+     "/home/chris/Games",
+     "1.4 TB free"
+    ],
+    [
+     "/mnt/drive2",
+     "2.1 TB free"
+    ],
+    [
+     "/mnt/drive3",
+     "1.9 TB free"
+    ]
+   ],
+   "actions": []
+  },
+  {
+   "id": "backups",
+   "title": "Backups",
+   "engine": "2 set up",
+   "icon": "cloud",
+   "state": "running",
+   "chip": "Up to date",
+   "big": "Done",
+   "unit": "at 3:12 AM",
+   "sub": "Games and Work to Drive 2",
+   "rows": [
+    [
+     "While you play",
+     "Wait until you stop"
+    ]
+   ],
+   "actions": []
+  },
+  {
+   "id": "heat",
+   "title": "Heat & power",
+   "engine": "Full power, no limits",
+   "icon": "cpu",
+   "state": "running",
+   "chip": "Cool",
+   "boxes": [
+    [
+     "Processor",
+     "48 °C",
+     "31% busy"
+    ],
+    [
+     "Graphics card",
+     "63 °C",
+     "RTX 5070 · 88% busy"
+    ],
+    [
+     "Power now",
+     "186 W",
+     "graphics card"
+    ],
+    [
+     "Memory",
+     "21 GB",
+     "of 32 GB"
+    ]
+   ],
+   "actions": []
+  },
+  {
+   "id": "who",
+   "title": "Who's connected",
+   "engine": "Tailscale",
+   "icon": "tailscale",
+   "state": "running",
+   "chip": "Connected",
+   "big": "2",
+   "unit": "devices",
+   "list": [
+    [
+     "Work laptop",
+     "Web page · Shared folders · AI chat"
+    ],
+    [
+     "ROG Ally",
+     "Media · Shared folders"
+    ]
+   ],
+   "rows": [
+    [
+     "Network",
+     "↓ 4.2 MB/s · ↑ 18.6 MB/s"
+    ],
+    [
+     "Online on Tailscale",
+     "4"
+    ]
+   ],
+   "actions": []
+  },
+  {
+   "id": "remote",
+   "title": "Remote desktop",
+   "engine": "Sunshine",
+   "icon": "desktops",
+   "state": "running",
+   "chip": "Ready",
+   "big": "Ready",
+   "unit": "no one connected",
+   "sub": "Connect with Moonlight or Hearth Link to use this PC from anywhere",
+   "rows": [],
+   "actions": [
+    "restart"
+   ]
+  }
+ ],
+ "pills": [
+  {
+   "name": "Shared folders",
+   "extra": "Games, Work",
+   "state": "running"
+  },
+  {
+   "name": "Media",
+   "extra": "",
+   "state": "running"
+  },
+  {
+   "name": "AI chat",
+   "extra": "",
+   "state": "running"
+  },
+  {
+   "name": "Pictures",
+   "extra": "",
+   "state": "running"
+  },
+  {
+   "name": "Voices",
+   "extra": "Kokoro",
+   "state": "running"
+  },
+  {
+   "name": "Remote desktop",
+   "extra": "",
+   "state": "running"
+  },
+  {
+   "name": "Backups",
+   "extra": "",
+   "state": "running"
+  },
+  {
+   "name": "Hearth AI sharing",
+   "extra": "2 devices",
+   "state": "running"
+  }
+ ],
+ "alerts": [
+  {
+   "level": "warn",
+   "text": "Drive 3 ran warm at noon",
+   "sub": "46 °C for 20 min, 41 °C now",
+   "at": "12:20 PM"
+  },
+  {
+   "level": "info",
+   "text": "Work laptop opened the web page",
+   "sub": "with the PIN",
+   "at": "1:52 PM"
+  },
+  {
+   "level": "ok",
+   "text": "Backup to Drive 2 finished",
+   "sub": "14 GB",
+   "at": "3:12 AM"
+  }
+ ],
+ "who": [
+  {
+   "name": "Work laptop",
+   "what": [
+    "AI chat",
+    "Shared folders",
+    "Web page"
+   ],
+   "ts": true
+  },
+  {
+   "name": "ROG Ally",
+   "what": [
+    "Media",
+    "Shared folders"
+   ],
+   "ts": true
+  }
+ ],
+ "pauses": {
+  "lightMode": true,
+  "ai": "small",
+  "aiOn": true,
+  "pictures": "stop",
+  "picturesOn": true,
+  "voices": "pause",
+  "voicesOn": true,
+  "media": "keep",
+  "mediaOn": true,
+  "backups": "wait",
+  "small": "qwen3:14b",
+  "big": "qwen3:30b-a3b"
+ },
+ "playing": false,
+ "paused": [],
+ "pausedByYou": [],
+ "busy": true,
+ "web": {
+  "on": true,
+  "url": "http://chris-hearth:8460"
+ },
+ "idle": {
+  "dim": 0,
+  "off": 0,
+  "idlePower": false,
+  "idleMinutes": 10,
+  "wlopm": false
+ },
+ "countdown": null,
+ "now": 0
+}

@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!--
+  Hearth Server mode (docs/SERVER-MODE.md): labwc for one full-screen dashboard. No keyboard shortcuts, no root menu,
+  no window decorations: nothing to open but what the dashboard opens (Hearth Settings). Started by nimbus-session's
+  run_server with this folder (labwc -C); Desktop Mode's own labwc folder is never touched.
+-->
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>0</gap>
+  </core>
+  <theme>
+    <cornerRadius>10</cornerRadius>
+    <titlebar><layout>close</layout></titlebar>
+  </theme>
+  <placement><policy>center</policy></placement>
+  <!-- An empty keyboard section with no default bindings: no Alt+Tab, no terminal, no root menu. -->
+  <keyboard>
+    <default>no</default>
+    <repeatRate>25</repeatRate>
+    <repeatDelay>600</repeatDelay>
+  </keyboard>
+  <mouse>
+    <default>no</default>
+    <context name="Frame">
+      <mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+    </context>
+    <context name="Client">
+      <mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+    </context>
+    <context name="Close">
+      <mousebind button="Left" action="Click"><action name="Close"/></mousebind>
+    </context>
+  </mouse>
+  <!-- The pointer hides after a few seconds without moving (the dashboard is for a controller and the TV). -->
+</labwc_config>

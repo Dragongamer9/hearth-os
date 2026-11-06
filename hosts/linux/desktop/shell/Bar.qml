@@ -443,19 +443,12 @@ PanelWindow {
                 Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!btProc.running) btProc.running = true }
             }
 
-            // Hearth Friends (Friends.qml): chats and friends on Matrix, with a badge for unread messages
+            // Discord (Discord.qml): toggles Discord's small window by the bar (the first press asks which Discord)
             BarButton {
-                tip: SettingsNav.friendsUnread > 0 ? "Friends · " + SettingsNav.friendsUnread + " unread" : "Friends"
-                onClicked: if (SettingsNav.friends) SettingsNav.friends.toggle()
-                Icon { anchors.centerIn: parent; name: "user"; size: 20 }
-                Rectangle {
-                    visible: SettingsNav.friendsUnread > 0
-                    x: parent.width / 2 + 1; y: 5
-                    width: Math.max(16, fbadge.implicitWidth + 8); height: 16; radius: 8
-                    color: Theme.accent
-                    border.color: Theme.panel; border.width: 1
-                    Text { id: fbadge; anchors.centerIn: parent; text: SettingsNav.friendsUnread > 9 ? "9+" : String(SettingsNav.friendsUnread); color: Theme.accentInk; font.pixelSize: 10; font.bold: true; font.family: Theme.font }
-                }
+                id: discordBtn
+                tip: "Discord"
+                onClicked: if (SettingsNav.discord) { const p = discordBtn.mapToItem(null, discordBtn.width / 2, discordBtn.height / 2); SettingsNav.discord.toggle(Theme.barVertical ? p.y : p.x); }
+                Icon { anchors.centerIn: parent; name: "chat"; size: 20 }
             }
             // Quick Access and the on-screen keyboard (handy on touchscreens)
             BarButton {

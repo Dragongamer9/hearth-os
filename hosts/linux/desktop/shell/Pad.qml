@@ -34,7 +34,7 @@ Scope {
     // app's Open / Save dialog (picker.qml, another Quickshell) is "<title> – Files". Hearth Files built from Dolphin
     // (app id org.kde.dolphin, hosts/hearth-kde) too: it does LB/RB, LT/RT and View itself (hearthgamepad.cpp).
     readonly property bool keysContext: launcher.shown || quick.shown || powerMenu.shown || liveWelcome.shown || (steamFallback !== null && steamFallback.shown) || (settings.shown && active !== null && active.title === "Hearth Settings") || (tasks.shown && active !== null && active.title === "Task Manager") || (active !== null && (active.title === "Files" || active.title.endsWith(" – Files") || active.appId === "org.kde.dolphin"))
-        || SettingsNav.clipShown || SettingsNav.friendsShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
+        || SettingsNav.clipShown || SettingsNav.discordShown || (SettingsNav.appsShown && active !== null && active.title === "Apps")   // clipboard history, Apps
         || (SettingsNav.debShown && active !== null && active.title === "Install Package")   // the .deb installer
         || DeskState.overlayShown   // right-click menus, the desktop's dialogs, the clock's panel
     readonly property bool fullscreenApp: active !== null && active.fullscreen === true
@@ -50,7 +50,7 @@ Scope {
         if (liveWelcome.shown) return "live welcome";
         if (steamFallback !== null && steamFallback.shown) return "Steam fallback";
         if (SettingsNav.clipShown) return "clipboard";
-        if (SettingsNav.friendsShown) return "Friends";
+        if (SettingsNav.discordShown) return "Discord chooser";
         if (DeskState.overlayShown) return "desktop menu";
         return "window: " + (active !== null ? ((active.appId || "") + " " + (active.title || "")).trim().slice(0, 60) : "?");
     }
@@ -70,10 +70,10 @@ Scope {
     Timer { id: keysBeat; interval: 4000; repeat: true; running: pad.keysContext && proc.running; onTriggered: pad.sendKeys() }
     onFrontAppChanged: sendFocus()
 
-    // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Friends, the
+    // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Discord's chooser, the
     // desktop's menus): when one closes, the window that was in front gets the keyboard (and so the controller: a
     // WebKit app only reads it while its window is focused) back, unless something else came to the front meanwhile.
-    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.friendsShown || DeskState.overlayShown
+    readonly property bool menuOpen: launcher.shown || quick.shown || powerMenu.shown || SettingsNav.clipShown || SettingsNav.discordShown || DeskState.overlayShown
     property var beforeMenu: null
     onMenuOpenChanged: {
         if (menuOpen) { beforeMenu = active; refocus.stop(); }

@@ -48,7 +48,9 @@ SetPage {
         return JSON.stringify({ device: page.pick, use: page.use, label: label.text.trim() || "Storage", token: page.plan ? page.plan.token : "",
                                 confirm1: page.step >= 1, confirm2: page.plan ? page.plan.confirm : "", target: page.target, dryRun: dry });
     }
-    Component.onCompleted: { refresh(); loadDrives(); }
+    property var wholeDrives: []     // data drives' mount points that can be shared whole (hearth-home-server candidates)
+    Component.onCompleted: { refresh(); loadDrives(); wj.run(["candidates"], r => page.wholeDrives = r.drives || [], () => page.wholeDrives = []); }
+    SetJob { id: wj; helper: "hearth-home-server" }
     SetJob { id: job; helper: "hearth-home-server" }
     SetJob { id: act; helper: "hearth-home-server" }
     SetJob { id: dj; helper: "hearth-home-server" }
@@ -82,6 +84,16 @@ SetPage {
             sub: [modelData.sizeText + " " + modelData.kind, modelData.smart && modelData.smart.temp ? modelData.smart.temp + " °C" : "",
                   modelData.total ? page.size(modelData.used) + " of " + page.size(modelData.total) + " used" : (modelData.empty ? "empty" : "not in use"),
                   modelData.system ? "Hearth OS lives here: never shared, formatted or picked" : modelData.mounts.join(", ")].filter(x => x).join(" · ")
+        }
+    }
+    // "Share the whole drive" for each data drive (never the system drive here: that's Shared folders, read only).
+    Repeater {
+        model: page.wholeDrives.filter(d => !(page.st && page.st.shares ? page.st.shares : []).some(s => s.path === d.path))
+        delegate: SetRow {
+            required property var modelData
+            icon: "folder"; title: "Share the whole drive: " + modelData.name; chip: "Whole drive"
+            sub: modelData.path + " · everything on it, read only to start, on your home network and Tailscale; hidden files stay out"
+            onActivated: act.run(["share-whole", "drive", modelData.path], r => { page.say("Shared ✓ " + r.share.name + " (Shared folders has its settings)"); page.refresh(); }, e => page.say(e, true))
         }
     }
     Text {

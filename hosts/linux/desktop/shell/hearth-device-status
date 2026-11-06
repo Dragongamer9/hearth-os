@@ -329,7 +329,9 @@ def shared_folders(path=None, home_dir=None, is_mount=os.path.ismount):
         if not isinstance(sh, dict) or sh.get('on', True) is False or not sh.get('name'):
             continue
         p = os.path.realpath(sh.get('path') or '/nonexistent')
-        badge = 'home' if p == hd else 'drive' if p != '/' and is_mount(p) else ''
+        # Hearth 1.6 shares say what they are ("whole": drive, home or system); older ones are worked out.
+        whole = sh.get('whole') if sh.get('whole') in ('drive', 'home', 'system') else ''
+        badge = whole or ('home' if p == hd else 'drive' if p != '/' and is_mount(p) else '')
         reach = 'tailscale' if d.get('tsOnly') or sh.get('reach') == 'tailscale' else 'home'
         out.append({'name': str(sh['name'])[:80], 'write': bool(sh.get('write')), 'reach': reach, 'badge': badge})
     return out

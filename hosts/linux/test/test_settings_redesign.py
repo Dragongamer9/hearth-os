@@ -242,9 +242,12 @@ class NeverChangeByThemselves(unittest.TestCase):
             for line in t.splitlines():
                 if re.search(r'\bSettings\.\w+\s*=(?!=)|"set", "lightMode"|setStartMode\(v\)|DeskState\.setDnd\(', line):
                     self.assertRegex(line, r'onToggled|onChosen|onClicked|function setStartMode', (f, line.strip()))
-        # Start in has one writer (it moved from Sign-in), the same session.conf line as before.
-        self.assertNotIn('NIMBUS_START_MODE=$1', (SHELL / 'SetSignin.qml').read_text())
-        self.assertIn('NIMBUS_START_MODE=$1', (SHELL / 'StartInChoice.qml').read_text())
+        # Start in has one writer (it moved from Sign-in), the same session.conf line as before, now through
+        # hearth_settings_io's conf-set (atomic, .bak, under the session's own lock; Server mode, Hearth 1.6).
+        signin = (SHELL / 'SetSignin.qml').read_text()
+        self.assertNotIn('NIMBUS_START_MODE=$1', signin)
+        self.assertNotIn('conf-set', signin)
+        self.assertIn('"conf-set", conf, "NIMBUS_START_MODE", m]', (SHELL / 'StartInChoice.qml').read_text())
 
     def test_moved_switches_keep_their_keys(self):
         self.assertIn('checked: Settings.nightLight; onToggled: v => Settings.nightLight = v', (SHELL / 'SetDisplay.qml').read_text())

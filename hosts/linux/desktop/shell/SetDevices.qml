@@ -167,7 +167,7 @@ SetPage {
                 delegate: SetRow {
                     required property var modelData
                     icon: "folder"; title: "Open shared folder " + modelData.name; chevron: true
-                    sub: [modelData.badge === "home" ? "Home" : modelData.badge === "drive" ? "Whole drive" : "", modelData.write ? "Read & write" : "Read only", "in Hearth Files"].filter(x => x).join(" · ")
+                    sub: [modelData.badge === "home" ? "Home" : modelData.badge === "drive" ? "Whole drive" : modelData.badge === "system" ? "System drive" : "", modelData.write ? "Read & write" : "Read only", "in Hearth Files"].filter(x => x).join(" · ")
                     onActivated: Quickshell.execDetached(["hearth-filemanager", "hearthnet://" + encodeURIComponent(JSON.stringify({
                         device: page.cur.id, name: page.cur.name, share: modelData.name, home: page.cur.status.smb.home || "", away: page.cur.status.smb.away || "", wake: page.cur.wake === true }))])
                 }

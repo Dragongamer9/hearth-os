@@ -18,6 +18,10 @@ launcher, the clock's panel and Settings, and adds six new looks next to Hearth 
   a big **Return to Game Mode**, tiles for Wi-Fi and Bluetooth (with a chevron to their lists), Night light,
   Controller mouse, Do not disturb and Keyboard, pill sliders for volume (its chevron opens the output in Settings ›
   Sound) and brightness, the power profile, Handheld settings and the weather, and controller hints.
+- **Discord** (`Discord.qml`, since 1.6; it replaced Hearth Friends on Matrix): the bar's chat button. The first press
+  asks which Discord (the app, a web window or Dorion); then it toggles Discord's own window, small and placed by the bar
+  on whichever edge the bar is (hidden by minimizing, never closed). Settings › Gaming › Discord has the rest. See
+  [DISCORD](DISCORD.md).
 - **Launcher** (`Launcher.qml`): a large centred panel. Search finds apps, **Settings pages and games**; Recent can
   hold all three. Apps / Games tabs, the System apps folder, right-click actions and the power row (Game Mode first)
   are as before; icons are bigger.
@@ -195,6 +199,16 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
 - **Opening a Settings page writes nothing.** The Desktop Mode test opens every page in `settings-pages.js` and checks
   that no settings file changed; the frame, the cards and the category pages never change a setting
   (`test_settings_redesign.py`). Moved switches keep their keys (Night light is still `nightLight`).
+
+## Server mode (Hearth 1.6)
+
+Server mode (docs/SERVER-MODE.md) is its own light session, not part of Desktop Mode: nimbus-session starts labwc with its
+own folder (`desktop/server/labwc`) and one Quickshell app, `shell/server-mode.qml`, built from Mantel's parts (Theme,
+Icon, SetStyle, and the same Hearth Settings, `SettingsApp.qml`, opened from its menu). No bar, dock, launcher or desktop.
+Settings has two new pages: Home server › **Server mode** (`SetServerMode.qml`) and System › **Startup**
+(`SetStartup.qml`: Start in, with Server mode once it's on, and its optional schedule); the boot splash page is now
+System › **Boot splash**. Start in (`StartInChoice.qml`) now saves through hearth_settings_io's `conf-set` (only that line,
+atomic, `.bak`, under the session's lock) instead of `sed -i`.
 
 ## Desktop Mode always starts (red flag 2)
 

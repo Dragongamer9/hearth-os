@@ -1617,7 +1617,7 @@ function openStartPage(p){
   if(p==='recomps'){ if(typeof SHOP==='object') SHOP.store='recomps'; navigate('shop',{},false); return; }
   if(['stores','library','downloads'].includes(p)) navigate(p,{},false);
 }
-function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
+function loadHostInfo(){ if(host) call('host.info').then(i=>{ Object.assign(HOSTINFO, i||{}); document.body.classList.toggle('lite', !!HOSTINFO.compatDrawing); if(HOSTINFO.seatPads) PAD.host=true; refreshUI(); startCounter(); if(HOSTINFO.edition==='anatase'&&!OVERLAY) loadOldFiles(true); if(HOSTINFO.edition==='peppermint'&&!OVERLAY) loadUnlock(true); if((HOSTINFO.features||[]).includes('quickResume')) loadHib(); if(hasFeat('mfriends')) mfLoad(); if(LINUX) { loadOverlaySettings(); loadDiscord(); } if(lkOn()&&!OVERLAY){ lkUiSync(); loadLink(); } if((LINUX||(HOSTINFO.features||[]).includes('profiles'))&&!OVERLAY) loadProfiles().then(ps=>{ if(ps&&ps.askAtStart&&!ps.picked&&ps.list.length>1&&!(i&&i.live)&&!(i&&i.signin)&&!(i&&i.play)){ HOSTINFO.profilesAtStart=true; navigate('profiles',{},false); } }); if(i&&i.start==='settings'&&S.view!=='settings') navigate('settings',{sfront:true}); if(i&&i.start==='shop'&&S.view!=='shop') navigate('shop'); if(i&&i.start==='hhd'&&S.view!=='hhd'){ S.settingsTab='controller'; navigate('settings',{},false); navigate('hhd'); } if(i&&i.start&&!['settings','shop','hhd'].includes(i.start)) openStartPage(i.start); if(i&&i.signin&&!OVERLAY) deskSignBegin(i.signin); if(i&&i.play&&!OVERLAY) playFromDesktop(i.play); if(i&&i.gamePage&&!OVERLAY) gamePageFromDesktop(i.gamePage); if(i&&i.setupDone===false&&!i.live&&!OVERLAY&&!i.start&&!i.signin&&!i.play&&!i.gamePage){ S.setupStep=setupResumeStep(); navigate('setup'); } if(i&&i.live&&!OVERLAY){ NOTIFS.unshift({i:'dl', t:'You\'re running Hearth from the USB stick', s:'Install Hearth OS: open Settings › Install Hearth OS', go:'osinstall'}); updateBadge(); let asked=false; try{ asked=!!localStorage.getItem('hearth.padAsked'); }catch(e){} if(i.openInstaller) osiOpen(); else if(!asked){ S.padFor='live'; S.history=[]; navigate('pad',{},false); } else toast('Running from the USB stick. Settings › Install Hearth OS when you\'re ready.'); } }).catch(()=>{}); }
 // The in-game overlay loads this same page with ?overlay: it shows only the Quick Access panel.
 const OVERLAY = /[?&]overlay/.test(location.search);
 // ---------- Player counter ----------
@@ -2540,7 +2540,7 @@ async function mfAct(a, d){
     case 'mfName': return openPrompt({title:'Display name', mode:'text', enterLabel:'Save'}).then(n=>{ if(n) call('mfriends.setName',{name:n}).then(()=>toast('Name changed')).catch(e=>toast(e.message)); });
     case 'mfSignOut': return openSheet({title:'Sign out of Hearth Friends?', sub:'This device\'s encryption keys are removed. Your chats stay on your other Matrix devices.', items:[{label:'Sign out', icon:'power', run:()=>call('mfriends.logout',{},30000).then(st=>{ MF.st=st; MF.friends=MF.chats=MF.req=null; MF.msgs={}; mfRedraw(); }).catch(e=>toast(e.message))}]});
     case 'mfSteamFriends': return call('mfriends.openSteam',{url:'steam://open/friends'}).then(()=>toast('Opening Steam friends…')).catch(e=>toast(e.message));
-    case 'mfDiscord': return call('mfriends.discord').then(r=>openSheet({title:'Discord', sub:r.installed?'Discord is installed.':'Discord isn\'t part of Hearth; it comes from Flathub ('+r.flathub+').', items:[r.installed?{label:'Open Discord', icon:'play', run:()=>call('mfriends.openDiscord').catch(e=>toast(e.message))}:{label:'Install Discord from Flathub', icon:'dl', run:()=>{ toast('Installing Discord…'); call('mfriends.installDiscord',{},900000).then(()=>toast('Discord is installed')).catch(e=>toast(e.message)); }}]})).catch(e=>toast(e.message));
+    case 'mfDiscord': return call('mfriends.discord').then(r=>openSheet({title:'Discord', sub:r.installed?'Discord is installed.':'Discord opens in a web window (discord.com), or install the app from Flathub.', items:[{label:'Open Discord', icon:'play', run:()=>call('mfriends.openDiscord').catch(e=>toast(e.message))}].concat(r.installed?[]:[{label:'Install Discord from Flathub', icon:'dl', run:()=>{ toast('Installing Discord…'); call('mfriends.installDiscord',{},900000).then(()=>toast('Discord is installed')).catch(e=>toast(e.message)); }}])})).catch(e=>toast(e.message));
   }
 }
 function mfFriendSheet(f){
@@ -4420,16 +4420,20 @@ function openLink(url){
   if(LINUX) return call('beacon.openLink',{url},15000).then(()=>toast('Opening the page in Hearth Browser…')).catch(e=>toast(e.message));
   return call('browser.hearth',{action:'open',url},15000).then(()=>toast('Opening the page in Hearth Browser…')).catch(e=>toast(e.message));
 }
-// Discord (hearth-core/src/discord.rs): "Playing X" on Discord and Discord in Quick Access, only when the owner set
-// a Discord application ID (/etc/hearth/discord.conf); otherwise discord.status says available:false and none of it shows.
+// Discord (hearth-core/src/discord.rs, docs/DISCORD.md): Discord in Quick Access, and "Playing X" on Discord once a
+// Discord application ID is set (Settings › Discord); without one discord.status says available:false and the switch hides.
 const DISCORD={s:null};
 function loadDiscord(){ if(!host || !LINUX) return; return call('discord.status',{},8000).then(s=>{ DISCORD.s=s; }).catch(()=>{ DISCORD.s=null; }); }
 function discordQam(mini){
-  const d=DISCORD.s; if(!d || !d.available) return '';
+  // Discord always opens from here (the one the owner picked in Mantel: the app, the web window or Dorion); the
+  // "Playing" switch shows once a Discord application ID is set (Settings › Discord).
+  const d=DISCORD.s; if(!d) return '';
   const st = d.enabled ? 'on' : 'off';
+  const tg = d.available ? (mini ? `<button class="qd-mini" data-f data-k="q-dc-tg" data-act="discordToggle">${I.user}Discord status: ${esc(st)}</button>` : `<button class="btn" data-f data-k="q-dc-tg" data-act="discordToggle">${I.user}"Playing" status: ${esc(st)}</button>`) : '';
+  const pin = d.invite && d.invite.playTogether && d.invite.pin ? (mini ? '' : `<p class="muted">Play together PIN: <b>${esc(d.invite.pin)}</b> (friends joining from Discord see it too)</p>`) : '';
   return mini
-    ? `<button class="qd-mini" data-f data-k="q-dc-tg" data-act="discordToggle">${I.user}Discord status: ${esc(st)}</button><button class="qd-mini" data-f data-k="q-dc-open" data-act="mfDiscord">${I.play}Discord</button>`
-    : `<h3 style="margin-top:16px">Discord</h3><button class="btn" data-f data-k="q-dc-tg" data-act="discordToggle">${I.user}"Playing" status: ${esc(st)}</button><button class="btn" data-f data-k="q-dc-open" data-act="mfDiscord">${I.play}Open Discord</button>`;
+    ? `${tg}<button class="qd-mini" data-f data-k="q-dc-open" data-act="mfDiscord">${I.play}Discord</button>`
+    : `<h3 style="margin-top:16px">Discord</h3>${tg}${pin}<button class="btn" data-f data-k="q-dc-open" data-act="mfDiscord">${I.play}Open Discord</button>`;
 }
 
 function pageAbout(){
@@ -10640,6 +10644,13 @@ function launch(g, mod, save){
 }
 // Mantel's Games section (Desktop Mode's launcher) starts a game through here, the same as its Play button: once the
 // library is in (Hearth may just be starting), with the starting screen and everything after it.
+// A friend's Discord invite (desktop/shell/hearth-discord join → nimbus --game-page <id>): the game's page, Play or Install.
+function gamePageFromDesktop(id, tries=0){
+  if(!id) return;
+  const g=G(id);
+  if(!g){ if(tries<60) setTimeout(()=>gamePageFromDesktop(id, tries+1), 500); else toast("That game isn't in your library"); return; }
+  navigate('game',{game:g.id});
+}
 function playFromDesktop(id, tries=0){
   if(!id) return;
   const g=G(id);
