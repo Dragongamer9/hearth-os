@@ -1,0 +1,20 @@
+Flatpak (yours), by Icon=: image://icon/org.hearth.IconTest
+Flatpak (system), by Icon=: image://icon/org.hearth.SystemTest
+Flatpak window, by app id only: image://icon/org.hearth.IconTest
+Flatpak window, by StartupWMClass: org.hearth.IconTest org.hearth.IconTest
+Flatpak window, entry by app id: org.hearth.IconTest org.hearth.IconTest
+AppImage (~/.local/share/icons): image://icon/appimagekit_icontest
+Pixmaps only (Icon=name.png): image://icon/icontest-pixmap.png
+Absolute path: file:///opt/icontest/abs-icon.png
+Hearth icon set: hearth: image://icon/hearth
+Hearth icon set: hearth-settings: image://icon/hearth-settings
+Hearth icon set: hearth-files: image://icon/hearth-files
+Hearth icon set: hearth-terminal: image://icon/hearth-terminal
+Hearth icon set: hearth-disks: image://icon/hearth-disks
+Hearth icon set: hearth-browser: image://icon/hearth-browser
+Hearth icon set: hearth-tasks: image://icon/hearth-tasks
+Hearth icon set: hearth-apps: image://icon/hearth-apps
+Hearth icon set: hearth-installer: image://icon/hearth-installer
+Hearth icon set: hearth-text: image://icon/hearth-text
+Hearth icon set: hearth-photos: image://icon/hearth-photos
+Hearth icon set: hearth-generic-app: image://icon/hearth-generic-app

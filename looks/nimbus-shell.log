@@ -1,0 +1,96 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/shell.qml"
+[32m  INFO[0m: Shell ID: "46d0510b7d07c529e429b39faef616e5" Path ID "46d0510b7d07c529e429b39faef616e5"
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/wk39m32ot/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[114:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[45:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Keyboard.qml[187:5]: Read of /tmp/home/.config/labwc/environment failed: File does not exist.
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/appimagekit_icontest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/org.hearth.SystemTest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/org.hearth.IconTest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-missing-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-pixmap.png-light.svg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[346:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[354:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-embers.jpg
+[33m  WARN[97m scene[0m: QML Image at @SetAppearance.qml[291:13]: Cannot open: file:///usr/share/backgrounds/hearth/hearth-cabin.jpg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[346:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[354:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[346:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[354:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/appimagekit_icontest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/org.hearth.SystemTest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/org.hearth.IconTest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-missing-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-pixmap.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/foot-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/foot-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/accessories-calculator-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/foot-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-missing-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/appimagekit_icontest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-pixmap.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons//opt/icontest/abs-icon.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/appimagekit_icontest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/org.hearth.SystemTest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/org.hearth.IconTest-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-missing-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-pixmap.png-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/foot-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/accessories-calculator-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/foot-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/icontest-missing-light.svg
+[33m  WARN[97m scene[0m: QML Image at @Icon.qml[34:5]: Cannot open: file:///__w/hearth-os/hearth-os/hosts/linux/desktop/shell/icons/foot-light.svg
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("brightnessctl", "-m", "-c", "backlight")
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[346:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[354:5]: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
