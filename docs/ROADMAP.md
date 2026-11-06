@@ -7,6 +7,15 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+### Planned for 1.7 (the owner's number; agreed 2026-11-06)
+
+- [ ] **Hearth Games**: Hearth's own store app for GOG, Epic and Battle.net (our own, not a Heroic fork), on the same engines Heroic uses (gogdl, legendary; nile for Amazon later) and Faugus for Battle.net; Hearth look, controller-first, games show in Steam Game Mode through Hearth Sync; first: sign in, library, install, launch; then cloud saves, DLC, Amazon
+- [ ] **Windows apps** with Proton built in, offline: the newest GE-Proton only in the image; older versions downloaded only when something needs them
+- [ ] **Proton detector**: picks the right Proton for each game or app by itself
+- [ ] **Server follow-ups**, the **Server apps catalog** and the other server ideas
+- [ ] **Connect network drives automatically**: a "Connect automatically" switch per share in Files; asleep or offline devices are skipped without holding up sign-in
+- [ ] **AI video** in Hearth's ComfyUI: Wan 2.2 sized to the PC's graphics memory (GGUF on 12 GB), one-click download
+
 - [x] The controller works on Server mode's dashboard: 1.6 switched it off as it started, so only Guide did anything (A, B, X, Y, the D-pad and ☰ work again); and the controller helper starts again if it ever closes (needs testing on a device)
 - [x] Server mode's settings page can be found: a Server mode card on Settings › Home server, and the greyed-out Server mode in System › Startup opens it (1.6 only reached it through Settings' search) (needs testing on a device)
 
