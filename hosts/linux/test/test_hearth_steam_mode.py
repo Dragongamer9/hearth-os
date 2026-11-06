@@ -743,7 +743,7 @@ class NimbusModeSteam(unittest.TestCase):
         self.assertIn('setsid', calls)
 
     def test_usage_lists_steam(self):
-        self.assertIn('game|desktop|steam|logout|current', self.mode('bogus').stderr)
+        self.assertIn('game|desktop|steam|server|logout|current', self.mode('bogus').stderr)
 
 
 class DeckyHelper(unittest.TestCase):

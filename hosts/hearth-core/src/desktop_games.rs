@@ -39,7 +39,7 @@ pub fn art_for_desktop(v: &str) -> String {
 pub fn entry(g: &Game) -> Value {
     let art = |k: &str| g.art.iter().find(|(kind, _)| *kind == k).map(|(_, v)| art_for_desktop(v));
     json!({"id": g.id, "title": g.title, "source": g.source, "cover": art("cover").or_else(|| art("portrait")), "wide": art("wide").or_else(|| art("hero")),
-           "hero": art("hero").or_else(|| art("wide")), "logo": art("logo"), "icon": art("icon"), "cloud": g.cloud})
+           "hero": art("hero").or_else(|| art("wide")), "logo": art("logo"), "icon": art("icon"), "cloud": g.cloud, "update": g.update})
 }
 
 /// The installed games you can play from the desktop (not hidden ones, not cloud games), A to Z.
@@ -134,7 +134,11 @@ pub fn steam_env_scrub(vars: &[(String, String)]) -> (Vec<String>, Vec<(String, 
 /// `hearth --play-now <id>`: plays the game and returns when it has closed. Returns the exit code (0 played, 1 it
 /// couldn't start, 2 not a game this can play). Every step and failure goes to Hearth's log with the reason.
 pub fn play_now(id: &str) -> i32 {
-    let vars: Vec<(String, String)> = std::env::vars().collect();
+    let vars: Vec<(String, String)> = std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).collect();
+    // A crash here used to end the start without a word in Hearth's log (Steam showed the game as running, then not).
+    let who = id.to_string();
+    std::panic::set_hook(Box::new(move |info| crate::bridge::log(&format!("play-now: {who}: Hearth stopped with an error: {info}"))));
+    let steam_id = steam_shortcut_id(&vars);
     let (remove, set) = steam_env_scrub(&vars);
     crate::bridge::log(&format!("play-now: {id}: starting (from Steam's Game Mode; Steam's game id {}; cleaned {} of Steam's variables{}{})",
         std::env::var("SteamGameId").unwrap_or_else(|_| "none".into()), remove.len(),
@@ -144,21 +148,119 @@ pub fn play_now(id: &str) -> i32 {
     for (k, v) in &set { std::env::set_var(k, v); }
     let mut lib = read_library();
     if let Err(e) = play_check(&lib, id) { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id}: not started: {e}")); return 2; }
-    let g = &lib.games[id];
-    crate::bridge::log(&format!("play-now: {id} ({}, {}) launching", g.title, g.source));
+    let (title, source) = (lib.games[id].title.clone(), lib.games[id].source.to_string());
+    crate::bridge::log(&format!("play-now: {id} ({title}, {source}) launching{}",
+        steam_id.map(|n| format!("; Steam's id for its shortcut: {n}")).unwrap_or_default()));
     match lib.launch(id) {
-        Err(e) => { eprintln!("error: {e}"); crate::bridge::log(&format!("play-now: {id} couldn't start: {e}")); return 1; }
+        Err(e) => {
+            eprintln!("error: {e}");
+            crate::bridge::log(&format!("play-now: {id} couldn't start: {e}"));
+            crate::bridge::log(&format!("{} {title}: launch failed because {e}", store_name(&source)));
+            return 1;
+        }
         Ok(v) => crate::bridge::log(&format!("play-now: {id} launched ({v}); running: {}", lib.running.is_some())),
     }
     let started = std::time::Instant::now();
+    let mut tagged: Vec<u64> = Vec::new();
+    let mut seen = false;
+    let mut ticks: u64 = 0;
     loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
+        ticks += 1;
+        // Steam Game Mode only shows windows carrying the number Steam gave this shortcut (see give_steam_id).
+        if let Some(n) = steam_id { if ticks <= 90 || ticks % 5 == 0 { seen |= give_steam_id(&lib, id, n, &mut tagged); } }
         if let Some(code) = play_outcome(&lib.tick_game()) {
-            crate::bridge::log(&format!("play-now: {id} {} after {}s", if code == 0 { "closed" } else { "never started (no game process appeared)" }, started.elapsed().as_secs()));
+            let secs = started.elapsed().as_secs();
+            crate::bridge::log(&format!("play-now: {id} {} after {secs}s", if code == 0 { "closed" } else { "never started (no game process appeared)" }));
+            if let Some(why) = launch_failure(&source, &title, code, secs, seen || steam_id.is_none(), &last_launch_lines(id)) { crate::bridge::log(&why); }
             return code;
         }
         if lib.running.is_none() { crate::bridge::log(&format!("play-now: {id}: Hearth isn't tracking it any more after {}s; done", started.elapsed().as_secs())); return 0; }
     }
+}
+
+/// Steam's app id for the shortcut that started `--play-now`: the number Steam asks gamescope to show while it runs.
+/// A non-Steam shortcut's SteamGameId is (app id << 32) | 0x02000000; SteamAppId, when Steam sets it, is the same app
+/// id (high bit set). None when Steam didn't start this (the desktop, a terminal).
+pub fn steam_shortcut_id(vars: &[(String, String)]) -> Option<u32> {
+    let get = |k: &str| vars.iter().find(|(n, _)| n == k).map(|(_, v)| v.trim().to_string());
+    if let Some(g) = get("SteamGameId").and_then(|s| s.parse::<u64>().ok()) {
+        let hi = (g >> 32) as u32;
+        if hi != 0 && g & 0x0200_0000 != 0 { return Some(hi); }
+    }
+    get("SteamAppId").and_then(|s| s.parse::<u32>().ok()).filter(|n| *n >= crate::appid::OWN_MIN)
+}
+
+/// The game's windows that don't carry Steam's number yet: (window, the number it carries now). `wins` are
+/// (window, its STEAM_GAME or gamescope's number, its process), `pids` the game's processes.
+pub fn windows_needing_id(wins: &[(u64, u64, u64)], pids: &[u32], steam_id: u32) -> Vec<(u64, u64)> {
+    wins.iter().filter(|(w, appid, pid)| *w != 0 && *pid > 0 && *pid <= u32::MAX as u64 && pids.contains(&(*pid as u32)) && *appid != steam_id as u64)
+        .map(|(w, a, _)| (*w, *a)).collect()
+}
+
+/// Steam Game Mode's gamescope shows only windows carrying the app id Steam asked for (the shortcut's). It works that
+/// number out from Steam's reaper process above the game, unless the window says otherwise: a game started through
+/// umu and Proton labels its windows itself (umu sets SteamGameId from GAMEID, and with Steam's per-game variables
+/// cleaned it can't find the shortcut's number), so GOG and Epic games Hearth started this way ran with nothing on
+/// screen. Every window of the game's own processes gets the shortcut's number here (STEAM_GAME, which gamescope
+/// takes over anything it worked out itself); nothing else is touched. Best effort: needs xprop and xwininfo.
+/// Returns whether a window of the game's processes is up.
+fn give_steam_id(lib: &Library, id: &str, steam_id: u32, tagged: &mut Vec<u64>) -> bool {
+    if !crate::gamescope::inside() { return false; }
+    let pids = lib.game_pids();
+    if pids.is_empty() { return false; }
+    // gamescope's own view of each window (its number and process; a sandboxed program's _NET_WM_PID can be a number
+    // inside its sandbox), else the window's own.
+    let known: std::collections::HashMap<u64, (u64, u64)> = crate::gamescope::focusable_windows().into_iter().map(|w| (w.win, (w.appid, w.pid))).collect();
+    let wins: Vec<crate::gamescope::Win> = crate::gamescope::mapped_windows();
+    let rows: Vec<(u64, u64, u64)> = wins.iter().map(|w| {
+        let k = known.get(&w.win).copied();
+        let pid = k.map(|(_, p)| p).filter(|p| *p > 0 && *p < u32::MAX as u64).unwrap_or(w.pid);
+        let appid = if w.appid != 0 { w.appid } else { k.map(|(a, _)| a).unwrap_or(0) };
+        (w.win, appid, pid)
+    }).collect();
+    let up = rows.iter().any(|(_, _, p)| *p > 0 && *p <= u32::MAX as u64 && pids.contains(&(*p as u32)));
+    for (win, had) in windows_needing_id(&rows, &pids, steam_id) {
+        if !crate::gamescope::tag_window(win, steam_id) { continue; }
+        if tagged.contains(&win) { continue; }
+        tagged.push(win);
+        let title = wins.iter().find(|w| w.win == win).map(|w| w.title.clone()).unwrap_or_default();
+        crate::bridge::log(&format!("play-now: {id}: window {win:#x} \"{title}\" gets Steam's id {steam_id} (it carried {}), so Steam Game Mode shows it",
+            if had == 0 { "none".to_string() } else { had.to_string() }));
+    }
+    up
+}
+
+/// "GOG", "Epic"… for the launch-failed line.
+pub fn store_name(source: &str) -> String {
+    let name = match source { "gog" => "GOG", "epic" => "Epic", "battlenet" => "Battle.net", "emu" => "Emulator game", "recomps" => "Recomp", "beacon" => "Beacon",
+        "manual" => "Game", "xodus" => "Xbox", s if !s.is_empty() => s, _ => "Game" };
+    name.to_string()
+}
+
+/// The line that says why a start from Steam failed ("GOG Tomb Raider: launch failed because …"), or None when it
+/// played. `code` 1 = no game process appeared; a game that closed within 30 seconds counts as failed too. `lines`:
+/// the last error lines of its Proton output (stores.rs launch_log).
+pub fn launch_failure(source: &str, title: &str, code: i32, secs: u64, window_seen: bool, lines: &[String]) -> Option<String> {
+    let why = if code != 0 { "no game process appeared (the launcher or Proton didn't start it)".to_string() }
+        else if secs < 30 { format!("the game closed after {secs}s{}", if window_seen { "" } else { " without showing a window" }) }
+        else { return None };
+    let tail = if lines.is_empty() { String::new() } else { format!(" — last lines: {}", lines.join(" | ")) };
+    Some(format!("{} {title}: launch failed because {why}{tail}", store_name(source)))
+}
+
+/// The last few error lines of a game's Proton output (stores.rs launch_log), each cut short.
+pub fn error_lines(text: &str, n: usize) -> Vec<String> {
+    let re = regex::Regex::new(r"(?i)\berr:|error|fail|not found|traceback|exception|cannot|can't|no such|denied|abort|segfault|crash").unwrap();
+    let mut v: Vec<String> = text.lines().map(str::trim).filter(|l| !l.is_empty() && re.is_match(l) && !l.contains("ProtonFixes"))
+        .map(|l| l.chars().take(200).collect()).collect();
+    let skip = v.len().saturating_sub(n);
+    v.drain(..skip);
+    v
+}
+fn last_launch_lines(id: &str) -> Vec<String> {
+    let (store, gid) = id.split_once(':').unwrap_or(("", id));
+    std::fs::read_to_string(crate::stores::launch_log(store, gid)).map(|t| error_lines(&t, 5)).unwrap_or_default()
 }
 // ---- end Steam Game Mode
 
@@ -172,6 +274,18 @@ pub fn id_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
     None
 }
 pub fn play_arg() -> Option<String> { id_arg(std::env::args()) }
+
+/// `--game-page <id>`: open that game's page (Play / Install) instead of playing it: a friend's Discord invite
+/// (desktop/shell/hearth-discord join).
+pub fn page_arg_in<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    let args: Vec<String> = args.into_iter().collect();
+    for (i, a) in args.iter().enumerate() {
+        let v = if a == "--game-page" { args.get(i + 1).cloned() } else { a.strip_prefix("--game-page=").map(str::to_string) };
+        if let Some(v) = v { return Some(v).filter(|s| valid_id(s)); }
+    }
+    None
+}
+pub fn page_arg() -> Option<String> { page_arg_in(std::env::args()) }
 
 pub fn route_file() -> PathBuf {
     PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-play-route.json")
@@ -201,6 +315,14 @@ pub fn take_route() -> Option<String> { take_file(&route_file(), crate::signin_h
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn game_page_argument() {
+        let a = |v: &[&str]| page_arg_in(v.iter().map(|s| s.to_string()));
+        assert_eq!(a(&["nimbus", "--windowed", "--game-page", "steam:620"]).as_deref(), Some("steam:620"));
+        assert_eq!(a(&["nimbus", "--game-page=gog:1"]).as_deref(), Some("gog:1"));
+        assert_eq!(a(&["nimbus", "--game-page", "nocolon"]), None);
+        assert_eq!(a(&["nimbus", "--play", "steam:620"]), None);
+    }
 
     #[test]
     fn ids() {
@@ -232,6 +354,30 @@ mod tests {
         assert_eq!(take_file(&f, t, ROUTE_MAX_AGE_SECS).as_deref(), Some("manual:abc"));
         assert!(!f.exists());
         assert_eq!(take_file(&f, t, ROUTE_MAX_AGE_SECS), None);
+    }
+
+    #[test]
+    fn steam_game_mode_shows_the_games_windows() {
+        let v = |pairs: &[(&str, &str)]| pairs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        // The Ally's Neverwinter Nights shortcut (Hearth 1.4 log): SteamGameId 10205416876054413312, scope app-steam-app2376133780.
+        assert_eq!(steam_shortcut_id(&v(&[("SteamGameId", "10205416876054413312")])), Some(2376133780));
+        assert_eq!(steam_shortcut_id(&v(&[("SteamGameId", "0"), ("SteamAppId", "2376133780")])), Some(2376133780));
+        assert_eq!(steam_shortcut_id(&v(&[("SteamGameId", "620"), ("SteamAppId", "620")])), None, "a Steam game isn't a shortcut");
+        assert_eq!(steam_shortcut_id(&v(&[("HOME", "/home/me")])), None, "not started by Steam");
+        // The game's processes are 31981 and 32102; its window carried umu's number (0) or Hearth's, not Steam's.
+        let pids = [31981, 32102];
+        let wins = [(0x400001u64, 0u64, 32102u64), (0x400002, 2823313796, 31981), (0x400003, 2376133780, 32102), (0x500001, 0, 999), (0x500002, 0, 0)];
+        assert_eq!(windows_needing_id(&wins, &pids, 2376133780), vec![(0x400001, 0), (0x400002, 2823313796)],
+            "only the game's own windows, and only those without Steam's number");
+        assert!(windows_needing_id(&wins, &[], 2376133780).is_empty());
+        // The launch-failed line says why, with Proton's last error lines.
+        let lines = error_lines("Proton: ~/Games/GOG/x.exe\nfsync: up and running.\nwine: could not load kernel32.dll, status c0000135\nerr:module:import_dll Library MSVCR120.dll not found\nProtonFixes[1] WARN: Game title not found in CSV\n", 5);
+        assert_eq!(lines, vec!["err:module:import_dll Library MSVCR120.dll not found".to_string()]);
+        assert_eq!(launch_failure("gog", "Tomb Raider", 0, 3, false, &lines).as_deref(),
+            Some("GOG Tomb Raider: launch failed because the game closed after 3s without showing a window — last lines: err:module:import_dll Library MSVCR120.dll not found"));
+        assert!(launch_failure("gog", "Fallout 3", 1, 180, false, &[]).unwrap().starts_with("GOG Fallout 3: launch failed because no game process appeared"));
+        assert_eq!(launch_failure("epic", "Fortnite", 0, 3600, true, &[]), None, "it played");
+        assert_eq!(store_name("epic"), "Epic");
     }
 
     #[test]
@@ -306,6 +452,7 @@ mod tests {
         assert_eq!(l[0]["hero"], "https://example.com/h.jpg");
         assert!(l[0]["logo"].is_null());
         assert_eq!(l[0]["cloud"], false);
+        assert_eq!(l[0]["update"], false);
         // Hearth Sync's list: the installed cloud tile too, never a catalog title that isn't installed.
         let mut title = mk("xbox:halo", "Halo (cloud)", false);
         title.cloud = true;

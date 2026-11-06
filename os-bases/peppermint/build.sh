@@ -565,12 +565,12 @@ systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev
 # checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
 HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-comfyui.timer hearth-kokoro.timer 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
          nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-comfyui.timer hearth-kokoro.timer; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
 # AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): user services with no [Install] (only their timers, off here,
@@ -987,6 +987,9 @@ sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hea
 rm -f /usr/share/wayland-sessions/hearth-plasma.desktop /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+# Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
+# Server mode on; nothing here is enabled or started).
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/server/labwc/autostart
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too, and the Install Package window's
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
@@ -1329,38 +1332,24 @@ fi
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # ---- end of Hearth Contacts and Hearth Maps
 
-# ------------------------------------------------------------------ Hearth Friends (hosts/hearth-friends)
-# Friends, chats and game invites on Matrix (end-to-end encrypted), for Game Mode's Friends screen, Quick Access and
-# Mantel's Friends panel. Built with the app (base-peppermint.yml) and carried in os/nimbus-app. Its session and store key
-# live in GNOME Keyring (the Secret Service, which Hearth's session starts). A user service, started with the session
-# (Hearth's core and `hearth-friends call` also start it when it isn't running). docs/FRIENDS.md.
+# ------------------------------------------------------------------ Discord (desktop/shell/hearth-discord, docs/DISCORD.md)
+# Since 1.6 Discord replaces Hearth Friends (Matrix, archived in archive/hosts/hearth-friends: no binary and no user
+# service any more; a leftover default.target.wants link from an older image points at nothing and systemd skips it, so
+# the session starts the same). Nothing of Discord is installed here: the owner picks the app (Flathub), the web window
+# or Dorion himself. Invite links a friend pastes in Discord (hearthos.fun/join → hearth://join/...) open Hearth's
+# helper, which finds the game or starts Play together. libsecret stays (other apps use the keyring; it was here before).
 "${APT[@]}" libsecret-1-0 || true
-if [ -x /ctx/nimbus-app/hearth-friends ]; then
-  install -Dm755 /ctx/nimbus-app/hearth-friends /usr/bin/hearth-friends
-  if ldd /usr/bin/hearth-friends | grep "not found"; then echo "warning: hearth-friends is missing the libraries above"; fi
-  install -d /usr/lib/systemd/user
-  cat > /usr/lib/systemd/user/hearth-friends.service <<'UNIT'
-[Unit]
-Description=Hearth Friends (Matrix chat, presence and game invites)
-After=graphical-session-pre.target
-
-[Service]
-ExecStart=/usr/bin/hearth-friends serve
-Restart=on-failure
-RestartSec=5
-Nice=5
-
-[Install]
-WantedBy=default.target
-UNIT
-  systemctl --global enable hearth-friends.service 2>/dev/null \
-    || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-friends.service /etc/systemd/user/default.target.wants/hearth-friends.service; }
-else
-  echo "warning: hearth-friends wasn't built, so this image goes without Hearth Friends"
-fi
-# The chat's emoji picker uses Emoji & symbols' list (hosts/hearth-emoji/ui/emoji-data.js).
-[ -s /ctx/nimbus-app/emoji-data.js ] && install -Dm644 /ctx/nimbus-app/emoji-data.js /usr/share/nimbus/emoji-data.js
-# ---- end of Hearth Friends
+if [ -f /usr/share/nimbus/desktop/shell/hearth-discord ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-discord; fi
+cat > /usr/share/applications/hearth-join.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Hearth (game invites)
+NoDisplay=true
+Exec=python3 /usr/share/nimbus/desktop/shell/hearth-discord join --link %u
+MimeType=x-scheme-handler/hearth;
+DESKTOP
+update-desktop-database -q /usr/share/applications 2>/dev/null || true
+# ---- end of Discord
 # ---- Hearth Office (hosts/hearth-office): Write, Sheets and Slides, built by CI with the app (base-peppermint.yml) and
 # carried in os/nimbus-app/office. office/install.sh puts in the program (hearth-write, hearth-sheets and
 # hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set); they're

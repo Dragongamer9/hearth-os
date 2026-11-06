@@ -1,0 +1,1557 @@
+#!/usr/bin/python3
+"""hearth-server-mode: Server mode (docs/SERVER-MODE.md), the third mode next to Steam Game Mode and Desktop Mode. The
+session (nimbus-session run_server) starts a small labwc with one full-screen dashboard (server-mode.qml, next to this
+file); the home server's services keep running as their own units underneath, and this helper only shows and controls
+them. Off until you turn it on (Settings › Home server › Server mode); every failure ends in Game Mode.
+
+  hearth-server-mode status              JSON for Settings: your Server mode choices (defaults filled in), the
+                                         Start in mode, the PIN set or not, the web page's address
+  hearth-server-mode set KEY VALUE       on, idlePower, webOn, permServices, permModes, permPower, permDevices,
+                                         scheduleOn (on|off); gpuWatts (80|100|120|150|200); idleMinutes (5|10|20|30);
+                                         dim (0|1|2|5|10 minutes); off (0|5|10|20|30|60 minutes)
+  hearth-server-mode schedule-set        JSON on stdin (HEARTH_INPUT) {"weekday": [{"at": "HH:MM", "mode": "server"|
+                                         "game"|"desktop"}, ...], "weekend": [...]}: 1-8 changes a day
+  hearth-server-mode pin-set             the web page's PIN on stdin (4-12 digits); only its hash is kept
+  hearth-server-mode pin-clear           no PIN (the web page then lets nobody in)
+  hearth-server-mode start-in [MODE]     print, or set (game|desktop|server), what the PC starts in (session.conf's
+                                         NIMBUS_START_MODE, through hearth_settings_io: only that line changes)
+  hearth-server-mode session-check       "on" when Server mode is on (nimbus-session)
+  hearth-server-mode start-mode MODE     the mode the session starts in: MODE, or the schedule's when it's on
+  hearth-server-mode dash                JSON for the dashboard
+  hearth-server-mode summary             the dashboard in short (Quick Access, Hearth Link, the web page)
+  hearth-server-mode back                once after you come back from Game Mode: how long you played
+  hearth-server-mode go MODE             switch now (game|desktop|server|logout): the dashboard, after its countdown
+  hearth-server-mode request             JSON on stdin: ask the agent ({"kind": "mode", "to"} | {"kind": "power",
+                                         "what": "sleep"|"restart"} | {"kind": "service", "name", "action"})
+  hearth-server-mode countdown | cancel  the countdown on the home screen (a switch asked for from the web page or the
+                                         schedule), or cancel it
+  hearth-server-mode service ACTION NAME restart|pause|resume one service: ai, pictures, voices, media, aishare, remote
+  hearth-server-mode power sleep|restart|off
+  hearth-server-mode idle-power on|off   lower power limits while nothing is busy, or back to how they were
+  hearth-server-mode leaving             the session: Server mode ended (power limits back to how they were)
+  hearth-server-mode nudge [--wait-game] the services timer's run now, so Light mode pauses / resumes right away
+  hearth-server-mode agent               the session's helper: the web page's requests, countdown deadlines, the
+                                         schedule (one at a time; ends when Server mode and the web page are off)
+  hearth-server-mode serve               the web page (hearth-server-mode-web.service, port 8460)
+  hearth-server-mode web-apply           the web page's user service on or off to match your choices
+  hearth-server-mode sleep-idle          "on" when you chose Sleep after idle (the session then doesn't hold sleep off)
+  hearth-server-mode ai-unload           AI chat's models out of memory now (hearth-home-server ai-unload)
+
+Your choices: ~/.config/nimbus/server-mode.json through hearth_settings_io (only the key you change; atomic, .bak, merged
+under the lock; defaults are filled in when read and never saved). What pauses while you play is Light mode's
+(home-server.json, hearth-home-server), never a copy. State, never settings: the PIN's hash and the web page's sign-ins
+(~/.local/state/nimbus/server-mode-web.json, 0600), and the runtime folder $XDG_RUNTIME_DIR/hearth-server (requests,
+the countdown, what idle power changed). Nothing here goes through a shell. Output: one JSON line; failures print
+"error: ..." and exit 1.
+"""
+import fcntl
+import hashlib
+import hmac
+import html
+import importlib.machinery
+import importlib.util
+import ipaddress
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
+RUN = os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'server-mode.json')
+SESSION_CONF = os.path.join(CONFIG_HOME, 'nimbus', 'session.conf')
+HOME_SERVER = os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')
+WEB_STATE = os.path.join(STATE_HOME, 'nimbus', 'server-mode-web.json')      # the PIN's hash, sign-ins (0600)
+EVENTS = os.path.join(STATE_HOME, 'nimbus', 'server-mode-events.json')      # web page sign-ins, for the dashboard's alerts
+RT = os.path.join(RUN, 'hearth-server')
+REQUESTS = os.path.join(RT, 'requests')
+COUNTDOWN = os.path.join(RT, 'countdown.json')
+IDLE_STATE = os.path.join(RT, 'idle.json')
+RESULTS = os.path.join(RT, 'results.json')
+USER_PAUSED = os.path.join(RT, 'paused.json')
+SAMPLE = os.path.join(RT, 'sample.json')
+DASH_UP = os.path.join(RUN, 'hearth-server-dash-up')
+BACK = os.path.join(RUN, 'hearth-server-back')
+PID = os.path.join(RUN, 'hearth-server-mode.pid')
+MODE_NOW = os.path.join(RUN, 'nimbus-mode-now')
+STEAM_FAILED = os.path.join(RUN, 'hearth-steam-mode-failed')
+ROOT_HELPER = os.environ.get('HEARTH_HOME_SERVER_ROOT', '/usr/libexec/nimbus/hearth-home-server-helper')
+SERVICES_STATE = os.environ.get('HEARTH_HOME_SERVER_SERVICES_STATE', '/run/hearth/home-server-services.json')
+PLAN = os.environ.get('HEARTH_HOME_SERVER_PLAN', '/etc/hearth/home-server.json')
+NIMBUS_MODE = os.environ.get('HEARTH_NIMBUS_MODE') or shutil.which('nimbus-mode') or '/usr/bin/nimbus-mode'
+FIXTURE = os.environ.get('HEARTH_SERVER_DASH_FIXTURE', '')   # tests and CI screenshots only: the dashboard's data from a file
+WEB_UNIT = 'hearth-server-mode-web.service'
+PORT = int(os.environ.get('HEARTH_SERVER_WEB_PORT', '8460'))
+SMALL_MODEL = 'qwen3:14b'
+SMALL_MODELS = (SMALL_MODEL, 'huihui_ai/qwen3-abliterated:14b')   # Light mode's choices (hearth-home-server aiSmallModel)
+BIG_MODEL = 'qwen3:30b-a3b'
+COUNTDOWN_WEB = 10            # seconds the home screen counts down before a switch asked for from the web page
+SESSION_DAYS = 30             # a device that typed the PIN stays signed in this long
+
+DEFAULTS = {
+    'on': False,                 # Server mode is there (Start in, Settings' Open now); off until you turn it on
+    'idlePower': True,           # lower power limits while nothing is busy (only in Server mode)
+    'gpuWatts': 120,             # the graphics card's limit then (Nvidia; the processor goes to power-saver)
+    'idleMinutes': 10,
+    'dim': 2,                    # the screen dims (clock and status) after this many minutes with nothing pressed
+    'off': 10,                   # and goes black (and off, when wlopm is there) after this many
+    'web': {'on': False, 'perms': {'services': True, 'modes': True, 'power': True, 'devices': True}},
+    'schedule': {'on': False,
+                 'weekday': [{'at': '00:00', 'mode': 'server'}, {'at': '18:00', 'mode': 'game'}],
+                 'weekend': [{'at': '01:00', 'mode': 'server'}, {'at': '10:00', 'mode': 'game'}]},
+}
+BOOL = {'on': ('on',), 'idlePower': ('idlePower',), 'webOn': ('web', 'on'), 'scheduleOn': ('schedule', 'on'),
+        'permServices': ('web', 'perms', 'services'), 'permModes': ('web', 'perms', 'modes'),
+        'permPower': ('web', 'perms', 'power'), 'permDevices': ('web', 'perms', 'devices')}
+CHOICE = {'gpuWatts': (80, 100, 120, 150, 200), 'idleMinutes': (5, 10, 20, 30), 'dim': (0, 1, 2, 5, 10),
+          'off': (0, 5, 10, 20, 30, 60)}
+MODES = ('game', 'desktop', 'server')
+GO_MODES = MODES + ('logout',)
+SERVICES = ('ai', 'pictures', 'voices', 'media', 'aishare', 'remote')
+SERVICE_ACTIONS = ('restart', 'pause', 'resume')
+TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+PIN_RE = re.compile(r'^\d{4,12}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def out(obj):
+    print(json.dumps(obj, ensure_ascii=False))
+
+
+# ------------------------------------------------------------------ settings (only what you change is written)
+
+def load():
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def peek():
+    """Your choices without repairing anything (the agent, the web server, the session: read only)."""
+    raw = sio.load_json(SETTINGS, {}, repair=False) if os.path.exists(SETTINGS) else {}
+    return sio.with_defaults(raw if isinstance(raw, dict) else {}, DEFAULTS)
+
+
+def get_path(d, path):
+    for k in path:
+        d = d.get(k) if isinstance(d, dict) else None
+    return d
+
+
+def set_key(key, raw):
+    if key in BOOL:
+        if raw not in ('on', 'off'):
+            raise Fail('on or off')
+        v, path = raw == 'on', BOOL[key]
+    elif key in CHOICE:
+        if not re.fullmatch(r'\d{1,3}', raw or '') or int(raw) not in CHOICE[key]:
+            raise Fail('one of ' + ', '.join(str(x) for x in CHOICE[key]))
+        v, path = int(raw), (key,)
+    else:
+        raise Fail('Unknown setting')
+    if get_path(load(), path) == v:
+        return False
+
+    def change(d):
+        node = d
+        for k in path[:-1]:
+            nxt = node.get(k)
+            node[k] = dict(nxt) if isinstance(nxt, dict) else {}
+            node = node[k]
+        node[path[-1]] = v
+    sio.update_json(SETTINGS, change)
+    return True
+
+
+def clean_changes(items):
+    if not isinstance(items, list) or not 1 <= len(items) <= 8:
+        raise Fail('1 to 8 changes a day')
+    seen, outl = set(), []
+    for it in items:
+        if not isinstance(it, dict) or not TIME_RE.match(str(it.get('at', ''))) or it.get('mode') not in MODES:
+            raise Fail('each change needs a time like 18:00 and a mode (server, game or desktop)')
+        if it['at'] in seen:
+            raise Fail('two changes at %s' % it['at'])
+        seen.add(it['at'])
+        outl.append({'at': it['at'], 'mode': it['mode']})
+    return sorted(outl, key=lambda x: x['at'])
+
+
+def schedule_set(text):
+    try:
+        req = json.loads(text or '')
+    except ValueError:
+        raise Fail('the schedule must be JSON')
+    if not isinstance(req, dict):
+        raise Fail('the schedule must be a JSON object')
+    new = {'weekday': clean_changes(req.get('weekday')), 'weekend': clean_changes(req.get('weekend'))}
+    cur = load()['schedule']
+    if cur.get('weekday') == new['weekday'] and cur.get('weekend') == new['weekend']:
+        return False
+
+    def change(d):
+        s = dict(d.get('schedule')) if isinstance(d.get('schedule'), dict) else {}
+        s.update(new)
+        d['schedule'] = s
+    sio.update_json(SETTINGS, change)
+    return True
+
+
+def schedule_mode(sched, now=None):
+    """The mode the schedule says for NOW (a time.struct_time), or '' when it's off or unusable."""
+    if not isinstance(sched, dict) or sched.get('on') is not True:
+        return ''
+    t = time.localtime() if now is None else now
+    day = 'weekend' if t.tm_wday >= 5 else 'weekday'
+    try:
+        items = clean_changes(sched.get(day))
+    except Fail:
+        return ''
+    hm = '%02d:%02d' % (t.tm_hour, t.tm_min)
+    mode = items[-1]['mode']           # before the first change of the day: the last one's (it runs past midnight)
+    for it in items:
+        if it['at'] <= hm:
+            mode = it['mode']
+    return mode
+
+
+def start_in(mode=None):
+    """session.conf's NIMBUS_START_MODE: printed, or set (only that line; atomic, .bak, under the lock)."""
+    if mode is None:
+        try:
+            text = open(SESSION_CONF, encoding='utf-8', errors='replace').read()
+        except OSError:
+            text = ''
+        found = re.findall(r'''^[ \t]*(?:export[ \t]+)?NIMBUS_START_MODE=["']?([a-z]*)''', text, re.M)
+        m = found[-1] if found else ''
+        return m if m in MODES else 'game'
+    if mode not in MODES:
+        raise Fail('game, desktop or server')
+    if mode == start_in():
+        return mode
+    os.makedirs(os.path.dirname(SESSION_CONF), exist_ok=True)
+    sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'NIMBUS_START_MODE', mode))
+    return mode
+
+
+def start_mode(conf_mode):
+    """What the session starts in: the schedule's mode when it's on (and Server mode is on), else CONF_MODE. Server mode
+    asked for while it's off is Game Mode."""
+    s = peek()
+    conf_mode = conf_mode if conf_mode in MODES else 'game'
+    if s['on'] is True:
+        m = schedule_mode(s.get('schedule'))
+        if m:
+            return m
+    if conf_mode == 'server' and s['on'] is not True:
+        return 'game'
+    return conf_mode
+
+
+# ------------------------------------------------------------------ the web page's PIN (only its hash)
+
+def secret_read():
+    v = sio.load_json(WEB_STATE, {}, repair=False) if os.path.exists(WEB_STATE) else {}
+    return v if isinstance(v, dict) else {}
+
+
+def secret_write(data):
+    os.makedirs(os.path.dirname(WEB_STATE), exist_ok=True)
+    sio.write_json(WEB_STATE, data)
+    try:
+        os.chmod(WEB_STATE, 0o600)
+    except OSError:
+        pass
+
+
+def pin_hash(pin, salt=None, n=200000):
+    salt = salt or secrets.token_hex(16)
+    return 'pbkdf2-sha256$%d$%s$%s' % (n, salt, hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), n).hex())
+
+
+def pin_check(pin, h):
+    try:
+        kind, n, salt, want = (h or '').split('$')
+        if kind != 'pbkdf2-sha256' or not PIN_RE.match(pin or ''):
+            return False
+        got = hashlib.pbkdf2_hmac('sha256', pin.encode(), bytes.fromhex(salt), int(n)).hex()
+        return hmac.compare_digest(got, want)
+    except (ValueError, TypeError):
+        return False
+
+
+def pin_set(pin):
+    pin = (pin or '').strip()
+    if not PIN_RE.match(pin):
+        raise Fail('The PIN must be 4 to 12 digits')
+    st = secret_read()
+    st['pin'] = pin_hash(pin)
+    st['sessions'] = {}            # a new PIN signs every device out
+    secret_write(st)
+    return {'pin': True}
+
+
+def pin_clear():
+    st = secret_read()
+    st.pop('pin', None)
+    st['sessions'] = {}
+    secret_write(st)
+    return {'pin': False}
+
+
+def token_key(tok):
+    return hashlib.sha256(tok.encode()).hexdigest()
+
+
+def session_new(peer_name):
+    st = secret_read()
+    tok = secrets.token_urlsafe(32)
+    now = int(time.time())
+    sess = {k: v for k, v in (st.get('sessions') or {}).items() if isinstance(v, dict) and v.get('exp', 0) > now}
+    sess[token_key(tok)] = {'exp': now + SESSION_DAYS * 86400, 'name': (peer_name or '')[:60]}
+    if len(sess) > 20:
+        for k in sorted(sess, key=lambda k: sess[k]['exp'])[:len(sess) - 20]:
+            sess.pop(k)
+    st['sessions'] = sess
+    secret_write(st)
+    return tok
+
+
+def session_ok(tok):
+    if not tok or not re.fullmatch(r'[A-Za-z0-9_\-]{20,64}', tok):
+        return False
+    s = (secret_read().get('sessions') or {}).get(token_key(tok))
+    return isinstance(s, dict) and s.get('exp', 0) > time.time()
+
+
+def session_end(tok):
+    st = secret_read()
+    if (st.get('sessions') or {}).pop(token_key(tok or 'x'), None) is not None:
+        secret_write(st)
+
+
+def event_add(text, level='info'):
+    try:
+        ev = sio.load_json(EVENTS, [], repair=False) if os.path.exists(EVENTS) else []
+        ev = ev if isinstance(ev, list) else []
+        ev.append({'at': int(time.time()), 'text': text[:160], 'level': level})
+        os.makedirs(os.path.dirname(EVENTS), exist_ok=True)
+        sio.write_atomic(EVENTS, json.dumps(ev[-20:]))
+    except (OSError, ValueError):
+        pass
+
+
+# ------------------------------------------------------------------ small system readers (never fatal)
+
+def run(cmd, timeout=10, env=None, inp=None):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env, input=inp)
+        return p.returncode, p.stdout or '', p.stderr or ''
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+def read(path, limit=65536):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read(limit)
+    except OSError:
+        return ''
+
+
+def rjson(path, default=None):
+    try:
+        v = json.loads(read(path) or 'null')
+    except ValueError:
+        v = None
+    return default if v is None else v
+
+
+def wjson(path, obj):
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    tmp = '%s.%d.tmp' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(obj, f)
+    os.replace(tmp, path)
+
+
+def http_json(url, body=None, timeout=1.5):
+    try:
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'} if data else {})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read(4 << 20).decode('utf-8', 'replace'))
+    except Exception:  # noqa: BLE001 - a service that doesn't answer is just "not answering"
+        return None
+
+
+def unit_active(unit, user=False):
+    return run(['systemctl'] + (['--user'] if user else []) + ['is-active', '--quiet', unit], 5)[0] == 0
+
+
+def meminfo():
+    m = {}
+    for line in read('/proc/meminfo').splitlines():
+        k, _, v = line.partition(':')
+        try:
+            m[k] = int(v.split()[0]) * 1024
+        except (ValueError, IndexError):
+            pass
+    return m.get('MemTotal', 0), m.get('MemTotal', 0) - m.get('MemAvailable', 0)
+
+
+def cpu_sample():
+    try:
+        f = read('/proc/stat').splitlines()[0].split()[1:]
+        v = [int(x) for x in f]
+        return sum(v), v[3] + (v[4] if len(v) > 4 else 0)
+    except (IndexError, ValueError):
+        return 0, 0
+
+
+def net_sample():
+    rx = tx = 0
+    for line in read('/proc/net/dev').splitlines()[2:]:
+        name, _, rest = line.partition(':')
+        if name.strip() in ('lo',):
+            continue
+        f = rest.split()
+        if len(f) >= 9:
+            rx += int(f[0])
+            tx += int(f[8])
+    return rx, tx
+
+
+def rates():
+    """Processor use and network speed since the last look (kept in the runtime folder)."""
+    now = time.time()
+    tot, idle = cpu_sample()
+    rx, tx = net_sample()
+    last = rjson(SAMPLE, {})
+    res = {'cpu': None, 'rx': None, 'tx': None}
+    try:
+        dt = now - float(last.get('at', 0))
+        if 0.5 < dt < 600:
+            dtot = tot - last['tot']
+            if dtot > 0:
+                res['cpu'] = max(0, min(100, round(100 * (1 - (idle - last['idle']) / dtot))))
+            res['rx'] = max(0, (rx - last['rx']) / dt)
+            res['tx'] = max(0, (tx - last['tx']) / dt)
+    except (KeyError, TypeError, ValueError):
+        pass
+    try:
+        wjson(SAMPLE, {'at': now, 'tot': tot, 'idle': idle, 'rx': rx, 'tx': tx})
+    except OSError:
+        pass
+    return res
+
+
+def cpu_temp():
+    base = '/sys/class/hwmon'
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return None
+    for want in ('k10temp', 'zenpower', 'coretemp', 'cpu_thermal'):
+        for h in names:
+            if read(os.path.join(base, h, 'name')).strip() == want:
+                try:
+                    return round(int(read(os.path.join(base, h, 'temp1_input')).strip()) / 1000)
+                except ValueError:
+                    pass
+    return None
+
+
+def gpu_info():
+    """The graphics card: name, memory, temperature, use and power (Nvidia through nvidia-smi; AMD from sysfs)."""
+    if shutil.which('nvidia-smi'):
+        code, o, _ = run(['nvidia-smi', '--query-gpu=name,memory.used,memory.total,temperature.gpu,utilization.gpu,power.draw',
+                          '--format=csv,noheader,nounits'], 4)
+        if code == 0 and o.strip():
+            f = [x.strip() for x in o.splitlines()[0].split(',')]
+
+            def num(x):
+                try:
+                    return float(x)
+                except ValueError:
+                    return None
+            g = {'name': f[0].replace('NVIDIA GeForce ', ''), 'memUsed': num(f[1]), 'memTotal': num(f[2]), 'temp': num(f[3]),
+                 'busy': num(f[4]), 'power': num(f[5]), 'apps': []}
+            code, o, _ = run(['nvidia-smi', '--query-compute-apps=pid,used_memory', '--format=csv,noheader,nounits'], 4)
+            for line in o.splitlines() if code == 0 else []:
+                try:
+                    pid, mem = [x.strip() for x in line.split(',')]
+                    g['apps'].append({'who': owner_of(pid), 'mb': float(mem)})
+                except ValueError:
+                    pass
+            return g
+    for card in sorted(os.listdir('/sys/class/drm')) if os.path.isdir('/sys/class/drm') else []:
+        d = '/sys/class/drm/%s/device' % card
+        used, total = read(d + '/mem_info_vram_used').strip(), read(d + '/mem_info_vram_total').strip()
+        if used.isdigit() and total.isdigit():
+            busy = read(d + '/gpu_busy_percent').strip()
+            return {'name': 'Graphics card', 'memUsed': int(used) / 1048576, 'memTotal': int(total) / 1048576, 'temp': None,
+                    'busy': float(busy) if busy.isdigit() else None, 'power': None, 'apps': []}
+    return None
+
+
+def owner_of(pid):
+    """Which of the home server's services a process belongs to (its systemd unit)."""
+    cg = read('/proc/%s/cgroup' % pid if str(pid).isdigit() else '/nonexistent')
+    for unit, who in (('hearth-ollama', 'ai'), ('hearth-comfyui', 'pictures'), ('hearth-kokoro', 'voices'), ('hearth-jellyfin', 'media')):
+        if unit in cg:
+            return who
+    return 'other'
+
+
+def ts_status():
+    if not shutil.which('tailscale'):
+        return {}
+    code, o, _ = run(['tailscale', 'status', '--json'], 5)
+    try:
+        j = json.loads(o) if code == 0 else {}
+    except ValueError:
+        j = {}
+    return j if isinstance(j, dict) else {}
+
+
+def ts_ip4(st=None):
+    st = ts_status() if st is None else st
+    return next((x for x in (st.get('Self') or {}).get('TailscaleIPs') or [] if re.fullmatch(r'100\.\d+\.\d+\.\d+', x)), '')
+
+
+PORT_NAMES = {445: 'Shared folders', 139: 'Shared folders', 8096: 'Media', 11434: 'AI chat', 8188: 'Pictures', 8880: 'Voices',
+              8189: 'AI sharing', 8097: 'Files on the web', 8460: 'Web page', 47984: 'Remote desktop', 47989: 'Remote desktop',
+              47990: 'Remote desktop', 48010: 'Remote desktop', 8384: 'Folder sync', 22000: 'Folder sync'}
+
+
+def connections():
+    """Remote addresses connected to this PC's service ports right now: {ip: set(service names)}."""
+    code, o, _ = run(['ss', '-Htn', 'state', 'established'], 5)
+    res = {}
+    for line in o.splitlines() if code == 0 else []:
+        cols = line.split()
+        if len(cols) < 4:
+            continue
+        local, peer = cols[-2], cols[-1]
+        try:
+            lport = int(local.rsplit(':', 1)[1])
+        except (ValueError, IndexError):
+            continue
+        ip = peer.rsplit(':', 1)[0].strip('[]')
+        if lport in PORT_NAMES and not ip.startswith('127.') and ip != '::1':
+            res.setdefault(ip, set()).add(PORT_NAMES[lport])
+    return res
+
+
+# ------------------------------------------------------------------ the home server's own helper, read only
+
+_HS = None
+
+
+def hs():
+    """hearth-home-server (next to this file) as a module: Light mode, quick status. Never written through here except
+    by its own commands."""
+    global _HS
+    if _HS is None:
+        p = os.path.join(HERE, 'hearth-home-server')
+        loader = importlib.machinery.SourceFileLoader('hearth_home_server_sm', p)
+        spec = importlib.util.spec_from_loader('hearth_home_server_sm', loader)
+        m = importlib.util.module_from_spec(spec)
+        loader.exec_module(m)
+        _HS = m
+    return _HS
+
+
+def hs_settings():
+    try:
+        return hs().load()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def hs_quick():
+    try:
+        return hs().quick()
+    except Exception:  # noqa: BLE001 - the dashboard never fails over this
+        return {}
+
+
+def ai_small_effective(hsd=None, srv=None):
+    """Light mode's AI choice: switch to the small model while you play. Not chosen yet (no key in home-server.json):
+    on when Server mode is on (the owner's choice for Server mode), off otherwise."""
+    hsd = hs_settings() if hsd is None else hsd
+    v = (hsd.get('ai') or {}).get('small')
+    if isinstance(v, bool):
+        return v
+    srv = peek() if srv is None else srv
+    return srv.get('on') is True
+
+
+def pauses_view(hsd=None, srv=None):
+    """What pauses while you play, from Light mode's own settings (one source of truth)."""
+    hsd = hs_settings() if hsd is None else hsd
+    ai = hsd.get('ai') or {}
+    small = ai_small_effective(hsd, srv)
+    ai_choice = 'stop' if ai.get('pause') else 'small' if small else 'unload' if ai.get('unload', True) is not False else 'keep'
+    pic = hsd.get('pictures') or {}
+    voi = hsd.get('voices') or {}
+    med = hsd.get('media') or {}
+    return {'lightMode': hsd.get('lightMode', True) is not False, 'ai': ai_choice, 'aiOn': ai.get('on') is True,
+            'pictures': 'stop' if pic.get('pause', True) is not False else 'keep', 'picturesOn': pic.get('on') is True,
+            'voices': 'pause' if voi.get('pause') is True else 'keep', 'voicesOn': voi.get('on') is True,
+            'media': 'pause' if med.get('pause') is True else 'keep', 'mediaOn': med.get('on') is True,
+            'backups': 'wait' if hsd.get('lightMode', True) is not False else 'run',
+            'small': ai.get('smallModel') if ai.get('smallModel') in SMALL_MODELS else SMALL_MODEL, 'big': BIG_MODEL}
+
+
+def status():
+    s = load()
+    hsd = hs_settings()
+    host = socket.gethostname().split('.')[0]
+    return {'settings': s, 'startIn': start_in(), 'pin': bool(secret_read().get('pin')), 'host': host,
+            'url': 'http://%s:%d' % (host, PORT), 'port': PORT, 'pauses': pauses_view(hsd, s),
+            'spinDown': (hsd.get('power') or {}).get('spinDown', 0), 'sleepIdle': (hsd.get('power') or {}).get('sleepIdle', 0),
+            'webActive': unit_active(WEB_UNIT, True), 'now': mode_now(), 'wlopm': bool(shutil.which('wlopm')),
+            'nvidia': bool(shutil.which('nvidia-smi'))}
+
+
+# ------------------------------------------------------------------ the dashboard's data
+
+def fmt_tb(b):
+    return ('%.1f TB' % (b / 1e12)) if b >= 1e12 else ('%d GB' % round(b / 1e9))
+
+
+def ago(ts, now=None):
+    now = time.time() if now is None else now
+    d = max(0, int(now - ts))
+    return 'just now' if d < 60 else '%d min ago' % (d // 60) if d < 3600 else '%d h ago' % (d // 3600) if d < 172800 else '%d days ago' % (d // 86400)
+
+
+def clock(ts):
+    return time.strftime('%-I:%M %p', time.localtime(ts))
+
+
+def mode_now():
+    m = read(MODE_NOW).strip()
+    return m if m in ('steam', 'game', 'desktop', 'server', 'setup') else ''
+
+
+def user_paused():
+    v = rjson(USER_PAUSED, [])
+    return [x for x in v if x in SERVICES] if isinstance(v, list) else []
+
+
+def dash():
+    if FIXTURE:
+        d = rjson(FIXTURE, {})
+        d['countdown'] = countdown_view()
+        return d
+    now = time.time()
+    results = {}
+    jobs = {'gpu': gpu_info, 'ts': ts_status, 'quick': hs_quick, 'hsd': hs_settings, 'conns': connections,
+            'ps': lambda: http_json('http://127.0.0.1:11434/api/ps'), 'tags': lambda: http_json('http://127.0.0.1:11434/api/tags'),
+            'comfy': lambda: http_json('http://127.0.0.1:8188/queue')}
+
+    def runjob(k):
+        try:
+            results[k] = jobs[k]()
+        except Exception:  # noqa: BLE001
+            results[k] = None
+    th = [threading.Thread(target=runjob, args=(k,), daemon=True) for k in jobs]
+    for t in th:
+        t.start()
+    for t in th:
+        t.join(8)
+    g, ts, q, hsd = results.get('gpu'), results.get('ts') or {}, results.get('quick') or {}, results.get('hsd') or {}
+    conns = results.get('conns') or {}
+    srv = peek()
+    sv = rjson(SERVICES_STATE, {}) if os.path.exists(SERVICES_STATE) else {}
+    sys_paused = sv.get('paused') or [] if isinstance(sv, dict) else []
+    mine = user_paused()
+    r = rates()
+    mem_total, mem_used = meminfo()
+    try:
+        up = float(read('/proc/uptime').split()[0])
+    except (ValueError, IndexError):
+        up = 0
+    try:
+        since = os.stat(PID).st_mtime
+    except OSError:
+        since = now
+    # ---- who's connected (Tailscale names for the addresses using a service)
+    peers = {}
+    for p in (ts.get('Peer') or {}).values():
+        for ip in p.get('TailscaleIPs') or []:
+            peers[ip] = p.get('HostName') or ip
+    who = []
+    for ip, what in sorted(conns.items()):
+        who.append({'name': peers.get(ip, ip), 'what': sorted(what), 'ts': ip in peers})
+    online = sum(1 for p in (ts.get('Peer') or {}).values() if p.get('Online'))
+    tiles, pills = [], []
+    pauses = pauses_view(hsd, srv)
+
+    def state_of(key, on, active, unit_paused):
+        if not on:
+            return 'off'
+        if key in mine:
+            return 'paused-you'
+        if unit_paused:
+            return 'paused'
+        return 'running' if active else 'stopped'
+
+    # ---- AI chat
+    ai_on = (hsd.get('ai') or {}).get('on') is True
+    ps = results.get('ps') or {}
+    loaded = [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]
+    loaded_vram = sum((m.get('size_vram') or 0) for m in ps.get('models') or [] if isinstance(m, dict))
+    models = [m.get('name') for m in (results.get('tags') or {}).get('models') or [] if isinstance(m, dict)]
+    ai_active = unit_active('hearth-ollama.service') if ai_on else False
+    ai_state = state_of('ai', ai_on, ai_active, 'ollama' in sys_paused)
+    asking = sum(1 for w in who if 'AI chat' in w['what'])
+    tiles.append({'id': 'ai', 'title': 'AI chat', 'engine': 'Ollama', 'icon': 'chat', 'state': ai_state,
+                  'chip': {'running': 'Running', 'stopped': 'Stopped', 'off': 'Off', 'paused': 'Paused for your game', 'paused-you': 'Paused'}[ai_state],
+                  'big': str(asking), 'unit': 'devices asking now' if asking != 1 else 'device asking now',
+                  'sub': ('Model loaded: ' + ', '.join(loaded)) if loaded else ('Ready · loads a model on the first question' if ai_active else 'Turn it on in Settings › Home server › Services'),
+                  'rows': [['Models', ', '.join(models[:3]) or 'none downloaded']], 'models': models, 'loaded': loaded,
+                  'vramGb': round(loaded_vram / 1e9, 1), 'actions': ['restart', 'pause'] if ai_on else []})
+    # ---- Pictures (ComfyUI)
+    pic_on = (hsd.get('pictures') or {}).get('on') is True
+    cq = results.get('comfy') or {}
+    running_q, pending_q = len(cq.get('queue_running') or []), len(cq.get('queue_pending') or [])
+    pic_active = unit_active('hearth-comfyui.service', True) if pic_on else False
+    pic_state = state_of('pictures', pic_on, pic_active, 'comfyui' in sys_paused)
+    tiles.append({'id': 'pictures', 'title': 'Pictures', 'engine': 'ComfyUI', 'icon': 'image', 'state': pic_state,
+                  'chip': ('Making' if running_q else 'Ready') if pic_state == 'running' else {'stopped': 'Stopped', 'off': 'Off', 'paused': 'Stopped for your game', 'paused-you': 'Paused'}[pic_state],
+                  'big': str(pending_q), 'unit': 'waiting', 'sub': ('Making a picture now' if running_q else 'Nothing in the queue') if pic_active else 'The queue is kept while it\'s stopped',
+                  'rows': [['While you play', 'Stops, keeps the queue' if pauses['pictures'] == 'stop' else 'Keeps running']],
+                  'actions': ['restart', 'pause'] if pic_on else []})
+    # ---- Media (Jellyfin)
+    med_on = (hsd.get('media') or {}).get('on') is True
+    med_active = unit_active('hearth-jellyfin.service') if med_on else False
+    med_state = state_of('media', med_on, med_active, 'jellyfin' in sys_paused)
+    watching = [w['name'] for w in who if 'Media' in w['what']]
+    tiles.append({'id': 'media', 'title': 'Media', 'engine': 'Jellyfin', 'icon': 'film', 'state': med_state,
+                  'chip': {'running': 'Running', 'stopped': 'Stopped', 'off': 'Off', 'paused': 'Paused for your game', 'paused-you': 'Paused'}[med_state],
+                  'big': str(len(watching)), 'unit': 'watching now', 'sub': ', '.join(watching) or 'Nobody watching',
+                  'rows': [['While you play', 'Pauses' if pauses['media'] == 'pause' else 'Keeps streaming']],
+                  'actions': ['restart', 'pause'] if med_on else []})
+    # ---- Storage (the shares' drives)
+    usage = q.get('usage') if isinstance(q.get('usage'), dict) else {}      # hearth-home-server fs_usage: {used, total}
+    used, total = int(usage.get('used') or 0), int(usage.get('total') or 0)
+    share_list = [s for s in (hsd.get('shares') or []) if isinstance(s, dict) and s.get('on', True) is not False]
+    shares = [s.get('name') for s in share_list]
+    alerts_hs = q.get('alerts') or []
+    tiles.append({'id': 'storage', 'title': 'Storage', 'engine': ('Shared folders: ' + ', '.join(shares[:3])) if shares else 'No shared folders yet',
+                  'icon': 'drive', 'state': 'warn' if alerts_hs else 'running', 'chip': 'Check' if alerts_hs else 'Healthy',
+                  'big': fmt_tb(used) if total else '—', 'unit': ('of %s used' % fmt_tb(total)) if total else 'nothing shared',
+                  'bar': round(100 * used / total) if total else None,
+                  'rows': [[str(sh.get('name', '')), str(sh.get('path', ''))] for sh in share_list[:3]]
+                          + ([['Free', fmt_tb(max(0, total - used))]] if total else []),
+                  'actions': []})
+    # ---- Backups
+    b = q.get('backups') or {}
+    bstate = 'warn' if b.get('failed') else 'running'
+    last = (b.get('lastOk') or 0) / 1000
+    tiles.append({'id': 'backups', 'title': 'Backups', 'engine': '%d set up' % b.get('count', 0) if b.get('count') else 'None set up',
+                  'icon': 'cloud', 'state': bstate if b.get('count') else 'off',
+                  'chip': 'Running' if b.get('running') else 'Didn\'t finish' if b.get('failed') else 'Waiting for your game' if b.get('waiting') else 'Up to date' if last else 'Off',
+                  'big': 'Running' if b.get('running') else 'Done' if last else '—', 'unit': ('at ' + clock(last)) if last and not b.get('running') else '',
+                  'sub': ('Didn\'t finish: ' + ', '.join(b.get('failed'))) if b.get('failed') else ('Waiting: ' + ', '.join(b.get('waiting'))) if b.get('waiting') else '',
+                  'rows': [['While you play', 'Wait until you stop' if pauses['backups'] == 'wait' else 'Run anyway']], 'actions': []})
+    # ---- Heat & power
+    ct = cpu_temp()
+    idle = rjson(IDLE_STATE, {})
+    tiles.append({'id': 'heat', 'title': 'Heat & power', 'engine': 'Lower limits while idle' if idle.get('on') else 'Full power, no limits',
+                  'icon': 'cpu', 'state': 'warn' if (ct or 0) >= 90 or ((g or {}).get('temp') or 0) >= 85 else 'running',
+                  'chip': 'Hot' if (ct or 0) >= 90 or ((g or {}).get('temp') or 0) >= 85 else 'Cool',
+                  'boxes': [['Processor', '%d °C' % ct if ct is not None else '—', '%d%% busy' % r['cpu'] if r['cpu'] is not None else ''],
+                            ['Graphics card', '%d °C' % g['temp'] if g and g.get('temp') is not None else '—',
+                             ((g or {}).get('name') or '') + (' · %d%% busy' % g['busy'] if g and g.get('busy') is not None else '')],
+                            ['Power now', '%d W' % g['power'] if g and g.get('power') else '—', 'graphics card'],
+                            ['Memory', '%d GB' % round(mem_used / 1e9), 'of %d GB' % round(mem_total / 1e9)]],
+                  'actions': []})
+    # ---- Who's connected
+    tiles.append({'id': 'who', 'title': 'Who\'s connected', 'engine': 'Tailscale', 'icon': 'tailscale',
+                  'state': 'running' if ts.get('BackendState') == 'Running' else 'off',
+                  'chip': 'Connected' if ts.get('BackendState') == 'Running' else 'Tailscale is off',
+                  'big': str(len(who)), 'unit': 'devices' if len(who) != 1 else 'device',
+                  'list': [[w['name'], ' · '.join(w['what'])] for w in who[:3]],
+                  'rows': [['Network', '↓ %s · ↑ %s' % (speed(r['rx']), speed(r['tx']))], ['Online on Tailscale', str(online)]],
+                  'actions': []})
+    # ---- Remote desktop (Sunshine)
+    rq = q.get('remote') or {}
+    tiles.append({'id': 'remote', 'title': 'Remote desktop', 'engine': 'Sunshine', 'icon': 'desktops',
+                  'state': 'running' if rq.get('on') else 'off', 'chip': 'Streaming' if rq.get('streaming') else 'Ready' if rq.get('on') else 'Off',
+                  'big': 'Streaming' if rq.get('streaming') else 'Ready' if rq.get('on') else 'Off',
+                  'unit': ('to ' + rq['who']) if rq.get('streaming') and rq.get('who') else 'no one connected' if rq.get('on') else '',
+                  'sub': 'Connect with Moonlight or Hearth Link to use this PC from anywhere' if rq.get('on') else 'Settings › Gaming › Remote play',
+                  'rows': [], 'actions': ['restart'] if rq.get('on') else []})
+    # ---- the pills: every service in a word
+    smb = bool(shares)
+    for name, extra, st in (('Shared folders', ', '.join(shares[:2]), 'running' if smb else 'off'),
+                            ('Media', '', med_state), ('AI chat', '', ai_state), ('Pictures', '', pic_state),
+                            ('Voices', 'Kokoro', state_of('voices', (hsd.get('voices') or {}).get('on') is True,
+                                                          unit_active('hearth-kokoro.service', True) if (hsd.get('voices') or {}).get('on') else False,
+                                                          'kokoro' in sys_paused)),
+                            ('Remote desktop', '', 'running' if rq.get('on') else 'off'),
+                            ('Backups', '', 'running' if b.get('count') else 'off')):
+        if st != 'off':
+            pills.append({'name': name, 'extra': extra, 'state': st})
+    running = sum(1 for p in pills if p['state'] == 'running')
+    # ---- alerts: the home server's, Steam Game Mode not starting, the web page's sign-ins
+    alerts = [{'level': 'warn', 'text': t, 'sub': '', 'at': ''} for t in alerts_hs]
+    sf = read(STEAM_FAILED, 300).strip()
+    if sf:
+        alerts.append({'level': 'warn', 'text': 'Steam Game Mode didn\'t start', 'sub': sf, 'at': ''})
+    ev = rjson(EVENTS, [])
+    for e in reversed(ev[-3:] if isinstance(ev, list) else []):
+        if isinstance(e, dict):
+            alerts.append({'level': e.get('level', 'info'), 'text': e.get('text', ''), 'sub': '', 'at': clock(e.get('at', now))})
+    problems = [t for t in tiles if t['state'] in ('warn', 'stopped')]
+    level = 'warn' if problems or alerts_hs else 'ok'
+    title = 'All good' if level == 'ok' else 'Needs a look'
+    return {'host': socket.gethostname().split('.')[0], 'gpuName': (g or {}).get('name') or '', 'memTotalGb': round(mem_total / 1e9),
+            'uptime': int(up), 'since': int(since), 'sinceText': clock(since), 'mode': mode_now() or 'server',
+            'status': {'level': level, 'title': title,
+                       'sub': '%d services running' % running if running != 1 else '1 service running',
+                       'problems': [t['title'] for t in problems]},
+            'devices': len(who),
+            'facts': [['Graphics memory', ('%.1f / %d GB' % (g['memUsed'] / 1024, round(g['memTotal'] / 1024))) if g and g.get('memTotal') else '—'],
+                      ['Storage', ('%s / %s' % (fmt_tb(used), fmt_tb(total))) if total else '—'],
+                      ['Power', ('%d W' % g['power']) if g and g.get('power') else '—']],
+            'vram': [{'who': a['who'], 'gb': round(a['mb'] / 1024, 1)} for a in (g or {}).get('apps', [])],
+            'vramTotal': round(((g or {}).get('memTotal') or 0) / 1024, 1), 'vramUsed': round(((g or {}).get('memUsed') or 0) / 1024, 1),
+            'tiles': tiles, 'pills': pills, 'alerts': alerts[:3], 'who': who, 'pauses': pauses,
+            'playing': bool(q.get('playing')), 'paused': sys_paused, 'pausedByYou': mine,
+            'busy': bool(loaded and asking) or bool(running_q or pending_q) or bool(b.get('running')) or bool(rq.get('streaming')),
+            'web': {'on': srv['web']['on'] is True, 'url': 'http://%s:%d' % (socket.gethostname().split('.')[0], PORT)},
+            'idle': {'dim': srv['dim'], 'off': srv['off'], 'idlePower': srv['idlePower'] is True, 'idleMinutes': srv['idleMinutes'],
+                     'wlopm': bool(shutil.which('wlopm'))},
+            'countdown': countdown_view(), 'now': int(now)}
+
+
+def speed(bps):
+    if bps is None:
+        return '—'
+    return ('%.1f MB/s' % (bps / 1e6)) if bps >= 1e5 else ('%d KB/s' % round(bps / 1e3))
+
+
+def summary(d=None):
+    """The dashboard in short: for Quick Access on this PC, Hearth Link on your other devices and the web page."""
+    d = dash() if d is None else d
+    return {'host': d.get('host'), 'mode': d.get('mode'), 'status': d.get('status'), 'devices': d.get('devices'),
+            'facts': d.get('facts'), 'vramUsed': d.get('vramUsed'), 'vramTotal': d.get('vramTotal'), 'vram': d.get('vram'),
+            'services': [{'id': t['id'], 'title': t['title'], 'engine': t.get('engine', ''), 'icon': t.get('icon', ''),
+                          'state': t['state'], 'chip': t.get('chip', ''), 'big': t.get('big', ''), 'unit': t.get('unit', ''),
+                          'sub': t.get('sub', ''), 'actions': t.get('actions', [])} for t in d.get('tiles') or []],
+            'alerts': d.get('alerts'), 'who': d.get('who'), 'pauses': d.get('pauses'), 'playing': d.get('playing'),
+            'countdown': d.get('countdown'), 'uptime': d.get('uptime'), 'sinceText': d.get('sinceText'), 'gpuName': d.get('gpuName'),
+            'memTotalGb': d.get('memTotalGb')}
+
+
+def back():
+    """Once after Game Mode (the session moved its mark here): how long you played. The mark goes."""
+    try:
+        t = os.stat(BACK).st_mtime
+    except OSError:
+        return {'back': False}
+    try:
+        os.remove(BACK)
+    except OSError:
+        pass
+    try:
+        if os.stat(STEAM_FAILED).st_mtime >= t:
+            return {'back': False, 'steamFailed': True}      # Steam Game Mode didn't start: the alert says so instead
+    except OSError:
+        pass
+    return {'back': True, 'played': max(0, int(time.time() - t)), 'pauses': pauses_view()}
+
+
+# ------------------------------------------------------------------ switching, countdowns, requests
+
+def go(mode, wait_nudge=True):
+    """Switch now (the dashboard after its 5-second countdown, or the agent after the web page's 10 seconds). Power
+    limits go back to normal first; Light mode is asked to act right away. nimbus-mode does the switch itself."""
+    if mode not in GO_MODES:
+        raise Fail('game, desktop, server or logout')
+    try:
+        idle_power(False)
+    except Fail:
+        pass
+    env = dict(os.environ)
+    if env.get('HEARTH_SERVER_MODE') != '1':
+        env.pop('LABWC_PID', None)      # not the dashboard's own labwc: nimbus-mode finds the mode that's up itself
+    code, o, e = run([NIMBUS_MODE, mode], 20, env)
+    if code != 0:
+        raise Fail('The switch didn\'t start (%s)' % (e.strip() or o.strip() or code)[:120])
+    if mode in ('game', 'server') and wait_nudge:
+        spawn(['nudge', '--wait-game'] if mode == 'game' else ['nudge'])
+    return {'switching': mode}
+
+
+def spawn(args):
+    """This helper again, on its own (never waited on)."""
+    try:
+        subprocess.Popen([sys.executable, os.path.realpath(__file__)] + args, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def nudge(wait_game=False):
+    """The services timer's run now (Light mode: pause for the game, or resume after it), not up to a minute later. Only
+    when the home server is set up; through the root helper's polkit rule (the person at the device). Never fatal."""
+    if not os.path.exists(PLAN) or not os.path.exists(ROOT_HELPER) or not shutil.which('pkexec'):
+        return {'nudged': False}
+    if wait_game:
+        for _ in range(40):
+            if game_mode_up():
+                break
+            time.sleep(1)
+    code, _, _ = run(['pkexec', ROOT_HELPER, 'services', 'run'], 150)
+    return {'nudged': code == 0}
+
+
+def game_mode_up():
+    try:
+        for pid in os.listdir('/proc'):
+            if pid.isdigit() and read('/proc/%s/comm' % pid).strip() in ('gamescope', 'gamescope-wl'):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def game_running():
+    """A game is running in Game Mode (Steam's or Hearth's mark on a process of yours). Nothing switches then."""
+    me = os.getuid()
+    try:
+        pids = [p for p in os.listdir('/proc') if p.isdigit()]
+    except OSError:
+        return False
+    for p in pids:
+        try:
+            if os.stat('/proc/' + p).st_uid != me:
+                continue
+            env = open('/proc/%s/environ' % p, 'rb').read(65536)
+        except OSError:
+            continue
+        if re.search(rb'(?:^|\x00)(?:SteamGameId|SteamAppId|HEARTH_GAME_ID)=[1-9]', env):
+            return True
+    return False
+
+
+def countdown_view():
+    c = rjson(COUNTDOWN, None)
+    if not isinstance(c, dict) or c.get('action') is None:
+        return None
+    left = c.get('deadline', 0) - time.time()
+    return {'to': c.get('to', ''), 'what': c.get('what', 'mode'), 'from': c.get('from', ''), 'by': c.get('by', ''),
+            'left': max(0, round(left)), 'total': c.get('total', COUNTDOWN_WEB)}
+
+
+def countdown_start(action, secs, origin, by=''):
+    wjson(COUNTDOWN, {'action': action, 'to': action.get('to') or action.get('what'), 'what': action['kind'],
+                      'deadline': time.time() + secs, 'total': secs, 'from': origin, 'by': by[:60]})
+
+
+def countdown_clear():
+    """No countdown: the file stays, holding {} (the dashboard watches it every second without logging a missing file)."""
+    try:
+        wjson(COUNTDOWN, {})
+    except OSError:
+        pass
+
+
+def cancel():
+    c = rjson(COUNTDOWN, None)
+    if isinstance(c, dict) and c.get('action') is not None:
+        countdown_clear()
+        result_add('Cancelled on the home screen')
+        return {'cancelled': True}
+    return {'cancelled': False}
+
+
+def result_add(text, ok=True):
+    try:
+        r = rjson(RESULTS, [])
+        r = r if isinstance(r, list) else []
+        r.append({'at': int(time.time()), 'text': text[:200], 'ok': ok})
+        wjson(RESULTS, r[-10:])
+    except OSError:
+        pass
+
+
+def clean_request(req):
+    """A request from the web page (or anyone): only these shapes, checked again before anything happens."""
+    if not isinstance(req, dict):
+        raise Fail('a JSON object')
+    k = req.get('kind')
+    if k == 'mode' and req.get('to') in MODES:
+        return {'kind': 'mode', 'to': req['to']}
+    if k == 'power' and req.get('what') in ('sleep', 'restart'):
+        return {'kind': 'power', 'what': req['what']}
+    if k == 'service' and req.get('name') in SERVICES and req.get('action') in SERVICE_ACTIONS:
+        return {'kind': 'service', 'name': req['name'], 'action': req['action']}
+    raise Fail('Not something the web page can ask for')
+
+
+def request_add(req, origin='web', by=''):
+    r = clean_request(req)
+    r['from'] = origin if origin in ('web', 'schedule', 'link') else 'web'
+    r['by'] = (by or '')[:60]
+    os.makedirs(REQUESTS, mode=0o700, exist_ok=True)
+    name = '%d-%s.json' % (int(time.time() * 1000), secrets.token_hex(4))
+    tmp = os.path.join(REQUESTS, '.' + name)
+    with open(tmp, 'w') as f:
+        json.dump(r, f)
+    os.replace(tmp, os.path.join(REQUESTS, name))
+    return {'sent': True}
+
+
+def dashboard_up():
+    try:
+        pid = int(read(PID).strip() or '0')
+        os.kill(pid, 0)
+    except (ValueError, OSError):
+        return False
+    return os.path.exists(DASH_UP) and mode_now() == 'server'
+
+
+def handle(req, now=None):
+    """One request, in the agent: services at once; a switch or sleep counts down 10 s on the home screen when the
+    dashboard is up, never while a game runs, and never away from Desktop Mode (someone may be working there)."""
+    r = clean_request(req)
+    origin = req.get('from') or 'web'
+    by = req.get('by') or ''
+    if r['kind'] == 'service':
+        try:
+            service(r['action'], r['name'])
+            result_add('%s: %s' % (r['name'], r['action']))
+        except Fail as e:
+            result_add(str(e), False)
+        return 'done'
+    cur = mode_now()
+    if r['kind'] == 'mode' and (cur == r['to'] or (r['to'] == 'game' and cur in ('steam', 'game'))):
+        return 'already'
+    if cur == 'server' and dashboard_up():
+        countdown_start(r, COUNTDOWN_WEB, origin, by)
+        return 'countdown'
+    if cur == 'desktop':
+        result_add('Desktop Mode is open on the PC: switch there', False)
+        return 'refused'
+    if game_running():
+        result_add('A game is running on the PC: nothing switches until it ends', False)
+        return 'wait'
+    execute(r)
+    return 'done'
+
+
+def execute(r):
+    try:
+        if r['kind'] == 'mode':
+            go(r['to'])
+            result_add('Switching to ' + {'game': 'Game Mode', 'desktop': 'Desktop Mode', 'server': 'Server mode'}[r['to']])
+        elif r['kind'] == 'power':
+            power(r['what'])
+            result_add('The PC goes to ' + ('sleep' if r['what'] == 'sleep' else 'restart'))
+    except Fail as e:
+        result_add(str(e), False)
+
+
+def schedule_step(s, last, now=None):
+    """The schedule, once: at a change (the mode it says differs from the last look) ask for that mode; a change that
+    has to wait (a game is running) is tried again at the next look. Returns what to remember as the last look."""
+    want = schedule_mode(s.get('schedule'), now) if s.get('on') is True else ''
+    if not want:
+        return None
+    if last is None or want == last:
+        return want
+    res = handle({'kind': 'mode', 'to': want, 'from': 'schedule', 'by': 'Schedule'})
+    return last if res == 'wait' else want
+
+
+def agent():
+    """The session's helper (one at a time): runs the web page's requests and the countdown's deadline, and follows the
+    schedule at its changes only (so a switch you make yourself is never undone). Ends when Server mode and the web
+    page are both off."""
+    os.makedirs(RT, mode=0o700, exist_ok=True)
+    lockf = open(os.path.join(RT, 'agent.lock'), 'w')
+    try:
+        fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return {'agent': 'already running'}
+    last_sched, tick = None, 0
+    while True:
+        names = agent_step()
+        if tick % 30 == 0:
+            s = peek()
+            if s['on'] is not True and s['web']['on'] is not True and not names:
+                return {'agent': 'ended'}
+            last_sched = schedule_step(s, last_sched)
+        tick += 1
+        time.sleep(1)
+
+
+def agent_step(now=None):
+    """One look: the requests waiting (oldest first), then the countdown's deadline. Returns the requests handled."""
+    now = time.time() if now is None else now
+    try:
+        names = sorted(n for n in os.listdir(REQUESTS) if n.endswith('.json') and not n.startswith('.'))
+    except OSError:
+        names = []
+    for n in names:
+        p = os.path.join(REQUESTS, n)
+        try:
+            req = rjson(p, {})
+            os.remove(p)
+            handle(req)
+        except (Fail, OSError) as e:
+            result_add(str(e), False)
+    c = rjson(COUNTDOWN, None)
+    if isinstance(c, dict) and isinstance(c.get('action'), dict) and now >= c.get('deadline', 0):
+        countdown_clear()
+        execute(c['action'])
+    return names
+
+
+# ------------------------------------------------------------------ services, power
+
+def service(action, name):
+    """Restart, pause or resume one service. Your own user services directly; the system's (AI chat, media) through the
+    root helper's polkit rule. A pause you make is remembered until you resume it (runtime state, not a setting)."""
+    if action not in SERVICE_ACTIONS or name not in SERVICES:
+        raise Fail('Unknown service or action')
+    sysd = {'ai': 'ollama', 'media': 'jellyfin'}
+    user = {'pictures': 'hearth-comfyui.service', 'voices': 'hearth-kokoro.service', 'aishare': 'hearth-ai-share.service'}
+    verb = {'restart': 'restart', 'pause': 'stop', 'resume': 'start'}[action]
+    if name in sysd:
+        if not shutil.which('pkexec'):
+            raise Fail('pkexec is missing')
+        code, o, _ = run(['pkexec', ROOT_HELPER, 'svc', verb, sysd[name]], 60)
+        try:
+            v = json.loads(o.strip().splitlines()[-1]) if o.strip() else {}
+        except ValueError:
+            v = {}
+        if code != 0 or not v.get('ok'):
+            raise Fail(v.get('error') or 'That didn\'t work')
+    elif name in user:
+        code, _, e = run(['systemctl', '--user', verb, user[name]], 60)
+        if code != 0:
+            raise Fail('That didn\'t work (%s)' % e.strip()[:100])
+    elif name == 'remote':
+        if action != 'restart':
+            raise Fail('Remote desktop can only be restarted here')
+        for u in ('app-dev.lizardbyte.app.Sunshine.service', 'sunshine.service'):
+            if run(['systemctl', '--user', 'is-active', '--quiet', u], 5)[0] == 0:
+                run(['systemctl', '--user', 'restart', u], 60)
+                break
+    mine = user_paused()
+    if action == 'pause' and name not in mine:
+        mine.append(name)
+    elif action == 'resume' and name in mine:
+        mine.remove(name)
+    try:
+        wjson(USER_PAUSED, mine)
+    except OSError:
+        pass
+    return {'ok': True, 'service': name, 'action': action}
+
+
+def power(what):
+    if what not in ('sleep', 'restart', 'off'):
+        raise Fail('sleep, restart or off')
+    try:
+        idle_power(False)
+    except Fail:
+        pass
+    code, _, e = run(['systemctl', {'sleep': 'suspend', 'restart': 'reboot', 'off': 'poweroff'}[what]], 30)
+    if code != 0:
+        raise Fail('That didn\'t work (%s)' % e.strip()[:100])
+    return {'ok': True}
+
+
+HEARTH_POWER = os.path.join(HERE, 'hearth-power')
+
+
+def idle_power(on):
+    """Lower power limits while nothing is busy (the dashboard decides when), or exactly back to how they were. What was
+    changed is kept in the runtime folder, so "back" never guesses and never touches a limit Hearth didn't change."""
+    st = rjson(IDLE_STATE, {})
+    st = st if isinstance(st, dict) else {}
+    s = peek()
+    if on:
+        if st.get('on') or s['idlePower'] is not True:
+            return {'idlePower': bool(st.get('on'))}
+        new = {'on': True, 'at': int(time.time())}
+        if os.path.exists(HEARTH_POWER):
+            code, o, _ = run([sys.executable, HEARTH_POWER, 'status'], 15)
+            try:
+                cur = ((json.loads(o) if code == 0 else {}).get('mode') or {}).get('current')
+            except ValueError:
+                cur = None
+            if cur in ('balanced', 'performance'):
+                if run([sys.executable, HEARTH_POWER, 'mode', 'power-saver'], 15)[0] == 0:
+                    new['mode'] = cur
+        if shutil.which('nvidia-smi') and shutil.which('pkexec') and os.path.exists(ROOT_HELPER):
+            if run(['pkexec', ROOT_HELPER, 'gpu-limit', str(s['gpuWatts'])], 30)[0] == 0:
+                new['gpu'] = True
+        wjson(IDLE_STATE, new)
+        return {'idlePower': True}
+    if not st.get('on'):
+        return {'idlePower': False}
+    if st.get('mode') in ('balanced', 'performance') and os.path.exists(HEARTH_POWER):
+        run([sys.executable, HEARTH_POWER, 'mode', st['mode']], 15)
+    if st.get('gpu') and shutil.which('pkexec'):
+        run(['pkexec', ROOT_HELPER, 'gpu-limit', 'reset'], 30)
+    try:
+        os.remove(IDLE_STATE)
+    except OSError:
+        pass
+    return {'idlePower': False}
+
+
+def leaving():
+    """The session, after Server mode ended (however it ended): power limits back, the screen on."""
+    res = {}
+    try:
+        res.update(idle_power(False))
+    except Fail:
+        pass
+    try:
+        os.remove(DASH_UP)
+    except OSError:
+        pass
+    countdown_clear()
+    if shutil.which('wlopm'):
+        run(['wlopm', '--on', '*'], 5)
+    return res
+
+
+def web_apply():
+    """The web page's user service on or off to match (on only with Server mode's web page on and a PIN set), and the
+    home server's firewall rule for its port (Tailscale and this PC only) made again."""
+    s = load()
+    on = s['web']['on'] is True and bool(secret_read().get('pin'))
+    run(['systemctl', '--user', 'enable' if on else 'disable', '--now', WEB_UNIT], 30)
+    if on:
+        run(['systemctl', '--user', 'restart', WEB_UNIT], 30)
+    if os.path.exists(PLAN):
+        run([sys.executable, os.path.join(HERE, 'hearth-home-server'), 'apply'], 120)
+    if on or s['on'] is True:
+        spawn(['agent'])
+    return {'web': 'on' if on else 'off'}
+
+
+# ------------------------------------------------------------------ the web page (port 8460, Tailscale and this PC only)
+
+TS_NETS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
+FAILS = {}
+LOCK = threading.Lock()
+
+
+def peer_allowed(ip):
+    """Only this PC and Tailscale: the page also listens only on 127.0.0.1 and this PC's Tailscale address, and the home
+    server's nftables rule drops the port on every other interface."""
+    try:
+        a = ipaddress.ip_address(ip.split('%')[0])
+    except ValueError:
+        return False
+    if a.version == 6 and a.ipv4_mapped:
+        a = a.ipv4_mapped
+    return a.is_loopback or any(a in n for n in TS_NETS)
+
+
+def too_many(ip, now=None):
+    now = time.time() if now is None else now
+    with LOCK:
+        f = [t for t in FAILS.get(ip, []) if now - t < 300]
+        FAILS[ip] = f
+        return len(f) >= 5
+
+
+def failed(ip):
+    with LOCK:
+        FAILS.setdefault(ip, []).append(time.time())
+
+
+def peer_name(ip, ts=None):
+    if ip.startswith('127.') or ip == '::1':
+        return 'This PC'
+    ts = ts_status() if ts is None else ts
+    for p in (ts.get('Peer') or {}).values():
+        if ip in (p.get('TailscaleIPs') or []):
+            return p.get('HostName') or ip
+    return ip
+
+
+def make_handler():
+    from http.server import BaseHTTPRequestHandler
+
+    class H(BaseHTTPRequestHandler):
+        server_version = 'Hearth'
+        sys_version = ''
+
+        def log_message(self, fmt, *args):  # noqa: D401 - nothing per request in the journal
+            pass
+
+        def ip(self):
+            return self.client_address[0]
+
+        def send(self, code, body, ctype='application/json', extra=()):
+            data = body if isinstance(body, bytes) else (json.dumps(body) if ctype == 'application/json' else body).encode()
+            self.send_response(code)
+            self.send_header('Content-Type', ctype + '; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Frame-Options', 'DENY')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Referrer-Policy', 'no-referrer')
+            self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'")
+            for k, v in extra:
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(data)
+
+        def token(self):
+            for part in (self.headers.get('Cookie') or '').split(';'):
+                k, _, v = part.strip().partition('=')
+                if k == 'hs':
+                    return v
+            return ''
+
+        def authed(self):
+            return session_ok(self.token())
+
+        def body(self):
+            try:
+                n = int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                n = 0
+            if n <= 0 or n > 4096:
+                return None
+            try:
+                return json.loads(self.rfile.read(n).decode('utf-8'))
+            except (ValueError, UnicodeDecodeError):
+                return None
+
+        def same_origin(self):
+            # Writes need Hearth's own header (a form or another site can't send it) and, when the browser says, this page's origin.
+            if self.headers.get('X-Hearth') != '1':
+                return False
+            o = self.headers.get('Origin')
+            return o is None or o == 'http://' + (self.headers.get('Host') or '')
+
+        def guard(self):
+            if not peer_allowed(self.ip()):
+                self.send(403, {'error': 'Only over Tailscale'})
+                return False
+            return True
+
+        def do_GET(self):  # noqa: N802
+            if not self.guard():
+                return
+            path = self.path.split('?', 1)[0]
+            if path == '/':
+                return self.send(200, page_html(), 'text/html')
+            if path == '/api/summary':
+                s = peek()
+                if not (self.authed() or s['web']['perms']['devices'] is True):
+                    return self.send(401, {'error': 'Type the PIN'})
+                return self.send(200, summary())
+            if path == '/api/status':
+                if not self.authed():
+                    return self.send(401, {'error': 'Type the PIN', 'pin': bool(secret_read().get('pin'))})
+                d = summary()
+                s = peek()
+                d['perms'] = s['web']['perms']
+                d['results'] = rjson(RESULTS, [])[-3:]
+                d['modeNow'] = mode_now()
+                d['gameRunning'] = game_running()
+                return self.send(200, d)
+            self.send(404, {'error': 'Not here'})
+
+        def do_POST(self):  # noqa: N802
+            if not self.guard():
+                return
+            if not self.same_origin():
+                return self.send(403, {'error': 'Not from this page'})
+            path = self.path.split('?', 1)[0]
+            ip = self.ip()
+            if path == '/api/login':
+                if too_many(ip):
+                    return self.send(429, {'error': 'Too many tries: wait 5 minutes'})
+                b = self.body() or {}
+                h = secret_read().get('pin')
+                if not h:
+                    return self.send(403, {'error': 'Set a PIN in Settings › Home server › Server mode first'})
+                if not pin_check(str(b.get('pin', '')), h):
+                    failed(ip)
+                    return self.send(401, {'error': 'That PIN isn\'t right'})
+                name = peer_name(ip)
+                tok = session_new(name)
+                event_add('%s opened the web page' % name)
+                return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hs=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict' % (tok, SESSION_DAYS * 86400))])
+            if not self.authed():
+                return self.send(401, {'error': 'Type the PIN'})
+            if path == '/api/logout':
+                session_end(self.token())
+                return self.send(200, {'ok': True}, extra=[('Set-Cookie', 'hs=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict')])
+            if path == '/api/action':
+                b = self.body()
+                try:
+                    r = clean_request(b)
+                except Fail as e:
+                    return self.send(400, {'error': str(e)})
+                perms = peek()['web']['perms']
+                need = {'service': 'services', 'mode': 'modes', 'power': 'power'}[r['kind']]
+                if perms.get(need) is not True:
+                    return self.send(403, {'error': 'Turned off in Settings › Home server › Server mode'})
+                request_add(r, 'web', peer_name(ip))
+                spawn(['agent'])
+                return self.send(202, {'ok': True, 'sent': True})
+            self.send(404, {'error': 'Not here'})
+
+    return H
+
+
+def listen_addresses():
+    out_ = ['127.0.0.1']
+    ip = ts_ip4()
+    if ip:
+        out_.append(ip)
+    return out_
+
+
+def serve():
+    from http.server import ThreadingHTTPServer
+    s = peek()
+    if s['web']['on'] is not True:
+        print('hearth-server-mode: the web page is off', file=sys.stderr)
+        return 0
+    handler = make_handler()
+    addrs = listen_addresses()
+    servers = []
+    for a in addrs:
+        try:
+            srv = ThreadingHTTPServer((a, PORT), handler)
+        except OSError as e:
+            print('hearth-server-mode: can\'t listen on %s:%d (%s)' % (a, PORT, e), file=sys.stderr)
+            continue
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        servers.append(srv)
+    if not servers:
+        return 1
+    while True:
+        time.sleep(60)
+        if peek()['web']['on'] is not True:
+            return 0
+        if len(addrs) == 1 and len(listen_addresses()) > 1:
+            return 75      # Tailscale came up after we started: systemd starts us again, now on its address too
+
+
+def page_html(data=None):
+    """The web page: one file, phone and laptop layouts. DATA embedded (tests and CI screenshots) shows it without the
+    PIN and without asking the PC."""
+    p = os.path.join(HERE, 'server-mode-web.html')
+    text = read(p, 400000) or '<!doctype html><title>Hearth</title><p>The web page is missing.'
+    embed = json.dumps(data).replace('</', '<\\/') if data is not None else 'null'
+    return text.replace('/*HEARTH_DATA*/null', embed).replace('{{HOST}}', html.escape(socket.gethostname().split('.')[0]))
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    a = argv[1:]
+    stdin_text = os.environ.get('HEARTH_INPUT')
+    try:
+        if a == ['status']:
+            out(status())
+        elif len(a) == 3 and a[0] == 'set':
+            out({'changed': set_key(a[1], a[2])})
+        elif a == ['schedule-set']:
+            out({'changed': schedule_set(stdin_text if stdin_text is not None else sys.stdin.read(8192))})
+        elif a == ['pin-set']:
+            out(pin_set(stdin_text if stdin_text is not None else sys.stdin.readline()))
+        elif a == ['pin-clear']:
+            out(pin_clear())
+        elif a == ['start-in']:
+            print(start_in())
+        elif len(a) == 2 and a[0] == 'start-in':
+            out({'startIn': start_in(a[1])})
+        elif a == ['session-check']:
+            print('on' if peek()['on'] is True else 'off')
+        elif a == ['sleep-idle']:
+            # Sleep after idle chosen (Settings › Home server › Server mode › Sleep, Light mode's power.sleepIdle): the
+            # session then doesn't hold sleep off while Server mode runs.
+            print('on' if ((hs_settings().get('power') or {}).get('sleepIdle') or 0) > 0 else 'off')
+        elif a == ['ai-unload']:
+            code, o, _ = run([sys.executable, os.path.join(HERE, 'hearth-home-server'), 'ai-unload'], 60)
+            if code != 0:
+                raise Fail(o.strip()[7:] if o.strip().startswith('error: ') else 'That didn\'t work')
+            out({'unloaded': True})
+        elif len(a) == 2 and a[0] == 'start-mode':
+            print(start_mode(a[1]))
+        elif a == ['dash']:
+            out(dash())
+        elif a == ['summary']:
+            out(summary())
+        elif a == ['back']:
+            out(back())
+        elif len(a) == 2 and a[0] == 'go':
+            out(go(a[1]))
+        elif a == ['request']:
+            try:
+                req = json.loads(stdin_text if stdin_text is not None else sys.stdin.read(4096))
+            except ValueError:
+                raise Fail('a JSON object')
+            out(request_add(req, 'link'))
+        elif a == ['countdown']:
+            out({'countdown': countdown_view()})
+        elif a == ['cancel']:
+            out(cancel())
+        elif len(a) == 3 and a[0] == 'service':
+            out(service(a[1], a[2]))
+        elif len(a) == 2 and a[0] == 'power':
+            out(power(a[1]))
+        elif len(a) == 2 and a[0] == 'idle-power' and a[1] in ('on', 'off'):
+            out(idle_power(a[1] == 'on'))
+        elif a == ['leaving']:
+            out(leaving())
+        elif a in (['nudge'], ['nudge', '--wait-game']):
+            out(nudge(len(a) == 2))
+        elif a == ['agent']:
+            out(agent())
+        elif a == ['serve']:
+            return serve()
+        elif a == ['web-apply']:
+            out(web_apply())
+        elif len(a) == 2 and a[0] == 'web-html':
+            sys.stdout.write(page_html(rjson(a[1], {})))
+        else:
+            print(__doc__, file=sys.stderr)
+            return 2
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

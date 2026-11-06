@@ -90,6 +90,7 @@ Scope {
     property bool viaPad: false                // the actions menu came from the controller (X): rename etc. open the on-screen keyboard
     property bool oskOpened: false
     property string dlgTitle: ""
+    property bool dlgSecret: false             // the text box hides what's typed (a sharing password)
     property string dlgText: ""
     property string dlgOk: ""
     property bool dlgDanger: false
@@ -182,7 +183,15 @@ Scope {
         shown = true;
         // Opened with an archive (it's the default app for them): pick it and ask what to do with it.
         pendingArchive = target && /\.(zip|tar|tgz|txz|tbz2?|tzst|gz|xz|bz2|zst|7z|rar)$/i.test(target) ? base(target) : "";
+        // smb://host/share (Settings › Your devices › Open): mounted (asking to sign in if needed), then opened.
+        const smb = /^smb:\/\/([A-Za-z0-9._-]+)\/?([^/]*)\/?$/.exec(target);
+        // hearthnet://<the JSON, URI-encoded> {"name", "share", "home", "away", "device", "wake"}: a device's share with both its names.
+        let net = null;
+        if (target.startsWith("hearthnet://")) { try { net = JSON.parse(decodeURIComponent(target.slice(12))); } catch (e) { net = null; } target = ""; }
+        if (smb) target = "";
         const go = () => {
+            if (net) { if (!listing) navigate(home, ""); netOpen(net); return; }
+            if (smb) { if (!listing) navigate(home, ""); netOpen({ name: smb[1].split(".")[0], share: decodeURIComponent(smb[2] || ""), home: smb[1].endsWith(".ts.net") ? "" : smb[1], away: smb[1].endsWith(".ts.net") ? smb[1] : "" }); return; }
             if (target) navigate(target, "");
             else if (!listing) navigate(home, "");
             else reload();
@@ -360,8 +369,36 @@ Scope {
             }
         }
     }
+    Component {
+        id: callInComp
+        Process {
+            id: procIn
+            property var cb: null
+            property string input: ""
+            // a binding, not an assignment (see SetJob.qml: assigning an object to environment threw on Hearth 1.0)
+            environment: ({ HEARTH_INPUT: procIn.input })
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    const lines = text.trim().split("\n");
+                    const last = lines.length ? lines[lines.length - 1] : "";
+                    let res = null, err = "";
+                    if (last.startsWith("error: ")) err = last.slice(7);
+                    else { try { res = JSON.parse(last); } catch (e) { err = "Something went wrong"; } }
+                    procIn.input = "";
+                    if (procIn.cb) procIn.cb(res, err);
+                    procIn.destroy();
+                }
+            }
+        }
+    }
     function call(args, cb) {
         const p = callComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null });
+        p.running = true;
+    }
+    // The same with text for the helper on HEARTH_INPUT (a sharing password): the environment, which only you can
+    // read, never the command line.
+    function callIn(args, input, cb) {
+        const p = callInComp.createObject(app, { command: ["python3", helper].concat(args), cb: cb || null, input: input || "" });
         p.running = true;
     }
 
@@ -802,8 +839,53 @@ Scope {
         const p = places[i];
         if (!p) return;
         placeIndex = i;
+        if (p.net) return netOpen(p.net);
+        if (p.kind === "howto") return showHowto(p.howto || []);
+        if (p.kind === "device") {
+            if (p.offline && p.wake) ask("Wake “" + p.label + "”?", "It's off or asleep. Hearth can wake it over the network (Wake-on-LAN).", "Wake it", () => netWake(p.device, p.label));
+            else say(p.label + ": " + (p.sub || ""));
+            return;
+        }
         if (!p.path && p.device) return mountPlace(p, true);
         navigate(p.path, "");
+    }
+    // ================================================ your devices' shared folders (hearth_netshares.py)
+    // One click: mounted with gvfs and opened (the home name at home, the Tailscale name away). The first time it asks
+    // for the user name and sharing password; Remember keeps the password in the system keyring, never in our files.
+    function netOpen(net, user, password, remember) {
+        say("Opening “" + (net.share || net.name) + "”…");
+        const args = ["net-open", JSON.stringify(net)].concat(user ? ["--user", user] : []).concat(remember ? ["--remember"] : []);
+        callIn(args, password ? JSON.stringify({ password: password }) : "", (r, err) => {
+            if (err) return say(err, true);
+            if (r.ok && r.path) {
+                if (r.remembered === false) say("Opened. The password couldn't be kept in the keyring, so it's asked again next time", true);
+                else say("“" + (net.share || net.name) + "” is open" + (r.where === "away" ? " (through Tailscale)" : ""));
+                return navigate(r.path, "");
+            }
+            if (r.need === "password") return netSignIn(net, r.user || user || "", !!password);
+            if (r.need === "asleep" && (r.wake || net.wake) && net.device)
+                return ask((net.name || "It") + " isn't answering", "It may be off or asleep. Hearth can wake it over the network (Wake-on-LAN), then try again.", "Wake it", () => netWake(net.device, net.name));
+            say(r.error || "Couldn't open it", true);
+        });
+    }
+    function netSignIn(net, user, wrong) {
+        askText((wrong ? "Wrong user name or password. " : "") + "Sign in to " + (net.name || "the device") + ": user name", user, "Next", user.length, u => {
+            askText("Sharing password for " + u + " on " + (net.name || "the device"), "", "Sign in", 0, pw => {
+                ask("Remember this password?", "Kept in this device's keyring (the system's password store), never in Hearth's files. Then it's one click next time.", "Remember", () => netOpen(net, u, pw, true));
+                dlgAlt = "Just this time";
+                dlgAltAction = () => netOpen(net, u, pw, false);
+            });
+            dlgSecret = true;
+        });
+    }
+    function netWake(device, name) {
+        call(["net-wake", device], (r, err) => say(err ? err : "Waking " + (name || "it") + "… try again in a minute", !!err));
+    }
+    function showHowto(list) {
+        const text = list.length ? list.map(l => l.device + " › " + l.share + "\nWindows: " + l.windows + "\nPhone, Mac or TV: " + l.phone + (l.away ? "\nAway (Tailscale): " + l.away : "")).join("\n\n")
+            : "Share a folder on a Hearth device (Settings › Home server › Sharing) and its addresses show here.";
+        ask("How to open from Windows or a phone", "In Windows File Explorer, type the \\\\ address in the address bar. On a phone, Mac or TV, use a Files app with network storage (SMB) and the smb:// address.\n\n" + text,
+            "Copy the addresses", () => { Quickshell.execDetached(["wl-copy", text]); say("Copied"); });
     }
     function mountPlace(p, go) {
         say("Mounting “" + p.label + "”…");
@@ -1467,6 +1549,7 @@ Scope {
 
     // ================================================ dialogs
     function askText(title, initial, ok, selectTo, action) {
+        dlgSecret = false;
         dlgTitle = title;
         dlgOk = ok;
         dlgDanger = false;
@@ -1542,10 +1625,11 @@ Scope {
     function accept(text) {
         const act = dlgAction;
         const kind = overlay;
+        const secret = dlgSecret;
         closeOverlay();
         if (!act) return;
         if (kind === "input") {
-            const t = (text || "").trim();
+            const t = secret ? (text || "") : (text || "").trim();
             if (t) act(t);
         } else {
             act();
@@ -1553,6 +1637,7 @@ Scope {
     }
     function closeOverlay() {
         overlay = "";
+        dlgSecret = false;
         menuOnFolder = false;
         dlgAction = null;
         dlgAlt = "";
@@ -2067,7 +2152,7 @@ Scope {
                                 Text {
                                     visible: placeItem.headH > 20
                                     anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 }
-                                    text: ({ games: "Games", bookmarks: "Bookmarks", network: "Hearth Storage" })[placeItem.modelData.section] || "Drives and SD cards"
+                                    text: ({ games: "Games", bookmarks: "Bookmarks", network: "Hearth Storage", devices: "Your devices" })[placeItem.modelData.section] || "Drives and SD cards"
                                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold
                                 }
                                 Rectangle {
@@ -2079,12 +2164,12 @@ Scope {
                                     readonly property color ink: lit ? Theme.accentInk : here ? Theme.accent : Theme.text
                                     y: placeItem.headH
                                     width: parent.width
-                                    height: modelData.section === "drives" ? 56 : 44
+                                    height: modelData.section === "drives" || (modelData.section === "devices" && !!modelData.sub) ? 56 : 44
                                     radius: Theme.r(10)
                                     color: lit ? Theme.accent : placeDrop.containsDrag ? Theme.panel3 : here ? Theme.panel3 : placeMouse.containsMouse ? Theme.panel2 : "transparent"
                                     border.width: placeDrop.containsDrag ? 2 : 0
                                     border.color: Theme.accent
-                                    opacity: modelData.mounted === false ? 0.75 : 1
+                                    opacity: modelData.mounted === false || modelData.offline === true ? 0.7 : 1
                                     Behavior on color { ColorAnimation { duration: Theme.quick } }
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: place.modelData.child ? 34 : 14; rightMargin: 12 }
@@ -2102,8 +2187,8 @@ Scope {
                                             }
                                             Text {
                                                 Layout.fillWidth: true
-                                                visible: place.modelData.section === "drives"
-                                                text: place.modelData.mounted === false ? (place.modelData.sub || "Not mounted")
+                                                visible: place.modelData.section === "drives" || (place.modelData.section === "devices" && !!place.modelData.sub)
+                                                text: place.modelData.section === "devices" ? place.modelData.sub : place.modelData.mounted === false ? (place.modelData.sub || "Not mounted")
                                                     : (place.modelData.sub || "") + (place.modelData.free !== undefined && place.modelData.free !== null ? " · " + app.fmtSize(place.modelData.free) + " free" : "")
                                                 color: place.lit ? Theme.accentInk : Theme.muted
                                                 elide: Text.ElideRight
@@ -3214,6 +3299,7 @@ Scope {
                                 font.pixelSize: 15
                                 selectByMouse: true
                                 clip: true
+                                echoMode: app.dlgSecret ? TextInput.Password : TextInput.Normal
                                 Keys.onPressed: e => {
                                     switch (e.key) {
                                     case Qt.Key_Return: case Qt.Key_Enter: app.accept(field.text); break;
@@ -3627,7 +3713,7 @@ Scope {
         property string kind
         property color tint: Theme.text
         property real size: 20
-        readonly property string hearthIcon: ({ home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad" })[kind] || ""
+        readonly property string hearthIcon: ({ home: "user", desktop: "display", pictures: "cam", music: "vol", games: "pad", device: "desktops", network: "server", howto: "help" })[kind] || ""
         readonly property string mark: ({ documents: "≡", downloads: "↓", videos: "▸" })[kind] || ""
         implicitWidth: size
         implicitHeight: size

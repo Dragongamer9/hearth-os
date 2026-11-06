@@ -68,6 +68,9 @@ ShellRoot {
                     islandsWin.quickOpen = Qt.binding(() => quick.shown);
                     islandsWin.calendarOpen = Qt.binding(() => calendar.shown);
                     islandsWin.launcherRequested.connect(() => launcher.toggle());
+                    islandsWin.menuSearchRequested.connect(() => launcher.openMenuSearch());
+                    islandsWin.menuQuery = Qt.binding(() => launcher.menuQuery);
+                    if (perScreen.primary) { const w = islandsWin; launcher.barSearch = Qt.binding(() => w.menuSearchShown); }
                     islandsWin.quickRequested.connect(() => quick.toggle());
                     islandsWin.keyboardRequested.connect(() => { if (keyboard.open) pad.closeKeyboard(); else pad.openKeyboard(); });
                     islandsWin.calendarRequested.connect(() => calendar.toggle(perScreen.modelData, false));
@@ -78,6 +81,7 @@ ShellRoot {
                     }
                 }
                 function dropNew() {
+                    if (perScreen.primary) launcher.barSearch = false;   // the menu shows its own search field again
                     if (islandsWin) islandsWin.destroy();
                     if (dockWin) dockWin.destroy();
                     islandsWin = null;
@@ -231,7 +235,9 @@ ShellRoot {
     }
     DebInstaller { id: debInstaller }
     Clipboard { id: clipboardHistory }
-    Friends { id: friendsPanel }   // Hearth Friends on Matrix; IPC target "friends"
+    // Discord (Discord.qml): the bar's button, its small window and chooser; IPC targets "discord" and "friends". Loaded
+    // separately like MediaKeys, so a problem in it only loses Discord, never the shell.
+    Loader { source: "Discord.qml" }
     // ---- end Apps / clipboard
     TaskManager { id: tasks }
     FileManager { id: files }

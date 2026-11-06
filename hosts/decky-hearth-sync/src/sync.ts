@@ -21,6 +21,8 @@ export const setSettings = callable<[s: Settings], Settings>("set_settings");
 export const getStatus = callable<[], Status>("get_status");
 const setStatus = callable<[s: Status], Status>("set_status");
 const report = callable<[line: string], void>("report");
+// Hearth Sync's shortcuts Steam is set to start with a compatibility tool (read from Steam's config.vdf; never changed).
+const compatCheck = callable<[], { id: string; tool: string }[]>("compat_check");
 
 const steam = () => (window as any).SteamClient;
 const apps = () => (window as any).appStore;
@@ -187,6 +189,13 @@ export async function runSync(force: boolean): Promise<Status | null> {
     const missing = missingArt(g.games, map, applied, stores);
     if (failed) problems.push(`${failed} change${failed === 1 ? "" : "s"} Steam didn't take (tried again next sync)`);
     if (missing) problems.push(`${missing} game${missing === 1 ? "" : "s"} still missing a picture (tried again later; see the log)`);
+    // A compatibility tool set on a Hearth shortcut makes Steam run Hearth's wrapper through Proton or its container,
+    // and the game never starts: say which, and how to turn it off (your setting, so it's left to you).
+    const forced = await compatCheck().catch(() => [] as { id: string; tool: string }[]);
+    if (forced.length) {
+      const names = forced.map((f) => g.games.find((i) => i.id === f.id)?.title || f.id).slice(0, 3).join(", ");
+      problems.push(`${forced.length} game${forced.length === 1 ? "" : "s"} won't start: Steam is set to use a compatibility tool for ${names}${forced.length > 3 ? "…" : ""}. Turn off "Force the use of a specific Steam Play compatibility tool" in its Properties › Compatibility (Hearth starts it with Proton itself).`);
+    }
     const skipped = g.games.filter((i) => !storeOn(stores, i.store)).length;
     Object.assign(st, { lastSync: now, synced, signature: failed ? "" : g.signature, problems, artMissing: missing });
     if (p.art.length) st.lastArtTry = now;

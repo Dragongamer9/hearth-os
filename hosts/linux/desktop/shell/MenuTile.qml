@@ -1,6 +1,6 @@
 // A live tile for the Tiles and Start screen app menus (MenuTiles.qml, MenuStart.qml). Sizes: small (1×1),
 // medium (2×2), wide (4×2), large (4×4) in `unit`s; yours are saved per user (Launcher.qml: Settings.menuTiles,
-// only when you resize one). Live data is what Hearth already has (Launcher.qml's `live`, from hearth-appmenu tiles,
+// only when you resize or move one). Live data is what Hearth already has (Launcher.qml's `live`, from hearth-appmenu tiles,
 // and what's playing): a tile without data is a plain icon tile with its name.
 import QtQuick
 import QtQuick.Layouts
@@ -13,7 +13,17 @@ Rectangle {
     property real unit: 72
     property real gap: 8
     property bool focused: false
+    property bool lifted: false           // being moved (drag with the mouse, or Y / Move and the D-pad)
+    property bool dropHere: false         // a dragged tile goes here when you let go
     signal picked()
+    // Dragging with the mouse: the menu works out where it goes (Launcher.qml groupTiles / saveTileOrder).
+    signal dragStarted()
+    signal dragMoved(real sx, real sy)    // the pointer on screen
+    signal dragEnded()
+    z: lifted ? 2 : 0
+    scale: lifted ? 1.04 : 1
+    opacity: lifted ? 0.92 : 1
+    Behavior on scale { enabled: !Settings.reduceMotion; NumberAnimation { duration: 90 } }
     readonly property string size: menu ? menu.tileSize(tile.id, tile.size || "medium") : (tile.size || "medium")
     readonly property int cols: size === "small" ? 1 : size === "medium" ? 2 : 4
     readonly property int rows: size === "small" ? 1 : size === "large" ? 4 : 2
@@ -199,18 +209,33 @@ Rectangle {
     // ---- focus ring (controller / keyboard) and the mouse
     Rectangle {
         anchors.fill: parent
-        color: area.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
+        color: t.dropHere ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3) : area.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
         radius: parent.radius
-        border.width: t.focused ? 3 : 0
-        border.color: Theme.text
+        border.width: t.lifted || t.dropHere || t.focused ? 3 : 0
+        border.color: t.lifted || t.dropHere ? Theme.accent : Theme.text
     }
     MouseArea {
         id: area
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: Qt.PointingHandCursor
-        onClicked: mouse => { t.picked(); if (mouse.button === Qt.RightButton) { if (t.menu) t.menu.tileMenu(t.tile, t); } else if (t.tile.open) t.tile.open(); }
-        onPressAndHold: if (t.menu) t.menu.tileMenu(t.tile, t)
+        cursorShape: dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+        // A real mouse drags the tile (the tiles' Flickable doesn't take the drag); a finger still scrolls the tiles
+        // (press and hold for the menu, then Move).
+        preventStealing: mousePress
+        property bool mousePress: false
+        property bool dragging: false
+        property bool dragged: false      // this press moved a tile: no click after it
+        property point down: Qt.point(0, 0)
+        onPressed: mouse => { down = Qt.point(mouse.x, mouse.y); dragged = false; mousePress = mouse.button === Qt.LeftButton && mouse.source === Qt.MouseEventNotSynthesized; }
+        onPositionChanged: mouse => {
+            if (!mousePress || !(mouse.buttons & Qt.LeftButton)) return;
+            if (!dragging && Math.hypot(mouse.x - down.x, mouse.y - down.y) > 14) { dragging = true; dragged = true; t.picked(); t.dragStarted(); }
+            if (dragging) { const p = mapToItem(null, mouse.x, mouse.y); t.dragMoved(p.x, p.y); }
+        }
+        onReleased: { mousePress = false; if (dragging) { dragging = false; t.dragEnded(); } }
+        onCanceled: { mousePress = false; if (dragging) { dragging = false; t.dragEnded(); } }
+        onClicked: mouse => { if (dragged) { dragged = false; return; } t.picked(); if (mouse.button === Qt.RightButton) { if (t.menu) t.menu.tileMenu(t.tile, t); } else if (t.tile.open) t.tile.open(); }
+        onPressAndHold: if (!dragging && t.menu) t.menu.tileMenu(t.tile, t)
     }
 }

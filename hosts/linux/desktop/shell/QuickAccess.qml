@@ -155,7 +155,7 @@ PanelWindow {
         case "dnd": DeskState.setDnd(!DeskState.dnd); break;
         case "lock": shown = false; root.lockRequested(); break;
         case "power": shown = false; root.powerRequested(); break;
-        case "friends": shown = false; if (SettingsNav.friends) SettingsNav.friends.toggle(); break;
+        case "friends": shown = false; if (SettingsNav.discord) SettingsNav.discord.toggle(-1); break;
         case "power-saver": case "balanced": case "performance": setProfile(id); break;
         case "settings": shown = false; root.settingsRequested(); break;
         case "handheld": shown = false; root.pageRequested("handheld"); break;
@@ -238,7 +238,7 @@ PanelWindow {
                         Text { Layout.fillWidth: true; text: Quickshell.env("USER") || "You"; elide: Text.ElideRight; color: Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold }
                         Text { Layout.fillWidth: true; text: root.battLine || Qt.formatDate(new Date(), "dddd, d MMMM"); elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                     }
-                    RoundBtn { navId: "friends"; icon: "user"; visible: root.screen ? root.screen.width <= 1440 : false; tip: "Friends" }
+                    RoundBtn { navId: "friends"; icon: "chat"; visible: root.screen ? root.screen.width <= 1440 : false; tip: "Discord" }
                     RoundBtn { navId: "settings"; icon: "gear"; tip: "Settings" }
                     RoundBtn { navId: "lock"; icon: "lock"; tip: "Lock" }
                     RoundBtn { navId: "power"; icon: "power"; tip: "Power (sleep, restart, shut down)" }

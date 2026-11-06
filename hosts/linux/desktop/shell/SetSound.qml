@@ -15,47 +15,54 @@ SetPage {
     PwObjectTracker { objects: [page.sink, page.source].concat(page.outputs).concat(page.inputs).filter(Boolean) }
     function label(n) { return n ? (n.description || n.nickname || n.name || "Device") : "None"; }
 
-    SetSlider {
-        icon: page.sink && page.sink.audio && page.sink.audio.muted ? "vol-mute" : "vol"
+    SetCardGroup {
         title: "Volume"
-        value: page.sink && page.sink.audio ? page.sink.audio.volume / Buttons.maxVolume : 0
-        valueText: Math.round(value * Buttons.maxVolume * 100) + "%"
-        onMoved: v => { if (page.sink && page.sink.audio) { page.sink.audio.muted = false; page.sink.audio.volume = v * Buttons.maxVolume; } }
-    }
-    SetSwitch {
-        icon: "vol-mute"; title: "Mute"; checked: !!(page.sink && page.sink.audio && page.sink.audio.muted)
-        onToggled: v => { if (page.sink && page.sink.audio) page.sink.audio.muted = v; }
-    }
-    SetSwitch {
-        icon: "vol"; title: "Over-amplification"
-        sub: "Lets the volume go up to 150%. Sound can distort, and loud sound can damage speakers or your hearing."
-        checked: Buttons.overamp
-        onToggled: v => Buttons.set("overamp", v)
-    }
-    SetHeader { text: "Play sound through" }
-    Repeater {
-        model: page.outputs
-        delegate: SetRow {
-            required property var modelData
-            icon: "vol"; title: page.label(modelData); chevron: false
-            value: page.sink === modelData ? "In use" : ""
-            onActivated: Pipewire.preferredDefaultAudioSink = modelData
+        SetSlider {
+            icon: page.sink && page.sink.audio && page.sink.audio.muted ? "vol-mute" : "vol"
+            title: "Volume"
+            value: page.sink && page.sink.audio ? page.sink.audio.volume / Buttons.maxVolume : 0
+            valueText: Math.round(value * Buttons.maxVolume * 100) + "%"
+            onMoved: v => { if (page.sink && page.sink.audio) { page.sink.audio.muted = false; page.sink.audio.volume = v * Buttons.maxVolume; } }
+        }
+        SetSwitch {
+            icon: "vol-mute"; title: "Mute"; checked: !!(page.sink && page.sink.audio && page.sink.audio.muted)
+            onToggled: v => { if (page.sink && page.sink.audio) page.sink.audio.muted = v; }
+        }
+        SetSwitch {
+            icon: "vol"; title: "Over-amplification"
+            sub: "Lets the volume go up to 150%. Sound can distort, and loud sound can damage speakers or your hearing."
+            checked: Buttons.overamp
+            onToggled: v => Buttons.set("overamp", v)
         }
     }
-    SetHeader { text: "Microphone" }
-    SetSlider {
-        visible: !!page.source
-        icon: "mic"; title: "Input volume"
-        value: page.source && page.source.audio ? page.source.audio.volume : 0
-        onMoved: v => { if (page.source && page.source.audio) page.source.audio.volume = v; }
+    SetCardGroup {
+        title: "Play sound through"
+        Repeater {
+            model: page.outputs
+            delegate: SetRow {
+                required property var modelData
+                icon: "vol"; title: page.label(modelData); chevron: false
+                value: page.sink === modelData ? "In use" : ""
+                onActivated: Pipewire.preferredDefaultAudioSink = modelData
+            }
+        }
     }
-    Repeater {
-        model: page.inputs
-        delegate: SetRow {
-            required property var modelData
-            icon: "mic"; title: page.label(modelData); chevron: false
-            value: page.source === modelData ? "In use" : ""
-            onActivated: Pipewire.preferredDefaultAudioSource = modelData
+    SetCardGroup {
+        title: "Microphone"
+        SetSlider {
+            visible: !!page.source
+            icon: "mic"; title: "Input volume"
+            value: page.source && page.source.audio ? page.source.audio.volume : 0
+            onMoved: v => { if (page.source && page.source.audio) page.source.audio.volume = v; }
+        }
+        Repeater {
+            model: page.inputs
+            delegate: SetRow {
+                required property var modelData
+                icon: "mic"; title: page.label(modelData); chevron: false
+                value: page.source === modelData ? "In use" : ""
+                onActivated: Pipewire.preferredDefaultAudioSource = modelData
+            }
         }
     }
 }

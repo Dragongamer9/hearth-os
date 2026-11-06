@@ -322,9 +322,13 @@ the plugin's `main.py`; `src/rest.tsx`), and says so when the core isn't running
 - **Game streaming** (Quick Access › Hearth): Sunshine on or off, the address and the Moonlight devices paired, and **Pair
   a device** with a number pad for Moonlight's 4-digit PIN (Hearth's Settings › Remote play does the same; the PIN is
   never logged). Moonlight to play another PC stays in Hearth.
-- **Hearth Friends** (`/hearth/friends`, in Steam's main menu): your Hearth Friends (Matrix) friends, online first, and
-  what they're playing. Read only: chats, requests, invites and signing in stay in Hearth's Friends (**Chats and requests
-  in Hearth** opens Hearth's window). Steam's friends are Steam's own Friends & Chat.
+- **Discord** (since 1.6; it replaced Hearth Friends on Matrix, archived): **Quick Access › Hearth Link › Discord**
+  (the shipped Hearth Link plugin): **Open Discord** (the one you picked in Mantel: the app, the web window or Dorion,
+  full size; a small floating window by Steam's bar isn't possible over gamescope, so it's full size here), **Show what
+  I'm playing on Discord**, **Let friends ask to join**, the Play together PIN while friends can join, and **Set up
+  Discord** (Hearth Settings › Discord in a window). Discord's desktop notifications show as Decky toasts (Steam Game
+  Mode has no notification server; `hearth-discord notify-bridge` stands in while Hearth's core runs). The old plugin's
+  `/hearth/friends` page (archived, not shipped) gets "not signed in" from the core now. See [DISCORD](DISCORD.md).
 - **Hearth Link** (`/hearth/link`, in Steam's main menu): this device's name, the paired devices (online or not, **Sync
   now**), copies in progress, games offered, and **Hearth Storage** devices (free space, **Wake it** when it's asleep and
   this device knows how). Pairing, settings and getting games from another device open Hearth's Settings in a window.
@@ -349,12 +353,12 @@ Game Mode too.
 | Quick Resume | Partially: the game Steam runs (put aside, resume, close); several games at once can't (Steam runs one) |
 | Pause (without leaving the game) | Not: Put aside does it with Steam's screen in front |
 | On-screen keyboard | Steam's is used; Hearth's only in Hearth's windows, on request |
-| Hearth Friends | Partially: read only (who's online, what they play); chats and requests in Hearth |
+| Hearth Friends → Discord (1.6) | Quick Access › Hearth Link › Discord: open Discord, its switches, toasts; chats are Discord's own |
 | Hearth Link, Hearth Storage | Partially: status, Sync now, Wake; pairing, settings, copies started from Hearth |
 | Sunshine (game streaming) | Ported: on/off, status, pairing with the PIN; Sunshine's own login set-up in Hearth |
 | Hearth Input | Ported (choosing a layout; the editor opens in Hearth's window) |
 | Per-game power settings, frame limit, TDP | Not: Steam's own Performance tab (so the two never fight) |
-| Parental controls, favourites, collections, Discord status | Not: Hearth's window |
+| Parental controls, favourites, collections | Not: Hearth's window |
 
 ### Still Hearth-only
 
@@ -482,7 +486,7 @@ pictures inside the card, which the look doesn't touch.
 In Steam Game Mode you have Steam's features instead of these Hearth ones: Hearth's Quick Access (Hearth's
 performance and controller pages, the power limit, Hearth Recorder, Pause, Quick Resume for more than the game Steam
 runs; the power mode is in Quick Access › Hearth), favourites, collections and
-game settings, Hearth Friends' chats and requests, Couch Co-op's own setup (player names, choosing controllers by pressing A; Steam Game
+game settings, Couch Co-op's own setup (player names, choosing controllers by pressing A; Steam Game
 Mode has the player order and split-screen shortcuts, above) and setting multi-seat up (Steam Game Mode starts, stops and
 gives controllers to the players already set up, above), Hearth Link's device health and pairing, editing Hearth Input
 layouts (choosing one is in Quick Access › Hearth Controller), parental controls and per-game power settings, Hearth's

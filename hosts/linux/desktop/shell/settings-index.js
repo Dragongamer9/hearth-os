@@ -372,7 +372,8 @@ var ENTRIES = [
 {
 "t": "Clock",
 "p": "datetime",
-"d": "How the taskbar shows the time"
+"d": "How the taskbar shows the time",
+"i": "clock"
 },
 {
 "t": "Set the time automatically",
@@ -407,6 +408,69 @@ var ENTRIES = [
 {
 "t": "Cancel",
 "p": "defaults"
+},
+{
+"t": "Let my other devices see this device's status",
+"p": "devices",
+"d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one (Hearth Link). Never the internet.",
+"i": "eye"
+},
+{
+"t": "Show other devices in Files",
+"p": "devices",
+"d": "Your devices' shared folders, and other computers sharing on this network or through Tailscale, in Hearth Files' sidebar and Open / Save windows",
+"i": "folder"
+},
+{
+"t": "Back to your devices",
+"p": "devices",
+"i": "back"
+},
+{
+"t": "Wake it",
+"p": "devices",
+"d": "Wake-on-LAN, as Hearth Storage does",
+"i": "power"
+},
+{
+"t": "Remote desktop",
+"p": "devices",
+"d": "Use it from here, or play its games (Remote play)",
+"i": "play"
+},
+{
+"t": "Hearth Link",
+"p": "devices",
+"d": "Pairing, sync, copies and Hearth Storage",
+"i": "desktops"
+},
+{
+"t": "Which Discord",
+"p": "discord",
+"i": "chat"
+},
+{
+"t": "Open Discord",
+"p": "discord",
+"d": "Full size. The bar's Discord button opens it in a small window you can reply to friends from",
+"i": "window"
+},
+{
+"t": "Discord application ID",
+"p": "discord",
+"i": "key"
+},
+{
+"t": "Show what I'm playing on Discord",
+"p": "discord",
+"d": "Rich Presence: the game, its picture and how long you've played, while Discord is running",
+"i": "play"
+},
+{
+"t": "Let friends ask to join",
+"p": "discord",
+"d": "Friends see Ask to join / Join on your game in Discord. Joining opens the game on their Hearth, or Play together when Remote play (Sunshine) is on",
+"i": "users"
 },
 {
 "t": "Keep",
@@ -541,10 +605,10 @@ var ENTRIES = [
 "i": "pad"
 },
 {
-"t": "Friends",
+"t": "Discord",
 "p": "games",
-"d": "Chats, invites and what your friends are playing",
-"i": "user"
+"d": "Friends, chats and invites in Discord; what you're playing on Discord",
+"i": "chat"
 },
 {
 "t": "Theater",
@@ -618,6 +682,17 @@ var ENTRIES = [
 "i": "lock"
 },
 {
+"t": "Show 18+ models",
+"p": "hs-ai",
+"d": "Uncensored chat models for adults. Off on a family PC. They're just models in Ollama: the Hearth AI Command Center's own limits still apply to anything you ask through it",
+"i": "lock"
+},
+{
+"t": "Download any model by name",
+"p": "hs-ai",
+"i": "plus"
+},
+{
 "t": "AI pictures (ComfyUI)",
 "p": "hs-ai",
 "i": "palette"
@@ -652,6 +727,12 @@ var ENTRIES = [
 "p": "hs-ai",
 "d": "When Game Mode or a game starts (with Light mode on), loaded models leave the graphics card within a minute; the next question loads them again",
 "i": "pad"
+},
+{
+"t": "Small model while you play",
+"p": "hs-ai",
+"d": "On the processor, so your devices still get answers while you play (Server mode's \"switch to the small model\")",
+"i": "chat"
 },
 {
 "t": "Stop the AI service while I play",
@@ -1364,13 +1445,23 @@ var ENTRIES = [
 {
 "t": "Share a folder",
 "p": "hs-shares",
-"d": "A folder in your Home or on a drive (never the system drive itself). It starts read only, on your home network.",
+"d": "A folder in your Home or on a drive, or a whole drive. It starts read only, on your home network.",
 "i": "plus"
 },
 {
 "t": "Pick it in Hearth Files",
 "p": "hs-shares",
 "i": "folder"
+},
+{
+"t": "Share your whole Home",
+"p": "hs-shares",
+"i": "home"
+},
+{
+"t": "Share the system drive (read only)",
+"p": "hs-shares",
+"i": "shield"
 },
 {
 "t": "Shared",
@@ -1648,6 +1739,12 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Your devices",
+"p": "link",
+"d": "Each device's battery, use, temperatures, drives and what's playing, with the last hour",
+"i": "cpu"
+},
+{
 "t": "Get a game from another Hearth",
 "p": "link",
 "d": "Pick the game in your library's Get from another Hearth. Opens in the Hearth app's window for now.",
@@ -1663,6 +1760,12 @@ var ENTRIES = [
 "t": "Accept games from my devices without asking",
 "p": "link",
 "i": "store"
+},
+{
+"t": "Let my other devices see this device's status",
+"p": "link",
+"d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one. Never the internet.",
+"i": "eye"
 },
 {
 "t": "Relay",
@@ -1763,7 +1866,8 @@ var ENTRIES = [
 },
 {
 "t": "Scroll with",
-"p": "mouse"
+"p": "mouse",
+"i": "mouse"
 },
 {
 "t": "Ignore the touchpad while typing",
@@ -1788,7 +1892,8 @@ var ENTRIES = [
 {
 "t": "Power mode",
 "p": "power",
-"d": "Battery saver lasts longer; Performance is faster and warmer"
+"d": "Battery saver lasts longer; Performance is faster and warmer",
+"i": "bolt"
 },
 {
 "t": "Power limit (TDP)",
@@ -1797,22 +1902,26 @@ var ENTRIES = [
 },
 {
 "t": "Turn the screen off after",
-"p": "power"
+"p": "power",
+"i": "display"
 },
 {
 "t": "Go to sleep after",
 "p": "power",
-"d": "Downloads stop while it sleeps. Videos and games that are playing keep it awake"
+"d": "Downloads stop while it sleeps. Videos and games that are playing keep it awake",
+"i": "sleep"
 },
 {
 "t": "Press",
 "p": "power",
-"d": "A quick press"
+"d": "A quick press",
+"i": "power"
 },
 {
 "t": "Hold",
 "p": "power",
-"d": "Held down for a second"
+"d": "Held down for a second",
+"i": "power"
 },
 {
 "t": "Game Mode",
@@ -1933,6 +2042,121 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
+"t": "Use Server mode",
+"p": "hs-server",
+"d": "Show it next to Game Mode and Desktop Mode: in Start in, here and on the dashboard. Off by default; Game Mode stays where your PC starts unless you choose Server mode",
+"i": "server"
+},
+{
+"t": "Open Server mode now",
+"p": "hs-server",
+"i": "play"
+},
+{
+"t": "Startup and schedule",
+"p": "hs-server",
+"i": "power"
+},
+{
+"t": "Lower power limits when idle",
+"p": "hs-server",
+"i": "bolt"
+},
+{
+"t": "Graphics card limit when idle",
+"p": "hs-server"
+},
+{
+"t": "Idle means no jobs for",
+"p": "hs-server"
+},
+{
+"t": "Spin down drives",
+"p": "hs-server",
+"d": "Data drives only; the system drive stays on (the same setting as Alerts & power)",
+"i": "drive"
+},
+{
+"t": "Screen dims to a clock after",
+"p": "hs-server",
+"d": "Dim shows the time and the status in dark grey, kind to OLED screens. Any button brings the dashboard back",
+"i": "display"
+},
+{
+"t": "Then off after",
+"p": "hs-server"
+},
+{
+"t": "Sleep",
+"p": "hs-server",
+"d": "Server mode keeps the PC awake unless you choose a time here. Waking it over Tailscale needs another device at home",
+"i": "sleep"
+},
+{
+"t": "Light mode while you play",
+"p": "hs-server",
+"d": "The same rules for Server mode's Play button, Guide and any game. Backups wait while it's on",
+"i": "pad"
+},
+{
+"t": "Pictures · ComfyUI",
+"p": "hs-server",
+"i": "image"
+},
+{
+"t": "AI chat · Ollama",
+"p": "hs-server",
+"i": "chat"
+},
+{
+"t": "Voices · Kokoro",
+"p": "hs-server",
+"i": "wave"
+},
+{
+"t": "Media · Jellyfin",
+"p": "hs-server",
+"i": "film"
+},
+{
+"t": "Shared folders, Tailscale",
+"p": "hs-server",
+"d": "Always keep working",
+"i": "folder"
+},
+{
+"t": "Dashboard web page",
+"p": "hs-server",
+"i": "globe"
+},
+{
+"t": "PIN for the web page",
+"p": "hs-server",
+"i": "lock"
+},
+{
+"t": "Restart and pause services",
+"p": "hs-server",
+"i": "restart"
+},
+{
+"t": "Switch modes",
+"p": "hs-server",
+"d": "The screen at home counts down 10 seconds first (cancel it there), and nothing switches while a game is running or Desktop Mode is open",
+"i": "pad"
+},
+{
+"t": "Sleep or restart the PC",
+"p": "hs-server",
+"i": "sleep"
+},
+{
+"t": "Show it on my other Hearth devices",
+"p": "hs-server",
+"d": "Hearth Link and Quick Access on your Ally can show the status (read only) without the PIN, from your Tailscale devices only",
+"i": "desktops"
+},
+{
 "t": "Sign in automatically",
 "p": "signin",
 "i": "user"
@@ -1973,6 +2197,36 @@ var ENTRIES = [
 "t": "Input volume",
 "p": "sound",
 "i": "mic"
+},
+{
+"t": "When this PC turns on",
+"p": "startup",
+"d": "Start in one mode every time, or follow a schedule",
+"i": "power"
+},
+{
+"t": "Add a change",
+"p": "startup",
+"d": "A new change an hour after the last one",
+"i": "plus"
+},
+{
+"t": "If a game is running",
+"p": "startup",
+"d": "Server mode never closes your game: the change waits until it ends",
+"i": "pad"
+},
+{
+"t": "If you're in Desktop Mode",
+"p": "startup",
+"d": "Unsaved work stays open: the schedule never switches away from Desktop Mode",
+"i": "desktops"
+},
+{
+"t": "In Server mode",
+"p": "startup",
+"d": "The dashboard counts down 10 seconds first; B cancels",
+"i": "server"
 },
 {
 "t": "Switch to Steam Game Mode",
@@ -2116,6 +2370,12 @@ var ENTRIES = [
 {
 "t": "Connect",
 "p": "wifi"
+},
+{
+"t": "Add a hidden network",
+"p": "wifi",
+"d": "A network that doesn't show its name: type it and its password",
+"i": "plus"
 },
 {
 "t": "Look again",

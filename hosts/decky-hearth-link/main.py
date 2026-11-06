@@ -604,6 +604,102 @@ def home_server(args, run=subprocess.run):
 # ---- end Home server
 
 
+# ---- Discord (docs/DISCORD.md): Quick Access › Hearth Link › Discord. Since 1.6 Discord replaces Hearth Friends.
+# Only hearth-discord's own commands (DISCORD_ARGS), with a timeout; Hearth Settings' Discord page for the setup. Steam
+# Game Mode has no notification server, so desktop notifications (Discord's) are taken by `hearth-discord
+# notify-bridge` (only when nobody else serves them) and shown by the panel as toasts. Nothing of them is logged.
+DISCORD = '/usr/share/nimbus/desktop/shell/hearth-discord'
+DISCORD_TIMEOUT = 20
+
+
+def discord_args(args):
+    """The only hearth-discord commands the plugin runs."""
+    if args == ['status'] or args == ['open', '--full']:
+        return list(args)
+    if isinstance(args, list) and len(args) == 3 and args[0] == 'set' and args[1] in ('enabled', 'askToJoin') and args[2] in ('on', 'off'):
+        return list(args)
+    return None
+
+
+def discord_short(v):
+    if not isinstance(v, dict):
+        return {'available': False}
+    inv = v.get('invite') if isinstance(v.get('invite'), dict) else None
+    return {'available': True, 'client': v.get('client') if v.get('client') in ('official', 'web', 'dorion') else None,
+            'opens': v.get('opens') if v.get('opens') in ('official', 'web', 'dorion') else None,
+            'appId': bool(v.get('appId')), 'enabled': v.get('enabled') is not False, 'askToJoin': v.get('askToJoin') is not False,
+            'running': v.get('running') is True,
+            'invite': {'pin': text(inv.get('pin'), 4), 'playTogether': inv.get('playTogether') is True, 'title': text(inv.get('title'), 80)} if inv else None}
+
+
+def discord(args, run=subprocess.run):
+    a = discord_args(args)
+    if a is None:
+        return {'available': False, 'error': NOT_ALLOWED}
+    prog = os.environ.get('HEARTH_DISCORD') or DISCORD
+    if not os.path.exists(prog):
+        return {'available': False}
+    env = clean_env()
+    py = shutil.which('python3', path=env['PATH']) or '/usr/bin/python3'
+    if a[0] == 'open':
+        try:
+            subprocess.Popen([py, prog] + a, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+        except OSError:
+            return {'available': True, 'ok': False, 'error': "Discord didn't start"}
+        return {'available': True, 'ok': True}
+    try:
+        r = run([py, prog] + a, capture_output=True, text=True, timeout=DISCORD_TIMEOUT, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return {'available': False, 'error': "Discord's helper didn't answer"}
+    lines = (r.stdout or '').strip().splitlines()
+    last = lines[-1] if lines else ''
+    if last.startswith('error: '):
+        return {'available': True, 'ok': False, 'error': text(last[7:], 200)}
+    try:
+        return discord_short(json.loads(last))
+    except ValueError:
+        return {'available': False}
+
+
+def discord_setup(run=subprocess.Popen):
+    """Hearth Settings › Discord in a window (pasting the application ID, which Discord)."""
+    env = clean_env()
+    prog = shutil.which('hearth-settings', path=env['PATH']) or '/usr/bin/hearth-settings'
+    try:
+        run([prog, 'discord'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+    except OSError:
+        return {'ok': False, 'error': "Hearth Settings didn't open"}
+    return {'ok': True}
+
+
+TOASTS = []          # the last notifications from the bridge: {seq, app, title, body}
+TOAST_SEQ = [0]
+
+
+def toast_take(line):
+    """One line from the bridge into TOASTS (at most 20 kept, newest last). Bad lines are dropped."""
+    try:
+        v = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(v, dict) or not (v.get('title') or v.get('body')):
+        return None
+    TOAST_SEQ[0] += 1
+    t = {'seq': TOAST_SEQ[0], 'app': text(v.get('app'), 40), 'title': text(v.get('title'), 120), 'body': text(v.get('body'), 240)}
+    TOASTS.append(t)
+    del TOASTS[:-20]
+    return t
+
+
+def toasts_since(seq):
+    try:
+        n = int(seq)
+    except (TypeError, ValueError):
+        n = 0
+    return [t for t in TOASTS if t['seq'] > n]
+# ---- end Discord
+
+
 async def _bg(fn, *a):
     return await asyncio.get_running_loop().run_in_executor(None, fn, *a)
 
@@ -646,10 +742,55 @@ class Plugin:
     async def home_server_resume(self, on):
         return await _bg(home_server, ['resume', 'on' if on is True else 'off'])
 
+    # ---- Discord
+    async def discord(self):
+        return await _bg(discord, ['status'])
+
+    async def discord_set(self, key, on):
+        return await _bg(discord, ['set', key if key in ('enabled', 'askToJoin') else '', 'on' if on is True else 'off'])
+
+    async def discord_open(self):
+        return await _bg(discord, ['open', '--full'])
+
+    async def discord_setup(self):
+        return await _bg(discord_setup)
+
+    async def discord_toasts(self, seq=0):
+        return toasts_since(seq)
+
+    async def _notify_bridge(self):
+        """Discord's (and other apps') notifications while Steam Game Mode runs: hearth-discord notify-bridge, only
+        while Hearth's core service answers (it runs next to Steam in Steam Game Mode and nowhere else) and only when
+        nobody else serves notifications. It ending (Desktop Mode, someone else serves them, no D-Bus) is fine."""
+        prog = os.environ.get('HEARTH_DISCORD') or DISCORD
+        while os.path.exists(prog):
+            await self._bridge_once(prog)
+            await asyncio.sleep(15)
+
+    async def _bridge_once(self, prog):
+        core = os.path.join(runtime_dir(), 'hearth', 'core.sock')
+        if not os.path.exists(core):
+            return
+        try:
+            env = clean_env()
+            p = await asyncio.create_subprocess_exec(shutil.which('python3', path=env['PATH']) or '/usr/bin/python3', prog, 'notify-bridge', '--while', core,
+                                                     stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+                                                     stderr=asyncio.subprocess.DEVNULL, env=env)
+            self._bridge = p
+            while True:
+                line = await p.stdout.readline()
+                if not line:
+                    break
+                toast_take(line.decode('utf-8', 'replace'))
+        except Exception as e:  # never stops the plugin
+            log('discord: notifications: %s' % text(type(e).__name__, 60))
+    # ---- end Discord
+
     async def _main(self):
         if not hearth_only.status(log, 'Hearth Link')['ok']:
             return   # not Hearth OS: nothing starts (the panel says why)
         log('Hearth Link plugin loaded')
+        self._notify = asyncio.get_running_loop().create_task(self._notify_bridge())
         self._sync = asyncio.get_running_loop().create_task(self._sync_loop())
         self._loaded = asyncio.get_running_loop().create_task(hearth_only.mark_loaded_later(decky))
 
@@ -665,3 +806,12 @@ class Plugin:
         t = getattr(self, '_sync', None)
         if t:
             t.cancel()
+        n = getattr(self, '_notify', None)
+        if n:
+            n.cancel()
+        b = getattr(self, '_bridge', None)
+        if b and b.returncode is None:
+            try:
+                b.terminate()
+            except ProcessLookupError:
+                pass

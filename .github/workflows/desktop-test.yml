@@ -27,6 +27,8 @@ jobs:
           dnf -y install dbus-daemon libnotify wl-clipboard wtype slurp >/dev/null || true
           # A Wayland app whose app id can be set (a stand-in Flatpak window for the taskbar's icon check).
           dnf -y install foot hicolor-icon-theme >/dev/null || true
+          # Discord's quick window (Discord.qml, hearth-discord): xdotool places X windows, Tk draws a stand-in Discord.
+          dnf -y install xdotool python3-tkinter >/dev/null || true
           # Mantel's Steam-style look: its font (Inter, openly licensed) and a KDE app to see apps follow it.
           dnf -y install rsms-inter-fonts kcalc >/dev/null || true
           # Hearth Files as the file chooser: xdg-desktop-portal, GLib's D-Bus for Python (hearth-portal), a GTK 3 app.
@@ -45,6 +47,8 @@ jobs:
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_2026.py' -v
           # Bar layouts (the main bar on any edge, the floating dock on or off) and the five app menus.
           python3 -m unittest discover -s hosts/linux/test -p 'test_mantel_bars_menus.py' -v
+          # Discord replacing Hearth Friends (1.6): the chooser, installs, each client's window by the bar, invites.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_discord.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -82,31 +86,17 @@ jobs:
             '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /tmp/fakebin/hearth-time
           chmod +x /tmp/fakebin/hearth-time
           # ---- end of Hearth Time stand-in
-          # Hearth Friends (Friends.qml): a stand-in for the service with a signed-in account, a friend playing, a chat.
-          cat > /tmp/fakebin/hearth-friends <<'FAKE'
-          #!/bin/sh
-          # Signed out (with /tmp/friends-out): matrix.org's own sign-in page, by phone (a QR code) or in the browser.
-          if [ -f /tmp/friends-out ]; then
-            case "$1:$2" in
-              watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":false}}'; sleep 3600 ;;
-              call:status) echo '{"signedIn":false,"settings":{"homeserver":"matrix.org"}}' ;;
-              call:authMethods) echo '{"homeserver":"matrix.org","oauth":true,"qr":true,"browser":true,"create":true,"password":true,"register":"oauth"}' ;;
-              call:authStart) echo '{"mode":"qr","homeserver":"matrix.org","create":false,"url":"https://account.matrix.org/link?code=WDJB-MJHT","shortUrl":"account.matrix.org/link","userCode":"WDJB-MJHT","expiresIn":600,"qrRows":["1111111011010110101111111", "1000001011110110001000001", "1011101001010111101011101", "1011101001001011101011101", "1011101001101100101011101", "1000001000001011001000001", "1111111011100001001111111", "0000000000100101000000000", "0001101111101110110000111", "0011111011110000001000011", "1011111111111001111100111", "1110110010100001110001100", "0000101111100100011111000", "1001000011010011001110010", "0010110000100111101110110", "0100001111011001000101100", "0001000010100001000111111", "0000000000010010010110011", "1111111001110101110010001", "1000001011011100110001101", "1011101010001010110011011", "1011101011111010111110011", "1011101001011010001000111", "1000001011011100011111110", "1111111000101111101011111"]}' ;;
-              *) echo 'null' ;;
-            esac
-            exit 0
-          fi
-          case "$1:$2" in
-            watch:*) echo '{"id":1,"ok":true,"value":{"signedIn":true}}'; sleep 3600 ;;
-            call:status) echo '{"signedIn":true,"userId":"@dragon:matrix.org","homeserver":"matrix.org","lives":"matrix.org (run by the Matrix.org Foundation)","synced":true}' ;;
-            call:friends) echo '[{"userId":"@sarah:matrix.org","name":"Sarah","roomId":"!s:m","state":"friend","presence":"online","game":"Dota 2","joinable":true,"unread":2},{"userId":"@mike:matrix.org","name":"Mike","roomId":"!m:m","state":"friend","presence":"unavailable","game":null,"unread":0}]' ;;
-            call:chats) echo '[{"roomId":"!s:m","name":"Sarah","direct":true,"members":2,"unread":2,"muted":false,"encrypted":true,"last":{"body":"Want to play?","mine":false}}]' ;;
-            call:requests) echo '{"requests":[{"roomId":"!r:m","from":"@new:example.org","name":"New person","direct":true}],"invites":[]}' ;;
-            call:messages) echo '{"roomId":"!s:m","messages":[{"id":"$1","sender":"@sarah:matrix.org","senderName":"Sarah","mine":false,"at":1790000000000,"kind":"text","body":"Hey! On tonight?"},{"id":"$2","sender":"@dragon:matrix.org","mine":true,"at":1790000060000,"kind":"text","body":"Yes, after dinner"},{"id":"$3","sender":"@sarah:matrix.org","senderName":"Sarah","mine":false,"at":1790000120000,"kind":"game","body":"Lets play","game":{"title":"Dota 2","store":"steam","id":"steam:570"}}],"atStart":true}' ;;
-            *) echo 'null' ;;
-          esac
+          # Discord (Discord.qml): a stand-in "discord" (an X window with Discord's window class, under Xwayland) for the
+          # bar's quick window. The real app can't run here; Hearth only places, shows and hides its window anyway.
+          cat > /tmp/fakebin/discord <<'FAKE'
+          #!/usr/bin/python3
+          # fake-discord-stand-in
+          import tkinter as tk
+          r = tk.Tk(className='discord'); r.title('Discord (stand-in)'); r.geometry('900x700+40+40'); r.configure(bg='#313338')
+          tk.Label(r, text='Discord (stand-in window)\nFriends and chats show here', fg='white', bg='#313338', font=('Sans', 16)).pack(expand=True)
+          r.mainloop()
           FAKE
-          sed -i 's/^          //' /tmp/fakebin/hearth-friends; chmod +x /tmp/fakebin/hearth-friends
+          sed -i 's/^          //' /tmp/fakebin/discord; chmod +x /tmp/fakebin/discord
           # The Hearth app (nimbus) stand-in for Mantel's Settings pages moved from the old Game Mode (docs/SETTINGS-MOVE.md):
           # `--settings-call <method>` answers like hearth-core settings_cli.rs; `--windowed --page <page>` notes the page.
           cat > /tmp/fakebin/nimbus <<'FAKE'
@@ -641,12 +631,18 @@ jobs:
           # Install Package: a small .deb (made without dpkg) opened in the installer window, and in Files' menu.
           mkdir -p "$HOME/Downloads" && python3 hosts/linux/test/make_test_deb.py "$HOME/Downloads/hearth-hello.deb" >/dev/null || true
           ipc debs open "$HOME/Downloads/hearth-hello.deb"; sleep 2; grim shots/deb-1-installer.png || true; ipc debs close
-          # Hearth Friends: the bar's Friends panel, then a chat in it.
-          ipc friends open; sleep 2; grim shots/friends-1-panel.png || true
-          wtype -k Down -k Down -k Return 2>/dev/null || true; sleep 2; grim shots/friends-2-chat.png || true; ipc friends close
-          # Signed out: the ways to sign in, then A: a QR code to sign in with a phone.
-          touch /tmp/friends-out; sleep 6; ipc friends open; sleep 3; grim shots/friends-3-signin.png || true
-          wtype -k Return 2>/dev/null || true; sleep 3; grim shots/friends-4-signin-qr.png || true; ipc friends close; rm -f /tmp/friends-out
+          # Discord: the first press asks which Discord (three cards); A picks the app (the stand-in is "installed"),
+          # which opens as the small window by the bar; pressing again hides it without quitting; "full" maximizes it.
+          ipc discord toggle; sleep 2; grim shots/discord-1-chooser.png || true
+          wtype -k Right -k Right 2>/dev/null || true; sleep 1; grim shots/discord-2-chooser-dorion.png || true
+          wtype -k Left -k Left -k Return 2>/dev/null || true; sleep 8; grim shots/discord-3-quick-window.png || true
+          echo "::notice title=discord window::$(DISPLAY=${DISPLAY:-:0} xdotool search --onlyvisible --class '^discord$' getwindowgeometry %@ 2>&1 | tr '\n' ' ' | head -c 400)" 
+          ipc discord toggle; sleep 2; grim shots/discord-4-hidden.png || true
+          if pgrep -f fake-discord-stand-in >/dev/null || pgrep -f /tmp/fakebin/discord >/dev/null; then echo "::notice title=discord::hidden, still running (notifications keep working)"; else echo "::error title=discord::hiding the quick window ended Discord"; fi
+          ipc discord toggle; sleep 2; grim shots/discord-5-shown-again.png || true
+          ipc discord full; sleep 2; grim shots/discord-6-full.png || true
+          pkill -f /tmp/fakebin/discord || true
+          ipc friends open; sleep 4; grim shots/discord-7-old-friends-link.png || true; pkill -f /tmp/fakebin/discord || true; ipc discord close
           ipc files open "$HOME/Downloads"; ipc filemanager select hearth-hello.deb; ipc filemanager menu; grim shots/deb-2-files-menu.png || true
           ipc filemanager close; ipc files close
           n=$((n+3))
@@ -948,6 +944,10 @@ jobs:
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          # Settings › Hearth Link › Your devices with stand-in devices (hearth-device-status devices prints this file):
+          # a handheld on battery, a gaming PC in Game Mode, a laptop that's offline.
+          export HEARTH_DEVICES_SAMPLE=/tmp/devices-sample.json
+          python3 hosts/linux/test/devices_sample.py > "$HEARTH_DEVICES_SAMPLE"
           D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"
           set_look() {  # look mode accent wallpaper
             python3 - "$D" "$@" <<'PY'
@@ -987,6 +987,13 @@ jobs:
           ipc power menu; grim $o/steam-09-power-menu.png || true; ipc power close
           ipc settings page appearance; grim $o/steam-10-settings-appearance.png || true
           ipc settings page wifi; grim $o/steam-11-settings-wifi.png || true
+          ipc settings page devices; sleep 3; grim $o/steam-11c-settings-your-devices.png || true
+          wtype -k Down 2>/dev/null; sleep 0.5; wtype -k Return 2>/dev/null; sleep 1; wtype -k space 2>/dev/null; sleep 2; grim $o/steam-11d-settings-device-details.png || true
+          # Hearth Files with your devices' shared folders in the sidebar (stand-in devices, found "just now" so it
+          # doesn't look again: hearth_netshares.py's state file).
+          mkdir -p "$HOME/.local/state/nimbus"
+          python3 hosts/linux/test/devices_sample.py files > "$HOME/.local/state/nimbus/files-devices.json"
+          ipc settings close; ipc files open "$HOME"; sleep 3; grim $o/steam-13b-files-your-devices.png || true; ipc files close
           ipc settings page sound; grim $o/steam-12-settings-sound.png || true
           ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"
@@ -1164,6 +1171,99 @@ jobs:
             echo "::error title=looks::$(printf '%s' "$bad" | cut -c1-250 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
             touch shots/FAILED
           fi
+
+      # Server mode (docs/SERVER-MODE.md): its own labwc folder and dashboard started for real on a virtual screen, with the
+      # dashboard's data from a fixture (the mockup's numbers); the AI tile opened, the 5-second switch countdown, a web
+      # page's 10-second countdown, "Back in Server mode", the menu, the idle screen, Settings › Home server › Server mode
+      # and System › Startup (Start in and the schedule) inside Server mode, and the web page at phone and laptop sizes.
+      - name: Server mode
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p shots/server-mode
+          exec > >(tee shots/server-mode/step.log) 2>&1
+          set -x
+          # Desktop Mode's shell watchers from the steps before would start Mantel again on Server mode's labwc (on a real
+          # PC the session's settle() ends them between modes).
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2; pkill -f quickshell || true
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export HEARTH_SERVER_DASH_FIXTURE="$PWD/hosts/linux/test/fixtures/server-dash.json" HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
+          QML="$PWD/hosts/linux/desktop/shell/server-mode.qml"
+          H=hosts/linux/desktop/shell/hearth-server-mode
+          rm -f "$XDG_RUNTIME_DIR"/wayland-* "$XDG_RUNTIME_DIR/hearth-server-dash-up"
+          mkdir -p "$HOME/.config/nimbus"
+          printf '%s\n' '{"on": true, "web": {"on": true}, "schedule": {"on": true}}' > "$HOME/.config/nimbus/server-mode.json"
+          printf '%s' 482916 | HEARTH_INPUT=482916 python3 $H pin-set
+          python3 $H start-in server
+          # The helper on this runner for real (no fixture): it must answer, whatever is installed here.
+          HEARTH_SERVER_DASH_FIXTURE= python3 $H dash > shots/server-mode/dash-real.json 2> shots/server-mode/dash-real.err \
+            && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("::notice title=Server mode::dash on the runner: %d tiles, %s" % (len(d["tiles"]), d["status"]["title"]))' shots/server-mode/dash-real.json \
+            || { echo "::error title=Server mode::hearth-server-mode dash failed: $(head -c 300 shots/server-mode/dash-real.err | tr '\n' ' ')"; touch shots/FAILED; }
+          HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$QML" labwc -C hosts/linux/desktop/server/labwc > shots/server-mode/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          for i in $(seq 1 40); do [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ] && break; sleep 1; done
+          if [ -e "$XDG_RUNTIME_DIR/hearth-server-dash-up" ]; then echo "::notice title=Server mode::the dashboard said it's up after ${i}s (the session waits for this)"
+          else echo "::error title=Server mode::the dashboard never said it's up: $(tail -c 600 "$XDG_RUNTIME_DIR/hearth-server-dash.log" 2>/dev/null | tr '\n' '|')"; touch shots/FAILED; fi
+          sleep 6
+          ipc() { quickshell ipc -p "$QML" call "$@" || echo "ipc $* failed"; sleep 2; }
+          grim shots/server-mode/01-dashboard.png || true
+          ipc server detail 1; grim shots/server-mode/02-ai-expanded.png || true
+          ipc server detail 2; grim shots/server-mode/02b-pictures-expanded.png || true
+          ipc server close
+          quickshell ipc -p "$QML" call server play; sleep 1; grim shots/server-mode/03-switch-to-game-mode.png || true
+          ipc server close
+          mkdir -p "$XDG_RUNTIME_DIR/hearth-server"
+          python3 -c 'import json,time,sys; json.dump({"action": {"kind": "mode", "to": "game"}, "to": "game", "what": "mode", "deadline": time.time() + 9, "total": 10, "from": "web", "by": "Work laptop"}, open(sys.argv[1], "w"))' "$XDG_RUNTIME_DIR/hearth-server/countdown.json"
+          sleep 3; grim shots/server-mode/03b-web-switch-countdown.png || true
+          ipc server cancel; sleep 2
+          ipc server back; grim shots/server-mode/04-back-in-server-mode.png || true
+          ipc server close
+          ipc server menu; grim shots/server-mode/05-menu.png || true
+          ipc server close
+          ipc server idle dim; grim shots/server-mode/09-screen-idle.png || true
+          ipc server idle on
+          echo "state: $(quickshell ipc -p "$QML" call server state)"
+          ipc settings page hs-server; sleep 3; grim shots/server-mode/06-settings-server-mode.png || true
+          wtype -k Right; sleep 1; for i in $(seq 1 12); do wtype -k Down; done; sleep 1; grim shots/server-mode/06b-settings-what-pauses.png || true
+          for i in $(seq 1 8); do wtype -k Down; done; sleep 1; grim shots/server-mode/06c-settings-web-page.png || true
+          ipc settings close; ipc settings page startup; sleep 3; grim shots/server-mode/07-settings-startup.png || true
+          wtype -k Right; sleep 1; for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim shots/server-mode/07b-settings-schedule.png || true
+          ipc settings close; ipc settings page gaming; sleep 3; grim shots/server-mode/08-gaming-start-in.png || true
+          ipc settings close
+          cp "$XDG_RUNTIME_DIR/hearth-server-dash.log" shots/server-mode/dashboard.log 2>/dev/null || true
+          sbad=$(grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Failed to load|Unable to assign" shots/server-mode/dashboard.log 2>/dev/null | grep -viE "uinput|evdev|DBus|hearth-pad" | head -10 | cut -c1-220 | tr '\n' '|' || true)
+          [ -z "$sbad" ] || { echo "::error title=Server mode dashboard::$sbad"; touch shots/FAILED; }
+          pkill -x labwc || true; pkill -f quickshell || true
+          # The web page: the sign-in page from the real server on 127.0.0.1:8460, and the dashboard with the fixture embedded.
+          dnf -y install chromium >/dev/null 2>&1 || dnf -y install chromium-headless >/dev/null 2>&1 || true
+          CH=$(command -v chromium-browser || command -v chromium || command -v headless_shell || true)
+          if [ -n "$CH" ]; then
+            HEARTH_SERVER_DASH_FIXTURE="$PWD/hosts/linux/test/fixtures/server-dash.json" timeout 120 python3 $H serve > shots/server-mode/serve.log 2>&1 &
+            SRV=$!
+            sleep 3
+            python3 - "$H" > /tmp/web-data.json <<'PY'
+          import importlib.machinery, importlib.util, json, sys
+          l = importlib.machinery.SourceFileLoader('h', sys.argv[1]); s = importlib.util.spec_from_loader('h', l); m = importlib.util.module_from_spec(s); l.exec_module(m)
+          d = m.summary(); d.update({'perms': {'services': True, 'modes': True, 'power': True, 'devices': True}, 'modeNow': 'server', 'gameRunning': False})
+          print(json.dumps(d))
+          PY
+            python3 $H web-html /tmp/web-data.json > /tmp/web-page.html
+            shot() { timeout 60 "$CH" --headless --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=${3:-1} --window-size=$2 --screenshot="$PWD/shots/server-mode/$1" "$4" >/dev/null 2>&1 || echo "::warning title=Server mode::couldn't take $1"; }
+            shot 10a-web-phone.png 390,844 2 "file:///tmp/web-page.html"
+            shot 10b-web-laptop.png 1440,900 1 "file:///tmp/web-page.html"
+            shot 10c-web-sign-in-phone.png 390,844 2 "http://127.0.0.1:8460/"
+            python3 -c 'import urllib.request,urllib.error
+          try: urllib.request.urlopen("http://127.0.0.1:8460/api/status", timeout=5); print(200)
+          except urllib.error.HTTPError as e: print(e.code)' | grep -qx 401 && echo "::notice title=Server mode web page::/api/status without the PIN: 401" \
+              || { echo "::error title=Server mode web page::/api/status answered without the PIN"; touch shots/FAILED; }
+            kill $SRV 2>/dev/null || true
+          else
+            echo "::warning title=Server mode::no Chromium here: no web page shots"
+          fi
+          ls -la shots/server-mode
 
       # The screenshots and logs also go to the ci/desktop-shots branch, so they can be looked at without
       # downloading the artifact.

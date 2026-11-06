@@ -24,9 +24,8 @@ Singleton {
     // Open windows that want the controller to type arrow keys / Enter / Esc (read by Pad.qml).
     property bool appsShown: false    // Apps
     property bool clipShown: false    // the clipboard history picker (Super+V)
-    property var friends: null        // Hearth Friends (Friends.qml): the bar's Friends button opens it
-    property bool friendsShown: false
-    property int friendsUnread: 0
+    property var discord: null        // Discord (Discord.qml): the bar's Discord button toggles its small window
+    property bool discordShown: false // its "Which Discord?" chooser is open
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;

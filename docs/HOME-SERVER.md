@@ -392,6 +392,76 @@ on the **AI** page next to the chat models. Both are **your own user services** 
 - **Overview and Quick Access**: the Services tile counts Pictures and Voices; Quick Access says "AI pictures: stopped
   while you play · AI voices: ready" and lists them in what Light mode holds back. Gaming lists them under what waits.
 
+## Your shares on your other Hearth devices
+
+Your other Hearth devices see this server's shares that are on in Hearth Files' sidebar under **Your devices**, by
+themselves (its status over Hearth Link carries their names, Home / Whole drive, read only or read & write, and how to
+reach them: `<name>.local` at home, the Tailscale name away; never a path). One click mounts one (gvfs); the first
+time asks for your user name and sharing password, which **Remember** keeps in that device's keyring. Hearth Files'
+"How to open from Windows or a phone" shows the same `\\host\share` and `smb://host/share` addresses as this
+page's How to open them. Details: docs/HEARTH-LINK.md, "Your devices in Hearth Files".
+
+## Sharing a whole drive, your Home or the system drive (Hearth 1.6)
+
+Shared folders (and Drives & undo, for each data drive) can share more than a folder. Each starts **read only**, on the
+**home network and Tailscale** (the share's reach stays changeable; "Only reachable through Tailscale" still wins), never
+for guests and never for the internet, with a badge in the list:
+
+- **Whole drive**: a data drive's mount point (under /run/media/YOU, /media/YOU, /mnt or /var/mnt, never one of the
+  system's disks). Read only or read & write.
+- **Home**: your whole Home folder, after one confirmation ("Everything in your Home is shared, including settings
+  folders; hidden files stay blocked"). Read & write needs a second confirmation. Only you (no people).
+- **System drive** (`/`): **read only, never read & write** (writing system files over the network can stop the PC from
+  starting), after two confirmations that name the risk. Only you; no recycle bin or snapshots; never walked for Files &
+  links' smart folders.
+
+What keeps secrets out: Samba works as you (`force user`), so root-only files can't be read at all; every share vetoes
+hidden files and folders (`veto files = /.*/`, `hide dot files`: .ssh, .config, .local with the keyrings); Home and the
+system drive also `hide unreadable` with `wide links = no`; the system drive also vetoes `shadow`, `gshadow`, `ssh`,
+`root`, `proc`, `sys`, `dev`, `run`, `hearth` (/var/lib/hearth's state and /etc/hearth) and `lost+found` by name. The
+confirmations are kept with the share (`whole`, `confirm`) and the root helper checks them again (`share_path_problem`,
+`check_shares`), so an old or hand-edited settings file can't share Home or `/` by accident, or `/` read & write ever.
+People's folders, backups and the rest keep the stricter folder rules (`path_problem`). No shell, no symlink escapes (a
+link is judged by where it points), no shell characters; Samba's testparm check still puts the last working config back.
+
+## Uncensored (18+) models and any model by name (Hearth 1.6)
+
+Settings › Home server › AI chat has a group **Uncensored (18+)** behind **Show 18+ models** (`showAdult`, off by default,
+display only: saved only when you turn it on, so a family PC never lists them). They're ordinary models in Ollama,
+downloaded only when you press Download (the same `ollama pull` path, every part SHA-256 checked); the Hearth AI Command
+Center's own built-in limits still apply to anything asked through it. Each name was checked on ollama.com / Hugging Face
+(November 2026):
+
+| Model | Name | Size | What it's for |
+|---|---|---|---|
+| Qwen3 30B-A3B abliterated | `huihui_ai/qwen3-abliterated:30b-a3b` | 19 GB | the same model you use now, without the refusals (card + RAM) |
+| Qwen3 14B abliterated | `huihui_ai/qwen3-abliterated:14b` | 9.0 GB | fully on the 12 GB card; can be the small model while you play |
+| Dolphin 3 | `dolphin3:8b` | 4.9 GB | an uncensored all-rounder (8B) |
+| Rocinante 12B | `hf.co/TheDrummer/Rocinante-12B-v1.1-GGUF:Q4_K_M` | 7.5 GB | a Mistral Nemo 12B tune for characters, roleplay, creative writing |
+
+**Download any model by name**: a field on the same page takes an Ollama library name (`qwen3:8b`, `user/model:tag`) or a
+Hugging Face GGUF (`hf.co/<user>/<repo>[:<quant>]`). Only letters, digits and `. : _ / -` (never a URL, a path or an
+option; `hf.co/` needs both a user and a repo), checked in Settings and again in `hearth-home-server` (`model_name_ok`).
+
+**Small model while you play** (Server mode's "switch to the small model"): qwen3:14b, or the abliterated 14B when it's
+downloaded and you pick it (`aiSmallModel`; the choice shows only with the 18+ models shown). If the one you picked isn't
+downloaded, qwen3:14b is used; if neither is, nothing is loaded. Nothing is ever downloaded or deleted for it.
+
+## Server mode (Hearth 1.6)
+
+Settings › Home server › **Server mode** (docs/SERVER-MODE.md) turns this PC's screen into a dashboard for the home server:
+a third mode next to Game Mode and Desktop Mode, off until you turn it on. It doesn't copy anything here: what pauses when
+you play is **Light mode** (this page's `lightMode`, `picturesPause`, `voicesPause`, `mediaPause`, `aiUnload`, `aiPause`
+and the new `aiSmall`), the services are the ones above, and the services timer does the pausing and resuming (Server
+mode's Play and return only ask it to run right away). New in Light mode for it:
+
+- `aiSmall` (AI chat while you play: switch to the small model). Not chosen yet: on while Server mode is on, off otherwise
+  (a default, never written). The services timer then unloads the big model and keeps qwen3:14b loaded on the processor
+  (`num_gpu 0`) while you play, and unloads it after; only when it's downloaded, never deleting or downloading anything.
+- ComfyUI stopped for your game finishes the picture it's making (up to 150 s) and its queue is kept and put back after.
+- The root helper's `svc stop|start|restart ollama|jellyfin` (the dashboard's pause / restart) and `gpu-limit WATTS|reset`
+  (Server mode's idle power, Nvidia), and Server mode's web page (port 8460) in the Tailscale-only rule while it's on.
+
 ## Never stopping the PC from starting
 
 Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd,

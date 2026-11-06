@@ -37,6 +37,17 @@ PanelWindow {
     signal menuRequested(var entry, real x, real y)
     property var popMenu: null                 // PopMenu (shell.qml): the live tiles' Resize menu, jump lists
     function toggle() { shown = !shown; }
+    // The Tiles menu's search field in the bar (Islands.qml, as in the mockup): opens the menu with the search ready;
+    // what you type shows there (menuQuery). barSearch: the bar on the main screen shows that field (shell.qml).
+    property bool barSearch: false
+    readonly property string menuQuery: shown && styled && typeof styleLoader.item.query === "string" ? styleLoader.item.query : ""
+    function openMenuSearch() {
+        if (!shown) shown = true;
+        if (styled && typeof styleLoader.item.focusSearch === "function") styleLoader.item.focusSearch();
+    }
+    // Y on the controller (Pad.qml) asks here first: the Tiles and Start screen menus use it to move the tile with
+    // the focus ring. False: nothing took it (the on-screen keyboard opens as usual).
+    function padY() { return shown && styled && typeof styleLoader.item.padY === "function" && styleLoader.item.padY() === true; }
     function openTab(t) { setTab(t); shown = true; }
     function setTab(t) {
         if (tab === t) return;
@@ -306,7 +317,8 @@ PanelWindow {
         stdout: StdioCollector { onStreamFinished: { try { const r = JSON.parse(text.trim().split("\n").pop() || "{}"); if (r && typeof r === "object") root.live = r; } catch (e) {} } }
     }
     Timer { interval: 60000; repeat: true; running: root.shown && root.styled && !!styleLoader.item && styleLoader.item.wantsLive; onTriggered: root.readLive() }
-    // Your tile sizes and the tiles you took off (Settings.menuTiles, saved per user, only when you change one).
+    // Your tile sizes, the tiles you took off and the order you moved them into (Settings.menuTiles, saved per user,
+    // only when you change one: {sizes, hidden, added, order: [tile id, ...]}).
     readonly property var tileSettings: (Settings.menuTiles && typeof Settings.menuTiles === "object" && !Array.isArray(Settings.menuTiles)) ? Settings.menuTiles : ({})
     function tileSize(id, dflt) { const s = (tileSettings.sizes || {})[id]; return ["small", "medium", "wide", "large"].indexOf(s) >= 0 ? s : dflt; }
     function tileHidden(id) { return (tileSettings.hidden || []).indexOf(id) >= 0; }
@@ -324,7 +336,27 @@ PanelWindow {
         if (!hide) t.added = (t.added || []).filter(x => x !== id).concat([id]);
         Settings.menuTiles = t;
     }
-    // The Resize / Take off menu for a tile.
+    // Where you moved the tiles to: tiles in `order` come first in their group, in that order; the rest after them
+    // in Hearth's own order (so a new tile shows up at the end of its group).
+    function tileRank(id, dflt) { const i = (tileSettings.order || []).indexOf(id); return i >= 0 ? i : 100000 + dflt; }
+    // A group's tiles, in a move's preview order while you move one ({group, ids}), else as saved.
+    function groupTiles(group, preview) {
+        const list = tiles.filter(t => t.group === group);
+        if (!preview || preview.group !== group) return list;
+        const at = id => { const i = preview.ids.indexOf(id); return i >= 0 ? i : 100000; };
+        return list.map((t, i) => ({ t: t, k: at(t.id) * 1000 + i })).sort((a, b) => a.k - b.k).map(x => x.t);
+    }
+    // Your move, dropped: the group's new order is saved (only if it changed). The order of other groups stays.
+    function saveTileOrder(group, ids) {
+        const now = tiles.filter(t => t.group === group).map(t => t.id);
+        if (!Array.isArray(ids) || ids.length !== now.length || ids.every((id, i) => id === now[i])) return false;
+        if (ids.some(id => now.indexOf(id) < 0)) return false;
+        const t = JSON.parse(JSON.stringify(tileSettings));
+        t.order = (t.order || []).filter(id => ids.indexOf(id) < 0).concat(ids);
+        Settings.menuTiles = t;
+        return true;
+    }
+    // The Resize / Move / Take off menu for a tile.
     function tileMenu(tile, item) {
         if (!popMenu || !tile) return;
         const p = item.mapToItem(null, item.width / 2, item.height / 2);
@@ -337,6 +369,8 @@ PanelWindow {
             list.push({ label: sz[1], icon: "grid", checked: cur === sz[0] ? true : undefined, run: () => root.setTileSize(tile.id, sz[0]) });
         list.push({ separator: true });
         list.push({ label: "Take off the menu", icon: "unpin", run: () => root.setTileHidden(tile.id, true) });
+        if (styled && typeof styleLoader.item.startMove === "function")
+            list.push({ label: "Move", icon: "edit", run: () => styleLoader.item.startMove(tile.id) });
         popMenu.popup(screen, p.x, p.y, { title: tile.title || "Tile" }, list);
     }
     // The tiles: {id, kind, title, icon, entry, game, size (default), group, open()}. A tile with no data is a plain
@@ -359,7 +393,7 @@ PanelWindow {
             seen[e.id] = true;
             add({ id: "app:" + e.id, kind: "app", group: "Apps", title: e.name, entry: e, size: i < 2 ? "medium" : "small", open: () => root.launch(e) });
         });
-        return out;
+        return out.map((t, i) => ({ t: t, k: tileRank(t.id, i) })).sort((a, b) => a.k - b.k).map(x => x.t);
     }
     readonly property var tileGroups: ["Play", "Today", "Home server", "Apps"].filter(g => tiles.some(t => t.group === g))
 

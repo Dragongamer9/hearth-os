@@ -6,7 +6,7 @@
 //   (Gaming) a performance island: FPS (only when MangoHud logs it), CPU, GPU, memory, temperatures
 //   centre the clock pill: grows to show what's playing, and briefly the newest notification; click for the
 //          notification centre and dashboard (in a bar with your apps, or down the side, a compact clock at the end)
-//   end    the status island: tray, Friends, keyboard, Wi-Fi, Bluetooth, volume, battery, notifications (click: Quick
+//   end    the status island: tray, Discord, keyboard, Wi-Fi, Bluetooth, volume, battery, notifications (click: Quick
 //          settings; right-click menus; middle-click mutes; scroll changes the volume), then the Game Mode button,
 //          always shown, in every look and on every edge, one press away.
 // Left / right: icons stacked, the clock compact, menus and tips open toward the screen.
@@ -32,6 +32,11 @@ PanelWindow {
     signal keyboardRequested()
     signal calendarRequested()
     signal settingsRequested(string page)
+    signal menuSearchRequested()           // the Tiles menu's search field: open the menu, ready to search
+    property string menuQuery: ""          // what you typed in the Tiles menu (Launcher.menuQuery, given by shell.qml)
+    // The Tiles app menu has its search field here, next to the flame (as in the mockup), on a bar across the top or
+    // bottom with room for it. The menu itself then has none at the top (Launcher.barSearch).
+    readonly property bool menuSearchShown: Theme.appMenu === "tiles" && !vertical && !shelf && !compact
     property var menu: null                // PopMenu
     property bool primary: false
     property bool quickOpen: false         // Quick settings is open: the status island is ringed
@@ -280,6 +285,25 @@ PanelWindow {
                             onClicked: isl.launcherRequested()
                             Image { anchors.centerIn: parent; width: 26 * isl.k; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                         }
+                        Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)
+                            objectName: "menuSearchField"
+                            visible: isl.menuSearchShown
+                            Layout.alignment: Qt.AlignCenter
+                            implicitWidth: 300; implicitHeight: Math.max(26, isl.islandH - 14)
+                            radius: Theme.r(8)
+                            color: msa.containsMouse ? Theme.panel3 : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
+                            border.width: isl.menuQuery !== "" ? 2 : 1
+                            border.color: isl.menuQuery !== "" ? Theme.accent : Theme.line
+                            Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; color: Theme.muted }
+                            Text {
+                                anchors { left: parent.left; right: parent.right; leftMargin: 36; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                text: isl.menuQuery !== "" ? isl.menuQuery : "Type to search"
+                                color: isl.menuQuery !== "" ? Theme.text : Theme.muted
+                                elide: Text.ElideLeft
+                                font.family: Theme.font; font.pixelSize: 14
+                            }
+                            MouseArea { id: msa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; onClicked: isl.menuSearchRequested() }
+                        }
                         Text {   // Console: the big clock sits next to the mark
                             visible: isl.shelf
                             text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm")
@@ -399,12 +423,12 @@ PanelWindow {
                                 IconImage { anchors.centerIn: parent; implicitSize: 20 * isl.k; source: tray.modelData.icon }
                             }
                         }
-                        IslandButton {   // Friends
+                        IslandButton {   // Discord (Discord.qml): its small window by the bar
+                            id: discordIsl
                             visible: !isl.compact
-                            tip: SettingsNav.friendsUnread > 0 ? "Friends · " + SettingsNav.friendsUnread + " unread" : "Friends"
-                            badge: SettingsNav.friendsUnread
-                            onClicked: if (SettingsNav.friends) SettingsNav.friends.toggle()
-                            Icon { anchors.centerIn: parent; name: "user"; size: 20 * isl.k }
+                            tip: "Discord"
+                            onClicked: if (SettingsNav.discord) { const p = discordIsl.mapToItem(null, discordIsl.width / 2, discordIsl.height / 2); SettingsNav.discord.toggle(isl.edge === "left" || isl.edge === "right" ? p.y : p.x); }
+                            Icon { anchors.centerIn: parent; name: "chat"; size: 20 * isl.k }
                         }
                         IslandButton {   // on-screen keyboard
                             visible: !isl.compact

@@ -19,3 +19,24 @@ function nearest(items, cur, dx, dy) {
     }
     return best;
 }
+
+// Moving a tile (MenuTiles.qml, MenuStart.qml): `ids` with `moving` put where `target` is (before it when moving
+// back, after it when moving on). The same list when either isn't there or they're the same tile.
+function moveStep(ids, moving, target) {
+    const from = ids.indexOf(moving), to = ids.indexOf(target);
+    if (from < 0 || to < 0 || from === to) return ids;
+    const out = ids.slice();
+    out.splice(from, 1);
+    out.splice(to, 0, moving);
+    return out;
+}
+
+// The tile under a point on screen (sx, sy, as mapToItem(null, ...) gives), among `items`; null when none.
+function tileAt(items, sx, sy) {
+    for (const it of items) {
+        if (!it || !it.visible) continue;
+        const p = it.mapToItem(null, 0, 0);
+        if (sx >= p.x && sx < p.x + it.width && sy >= p.y && sy < p.y + it.height) return it;
+    }
+    return null;
+}

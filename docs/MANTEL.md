@@ -18,6 +18,10 @@ launcher, the clock's panel and Settings, and adds six new looks next to Hearth 
   a big **Return to Game Mode**, tiles for Wi-Fi and Bluetooth (with a chevron to their lists), Night light,
   Controller mouse, Do not disturb and Keyboard, pill sliders for volume (its chevron opens the output in Settings ›
   Sound) and brightness, the power profile, Handheld settings and the weather, and controller hints.
+- **Discord** (`Discord.qml`, since 1.6; it replaced Hearth Friends on Matrix): the bar's chat button. The first press
+  asks which Discord (the app, a web window or Dorion); then it toggles Discord's own window, small and placed by the bar
+  on whichever edge the bar is (hidden by minimizing, never closed). Settings › Gaming › Discord has the rest. See
+  [DISCORD](DISCORD.md).
 - **Launcher** (`Launcher.qml`): a large centred panel. Search finds apps, **Settings pages and games**; Recent can
   hold all three. Apps / Games tabs, the System apps folder, right-click actions and the power row (Game Mode first)
   are as before; icons are bigger.
@@ -77,9 +81,17 @@ the Hearth flame.
   in every menu. All eight looks: the menus use the look's colours, fonts and corners (Classic's glass is tinted with
   your accent).
 - **Live tiles** (`MenuTile.qml`): what's playing (MPRIS), the weather and your next events (Hearth Weather /
-  Calendar), the Home server in short (`hearth-home-server quick`) and games with an update ready when Hearth's games
-  list says so (`hearth-appmenu tiles`). A tile with no data is a plain icon tile. Right-click or X: Small, Medium,
-  Wide, Large or Take off the menu; apps can be added as tiles from the list. Saved per user in `menuTiles`.
+  Calendar), the Home server in short (`hearth-home-server quick`) and games with an update waiting (`hearth-appmenu
+  tiles`: Hearth's games list marks `"update": true` when Steam's manifest says UpdateRequired or a paused update;
+  other stores don't say, so their games never show there). A tile with no data is a plain icon tile. Right-click or
+  X: Small, Medium, Wide, Large, Take off the menu or Move; apps can be added as tiles from the list.
+- **Moving tiles** (Tiles and Start screen): drag one with the mouse onto the tile whose place it takes; with the
+  controller, Y on a tile (or Move in its menu) picks it up, the D-pad moves it within its group, A drops it, B puts
+  it back. Saved per user in `menuTiles` (`order`), only when you drop one somewhere new. A finger still scrolls the
+  tiles: press and hold for the menu, then Move.
+- **The Tiles menu's search field sits in the bar** next to the flame (Islands.qml, a bar across the top or bottom of
+  a screen wider than 1440 px): click it, or just start typing with the menu open; what you type shows there and the
+  results fill the menu (MenuSearch). Down a side, on Console or a small screen the field is at the top of the menu.
 - **Jump lists** (Classic's arrow, Tiles' right-click / X): the app's recent files from the freedesktop recently-used
   list (`hearth-appmenu recent`), otherwise its own actions from its .desktop file.
 - **Picking Tiles or Classic** asks **Match the menu** (One main bar at the bottom, the floating app menu off) or
@@ -135,6 +147,15 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   button is the one next step, Update anyway, **Decky plugins** as one expander (`updates:decky` opens it), "If
   something broke" (Go back, and "The previous version always stays startable"), the writable system, then Backup and
   help. The same hearth-admin, hearth-decky and hearth-unlock calls as before; only the layout changed.
+- **Wi-Fi** (`SetWifi.qml`): the network you're on as a card at the top (name, signal, band, address; Properties shows
+  security, gateway, DNS, IPv6 and MAC; Disconnect; Forget asks once more and removes the saved connection), the
+  Wi-Fi switch, Networks nearby, and **Add a hidden network** (name and password, `nmcli ... hidden yes`). Every
+  change is NetworkManager's and only on your click; nothing writes Hearth's settings.
+- **Titled card groups** (`SetCardGroup`): Sound, Notifications, Power & battery, Date & time, Mouse & touchpad,
+  Printers, Apps, Default apps, Controller and Handheld (each Handheld Daemon section) show their cards in titled
+  groups, each card with an icon, as in the mockups. Only the layout changed: the same helpers and settings keys.
+- **Your devices** (`SetDevices.qml`, docs/HEARTH-LINK.md "Your devices"): under Hearth Link, with a card on Home;
+  stand-in devices for checks with `HEARTH_DEVICES_SAMPLE` (desktop-test.yml).
 - **AI devices** (`SetHomeAIDevices.qml`, docs/AI-SHARE.md): Home server › AI devices, a card under "On this server"
   on the Home server page, and linked from Services › AI chat and Hearth Link.
 - **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,
@@ -178,6 +199,16 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
 - **Opening a Settings page writes nothing.** The Desktop Mode test opens every page in `settings-pages.js` and checks
   that no settings file changed; the frame, the cards and the category pages never change a setting
   (`test_settings_redesign.py`). Moved switches keep their keys (Night light is still `nightLight`).
+
+## Server mode (Hearth 1.6)
+
+Server mode (docs/SERVER-MODE.md) is its own light session, not part of Desktop Mode: nimbus-session starts labwc with its
+own folder (`desktop/server/labwc`) and one Quickshell app, `shell/server-mode.qml`, built from Mantel's parts (Theme,
+Icon, SetStyle, and the same Hearth Settings, `SettingsApp.qml`, opened from its menu). No bar, dock, launcher or desktop.
+Settings has two new pages: Home server › **Server mode** (`SetServerMode.qml`) and System › **Startup**
+(`SetStartup.qml`: Start in, with Server mode once it's on, and its optional schedule); the boot splash page is now
+System › **Boot splash**. Start in (`StartInChoice.qml`) now saves through hearth_settings_io's `conf-set` (only that line,
+atomic, `.bak`, under the session's lock) instead of `sed -i`.
 
 ## Desktop Mode always starts (red flag 2)
 

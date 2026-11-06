@@ -1,0 +1,16 @@
+# Server mode's web page (docs/SERVER-MODE.md): the dashboard on your phone or laptop over Tailscale, on port 8460, behind
+# your PIN (only its hash is kept). Served as you by hearth-server-mode; it listens only on 127.0.0.1 and this PC's
+# Tailscale address, refuses any other address, and the home server's nftables rule drops the port everywhere else.
+# Off in the image: Settings › Home server › Server mode enables it for your account only when you turn the web page on
+# and have set a PIN. Not part of the session starting: a failure here never holds anything up.
+[Unit]
+Description=Hearth Server mode: the dashboard's web page over Tailscale
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-server-mode serve
+Restart=on-failure
+RestartSec=30
+Nice=10
+
+[Install]
+WantedBy=default.target

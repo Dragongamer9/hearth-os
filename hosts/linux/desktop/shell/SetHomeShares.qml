@@ -15,6 +15,14 @@ SetPage {
     property bool adding: false
     property bool pwOpen: false
     property string removing: ""
+    property var drives: []          // data drives that can be shared whole (candidates' "drives")
+    property string confirming: ""   // "home" | "system" | "system2" | "home-write": the confirmation being asked
+    readonly property var badges: ({ drive: "Whole drive", home: "Home", system: "System drive · read only" })
+    function addWhole(args, done) {
+        page.confirming = "";
+        act.run(["share-whole"].concat(args), r => { page.say("Shared ✓ " + r.share.name + " (read only)"); page.sel = r.share.id; page.refresh(); if (done) done(); },
+                e => { page.say(e, true); page.refresh(); });
+    }
     property string msg: ""
     property bool bad: false
     readonly property var cfg: st ? st.settings : null
@@ -28,7 +36,7 @@ SetPage {
         act.run(["share-add", path], r => { page.say("Shared ✓ " + r.share.name + (page.pwSet ? "" : ". Set a sharing password below so your devices can sign in")); page.sel = r.share.id; page.refresh(); },
                 e => { page.say(e, true); page.refresh(); });
     }
-    Component.onCompleted: { refresh(); cj.run(["candidates"], r => page.cands = r.candidates || [], () => page.cands = []); }
+    Component.onCompleted: { refresh(); cj.run(["candidates"], r => { page.cands = r.candidates || []; page.drives = r.drives || []; }, () => page.cands = []); }
     SetJob { id: job; helper: "hearth-home-server" }
     SetJob { id: act; helper: "hearth-home-server" }
     SetJob { id: cj; helper: "hearth-home-server" }
@@ -50,7 +58,10 @@ SetPage {
         model: page.st ? page.st.shares : []
         delegate: SetRow {
             required property var modelData
-            icon: "folder"; title: modelData.name
+            icon: modelData.whole === "drive" ? "drive" : modelData.whole === "home" ? "home" : modelData.whole === "system" ? "shield" : "folder"
+            title: modelData.name
+            chip: modelData.whole ? page.badges[modelData.whole] : ""
+            chipKind: modelData.whole === "system" || modelData.whole === "home" ? "warn" : "ok"
             sub: modelData.path + " · " + (modelData.on === false ? "not shared now" : (modelData.write ? "read & write" : "read only") + " · "
                  + (modelData.reach === "tailscale" || (page.cfg && page.cfg.tsOnly) ? "Tailscale only" : "home network and Tailscale")
                  + (modelData.write && modelData.recycle !== false ? " · recycle bin" : ""))
@@ -67,7 +78,7 @@ SetPage {
     }
     SetRow {
         icon: "plus"; title: "Share a folder"
-        sub: "A folder in your Home or on a drive (never the system drive itself). It starts read only, on your home network."
+        sub: "A folder in your Home or on a drive, or a whole drive. It starts read only, on your home network."
         onActivated: { page.adding = !page.adding; }
     }
     SetRow {
@@ -82,6 +93,31 @@ SetPage {
             icon: modelData.drive ? "store" : "folder"; title: modelData.name; sub: modelData.path
             onActivated: page.add(modelData.path)
         }
+    }
+    // Whole drives, your whole Home, the system drive (read only, never read & write).
+    Repeater {
+        model: page.adding ? page.drives.filter(d => !(page.st ? page.st.shares : []).some(s => s.path === d.path)) : []
+        delegate: SetRow {
+            required property var modelData
+            icon: "drive"; title: "Share the whole drive: " + modelData.name; sub: modelData.path + " · everything on it, read only to start, on your home network and Tailscale; hidden files stay out"
+            chip: "Whole drive"
+            onActivated: page.addWhole(["drive", modelData.path])
+        }
+    }
+    SetRow {
+        visible: page.adding && !(page.st ? page.st.shares : []).some(s => s.whole === "home")
+        icon: "home"; title: "Share your whole Home"; chip: "Home"; chipKind: "warn"
+        sub: page.confirming === "home" ? "Everything in your Home is shared, including settings folders; hidden files (.ssh, .config, .local, keyrings) stay blocked. Read only. Press again to share it"
+             : "Everything in your Home, read only to start, on your home network and Tailscale. Asks first"
+        onActivated: page.confirming === "home" ? page.addWhole(["home", "home"]) : page.confirming = "home"
+    }
+    SetRow {
+        visible: page.adding && !(page.st ? page.st.shares : []).some(s => s.whole === "system")
+        icon: "shield"; title: "Share the system drive (read only)"; chip: "System drive"; chipKind: "warn"
+        sub: page.confirming === "system" ? "Your devices can read the system's files (secrets like passwords and keys stay blocked). Press again if you're sure"
+             : page.confirming === "system2" ? "Last check: shared read only, never read & write (writing system files over the network can stop the PC from starting). Press again to share it"
+             : "Read only, never read & write: writing system files over the network can stop the PC from starting. Asks twice"
+        onActivated: page.confirming === "system" ? page.confirming = "system2" : page.confirming === "system2" ? page.addWhole(["system", "system", "system-sure"]) : page.confirming = "system"
     }
     SetField {
         visible: page.adding
@@ -101,9 +137,21 @@ SetPage {
     SetChoice {
         visible: !!page.share
         title: "Access"
-        options: [{ value: false, label: "Read only" }, { value: true, label: "Read & write" }]
+        sub: page.share && page.share.whole === "system" ? "The system drive is only ever read only: writing system files over the network can stop the PC from starting"
+             : page.share && page.share.whole === "home" ? (page.confirming === "home-write" ? "Your devices could change or delete anything in your Home (hidden files stay blocked). Pick Read & write again to confirm" : "Read & write for your whole Home asks a second time")
+             : ""
+        options: [{ value: false, label: "Read only" }, { value: true, label: "Read & write", disabled: !!page.share && page.share.whole === "system" }]
         current: !!page.share && !!page.share.write
-        onChosen: v => page.run(["share-set", page.sel, "write", v ? "on" : "off"])
+        onChosen: v => {
+            if (v && page.share && page.share.whole === "system") return;
+            if (v && page.share && page.share.whole === "home") {
+                if (page.confirming !== "home-write") { page.confirming = "home-write"; return; }
+                page.confirming = "";
+                page.run(["share-set", page.sel, "write", "on", "home-write"]);
+                return;
+            }
+            page.run(["share-set", page.sel, "write", v ? "on" : "off"]);
+        }
     }
     SetChoice {
         visible: !!page.share

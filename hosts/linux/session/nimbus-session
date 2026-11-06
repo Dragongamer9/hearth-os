@@ -515,8 +515,12 @@ steam_flatpak_in_use() {
 can_steam_mode() { [ -z "$HEARTH_SEAT" ] && have gamescope && { have steam || steam_flatpak; }; }
 # Where the session goes when Steam Game Mode can't run or failed: Desktop Mode; Hearth's own Game Mode only with the
 # developer switch (or on the live USB, where Hearth's app is the installer).
-steam_back() { if command -v legacy_game >/dev/null 2>&1 && legacy_game; then echo game; else echo desktop; fi; }
-steam_back_name() { [ "$(steam_back)" = game ] && echo "Hearth's Game Mode" || echo "Desktop Mode"; }
+# Came from Server mode (server_return, below): back to Server mode instead.
+steam_back() {
+  if command -v server_return >/dev/null 2>&1 && server_return; then echo server
+  elif command -v legacy_game >/dev/null 2>&1 && legacy_game; then echo game; else echo desktop; fi
+}
+steam_back_name() { case "$(steam_back)" in game) echo "Hearth's Game Mode" ;; server) echo "Server mode" ;; *) echo "Desktop Mode" ;; esac; }
 steam_mode_failed() {
   log "steam game mode: $1; $(steam_back_name) instead"
   echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null
@@ -719,7 +723,7 @@ run_steam_mode() {
   decky_ctl stop &
   next_now="$(cat "$NEXT" 2>/dev/null)"
   case "$next_now" in
-    game|desktop|steam|logout) log "steam game mode ended (code $rc); $next_now asked for" ;;
+    game|desktop|steam|server|logout) log "steam game mode ended (code $rc); $next_now asked for" ;;
     *)
       if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ]; then steam_mode_failed "Steam ended right away (code $rc)"
       elif [ "$(steam_back)" = game ]; then log "steam game mode ended (code $rc); Hearth's Game Mode next"; echo game >"$NEXT"
@@ -805,7 +809,7 @@ steam_auto_after() {
   ran=$(( $(date +%s) - ${started:-0} ))
   if [ "$ran" -ge "$STEAM_DEFAULT_GOOD_SECS" ]; then steam_unpause; return 0; fi
   case "$next_now" in
-    game|desktop|steam|logout)   # a Switch you asked for: not a failure
+    game|desktop|steam|server|logout)   # a Switch you asked for: not a failure
       [ -f "$SD_FAILS" ] && { sed '$d' "$SD_FAILS" >"$SD_FAILS.new" && mv -f "$SD_FAILS.new" "$SD_FAILS"; }
       rm -f "$SD_OFF"; return 0 ;;
   esac
@@ -816,6 +820,146 @@ steam_auto_after() {
   return 0
 }
 # <<< steam game mode
+
+# >>> server mode
+# ---- Server mode (docs/SERVER-MODE.md, Hearth 1.6): a third mode next to Steam Game Mode and Desktop Mode, off until you
+# turn it on (Settings › Home server › Server mode). A small labwc (its own config, desktop/server/labwc: no taskbar, no
+# menu, no keys) with one full-screen dashboard (Quickshell, desktop/shell/server-mode.qml). The home server's services
+# run as their own units underneath; the dashboard only shows and controls them. Every way out of it ends in Game Mode:
+#   Server mode off, labwc / Quickshell / its files missing, an extra multi-seat player: Game Mode, with the reason in
+#   $RUN/hearth-server-mode-failed.
+#   The dashboard never appearing (SERVER_UP_SECS), closing right away or crashing three times (the autostart gives up
+#   and leaves $RUN/hearth-server-dash-failed), or labwc ending without a switch asked for: Game Mode.
+#   Two failed runs within SERVER_WINDOW: Server mode is paused (Game Mode at every start) until you open it yourself
+#   (nimbus-mode server, Settings' Open now) or a run goes well (still up after SERVER_GOOD_SECS).
+# The PC stays awake in Server mode (systemd-inhibit idle:sleep, unless you chose Sleep after idle in Settings). Leaving
+# Server mode for Game Mode leaves a mark ($RUN/hearth-server-return): Steam Game Mode's "Switch to Desktop" (and Steam
+# Game Mode not starting) then comes back to Server mode, as the owner asked; the dashboard's menu has Desktop Mode.
+# (test_hearth_server_mode.py runs these lines, between the >>> and <<< marks.)
+SERVER_HELPER="${HEARTH_SERVER_HELPER:-$SHARE/desktop/shell/hearth-server-mode}"
+SERVER_QML="${HEARTH_SERVER_QML:-$SHARE/desktop/shell/server-mode.qml}"
+SERVER_LABWC="${HEARTH_SERVER_LABWC:-$SHARE/desktop/server/labwc}"
+SERVER_UP_SECS="${SERVER_UP_SECS:-60}"
+SERVER_GOOD_SECS="${SERVER_GOOD_SECS:-120}"
+SERVER_WINDOW="${SERVER_WINDOW:-600}"
+SV_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/nimbus"
+SV_FAILS="$SV_STATE/server-mode-fails"
+SV_OFF="$SV_STATE/server-mode-off"
+server_helper() { [ -f "$SERVER_HELPER" ] && have python3 && timeout 15 python3 "$SERVER_HELPER" "$@" 2>/dev/null; }
+server_enabled() { [ -z "$HEARTH_SEAT" ] && [ "$(server_helper session-check)" = on ]; }
+server_cant_reason() {
+  if [ -n "$HEARTH_SEAT" ]; then echo "Server mode is only for the first player"
+  elif ! have labwc || ! have quickshell; then echo "labwc or Quickshell isn't installed"
+  elif [ ! -f "$SERVER_QML" ] || [ ! -f "$SERVER_LABWC/rc.xml" ] || [ ! -f "$SERVER_LABWC/autostart" ]; then echo "Server mode's files are missing"
+  elif ! server_enabled; then echo "Server mode is off (Settings › Home server › Server mode)"
+  fi
+}
+# Server mode can't run or failed: Game Mode, always (never no screen, never back to Server mode by itself).
+server_failed() {
+  log "server mode: $1; Game Mode instead"
+  echo "$1" >"$RUN/hearth-server-mode-failed" 2>/dev/null
+  echo game >"$NEXT"
+}
+server_recent_fails() {
+  now=$(date +%s)
+  [ -f "$SV_FAILS" ] || return 0
+  while read -r t; do
+    case "$t" in ''|*[!0-9]*) continue ;; esac
+    [ $(( now - t )) -lt "$SERVER_WINDOW" ] && echo "$t"
+  done <"$SV_FAILS"
+  return 0
+}
+# Where the session starts when it would start in Server mode: prints server, or desktop / game (and why, in the log).
+server_start_mode() {
+  if grep -qwF hearth.mode=desktop "${HEARTH_CMDLINE:-/proc/cmdline}" 2>/dev/null; then
+    log "start: hearth.mode=desktop on the kernel command line; Desktop Mode this time"; echo desktop; return 0
+  fi
+  if command -v steam_skip_held >/dev/null 2>&1 && steam_skip_held; then log "start: B or Guide held; Desktop Mode this time"; echo desktop; return 0; fi
+  if [ -s "$SV_OFF" ]; then log "start: Server mode is paused ($(cat "$SV_OFF")); Game Mode"; echo game; return 0; fi
+  if [ "$(server_recent_fails | grep -c .)" -ge 2 ]; then
+    mkdir -p "$SV_STATE" 2>/dev/null
+    echo "Server mode didn't start properly twice within $(( SERVER_WINDOW / 60 )) minutes" >"$SV_OFF"
+    log "start: Server mode failed twice; paused, Game Mode"; echo game; return 0
+  fi
+  why="$(server_cant_reason)"
+  if [ -n "$why" ]; then log "start: server mode: $why; Game Mode instead"; echo "$why" >"$RUN/hearth-server-mode-failed" 2>/dev/null; echo game; return 0; fi
+  echo server
+}
+run_server() {
+  log "server mode"
+  rm -f "$RUN/hearth-server-mode-failed" "$RUN/hearth-server-dash-failed" "$RUN/hearth-server-dash-up"
+  why="$(server_cant_reason)"
+  if [ -n "$why" ]; then server_failed "$why"; return 0; fi
+  rm -f "$NEXT"     # only a switch asked for during this run counts
+  # This run counts as a failure until it proves good (still up after SERVER_GOOD_SECS, or a switch you asked for).
+  mkdir -p "$SV_STATE" 2>/dev/null
+  kept="$(server_recent_fails)"
+  printf '%s%s\n' "${kept:+$kept
+}" "$(date +%s)" >"$SV_FAILS" 2>/dev/null
+  # Back from Game Mode: the mark becomes the dashboard's "Back in Server mode" (how long you played).
+  [ -e "$RUN/hearth-server-return" ] && mv -f "$RUN/hearth-server-return" "$RUN/hearth-server-back" 2>/dev/null
+  echo $$ >"$RUN/hearth-server-mode.pid"
+  started=$(date +%s)
+  # Stays awake in Server mode (idle and sleep held off while it runs), unless you chose Sleep after idle.
+  ipid=""
+  if have systemd-inhibit && [ "$(server_helper sleep-idle)" != on ]; then
+    # (It holds the lock while the pid file is there: nothing is left behind when Server mode ends.)
+    systemd-inhibit --what=idle:sleep --who="Hearth" --why="Server mode: your services stay reachable" --mode=block \
+      sh -c 'while [ -e "$0" ]; do sleep 5; done' "$RUN/hearth-server-mode.pid" >/dev/null 2>&1 &
+    ipid=$!
+  fi
+  # The web page's requests and the schedule (one agent per sign-in; it ends by itself when nothing needs it).
+  if [ -f "$SERVER_HELPER" ] && have python3; then python3 "$SERVER_HELPER" agent >/dev/null 2>&1 & fi
+  SERVER_LOG="$(dirname "$LOG")/server-mode.log"
+  [ -f "$SERVER_LOG" ] && [ "$(wc -c <"$SERVER_LOG")" -gt 1000000 ] && mv -f "$SERVER_LOG" "$SERVER_LOG.old"
+  echo "--- $(date '+%F %T') Server mode" >>"$SERVER_LOG"
+  [ -d /sys/module/nvidia_drm ] && export WLR_NO_HARDWARE_CURSORS=1
+  HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$SERVER_QML" HEARTH_SERVER_LOG="$SERVER_LOG" labwc -C "$SERVER_LABWC" >>"$SERVER_LOG" 2>&1 &
+  lpid=$!
+  # The dashboard must say it's up (server-mode.qml writes $RUN/hearth-server-dash-up) within SERVER_UP_SECS, or labwc is
+  # closed and Game Mode starts: a black screen never stays.
+  (
+    i=0
+    while [ "$i" -lt "$SERVER_UP_SECS" ]; do
+      [ -e "$RUN/hearth-server-dash-up" ] && exit 0
+      kill -0 "$lpid" 2>/dev/null || exit 0
+      sleep 1; i=$((i + 1))
+    done
+    echo "Server mode's dashboard didn't appear within $SERVER_UP_SECS seconds" >"$RUN/hearth-server-dash-failed"
+    kill -TERM "$lpid" 2>/dev/null; sleep 4; kill -KILL "$lpid" 2>/dev/null
+  ) &
+  wpid=$!
+  wait "$lpid"; rc=$?
+  kill "$wpid" 2>/dev/null
+  [ -n "$ipid" ] && kill "$ipid" 2>/dev/null
+  rm -f "$RUN/hearth-server-mode.pid" "$RUN/hearth-server-dash-up"
+  # Power limits back to how they were, the screen on (never waited on for long, never fatal).
+  server_helper leaving >/dev/null
+  ran=$(( $(date +%s) - started ))
+  next_now="$(cat "$NEXT" 2>/dev/null)"
+  case "$next_now" in
+    game|steam|desktop|server|logout)
+      log "server mode ended (code $rc); $next_now asked for"
+      # A switch you asked for (or a good run): not a failure.
+      [ -f "$SV_FAILS" ] && { sed '$d' "$SV_FAILS" >"$SV_FAILS.new" && mv -f "$SV_FAILS.new" "$SV_FAILS"; }
+      rm -f "$SV_OFF"
+      case "$next_now" in game|steam) : >"$RUN/hearth-server-return" ;; esac ;;
+    *)
+      if [ -s "$RUN/hearth-server-dash-failed" ]; then server_failed "$(head -c 300 "$RUN/hearth-server-dash-failed")"
+      elif [ "$ran" -lt 20 ]; then server_failed "Server mode closed right away (code $rc)"
+      else server_failed "Server mode closed by itself after ${ran}s (code $rc)"; fi ;;
+  esac
+  [ "$ran" -ge "$SERVER_GOOD_SECS" ] && rm -f "$SV_FAILS" "$SV_OFF"
+  return 0
+}
+# A request for Server mode you make yourself (nimbus-mode server) always runs: the pause after two failures ends.
+server_unpause() { rm -f "$SV_OFF" "$SV_FAILS"; }
+# Leaving Game Mode after coming from Server mode goes back to Server mode (Steam's "Switch to Desktop" asks for
+# desktop): only while the mark is there and Server mode itself didn't fail this time.
+server_return() {
+  [ -e "$RUN/hearth-server-return" ] && [ ! -s "$RUN/hearth-server-mode-failed" ] && [ -z "$HEARTH_SEAT" ]
+}
+# <<< server mode
 
 # ---- First-time setup (Wi-Fi, store accounts, the controller, your games: ui/index.html viewSetup) was Hearth's app,
 # shown once on a fresh install. From Hearth OS 1.1 the USB installer asks everything first-time setup asked (language,
@@ -839,7 +983,15 @@ resolve_mode() {
 
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
-case "$mode" in desktop) ;; *) mode=game ;; esac
+case "$mode" in desktop|server) ;; *) mode=game ;; esac
+# Server mode (docs/SERVER-MODE.md): only when it's on; its schedule (Settings › System › Startup), when you turned one on,
+# picks the mode to start in. Anything the helper can't answer leaves the mode as it was (Server mode then can't start
+# and Game Mode opens: run_server / server_start_mode).
+if [ -z "$HEARTH_SEAT" ] && [ -f "$SERVER_HELPER" ] && { [ "$mode" = server ] || [ -s "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/server-mode.json" ]; }; then
+  sm="$(server_helper start-mode "$mode")"
+  case "$sm" in game|desktop|server) [ "$sm" != "$mode" ] && log "start: $sm (Server mode's choices)"; mode="$sm" ;; esac
+fi
+[ "$mode" = server ] && mode="$(server_start_mode)"
 # Hearth Recovery on the device › Desktop Mode this time (until the next restart).
 [ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
 # Extra multi-seat players have Hearth's Game Mode only (multi-seat is dropped for now; kept for HEARTH_LEGACY_MULTIPLAYER).
@@ -872,6 +1024,7 @@ while :; do
     [ "$mode" = setup ] && log "first-time setup in Hearth's app (once; Steam Game Mode after)"
     input_start; run_game; code=$?; input_stop
   elif [ "$mode" = steam ]; then run_steam_mode; code=$?
+  elif [ "$mode" = server ]; then run_server; code=$?
   else steam_notice_other; run_desktop; code=$?; fi
   [ -n "$sd" ] && steam_auto_after
 
@@ -880,8 +1033,17 @@ while :; do
   [ "$mode" = setup ] && [ -z "$next" ] && { log "first-time setup ended (code $code); Steam Game Mode next"; next=steam; }
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   [ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game     # ...and never Steam Game Mode
+  [ -n "$HEARTH_SEAT" ] && [ "$next" = server ] && next=game    # ...and never Server mode
+  # Leaving Game Mode after Server mode (Steam's "Switch to Desktop"): back to Server mode.
+  if [ "$next" = desktop ] && { [ "$mode" = steam ] || [ "$mode" = game ]; } && server_return; then
+    log "leaving Game Mode: back to Server mode"; next=server
+  fi
+  # Server mode asked for by you (not by Game Mode's way back): the pause after two failures ends.
+  [ "$next" = server ] && [ "$mode" != steam ] && [ "$mode" != game ] && server_unpause
+  # Any other way into Desktop Mode, or Server mode itself: the way back from Game Mode is no longer Server mode.
+  [ "$next" = desktop ] && rm -f "$RUN/hearth-server-return"
   case "$next" in
-    game|desktop|steam)
+    game|desktop|steam|server)
       to="$next"; [ -z "$HEARTH_SEAT" ] && to="$(resolve_mode "$next")"
       log "switching to $to"; settle "$mode"; log "starting $to mode"; mode="$to" ;;
     *) log "$mode mode ended (code $code), leaving the session"; rm -f "$RUN/nimbus-mode-now"; exit 0 ;;

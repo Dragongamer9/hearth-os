@@ -422,7 +422,20 @@ pub fn report(version: &str) -> String {
         }
         if !body.is_empty() { section("Hearth Mods (modded starts)", body); }
     }
-    section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
+    // Games Hearth started with Proton (GOG, Epic…): umu's and Proton's output of the newest starts (stores.rs launch_log).
+    {
+        let d = data.join("launch-logs");
+        let mut logs: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&d).into_iter().flatten().flatten().map(|e| e.path())
+            .filter(|p| p.extension().map(|e| e == "log").unwrap_or(false))
+            .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p))).collect();
+        logs.sort();
+        let mut body = String::new();
+        for (_, p) in logs.iter().rev().take(3) {
+            if let Ok(t) = std::fs::read_to_string(p) { body.push_str(&format!("--- {}\n{}\n\n", p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(), cap(&tail(&t, 80), 20_000))); }
+        }
+        if !body.is_empty() { section("Game starts (Proton's output, newest first)", body); }
+    }
+    section("Steam's own logs (game launches)", sh("for d in \"$HOME/.local/share/Steam/logs\" \"$HOME/.steam/debian-installation/logs\" \"$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/logs\"; do \
         for f in console_log.txt console-linux.txt compat_log.txt; do [ -s \"$d/$f\" ] || continue; echo \"--- $d/$f\" | sed \"s|$HOME|~|\"; \
         grep -aiE 'gameaction|launch|appid|compat|pressure|xwayland|display|exited|error|fail|proton|reaper' \"$d/$f\" | grep -aivE 'account|login|password|token|steamid|persona' | tail -120; done; done"));
     section("Storage (drives and space)", crate::diskspace::report());

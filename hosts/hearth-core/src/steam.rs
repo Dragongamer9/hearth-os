@@ -12,6 +12,8 @@ const SKIP_APP_IDS: &[&str] = &["228980", "250820", "1070560", "1391110", "16283
 const SKIP_PREFIXES: &[&str] = &["steamworks", "proton", "steam linux runtime", "steamvr"];
 const FULLY_INSTALLED: i64 = 4;
 const UPDATE_PAUSED: i64 = 512;
+/// Steam knows a newer build and hasn't downloaded it yet (StateUpdateRequired).
+const UPDATE_REQUIRED: i64 = 2;
 const BUSY: i64 = 256 | 1024 | 524288 | 1048576 | 2097152 | 4194304;
 pub const CDN: &str = "https://cdn.cloudflare.steamstatic.com/steam/apps/";
 const FLATPAK_ID: &str = "com.valvesoftware.Steam";
@@ -29,6 +31,8 @@ pub struct SteamGame {
     pub state: &'static str,
     pub bytes_done: Option<u64>,
     pub bytes_total: Option<u64>,
+    /// Installed, and Steam says an update is waiting (StateFlags has UpdateRequired): the app menus' Updates tile.
+    pub update: bool,
     pub art: Vec<(&'static str, String)>,
     /// The Steam account that installed or last updated it (the manifest's LastOwner; 0 when it doesn't say).
     pub owner: u64,
@@ -479,6 +483,11 @@ pub fn find_art(app_id: &str, grid: Option<&Path>, cache: &Path) -> Vec<(&'stati
     art
 }
 
+/// Installed, with an update Steam knows about and hasn't finished: UpdateRequired, or an update it paused.
+pub fn update_waiting(flags: i64) -> bool {
+    flags & FULLY_INSTALLED != 0 && flags & (UPDATE_REQUIRED | UPDATE_PAUSED) != 0
+}
+
 /// What the library shows for a manifest's StateFlags: installed, updating, paused, downloading or queued.
 pub fn app_state(flags: i64) -> (bool, &'static str) {
     let installed = flags & FULLY_INSTALLED != 0;
@@ -553,6 +562,7 @@ pub fn scan_with(home: &Path, per_account: bool) -> Vec<SteamGame> {
                 app_id, title: name, install_path: dir, owner,
                 size_bytes: if size > 0 { Some(size) } else { None }, added, minutes, last_played: last, installed, state,
                 bytes_done: if to_dl > 0 { Some(dl) } else { None }, bytes_total: if to_dl > 0 { Some(to_dl) } else { None },
+                update: update_waiting(flags),
             });
         }
     }
@@ -564,6 +574,16 @@ pub fn scan_with(home: &Path, per_account: bool) -> Vec<SteamGame> {
 mod tests {
     use super::*;
     fn put(p: &Path, text: &str) { std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, text).unwrap(); }
+
+    #[test]
+    fn update_waiting_from_state_flags() {
+        assert!(!update_waiting(4));            // installed, up to date
+        assert!(update_waiting(4 | 2));         // installed, update required
+        assert!(update_waiting(4 | 512));       // installed, update paused
+        assert!(!update_waiting(2));            // not installed yet: a download, not an update
+        assert!(!update_waiting(1026));         // downloading
+        assert_eq!(app_state(4 | 2), (true, "installed"));
+    }
 
     #[test]
     fn scans_a_steam_folder() {

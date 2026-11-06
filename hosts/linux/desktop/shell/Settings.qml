@@ -38,6 +38,9 @@ Singleton {
     property string barEdge: ""          // the one main bar's edge: "" (bottom) | "bottom" | "top" | "left" | "right"
     property string dockFloat: ""        // the floating dock (app menu button + apps): "" (on) | "on" | "off" (in the main bar)
     property string appMenu: ""          // "" (the default: Hearth; Start screen on a handheld installed with this) | "hearth" | "centred" | "tiles" | "start" | "classic"
+    // Settings › Hearth Link: your paired devices may see this device's status (Your devices). On is only the default
+    // read when the key is missing (it only reaches devices paired with this one); never written by itself.
+    property bool shareStatus: true
     property var menuTiles: ({})         // live tiles you resized or took off: {sizes: {id: "small"|"medium"|"wide"|"large"}, hidden: [id]}
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
@@ -49,6 +52,7 @@ Singleton {
         "screenOffMinutes", "sleepMinutes", "look", "mode", "accent", "countMe"]
         .concat(["barStyle", "dockMode", "deskClock", "panelGlass", "sunset", "sunsetLight", "sunsetDark", "accentFrom", "wallSwatches"])
         .concat(["barLayout", "barEdge", "dockFloat", "appMenu", "menuTiles"])
+        .concat(["shareStatus"])
     onNightLightChanged: save("nightLight")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
@@ -76,6 +80,7 @@ Singleton {
     onDockFloatChanged: save("dockFloat")
     onAppMenuChanged: save("appMenu")
     onMenuTilesChanged: save("menuTiles")
+    onShareStatusChanged: save("shareStatus")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

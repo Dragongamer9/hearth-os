@@ -292,6 +292,21 @@ sudo bootc switch ghcr.io/dragongamer9/hearth-peppermint:testing
 This is a different distribution underneath, so treat it as a test install. A fresh install from Hearth's
 installer is the intended path, and it needs the installer change below.
 
+### The installer test (`.github/workflows/installer-test.yml`)
+
+Runs on every push to main that changes the installer (and by hand with workflow_dispatch). Both jobs install
+Hearth OS on Debian, the only edition the installer offers (it refuses the archived ones), from inside the image
+the live USB is made from:
+
+- **install**: a whole empty disk; checks partitions, the deployment, boot loader, user, then boots it in a UEFI
+  virtual PC and waits for the login prompt.
+- **beside-steamos**: a disk laid out like a Steam Deck's; checks SteamOS is found and shrunk safely, its games and
+  boot loader are untouched, SteamOS is in Hearth's boot menu (custom.cfg), Hearth has its own EFI partition, and
+  the result boots.
+
+`tools/ci-qemu-uefi.sh` installs qemu and the UEFI firmware on the runner (refreshing apt's lists first; stale lists
+made apt exit 100 at the boot step from November 2026) and puts any failure on the run page as an annotation.
+
 ## Gaps and known risks
 
 - **Nothing here has booted on hardware yet.** Everything below the image (boot, Secure Boot, suspend,

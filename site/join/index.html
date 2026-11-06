@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join a game · Hearth OS</title>
+<meta name="description" content="A friend invited you to play on Hearth OS.">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<style>
+/* A friend's invite from Discord (docs/DISCORD.md): hands the invite to Hearth OS (hearth://join/...). The invite is
+   in the part after #, which browsers never send to this website; nothing here sends it anywhere. */
+:root{--bg:#171a21;--panel:#1f2430;--text:#e6e9ef;--muted:#9aa3b2;--accent:#1a9fff}
+@media (prefers-color-scheme: light){:root{--bg:#f4f6fa;--panel:#fff;--text:#1b1f27;--muted:#5b6475;--accent:#0b74d1}}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif;padding:16px;box-sizing:border-box}
+main{max-width:460px;width:100%;background:var(--panel);border-radius:16px;padding:28px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+h1{font-size:24px;margin:12px 0 6px}p{color:var(--muted);margin:8px 0}
+a.btn{display:inline-block;margin-top:14px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px}
+.game{color:var(--text);font-weight:600}.small{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <img src="../img/logo.svg" alt="" width="48" height="48">
+  <h1>Join <span class="game" id="game">a game</span></h1>
+  <p id="what">A friend on Hearth OS invited you to play.</p>
+  <a class="btn" id="open" href="#">Open in Hearth</a>
+  <p class="small">On Hearth OS this opens the game's page (Play or Install), or Play together when your friend streams it to you.
+    Not on Hearth OS? <a href="../">Get Hearth OS</a>.</p>
+</main>
+<script>
+(function(){
+  var raw = location.hash.slice(1), secret = '';
+  try { secret = decodeURIComponent(raw); } catch (e) {}
+  var parts = secret.split('|');
+  if (parts[0] !== 'h1' || parts.length < 5 || secret.length > 128) {
+    document.getElementById('what').textContent = "This invite link isn't complete. Ask your friend to copy it again.";
+    document.getElementById('open').style.display = 'none';
+    return;
+  }
+  var title = parts.slice(5).join('|');
+  if (title) document.getElementById('game').textContent = title;
+  if (parts[2] && parts[3]) document.getElementById('what').textContent = 'Your friend can stream it to you (Play together). The PIN ' + parts[3] + ' shows on both screens.';
+  document.getElementById('open').href = 'hearth://join/' + encodeURIComponent(secret);
+})();
+</script>
+</body>
+</html>
