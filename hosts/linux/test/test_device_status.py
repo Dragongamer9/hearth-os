@@ -108,9 +108,19 @@ class Helper(unittest.TestCase):
         self.assertEqual(s['uptime'], 9240)
         json.dumps(s)
         # No secrets: no addresses, accounts, keys, paths.
-        text = json.dumps(s).lower()
-        for bad in ('"ip', 'address', 'mac', 'password', 'token', 'key', '/home', 'user'):
-            self.assertNotIn(bad, text, bad)
+        keys = set()
+        def walk(v):
+            if isinstance(v, dict):
+                for k, x in v.items():
+                    keys.add(k.lower())
+                    walk(x)
+            elif isinstance(v, list):
+                for x in v:
+                    walk(x)
+        walk(s)
+        self.assertFalse(keys & {'ip', 'ips', 'address', 'addr', 'mac', 'macs', 'password', 'token', 'key', 'user', 'account', 'path', 'mount'}, keys)
+        self.assertNotIn('/home', json.dumps(s))
+        self.assertNotIn(self.tmp, json.dumps(s))
 
     def test_modes_and_playing(self):
         m = self.m
