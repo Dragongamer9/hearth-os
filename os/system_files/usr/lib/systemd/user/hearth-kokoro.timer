@@ -1,0 +1,10 @@
+# Settings › Home server: starts AI voices (Kokoro-FastAPI) a minute after you sign in. Off in the image and while AI
+# voices is off (Settings enables it for your account together with the service).
+[Unit]
+Description=Hearth home server: AI voices, a minute after sign-in
+
+[Timer]
+OnStartupSec=1min
+
+[Install]
+WantedBy=timers.target

@@ -2,14 +2,18 @@
 """hearth-boot-look: the boot splash preset and Steam Game Mode's startup animation (Settings › Boot & startup).
 
   hearth-boot-look status            JSON: the splash presets and which one starts, the startup animations and
-                                     which one Steam Game Mode plays
+                                     which one Steam Game Mode plays, and each one's preview (a sheet of frames
+                                     the page plays; tools/make-boot-previews.py). Looking at a preview changes
+                                     nothing: only `splash` and `movie` below do
   hearth-boot-look splash NAME       (root, through `hearth-admin boot-splash NAME`) the splash for the next
-                                     starts: hearth (default), hearth-steam or hearth-minimal. Written to
+                                     starts: hearth (default), hearth-steam, hearth-minimal, hearth-aurora,
+                                     hearth-starlight or hearth-orbit. Written to
                                      /etc/hearth/boot-splash; hearth-bls-grub puts plymouth.splash=NAME on the
                                      menu's entries. Nothing is rebuilt: every preset is in each version's
                                      start-up files, and a version without that preset shows its default
   hearth-boot-look movie ID|steam    the startup animation Steam Game Mode plays (yours, not system-wide): one of
-                                     Hearth's (flame, sweep, reveal, embers) or steam (Steam's own). Applied now
+                                     Hearth's (flame, sweep, reveal, embers, aurora, starlight, orbit) or steam
+                                     (Steam's own). Applied now
                                      if Steam has been set up, else the next time Steam Game Mode starts
   hearth-boot-look movie-apply       (nimbus-session, as Steam Game Mode starts) puts the chosen animation in
                                      Steam's override folder (~/.steam/root/config/uioverrides/movies)
@@ -31,6 +35,7 @@ SPLASH_CONF = os.environ.get('HEARTH_SPLASH_CONF', '/etc/hearth/boot-splash')
 THEMES = os.environ.get('HEARTH_PLYMOUTH_THEMES', '/usr/share/plymouth/themes')
 BLS_GRUB = os.environ.get('HEARTH_BLS_GRUB', '/usr/libexec/nimbus/hearth-bls-grub')
 MOVIES = os.environ.get('HEARTH_MOVIES', '/usr/share/hearth/startup-movies')
+PREVIEWS = os.environ.get('HEARTH_BOOT_PREVIEWS', '/usr/share/hearth/boot-previews')
 HOME = os.environ.get('HOME', '')
 CHOICE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config'), 'hearth', 'startup-movie')
 DRM = os.environ.get('HEARTH_DRM', '/sys/class/drm')
@@ -41,12 +46,22 @@ SPLASHES = [
     {'id': 'hearth', 'label': 'Hearth flame', 'about': 'The Hearth flame on slate, with a breathing ember glow (default)'},
     {'id': 'hearth-steam', 'label': 'Steam-style', 'about': 'The Hearth mark on slate blue, with a blue light sweep'},
     {'id': 'hearth-minimal', 'label': 'Minimal', 'about': 'A small Hearth mark on plain slate, nothing moving'},
+    {'id': 'hearth-aurora', 'label': 'Aurora', 'about': 'Northern lights drifting over the Hearth mark on a night sky',
+     'pair': 'aurora'},
+    {'id': 'hearth-starlight', 'label': 'Starlight', 'about': 'Stars twinkling around the Hearth mark', 'pair': 'starlight'},
+    {'id': 'hearth-orbit', 'label': 'Ember orbit', 'about': 'Three embers circling the Hearth flame', 'pair': 'orbit'},
 ]
 MOVIE_LIST = [
     {'id': 'flame', 'label': 'Flame ignition', 'about': 'A spark lights the Hearth flame'},
     {'id': 'sweep', 'label': 'Slate light sweep', 'about': 'A blue light sweeps across and reveals Hearth OS'},
     {'id': 'reveal', 'label': 'Logo reveal', 'about': 'The Hearth arch draws itself, then the flame'},
     {'id': 'embers', 'label': 'Rising embers', 'about': 'Embers drift up and gather into the mark'},
+    {'id': 'aurora', 'label': 'Aurora', 'about': 'Northern lights ripple across the sky, the mark rises under them',
+     'pair': 'hearth-aurora'},
+    {'id': 'starlight', 'label': 'Starlight', 'about': 'Stars join up into the Hearth arch, then the flame lights',
+     'pair': 'hearth-starlight'},
+    {'id': 'orbit', 'label': 'Ember orbit', 'about': 'Three embers spiral into the flame and keep circling it',
+     'pair': 'hearth-orbit'},
 ]
 MOVIE_IDS = [m['id'] for m in MOVIE_LIST]
 
@@ -107,7 +122,7 @@ def splash_current():
 
 def splash_set(name):
     if name not in [s['id'] for s in SPLASHES]:
-        fail('unknown splash: choose hearth, hearth-steam or hearth-minimal')
+        fail('unknown splash: choose one of ' + ', '.join(s['id'] for s in SPLASHES))
     if not os.path.isfile(os.path.join(THEMES, name, name + '.plymouth')):
         fail("this version of Hearth OS doesn't have that splash")
     if not os.path.isfile(BLS_GRUB):
@@ -258,12 +273,45 @@ def movie_set(mid):
     print(json.dumps(r))
 
 
+# ------------------------------------------------------------------ previews (read only)
+def previews():
+    """The preview sheets' index (tools/make-boot-previews.py), or nothing when this version has none."""
+    try:
+        with open(os.path.join(PREVIEWS, 'index.json')) as f:
+            index = json.load(f)
+        if not isinstance(index, dict) or not isinstance(index.get('sheets'), dict):
+            return None
+        for k in ('frameWidth', 'frameHeight', 'columns', 'fps'):
+            if not isinstance(index.get(k), int) or index[k] <= 0:
+                return None
+        return index
+    except (OSError, ValueError):
+        return None
+
+
+def preview(index, name):
+    """One choice's preview: its sheet, frame count and poster frame ({} without one: the page shows no picture)."""
+    if not index:
+        return {}
+    info = index['sheets'].get(name)
+    path = os.path.join(PREVIEWS, name + '.jpg')
+    if not isinstance(info, dict) or not isinstance(info.get('frames'), int) or info['frames'] <= 0 or not os.path.isfile(path):
+        return {}
+    poster = info.get('poster') if isinstance(info.get('poster'), int) else 0
+    return {'sheet': path, 'frames': info['frames'], 'poster': max(0, min(info['frames'] - 1, poster))}
+
+
 def status():
+    index = previews()
+    aspect = screen_aspect()
     print(json.dumps({
         'splash': {'current': splash_current(), 'canChange': os.path.isfile(BLS_GRUB),
-                   'presets': [dict(s, available=os.path.isfile(os.path.join(THEMES, s['id'], s['id'] + '.plymouth'))) for s in SPLASHES]},
-        'movie': {'current': movie_choice(), 'aspect': screen_aspect(), 'steamReady': bool(steam_dirs()),
-                  'list': [dict(m, file=movie_file(m['id'], screen_aspect()) or '') for m in MOVIE_LIST if movie_file(m['id'], '16x9')]},
+                   'presets': [dict(s, available=os.path.isfile(os.path.join(THEMES, s['id'], s['id'] + '.plymouth')),
+                                    preview=preview(index, 'splash-' + s['id'])) for s in SPLASHES]},
+        'movie': {'current': movie_choice(), 'aspect': aspect, 'steamReady': bool(steam_dirs()),
+                  'list': [dict(m, file=movie_file(m['id'], aspect) or '', preview=preview(index, 'movie-' + m['id']))
+                           for m in MOVIE_LIST if movie_file(m['id'], '16x9')]},
+        'preview': {k: index[k] for k in ('frameWidth', 'frameHeight', 'columns', 'fps')} if index else None,
     }))
 
 
@@ -280,7 +328,7 @@ def main(argv):
     elif cmd == 'movie-apply' and len(argv) == 2:
         print(json.dumps(movie_apply()))
     else:
-        fail('usage: hearth-boot-look status | splash hearth|hearth-steam|hearth-minimal | movie ID|steam | movie-apply')
+        fail('usage: hearth-boot-look status | splash NAME | movie ID|steam | movie-apply')
 
 
 if __name__ == '__main__':

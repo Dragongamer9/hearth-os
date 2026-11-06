@@ -1,7 +1,8 @@
-// Hearth Settings › Appearance (Mantel 2026): the look (eight picture cards: Hearth, Steam-style, Gaming, Zen, Glass,
-// Synthwave, Cabin, Console), Dark / Light / Sunset, the accent colour (presets, From wallpaper, a hue, a typed
-// colour), Bar and dock, the wallpaper, the desktop clock, panel transparency, a way to the on-screen keyboard's
-// style, night light and motion. Look, mode and accent change Mantel, window frames and apps (Theme.qml,
+// Hearth Settings › Personalization (was Appearance; Mantel 2026): the look (eight picture cards: Hearth, Steam-style,
+// Gaming, Zen, Glass, Synthwave, Cabin, Console), then Your style (Dark / Light / Sunset, the accent colour: presets,
+// From wallpaper, a hue, a typed colour; the wallpaper), then Desktop (Bar and dock, its own page; the desktop clock,
+// panel transparency, a way to the on-screen keyboard's style). Night light moved to System › Display, Reduce motion to
+// Accessibility. Look, mode and accent change Mantel, window frames and apps (Theme.qml,
 // theme/hearth-theme) live.
 // Settings never change by themselves: choosing a look sets only the look (its wallpaper, bar and dock are used only
 // where you haven't chosen your own: those keys stay ""); Sunset is off unless you turn it on; From wallpaper works
@@ -69,12 +70,12 @@ SetPage {
         if (Settings.accentFrom === "wallpaper") fromWallpaper(f !== "" ? f : (Theme.lookDef.wallpaper || ""));
     }
 
-    SetHeader { text: "Look" }
+    SetHeader { text: "Look"; Layout.topMargin: 0 }
     GridLayout {
         Layout.fillWidth: true
         columns: page.width > 760 ? 4 : 2
-        columnSpacing: 10
-        rowSpacing: 10
+        columnSpacing: 12
+        rowSpacing: 12
         Repeater {
             model: Theme.looks
             delegate: LookCard {}
@@ -82,10 +83,14 @@ SetPage {
     }
     Text {
         Layout.fillWidth: true
+        Layout.topMargin: 8
         text: "A look sets the shapes, fonts, wallpaper and panel style. Your mode, accent, wallpaper and Bar and dock choices below still apply on top, and every look keeps the same parts and the Game Mode button."
-        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
+
+    SetHeader { text: "Your style" }
     SetChoice {
+        icon: "sun"
         title: "Mode"
         sub: "Sunset (optional): light by day and dark by night, on the times below. Off unless you choose it."
         options: [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }, { value: "sunset", label: "Sunset" }]
@@ -94,108 +99,108 @@ SetPage {
     }
     TimeRow { visible: Settings.sunset; title: "Light from"; key: "sunsetLight" }
     TimeRow { visible: Settings.sunset; title: "Dark from"; key: "sunsetDark" }
-
-    SetHeader { text: "Bar and dock" }
-    SetChoice {
-        title: "Bar"
-        options: [{ value: "", label: "Look's own" }, { value: "floating", label: "Floating islands" }, { value: "bar", label: "Full-width bar" }]
-        current: Settings.barStyle
-        onChosen: v => Settings.barStyle = v
-    }
-    SetChoice {
-        title: "Dock"
-        sub: "Auto-hide: the dock comes up when the pointer touches the bottom edge."
-        options: [{ value: "", label: "Look's own" }, { value: "shown", label: "Always shown" }, { value: "autohide", label: "Auto-hide" }]
-        current: Settings.dockMode
-        onChosen: v => Settings.dockMode = v
-    }
-
-    SetHeader { text: "Accent colour" }
-    SetBase {
-        id: fromWall
-        Layout.fillWidth: true
-        implicitHeight: 78
-        readonly property bool on: Settings.accentFrom === "wallpaper"
-        border.color: activeFocus ? Theme.accent : on ? Qt.lighter(Theme.accent, 1.2) : "transparent"
-        onActivated: page.fromWallpaper(Theme.wall)
-        RowLayout {
-            anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
-            spacing: 14
-            Icon { name: "palette"; size: 22; color: fromWall.on ? Theme.accent : Theme.text }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text { text: "From wallpaper"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-                Text { Layout.fillWidth: true; text: fromWall.on ? "Worked out from your wallpaper when you picked it. It doesn't change by itself." : "Take the accent from the wallpaper (once, now)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap }
-            }
-            Repeater {
-                model: fromWall.on ? Settings.wallSwatches : []
-                delegate: Rectangle {
-                    required property string modelData
-                    width: 28; height: 28; radius: 14
-                    color: modelData
-                    border.width: Settings.accent === modelData ? 3 : 1
-                    border.color: Settings.accent === modelData ? Theme.text : Theme.line
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Settings.accent = parent.modelData }
-                }
-            }
-        }
-    }
+    // The accent presets: Left/Right to pick; "A" is the look's own.
     SetBase {
         id: accentRow
         Layout.fillWidth: true
         usesLeftRight: true
-        implicitHeight: accentCol.implicitHeight + 28
+        readonly property bool wide: page.width > 900
+        implicitHeight: wide ? Math.max(SetStyle.cardHeight, accentText.implicitHeight + 24) : accentText.implicitHeight + swatches.implicitHeight + 40
         // "" first (the look's own), then the presets.
         readonly property var values: [""].concat(page.accents.map(a => a.color))
         readonly property int idx: Math.max(0, values.indexOf(Settings.accent))
         onAdjusted: d => page.chooseAccent(values[(idx + d + values.length) % values.length])
         onActivated: page.chooseAccent(values[(idx + 1) % values.length])
+        Accessible.role: Accessible.ComboBox
+        Accessible.name: "Accent colour"
+        Icon { x: SetStyle.pad; y: accentRow.wide ? (accentRow.height - height) / 2 : 16; name: "palette"; size: 22; color: Theme.text }
         ColumnLayout {
-            id: accentCol
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14; leftMargin: 16; rightMargin: 16 }
-            spacing: 10
-            Text { text: "Presets"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-            Text { Layout.fillWidth: true; text: "Focus rings, selections and highlights everywhere, in apps too. Left/Right to pick."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap }
-            Flow {
-                Layout.fillWidth: true
-                spacing: 10
-                Repeater {
-                    model: accentRow.values
-                    delegate: Rectangle {
-                        id: sw
-                        required property string modelData
-                        required property int index
-                        readonly property bool lit: Settings.accent === modelData
-                        width: 40; height: 40; radius: Theme.r(20)
-                        color: modelData || Theme.ember
-                        border.width: lit ? 3 : 1
-                        border.color: lit ? Theme.text : Theme.line
-                        Text { anchors.centerIn: parent; visible: sw.modelData === ""; text: "A"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.Bold }
-                        Text { anchors.centerIn: parent; visible: sw.lit && sw.modelData !== ""; text: "✓"; color: "white"; style: Text.Outline; styleColor: "#66000000"; font.pixelSize: 16; font.weight: Font.Bold }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { accentRow.forceActiveFocus(); page.chooseAccent(sw.modelData); } }
-                    }
-                }
-                Rectangle {   // a custom colour, when it isn't one of the presets
-                    visible: Theme.validAccent && accentRow.values.indexOf(Settings.accent) < 0
-                    width: 40; height: 40; radius: Theme.r(20); color: Theme.accent; border.width: 3; border.color: Theme.text
+            id: accentText
+            x: SetStyle.pad + 38
+            y: accentRow.wide ? (accentRow.height - height) / 2 : 14
+            width: accentRow.wide ? accentRow.width - x - swatches.width - SetStyle.pad * 2 : accentRow.width - x - SetStyle.pad
+            spacing: 2
+            Text { text: "Accent colour"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Medium }
+            Text {
+                Layout.fillWidth: true; wrapMode: Text.WordWrap
+                text: (Settings.accent === "" ? "The look's own (" + Theme.lookAccentName + ")" : Settings.accentFrom === "wallpaper" ? "From wallpaper " + Settings.accent : (page.accents.find(a => a.color === Settings.accent) || { name: "Custom " + Settings.accent }).name)
+                      + " · focus rings, selections and highlights, in apps too"
+                color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+            }
+        }
+        Flow {
+            id: swatches
+            x: accentRow.wide ? accentRow.width - width - SetStyle.pad : SetStyle.pad + 38
+            y: accentRow.wide ? (accentRow.height - height) / 2 : accentText.y + accentText.height + 12
+            width: Math.min(accentRow.values.length * 36 + 40, accentRow.width - SetStyle.pad * 2 - 38)
+            spacing: 8
+            Repeater {
+                model: accentRow.values
+                delegate: Rectangle {
+                    id: sw
+                    required property string modelData
+                    required property int index
+                    readonly property bool lit: Settings.accent === modelData
+                    width: 28; height: 28; radius: 14
+                    color: modelData || Theme.lookAccent
+                    border.width: lit ? 2 : 1
+                    border.color: lit ? Theme.text : Theme.line
+                    Text { anchors.centerIn: parent; visible: sw.modelData === ""; text: "A"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.Bold }
+                    Text { anchors.centerIn: parent; visible: sw.lit && sw.modelData !== ""; text: "✓"; color: "white"; style: Text.Outline; styleColor: "#66000000"; font.pixelSize: 13; font.weight: Font.Bold }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { accentRow.forceActiveFocus(); page.chooseAccent(sw.modelData); } }
                 }
             }
-            Text { text: Settings.accent === "" ? "The look's own" + (Theme.steam ? " (Steam blue)" : Theme.look === "hearth" && Theme.profileAccent ? " (your profile's)" : "") : Settings.accentFrom === "wallpaper" ? "From wallpaper " + Settings.accent : (page.accents.find(a => a.color === Settings.accent) || { name: "Custom " + Settings.accent }).name; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+            Rectangle {   // a custom colour, when it isn't one of the presets
+                visible: Theme.validAccent && accentRow.values.indexOf(Settings.accent) < 0
+                width: 28; height: 28; radius: 14; color: Theme.accent; border.width: 2; border.color: Theme.text
+            }
         }
     }
-    SetSlider {
-        icon: "palette"
-        title: "Custom accent"
-        value: Theme.validAccent ? page.hueOf(Settings.accent) : 0.58
-        step: 1 / 36
-        valueText: Theme.validAccent ? Settings.accent : "Pick a hue"
-        onMoved: v => page.chooseAccent(page.hexOf(Qt.hsva(Math.min(0.999, v), 0.85, 1.0, 1.0)))
-    }
-    SetField {
-        id: hexField
-        placeholder: "Or type a colour, like #1a9fff, then Enter"
-        onSubmitted: t => { const v = t.trim(); if (/^#?[0-9a-fA-F]{6}$/.test(v)) { page.chooseAccent((v[0] === "#" ? v : "#" + v).toLowerCase()); hexField.text = ""; } else SettingsNav.toast("A colour looks like #1a9fff"); }
+    SetExpander {
+        icon: "edit"; title: "More accent colours"; sub: "From your wallpaper, any hue, or a colour you type"
+        anchor: "accent"
+        value: Settings.accentFrom === "wallpaper" ? "From wallpaper" : Theme.validAccent && accentRow.values.indexOf(Settings.accent) < 0 ? Settings.accent : ""
+        SetBase {
+            id: fromWall
+            Layout.fillWidth: true
+            implicitHeight: 66
+            readonly property bool on: Settings.accentFrom === "wallpaper"
+            onActivated: page.fromWallpaper(Theme.wall)
+            RowLayout {
+                anchors { fill: parent; leftMargin: 56; rightMargin: SetStyle.pad }
+                spacing: 14
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text { text: "From wallpaper"; color: fromWall.on ? Theme.accent : Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.Medium }
+                    Text { Layout.fillWidth: true; text: fromWall.on ? "Worked out from your wallpaper when you picked it. It doesn't change by itself." : "Take the accent from the wallpaper (once, now)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                }
+                Repeater {
+                    model: fromWall.on ? Settings.wallSwatches : []
+                    delegate: Rectangle {
+                        required property string modelData
+                        width: 26; height: 26; radius: 13
+                        color: modelData
+                        border.width: Settings.accent === modelData ? 2 : 1
+                        border.color: Settings.accent === modelData ? Theme.text : Theme.line
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Settings.accent = parent.modelData }
+                    }
+                }
+            }
+        }
+        SetSlider {
+            title: "Custom accent"
+            value: Theme.validAccent ? page.hueOf(Settings.accent) : 0.58
+            step: 1 / 36
+            valueText: Theme.validAccent ? Settings.accent : "Pick a hue"
+            onMoved: v => page.chooseAccent(page.hexOf(Qt.hsva(Math.min(0.999, v), 0.85, 1.0, 1.0)))
+        }
+        SetField {
+            id: hexField
+            Layout.leftMargin: 56; Layout.rightMargin: SetStyle.pad; Layout.topMargin: 8; Layout.bottomMargin: 10
+            placeholder: "Or type a colour, like #1a9fff, then Enter"
+            onSubmitted: t => { const v = t.trim(); if (/^#?[0-9a-fA-F]{6}$/.test(v)) { page.chooseAccent((v[0] === "#" ? v : "#" + v).toLowerCase()); hexField.text = ""; } else SettingsNav.toast("A colour looks like #1a9fff"); }
+        }
     }
 
     // "Choose a picture…": the desktop's file picker (KDE's or GNOME's, whichever is installed).
@@ -205,66 +210,96 @@ SetPage {
         stdout: StdioCollector { onStreamFinished: { const f = text.trim(); if (f) { page.chooseWallpaper(f); if (page.pictures.indexOf(f) < 0) page.pictures = page.pictures.concat([f]); } } }
         onExited: code => { if (code === 3) SettingsNav.toast("No file picker installed: put pictures in Pictures › Wallpapers instead"); }
     }
-
-    SetHeader { text: "Wallpaper" }
-    GridLayout {
-        id: grid
-        Layout.fillWidth: true
-        columns: 3
-        columnSpacing: 10
-        rowSpacing: 10
-        Repeater {
-            model: page.moving.concat(page.scenes).concat(page.builtins).concat(page.pictures)
-            delegate: SetBase {
-                id: tile
-                required property string modelData
-                readonly property bool lit: Settings.wallpaper === modelData
-                Layout.fillWidth: true
-                Layout.preferredWidth: 200          // equal columns (a width tied to the grid made them 0 wide)
-                implicitHeight: 130
-                border.color: activeFocus ? Theme.accent : lit ? Qt.lighter(Theme.accent, 1.2) : "transparent"
-                onActivated: page.chooseWallpaper(modelData)
-                Rectangle {
-                    anchors { fill: parent; margins: 4 }
-                    radius: Theme.r(9)
-                    clip: true
-                    color: Theme.bg2
-                    readonly property string shows: tile.modelData !== "" ? tile.modelData : (Theme.lookDef.wallpaper || "")
-                    Image { anchors.fill: parent; visible: parent.shows !== "" && page.scenes.indexOf(parent.shows) < 0; source: visible ? page.preview(tile.modelData) : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 400 }
-                    Loader { anchors.fill: parent; active: page.scenes.indexOf(parent.shows) >= 0; source: "Scene.qml"; onLoaded: item.name = Qt.binding(() => parent.shows.slice(5)) }
-                    Image { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom } visible: parent.shows === ""; width: parent.width * 1.4; height: parent.height; source: Qt.resolvedUrl("images/ember-glow.png"); opacity: 0.6 }
+    // The wallpaper: yours now and a few more to pick at once; every wallpaper inside.
+    SetExpander {
+        id: wallX
+        icon: "image"; title: "Wallpaper"
+        sub: page.nameOf(Settings.wallpaper) + " · pictures in Pictures › Wallpapers show up here too"
+        anchor: "wallpaper"
+        GridLayout {
+            id: grid
+            Layout.fillWidth: true
+            Layout.margins: 14
+            columns: page.width > 900 ? 4 : 3
+            columnSpacing: 10
+            rowSpacing: 10
+            Repeater {
+                model: page.moving.concat(page.scenes).concat(page.builtins).concat(page.pictures)
+                delegate: SetBase {
+                    id: tile
+                    required property string modelData
+                    readonly property bool lit: Settings.wallpaper === modelData
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 200          // equal columns (a width tied to the grid made them 0 wide)
+                    implicitHeight: 120
+                    onActivated: page.chooseWallpaper(modelData)
                     Rectangle {
-                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                        height: 30
-                        gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 1; color: "#cc000000" } }
-                        Text { anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter } text: page.nameOf(tile.modelData) + (page.moving.indexOf(tile.modelData) >= 0 && tile.modelData !== "" ? "  ·  animated" : ""); color: "white"; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
-                        Text { anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter } visible: tile.lit; text: "✓"; color: Theme.accent; font.pixelSize: 14; font.weight: Font.Bold }
+                        anchors { fill: parent; margins: 4 }
+                        radius: Math.max(4, Theme.r(8))
+                        clip: true
+                        color: Theme.bg2
+                        border.width: tile.lit ? 2 : 0
+                        border.color: Theme.accent
+                        readonly property string shows: tile.modelData !== "" ? tile.modelData : (Theme.lookDef.wallpaper || "")
+                        Image { anchors.fill: parent; visible: parent.shows !== "" && page.scenes.indexOf(parent.shows) < 0; source: visible ? page.preview(tile.modelData) : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 400 }
+                        Loader { anchors.fill: parent; active: wallX.open && page.scenes.indexOf(parent.shows) >= 0; source: "Scene.qml"; onLoaded: item.name = Qt.binding(() => parent.shows.slice(5)) }
+                        Image { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom } visible: parent.shows === ""; width: parent.width * 1.4; height: parent.height; source: Qt.resolvedUrl("images/ember-glow.png"); opacity: 0.6 }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: 30
+                            gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 1; color: "#cc000000" } }
+                            Text { anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter } text: page.nameOf(tile.modelData) + (page.moving.indexOf(tile.modelData) >= 0 && tile.modelData !== "" ? "  ·  animated" : ""); color: "white"; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                            Text { anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter } visible: tile.lit; text: "✓"; color: Theme.accent; font.pixelSize: 14; font.weight: Font.Bold }
+                        }
                     }
                 }
             }
         }
+        SetRow { icon: "image"; title: "Choose a picture…"; sub: "Any picture on this device. In the Files app you can also right-click a picture › Set as Hearth wallpaper."; onActivated: picker.running = true }
     }
-    SetRow { icon: "palette"; title: "Choose a picture…"; sub: "Any picture on this device. In the Files app you can also right-click a picture › Set as Hearth wallpaper."; onActivated: picker.running = true }
-    Text { Layout.fillWidth: true; text: "Pictures in Pictures › Wallpapers show up here too."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap }
+    // A few wallpapers to pick from without opening it: yours, then the look's own and the moving ones.
+    Row {
+        Layout.fillWidth: true
+        Layout.topMargin: -2
+        Layout.bottomMargin: 2
+        visible: !wallX.open
+        spacing: 8
+        leftPadding: 56
+        Repeater {
+            model: [Settings.wallpaper].concat(page.moving.filter(w => w !== Settings.wallpaper)).slice(0, 5)
+            delegate: Rectangle {
+                id: thumb
+                required property string modelData
+                readonly property bool lit: Settings.wallpaper === modelData
+                width: 72; height: 42; radius: Math.max(4, Theme.r(6))
+                color: Theme.bg2
+                clip: true
+                border.width: lit ? 2 : 0
+                border.color: Theme.accent
+                Image { anchors { fill: parent; margins: thumb.lit ? 2 : 0 } source: page.preview(thumb.modelData); fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 160; visible: status === Image.Ready }
+                Image { anchors.fill: parent; visible: (thumb.modelData === "" ? (Theme.lookDef.wallpaper || "") : thumb.modelData) === ""; source: Qt.resolvedUrl("images/ember-glow.png"); fillMode: Image.PreserveAspectCrop; opacity: 0.7 }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.chooseWallpaper(thumb.modelData) }
+            }
+        }
+    }
 
     SetHeader { text: "Desktop" }
+    SetLinkCard { target: "bar-dock"; value: Settings.barStyle === "" && Settings.dockMode === "" ? "Look's own" : [Settings.barStyle === "bar" ? "Full-width bar" : Settings.barStyle === "floating" ? "Islands" : "", Settings.dockMode === "autohide" ? "dock auto-hides" : Settings.dockMode === "shown" ? "dock shown" : ""].filter(x => x).join(", ") }
     SetChoice {
+        icon: "clock"
         title: "Desktop clock and weather"
         options: [{ value: "", label: "Look's own" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]
         current: Settings.deskClock
         onChosen: v => Settings.deskClock = v
     }
     SetChoice {
+        icon: "eye"
         title: "Panel transparency"
         options: [{ value: "", label: "Look's own" }, { value: "solid", label: "Solid" }, { value: "frosted", label: "Frosted" }, { value: "clear", label: "Clear" }]
         current: Settings.panelGlass
         onChosen: v => Settings.panelGlass = v
     }
-    SetRow { icon: "kbd"; title: "On-screen keyboard style"; sub: "Its looks (Ember, Frost, Steam, Warm…) are in Settings › Keyboard"; onActivated: if (SettingsNav.settingsApp) SettingsNav.settingsApp.open("keyboard") }
-
-    SetHeader { text: "Comfort" }
-    SetSwitch { icon: "moon"; title: "Night light"; sub: "Warmer screen from sunset to sunrise"; checked: Settings.nightLight; onToggled: v => Settings.nightLight = v }
-    SetSwitch { icon: "motion"; title: "Reduce motion"; sub: "Still wallpapers and fewer animations (animated ones also hold still on battery and behind fullscreen games)"; checked: Settings.reduceMotion; onToggled: v => Settings.reduceMotion = v }
+    SetRow { chevron: true; icon: "kbd"; title: "On-screen keyboard style"; sub: "Its looks (Ember, Frost, Steam, Warm…) are in Bluetooth & devices › Keyboard"; onActivated: SettingsNav.openPage("keyboard:osk") }
 
     // A look as a picture card: its wallpaper, a sketch of its bar and dock in its own colours, its name and mood.
     // Choosing it changes Settings.look only.
@@ -277,13 +312,15 @@ SetPage {
         readonly property string wall: def.wallpaper || ""
         Layout.fillWidth: true
         Layout.preferredWidth: 180
-        implicitHeight: 176
-        border.color: activeFocus ? Theme.accent : lit ? Qt.lighter(Theme.accent, 1.2) : "transparent"
+        implicitHeight: 196
+        radius: SetStyle.bigRadius
+        border.width: lit ? 2 : 1
+        border.color: lit ? Theme.accent : SetStyle.tint(Theme.text, 0.05)
         onActivated: Settings.look = modelData
         Rectangle {
             id: pic
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 6 }
-            height: 104
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+            height: 120
             radius: Theme.r(9)
             clip: true
             color: card.pal.bg || "#111111"
@@ -328,20 +365,15 @@ SetPage {
             }
         }
         RowLayout {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 10; bottomMargin: 8 }
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 12; bottomMargin: 10 }
             spacing: 6
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 0
                 Text { text: card.def.label || card.modelData; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                Text { Layout.fillWidth: true; text: card.def.desc || ""; elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
+                Text { Layout.fillWidth: true; text: card.def.desc || ""; elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
             }
-            Rectangle {
-                visible: card.lit
-                implicitWidth: inUse.implicitWidth + 14; implicitHeight: 20; radius: 10
-                color: Theme.accent
-                Text { id: inUse; anchors.centerIn: parent; text: "✓ In use"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 10; font.bold: true }
-            }
+            SetChip { visible: card.lit; text: "In use"; kind: "new" }
         }
     }
 

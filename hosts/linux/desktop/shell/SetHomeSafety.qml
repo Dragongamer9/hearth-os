@@ -83,7 +83,7 @@ SetPage {
         icon: "globe"; chevron: false; interactive: false; title: page.sf && page.sf.tsOnly ? "Only reachable through Tailscale" : "Home network and Tailscale"
         sub: page.sf ? "Tailscale: " + (page.sf.tailscale === "Running" ? "connected" : (page.sf.tailscale || "off")) + (page.sf.firewall ? " · firewall rule: " + page.sf.firewall : "") : ""
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.sf
         icon: "update"; title: "Last backup"
         sub: page.sf ? (page.sf.lastBackup ? new Date(page.sf.lastBackup * 1000).toLocaleString(Qt.locale(), "d MMM h:mm AP") : page.sf.backups ? "None finished yet" : "No backup set up") : ""

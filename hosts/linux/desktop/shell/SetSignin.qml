@@ -1,4 +1,5 @@
-// Hearth Settings › Sign-in: start in Game or Desktop Mode, sign in automatically, password and the device's name.
+// Hearth Settings › Accounts › Sign-in options: sign in automatically, lock after sleep, password. ("Start in" moved to
+// Gaming, StartInChoice.qml; the device's name to Home, which has Rename.)
 // No desktop choice: Mantel is the only desktop. The parts that need root go through hearth-admin (pkexec; Hearth's
 // polkit rule lets the person at the device do this without a prompt).
 import QtQuick
@@ -59,17 +60,8 @@ SetPage {
         admin.command = ["sh", "-c", 'printf "%s" "$HEARTH_INPUT" | exec pkexec "$@" 2>&1', "sh", helper].concat(args);
         admin.running = true;
     }
-    function setStartMode(m) {
-        startMode = m;
-        Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$0")"; touch "$0"; if grep -q "^[[:space:]]*NIMBUS_START_MODE=" "$0"; then sed -i "s/^[[:space:]]*NIMBUS_START_MODE=.*/NIMBUS_START_MODE=$1/" "$0"; else echo "NIMBUS_START_MODE=$1" >> "$0"; fi', conf, m]);
-    }
 
-    SetChoice {
-        title: "Start in"; sub: "What you see after turning on"
-        options: [{ value: "game", label: "Game Mode" }, { value: "desktop", label: "Desktop Mode" }]
-        current: page.startMode
-        onChosen: v => page.setStartMode(v)
-    }
+    SetHeader { text: "Signing in"; Layout.topMargin: 0 }
     SetSwitch {
         visible: page.canAdmin
         icon: "user"; title: "Sign in automatically"; sub: page.busy === "autologin" ? "Saving…" : "Off shows the login screen at start, with your password"
@@ -98,14 +90,9 @@ SetPage {
         }
     }
 
-    SetHeader { text: "Device name"; visible: page.canAdmin }
-    SetField { id: host; visible: page.canAdmin; placeholder: page.hostname || "Device name"; onSubmitted: hostBtn.activated() }
-    SetRow {
-        id: hostBtn
-        visible: page.canAdmin
-        icon: "display"; title: page.busy === "hostname" ? "Saving…" : "Rename"; sub: "Now: " + page.hostname; chevron: false
-        onActivated: { if (host.text.trim()) page.runAdmin(["hostname", host.text.trim()], "", "hostname", () => { host.text = ""; page.say("Renamed."); }); }
-    }
+    SetHeader { text: "Moved" }
+    SetRow { chevron: true; icon: "power"; title: "Start in Game Mode or Desktop Mode"; sub: "Now in Gaming › Start in"; onActivated: SettingsNav.openPage("gaming") }
+    SetRow { chevron: true; icon: "display"; title: "Device name"; sub: "Rename this PC on Home" + (page.hostname ? " · now: " + page.hostname : ""); onActivated: SettingsNav.openPage("home") }
 
     Text {
         visible: page.message !== ""
@@ -116,7 +103,7 @@ SetPage {
     Text {
         visible: !page.canAdmin
         Layout.fillWidth: true
-        text: "Automatic sign-in, password and device name are set here on Hearth, the OS."
+        text: "Automatic sign-in and your password are set here on Hearth, the OS."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 }

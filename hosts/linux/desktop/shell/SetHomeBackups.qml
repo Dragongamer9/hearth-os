@@ -346,7 +346,7 @@ SetPage {
 
     // ---------------------------------------------------------------- devices backing up here
     SetHeader { text: "Devices backing up here" }
-    SetRow {
+    SetRow { chevron: true;
         icon: "desktops"; title: "Your Hearth devices' saves and screenshots"
         sub: "They back up to this PC through Hearth Storage (Hearth Link)"
         onActivated: SettingsNav.openPage("link")

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Hearth (Starlight)
+Description=Hearth boot splash preset: stars twinkling around the Hearth mark on a night sky
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/hearth-starlight
+ScriptFile=/usr/share/plymouth/themes/hearth-starlight/hearth-starlight.script

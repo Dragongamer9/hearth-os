@@ -103,7 +103,7 @@ SetPage {
         text: "Game sizes haven't been added up yet."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.st
         icon: "open"; title: "Move games and add up sizes"
         sub: "Moves a game to another drive, or adds up every game's size again. Opens in the Hearth app's window for now."

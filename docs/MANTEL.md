@@ -24,15 +24,70 @@ launcher, the clock's panel and Settings, and adds six new looks next to Hearth 
 - **Notification centre + dashboard** (`ClockPanel.qml`, from the centre pill or the bell): notifications with Do not
   disturb and Clear all on the left; the month with Hearth Calendar's events, what's playing, the weather and the
   system (CPU, GPU, memory, temperature; read only while it's open) on the right.
-- **Settings** (`SettingsApp.qml`): a search field over the page list (type anywhere on the list to search), the
-  pages in groups (Connections, Look and sound, Devices, System). Every page is still there.
-- **Settings › Appearance** (`SetAppearance.qml`): the **Look** as eight picture cards; **Mode** Dark / Light /
-  **Sunset**; **Bar and dock** (the look's own, floating islands or a full-width bar; the dock always shown or
-  auto-hide); the **accent** (presets, **From wallpaper**, a hue, a typed colour); the wallpaper; **Desktop clock
-  and weather**; **Panel transparency**; a way to the on-screen keyboard's style; Night light and Reduce motion.
+- **Settings** (the redesign, approved from the mockups; see "Settings" below): 12 categories plus Home, setting
+  cards in titled groups, breadcrumbs, a search that finds single settings, and the controller's hints.
+- **Settings › Personalization** (was Appearance, `SetAppearance.qml`): the **Look** as eight picture cards; then
+  **Your style**: **Mode** Dark / Light / **Sunset**, the **accent** (presets on the card; From wallpaper, a hue and a
+  typed colour in "More accent colours"), the **wallpaper**; then **Desktop**: **Bar and dock** (its own page,
+  `SetBarDock.qml`), **Desktop clock and weather**, **Panel transparency**, a way to the on-screen keyboard's style.
+  Night light moved to System › Display, Reduce motion to Accessibility (the same settings).
 - **Handheld screens** (1440 px wide or less, like 1280×800): the bar keeps the essentials (the mark, desktops, clock,
   Wi-Fi, volume, battery, Game Mode); Friends is in Quick settings' header; the dock's icons are bigger. After you
   use the controller in Hearth's menus, a **button-hint strip** shows for a while (`HintStrip.qml`).
+
+## Bar layouts
+
+Settings › Appearance › Bar and dock (`BarLayoutPicker.qml`):
+
+- **Bar layout**: **Top bar + floating dock** (Mantel 2026's own, the default) or **One main bar** on the edge you pick:
+  **Bottom**, **Top**, **Left** or **Right**. The one main bar (`Islands.qml` with `edge`) holds the Hearth button,
+  the desktops, the window in front (across the top or bottom), the clock, the status island, notifications, Quick
+  settings and the Game Mode button. Left and right stack the icons, the clock is compact (time over AM/PM), the Game
+  Mode button is the controller icon in the accent, and menus, tips and panels (Quick settings, the dashboard,
+  notifications, the app menus) open toward the screen.
+- **Floating app menu** on / off: off puts the app menu button and your apps (`TaskStrip.qml`, every dock behaviour:
+  click, middle-click, drag to reorder, right-click menu, Super+1–9, Show desktop) into the main bar, and there's no
+  dock. With the default layout that's the top bar with your apps; with One main bar, everything is in one bar.
+- **Auto-hide** (`dockMode`, the same switch as before): hides the dock, and in One main bar or with the apps in the bar
+  the main bar too, on any edge (touch the edge to bring it back). Each edge reserves its own space (exclusiveZone on
+  that edge, 0 while hidden) so maximized windows fill the rest; the bar waits for your settings and is put back on
+  screen once when its space changes, the same Game Mode return fix the dock has.
+- Changing any of these applies at once: `shell.qml` builds the bar and the dock again on the new edge (so nothing
+  stays reserved on the old one). If the new bar can't load, the classic taskbar comes up as always.
+
+## App menus
+
+Settings › Appearance › Bar and dock › App menu (`AppMenuPicker.qml`, picture cards). The menu button is always
+the Hearth flame.
+
+| Menu | File | What it is |
+|---|---|---|
+| Hearth | `Launcher.qml` | Today's big centred panel with Apps and Games tabs |
+| Centred | `MenuCentred.qml` | Search, Pinned (dock/bar pins first, then your apps) in pages of 18, All apps A–Z, Recommended (recent apps, games, Settings pages and files), you, Settings and Power |
+| Tiles | `MenuTiles.qml` | From the flame's corner: a rail (you, Documents, Pictures, Files, Settings, Power), Most used and A–Z with letter jumps, live tiles in Play / Today / Home server / Apps |
+| Start screen | `MenuStart.qml` | The whole screen: groups of live tiles that scroll sideways, All apps below (A–Z in columns), full-screen search |
+| Classic | `MenuClassic.qml` | Two columns, glassy in Hearth's colours: frequent apps with jump lists, All apps in place, search; your places, Files, Settings, Devices, Help, Shut down with an arrow |
+
+- All of them share `Launcher.qml`'s lists and actions and load by file name over its window; if one can't load,
+  the Hearth menu shows instead.
+- **Search** everywhere (`MenuSearch.qml`): apps, games, Settings pages and files in your home folder
+  (`hearth-appmenu files`), a best match, filters All / Apps / Games / Settings / Files (LB / RB) and a preview.
+- **Controller**: the D-pad moves (a focus ring on the item), A opens, B goes back or closes, X opens the options
+  (jump list, Resize), Y brings the keyboard to search, LB / RB turn pages, change filters or switch side; hints show
+  in every menu. All eight looks: the menus use the look's colours, fonts and corners (Classic's glass is tinted with
+  your accent).
+- **Live tiles** (`MenuTile.qml`): what's playing (MPRIS), the weather and your next events (Hearth Weather /
+  Calendar), the Home server in short (`hearth-home-server quick`) and games with an update ready when Hearth's games
+  list says so (`hearth-appmenu tiles`). A tile with no data is a plain icon tile. Right-click or X: Small, Medium,
+  Wide, Large or Take off the menu; apps can be added as tiles from the list. Saved per user in `menuTiles`.
+- **Jump lists** (Classic's arrow, Tiles' right-click / X): the app's recent files from the freedesktop recently-used
+  list (`hearth-appmenu recent`), otherwise its own actions from its .desktop file.
+- **Picking Tiles or Classic** asks **Match the menu** (One main bar at the bottom, the floating app menu off) or
+  **Keep mine** (nothing else changes). Nothing changes without that click.
+- **New handheld installs start with the Start screen**: when `appMenu` isn't set, the default is Start screen on a
+  handheld (by name, the same list as Hearth Link's device kind) whose `/etc/nimbus/installed.json` says the installer
+  had the five menus (`"appMenus": 1`); everyone else gets Hearth. It's worked out when read and never written, so
+  existing devices keep what they have.
 
 ## The looks
 
@@ -54,11 +109,63 @@ Tokens: `islandStyle` (floating | bar | shelf), `frame` (plain | chamfer | neon 
 `dockAutoHide`, `deskClock`, `perfIsland`, `edgeGlow`, `scanlines`, `hints`, `desc`, `order`, and the usual
 `font`, `corner`, `windowCorner`, `wallpaper`.
 
+## Settings (the redesign)
+
+Hearth Settings (`SettingsApp.qml`) opens on **Home** every time. On the left: your account, **search** (Y on the
+controller, Ctrl+F, or start typing on the list) and the categories: Home, System, Network & internet, Bluetooth &
+devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy & security, Accessibility,
+Updates & recovery. On the right the page under a **breadcrumb title** ("Home server › Services"; click a part to go
+back there). At the bottom what the controller does: **A** select, **B** back (a subpage goes up to its category, a
+category to the list, the list closes Settings), **Y** search, **LB / RB** previous / next category, **☰** close
+(hearth-pad sends Ctrl+F, Ctrl+PgUp / PgDn and Ctrl+W to the Settings window). A big ring shows the controller's place.
+
+- **The registry** (`settings-pages.js`): the categories and every page, each with its one home, label, icon, a
+  line for its card, search words and its old name. Adding a page is one entry. Every page id from before still
+  opens (deep links, notifications, the launcher, `hearth-settings <page>`); `page:part` opens at a part of a page
+  (`keyboard:osk` opens the on-screen keyboard's expander; `appearance:bar` opens Bar and dock).
+- **Home** (`SetHome.qml`): this PC (its wallpaper, name and **Rename**, the device name's home now), Wi-Fi /
+  Bluetooth / Updates / Hearth Link tiles, Recommended settings (Night light, Light mode while you play, Do not
+  disturb, Start in), Bluetooth devices, Storage, Home server, Your look. On the live USB, an Install Hearth banner.
+- **Category pages** (`SetCategory.qml`): their pages as cards with a live status where it's cheap to read, then link
+  cards to settings whose real home is elsewhere. Gaming (`SetGaming.qml`) and Home server (`SetHomeServer.qml`) have
+  their own landing pages; Network & internet (Wi-Fi), Hearth Link, Personalization, Accessibility and Updates &
+  recovery open their page, with the category's other pages as cards at the end (under `MORE`'s heading when it has
+  one: "Reach your devices from anywhere" over Tailscale).
+- **Updates & recovery** (`SetUpdates.qml`): a status card (up to date / ready to download / ready, restart) whose
+  button is the one next step, Update anyway, **Decky plugins** as one expander (`updates:decky` opens it), "If
+  something broke" (Go back, and "The previous version always stays startable"), the writable system, then Backup and
+  help. The same hearth-admin, hearth-decky and hearth-unlock calls as before; only the layout changed.
+- **AI devices** (`SetHomeAIDevices.qml`, docs/AI-SHARE.md): Home server › AI devices, a card under "On this server"
+  on the Home server page, and linked from Services › AI chat and Hearth Link.
+- **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,
+  `SetBanner`, `SetLinkCard`, `SetButton`, sizes and the good / warn colours in `SetStyle.qml`): icon, title, one
+  line, the control or a status chip on the right, a chevron only when it opens a page. Every colour is a Theme token,
+  so all eight looks and light mode work. A wide card puts its choices on the right; a narrow one under the title.
+- **Search** (`settings-index.js`, made by `tools/build-settings-index.py` from every page's cards): single settings
+  with their path ("Go to sleep after · System › Power & battery"), pages, and the pages' old names ("Appearance").
+  Opening a result puts the focus on that card (opening its expander if it's folded away).
+- **Where things went** (the IA table): Tailscale → Network & internet (a link card stays in Home server); Remote play
+  → Gaming (listed in Home server › Services too); Bar layouts and app menus → Personalization › Bar and dock
+  (`appearance:bar` opens it); ComfyUI and Kokoro → Home server › Services › AI on this PC; Home server › AI → Home server › Services › AI chat; Boot &
+  startup → System › Startup (the splash) and Gaming › Startup animation; About's Privacy → Privacy & security ›
+  Player count, its Help and logs and Backup → Updates & recovery › Backup and help (one file, `page.part`); Start in
+  → Gaming (`StartInChoice.qml`, also on Home); Users → Accounts; Keyboard's on-screen keyboard is an expander.
+- **Always opens**: the frame (`SettingsFrame.qml`) is loaded by file name; if it can't load, Settings shows the plain
+  list of every page (`SettingsSimple.qml`). A page that can't load says so and the rest keeps working.
+- **New installs** start Steam-style with the **Sky** accent: `/etc/skel`'s `desktop.json` says `"defaults": 2`, and
+  Theme.qml and hearth-theme give Steam-style's own accent as Sky for such a file. Existing users (no `defaults` key)
+  keep Steam blue. Nothing is written for you: it's a default worked out when the file is read.
+- **The handheld layout** (a window under 1300 px wide, like 1280×800): a narrower list and tighter cards, the same
+  labels.
+
 ## Settings never change by themselves (red flag 9)
 
 - New options are new keys in `desktop.json`, saved one at a time through `SettingsWriter.qml` (merge on write,
   atomic, `.bak`); a key you never changed is never written. `""` means "the look's own".
-  `barStyle`, `dockMode`, `deskClock`, `panelGlass`, `sunset`, `sunsetLight`, `sunsetDark`, `accentFrom`, `wallSwatches`.
+  `barStyle`, `dockMode`, `deskClock`, `panelGlass`, `sunset`, `sunsetLight`, `sunsetDark`, `accentFrom`, `wallSwatches`,
+  and for the bar layouts and app menus `barLayout`, `barEdge`, `dockFloat`, `appMenu`, `menuTiles`.
+- **Each control writes only its own key.** The one exception is **Match the menu** (after picking Tiles or Classic),
+  which you click, and which sets `barLayout`, `barEdge` and `dockFloat` together.
 - **Choosing a look changes only `look`.** The look's wallpaper, bar, dock, clock and transparency are used only
   while yours is `""`.
 - **Sunset is off** unless you choose it. When on, light from `sunsetLight` (07:00) to `sunsetDark` (19:30); your
@@ -68,11 +175,16 @@ Tokens: `islandStyle` (floating | bar | shelf), `frame` (plain | chamfer | neon 
   your accent; a wallpaper set from somewhere else doesn't recompute it.
 - Existing users keep their look, accent, mode, wallpaper, pinned apps and dock order: the pins are the same
   `desk.json`; nothing is migrated.
+- **Opening a Settings page writes nothing.** The Desktop Mode test opens every page in `settings-pages.js` and checks
+  that no settings file changed; the frame, the cards and the category pages never change a setting
+  (`test_settings_redesign.py`). Moved switches keep their keys (Night light is still `nightLight`).
 
 ## Desktop Mode always starts (red flag 2)
 
-`shell.qml` loads `Islands.qml` and `Dock.qml` by file name. If either can't load (or the screen is upright), the
-classic taskbar (`Bar.qml`: the launcher, every app, the Game Mode button) comes up instead. The look-specific parts
+`shell.qml` loads `Islands.qml` and (with the floating app menu on) `Dock.qml` by file name, once your settings are
+read (at most a few seconds) and again when the bar layout changes. If either can't load (or the screen is upright),
+the classic taskbar (`Bar.qml`: the launcher, every app, the Game Mode button) comes up instead. Your apps in the bar
+(`TaskStrip.qml`), the pickers and the app menus load by file name too; a menu that can't load falls back to Hearth's. The look-specific parts
 (frames, frost, drawn wallpapers, the media pill, the performance island, the dashboard's cards, From wallpaper)
 are loaded the same way, so one bad part only loses itself. Nothing here touches booting, sessions or services.
 
@@ -81,12 +193,19 @@ are loaded the same way, so one bad part only loses itself. Nothing here touches
 - **Real background blur**: not on labwc (no `ext-background-effect-v1`). Glass draws its own blurred copy of the
   wallpaper (QtQuick.Effects, only with a GPU; with software rendering the copy is shown unblurred under a milky fill).
 - **FPS of another app**: no frame-timing protocol; shown only from a fresh MangoHud CSV log (`hearth-stats`).
-- **Dock "hide when a window touches it"**: no window positions; it's plain auto-hide (touch the bottom edge).
+- **Dock "hide when a window touches it"**: no window positions; it's plain auto-hide (touch the edge).
+- **Live window previews in the menus**: no per-window screencopy here either; the menus show icons and names.
 - **Live window thumbnails** (Console): need screencopy per window; Console shows icons and status lines.
 - **Upright screens** keep the classic side taskbar.
 
 ## Checks
 
 `hosts/linux/test/test_mantel_2026.py` (the looks, settings, Sunset, Game Mode in every look, the fallback,
-hearth-stats) and the Desktop Mode test (`desktop-test.yml`), which renders every look with Quick settings, the
-launcher, the dashboard and Settings › Appearance into `looks/mantel/` on the `ci/desktop-shots-*` branch.
+hearth-stats), `test_settings_redesign.py` (Settings' categories, every old page's home, the search index, the
+frame's fallback, the controller, opening writes nothing, the Sky default), `hosts/linux/test/test_mantel_bars_menus.py`
+(bar edges, reserved space and auto-hide, the rebuild and fallback, the five menus, settings only written when you
+change them, the handheld default, hearth-appmenu) and the Desktop Mode test (`desktop-test.yml`), which renders every
+look with Quick settings, the launcher, the dashboard and Settings (Personalization and Home) into `looks/mantel/`,
+each bar edge, the dock off, auto-hide, each app menu, search, the picker and other looks into `looks/mantel/bars/`,
+and the redesign's pages, search, controller and handheld layout into `settings-redesign/`, on the
+`ci/desktop-shots-*` branch.

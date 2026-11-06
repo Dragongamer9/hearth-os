@@ -302,6 +302,7 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <a href="#steam">Steam Game Mode</a>
       <a href="#sync">Hearth Sync</a>
       <a href="#mantel">Mantel</a>
+      <a href="#v15">What's new</a>
       <a href="#server">Home server</a>
       <a href="#updates">Updates</a>
       <a href="docs/">Docs</a>
@@ -318,13 +319,13 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   <div class="wrap">
     <div>
       <h1 class="h1">Steam Game Mode on the couch. Mantel on the desk.</h1>
-      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away. New in 1.4: your gaming PC is also your home server.</p>
+      <p class="lede">Hearth OS is a free, Debian-based OS for gaming PCs and handhelds. It plays in Steam Game Mode, the way SteamOS does, and Mantel, Hearth's own desktop, is one press away. New in 1.5: a brand-new Settings, your bar and app menu your way, and your gaming PC's AI and desktop from anywhere.</p>
       <div class="ctas">
         <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download Hearth OS</a>
-        <a class="btn line" href="#new">See what's new in 1.4</a>
+        <a class="btn line" href="#new">See what's new in 1.5</a>
       </div>
       <div class="status">
-        <span><span class="tag now">Out now</span>Hearth OS 1.4</span>
+        <span><span class="tag now">Out now</span>Hearth OS 1.5</span>
         <span><span class="tag next">Next update</span>in development</span>
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
@@ -477,11 +478,48 @@ footer .legal a{font-size:inherit;color:var(--muted)}
   </div>
 </section>
 
+<section id="v15">
+  <div class="wrap">
+    <div class="head">
+      <span class="tag now">New in 1.5</span>
+      <h2 class="h2" style="margin-top:14px">A whole new Settings, and a desktop that's yours</h2>
+      <p class="lede">Settings is rebuilt around a Home page and twelve tidy categories, the bar and app menu work the way you like, and your gaming PC's AI, pictures, voices and desktop are yours from anywhere through Tailscale.</p>
+    </div>
+    <div class="srv-hero">
+      <figure style="margin:0">
+        <div class="mantel-shot"><img src="img/s15-settings.webp" width="1200" height="728" loading="lazy" alt="The new Hearth Settings Home page: this PC with its name, Wi-Fi, Bluetooth, Updates and Hearth Link at a glance, recommended settings, storage, the home server and your look, with twelve categories on the left."></div>
+        <figcaption class="cap">The new Settings opens on Home.</figcaption>
+      </figure>
+      <ul>
+        <li><b>Twelve categories instead of 42 pages</b>System, Network &amp; internet, Bluetooth &amp; devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy &amp; security, Accessibility and Updates &amp; recovery.</li>
+        <li><b>Search finds the setting itself</b>Type "sleep" and go straight to the setting, with where it lives. Old page names still work.</li>
+        <li><b>Built for a controller</b>A big focus ring, button hints, LB / RB between categories, and a layout made for handhelds.</li>
+        <li><b>Your settings stay put</b>Every page keeps working as before, and opening a page never changes anything.</li>
+      </ul>
+    </div>
+    <div class="srv-shots">
+      <figure><img src="img/s15-bar-left.webp" width="1200" height="728" loading="lazy" alt="One main bar on the left edge of the screen, with Quick settings open."><figcaption><b>One main bar, any edge.</b> Put it at the bottom, top, left or right, or keep today's top bar and floating dock. Turn the floating app menu off to put your apps in the bar.</figcaption></figure>
+      <figure><img src="img/s15-menu-start.webp" width="1200" height="728" loading="lazy" alt="The Start screen app menu: big live tiles in groups for games, apps and today."><figcaption><b>Five app menus.</b> Hearth, Centred, Tiles, Start screen and Classic, each with search for apps, games, Settings and files, live tiles and controller hints.</figcaption></figure>
+      <figure><img src="img/s15-menu-classic.webp" width="1200" height="728" loading="lazy" alt="The Classic app menu: two columns with frequent apps and places, and a Shut down button."><figcaption><b>Classic, Tiles and more.</b> Pick yours in Settings › Personalization › Bar and dock. Picking Tiles or Classic asks before it changes your bar.</figcaption></figure>
+      <figure><img src="img/s15-remote.webp" width="1200" height="728" loading="lazy" alt="Use this PC from anywhere: the Moonlight address, the PIN box, who is connected and whether the connection is direct."><figcaption><b>Use this PC from anywhere.</b> One switch for a fast remote desktop with Moonlight over Tailscale: type Moonlight's PIN in Hearth, see who's connected and whether it's direct, and the PC stays awake meanwhile.</figcaption></figure>
+      <figure><img src="img/s15-services.webp" width="1200" height="728" loading="lazy" alt="Home server Services with AI image generation (ComfyUI) and AI voices (Kokoro) next to the media server and AI chat."><figcaption><b>AI pictures and voices.</b> ComfyUI and Kokoro join the home server: installed only when you ask, only for your Tailscale devices, and pictures pause while you play.</figcaption></figure>
+      <figure><img src="img/s15-ai-devices.webp" width="1200" height="728" loading="lazy" alt="AI devices: every Hearth device sharing its AI, in your order, with the Command Center address to copy."><figcaption><b>Share AI across your devices.</b> Each Hearth device can share its chat, voices, pictures and speech-to-text. The Hearth AI Command Center picks the best one, and skips a device while it's gaming.</figcaption></figure>
+      <figure><img src="img/s15-boot.webp" width="1200" height="728" loading="lazy" alt="Boot and startup: picture cards for every boot splash and startup animation, with a preview."><figcaption><b>See it before you pick it.</b> Every boot splash and startup animation has a preview in Settings, plus three new ones of each: Aurora, Starlight and Ember orbit.</figcaption></figure>
+      <figure><img src="img/s15-search.webp" width="1200" height="728" loading="lazy" alt="Settings search for sleep: single settings with where they live."><figcaption><b>Search everything.</b> Settings search finds single settings across every category.</figcaption></figure>
+      <figure><img src="img/s15-bar-dock.webp" width="1200" height="728" loading="lazy" alt="Personalization, Bar and dock: bar layout cards, placement, floating app menu and the app menu picker."><figcaption><b>Bar and dock, your way.</b> Layout, edge, auto-hide and app menu, all in one place.</figcaption></figure>
+    </div>
+    <div class="more" style="margin-top:clamp(36px,5vw,56px)">
+      <div><h3>Controller clicks everywhere</h3><p>RT and LT always click and right-click, also in Files, Settings and dialogs, and a click no longer slips off a window's close button.</p></div>
+      <div><h3>Tailscale sign-in that explains itself</h3><p>If signing in is refused, Hearth now says why instead of doing nothing.</p></div>
+    </div>
+  </div>
+</section>
+
 <section id="server" class="deep">
   <div class="wrap">
     <div class="head">
-      <span class="tag now">New in 1.4</span>
-      <h2 class="h2" style="margin-top:14px">Your gaming PC is now your home server</h2>
+      <span class="tag now">Since 1.4</span>
+      <h2 class="h2" style="margin-top:14px">Your gaming PC is also your home server</h2>
       <p class="lede">Share folders with every device in the house, reach them from anywhere through Tailscale, back everything up and run your own media server and AI, all from Settings &rsaquo; Home server, with a controller. The PC keeps playing games: big jobs wait while you play.</p>
     </div>
     <div class="srv-hero">
@@ -532,8 +570,27 @@ footer .legal a{font-size:inherit;color:var(--muted)}
 <section id="new">
   <div class="wrap">
     <div class="head">
-      <h2 class="h2">New in Hearth OS 1.4</h2>
-      <p class="lede">A free update for everyone on 1.0 to 1.3: Settings &rsaquo; Updates.</p>
+      <h2 class="h2">New in Hearth OS 1.5</h2>
+      <p class="lede">A free update for everyone on 1.0 to 1.4: Settings &rsaquo; Updates.</p>
+    </div>
+    <div class="more">
+      <div><h3>The new Settings</h3><p>A Home page, twelve categories, setting cards, search that finds single settings, and a layout made for controllers and handhelds. <a href="#v15">See it</a>.</p></div>
+      <div><h3>Your bar, any edge</h3><p>One main bar at the bottom, top, left or right, or the top bar and floating dock. The floating app menu can go into the bar.</p></div>
+      <div><h3>Five app menus</h3><p>Hearth, Centred, Tiles, Start screen and Classic, with live tiles, jump lists and search. New handhelds start on the Start screen.</p></div>
+      <div><h3>Use this PC from anywhere</h3><p>A fast remote desktop with Moonlight over Tailscale, paired from Hearth, Tailscale only.</p></div>
+      <div><h3>AI pictures, voices and sharing</h3><p>ComfyUI and Kokoro in the home server, and AI shared across your Hearth devices for the Hearth AI Command Center.</p></div>
+      <div><h3>Boot previews and new animations</h3><p>Preview every boot splash and startup animation, and three new of each: Aurora, Starlight and Ember orbit.</p></div>
+      <div><h3>Clicks with a controller</h3><p>RT and LT click everywhere, and the title bar's close button and dragging windows work every time.</p></div>
+      <div><h3>Still off until you choose</h3><p>Every new server and service stays off until you turn it on, and Game Mode starts whatever they do.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="recent">
+  <div class="wrap">
+    <div class="head">
+      <h2 class="h2">Recently, in Hearth OS 1.4</h2>
+      <p class="lede">Still new if you're coming from 1.3.</p>
     </div>
     <div class="more">
       <div><h3>Home server</h3><p>Settings &rsaquo; Home server turns your gaming PC into a home server: shared folders, Tailscale, drives and snapshots, backups, people, alerts and power, services, gaming, family, AI, safety, and files &amp; links. <a href="#server">See it</a>.</p></div>
@@ -542,23 +599,6 @@ footer .legal a{font-size:inherit;color:var(--muted)}
       <div><h3>Settings that fit</h3><p>Long explanations in Settings wrap before the switch instead of running under it.</p></div>
       <div><h3>The dock gets out of the way</h3><p>Coming back from Game Mode, an auto-hiding dock no longer keeps the bottom of the screen reserved, so windows fill the whole screen again.</p></div>
       <div><h3>Still off until you choose</h3><p>Every new server and service in 1.4 stays off until you turn it on, and Game Mode starts whatever they do.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="recent">
-  <div class="wrap">
-    <div class="head">
-      <h2 class="h2">Recently, in Hearth OS 1.3</h2>
-      <p class="lede">Still new if you're coming from 1.2.</p>
-    </div>
-    <div class="more">
-      <div><h3>Mantel 2026</h3><p>The desktop gets a facelift: floating top islands with a clock that shows what's playing, a floating dock, and a big Game Mode button that's always there.</p></div>
-      <div><h3>Eight looks</h3><p>Hearth, Steam-style, Gaming, Zen, Glass, Synthwave, Cabin and Console, picked from picture cards in Settings &rsaquo; Appearance. Choosing one changes nothing else.</p></div>
-      <div><h3>Quick settings and a dashboard</h3><p>Big tiles and pill sliders, Bluetooth and Do not disturb, plus a notification centre with your calendar, media, weather and system stats.</p></div>
-      <div><h3>Search everything</h3><p>The launcher finds apps, games and Settings pages, and Settings has its own search.</p></div>
-      <div><h3>Sunset mode</h3><p>Light by day, dark by night, on times you choose. Off unless you turn it on.</p></div>
-      <div><h3>Hearth Eras</h3><p>A new plugin that dresses Steam Game Mode in home screens inspired by past console eras. Steam's own look stays the default.</p></div>
     </div>
   </div>
 </section>

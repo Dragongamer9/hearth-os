@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Hearth (Ember orbit)
+Description=Hearth boot splash preset: three embers circling the Hearth flame
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/hearth-orbit
+ScriptFile=/usr/share/plymouth/themes/hearth-orbit/hearth-orbit.script

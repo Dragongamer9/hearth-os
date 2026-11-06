@@ -41,7 +41,7 @@ class Fixture:
             shutil.copytree(THEME, self.own / 'usr/share/hearth/grub-theme')
             (self.own / 'usr/share/hearth/grub-theme/hearth-regular-18.pf2').write_bytes(b'FILE\x00\x00\x00\x04PFF2')
         if presets:
-            for t in ('hearth', 'hearth-steam', 'hearth-minimal'):
+            for t in sorted(p.name for p in PLY.iterdir() if (p / f'{p.name}.plymouth').is_file()):
                 shutil.copytree(PLY / t, self.own / 'usr/share/plymouth/themes' / t)
         self.boot = self.d / 'boot'
         (self.boot / 'loader/entries').mkdir(parents=True)
@@ -199,11 +199,17 @@ class Splash(unittest.TestCase):
             ls = self.kernel_lines(f)
             self.assertEqual(len(ls), 2)
             self.assertTrue(all(l.endswith(' plymouth.splash=hearth-steam') for l in ls), ls)
+            # The presets added after 1.1 the same way.
+            for t in ('hearth-aurora', 'hearth-starlight', 'hearth-orbit'):
+                f.splash.write_text(t + '\n')
+                f.run()
+                ls = self.kernel_lines(f)
+                self.assertTrue(all(l.endswith(' plymouth.splash=' + t) for l in ls), ls)
 
     def test_unknown_or_missing_preset_adds_nothing(self):
         with tempfile.TemporaryDirectory() as d:
             f = Fixture(d)
-            for v in ('evil; reboot', 'hearth-steam rd.break', 'nope'):
+            for v in ('evil; reboot', 'hearth-steam rd.break', 'nope', 'hearth-aurora-x', 'hearth-orbit init=/bin/sh'):
                 f.splash.write_text(v + '\n')
                 f.run()
                 self.assertTrue(all('plymouth.splash' not in l and 'rd.break' not in l for l in self.kernel_lines(f)), v)
@@ -216,7 +222,7 @@ class Splash(unittest.TestCase):
 
 class Presets(unittest.TestCase):
     def test_each_theme_complete(self):
-        for t in ('hearth', 'hearth-steam', 'hearth-minimal'):
+        for t in ('hearth', 'hearth-steam', 'hearth-minimal', 'hearth-aurora', 'hearth-starlight', 'hearth-orbit'):
             conf = (PLY / t / f'{t}.plymouth').read_text()
             self.assertIn(f'ScriptFile=/usr/share/plymouth/themes/{t}/{t}.script', conf)
             self.assertIn(f'ImageDir=/usr/share/plymouth/themes/{t}', conf)
@@ -245,6 +251,16 @@ class StartupMovie(unittest.TestCase):
         (self.drm / 'card0-eDP-1').mkdir(parents=True)
         (self.drm / 'card0-eDP-1/status').write_text('connected\n')
         (self.drm / 'card0-eDP-1/modes').write_text('800x1280\n')
+        # The environment goes back as it was afterwards (other tests in the same run read it).
+        saved = {k: os.environ.get(k) for k in ('HOME', 'HEARTH_DRM', 'HEARTH_MOVIES', 'XDG_CONFIG_HOME')}
+
+        def restore():
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.addCleanup(restore)
         os.environ.update(HOME=str(self.home), HEARTH_DRM=str(self.drm), HEARTH_MOVIES=str(MOVIES))
         os.environ.pop('XDG_CONFIG_HOME', None)
         self.m = load_look()
@@ -264,7 +280,7 @@ class StartupMovie(unittest.TestCase):
             finally:
                 sys.stdout = old
         self.assertEqual((self.movies / 'deck_startup.webm').read_bytes(), (MOVIES / 'hearth-flame-16x10.webm').read_bytes())
-        for mid in ('flame', 'sweep', 'reveal', 'embers'):
+        for mid in self.m.MOVIE_IDS:
             self.assertTrue((self.movies / f'hearth-{mid}.webm').is_file())
         # Back to Steam's own: our deck_startup.webm goes, the listed ones stay.
         self.m.CHOICE and pathlib.Path(self.m.CHOICE).write_text('steam\n')
@@ -291,7 +307,8 @@ class StartupMovie(unittest.TestCase):
         self.assertFalse((self.home / '.steam').exists())
 
     def test_movies_are_vp9_webm_in_both_aspects(self):
-        for mid in ('flame', 'sweep', 'reveal', 'embers'):
+        self.assertEqual(len(self.m.MOVIE_IDS), 7)
+        for mid in self.m.MOVIE_IDS:
             for a in ('16x9', '16x10'):
                 p = MOVIES / f'hearth-{mid}-{a}.webm'
                 self.assertTrue(p.is_file(), p)

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Opens Hearth Settings: Desktop Mode's own settings app (part of the Quickshell desktop), optionally at a
-# page (wifi, bluetooth, sound, display, appearance, power, controller, keyboard, printers, datetime, defaults,
-# clipboard, users, signin, browser, claude, updates, about, remote, games, storage, steam). Anywhere
+# page (any id in hosts/linux/desktop/shell/settings-pages.js: home, wifi, bluetooth, display, appearance, power,
+# keyboard, gaming, hs-overview, updates...; old ids still work; page:part opens at a part, e.g. keyboard:osk). Anywhere
 # the Hearth desktop isn't running, opens the Hearth app's settings instead.
 SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
 if command -v quickshell >/dev/null 2>&1; then

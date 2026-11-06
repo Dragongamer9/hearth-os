@@ -765,11 +765,10 @@ class OffByDefault3(unittest.TestCase):
         self.assertIn('test_hearth_home_server_3.py', hsy)
 
     def test_pages_are_registered_and_only_talk_to_the_helper(self):
-        s = (SHELL / 'SettingsApp.qml').read_text()
+        s = (SHELL / 'settings-pages.js').read_text()   # Hearth Settings' page registry (the redesign)
         for pid, f in (('hs-files', 'SetHomeFiles.qml'), ('hs-services', 'SetHomeServices.qml'), ('hs-gaming', 'SetHomeGaming.qml'),
                        ('hs-family', 'SetHomeFamily.qml'), ('hs-ai', 'SetHomeAI.qml'), ('hs-safety', 'SetHomeSafety.qml')):
-            self.assertIn('"%s": "%s"' % (pid, f), s)
-            self.assertIn('"%s": "Home server"' % pid, s)
+            self.assertIn('{ id: "%s", file: "%s", cat: "hs"' % (pid, f), s)
             qml = (SHELL / f).read_text()
             self.assertIn('helper: "hearth-home-server"', qml)
             self.assertNotIn('FileView', qml)

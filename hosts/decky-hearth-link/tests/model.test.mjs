@@ -127,4 +127,13 @@ test("home server tile: shown only on a home server, and its lines", () => {
   assert.equal(M.aiLine(q({ ai: { on: true, state: "unloaded" } })), "AI service: models unloaded while you play");
   assert.equal(M.aiLine(q({ ai: { on: true, state: "paused" } })), "AI service: stopped while you play");
   assert.equal(M.aiLine(q({ ai: { on: true, state: "ready" } })), "AI service: ready");
+  assert.equal(M.aiAppsLine(q()), "", "no AI pictures or voices (older helper)");
+  assert.equal(M.aiAppsLine(q({ pictures: { on: false, state: "off" }, voices: { on: false, state: "off" } })), "");
+  assert.equal(M.aiAppsLine(q({ pictures: { on: true, state: "paused" } })), "AI pictures: stopped while you play");
+  assert.equal(M.aiAppsLine(q({ pictures: { on: true, state: "paused" }, voices: { on: true, state: "ready" } })),
+    "AI pictures: stopped while you play · AI voices: ready");
+  assert.equal(M.remoteLine(q()), "", "no remote desktop (older helper)");
+  assert.equal(M.remoteLine(q({ remote: { on: true, streaming: false, who: "", since: 0 } })), "");
+  assert.equal(M.remoteLine(q({ remote: { on: true, streaming: true, who: "Work laptop", since: 1 } })), "Work laptop is using this PC through Moonlight: it sees and controls this screen");
+  assert.equal(M.homeShown(q({ setupDone: false, shares: 0, backups: { count: 0, lastOk: 0, waiting: [], failed: [], running: false }, remote: { on: true, streaming: true, who: "", since: 0 } })), true, "shown while someone streams");
 });

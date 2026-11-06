@@ -1,0 +1,11 @@
+# "Share this device's AI" (docs/AI-SHARE.md): loads Hearth's rule that keeps port 8189 to this device and Tailscale
+# (the nftables table inet hearth_ai_share, from /etc/hearth/ai-share.nft). Started only by its timer, which is enabled
+# only while sharing is on; with no rule file it doesn't start. Never part of starting the PC, the session or Game Mode.
+[Unit]
+Description=Hearth: the AI sharing address only through Tailscale (firewall rule)
+ConditionPathExists=/etc/hearth/ai-share.nft
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-ai-share-helper firewall-load
+TimeoutStartSec=30

@@ -1,6 +1,6 @@
 {
   "name": "decky-hearth-link",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Hearth Link in Steam Game Mode: your Hearth devices, games sent between them, Hearth Storage and pairing",
   "type": "module",
   "scripts": {

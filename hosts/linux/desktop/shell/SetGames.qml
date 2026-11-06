@@ -28,12 +28,12 @@ SetPage {
     }
 
     SetHeader { text: "Your games" }
-    SetRow { icon: "grid"; title: "Library sources"; sub: "Steam, Epic, GOG and emulators: which ones Hearth lists, add a game by hand, look for games again"; onActivated: core.openPage("sources", "Opening Library sources in the Hearth app…") }
-    SetRow { icon: "update"; title: "Downloads"; sub: "Epic and GOG installs: pause, carry on, cancel"; onActivated: core.openPage("downloads", "Opening Downloads in the Hearth app…") }
-    SetRow { icon: "store"; title: "Store"; sub: "Deals, new games and search for Steam, GOG, Epic and Xbox"; onActivated: core.openPage("shop", "Opening the Store in the Hearth app…") }
-    SetRow { icon: "pad"; title: "Recomps"; sub: "Native PC versions of classic console games: install and update them"; onActivated: core.openPage("recomps", "Opening Recomps in the Hearth app…") }
-    SetRow { icon: "folder"; title: "Import"; sub: "Games and files from other drives and systems"; onActivated: core.openPage("import", "Opening Import in the Hearth app…") }
-    SetRow { icon: "desktops"; title: "Get a game from another Hearth"; sub: "Copy an installed game from one of your Hearth devices (Settings › Hearth Link pairs them)"; onActivated: core.openPage("library", "Opening your library in the Hearth app: Get from another Hearth…") }
+    SetRow { chevron: true; icon: "grid"; title: "Library sources"; sub: "Steam, Epic, GOG and emulators: which ones Hearth lists, add a game by hand, look for games again"; onActivated: core.openPage("sources", "Opening Library sources in the Hearth app…") }
+    SetRow { chevron: true; icon: "update"; title: "Downloads"; sub: "Epic and GOG installs: pause, carry on, cancel"; onActivated: core.openPage("downloads", "Opening Downloads in the Hearth app…") }
+    SetRow { chevron: true; icon: "store"; title: "Store"; sub: "Deals, new games and search for Steam, GOG, Epic and Xbox"; onActivated: core.openPage("shop", "Opening the Store in the Hearth app…") }
+    SetRow { chevron: true; icon: "pad"; title: "Recomps"; sub: "Native PC versions of classic console games: install and update them"; onActivated: core.openPage("recomps", "Opening Recomps in the Hearth app…") }
+    SetRow { chevron: true; icon: "folder"; title: "Import"; sub: "Games and files from other drives and systems"; onActivated: core.openPage("import", "Opening Import in the Hearth app…") }
+    SetRow { chevron: true; icon: "desktops"; title: "Get a game from another Hearth"; sub: "Copy an installed game from one of your Hearth devices (Settings › Hearth Link pairs them)"; onActivated: core.openPage("library", "Opening your library in the Hearth app: Get from another Hearth…") }
 
     SetHeader { text: "Apps for your games" }
     SetRow { icon: "grid"; title: "Mods"; sub: "Install mods and Nexus or Wabbajack modlists, turn them on and off, choose their order"; onActivated: page.app(["hearth-mods"], "Mods") }

@@ -125,6 +125,32 @@ this user only): `state`, `overlay`, `test`, `status`, `type`, `key`; events `gu
 - `tools/ui-check.js`: the keyboard over a game, and the editor in Quick Access (a layer, a double press and chord,
   a flick stick, saved, the overview).
 
+## Desktop Mode's controller mouse (hearth-pad): clicks
+
+Hearth Classic's desktop (Mantel) doesn't use Hearth Input: `hosts/linux/desktop/shell/hearth-pad` is its controller
+(right stick pointer, A / RT click and hold to drag, X / LT right-click, L3 middle-click, D-pad arrows). How its clicks
+behave since the owner's report that the pointer moved but clicks "fail in almost all apps", worst on the title bar
+(closing or moving a window):
+
+- **Clicks always reach the pointer**, also in a menu or window that takes the keys (`keys {on}`: Hearth Files,
+  Settings, Task Manager, Apps, the .deb installer, every Open / Save dialog, Hearth's menus). There A is Enter, B Esc
+  and the D-pad the arrows as before, but RT / LT now click and right-click, L3 middle-clicks, and once the right stick
+  has moved the pointer A and X click too (hold A to drag) until the D-pad is used again. Before, RT / LT did nothing
+  there and A stayed Enter, so the pointer moved over the close button but couldn't press it.
+- **The pointer holds still for 0.2 s when a click goes down** (`CLICK_SETTLE`), so a thumb still on the right stick
+  (pulling RT) can't move it off a small button between press and release; held longer, the pointer moves again with
+  the button down, which drags (labwc's Drag on the title bar moves the window).
+- **The keys mode can't stick**: Pad.qml sends `keys {on, why, ttl: 12}` and repeats it every 4 s while it's on, says it
+  again with every focus change (`focus {app, title, keys}`), and hearth-pad ends it by itself when it isn't repeated.
+  Shells that don't send a ttl (COSMIC, GNOME) keep the old behaviour.
+- **A quick tap is never lost**: a press and release read in the same batch still go out as a click.
+- `~/.local/share/nimbus/pad.log` says when the keys mode goes on or off and why (`keys: on [window: org.kde.dolphin
+  Home]`), and the 30 s line counts clicks and names the keys mode and the keyboard / Hearth menu mode.
+
+Tests: `hosts/linux/test/test_hearth_pad_clicks.py` (the uinput devices' buttons and SYN frames, a tap with stick drift
+on a close button, press-hold-move-release drags, the keys mode's clicks, lapse and focus resets, ordinary apps not taken
+for controller apps, quick taps).
+
 ## Needs a real device
 
 Gyro modes and flick stick feel (the turn calibration), Bluetooth pads' Guide (KEY_HOMEPAGE), the Guide + X chord with

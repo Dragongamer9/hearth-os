@@ -90,12 +90,19 @@ def sunset_mode(d, now=None):
     return 'light' if day else 'dark'
 
 
+SKY = '#66c0f4'   # the Sky accent preset (palettes.json "accents")
+
+
 def choice():
     pal = load(os.path.join(HERE, 'palettes.json'), {})
     d = load(os.path.join(DATA, 'nimbus', 'desktop.json'), {})
     look = d.get('look') if d.get('look') in pal and not str(d.get('look')).startswith('_') else 'steam'
     mode = sunset_mode(d) or ('light' if d.get('mode') == 'light' else 'dark')
     accent = d.get('accent') if valid(d.get('accent')) else ''
+    # A new install's desktop.json (from /etc/skel) says "defaults": 2: its Steam-style look starts with the Sky accent.
+    # Only a default, worked out when read (Theme.qml does the same); nothing is written.
+    if not accent and look == 'steam' and isinstance(d.get('defaults'), int) and not isinstance(d.get('defaults'), bool) and d.get('defaults') >= 2:
+        accent = SKY
     if not accent and look == 'hearth':
         a = ((load(os.path.join(DATA, 'nimbus', 'library.json'), {}) or {}).get('profile') or {}).get('accent')
         accent = a if valid(a) else ''

@@ -33,13 +33,13 @@ SetPage {
         sub: "Home › Family, read & write for you and every person you added (People): holiday photos, school things, shared notes and lists"
         onActivated: act.run(["folder-share", "family"], () => { page.say("Family folder shared ✓ Everyone in People can open it"); page.refresh(); }, e => page.say(e, true))
     }
-    SetRow {
+    SetRow { chevron: true;
         visible: !!page.f && !!page.f.family
         icon: "folder"; title: "Family folder"
         sub: page.f && page.f.family ? page.f.family.path + " · " + (page.f.family.write ? "read & write" : "read only") + " · " + (Object.keys(page.f.family.people || {}).length ? "you, " + Object.keys(page.f.family.people).join(", ") : "only you so far") : ""
         onActivated: SettingsNav.openPage("hs-shares")
     }
-    SetRow {
+    SetRow { chevron: true;
         icon: "user"; title: "People"
         sub: "Family and friends with their own password and only the folders you pick"
         value: page.f && page.f.people.length ? page.f.people.length + (page.f.people.length === 1 ? " person" : " people") : ""

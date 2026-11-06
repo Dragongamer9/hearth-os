@@ -118,7 +118,7 @@ SetPage {
     // ------------------------------------------------ text, contrast, pointer
     SetHeader { text: "Text and pointer" }
     SetChoice {
-        title: "Text size"
+        icon: "file"; title: "Text size"
         sub: "For apps and window titles. Apps open now use it after you sign out and in again"
         options: [{ value: 1, label: "Default" }, { value: 1.15, label: "Larger" }, { value: 1.3, label: "Large" }, { value: 1.5, label: "Largest" }]
         current: page.s.textScale || 1
@@ -136,6 +136,10 @@ SetPage {
         checked: !!page.s.largePointer
         onToggled: v => page.change({ largePointer: v }, true)
     }
+
+    // ------------------------------------------------ motion (moved here from Appearance: the same setting, Settings.reduceMotion)
+    SetHeader { text: "Motion" }
+    SetSwitch { icon: "motion"; title: "Reduce motion"; sub: "Still wallpapers and fewer animations (animated ones also hold still on battery and behind fullscreen games)"; checked: Settings.reduceMotion; onToggled: v => Settings.reduceMotion = v }
 
     // ------------------------------------------------ More
     // (The archived Game Mode's own zoom, gameZoom, isn't offered: Steam Game Mode has its own magnifier in Steam's

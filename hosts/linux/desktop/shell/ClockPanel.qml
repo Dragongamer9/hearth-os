@@ -146,12 +146,16 @@ PanelWindow {
     Item {
         id: panel
         readonly property bool wide: root.width >= 1000 && !root.portraitBar
-        readonly property bool fromTop: DeskState.topInset > 0
-        width: wide ? Math.min(1180, root.width - 24) : Math.min(400, root.width - 24)
-        readonly property int room: root.height - 24 - (fromTop ? DeskState.topInset + DeskState.bottomInset : (root.portraitBar ? 0 : root.barSize))
+        // Under the top bar's clock; over a bottom bar's clock (bottom right); beside a left or right bar; above the
+        // classic taskbar's clock, as before, when that's the bar in use.
+        readonly property bool fromTop: DeskState.topInset > 0 || (!DeskState.classicBar && DeskState.barEdge !== "bottom")
+        readonly property bool side: !DeskState.classicBar && (DeskState.barEdge === "left" || DeskState.barEdge === "right")
+        width: wide ? Math.min(1180, root.width - 24 - DeskState.leftInset - DeskState.rightInset) : Math.min(400, root.width - 24)
+        readonly property int room: root.height - 24 - (fromTop || !DeskState.classicBar ? DeskState.topInset + DeskState.bottomInset : (root.portraitBar ? 0 : root.barSize))
         height: Math.min(room, content.implicitHeight + 40)
-        x: fromTop ? (root.width - width) / 2 : root.portraitBar ? root.barSize + 6 : root.width - width - 12
-        y: (fromTop ? DeskState.topInset + 2 : root.height - height - (root.portraitBar ? 12 : root.barSize + 6)) + (root.shown ? 0 : (fromTop ? -16 : 24))
+        x: side ? (DeskState.barEdge === "left" ? DeskState.leftInset + 6 : root.width - width - DeskState.rightInset - 6)
+            : fromTop ? (root.width - width) / 2 : root.portraitBar ? root.barSize + 6 : root.width - width - 12
+        y: (fromTop ? Math.max(12, DeskState.topInset + 2) : root.height - height - (root.portraitBar ? 12 : (DeskState.classicBar ? root.barSize : DeskState.bottomInset) + 6)) + (root.shown ? 0 : (fromTop ? -16 : 24))
         opacity: root.shown ? 1 : 0
         Behavior on y { NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: Theme.quick } }

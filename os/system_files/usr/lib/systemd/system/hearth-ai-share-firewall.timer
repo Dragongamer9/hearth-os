@@ -1,0 +1,11 @@
+# "Share this device's AI": loads its firewall rule 15 seconds after the PC starts and again every 5 minutes (in case
+# something removed it). Disabled in the image and while sharing is off.
+[Unit]
+Description=Hearth: the AI sharing firewall rule, after start and every 5 minutes
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

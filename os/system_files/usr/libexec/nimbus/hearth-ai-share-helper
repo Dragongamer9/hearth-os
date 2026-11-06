@@ -1,0 +1,128 @@
+#!/usr/bin/python3
+"""hearth-ai-share-helper: the root half of "Share this device's AI" (docs/AI-SHARE.md). Run by the Mantel helper
+hearth-ai-share through pkexec (/usr/share/polkit-1/rules.d/49-hearth-storage.rules: the person at the device, local and
+active, in the wheel group, without a prompt), and by hearth-ai-share-firewall.service (root, from its timer).
+
+  firewall on     the rule that keeps port 8189 (the AI sharing address) to this device and Tailscale: Hearth's own
+                  nftables table inet hearth_ai_share (lo and tailscale0 let in, TCP 8189 dropped from everything
+                  else), written to /etc/hearth/ai-share.nft, loaded now and again by hearth-ai-share-firewall.timer
+                  (15 s after the PC starts, then every 5 minutes, enabled only while sharing is on)
+  firewall off    the table, its file and the timer go
+  firewall-load   the timer's run: the table loaded again from its file (nothing when there's no file)
+
+It only ever writes its own table and file, and /run/hearth/ai-share-firewall.json (whether the rule is loaded, which
+the sharing service reads before it listens on the Tailscale address). Nothing goes through a shell; no argument
+names a path. One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+NFT_FILE = '/etc/hearth/ai-share.nft'
+NFT_TABLE = 'hearth_ai_share'
+STATE = '/run/hearth/ai-share-firewall.json'
+TIMER = 'hearth-ai-share-firewall.timer'
+PORT = 8189
+TAILSCALE_IFACE = 'tailscale0'
+
+
+def run(args):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+
+
+def which(name):
+    return shutil.which(name, path='/usr/sbin:/usr/bin:/sbin:/bin')
+
+
+def write(path, text, mode=0o644):
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    tmp = '%s.tmp-%d' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def remove(path):
+    try:
+        os.remove(path)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def nft_text():
+    """Port 8189 only through Tailscale (and this device itself). A table of Hearth's own: a drop here is final whatever
+    other firewall runs, and deleting the table takes the rule away again."""
+    return '\n'.join([
+        '#!/usr/sbin/nft -f',
+        '# Hearth: "Share this device\'s AI" answers only this device and Tailscale (Settings > Home server > AI devices).',
+        '# Written by hearth-ai-share-helper; turning sharing off deletes this table.',
+        'table inet %s' % NFT_TABLE,
+        'delete table inet %s' % NFT_TABLE,
+        'table inet %s {' % NFT_TABLE,
+        '\tchain input {',
+        '\t\ttype filter hook input priority -10; policy accept;',
+        '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE,
+        '\t\ttcp dport %d counter drop' % PORT,
+        '\t}', '}', ''])
+
+
+def state(ok, note=''):
+    write(STATE, json.dumps({'ok': ok, 'at': int(time.time()), 'note': note}) + '\n')
+
+
+def load():
+    if not os.path.exists(NFT_FILE):
+        remove(STATE)
+        return {'ok': True, 'loaded': False}
+    if not which('nft'):
+        state(False, 'nftables (nft) isn\'t installed')
+        return {'ok': False, 'error': 'nftables (nft) isn\'t installed'}
+    code, out = run([which('nft'), '-f', NFT_FILE])
+    state(code == 0, '' if code == 0 else out.strip()[:200])
+    return {'ok': code == 0, 'loaded': code == 0} if code == 0 else {'ok': False, 'error': 'The firewall rule didn\'t load: ' + out.strip()[:200]}
+
+
+def firewall(on):
+    if on:
+        write(NFT_FILE, nft_text())
+        res = load()
+        run(['systemctl', 'enable', '--now', TIMER])
+        return res
+    had = remove(NFT_FILE)
+    if which('nft'):
+        run([which('nft'), 'delete', 'table', 'inet', NFT_TABLE])
+    remove(STATE)
+    run(['systemctl', 'disable', '--now', TIMER])
+    return {'ok': True, 'removed': had}
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        return {'ok': False, 'error': 'needs root (pkexec)'}
+    if argv == ['firewall', 'on']:
+        return firewall(True)
+    if argv == ['firewall', 'off']:
+        return firewall(False)
+    if argv == ['firewall-load']:
+        return load()
+    return {'ok': False, 'error': 'usage: hearth-ai-share-helper firewall on|off | firewall-load'}
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv[1:])))
+    except OSError as e:
+        print(json.dumps({'ok': False, 'error': str(e)}))
+        sys.exit(1)

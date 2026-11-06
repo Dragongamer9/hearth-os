@@ -125,7 +125,7 @@ jobs:
             # As on Anatase: Cisco's openh264 (Fedora's ffmpeg-free and GStreamer encode H.264 with it).
             dnf -y -q install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 openh264 >/dev/null || true
             dnf -y -q install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 git python3 webkit2gtk4.1 gtk3 dbus-daemon ffmpeg-free wf-recorder labwc xorg-x11-server-Xwayland foot wlr-randr dejavu-sans-mono-fonts \
-              pipewire pipewire-pulseaudio wireplumber pulseaudio-utils pipewire-utils gstreamer1-plugins-good gstreamer1-plugins-bad-free \
+              dbus-daemon dbus-tools util-linux coreutils pipewire pipewire-pulseaudio wireplumber pulseaudio-utils pipewire-utils gstreamer1-plugins-good gstreamer1-plugins-bad-free \
               gstreamer1-plugin-openh264 slurp procps-ng libnotify v4l-utils qrencode curl >/dev/null
             # Game Mode: gamescope (headless, on Mesa's software Vulkan) and what reads its PipeWire stream, as on Anatase.
             if [ "${{ matrix.kind }}" = gamescope ]; then
@@ -153,6 +153,11 @@ jobs:
           chmod +x bin/* hosts/hearth-media/ci/session.sh
           mkdir -p /tmp/out && chmod 777 /tmp/out
           ldd bin/hearth-recorder | grep 'not found' && echo "::warning::missing libraries above"
+          # A program the session needs that this edition's packages didn't bring (dnf --skip-unavailable says nothing)
+          # shows by name: without it every test ends with exit code 127 and no logs.
+          need='dbus-run-session runuser timeout pipewire wireplumber pipewire-pulse pactl ffmpeg'
+          case "${{ matrix.kind }}" in wayland) need="$need labwc";; gamescope) need="$need gamescope";; x11) need="$need Xvfb";; esac
+          for c in $need; do command -v "$c" >/dev/null || echo "::error title=missing in ${{ matrix.name }}::$c isn't installed ($(. /etc/os-release; echo $PRETTY_NAME))"; done
           set +e
           status=0
           for t in hosts/hearth-recorder/tests/e2e.sh hosts/hearth-camera/tests/e2e.sh hosts/hearth-share/tests/e2e.sh; do

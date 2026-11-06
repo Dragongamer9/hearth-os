@@ -1,4 +1,4 @@
-// Hearth Settings › Home server › Overview (docs/HOME-SERVER.md): this PC as a home server for your other devices.
+// Hearth Settings › Home server (the category's landing; was Home server › Overview; docs/HOME-SERVER.md): this PC as a home server for your other devices.
 // Light mode while you play, what's shared, Tailscale and the drives at a glance, the setup steps, and "Show hidden
 // items" (things for the Hearth AI Command Center, cameras or a UPS show only once one was seen; display only: hiding
 // never turns anything off). Everything goes through hearth-home-server, which saves only what you change.
@@ -32,8 +32,9 @@ SetPage {
     readonly property var svc: st ? (st.services || {}) : ({})
     readonly property bool aiShown: !!st && !!st.seen && !!st.seen.commandCenter && (st.seen.commandCenter.shown || (!!svc.ai && svc.ai.on))
     function servicesBig() {
-        const on = [svc.media && svc.media.on ? "Media" : "", svc.web && svc.web.on ? "Web" : "", svc.ai && svc.ai.on ? "AI" : ""].filter(x => x);
-        return { big: on.length ? String(on.length) + " on" : "None", sub: on.length ? on.join(" · ") : "media server, files on the web, AI", good: on.length > 0 };
+        const on = [svc.media && svc.media.on ? "Media" : "", svc.web && svc.web.on ? "Web" : "", svc.ai && svc.ai.on ? "AI" : "",
+                    svc.pictures && svc.pictures.on ? "Pictures" : "", svc.voices && svc.voices.on ? "Voices" : ""].filter(x => x);
+        return { big: on.length ? String(on.length) + " on" : "None", sub: on.length ? on.join(" · ") : "media server, files on the web, AI pictures and voices", good: on.length > 0 };
     }
     function backupBig() {
         const jobs = st ? (st.backups || []) : [];
@@ -52,11 +53,30 @@ SetPage {
     SetJob { id: act; helper: "hearth-home-server" }
     SetJob { id: drives; helper: "hearth-home-server" }
 
+    // The redesign's landing for Home server (always its own category): a banner when something needs a look, four
+    // numbers, then its pages in four groups. Tailscale's home is Network & internet now (a link card here); AI chat is
+    // under Services.
+    readonly property var attention: {
+        const out = [];
+        if (!st || !cfg) return out;
+        const failed = (st.backups || []).filter(j => j.state && j.state.last && j.state.last.ok === false);
+        if (failed.length) out.push({ text: "The backup " + failed.map(j => "\u201c" + j.name + "\u201d").join(", ") + " didn't finish" + ((failed[0].state.last || {}).error ? ": " + failed[0].state.last.error : ""), page: "hs-backups", action: "Open Backups" });
+        if (svc.guardTripped) out.push({ text: "The ransomware guard stopped writes to your shares", page: "hs-safety", action: "Open Safety" });
+        for (const a of alertList()) out.push({ text: a.text || "An alert", page: "hs-alerts", action: "Open Alerts" });
+        if (health().bad) out.push({ text: "A drive's health check failed", page: "hs-drives", action: "Open Drives" });
+        return out;
+    }
+    readonly property var backupsChip: {
+        const jobs = st ? (st.backups || []) : [];
+        const failed = jobs.filter(j => j.state && j.state.last && j.state.last.ok === false).length;
+        return failed ? { chip: failed + " failed", kind: "warn" } : jobs.length ? { value: backupBig().big } : { value: "None yet" };
+    }
     Text {
         Layout.fillWidth: true
-        text: page.st && page.st.host ? "This PC (\"" + page.st.host + "\") shares folders with your other devices: Windows PCs, phones, TVs and Hearth devices, at home and anywhere through Tailscale."
-            : "This PC shares folders with your other devices: Windows PCs, phones, TVs and Hearth devices."
-        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        Layout.bottomMargin: 12
+        text: page.st && page.st.host ? "This PC (\"" + page.st.host + "\") shares folders, media and AI with your other devices: Windows PCs, phones, TVs and Hearth devices, at home and anywhere through Tailscale."
+            : "This PC shares folders, media and AI with your other devices: Windows PCs, phones, TVs and Hearth devices, at home and through Tailscale."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
     }
     Text {
         visible: !!page.st && (!!page.st.error || page.st.helper === false)
@@ -64,13 +84,20 @@ SetPage {
         text: page.st && page.st.error ? page.st.error : "Parts of Home server come with the Hearth OS update that brings it (Samba, Tailscale): what you choose here is kept."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
-    SetSwitch {
-        visible: !!page.cfg
-        icon: "sleep"; title: "Light mode while you play"
-        sub: "When Game Mode or a game runs, big jobs (backups, snapshots, emptying recycle bins) wait. Sharing keeps working. Also in Game Mode's Quick Access (Hearth Link)."
-             + (page.st && page.st.playing && page.cfg && page.cfg.lightMode ? " · On now: you're playing" : "")
-        checked: !!page.cfg && page.cfg.lightMode !== false
-        onToggled: v => page.set("lightMode", v ? "on" : "off")
+    SetBanner {
+        visible: page.attention.length > 0
+        Layout.bottomMargin: 9
+        title: page.attention.length === 1 ? "1 thing needs a look" : page.attention.length + " things need a look"
+        sub: page.attention.length ? page.attention[0].text : ""
+        action: page.attention.length ? page.attention[0].action : ""
+        onActivated: if (page.attention.length) SettingsNav.openPage(page.attention[0].page)
+    }
+    SetRow {
+        visible: !!page.cfg && !page.cfg.setupDone
+        chevron: true
+        icon: "check"; title: "Set up your home server"
+        sub: "A few steps, all with the controller: this PC's name, Tailscale, your first shared folder and your first backup"
+        onActivated: SettingsNav.openPage("hs-setup")
     }
 
     // At a glance
@@ -78,153 +105,105 @@ SetPage {
         visible: !!page.cfg
         Layout.fillWidth: true
         Layout.topMargin: 6
-        columns: page.width > 760 ? 3 : 2
+        Layout.bottomMargin: 4
+        columns: page.width > 860 ? 4 : 2
         columnSpacing: 10; rowSpacing: 10
         Repeater {
             model: page.cfg ? [
-                { label: "Storage used", big: page.st.usage.total ? page.size(page.st.usage.used) + " / " + page.size(page.st.usage.total) : "—",
-                  sub: page.st.usage.total ? "on the drives you share from" : "nothing shared yet", frac: page.st.usage.total ? page.st.usage.used / page.st.usage.total : 0 },
+                { label: "Storage used", big: page.st.usage.total ? page.size(page.st.usage.used) : "—", of: page.st.usage.total ? "of " + page.size(page.st.usage.total) : "",
+                  sub: page.st.usage.total ? "" : "nothing shared yet", frac: page.st.usage.total ? page.st.usage.used / page.st.usage.total : -1 },
                 { label: "Shared folders", big: String(page.st.shares.filter(s => s.on !== false).length),
                   sub: page.st.shares.filter(s => s.on !== false).map(s => s.name).slice(0, 4).join(" · ") || "nothing is shared until you share it", frac: -1 },
                 { label: "Tailscale", big: page.ts.state === "Running" ? "Connected" : page.ts.installed === false ? "Not installed" : page.ts.running === false ? "Off" : page.ts.state === "NeedsLogin" ? "Sign in" : (page.ts.state || "—"),
                   sub: page.ts.state === "Running" ? (page.ts.peers || []).filter(p => p.online).length + " of your devices online" : "reach this PC from anywhere", frac: -1, good: page.ts.state === "Running" },
-                { label: "Drive health", big: page.health().big, sub: page.health().sub, frac: -1, good: page.health().big === "Good", warn: !!page.health().bad },
-                { label: "Backups", big: page.backupBig().big, sub: page.backupBig().sub, frac: -1, good: page.backupBig().good, warn: page.backupBig().warn },
-                { label: "Alerts", big: page.alertList().length ? String(page.alertList().length) : page.cfg.alerts && page.cfg.alerts.on ? "All good" : "Off",
-                  sub: page.alertList().length ? page.alertList()[0].text : page.cfg.alerts && page.cfg.alerts.on ? "checked every hour" : "turn on in Alerts & power",
-                  frac: -1, good: !page.alertList().length && !!page.cfg.alerts && page.cfg.alerts.on, warn: page.alertList().length > 0 },
-                { label: "Services", big: page.servicesBig().big, sub: page.servicesBig().sub, frac: -1, good: page.servicesBig().good },
-                { label: "Safety", big: page.svc.guardTripped ? "Read only" : page.cfg.guard && page.cfg.guard.on ? "Watching" : page.cfg.tsOnly ? "Tailscale only" : "Check",
-                  sub: page.svc.guardTripped ? "the ransomware guard stopped writes" : page.cfg.guard && page.cfg.guard.on ? "ransomware guard on" : "see Safety for simple fixes",
-                  frac: -1, good: !page.svc.guardTripped && !!page.cfg.guard && page.cfg.guard.on, warn: !!page.svc.guardTripped }
-            ].concat(page.aiShown ? [{ label: "AI service", big: page.svc.ai && page.svc.ai.on ? (page.svc.ai.active ? "Ready" : "Starting") : "Off",
-                  sub: page.st.seen.commandCenter.device ? "Command Center seen on " + page.st.seen.commandCenter.device : "for the Hearth AI Command Center", frac: -1, good: !!page.svc.ai && page.svc.ai.active }] : []) : []
+                { label: "Drive health", big: page.health().big, sub: page.health().sub, frac: -1, good: page.health().big === "Good", warn: !!page.health().bad }
+            ] : []
             delegate: Rectangle {
                 required property var modelData
                 Layout.fillWidth: true
-                implicitHeight: 104
-                radius: Theme.r(12)
-                color: Theme.panel2
+                Layout.preferredWidth: 1
+                implicitHeight: 100
+                radius: SetStyle.bigRadius
+                color: SetStyle.card
+                border.width: 1; border.color: SetStyle.tint(Theme.text, 0.05)
                 ColumnLayout {
-                    anchors { fill: parent; margins: 14 }
-                    spacing: 4
-                    Text { text: modelData.label; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
-                    Text { text: modelData.big; color: modelData.warn ? Theme.danger : modelData.good ? "#57c27a" : Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                    anchors { fill: parent; margins: 14; leftMargin: 16; rightMargin: 16 }
+                    spacing: 3
+                    Text { text: modelData.label; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Text { text: modelData.big; color: modelData.warn ? Theme.danger : modelData.good ? SetStyle.ok : Theme.text; font.family: Theme.font; font.pixelSize: 21; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.maximumWidth: parent.width - ofText.implicitWidth - 6 }
+                        Text { id: ofText; visible: (modelData.of || "") !== ""; text: modelData.of || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.Medium }
+                        Item { Layout.fillWidth: true }
+                    }
                     Rectangle {
                         visible: modelData.frac >= 0
-                        Layout.fillWidth: true; implicitHeight: 6; radius: 3; color: Theme.panel3
-                        Rectangle { width: parent.width * Math.max(0, Math.min(1, modelData.frac)); height: parent.height; radius: 3; color: Theme.accent }
+                        Layout.fillWidth: true; Layout.topMargin: 4; implicitHeight: 8; radius: 4; color: SetStyle.card2
+                        Rectangle { width: parent.width * Math.max(0, Math.min(1, modelData.frac)); height: parent.height; radius: 4; color: Theme.accent }
                     }
-                    Text { text: modelData.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Text { visible: modelData.sub !== ""; text: modelData.sub; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
                 }
             }
         }
     }
 
-    SetRow {
-        visible: !!page.cfg && !page.cfg.setupDone
-        icon: "check"; title: "Set up your home server"
-        sub: "A few steps, all with the controller: this PC's name, Tailscale, your first shared folder and your first backup"
-        onActivated: SettingsNav.openPage("hs-setup")
-    }
-
-    SetHeader { text: "Shared folders"; visible: !!page.cfg }
-    Repeater {
-        model: page.st ? page.st.shares : []
-        delegate: SetRow {
-            required property var modelData
-            icon: "folder"; title: modelData.name
-            sub: (modelData.on === false ? "Not shared now" : (modelData.write ? "Read & write" : "Read only") + " · " + (modelData.reach === "tailscale" || (page.cfg && page.cfg.tsOnly) ? "Tailscale only" : "Home network and Tailscale"))
-                 + (modelData.there ? "" : " · its folder isn't there (is the drive plugged in?)")
-            value: modelData.path
-            onActivated: SettingsNav.openPage("hs-shares")
+    GridLayout {
+        visible: !!page.cfg
+        Layout.fillWidth: true
+        columns: page.width > 900 ? 2 : 1
+        columnSpacing: 16; rowSpacing: 0
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
+            spacing: 0
+            SetCardGroup {
+                title: "Sharing"
+                SetLinkCard { target: "hs-shares"; value: page.st && page.st.shares ? String(page.st.shares.filter(s => s.on !== false).length) : ""
+                    sub: page.st && page.st.shares && page.st.shares.length === 0 ? "Nothing is shared until you share it. Pick a folder for your devices" : "What your devices can open, and how" }
+                SetLinkCard { target: "hs-files"; value: page.svc.links ? page.svc.links + (page.svc.links === 1 ? " link" : " links") : "" }
+                SetLinkCard { target: "hs-people"; value: page.st && page.st.people && page.st.people.length ? page.st.people.length + (page.st.people.length === 1 ? " person" : " people") : "" }
+                SetLinkCard { target: "hs-family"; sub: "A Family folder" + (page.st && page.st.seen && page.st.seen.camera && page.st.seen.camera.shown ? ", calendar and cameras" : " and calendar") }
+            }
+            SetCardGroup {
+                title: "On this server"
+                SetLinkCard { target: "hs-services"; value: page.servicesBig().good ? page.servicesBig().big : ""
+                    sub: "Media server, files on the web, AI pictures and voices" + (page.aiShown ? ", AI chat" : "") }
+                SetLinkCard { target: "hs-gaming" }
+                SetLinkCard { target: "hs-aidevices" }     // AI devices (docs/AI-SHARE.md)
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
+            spacing: 0
+            SetCardGroup {
+                title: "Keep it safe"
+                SetLinkCard { target: "hs-drives"; chip: page.health().big === "Good" ? "Good" : page.health().bad ? "Check" : ""; chipKind: page.health().bad ? "warn" : "ok"
+                    value: page.cfg && page.cfg.snapshots ? "Snapshots on" : "" }
+                SetLinkCard { target: "hs-backups"; chip: page.backupsChip.chip || ""; chipKind: page.backupsChip.kind || "ok"; value: page.backupsChip.value || "" }
+                SetLinkCard { target: "hs-safety"; chip: page.svc.guardTripped ? "Read only" : page.cfg && page.cfg.guard && page.cfg.guard.on ? "Watching" : ""; chipKind: page.svc.guardTripped ? "bad" : "ok" }
+                SetLinkCard { target: "hs-alerts"; chip: page.alertList().length ? page.alertList().length + (page.alertList().length === 1 ? " alert" : " alerts") : ""; chipKind: "warn"
+                    value: !page.alertList().length && page.cfg && page.cfg.alerts && page.cfg.alerts.on ? "All good" : "" }
+            }
+            SetCardGroup {
+                title: "Reach & play"
+                SetLinkCard { target: "hs-tailscale"; sub: "Lives in Network & internet now"; value: page.ts.state === "Running" ? "Connected" : page.ts.installed === false ? "Not installed" : "" }
+                SetSwitch {
+                    icon: "server"; title: "Light mode while you play"
+                    sub: "Big jobs (backups, snapshots, emptying recycle bins) wait while a game runs. Sharing keeps working."
+                         + (page.st && page.st.playing && page.cfg && page.cfg.lightMode ? " · On now: you're playing" : "")
+                    checked: !!page.cfg && page.cfg.lightMode !== false
+                    onToggled: v => page.set("lightMode", v ? "on" : "off")
+                }
+                SetLinkCard { target: "remote"; sub: "Play this PC's games on your laptop, phone or TV · Gaming › Remote play" }
+            }
         }
     }
-    SetRow {
-        visible: !!page.st && page.st.shares.length === 0
-        icon: "folder"; title: "Share a folder"
-        sub: "Nothing is shared until you share it. Pick a folder for your Windows PC, phone, TV and Hearth devices"
-        onActivated: SettingsNav.openPage("hs-shares")
-    }
 
-    SetHeader { text: "Reach it from anywhere"; visible: !!page.cfg }
-    SetRow {
-        visible: !!page.cfg
-        icon: "globe"; title: "Tailscale"
-        sub: page.ts.state === "Running" ? "Reach this PC from anywhere as " + (page.ts.dns || page.ts.name) + (page.cfg && page.cfg.tsOnly ? " · only over Tailscale" : "")
-           : page.ts.installed === false ? "Comes with the Hearth OS update that brings Home server"
-           : "A private network for your devices only. Nothing is opened to the internet"
-        value: page.ts.state === "Running" ? "Connected" : ""
-        onActivated: SettingsNav.openPage("hs-tailscale")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "search"; title: "Files & links"
-        sub: "Search every share, free up space, share links and a drop-off folder" + (page.svc.links ? " · " + page.svc.links + (page.svc.links === 1 ? " link" : " links") : "")
-        onActivated: SettingsNav.openPage("hs-files")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "restart"; title: "Drives & undo"
-        sub: "Space, health and temperature of every drive; snapshots to bring back deleted or changed files" + (page.cfg && page.cfg.snapshots ? " · snapshots on" : "")
-        onActivated: SettingsNav.openPage("hs-drives")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "update"; title: "Backups & sync"
-        sub: "Back up your shares to a drive, another Hearth device or the cloud; phone photos; folders kept the same on your devices"
-        value: page.st && page.st.backups && page.st.backups.length ? page.backupBig().big : ""
-        onActivated: SettingsNav.openPage("hs-backups")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "window"; title: "Services"
-        sub: "Optional apps for your devices: the media server (Jellyfin), files on the web" + (page.aiShown ? ", the AI service" : "") + "; each off until you turn it on"
-        value: page.servicesBig().good ? page.servicesBig().big : ""
-        onActivated: SettingsNav.openPage("hs-services")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "pad"; title: "Gaming"
-        sub: "A Games folder for your Hearth devices, Remote play, and what Light mode holds back while you play"
-        onActivated: SettingsNav.openPage("hs-gaming")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "user"; title: "Family & home"
-        sub: "A Family folder for everyone" + (page.st && page.st.seen && page.st.seen.camera && page.st.seen.camera.shown ? ", your cameras" : "") + " and who can open what"
-        onActivated: SettingsNav.openPage("hs-family")
-    }
-    SetRow {
-        visible: !!page.cfg && page.aiShown
-        icon: "mic"; title: "AI"
-        sub: "The AI service on this PC's graphics card for the Hearth AI Command Center: models, its address, Light mode"
-        value: page.svc.ai && page.svc.ai.on ? "On" : ""
-        onActivated: SettingsNav.openPage("hs-ai")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "lock"; title: "Safety"
-        sub: "Who can reach what, open ports, the ransomware guard and simple fixes you can undo"
-        value: page.svc.guardTripped ? "Read only" : ""
-        onActivated: SettingsNav.openPage("hs-safety")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "user"; title: "People"
-        sub: "Family and friends with their own password and only the shares you pick"
-        value: page.st && page.st.people && page.st.people.length ? page.st.people.length + (page.st.people.length === 1 ? " person" : " people") : ""
-        onActivated: SettingsNav.openPage("hs-people")
-    }
-    SetRow {
-        visible: !!page.cfg
-        icon: "bell"; title: "Alerts & power"
-        sub: "Hear about failing or full drives and failed backups; sleep, wake, spin down and a UPS"
-        value: page.alertList().length ? page.alertList().length + (page.alertList().length === 1 ? " alert" : " alerts") : ""
-        onActivated: SettingsNav.openPage("hs-alerts")
-    }
-
-    SetHeader { text: "Hidden items"; visible: !!page.cfg }
+    SetHeader { text: "Hidden items"; visible: !!page.cfg; Layout.topMargin: 28 }
     SetSwitch {
         visible: !!page.cfg
         icon: "info"; title: "Show hidden items"
