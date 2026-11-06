@@ -20,8 +20,17 @@ SetPage {
     readonly property bool listShown: !!st && (st.server || (cfg && cfg.hub))
     readonly property var kindWords: ({ chat: "Chat", voice: "Voices", image: "Pictures", stt: "Speech to text" })
     function say(t, b) { msg = t; bad = !!b; }
-    function refresh() { job.run(["status"], r => page.st = r, e => page.st = { error: e, found: [], settings: null }); }
-    function refreshList() { if (page.listShown && !lj.busy) lj.run(["devices"], r => page.list = r, e => page.list = { error: e, devices: [] }); }
+    // replaceList (SetPage): rows are rebuilt only when something changed, and the selection stays put (a list that
+    // rebuilt under the controller's focus left nothing selected, and Down moved nothing).
+    function refresh() { job.run(["status"], r => page.replaceList("st", r), e => page.replaceList("st", { error: e, found: [], settings: null })); }
+    function steady(r) {
+        // Times change on every answer; the page doesn't show them, so they don't rebuild the list.
+        const out = Object.assign({}, r);
+        out.updated = 0;
+        out.devices = (r.devices || []).map(d => { const c = Object.assign({}, d); c.updated = 0; c.lastSeen = 0; return c; });
+        return out;
+    }
+    function refreshList() { if (page.listShown && !lj.busy) lj.run(["devices"], r => page.replaceList("list", page.steady(r)), e => page.replaceList("list", { error: e, devices: [] })); }
     function set(k, v, ok) { act.run(["set", k, v ? "on" : "off"], r => { page.say(r && r.note ? r.note : (ok || "Saved")); page.refresh(); page.refreshList(); }, e => { page.say(e, true); page.refresh(); }); }
     function reasonWord(r) {
         return ({ off: "Not shared", playing: "Not while you play", battery: "Waiting for a charger", nothing: "No AI found here",
