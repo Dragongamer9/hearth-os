@@ -256,11 +256,11 @@ PanelWindow {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: dock.shelf ? 20 : 8
 
-                DockButton {   // the launcher
+                DockButton {   // the app menu: always the Hearth flame
                     visible: !dock.shelf
                     tip: "Apps (Super)"
                     onClicked: dock.launcherRequested()
-                    Icon { anchors.centerIn: parent; name: "grid"; size: 24 }
+                    Image { anchors.centerIn: parent; width: 28; height: 28; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
                 }
                 Rectangle { visible: !dock.shelf; implicitWidth: 1; implicitHeight: dock.tile * 0.6; color: Theme.line }
 
