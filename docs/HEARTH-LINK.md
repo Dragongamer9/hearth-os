@@ -329,6 +329,72 @@ Requests: `update.start`, `update.status`, `update.cancel`. UI calls: `fleet.upd
 starting, confirming, waitingGame, waitingBattery, heldBack, updating, staged, upToDate, restart, paused, error,
 cancelled, gaveUp, unsupported, offline).
 
+## Your devices
+
+Settings › Hearth Link › **Your devices** (`SetDevices.qml`, also a card on Settings' Home): each of your other paired
+Hearth devices with online or when it was last seen, Game Mode / Desktop Mode / Server mode, what's playing, battery
+and charging, CPU and GPU use and temperature, memory, graphics memory, each drive, the Hearth OS version and how long
+it's been on. Pick one for the last hour in small graphs (CPU, GPU, memory, temperatures, battery) and what you can do
+with it: open its shared folders in Hearth Files (Hearth Storage), **Wake it** (Hearth Storage's Wake-on-LAN, when that
+device taught this one how) and **Remote desktop** (Settings › Remote play). A device that's off shows its last numbers,
+marked as last known (`~/.cache/hearth/devices-status.json`, a cache).
+
+- **How it travels:** only over Hearth Link, so only between paired devices: a connection from anything else is refused
+  before any request (`node.rs`), and `status.get` checks pairing again (`status.rs`). End-to-end encrypted, at home or
+  anywhere (direct, Tailscale or the relay). No port is opened and nothing goes to the internet.
+- **What's sent** (`hearth-device-status status`, protocol 1, read only from /proc, /sys and Steam's manifests for a
+  game's name): `{protocol, shared, name, model, kind, version, mode, playing {title, appid}, battery {percent,
+  charging, pluggedIn}, cpu {use, temp}, gpu {vendor, use, temp, vramUsed, vramTotal}, ram {used, total}, drives
+  [{name, used, total}], uptime, history [{t, cpu, gpu, ram, cpuTemp, gpuTemp, battery}], shares [{name, write, reach,
+  badge}], smb {home, away}, updated}`. No secrets: no accounts, passwords, keys, file or folder paths (drives are
+  System, Home or their label). `shares` are its Home server's shared folders that are on (`badge`: home or drive;
+  `reach`: home or tailscale) and `smb` the names other devices reach them by (`<name>.local` at home, its Tailscale
+  name), only when it shares something. It reuses hearth-stats
+  (CPU, memory, temperatures) and hearth-ai-share's battery, graphics card and version code; Nvidia's numbers come from
+  `nvidia-smi` when it's there.
+- **The last hour:** while sharing is on, Hearth Link runs `hearth-device-status sample` once a minute and it keeps the
+  last hour in `$XDG_RUNTIME_DIR/hearth-device-status.json` (gone at restart; not a setting).
+- **Let my other devices see this device's status** (Hearth Link's page and Your devices; Mantel's `shareStatus` in
+  desktop.json): on unless you turn it off, because it only reaches your own paired devices. On is only the default
+  read when the key is missing, never written. Off, or a desktop.json that can't be read: `status.get` answers only
+  `{"protocol": 1, "shared": false}` and nothing is kept for the graphs.
+
+Requests: `status.get`. UI calls: `status.devices` (`devices: [{id, name, online, lastSeen, shared, status, old?}]`;
+`old`: a device on a Hearth OS before this). Tests: `cargo test` (status.rs: only paired devices get an answer, the
+not-shared answer, rows), `hosts/linux/test/test_device_status.py` (the status's shape, sharing off or unreadable, the
+last hour, drives, no secrets, the page), desktop-test.yml's stand-in devices (`devices_sample.py`).
+
+## Your devices in Hearth Files
+
+Hearth Files' sidebar has a **Your devices** section by itself as soon as something is found (`hearth_netshares.py`,
+`hearth-files places`): each paired Hearth device that shares folders (from its status above), online or offline, its
+shares under it (Home / Whole drive, Read only / Read & write, Through Tailscale), other computers sharing on the home
+network (DNS-SD `_smb._tcp` through `avahi-browse`) and Tailscale devices that answer SMB on port 445 (a plain connect,
+nothing sent), then **How to open from Windows or a phone** (the `\\host\share` and `smb://host/share` addresses, at
+home and away, with Copy). The Open / Save windows are Hearth Files too, so they show the same.
+
+- **Finding:** what was found is kept in `~/.local/state/nimbus/files-devices.json` (state, not a setting; no
+  passwords: only the user name you signed in with per device). The sidebar reads it at once; a fresh look starts in
+  the background when it's a minute old (one at a time, only in the desktop session).
+- **One click:** mounted with gvfs (`gio mount smb://host/share`) and opened at its folder under
+  `/run/user/<uid>/gvfs` (Hearth Files can change files there, as on a USB drive, when the share is read & write).
+  The address is chosen by itself: the home name when it answers here, the Tailscale name away.
+- **Sign in once:** the first time it asks for the user name and the sharing password (the box hides it), then
+  **Remember** or **Just this time**. Remember keeps the password in the system keyring (Secret Service through
+  `secret-tool`, with gvfs's network-password attributes: protocol smb, server, object = the share, user, domain), never
+  in Hearth's files. The password goes to Hearth Files' helper in `HEARTH_INPUT` and to gio and secret-tool on their
+  input, never on a command line.
+- **When it can't:** a wrong password asks again; a share that's off, a device that's asleep (with **Wake it** when
+  Hearth Storage knows its Wake-on-LAN address) and Tailscale not signed in each say so.
+- **Show other devices in Files** (Settings › Hearth Link › Your devices; Hearth Files' `showDevices` in files.json):
+  on unless you turn it off, only read when it's missing.
+- Settings › Hearth Link › Your devices › a device › **Open shared folder …** opens it in Hearth Files the same way
+  (`hearth-filemanager hearthnet://…`).
+
+Tests: `hosts/linux/test/test_netshares.py` (avahi and Tailscale parsing, home vs away, the keyring with a stand-in
+secret-tool, signing in through a stand-in gio, the sidebar model, no password in files or command lines), and
+desktop-test.yml's Hearth Files with stand-in devices.
+
 ## Local AI over Hearth Link
 
 `hosts/hearth-link/src/ai.rs`, a first version. A device with a strong graphics card shares a model server you

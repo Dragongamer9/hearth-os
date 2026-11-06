@@ -372,7 +372,8 @@ var ENTRIES = [
 {
 "t": "Clock",
 "p": "datetime",
-"d": "How the taskbar shows the time"
+"d": "How the taskbar shows the time",
+"i": "clock"
 },
 {
 "t": "Set the time automatically",
@@ -407,6 +408,41 @@ var ENTRIES = [
 {
 "t": "Cancel",
 "p": "defaults"
+},
+{
+"t": "Let my other devices see this device's status",
+"p": "devices",
+"d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one (Hearth Link). Never the internet.",
+"i": "eye"
+},
+{
+"t": "Show other devices in Files",
+"p": "devices",
+"d": "Your devices' shared folders, and other computers sharing on this network or through Tailscale, in Hearth Files' sidebar and Open / Save windows",
+"i": "folder"
+},
+{
+"t": "Back to your devices",
+"p": "devices",
+"i": "back"
+},
+{
+"t": "Wake it",
+"p": "devices",
+"d": "Wake-on-LAN, as Hearth Storage does",
+"i": "power"
+},
+{
+"t": "Remote desktop",
+"p": "devices",
+"d": "Use it from here, or play its games (Remote play)",
+"i": "play"
+},
+{
+"t": "Hearth Link",
+"p": "devices",
+"d": "Pairing, sync, copies and Hearth Storage",
+"i": "desktops"
 },
 {
 "t": "Which Discord",
@@ -1703,6 +1739,12 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Your devices",
+"p": "link",
+"d": "Each device's battery, use, temperatures, drives and what's playing, with the last hour",
+"i": "cpu"
+},
+{
 "t": "Get a game from another Hearth",
 "p": "link",
 "d": "Pick the game in your library's Get from another Hearth. Opens in the Hearth app's window for now.",
@@ -1718,6 +1760,12 @@ var ENTRIES = [
 "t": "Accept games from my devices without asking",
 "p": "link",
 "i": "store"
+},
+{
+"t": "Let my other devices see this device's status",
+"p": "link",
+"d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one. Never the internet.",
+"i": "eye"
 },
 {
 "t": "Relay",
@@ -1818,7 +1866,8 @@ var ENTRIES = [
 },
 {
 "t": "Scroll with",
-"p": "mouse"
+"p": "mouse",
+"i": "mouse"
 },
 {
 "t": "Ignore the touchpad while typing",
@@ -1843,7 +1892,8 @@ var ENTRIES = [
 {
 "t": "Power mode",
 "p": "power",
-"d": "Battery saver lasts longer; Performance is faster and warmer"
+"d": "Battery saver lasts longer; Performance is faster and warmer",
+"i": "bolt"
 },
 {
 "t": "Power limit (TDP)",
@@ -1852,22 +1902,26 @@ var ENTRIES = [
 },
 {
 "t": "Turn the screen off after",
-"p": "power"
+"p": "power",
+"i": "display"
 },
 {
 "t": "Go to sleep after",
 "p": "power",
-"d": "Downloads stop while it sleeps. Videos and games that are playing keep it awake"
+"d": "Downloads stop while it sleeps. Videos and games that are playing keep it awake",
+"i": "sleep"
 },
 {
 "t": "Press",
 "p": "power",
-"d": "A quick press"
+"d": "A quick press",
+"i": "power"
 },
 {
 "t": "Hold",
 "p": "power",
-"d": "Held down for a second"
+"d": "Held down for a second",
+"i": "power"
 },
 {
 "t": "Game Mode",
@@ -2316,6 +2370,12 @@ var ENTRIES = [
 {
 "t": "Connect",
 "p": "wifi"
+},
+{
+"t": "Add a hidden network",
+"p": "wifi",
+"d": "A network that doesn't show its name: type it and its password",
+"i": "plus"
 },
 {
 "t": "Look again",

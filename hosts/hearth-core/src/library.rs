@@ -43,6 +43,8 @@ pub struct Game {
     /// How to install it: nimbus-epic:<app>, nimbus-gog:<id>, steam://install/<id>.
     pub install_uri: Option<String>,
     pub can_uninstall: bool,
+    /// The store says an update is waiting for this installed game (Steam: StateFlags UpdateRequired).
+    pub update: bool,
     /// Beacon's games (beacon.rs): what Beacon says about it, its mods.
     pub beacon: Option<crate::beacon::BeaconGame>,
     /// Steam downloads: what Steam is doing now ("Verifying", "Waiting for Steam", "Stopped: Disk write failure").
@@ -131,7 +133,7 @@ impl From<steam::SteamGame> for Game {
             id: format!("steam:{}", g.app_id), launch_uri: Some(format!("steam://rungameid/{}", g.app_id)),
             title: g.title, source: "steam", install_path: Some(g.install_path), size_bytes: g.size_bytes, added: g.added,
             store_minutes: g.minutes, store_last_played: g.last_played, installed: g.installed, state: g.state,
-            bytes_done: g.bytes_done, bytes_total: g.bytes_total, art: g.art, exe: None, args: String::new(), system: None, system_key: None, ..Default::default()
+            bytes_done: g.bytes_done, bytes_total: g.bytes_total, update: g.update, art: g.art, exe: None, args: String::new(), system: None, system_key: None, ..Default::default()
         }
     }
 }

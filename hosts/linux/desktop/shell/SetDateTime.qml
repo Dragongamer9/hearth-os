@@ -50,110 +50,117 @@ SetPage {
         runAdmin(["timezone", z.zone], "zone", "Time zone set to " + z.city + ".", () => { page.zoneChanged = true; search.text = ""; page.region = ""; });
     }
 
-    SetRow {
-        interactive: false; chevron: false
-        icon: "clock"; title: page.nowText() || "…"
-        sub: page.st ? (page.st.timezone.replace(/_/g, " ") + (page.st.ntp ? (page.st.synced ? " · set from the internet" : " · waiting for the internet") : " · set by hand")) : "Checking…"
+    SetCardGroup {
+        title: "Clock"
+        SetRow {
+            interactive: false; chevron: false
+            icon: "clock"; title: page.nowText() || "…"
+            sub: page.st ? (page.st.timezone.replace(/_/g, " ") + (page.st.ntp ? (page.st.synced ? " · set from the internet" : " · waiting for the internet") : " · set by hand")) : "Checking…"
+        }
+        SetChoice {
+            icon: "clock"; title: "Clock"; sub: "How the taskbar shows the time"
+            options: [{ value: false, label: "12-hour (2:05 PM)" }, { value: true, label: "24-hour (14:05)" }]
+            current: Settings.clock24
+            onChosen: v => Settings.clock24 = v
+        }
+        SetSwitch {
+            visible: !!page.st && page.st.available
+            icon: "restart"; title: "Set the time automatically"
+            sub: admin.what === "ntp" ? "Saving…" : !page.st || page.st.canNtp ? "Uses the internet to keep the clock right" : "This system has no time service; set the clock by hand"
+            checked: !!page.st && page.st.ntp
+            onToggled: v => page.runAdmin(["ntp", v ? "on" : "off"], "ntp", v ? "The clock will be set from the internet." : "Automatic time is off.")
+        }
     }
-    SetChoice {
-        title: "Clock"; sub: "How the taskbar shows the time"
-        options: [{ value: false, label: "12-hour (2:05 PM)" }, { value: true, label: "24-hour (14:05)" }]
-        current: Settings.clock24
-        onChosen: v => Settings.clock24 = v
-    }
-    SetSwitch {
-        visible: !!page.st && page.st.available
-        icon: "restart"; title: "Set the time automatically"
-        sub: admin.what === "ntp" ? "Saving…" : !page.st || page.st.canNtp ? "Uses the internet to keep the clock right" : "This system has no time service; set the clock by hand"
-        checked: !!page.st && page.st.ntp
-        onToggled: v => page.runAdmin(["ntp", v ? "on" : "off"], "ntp", v ? "The clock will be set from the internet." : "Automatic time is off.")
-    }
-
     // ------------------------------------------------ by hand (automatic time off)
-    SetHeader { text: "Set the clock"; visible: !!page.st && page.st.available && !page.st.ntp }
-    RowLayout {
+    SetCardGroup {
+        title: "Set the clock"
         visible: !!page.st && page.st.available && !page.st.ntp
-        Layout.fillWidth: true
-        spacing: 8
-        SetField { id: dateField; placeholder: "Date, like 2026-10-20"; onSubmitted: timeField.focusInput() }
-        SetField { id: timeField; placeholder: "Time, like 14:05"; onSubmitted: setBtn.activated() }
-    }
-    SetRow {
-        id: setBtn
-        visible: !!page.st && page.st.available && !page.st.ntp
-        icon: "check"; chevron: false; title: admin.what === "time" ? "Setting…" : "Set the clock"
-        sub: "Date as year-month-day, time in 24-hour form"
-        onActivated: {
-            const d = dateField.text.trim(), t = timeField.text.trim().replace(/^(\d):/, "0$1:");
-            if (!/^\d{4}-\d\d-\d\d$/.test(d)) return page.say("Type the date like 2026-10-20.", true);
-            if (!/^\d\d:\d\d$/.test(t)) return page.say("Type the time like 14:05.", true);
-            page.runAdmin(["time-set", d + " " + t], "time", "Clock set.", () => { dateField.text = ""; timeField.text = ""; });
+        RowLayout {
+            visible: !!page.st && page.st.available && !page.st.ntp
+            Layout.fillWidth: true
+            spacing: 8
+            SetField { id: dateField; placeholder: "Date, like 2026-10-20"; onSubmitted: timeField.focusInput() }
+            SetField { id: timeField; placeholder: "Time, like 14:05"; onSubmitted: setBtn.activated() }
+        }
+        SetRow {
+            id: setBtn
+            visible: !!page.st && page.st.available && !page.st.ntp
+            icon: "check"; chevron: false; title: admin.what === "time" ? "Setting…" : "Set the clock"
+            sub: "Date as year-month-day, time in 24-hour form"
+            onActivated: {
+                const d = dateField.text.trim(), t = timeField.text.trim().replace(/^(\d):/, "0$1:");
+                if (!/^\d{4}-\d\d-\d\d$/.test(d)) return page.say("Type the date like 2026-10-20.", true);
+                if (!/^\d\d:\d\d$/.test(t)) return page.say("Type the time like 14:05.", true);
+                page.runAdmin(["time-set", d + " " + t], "time", "Clock set.", () => { dateField.text = ""; timeField.text = ""; });
+            }
+        }
+
+        Text {
+            visible: page.message !== ""
+            Layout.fillWidth: true; Layout.leftMargin: 4
+            text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
+            font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+        SetRow {
+            visible: page.zoneChanged
+            icon: "restart"; chevron: false
+            title: "Restart the desktop now"; sub: "The taskbar clock shows the new time zone after the desktop restarts (your apps stay open)"
+            onActivated: Qt.quit()
         }
     }
-
-    Text {
-        visible: page.message !== ""
-        Layout.fillWidth: true; Layout.leftMargin: 4
-        text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
-        font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
-    }
-    SetRow {
-        visible: page.zoneChanged
-        icon: "restart"; chevron: false
-        title: "Restart the desktop now"; sub: "The taskbar clock shows the new time zone after the desktop restarts (your apps stay open)"
-        onActivated: Qt.quit()
-    }
-
     // ------------------------------------------------ time zone
-    SetHeader { text: "Time zone" + (admin.what === "zone" ? " · saving…" : ""); visible: !!page.st && page.st.admin }
-    SetField { id: search; visible: !!page.st && page.st.admin; placeholder: "Search for a city, country region or UTC offset" }
-    Repeater {
-        model: page.matches
-        delegate: SetRow {
-            required property var modelData
-            icon: "globe"; chevron: false
-            title: modelData.city
-            sub: modelData.region + " · UTC" + modelData.offset
-            value: page.st && page.st.timezone === modelData.zone ? "In use" : ""
-            onActivated: page.setZone(modelData)
+    SetCardGroup {
+        title: "Time zone" + (admin.what === "zone" ? " · saving…" : "")
+        visible: !!page.st && page.st.admin
+        SetField { id: search; visible: !!page.st && page.st.admin; placeholder: "Search for a city, country region or UTC offset" }
+        Repeater {
+            model: page.matches
+            delegate: SetRow {
+                required property var modelData
+                icon: "globe"; chevron: false
+                title: modelData.city
+                sub: modelData.region + " · UTC" + modelData.offset
+                value: page.st && page.st.timezone === modelData.zone ? "In use" : ""
+                onActivated: page.setZone(modelData)
+            }
         }
-    }
-    Text {
-        visible: page.query !== "" && page.matches.length === 0
-        text: "No time zone matches \"" + search.text + "\""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-    }
-    SetRow {
-        id: allRegions
-        visible: page.query === "" && page.region !== ""
-        icon: "back"; chevron: false; title: "All regions"; sub: page.region
-        onActivated: { const was = page.region; page.region = ""; Qt.callLater(() => { const i = page.regions.findIndex(r => r.name === was); const it = regionList.itemAt(Math.max(0, i)); if (it) it.forceActiveFocus(); }); }
-    }
-    Repeater {
-        id: regionList
-        model: page.query === "" && page.region === "" && page.st && page.st.admin ? page.regions : []
-        delegate: SetRow {
-            required property var modelData
-            icon: "globe"
-            title: modelData.name
-            value: page.st && page.st.timezone.split("/")[0] === modelData.name ? "In use" : modelData.count + " places"
-            onActivated: { page.region = modelData.name; Qt.callLater(() => allRegions.forceActiveFocus()); }
+        Text {
+            visible: page.query !== "" && page.matches.length === 0
+            text: "No time zone matches \"" + search.text + "\""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
         }
-    }
-    Repeater {
-        model: page.query === "" ? page.cities : []
-        delegate: SetRow {
-            required property var modelData
-            icon: "clock"; chevron: false
-            title: modelData.city
-            sub: "UTC" + modelData.offset
-            value: page.st && page.st.timezone === modelData.zone ? "In use" : ""
-            onActivated: page.setZone(modelData)
+        SetRow {
+            id: allRegions
+            visible: page.query === "" && page.region !== ""
+            icon: "back"; chevron: false; title: "All regions"; sub: page.region
+            onActivated: { const was = page.region; page.region = ""; Qt.callLater(() => { const i = page.regions.findIndex(r => r.name === was); const it = regionList.itemAt(Math.max(0, i)); if (it) it.forceActiveFocus(); }); }
         }
-    }
-    Text {
-        visible: !!page.st && !page.st.admin
-        Layout.fillWidth: true
-        text: "The time zone and automatic time are set here on Hearth, the OS."
-        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        Repeater {
+            id: regionList
+            model: page.query === "" && page.region === "" && page.st && page.st.admin ? page.regions : []
+            delegate: SetRow {
+                required property var modelData
+                icon: "globe"
+                title: modelData.name
+                value: page.st && page.st.timezone.split("/")[0] === modelData.name ? "In use" : modelData.count + " places"
+                onActivated: { page.region = modelData.name; Qt.callLater(() => allRegions.forceActiveFocus()); }
+            }
+        }
+        Repeater {
+            model: page.query === "" ? page.cities : []
+            delegate: SetRow {
+                required property var modelData
+                icon: "clock"; chevron: false
+                title: modelData.city
+                sub: "UTC" + modelData.offset
+                value: page.st && page.st.timezone === modelData.zone ? "In use" : ""
+                onActivated: page.setZone(modelData)
+            }
+        }
+        Text {
+            visible: !!page.st && !page.st.admin
+            Layout.fillWidth: true
+            text: "The time zone and automatic time are set here on Hearth, the OS."
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
     }
 }

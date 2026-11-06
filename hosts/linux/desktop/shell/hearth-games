@@ -7,8 +7,9 @@ started through Hearth.
   hearth-games play ID     play a game through Hearth: handed to the Hearth window that's open, or Hearth opens
                            in a window and plays it (`nimbus --windowed --play ID`)
 
-list and cached print one JSON line: [{"id", "title", "source", "cover", "wide", "icon"}], pictures as file:// or
-web addresses. Failures print "error: ..." and exit 1. The hand-over to an open Hearth is
+list and cached print one JSON line: [{"id", "title", "source", "cover", "wide", "icon", "update"}], pictures as
+file:// or web addresses; "update" is true when the store says an update is waiting (Steam: UpdateRequired), which
+the app menus' Updates tile shows (hearth-appmenu tiles). Failures print "error: ..." and exit 1. The hand-over to an open Hearth is
 $XDG_RUNTIME_DIR/hearth-play-route.json ({"id", "at"}), which it looks for every second; the same rules are in
 hosts/hearth-core/src/desktop_games.rs.
 """
@@ -72,7 +73,8 @@ def clean(games):
             continue
         title = g.get('title') if isinstance(g.get('title'), str) and g.get('title').strip() else g['id']
         out.append({'id': g['id'], 'title': title, 'source': g.get('source') if isinstance(g.get('source'), str) else '',
-                    'cover': picture(g.get('cover')), 'wide': picture(g.get('wide')), 'icon': picture(g.get('icon'))})
+                    'cover': picture(g.get('cover')), 'wide': picture(g.get('wide')), 'icon': picture(g.get('icon')),
+                    'update': g.get('update') is True})
     out.sort(key=lambda g: g['title'].lower())
     return out
 

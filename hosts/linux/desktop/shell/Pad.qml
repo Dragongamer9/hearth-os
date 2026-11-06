@@ -142,7 +142,8 @@ Scope {
         case "ready": problem = ""; sync(); if (keyboard.open) send({ cmd: "osk", open: true, split: keyboard.cfg.fast === "split" }); break;
         case "error": problem = m.text; break;
         case "radial": radial.update(m); break;
-        case "osk": if (m.open) openKeyboard(); else closeKeyboard(); break;
+        // Y: the Tiles / Start screen menus take it to move a tile when one has the focus ring (launcher.padY).
+        case "osk": if (m.open) { if (!(typeof launcher.padY === "function" && launcher.padY())) openKeyboard(); } else closeKeyboard(); break;
         case "oskpad": keyboard.padButton(m.b, !!m.down); break;
         case "oskaxes": keyboard.padAxes(m.lx || 0, m.ly || 0, m.rx || 0, m.ry || 0); break;
         case "launcher": launcher.toggle(); break;

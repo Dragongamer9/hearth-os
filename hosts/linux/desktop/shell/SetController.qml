@@ -50,74 +50,81 @@ SetPage {
     ColumnLayout {
         visible: page.editing === ""
         Layout.fillWidth: true
-        spacing: 8
-
-        Text {
-            visible: !!(page.pad && page.pad.problem)
-            Layout.fillWidth: true
-            text: page.pad ? page.pad.problem : ""
-            color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
-        }
-        SetSwitch {
-            icon: "mouse"; title: "Controller mouse"; sub: "Right stick moves the pointer, R2 clicks. Turns off by itself while a game is full screen."
-            checked: !!(page.pad && page.pad.mouseOn)
-            onToggled: v => { if (page.pad) page.pad.setMouse(v); }
-        }
-        SetSlider {
-            icon: "mouse"; title: "Pointer speed"
-            value: (Settings.pointerSpeed - 0.4) / 1.6         // 0.4 … 2.0 on a 0..1 slider
-            valueText: Settings.pointerSpeed.toFixed(1) + "×"
-            step: 0.0625
-            onMoved: v => Settings.pointerSpeed = Math.round((0.4 + v * 1.6) * 10) / 10
-        }
-
-        SetHeader { text: page.busy ? "Button mapping · applying…" : "Button mapping" }
-        Text {
-            Layout.fillWidth: true
-            text: !page.ctl ? (page.ctlError || "Loading…")
-                : !page.ctl.available ? "Remapping works on Hearth, the OS, with the built-in controller (InputPlumber)" + (page.ctlError ? ": " + page.ctlError : ".")
-                : "Changes apply everywhere, in games too" + (page.ctl.devices.length ? " (" + page.ctl.devices.map(d => d.name).join(", ") + ")." : ".")
-                  + (page.ctlError ? "\n" + page.ctlError : "")
-            color: page.ctlError ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
-        }
-        SetRow {
-            visible: !!(page.ctl && page.ctl.available)
-            icon: "pad"; title: "Controller type games see"; sub: "Some games show button prompts to match"
-            value: page.typeLabel()
-            onActivated: page.edit("@type")
-        }
-        Repeater {
-            model: page.ctl && page.ctl.available ? page.ctl.buttons : []
-            delegate: SetRow {
-                required property var modelData
-                title: modelData.label
-                value: { const m = page.mapped(modelData.id); return !m ? "Default" : m === "none" ? "Off" : page.label(m); }
-                onActivated: page.edit(modelData.id)
+        spacing: 0
+        SetCardGroup {
+            title: "Controller mouse"
+            Text {
+                visible: !!(page.pad && page.pad.problem)
+                Layout.fillWidth: true
+                text: page.pad ? page.pad.problem : ""
+                color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+            }
+            SetSwitch {
+                icon: "mouse"; title: "Controller mouse"; sub: "Right stick moves the pointer, R2 clicks. Turns off by itself while a game is full screen."
+                checked: !!(page.pad && page.pad.mouseOn)
+                onToggled: v => { if (page.pad) page.pad.setMouse(v); }
+            }
+            SetSlider {
+                icon: "mouse"; title: "Pointer speed"
+                value: (Settings.pointerSpeed - 0.4) / 1.6         // 0.4 … 2.0 on a 0..1 slider
+                valueText: Settings.pointerSpeed.toFixed(1) + "×"
+                step: 0.0625
+                onMoved: v => Settings.pointerSpeed = Math.round((0.4 + v * 1.6) * 10) / 10
             }
         }
-        SetRow {
-            visible: !!(page.ctl && page.ctl.available)
-            icon: "pad"; title: "Nintendo layout"; sub: "Swaps A with B, and X with Y"; chevron: false
-            onActivated: page.run(["preset", "nintendo"])
+        SetCardGroup {
+            title: page.busy ? "Button mapping · applying…" : "Button mapping"
+            Text {
+                Layout.fillWidth: true
+                text: !page.ctl ? (page.ctlError || "Loading…")
+                    : !page.ctl.available ? "Remapping works on Hearth, the OS, with the built-in controller (InputPlumber)" + (page.ctlError ? ": " + page.ctlError : ".")
+                    : "Changes apply everywhere, in games too" + (page.ctl.devices.length ? " (" + page.ctl.devices.map(d => d.name).join(", ") + ")." : ".")
+                      + (page.ctlError ? "\n" + page.ctlError : "")
+                color: page.ctlError ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+            }
+            SetRow {
+                visible: !!(page.ctl && page.ctl.available)
+                icon: "pad"; title: "Controller type games see"; sub: "Some games show button prompts to match"
+                value: page.typeLabel()
+                onActivated: page.edit("@type")
+            }
+            Repeater {
+                model: page.ctl && page.ctl.available ? page.ctl.buttons : []
+                delegate: SetRow {
+                    required property var modelData
+                    icon: "pad"
+                    title: modelData.label
+                    value: { const m = page.mapped(modelData.id); return !m ? "Default" : m === "none" ? "Off" : page.label(m); }
+                    onActivated: page.edit(modelData.id)
+                }
+            }
+            SetRow {
+                visible: !!(page.ctl && page.ctl.available)
+                icon: "pad"; title: "Nintendo layout"; sub: "Swaps A with B, and X with Y"; chevron: false
+                onActivated: page.run(["preset", "nintendo"])
+            }
+            SetRow {
+                visible: !!(page.ctl && page.ctl.available)
+                icon: "restart"; title: "Reset all buttons"; sub: "Back to how the controller came"; chevron: false
+                onActivated: page.run(["reset"])
+            }
         }
-        SetRow {
-            visible: !!(page.ctl && page.ctl.available)
-            icon: "restart"; title: "Reset all buttons"; sub: "Back to how the controller came"; chevron: false
-            onActivated: page.run(["reset"])
-        }
-
         // Handheld Daemon's own settings (fan curve, power modes, lights, stick ranges...): Settings › Handheld
         // (SetHandheld.qml), Hearth's own app for them.
-        SetHeader { visible: !!(page.ctl && page.ctl.backend === "hhd"); text: "Handheld Daemon" }
-        SetRow { chevron: true;
+        SetCardGroup {
+            title: "Handheld Daemon"
             visible: !!(page.ctl && page.ctl.backend === "hhd")
-            icon: "gear"; title: "Handheld Daemon settings"; sub: "Everything for the built-in controller, power limit, fan and lights: Settings › Handheld"
-            onActivated: SettingsNav.openPage("handheld")
+            SetRow { chevron: true;
+                visible: !!(page.ctl && page.ctl.backend === "hhd")
+                icon: "gear"; title: "Handheld Daemon settings"; sub: "Everything for the built-in controller, power limit, fan and lights: Settings › Handheld"
+                onActivated: SettingsNav.openPage("handheld")
+            }
         }
-
-        SetHeader { text: "Help" }
-        SetRow { icon: "help"; title: "Controller buttons"; sub: "What each button does in Desktop Mode"; onActivated: { if (SettingsNav.help) SettingsNav.help.shown = true; } }
-        SetRow { icon: "kbd"; title: "On-screen keyboard"; sub: "Y on the controller, or here"; onActivated: { if (page.pad) page.pad.openKeyboard(); } }
+        SetCardGroup {
+            title: "Help"
+            SetRow { icon: "help"; title: "Controller buttons"; sub: "What each button does in Desktop Mode"; onActivated: { if (SettingsNav.help) SettingsNav.help.shown = true; } }
+            SetRow { icon: "kbd"; title: "On-screen keyboard"; sub: "Y on the controller, or here"; onActivated: { if (page.pad) page.pad.openKeyboard(); } }
+        }
     }
 
     // ------------------------------------------------------------ picking (a button's new job, or the type)
@@ -133,7 +140,7 @@ SetPage {
             model: page.editing === "@type" && page.ctl ? page.ctl.types : []
             delegate: SetRow {
                 required property var modelData
-                title: modelData.label; sub: modelData.sub; chevron: false
+                icon: "pad"; title: modelData.label; sub: modelData.sub; chevron: false
                 value: (page.ctl.config.target || "") === modelData.id ? "In use" : ""
                 onActivated: { page.run(["type", modelData.id]); page.done(); }
             }
@@ -159,7 +166,7 @@ SetPage {
             model: page.editButton && page.pickKind ? page.ctl.targets.filter(t => t.kind === page.pickKind && t.id !== page.editing) : []
             delegate: SetRow {
                 required property var modelData
-                title: modelData.label; chevron: false
+                icon: page.pickKind === "key" ? "kbd" : "pad"; title: modelData.label; chevron: false
                 value: page.mapped(page.editing) === modelData.id ? "In use" : ""
                 onActivated: { page.run(["set", page.editing, modelData.id]); page.done(); }
             }

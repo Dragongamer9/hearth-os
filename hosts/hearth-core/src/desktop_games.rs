@@ -39,7 +39,7 @@ pub fn art_for_desktop(v: &str) -> String {
 pub fn entry(g: &Game) -> Value {
     let art = |k: &str| g.art.iter().find(|(kind, _)| *kind == k).map(|(_, v)| art_for_desktop(v));
     json!({"id": g.id, "title": g.title, "source": g.source, "cover": art("cover").or_else(|| art("portrait")), "wide": art("wide").or_else(|| art("hero")),
-           "hero": art("hero").or_else(|| art("wide")), "logo": art("logo"), "icon": art("icon"), "cloud": g.cloud})
+           "hero": art("hero").or_else(|| art("wide")), "logo": art("logo"), "icon": art("icon"), "cloud": g.cloud, "update": g.update})
 }
 
 /// The installed games you can play from the desktop (not hidden ones, not cloud games), A to Z.
@@ -452,6 +452,7 @@ mod tests {
         assert_eq!(l[0]["hero"], "https://example.com/h.jpg");
         assert!(l[0]["logo"].is_null());
         assert_eq!(l[0]["cloud"], false);
+        assert_eq!(l[0]["update"], false);
         // Hearth Sync's list: the installed cloud tile too, never a catalog title that isn't installed.
         let mut title = mk("xbox:halo", "Halo (cloud)", false);
         title.cloud = true;

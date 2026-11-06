@@ -44,114 +44,118 @@ SetPage {
             + (box.nvidia ? " · Nvidia graphics shared" : "");
     }
 
-    SetHeader { text: "Debian packages (.deb)" }
-    SetRow {
-        icon: "store"; chevron: false; interactive: true
-        title: "Hearth's Debian box"
-        sub: page.boxLine() + "\n" + (page.box ? page.box.limits : "")
-    }
-    ColumnLayout {
-        visible: worker.busy
-        Layout.fillWidth: true
-        spacing: 6
-        Text { Layout.fillWidth: true; text: (worker.line || "Working…") + (worker.progress >= 0 ? "  " + Math.round(worker.progress * 100) + "%" : ""); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; elide: Text.ElideRight }
-        Rectangle {
-            Layout.fillWidth: true; implicitHeight: 8; radius: 4; color: Theme.panel3
-            Rectangle { width: parent.width * Math.max(0.03, worker.progress); height: parent.height; radius: 4; color: Theme.flame }
+    SetCardGroup {
+        title: "Debian packages (.deb)"
+        SetRow {
+            icon: "store"; chevron: false; interactive: true
+            title: "Hearth's Debian box"
+            sub: page.boxLine() + "\n" + (page.box ? page.box.limits : "")
         }
-    }
-    Text {
-        visible: page.message !== ""
-        Layout.fillWidth: true; Layout.leftMargin: 4
-        text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
-        font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
-    }
-    Repeater {
-        model: page.packages
-        delegate: ColumnLayout {
-            id: pk
-            required property var modelData
+        ColumnLayout {
+            visible: worker.busy
             Layout.fillWidth: true
-            spacing: 8
-            SetRow {
-                icon: "grid"
-                title: pk.modelData.package + (pk.modelData.version ? "  " + pk.modelData.version : "")
-                sub: [pk.modelData.summary, pk.modelData.apps.length ? "In your menu: " + pk.modelData.apps.map(a => a.name).join(", ") : "No app in the menu"].filter(x => x).join(" · ")
-                value: page.confirm === pk.modelData.package ? "" : "Remove…"
-                onActivated: page.confirm = page.confirm === pk.modelData.package ? "" : pk.modelData.package
-            }
-            SetRow {
-                visible: page.confirm === pk.modelData.package
-                Layout.leftMargin: 52
-                danger: true; chevron: false; icon: "trash"
-                title: "Remove " + pk.modelData.package; sub: "Its apps leave your menu; your files stay"
-                onActivated: page.work(["remove", pk.modelData.package], pk.modelData.package + " was removed.")
+            spacing: 6
+            Text { Layout.fillWidth: true; text: (worker.line || "Working…") + (worker.progress >= 0 ? "  " + Math.round(worker.progress * 100) + "%" : ""); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; elide: Text.ElideRight }
+            Rectangle {
+                Layout.fillWidth: true; implicitHeight: 8; radius: 4; color: Theme.panel3
+                Rectangle { width: parent.width * Math.max(0.03, worker.progress); height: parent.height; radius: 4; color: Theme.flame }
             }
         }
+        Text {
+            visible: page.message !== ""
+            Layout.fillWidth: true; Layout.leftMargin: 4
+            text: page.message; color: page.messageBad ? Theme.danger : Theme.flame
+            font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+        Repeater {
+            model: page.packages
+            delegate: ColumnLayout {
+                id: pk
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 8
+                SetRow {
+                    icon: "grid"
+                    title: pk.modelData.package + (pk.modelData.version ? "  " + pk.modelData.version : "")
+                    sub: [pk.modelData.summary, pk.modelData.apps.length ? "In your menu: " + pk.modelData.apps.map(a => a.name).join(", ") : "No app in the menu"].filter(x => x).join(" · ")
+                    value: page.confirm === pk.modelData.package ? "" : "Remove…"
+                    onActivated: page.confirm = page.confirm === pk.modelData.package ? "" : pk.modelData.package
+                }
+                SetRow {
+                    visible: page.confirm === pk.modelData.package
+                    Layout.leftMargin: 52
+                    danger: true; chevron: false; icon: "trash"
+                    title: "Remove " + pk.modelData.package; sub: "Its apps leave your menu; your files stay"
+                    onActivated: page.work(["remove", pk.modelData.package], pk.modelData.package + " was removed.")
+                }
+            }
+        }
+        SetRow {
+            icon: "folder"; title: "Install a .deb file"
+            sub: "Open it in Files (double-click, or right-click › Install). Downloads opens now."
+            onActivated: Quickshell.execDetached(["hearth-filemanager", (Quickshell.env("HOME") || "") + "/Downloads"])
+        }
+        SetRow {
+            visible: !!page.box && page.box.box && page.confirm !== "reset"
+            icon: "restart"; chevron: false; title: "Reset the Debian box…"
+            sub: "A fresh, empty box: everything installed in it is removed"
+            onActivated: page.confirm = "reset"
+        }
+        SetRow {
+            visible: page.confirm === "reset"
+            danger: true; chevron: false; icon: "restart"
+            title: "Reset it now"; sub: "Removes every package in the box and makes a new one (1–2 minutes)"
+            onActivated: page.work(["reset"], "The Debian box is fresh and empty.")
+        }
+        SetRow {
+            visible: !!page.box && page.box.box && page.confirm !== "remove-box"
+            icon: "trash"; danger: true; chevron: false; title: "Remove the Debian box…"
+            sub: "Frees its space; it's made again the next time you install a .deb"
+            onActivated: page.confirm = "remove-box"
+        }
+        SetRow {
+            visible: page.confirm === "remove-box"
+            danger: true; chevron: false; icon: "trash"
+            title: "Remove it now"; sub: "The box, everything in it and its apps in your menu"
+            onActivated: page.work(["remove-box"], "The Debian box is removed.")
+        }
+        SetRow {
+            visible: page.confirm === "reset" || page.confirm === "remove-box"
+            chevron: false; title: "Cancel"
+            onActivated: page.confirm = ""
+        }
     }
-    SetRow {
-        icon: "folder"; title: "Install a .deb file"
-        sub: "Open it in Files (double-click, or right-click › Install). Downloads opens now."
-        onActivated: Quickshell.execDetached(["hearth-filemanager", (Quickshell.env("HOME") || "") + "/Downloads"])
+    SetCardGroup {
+        title: "Flathub"
+        SetRow {
+            icon: "store"; title: "Bazaar"
+            sub: !page.flat ? "Looking…"
+                : page.flat.bazaar ? "Hearth OS's app store: find, install and update apps from Flathub"
+                : page.flat.bazaarMissing
+            value: !!page.flat && page.flat.bazaar ? "Open" : ""
+            onActivated: flatJob.run(["open-bazaar"], () => SettingsNav.toast("Opening Bazaar…"), e => page.say(e, true))
+        }
+        SetRow {
+            visible: !!page.flat && !page.flat.bazaar && !!page.flat.setup
+            icon: "info"; chevron: false; interactive: true
+            title: page.flat && page.flat.setup && page.flat.setup.ok ? "Bazaar's install" : "Bazaar's install: not done yet"
+            sub: page.flat && page.flat.setup ? page.flat.setup.message + " (" + new Date(page.flat.setup.time * 1000).toLocaleString() + ")" : ""
+        }
+        SetRow {
+            visible: !!page.flat && page.flat.flatpak && !page.flat.userWritable
+            danger: true; chevron: false; icon: "info"
+            title: "Fix your Flatpak folder"
+            sub: page.flat ? page.flat.userProblem : ""
+            onActivated: admin.run(["home-repair"], () => { page.say("Your Flatpak folders are yours again."); page.load(); },
+                e => page.say("Couldn't fix it: " + e, true))
+        }
     }
-    SetRow {
-        visible: !!page.box && page.box.box && page.confirm !== "reset"
-        icon: "restart"; chevron: false; title: "Reset the Debian box…"
-        sub: "A fresh, empty box: everything installed in it is removed"
-        onActivated: page.confirm = "reset"
-    }
-    SetRow {
-        visible: page.confirm === "reset"
-        danger: true; chevron: false; icon: "restart"
-        title: "Reset it now"; sub: "Removes every package in the box and makes a new one (1–2 minutes)"
-        onActivated: page.work(["reset"], "The Debian box is fresh and empty.")
-    }
-    SetRow {
-        visible: !!page.box && page.box.box && page.confirm !== "remove-box"
-        icon: "trash"; danger: true; chevron: false; title: "Remove the Debian box…"
-        sub: "Frees its space; it's made again the next time you install a .deb"
-        onActivated: page.confirm = "remove-box"
-    }
-    SetRow {
-        visible: page.confirm === "remove-box"
-        danger: true; chevron: false; icon: "trash"
-        title: "Remove it now"; sub: "The box, everything in it and its apps in your menu"
-        onActivated: page.work(["remove-box"], "The Debian box is removed.")
-    }
-    SetRow {
-        visible: page.confirm === "reset" || page.confirm === "remove-box"
-        chevron: false; title: "Cancel"
-        onActivated: page.confirm = ""
-    }
-
-    SetHeader { text: "Flathub" }
-    SetRow {
-        icon: "store"; title: "Bazaar"
-        sub: !page.flat ? "Looking…"
-            : page.flat.bazaar ? "Hearth OS's app store: find, install and update apps from Flathub"
-            : page.flat.bazaarMissing
-        value: !!page.flat && page.flat.bazaar ? "Open" : ""
-        onActivated: flatJob.run(["open-bazaar"], () => SettingsNav.toast("Opening Bazaar…"), e => page.say(e, true))
-    }
-    SetRow {
-        visible: !!page.flat && !page.flat.bazaar && !!page.flat.setup
-        icon: "info"; chevron: false; interactive: true
-        title: page.flat && page.flat.setup && page.flat.setup.ok ? "Bazaar's install" : "Bazaar's install: not done yet"
-        sub: page.flat && page.flat.setup ? page.flat.setup.message + " (" + new Date(page.flat.setup.time * 1000).toLocaleString() + ")" : ""
-    }
-    SetRow {
-        visible: !!page.flat && page.flat.flatpak && !page.flat.userWritable
-        danger: true; chevron: false; icon: "info"
-        title: "Fix your Flatpak folder"
-        sub: page.flat ? page.flat.userProblem : ""
-        onActivated: admin.run(["home-repair"], () => { page.say("Your Flatpak folders are yours again."); page.load(); },
-            e => page.say("Couldn't fix it: " + e, true))
-    }
-
-    SetHeader { text: "AppImages" }
-    SetRow {
-        icon: "info"; chevron: false; interactive: true
-        title: "AppImages run from Files"
-        sub: "Double-click one to run it (Hearth asks once, then makes it runnable). Right-click › Add to app menu moves it to the Applications folder in your home folder and puts it in your menu; Remove from app menu takes it out again."
+    SetCardGroup {
+        title: "AppImages"
+        SetRow {
+            icon: "info"; chevron: false; interactive: true
+            title: "AppImages run from Files"
+            sub: "Double-click one to run it (Hearth asks once, then makes it runnable). Right-click › Add to app menu moves it to the Applications folder in your home folder and puts it in your menu; Remove from app menu takes it out again."
+        }
     }
 }

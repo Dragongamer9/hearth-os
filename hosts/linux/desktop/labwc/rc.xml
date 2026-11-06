@@ -102,38 +102,33 @@
          makes it a quarter, on a quarter back to the half; Up maximizes, Down restores, then minimizes. -->
     <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
     <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <!-- labwc refuses an If inside another If ("action 'If' cannot be a child action"), so each key is a flat list
+         of If actions run in order. The first one is the fallback: it only fires when the window matches none of
+         the states below it. Each later step leaves the window in a state that no step after it matches, so one
+         key press makes exactly one change. -->
     <keybind key="W-Up">
-      <action name="If"><query tiled="left" />
-        <then><action name="SnapToRegion" region="top-left" /></then>
-        <else><action name="If"><query tiled="right" />
-          <then><action name="SnapToRegion" region="top-right" /></then>
-          <else><action name="If"><query tiled_region="bottom-left" />
-            <then><action name="SnapToEdge" direction="left" /></then>
-            <else><action name="If"><query tiled_region="bottom-right" />
-              <then><action name="SnapToEdge" direction="right" /></then>
-              <else><action name="Maximize" /></else>
-            </action></else>
-          </action></else>
-        </action></else>
+      <action name="If">
+        <query tiled="left" /><query tiled="right" />
+        <query tiled_region="bottom-left" /><query tiled_region="bottom-right" />
+        <else><action name="Maximize" /></else>
       </action>
+      <action name="If"><query tiled="left" /><then><action name="SnapToRegion" region="top-left" /></then></action>
+      <action name="If"><query tiled="right" /><then><action name="SnapToRegion" region="top-right" /></then></action>
+      <action name="If"><query tiled_region="bottom-left" /><then><action name="SnapToEdge" direction="left" /></then></action>
+      <action name="If"><query tiled_region="bottom-right" /><then><action name="SnapToEdge" direction="right" /></then></action>
     </keybind>
     <keybind key="W-Down">
-      <action name="If"><query tiled="left" />
-        <then><action name="SnapToRegion" region="bottom-left" /></then>
-        <else><action name="If"><query tiled="right" />
-          <then><action name="SnapToRegion" region="bottom-right" /></then>
-          <else><action name="If"><query tiled_region="top-left" />
-            <then><action name="SnapToEdge" direction="left" /></then>
-            <else><action name="If"><query tiled_region="top-right" />
-              <then><action name="SnapToEdge" direction="right" /></then>
-              <else><action name="If"><query maximized="both" />
-                <then><action name="UnMaximize" /></then>
-                <else><action name="Iconify" /></else>
-              </action></else>
-            </action></else>
-          </action></else>
-        </action></else>
+      <action name="If">
+        <query tiled="left" /><query tiled="right" />
+        <query tiled_region="top-left" /><query tiled_region="top-right" />
+        <query maximized="both" />
+        <else><action name="Iconify" /></else>
       </action>
+      <action name="If"><query tiled="left" /><then><action name="SnapToRegion" region="bottom-left" /></then></action>
+      <action name="If"><query tiled="right" /><then><action name="SnapToRegion" region="bottom-right" /></then></action>
+      <action name="If"><query tiled_region="top-left" /><then><action name="SnapToEdge" direction="left" /></then></action>
+      <action name="If"><query tiled_region="top-right" /><then><action name="SnapToEdge" direction="right" /></then></action>
+      <action name="If"><query maximized="both" /><then><action name="UnMaximize" /></then></action>
     </keybind>
     <!-- Show the desktop, then the windows again (the taskbar's strip at the end does the same). The shell does it,
          since labwc's own ToggleShowDesktop only came in 0.20. -->

@@ -62,7 +62,7 @@ class HearthGames(unittest.TestCase):
         self.assertIn("id.len() <= 200 && id.contains(':')", rs)
 
     def test_list_asks_hearth_and_keeps_a_copy(self):
-        games = [{'id': 'steam:570', 'title': 'Dota 2', 'source': 'steam', 'cover': '/home/a/.steam/grid/570p.png', 'wide': 'https://cdn/x.jpg'},
+        games = [{'id': 'steam:570', 'title': 'Dota 2', 'source': 'steam', 'cover': '/home/a/.steam/grid/570p.png', 'wide': 'https://cdn/x.jpg', 'update': True},
                  {'id': 'manual:1', 'title': 'alpha', 'source': 'manual', 'cover': None},
                  {'id': 'bad', 'title': 'no colon'}, 'junk']
         self.fake_hearth('some log line\n' + json.dumps(games))
@@ -71,6 +71,7 @@ class HearthGames(unittest.TestCase):
         self.assertEqual(out[1]['cover'], 'file:///home/a/.steam/grid/570p.png')
         self.assertEqual(out[1]['wide'], 'https://cdn/x.jpg')
         self.assertEqual(out[0]['cover'], '')
+        self.assertEqual([g['update'] for g in out], [False, True])   # Steam says an update is waiting
         self.assertEqual(self.m.read_cache(), out)
         # Hearth failing: the copy from last time.
         self.fake_hearth('oops', code=1)

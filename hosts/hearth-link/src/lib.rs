@@ -61,6 +61,7 @@ pub mod pair;
 pub mod saves;
 pub mod shortcode;
 pub mod state;
+pub mod status;
 pub mod storage;
 pub mod bench;
 pub mod cache;

@@ -53,79 +53,88 @@ SetPage {
     readonly property var powerChoices: [{ value: "sleep", label: "Sleep" }, { value: "menu", label: "Power menu" }, { value: "shutdown", label: "Shut down" }, { value: "nothing", label: "Nothing" }]
     readonly property var labels: ({ "power-saver": "Battery saver", "balanced": "Balanced", "performance": "Performance" })
 
-    SetRow {
-        visible: page.battery; interactive: false
-        icon: page.dev && page.dev.state === UPowerDeviceState.Charging ? "batt-charging" : "batt"
-        title: "Battery"; value: page.battText; chevron: false
+    SetCardGroup {
+        title: "Battery & performance"
+        visible: page.battery || page.profiles.length > 1 || !!(page.tdp && page.tdp.supported) || page.powerError !== ""
+        SetRow {
+            visible: page.battery; interactive: false
+            icon: page.dev && page.dev.state === UPowerDeviceState.Charging ? "batt-charging" : "batt"
+            title: "Battery"; value: page.battText; chevron: false
+        }
+        SetChoice {
+            visible: page.profiles.length > 1
+            icon: "bolt"; title: "Power mode"; sub: "Battery saver lasts longer; Performance is faster and warmer"
+            options: page.profiles.map(p => ({ value: p, label: page.labels[p] || p }))
+            current: page.profile
+            onChosen: v => { page.profile = v; page.powerError = ""; page.power(["mode", v]); }
+        }
+        SetSlider {
+            visible: !!(page.tdp && page.tdp.supported)
+            icon: "power"; title: "Power limit (TDP)"
+            readonly property int lo: page.tdp && page.tdp.min !== undefined ? page.tdp.min : 5
+            readonly property int hi: page.tdp && page.tdp.max !== undefined ? page.tdp.max : 30
+            value: page.tdp && page.tdp.supported ? (page.tdp.watts - lo) / Math.max(1, hi - lo) : 0
+            valueText: (page.tdp && page.tdp.watts !== undefined ? page.tdp.watts : 0) + " W"
+            step: 1 / Math.max(1, hi - lo)
+            onMoved: v => { const w = Math.round(lo + v * (hi - lo)); if (page.tdp) page.tdp = Object.assign({}, page.tdp, { watts: w }); tdpApply.restart(); }
+            Timer { id: tdpApply; interval: 500; onTriggered: page.power(["tdp", String(page.tdp.watts)]) }
+        }
+        Text {
+            visible: page.powerError !== ""
+            Layout.fillWidth: true
+            text: page.powerError; color: Theme.danger; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+        }
     }
-    SetChoice {
-        visible: page.profiles.length > 1
-        title: "Power mode"; sub: "Battery saver lasts longer; Performance is faster and warmer"
-        options: page.profiles.map(p => ({ value: p, label: page.labels[p] || p }))
-        current: page.profile
-        onChosen: v => { page.profile = v; page.powerError = ""; page.power(["mode", v]); }
-    }
-    SetSlider {
-        visible: !!(page.tdp && page.tdp.supported)
-        icon: "power"; title: "Power limit (TDP)"
-        readonly property int lo: page.tdp && page.tdp.min !== undefined ? page.tdp.min : 5
-        readonly property int hi: page.tdp && page.tdp.max !== undefined ? page.tdp.max : 30
-        value: page.tdp && page.tdp.supported ? (page.tdp.watts - lo) / Math.max(1, hi - lo) : 0
-        valueText: (page.tdp && page.tdp.watts !== undefined ? page.tdp.watts : 0) + " W"
-        step: 1 / Math.max(1, hi - lo)
-        onMoved: v => { const w = Math.round(lo + v * (hi - lo)); if (page.tdp) page.tdp = Object.assign({}, page.tdp, { watts: w }); tdpApply.restart(); }
-        Timer { id: tdpApply; interval: 500; onTriggered: page.power(["tdp", String(page.tdp.watts)]) }
-    }
-    Text {
-        visible: page.powerError !== ""
-        Layout.fillWidth: true
-        text: page.powerError; color: Theme.danger; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
-    }
-    SetHeader { text: "When you're away" }
     Process {
         running: true
         command: ["sh", "-c", "command -v wlopm"]
         onExited: code => page.canScreenOff = code === 0
     }
-    SetChoice {
-        title: "Turn the screen off after"
-        sub: page.canScreenOff ? "Videos and games that are playing keep it on" : "Needs wlopm, which isn't installed"
-        enabled: page.canScreenOff
-        opacity: page.canScreenOff ? 1 : 0.5
-        options: [{ value: 0, label: "Never" }, { value: 2, label: "2 min" }, { value: 5, label: "5 min" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }]
-        current: Settings.screenOffMinutes
-        onChosen: v => Settings.screenOffMinutes = v
+    SetCardGroup {
+        title: "When you're away"
+        SetChoice {
+            icon: "display"; title: "Turn the screen off after"
+            sub: page.canScreenOff ? "Videos and games that are playing keep it on" : "Needs wlopm, which isn't installed"
+            enabled: page.canScreenOff
+            opacity: page.canScreenOff ? 1 : 0.5
+            options: [{ value: 0, label: "Never" }, { value: 2, label: "2 min" }, { value: 5, label: "5 min" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }]
+            current: Settings.screenOffMinutes
+            onChosen: v => Settings.screenOffMinutes = v
+        }
+        SetChoice {
+            icon: "sleep"; title: "Go to sleep after"
+            sub: "Downloads stop while it sleeps. Videos and games that are playing keep it awake"
+            options: [{ value: 0, label: "Never" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }, { value: 60, label: "1 hour" }, { value: 120, label: "2 hours" }]
+            current: Settings.sleepMinutes
+            onChosen: v => Settings.sleepMinutes = v
+        }
     }
-    SetChoice {
-        title: "Go to sleep after"
-        sub: "Downloads stop while it sleeps. Videos and games that are playing keep it awake"
-        options: [{ value: 0, label: "Never" }, { value: 10, label: "10 min" }, { value: 15, label: "15 min" }, { value: 30, label: "30 min" }, { value: 60, label: "1 hour" }, { value: 120, label: "2 hours" }]
-        current: Settings.sleepMinutes
-        onChosen: v => Settings.sleepMinutes = v
+    SetCardGroup {
+        title: "Power button"
+        SetChoice {
+            icon: "power"; title: "Press"; sub: "A quick press"
+            options: page.powerChoices
+            current: Buttons.press
+            onChosen: v => Buttons.set("press", v)
+        }
+        SetChoice {
+            icon: "power"; title: "Hold"; sub: "Held down for a second"
+            options: page.powerChoices
+            current: Buttons.hold
+            onChosen: v => Buttons.set("hold", v)
+        }
+        Text {
+            Layout.fillWidth: true
+            text: Buttons.watching.length ? "Holding it for several seconds always turns the device off, whatever is set here."
+                : "The power button can't be read right now" + (Buttons.problems.length ? ": " + Buttons.problems.join("; ") : ".")
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
+        }
     }
-
-    SetHeader { text: "Power button" }
-    SetChoice {
-        title: "Press"; sub: "A quick press"
-        options: page.powerChoices
-        current: Buttons.press
-        onChosen: v => Buttons.set("press", v)
+    SetCardGroup {
+        title: "Turn off or switch"
+        SetRow { icon: "pad"; title: "Game Mode"; sub: "Steam's Game Mode on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
+        SetRow { icon: "sleep"; title: "Sleep"; onActivated: Buttons.sleep("Settings › Power › Sleep") }
+        SetRow { icon: "restart"; title: "Restart"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
+        SetRow { icon: "power"; title: "Shut down"; danger: true; onActivated: Quickshell.execDetached(["systemctl", "poweroff"]) }
     }
-    SetChoice {
-        title: "Hold"; sub: "Held down for a second"
-        options: page.powerChoices
-        current: Buttons.hold
-        onChosen: v => Buttons.set("hold", v)
-    }
-    Text {
-        Layout.fillWidth: true
-        text: Buttons.watching.length ? "Holding it for several seconds always turns the device off, whatever is set here."
-            : "The power button can't be read right now" + (Buttons.problems.length ? ": " + Buttons.problems.join("; ") : ".")
-        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
-    }
-    SetHeader { text: "Turn off or switch" }
-    SetRow { icon: "pad"; title: "Game Mode"; sub: "Steam's Game Mode on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
-    SetRow { icon: "sleep"; title: "Sleep"; onActivated: Buttons.sleep("Settings › Power › Sleep") }
-    SetRow { icon: "restart"; title: "Restart"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
-    SetRow { icon: "power"; title: "Shut down"; danger: true; onActivated: Quickshell.execDetached(["systemctl", "poweroff"]) }
 }

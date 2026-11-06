@@ -176,6 +176,7 @@ impl Node {
         let n = self.clone(); tokio::spawn(async move { n.discovery_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.sync_loop().await });
         self.storage_start();
+        self.status_start();
         // The firewall (Anatase has firewalld): our two UDP ports, to the local network only (hearth-link-firewall;
         // Hearth's polkit rule lets it run without a prompt). Over the internet nothing needs opening: hole
         // punching starts from both sides.
@@ -542,6 +543,7 @@ impl Node {
             o if o.starts_with("input.") => self.clone().inputs_answer(peer, op, req).await,
             o if o.starts_with("update.") => self.clone().fleet_answer(peer, op, req).await,
             o if o.starts_with("ai.") => self.clone().ai_answer(peer, op, req).await,
+            o if o.starts_with("status.") => self.clone().status_answer(peer, op, req).await,
             o if o.starts_with("decky.") => self.clone().decky_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
             _ => Err(format!("Unknown request: {op}")),
@@ -1030,6 +1032,7 @@ impl Node {
             c if c.starts_with("input.") => self.inputs_command(c, a).await,
             c if c.starts_with("fleet.") => self.fleet_command(c, a).await,
             c if c.starts_with("ai.") => self.ai_command(c, a).await,
+            c if c.starts_with("status.") => self.status_command(c, a).await,
             c if c.starts_with("decky.") => self.decky_command(c, a).await,
             _ => Err(format!("Unknown command: {cmd}")),
         }
