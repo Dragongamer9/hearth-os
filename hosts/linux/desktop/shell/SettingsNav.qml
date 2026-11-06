@@ -8,10 +8,10 @@ import Quickshell
 
 Singleton {
     property var navTarget: null
+    property string pageAnchor: ""    // a part of the page to open at ("appearance:bar": Settings › Appearance › Bar and dock)
     property var settingsApp: null    // Hearth Settings (SettingsApp.qml): a page can open another (openPage)
     function openPage(p) { if (settingsApp) settingsApp.open(p); }
-    // Settings opened at a part of a page ("keyboard:osk", "appearance:bar"): the page (or its SetExpander) goes there.
-    property string pageAnchor: ""
+    // (pageAnchor above: Settings opened at a part of a page, "keyboard:osk", "appearance:bar"; the page or its SetExpander goes there.)
     property var frame: null          // the frame, for Back (B / Esc): a subpage goes up to its category
     property var appsNav: null        // Apps' list (AppStore.qml)
     property var clipboard: null      // the clipboard history picker (Clipboard.qml), for Settings › Clipboard

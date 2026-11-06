@@ -60,7 +60,7 @@ var PAGES = [
 
     // ---- Personalization
     { id: "appearance", file: "SetAppearance.qml", cat: "pers", label: "Personalization", icon: "palette", words: "look theme accent colour color wallpaper dark light mode sunset transparency clock", old: "Appearance", landing: true },
-    { id: "bar-dock", file: "SetBarDock.qml", cat: "pers", label: "Bar and dock", icon: "window", desc: "Floating islands or a full-width bar; dock always shown or auto-hide", words: "taskbar panel dock autohide islands", status: "bar" },
+    { id: "bar-dock", file: "SetBarDock.qml", cat: "pers", label: "Bar and dock", icon: "window", desc: "Where the bar goes, the dock, auto-hide and the app menu", words: "taskbar panel dock autohide islands bar layout edge app menu start tiles classic centred", status: "bar" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },

@@ -75,6 +75,49 @@ Singleton {
     readonly property bool scanlines: lookDef.scanlines === true
     readonly property bool hints: lookDef.hints === true
     readonly property string lookLabel: lookDef.label || look
+
+    // ---- Bar layout (Settings › Appearance › Bar and dock; docs/MANTEL.md). Nothing set = today's Mantel 2026:
+    // the top bar and the floating dock. "One main bar" puts everything in one bar on the edge you pick; with the
+    // floating app menu off, the app menu button and your apps move into the main bar and there's no dock.
+    readonly property bool oneBar: Settings.barLayout === "one"
+    readonly property string barEdge: oneBar ? (["bottom", "top", "left", "right"].indexOf(Settings.barEdge) >= 0 ? Settings.barEdge : "bottom") : "top"
+    readonly property bool barVertical: barEdge === "left" || barEdge === "right"
+    readonly property bool dockFloats: Settings.dockFloat !== "off"
+    // Auto-hide hides the dock (as before) and, in One main bar or when the apps are in the bar, the main bar too.
+    readonly property bool barAutoHide: dockAutoHide && (oneBar || !dockFloats)
+    // The main bar's style: the look's (floating islands, one full-width bar); Console's big status row only sits over
+    // its shelf of tiles, so a bar that holds the apps or isn't at the top is a full-width bar there.
+    readonly property string mainStyle: islandStyle === "shelf" && (oneBar || !dockFloats) ? "bar" : islandStyle
+    // When this changes, shell.qml builds the bar and the dock again (so nothing keeps space reserved on the old edge).
+    readonly property string barKey: barEdge + "/" + (dockFloats ? "dock" : "nodock")
+
+    // ---- App menu (Settings › Appearance › Bar and dock › App menu): Hearth (the centred launcher), Centred,
+    // Tiles, Start screen or Classic. Not chosen: Hearth, except Start screen on a handheld that was installed with
+    // a Hearth OS that has the five menus (/etc/nimbus/installed.json "appMenus", written by the installer). The
+    // default is only worked out here, when read; it's never written, so existing devices keep the Hearth menu.
+    readonly property var appMenus: ["hearth", "centred", "tiles", "start", "classic"]
+    property bool handheld: false            // a handheld PC, by name (as hearth-link's device_kind)
+    property bool installedWithMenus: false
+    readonly property string appMenuDefault: handheld && installedWithMenus ? "start" : "hearth"
+    readonly property string appMenu: appMenus.indexOf(Settings.appMenu) >= 0 ? Settings.appMenu : appMenuDefault
+    readonly property var handheldNames: ["jupiter", "galileo", "rog ally", "rc71l", "rc72l", "legion go", "83e1", "claw", "ayaneo", "onexplayer", "gpd win", "zotac gaming zone"]
+    property string dmiProduct: ""
+    function checkHandheld() {
+        const k = Quickshell.env("HEARTH_LINK_KIND") || "";
+        if (["handheld", "laptop", "desktop", "tablet", "tv"].indexOf(k) >= 0) { handheld = k === "handheld"; return; }
+        const p = dmiProduct.toLowerCase();
+        handheld = handheldNames.some(h => p.indexOf(h) >= 0);
+    }
+    Process {
+        command: ["sh", "-c", "cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name /sys/class/dmi/id/board_name 2>/dev/null | tr '\\n' ' '"]
+        running: true
+        stdout: StdioCollector { onStreamFinished: { root.dmiProduct = text; root.checkHandheld(); } }
+    }
+    FileView {
+        path: "/etc/nimbus/installed.json"
+        blockLoading: true
+        onLoaded: { try { root.installedWithMenus = (JSON.parse(text()).appMenus || 0) >= 1; } catch (e) { root.installedWithMenus = false; } }
+    }
     // The wallpaper on show: yours, or the look's own ("" = Hearth's fireside).
     readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : (lookDef.wallpaper || "")
     // A controller focus ring: crisp, in the accent.

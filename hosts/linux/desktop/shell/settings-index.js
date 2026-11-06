@@ -178,15 +178,9 @@ var ENTRIES = [
 "i": "info"
 },
 {
-"t": "Bar",
+"t": "Bar style",
 "p": "bar-dock",
 "i": "window"
-},
-{
-"t": "Dock",
-"p": "bar-dock",
-"d": "Auto-hide: the dock comes up when the pointer touches the bottom edge.",
-"i": "grid"
 },
 {
 "t": "Bluetooth",

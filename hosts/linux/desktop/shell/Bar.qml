@@ -29,7 +29,13 @@ PanelWindow {
     property bool primary: false           // the main screen's bar (Super+1-9, the screenshot tool ask it)
     // Mantel 2026: this classic bottom taskbar is the safe fallback (shell.qml loads it when the islands or the dock
     // can't load) and the bar on upright screens; it has the launcher, every app and the Game Mode button.
-    function claim() { if (!primary) return; DeskState.mainBar = bar; DeskState.classicBar = true; DeskState.topInset = 0; DeskState.bottomInset = portrait ? 0 : thickness; }
+    function claim() {
+        if (!primary) return;
+        DeskState.mainBar = bar; DeskState.classicBar = true; DeskState.barOwner = bar; DeskState.dockOwner = bar;
+        DeskState.barEdge = portrait ? "left" : "bottom";
+        DeskState.barTop = 0; DeskState.barBottom = 0; DeskState.barLeft = 0; DeskState.barRight = 0;
+        DeskState.dockBottom = portrait ? 0 : thickness;
+    }
     onPrimaryChanged: claim()
     Component.onCompleted: claim()
 

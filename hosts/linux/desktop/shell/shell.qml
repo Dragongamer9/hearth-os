@@ -38,20 +38,27 @@ ShellRoot {
                 }
                 // Made from their files here (not named as types), so a problem in either is caught: both are taken
                 // away again and the classic taskbar below comes up instead.
+                // Bar layout (Settings › Appearance › Bar and dock): the main bar on its edge (Theme.barEdge) and the
+                // floating dock only when the floating app menu is on (Theme.dockFloats); with it off, the main bar
+                // holds the apps. A layout change builds both again (live, no restart), so no space stays reserved
+                // on the old edge; the classic taskbar is still the fallback for any of them.
                 property var islandsWin: null
                 property var dockWin: null
                 property bool newFailed: false
+                property string builtKey: ""
                 function makeNew() {
                     dropNew();
-                    const ci = Qt.createComponent("Islands.qml"), cd = Qt.createComponent("Dock.qml");
-                    if (ci.status !== Component.Ready || cd.status !== Component.Ready) {
-                        console.warn("Mantel: the top islands or the dock couldn't load; using the classic taskbar: " + (ci.errorString() + " " + cd.errorString()).trim());
+                    const wantDock = Theme.dockFloats;
+                    const ci = Qt.createComponent("Islands.qml"), cd = wantDock ? Qt.createComponent("Dock.qml") : null;
+                    if (ci.status !== Component.Ready || cd && cd.status !== Component.Ready) {
+                        console.warn("Mantel: the top islands or the dock couldn't load; using the classic taskbar: " + (ci.errorString() + " " + (cd ? cd.errorString() : "")).trim());
                         newFailed = true;
                         return;
                     }
-                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu });
-                    dockWin = cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu });
-                    if (!islandsWin || !dockWin) {
+                    builtKey = Theme.barKey;
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock });
+                    dockWin = wantDock ? cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu }) : null;
+                    if (!islandsWin || wantDock && !dockWin) {
                         console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");
                         dropNew();
                         newFailed = true;
@@ -65,8 +72,10 @@ ShellRoot {
                     islandsWin.keyboardRequested.connect(() => { if (keyboard.open) pad.closeKeyboard(); else pad.openKeyboard(); });
                     islandsWin.calendarRequested.connect(() => calendar.toggle(perScreen.modelData, false));
                     islandsWin.settingsRequested.connect(page => settings.open(page));
-                    dockWin.keyboardOpen = Qt.binding(() => keyboard.open === true);
-                    dockWin.launcherRequested.connect(() => launcher.toggle());
+                    if (dockWin) {
+                        dockWin.keyboardOpen = Qt.binding(() => keyboard.open === true);
+                        dockWin.launcherRequested.connect(() => launcher.toggle());
+                    }
                 }
                 function dropNew() {
                     if (islandsWin) islandsWin.destroy();
@@ -74,8 +83,18 @@ ShellRoot {
                     islandsWin = null;
                     dockWin = null;
                 }
-                onPortraitChanged: { if (portrait) dropNew(); else makeNew(); }
-                Component.onCompleted: { makeHints(); if (!portrait) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
+                // Built once your settings are read (at most a few seconds, so the bar always comes up), then again
+                // whenever the layout changes (a moment after, so a few quick changes build it once).
+                property bool settingsReady: Settings.loaded
+                Timer { interval: 4000; running: !perScreen.settingsReady; onTriggered: perScreen.settingsReady = true }
+                onSettingsReadyChanged: if (settingsReady && !portrait) makeNew()
+                Connections {
+                    target: Theme
+                    function onBarKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && Theme.barKey !== perScreen.builtKey) rebuild.restart(); }
+                }
+                Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && Theme.barKey !== perScreen.builtKey) perScreen.makeNew() }
+                onPortraitChanged: { if (portrait) dropNew(); else if (settingsReady) makeNew(); }
+                Component.onCompleted: { makeHints(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
                 Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); }
                 // The classic taskbar: upright screens, and the safe fallback.
                 Loader {
@@ -115,6 +134,7 @@ ShellRoot {
 
     Launcher {
         id: launcher
+        popMenu: popMenu
         onSettingsRequested: settings.open("")
         onPageRequested: p => settings.open(p)
         onMenuRequested: (entry, x, y) => {

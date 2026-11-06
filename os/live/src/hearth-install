@@ -1263,10 +1263,12 @@ def setup_system(dep, root, plan):
         copy_wifi(dep)
         signin_choice(dep, u['name'], plan['signin'])
         # Hearth's first start offers to import games from Windows (beside) and sets up the rest.
+        # appMenus: installed by a Hearth OS with the five app menus (Mantel's Theme.qml: a new handheld install
+        # starts with the Start screen menu; devices installed before keep the Hearth menu). Only read, never a setting.
         os.makedirs(f'{dep}/etc/nimbus', exist_ok=True)
         with open(f'{dep}/etc/nimbus/installed.json', 'w') as f:
             json.dump({'mode': plan['mode'], 'edition': plan.get('edition', DEFAULT_EDITION), 'image': plan.get('image', ''),
-                       'at': int(time.time())}, f)
+                       'at': int(time.time()), 'appMenus': 1}, f)
         relabel(dep, ['/etc', '/var/home'])
     finally:
         sh(['umount', f'{dep}/var/home'], check=False)

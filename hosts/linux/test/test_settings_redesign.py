@@ -251,9 +251,10 @@ class NeverChangeByThemselves(unittest.TestCase):
         self.assertIn('checked: Settings.reduceMotion; onToggled: v => Settings.reduceMotion = v', (SHELL / 'SetAccessibility.qml').read_text())
         bar = (SHELL / 'SetBarDock.qml').read_text()
         self.assertIn('onChosen: v => Settings.barStyle = v', bar)
-        self.assertIn('onChosen: v => Settings.dockMode = v', bar)
+        self.assertIn('Loader { Layout.fillWidth: true; source: "BarLayoutPicker.qml" }', bar)   # layout, edge, auto-hide (dockMode)
+        self.assertIn('Loader { Layout.fillWidth: true; source: "AppMenuPicker.qml" }', bar)
         a = (SHELL / 'SetAppearance.qml').read_text()
-        for gone in ('Settings.nightLight = v', 'Settings.reduceMotion = v', 'Settings.barStyle = v', 'Settings.dockMode = v'):
+        for gone in ('Settings.nightLight = v', 'Settings.reduceMotion = v', 'Settings.barStyle = v', 'Settings.dockMode = v', 'BarLayoutPicker', 'AppMenuPicker'):
             self.assertNotIn(gone, a)
 
     def test_the_sky_default_is_only_for_new_installs_and_never_written(self):
