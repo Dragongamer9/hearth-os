@@ -23,10 +23,22 @@ Singleton {
     property bool overlayShown: false      // a menu, dialog or the clock's panel is open (Pad.qml: the controller types keys)
     property var mainDesktop: null         // the main screen's Desktop (for `quickshell ipc ... call desktop menu`)
     property var mainBar: null             // the main screen's taskbar (Super+1-9): the dock (Dock.qml), or the classic Bar.qml
-    // ---- Mantel 2026: where the top islands and the dock are, so panels open next to them (Islands.qml, Dock.qml).
-    // The classic bar (Bar.qml, the safe fallback and upright screens) sets bottomInset only.
-    property int topInset: 0               // the islands' height plus gap (0 = no top bar)
-    property int bottomInset: 0            // the dock's (or the classic bar's) height plus gap
+    // ---- Mantel 2026: where the main bar and the dock are, so panels open next to them (Islands.qml, Dock.qml).
+    // The main bar can be on any edge (Settings › Appearance › Bar layout); the classic bar (Bar.qml, the safe
+    // fallback and upright screens) is at the bottom. Each writes only its own part, and only while it's the one in
+    // use (barOwner / dockOwner), so a bar being replaced can't zero what the new one just set.
+    property int barTop: 0                 // the main bar's reserved space on each edge (0 = not there, or auto-hide)
+    property int barBottom: 0
+    property int barLeft: 0
+    property int barRight: 0
+    property int dockBottom: 0             // the floating dock's (or the classic bar's) height plus gap
+    property string barEdge: "top"         // where the main bar is: top | bottom | left | right
+    property var barOwner: null
+    property var dockOwner: null
+    readonly property int topInset: barTop
+    readonly property int bottomInset: barBottom + dockBottom
+    readonly property int leftInset: barLeft
+    readonly property int rightInset: barRight
     property bool classicBar: false        // the classic bottom taskbar is in use (fallback, or an upright screen)
     property bool dockPeek: false          // an auto-hide dock shown on purpose (hover, `ipc call dock show`)
     property double padSeen: 0             // when the controller was last used for Hearth's menus (the hint strip)

@@ -39,10 +39,10 @@ PanelWindow {
     readonly property int barSize: 60
     readonly property int cellW: 104
     readonly property int cellH: 112
-    readonly property int areaX: portraitBar ? barSize + 10 : 12
+    readonly property int areaX: portraitBar ? barSize + 10 : 12 + DeskState.leftInset
     // Mantel 2026: clear of the top islands and the dock (DeskState's insets; the classic taskbar gives 0 and 60).
     readonly property int areaY: 12 + (portraitBar ? 0 : DeskState.topInset)
-    readonly property int areaW: width - areaX - 12
+    readonly property int areaW: width - areaX - 12 - (portraitBar ? 0 : DeskState.rightInset)
     readonly property int areaH: height - areaY - (portraitBar ? 12 : (DeskState.classicBar || DeskState.bottomInset > 0 ? DeskState.bottomInset : 0) + 10)
     readonly property int cols: Math.max(1, Math.floor(areaW / cellW))
     readonly property int rows: Math.max(1, Math.floor(areaH / cellH))

@@ -95,20 +95,20 @@ SetPage {
     TimeRow { visible: Settings.sunset; title: "Light from"; key: "sunsetLight" }
     TimeRow { visible: Settings.sunset; title: "Dark from"; key: "sunsetDark" }
 
-    SetHeader { text: "Bar and dock" }
+    SetHeader { id: barHeader; text: "Bar and dock" }
+    // The bar layout, placement, floating app menu and auto-hide (BarLayoutPicker.qml), then the app menu
+    // (AppMenuPicker.qml): components of their own, loaded by file name so a problem in one only loses it.
+    Loader { Layout.fillWidth: true; source: "BarLayoutPicker.qml" }
     SetChoice {
-        title: "Bar"
+        title: "Bar style"
         options: [{ value: "", label: "Look's own" }, { value: "floating", label: "Floating islands" }, { value: "bar", label: "Full-width bar" }]
         current: Settings.barStyle
         onChosen: v => Settings.barStyle = v
     }
-    SetChoice {
-        title: "Dock"
-        sub: "Auto-hide: the dock comes up when the pointer touches the bottom edge."
-        options: [{ value: "", label: "Look's own" }, { value: "shown", label: "Always shown" }, { value: "autohide", label: "Auto-hide" }]
-        current: Settings.dockMode
-        onChosen: v => Settings.dockMode = v
-    }
+    Text { Layout.fillWidth: true; Layout.topMargin: 6; text: "App menu"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+    Loader { Layout.fillWidth: true; source: "AppMenuPicker.qml" }
+    // Settings › Appearance opened at Bar and dock (`settings page appearance:bar`, the app menu's own links).
+    Component.onCompleted: if (SettingsNav.pageAnchor === "bar") { SettingsNav.pageAnchor = ""; Qt.callLater(() => { page.contentY = Math.max(0, Math.min(page.contentHeight - page.height, barHeader.mapToItem(page.contentItem, 0, 0).y - 12)); }); }
 
     SetHeader { text: "Accent colour" }
     SetBase {

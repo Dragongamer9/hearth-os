@@ -198,11 +198,16 @@ PanelWindow {
     Item {
         id: panel
         width: Math.min(460, root.width - 32)
+        // Next to the main bar, wherever it is (Settings › Appearance › Bar layout): from the top right under a top
+        // bar, from the bottom right over a bottom bar, beside a left or right bar.
+        readonly property bool fromLeft: DeskState.barEdge === "left" && !DeskState.classicBar
+        readonly property bool fromBottom: DeskState.barEdge === "bottom" && !DeskState.classicBar
         readonly property int topY: DeskState.topInset > 0 ? DeskState.topInset + 2 : 12
         readonly property int room: root.height - topY - DeskState.bottomInset - 12
-        y: topY
         height: Math.min(room, body.implicitHeight + 40)
-        x: root.shown ? root.width - width - 12 : root.width + 8
+        y: fromBottom ? root.height - DeskState.bottomInset - height - 2 : topY
+        x: fromLeft ? (root.shown ? DeskState.leftInset + 12 : -width - 8)
+            : (root.shown ? root.width - width - 12 - DeskState.rightInset : root.width + 8)
         Behavior on x { NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
         MouseArea { anchors.fill: parent }   // clicks inside don't close
         // The look's panel (Frame.qml, loaded on its own); a plain one underneath in case it can't load.

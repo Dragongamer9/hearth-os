@@ -113,6 +113,9 @@ Scope {
 
     Component.onCompleted: SettingsNav.settingsApp = app
     function open(p) {
+        // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page scrolls there).
+        const m = /^([\w-]+):(\w+)$/.exec(p || "");
+        if (m && files[m[1]]) { SettingsNav.pageAnchor = m[2]; p = m[1]; }
         if (p && files[p]) page = p;
         shown = true;
     }

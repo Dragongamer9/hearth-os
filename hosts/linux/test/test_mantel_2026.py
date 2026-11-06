@@ -26,7 +26,9 @@ NEW_KEYS = {'barStyle': '""', 'dockMode': '""', 'deskClock': '""', 'panelGlass':
 # Files new in Mantel 2026 that only draw things: they never change a setting.
 DRAW_ONLY = ['Islands.qml', 'Dock.qml', 'Frame.qml', 'Frost.qml', 'FrostBlur.qml', 'Scene.qml', 'DeskClock.qml', 'HintStrip.qml',
              'PerfIsland.qml', 'Stats.qml', 'StatsCard.qml', 'MediaPill.qml', 'MediaCard.qml', 'WallAccent.qml', 'Theme.qml',
-             'Wallpaper.qml', 'Launcher.qml', 'ClockPanel.qml', 'Notifications.qml']
+             'Wallpaper.qml', 'ClockPanel.qml', 'Notifications.qml', 'TaskStrip.qml', 'MenuTile.qml', 'MenuSearch.qml',
+             'MenuHints.qml', 'MenuNowPlaying.qml', 'MenuCentred.qml', 'MenuTiles.qml', 'MenuStart.qml', 'MenuClassic.qml']
+# (Launcher.qml writes only your live tiles' sizes, when you resize one: test_mantel_bars_menus.py checks that.)
 
 
 def load(path, name):
@@ -240,7 +242,7 @@ class AlwaysStarts(unittest.TestCase):
         sh = code((SHELL / 'shell.qml').read_text())
         self.assertIn('Qt.createComponent("Islands.qml")', sh)
         self.assertIn('Qt.createComponent("Dock.qml")', sh)
-        self.assertIn('ci.status !== Component.Ready || cd.status !== Component.Ready', sh)
+        self.assertIn('ci.status !== Component.Ready || cd && cd.status !== Component.Ready', sh)
         self.assertNotRegex(sh, r'\b(Islands|Dock|Frame|Scene|HintStrip|Frost)\s*\{')
         self.assertIn('active: perScreen.portrait || perScreen.newFailed', sh)
         self.assertIn('Bar {', sh)
