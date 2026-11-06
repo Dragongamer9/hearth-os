@@ -132,16 +132,10 @@ SetPage {
              : "Off. Select to set a code (8 to 64 characters); only its hash is kept"
         checked: !!page.cfg && page.cfg.codeOn
         onToggled: v => {
-            if (v && !(page.st && page.st.codeSet)) { page.codeField = true; return; }
+            if (v && !(page.st && page.st.codeSet)) { page.codeField = true; Qt.callLater(codeBox.focusInput); return; }
             if (v) page.set("codeOn", true);
             else act.run(["code-clear"], () => { page.say("No share code any more"); page.refresh(); }, e => page.say(e, true));
         }
-    }
-    SetField {
-        visible: page.codeField
-        secret: true
-        placeholder: "Type a share code, then Enter"
-        onSubmitted: t => act.run(["code-set"], () => { page.codeField = false; page.say("Share code set ✓ (only its hash is kept)"); page.refresh(); }, e => page.say(e, true), t)
     }
 
     // ---------------------------------------------------------------- every device (the Home server)
@@ -207,5 +201,14 @@ SetPage {
         visible: page.msg !== ""
         Layout.fillWidth: true
         text: page.msg; color: page.bad ? Theme.danger : Theme.flame; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+    // The share code's box is last on the page: a hidden text box between rows would stop Down there (a controller
+    // couldn't reach the device list). Turning the switch on shows it and puts the cursor in it.
+    SetField {
+        id: codeBox
+        visible: page.codeField
+        secret: true
+        placeholder: "Type a share code (8 to 64 characters), then Enter"
+        onSubmitted: t => act.run(["code-set"], () => { page.codeField = false; page.say("Share code set ✓ (only its hash is kept)"); page.refresh(); }, e => page.say(e, true), t)
     }
 }
