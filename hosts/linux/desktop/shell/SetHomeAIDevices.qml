@@ -18,6 +18,10 @@ SetPage {
     property bool codeField: false
     readonly property var cfg: st ? st.settings : null
     readonly property bool listShown: !!st && (st.server || (cfg && cfg.hub))
+    // The page's rows as laid out (SetPage's column): its height also counts rows its implicit height missed, so the
+    // device list at the bottom always scrolls into view (in CI the page stopped scrolling at "Your AI devices").
+    readonly property Item rowsColumn: { const k = contentItem.children; for (let i = 0; i < k.length; i++) if (k[i].spacing !== undefined) return k[i]; return null; }
+    contentHeight: rowsColumn ? Math.max(rowsColumn.implicitHeight, rowsColumn.childrenRect.height) + 48 : 0
     readonly property var kindWords: ({ chat: "Chat", voice: "Voices", image: "Pictures", stt: "Speech to text" })
     function say(t, b) { msg = t; bad = !!b; }
     // replaceList (SetPage): rows are rebuilt only when something changed, and the selection stays put (a list that
