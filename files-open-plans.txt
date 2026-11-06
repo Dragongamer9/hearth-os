@@ -1,0 +1,7 @@
+++ cat /tmp/home/hearth-text-args
++ echo 'hearth-text was given: -- /tmp/home/Documents/NOTES'
+hearth-text was given: -- /tmp/home/Documents/NOTES
++ python3 hosts/linux/desktop/shell/hearth-files open-plan /tmp/home/Documents/run-me.sh
+{"path": "/tmp/home/Documents/run-me.sh", "name": "run-me.sh", "kind": "script", "executable": false, "text": true, "editor": true, "canChmod": true, "remembered": null, "shebang": "/bin/sh", "interpreter": "sh"}
++ python3 hosts/linux/desktop/shell/hearth-files open-plan /tmp/home/Documents/game.conf
+{"path": "/tmp/home/Documents/game.conf", "name": "game.conf", "kind": "text", "executable": false, "text": true, "editor": true, "canChmod": true, "remembered": null, "mime": "text/plain"}
