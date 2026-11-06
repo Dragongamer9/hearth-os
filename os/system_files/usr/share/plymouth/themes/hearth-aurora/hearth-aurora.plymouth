@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Hearth (Aurora)
+Description=Hearth boot splash preset: northern lights drifting over the Hearth mark on a night-blue sky
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/hearth-aurora
+ScriptFile=/usr/share/plymouth/themes/hearth-aurora/hearth-aurora.script

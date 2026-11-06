@@ -1,0 +1,60 @@
+{
+ "frameWidth": 400,
+ "frameHeight": 225,
+ "columns": 8,
+ "fps": 10,
+ "sheets": {
+  "movie-aurora": {
+   "frames": 50,
+   "poster": 36
+  },
+  "movie-embers": {
+   "frames": 50,
+   "poster": 36
+  },
+  "movie-flame": {
+   "frames": 50,
+   "poster": 36
+  },
+  "movie-orbit": {
+   "frames": 50,
+   "poster": 36
+  },
+  "movie-reveal": {
+   "frames": 50,
+   "poster": 36
+  },
+  "movie-starlight": {
+   "frames": 50,
+   "poster": 36
+  },
+  "movie-sweep": {
+   "frames": 50,
+   "poster": 36
+  },
+  "splash-hearth": {
+   "frames": 50,
+   "poster": 30
+  },
+  "splash-hearth-aurora": {
+   "frames": 50,
+   "poster": 30
+  },
+  "splash-hearth-minimal": {
+   "frames": 50,
+   "poster": 30
+  },
+  "splash-hearth-orbit": {
+   "frames": 50,
+   "poster": 30
+  },
+  "splash-hearth-starlight": {
+   "frames": 50,
+   "poster": 30
+  },
+  "splash-hearth-steam": {
+   "frames": 50,
+   "poster": 30
+  }
+ }
+}

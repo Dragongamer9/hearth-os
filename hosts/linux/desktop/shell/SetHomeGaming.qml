@@ -77,6 +77,8 @@ SetPage {
             { t: "Waits", s: "Backups" + (page.g.backups ? " (" + page.g.backups + " set up)" : " (none set up)") + ": they run at the next hour after you stop" },
             { t: page.g.ai.on && page.g.ai.unload ? "Waits" : "Keeps running", s: "AI models: " + (page.g.ai.on ? (page.g.ai.pause ? "the AI service stops while you play" : page.g.ai.unload ? "unloaded from the graphics card within a minute" : "stay loaded (AI › While you play)") : "the AI service is off") },
             { t: page.g.media.on && page.g.media.pause ? "Waits" : "Keeps running", s: "The media server: " + (page.g.media.on ? (page.g.media.pause ? "stops while you play" : "keeps streaming (Services › Pause in Game Mode)") : "off") },
+            { t: page.g.pictures && page.g.pictures.on && page.g.pictures.pause ? "Waits" : "Keeps running", s: "AI pictures (ComfyUI): " + (page.g.pictures && page.g.pictures.on ? (page.g.pictures.pause ? "stops while you play, so the graphics card is yours, and starts again after" : "keeps running and holds graphics memory (Services › Stop while you play)") : "off") },
+            { t: page.g.voices && page.g.voices.on && page.g.voices.pause ? "Waits" : "Keeps running", s: "AI voices (Kokoro): " + (page.g.voices && page.g.voices.on ? (page.g.voices.pause ? "stops while you play" : "keeps running on the CPU") : "off") },
             { t: "Keeps running", s: "Shared folders, Tailscale, folder sync" + (page.g.syncs ? " (" + page.g.syncs + ")" : "") + ", Files on the web and links" }
         ] : []
         delegate: SetRow {

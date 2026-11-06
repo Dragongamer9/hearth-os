@@ -31,7 +31,7 @@ jobs:
       - name: Tests
         run: |
           fail=0
-          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py; do
+          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py; do
             if python3 -m unittest discover -s hosts/linux/test -p "$t" -v > "/tmp/$t.log" 2>&1; then
               echo "::notice title=$t::$(tail -3 "/tmp/$t.log" | tr '\n' ' ')"
             else
@@ -41,6 +41,37 @@ jobs:
             fi
           done
           exit $fail
+
+  # AI voices (Kokoro-FastAPI) run only by the image digest Hearth pins (hearth-home-server KOKORO_DIGEST): it must still
+  # be on ghcr.io, and a release tag that moved to another digest is said. Read only; nothing is pulled.
+  kokoro-pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kokoro's pinned image
+        run: |
+          eval "$(python3 - <<'PY'
+          import re
+          s = open('hosts/linux/desktop/shell/hearth-home-server').read()
+          for k in ('KOKORO_IMAGE', 'KOKORO_TAG', 'KOKORO_DIGEST'):
+              print('%s=%s' % (k, re.search(r"^%s = '([^']*)'" % k, s, re.M).group(1)))
+          PY
+          )"
+          img="docker://$KOKORO_IMAGE"
+          tags=$(skopeo list-tags "$img" 2>/tmp/err | python3 -c 'import json,re,sys; t=json.load(sys.stdin)["Tags"]; v=sorted([x for x in t if re.fullmatch(r"v?\d+\.\d+\.\d+",x)], key=lambda x: [int(n) for n in re.findall(r"\d+",x)]); print(" ".join(v[-6:]+[x for x in t if x=="latest"]))' || true)
+          echo "::notice title=Kokoro image tags::${tags:-none: $(head -c 300 /tmp/err)}"
+          for t in $(echo "$tags" | tr ' ' '\n' | tail -3) $KOKORO_TAG; do
+            d=$(skopeo inspect --raw "$img:$t" 2>/dev/null | sha256sum | cut -d' ' -f1)
+            echo "::notice title=Kokoro $t::sha256:$d"
+            [ "$t" = "$KOKORO_TAG" ] && tagd="sha256:$d"
+          done
+          if [ -z "$KOKORO_DIGEST" ]; then echo "::warning title=Kokoro::no digest pinned yet"; exit 0; fi
+          if ! skopeo inspect --raw "$img@$KOKORO_DIGEST" > /tmp/m.json 2>/tmp/err; then
+            echo "::error title=Kokoro::the pinned image $KOKORO_DIGEST isn't on ghcr.io: $(head -c 300 /tmp/err)"; exit 1
+          fi
+          echo "::notice title=Kokoro pinned::$(python3 -c 'import json; m=json.load(open("/tmp/m.json")); print(m.get("mediaType",""), [p.get("platform") for p in m.get("manifests",[])][:4])')"
+          [ -z "${tagd:-}" ] || [ "$tagd" = "$KOKORO_DIGEST" ] || echo "::warning title=Kokoro::$KOKORO_TAG now points to $tagd; Hearth pins $KOKORO_DIGEST (still there)"
 
   # Game Mode's Quick Access tile lives in the Hearth Link Decky plugin (hosts/decky-hearth-link): its backend's tests,
   # its pure parts' tests, the build (types checked) and pictures of the real panel over stand-ins. No Rust here.

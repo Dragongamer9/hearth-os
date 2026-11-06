@@ -190,6 +190,8 @@ export interface HomeQuick {
   alerts: string[]; setupDone: boolean; ok?: boolean; error?: string;
   ai?: { on: boolean; state: "off" | "ready" | "unloaded" | "paused" };
   remote?: { on: boolean; streaming: boolean; who: string; since: number };
+  pictures?: { on: boolean; state: "off" | "ready" | "paused" };
+  voices?: { on: boolean; state: "off" | "ready" | "paused" };
 }
 export const HOME_POLL = 15000;
 
@@ -222,6 +224,13 @@ export function aiLine(q: HomeQuick): string {
   if (a.state === "paused") return "AI service: stopped while you play";
   if (a.state === "unloaded") return "AI service: models unloaded while you play";
   return "AI service: ready";
+}
+
+/** AI pictures (ComfyUI) and AI voices (Kokoro) in a line, or "" when both are off. */
+export function aiAppsLine(q: HomeQuick): string {
+  const one = (a: HomeQuick["pictures"], label: string) =>
+    !a || !a.on || a.state === "off" ? "" : `${label}: ${a.state === "paused" ? "stopped while you play" : "ready"}`;
+  return [one(q.pictures, "AI pictures"), one(q.voices, "AI voices")].filter((x) => x).join(" · ");
 }
 
 /** Use this PC from anywhere (docs/REMOTE-DESKTOP.md): who is streaming this PC through Moonlight, or "". */

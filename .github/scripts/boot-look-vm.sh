@@ -6,6 +6,7 @@
 #   1 themed     the Hearth GRUB theme (with a second entry, so "(previous version)" shows) and the default splash
 #   2 steam      splash preset hearth-steam (written the way Settings does: /etc/hearth/boot-splash + hearth-bls-grub)
 #   3 minimal    splash preset hearth-minimal
+#   3b aurora, starlight, orbit   the splash presets added after 1.1 (hearth-aurora, hearth-starlight, hearth-orbit)
 #   4 nopreset   plymouth.splash= naming a preset this version doesn't have: Plymouth's default instead, still starts
 #   5 notheme    theme.txt missing on /boot: GRUB's plain text menu, still starts
 #   6 badtheme   theme.txt garbage on /boot: GRUB says so, waits a moment, plain menu, still starts
@@ -126,6 +127,10 @@ with_disk steam_menu
 boot steam yes
 with_disk rewrite_menu hearth-minimal
 boot minimal yes
+for sp in aurora starlight orbit; do
+  with_disk rewrite_menu "hearth-$sp"
+  boot "$sp" yes
+done
 nopreset() { rewrite_menu ""; sudo sed -i 's|^\(  linux .*\)$|\1 plymouth.splash=hearth-not-here|' "$M/b/grub2/hearth-bls.cfg"; }
 with_disk nopreset
 boot nopreset yes

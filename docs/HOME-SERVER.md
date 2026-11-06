@@ -74,8 +74,8 @@ and the setup steps. **Stage 2**: Backups & sync, People, Alerts & power, and th
 - **Services** (`SetHomeServices.qml`, stage 3): **Media server** (Jellyfin: Install, on/off, Reachable: home network
   and Tailscale or Tailscale only, Pause in Game Mode, Open links, Remove), **Photo library** (in Jellyfin, with phone
   photos from Backups & sync), **Files on the web** (on/off, your web password, reachable: Tailscale only or also your
-  home network, Open), the **AI service** (hidden until the Command Center is seen; opens AI), and Remote play, Folder
-  sync and Game archive with their own pages.
+  home network, Open), **AI pictures (ComfyUI)** and **AI voices (Kokoro)** (always shown; below), the **AI service**
+  (hidden until the Command Center is seen; opens AI), and Remote play, Folder sync and Game archive with their own pages.
 - **Gaming** (`SetHomeGaming.qml`, stage 3): **Share a Games folder** (Home › Games, read only for your devices:
   installers, mods, emulator files), Steam's own LAN transfers (changed in Steam; Hearth never signs in to Steam),
   the game archive and saves (Hearth Link), Remote play over Tailscale, friends through Tailscale's node sharing, and
@@ -88,7 +88,8 @@ and the setup steps. **Stage 2**: Backups & sync, People, Alerts & power, and th
   it's for and its size; Download only when you pick one; Remove), **Ask the server** (a question to a model you
   have), **For the Command Center** (when it was seen and where, the address to paste with Copy, voices), **While you
   play** (Unload models when you play, on by default; Stop the AI service while I play, off; Unload models now),
-  Remove Ollama. Everything tied to the Command Center is hidden until it's seen (below).
+  Remove Ollama, and **Pictures and voices** (AI pictures and AI voices in short, Open ComfyUI, the voices address with
+  Copy; always shown). Everything tied to the Command Center is hidden until it's seen (below).
 - **Safety** (`SetHomeSafety.qml`, stage 3): when the guard has tripped, **Your shares are read only** and **Make them
   writable again**; **Worth a look** (findings with **Fix** or **Open**, and **Undo** for each fix done); at a glance
   (Tailscale only or not, the firewall rule, the last backup, SMB3 and no guests, snapshots); the **Ransomware guard**
@@ -282,8 +283,7 @@ and the setup steps. **Stage 2**: Backups & sync, People, Alerts & power, and th
   every part's SHA-256 as it downloads. Progress is in your runtime folder.
 - **The address for the Command Center**: `http://<this PC's Tailscale name>:11434/v1` (Settings › Accounts › Your own
   GPU server in the Command Center: OpenAI-compatible chat, no key, a model such as `qwen3:30b-a3b`). On this PC:
-  `http://localhost:11434/v1`. **Voices** (Kokoro, Chatterbox…) are a documented opt-in placeholder: their servers are
-  big Python and CUDA installs, so Hearth doesn't set them up yet; the AI page says how to point the Command Center at one.
+  `http://localhost:11434/v1`. **Voices**: AI voices (Kokoro-FastAPI, below) gives the Command Center its speech server.
 - **Share links and the drop-off** (`hearth-home-server-web`, Python's threading HTTP server): `/l/<secret>/` serves the
   linked file or folder (folders listed) while the link is on, not past its end, not over its most downloads and its
   share still on; with a password it asks (Basic). `/d/<secret>` is an upload page; each file is POSTed raw with its
@@ -311,6 +311,77 @@ and the setup steps. **Stage 2**: Backups & sync, People, Alerts & power, and th
 - **Quick Access** shows the AI service in a line (ready, models unloaded while you play, stopped while you play) and
   "AI models" and "media server" in what Light mode holds back.
 
+## AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI)
+
+Two more services in **Services** (always shown, not hidden until seen: they're useful without the Command Center) and
+on the **AI** page next to the chat models. Both are **your own user services** (`systemd --user`, as you), not root's.
+
+- **Settings** (in `home-server.json`, through `hearth_settings_io`, only the key you change): `pictures` {on, pause}
+  and `voices` {on, pause}; defaults: both off, `pictures.pause` on (ComfyUI holds graphics memory), `voices.pause` off
+  (Kokoro uses the CPU). **Install and run state is never a setting**: `~/.local/state/nimbus/home-ai.json` (install
+  progress and errors, versions, PyTorch and the graphics card it saw, what was taken over), where they listen in
+  `$XDG_RUNTIME_DIR/hearth-home-server/home-ai-run.json`, and what Light mode stopped in root's
+  `/run/hearth/home-server-services.json`.
+- **AI pictures, how it's installed** (only when you press Install, never at build or boot): `hearth-home-server
+  pictures-install` starts a transient unit of yours (`systemd-run --user`, nice 10, idle I/O) that
+  1. `git clone --depth 1 --branch v0.43.2` of github.com/comfyanonymous/ComfyUI into `~/ComfyUI.hearth-new`, checks
+     that the tag is commit `423cbd2…` (pinned in the helper; anything else is deleted and nothing is installed), then
+     moves it to `~/ComfyUI`;
+  2. makes a venv (`~/ComfyUI/venv`, Debian's `python3 -m venv`);
+  3. `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128` (CUDA 12.8 builds:
+     the RTX 50 series needs them), skipped when PyTorch is already there;
+  4. `pip install -r requirements.txt` (from PyPI);
+  5. checks PyTorch sees the graphics card and notes it.
+  No model is ever downloaded: the page says where models go (`~/ComfyUI/models/checkpoints`, opened in Hearth Files
+  with **Models folder**). **Update** fetches the pinned tag, checks its commit again, refuses when ComfyUI's own files
+  were changed, never moves an install that's already past the release back, re-runs the requirements and restarts it.
+  Hearth moves the pin with its updates. It needs git and python3-venv (now in the Debian image; Settings says so if
+  they're missing) and about 15 GB free.
+- **What's verified, honestly**: ComfyUI's code is checked against the **commit Hearth pins** (git's own content
+  hashes). PyTorch's wheels and the requirements are checked by pip against the **SHA-256 their index lists**
+  (download.pytorch.org and pypi.org both publish one per file, over https): that catches a broken or swapped download
+  on the way, but Hearth doesn't pin those hashes itself, so it trusts those two sites as pip always does.
+  Kokoro's image is pulled and run **only by the digest Hearth pins** (Podman checks the manifest and every layer
+  against it); CI (`home-server.yml`, kokoro-pin) checks that digest is still on ghcr.io and says when its release tag
+  moved. Models you add yourself aren't checked by Hearth.
+- **Your own ComfyUI is adopted, not installed twice**: an existing `~/ComfyUI` (a real folder with ComfyUI's files, not
+  a link; anything else there is left alone) is used as it is: Install only adds what's missing (the venv, PyTorch,
+  the requirements). If your own `comfyui.service` (from your install script) is there and on, Hearth's switch is
+  refused until you press **Take over**: it runs `systemctl --user disable --now comfyui.service` (the file stays) and
+  turns Hearth's on; **Give it back** turns Hearth's off and enables and starts yours again if it was. Remove is
+  refused while yours still uses the folder.
+- **AI voices, how it's installed**: `hearth-home-server voices-install` starts a transient unit that runs `podman pull
+  ghcr.io/remsky/kokoro-fastapi-cpu@sha256:…` in your rootless Podman. It runs on the CPU, so no graphics card plumbing
+  in containers is needed. Your own `kokoro` container (`podman run --name kokoro …`) is never deleted: while it runs,
+  Hearth's switch is refused until **Take over** (`podman stop kokoro`); **Give it back** starts it again. Remove
+  (`podman rmi` of Hearth's digest) leaves the image when your container still uses it.
+- **Running**: `hearth-comfyui.service` and `hearth-kokoro.service` in `/usr/lib/systemd/user`, no `[Install]`, each
+  started only by Settings or its timer (`hearth-comfyui.timer`, `hearth-kokoro.timer`: a minute after you sign in,
+  enabled for your account only while it's on). Both run `hearth-home-server ai-run`, which becomes ComfyUI (`main.py
+  --listen 127.0.0.1,<this PC's Tailscale IPv4> --port 8188`) or `podman run --rm --pull=never --cap-drop=all
+  --security-opt no-new-privileges -p 127.0.0.1:8880:8880 -p <Tailscale IPv4>:8880:8880 <image@digest>`. Without
+  Tailscale they listen on this PC only (the page says so). ComfyUI's own condition needs `~/ComfyUI/venv/bin/python`.
+- **Reach**: only this PC and Tailscale, always. Besides listening only there, their ports (8188, 8880) are in Hearth's
+  nftables table while they're on (`lo` and `tailscale0` let in, everything else dropped), through the same apply as
+  the AI service; a firewall that can't load doesn't stop them (they still listen only on this PC and Tailscale).
+  ComfyUI has no password, so it never gets a home-network choice.
+- **Light mode while you play**: the services timer (root, every minute, on while one of them pauses) stops your
+  `hearth-comfyui` / `hearth-kokoro` when Game Mode or a game runs (Light mode on, not let through in Quick Access),
+  as you (`runuser -u YOU -- systemctl --user stop --no-block …`, through your own user manager; nothing when it isn't
+  running), and starts it again once you stop playing if it's still on. Only these two units can be named. It never
+  changes a setting. Note: Game Mode itself counts as playing, so with "Stop it while I play" on, ComfyUI is stopped
+  the whole time Game Mode is up (Quick Access › Let paused jobs run now lets it run for up to 4 hours).
+- **Status**: ComfyUI's `/system_stats` (the graphics card it uses) and Kokoro's `/health` and `/v1/audio/voices`, on
+  127.0.0.1. **Addresses**: ComfyUI `http://<this PC's Tailscale name>:8188` (Open); Kokoro
+  `http://<this PC's Tailscale name>:8880` for the Command Center's Settings › Voice › Speech servers › Kokoro-FastAPI
+  (Copy). The Command Center using AI voices from one of your devices marks it seen, like the AI service.
+- **Remove**: ComfyUI's code, venv and custom nodes go; `models`, `output` (your pictures), `input` and `user` (your
+  workflows) stay. **Remove ComfyUI and its models** asks twice on the page and the helper only takes
+  `pictures-remove models sure really-sure`; a `models` link to another drive is unlinked, never followed. Removing
+  turns its switch off (you asked for it). Nothing outside `~/ComfyUI` is touched.
+- **Overview and Quick Access**: the Services tile counts Pictures and Voices; Quick Access says "AI pictures: stopped
+  while you play · AI voices: ready" and lists them in what Light mode holds back. Gaming lists them under what waits.
+
 ## Never stopping the PC from starting
 
 Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd,
@@ -320,7 +391,10 @@ again); the timers `hearth-home-server-snapshots`, `-backup`, `-alerts`, `-power
 `-services`, `hearth-ollama` and `hearth-jellyfin` aren't enabled anywhere, and each is turned on only while something
 you chose needs it. Stage 3's `hearth-ollama.service` and `hearth-jellyfin.service` have no `[Install]`, need their
 app and Hearth's drop-in to start at all, and their apps are never in the image (the build fails if Ollama, Jellyfin or
-`/var/lib/hearth/apps` is there); the user service `hearth-home-server-web` is disabled in the image too. Their services have no `[Install]`
+`/var/lib/hearth/apps` is there); the user service `hearth-home-server-web` is disabled in the image too. AI pictures
+and AI voices are user services with no `[Install]` whose timers are disabled globally in the image; the build fails if
+either is enabled, if ComfyUI is in `/etc/skel` or Kokoro's image is in the image's Podman storage, and the image check
+looks again (and that no PyTorch is installed system-wide). Their services have no `[Install]`
 (only their timers start them) and none waits for the network at start. restic, rclone, Syncthing, hdparm and NUT are
 nice-to-have packages: a missing one is said in Settings. The snapshot service has no
 `[Install]`, a timeout and idle priority; nothing has `Requires=` or is wanted by the session, Game Mode or Steam Game
@@ -344,6 +418,9 @@ Stage 3 uses it for the **Command Center** (the AI page, the AI service in Servi
   `/var/lib/hearth/home-server-seen.json`, which `status` reads with yours (newest wins);
 - **by hand or from another tool**: `hearth-home-server seen commandCenter DEVICE`.
 An AI service that's installed or on is shown either way, so it can always be turned off.
+AI pictures and AI voices are **not** hidden: they show in Services and in the AI page's Pictures and voices section
+whether or not the Command Center was seen (their Command Center address also sits in the hidden "For the Command
+Center" section, which follows the rule).
 
 ## Tests
 
@@ -367,6 +444,18 @@ with inhibitors respected, the schedule and wake timer; the UPS leaving a hand-m
 needed, everything off by default in the image and the units; nested settings writing only their key; the Quick Access
 tile's allow-list. The Hearth Link plugin's own tests (backend, `model.test.mjs`) and pictures of the tile run in
 home-server.yml's quick-access job.
+
+`hosts/linux/test/test_hearth_home_ai.py` (AI pictures and AI voices): their ports always behind the Tailscale-only
+rule while on, the services timer only when something pauses, ComfyUI and Kokoro stopped as you when a game starts and
+started again after (only if still on), nothing stopped with Light mode off, let through or pause off, only Hearth's
+two units and real accounts, the Command Center noted from AI voices; settings off by default and written per key
+(never defaults over a damaged file), state never in settings; listening only on 127.0.0.1 and the Tailscale address
+(never 0.0.0.0), Kokoro only by its digest with `--pull=never`; the install (the release's commit checked or nothing
+installed, PyTorch from the cu128 index, the requirements, never a model), adopting an existing `~/ComfyUI` and
+leaving anything else or a link alone, git, venv and space checked, the update (your changes never written over,
+never moved back, restarted), remove keeping models, pictures and workflows, models only with both confirmations and
+links never followed, taking over and giving back your own comfyui.service and kokoro container; the units, the image's
+checks and the pages' wiring.
 
 `hosts/linux/test/test_hearth_home_server_3.py` (stage 3): the AI service's port always behind the Tailscale-only rule,
 listening on all addresses only with the rule (this PC only without it), a Tailscale-only media server never started
