@@ -1,0 +1,7 @@
+# Environment for Server mode's dashboard (and Hearth Settings opened from it).
+XDG_CURRENT_DESKTOP=Nimbus:wlroots
+XDG_SESSION_TYPE=wayland
+QT_QPA_PLATFORM=wayland;xcb
+QT_QPA_PLATFORMTHEME=qt6ct
+XCURSOR_THEME=breeze_cursors
+XCURSOR_SIZE=24

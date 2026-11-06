@@ -52,6 +52,11 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
                         also Light mode for AI pictures (ComfyUI) and AI voices (Kokoro), your own user services
                         (stopped while you play when you chose that, started again after)
   guard-reset           your shares writable again after the ransomware guard turned them read only
+  ---- Server mode (docs/SERVER-MODE.md; hearth-server-mode runs these, as the person at the device)
+  svc stop|start|restart ollama|jellyfin   the dashboard's pause, resume and restart for the AI service and the media
+                        server (only when it's installed and on: Hearth's drop-in is there)
+  gpu-limit WATTS|reset the graphics card's power limit while Server mode has nothing to do (Nvidia: nvidia-smi -pl, within
+                        the card's own range), or back to the card's default; only ever reset after Hearth set it
   ---- Use this PC from anywhere (Settings › Remote play, docs/REMOTE-DESKTOP.md)
   remote-fw tailscale [PORT]   Sunshine's ports (from its base PORT, 47989 unless you changed it in Sunshine) only through
                         Tailscale and this PC itself: its own nftables table, /etc/hearth/remote-desktop.nft, loaded again
@@ -2296,6 +2301,10 @@ GUARD_DEFAULT = {'on': False, 'limit': 1000}
 # you play when you chose so, started again after; what was stopped is state in SERVICES_STATE, never a setting).
 COMFY_PORT = 8188
 KOKORO_PORT = 8880
+SERVER_WEB_PORT = 8460             # Server mode's web page (hearth-server-mode)
+SMALL_MODEL = 'qwen3:14b'          # Light mode's small model while you play (on the processor), when you chose it
+COMFY_QUEUE = '/run/hearth/comfyui-queue.json'   # ComfyUI's queue kept while it's stopped for your game (root only, 0600)
+GPU_LIMIT_STATE = '/run/hearth/server-gpu-limit'
 USER_APPS = {'comfyui': ('pictures', 'hearth-comfyui.service', True), 'kokoro': ('voices', 'hearth-kokoro.service', False)}
 ACCOUNT_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 USER_RUN = '/run/user/%d'      # your user manager's runtime folder (its bus is there while you're signed in)
@@ -2311,7 +2320,8 @@ def clean_media(m):
 
 def clean_ai(a):
     a = a if isinstance(a, dict) else {}
-    return {'on': a.get('on') is True, 'unload': a.get('unload', True) is not False, 'pause': a.get('pause') is True}
+    return {'on': a.get('on') is True, 'unload': a.get('unload', True) is not False, 'pause': a.get('pause') is True,
+            'small': a.get('small') is True}
 
 
 def clean_user_app(a, pause_default):
@@ -2629,6 +2639,9 @@ def services_plan(data, user):
         out[key] = clean_user_app(data.get(key), pdef)
         if out[key]['on']:
             out['ports']['tcp'].append(COMFY_PORT if name == 'comfyui' else KOKORO_PORT)
+    # Server mode's web page (hearth-server-mode serve, docs/SERVER-MODE.md): only Tailscale and this PC, always.
+    if data.get('serverWeb') is True:
+        out['ports']['tcp'].append(SERVER_WEB_PORT)
     return out
 
 
@@ -2727,15 +2740,36 @@ def ollama_api(method, path, body=None, timeout=10):
         return None
 
 
-def unload_models():
+def unload_models(keep=None):
     """Every model the AI service has loaded is unloaded now (keep_alive 0): the graphics card is yours again. The
-    next question loads it again by itself."""
+    next question loads it again by itself. KEEP (the small model on the processor) stays."""
     ps = ollama_api('GET', '/api/ps') or {}
     names = [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]
+    gone = []
     for n in names:
-        if isinstance(n, str) and n:
+        if isinstance(n, str) and n and n != keep:
             ollama_api('POST', '/api/generate', {'model': n, 'keep_alive': 0}, timeout=30)
-    return names
+            gone.append(n)
+    return gone
+
+
+def small_model_load():
+    """While you play (Server mode's choice): the small model on the processor only (num_gpu 0), kept loaded, so your
+    other devices still get answers without taking the graphics card from the game. Only when it's downloaded: nothing is
+    ever downloaded or deleted here. Returns True when it's loaded."""
+    tags = ollama_api('GET', '/api/tags') or {}
+    have = [m.get('name') or m.get('model') for m in tags.get('models') or [] if isinstance(m, dict)]
+    if SMALL_MODEL not in have:
+        return False
+    ps = ollama_api('GET', '/api/ps') or {}
+    if SMALL_MODEL in [m.get('name') or m.get('model') for m in ps.get('models') or [] if isinstance(m, dict)]:
+        return True
+    r = ollama_api('POST', '/api/generate', {'model': SMALL_MODEL, 'keep_alive': '4h', 'options': {'num_gpu': 0}}, timeout=120)
+    return r is not None
+
+
+def small_model_unload():
+    ollama_api('POST', '/api/generate', {'model': SMALL_MODEL, 'keep_alive': 0}, timeout=30)
 
 
 def unit_active(unit):
@@ -2786,16 +2820,86 @@ def user_systemctl(user, action, unit):
     return run(cmd, timeout=30)
 
 
-def user_apps_light(plan, playing, paused, did):
+COMFY_WAIT = 150     # seconds Light mode waits for the picture being made before stopping ComfyUI anyway
+
+
+def comfy_api(method, path, body=None, timeout=5):
+    """One call to ComfyUI on this PC (127.0.0.1:8188). Tests replace this."""
+    import urllib.request
+    req = urllib.request.Request('http://127.0.0.1:%d%s' % (COMFY_PORT, path), method=method,
+                                 data=json.dumps(body).encode() if body is not None else None, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read(32 << 20).decode('utf-8', 'replace'))
+    except Exception:  # noqa: BLE001 - ComfyUI not answering is just that
+        return None
+
+
+def comfy_queue_save(q):
+    """ComfyUI's queue (the picture being made first, then the ones waiting), kept for root only while it's stopped."""
+    items = []
+    for part in ('queue_running', 'queue_pending'):
+        for it in sorted((q or {}).get(part) or [], key=lambda x: x[0] if isinstance(x, list) and x and isinstance(x[0], (int, float)) else 0):
+            if isinstance(it, list) and len(it) >= 4 and isinstance(it[2], dict):
+                items.append({'prompt': it[2], 'extra': it[3] if isinstance(it[3], dict) else {}})
+    if items:
+        ensure_dir(os.path.dirname(COMFY_QUEUE), 0o755)
+        write(COMFY_QUEUE, json.dumps({'items': items[:200]}), 0o600)
+    return len(items)
+
+
+def comfy_queue_restore():
+    """After ComfyUI starts again: the kept queue goes back in, in order (waits up to a minute for it to answer)."""
+    if not os.path.exists(COMFY_QUEUE):
+        return 0
+    try:
+        items = (json.loads(read(COMFY_QUEUE)) or {}).get('items') or []
+    except ValueError:
+        items = []
+    up = False
+    for _ in range(30):
+        if comfy_api('GET', '/system_stats') is not None:
+            up = True
+            break
+        time.sleep(2)
+    if not up:
+        return -1        # not up yet: the next run tries again (the file stays)
+    n = 0
+    for it in items:
+        if isinstance(it, dict) and isinstance(it.get('prompt'), dict):
+            extra = it.get('extra') if isinstance(it.get('extra'), dict) else {}
+            if comfy_api('POST', '/prompt', {'prompt': it['prompt'], 'extra_data': extra, 'client_id': extra.get('client_id', '')}, timeout=10) is not None:
+                n += 1
+    remove(COMFY_QUEUE)
+    return n
+
+
+def user_apps_light(plan, playing, paused, did, st=None, now=None):
     """Light mode for AI pictures and AI voices: stopped when Game Mode or a game starts (ComfyUI holds graphics memory;
-    on by default for it, off for the voices, which use the CPU), started again once you stop playing."""
+    on by default for it, off for the voices, which use the CPU), started again once you stop playing. ComfyUI finishes
+    the picture it's making first (up to COMFY_WAIT seconds), and its queue is kept and put back after."""
     user = plan.get('user')
+    st = {} if st is None else st
+    now = time.time() if now is None else now
     for name, (key, unit, pdef) in USER_APPS.items():
         cfg = clean_user_app(plan.get(key), pdef)
         if playing and cfg['on'] and cfg['pause'] and name not in paused and user_systemctl(user, 'is-active', unit)[0] == 0:
+            if name == 'comfyui':
+                q = comfy_api('GET', '/queue')
+                if q and q.get('queue_running'):
+                    since = st.setdefault('comfyWait', int(now))
+                    if now - since < COMFY_WAIT:
+                        did.append('waiting for the picture ComfyUI is making')
+                        continue
+                st.pop('comfyWait', None)
+                kept = comfy_queue_save(q)
+                if kept:
+                    did.append('kept %d pictures in ComfyUI\'s queue' % kept)
             user_systemctl(user, 'stop', unit)
             paused.append(name)
             did.append('stopped ' + name + ' for your game')
+    if not playing:
+        st.pop('comfyWait', None)
 
 
 def mark_seen_sys(kind, device, now):
@@ -2819,22 +2923,31 @@ def services_run(now=None):
     did = []
     if ai['on'] and app_installed('ollama'):
         if playing:
-            if ai['unload'] and unit_active('hearth-ollama.service'):
-                gone = unload_models()
+            small = ai['small'] and not ai['pause']
+            if (ai['unload'] or small) and unit_active('hearth-ollama.service'):
+                gone = unload_models(SMALL_MODEL if small else None)
                 if gone:
                     did.append('unloaded ' + ', '.join(gone))
                 st['unloadedAt'] = int(now)
+            if small and unit_active('hearth-ollama.service') and small_model_load():
+                if not st.get('small'):
+                    did.append('the small model (%s) on the processor for your game' % SMALL_MODEL)
+                st['small'] = SMALL_MODEL
             if ai['pause'] and 'ollama' not in paused and unit_active('hearth-ollama.service'):
                 run(['systemctl', 'stop', 'hearth-ollama.service'])
                 paused.append('ollama')
         elif unit_active('hearth-ollama.service'):
+            if st.pop('small', None):
+                # Back from your game: the small model goes; the big one loads again on the next question.
+                small_model_unload()
+                did.append('the small model unloaded')
             users = ai_clients()
             if users:
                 mark_seen_sys('commandCenter', users[0], now)
     if media['on'] and media['pause'] and playing and 'jellyfin' not in paused and unit_active('hearth-jellyfin.service'):
         run(['systemctl', 'stop', 'hearth-jellyfin.service'])
         paused.append('jellyfin')
-    user_apps_light(plan, playing, paused, did)
+    user_apps_light(plan, playing, paused, did, st, now)
     if not playing and clean_user_app(plan.get('voices'), False)['on']:
         users = ai_clients(KOKORO_PORT)     # the Command Center's voice settings talking to AI voices
         if users:
@@ -2846,12 +2959,20 @@ def services_run(now=None):
                 if clean_user_app(plan.get(key), pdef)['on']:
                     user_systemctl(plan.get('user'), 'start', unit)
                     did.append('started ' + name + ' again')
+                    if name == 'comfyui':
+                        st['comfyRestore'] = True
                 continue
             want = ai['on'] if name == 'ollama' else media['on']
             if want and os.path.exists(APP_DROPIN % APP_UNITS[name]):
                 run(['systemctl', 'start', APP_UNITS[name] + '.service'])
                 did.append('started ' + name + ' again')
         paused = []
+    if not playing and (st.get('comfyRestore') or (os.path.exists(COMFY_QUEUE) and 'comfyui' not in paused)):
+        n = comfy_queue_restore()
+        if n >= 0:
+            st.pop('comfyRestore', None)
+            if n:
+                did.append('put %d pictures back in ComfyUI\'s queue' % n)
     st['paused'] = paused
     st['playing'] = playing
     st['at'] = int(now)
@@ -2863,6 +2984,61 @@ def services_run(now=None):
     ensure_dir(os.path.dirname(SERVICES_STATE), 0o755)
     state_write(SERVICES_STATE, st)
     return {'ok': True, 'playing': playing, 'paused': paused, 'did': did}
+
+
+# ------------------------------------------------------------------ Server mode (docs/SERVER-MODE.md)
+
+def svc(action, name):
+    """The dashboard's pause / resume / restart for the AI service or the media server: only Hearth's own units, only when
+    installed and on (Hearth's drop-in is there), only these three actions."""
+    if action not in ('stop', 'start', 'restart') or name not in APP_UNITS:
+        raise Fail('svc stop|start|restart ollama|jellyfin')
+    unit = APP_UNITS[name] + '.service'
+    if not os.path.exists(APP_DROPIN % APP_UNITS[name]):
+        raise Fail('%s isn\'t set up on this PC' % APPS[name]['label'])
+    code, _ = run(['systemctl', action, '--no-block', unit], timeout=30)
+    if code != 0:
+        raise Fail('systemctl %s %s didn\'t work' % (action, unit))
+    return {'ok': True, 'unit': unit, 'action': action}
+
+
+def nvidia_power():
+    """The graphics card's power limits (W): {min, max, default, current}, or None (no Nvidia card or nvidia-smi)."""
+    if not which('nvidia-smi'):
+        return None
+    code, out = run(['nvidia-smi', '--query-gpu=power.min_limit,power.max_limit,power.default_limit,power.limit',
+                     '--format=csv,noheader,nounits'], timeout=10)
+    if code != 0 or not out.strip():
+        return None
+    try:
+        lo, hi, de, cur = [float(x) for x in out.splitlines()[0].split(',')]
+    except ValueError:
+        return None
+    return {'min': lo, 'max': hi, 'default': de, 'current': cur}
+
+
+def gpu_limit(raw):
+    """Server mode's idle power: the card's limit to WATTS (clamped into its own range), or back to its default. The
+    mark in /run says Hearth set it, so reset never touches a limit someone else chose; a restart clears both."""
+    p = nvidia_power()
+    if raw == 'reset':
+        if not os.path.exists(GPU_LIMIT_STATE):
+            return {'ok': True, 'gpuLimit': 'untouched'}
+        if p:
+            run(['nvidia-smi', '-pl', str(int(p['default']))], timeout=20)
+        remove(GPU_LIMIT_STATE)
+        return {'ok': True, 'gpuLimit': 'default'}
+    if not re.fullmatch(r'\d{2,3}', raw or ''):
+        raise Fail('gpu-limit WATTS (a number) or reset')
+    if not p:
+        return {'ok': True, 'gpuLimit': 'not supported'}
+    w = int(max(p['min'], min(p['max'], int(raw))))
+    code, _ = run(['nvidia-smi', '-pl', str(w)], timeout=20)
+    if code != 0:
+        raise Fail('nvidia-smi didn\'t take the limit')
+    ensure_dir(os.path.dirname(GPU_LIMIT_STATE), 0o755)
+    write(GPU_LIMIT_STATE, '%d\n' % w, 0o644)
+    return {'ok': True, 'gpuLimit': w}
 
 
 # ------------------------------------------------------------------ Use this PC from anywhere (Sunshine through Tailscale)
@@ -3100,6 +3276,10 @@ def main(argv):
             res = app_remove(a[1])
         elif a == ['services', 'run']:
             res = services_run()
+        elif len(a) == 3 and a[0] == 'svc':
+            res = svc(a[1], a[2])
+        elif len(a) == 2 and a[0] == 'gpu-limit':
+            res = gpu_limit(a[1])
         elif a == ['guard-reset']:
             res = guard_reset()
         elif len(a) in (2, 3) and a[0] == 'remote-fw' and a[1] in ('tailscale', 'off', 'load'):
@@ -3112,6 +3292,7 @@ def main(argv):
                        'person-remove NAME | person-folder | backup-secret ID | backup-forget ID | backup run [--now ID] | '
                        'backup-now ID | backup-snapshots ID | backup-restore | receive-add NAME | receive-remove USER | '
                        'alerts run|test | power run | ups-status | app-install NAME | app-remove NAME | services run | guard-reset | '
+                       'svc stop|start|restart ollama|jellyfin | gpu-limit WATTS|reset | '
                        'remote-fw tailscale [PORT]|off|load')
         print(json.dumps(res))
         return 0

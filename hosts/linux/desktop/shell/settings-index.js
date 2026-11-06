@@ -1933,6 +1933,121 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
+"t": "Use Server mode",
+"p": "hs-server",
+"d": "Show it next to Game Mode and Desktop Mode: in Start in, here and on the dashboard. Off by default; Game Mode stays where your PC starts unless you choose Server mode",
+"i": "server"
+},
+{
+"t": "Open Server mode now",
+"p": "hs-server",
+"i": "play"
+},
+{
+"t": "Startup and schedule",
+"p": "hs-server",
+"i": "power"
+},
+{
+"t": "Lower power limits when idle",
+"p": "hs-server",
+"i": "bolt"
+},
+{
+"t": "Graphics card limit when idle",
+"p": "hs-server"
+},
+{
+"t": "Idle means no jobs for",
+"p": "hs-server"
+},
+{
+"t": "Spin down drives",
+"p": "hs-server",
+"d": "Data drives only; the system drive stays on (the same setting as Alerts & power)",
+"i": "drive"
+},
+{
+"t": "Screen dims to a clock after",
+"p": "hs-server",
+"d": "Dim shows the time and the status in dark grey, kind to OLED screens. Any button brings the dashboard back",
+"i": "display"
+},
+{
+"t": "Then off after",
+"p": "hs-server"
+},
+{
+"t": "Sleep",
+"p": "hs-server",
+"d": "Server mode keeps the PC awake unless you choose a time here. Waking it over Tailscale needs another device at home",
+"i": "sleep"
+},
+{
+"t": "Light mode while you play",
+"p": "hs-server",
+"d": "The same rules for Server mode's Play button, Guide and any game. Backups wait while it's on",
+"i": "pad"
+},
+{
+"t": "Pictures · ComfyUI",
+"p": "hs-server",
+"i": "image"
+},
+{
+"t": "AI chat · Ollama",
+"p": "hs-server",
+"i": "chat"
+},
+{
+"t": "Voices · Kokoro",
+"p": "hs-server",
+"i": "wave"
+},
+{
+"t": "Media · Jellyfin",
+"p": "hs-server",
+"i": "film"
+},
+{
+"t": "Shared folders, Tailscale",
+"p": "hs-server",
+"d": "Always keep working",
+"i": "folder"
+},
+{
+"t": "Dashboard web page",
+"p": "hs-server",
+"i": "globe"
+},
+{
+"t": "PIN for the web page",
+"p": "hs-server",
+"i": "lock"
+},
+{
+"t": "Restart and pause services",
+"p": "hs-server",
+"i": "restart"
+},
+{
+"t": "Switch modes",
+"p": "hs-server",
+"d": "The screen at home counts down 10 seconds first (cancel it there), and nothing switches while a game is running or Desktop Mode is open",
+"i": "pad"
+},
+{
+"t": "Sleep or restart the PC",
+"p": "hs-server",
+"i": "sleep"
+},
+{
+"t": "Show it on my other Hearth devices",
+"p": "hs-server",
+"d": "Hearth Link and Quick Access on your Ally can show the status (read only) without the PIN, from your Tailscale devices only",
+"i": "desktops"
+},
+{
 "t": "Sign in automatically",
 "p": "signin",
 "i": "user"
@@ -1973,6 +2088,36 @@ var ENTRIES = [
 "t": "Input volume",
 "p": "sound",
 "i": "mic"
+},
+{
+"t": "When this PC turns on",
+"p": "startup",
+"d": "Start in one mode every time, or follow a schedule",
+"i": "power"
+},
+{
+"t": "Add a change",
+"p": "startup",
+"d": "A new change an hour after the last one",
+"i": "plus"
+},
+{
+"t": "If a game is running",
+"p": "startup",
+"d": "Server mode never closes your game: the change waits until it ends",
+"i": "pad"
+},
+{
+"t": "If you're in Desktop Mode",
+"p": "startup",
+"d": "Unsaved work stays open: the schedule never switches away from Desktop Mode",
+"i": "desktops"
+},
+{
+"t": "In Server mode",
+"p": "startup",
+"d": "The dashboard counts down 10 seconds first; B cancels",
+"i": "server"
 },
 {
 "t": "Switch to Steam Game Mode",

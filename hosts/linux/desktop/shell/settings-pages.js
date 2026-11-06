@@ -38,7 +38,8 @@ var PAGES = [
     { id: "notifications", file: "SetNotifications.qml", cat: "system", label: "Notifications", icon: "bell", desc: "Do not disturb, apps you muted", words: "do not disturb mute alerts", old: "Notifications", status: "dnd" },
     { id: "power", file: "SetPower.qml", cat: "system", label: "Power & battery", icon: "power", desc: "Screen off and sleep times, the power button, battery", words: "battery sleep screen off suspend power button", old: "Power" },
     { id: "storage", file: "SetStorage.qml", cat: "system", label: "Storage", icon: "drive", desc: "Space on your drives, games by size, clean up", words: "disk space clean games by size move games low space", old: "Storage" },
-    { id: "boot", file: "SetBoot.qml", cat: "system", label: "Startup", icon: "power", desc: "The boot splash Hearth OS shows while it starts", words: "boot splash startup plymouth", old: "Boot & startup", props: { part: "splash" } },
+    { id: "startup", file: "SetStartup.qml", cat: "system", label: "Startup", icon: "power", desc: "Start in Game Mode, Desktop Mode or Server mode, and an optional schedule", words: "start in boot mode schedule server mode game mode desktop mode turn on" },
+    { id: "boot", file: "SetBoot.qml", cat: "system", label: "Boot splash", icon: "sparkle", desc: "The boot splash Hearth OS shows while it starts", words: "boot splash startup plymouth", old: "Boot & startup", props: { part: "splash" } },
     { id: "datetime", file: "SetDateTime.qml", cat: "system", label: "Date & time", icon: "clock", desc: "Time zone, 24-hour clock", words: "clock time zone 24-hour", old: "Date & time" },
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
@@ -84,6 +85,7 @@ var PAGES = [
 
     // ---- Home server (always its own category; Overview is the landing)
     { id: "hs-overview", file: "SetHomeServer.qml", cat: "hs", label: "Home server", icon: "server", words: "nas home server light mode overview", old: "Home server › Overview", landing: true, ownList: true },
+    { id: "hs-server", file: "SetServerMode.qml", cat: "hs", label: "Server mode", icon: "server", desc: "A dashboard on the screen, one press to play, the web page over Tailscale", words: "server mode dashboard idle power screen dim web page pin phone laptop schedule light mode play" },
     { id: "hs-setup", file: "SetHomeSetup.qml", cat: "hs", label: "Set up your home server", icon: "check", desc: "A few steps: name, Tailscale, a shared folder, a backup", words: "nas setup steps", old: "Home server › Setup", hidden: true },
     { id: "hs-shares", file: "SetHomeShares.qml", cat: "hs", label: "Shared folders", icon: "folder", desc: "What your devices can open, and how", words: "nas smb samba share network windows folder", old: "Home server › Shared folders" },
     { id: "hs-files", file: "SetHomeFiles.qml", cat: "hs", label: "Files & links", icon: "link", desc: "Search every share, share links, drop-off folder", words: "nas search find links share link drop-off upload duplicates big files screenshots clean up", old: "Home server › Files & links" },

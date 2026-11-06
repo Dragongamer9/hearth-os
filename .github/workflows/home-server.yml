@@ -11,7 +11,9 @@ on:
             'os/system_files/usr/lib/systemd/**', 'os-bases/peppermint/build.sh', 'hosts/linux/test/test_hearth_home_server*.py',
             'hosts/decky-hearth-link/**', '.github/workflows/home-server.yml',
             'hosts/linux/desktop/shell/hearth-remote-desktop', 'hosts/linux/desktop/shell/SetRemote.qml', 'hosts/linux/test/test_hearth_remote_desktop.py',
-            'hosts/linux/desktop/shell/hearth-ai-share', 'os/system_files/usr/libexec/nimbus/hearth-ai-share-helper', 'hosts/linux/test/test_hearth_ai_share.py', 'docs/AI-SHARE.md']
+            'hosts/linux/desktop/shell/hearth-ai-share', 'os/system_files/usr/libexec/nimbus/hearth-ai-share-helper', 'hosts/linux/test/test_hearth_ai_share.py', 'docs/AI-SHARE.md',
+            'hosts/linux/desktop/shell/hearth-server-mode', 'hosts/linux/desktop/shell/server-mode-web.html', 'hosts/linux/desktop/server/**',
+            'hosts/linux/session/**', 'hosts/linux/test/test_hearth_server_mode.py', 'docs/SERVER-MODE.md']
   workflow_dispatch:
 
 permissions:
@@ -25,14 +27,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax
         run: |
-          for f in hosts/linux/desktop/shell/hearth-home-server hosts/linux/desktop/shell/hearth-home-server-web hosts/linux/desktop/shell/hearth-remote-desktop hosts/linux/desktop/shell/hearth-ai-share os/system_files/usr/libexec/nimbus/hearth-ai-share-helper os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper; do
+          for f in hosts/linux/desktop/shell/hearth-server-mode hosts/linux/desktop/shell/hearth-home-server hosts/linux/desktop/shell/hearth-home-server-web hosts/linux/desktop/shell/hearth-remote-desktop hosts/linux/desktop/shell/hearth-ai-share os/system_files/usr/libexec/nimbus/hearth-ai-share-helper os/system_files/usr/libexec/nimbus/hearth-home-server-helper os/system_files/usr/libexec/nimbus/hearth-storage-helper; do
             python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$f" || { echo "::error file=$f::not valid Python"; exit 1; }
           done
           bash -n os-bases/peppermint/build.sh
+          sh -n hosts/linux/session/nimbus-session && sh -n hosts/linux/session/nimbus-mode && sh -n hosts/linux/desktop/server/labwc/autostart
       - name: Tests
         run: |
           fail=0
-          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py test_hearth_ai_share.py; do
+          for t in test_hearth_home_server.py test_hearth_home_server_2.py test_hearth_home_server_3.py test_hearth_home_ai.py test_hearth_remote_desktop.py test_settings_persistence.py test_hearth_storage_helper.py test_hearth_storage.py test_hearth_settings_move.py test_hearth_ai_share.py test_hearth_server_mode.py test_hearth_steam_mode.py test_hearth_mantel_only.py; do
             if python3 -m unittest discover -s hosts/linux/test -p "$t" -v > "/tmp/$t.log" 2>&1; then
               echo "::notice title=$t::$(tail -3 "/tmp/$t.log" | tr '\n' ' ')"
             else

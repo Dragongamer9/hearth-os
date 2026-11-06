@@ -179,6 +179,16 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   that no settings file changed; the frame, the cards and the category pages never change a setting
   (`test_settings_redesign.py`). Moved switches keep their keys (Night light is still `nightLight`).
 
+## Server mode (Hearth 1.6)
+
+Server mode (docs/SERVER-MODE.md) is its own light session, not part of Desktop Mode: nimbus-session starts labwc with its
+own folder (`desktop/server/labwc`) and one Quickshell app, `shell/server-mode.qml`, built from Mantel's parts (Theme,
+Icon, SetStyle, and the same Hearth Settings, `SettingsApp.qml`, opened from its menu). No bar, dock, launcher or desktop.
+Settings has two new pages: Home server › **Server mode** (`SetServerMode.qml`) and System › **Startup**
+(`SetStartup.qml`: Start in, with Server mode once it's on, and its optional schedule); the boot splash page is now
+System › **Boot splash**. Start in (`StartInChoice.qml`) now saves through hearth_settings_io's `conf-set` (only that line,
+atomic, `.bak`, under the session's lock) instead of `sed -i`.
+
 ## Desktop Mode always starts (red flag 2)
 
 `shell.qml` loads `Islands.qml` and (with the floating app menu on) `Dock.qml` by file name, once your settings are

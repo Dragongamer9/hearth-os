@@ -53,6 +53,7 @@ everything again.
   hearth-home-server resume on|off              let jobs paused for your game run now (up to 4 hours), or pause them again
   ---- stage 3
   hearth-home-server set KEY VALUE              also: mediaOn, mediaPause, aiOn, aiUnload, aiPause, webOn, guardOn (on|off);
+                                                aiSmall (on|off: the small model while you play, docs/SERVER-MODE.md);
                                                 mediaReach, webReach (home|tailscale); guardLimit (500|1000|5000)
   hearth-home-server services                   the media server, the AI service and Files on the web: installed, on, where
   hearth-home-server app-install ollama|jellyfin | app-remove ollama|jellyfin    (verified downloads, only when asked)
@@ -127,7 +128,9 @@ DEFAULTS = {
     'power': {'sleepIdle': 0, 'keepAwake': False, 'spinDown': 0, 'schedule': False, 'sleepAt': '01:00', 'wakeAt': '07:00', 'ups': False},
     # ---- stage 3 (every one off or empty until you choose it)
     'media': {'on': False, 'reach': 'home', 'pause': False},     # the media server (Jellyfin)
-    'ai': {'on': False, 'unload': True, 'pause': False},          # the AI service (Ollama): Tailscale or this PC only, always
+    'ai': {'on': False, 'unload': True, 'pause': False, 'small': None},   # the AI service (Ollama): Tailscale or this PC only, always;
+                                # small: switch to the small model (qwen3:14b on the processor) while you play; None = not
+                                # chosen yet: on in Server mode (docs/SERVER-MODE.md), off otherwise
     'web': {'on': False, 'reach': 'tailscale'},                   # Files on the web (and where links and drop-off are reachable)
     'dropoff': {'on': False, 'path': ''},                         # friends add files, can't see or delete anything
     'links': [],                # [{id, path, label, for, at, expires, pw, max, on}]: their secret part is in a 0600 state file
@@ -150,7 +153,7 @@ NESTED = {
     'receiveOn': ('receive', 'on', 'bool'),
     # ---- stage 3
     'mediaOn': ('media', 'on', 'bool'), 'mediaReach': ('media', 'reach', ('home', 'tailscale')), 'mediaPause': ('media', 'pause', 'bool'),
-    'aiOn': ('ai', 'on', 'bool'), 'aiUnload': ('ai', 'unload', 'bool'), 'aiPause': ('ai', 'pause', 'bool'),
+    'aiOn': ('ai', 'on', 'bool'), 'aiUnload': ('ai', 'unload', 'bool'), 'aiPause': ('ai', 'pause', 'bool'), 'aiSmall': ('ai', 'small', 'bool'),
     'webOn': ('web', 'on', 'bool'), 'webReach': ('web', 'reach', ('home', 'tailscale')),
     'guardOn': ('guard', 'on', 'bool'), 'guardLimit': ('guard', 'limit', (500, 1000, 5000)),
     'picturesOn': ('pictures', 'on', 'bool'), 'picturesPause': ('pictures', 'pause', 'bool'),
@@ -320,8 +323,32 @@ def apply_payload(data):
             'people': [{'name': p.get('name'), 'folder': p.get('folder') or ''} for p in data.get('people') or [] if isinstance(p, dict)],
             'backups': backups, 'receive': {'on': rc.get('on') is True, 'path': rc.get('path') or ''},
             'alerts': data.get('alerts'), 'power': data.get('power'),
-            'media': data.get('media'), 'ai': data.get('ai'), 'guard': data.get('guard'),
-            'pictures': data.get('pictures'), 'voices': data.get('voices')}
+            'media': data.get('media'), 'ai': ai_payload(data), 'guard': data.get('guard'),
+            'pictures': data.get('pictures'), 'voices': data.get('voices'), 'serverWeb': server_web_on()}
+
+
+SERVER_MODE = os.path.join(CONFIG_HOME, 'nimbus', 'server-mode.json')
+
+
+def server_mode_peek():
+    """Server mode's choices (hearth-server-mode's file), read only: whether it's on, and its web page on port 8460."""
+    v = sio.load_json(SERVER_MODE, {}, repair=False) if os.path.exists(SERVER_MODE) else {}
+    return v if isinstance(v, dict) else {}
+
+
+def server_web_on():
+    """Server mode's web page is on: its port gets the same Tailscale-only firewall rule as the AI service."""
+    w = server_mode_peek().get('web')
+    return isinstance(w, dict) and w.get('on') is True
+
+
+def ai_payload(data):
+    """The AI service's choices for the root helper, with "the small model while you play" decided: your choice, or (not
+    chosen yet) on when Server mode is on."""
+    ai = dict(data.get('ai') or {})
+    if not isinstance(ai.get('small'), bool):
+        ai['small'] = server_mode_peek().get('on') is True
+    return ai
 
 
 def apply_now(data=None):

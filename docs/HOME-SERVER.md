@@ -392,6 +392,21 @@ on the **AI** page next to the chat models. Both are **your own user services** 
 - **Overview and Quick Access**: the Services tile counts Pictures and Voices; Quick Access says "AI pictures: stopped
   while you play · AI voices: ready" and lists them in what Light mode holds back. Gaming lists them under what waits.
 
+## Server mode (Hearth 1.6)
+
+Settings › Home server › **Server mode** (docs/SERVER-MODE.md) turns this PC's screen into a dashboard for the home server:
+a third mode next to Game Mode and Desktop Mode, off until you turn it on. It doesn't copy anything here: what pauses when
+you play is **Light mode** (this page's `lightMode`, `picturesPause`, `voicesPause`, `mediaPause`, `aiUnload`, `aiPause`
+and the new `aiSmall`), the services are the ones above, and the services timer does the pausing and resuming (Server
+mode's Play and return only ask it to run right away). New in Light mode for it:
+
+- `aiSmall` (AI chat while you play: switch to the small model). Not chosen yet: on while Server mode is on, off otherwise
+  (a default, never written). The services timer then unloads the big model and keeps qwen3:14b loaded on the processor
+  (`num_gpu 0`) while you play, and unloads it after; only when it's downloaded, never deleting or downloading anything.
+- ComfyUI stopped for your game finishes the picture it's making (up to 150 s) and its queue is kept and put back after.
+- The root helper's `svc stop|start|restart ollama|jellyfin` (the dashboard's pause / restart) and `gpu-limit WATTS|reset`
+  (Server mode's idle power, Nvidia), and Server mode's web page (port 8460) in the Tailscale-only rule while it's on.
+
 ## Never stopping the PC from starting
 
 Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd,

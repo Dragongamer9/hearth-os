@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- Server mode's web page (docs/SERVER-MODE.md), served by hearth-server-mode serve on port 8460: only on this PC and its
+     Tailscale address, behind the PIN (only its hash is kept on the PC). Phone and laptop layouts in one file. Every
+     button sends a request the PC checks again; switches and sleep count down 10 seconds on the screen at home. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>{{HOST}} · Server</title>
+<style>
+:root{--bg:#0e141b;--card:#18212b;--card2:#202b37;--line:#2a3644;--text:#e8eef4;--muted:#93a1b0;--faint:#6b7886;--accent:#66c0f4;--ink:#06131d;--ok:#5bd18b;--warn:#f5b84b;--bad:#ff6b6b}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 Inter,"Noto Sans",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.wrap{max-width:1440px;margin:0 auto;padding:16px}
+.top{display:flex;align-items:center;gap:12px;margin:4px 2px 14px}
+.top .logo{width:34px;height:34px;border-radius:10px;background:radial-gradient(circle at 50% 60%,#ffb36b,#e0602a 60%,#7a2a10);flex:none}
+.top h1{font-size:21px;margin:0;font-weight:650}
+.top .sub{font-size:12.5px;color:var(--muted)}
+.mode{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:14px;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);font-size:13px;font-weight:600}
+.upd{margin-left:auto;color:var(--muted);font-size:12.5px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.hero{display:flex;align-items:center;gap:16px;padding:16px;background:linear-gradient(100deg,color-mix(in srgb,var(--ok) 15%,var(--card)),var(--card) 65%)}
+.hero.warn{background:linear-gradient(100deg,color-mix(in srgb,var(--warn) 15%,var(--card)),var(--card) 65%)}
+.ring{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--ok) 22%,transparent);color:var(--ok);font-size:28px;flex:none}
+.hero.warn .ring{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+.hero h2{margin:0;font-size:22px;font-weight:650}
+.hero .s{color:var(--muted);font-size:13px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.fact{padding:9px 8px;text-align:center}.fact div{font-size:11px;color:var(--muted)}.fact b{display:block;font-size:15.5px;margin-top:2px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.btn{height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card2);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600}
+.btn.pri{background:var(--accent);color:var(--ink);border:0}
+.btn.sm{height:30px;font-size:13px;padding:0 12px;border-radius:9px;font-weight:500;background:transparent}
+.btn[disabled]{opacity:.45;cursor:default}
+.list{margin-top:10px;overflow:hidden}
+.lh{padding:12px 14px 6px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.5px}
+.row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid #222c38}
+.ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent);flex:none;font-size:16px}
+.row .t{flex:1;min-width:0}.row .t b{display:block;font-size:14.5px;font-weight:550}.row .t span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}.dot.off{background:var(--faint)}.dot.warn{background:var(--warn)}
+.acts{display:flex;gap:6px}
+.alert{margin-top:10px;padding:12px 14px;display:flex;gap:12px;align-items:center;font-size:13.5px}
+.alert.warn{background:color-mix(in srgb,var(--warn) 10%,var(--card));border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.alert .w{color:var(--warn)}.alert small{display:block;font-size:12px;color:var(--muted)}
+.side{display:none}
+.m{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:10px;margin-bottom:6px;background:var(--card2)}
+.m.on{background:color-mix(in srgb,var(--accent) 14%,transparent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.m .t{flex:1}.m b{display:block;font-size:14.5px}.m span{font-size:12px;color:var(--muted)}
+.chip{font-size:12px;font-weight:600;padding:3px 9px;border-radius:7px;background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.note{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--card2);border:1px solid var(--line);padding:10px 16px;border-radius:12px;font-size:14px;display:none;max-width:90vw}
+.login{max-width:360px;margin:12vh auto;padding:26px;text-align:center}
+.login input{width:100%;height:52px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:26px;text-align:center;letter-spacing:8px;margin:16px 0 10px}
+.err{color:var(--bad);font-size:13px;min-height:18px}
+.secure{display:flex;justify-content:center;gap:6px;align-items:center;color:var(--muted);font-size:12.5px;margin-top:14px}
+@media (min-width:1000px){
+  .wrap{padding:22px 32px}
+  .grid{display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start}
+  .side{display:flex;flex-direction:column;gap:14px}
+  .btns.phone{display:none}
+  .hero{padding:20px 24px}.ring{width:64px;height:64px;font-size:34px}.hero h2{font-size:30px}
+  .facts{display:flex;gap:32px;margin:0 0 0 auto}.facts .fact{background:none;border:0;text-align:left;padding:0}.facts .fact b{font-size:19px}
+  .heroBox{display:flex;align-items:center;gap:20px}
+  .side .card{padding:18px 20px}.side h3{margin:0 0 12px;font-size:15px}
+  .alerts-phone{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+<script>
+const EMBED = /*HEARTH_DATA*/null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ICON = {chat:'💬',image:'🖼',film:'🎞',drive:'🗄',cloud:'☁',cpu:'🌡',tailscale:'⛓',desktops:'🖥',folder:'📁',server:'🗄'};
+let D = null, timer = null;
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',4000)}
+async function api(path, body){
+  const r = await fetch(path, body === undefined ? {credentials:'same-origin'} : {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Hearth':'1'},body:JSON.stringify(body)});
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  return {status:r.status, j};
+}
+function login(msg){
+  $('#app').innerHTML = `<div class="card login"><div class="top" style="justify-content:center"><div class="logo"></div><h1>{{HOST}}</h1></div>
+  <div style="color:var(--muted)">Type the PIN you set in Settings › Home server › Server mode.</div>
+  <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="PIN">
+  <div class="err" id="err">${esc(msg||'')}</div><button class="btn pri" style="width:100%" id="go">Open</button>
+  <div class="secure">🔒 Only over Tailscale, never the internet</div></div>`;
+  const go = async () => { const r = await api('/api/login', {pin:$('#pin').value}); if (r.status === 200) load(); else $('#err').textContent = r.j.error || 'That didn\'t work'; };
+  $('#go').onclick = go; $('#pin').onkeydown = e => { if (e.key === 'Enter') go(); }; $('#pin').focus();
+}
+async function act(body, label){
+  if (EMBED) return toast(label + ' (preview)');
+  const r = await api('/api/action', body);
+  toast(r.status === 202 ? label + (body.kind === 'service' ? '' : ': the screen at home counts down 10 seconds') : (r.j.error || 'That didn\'t work'));
+  setTimeout(load, 1500);
+}
+const MODES = [['server','🗄','Server mode'],['game','🎮','Game Mode'],['desktop','🖥','Desktop Mode']];
+function render(){
+  const d = D, p = d.perms || {services:true,modes:true,power:true}, warn = d.status && d.status.level !== 'ok';
+  const svc = (d.services||[]).filter(s => s.state !== 'off' || ['ai','pictures','media','backups'].includes(s.id));
+  const cur = d.modeNow === 'steam' ? 'game' : (d.modeNow || d.mode || 'server');
+  const modeName = (MODES.find(m => m[0] === cur) || MODES[0])[2];
+  const row = s => `<div class="row"><span class="ic">${ICON[s.icon]||'•'}</span><div class="t"><b>${esc(s.title)}</b><span>${esc([s.big && s.big !== '—' ? s.big + ' ' + (s.unit||'') : '', s.sub].filter(Boolean).join(' · ') || s.chip)}</span></div>
+    <span class="dot ${s.state==='off'?'off':['warn','stopped','paused','paused-you'].includes(s.state)?'warn':''}" title="${esc(s.chip)}"></span>
+    ${p.services && (s.actions||[]).length ? `<span class="acts">${(s.actions||[]).includes('pause') ? `<button class="btn sm" data-s="${s.id}" data-a="${s.state==='paused-you'?'resume':'pause'}">${s.state==='paused-you'?'Resume':'Pause'}</button>` : ''}<button class="btn sm" data-s="${s.id}" data-a="restart">Restart</button></span>` : ''}</div>`;
+  const alerts = (d.alerts||[]).map(a => `<div class="card alert ${a.level==='warn'?'warn':''}"><span class="w">${a.level==='warn'?'⚠':'ℹ'}</span><div style="flex:1">${esc(a.text)}<small>${esc([a.sub,a.at].filter(Boolean).join(' · '))}</small></div></div>`).join('');
+  $('#app').innerHTML = `<div class="wrap">
+  <div class="top"><div class="logo"></div><div><h1>${esc(d.host)}</h1><div class="sub">${esc([d.gpuName, d.memTotalGb ? d.memTotalGb + ' GB' : '', d.uptime ? 'up ' + Math.floor(d.uptime/86400) + ' days' : ''].filter(Boolean).join(' · '))}</div></div>
+    <span class="mode">${esc(modeName)}</span><span class="upd">${EMBED ? 'Updated a few seconds ago' : 'Updated just now'}</span></div>
+  <div class="grid"><div>
+    <div class="card hero ${warn?'warn':''}"><div class="heroBox" style="display:flex;align-items:center;gap:16px;flex:1;flex-wrap:wrap"><span class="ring">${warn?'!':'✓'}</span>
+      <div><h2>${esc(d.status ? d.status.title : '')}</h2><div class="s">${esc(d.status ? d.status.sub : '')} · ${d.devices} ${d.devices===1?'device':'devices'} connected</div></div>
+      <div class="facts">${(d.facts||[]).map(f => `<div class="card fact"><div>${esc(f[0])}</div><b>${esc(f[1])}</b></div>`).join('')}</div></div></div>
+    <div class="btns phone"><button class="btn pri" id="sw" ${p.modes?'':'disabled'}>🎮 Switch mode</button><button class="btn" id="sl" ${p.power?'':'disabled'}>☾ Sleep</button></div>
+    <div class="card list"><div class="lh">SERVICES</div>${svc.map(row).join('')}</div>
+    <div class="alerts-phone">${alerts}</div>
+    <div class="card list" style="padding:12px 14px;display:flex;gap:24px;flex-wrap:wrap;align-items:center"><b style="font-size:15px">Who's connected</b>
+      ${(d.who||[]).length ? d.who.map(w => `<span style="display:flex;gap:8px;align-items:center"><span class="dot"></span>${esc(w.name)} <span style="color:var(--muted)">· ${esc((w.what||[]).join(', '))}</span></span>`).join('') : '<span style="color:var(--muted)">Nobody right now</span>'}</div>
+  </div>
+  <div class="side">
+    <div class="card"><h3>Mode</h3>${MODES.map(m => `<div class="m ${m[0]===cur?'on':''}"><span>${m[1]}</span><div class="t"><b>${m[2]}</b><span>${m[0]===cur ? 'Now' + (d.sinceText && m[0]==='server' ? ' · since ' + esc(d.sinceText) : '') : m[0]==='game' ? 'Pauses pictures, AI chat, voices, backups' : m[0]==='desktop' ? 'The Mantel desktop' : 'The dashboard and your services'}</span></div>
+      ${m[0]===cur ? '<span class="chip">Now</span>' : `<button class="btn sm" data-m="${m[0]}" ${p.modes?'':'disabled'}>Switch</button>`}</div>`).join('')}
+      <div class="note">The screen at home counts down 10 seconds first, and nothing switches while a game is running or Desktop Mode is open.</div></div>
+    <div class="card"><h3>Power</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn" data-p="sleep" ${p.power?'':'disabled'}>☾ Sleep</button><button class="btn" data-p="restart" ${p.power?'':'disabled'}>↻ Restart</button></div>
+      <div class="note">Wake needs another device at home (Wake-on-LAN). It's awake now.</div></div>
+    <div class="card"><h3>Alerts</h3>${alerts || '<div class="note">Nothing needs a look.</div>'}</div>
+    ${EMBED ? '' : '<button class="btn sm" id="out" style="align-self:flex-end">Sign out of this device</button>'}
+  </div></div></div>`;
+  document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => act({kind:'service', name:b.dataset.s, action:b.dataset.a}, b.textContent.trim() + ' sent'));
+  document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => act({kind:'mode', to:b.dataset.m}, 'Switch sent'));
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => confirm(b.dataset.p === 'sleep' ? 'Put the PC to sleep?' : 'Restart the PC?') && act({kind:'power', what:b.dataset.p}, b.dataset.p === 'sleep' ? 'Sleep sent' : 'Restart sent'));
+  const sw = $('#sw'); if (sw) sw.onclick = () => act({kind:'mode', to: cur === 'server' ? 'game' : 'server'}, 'Switch sent');
+  const sl = $('#sl'); if (sl) sl.onclick = () => confirm('Put the PC to sleep?') && act({kind:'power', what:'sleep'}, 'Sleep sent');
+  const out = $('#out'); if (out) out.onclick = async () => { await api('/api/logout', {}); login(); };
+}
+async function load(){
+  if (EMBED) { D = EMBED; return render(); }
+  const r = await api('/api/status');
+  if (r.status === 401) { clearInterval(timer); timer = null; return login(r.j.pin === false ? 'No PIN is set on the PC yet' : ''); }
+  if (r.status !== 200) return toast(r.j.error || 'The PC didn\'t answer');
+  D = r.j; render();
+  if (!timer) timer = setInterval(load, 6000);
+}
+load();
+</script>
+</body>
+</html>
