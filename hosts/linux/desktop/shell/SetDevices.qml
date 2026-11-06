@@ -15,8 +15,8 @@ SetPage {
     property var devices: []
     property string err: ""
     property bool loaded: false
-    property string open: ""                // the device whose details are shown
-    readonly property var cur: devices.find(d => d.id === open) || null
+    property string detail: ""              // the device whose details are shown
+    readonly property var cur: devices.find(d => d.id === detail) || null
     readonly property var modes: ({ game: "Game Mode", desktop: "Desktop Mode", server: "Server mode" })
     readonly property var kindIcons: ({ handheld: "pad", laptop: "display", desktop: "cpu" })
 
@@ -34,7 +34,7 @@ SetPage {
     Component.onCompleted: { load(); filesJob.run(["prefs"], r => page.showInFiles = !(r && r.showDevices === false), () => {}); }
 
     Timer { interval: 15000; repeat: true; running: page.visible; onTriggered: page.load() }
-    onVisibleChanged: if (!visible) open = ""
+    onVisibleChanged: if (!visible) detail = ""
 
     // ---- words
     function ago(ms) {
@@ -67,7 +67,7 @@ SetPage {
 
     // ------------------------------------------------------------ the list
     ColumnLayout {
-        visible: page.open === ""
+        visible: page.detail === ""
         Layout.fillWidth: true
         spacing: 0
         SetCardGroup {
@@ -85,7 +85,7 @@ SetPage {
             }
             Repeater {
                 model: page.devices
-                delegate: DeviceCard { required property var modelData; dev: modelData; onActivated: page.open = modelData.id }
+                delegate: DeviceCard { required property var modelData; dev: modelData; onActivated: { page.detail = modelData.id; Qt.callLater(page.focusFirst); } }
             }
         }
         SetCardGroup {
@@ -107,10 +107,10 @@ SetPage {
 
     // ------------------------------------------------------------ one device
     ColumnLayout {
-        visible: page.open !== ""
+        visible: page.detail !== ""
         Layout.fillWidth: true
         spacing: 0
-        SetRow { icon: "back"; title: "Back to your devices"; chevron: false; onActivated: page.open = "" }
+        SetRow { icon: "back"; title: "Back to your devices"; chevron: false; onActivated: { page.detail = ""; Qt.callLater(page.focusFirst); } }
         DeviceCard { visible: !!page.cur; dev: page.cur || ({}); interactive: false; Layout.topMargin: 6 }
 
         SetCardGroup {

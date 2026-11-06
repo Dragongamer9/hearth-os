@@ -207,7 +207,7 @@ class Link(unittest.TestCase):
 class Page(unittest.TestCase):
     def test_registered_under_hearth_link_with_a_home_card(self):
         reg = (SHELL / 'settings-pages.js').read_text()
-        self.assertIn('{ id: "devices", file: "SetDevices.qml", cat: "link", parent: "link", label: "Your devices"', reg)
+        self.assertIn('{ id: "devices", file: "SetDevices.qml", cat: "link", label: "Your devices"', reg)
         home = (SHELL / 'SetHome.qml').read_text()
         self.assertIn('title: "Your devices"; linkText: "Open"; linkTarget: "devices"', home)
         link = (SHELL / 'SetLink.qml').read_text()

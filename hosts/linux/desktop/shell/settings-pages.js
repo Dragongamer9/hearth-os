@@ -56,7 +56,7 @@ var PAGES = [
 
     // ---- Hearth Link (its own category; the page is the landing)
     { id: "link", file: "SetLink.qml", cat: "link", label: "Hearth Link", icon: "desktops", words: "phone devices sync pair storage backups saves", old: "Hearth Link", landing: true },
-    { id: "devices", file: "SetDevices.qml", cat: "link", parent: "link", label: "Your devices", icon: "cpu", desc: "Your other devices' battery, use, temperatures, drives and what's playing", words: "devices status battery ram memory cpu gpu temperature vram storage uptime other pc handheld laptop monitor" },
+    { id: "devices", file: "SetDevices.qml", cat: "link", label: "Your devices", icon: "cpu", desc: "Your other devices' battery, use, temperatures, drives and what's playing", words: "devices status battery ram memory cpu gpu temperature vram storage uptime other pc handheld laptop monitor" },
 
     // ---- Personalization
     { id: "appearance", file: "SetAppearance.qml", cat: "pers", label: "Personalization", icon: "palette", words: "look theme accent colour color wallpaper dark light mode sunset transparency clock", old: "Appearance", landing: true },

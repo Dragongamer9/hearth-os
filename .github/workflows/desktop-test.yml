@@ -992,7 +992,7 @@ jobs:
           ipc settings page appearance; grim $o/steam-10-settings-appearance.png || true
           ipc settings page wifi; grim $o/steam-11-settings-wifi.png || true
           ipc settings page devices; sleep 3; grim $o/steam-11c-settings-your-devices.png || true
-          wtype -k Down 2>/dev/null; sleep 0.3; wtype -k Return 2>/dev/null; sleep 2; grim $o/steam-11d-settings-device-details.png || true
+          wtype -k Down 2>/dev/null; sleep 0.5; wtype -k Return 2>/dev/null; sleep 1; wtype -k space 2>/dev/null; sleep 2; grim $o/steam-11d-settings-device-details.png || true
           # Hearth Files with your devices' shared folders in the sidebar (stand-in devices, found "just now" so it
           # doesn't look again: hearth_netshares.py's state file).
           mkdir -p "$HOME/.local/state/nimbus"
