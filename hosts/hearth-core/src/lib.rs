@@ -18,7 +18,7 @@ pub mod bridge;
 pub mod defaults;   // Settings › Default apps (desktop/shell/hearth-system)
 pub mod collections;
 pub mod desktop_games;
-pub mod discord;   // Discord: "Playing X" (Rich Presence; needs the owner's application ID, /etc/hearth/discord.conf)
+pub mod discord;   // Discord: "Playing X", Ask to join / Join, Play together invites (Rich Presence over the local IPC; docs/DISCORD.md)
 pub mod display;
 pub mod diskspace;   // Settings › Storage: drives, games by size, moving games, clean up, low space (docs/STORAGE.md)
 pub mod emulators;
@@ -51,7 +51,7 @@ pub mod multiplay;
 pub mod owned;
 pub mod padmouse;
 pub mod manual;
-pub mod matrix_friends;   // Hearth Friends on Matrix (hosts/hearth-friends)
+pub mod play_together;   // Play together (Sunshine + Moonlight), invited through Discord (discord.rs); Hearth Friends (Matrix) is archived
 pub mod newos;
 pub mod osinstall;
 pub mod osk;   // the on-screen keyboard's settings and learned words (ui/osk, docs/OSK.md)

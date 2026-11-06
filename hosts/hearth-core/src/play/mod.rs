@@ -114,12 +114,11 @@ pub fn bridge_call(br: &mut Bridge, method: &str, a: &Value) -> Result<Value, St
         "discover" => { let games = dtos(br); br.later(move || Ok(discover::build(&games, now))) }
         // Your profile, and your friends' (Hearth Friends)
         "activity.mine" => Ok(activity::mine(&dtos(br), br.library.running_id().as_deref(), now)),
-        "activity.publish" => {
-            let sh = activity::shared(&activity::mine(&dtos(br), br.library.running_id().as_deref(), now));
-            br.later(move || crate::matrix_friends::call("setActivity", &json!({"activity": sh})))
-        }
-        "activity.friends" => br.later(|| crate::matrix_friends::call("activity", &json!({}))),
-        "activity.share" => { let on = a["on"] == true; br.later(move || crate::matrix_friends::call("settings", &json!({"shareActivity": on}))) }
+        // Sharing it with friends went with Hearth Friends (Matrix), archived in 1.6 (Discord replaced it): your own
+        // profile stays (local play time); the sharing calls answer with nothing or say why.
+        "activity.publish" => Ok(Value::Null),
+        "activity.friends" => Ok(json!([])),
+        "activity.share" => Err("Sharing your activity went with Hearth Friends; Discord shows what you're playing instead (Settings › Discord).".into()),
         // The download manager
         "dl.list" => Ok(downloads::with(|m| { m.tick(); m.view() })),
         "dl.add" => { let url = s("url"); let name = a["name"].as_str().map(str::to_string); downloads::with(|m| m.add(&url, name.as_deref(), "url", None)) }

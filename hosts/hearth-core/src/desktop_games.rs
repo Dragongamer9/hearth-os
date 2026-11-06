@@ -173,6 +173,18 @@ pub fn id_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
 }
 pub fn play_arg() -> Option<String> { id_arg(std::env::args()) }
 
+/// `--game-page <id>`: open that game's page (Play / Install) instead of playing it: a friend's Discord invite
+/// (desktop/shell/hearth-discord join).
+pub fn page_arg_in<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    let args: Vec<String> = args.into_iter().collect();
+    for (i, a) in args.iter().enumerate() {
+        let v = if a == "--game-page" { args.get(i + 1).cloned() } else { a.strip_prefix("--game-page=").map(str::to_string) };
+        if let Some(v) = v { return Some(v).filter(|s| valid_id(s)); }
+    }
+    None
+}
+pub fn page_arg() -> Option<String> { page_arg_in(std::env::args()) }
+
 pub fn route_file() -> PathBuf {
     PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("hearth-play-route.json")
 }
@@ -201,6 +213,14 @@ pub fn take_route() -> Option<String> { take_file(&route_file(), crate::signin_h
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn game_page_argument() {
+        let a = |v: &[&str]| page_arg_in(v.iter().map(|s| s.to_string()));
+        assert_eq!(a(&["nimbus", "--windowed", "--game-page", "steam:620"]).as_deref(), Some("steam:620"));
+        assert_eq!(a(&["nimbus", "--game-page=gog:1"]).as_deref(), Some("gog:1"));
+        assert_eq!(a(&["nimbus", "--game-page", "nocolon"]), None);
+        assert_eq!(a(&["nimbus", "--play", "steam:620"]), None);
+    }
 
     #[test]
     fn ids() {

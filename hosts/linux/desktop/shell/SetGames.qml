@@ -39,7 +39,7 @@ SetPage {
     SetRow { icon: "grid"; title: "Mods"; sub: "Install mods and Nexus or Wabbajack modlists, turn them on and off, choose their order"; onActivated: page.app(["hearth-mods"], "Mods") }
     SetRow { icon: "folder"; title: "Saves"; sub: "Back up and restore your games' saves, and move them to another PC"; onActivated: page.app(["hearth-saves"], "Saves") }
     SetRow { icon: "pad"; title: "Controller Lab"; sub: "Test every button, stick and trigger; measure stick drift and calibrate"; onActivated: page.app(["hearth-controller-lab"], "Controller Lab") }
-    SetRow { icon: "user"; title: "Friends"; sub: "Chats, invites and what your friends are playing"; onActivated: { if (SettingsNav.friends) SettingsNav.friends.open(); } }
+    SetRow { icon: "chat"; title: "Discord"; sub: "Friends, chats and invites in Discord; what you're playing on Discord"; onActivated: SettingsNav.openPage("discord") }
     SetRow { icon: "display"; title: "Theater"; sub: "Videos from the web as tiles, full screen with a controller"; onActivated: page.app(["hearth-theater"], "Theater") }
     SetRow { icon: "gear"; title: "Benchmark"; sub: "How fast this device is, with scores and history"; onActivated: page.app(["hearth-tools", "--app", "benchmark"], "Benchmark") }
 }

@@ -17,6 +17,14 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Home server › AI chat: an "Uncensored (18+)" group behind "Show 18+ models" (off by default, so a family PC never shows them): Qwen3 30B-A3B and 14B abliterated, Dolphin 3 and Rocinante 12B (Mistral Nemo, for roleplay and writing), each name checked; "Download any model by name" (Ollama names or hf.co GGUFs, validated); the abliterated 14B can be the small model while you play (needs testing on a device)
 - [x] Home server › Shared folders: share a whole data drive (also from Drives & undo), your whole Home (read only, one confirmation; read & write a second) or the system drive (read only only, two confirmations, its secrets blocked), each on your home network and Tailscale by default with a "Whole drive" / "Home" / "System drive" badge; hidden files stay blocked everywhere (needs testing on a device)
 - [x] A read-only summary for your other Hearth devices (/api/summary, hearth-server-mode summary) for Hearth Link and Quick Access (needs testing on a device; a Hearth Link page for it is next)
+<!-- Discord replaces Hearth Friends (feature/discord-friends) -->
+- [x] Discord replaces Hearth Friends (Matrix, archived with the owner's okay, docs/ARCHIVED.md): the bar's Friends button is now **Discord**; the first press asks which Discord you want (the official app, recommended; Discord in a web window, nothing to install; or Dorion, lighter but unofficial, with its risk said plainly) and installs only what you pick when you press Install (docs/DISCORD.md) (needs testing on a device)
+- [x] Discord's small window by the bar, on whichever edge the bar is: Discord's own window, so you reply to friends there; pressing the button again hides it without quitting (notifications keep coming); its size is remembered; Open full Discord makes it a normal window (needs testing on a device)
+- [x] Settings › Gaming › Discord: which Discord, "Playing <game>" on Discord with a one-step setup (paste the application ID) and an on/off switch, Let friends ask to join, and an invite link to paste in a chat (needs testing on a device)
+- [x] Ask to join / Join from Discord: a friend joining opens the game's page on their Hearth (Play / Install), or Play together (Sunshine to Moonlight, over Tailscale or the local network) with a one-time PIN shown on both screens that expires in 10 minutes (needs testing on a device)
+- [x] Steam Game Mode: Quick Access › Hearth Link › Discord (open Discord, the switches, the PIN, setup), and Discord's notifications as toasts (needs testing on a device)
+- [x] Hearth Friends' Matrix service is no longer built, shipped or started; your old Matrix data and settings are left where they were, untouched (needs testing on a device)
+<!-- end Discord -->
 
 ## 1.5 (released 2026-11-06)
 

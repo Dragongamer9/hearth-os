@@ -18,6 +18,10 @@ launcher, the clock's panel and Settings, and adds six new looks next to Hearth 
   a big **Return to Game Mode**, tiles for Wi-Fi and Bluetooth (with a chevron to their lists), Night light,
   Controller mouse, Do not disturb and Keyboard, pill sliders for volume (its chevron opens the output in Settings ›
   Sound) and brightness, the power profile, Handheld settings and the weather, and controller hints.
+- **Discord** (`Discord.qml`, since 1.6; it replaced Hearth Friends on Matrix): the bar's chat button. The first press
+  asks which Discord (the app, a web window or Dorion); then it toggles Discord's own window, small and placed by the bar
+  on whichever edge the bar is (hidden by minimizing, never closed). Settings › Gaming › Discord has the rest. See
+  [DISCORD](DISCORD.md).
 - **Launcher** (`Launcher.qml`): a large centred panel. Search finds apps, **Settings pages and games**; Recent can
   hold all three. Apps / Games tabs, the System apps folder, right-click actions and the power row (Game Mode first)
   are as before; icons are bigger.

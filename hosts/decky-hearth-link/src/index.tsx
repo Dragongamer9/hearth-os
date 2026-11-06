@@ -3,7 +3,7 @@
 // commands). Nothing of Steam's screens is changed; the only Steam call is its own restart, offered after a Steam game
 // was copied here, and only while Steam has it.
 import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow, ProgressBarWithInfo, TextField, ToggleField, staticClasses } from "@decky/ui";
-import { definePlugin } from "@decky/api";
+import { definePlugin, toaster } from "@decky/api";
 import { Component, ReactNode, useEffect, useRef, useState } from "react";
 import { FaNetworkWired } from "react-icons/fa";
 import {
@@ -11,9 +11,10 @@ import {
   SyncInfo, availableLine, jobActions, jobLine, lanCodeOk, left, netCodeOk, percent, sendable, serverOf, showCode, syncLines,
   HOME_POLL, HomeQuick, aiAppsLine, aiLine, backupLine, homeLine, homeShown, pausedLine, remoteLine,
 } from "./model";
-import { HearthOnly } from "./hearth-only";
+import { HearthOnly, hearthOs } from "./hearth-only";
 import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo,
   homeServer, homeServerLight, homeServerResume } from "./link";
+import { DiscordQuick, discordOpen, discordSet, discordSetup, discordStatus, discordToasts } from "./link";
 
 const warn = { color: "#ffb37a" };
 const dim = { fontSize: 12, color: "#8d99a8" };
@@ -398,10 +399,69 @@ function HomeServer() {
   );
 }
 
-export default definePlugin(() => ({
-  name: "Hearth Link",
-  titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-  content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Panel /></HearthOnly>,
-  icon: <FaNetworkWired />,
-  onDismount() {},
-}));
+// ---- Discord (docs/DISCORD.md): since 1.6 Hearth's friends are Discord's. Open Discord, its "Playing" status and
+// friends joining; the setup (the application ID, which Discord) is Hearth Settings › Discord in a window.
+function DiscordSection() {
+  const [d, setD] = useState<DiscordQuick | null>(null);
+  const [msg, setMsg] = useState("");
+  const alive = useRef(true);
+  const load = () => discordStatus().then((v) => { if (alive.current) setD(v || null); }).catch(() => alive.current && setD(null));
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => { alive.current = false; clearInterval(t); }; }, []);
+  if (!d || !d.available) return null;
+  const set = async (key: "enabled" | "askToJoin", on: boolean) => { const r = await discordSet(key, on).catch(() => null); if (r && r.ok === false) setMsg(r.error || "That didn't work"); load(); };
+  return (
+    <PanelSection title="Discord">
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={async () => { const r = await discordOpen().catch(() => null); setMsg(r && r.ok ? "Opening Discord…" : (r && r.error) || "Discord didn't start"); }}
+          description={d.opens ? "Your friends, chats and invites" : "Pick and install a Discord first (Set up Discord)"}>Open Discord</ButtonItem>
+      </PanelSectionRow>
+      {d.appId ? (
+        <>
+          <PanelSectionRow>
+            <ToggleField label="Show what I'm playing on Discord" checked={!!d.enabled} onChange={(v: boolean) => set("enabled", v)}
+              description="Rich Presence, while Discord runs" />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ToggleField label="Let friends ask to join" checked={!!d.askToJoin} onChange={(v: boolean) => set("askToJoin", v)}
+              description="Ask to join / Join on your game in Discord: the game on their Hearth, or Play together with Remote play on" />
+          </PanelSectionRow>
+        </>
+      ) : <Line style={dim}>"Playing" on Discord needs a Discord application ID: Set up Discord.</Line>}
+      {d.invite && d.invite.playTogether && d.invite.pin && <Line>Play together PIN {d.invite.pin} (friends joining from Discord see it too)</Line>}
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={async () => { const r = await discordSetup().catch(() => null); setMsg(r && r.ok ? "Opening Hearth Settings › Discord…" : "Hearth Settings didn't open"); }}>Set up Discord</ButtonItem>
+      </PanelSectionRow>
+      {msg && <Line style={dim}>{msg}</Line>}
+    </PanelSection>
+  );
+}
+
+/** Discord's notifications (and other apps') while Steam Game Mode runs, as Decky toasts: the backend's notification
+ *  bridge collects them; only what each notification itself says. */
+let toastSeq = 0;
+function startToasts(): () => void {
+  let first = true;
+  const t = setInterval(async () => {
+    const list = await discordToasts(toastSeq).catch(() => []);
+    for (const n of list || []) {
+      toastSeq = Math.max(toastSeq, n.seq);
+      if (!first) { try { toaster.toast({ title: n.title || n.app, body: n.body || n.app }); } catch { /* Decky has no toaster */ } }
+    }
+    first = false;
+  }, 3000);
+  return () => clearInterval(t);
+}
+// ---- end Discord
+
+export default definePlugin(() => {
+  let stop: (() => void) | null = null;
+  let gone = false;
+  hearthOs().then((ok) => { if (ok && !gone) stop = startToasts(); });
+  return {
+    name: "Hearth Link",
+    titleView: <div className={staticClasses.Title}>Hearth Link</div>,
+    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
+    icon: <FaNetworkWired />,
+    onDismount() { gone = true; if (stop) stop(); },
+  };
+});

@@ -6,7 +6,7 @@
 //   (Gaming) a performance island: FPS (only when MangoHud logs it), CPU, GPU, memory, temperatures
 //   centre the clock pill: grows to show what's playing, and briefly the newest notification; click for the
 //          notification centre and dashboard (in a bar with your apps, or down the side, a compact clock at the end)
-//   end    the status island: tray, Friends, keyboard, Wi-Fi, Bluetooth, volume, battery, notifications (click: Quick
+//   end    the status island: tray, Discord, keyboard, Wi-Fi, Bluetooth, volume, battery, notifications (click: Quick
 //          settings; right-click menus; middle-click mutes; scroll changes the volume), then the Game Mode button,
 //          always shown, in every look and on every edge, one press away.
 // Left / right: icons stacked, the clock compact, menus and tips open toward the screen.
@@ -399,12 +399,12 @@ PanelWindow {
                                 IconImage { anchors.centerIn: parent; implicitSize: 20 * isl.k; source: tray.modelData.icon }
                             }
                         }
-                        IslandButton {   // Friends
+                        IslandButton {   // Discord (Discord.qml): its small window by the bar
+                            id: discordIsl
                             visible: !isl.compact
-                            tip: SettingsNav.friendsUnread > 0 ? "Friends · " + SettingsNav.friendsUnread + " unread" : "Friends"
-                            badge: SettingsNav.friendsUnread
-                            onClicked: if (SettingsNav.friends) SettingsNav.friends.toggle()
-                            Icon { anchors.centerIn: parent; name: "user"; size: 20 * isl.k }
+                            tip: "Discord"
+                            onClicked: if (SettingsNav.discord) { const p = discordIsl.mapToItem(null, discordIsl.width / 2, discordIsl.height / 2); SettingsNav.discord.toggle(isl.edge === "left" || isl.edge === "right" ? p.y : p.x); }
+                            Icon { anchors.centerIn: parent; name: "chat"; size: 20 * isl.k }
                         }
                         IslandButton {   // on-screen keyboard
                             visible: !isl.compact

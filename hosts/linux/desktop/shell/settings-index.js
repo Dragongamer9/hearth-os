@@ -409,6 +409,34 @@ var ENTRIES = [
 "p": "defaults"
 },
 {
+"t": "Which Discord",
+"p": "discord",
+"i": "chat"
+},
+{
+"t": "Open Discord",
+"p": "discord",
+"d": "Full size. The bar's Discord button opens it in a small window you can reply to friends from",
+"i": "window"
+},
+{
+"t": "Discord application ID",
+"p": "discord",
+"i": "key"
+},
+{
+"t": "Show what I'm playing on Discord",
+"p": "discord",
+"d": "Rich Presence: the game, its picture and how long you've played, while Discord is running",
+"i": "play"
+},
+{
+"t": "Let friends ask to join",
+"p": "discord",
+"d": "Friends see Ask to join / Join on your game in Discord. Joining opens the game on their Hearth, or Play together when Remote play (Sunshine) is on",
+"i": "users"
+},
+{
 "t": "Keep",
 "p": "display"
 },
@@ -541,10 +569,10 @@ var ENTRIES = [
 "i": "pad"
 },
 {
-"t": "Friends",
+"t": "Discord",
 "p": "games",
-"d": "Chats, invites and what your friends are playing",
-"i": "user"
+"d": "Friends, chats and invites in Discord; what you're playing on Discord",
+"i": "chat"
 },
 {
 "t": "Theater",
