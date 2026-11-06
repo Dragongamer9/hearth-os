@@ -941,6 +941,15 @@ class Wiring(unittest.TestCase):
             self.assertTrue((SHELL / f).exists(), f)
         self.assertIn('hearth-server-dash-up', (SHELL / 'ServerDash.qml').read_text(), 'the mark the session waits for')
 
+    def test_the_controller_is_never_switched_off_on_the_dashboard(self):
+        # {"cmd": "mouse", "on": false} pauses all of hearth-pad (user_off): in 1.6 only Guide worked on the dashboard
+        qml = (SHELL / 'server-mode.qml').read_text()
+        self.assertNotRegex(qml, r'cmd:\s*"mouse",\s*on:\s*false')
+        self.assertIn('cmd: "mouse", on: true', qml)
+        self.assertIn('padRestart', qml, 'hearth-pad starts again if it ends')
+        pad = (SHELL / 'hearth-pad').read_text()
+        self.assertIn("return self.fs_pause or self.user_off", pad, 'mouse off still means the whole controller is paused')
+
     def test_server_mode_page_can_be_found_without_search(self):
         # 1.6 shipped with the page only reachable from Settings' search: Home server lists its own cards
         self.assertIn('SetLinkCard { target: "hs-server"', (SHELL / 'SetHomeServer.qml').read_text())

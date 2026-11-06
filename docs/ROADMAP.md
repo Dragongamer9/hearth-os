@@ -7,6 +7,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] The controller works on Server mode's dashboard: 1.6 switched it off as it started, so only Guide did anything (A, B, X, Y, the D-pad and ☰ work again); and the controller helper starts again if it ever closes (needs testing on a device)
 - [x] Server mode's settings page can be found: a Server mode card on Settings › Home server, and the greyed-out Server mode in System › Startup opens it (1.6 only reached it through Settings' search) (needs testing on a device)
 
 ## 1.6 (released 2026-11-06)
