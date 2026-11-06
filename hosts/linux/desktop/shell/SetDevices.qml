@@ -21,12 +21,18 @@ SetPage {
     readonly property var kindIcons: ({ handheld: "pad", laptop: "display", desktop: "cpu" })
 
     SetJob { id: job; helper: "hearth-device-status" }
+    // Hearth Files' "Show other devices in Files" (files.json showDevices: on unless you turn it off; only read here
+    // until you flip it, then only that key is merged in).
+    SetJob { id: filesJob; helper: "hearth-files" }
+    property bool showInFiles: true
+
     function load() {
         if (job.busy) return;
         job.run(["devices"], r => { page.err = ""; page.loaded = true; page.replaceList("devices", (r && r.devices) || []); },
                 e => { page.err = e; page.loaded = true; });
     }
-    Component.onCompleted: load()
+    Component.onCompleted: { load(); filesJob.run(["prefs"], r => page.showInFiles = !(r && r.showDevices === false), () => {}); }
+
     Timer { interval: 15000; repeat: true; running: page.visible; onTriggered: page.load() }
     onVisibleChanged: if (!visible) open = ""
 
@@ -90,6 +96,12 @@ SetPage {
                 checked: Settings.shareStatus
                 onToggled: v => Settings.shareStatus = v
             }
+            SetSwitch {
+                icon: "folder"; title: "Show other devices in Files"
+                sub: "Your devices' shared folders, and other computers sharing on this network or through Tailscale, in Hearth Files' sidebar and Open / Save windows"
+                checked: page.showInFiles
+                onToggled: v => { page.showInFiles = v; filesJob.run(["prefs-set", JSON.stringify({ showDevices: v })], () => {}, e => SettingsNav.toast(e)); }
+            }
         }
     }
 
@@ -149,12 +161,23 @@ SetPage {
         SetCardGroup {
             title: "Do something with it"
             visible: !!page.cur
+            // Open shared folders: its Home server shares (in its status), in Hearth Files, signed in once.
+            Repeater {
+                model: page.cur && page.cur.status && page.cur.status.smb ? (page.cur.status.shares || []) : []
+                delegate: SetRow {
+                    required property var modelData
+                    icon: "folder"; title: "Open shared folder " + modelData.name; chevron: true
+                    sub: [modelData.badge === "home" ? "Home" : modelData.badge === "drive" ? "Whole drive" : "", modelData.write ? "Read & write" : "Read only", "in Hearth Files"].filter(x => x).join(" · ")
+                    onActivated: Quickshell.execDetached(["hearth-filemanager", "hearthnet://" + encodeURIComponent(JSON.stringify({
+                        device: page.cur.id, name: page.cur.name, share: modelData.name, home: page.cur.status.smb.home || "", away: page.cur.status.smb.away || "", wake: page.cur.wake === true }))])
+                }
+            }
             Repeater {
                 model: page.cur ? (page.cur.shares || []) : []
                 delegate: SetRow {
                     required property var modelData
                     icon: "folder"; title: "Open " + modelData.name; sub: "Its shared folder in Hearth Files (Hearth Link)"; chevron: true
-                    onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "files", "open", "hearth://" + page.cur.id + "/" + modelData.id + "/"])
+                    onActivated: Quickshell.execDetached(["hearth-filemanager", "hearth://" + page.cur.id + "/" + modelData.id + "/"])
                 }
             }
             SetRow {

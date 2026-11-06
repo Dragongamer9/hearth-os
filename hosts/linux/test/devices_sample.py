@@ -31,7 +31,9 @@ def sample(now=None):
           'cpu': {'use': 41, 'temp': 63}, 'gpu': {'vendor': 'nvidia', 'use': 97, 'temp': 72, 'vramUsed': 14200, 'vramTotal': 24576},
           'ram': {'used': 21.4, 'total': 62.7},
           'drives': [{'name': 'System', 'used': 512.0, 'total': 2000.4}, {'name': 'Games', 'used': 3410.9, 'total': 4000.8}],
-          'uptime': 3 * 86400 + 4 * 3600, 'history': history(now, 55, 20, 60), 'updated': now}
+          'uptime': 3 * 86400 + 4 * 3600, 'history': history(now, 55, 20, 60), 'updated': now,
+          'shares': [{'name': 'Media', 'write': False, 'reach': 'home', 'badge': 'drive'}],
+          'smb': {'home': 'chris-hearth.local', 'away': 'chris-hearth.tail4f2a.ts.net'}}
     laptop = {'protocol': 1, 'shared': True, 'name': 'laptop', 'model': 'ThinkPad T14', 'kind': 'laptop', 'version': '1.5',
               'mode': 'desktop', 'playing': None, 'battery': {'percent': 82, 'charging': True, 'pluggedIn': True},
               'cpu': {'use': 6, 'temp': 44}, 'gpu': {'vendor': 'intel', 'use': 2}, 'ram': {'used': 5.2, 'total': 15.5},
@@ -44,5 +46,20 @@ def sample(now=None):
     ]}
 
 
+def files_state(now=None):
+    """Hearth Files' "Your devices" state (hearth_netshares.py), found just now (an hour ahead, so it doesn't look again)."""
+    now = now or time.time()
+    return {'at': int(now) + 3600, 'tailscale': {'running': True, 'self': 'laptop.tail4f2a.ts.net'}, 'users': {},
+            'devices': [
+                {'id': 'a1' * 16, 'name': 'chris-hearth', 'online': True, 'kind': 'desktop', 'home': 'chris-hearth.local',
+                 'away': 'chris-hearth.tail4f2a.ts.net', 'wake': True,
+                 'shares': [{'name': 'Media', 'write': False, 'badge': 'drive', 'reach': 'home'},
+                            {'name': 'chris', 'write': True, 'badge': 'home', 'reach': 'home'}]},
+                {'id': 'c3' * 16, 'name': 'ROG Ally', 'online': False, 'kind': 'handheld', 'home': 'rog-ally.local', 'away': '',
+                 'wake': False, 'shares': [{'name': 'Screenshots', 'write': False, 'badge': '', 'reach': 'home'}]}],
+            'servers': [{'name': 'Living-room NAS', 'host': 'nas.local', 'addr': '192.168.1.20', 'port': 445}]}
+
+
 if __name__ == '__main__':
-    print(json.dumps(sample()))
+    import sys
+    print(json.dumps(files_state() if sys.argv[1:] == ['files'] else sample()))

@@ -416,6 +416,12 @@ var ENTRIES = [
 "i": "eye"
 },
 {
+"t": "Show other devices in Files",
+"p": "devices",
+"d": "Your devices' shared folders, and other computers sharing on this network or through Tailscale, in Hearth Files' sidebar and Open / Save windows",
+"i": "folder"
+},
+{
 "t": "Back to your devices",
 "p": "devices",
 "i": "back"

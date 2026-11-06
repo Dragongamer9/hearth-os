@@ -57,6 +57,14 @@
   hearth-files desktop-launch PATH      start what a .desktop file runs (after Files asked)
   hearth-files open-choice PATH [CHOICE]     remember (or, without CHOICE, forget) what opening this file does
 
+Your devices (hearth_netshares.py): your paired Hearth devices' shared folders and other computers sharing (SMB) in
+the sidebar, found by themselves; opening one mounts it with gvfs.
+  hearth-files net-open JSON [--user USER] [--remember]   mount one ({device, name, share, home, away, wake}; the
+                                        password, if any, comes as {"password": ...} in HEARTH_INPUT, never on the
+                                        command line): {ok, path} or {ok: false, need, error}
+  hearth-files net-wake DEVICE          wake a paired device (Hearth Storage's Wake-on-LAN)
+  hearth-files devices-refresh          look for them now (the sidebar asks for this by itself once a minute)
+
 Hearth Storage's shared folders (a paired Hearth device as a home server) are hearth://SERVER/SHARE/PATH: list,
 copy (from them into a folder here, in the background), open (videos and music play from the server) and open-plan
 work with them; anything that would change them says so.
@@ -131,9 +139,14 @@ def media_bases():
     return ['/run/media/' + u, '/media/' + u]
 
 
+def gvfs_root():
+    """Where gvfs shows mounted network folders (your devices' shared folders, opened from the sidebar)."""
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid(), 'gvfs')
+
+
 def write_roots():
     roots = []
-    for r in [home()] + media_bases() + ['/tmp']:
+    for r in [home()] + media_bases() + ['/tmp', gvfs_root()]:
         rr = os.path.realpath(r)
         if rr not in roots:
             roots.append(rr)
@@ -565,6 +578,7 @@ def places():
                     'kind': 'games', 'section': 'games'})
     out += bookmark_places()
     out += storage_places()
+    out += device_places()
     out += dl
     out += unmounted_drives()
     tf = os.path.join(home_trash(), 'files')
@@ -2994,6 +3008,83 @@ def remote_uri(server, share, rel):
     return 'hearth://%s/%s/%s' % (server, share, rel)
 
 
+def netshares():
+    import hearth_netshares
+    return hearth_netshares
+
+
+def device_places(now=None):
+    """Your devices' shared folders, from what was found last (at once); a fresh look starts in the background when
+    that's a minute old. Off with Hearth Files' "Show other devices in Files" (showDevices, on unless you turn it off)."""
+    try:
+        ns = netshares()
+    except ImportError:
+        return []
+    if prefs_get().get('showDevices', True) is False:
+        return []
+    st = ns.read_state()
+    now = now or time.time()
+    # (Only in the desktop session: checks that call places() don't start looking.)
+    if now - (st.get('at') or 0) > ns.STALE_S and os.environ.get('WAYLAND_DISPLAY') and not os.environ.get('HEARTH_FILES_NO_DISCOVERY'):
+        start_refresh(ns)
+    return ns.sidebar(st, True)
+
+
+def start_refresh(ns):
+    """One background look at a time (a lock file next to the state)."""
+    lock = ns.state_path() + '.looking'
+    try:
+        if time.time() - os.path.getmtime(lock) < 120:
+            return
+    except OSError:
+        pass
+    try:
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        with open(lock, 'w') as f:
+            f.write(str(os.getpid()))
+        subprocess.Popen([sys.executable, os.path.realpath(__file__), 'devices-refresh'], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def devices_refresh():
+    ns = netshares()
+    helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-device-status')
+    try:
+        new = ns.discover(helper)
+        ns.write_state(ns.merge_state(ns.read_state(), new))
+    finally:
+        try:
+            os.remove(ns.state_path() + '.looking')
+        except OSError:
+            pass
+    return {'devices': len(new['devices']), 'servers': len(new['servers'])}
+
+
+def net_open(text, rest):
+    try:
+        net = json.loads(text)
+    except ValueError:
+        raise Fail('Not a shared folder')
+    if not isinstance(net, dict) or not (net.get('home') or net.get('away')):
+        raise Fail('Not a shared folder')
+    for k in ('home', 'away'):
+        if net.get(k) and not re.fullmatch(r'[A-Za-z0-9._-]{1,253}', net[k]):
+            raise Fail('Not a shared folder')
+    if '/' in (net.get('share') or ''):
+        raise Fail('Not a shared folder')
+    user = rest[rest.index('--user') + 1] if '--user' in rest and rest.index('--user') + 1 < len(rest) else None
+    pw = None
+    raw = os.environ.get('HEARTH_INPUT', '')
+    if raw:
+        try:
+            pw = (json.loads(raw) or {}).get('password')
+        except ValueError:
+            pw = None
+    return netshares().net_open(net, user=user, password=pw if isinstance(pw, str) and pw else None, remember='--remember' in rest)
+
+
 def storage_places():
     """The paired Hearth Storage devices' shared folders, as places (only what Hearth Link already knows: no waiting)."""
     if not os.path.exists(LINK_BIN):
@@ -3114,6 +3205,14 @@ def cmd(argv):
         out = list_dir('', False)
     elif c == 'places':
         out = places()
+    elif c == 'net-open' and rest:
+        out = net_open(rest[0], rest[1:])
+    elif c == 'net-wake' and len(rest) == 1:
+        if not re.fullmatch(r'[0-9a-f]{16,128}', rest[0]):
+            raise Fail('Not a device')
+        out = link_call('storage.wake', {'server': rest[0]}, timeout=20)
+    elif c == 'devices-refresh':
+        out = devices_refresh()
     elif c == 'mkdir' and len(rest) == 1:
         out = mkdir(rest[0])
     elif c == 'rename' and len(rest) == 2:

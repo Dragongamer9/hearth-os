@@ -993,6 +993,11 @@ jobs:
           ipc settings page wifi; grim $o/steam-11-settings-wifi.png || true
           ipc settings page devices; sleep 3; grim $o/steam-11c-settings-your-devices.png || true
           wtype -k Down 2>/dev/null; sleep 0.3; wtype -k Return 2>/dev/null; sleep 2; grim $o/steam-11d-settings-device-details.png || true
+          # Hearth Files with your devices' shared folders in the sidebar (stand-in devices, found "just now" so it
+          # doesn't look again: hearth_netshares.py's state file).
+          mkdir -p "$HOME/.local/state/nimbus"
+          python3 hosts/linux/test/devices_sample.py files > "$HOME/.local/state/nimbus/files-devices.json"
+          ipc settings close; ipc files open "$HOME"; sleep 3; grim $o/steam-13b-files-your-devices.png || true; ipc files close
           ipc settings page sound; grim $o/steam-12-settings-sound.png || true
           ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"

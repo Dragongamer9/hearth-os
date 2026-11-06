@@ -300,9 +300,51 @@ def status(now_ms=None, settings=None):
         'drives': drives(),
         'uptime': uptime(),
         'history': history(now_ms),
+        'shares': shared_folders(),
         'updated': now_ms,
     }
+    if out['shares']:
+        out['smb'] = smb_names()
     return out
+
+
+def server_settings_path():
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+    return os.path.join(base, 'nimbus', 'home-server.json')
+
+
+def shared_folders(path=None, home_dir=None, is_mount=os.path.ismount):
+    """This device's Home server shares that are on, for Hearth Files on your other devices: name, read only or read
+    & write, home or Tailscale only, and a Home / whole-drive badge. Never the folder's path. Only read."""
+    try:
+        with open(path or server_settings_path()) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(d, dict):
+        return []
+    hd = os.path.realpath(home_dir or home())
+    out = []
+    for sh in d.get('shares') or []:
+        if not isinstance(sh, dict) or sh.get('on', True) is False or not sh.get('name'):
+            continue
+        p = os.path.realpath(sh.get('path') or '/nonexistent')
+        badge = 'home' if p == hd else 'drive' if p != '/' and is_mount(p) else ''
+        reach = 'tailscale' if d.get('tsOnly') or sh.get('reach') == 'tailscale' else 'home'
+        out.append({'name': str(sh['name'])[:80], 'write': bool(sh.get('write')), 'reach': reach, 'badge': badge})
+    return out
+
+
+def smb_names():
+    """How your other devices reach this one's shares: its name at home (mDNS) and its Tailscale name (when on)."""
+    host = socket.gethostname().split('.')[0][:63]
+    away = ''
+    try:
+        ns = _load('hearth_netshares_mod', 'hearth_netshares.py')
+        away = (ns.tailscale_state() or {}).get('self') or ''
+    except (OSError, ImportError, SyntaxError):
+        pass
+    return {'home': host + '.local' if host else '', 'away': away}
 
 
 # ------------------------------------------------------------------ the last hour

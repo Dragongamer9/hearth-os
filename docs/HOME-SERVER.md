@@ -392,6 +392,15 @@ on the **AI** page next to the chat models. Both are **your own user services** 
 - **Overview and Quick Access**: the Services tile counts Pictures and Voices; Quick Access says "AI pictures: stopped
   while you play · AI voices: ready" and lists them in what Light mode holds back. Gaming lists them under what waits.
 
+## Your shares on your other Hearth devices
+
+Your other Hearth devices see this server's shares that are on in Hearth Files' sidebar under **Your devices**, by
+themselves (its status over Hearth Link carries their names, Home / Whole drive, read only or read & write, and how to
+reach them: `<name>.local` at home, the Tailscale name away; never a path). One click mounts one (gvfs); the first
+time asks for your user name and sharing password, which **Remember** keeps in that device's keyring. Hearth Files'
+"How to open from Windows or a phone" shows the same `\\host\share` and `smb://host/share` addresses as this
+page's How to open them. Details: docs/HEARTH-LINK.md, "Your devices in Hearth Files".
+
 ## Never stopping the PC from starting
 
 Every new service is **disabled until the owner turns it on**: smbd, nmbd, samba-ad-dc, tailscaled, smartd,
