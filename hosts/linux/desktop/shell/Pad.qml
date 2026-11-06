@@ -41,7 +41,33 @@ Scope {
     // The window in front (labwc's foreign-toplevel list): hearth-pad decides from its app id whether the app reads
     // the controller itself (controller-apps.json, X-Hearth-Controller=true in its .desktop file, or a claim).
     readonly property string frontApp: active !== null ? (active.appId || "") : ""
-    function sendFocus() { send({ cmd: "focus", app: frontApp, title: active !== null ? (active.title || "") : "" }); }
+    // What has the keys (hearth-pad's pad.log says it, so a controller that "only does D-pad and A" shows why).
+    function keysWhy() {
+        if (!keysContext) return "";
+        if (launcher.shown) return "launcher";
+        if (quick.shown) return "Quick Access";
+        if (powerMenu.shown) return "power menu";
+        if (liveWelcome.shown) return "live welcome";
+        if (steamFallback !== null && steamFallback.shown) return "Steam fallback";
+        if (SettingsNav.clipShown) return "clipboard";
+        if (SettingsNav.friendsShown) return "Friends";
+        if (DeskState.overlayShown) return "desktop menu";
+        return "window: " + (active !== null ? ((active.appId || "") + " " + (active.title || "")).trim().slice(0, 60) : "?");
+    }
+    // keys {on, why, ttl}: hearth-pad lets it lapse after ttl seconds unless it's said again (keysBeat repeats it while
+    // it's on), so a lost "off" can never leave A stuck as Enter; every focus change says it again too.
+    readonly property int keysTtl: 12
+    function keysMsg(cmd) { return { cmd: cmd, on: keysContext, why: keysWhy(), ttl: keysTtl }; }
+    function sendKeys() { send(keysMsg("keys")); }
+    function sendFocus() {
+        const m = keysMsg("focus");
+        m.app = frontApp;
+        m.title = active !== null ? (active.title || "") : "";
+        m.keys = keysContext;
+        delete m.on;
+        send(m);
+    }
+    Timer { id: keysBeat; interval: 4000; repeat: true; running: pad.keysContext && proc.running; onTriggered: pad.sendKeys() }
     onFrontAppChanged: sendFocus()
 
     // Hearth's menus that take the keyboard (Quick Access, the launcher, the power menu, the clipboard, Friends, the
@@ -68,7 +94,7 @@ Scope {
     function send(o) { if (proc.running) proc.write(JSON.stringify(o) + "\n"); }
     function sync() {
         sendFocus();
-        send({ cmd: "keys", on: keysContext });
+        sendKeys();
         send({ cmd: "pause", on: fullscreenApp });
         send({ cmd: "mouse", on: mouseOn });
         send({ cmd: "speed", value: Settings.pointerSpeed });
@@ -77,7 +103,7 @@ Scope {
         target: Settings
         function onPointerSpeedChanged() { pad.send({ cmd: "speed", value: Settings.pointerSpeed }); }
     }
-    onKeysContextChanged: send({ cmd: "keys", on: keysContext })
+    onKeysContextChanged: sendKeys()
     onFullscreenAppChanged: send({ cmd: "pause", on: fullscreenApp })
 
     function openMenu() {

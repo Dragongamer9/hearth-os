@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Desktop Mode controller: clicks work everywhere again. RT / LT always click and right-click (also in Hearth Files, Settings, Task Manager, Open / Save dialogs and Hearth's menus, where they did nothing), A and X click once you've moved the pointer with the right stick (the D-pad gives them back to Enter / the Menu key), the pointer holds still for a moment when a click goes down so the title bar's close button and dragging a window by its title bar work, the menus' keys mode can no longer get stuck on, quick taps are never lost, and pad.log shows the clicks and the keys mode (docs/HEARTH-INPUT.md) (needs testing on a device)
+
 ## 1.4 (released 2026-11-05)
 
 - [x] Mantel dock: coming back from Game Mode, an auto-hide dock no longer keeps the bottom of the screen reserved, so windows can fill the whole screen again (it waits for your settings, and refits when its space changes) (needs testing on a device)
