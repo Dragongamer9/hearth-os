@@ -341,6 +341,75 @@ jobs:
           fi
           rm -f /tmp/fakebin/pkexec /tmp/fakebin/tailscale /usr/libexec/nimbus/hearth-home-server-helper /usr/libexec/nimbus/hearth-storage-helper /var/lib/hearth/home-server-backups.json /var/lib/hearth/home-server-alerts.json
           ipc settings close
+          # ---- Share this device's AI (docs/AI-SHARE.md): AI devices with sharing and "find my devices here" on, stand-in
+          # Ollama, Kokoro and ComfyUI on this runner, and two stand-in Hearth devices answering on 127.0.0.2 and 127.0.0.3
+          # (named by a stand-in Tailscale), for these shots only.
+          mkdir -p shots/ai-share "$HOME/.config/nimbus" /run/hearth
+          printf '{"on": true, "hub": true}\n' > "$HOME/.config/nimbus/ai-share.json"
+          printf '{"ok": true, "at": 1}\n' > /run/hearth/ai-share-firewall.json
+          python3 - <<'PY' &
+          import json, threading, time
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+          def doc(dev, name, vendor, gaming, bat, services):
+              d = {'protocol': 1, 'device': dev, 'name': name, 'address': dev + '.tail4f2a.ts.net', 'os': 'hearth', 'version': '1.4', 'gaming': gaming,
+                   'busy': False, 'available': not gaming, 'reason': 'playing' if gaming else '', 'pluggedIn': True, 'gpu': {'vendor': vendor},
+                   'services': services, 'updated': int(time.time() * 1000)}
+              if bat:
+                  d['battery'] = bat
+              return d
+          ally = doc('rog-ally', 'ROG-Ally', 'amd', True, {'percent': 82, 'charging': True},
+                     [{'kind': 'voice', 'engine': 'kokoro-fastapi', 'url': 'http://rog-ally.tail4f2a.ts.net:8880', 'openai': 'http://rog-ally.tail4f2a.ts.net:8880/v1', 'healthy': True, 'reachable': True, 'busy': False, 'voices': ['af_bella', 'af_sky', 'am_adam', 'bf_emma']},
+                      {'kind': 'chat', 'engine': 'ollama', 'url': 'http://rog-ally.tail4f2a.ts.net:11434', 'openai': 'http://rog-ally.tail4f2a.ts.net:11434/v1', 'healthy': True, 'reachable': True, 'busy': False, 'models': ['qwen3:4b']}])
+          laptop = doc('laptop', 'Laptop', 'intel', False, {'percent': 47, 'charging': False},
+                       [{'kind': 'stt', 'engine': 'whisper', 'url': 'http://laptop.tail4f2a.ts.net:8000', 'openai': 'http://laptop.tail4f2a.ts.net:8000/v1', 'healthy': True, 'reachable': True, 'busy': False, 'models': ['Systran/faster-whisper-small']}])
+          routes = {
+              ('0.0.0.0', 11434): {'/api/tags': {'models': [{'name': 'qwen3:30b-a3b'}, {'name': 'qwen3-coder:30b-a3b'}, {'name': 'qwen3:14b'}]}, '/api/ps': {'models': [{'name': 'qwen3:30b-a3b'}]}},
+              ('0.0.0.0', 8880): {'/v1/audio/voices': {'voices': ['af_bella', 'af_heart', 'am_michael', 'bf_emma', 'bm_george']}, '/v1/models': {'data': [{'id': 'kokoro'}]}},
+              ('0.0.0.0', 8188): {'/system_stats': {'system': {'os': 'posix'}}, '/models/checkpoints': ['sdxl_base_1.0.safetensors', 'flux1-schnell-fp8.safetensors'], '/queue': {'queue_running': [], 'queue_pending': []}},
+              ('127.0.0.2', 8189): {'/v1/hearth/ai': ally}, ('127.0.0.3', 8189): {'/v1/hearth/ai': laptop}}
+          for addr, r in routes.items():
+              class H(BaseHTTPRequestHandler):
+                  table = r
+                  def log_message(self, *a): pass
+                  def do_GET(self):
+                      v = self.table.get(self.path.split('?')[0])
+                      b = json.dumps(v).encode() if v is not None else b'{}'
+                      self.send_response(200 if v is not None else 404); self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b)
+              threading.Thread(target=ThreadingHTTPServer(addr, H).serve_forever, daemon=True).start()
+          time.sleep(600)
+          PY
+          FAKE_AI=$!
+          cat > /tmp/fakebin/tailscale <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            status) echo '{"BackendState":"Running","Self":{"HostName":"Nvidia-PC","DNSName":"nvidia-pc.tail4f2a.ts.net.","TailscaleIPs":["100.84.12.7"],"UserID":1},"Peer":{"a":{"HostName":"ROG-Ally","DNSName":"rog-ally.tail4f2a.ts.net.","OS":"linux","TailscaleIPs":["127.0.0.2"],"Online":true},"b":{"HostName":"Laptop","DNSName":"laptop.tail4f2a.ts.net.","OS":"linux","TailscaleIPs":["127.0.0.3"],"Online":true},"c":{"HostName":"Phone","DNSName":"phone.tail4f2a.ts.net.","OS":"android","TailscaleIPs":["100.70.1.3"],"Online":true}}}' ;;
+          esac
+          FAKE
+          cat > /tmp/fakebin/systemctl <<'FAKE'
+          #!/bin/sh
+          case "$*" in *"is-active --quiet hearth-ai-share.service") exit 0 ;; esac
+          exec /usr/bin/systemctl "$@"
+          FAKE
+          chmod +x /tmp/fakebin/tailscale /tmp/fakebin/systemctl
+          sleep 2
+          before=$(sha256sum "$HOME/.config/nimbus/ai-share.json")
+          ipc settings close; ipc settings page hs-aidevices; sleep 8; grim shots/ai-share/50-ai-devices.png || true
+          wtype -k Right; sleep 1; for i in $(seq 1 9); do wtype -k Down; done; sleep 1; grim shots/ai-share/51-ai-devices-when-and-code.png || true
+          for i in $(seq 1 6); do wtype -k Down; done; sleep 1; grim shots/ai-share/52-ai-devices-list.png || true
+          wtype -k Return; sleep 1; for i in 1 2 3; do wtype -k Down; done; sleep 1; grim shots/ai-share/53-ai-devices-move.png || true
+          ipc settings page hs-ai; sleep 4; grim shots/ai-share/54-ai-page-link.png || true
+          ipc settings page link; sleep 4; grim shots/ai-share/55-hearth-link-link.png || true
+          ipc settings close
+          for c in status info devices; do python3 hosts/linux/desktop/shell/hearth-ai-share $c > shots/ai-share/$c.json 2>&1 || { echo "::error title=AI sharing::hearth-ai-share $c failed: $(head -c 300 shots/ai-share/$c.json)"; touch shots/FAILED; }; done
+          python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); n = [x["device"] for x in d["devices"]]; sys.exit(0 if n[:1] == ["nvidia-pc"] and "rog-ally" in n and "laptop" in n else 1)' shots/ai-share/devices.json \
+            || { echo "::error title=AI sharing::the devices list isn't right: $(head -c 400 shots/ai-share/devices.json)"; touch shots/FAILED; }
+          [ "$(sha256sum "$HOME/.config/nimbus/ai-share.json")" = "$before" ] || { echo "::error title=AI sharing::opening its page changed ai-share.json"; touch shots/FAILED; }
+          if grep -qE "SetHomeAIDevices\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null; then
+            echo "::error title=AI sharing::$(grep -E 'SetHomeAIDevices\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          kill $FAKE_AI 2>/dev/null || true
+          rm -f /tmp/fakebin/tailscale /tmp/fakebin/systemctl /run/hearth/ai-share-firewall.json "$HOME/.config/nimbus/ai-share.json" "$HOME/.config/nimbus/ai-share.json.bak"
+          # ---- end Share this device's AI
           # The launcher: no "Hearth" (the old Game Mode in a window), even with its menu entry installed.
           ipc launcher toggle; grim shots/settings-move/15-launcher-no-hearth.png || true; ipc launcher close
           quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call launcher listed > shots/settings-move/launcher-apps.txt 2>&1 || true

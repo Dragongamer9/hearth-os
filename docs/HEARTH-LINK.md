@@ -349,6 +349,12 @@ with your paired devices.
 Requests: `ai.info`, `ai.http {method, path, ctype, body}`. UI calls: `ai.status`, `ai.set {serve, backend}`,
 `ai.use {server}`, `ai.stop`.
 
+**Share this device's AI** (docs/AI-SHARE.md) builds on this for the Hearth AI Command Center: each device says what
+AI it has (chat, voices, pictures, speech to text) at `http://<its Tailscale name>:8189/v1/hearth/ai`, and the Home
+server lists every device at `/v1/hearth/ai/devices`, including paired Hearth Link devices (from `status`) that aren't
+sharing through Tailscale. It's opened from Settings › Hearth Link › Share this device's AI (Mantel). Hearth Link's own
+share above stays as it is: it's for apps on your paired devices, over Hearth Link's encrypted connection.
+
 ## Tests
 
 - `cargo test`: handoff.rs (what's offered, the file, the answer once quit), fleet.rs (who may update now: boot

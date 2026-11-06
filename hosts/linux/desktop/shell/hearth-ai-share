@@ -1,0 +1,884 @@
+#!/usr/bin/python3
+"""hearth-ai-share: Share this device's AI (docs/AI-SHARE.md). Each Hearth device runs its own AI jobs whole (the Nvidia
+PC big chat and pictures, the ROG Ally voices, a laptop speech-to-text) and, when you turn it on, says what it has at
+one small read-only address over Tailscale. Your Home server lists every device's AI there too, and the Hearth AI
+Command Center reads it to pick the best device for each job.
+
+  hearth-ai-share status                 JSON for Settings: your choices, what's found here, the address, the service
+  hearth-ai-share info                   this device's answer (the same JSON as GET /v1/hearth/ai)
+  hearth-ai-share devices                every device's AI (the same JSON as GET /v1/hearth/ai/devices)
+  hearth-ai-share set KEY on|off         on (Share this device's AI), hub (Let the Command Center find my devices here),
+                                         lan (also on my home network), pluggedOnly, notWhilePlaying, codeOn,
+                                         chat, voice, image, stt (which services to share)
+  hearth-ai-share code-set               a share code on stdin (HEARTH_INPUT): 8-64 characters; only its hash is kept
+  hearth-ai-share code-clear             no share code any more (codeOn goes off)
+  hearth-ai-share move NAME up|down      the order the Command Center tries your devices in
+  hearth-ai-share order-reset            back to the default order (a device with an Nvidia card first)
+  hearth-ai-share apply                  the service and its firewall rule as your choices say (Settings runs it)
+  hearth-ai-share serve                  the server (hearth-ai-share.service, your own user service)
+
+The server answers on port 8189: GET /v1/hearth/ai (this device) and GET /v1/hearth/ai/devices (every device, when
+"Let the Command Center find my devices here" is on). Read only, no secrets, nothing else. It listens on this device
+(127.0.0.1) and on its Tailscale address only once Hearth's firewall rule is loaded (hearth-ai-share-helper, the
+nftables table inet hearth_ai_share: lo and tailscale0 let in, everything else dropped on 8189); with "also on my home
+network" on every address. Requests from anywhere but this device and Tailscale are refused unless you chose that.
+
+Settings: ~/.config/nimbus/ai-share.json through hearth_settings_io (only the key you changed; atomic, .bak, merged
+under the lock; defaults filled in when read, never saved). The share code's hash is state
+(~/.local/state/nimbus/ai-share.json, 0600); devices seen before are a cache (~/.cache/nimbus/ai-share-devices.json).
+Nothing here ever changes a setting by itself. Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import hashlib
+import hmac
+import http.client
+import ipaddress
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+PROTOCOL = 1
+PORT = 8189
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
+CACHE_HOME = os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'ai-share.json')
+HOME_SERVER = os.path.join(CONFIG_HOME, 'nimbus', 'home-server.json')        # read only: is this a home server?
+STATE = os.path.join(STATE_HOME, 'nimbus', 'ai-share.json')                   # the share code's hash (0600)
+SEEN = os.path.join(CACHE_HOME, 'nimbus', 'ai-share-devices.json')            # devices that answered before
+FW_STATE = os.environ.get('HEARTH_AI_SHARE_FW_STATE', '/run/hearth/ai-share-firewall.json')
+FW_FILE = '/etc/hearth/ai-share.nft'
+ROOT_HELPER = os.environ.get('HEARTH_AI_SHARE_ROOT', '/usr/libexec/nimbus/hearth-ai-share-helper')
+LINK_BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
+APPS_DIR = '/var/lib/hearth/apps'
+UNIT = 'hearth-ai-share.service'
+SYS_ROOT = os.environ.get('HEARTH_AI_SHARE_SYS', '')                          # tests: a stand-in /sys and /proc
+
+DEFAULTS = {'on': False, 'hub': False, 'lan': False, 'pluggedOnly': True, 'notWhilePlaying': True, 'codeOn': False,
+            'share': {'chat': True, 'voice': True, 'image': True, 'stt': True}, 'priority': []}
+BOOL_KEYS = ('on', 'hub', 'lan', 'pluggedOnly', 'notWhilePlaying', 'codeOn')
+KINDS = ('chat', 'voice', 'image', 'stt')
+NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,62}$')
+TS_NETS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
+MAX_ANSWER = 2 << 20
+
+# The AI services Hearth knows, found by asking them (never by assuming what installed them). Ports as their makers set them.
+SERVICES = (
+    {'kind': 'chat', 'engine': 'ollama', 'port': 11434, 'app': 'ollama', 'label': 'Chat (Ollama)'},
+    {'kind': 'voice', 'engine': 'kokoro-fastapi', 'port': 8880, 'app': 'kokoro', 'label': 'Voices (Kokoro)'},
+    {'kind': 'image', 'engine': 'comfyui', 'port': 8188, 'app': 'comfyui', 'label': 'Pictures (ComfyUI)'},
+    {'kind': 'stt', 'engine': 'whisper', 'port': 8000, 'app': 'whisper', 'label': 'Speech to text (whisper)'},
+    {'kind': 'stt', 'engine': 'whisper', 'port': 9000, 'app': '', 'label': 'Speech to text (whisper)'},
+)
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ settings
+
+def load():
+    """Your choices with defaults filled in (in memory only)."""
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def peek():
+    """Your choices, read only (the server: never repairs or writes anything)."""
+    d = sio.load_json(SETTINGS, {}, repair=False) if os.path.exists(SETTINGS) else {}
+    return sio.with_defaults(d if isinstance(d, dict) else {}, DEFAULTS)
+
+
+def set_key(key, raw):
+    """Saves one choice, only when it's different from what you have now (a default counts as what you have)."""
+    if raw not in ('on', 'off'):
+        raise Fail('on or off')
+    v = raw == 'on'
+    if key not in BOOL_KEYS and key not in KINDS:
+        raise Fail('Unknown setting')
+    cur = load()
+    if key == 'codeOn' and v and not code_hash():
+        raise Fail('Set a share code first')
+    if (cur['share'].get(key) if key in KINDS else cur.get(key)) == v:
+        return False
+
+    def change(d):
+        if key in KINDS:
+            grp = dict(d.get('share')) if isinstance(d.get('share'), dict) else {}
+            grp[key] = v
+            d['share'] = grp
+        else:
+            d[key] = v
+    sio.update_json(SETTINGS, change)
+    return True
+
+
+def code_hash():
+    st = sio.load_json(STATE, {}, repair=False) if os.path.exists(STATE) else {}
+    h = st.get('codeHash') if isinstance(st, dict) else None
+    return h if isinstance(h, str) and h.startswith('pbkdf2-sha256$') else ''
+
+
+def make_hash(code, rounds=200000):
+    salt = secrets.token_bytes(16)
+    return 'pbkdf2-sha256$%d$%s$%s' % (rounds, salt.hex(), hashlib.pbkdf2_hmac('sha256', code.encode(), salt, rounds).hex())
+
+
+def check_hash(code, h):
+    try:
+        kind, n, salt, want = (h or '').split('$')
+        if kind != 'pbkdf2-sha256' or not 1 <= int(n) <= 2000000:
+            return False
+        return hmac.compare_digest(hashlib.pbkdf2_hmac('sha256', (code or '').encode(), bytes.fromhex(salt), int(n)).hex(), want)
+    except (ValueError, TypeError):
+        return False
+
+
+def code_ok(code):
+    c = (code or '').strip()
+    if not 8 <= len(c) <= 64 or any(ord(ch) < 33 or ord(ch) > 126 for ch in c):
+        raise Fail('A share code is 8 to 64 letters, digits or symbols, without spaces')
+    return c
+
+
+def code_set(code):
+    c = code_ok(code)
+    os.makedirs(os.path.dirname(STATE), mode=0o700, exist_ok=True)
+    sio.update_json(STATE, lambda d: d.update({'codeHash': make_hash(c), 'codeAt': int(time.time() * 1000)}))
+    os.chmod(STATE, 0o600)
+    if os.path.exists(STATE + '.bak'):
+        os.chmod(STATE + '.bak', 0o600)
+    set_key('codeOn', 'on')
+    return {'codeSet': True}
+
+
+def code_clear():
+    if os.path.exists(STATE):
+        sio.update_json(STATE, lambda d: [d.pop(k, None) for k in ('codeHash', 'codeAt')])
+    if load()['codeOn']:
+        sio.update_json(SETTINGS, lambda d: d.update({'codeOn': False}))
+    return {'codeSet': False}
+
+
+# ------------------------------------------------------------------ this device
+
+def sys_path(p):
+    return SYS_ROOT + p if SYS_ROOT else p
+
+
+def read(p, limit=65536):
+    try:
+        with open(sys_path(p), 'rb') as f:
+            return f.read(limit).decode('utf-8', 'replace').strip()
+    except OSError:
+        return ''
+
+
+def game_running():
+    """Game Mode or a game is running: gamescope, or Hearth's hearth-playing file (as the home server's Light mode)."""
+    try:
+        for pid in os.listdir(sys_path('/proc')):
+            if pid.isdigit() and read('/proc/%s/comm' % pid) in ('gamescope', 'gamescope-wl'):
+                return True
+    except OSError:
+        pass
+    try:
+        return any(os.path.exists(sys_path('/run/user/%s/hearth-playing' % u)) for u in os.listdir(sys_path('/run/user')))
+    except OSError:
+        return False
+
+
+def battery():
+    """(battery {percent, charging} or None, plugged in). Controllers' and mice's batteries (scope Device) don't count."""
+    base = '/sys/class/power_supply'
+    try:
+        names = sorted(os.listdir(sys_path(base)))
+    except OSError:
+        return None, True
+    bat, mains = None, None
+    for n in names:
+        p = base + '/' + n
+        kind = read(p + '/type')
+        if kind == 'Battery' and read(p + '/scope') != 'Device' and bat is None:
+            cap = read(p + '/capacity')
+            status = read(p + '/status')
+            if cap.isdigit():
+                bat = {'percent': max(0, min(100, int(cap))), 'charging': status in ('Charging', 'Full', 'Not charging'), 'status': status}
+        elif kind in ('Mains', 'USB', 'USB_C', 'USB_PD') and read(p + '/online') in ('0', '1'):
+            mains = bool(mains) or read(p + '/online') == '1'
+    if bat is None:
+        return None, True
+    plugged = mains if mains is not None else bat['charging']
+    return {'percent': bat['percent'], 'charging': bat['status'] == 'Charging'}, plugged
+
+
+def gpu():
+    """The strongest graphics card's maker (an Nvidia card first, as the Command Center prefers), and its memory when the
+    driver says (AMD's sysfs)."""
+    found = []
+    try:
+        cards = sorted(os.listdir(sys_path('/sys/class/drm')))
+    except OSError:
+        cards = []
+    for c in cards:
+        if not re.fullmatch(r'card\d+', c):
+            continue
+        v = read('/sys/class/drm/%s/device/vendor' % c).lower()
+        vendor = {'0x10de': 'nvidia', '0x1002': 'amd', '0x8086': 'intel'}.get(v)
+        if not vendor:
+            continue
+        vram = read('/sys/class/drm/%s/device/mem_info_vram_total' % c)
+        found.append({'vendor': vendor, 'vramMB': int(vram) >> 20 if vram.isdigit() else None})
+    if not found:
+        return None
+    found.sort(key=lambda g: ({'nvidia': 0, 'amd': 1, 'intel': 2}[g['vendor']], -(g['vramMB'] or 0)))
+    g = found[0]
+    return {k: v for k, v in g.items() if v is not None}
+
+
+def version():
+    return read('/usr/share/nimbus/version')[:40]
+
+
+def tcp_table():
+    """Listening and connected TCP sockets: [(state, local ip, local port, remote ip)] from /proc/net/tcp and tcp6."""
+    out = []
+    for name, six in (('tcp', False), ('tcp6', True)):
+        try:
+            with open(sys_path('/proc/net/' + name)) as f:
+                lines = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            try:
+                lip, lport = hexaddr(parts[1], six)
+                rip, _ = hexaddr(parts[2], six)
+            except ValueError:
+                continue
+            out.append((parts[3], lip, lport, rip))
+    return out
+
+
+def hexaddr(text, six):
+    a, p = text.split(':')
+    raw = bytes.fromhex(a)
+    if six:
+        raw = b''.join(raw[i:i + 4][::-1] for i in range(0, 16, 4))
+        ip = ipaddress.ip_address(raw)
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+    else:
+        ip = ipaddress.ip_address(raw[::-1])
+    return str(ip), int(p, 16)
+
+
+def reach_of(port, table, ts_ips):
+    """(listening, reachable from your other devices, connections from them now) for a service's port."""
+    listening = [ip for st, ip, p, _ in table if st == '0A' and p == port]
+    reachable = any(ip in ('0.0.0.0', '::') or ip in ts_ips for ip in listening)
+    remote = sum(1 for st, ip, p, rip in table if st == '01' and p == port and not ipaddress.ip_address(rip).is_loopback)
+    return bool(listening), reachable, remote
+
+
+def local_get(port, path, timeout=1.5):
+    """GET http://127.0.0.1:PORT/PATH on this device only (no proxy): the parsed JSON, or None."""
+    try:
+        c = http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
+        try:
+            c.request('GET', path, headers={'Accept': 'application/json'})
+            r = c.getresponse()
+            body = r.read(MAX_ANSWER + 1)
+            if r.status != 200 or len(body) > MAX_ANSWER:
+                return None
+        finally:
+            c.close()
+        return json.loads(body.decode('utf-8', 'replace'))
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+
+
+def names(items, key, limit=60):
+    out = []
+    for x in items if isinstance(items, list) else []:
+        v = x.get(key) if isinstance(x, dict) else x
+        if isinstance(v, str) and 0 < len(v) <= 200 and v not in out:
+            out.append(v)
+    return out[:limit]
+
+
+def probe(svc, get=local_get):
+    """What a service answers: None (not this engine, or nothing there), or {healthy, models?, voices?, busy?}."""
+    port, eng = svc['port'], svc['engine']
+    if eng == 'ollama':
+        tags = get(port, '/api/tags')
+        if not isinstance(tags, dict) or not isinstance(tags.get('models'), list):
+            return None
+        ps = get(port, '/api/ps')
+        return {'healthy': True, 'models': names(tags['models'], 'name'),
+                'loaded': names((ps or {}).get('models') if isinstance(ps, dict) else [], 'name')}
+    if eng == 'kokoro-fastapi':
+        v = get(port, '/v1/audio/voices')
+        if not isinstance(v, dict) or not isinstance(v.get('voices'), list):
+            return None
+        m = get(port, '/v1/models')
+        return {'healthy': True, 'voices': names(v['voices'], 'name', 200),
+                'models': names((m or {}).get('data') if isinstance(m, dict) else [], 'id')}
+    if eng == 'comfyui':
+        st = get(port, '/system_stats')
+        if not isinstance(st, dict) or 'system' not in st:
+            return None
+        ck = get(port, '/models/checkpoints')
+        if not isinstance(ck, list):
+            oi = get(port, '/object_info/CheckpointLoaderSimple', 3)
+            try:
+                ck = oi['CheckpointLoaderSimple']['input']['required']['ckpt_name'][0]
+            except (TypeError, KeyError, IndexError):
+                ck = []
+        q = get(port, '/queue')
+        busy = isinstance(q, dict) and bool(q.get('queue_running') or q.get('queue_pending'))
+        return {'healthy': True, 'models': names(ck, None), 'busy': busy}
+    if eng == 'whisper':
+        if port == 9000:
+            api = get(port, '/openapi.json')
+            title = ((api or {}).get('info') or {}).get('title', '') if isinstance(api, dict) else ''
+            return {'healthy': True, 'models': []} if 'whisper' in str(title).lower() else None
+        m = get(port, '/v1/models')
+        ids = names((m or {}).get('data') if isinstance(m, dict) else [], 'id')
+        stt = [i for i in ids if 'whisper' in i.lower()]
+        return {'healthy': True, 'models': stt} if stt else None
+    return None
+
+
+def detect(ts_ips=(), get=local_get, table=None):
+    """Every AI service found on this device: kind, engine, port, healthy, reachable, busy, models / voices. A Hearth app
+    that's installed but not answering is listed as not healthy."""
+    table = tcp_table() if table is None else table
+    found, kinds_done = [], set()
+    for svc in SERVICES:
+        if (svc['kind'], svc['engine']) in kinds_done:
+            continue
+        listening, reachable, remote = reach_of(svc['port'], table, ts_ips)
+        r = probe(svc, get) if listening else None
+        installed = bool(svc['app']) and os.path.isdir(os.path.join(APPS_DIR, svc['app']))
+        if r is None and not installed:
+            continue
+        s = {'kind': svc['kind'], 'engine': svc['engine'], 'port': svc['port'], 'label': svc['label'],
+             'healthy': bool(r and r.get('healthy')), 'reachable': reachable,
+             'busy': bool(r and r.get('busy')) or (svc['engine'] != 'comfyui' and remote > 0)}
+        for k in ('models', 'voices', 'loaded'):
+            if r and k in r:
+                s[k] = r[k]
+        found.append(s)
+        if r:
+            kinds_done.add((svc['kind'], svc['engine']))
+    return found
+
+
+_TS = {'at': 0, 'v': None}
+
+
+def ts_status(fresh=False):
+    """Tailscale as `tailscale status --json` says (cached 15 s): {running, dns, name, ips, peers}."""
+    now = time.time()
+    if not fresh and _TS['v'] is not None and now - _TS['at'] < 15:
+        return _TS['v']
+    v = {'running': False, 'dns': '', 'name': '', 'ips': [], 'peers': []}
+    if shutil.which('tailscale'):
+        try:
+            p = subprocess.run(['tailscale', 'status', '--json'], capture_output=True, text=True, timeout=6)
+            j = json.loads(p.stdout or '{}')
+        except (OSError, ValueError, subprocess.SubprocessError):
+            j = {}
+        me = j.get('Self') or {}
+        if j.get('BackendState') == 'Running':
+            v = {'running': True, 'dns': (me.get('DNSName') or '').rstrip('.').lower(), 'name': me.get('HostName') or '',
+                 'ips': [x for x in me.get('TailscaleIPs') or [] if isinstance(x, str)], 'peers': []}
+            for pr in (j.get('Peer') or {}).values():
+                if not isinstance(pr, dict):
+                    continue
+                v['peers'].append({'name': pr.get('HostName') or '', 'dns': (pr.get('DNSName') or '').rstrip('.').lower(),
+                                   'os': (pr.get('OS') or '').lower(), 'online': bool(pr.get('Online')),
+                                   'ips': [x for x in pr.get('TailscaleIPs') or [] if isinstance(x, str)]})
+    _TS.update(at=now, v=v)
+    return v
+
+
+def short(dns_or_name):
+    """A device's short name: the first part of its Tailscale name, small letters, digits and dashes."""
+    s = re.sub(r'[^a-z0-9-]+', '-', (dns_or_name or '').split('.')[0].lower()).strip('-')
+    return s[:63]
+
+
+def is_server():
+    """This device is a home server (Settings › Home server set up, sharing or running its AI service), read only."""
+    d = sio.load_json(HOME_SERVER, {}, repair=False) if os.path.exists(HOME_SERVER) else {}
+    if not isinstance(d, dict):
+        return False
+    shares = [s for s in d.get('shares') or [] if isinstance(s, dict) and s.get('on', True) is not False]
+    ai = d.get('ai') if isinstance(d.get('ai'), dict) else {}
+    return bool(d.get('setupDone') or shares or ai.get('on'))
+
+
+def firewall_ok():
+    st = sio.load_json(FW_STATE, {}, repair=False) if os.path.exists(FW_STATE) else {}
+    return isinstance(st, dict) and st.get('ok') is True
+
+
+def document(cfg=None, ts=None, found=None):
+    """This device's answer to GET /v1/hearth/ai (protocol 1, docs/AI-SHARE.md)."""
+    cfg = peek() if cfg is None else cfg
+    ts = ts_status() if ts is None else ts
+    ts_ips = [ip for ip in ts.get('ips') or []]
+    host = ts.get('dns') or next((ip for ip in ts_ips if '.' in ip), '') or socket.gethostname().split('.')[0].lower()
+    found = detect(ts_ips) if found is None else found
+    gaming = game_running()
+    bat, plugged = battery()
+    reason = ''
+    if not cfg['on']:
+        reason = 'off'
+    elif gaming and cfg['notWhilePlaying']:
+        reason = 'playing'
+    elif bat is not None and not plugged and cfg['pluggedOnly']:
+        reason = 'battery'
+    services = []
+    if cfg['on']:
+        for s in found:
+            if not cfg['share'].get(s['kind'], True):
+                continue
+            base = 'http://%s:%d' % (host if ':' not in host else '[%s]' % host, s['port'])
+            out = {'kind': s['kind'], 'engine': s['engine'], 'url': base, 'healthy': s['healthy'] and s['reachable'],
+                   'reachable': s['reachable'], 'busy': s['busy']}
+            if s['engine'] in ('ollama', 'kokoro-fastapi') or (s['engine'] == 'whisper' and s['port'] == 8000):
+                out['openai'] = base + '/v1'
+            for k in ('models', 'voices', 'loaded'):
+                if k in s:
+                    out[k] = s[k]
+            services.append(out)
+    doc = {'protocol': PROTOCOL, 'device': short(ts.get('dns') or ts.get('name') or socket.gethostname()),
+           'name': ts.get('name') or socket.gethostname().split('.')[0], 'address': ts.get('dns') or '',
+           'os': 'hearth', 'version': version(), 'gaming': gaming, 'busy': any(s['busy'] for s in services),
+           'available': not reason and any(s['healthy'] for s in services), 'reason': reason or ('' if services else 'nothing'),
+           'pluggedIn': plugged, 'services': services, 'updated': int(time.time() * 1000)}
+    if bat is not None:
+        doc['battery'] = bat
+    g = gpu()
+    if g:
+        doc['gpu'] = g
+    return doc
+
+
+# ------------------------------------------------------------------ every device (the Home server)
+
+def peer_get(ip, code='', timeout=2.0):
+    """A device's answer from http://IP:8189/v1/hearth/ai over Tailscale (only Tailscale addresses), checked."""
+    try:
+        if not any(ipaddress.ip_address(ip) in n for n in TS_NETS) and not ipaddress.ip_address(ip).is_loopback:
+            return None
+        c = http.client.HTTPConnection(ip if ':' not in ip else ip, PORT, timeout=timeout)
+        try:
+            h = {'Accept': 'application/json'}
+            if code:
+                h['X-Hearth-Share-Code'] = code
+            c.request('GET', '/v1/hearth/ai', headers=h)
+            r = c.getresponse()
+            body = r.read(MAX_ANSWER + 1)
+            if r.status != 200 or len(body) > MAX_ANSWER:
+                return None
+        finally:
+            c.close()
+        return clean_doc(json.loads(body.decode('utf-8', 'replace')))
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+
+
+def clean_doc(d):
+    """Another device's answer, only what the protocol has, each value checked (it's shown in Settings and passed on)."""
+    if not isinstance(d, dict) or d.get('os') != 'hearth' or not isinstance(d.get('protocol'), int) or d['protocol'] < 1:
+        return None
+    s = lambda v, n=120: v[:n] if isinstance(v, str) else ''  # noqa: E731
+    out = {'protocol': d['protocol'], 'device': short(s(d.get('device'))), 'name': s(d.get('name'), 80), 'address': s(d.get('address'), 200),
+           'os': 'hearth', 'version': s(d.get('version'), 40), 'gaming': d.get('gaming') is True, 'busy': d.get('busy') is True,
+           'available': d.get('available') is True, 'reason': s(d.get('reason'), 20), 'pluggedIn': d.get('pluggedIn') is not False,
+           'services': []}
+    if not out['device']:
+        return None
+    b = d.get('battery')
+    if isinstance(b, dict) and isinstance(b.get('percent'), int):
+        out['battery'] = {'percent': max(0, min(100, b['percent'])), 'charging': b.get('charging') is True}
+    g = d.get('gpu')
+    if isinstance(g, dict) and g.get('vendor') in ('nvidia', 'amd', 'intel'):
+        out['gpu'] = {'vendor': g['vendor']}
+        if isinstance(g.get('vramMB'), int):
+            out['gpu']['vramMB'] = g['vramMB']
+    for v in d.get('services') or []:
+        if not isinstance(v, dict) or v.get('kind') not in KINDS or not isinstance(v.get('url'), str):
+            continue
+        if not re.fullmatch(r'http://[A-Za-z0-9.\-\[\]:]{1,250}:\d{1,5}', v['url']):
+            continue
+        sv = {'kind': v['kind'], 'engine': s(v.get('engine'), 30), 'url': v['url'], 'healthy': v.get('healthy') is True,
+              'reachable': v.get('reachable') is not False, 'busy': v.get('busy') is True}
+        if isinstance(v.get('openai'), str) and v['openai'] == v['url'] + '/v1':
+            sv['openai'] = v['openai']
+        for k in ('models', 'voices', 'loaded'):
+            if isinstance(v.get(k), list):
+                sv[k] = names(v[k], None, 200)
+        out['services'].append(sv)
+    if isinstance(d.get('updated'), int):
+        out['updated'] = d['updated']
+    return out
+
+
+def link_peers():
+    """Your paired Hearth devices from Hearth Link (its own socket, as you): [{name, online}]. [] without it."""
+    if not os.path.exists(LINK_BIN):
+        return []
+    try:
+        r = subprocess.run([LINK_BIN, 'call', 'status', '{}'], capture_output=True, text=True, timeout=8)
+        j = json.loads(r.stdout or '{}')
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+    out = []
+    for p in (j.get('peers') or []) if isinstance(j, dict) else []:
+        if isinstance(p, dict) and isinstance(p.get('name'), str):
+            out.append({'name': p['name'][:80], 'online': p.get('online') is True})
+    return out
+
+
+def default_rank(d):
+    g = d.get('gpu') or {}
+    return ({'nvidia': 0, 'amd': 1, 'intel': 2}.get(g.get('vendor'), 3), -(g.get('vramMB') or 0), d.get('device') or '')
+
+
+def ordered(devs, priority):
+    """Your order first (Settings › AI devices), then the default: a device with an Nvidia card first, then by graphics memory."""
+    pri = [p for p in priority if isinstance(p, str)]
+    return sorted(devs, key=lambda d: (pri.index(d['device']) if d['device'] in pri else len(pri), default_rank(d)))
+
+
+def devices(cfg=None, code='', fetch=peer_get, links=link_peers, ts=None, me=None):
+    """Every Hearth device's AI: this one, each Tailscale device that answers on 8189, the ones that answered before (now
+    offline) and your paired Hearth Link devices not seen through Tailscale. Ordered as you chose."""
+    cfg = peek() if cfg is None else cfg
+    ts = ts_status() if ts is None else ts
+    now = int(time.time() * 1000)
+    me = document(cfg, ts) if me is None else me
+    me = dict(me, online=True, via='this device', lastSeen=now)
+    out = {me['device']: me}
+    peers = [p for p in ts.get('peers') or [] if p.get('online') and p.get('os') in ('linux', '')]
+    jobs = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for p in peers:
+            ip = next((x for x in p['ips'] if '.' in x), '') or next(iter(p['ips']), '')
+            if ip:
+                jobs.append((p, ex.submit(fetch, ip, code)))
+        got = [(p, f.result()) for p, f in jobs]
+    for p, d in got:
+        if d and d['device'] not in out:
+            out[d['device']] = dict(d, online=True, via='tailscale', lastSeen=now)
+    seen = sio.load_json(SEEN, {}, repair=False) if os.path.exists(SEEN) else {}
+    seen = seen if isinstance(seen, dict) else {}
+    old = seen.get('devices') if isinstance(seen.get('devices'), dict) else {}
+    for name, d in old.items():
+        if name not in out and isinstance(d, dict) and clean_doc(d):
+            c = clean_doc(d)
+            out[name] = dict(c, online=False, via='seen before', lastSeen=d.get('lastSeen') if isinstance(d.get('lastSeen'), int) else 0,
+                             gaming=False, busy=False, available=False, reason='offline')
+    known = {short(n) for n in out} | {short(d.get('name')) for d in out.values()}
+    for lp in links():
+        if short(lp['name']) and short(lp['name']) not in known:
+            out[short(lp['name'])] = {'protocol': PROTOCOL, 'device': short(lp['name']), 'name': lp['name'], 'address': '', 'os': 'hearth',
+                                      'version': '', 'gaming': False, 'busy': False, 'available': False,
+                                      'reason': 'not-sharing' if lp['online'] else 'offline', 'pluggedIn': True, 'services': [],
+                                      'online': lp['online'], 'via': 'hearth link', 'lastSeen': 0}
+    remember = {k: {kk: vv for kk, vv in v.items() if kk not in ('online', 'via')} for k, v in out.items()
+                if v.get('via') in ('this device', 'tailscale') and v.get('services')}
+    if remember:
+        try:
+            keep = dict(old)
+            keep.update(remember)
+            os.makedirs(os.path.dirname(SEEN), exist_ok=True)
+            sio.write_json(SEEN, {'devices': dict(list(keep.items())[-32:])})
+        except OSError:
+            pass
+    lst = ordered(list(out.values()), cfg['priority'])
+    for i, d in enumerate(lst):
+        d['rank'] = i + 1
+    return {'protocol': PROTOCOL, 'server': me['device'], 'updated': now, 'priority': [d['device'] for d in lst], 'devices': lst}
+
+
+def move(name, way):
+    if not NAME_RE.match(name or '') or way not in ('up', 'down'):
+        raise Fail('A device name and up or down')
+    cfg = load()
+    seen = sio.load_json(SEEN, {}, repair=False) if os.path.exists(SEEN) else {}
+    known = list((seen.get('devices') or {}).values()) if isinstance(seen, dict) and isinstance(seen.get('devices'), dict) else []
+    me = short(ts_status().get('dns') or ts_status().get('name') or socket.gethostname())
+    devs = [d for d in known if isinstance(d, dict) and NAME_RE.match(str(d.get('device', '')))]
+    if me and not any(d['device'] == me for d in devs):
+        devs.append({'device': me, 'gpu': gpu() or {}})
+    for p in cfg['priority']:
+        if NAME_RE.match(p) and not any(d['device'] == p for d in devs):
+            devs.append({'device': p})
+    if not any(d['device'] == name for d in devs):
+        devs.append({'device': name})
+    order = [d['device'] for d in ordered(devs, cfg['priority'])]
+    i = order.index(name)
+    j = i - 1 if way == 'up' else i + 1
+    if not 0 <= j < len(order):
+        return {'priority': order, 'changed': False}
+    order[i], order[j] = order[j], order[i]
+    sio.update_json(SETTINGS, lambda d: d.update({'priority': order[:64]}))
+    return {'priority': order, 'changed': True}
+
+
+def order_reset():
+    if load()['priority']:
+        sio.update_json(SETTINGS, lambda d: d.pop('priority', None))
+    return {'priority': []}
+
+
+# ------------------------------------------------------------------ the service and its firewall rule
+
+def systemctl_user(*args):
+    try:
+        return subprocess.run(['systemctl', '--user'] + list(args), capture_output=True, text=True, timeout=20).returncode
+    except (OSError, subprocess.SubprocessError):
+        return 1
+
+
+def unit_active():
+    return systemctl_user('is-active', '--quiet', UNIT) == 0
+
+
+def root(args):
+    """The root helper through pkexec (Hearth's polkit rule: the person at the device in the wheel group, no prompt)."""
+    if not os.path.exists(ROOT_HELPER):
+        return {'ok': False, 'error': 'Hearth\'s firewall helper isn\'t on this device'}
+    try:
+        r = subprocess.run(['pkexec', ROOT_HELPER] + args, capture_output=True, text=True, timeout=60)
+        return json.loads((r.stdout or '').strip().splitlines()[-1])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return {'ok': False, 'error': 'Hearth\'s firewall helper didn\'t answer'}
+
+
+def apply(cfg=None, restart=False):
+    """The service and the firewall rule as your choices say. Never changes a choice: what didn't work is said."""
+    cfg = load() if cfg is None else cfg
+    want = bool(cfg['on'] or cfg['hub'])
+    res = {'running': want}
+    if want and not cfg['lan']:
+        fw = root(['firewall', 'on'])
+        res['firewall'] = 'tailscale-only' if fw.get('ok') else 'failed'
+        if not fw.get('ok'):
+            res['note'] = (fw.get('error') or 'The firewall rule didn\'t load') + ': it answers on this device only until it does'
+    elif os.path.exists(FW_FILE) or firewall_ok():
+        fw = root(['firewall', 'off'])
+        res['firewall'] = 'open' if fw.get('ok') else 'failed'
+    if want:
+        code = systemctl_user('enable', '--now', UNIT)
+        if code == 0 and restart:
+            systemctl_user('restart', UNIT)
+        if code != 0:
+            res['note'] = 'The sharing service didn\'t start (systemctl --user enable %s)' % UNIT
+    else:
+        systemctl_user('disable', '--now', UNIT)
+    return res
+
+
+def status():
+    cfg = load()
+    ts = ts_status(fresh=True)
+    found = detect(ts.get('ips') or [])
+    doc = document(cfg, ts, found)
+    bat, plugged = battery()
+    return {'settings': cfg, 'found': found, 'device': doc['device'], 'name': doc['name'], 'address': ts.get('dns') or '',
+            'tailscale': bool(ts.get('running')), 'commandCenter': 'http://%s:%d' % (ts['dns'], PORT) if ts.get('dns') else '',
+            'local': 'http://localhost:%d' % PORT, 'running': unit_active(), 'firewall': firewall_ok(), 'server': is_server(),
+            'battery': bat, 'pluggedIn': plugged, 'gaming': doc['gaming'], 'available': doc['available'], 'reason': doc['reason'],
+            'codeSet': bool(code_hash()), 'gpu': doc.get('gpu'), 'shared': doc['services']}
+
+
+# ------------------------------------------------------------------ the server
+
+_CODES = {}
+
+
+def allowed(client_ip, lan):
+    try:
+        ip = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or any(ip in n for n in TS_NETS) or bool(lan)
+
+
+def code_matches(given, h):
+    key = hashlib.sha256((h + '\0' + (given or '')).encode()).hexdigest()
+    if key not in _CODES:
+        if len(_CODES) > 64:
+            _CODES.clear()
+        _CODES[key] = check_hash(given, h)
+    return _CODES[key]
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = 'hearth-ai-share'
+    sys_version = ''
+    cache = {'devices': (0, None, '')}
+    fails = {}
+
+    def log_message(self, fmt, *args):  # nothing logged per request (no codes in the journal)
+        pass
+
+    def send_json(self, status, obj):
+        body = (json.dumps(obj) + '\n').encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):  # noqa: N802
+        cfg = peek()
+        client = self.client_address[0]
+        if not allowed(client, cfg['lan']):
+            return self.send_json(403, {'error': 'Only this device and your Tailscale devices'})
+        path = self.path.split('?')[0].rstrip('/') or '/'
+        if path not in ('/v1/hearth/ai', '/v1/hearth/ai/devices'):
+            return self.send_json(404, {'error': 'Not here. GET /v1/hearth/ai or /v1/hearth/ai/devices', 'protocol': PROTOCOL})
+        given = self.headers.get('X-Hearth-Share-Code') or ''
+        auth = self.headers.get('Authorization') or ''
+        if not given and auth.lower().startswith('bearer '):
+            given = auth[7:].strip()
+        h = code_hash() if cfg['codeOn'] else ''
+        if h:
+            if len(given) > 64 or not code_matches(given, h):
+                n = self.fails.get(client, 0) + 1
+                self.fails[client] = n
+                time.sleep(min(5, 0.5 * n))
+                return self.send_json(401, {'error': 'This device asks for its share code (X-Hearth-Share-Code)', 'protocol': PROTOCOL})
+            self.fails.pop(client, None)
+        if path == '/v1/hearth/ai':
+            return self.send_json(200, document(cfg))
+        if not cfg['hub']:
+            return self.send_json(404, {'error': 'This device doesn\'t list your devices (Settings › Home server › AI devices)', 'protocol': PROTOCOL})
+        at, val, who = self.cache['devices']
+        if val is None or time.time() - at > 10 or who != given:
+            val = devices(cfg, code=given)
+            self.cache['devices'] = (time.time(), val, given)
+        return self.send_json(200, val)
+
+    def do_HEAD(self):  # noqa: N802
+        self.send_json(405, {'error': 'GET only'})
+
+    do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = do_HEAD
+
+
+class Server4(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+class Server6(Server4):
+    address_family = socket.AF_INET6
+
+
+def want_addresses(cfg, ts, fw):
+    """Where to listen: this device always; its Tailscale addresses once the firewall rule is loaded; every address with
+    "also on my home network"."""
+    if cfg['lan']:
+        return ['0.0.0.0']
+    out = ['127.0.0.1']
+    if fw:
+        out += [ip for ip in ts.get('ips') or [] if any(ipaddress.ip_address(ip) in n for n in TS_NETS)]
+    return out
+
+
+def serve(port=PORT, once=False):
+    """Listens where want_addresses says, checked again every 20 s (Tailscale coming up, the rule loaded)."""
+    servers = {}
+    while True:
+        cfg = peek()
+        if not (cfg['on'] or cfg['hub']):
+            print('hearth-ai-share: sharing is off; stopping', file=sys.stderr)
+            break
+        want = set(want_addresses(cfg, ts_status(fresh=True), firewall_ok()))
+        for addr in list(servers):
+            if addr not in want:
+                servers.pop(addr).shutdown()
+        for addr in want - set(servers):
+            try:
+                s = (Server6 if ':' in addr else Server4)((addr, port), Handler)
+            except OSError as e:
+                print('hearth-ai-share: can\'t listen on %s:%d (%s)' % (addr, port, e), file=sys.stderr)
+                continue
+            threading.Thread(target=s.serve_forever, daemon=True).start()
+            servers[addr] = s
+            print('hearth-ai-share: answering on %s:%d' % (addr, port), file=sys.stderr)
+        if once:
+            return servers
+        time.sleep(20)
+    for s in servers.values():
+        s.shutdown()
+    return {}
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    if not argv:
+        raise Fail('usage: hearth-ai-share status|info|devices|set KEY on|off|code-set|code-clear|move NAME up|down|order-reset|apply|serve')
+    cmd, rest = argv[0], argv[1:]
+    if cmd == 'status':
+        return status()
+    if cmd == 'info':
+        return document(load())
+    if cmd == 'devices':
+        return devices(load())
+    if cmd == 'set' and len(rest) == 2:
+        changed = set_key(rest[0], rest[1])
+        out = {'changed': changed}
+        if changed and rest[0] in ('on', 'hub', 'lan'):
+            out.update(apply(restart=rest[0] == 'lan'))
+        return out
+    if cmd == 'code-set':
+        return code_set(os.environ.get('HEARTH_INPUT', ''))
+    if cmd == 'code-clear':
+        return code_clear()
+    if cmd == 'move' and len(rest) == 2:
+        return move(rest[0], rest[1])
+    if cmd == 'order-reset':
+        return order_reset()
+    if cmd == 'apply':
+        return apply()
+    if cmd == 'serve':
+        serve()
+        return {'ok': True}
+    raise Fail('Unknown command')
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv[1:])))
+    except Fail as e:
+        print('error: %s' % e)
+        sys.exit(1)

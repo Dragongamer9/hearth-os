@@ -7,6 +7,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Share this device's AI (docs/AI-SHARE.md): Settings › Home server › AI devices (also from AI and Hearth Link): Share this device's AI (off by default, per device), which services to share (Ollama chat, Kokoro voices, ComfyUI pictures, whisper speech to text, found by asking them), Share only when plugged in and Not while I'm playing (both on by default), an optional share code (only its hash kept); a read-only answer at http://<Tailscale name>:8189/v1/hearth/ai (protocol 1: device, version, playing, busy, battery, services with models and voices), only through Tailscale behind Hearth's own firewall rule (needs testing on a device)
+- [x] Share this device's AI: the Home server lists every Hearth device's AI (online, playing, plugged in, models, voices, picture engine; devices seen before and paired Hearth Link devices too) at /v1/hearth/ai/devices for the Hearth AI Command Center, with the Command Center address to copy and the order it tries them in (Nvidia PC first; Move up / Move down with a controller) (needs testing on a device)
+- [ ] Share this device's AI, later: Hearth Link's ai.info answering with the same document (list paired devices without Tailscale); a way to share a service that only listens on its own device
+
 ## 1.4 (released 2026-11-05)
 
 - [x] Mantel dock: coming back from Game Mode, an auto-hide dock no longer keeps the bottom of the screen reserved, so windows can fill the whole screen again (it waits for your settings, and refits when its space changes) (needs testing on a device)

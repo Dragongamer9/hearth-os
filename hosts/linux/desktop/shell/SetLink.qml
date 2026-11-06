@@ -85,6 +85,14 @@ SetPage {
         sub: page.st && page.st.me ? [page.what(page.st.me), "Its name on your other Hearth devices"].filter(x => x).join(" · ") : ""
     }
     SetField { id: newName; visible: !!page.st && !!page.st.me; placeholder: "Rename this device"; onSubmitted: t => { if (t.trim()) page.run(["set", "name", t.trim()], "Renamed"); newName.text = ""; } }
+    // ---- Share this device's AI (docs/AI-SHARE.md): its own page, SetHomeAIDevices.qml
+    SetRow {
+        visible: !!page.st && !!page.st.me
+        icon: "mic"; title: "Share this device's AI"
+        sub: "Its AI (chat, voices, pictures, speech to text) for your other devices and the Command Center, through Tailscale"
+        onActivated: SettingsNav.openPage("hs-aidevices")
+    }
+    // ---- end Share this device's AI
     SetRow {
         visible: !!page.st && !!page.st.me && !page.st.pairing
         icon: "lock"; title: "Pair a device"

@@ -40,6 +40,14 @@ SetPage {
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 
+    // ---- Share this device's AI (docs/AI-SHARE.md): its own page, SetHomeAIDevices.qml
+    SetRow {
+        icon: "desktops"; title: "Share this device's AI · AI devices"
+        sub: "Let your other devices and the Command Center use this PC's AI through Tailscale, and see every device's AI in one list"
+        onActivated: SettingsNav.openPage("hs-aidevices")
+    }
+    // ---- end Share this device's AI
+
     // Hidden until the Command Center was seen (display only).
     SetRow {
         visible: !!page.ai && !page.shown

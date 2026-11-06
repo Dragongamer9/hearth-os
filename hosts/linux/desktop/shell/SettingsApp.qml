@@ -30,6 +30,7 @@ Scope {
         { id: "hs-gaming", icon: "pad", label: "Gaming" },               // SetHomeGaming.qml (stage 3)
         { id: "hs-family", icon: "user", label: "Family & home" },       // SetHomeFamily.qml (stage 3)
         { id: "hs-ai", icon: "mic", label: "AI" },                       // SetHomeAI.qml (stage 3)
+        { id: "hs-aidevices", icon: "desktops", label: "AI devices" },   // SetHomeAIDevices.qml (docs/AI-SHARE.md)
         { id: "hs-backups", icon: "update", label: "Backups & sync" },   // SetHomeBackups.qml
         { id: "hs-safety", icon: "lock", label: "Safety" },              // SetHomeSafety.qml (stage 3)
         { id: "hs-people", icon: "user", label: "People" },              // SetHomePeople.qml
@@ -79,7 +80,8 @@ Scope {
         "hs-tailscale": "SetHomeTailscale.qml", "hs-setup": "SetHomeSetup.qml" /* Home server (hs-setup: its setup steps, opened from Overview) */,
         "hs-backups": "SetHomeBackups.qml", "hs-people": "SetHomePeople.qml", "hs-alerts": "SetHomeAlerts.qml" /* Home server, stage 2 */,
         "hs-files": "SetHomeFiles.qml", "hs-services": "SetHomeServices.qml", "hs-gaming": "SetHomeGaming.qml", "hs-family": "SetHomeFamily.qml",
-        "hs-ai": "SetHomeAI.qml", "hs-safety": "SetHomeSafety.qml" /* Home server, stage 3 */ })
+        "hs-ai": "SetHomeAI.qml", "hs-safety": "SetHomeSafety.qml" /* Home server, stage 3 */,
+        "hs-aidevices": "SetHomeAIDevices.qml" /* Share this device's AI (docs/AI-SHARE.md) */ })
 
     // ---- Mantel 2026: the page list in groups, with a search (also used by the launcher's search).
     readonly property var groups: ({ install: "Start", wifi: "Connections", bluetooth: "Connections", link: "Connections", remote: "Connections",
@@ -87,6 +89,7 @@ Scope {
         "hs-overview": "Home server", "hs-shares": "Home server", "hs-drives": "Home server", "hs-tailscale": "Home server", "hs-setup": "Home server",
         "hs-backups": "Home server", "hs-people": "Home server", "hs-alerts": "Home server",
         "hs-files": "Home server", "hs-services": "Home server", "hs-gaming": "Home server", "hs-family": "Home server", "hs-ai": "Home server", "hs-safety": "Home server",
+        "hs-aidevices": "Home server",
         power: "Devices", controller: "Devices", handheld: "Devices", keyboard: "Devices", mouse: "Devices", printers: "Devices" })
     function groupOf(id) { return groups[id] || "System"; }
     // Other words people search for, per page.
@@ -97,7 +100,8 @@ Scope {
         "hs-people": "nas family users accounts guest quota", "hs-alerts": "nas alerts smart notifications sleep wake on lan spin down ups power schedule",
         "hs-files": "nas search find links share link drop-off upload duplicates big files screenshots clean up", "hs-services": "nas jellyfin media server photos web files apps",
         "hs-gaming": "nas games steam lan install remote play light mode", "hs-family": "nas family cameras onvif folder",
-        "hs-ai": "nas ollama ai llm models command center gpu qwen", "hs-safety": "nas security ransomware guard ports firewall", sound: "volume audio speakers output microphone",
+        "hs-ai": "nas ollama ai llm models command center gpu qwen",
+        "hs-aidevices": "ai share devices command center tailscale ollama kokoro comfyui whisper voices priority", "hs-safety": "nas security ransomware guard ports firewall", sound: "volume audio speakers output microphone",
         notifications: "do not disturb mute alerts", display: "screen resolution refresh scale monitor", appearance: "look theme accent colour color wallpaper dark light mode sunset bar dock transparency clock",
         boot: "splash startup animation", power: "battery sleep screen off suspend", controller: "gamepad buttons pad", handheld: "hhd tdp rgb lights",
         keyboard: "layout on-screen osk typing", mouse: "touchpad pointer cursor speed", printers: "print scanner", datetime: "clock time zone 24-hour",
