@@ -948,6 +948,10 @@ jobs:
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          # Settings › Hearth Link › Your devices with stand-in devices (hearth-device-status devices prints this file):
+          # a handheld on battery, a gaming PC in Game Mode, a laptop that's offline.
+          export HEARTH_DEVICES_SAMPLE=/tmp/devices-sample.json
+          python3 hosts/linux/test/devices_sample.py > "$HEARTH_DEVICES_SAMPLE"
           D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"
           set_look() {  # look mode accent wallpaper
             python3 - "$D" "$@" <<'PY'
@@ -987,6 +991,8 @@ jobs:
           ipc power menu; grim $o/steam-09-power-menu.png || true; ipc power close
           ipc settings page appearance; grim $o/steam-10-settings-appearance.png || true
           ipc settings page wifi; grim $o/steam-11-settings-wifi.png || true
+          ipc settings page devices; sleep 3; grim $o/steam-11c-settings-your-devices.png || true
+          wtype -k Down 2>/dev/null; sleep 0.3; wtype -k Return 2>/dev/null; sleep 2; grim $o/steam-11d-settings-device-details.png || true
           ipc settings page sound; grim $o/steam-12-settings-sound.png || true
           ipc settings page boot; grim $o/steam-12b-settings-boot.png || true; ipc settings close
           mkdir -p "$HOME/Documents/Reports"; echo hi > "$HOME/Documents/notes.txt"

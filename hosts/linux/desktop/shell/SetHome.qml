@@ -288,6 +288,21 @@ SetPage {
                 }
                 SetRow { flat: true; icon: "trash"; title: "Clean up"; sub: "Old shader caches and finished downloads"; chevron: true; onActivated: SettingsNav.openPage("storage") }
             }
+            // Your devices (SetDevices.qml): your paired devices from Hearth Link's status (already read here).
+            HomeCard {
+                visible: !!page.link && !page.link.error && (page.link.peers || []).length > 0
+                icon: "cpu"; title: "Your devices"; linkText: "Open"; linkTarget: "devices"
+                Repeater {
+                    model: page.link ? (page.link.peers || []).slice(0, 3) : []
+                    delegate: SetRow { chevron: true;
+                        required property var modelData
+                        flat: true
+                        icon: "desktops"; title: modelData.name
+                        sub: modelData.online ? "Online" : "Offline or asleep"
+                        onActivated: SettingsNav.openPage("devices")
+                    }
+                }
+            }
             HomeCard {
                 visible: !!page.hsCfg
                 icon: "server"; title: "Home server"; linkText: "Open"; linkTarget: "hs-overview"

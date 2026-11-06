@@ -150,6 +150,8 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
 - **Titled card groups** (`SetCardGroup`): Sound, Notifications, Power & battery, Date & time, Mouse & touchpad,
   Printers, Apps, Default apps, Controller and Handheld (each Handheld Daemon section) show their cards in titled
   groups, each card with an icon, as in the mockups. Only the layout changed: the same helpers and settings keys.
+- **Your devices** (`SetDevices.qml`, docs/HEARTH-LINK.md "Your devices"): under Hearth Link, with a card on Home;
+  stand-in devices for checks with `HEARTH_DEVICES_SAMPLE` (desktop-test.yml).
 - **AI devices** (`SetHomeAIDevices.qml`, docs/AI-SHARE.md): Home server › AI devices, a card under "On this server"
   on the Home server page, and linked from Services › AI chat and Hearth Link.
 - **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,

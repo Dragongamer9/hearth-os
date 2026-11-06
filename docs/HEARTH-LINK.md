@@ -329,6 +329,38 @@ Requests: `update.start`, `update.status`, `update.cancel`. UI calls: `fleet.upd
 starting, confirming, waitingGame, waitingBattery, heldBack, updating, staged, upToDate, restart, paused, error,
 cancelled, gaveUp, unsupported, offline).
 
+## Your devices
+
+Settings › Hearth Link › **Your devices** (`SetDevices.qml`, also a card on Settings' Home): each of your other paired
+Hearth devices with online or when it was last seen, Game Mode / Desktop Mode / Server mode, what's playing, battery
+and charging, CPU and GPU use and temperature, memory, graphics memory, each drive, the Hearth OS version and how long
+it's been on. Pick one for the last hour in small graphs (CPU, GPU, memory, temperatures, battery) and what you can do
+with it: open its shared folders in Hearth Files (Hearth Storage), **Wake it** (Hearth Storage's Wake-on-LAN, when that
+device taught this one how) and **Remote desktop** (Settings › Remote play). A device that's off shows its last numbers,
+marked as last known (`~/.cache/hearth/devices-status.json`, a cache).
+
+- **How it travels:** only over Hearth Link, so only between paired devices: a connection from anything else is refused
+  before any request (`node.rs`), and `status.get` checks pairing again (`status.rs`). End-to-end encrypted, at home or
+  anywhere (direct, Tailscale or the relay). No port is opened and nothing goes to the internet.
+- **What's sent** (`hearth-device-status status`, protocol 1, read only from /proc, /sys and Steam's manifests for a
+  game's name): `{protocol, shared, name, model, kind, version, mode, playing {title, appid}, battery {percent,
+  charging, pluggedIn}, cpu {use, temp}, gpu {vendor, use, temp, vramUsed, vramTotal}, ram {used, total}, drives
+  [{name, used, total}], uptime, history [{t, cpu, gpu, ram, cpuTemp, gpuTemp, battery}], updated}`. No secrets: no
+  addresses, accounts, keys, file or folder names (drives are System, Home or their label). It reuses hearth-stats
+  (CPU, memory, temperatures) and hearth-ai-share's battery, graphics card and version code; Nvidia's numbers come from
+  `nvidia-smi` when it's there.
+- **The last hour:** while sharing is on, Hearth Link runs `hearth-device-status sample` once a minute and it keeps the
+  last hour in `$XDG_RUNTIME_DIR/hearth-device-status.json` (gone at restart; not a setting).
+- **Let my other devices see this device's status** (Hearth Link's page and Your devices; Mantel's `shareStatus` in
+  desktop.json): on unless you turn it off, because it only reaches your own paired devices. On is only the default
+  read when the key is missing, never written. Off, or a desktop.json that can't be read: `status.get` answers only
+  `{"protocol": 1, "shared": false}` and nothing is kept for the graphs.
+
+Requests: `status.get`. UI calls: `status.devices` (`devices: [{id, name, online, lastSeen, shared, status, old?}]`;
+`old`: a device on a Hearth OS before this). Tests: `cargo test` (status.rs: only paired devices get an answer, the
+not-shared answer, rows), `hosts/linux/test/test_device_status.py` (the status's shape, sharing off or unreadable, the
+last hour, drives, no secrets, the page), desktop-test.yml's stand-in devices (`devices_sample.py`).
+
 ## Local AI over Hearth Link
 
 `hosts/hearth-link/src/ai.rs`, a first version. A device with a strong graphics card shares a model server you

@@ -187,6 +187,12 @@ SetPage {
             onActivated: page.run(["unpair", modelData.id], "Unpaired " + modelData.name)
         }
     }
+    SetRow {
+        visible: !!page.st && (page.st.peers || []).length > 0
+        icon: "cpu"; title: "Your devices"; chevron: true
+        sub: "Each device's battery, use, temperatures, drives and what's playing, with the last hour"
+        onActivated: SettingsNav.openPage("devices")
+    }
     SetHeader { text: "Copies"; visible: !!page.st && (page.st.transfers || []).length > 0 }
     Repeater {
         model: page.st ? (page.st.transfers || []) : []
@@ -222,6 +228,14 @@ SetPage {
         icon: "store"; title: "Accept games from my devices without asking"
         checked: !!page.st && !!page.st.settings && page.st.settings.alwaysAccept
         onToggled: v => page.run(["set", "alwaysAccept", v ? "on" : "off"])
+    }
+    // Your devices (SetDevices.qml): a Mantel setting (desktop.json shareStatus), on unless you turn it off; only
+    // devices paired with this one can ask, over Hearth Link.
+    SetSwitch {
+        icon: "eye"; title: "Let my other devices see this device's status"
+        sub: "Battery, use, temperatures, drives and what's playing, only for devices paired with this one. Never the internet."
+        checked: Settings.shareStatus
+        onToggled: v => Settings.shareStatus = v
     }
     SetChoice {
         visible: !!page.st && !!page.st.settings

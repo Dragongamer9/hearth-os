@@ -410,6 +410,35 @@ var ENTRIES = [
 "p": "defaults"
 },
 {
+"t": "Let my other devices see this device's status",
+"p": "devices",
+"d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one (Hearth Link). Never the internet.",
+"i": "eye"
+},
+{
+"t": "Back to your devices",
+"p": "devices",
+"i": "back"
+},
+{
+"t": "Wake it",
+"p": "devices",
+"d": "Wake-on-LAN, as Hearth Storage does",
+"i": "power"
+},
+{
+"t": "Remote desktop",
+"p": "devices",
+"d": "Use it from here, or play its games (Remote play)",
+"i": "play"
+},
+{
+"t": "Hearth Link",
+"p": "devices",
+"d": "Pairing, sync, copies and Hearth Storage",
+"i": "desktops"
+},
+{
 "t": "Keep",
 "p": "display"
 },
@@ -1649,6 +1678,12 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Your devices",
+"p": "link",
+"d": "Each device's battery, use, temperatures, drives and what's playing, with the last hour",
+"i": "cpu"
+},
+{
 "t": "Get a game from another Hearth",
 "p": "link",
 "d": "Pick the game in your library's Get from another Hearth. Opens in the Hearth app's window for now.",
@@ -1664,6 +1699,12 @@ var ENTRIES = [
 "t": "Accept games from my devices without asking",
 "p": "link",
 "i": "store"
+},
+{
+"t": "Let my other devices see this device's status",
+"p": "link",
+"d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one. Never the internet.",
+"i": "eye"
 },
 {
 "t": "Relay",

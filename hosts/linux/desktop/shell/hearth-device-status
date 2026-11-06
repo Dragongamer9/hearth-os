@@ -1,0 +1,467 @@
+#!/usr/bin/python3
+"""hearth-device-status: this device's status for your other Hearth devices (Settings › Hearth Link › Your devices),
+and the list of them for this device's page. Only reads /proc and /sys (and Steam's manifests for a game's name);
+never writes a setting.
+
+  hearth-device-status status    this device, one JSON line (what Hearth Link answers a paired device's status.get)
+  hearth-device-status sample    keep a point for the last-hour graphs ($XDG_RUNTIME_DIR, only while sharing is on;
+                                 Hearth Link runs it every minute)
+  hearth-device-status devices   your other devices for the page: `hearth-link call status.devices`, with the last
+                                 numbers of a device that's offline now ($XDG_CACHE_HOME/hearth/devices-status.json)
+                                 and what Hearth Storage knows (its shared folders, whether it can be woken)
+  hearth-device-status wake ID   wake a paired device (Hearth Storage's Wake-on-LAN, when that device taught it how)
+
+Sharing: "Let my other devices see this device's status" (Settings › Hearth Link; `shareStatus` in Mantel's
+desktop.json). A missing key means on (a default only, never written): it only reaches devices paired with this
+one, over Hearth Link's encrypted connection. Off, or a desktop.json that can't be read: status answers only
+{"protocol": 1, "shared": false} and sample keeps nothing.
+
+The status (protocol 1; a reader ignores fields it doesn't know):
+  {"protocol": 1, "shared": true, "name", "model", "kind": "handheld"|"laptop"|"desktop", "version",
+   "mode": "game"|"desktop"|"server", "playing": {"title", "appid"} | null, "battery": {"percent", "charging"} | null,
+   "cpu": {"use", "temp"}, "gpu": {"vendor", "use", "temp", "vramUsed", "vramTotal"} | null (MB),
+   "ram": {"used", "total"} (GB), "drives": [{"name", "used", "total"}] (GB), "uptime": seconds,
+   "history": [{"t": ms, "cpu", "gpu", "ram" (%), "cpuTemp", "gpuTemp", "battery"}] (the last hour), "updated": ms}
+No secrets: no addresses, accounts, keys, file or folder names (drives are named "System", "Home" or their label).
+
+Stand-in devices (checks and screenshots only): HEARTH_DEVICES_SAMPLE=<file> makes `devices` print that file.
+Failures print "error: ..." and exit 1.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+PROTOCOL = 1
+HISTORY_MS = 60 * 60 * 1000
+LINK = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
+FS_KINDS = ('ext4', 'ext3', 'btrfs', 'xfs', 'f2fs', 'vfat', 'exfat', 'ntfs', 'ntfs3', 'fuseblk', 'bcachefs')
+
+
+class Fail(Exception):
+    pass
+
+
+def _load(name, file):
+    loader = importlib.machinery.SourceFileLoader(name, os.path.join(HERE, file))
+    spec = importlib.util.spec_from_loader(name, loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+stats = _load('hearth_stats_mod', 'hearth-stats')        # CPU, memory, GPU use, temperatures
+share = _load('hearth_ai_share_mod', 'hearth-ai-share')  # battery, graphics card, game running, version
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def settings_path():
+    return os.path.join(home(), '.local', 'share', 'nimbus', 'desktop.json')   # Settings.qml's file
+
+
+def runtime_dir():
+    return os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir()
+
+
+def history_path():
+    return os.path.join(runtime_dir(), 'hearth-device-status.json')
+
+
+def cache_path():
+    base = os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache')
+    return os.path.join(base, 'hearth', 'devices-status.json')
+
+
+def sharing(path=None):
+    """Is "Let my other devices see this device's status" on? Missing file or key: on (the default, never written).
+    A file that can't be read or parsed: off (we can't tell what you chose)."""
+    path = path or settings_path()
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    try:
+        d = json.loads(raw.decode('utf-8'))
+    except ValueError:
+        return False
+    if not isinstance(d, dict):
+        return False
+    v = d.get('shareStatus', True)
+    return v is not False
+
+
+def read(path, limit=65536):
+    try:
+        with open(path, 'rb') as f:
+            return f.read(limit).decode('utf-8', 'replace').strip()
+    except OSError:
+        return ''
+
+
+# ------------------------------------------------------------------ this device
+
+def procs(root='/proc'):
+    """[(comm, cmdline)] of the running processes."""
+    out = []
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return out
+    for pid in names:
+        if not pid.isdigit():
+            continue
+        comm = read(os.path.join(root, pid, 'comm'))
+        cmd = read(os.path.join(root, pid, 'cmdline'), 4096).replace('\0', ' ')
+        out.append((comm, cmd))
+    return out
+
+
+def mode(plist):
+    """game (gamescope: Steam's or Hearth's Game Mode), desktop (labwc: Desktop Mode), or server (up, but neither runs:
+    Server mode or nobody signed in)."""
+    comms = {c for c, _ in plist}
+    if comms & {'gamescope', 'gamescope-wl'}:
+        return 'game'
+    if 'labwc' in comms:
+        return 'desktop'
+    return 'server'
+
+
+def steam_libraries():
+    roots = [os.path.join(home(), p) for p in ('.local/share/Steam', '.steam/steam', '.var/app/com.valvesoftware.Steam/.local/share/Steam')]
+    libs = []
+    for r in roots:
+        apps = os.path.join(r, 'steamapps')
+        if os.path.isdir(apps) and apps not in libs:
+            libs.append(apps)
+        vdf = read(os.path.join(apps, 'libraryfolders.vdf'))
+        for m in re.finditer(r'"path"\s+"([^"]+)"', vdf):
+            p = os.path.join(m.group(1).replace('\\\\', '\\'), 'steamapps')
+            if os.path.isdir(p) and p not in libs:
+                libs.append(p)
+    return libs
+
+
+def steam_name(appid, libs=None):
+    for lib in libs if libs is not None else steam_libraries():
+        m = re.search(r'"name"\s+"([^"]*)"', read(os.path.join(lib, 'appmanifest_%s.acf' % appid)))
+        if m:
+            return m.group(1)
+    return ''
+
+
+def playing(plist, libs=None):
+    """What's playing: a Steam game (its launcher's "AppId=N"; tools and runtimes skipped), else a game Hearth started
+    (the hearth-playing file), else nothing."""
+    for _, cmd in plist:
+        m = re.search(r'\bAppId=(\d+)', cmd)
+        if m and m.group(1) not in ('0', '769', '1070560', '1391110', '1628350', '228980'):
+            appid = m.group(1)
+            return {'title': steam_name(appid, libs) or 'A Steam game', 'appid': int(appid)}
+    if os.path.exists(os.path.join(runtime_dir(), 'hearth-playing')):
+        return {'title': 'A game', 'appid': None}
+    return None
+
+
+def kind(battery):
+    chassis = read('/sys/class/dmi/id/chassis_type')
+    name = (read('/sys/class/dmi/id/product_name') + ' ' + read('/sys/class/dmi/id/board_name')).lower()
+    if re.search(r'rog ally|legion go|jupiter|galileo|claw|ayaneo|onexplayer|gpd win|steam deck', name):
+        return 'handheld'
+    if chassis in ('8', '9', '10', '14', '31', '32') or battery:
+        return 'laptop'
+    return 'desktop'
+
+
+def nvidia():
+    """Nvidia's use, temperature and graphics memory (nvidia-smi), when it's there."""
+    try:
+        r = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'],
+                           capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    line = (r.stdout or '').strip().splitlines()
+    if r.returncode != 0 or not line:
+        return None
+    parts = [p.strip() for p in line[0].split(',')]
+    if len(parts) < 4:
+        return None
+    num = lambda x: int(float(x)) if re.fullmatch(r'\d+(\.\d+)?', x) else None
+    return {'use': num(parts[0]), 'temp': num(parts[1]), 'vramUsed': num(parts[2]), 'vramTotal': num(parts[3])}
+
+
+def amd_vram(root='/sys/class/drm'):
+    best = None
+    try:
+        cards = sorted(os.listdir(root))
+    except OSError:
+        return None
+    for c in cards:
+        if not re.fullmatch(r'card\d+', c):
+            continue
+        t, u = read('%s/%s/device/mem_info_vram_total' % (root, c)), read('%s/%s/device/mem_info_vram_used' % (root, c))
+        if t.isdigit() and u.isdigit() and (best is None or int(t) >> 20 > best[1]):
+            best = (int(u) >> 20, int(t) >> 20)
+    return best
+
+
+def drives(mounts_text=None, statvfs=os.statvfs):
+    """Each drive once (btrfs subvolumes share one): System (/), Home, or the drive's folder name under /run/media,
+    /media or /mnt. Used and total in GB."""
+    text = mounts_text if mounts_text is not None else read('/proc/mounts', 1 << 20)
+    seen, out = set(), []
+    for line in text.splitlines():
+        p = line.split()
+        if len(p) < 3 or not p[0].startswith('/dev/') or p[2] not in FS_KINDS:
+            continue
+        dev, mnt = p[0], p[1].replace('\\040', ' ')
+        if dev in seen or mnt.startswith(('/boot', '/efi', '/sysroot', '/var/lib/containers', '/snap')):
+            continue
+        if mnt == '/':
+            name = 'System'
+        elif mnt in ('/home', '/var/home'):
+            name = 'Home'
+        elif mnt.startswith(('/run/media/', '/media/', '/mnt/')):
+            name = os.path.basename(mnt.rstrip('/')) or 'Drive'
+        else:
+            continue
+        try:
+            st = statvfs(mnt)
+        except OSError:
+            continue
+        total = st.f_blocks * st.f_frsize
+        if total <= 0:
+            continue
+        used = total - st.f_bavail * st.f_frsize
+        seen.add(dev)
+        out.append({'name': name, 'used': round(used / 1e9, 1), 'total': round(total / 1e9, 1)})
+    return out
+
+
+def uptime():
+    t = read('/proc/uptime').split()
+    try:
+        return int(float(t[0]))
+    except (IndexError, ValueError):
+        return None
+
+
+def status(now_ms=None, settings=None):
+    """This device's status, or {"shared": false} when its sharing is off."""
+    if not sharing(settings):
+        return {'protocol': PROTOCOL, 'shared': False}
+    now_ms = now_ms or int(time.time() * 1000)
+    a = stats.cpu_times(read('/proc/stat'))
+    time.sleep(0.4)
+    b = stats.cpu_times(read('/proc/stat'))
+    temps = stats.hwmon_temps()
+    bat, plugged = share.battery()
+    plist = procs()
+    card = share.gpu()
+    gpu = None
+    if card:
+        gpu = {'vendor': card.get('vendor'), 'use': stats.gpu_busy(), 'temp': temps.get('gpu')}
+        if card.get('vendor') == 'nvidia':
+            nv = nvidia()
+            if nv:
+                gpu.update({k: v for k, v in nv.items() if v is not None})
+        else:
+            v = amd_vram()
+            if v:
+                gpu['vramUsed'], gpu['vramTotal'] = v
+        gpu = {k: v for k, v in gpu.items() if v is not None}
+    mem = stats.memory(read('/proc/meminfo'))
+    out = {
+        'protocol': PROTOCOL, 'shared': True,
+        'name': socket.gethostname()[:64],
+        'model': (read('/sys/class/dmi/id/product_name') or '')[:80],
+        'kind': kind(bat),
+        'version': share.version(),
+        'mode': mode(plist),
+        'playing': playing(plist),
+        'battery': dict(bat, pluggedIn=plugged) if bat else None,
+        'cpu': {k: v for k, v in (('use', stats.cpu_percent(a, b)), ('temp', temps.get('cpu'))) if v is not None},
+        'gpu': gpu,
+        'ram': {'used': mem[0], 'total': mem[1]} if mem else None,
+        'drives': drives(),
+        'uptime': uptime(),
+        'history': history(now_ms),
+        'updated': now_ms,
+    }
+    return out
+
+
+# ------------------------------------------------------------------ the last hour
+
+def history(now_ms, path=None):
+    try:
+        with open(path or history_path()) as f:
+            pts = json.load(f)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(pts, list):
+        return []
+    return [p for p in pts if isinstance(p, dict) and isinstance(p.get('t'), (int, float)) and now_ms - p['t'] <= HISTORY_MS]
+
+
+def point(now_ms):
+    a = stats.cpu_times(read('/proc/stat'))
+    time.sleep(0.4)
+    b = stats.cpu_times(read('/proc/stat'))
+    temps = stats.hwmon_temps()
+    mem = stats.memory(read('/proc/meminfo'))
+    bat, _ = share.battery()
+    gpu_use = stats.gpu_busy()
+    if gpu_use is None:
+        nv = nvidia() if (share.gpu() or {}).get('vendor') == 'nvidia' else None
+        gpu_use = nv.get('use') if nv else None
+    p = {'t': now_ms, 'cpu': stats.cpu_percent(a, b), 'gpu': gpu_use,
+         'ram': round(100 * mem[0] / mem[1]) if mem and mem[1] else None,
+         'cpuTemp': temps.get('cpu'), 'gpuTemp': temps.get('gpu'), 'battery': bat['percent'] if bat else None}
+    return {k: v for k, v in p.items() if v is not None}
+
+
+def sample(now_ms=None, path=None, settings=None, make=point):
+    """Adds a point (only while sharing is on; off, the file is removed: nothing kept). A runtime file, gone at
+    restart; not a setting."""
+    path = path or history_path()
+    if not sharing(settings):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return {'kept': False}
+    now_ms = now_ms or int(time.time() * 1000)
+    pts = history(now_ms, path) + [make(now_ms)]
+    write_json(path, pts[-120:])
+    return {'kept': True, 'points': len(pts[-120:])}
+
+
+def write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.hearth-device-status-')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+# ------------------------------------------------------------------ your other devices (this device's page)
+
+def ask_link(cmd='status.devices', args=None):
+    """One call to Hearth Link (`hearth-link call`, this user's socket); Fail with its words when it says no."""
+    try:
+        r = subprocess.run([LINK, 'call', cmd, json.dumps(args or {})], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("Hearth Link isn't running")
+    lines = [l for l in (r.stdout or '').splitlines() if l.strip()]
+    try:
+        v = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        v = None
+    if r.returncode != 0 or not isinstance(v, dict) or set(v) == {'error'}:
+        raise Fail(v.get('error') if isinstance(v, dict) and v.get('error') else "Hearth Link didn't answer")
+    return v
+
+
+def storage_info():
+    """{device id: {"shares": [{id, name}], "wake": bool}} from Hearth Storage (nothing when it isn't there)."""
+    try:
+        st = ask_link('storage.status')
+    except Fail:
+        return {}
+    out = {}
+    for sv in (st or {}).get('servers') or []:
+        if not isinstance(sv, dict) or not sv.get('id'):
+            continue
+        shares = [{'id': sh['id'], 'name': sh.get('name') or 'Shared'} for sh in sv.get('shares') or [] if isinstance(sh, dict) and sh.get('id')]
+        out[sv['id']] = {'shares': shares, 'wake': bool(sv.get('macs')) or bool(sv.get('wake'))}
+    return out
+
+
+def merge(answer, cache, storage=None):
+    """Online devices as they are now; an offline one with its last numbers (marked "stale") from the cache."""
+    storage = storage or {}
+    out = []
+    for d in (answer or {}).get('devices') or []:
+        if not isinstance(d, dict) or not d.get('id'):
+            continue
+        d = dict(d)
+        if d.get('online') and d.get('status'):
+            cache[d['id']] = {'status': d['status'], 'at': d.get('lastSeen') or 0}
+        elif not d.get('online') and d['id'] in cache:
+            d['status'] = cache[d['id']].get('status')
+            d['stale'] = True
+        if d['id'] in storage:
+            d['shares'] = storage[d['id']]['shares']
+            d['wake'] = storage[d['id']]['wake']
+        out.append(d)
+    return out, cache
+
+
+def devices():
+    sample_file = os.environ.get('HEARTH_DEVICES_SAMPLE')
+    if sample_file:
+        with open(sample_file) as f:
+            return json.load(f)
+    try:
+        with open(cache_path()) as f:
+            cache = json.load(f)
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    before = json.dumps(cache, sort_keys=True)
+    out, cache = merge(ask_link(), cache, storage_info())
+    if json.dumps(cache, sort_keys=True) != before:
+        try:
+            write_json(cache_path(), cache)
+        except OSError:
+            pass
+    return {'devices': out, 'sharing': sharing()}
+
+
+def main(argv):
+    if not argv:
+        raise Fail('usage: hearth-device-status status|sample|devices')
+    cmd = argv[0]
+    if cmd == 'status':
+        return status()
+    if cmd == 'sample':
+        return sample()
+    if cmd == 'devices':
+        return devices()
+    if cmd == 'wake':
+        dev = argv[1] if len(argv) > 1 else ''
+        if not re.fullmatch(r'[0-9a-f]{16,128}', dev):
+            raise Fail('not a device')
+        return ask_link('storage.wake', {'server': dev})
+    raise Fail('unknown command ' + cmd)
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv[1:])))
+    except Fail as e:
+        print('error: %s' % e)
+        sys.exit(1)

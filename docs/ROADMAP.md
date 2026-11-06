@@ -13,6 +13,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [x] Tiles app menu: its search field sits in the bar next to the flame, as in the mockup; what you type shows there (needs testing on a device)
 - [x] The app menus' Updates tile shows Steam games with an update waiting (Hearth's games list now says so; other stores don't report it) (needs testing on a device)
 - [x] Settings › Network & internet › Wi-Fi: the network you're on at the top (name, signal, band, address; Properties, Disconnect, Forget), and Add a hidden network (needs testing on a device)
+- [x] Settings › Hearth Link › Your devices (and a card on Settings' Home): your other Hearth devices' online or last seen, Game Mode / Desktop Mode / Server mode, what's playing, battery, CPU / GPU use and temperature, memory, graphics memory, drives, version and uptime, with the last hour in small graphs, their shared folders, Wake it and Remote desktop. Only over Hearth Link between paired devices; "Let my other devices see this device's status" turns it off (needs testing on a device)
 - [x] Settings: Sound, Notifications, Power & battery, Date & time, Mouse & touchpad, Printers, Apps, Default apps, Controller and Handheld in titled groups of cards with icons, as in the mockups (nothing they do changed) (needs testing on a device)
 
 ## 1.5 (released 2026-11-06)
