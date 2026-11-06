@@ -7,6 +7,8 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+## 1.6 (released 2026-11-06)
+
 - [x] Desktop Mode: Super+Up / Super+Down work again (Up maximizes, or makes a snapped half a quarter and a quarter its half again; Down does the opposite, then restores a maximized window, then minimizes). labwc refused the old keys ("action 'If' cannot be a child action"); a test now catches that (needs testing on a device)
 - [x] The installer test runs again: both jobs install Hearth OS on Debian (the one next to SteamOS still asked for the archived Anatase) and the boot check refreshes apt before getting qemu (it stopped with exit code 100); failures say why on the run page
 - [x] Tiles and Start screen app menus: move tiles, by dragging with the mouse, or Y (or Move in a tile's menu), the D-pad and A to drop (B puts it back); saved for you only when you drop one somewhere new. The hints say what X and Y do (needs testing on a device)
