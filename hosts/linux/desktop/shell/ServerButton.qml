@@ -22,7 +22,7 @@ Rectangle {
         Rectangle {
             visible: b.keyName !== ""
             anchors.verticalCenter: parent.verticalCenter
-            width: 24 * b.k; height: width; radius: width / 2; color: "transparent"
+            width: 24 * b.k; height: width; implicitWidth: 24 * b.k; implicitHeight: 24 * b.k; radius: width / 2; color: "transparent"
             border.color: b.primary ? Theme.accentInk : Theme.muted
             Text { anchors.centerIn: parent; text: b.keyName; color: b.primary ? Theme.accentInk : Theme.text; font.pixelSize: 12 * b.k; font.weight: Font.Bold }
         }

@@ -16,7 +16,7 @@ Rectangle {
     RowLayout {
         anchors.fill: parent; anchors.leftMargin: 14 * line.k; anchors.rightMargin: 14 * line.k
         spacing: 14 * line.k
-        Rectangle { width: 40 * line.k; height: width; radius: 10 * line.k; color: Qt.rgba(line.tone.r, line.tone.g, line.tone.b, 0.15)
+        Rectangle { width: 40 * line.k; height: width; implicitWidth: 40 * line.k; implicitHeight: 40 * line.k; radius: 10 * line.k; color: Qt.rgba(line.tone.r, line.tone.g, line.tone.b, 0.15)
             Icon { anchors.centerIn: parent; name: line.icon; size: 22 * line.k; color: line.tone } }
         ColumnLayout { Layout.fillWidth: true; spacing: 1
             Text { text: line.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 16 * line.k; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }

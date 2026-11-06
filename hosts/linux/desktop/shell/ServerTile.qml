@@ -26,7 +26,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 14 * k
             Rectangle {
-                width: 40 * k; height: 40 * k; radius: 10 * k
+                width: 40 * k; height: 40 * k; implicitWidth: 40 * k; implicitHeight: 40 * k; radius: 10 * k
                 color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
                 Icon { anchors.centerIn: parent; name: tile.t.icon || "dot"; size: 22 * tile.k; color: Theme.accent }
             }
@@ -65,7 +65,7 @@ Rectangle {
                 required property var modelData
                 Layout.fillWidth: true
                 spacing: 10 * tile.k
-                Rectangle { width: 8 * tile.k; height: width; radius: width / 2; color: SetStyle.ok }
+                Rectangle { width: 8 * tile.k; height: width; implicitWidth: 8 * tile.k; implicitHeight: 8 * tile.k; radius: width / 2; color: SetStyle.ok }
                 ColumnLayout {
                     spacing: 0
                     Layout.fillWidth: true

@@ -751,16 +751,17 @@ def dash():
                   'rows': [['While you play', 'Pauses' if pauses['media'] == 'pause' else 'Keeps streaming']],
                   'actions': ['restart', 'pause'] if med_on else []})
     # ---- Storage (the shares' drives)
-    usage = q.get('usage') or []
-    used = sum(u.get('used', 0) for u in usage if isinstance(u, dict))
-    total = sum(u.get('total', 0) for u in usage if isinstance(u, dict))
-    shares = [s.get('name') for s in (hsd.get('shares') or []) if isinstance(s, dict) and s.get('on', True) is not False]
+    usage = q.get('usage') if isinstance(q.get('usage'), dict) else {}      # hearth-home-server fs_usage: {used, total}
+    used, total = int(usage.get('used') or 0), int(usage.get('total') or 0)
+    share_list = [s for s in (hsd.get('shares') or []) if isinstance(s, dict) and s.get('on', True) is not False]
+    shares = [s.get('name') for s in share_list]
     alerts_hs = q.get('alerts') or []
     tiles.append({'id': 'storage', 'title': 'Storage', 'engine': ('Shared folders: ' + ', '.join(shares[:3])) if shares else 'No shared folders yet',
                   'icon': 'drive', 'state': 'warn' if alerts_hs else 'running', 'chip': 'Check' if alerts_hs else 'Healthy',
                   'big': fmt_tb(used) if total else '—', 'unit': ('of %s used' % fmt_tb(total)) if total else 'nothing shared',
                   'bar': round(100 * used / total) if total else None,
-                  'rows': [[u.get('path', ''), '%s free' % fmt_tb(max(0, u.get('total', 0) - u.get('used', 0)))] for u in usage[:3] if isinstance(u, dict)],
+                  'rows': [[str(sh.get('name', '')), str(sh.get('path', ''))] for sh in share_list[:3]]
+                          + ([['Free', fmt_tb(max(0, total - used))]] if total else []),
                   'actions': []})
     # ---- Backups
     b = q.get('backups') or {}
@@ -969,13 +970,21 @@ def countdown_start(action, secs, origin, by=''):
                       'deadline': time.time() + secs, 'total': secs, 'from': origin, 'by': by[:60]})
 
 
-def cancel():
+def countdown_clear():
+    """No countdown: the file stays, holding {} (the dashboard watches it every second without logging a missing file)."""
     try:
-        os.remove(COUNTDOWN)
+        wjson(COUNTDOWN, {})
+    except OSError:
+        pass
+
+
+def cancel():
+    c = rjson(COUNTDOWN, None)
+    if isinstance(c, dict) and c.get('action') is not None:
+        countdown_clear()
         result_add('Cancelled on the home screen')
         return {'cancelled': True}
-    except OSError:
-        return {'cancelled': False}
+    return {'cancelled': False}
 
 
 def result_add(text, ok=True):
@@ -1115,13 +1124,9 @@ def agent_step(now=None):
         except (Fail, OSError) as e:
             result_add(str(e), False)
     c = rjson(COUNTDOWN, None)
-    if isinstance(c, dict) and now >= c.get('deadline', 0):
-        try:
-            os.remove(COUNTDOWN)
-        except OSError:
-            c = None
-        if c and isinstance(c.get('action'), dict):
-            execute(c['action'])
+    if isinstance(c, dict) and isinstance(c.get('action'), dict) and now >= c.get('deadline', 0):
+        countdown_clear()
+        execute(c['action'])
     return names
 
 
@@ -1228,11 +1233,11 @@ def leaving():
         res.update(idle_power(False))
     except Fail:
         pass
-    for f in (DASH_UP, COUNTDOWN):
-        try:
-            os.remove(f)
-        except OSError:
-            pass
+    try:
+        os.remove(DASH_UP)
+    except OSError:
+        pass
+    countdown_clear()
     if shutil.which('wlopm'):
         run(['wlopm', '--on', '*'], 5)
     return res

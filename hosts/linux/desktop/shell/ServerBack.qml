@@ -29,7 +29,7 @@ Rectangle {
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 * back.k }
         spacing: 12 * back.k
         RowLayout { spacing: 12 * back.k
-            Rectangle { width: 34 * back.k; height: width; radius: width / 2; color: Qt.rgba(SetStyle.ok.r, SetStyle.ok.g, SetStyle.ok.b, 0.2)
+            Rectangle { width: 34 * back.k; height: width; implicitWidth: 34 * back.k; implicitHeight: 34 * back.k; radius: width / 2; color: Qt.rgba(SetStyle.ok.r, SetStyle.ok.g, SetStyle.ok.b, 0.2)
                 Icon { anchors.centerIn: parent; name: "server"; size: 20 * back.k; color: SetStyle.ok } }
             Text { text: "Back in Server mode"; color: Theme.text; font.family: Theme.font; font.pixelSize: 21 * back.k; font.weight: Font.DemiBold } }
         Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: back.info ? "You played for " + back.played(back.info.played) + ". Everything that paused is coming back." : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * back.k }
@@ -38,7 +38,7 @@ Rectangle {
             delegate: RowLayout {
                 required property var modelData
                 Layout.fillWidth: true; spacing: 12 * back.k
-                Rectangle { width: 22 * back.k; height: width; radius: width / 2
+                Rectangle { width: 22 * back.k; height: width; implicitWidth: 22 * back.k; implicitHeight: 22 * back.k; radius: width / 2
                     color: modelData.busy ? "transparent" : Qt.rgba(SetStyle.ok.r, SetStyle.ok.g, SetStyle.ok.b, 0.2)
                     border.width: modelData.busy ? 3 * back.k : 0; border.color: Theme.accent
                     Icon { visible: !modelData.busy; anchors.centerIn: parent; name: "check"; size: 14 * back.k; color: SetStyle.ok }

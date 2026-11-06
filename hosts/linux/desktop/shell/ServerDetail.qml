@@ -22,7 +22,7 @@ Item {
         spacing: 18 * det.k
         RowLayout {
             spacing: 18 * det.k
-            Rectangle { width: 52 * det.k; height: width; radius: 12 * det.k; color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+            Rectangle { width: 52 * det.k; height: width; implicitWidth: 52 * det.k; implicitHeight: 52 * det.k; radius: 12 * det.k; color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
                 Icon { anchors.centerIn: parent; name: det.t ? det.t.icon : "dot"; size: 28 * det.k; color: Theme.accent } }
             ColumnLayout { spacing: 2; Layout.fillWidth: true
                 Text { text: det.t ? det.t.title : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 30 * det.k; font.weight: Font.DemiBold }
@@ -80,7 +80,7 @@ Item {
                     }
                     Repeater { model: det.vram
                         delegate: RowLayout { required property var modelData; Layout.fillWidth: true; spacing: 10 * det.k
-                            Rectangle { width: 12 * det.k; height: width; radius: 3 * det.k; color: det.colors[modelData.who] || Theme.muted }
+                            Rectangle { width: 12 * det.k; height: width; implicitWidth: 12 * det.k; implicitHeight: 12 * det.k; radius: 3 * det.k; color: det.colors[modelData.who] || Theme.muted }
                             Text { text: det.names[modelData.who] || modelData.who; color: Theme.text; font.family: Theme.font; font.pixelSize: 15 * det.k; Layout.fillWidth: true }
                             Text { text: modelData.gb + " GB"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * det.k } } }
                     Item { Layout.fillHeight: true }

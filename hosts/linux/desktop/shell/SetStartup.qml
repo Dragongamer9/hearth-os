@@ -120,7 +120,7 @@ SetPage {
                             x: track.width * from / 1440; width: Math.max(2, track.width * (to - from) / 1440 - 2); height: track.height; radius: 6
                             color: Qt.rgba(page.modeColors[mode].r, page.modeColors[mode].g, page.modeColors[mode].b, 0.35)
                             Text { anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter } visible: parent.width > 150
-                                text: page.modeNames[parent.mode] + " · " + page.label(page.at(parent.from)) + " – " + page.label(page.at(parent.to)); color: Theme.text; font.family: Theme.font; font.pixelSize: 12.5; elide: Text.ElideRight; width: parent.width - 12 }
+                                text: page.modeNames[parent.mode] + " · " + page.label(page.at(parent.from)) + " – " + page.label(page.at(parent.to)); color: Theme.text; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight; width: parent.width - 12 }
                         }
                     }
                 }
@@ -142,7 +142,7 @@ SetPage {
                         Text { text: "From " + page.label(modelData.at); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
                         Text { text: page.modeNames[modelData.mode]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 } }
                     Text { anchors { right: parent.right; rightMargin: 18; verticalCenter: parent.verticalCenter }
-                        text: "← → move · A mode · X remove"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12.5 }
+                        text: "← → move · A mode · X remove"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                 }
             }
             SetRow {

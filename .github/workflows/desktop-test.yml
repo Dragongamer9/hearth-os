@@ -1176,7 +1176,9 @@ jobs:
           mkdir -p shots/server-mode
           exec > >(tee shots/server-mode/step.log) 2>&1
           set -x
-          pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          # Desktop Mode's shell watchers from the steps before would start Mantel again on Server mode's labwc (on a real
+          # PC the session's settle() ends them between modes).
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2; pkill -f quickshell || true
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export HEARTH_SERVER_DASH_FIXTURE="$PWD/hosts/linux/test/fixtures/server-dash.json" HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
@@ -1209,7 +1211,7 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR/hearth-server"
           python3 -c 'import json,time,sys; json.dump({"action": {"kind": "mode", "to": "game"}, "to": "game", "what": "mode", "deadline": time.time() + 9, "total": 10, "from": "web", "by": "Work laptop"}, open(sys.argv[1], "w"))' "$XDG_RUNTIME_DIR/hearth-server/countdown.json"
           sleep 3; grim shots/server-mode/03b-web-switch-countdown.png || true
-          ipc server cancel; rm -f "$XDG_RUNTIME_DIR/hearth-server/countdown.json"; sleep 2
+          ipc server cancel; sleep 2
           ipc server back; grim shots/server-mode/04-back-in-server-mode.png || true
           ipc server close
           ipc server menu; grim shots/server-mode/05-menu.png || true

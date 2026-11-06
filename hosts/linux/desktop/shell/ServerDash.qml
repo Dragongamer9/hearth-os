@@ -85,7 +85,7 @@ PanelWindow {
 
     Component.onCompleted: {
         // nimbus-session waits for this mark: without it, labwc is closed and Game Mode opens.
-        Quickshell.execDetached(["sh", "-c", ': >"$0"', dash.run + "/hearth-server-dash-up"]);
+        Quickshell.execDetached(["sh", "-c", ': >"$0"; mkdir -p -m 700 "$1"; [ -e "$1/countdown.json" ] || echo "{}" >"$1/countdown.json"', dash.run + "/hearth-server-dash-up", dash.run + "/hearth-server"]);
         backReader.running = true;
     }
     Process {
@@ -289,7 +289,7 @@ PanelWindow {
                     anchors.fill: parent; anchors.margins: 26 * dash.k
                     spacing: 26 * dash.k
                     Rectangle {
-                        width: 104 * dash.k; height: width; radius: width / 2
+                        width: 104 * dash.k; height: width; implicitWidth: 104 * dash.k; implicitHeight: 104 * dash.k; radius: width / 2
                         color: Qt.rgba(heroCard.sc.r, heroCard.sc.g, heroCard.sc.b, 0.18)
                         Icon { anchors.centerIn: parent; name: dash.d && dash.d.status && dash.d.status.level !== "ok" ? "warn" : "check"; size: 54 * dash.k; color: heroCard.sc }
                     }
@@ -323,7 +323,7 @@ PanelWindow {
                 border.color: Qt.lighter(Theme.accent, 1.4)
                 RowLayout {
                     anchors.fill: parent; anchors.margins: 30 * dash.k; spacing: 22 * dash.k
-                    Rectangle { width: 84 * dash.k; height: width; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.12)
+                    Rectangle { width: 84 * dash.k; height: width; implicitWidth: 84 * dash.k; implicitHeight: 84 * dash.k; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.12)
                         Icon { anchors.centerIn: parent; name: "pad"; size: 44 * dash.k; color: Theme.accentInk } }
                     ColumnLayout { spacing: 2 * dash.k; Layout.fillWidth: true
                         Text { text: "Play"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 38 * dash.k; font.weight: Font.Bold }
@@ -346,7 +346,7 @@ PanelWindow {
                     width: pillRow.implicitWidth + 32 * dash.k
                     color: SetStyle.card; border.color: Theme.line
                     Row { id: pillRow; anchors.centerIn: parent; spacing: 10 * dash.k
-                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9 * dash.k; height: width; radius: width / 2
+                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9 * dash.k; height: width; implicitWidth: 9 * dash.k; implicitHeight: 9 * dash.k; radius: width / 2
                             color: modelData.state === "running" ? SetStyle.ok : modelData.state === "off" ? Theme.muted : SetStyle.warn }
                         Text { text: modelData.name; color: Theme.text; font.family: Theme.font; font.pixelSize: 16 * dash.k }
                         Text { text: modelData.extra || ""; visible: text !== ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 * dash.k; anchors.verticalCenter: parent.verticalCenter } }
@@ -404,7 +404,7 @@ PanelWindow {
                 Repeater {
                     model: [["A", "Open"], ["X", "Restart service"], ["Y", "Pause or resume"], ["☰", "Settings"]]
                     delegate: Row { required property var modelData; spacing: 8 * dash.k
-                        Rectangle { width: 24 * dash.k; height: width; radius: width / 2; border.color: Theme.muted; color: "transparent"
+                        Rectangle { width: 24 * dash.k; height: width; implicitWidth: 24 * dash.k; implicitHeight: 24 * dash.k; radius: width / 2; border.color: Theme.muted; color: "transparent"
                             Text { anchors.centerIn: parent; text: modelData[0]; color: Theme.text; font.pixelSize: 12 * dash.k; font.weight: Font.Bold } }
                         Text { text: modelData[1]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 15 * dash.k } }
                 }
@@ -436,7 +436,7 @@ PanelWindow {
                 RowLayout {
                     spacing: 40 * dash.k
                     Item {
-                        width: 200 * dash.k; height: width
+                        width: 200 * dash.k; height: width; implicitWidth: 200 * dash.k; implicitHeight: 200 * dash.k
                         Canvas {
                             id: ring
                             anchors.fill: parent
@@ -544,7 +544,7 @@ PanelWindow {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter; spacing: 34 * dash.k
                 Row { spacing: 10 * dash.k
-                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10 * dash.k; height: width; radius: width / 2; color: dash.d && dash.d.status.level !== "ok" ? "#6b5a2f" : "#2f6b47" }
+                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10 * dash.k; height: width; implicitWidth: 10 * dash.k; implicitHeight: 10 * dash.k; radius: width / 2; color: dash.d && dash.d.status.level !== "ok" ? "#6b5a2f" : "#2f6b47" }
                     Text { text: dash.d ? dash.d.status.title : ""; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k } }
                 Text { text: dash.d ? dash.d.status.sub : ""; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k }
                 Text { text: dash.d ? dash.d.devices + (dash.d.devices === 1 ? " device" : " devices") : ""; color: "#39424b"; font.family: Theme.font; font.pixelSize: 21 * dash.k }
