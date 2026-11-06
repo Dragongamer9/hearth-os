@@ -20,8 +20,25 @@ SetPage {
     readonly property bool listShown: !!st && (st.server || (cfg && cfg.hub))
     // The page's rows as laid out (SetPage's column): its height also counts rows its implicit height missed, so the
     // device list at the bottom always scrolls into view (in CI the page stopped scrolling at "Your AI devices").
+    // In CI the layout's own height still stopped after "Ask for a share code" (the rows below were drawn and took focus
+    // but the page wouldn't scroll to them), so the page also measures where its last shown row really ends.
     readonly property Item rowsColumn: { const k = contentItem.children; for (let i = 0; i < k.length; i++) if (k[i].spacing !== undefined) return k[i]; return null; }
-    contentHeight: rowsColumn ? Math.max(rowsColumn.implicitHeight, rowsColumn.childrenRect.height) + 48 : 0
+    property real rowsBottom: 0
+    function measure() {
+        const c = page.rowsColumn;
+        if (!c) return;
+        let m = 0;
+        for (let i = 0; i < c.children.length; i++) { const k = c.children[i]; if (k.visible && k.height > 0) m = Math.max(m, k.y + k.height); }
+        if (Math.abs(m - page.rowsBottom) > 1) page.rowsBottom = m;
+    }
+    contentHeight: rowsColumn ? Math.max(rowsColumn.implicitHeight, rowsColumn.childrenRect.height, rowsBottom) + 48 : 0
+    Timer { interval: 400; running: page.visible; repeat: true; onTriggered: page.measure() }
+    onActiveFocusChanged: measure()
+    // One line in the shell log for CI (desktop-test.yml): the heights the page sees.
+    Timer {
+        interval: 7000; running: page.visible; repeat: false
+        onTriggered: { page.measure(); console.info("AI devices: rows end at", page.rowsBottom, "layout", page.rowsColumn ? page.rowsColumn.implicitHeight : -1, "childrenRect", page.rowsColumn ? page.rowsColumn.childrenRect.height : -1, "contentHeight", page.contentHeight, "height", page.height); }
+    }
     readonly property var kindWords: ({ chat: "Chat", voice: "Voices", image: "Pictures", stt: "Speech to text" })
     function say(t, b) { msg = t; bad = !!b; }
     // replaceList (SetPage): rows are rebuilt only when something changed, and the selection stays put (a list that

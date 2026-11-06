@@ -431,8 +431,9 @@ jobs:
           ipc settings close; ipc settings page hs-aidevices; sleep 8; grim shots/ai-share/50-ai-devices.png || true
           dn() { for i in $(seq 1 "$1"); do wtype -k Down; sleep 0.4; done; sleep 1; }
           wtype -k Right; sleep 1; dn 6; grim shots/ai-share/51-ai-devices-when-and-code.png || true
-          dn 6; grim shots/ai-share/52-ai-devices-list.png || true
-          dn 6; grim shots/ai-share/53-ai-devices-list-end.png || true
+          # 12 rows take focus here (Down wraps after the last): 3 more is the first device, 2 more the last one.
+          dn 3; grim shots/ai-share/52-ai-devices-list.png || true
+          dn 2; grim shots/ai-share/53-ai-devices-list-end.png || true
           ipc settings page hs-ai; sleep 4; grim shots/ai-share/54-ai-page-link.png || true
           ipc settings page link; sleep 4; grim shots/ai-share/55-hearth-link-link.png || true
           ipc settings close
@@ -440,6 +441,7 @@ jobs:
           python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); n = [x["device"] for x in d["devices"]]; sys.exit(0 if {"nvidia-pc", "rog-ally", "laptop"} <= set(n) and d["devices"][0]["rank"] == 1 else 1)' shots/ai-share/devices.json \
             || { echo "::error title=AI sharing::the devices list isn't right: $(head -c 400 shots/ai-share/devices.json)"; touch shots/FAILED; }
           [ "$(sha256sum "$HOME/.config/nimbus/ai-share.json")" = "$before" ] || { echo "::error title=AI sharing::opening its page changed ai-share.json"; touch shots/FAILED; }
+          grep -E "AI devices: rows end at|SetHomeAIDevices" "$XDG_RUNTIME_DIR/nimbus-shell.log" > shots/ai-share/page-log.txt 2>/dev/null || true
           if grep -qE "SetHomeAIDevices\.qml.*(Error|error|TypeError|ReferenceError|is not defined|Cannot)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null; then
             echo "::error title=AI sharing::$(grep -E 'SetHomeAIDevices\.qml' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -6 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
           fi
