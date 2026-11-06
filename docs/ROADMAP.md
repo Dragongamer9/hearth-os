@@ -7,6 +7,14 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Next (unreleased)
 
+- [x] Desktop Mode: Super+Up / Super+Down work again (Up maximizes, or makes a snapped half a quarter and a quarter its half again; Down does the opposite, then restores a maximized window, then minimizes). labwc refused the old keys ("action 'If' cannot be a child action"); a test now catches that (needs testing on a device)
+- [x] The installer test runs again: both jobs install Hearth OS on Debian (the one next to SteamOS still asked for the archived Anatase) and the boot check refreshes apt before getting qemu (it stopped with exit code 100); failures say why on the run page
+- [x] Tiles and Start screen app menus: move tiles, by dragging with the mouse, or Y (or Move in a tile's menu), the D-pad and A to drop (B puts it back); saved for you only when you drop one somewhere new. The hints say what X and Y do (needs testing on a device)
+- [x] Tiles app menu: its search field sits in the bar next to the flame, as in the mockup; what you type shows there (needs testing on a device)
+- [x] The app menus' Updates tile shows Steam games with an update waiting (Hearth's games list now says so; other stores don't report it) (needs testing on a device)
+- [x] Settings › Network & internet › Wi-Fi: the network you're on at the top (name, signal, band, address; Properties, Disconnect, Forget), and Add a hidden network (needs testing on a device)
+- [x] Settings: Sound, Notifications, Power & battery, Date & time, Mouse & touchpad, Printers, Apps, Default apps, Controller and Handheld in titled groups of cards with icons, as in the mockups (nothing they do changed) (needs testing on a device)
+
 ## 1.5 (released 2026-11-06)
 
 - [x] Hearth Settings redesign (the approved mockups): opens on a new **Home** page (this PC with Rename, Wi-Fi / Bluetooth / Updates / Hearth Link at a glance, recommended settings, Bluetooth devices, storage, the home server, your look); 12 categories instead of one long list of 42 pages (System, Network & internet, Bluetooth & devices, Hearth Link, Personalization, Apps, Gaming, Accounts, Home server, Privacy & security, Accessibility, Updates & recovery); setting cards in titled groups with the control or a status chip on the right and a chevron only where something opens; expander cards (the on-screen keyboard, resolution, more accent colours, the wallpapers, each home server service's details); breadcrumb titles ("Home server › Services"); warning banners (Home server's "1 thing needs a look") (needs testing on a device)

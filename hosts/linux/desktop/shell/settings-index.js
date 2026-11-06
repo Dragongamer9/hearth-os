@@ -372,7 +372,8 @@ var ENTRIES = [
 {
 "t": "Clock",
 "p": "datetime",
-"d": "How the taskbar shows the time"
+"d": "How the taskbar shows the time",
+"i": "clock"
 },
 {
 "t": "Set the time automatically",
@@ -1763,7 +1764,8 @@ var ENTRIES = [
 },
 {
 "t": "Scroll with",
-"p": "mouse"
+"p": "mouse",
+"i": "mouse"
 },
 {
 "t": "Ignore the touchpad while typing",
@@ -1788,7 +1790,8 @@ var ENTRIES = [
 {
 "t": "Power mode",
 "p": "power",
-"d": "Battery saver lasts longer; Performance is faster and warmer"
+"d": "Battery saver lasts longer; Performance is faster and warmer",
+"i": "bolt"
 },
 {
 "t": "Power limit (TDP)",
@@ -1797,22 +1800,26 @@ var ENTRIES = [
 },
 {
 "t": "Turn the screen off after",
-"p": "power"
+"p": "power",
+"i": "display"
 },
 {
 "t": "Go to sleep after",
 "p": "power",
-"d": "Downloads stop while it sleeps. Videos and games that are playing keep it awake"
+"d": "Downloads stop while it sleeps. Videos and games that are playing keep it awake",
+"i": "sleep"
 },
 {
 "t": "Press",
 "p": "power",
-"d": "A quick press"
+"d": "A quick press",
+"i": "power"
 },
 {
 "t": "Hold",
 "p": "power",
-"d": "Held down for a second"
+"d": "Held down for a second",
+"i": "power"
 },
 {
 "t": "Game Mode",
@@ -2116,6 +2123,12 @@ var ENTRIES = [
 {
 "t": "Connect",
 "p": "wifi"
+},
+{
+"t": "Add a hidden network",
+"p": "wifi",
+"d": "A network that doesn't show its name: type it and its password",
+"i": "plus"
 },
 {
 "t": "Look again",

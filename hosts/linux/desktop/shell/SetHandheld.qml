@@ -48,6 +48,13 @@ SetPage {
         const o = item.options || [];
         return o.length >= 2 && o.length <= 4 && o.reduce((a, x) => a + x.label.length, 0) <= 36;
     }
+    // An icon for a Handheld Daemon setting, from its key (power, fan, lights, controller, screen...).
+    function iconFor(d) {
+        const k = d && d.key ? String(d.key).toLowerCase() : "";
+        return /tdp|power|boost|cpu|gpu|charge/.test(k) ? "power" : /fan/.test(k) ? "fan" : /rgb|led|light/.test(k) ? "bulb"
+            : /batt/.test(k) ? "batt" : /display|screen|bright/.test(k) ? "display" : /touch|mouse/.test(k) ? "mouse"
+            : /keyboard|osk/.test(k) ? "kbd" : /controller|gamepad|button|stick|trigger|gyro|rumble|vibr|swap|layout/.test(k) ? "pad" : "gear";
+    }
     function pick(key) { picking = key; Qt.callLater(page.focusFirst); }
     function unpick() { const k = picking; picking = ""; Qt.callLater(page.focusFirst); }
     Component.onCompleted: load()
@@ -121,14 +128,13 @@ SetPage {
     // ------------------------------------------------------------ every section HHD has
     Repeater {
         model: page.picking === "" && page.hh && page.hh.running ? page.hh.sections : []
-        delegate: ColumnLayout {
+        // Each section is a titled group of cards (SetCardGroup), as in the rest of Settings.
+        delegate: SetCardGroup {
             id: sec
             required property var modelData
             readonly property var shown: modelData.items.filter(i => page.advanced || !i.advanced)
             visible: shown.some(i => i.kind !== "group")
-            Layout.fillWidth: true
-            spacing: 8
-            SetHeader { text: sec.modelData.title }
+            title: sec.modelData.title
             Rectangle {
                 visible: sec.modelData.steamNote !== ""
                 Layout.fillWidth: true
@@ -171,6 +177,7 @@ SetPage {
         model: page.pickItem ? page.pickItem.options : []
         delegate: SetRow {
             required property var modelData
+            icon: String(page.val(page.pickItem)) === modelData.id ? "check" : "dot"
             title: modelData.label; chevron: false
             value: String(page.val(page.pickItem)) === modelData.id ? "In use" : ""
             onActivated: { const it = page.pickItem; page.apply(it.key, modelData.raw !== undefined ? modelData.raw : modelData.id); page.unpick(); }
@@ -182,6 +189,7 @@ SetPage {
         id: boolC
         SetSwitch {
             readonly property var d: parent ? parent.d : null
+            icon: page.iconFor(d)
             title: d ? d.title : ""; sub: d ? d.hint : ""
             checked: d ? !!page.val(d) : false
             onToggled: on => page.apply(d.key, on)
@@ -191,6 +199,7 @@ SetPage {
         id: segC
         SetChoice {
             readonly property var d: parent ? parent.d : null
+            icon: page.iconFor(d)
             title: d ? d.title : ""; sub: d ? d.hint : ""
             options: d ? d.options.map(o => ({ value: o.id, label: o.label })) : []
             current: d ? String(page.val(d)) : ""
@@ -201,6 +210,7 @@ SetPage {
         id: listC
         SetRow {
             readonly property var d: parent ? parent.d : null
+            icon: page.iconFor(d)
             title: d ? d.title : ""; sub: d ? d.hint : ""
             value: d ? page.label(d) : ""
             onActivated: page.pick(d.key)
@@ -249,6 +259,7 @@ SetPage {
         id: textC
         SetRow {
             readonly property var d: parent ? parent.d : null
+            icon: page.iconFor(d)
             interactive: false; chevron: false
             title: d ? d.title : ""
             readonly property string v: d ? String(d.value).trim() : ""
@@ -260,6 +271,7 @@ SetPage {
         id: colorC
         SetRow {
             readonly property var d: parent ? parent.d : null
+            icon: page.iconFor(d)
             interactive: false; chevron: false
             title: d ? d.title : ""; sub: d ? d.hint : ""
             value: d ? String(d.value) : ""

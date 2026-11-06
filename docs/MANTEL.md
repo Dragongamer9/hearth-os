@@ -143,6 +143,13 @@ category to the list, the list closes Settings), **Y** search, **LB / RB** previ
   button is the one next step, Update anyway, **Decky plugins** as one expander (`updates:decky` opens it), "If
   something broke" (Go back, and "The previous version always stays startable"), the writable system, then Backup and
   help. The same hearth-admin, hearth-decky and hearth-unlock calls as before; only the layout changed.
+- **Wi-Fi** (`SetWifi.qml`): the network you're on as a card at the top (name, signal, band, address; Properties shows
+  security, gateway, DNS, IPv6 and MAC; Disconnect; Forget asks once more and removes the saved connection), the
+  Wi-Fi switch, Networks nearby, and **Add a hidden network** (name and password, `nmcli ... hidden yes`). Every
+  change is NetworkManager's and only on your click; nothing writes Hearth's settings.
+- **Titled card groups** (`SetCardGroup`): Sound, Notifications, Power & battery, Date & time, Mouse & touchpad,
+  Printers, Apps, Default apps, Controller and Handheld (each Handheld Daemon section) show their cards in titled
+  groups, each card with an icon, as in the mockups. Only the layout changed: the same helpers and settings keys.
 - **AI devices** (`SetHomeAIDevices.qml`, docs/AI-SHARE.md): Home server › AI devices, a card under "On this server"
   on the Home server page, and linked from Services › AI chat and Hearth Link.
 - **Cards** (`SetRow` / `SetCard`, `SetSwitch`, `SetChoice`, `SetSlider`, `SetCardGroup`, `SetExpander`, `SetChip`,
