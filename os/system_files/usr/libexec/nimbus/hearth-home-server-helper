@@ -306,6 +306,56 @@ def path_problem(path, user, home, sys_disks=None):
     return None, 'only folders in your Home or on a drive can be shared'
 
 
+# ---- Whole drives, your Home, the system drive (Hearth 1.6, docs/HOME-SERVER.md "Sharing a whole drive"). A share's
+# "whole" says which: drive (a data drive's mount point), home (your whole Home folder), system (/, read only, always).
+# Home and the system drive need the confirmations Settings asked for, kept with the share ("confirm"), so a hand-edited
+# or old settings file can't share them by accident. Hidden files stay vetoed on every share (.ssh, .config, .local and
+# the keyrings in it); the system drive also vetoes the names of its secrets and live folders.
+WHOLE_KINDS = ('drive', 'home', 'system')
+SYSTEM_VETO = '/.*/shadow/shadow-/gshadow/gshadow-/ssh/root/proc/sys/dev/run/hearth/lost+found/'
+CONFIRM_NEEDED = {'home': {'home'}, 'system': {'system', 'system-sure'}}
+CONFIRM_WRITE = {'home': 'home-write'}
+
+
+def share_path_problem(path, user, home, sys_disks=None):
+    """(real path, kind, None) for a share: kind folder (path_problem's rules), drive, home or system; or (None, None, why).
+    Only shares use this: people's folders, backups and the rest keep path_problem's stricter rules."""
+    if not isinstance(path, str) or not path.startswith('/') or len(path) > 400 or not PATH_RE.fullmatch(path) \
+            or '/../' in path + '/' or '/./' in path + '/':
+        return None, None, path_problem(path, user, home, sys_disks)[1] or 'not a full path'
+    real = os.path.realpath(path)
+    if real == '/':
+        return '/', 'system', None
+    if real == os.path.realpath(home) and os.path.isdir(real) and PATH_RE.fullmatch(real):
+        return real, 'home', None
+    ok, why = path_problem(path, user, home, sys_disks)
+    if ok:
+        return ok, ('drive' if real_is_drive_root(ok, user, sys_disks) else 'folder'), None
+    if real_is_drive_root(real, user, sys_disks):
+        return real, 'drive', None
+    return None, None, why
+
+
+def real_is_drive_root(real, user, sys_disks=None):
+    """REAL is where a data drive is mounted (under /run/media/YOU, /media/YOU, /mnt or /var/mnt; never the system's
+    disks or its own mounts, never a folder Hearth keeps from sharing)."""
+    if not real or real in SYSTEM_MOUNTS or any(real == f or real.startswith(f + '/') for f in FORBIDDEN):
+        return False
+    if not PATH_RE.fullmatch(real) or not os.path.isdir(real) or not is_mount(real):
+        return False
+    if not any(real.startswith(os.path.realpath(b).rstrip('/') + '/') for b in drive_bases(user)):
+        return False
+    if any(p.startswith('.') for p in real.split('/')):
+        return False
+    disks = system_disks() if sys_disks is None else sys_disks
+    return not (disks_of(mount_source(real)) & disks)
+
+
+def is_mount(path):
+    """A mount point. Tests replace this."""
+    return os.path.ismount(path)
+
+
 def name_problem(name):
     if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         return 'a share\'s name is 1 to 40 letters, digits, spaces, - or _ (starting with a letter or digit)'
@@ -347,21 +397,30 @@ def check_shares(shares, user, home, sys_disks=None, taken=None, people=None):
         if isinstance(p, str) and PATH_RE.fullmatch(p) and not os.path.exists(p):
             missing.append(n)
             continue
-        real, why = path_problem(p, user, home, sys_disks)
+        real, kind, why = share_path_problem(p, user, home, sys_disks)
         if not real:
             raise Fail('%s: %s' % (n, why))
+        confirmed = set(c for c in (s.get('confirm') or []) if isinstance(c, str)) if isinstance(s.get('confirm'), list) else set()
+        if kind in CONFIRM_NEEDED and not CONFIRM_NEEDED[kind] <= confirmed:
+            raise Fail('%s: sharing %s needs your confirmation in Settings' % (n, 'your whole Home' if kind == 'home' else 'the system drive'))
+        if kind == 'system' and s.get('write') is True:
+            raise Fail('%s: the system drive is only ever shared read only (writing system files over the network can stop the PC from starting)' % n)
+        if kind in CONFIRM_WRITE and s.get('write') is True and CONFIRM_WRITE[kind] not in confirmed:
+            raise Fail('%s: read & write for your whole Home needs a second confirmation in Settings' % n)
         reach = s.get('reach', 'home')
         if reach not in ('home', 'tailscale'):
             raise Fail('%s: reach is home or tailscale' % n)
         ppl = {}
-        raw = s.get('people') if isinstance(s.get('people'), dict) else {}
+        raw = s.get('people') if isinstance(s.get('people'), dict) and kind not in ('home', 'system') else {}
         for pn, acc in sorted(raw.items()):
             if not isinstance(pn, str) or not PERSON_RE.fullmatch(pn) or acc not in ('read', 'write', 'none'):
                 raise Fail('%s: a person\'s access is none, read or write' % n)
             if acc != 'none' and pn != user and (people is None or pn in people):
                 ppl[pn] = acc if s.get('write') is True else 'read'
-        good.append({'id': s.get('id'), 'name': n, 'path': real, 'write': s.get('write') is True, 'reach': reach,
-                     'recycle': s.get('recycle', True) is not False, 'snapshots': s.get('snapshots') is True, 'people': ppl})
+        system = kind == 'system'
+        good.append({'id': s.get('id'), 'name': n, 'path': real, 'write': s.get('write') is True and not system, 'reach': reach,
+                     'recycle': s.get('recycle', True) is not False and not system, 'snapshots': s.get('snapshots') is True and not system,
+                     'people': ppl, 'whole': kind if kind in WHOLE_KINDS else ''})
     return good, missing
 
 
@@ -398,8 +457,11 @@ def conf_text(shares, user, ts_only, folders=(), audit=False, locked=False):
                 '   guest ok = no',
                 '   browseable = yes',
                 '   hide dot files = yes',
-                '   veto files = /.*/',
+                # Hidden files and folders (.ssh, .config, .local with the keyrings) are never shared, even with all of Home.
+                '   veto files = %s' % (SYSTEM_VETO if s.get('whole') == 'system' else '/.*/'),
                 '   delete veto files = no']
+        if s.get('whole') in ('home', 'system'):
+            out += ['   hide unreadable = yes', '   wide links = no']
         if ts_only or s['reach'] == 'tailscale':
             out += ['   hosts allow = %s' % ' '.join(TAILSCALE_NETS), '   hosts deny = 0.0.0.0/0 ::/0']
         vfs = (['full_audit'] if audit and s['write'] else []) + (['recycle'] if s['recycle'] and s['write'] else [])

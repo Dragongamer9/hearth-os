@@ -808,6 +808,115 @@ class AdultModels(unittest.TestCase):
         self.assertEqual(hs.NESTED['aiSmallModel'][2], ('qwen3:14b', 'huihui_ai/qwen3-abliterated:14b'))
 
 
+from test_hearth_home_server import Base as HsBase, USER as HS_USER  # noqa: E402
+
+
+class WholeShares(HsBase):
+    """Sharing a whole data drive, your whole Home (read only by default, one confirmation; read & write a second) or the
+    system drive (read only only, two confirmations, its secrets vetoed). Hidden files stay vetoed on every share."""
+
+    def setUp(self):
+        super().setUp()
+        self.mnt = os.path.join(self.d, 'mnt')
+        self.drive = os.path.join(self.mnt, 'Drive2')
+        os.makedirs(os.path.join(self.drive, 'Movies'))
+        hh.drive_bases = lambda user: [self.mnt]
+        self.saved_fns.setdefault('is_mount', hh.is_mount)
+        hh.is_mount = lambda p: os.path.realpath(p) == os.path.realpath(self.drive)
+
+    def whole(self, kind, path, **kw):
+        s = {'id': 'abcdef12', 'name': {'drive': 'Drive2', 'home': 'Home', 'system': 'System drive'}[kind], 'path': path,
+             'write': False, 'reach': 'home', 'recycle': True, 'whole': kind}
+        s.update(kw)
+        return s
+
+    def test_a_data_drive_root_is_allowed(self):
+        real, kind, why = hh.share_path_problem(self.drive, HS_USER, self.home, {'nvme0n1'})
+        self.assertEqual((real, kind), (os.path.realpath(self.drive), 'drive'), why)
+        good, _ = hh.check_shares([self.whole('drive', self.drive, write=True)], HS_USER, self.home, {'nvme0n1'})
+        self.assertEqual(good[0]['whole'], 'drive')
+        self.assertTrue(good[0]['write'], 'a data drive may be read & write')
+        self.assertIsNone(hh.share_path_problem(self.mnt, HS_USER, self.home, {'nvme0n1'})[0], 'the folder drives sit in is not a drive')
+        hh.mount_source = lambda p: '/dev/nvme0n1p3'
+        self.assertNotEqual(hh.share_path_problem(self.drive, HS_USER, self.home, {'nvme0n1'})[1], 'drive', 'never a system disk')
+
+    def test_home_is_read_only_by_default_needs_a_confirmation_and_hides_dot_files(self):
+        with self.assertRaises(hh.Fail):
+            hh.check_shares([self.whole('home', self.home)], HS_USER, self.home, set())
+        good, _ = hh.check_shares([self.whole('home', self.home, confirm=['home'])], HS_USER, self.home, set())
+        self.assertEqual(good[0]['whole'], 'home')
+        self.assertFalse(good[0]['write'])
+        text = hh.conf_text(good, HS_USER, False)
+        self.assertIn('   veto files = /.*/', text, '.ssh, .config, .local and the keyrings never shared')
+        self.assertIn('   hide dot files = yes', text)
+        self.assertIn('   read only = yes', text)
+        self.assertIn('   guest ok = no', text)
+        with self.assertRaises(hh.Fail):
+            hh.check_shares([self.whole('home', self.home, confirm=['home'], write=True)], HS_USER, self.home, set())
+        good, _ = hh.check_shares([self.whole('home', self.home, confirm=['home', 'home-write'], write=True)], HS_USER, self.home, set())
+        self.assertTrue(good[0]['write'], 'read & write after the second confirmation')
+        self.assertEqual(good[0]['people'], {}, 'only you')
+
+    def test_the_system_drive_read_only_with_its_secrets_vetoed(self):
+        with self.assertRaises(hh.Fail):
+            hh.check_shares([self.whole('system', '/', confirm=['system'])], HS_USER, self.home, set())
+        good, _ = hh.check_shares([self.whole('system', '/', confirm=['system', 'system-sure'])], HS_USER, self.home, set())
+        self.assertEqual((good[0]['path'], good[0]['whole'], good[0]['write'], good[0]['recycle']), ('/', 'system', False, False))
+        text = hh.conf_text(good, HS_USER, True)
+        sec = text.split('[System drive]')[1]
+        self.assertIn('read only = yes', sec)
+        veto = re.search(r'veto files = (.*)', sec).group(1)
+        for name in ('/.*/', '/shadow/', '/gshadow/', '/ssh/', '/root/', '/proc/', '/sys/', '/dev/', '/run/', '/hearth/'):
+            self.assertIn(name, veto)
+        self.assertIn('hosts allow = 100.64.0.0/10', sec, 'the Tailscale-only switch still wins')
+        self.assertNotIn('guest ok = yes', text)
+
+    def test_the_system_drive_is_never_read_and_write(self):
+        with self.assertRaises(hh.Fail) as e:
+            hh.check_shares([self.whole('system', '/', confirm=['system', 'system-sure'], write=True)], HS_USER, self.home, set())
+        self.assertIn('read only', str(e.exception))
+
+    def test_the_old_rules_still_hold_for_everything_else(self):
+        self.assertIsNone(hh.path_problem('/', HS_USER, self.home, set())[0], "people's folders, backups: still never /")
+        self.assertIsNone(hh.path_problem(self.home, HS_USER, self.home, set())[0])
+        for bad in ('/etc', '/usr', os.path.join(self.home, '.ssh'), self.home + '/a;b', self.home + '/$(x)', 'relative'):
+            self.assertIsNone(hh.share_path_problem(bad, HS_USER, self.home, set())[0], bad)
+        link = os.path.join(self.home, 'Videos', 'etc-link')
+        os.symlink('/etc', link)
+        self.assertIsNone(hh.share_path_problem(link, HS_USER, self.home, set())[0], 'a link is judged by where it points')
+
+
+class WholeSharesSettings(unittest.TestCase):
+    """The Mantel helper asks for the confirmations, starts every whole share read only on the home network and
+    Tailscale, and never lets the system drive be read & write."""
+
+    def setUp(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        self.home = os.path.join(d, 'home')
+        os.makedirs(os.path.join(self.home, 'Games'))
+        saved = {k: getattr(hs, k) for k in ('SETTINGS', 'me')}
+        self.addCleanup(lambda: [setattr(hs, k, v) for k, v in saved.items()])
+        hs.SETTINGS = os.path.join(d, 'home-server.json')
+        hs.me = lambda: ('player', self.home)
+
+    def test_confirmations_and_defaults(self):
+        with self.assertRaises(hs.Fail):
+            hs.share_add(self.home)
+        s = hs.share_add(self.home, None, ['home'])
+        self.assertEqual((s['whole'], s['write'], s['reach'], s['name']), ('home', False, 'home', 'Home'))
+        with self.assertRaises(hs.Fail):
+            hs.share_set(s['id'], 'write', 'on')
+        self.assertTrue(hs.share_set(s['id'], 'write', 'on', 'home-write'))
+        with self.assertRaises(hs.Fail):
+            hs.share_add('/', None, ['system'])
+        r = hs.share_add('/', None, ['system', 'system-sure'])
+        self.assertEqual((r['whole'], r['write'], r['recycle']), ('system', False, False))
+        with self.assertRaises(hs.Fail) as e:
+            hs.share_set(r['id'], 'write', 'on', 'home-write')
+        self.assertIn('read only', str(e.exception))
+
+
 class Wiring(unittest.TestCase):
     def test_server_mode_is_off_and_game_mode_is_the_default(self):
         text = SESSION.read_text()

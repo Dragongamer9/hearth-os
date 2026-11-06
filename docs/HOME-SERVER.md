@@ -392,6 +392,29 @@ on the **AI** page next to the chat models. Both are **your own user services** 
 - **Overview and Quick Access**: the Services tile counts Pictures and Voices; Quick Access says "AI pictures: stopped
   while you play · AI voices: ready" and lists them in what Light mode holds back. Gaming lists them under what waits.
 
+## Sharing a whole drive, your Home or the system drive (Hearth 1.6)
+
+Shared folders (and Drives & undo, for each data drive) can share more than a folder. Each starts **read only**, on the
+**home network and Tailscale** (the share's reach stays changeable; "Only reachable through Tailscale" still wins), never
+for guests and never for the internet, with a badge in the list:
+
+- **Whole drive**: a data drive's mount point (under /run/media/YOU, /media/YOU, /mnt or /var/mnt, never one of the
+  system's disks). Read only or read & write.
+- **Home**: your whole Home folder, after one confirmation ("Everything in your Home is shared, including settings
+  folders; hidden files stay blocked"). Read & write needs a second confirmation. Only you (no people).
+- **System drive** (`/`): **read only, never read & write** (writing system files over the network can stop the PC from
+  starting), after two confirmations that name the risk. Only you; no recycle bin or snapshots; never walked for Files &
+  links' smart folders.
+
+What keeps secrets out: Samba works as you (`force user`), so root-only files can't be read at all; every share vetoes
+hidden files and folders (`veto files = /.*/`, `hide dot files`: .ssh, .config, .local with the keyrings); Home and the
+system drive also `hide unreadable` with `wide links = no`; the system drive also vetoes `shadow`, `gshadow`, `ssh`,
+`root`, `proc`, `sys`, `dev`, `run`, `hearth` (/var/lib/hearth's state and /etc/hearth) and `lost+found` by name. The
+confirmations are kept with the share (`whole`, `confirm`) and the root helper checks them again (`share_path_problem`,
+`check_shares`), so an old or hand-edited settings file can't share Home or `/` by accident, or `/` read & write ever.
+People's folders, backups and the rest keep the stricter folder rules (`path_problem`). No shell, no symlink escapes (a
+link is judged by where it points), no shell characters; Samba's testparm check still puts the last working config back.
+
 ## Uncensored (18+) models and any model by name (Hearth 1.6)
 
 Settings › Home server › AI chat has a group **Uncensored (18+)** behind **Show 18+ models** (`showAdult`, off by default,

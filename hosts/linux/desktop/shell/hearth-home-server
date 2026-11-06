@@ -16,7 +16,11 @@ everything again.
   hearth-home-server candidates                 folders you might share (Home's folders, drives' folders)
   hearth-home-server pick-folder                Hearth Files' folder picker; prints the folder
   hearth-home-server share-add PATH [NAME]      share a folder (read only, home network, recycle bin on)
-  hearth-home-server share-set ID KEY VALUE     on|write|recycle|snapshots on|off; reach home|tailscale; name NAME
+  hearth-home-server share-set ID KEY VALUE [home-write]   on|write|recycle|snapshots on|off; reach home|tailscale; name NAME
+                                                (write on for your whole Home needs home-write; never for the system drive)
+  hearth-home-server share-whole drive PATH | home home | system system system-sure
+                                                a whole data drive, your whole Home (read only, one confirmation) or the
+                                                system drive (read only only, two confirmations)
   hearth-home-server share-remove ID            stop sharing it (its files are never touched)
   hearth-home-server smb-password               your sharing password on stdin (HEARTH_INPUT); never kept
   hearth-home-server apply                      make the system match your settings again
@@ -388,11 +392,21 @@ def clean_name(text, used):
     return n
 
 
-def share_add(path, name=None):
+WHOLE_NAMES = {'drive': 'the whole drive', 'home': 'your whole Home', 'system': 'the system drive'}
+
+
+def share_add(path, name=None, confirm=()):
+    """Share a folder, a whole data drive, your whole Home (read only, after one confirmation: CONFIRM has "home") or the
+    system drive (read only, never read & write, after two: "system" and "system-sure"). Every share starts read only."""
     user, home = me()
-    real, why = root_mod().path_problem(path, user, home)
+    rm = root_mod()
+    real, kind, why = rm.share_path_problem(path, user, home)
     if not real:
         raise Fail(why[0].upper() + why[1:])
+    confirm = [c for c in confirm if c in ('home', 'system', 'system-sure')]
+    need = rm.CONFIRM_NEEDED.get(kind, set())
+    if not need <= set(confirm):
+        raise Fail('Sharing %s needs your confirmation' % WHOLE_NAMES[kind])
     if name is not None and root_mod().name_problem(name):
         raise Fail(root_mod().name_problem(name))
     added = {}
@@ -401,18 +415,25 @@ def share_add(path, name=None):
         if any(os.path.realpath(s.get('path', '')) == real for s in shares):
             raise Fail('That folder is already shared')
         used = {str(s.get('name', '')).lower() for s in shares} | root_mod().storage_share_names()
-        n = name if name is not None else clean_name(os.path.basename(real), used)
+        base = os.path.basename(real) or ''
+        n = name if name is not None else clean_name({'home': 'Home', 'system': 'System drive'}.get(kind) or base, used)
         if n.lower() in used:
             raise Fail('There\'s already a share called "%s"' % n)
         s = {'id': secrets.token_hex(6), 'name': n, 'path': real, 'on': True, 'write': False, 'reach': 'home',
-             'recycle': True, 'snapshots': False, 'users': [user]}
+             'recycle': kind != 'system', 'snapshots': False, 'users': [user]}
+        if kind in WHOLE_NAMES:
+            s['whole'] = kind
+            if need:
+                s['confirm'] = sorted(need)
         added.update(s)
         return shares + [s]
     shares_change(fn)
     return added
 
 
-def share_set(sid, key, raw):
+def share_set(sid, key, raw, confirm=None):
+    """One share setting. Read & write for your whole Home needs CONFIRM "home-write" (a second confirmation); the system
+    drive is never read & write (writing system files over the network can stop the PC from starting)."""
     if not re.fullmatch(r'[0-9a-f]{6,32}', sid or ''):
         raise Fail('That isn\'t a share')
     if key in ('on', 'write', 'recycle', 'snapshots'):
@@ -441,6 +462,14 @@ def share_set(sid, key, raw):
                     return None
                 if key == 'name' and any(o.get('id') != sid and str(o.get('name', '')).lower() == v.lower() for o in shares):
                     raise Fail('There\'s already a share called "%s"' % v)
+                if key == 'write' and v and s.get('whole') == 'system':
+                    raise Fail('The system drive is only ever shared read only: writing system files over the network can stop the PC from starting')
+                if key == 'write' and v and s.get('whole') == 'home':
+                    if confirm != 'home-write':
+                        raise Fail('Read & write for your whole Home needs a second confirmation')
+                    s['confirm'] = sorted(set(s.get('confirm') or []) | {'home', 'home-write'})
+                if key == 'write' and not v and s.get('whole') == 'home':
+                    s['confirm'] = [c for c in s.get('confirm') or [] if c != 'home-write']
                 s[key] = v
                 changed['changed'] = True
                 return shares
@@ -515,7 +544,19 @@ def candidates():
                         out.append({'path': sp, 'name': os.path.basename(sp), 'drive': True})
             elif root_mod().path_problem(p, user, home)[0]:
                 out.append({'path': p, 'name': n, 'drive': False})
-    return {'candidates': out[:80]}
+    # Whole data drives (their mount points) for "Share the whole drive"; your Home and the system drive are separate
+    # buttons (each with its own confirmations).
+    drives = []
+    for base in ['/run/media/' + user, '/media/' + user, '/var/mnt', '/mnt']:
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(base, n)
+            if not n.startswith('.') and root_mod().real_is_drive_root(os.path.realpath(p), user):
+                drives.append({'path': os.path.realpath(p), 'name': n})
+    return {'candidates': out[:80], 'drives': drives[:20], 'home': home}
 
 
 def pick_folder():
@@ -2710,8 +2751,8 @@ def scan_shares(data, now=None, budget=900):
     shots, big, old, recent, sizes = [], [], [], [], {}
     by_size = {}
     for s in data['shares']:
-        if s.get('on', True) is False or not os.path.isdir(s.get('path', '')):
-            continue
+        if s.get('on', True) is False or not os.path.isdir(s.get('path', '')) or s.get('whole') == 'system':
+            continue        # the system drive (shared read only) isn't walked for smart folders
         total = 0
         for p, size, mt, at in walk_share(os.path.realpath(s['path']), deadline):
             total += size
@@ -3228,8 +3269,13 @@ def main(argv):
         elif len(a) in (2, 3) and a[0] == 'share-add':
             res = {'share': share_add(a[1], a[2] if len(a) == 3 else None)}
             res['applied'] = apply_now()
-        elif len(a) == 4 and a[0] == 'share-set':
-            res = {'changed': share_set(a[1], a[2], a[3])}
+        elif len(a) >= 3 and a[0] == 'share-whole' and a[1] in ('drive', 'home', 'system'):
+            # share-whole drive PATH | home [home] | system [system system-sure]: the confirmations Settings asked for.
+            path = a[2] if a[1] == 'drive' else (me()[1] if a[1] == 'home' else '/')
+            res = {'share': share_add(path, None, a[3:] if a[1] == 'drive' else a[2:])}
+            res['applied'] = apply_now()
+        elif len(a) in (4, 5) and a[0] == 'share-set':
+            res = {'changed': share_set(a[1], a[2], a[3], a[4] if len(a) == 5 else None)}
             if res['changed']:
                 res['applied'] = apply_now()
         elif len(a) == 2 and a[0] == 'share-remove':

@@ -1381,13 +1381,23 @@ var ENTRIES = [
 {
 "t": "Share a folder",
 "p": "hs-shares",
-"d": "A folder in your Home or on a drive (never the system drive itself). It starts read only, on your home network.",
+"d": "A folder in your Home or on a drive, or a whole drive. It starts read only, on your home network.",
 "i": "plus"
 },
 {
 "t": "Pick it in Hearth Files",
 "p": "hs-shares",
 "i": "folder"
+},
+{
+"t": "Share your whole Home",
+"p": "hs-shares",
+"i": "home"
+},
+{
+"t": "Share the system drive (read only)",
+"p": "hs-shares",
+"i": "shield"
 },
 {
 "t": "Shared",
